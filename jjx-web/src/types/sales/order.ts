@@ -272,6 +272,8 @@ export interface SalesOrderVO {
   updateTime: string
   /** 更新人 */
   updateBy?: string
+  /** 订单明细 */
+  items?: SalesOrderProductVO[]
 }
 // 订单产品明细VO类型
 export interface SalesOrderProductVO {
@@ -409,6 +411,147 @@ export interface ProductValidationVO {
   isRoutingCurrentVersion?: boolean
   routingVersion?: string
   routingStatus?: number
+}
+
+/**
+ * 关联报价单VO
+ */
+export interface QuotationVO {
+  quotationId: number
+  quotationNo: string
+  customerName: string
+  totalAmount: number
+  status: number
+  createTime: string
+}
+
+/**
+ * 生产任务VO
+ */
+export interface ProductionTaskVO {
+  taskId: number
+  taskNo: string
+  productName: string
+  status: number
+  planStartDate: string
+  planEndDate: string
+}
+
+/**
+ * 发货单VO
+ */
+export interface ShipmentVO {
+  shipmentId: number
+  shipmentNo: string
+  deliveryDate: string
+  status: number
+  totalQuantity: number
+}
+
+/**
+ * 收款记录VO
+ */
+export interface PaymentVO {
+  paymentId: number
+  paymentNo: string
+  amount: number
+  paymentDate: string
+  paymentMethod: string
+  status: number
+}
+
+/**
+ * 发票VO
+ */
+export interface InvoiceVO {
+  invoiceId: number
+  invoiceNo: string
+  amount: number
+  invoiceDate: string
+  status: number
+}
+
+/**
+ * 操作日志VO
+ */
+export interface OperationLogVO {
+  logId: number
+  operationType: string
+  operator: string
+  operationTime: string
+  detail: string
+}
+
+/**
+ * 审核记录VO
+ */
+export interface ReviewRecordVO {
+  reviewId: number
+  reviewerName: string
+  reviewAction: string
+  reviewComment: string
+  reviewTime: string
+}
+
+/**
+ * 确认记录VO
+ */
+export interface ConfirmationRecordVO {
+  confirmId: number
+  confirmType: string
+  confirmResult: string
+  confirmTime: string
+  remark: string
+}
+
+/**
+ * 订单进度VO
+ */
+export interface OrderProgressVO {
+  orderId: number
+  overallProgress: number
+  stages: Array<{
+    stageName: string
+    status: string
+    progress: number
+    startTime?: string
+    endTime?: string
+  }>
+}
+
+/**
+ * 字典项VO
+ */
+export interface DictItemVO {
+  value: string | number
+  label: string
+}
+
+/**
+ * 订单验证结果VO
+ */
+export interface OrderValidationResultVO {
+  valid: boolean
+  issues: Array<{
+    code: string
+    message: string
+    severity: 'error' | 'warning'
+  }>
+}
+
+/**
+ * 订单统计VO
+ */
+export interface OrderStatisticsVO {
+  totalOrders: number
+  pendingOrders: number
+  completedOrders: number
+  totalAmount: number
+  monthlyData?: Array<{
+    month: string
+    orderCount: number
+    amount: number
+  }>
 }
 
 import type { CustomerVO } from '@/types/sales/customer'
