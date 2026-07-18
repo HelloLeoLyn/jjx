@@ -1,0 +1,359 @@
+package com.jjx.purchase.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.common.exception.BusinessException;
+import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
+import com.jjx.purchase.domain.entity.PurchaseOrder;
+import com.jjx.purchase.domain.entity.PurchasePayment;
+import com.jjx.purchase.domain.enums.PaymentStatusEnum;
+import com.jjx.purchase.mapper.PurchaseOrderMapper;
+import com.jjx.purchase.mapper.PurchasePaymentMapper;
+import com.jjx.purchase.service.IPurchasePaymentService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * 采购付款服务实现类
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMapper, PurchasePayment> implements IPurchasePaymentService {
+
+    private final PurchasePaymentMapper paymentMapper;
+    private final PurchaseOrderMapper orderMapper;
+
+    @Override
+    public List<PurchasePayment> selectPaymentList(PurchasePaymentDTO dto) {
+        LambdaQueryWrapper<PurchasePayment> wrapper = Wrappers.lambdaQuery();
+        if (dto != null) {
+            if (StringUtils.isNotEmpty(dto.getPaymentNo())) {
+                wrapper.like(PurchasePayment::getPaymentNo, dto.getPaymentNo());
+            }
+            if (dto.getOrderId() != null) {
+                wrapper.eq(PurchasePayment::getOrderId, dto.getOrderId());
+            }
+            if (StringUtils.isNotEmpty(dto.getPaymentStatus())) {
+                wrapper.eq(PurchasePayment::getPaymentStatus, dto.getPaymentStatus());
+            }
+            if (StringUtils.isNotEmpty(dto.getPaymentMethod())) {
+                wrapper.eq(PurchasePayment::getPaymentMethod, dto.getPaymentMethod());
+            }
+        }
+        wrapper.orderByDesc(PurchasePayment::getCreateTime);
+        return paymentMapper.selectList(wrapper);
+    }
+
+    @Override
+    public PurchasePayment selectPaymentById(Long paymentId) {
+        PurchasePayment payment = paymentMapper.selectById(paymentId);
+        if (payment == null) {
+            throw new BusinessException("付款记录不存在");
+        }
+        return payment;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int insertPayment(PurchasePaymentDTO dto) {
+        // 检查付款单号是否唯一
+        if (checkPaymentNoUnique(dto.getPaymentNo())) {
+            throw new BusinessException("付款单号已存在");
+        }
+
+        // 检查订单是否存在
+        PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
+        if (order == null) {
+            throw new BusinessException("采购订单不存在");
+        }
+
+        PurchasePayment payment = new PurchasePayment();
+        copyProperties(dto, payment);
+
+        // 设置默认状态
+        if (payment.getPaymentStatus() == null) {
+            payment.setPaymentStatus("pending");
+        }
+
+        int result = paymentMapper.insert(payment);
+
+        // 更新订单付款信息
+        updateOrderPaymentInfo(dto.getOrderId());
+
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int updatePayment(PurchasePaymentDTO dto) {
+        if (dto.getPaymentId() == null) {
+            throw new BusinessException("付款ID不能为空");
+        }
+
+        PurchasePayment existing = paymentMapper.selectById(dto.getPaymentId());
+        if (existing == null) {
+            throw new BusinessException("付款记录不存在");
+        }
+
+        PurchasePayment payment = new PurchasePayment();
+        copyProperties(dto, payment);
+        payment.setPaymentId(dto.getPaymentId());
+
+        return paymentMapper.updateById(payment);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int deletePaymentById(Long paymentId) {
+        PurchasePayment payment = paymentMapper.selectById(paymentId);
+        if (payment == null) {
+            throw new BusinessException("付款记录不存在");
+        }
+
+        int result = paymentMapper.deleteById(paymentId);
+
+        // 更新订单付款信息
+        if (payment.getOrderId() != null) {
+            updateOrderPaymentInfo(payment.getOrderId());
+        }
+
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int deletePaymentByIds(Long[] paymentIds) {
+        int count = 0;
+        for (Long paymentId : paymentIds) {
+            count += deletePaymentById(paymentId);
+        }
+        return count;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int approvePayment(Long paymentId, String approvalStatus, String approverName, String approvalComment) {
+        PurchasePayment payment = paymentMapper.selectById(paymentId);
+        if (payment == null) {
+            throw new BusinessException("付款记录不存在");
+        }
+
+        if (!Objects.equals("pending", payment.getPaymentStatus())) {
+            throw new BusinessException("只有待审批状态的付款可以审批");
+        }
+
+        payment.setPaymentStatus(approvalStatus);
+        payment.setApprovalTime(LocalDateTime.now());
+        if (StringUtils.isNotEmpty(approvalComment)) {
+            payment.setRemark(approvalComment);
+        }
+        payment.setUpdateTime(LocalDateTime.now());
+
+        int result = paymentMapper.updateById(payment);
+
+        // 如果审批通过，更新订单付款信息
+        if ("approved".equals(approvalStatus) && payment.getOrderId() != null) {
+            updateOrderPaymentInfo(payment.getOrderId());
+        }
+
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int confirmPayment(PurchasePaymentDTO dto) {
+        PurchasePayment payment = paymentMapper.selectById(dto.getPaymentId());
+        if (payment == null) {
+            throw new BusinessException("付款记录不存在");
+        }
+
+        if (!Objects.equals("approved", payment.getPaymentStatus())) {
+            throw new BusinessException("只有已批准的付款可以确认");
+        }
+
+        payment.setPaymentStatus("paid");
+        payment.setActualPaymentDate(dto.getActualPaymentDate() != null ? dto.getActualPaymentDate() : LocalDate.now());
+        payment.setVoucherNo(dto.getVoucherNo());
+        payment.setVoucherFileUrl(dto.getVoucherFileUrl());
+        payment.setUpdateTime(LocalDateTime.now());
+
+        int result = paymentMapper.updateById(payment);
+
+        // 更新订单付款信息
+        if (payment.getOrderId() != null) {
+            updateOrderPaymentInfo(payment.getOrderId());
+        }
+
+        return result;
+    }
+
+    @Override
+    public boolean checkPaymentNoUnique(String paymentNo) {
+        return paymentMapper.checkPaymentNoUnique(paymentNo) > 0;
+    }
+
+    @Override
+    public String generatePaymentNo() {
+        String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String prefix = "PAY" + dateStr;
+
+        LambdaQueryWrapper<PurchasePayment> wrapper = Wrappers.lambdaQuery();
+        wrapper.likeRight(PurchasePayment::getPaymentNo, prefix);
+        wrapper.orderByDesc(PurchasePayment::getPaymentNo);
+        wrapper.last("LIMIT 1");
+        List<PurchasePayment> lastPayments = paymentMapper.selectList(wrapper);
+
+        int seq = 1;
+        if (!lastPayments.isEmpty()) {
+            String lastNo = lastPayments.get(0).getPaymentNo();
+            String seqStr = lastNo.substring(prefix.length());
+            try {
+                seq = Integer.parseInt(seqStr) + 1;
+            } catch (NumberFormatException e) {
+                seq = 1;
+            }
+        }
+
+        return prefix + StringUtils.leftPad(String.valueOf(seq), 4, "0");
+    }
+
+    @Override
+    public List<PurchasePayment> selectByOrderId(Long orderId) {
+        return paymentMapper.selectByOrderId(orderId);
+    }
+
+    @Override
+    public List<PurchasePayment> selectBySupplierId(Long supplierId) {
+        return paymentMapper.selectBySupplierId(supplierId);
+    }
+
+    @Override
+    public List<PurchasePayment> selectPendingApproval() {
+        return paymentMapper.selectPendingApproval();
+    }
+
+    @Override
+    public List<PurchasePayment> selectApproved() {
+        return paymentMapper.selectApproved();
+    }
+
+    @Override
+    public List<PurchasePayment> selectToday() {
+        return paymentMapper.selectToday();
+    }
+
+    @Override
+    public List<PurchasePayment> selectWeek() {
+        return paymentMapper.selectWeek();
+    }
+
+    @Override
+    public List<PurchasePayment> selectMonth() {
+        return paymentMapper.selectMonth();
+    }
+
+    @Override
+    public Map<String, Object> getPaymentStatistics() {
+        List<PurchasePayment> allPayments = paymentMapper.selectList(Wrappers.emptyWrapper());
+
+        long totalCount = allPayments.size();
+        long pendingCount = allPayments.stream()
+                .filter(p -> Objects.equals("pending", p.getPaymentStatus()))
+                .count();
+        long approvedCount = allPayments.stream()
+                .filter(p -> Objects.equals("approved", p.getPaymentStatus()))
+                .count();
+        long paidCount = allPayments.stream()
+                .filter(p -> Objects.equals("paid", p.getPaymentStatus()))
+                .count();
+
+        BigDecimal totalAmount = allPayments.stream()
+                .filter(p -> p.getPaymentAmount() != null)
+                .map(PurchasePayment::getPaymentAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return Map.of(
+                "totalCount", totalCount,
+                "pendingCount", pendingCount,
+                "approvedCount", approvedCount,
+                "paidCount", paidCount,
+                "totalAmount", totalAmount
+        );
+    }
+
+    @Override
+    public String exportPaymentList(PurchasePaymentDTO dto) {
+        List<PurchasePayment> list = selectPaymentList(dto);
+        if (list.isEmpty()) {
+            throw new BusinessException("没有可导出的数据");
+        }
+
+        String fileName = "采购付款列表_" + LocalDate.now().toString();
+        String filePath = System.getProperty("java.io.tmpdir") + "/purchase_export/" + fileName + "_" + System.currentTimeMillis() + ".xlsx";
+
+        // TODO: 使用POI生成Excel文件
+        log.info("导出采购付款列表成功，文件路径: {}", filePath);
+        return filePath;
+    }
+
+    /**
+     * 更新订单付款信息
+     */
+    private void updateOrderPaymentInfo(Long orderId) {
+        // 查询该订单所有已付款记录
+        LambdaQueryWrapper<PurchasePayment> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(PurchasePayment::getOrderId, orderId);
+        wrapper.eq(PurchasePayment::getPaymentStatus, "paid");
+        List<PurchasePayment> paidPayments = paymentMapper.selectList(wrapper);
+
+        BigDecimal totalPaid = paidPayments.stream()
+                .filter(p -> p.getPaymentAmount() != null)
+                .map(PurchasePayment::getPaymentAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // 查询订单总金额
+        PurchaseOrder order = orderMapper.selectById(orderId);
+        if (order == null) return;
+
+        Integer paymentStatus;
+        if (totalPaid.compareTo(BigDecimal.ZERO) == 0) {
+            paymentStatus = PaymentStatusEnum.PENDING.getCode();
+        } else if (order.getOrderTotalAmount() != null && totalPaid.compareTo(order.getOrderTotalAmount()) >= 0) {
+            paymentStatus = PaymentStatusEnum.COMPLETED.getCode();
+        } else {
+            paymentStatus = PaymentStatusEnum.PARTIALLY_PAID.getCode();
+        }
+
+        orderMapper.updatePaymentInfo(orderId, totalPaid, paymentStatus);
+    }
+
+    /**
+     * 复制DTO属性到实体
+     */
+    private void copyProperties(PurchasePaymentDTO dto, PurchasePayment payment) {
+        payment.setPaymentNo(dto.getPaymentNo());
+        payment.setOrderId(dto.getOrderId());
+        payment.setDocumentId(dto.getDocumentId());
+        payment.setPaymentDate(dto.getPaymentDate());
+        payment.setPaymentAmount(dto.getPaymentAmount());
+        payment.setPaymentMethod(dto.getPaymentMethod());
+        payment.setBankAccount(dto.getBankAccount());
+        payment.setPaymentStatus(dto.getPaymentStatus());
+        payment.setVoucherNo(dto.getVoucherNo());
+        payment.setVoucherFileUrl(dto.getVoucherFileUrl());
+        payment.setRemark(dto.getRemark());
+    }
+}

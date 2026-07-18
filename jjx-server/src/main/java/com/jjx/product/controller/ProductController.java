@@ -1,0 +1,212 @@
+package com.jjx.product.controller;
+
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.jjx.common.core.page.PageResult;
+import com.jjx.common.core.result.Result;
+import com.jjx.framework.common.controller.BaseController;
+import com.jjx.product.domain.dto.ProductDTO;
+import com.jjx.product.domain.dto.ProductUpdateDTO;
+import com.jjx.product.domain.entity.Product;
+import com.jjx.product.domain.query.ProductQuery;
+import com.jjx.product.domain.vo.ProductFullVO;
+import com.jjx.product.domain.vo.ProductVo;
+import com.jjx.product.service.IProductService;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.annotation.Log;
+import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 产品Controller
+ */
+@RestController
+@RequestMapping("/product")
+@RequiredArgsConstructor
+public class ProductController extends BaseController {
+
+    private final IProductService productService;
+
+    /**
+     * 获取产品列表
+     */
+    @GetMapping("/page")
+    public Result<PageResult<ProductVo>> page(ProductQuery query) {
+        PageResult<ProductVo> productPage = productService.getProductFullPage(query);
+        return Result.success(productPage);
+    }
+
+    /**
+     * 获取产品列表
+     */
+    @GetMapping("/list")
+    public Result<List<ProductVo>> list(ProductQuery query) {
+        List<ProductVo> productList = productService.getProductList(query);
+        return Result.success(productList);
+    }
+    /**
+     * 获取产品详情
+     */
+    @GetMapping("/{productId}")
+    public Result<ProductVo> getInfo(@PathVariable Long productId) {
+        ProductVo product = productService.getProductDetail(productId);
+        return Result.success(product);
+    }
+    /**
+     * 获取产品详情full
+     */
+    @GetMapping("/{productId}/full")
+    public Result<ProductFullVO> full(@PathVariable Long productId) {
+        ProductFullVO product = productService.getFullProductDetail(productId);
+        return Result.success(product);
+    }
+
+    /**
+     * 停产
+     */
+    @PutMapping("/obsolete/{id}")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("product:product:obsolete")
+    public Result<Void> obsolete(@PathVariable Long id) {
+        return toAjax(productService.obsoleteProduct(id));
+    }
+
+    /**
+     * 取消（取消审核/取消发布）
+     */
+    @PutMapping("/cancel/{id}")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("product:product:edit")
+    public Result<Void> cancel(@PathVariable Long id) {
+        return toAjax(productService.cancelProduct(id));
+    }
+
+    /**
+     * 修改产品
+     */
+    @PutMapping
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("product:index:edit")
+    public Result<Void> edit(@Validated @RequestBody ProductDTO productDTO) {
+        if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
+            return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品编码已存在");
+        }
+        if (!productService.checkProductNameUnique(productDTO.getProductName(), productDTO.getProductId())) {
+            return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品名称已存在");
+        }
+        Product product = new Product();
+        org.springframework.beans.BeanUtils.copyProperties(productDTO, product);
+        boolean result = productService.updateById(product);
+        return result ? Result.success() : Result.error();
+    }
+
+    /**
+     * 删除产品
+     */
+    @DeleteMapping("/{productId}")
+    @Log(module = "产品管理", businessType = BusinessType.DELETE)
+    @SaCheckPermission("product:delete")
+    public Result<Void> remove(@PathVariable Long productId) {
+        boolean result = productService.removeById(productId);
+        return result ? Result.success() : Result.error();
+    }
+
+    /**
+     * 发布产品
+     */
+    @PutMapping("/release/{productId}")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("product:status:release")
+    public Result<Void> release(@PathVariable Long productId) {
+        // 执行发布，验证逻辑在service层处理
+        boolean result = productService.releaseProduct(productId);
+        return result ? Result.success() : Result.error();
+    }
+    /**
+     * 提交审核
+     */
+    @PutMapping("/submit/{productId}")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("product:status:submit")
+    public Result<Void> submit(@PathVariable Long productId) {
+        // 执行发布，验证逻辑在service层处理
+        boolean result = productService.submitProduct(productId);
+        return result ? Result.success() : Result.error();
+    }
+
+    /**
+     * 审核通过
+     */
+    @PutMapping("/approve/{productId}")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("product:status:approve")
+    public Result<Void> approve(@PathVariable Long productId, ProductUpdateDTO dto) {
+        // 执行发布，验证逻辑在service层处理
+        boolean result = productService.approveProduct(dto);
+        return result ? Result.success() : Result.error();
+    }
+    /**
+     * 驳回审核
+     */
+    @PutMapping("/reject/{productId}")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("product:status:reject")
+    public Result<Void> reject(@PathVariable Long productId, ProductUpdateDTO dto) {
+        // 执行发布，验证逻辑在service层处理
+        boolean result = productService.rejectProduct(dto);
+        return result ? Result.success() : Result.error();
+    }
+    /**
+     * 检查产品编码是否唯一
+     */
+    @GetMapping("/product-code/{productCode}/unique")
+    public Result<Boolean> checkProductCodeUnique(@PathVariable String productCode) {
+        boolean result = productService.checkProductCodeUnique(productCode,null);
+        return Result.success(result);
+    }
+
+    /**
+     * 检查产品名称是否唯一
+     */
+    @GetMapping("/checkProductNameUnique")
+    public Result<Boolean> checkProductNameUnique(String productName, Long productId) {
+        boolean result = productService.checkProductNameUnique(productName, productId);
+        return Result.success(result);
+    }
+
+    /**
+     * 搜索产品
+     */
+    @GetMapping("/search")
+    public Result<List<Product>> search(String keyword) {
+        List<Product> products = productService.searchProducts(keyword);
+        return Result.success(products);
+    }
+
+    /**
+     * 根据分类获取产品列表
+     */
+    @GetMapping("/byCategory/{categoryId}")
+    public Result<List<Product>> getByCategory(@PathVariable Long categoryId) {
+        List<Product> products = productService.getProductsByCategory(categoryId);
+        return Result.success(products);
+    }
+
+    /**
+     * 根据分类获取产品列表
+     */
+    @GetMapping("/product-code/{categoryId}")
+    public Result<String> getByCategory(@PathVariable String categoryId) {
+        return Result.success( productService.getProductCode(categoryId));
+    }
+
+    /**
+     * 根据客户ID生成流水号（3位）
+     */
+    @GetMapping("/serial-no/{customerId}")
+    public Result<String> generateSerialNo(@PathVariable Long customerId) {
+        return Result.success(productService.generateSerialNo(customerId));
+    }
+}

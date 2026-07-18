@@ -1,0 +1,477 @@
+package com.jjx.inventory.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.inventory.domain.InventoryInboundItem;
+import com.jjx.inventory.domain.InventoryInboundOrder;
+import com.jjx.inventory.dto.query.InboundQueryDTO;
+import com.jjx.inventory.dto.vo.InboundItemVO;
+import com.jjx.inventory.dto.vo.InboundVO;
+import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.mapper.InventoryInboundItemMapper;
+import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
+import com.jjx.inventory.service.InventoryInboundService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 入库服务实现类
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrderMapper, InventoryInboundOrder>
+        implements InventoryInboundService {
+
+    private final InventoryInboundOrderMapper inboundOrderMapper;
+    private final InventoryInboundItemMapper inboundItemMapper;
+
+    @Override
+    public IPage<InboundVO> page(InboundQueryDTO query) {
+        // 构建查询条件
+        LambdaQueryWrapper<InventoryInboundOrder> wrapper = new LambdaQueryWrapper<>();
+
+        // 根据查询参数添加条件
+        if (query.getInboundId() != null) {
+            wrapper.eq(InventoryInboundOrder::getInboundId, query.getInboundId());
+        }
+
+        if (query.getInboundNo() != null && !query.getInboundNo().isEmpty()) {
+            wrapper.like(InventoryInboundOrder::getInboundNo, query.getInboundNo());
+        }
+
+        if (query.getInboundType() != null && !query.getInboundType().isEmpty()) {
+            wrapper.eq(InventoryInboundOrder::getInboundType, query.getInboundType());
+        }
+
+        if (query.getWarehouseId() != null) {
+            wrapper.eq(InventoryInboundOrder::getWarehouseId, query.getWarehouseId());
+        }
+
+        if (query.getSourceType() != null && !query.getSourceType().isEmpty()) {
+            wrapper.eq(InventoryInboundOrder::getSourceType, query.getSourceType());
+        }
+
+        if (query.getSourceNo() != null && !query.getSourceNo().isEmpty()) {
+            wrapper.like(InventoryInboundOrder::getSourceNo, query.getSourceNo());
+        }
+
+        if (query.getOrderStatus() != null && !query.getOrderStatus().isEmpty()) {
+            wrapper.eq(InventoryInboundOrder::getOrderStatus, query.getOrderStatus());
+        }
+
+        if (query.getApproveStatus() != null && !query.getApproveStatus().isEmpty()) {
+            wrapper.eq(InventoryInboundOrder::getApproveStatus, query.getApproveStatus());
+        }
+
+        // 入库日期范围查询
+        if (query.getInboundDateStart() != null) {
+            wrapper.ge(InventoryInboundOrder::getInboundDate, query.getInboundDateStart());
+        }
+
+        if (query.getInboundDateEnd() != null) {
+            wrapper.le(InventoryInboundOrder::getInboundDate, query.getInboundDateEnd());
+        }
+
+        // 创建时间范围查询
+        if (query.getCreateTimeStart() != null && !query.getCreateTimeStart().isEmpty()) {
+            wrapper.ge(InventoryInboundOrder::getCreateTime, query.getCreateTimeStart());
+        }
+
+        if (query.getCreateTimeEnd() != null && !query.getCreateTimeEnd().isEmpty()) {
+            wrapper.le(InventoryInboundOrder::getCreateTime, query.getCreateTimeEnd());
+        }
+
+        // 排序处理
+        if (query.getOrderBy() != null && !query.getOrderBy().isEmpty()) {
+            String orderBy = query.getOrderBy();
+            boolean isAsc = "asc".equalsIgnoreCase(query.getOrderDirection());
+
+            // 根据orderBy字段映射到实体字段
+            switch (orderBy) {
+                case "inboundNo":
+                    wrapper.orderBy(true, isAsc, InventoryInboundOrder::getInboundNo);
+                    break;
+                case "inboundDate":
+                    wrapper.orderBy(true, isAsc, InventoryInboundOrder::getInboundDate);
+                    break;
+                case "createTime":
+                    wrapper.orderBy(true, isAsc, InventoryInboundOrder::getCreateTime);
+                    break;
+                case "totalAmount":
+                    wrapper.orderBy(true, isAsc, InventoryInboundOrder::getTotalAmount);
+                    break;
+                default:
+                    // 默认按创建时间倒序
+                    wrapper.orderByDesc(InventoryInboundOrder::getCreateTime);
+            }
+        } else {
+            // 默认按创建时间倒序
+            wrapper.orderByDesc(InventoryInboundOrder::getCreateTime);
+        }
+
+        // 执行分页查询
+        Page<InventoryInboundOrder> orderPage = new Page<>(query.getCurrent(), query.getSize());
+        IPage<InventoryInboundOrder> orderResult = inboundOrderMapper.selectPage(orderPage, wrapper);
+
+        // 转换为VO分页
+        Page<InboundVO> voPage = new Page<>(query.getCurrent(), query.getSize());
+        voPage.setTotal(orderResult.getTotal());
+        voPage.setPages(orderResult.getPages());
+
+        // 转换数据
+        List<InboundVO> voList = convertToVOList(orderResult.getRecords());
+        voPage.setRecords(voList);
+
+        return voPage;
+    }
+
+    @Override
+    public InboundVO getDetail(Long inboundId) {
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return null;
+        }
+
+        InboundVO vo = convertToVO(order);
+        // 获取入库单明细项并设置到VO对象
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+        if (items != null && !items.isEmpty()) {
+            vo.setItems(convertToItemVOList(items));
+        }
+        return vo;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long create(Map<String, Object> params) {
+        // TODO: 实现创建入库单逻辑
+        log.info("创建入库单: {}", params);
+        return 1L;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean confirm(Long inboundId, Long operatorId, String operatorName) {
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        if (!"pending".equals(order.getOrderStatus())) {
+            log.error("入库单状态不正确，无法确认: inboundId={}, status={}", inboundId, order.getOrderStatus());
+            return false;
+        }
+
+        // TODO: 执行库存增加逻辑
+        order.setOrderStatus("completed");
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean cancel(Long inboundId, String reason) {
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        if ("completed".equals(order.getOrderStatus())) {
+            log.error("已完成的入库单无法取消: inboundId={}", inboundId);
+            return false;
+        }
+
+        order.setOrderStatus("cancelled");
+        order.setRemark(reason);
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    @Override
+    public boolean submitApprove(Long inboundId) {
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        order.setOrderStatus("pending_approval");
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    @Override
+    public boolean approve(Long inboundId, Long approverId, String approverName, String remark) {
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        if (!"pending_approval".equals(order.getOrderStatus())) {
+            log.error("入库单状态不正确，无法审批: inboundId={}, status={}", inboundId, order.getOrderStatus());
+            return false;
+        }
+        order.setOrderStatus("approved");
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    @Override
+    public boolean reject(Long inboundId, Long approverId, String approverName, String remark) {
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        if (!"pending_approval".equals(order.getOrderStatus())) {
+            log.error("入库单状态不正确，无法驳回: inboundId={}, status={}", inboundId, order.getOrderStatus());
+            return false;
+        }
+
+        order.setOrderStatus(OrderStatusEnum.REJECTED.getCode());
+        order.setRemark(remark);
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    @Override
+    public Long createFromPurchase(Long purchaseOrderId) {
+        // TODO: 实现从采购订单创建入库单
+        log.info("从采购订单创建入库单: purchaseOrderId={}", purchaseOrderId);
+        return 1L;
+    }
+
+    @Override
+    public Long createFromProduction(Long workOrderId) {
+        // TODO: 实现从生产工单创建入库单
+        log.info("从生产工单创建入库单: workOrderId={}", workOrderId);
+        return 1L;
+    }
+
+    @Override
+    public List<InboundVO> getPendingApproval() {
+        List<InventoryInboundOrder> orders = inboundOrderMapper.selectList(
+                new LambdaQueryWrapper<InventoryInboundOrder>()
+                        .eq(InventoryInboundOrder::getOrderStatus, "pending_approval")
+                        .orderByAsc(InventoryInboundOrder::getCreateTime)
+        );
+        return convertToVOList(orders);
+    }
+
+    @Override
+    public List<InboundVO> getByDateRange(String startDate, String endDate) {
+        LambdaQueryWrapper<InventoryInboundOrder> wrapper = new LambdaQueryWrapper<>();
+        if (startDate != null && !startDate.isEmpty()) {
+            wrapper.ge(InventoryInboundOrder::getCreateTime, startDate);
+        }
+        if (endDate != null && !endDate.isEmpty()) {
+            wrapper.le(InventoryInboundOrder::getCreateTime, endDate);
+        }
+        wrapper.orderByDesc(InventoryInboundOrder::getCreateTime);
+
+        List<InventoryInboundOrder> orders = inboundOrderMapper.selectList(wrapper);
+        return convertToVOList(orders);
+    }
+
+    @Override
+    public InboundVO getBySource(String sourceType, Long sourceId) {
+        LambdaQueryWrapper<InventoryInboundOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(InventoryInboundOrder::getSourceType, sourceType)
+                .eq(InventoryInboundOrder::getSourceId, sourceId);
+        InventoryInboundOrder order = inboundOrderMapper.selectOne(wrapper);
+        return convertToVO(order);
+    }
+
+    @Override
+    public boolean updateStatus(Long inboundId, String status) {
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        order.setOrderStatus(status);
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    @Override
+    public IPage<InventoryInboundOrder> pageQuery(Map<String, Object> params) {
+        String inboundNo = (String) params.get("inboundNo");
+        String startDate = (String) params.get("startDate");
+        String endDate = (String) params.get("endDate");
+        Integer pageNum = (Integer) params.getOrDefault("pageNum", 1);
+        Integer pageSize = (Integer) params.getOrDefault("pageSize", 10);
+
+        LambdaQueryWrapper<InventoryInboundOrder> wrapper = new LambdaQueryWrapper<>();
+        if (inboundNo != null && !inboundNo.isEmpty()) {
+            wrapper.like(InventoryInboundOrder::getInboundNo, inboundNo);
+        }
+
+        if (startDate != null && !startDate.isEmpty()) {
+            wrapper.ge(InventoryInboundOrder::getCreateTime, startDate);
+        }
+        if (endDate != null && !endDate.isEmpty()) {
+            wrapper.le(InventoryInboundOrder::getCreateTime, endDate);
+        }
+        wrapper.orderByDesc(InventoryInboundOrder::getCreateTime);
+
+        Page<InventoryInboundOrder> page = new Page<>(pageNum, pageSize);
+        return inboundOrderMapper.selectPage(page, wrapper);
+    }
+
+    @Override
+    public Map<String, Object> getDetail(Map<String, Object> params) {
+        // TODO: 实现获取入库单详情，包括明细项
+        return Map.of("message", "详情功能待实现");
+    }
+
+    private static List<InboundVO> convertToVOList(List<InventoryInboundOrder> orders) {
+        List<InboundVO> result = new ArrayList<>();
+        for (InventoryInboundOrder order : orders) {
+            result.add(convertToVO(order));
+        }
+        return result;
+    }
+
+    private static InboundVO convertToVO(InventoryInboundOrder order) {
+        if (order == null) {
+            return null;
+        }
+
+        InboundVO vo = new InboundVO();
+        vo.setInboundId(order.getInboundId());
+        vo.setInboundNo(order.getInboundNo());
+        vo.setInboundType(order.getInboundType());
+        vo.setWarehouseId(order.getWarehouseId());
+        vo.setLocationId(order.getLocationId());
+        vo.setSourceType(order.getSourceType());
+        vo.setSourceId(order.getSourceId());
+        vo.setSourceNo(order.getSourceNo());
+        vo.setSupplierId(order.getSupplierId());
+        vo.setInboundDate(order.getInboundDate());
+        vo.setInspectorId(order.getInspectorId());
+        vo.setInspectionResult(order.getInspectionResult());
+        vo.setInspectionRemark(order.getInspectionRemark());
+        vo.setTotalQuantity(order.getTotalQuantity());
+        vo.setTotalAmount(order.getTotalAmount());
+        vo.setOrderStatus(order.getOrderStatus());
+        vo.setApproveStatus(order.getApproveStatus());
+        vo.setRemark(order.getRemark());
+        vo.setCreateBy(order.getCreateBy());
+        vo.setUpdateBy(order.getUpdateBy()) ;
+        vo.setCreateTime(order.getCreateTime());
+        vo.setUpdateTime(order.getUpdateTime());
+
+        // 设置类型名称
+        vo.setInboundTypeName(getInboundTypeName(order.getInboundType()));
+        vo.setSourceTypeName(getSourceTypeName(order.getSourceType()));
+        vo.setOrderStatusName(getOrderStatusName(order.getOrderStatus()));
+        vo.setApproveStatusName(getApproveStatusName(order.getApproveStatus()));
+
+        return vo;
+    }
+
+    private static String getInboundTypeName(String inboundType) {
+        if (inboundType == null) {
+            return "";
+        }
+        switch (inboundType) {
+            case "purchase": return "采购入库";
+            case "production": return "生产入库";
+            case "return": return "退货入库";
+            case "transfer": return "调拨入库";
+            case "other": return "其他入库";
+            default: return inboundType;
+        }
+    }
+
+    private static String getSourceTypeName(String sourceType) {
+        if (sourceType == null) {
+            return "";
+        }
+        switch (sourceType) {
+            case "purchase_order": return "采购订单";
+            case "work_order": return "工单";
+            case "sales_return": return "销售退货";
+            case "transfer_order": return "调拨单";
+            default: return sourceType;
+        }
+    }
+
+    private static String getOrderStatusName(String orderStatus) {
+        if (orderStatus == null) {
+            return "";
+        }
+        switch (orderStatus) {
+            case "pending": return "待确认";
+            case "pending_approval": return "待审批";
+            case "approved": return "已审批";
+            case "completed": return "已完成";
+            case "cancelled": return "已取消";
+            case "rejected": return "已驳回";
+            default: return orderStatus;
+        }
+    }
+
+    private static String getApproveStatusName(String approveStatus) {
+        if (approveStatus == null) {
+            return "";
+        }
+        switch (approveStatus) {
+            case "pending": return "待审批";
+            case "approved": return "已通过";
+            case "rejected": return "已驳回";
+            default: return approveStatus;
+        }
+    }
+
+    private static List<InboundItemVO> convertToItemVOList(List<InventoryInboundItem> items) {
+        if (items == null || items.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<InboundItemVO> result = new ArrayList<>();
+        for (InventoryInboundItem item : items) {
+            result.add(convertToItemVO(item));
+        }
+        return result;
+    }
+
+    private static InboundItemVO convertToItemVO(InventoryInboundItem item) {
+        if (item == null) {
+            return null;
+        }
+
+        InboundItemVO vo = new InboundItemVO();
+        vo.setInboundItemId(item.getItemId());
+        vo.setInboundId(item.getInboundId());
+        vo.setMaterialId(item.getMaterialId());
+        vo.setMaterialCode(item.getMaterialCode());
+        vo.setMaterialName(item.getMaterialName());
+        vo.setSpecification(item.getSpecification());
+        vo.setUnit(item.getUnit());
+        vo.setQuantity(item.getQuantity());
+        vo.setUnitPrice(item.getUnitPrice());
+        vo.setAmount(item.getAmount());
+        vo.setBatchNo(item.getBatchNo());
+        vo.setProductionDate(item.getProductionDate());
+        vo.setExpiryDate(item.getExpiryDate());
+        vo.setLocationId(item.getLocationId());
+        vo.setQualifiedQuantity(item.getQualifiedQuantity());
+        vo.setRejectedQuantity(item.getRejectedQuantity());
+        vo.setRejectReason(item.getRejectReason());
+        vo.setSortOrder(item.getSortOrder());
+        vo.setRemark(item.getRemark());
+
+        return vo;
+    }
+}

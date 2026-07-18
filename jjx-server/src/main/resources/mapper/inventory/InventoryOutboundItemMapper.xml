@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jjx.inventory.mapper.InventoryOutboundItemMapper">
+
+    <!-- 批量插入出库单明细 -->
+    <insert id="batchInsert" parameterType="list">
+        INSERT INTO inventory_outbound_item (
+            outbound_id, material_id, material_code, material_name,
+            specification, unit, quantity, unit_price, amount,
+            batch_no, location_id, sort_order, remark
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.outboundId}, #{item.materialId}, #{item.materialCode}, #{item.materialName},
+                #{item.specification}, #{item.unit}, #{item.quantity}, #{item.unitPrice}, #{item.amount},
+                #{item.batchNo}, #{item.locationId}, #{item.sortOrder}, #{item.remark}
+            )
+        </foreach>
+    </insert>
+
+</mapper>

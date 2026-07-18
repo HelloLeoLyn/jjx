@@ -1,0 +1,261 @@
+package com.jjx.inventory.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.inventory.domain.InventoryAlertLog;
+import com.jjx.inventory.dto.query.AlertQueryDTO;
+import com.jjx.inventory.dto.vo.AlertVO;
+import com.jjx.inventory.mapper.InventoryAlertLogMapper;
+import com.jjx.inventory.service.InventoryAlertService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 库存预警服务实现类
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapper, InventoryAlertLog>
+        implements InventoryAlertService {
+
+    private final InventoryAlertLogMapper alertLogMapper;
+
+    @Override
+    public IPage<AlertVO> page(AlertQueryDTO query) {
+        // 这里需要实现分页查询，返回AlertVO
+        // 暂时返回空分页，实际需要实现查询逻辑
+        Page<AlertVO> page = new Page<>(query.getCurrent(), query.getSize());
+        return page;
+    }
+
+    @Override
+    public void executeAlertCheck() {
+        log.info("开始执行库存预警检查");
+        checkSafeStockAlert();
+        checkMaxStockAlert();
+        checkExpiryAlert();
+        checkObsoleteAlert();
+        log.info("库存预警检查完成");
+    }
+
+    @Override
+    public void checkSafeStockAlert() {
+        // TODO: 实现安全库存预警检查逻辑
+        log.info("检查安全库存预警");
+    }
+
+    @Override
+    public void checkMaxStockAlert() {
+        // TODO: 实现最高库存预警检查逻辑
+        log.info("检查最高库存预警");
+    }
+
+    @Override
+    public void checkExpiryAlert() {
+        // TODO: 实现保质期预警检查逻辑
+        log.info("检查保质期预警");
+    }
+
+    @Override
+    public void checkObsoleteAlert() {
+        // TODO: 实现呆滞料预警检查逻辑
+        log.info("检查呆滞料预警");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean markRead(Long alertId) {
+        InventoryAlertLog alert = alertLogMapper.selectById(alertId);
+        if (alert == null) {
+            log.error("预警不存在: alertId={}", alertId);
+            return false;
+        }
+
+        alert.setStatus("read");
+        return alertLogMapper.updateById(alert) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean batchMarkRead(List<Long> alertIds) {
+        if (alertIds == null || alertIds.isEmpty()) {
+            return false;
+        }
+
+        List<InventoryAlertLog> alerts = alertLogMapper.selectBatchIds(alertIds);
+        for (InventoryAlertLog alert : alerts) {
+            alert.setStatus("read");
+        }
+
+        return updateBatchById(alerts);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean processAlert(Long alertId, String processedBy, String remark) {
+        InventoryAlertLog alert = alertLogMapper.selectById(alertId);
+        if (alert == null) {
+            log.error("预警不存在: alertId={}", alertId);
+            return false;
+        }
+
+        alert.setStatus("processed");
+        alert.setProcessedBy(processedBy);
+        alert.setProcessedTime(LocalDateTime.now());
+        alert.setProcessRemark(remark);
+        return alertLogMapper.updateById(alert) > 0;
+    }
+
+    @Override
+    public List<Map<String, Object>> generatePurchaseSuggestions() {
+        // TODO: 实现生成采购建议逻辑
+        log.info("生成采购建议");
+        return List.of();
+    }
+
+    @Override
+    public List<AlertVO> getUnprocessed() {
+        List<InventoryAlertLog> alerts = alertLogMapper.selectList(
+                new LambdaQueryWrapper<InventoryAlertLog>()
+                        .eq(InventoryAlertLog::getStatus, "new")
+                        .orderByDesc(InventoryAlertLog::getAlertTime)
+        );
+        return convertToVOList(alerts);
+    }
+
+    @Override
+    public boolean existsUnprocessed(String alertType, Long materialId) {
+        Long count = alertLogMapper.selectCount(
+                new LambdaQueryWrapper<InventoryAlertLog>()
+                        .eq(InventoryAlertLog::getAlertType, alertType)
+                        .eq(InventoryAlertLog::getMaterialId, materialId)
+                        .eq(InventoryAlertLog::getStatus, "new")
+        );
+        return count != null && count > 0;
+    }
+
+    @Override
+    public IPage<InventoryAlertLog> pageQuery(Map<String, Object> params) {
+        String alertType = (String) params.get("alertType");
+        String alertLevel = (String) params.get("alertLevel");
+        String status = (String) params.get("status");
+        String startDate = (String) params.get("startDate");
+        String endDate = (String) params.get("endDate");
+        Integer pageNum = (Integer) params.getOrDefault("pageNum", 1);
+        Integer pageSize = (Integer) params.getOrDefault("pageSize", 10);
+
+        LambdaQueryWrapper<InventoryAlertLog> wrapper = new LambdaQueryWrapper<>();
+        if (alertType != null && !alertType.isEmpty()) {
+            wrapper.eq(InventoryAlertLog::getAlertType, alertType);
+        }
+        if (alertLevel != null && !alertLevel.isEmpty()) {
+            wrapper.eq(InventoryAlertLog::getAlertLevel, alertLevel);
+        }
+        if (status != null && !status.isEmpty()) {
+            wrapper.eq(InventoryAlertLog::getStatus, status);
+        }
+
+        if (startDate != null && !startDate.isEmpty()) {
+            wrapper.ge(InventoryAlertLog::getAlertTime, startDate);
+        }
+        if (endDate != null && !endDate.isEmpty()) {
+            wrapper.le(InventoryAlertLog::getAlertTime, endDate);
+        }
+        wrapper.orderByDesc(InventoryAlertLog::getAlertTime);
+
+        Page<InventoryAlertLog> page = new Page<>(pageNum, pageSize);
+        return alertLogMapper.selectPage(page, wrapper);
+    }
+
+    private List<AlertVO> convertToVOList(List<InventoryAlertLog> alerts) {
+        List<AlertVO> result = new ArrayList<>();
+        for (InventoryAlertLog alert : alerts) {
+            result.add(convertToVO(alert));
+        }
+        return result;
+    }
+
+    private AlertVO convertToVO(InventoryAlertLog alert) {
+        if (alert == null) {
+            return null;
+        }
+
+        AlertVO vo = new AlertVO();
+        vo.setAlertId(alert.getAlertId());
+        vo.setAlertType(alert.getAlertType());
+        vo.setAlertLevel(alert.getAlertLevel());
+        vo.setMaterialId(alert.getMaterialId());
+        vo.setMaterialCode(alert.getMaterialCode());
+        vo.setMaterialName(alert.getMaterialName());
+        vo.setCurrentStock(alert.getCurrentStock());
+        vo.setSafeStock(alert.getSafeStock());
+        vo.setMaxStock(alert.getMaxStock());
+        vo.setExpiryDate(alert.getExpiryDate());
+        vo.setLastOutboundDate(alert.getLastOutboundDate());
+        vo.setAlertMessage(alert.getAlertMessage());
+        vo.setAlertTime(alert.getAlertTime());
+        vo.setStatus(alert.getStatus());
+        vo.setProcessedBy(alert.getProcessedBy());
+        vo.setProcessedTime(alert.getProcessedTime());
+        vo.setProcessRemark(alert.getProcessRemark());
+        vo.setSuggestion(alert.getSuggestion());
+        vo.setCreateTime(alert.getCreateTime());
+        vo.setUpdateTime(alert.getUpdateTime());
+        vo.setCreateBy(alert.getCreateBy());
+        vo.setUpdateBy(alert.getUpdateBy());
+        // 设置类型名称
+        vo.setAlertTypeName(getAlertTypeName(alert.getAlertType()));
+        vo.setAlertLevelName(getAlertLevelName(alert.getAlertLevel()));
+        vo.setStatusName(getStatusName(alert.getStatus()));
+
+        return vo;
+    }
+
+    private static String getAlertTypeName(String alertType) {
+        if (alertType == null) {
+            return "";
+        }
+        switch (alertType) {
+            case "safe_stock": return "安全库存";
+            case "max_stock": return "最高库存";
+            case "expiry": return "保质期";
+            case "obsolete": return "呆滞料";
+            default: return alertType;
+        }
+    }
+
+    private static String getAlertLevelName(String alertLevel) {
+        if (alertLevel == null) {
+            return "";
+        }
+        switch (alertLevel) {
+            case "info": return "提示";
+            case "warning": return "警告";
+            case "urgent": return "紧急";
+            default: return alertLevel;
+        }
+    }
+
+    private static String getStatusName(String status) {
+        if (status == null) {
+            return "";
+        }
+        switch (status) {
+            case "new": return "新预警";
+            case "read": return "已读";
+            case "processed": return "已处理";
+            case "ignored": return "已忽略";
+            default: return status;
+        }
+    }
+}

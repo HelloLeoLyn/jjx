@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jjx.production.mapper.ProductionOperationExecutionMapper">
+
+    <!-- 通用查询结果映射 -->
+    <resultMap id="BaseResultMap" type="com.jjx.production.domain.entity.ProductionOperationExecution">
+        <id column="execution_id" property="executionId"/>
+        <result column="order_id" property="orderId"/>
+        <result column="process_id" property="processId"/>
+        <result column="process_order" property="processOrder"/>
+        <result column="planned_start_time" property="plannedStartTime"/>
+        <result column="planned_end_time" property="plannedEndTime"/>
+        <result column="actual_start_time" property="actualStartTime"/>
+        <result column="actual_end_time" property="actualEndTime"/>
+        <result column="actual_labor_hours" property="actualLaborHours"/>
+        <result column="actual_machine_hours" property="actualMachineHours"/>
+        <result column="equipment_id" property="equipmentId"/>
+        <result column="equipment_code" property="equipmentCode"/>
+        <result column="equipment_name" property="equipmentName"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="input_quantity" property="inputQuantity"/>
+        <result column="output_quantity" property="outputQuantity"/>
+        <result column="qualified_quantity" property="qualifiedQuantity"/>
+        <result column="defective_quantity" property="defectiveQuantity"/>
+        <result column="defective_reason" property="defectiveReason"/>
+        <result column="actual_process_params" property="actualProcessParams"/>
+        <result column="quality_check_result" property="qualityCheckResult"/>
+        <result column="execution_status" property="executionStatus"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 带关联信息的查询结果映射 -->
+    <resultMap id="WithOrderResultMap" type="com.jjx.production.domain.entity.ProductionOperationExecution" extends="BaseResultMap">
+        <association property="productionOrder" javaType="com.jjx.production.domain.entity.ProductionOrder">
+            <id column="po_order_id" property="orderId"/>
+            <result column="po_order_no" property="orderNo"/>
+            <result column="po_product_id" property="productId"/>
+            <result column="po_product_code" property="productCode"/>
+            <result column="po_product_name" property="productName"/>
+            <result column="po_product_spec" property="productSpec"/>
+            <result column="po_product_unit" property="productUnit"/>
+            <result column="po_planned_quantity" property="plannedQuantity"/>
+            <result column="po_completed_quantity" property="completedQuantity"/>
+            <result column="po_order_status" property="orderStatus"/>
+        </association>
+    </resultMap>
+
+    <!-- 根据订单ID查询工序执行列表（带工单信息） -->
+    <select id="selectByOrderId" resultMap="WithOrderResultMap">
+        SELECT
+            e.*,
+            o.order_id AS po_order_id,
+            o.order_no AS po_order_no,
+            o.product_id AS po_product_id,
+            o.product_code AS po_product_code,
+            o.product_name AS po_product_name,
+            o.product_spec AS po_product_spec,
+            o.product_unit AS po_product_unit,
+            o.planned_quantity AS po_planned_quantity,
+            o.completed_quantity AS po_completed_quantity,
+            o.order_status AS po_order_status
+        FROM production_operation_execution e
+        LEFT JOIN production_order o ON e.order_id = o.order_id
+        WHERE e.order_id = #{orderId}
+        ORDER BY e.process_order ASC
+    </select>
+
+    <!-- 根据订单ID和状态查询工序执行 -->
+    <select id="selectByOrderIdAndStatus" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE order_id = #{orderId} AND execution_status = #{executionStatus}
+        ORDER BY process_order ASC
+    </select>
+
+    <!-- 根据工序ID查询工序执行 -->
+    <select id="selectByProcessId" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE process_id = #{processId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据操作员ID查询工序执行 -->
+    <select id="selectByOperatorId" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE operator_id = #{operatorId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据设备ID查询工序执行 -->
+    <select id="selectByEquipmentId" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE equipment_id = #{equipmentId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询待执行的工序 -->
+    <select id="selectPending" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE execution_status = 'PENDING'
+        ORDER BY planned_start_time ASC
+    </select>
+
+    <!-- 查询执行中的工序 -->
+    <select id="selectProcessing" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE execution_status = 'IN_PROGRESS'
+        ORDER BY actual_start_time ASC
+    </select>
+
+    <!-- 查询已完成的工序 -->
+    <select id="selectCompleted" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE execution_status = 'COMPLETED'
+        AND actual_end_time BETWEEN #{startTime} AND #{endTime}
+        ORDER BY actual_end_time DESC
+    </select>
+
+    <!-- 查询已超期的工序 -->
+    <select id="selectOverdue" resultMap="BaseResultMap">
+        SELECT * FROM production_operation_execution
+        WHERE execution_status IN ('PENDING', 'IN_PROGRESS')
+        AND planned_end_time IS NOT NULL
+        AND planned_end_time &lt; NOW()
+        ORDER BY planned_end_time ASC
+    </select>
+
+    <!-- 更新工序执行状态 -->
+    <update id="updateStatus">
+        UPDATE production_operation_execution
+        SET execution_status = #{executionStatus}, update_time = NOW()
+        WHERE execution_id = #{executionId}
+    </update>
+
+    <!-- 批量更新工序执行状态 -->
+    <update id="updateBatchStatus">
+        UPDATE production_operation_execution
+        SET execution_status = #{executionStatus}, update_time = NOW()
+        WHERE execution_id IN
+        <foreach collection="executionIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <!-- 开始工序执行 -->
+    <update id="startExecution">
+        UPDATE production_operation_execution
+        SET execution_status = 'IN_PROGRESS',
+            actual_start_time = #{actualStartTime},
+            update_time = NOW()
+        WHERE execution_id = #{executionId}
+    </update>
+
+    <!-- 完成工序执行 -->
+    <update id="completeExecution">
+        UPDATE production_operation_execution
+        SET execution_status = 'COMPLETED',
+            actual_end_time = #{actualEndTime},
+            output_quantity = #{outputQuantity},
+            qualified_quantity = #{qualifiedQuantity},
+            defective_quantity = #{defectiveQuantity},
+            update_time = NOW()
+        WHERE execution_id = #{executionId}
+    </update>
+
+    <!-- 更新工序产出数据 -->
+    <update id="updateOutput">
+        UPDATE production_operation_execution
+        SET output_quantity = #{outputQuantity},
+            qualified_quantity = #{qualifiedQuantity},
+            defective_quantity = #{defectiveQuantity},
+            update_time = NOW()
+        WHERE execution_id = #{executionId}
+    </update>
+
+    <!-- 更新工序工时 -->
+    <update id="updateHours">
+        UPDATE production_operation_execution
+        SET actual_labor_hours = #{actualLaborHours},
+            actual_machine_hours = #{actualMachineHours},
+            update_time = NOW()
+        WHERE execution_id = #{executionId}
+    </update>
+
+    <!-- 统计订单的工序执行情况 -->
+    <select id="getOrderExecutionStats" resultType="com.jjx.production.mapper.ProductionOperationExecutionMapper$OrderExecutionStats">
+        SELECT
+            COUNT(*) AS totalExecutions,
+            SUM(CASE WHEN execution_status = 'PENDING' THEN 1 ELSE 0 END) AS pendingCount,
+            SUM(CASE WHEN execution_status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS processingCount,
+            SUM(CASE WHEN execution_status = 'COMPLETED' THEN 1 ELSE 0 END) AS completedCount,
+            SUM(CASE WHEN execution_status = 'SKIPPED' THEN 1 ELSE 0 END) AS skippedCount,
+            COALESCE(SUM(output_quantity), 0) AS totalOutput,
+            COALESCE(SUM(qualified_quantity), 0) AS totalQualified,
+            COALESCE(SUM(defective_quantity), 0) AS totalDefective,
+            COALESCE(SUM(actual_labor_hours), 0) AS totalLaborHours,
+            COALESCE(SUM(actual_machine_hours), 0) AS totalMachineHours
+        FROM production_operation_execution
+        WHERE order_id = #{orderId}
+    </select>
+
+    <!-- 统计操作员的工序执行情况 -->
+    <select id="getOperatorStats" resultType="com.jjx.production.mapper.ProductionOperationExecutionMapper$OperatorStats">
+        SELECT
+            operator_id AS operatorId,
+            operator_name AS operatorName,
+            COUNT(*) AS totalExecutions,
+            SUM(CASE WHEN execution_status = 'COMPLETED' THEN 1 ELSE 0 END) AS completedCount,
+            COALESCE(SUM(output_quantity), 0) AS totalOutput,
+            COALESCE(SUM(qualified_quantity), 0) AS totalQualified,
+            COALESCE(SUM(actual_labor_hours), 0) AS totalLaborHours,
+            CASE WHEN SUM(output_quantity) > 0
+                THEN COALESCE(SUM(qualified_quantity) * 100.0 / SUM(output_quantity), 0)
+                ELSE 0
+            END AS avgQualifiedRate
+        FROM production_operation_execution
+        WHERE operator_id = #{operatorId}
+        AND actual_end_time BETWEEN #{startTime} AND #{endTime}
+        GROUP BY operator_id, operator_name
+    </select>
+
+    <!-- 统计设备的工序执行情况 -->
+    <select id="getEquipmentStats" resultType="com.jjx.production.mapper.ProductionOperationExecutionMapper$EquipmentStats">
+        SELECT
+            equipment_id AS equipmentId,
+            equipment_code AS equipmentCode,
+            equipment_name AS equipmentName,
+            COUNT(*) AS totalExecutions,
+            SUM(CASE WHEN execution_status = 'COMPLETED' THEN 1 ELSE 0 END) AS completedCount,
+            COALESCE(SUM(output_quantity), 0) AS totalOutput,
+            COALESCE(SUM(actual_machine_hours), 0) AS totalMachineHours,
+            CASE WHEN SUM(actual_machine_hours) > 0
+                THEN 100.0
+                ELSE 0
+            END AS utilizationRate
+        FROM production_operation_execution
+        WHERE equipment_id = #{equipmentId}
+        AND actual_end_time BETWEEN #{startTime} AND #{endTime}
+        GROUP BY equipment_id, equipment_code, equipment_name
+    </select>
+
+</mapper>
