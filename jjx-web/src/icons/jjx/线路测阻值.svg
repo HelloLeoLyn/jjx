@@ -1,0 +1,12 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+	<title>新建项目</title>
+	<defs>
+		<image width="400" height="400" id="img1" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzc3MzQ1NTU0MzE0IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjI5Mjc2IiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPjxwYXRoIGQ9Ik03NS41MjMgODIwYy0zLjA3OSA1LjMzMyAwLjc3IDEyIDYuOTI4IDEySDk0MS41NWM2LjE1OCAwIDEwLjAwNy02LjY2NyA2LjkyOC0xMkw1MTguOTI4IDc2Yy0zLjA3OS01LjMzMy0xMC43NzctNS4zMzMtMTMuODU2IDBMNzUuNTIzIDgyMHpNNTEyIDIyNGwzMDQuODQxIDUyOEgyMDcuMTU5TDUxMiAyMjR6IiBmaWxsPSIjMDAwMDAwIiBwLWlkPSIyOTI3NyI+PC9wYXRoPjwvc3ZnPg=="/>
+		<image width="400" height="400" id="img2" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzc3MzQ3NTE0MTc3IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjM1NzQ4IiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgd2lkdGg9IjQwMCIgaGVpZ2h0PSI0MDAiPjxwYXRoIGQ9Ik01NzYgNjc3LjA2VjgxNmgzMjB2LTk2SDY5M2M2NS4yNi01Mi44IDEwNy0xMzMuNTIgMTA3LTIyNCAwLTE1OS4wNi0xMjguOTQtMjg4LTI4OC0yODhTMjI0IDMzNi45NCAyMjQgNDk2YzAgOTAuNDggNDEuNzQgMTcxLjIgMTA3IDIyNEgxMjh2OTZoMzIwVjY3Ny4wNkMzNzMuNDMgNjUwLjcgMzIwIDU3OS42IDMyMCA0OTZjMC0xMDYuMDQgODUuOTYtMTkyIDE5Mi0xOTJzMTkyIDg1Ljk2IDE5MiAxOTJjMCA4My42LTUzLjQzIDE1NC43LTEyOCAxODEuMDZ6IiBwLWlkPSIzNTc0OSIgZmlsbD0iIzAwMDAwMCI+PC9wYXRoPjwvc3ZnPg=="/>
+	</defs>
+	<style>
+		tspan { white-space:pre } 
+	</style>
+	<use id="三角形 (1)" href="#img1" transform="matrix(-0.729,0,0,-0.729,345.5,359.5)"/>
+	<use id="omega" href="#img2" transform="matrix(.395,0,0,.395,121,112)"/>
+</svg>

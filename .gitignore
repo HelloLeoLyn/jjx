@@ -1,0 +1,104 @@
+/jjx-server/
+# ====================
+# IDE 相关文件
+# ====================
+.idea/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+.vscode/
+.mvn/
+mvnw
+mvnw.cmd
+
+# ====================
+# 编译文件
+# ====================
+target/
+classes/
+*.class
+out/
+build/
+
+# ====================
+# 日志文件
+# ====================
+*.log
+logs/
+log/
+
+# ====================
+# 系统文件
+# ====================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ====================
+# 依赖文件
+# ====================
+node_modules/
+node/
+package-lock.json
+yarn.lock
+
+# ====================
+# 测试文件
+# ====================
+test-output/
+coverage/
+.surefire/
+
+# ====================
+# 配置文件（敏感信息）
+# ====================
+application-dev.yml
+application-prod.yml
+*.local.properties
+*.local.yml
+*.secret.yml
+*.key
+*.p12
+*.jks
+
+# ====================
+# 临时文件
+# ====================
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# ====================
+# 前端相关
+# ====================
+dist/
+.npm/
+.temp/
+.cache/
+
+# ====================
+# Docker 相关
+# ====================
+*.pid
+Dockerfile.tmp
+
+# ====================
+# 数据库相关
+# ====================
+*.db
+*.sqlite
+*.h2.db
+*.lock
+
+# ====================
+# 其他
+# ====================
+*.zip
+*.tar.gz
+*.rar
+*.7z

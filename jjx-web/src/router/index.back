@@ -1,0 +1,256 @@
+// src/router/index.ts
+import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteRecordRaw } from 'vue-router'
+import { asyncRoutes, constantRoutes } from './RouteTemplates'
+import { useUserStore } from '@/store/modules/user'
+import { ElLoading } from 'element-plus'
+
+// ==================== 1. 创建路由实例 ====================
+const router = createRouter({
+  history: createWebHistory(),
+  routes: constantRoutes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    } else {
+      return { top: 0 }
+    }
+  },
+})
+
+// ==================== 2. 辅助函数 ====================
+
+function hasPermission(permission: string | undefined, userPermissions: string[]): boolean {
+  if (!permission) return true
+  if (userPermissions.includes('*:*:*')) return true
+  return userPermissions.includes(permission)
+}
+
+function filterRoutesByPermissions(
+  routes: RouteRecordRaw[],
+  permissions: string[]
+): RouteRecordRaw[] {
+  const filteredRoutes: RouteRecordRaw[] = []
+
+  for (const route of routes) {
+    const clonedRoute = { ...route }
+    const routePermission = clonedRoute.meta?.permission as string | undefined
+
+    if (hasPermission(routePermission, permissions)) {
+      if (clonedRoute.children && clonedRoute.children.length > 0) {
+        clonedRoute.children = filterRoutesByPermissions(clonedRoute.children, permissions)
+
+        if (clonedRoute.children.length === 0 && !clonedRoute.component) {
+          continue
+        }
+      }
+
+      filteredRoutes.push(clonedRoute)
+    }
+  }
+
+  return filteredRoutes
+}
+
+let dynamicRoutesAdded = false
+let isLoadingPermissions = false
+
+export function addDynamicRoutes(permissions: string[]): RouteRecordRaw[] {
+  if (dynamicRoutesAdded) {
+    resetDynamicRoutes()
+  }
+
+  const accessibleRoutes = filterRoutesByPermissions(asyncRoutes, permissions)
+
+  accessibleRoutes.forEach((route) => {
+    router.addRoute(route)
+  })
+
+  router.addRoute({
+    path: '/',
+    redirect: '/dashboard',
+    meta: { hidden: true },
+  })
+
+  router.addRoute({
+    path: '/:pathMatch(.*)*',
+    redirect: '/404',
+    meta: { hidden: true },
+  })
+
+  dynamicRoutesAdded = true
+  return accessibleRoutes
+}
+
+export function resetDynamicRoutes() {
+  if (!dynamicRoutesAdded) return
+
+  const allRoutes = router.getRoutes()
+  const dynamicRouteNames = allRoutes
+    .filter((route) => {
+      const isConstant = constantRoutes.some((constantRoute) => constantRoute.name === route.name)
+      return !isConstant && route.name
+    })
+    .map((route) => route.name as string)
+
+  dynamicRouteNames.forEach((routeName) => {
+    router.removeRoute(routeName)
+  })
+
+  dynamicRoutesAdded = false
+}
+
+export function resetRouter() {
+  resetDynamicRoutes()
+}
+
+// ==================== 3. 路由守卫 ====================
+
+router.beforeEach(async (to, from, next) => {
+  const userStore = useUserStore()
+
+  // 双重检查：既检查 Vue 状态也检查 localStorage，确保状态一致性
+  const tokenInStore = userStore.token
+  const tokenInStorage = localStorage.getItem('token')
+
+  // 如果状态不一致，以 localStorage 为准（更可靠）
+  if (!tokenInStore && tokenInStorage) {
+    userStore.setToken(tokenInStorage)
+  } else if (tokenInStore && !tokenInStorage) {
+    userStore.resetToken()
+  }
+
+  const hasValidToken = !!userStore.token && !!localStorage.getItem('token')
+
+  if (to.meta.title && typeof to.meta.title === 'string') {
+    document.title = `${to.meta.title} - JJX ERP系统`
+  }
+
+  // 处理登录页
+  if (to.path === '/login') {
+    if (hasValidToken) {
+      if (!dynamicRoutesAdded) {
+        const loading = ElLoading.service({
+          fullscreen: true,
+          text: '初始化系统中...',
+          background: 'rgba(0, 0, 0, 0.7)',
+        })
+
+        try {
+          if (!userStore.userInfo) {
+            await userStore.getUserInfo()
+          }
+
+          if (userStore.permissions.length === 0) {
+            await userStore.loadUserPermissions()
+          }
+
+          const routes = addDynamicRoutes(userStore.permissions)
+          userStore.setAccessibleRoutes(routes)
+
+          // 生成菜单树并保存（包含首页）
+          const allRoutesForMenu = constantRoutes.concat(routes)
+          const menus = userStore.generateMenuTree(allRoutesForMenu)
+          userStore.setMenuList(menus)
+
+          loading.close()
+          next({ path: '/dashboard', replace: true })
+        } catch (error) {
+          console.error('初始化失败:', error)
+          loading.close()
+          userStore.resetToken()
+          next()
+        }
+      } else {
+        next({ path: '/dashboard' })
+      }
+    } else {
+      next()
+    }
+    return
+  }
+
+  // 处理404页面
+  if (to.path === '/404') {
+    next()
+    return
+  }
+
+  // 无有效token，跳转登录
+  if (!hasValidToken) {
+    next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    return
+  }
+
+  // 有token，检查动态路由是否已添加
+  if (!dynamicRoutesAdded) {
+    if (isLoadingPermissions) {
+      const checkInterval = setInterval(() => {
+        if (dynamicRoutesAdded) {
+          clearInterval(checkInterval)
+          next({ ...to, replace: true })
+        }
+      }, 100)
+
+      setTimeout(() => {
+        clearInterval(checkInterval)
+        if (!dynamicRoutesAdded) {
+          next('/login')
+        }
+      }, 10000)
+      return
+    }
+
+    isLoadingPermissions = true
+
+    let loading: any = null
+    if (to.path !== '/redirect') {
+      loading = ElLoading.service({
+        fullscreen: true,
+        text: '加载权限中...',
+        background: 'rgba(0, 0, 0, 0.7)',
+      })
+    }
+
+    try {
+      if (!userStore.userInfo) {
+        await userStore.getUserInfo()
+      }
+
+      if (userStore.permissions.length === 0) {
+        await userStore.loadUserPermissions()
+      }
+
+      const routes = addDynamicRoutes(userStore.permissions)
+      userStore.setAccessibleRoutes(routes)
+
+      // 生成菜单树并保存（包含首页）
+      const allRoutesForMenu = constantRoutes.concat(routes)
+      const menus = userStore.generateMenuTree(allRoutesForMenu)
+      userStore.setMenuList(menus)
+
+      if (loading) loading.close()
+      isLoadingPermissions = false
+
+      next({ ...to, replace: true })
+    } catch (error) {
+      console.error('初始化权限失败:', error)
+      if (loading) loading.close()
+      isLoadingPermissions = false
+      userStore.resetToken()
+      next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    }
+  } else {
+    next()
+  }
+})
+
+router.onError((error) => {
+  console.error('路由错误:', error)
+  const pattern = /Loading chunk (\d)+ failed/g
+  if (pattern.test(error.message)) {
+    window.location.reload()
+  }
+})
+
+export default router

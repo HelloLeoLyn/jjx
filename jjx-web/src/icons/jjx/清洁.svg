@@ -1,0 +1,8 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+	<title>形状-三角形</title>
+	<style>
+		tspan { white-space:pre } 
+		.s0 { fill: #000000 } 
+	</style>
+	<path id="形状 8" class="s0" d="m172 82v17h-144v-17zm0 35v17h-144v-17z"/>
+</svg>

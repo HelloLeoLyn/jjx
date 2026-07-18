@@ -1,0 +1,12 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+	<title>新建项目</title>
+	<defs>
+		<image width="270" height="200" id="img1" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzc3MzQ0Mzk3MzI2IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEzODIgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjI1MjAzIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgd2lkdGg9IjI2OS45MjE4NzUiIGhlaWdodD0iMjAwIj48cGF0aCBkPSJNNTcuNiA1Ny42djkwOC44aDEyNjcuMlY1Ny42SDU3LjZNMCAwaDEzODIuNHYxMDI0SDBWMHoiIGZpbGw9IiMwMDAwMDAiIHAtaWQ9IjI1MjA0Ij48L3BhdGg+PC9zdmc+"/>
+		<image  width="216" height="11" id="img2" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANgAAAALAQMAAAAnRNEvAAAAAXNSR0IB2cksfwAAAANQTFRFAAAAp3o92gAAABBJREFUeJxjZMANGEflsAIACGwADOlac/UAAAAASUVORK5CYII="/>
+	</defs>
+	<style>
+		tspan { white-space:pre } 
+	</style>
+	<use id="长方形" href="#img1" transform="matrix(1,0,0,1,63,86)"/>
+	<use id="图层 1" href="#img2" x="90" y="180"/>
+</svg>

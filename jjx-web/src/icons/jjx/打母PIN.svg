@@ -1,0 +1,14 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+	<title>形状-三角形</title>
+	<defs>
+		<image width="200" height="200" id="img1" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzc3MzE5NzMzODI0IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjE1ODA5IiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiPjxwYXRoIGQ9Ik05MjguNjQgODk2YTIuMTQ0IDIuMTQ0IDAgMCAxLTAuNjQgMEg5NmEzMi4wMzIgMzIuMDMyIDAgMCAxLTI3LjU1Mi00OC4yODhsNDE2LTcwNGMxMS40ODgtMTkuNDU2IDQzLjU1Mi0xOS40NTYgNTUuMTA0IDBsNDEzLjE1MiA2OTkuMkEzMS45MzYgMzEuOTM2IDAgMCAxIDkyOC42NCA4OTZ6TTE1Mi4wNjQgODMyaDcxOS44NEw1MTIgMjIyLjkxMiAxNTIuMDY0IDgzMnoiIGZpbGw9IiMwMDAwMDAiIHAtaWQ9IjE1ODEwIj48L3BhdGg+PC9zdmc+"/>
+		<image  width="72" height="73" id="img2" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABJAQMAAACkf/KhAAAAAXNSR0IB2cksfwAAAAZQTFRFAAAAAAAApWe5zwAAAAJ0Uk5T/wDltzBKAAAAGklEQVR4nGNk+M8AAv+ZGEdZo6wBZcEAdVgAIGaCSomwKIIAAAAASUVORK5CYII="/>
+	</defs>
+	<style>
+		tspan { white-space:pre } 
+		.s0 { fill: #000000 } 
+	</style>
+	<use id="形状-三角形 (2) copy" href="#img1" transform="matrix(-0.74,0,0,-0.74,174,151)"/>
+	<use id="图层 6" href="#img2" x="64" y="100"/>
+	<path id="形状 6" fill-rule="evenodd" class="s0" d="m104 116v40.9h-8v-40.9z"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+	<title>新建项目</title>
+	<defs>
+		<image width="400" height="400" id="img1" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzc3MzQ1NTU0MzE0IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjI5Mjc2IiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPjxwYXRoIGQ9Ik03NS41MjMgODIwYy0zLjA3OSA1LjMzMyAwLjc3IDEyIDYuOTI4IDEySDk0MS41NWM2LjE1OCAwIDEwLjAwNy02LjY2NyA2LjkyOC0xMkw1MTguOTI4IDc2Yy0zLjA3OS01LjMzMy0xMC43NzctNS4zMzMtMTMuODU2IDBMNzUuNTIzIDgyMHpNNTEyIDIyNGwzMDQuODQxIDUyOEgyMDcuMTU5TDUxMiAyMjR6IiBmaWxsPSIjMDAwMDAwIiBwLWlkPSIyOTI3NyI+PC9wYXRoPjwvc3ZnPg=="/>
+	</defs>
+	<style>
+		.s0 { fill: #000000 } 
+	</style>
+	<use id="三角形 (1)" href="#img1" transform="matrix(-0.729,0,0,-0.729,345.5,325.5)"/>
+	<path id="形状 3" fill-rule="evenodd" class="s0" d="m209 43v307h-18v-307z"/>
+</svg>

@@ -1,0 +1,57 @@
+import type { RouteRecordRaw } from 'vue-router'
+
+export const constantRoutes: RouteRecordRaw[] = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/login/index.vue'),
+    meta: {
+      title: '登录',
+      hidden: true,
+    },
+  },
+  {
+    path: '/404',
+    name: 'NotFound',
+    component: () => import('@/views/error/404.vue'),
+    meta: {
+      title: '404',
+      hidden: true,
+    },
+  },
+  {
+    path: '/redirect/:path(.*)',
+    name: 'Redirect',
+    component: () => import('@/layout/redirect.vue'),
+    meta: {
+      hidden: true,
+    },
+  },
+  // 首页作为静态路由，不需要权限控制
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/dashboard/index',
+    meta: {
+      title: '首页',
+      icon: 'HomeFilled',
+      affix: true,
+      hidden: false,
+      sort: 0,
+    },
+    children: [
+      {
+        path: 'order/detail/:orderId',
+        name: 'SalesOrderDetail',
+        component: () => import('@/views/sales/order/detail/index.vue'),
+        meta: {
+          title: '订单详情',
+          icon: 'Document',
+          permission: 'sales:order:view',
+          hidden: true,
+        },
+      },
+    ],
+  },
+]

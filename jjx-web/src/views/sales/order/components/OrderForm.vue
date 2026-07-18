@@ -1,0 +1,584 @@
+<template>
+  <el-form ref="orderFormRef" :model="form" :rules="rules" label-width="120px">
+    <!-- 订单基本信息 -->
+    <el-divider content-position="left">订单基本信息</el-divider>
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="订单号" prop="orderNo">
+          <el-input
+            v-model="form.orderNo"
+            placeholder="系统自动生成"
+            maxlength="50"
+            :readonly="true"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="10">
+        <el-form-item label="客户" prop="customerId">
+          <el-select
+            v-model="form.customerId"
+            placeholder="请选择客户"
+            filterable
+            remote
+            :remote-method="searchCustomer"
+            :loading="customerLoading"
+            style="width: 100%"
+            @change="customerChanged"
+          >
+            <el-option
+              v-for="item in customerOptions"
+              :key="item.customerId"
+              :label="item.customerName"
+              :value="item.customerId"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+      <el-col :span="2"
+        ><el-button @click="goToCustomerAdd()" type="primary">新增客户</el-button></el-col
+      >
+    </el-row>
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="联系人" prop="contactPerson">
+          <el-input v-model="form.contactPerson" placeholder="请输入联系人"> </el-input>
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="联系电话" prop="contactPhone">
+          <el-input v-model="form.contactPhone" placeholder="请输入联系电话" />
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="订单日期" prop="orderDate">
+          <el-date-picker
+            v-model="form.orderDate"
+            type="date"
+            placeholder="请选择订单日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="交货日期" prop="deliveryDate">
+          <el-date-picker
+            v-model="form.deliveryDate"
+            type="date"
+            placeholder="请选择交货日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="订单类型" prop="orderType">
+          <el-select v-model="form.orderType" placeholder="请选择订单类型" style="width: 100%">
+            <el-option
+              v-for="dict in orderTypeOptions"
+              :key="dict.value"
+              :label="dict.label"
+              :value="dict.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="销售负责人" prop="salesPersonId">
+          <el-select
+            v-model="form.salesPersonId"
+            placeholder="请选择销售负责人"
+            filterable
+            style="width: 100%"
+            @change="salesPersonChanged"
+          >
+            <el-option
+              v-for="item in salesPersonOptions"
+              :key="item.userId"
+              :label="item.nickName"
+              :value="item.userId"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="币种" prop="currency">
+          <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%">
+            <el-option
+              v-for="dict in currencyOptions"
+              :key="dict.value"
+              :label="dict.label"
+              :value="dict.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="汇率" prop="exchangeRate">
+          <el-input-number
+            v-model="form.exchangeRate"
+            :min="0"
+            :precision="4"
+            :step="0.0001"
+            placeholder="请输入汇率"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="付款条件" prop="paymentTerms">
+          <el-select v-model="form.paymentTerms" placeholder="请选择付款条件" style="width: 100%">
+            <el-option
+              v-for="dict in paymentTermsOptions"
+              :key="dict.value"
+              :label="dict.label"
+              :value="dict.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="运输方式" prop="shippingMethod">
+          <el-select v-model="form.shippingMethod" placeholder="请选择运输方式" style="width: 100%">
+            <el-option
+              v-for="dict in shippingMethodOptions"
+              :key="dict.value"
+              :label="dict.label"
+              :value="dict.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <el-divider content-position="left">收货信息</el-divider>
+    <el-row>
+      <el-col :span="24">
+        <InternationalAddressEditor v-model="form.shippingAddress" prop-path="address" />
+      </el-col>
+    </el-row>
+
+    <!-- 订单产品明细 -->
+    <el-divider content-position="left"
+      ><el-link @click="goToProductIndex()"
+        >订单产品明细（点击可以跳转的产品列表页）</el-link
+      ></el-divider
+    >
+    <el-table :data="form.items" style="width: 100%; margin-bottom: 20px" border>
+      <el-table-column label="序号" type="index" width="60" align="center" />
+      <el-table-column label="产品编码" prop="productCode">
+        <template #default="scope">
+          <el-select
+            v-model="scope.row.productCode"
+            placeholder="请选择产品"
+            filterable
+            remote
+            :remote-method="(query) => searchProduct(query, scope.row)"
+            :loading="productLoading"
+            style="width: 100%"
+            @change="handleProductChange(scope.row)"
+            class="borderless-input"
+          >
+            <el-option
+              v-for="item in productOptions"
+              :key="item.productCode"
+              :label="item.productCode"
+              :value="item.productCode"
+              >{{ item.productCode }} - {{ item.productName }}</el-option
+            >
+          </el-select>
+        </template>
+      </el-table-column>
+      <el-table-column label="产品名称" prop="productName" width="180">
+        <template #default="scope">
+          <el-input
+            v-model="scope.row.productName"
+            placeholder="产品名称"
+            readonly
+            class="borderless-input"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="规格型号" prop="specification" width="120">
+        <template #default="scope">
+          <el-input
+            v-model="scope.row.specification"
+            placeholder="规格型号"
+            class="borderless-input"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="单位" prop="unit" width="80">
+        <template #default="scope">
+          <el-input v-model="scope.row.unit" placeholder="单位" class="borderless-input" />
+        </template>
+      </el-table-column>
+      <el-table-column label="数量" prop="quantity" width="100">
+        <template #default="scope">
+          <el-input
+            v-model="scope.row.quantity"
+            :min="1"
+            :precision="0"
+            @change="calculateItemAmount(scope.row)"
+            style="width: 100%"
+            class="borderless-input"
+            type="number"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="单价" prop="unitPrice" width="160">
+        <template #default="scope">
+          <el-input-number
+            v-model="scope.row.unitPrice"
+            :min="0"
+            :precision="2"
+            @change="calculateItemAmount(scope.row)"
+            style="width: 100%"
+            class="borderless-input"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="金额" prop="amount" width="120">
+        <template #default="scope">
+          <span>{{ formatCurrency(scope.row.amount) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="交期(天)" prop="deliveryDays" width="100">
+        <template #default="scope">
+          <el-input
+            v-model="scope.row.deliveryDays"
+            :min="1"
+            :precision="0"
+            style="width: 100%"
+            type="number"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="定制要求" prop="customRequirements">
+        <template #default="scope">
+          <el-input v-model="scope.row.customRequirements" placeholder="定制要求" />
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="80" align="center">
+        <template #default="scope">
+          <el-button link type="danger" icon="Delete" @click="removeItem(scope.$index)"></el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <el-row>
+      <el-col :span="24" style="text-align: right">
+        <el-button type="primary" icon="Plus" @click="addItem()">添加明细</el-button>
+      </el-col>
+    </el-row>
+
+    <!-- 金额汇总 -->
+    <el-divider content-position="left">金额汇总</el-divider>
+    <el-row :gutter="20">
+      <el-col :span="8">
+        <el-form-item label="小计金额">
+          <el-input v-model="form.subtotalAmount" readonly style="width: 100%">
+            <template #append>元</template>
+          </el-input>
+        </el-form-item>
+      </el-col>
+      <el-col :span="8">
+        <el-form-item label="税率(%)">
+          <el-input-number
+            v-model="form.taxRate"
+            :min="0"
+            :max="100"
+            :precision="2"
+            @change="calculateTotalAmount"
+            style="width: 100%"
+          >
+            <template #append>%</template>
+          </el-input-number>
+        </el-form-item>
+      </el-col>
+      <el-col :span="8">
+        <el-form-item label="税额">
+          <el-input v-model="form.taxAmount" readonly style="width: 100%">
+            <template #append>元</template>
+          </el-input>
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <el-row :gutter="20">
+      <el-col :span="8">
+        <el-form-item label="运费">
+          <el-input-number
+            v-model="form.shippingFee"
+            :min="0"
+            :precision="2"
+            @change="calculateTotalAmount"
+            style="width: 100%"
+          >
+            <template #append>元</template>
+          </el-input-number>
+        </el-form-item>
+      </el-col>
+      <el-col :span="8">
+        <el-form-item label="折扣金额">
+          <el-input-number
+            v-model="form.discountAmount"
+            :min="0"
+            :precision="2"
+            @change="calculateTotalAmount"
+            style="width: 100%"
+          >
+            <template #append>元</template>
+          </el-input-number>
+        </el-form-item>
+      </el-col>
+      <el-col :span="8">
+        <el-form-item label="总金额">
+          <el-input v-model="form.totalAmount" readonly style="width: 100%">
+            <template #append>元</template>
+          </el-input>
+        </el-form-item>
+      </el-col>
+    </el-row>
+
+    <!-- 其他信息 -->
+    <el-divider content-position="left">其他信息</el-divider>
+    <el-row :gutter="20">
+      <el-col :span="24">
+        <el-form-item label="备注" prop="remark">
+          <el-input
+            v-model="form.remark"
+            type="textarea"
+            placeholder="请输入备注"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <!-- 新增客户弹窗 -->
+    <CustomerFormDialog
+      v-model:visible="customerDialogVisible"
+      title="新增客户"
+      :form-data="customerFormData"
+      @success="handleCustomerSuccess"
+      @cancel="customerDialogVisible = false"
+    />
+  </el-form>
+</template>
+
+<script setup lang="ts">
+import { onMounted, ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { useOrderForm } from '../composables/useOrderForm'
+import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
+import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
+import type { CustomerFormData } from '@/types/sales/customer'
+import { el } from 'element-plus/es/locale/index.mjs'
+
+interface Props {
+  isEdit?: boolean
+  orderId?: number
+  initialData?: Record<string, any>
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  isEdit: false,
+  orderId: undefined,
+  initialData: () => ({}),
+})
+
+const emit = defineEmits<{
+  success: []
+  cancel: []
+}>()
+
+const router = useRouter()
+const goToProductIndex = () => {
+  router.push('/product/list')
+}
+
+// 新增客户弹窗
+const customerDialogVisible = ref(false)
+const customerFormData = reactive<CustomerFormData>({
+  customerId: undefined,
+  customerCode: '',
+  customerName: '',
+  customerShortName: '',
+  customerType: undefined,
+  customerLevel: undefined,
+  customerStatus: undefined,
+  industryCategory: '',
+  customerSource: undefined,
+  contactPerson: '',
+  contactPhone: '',
+  contactEmail: '',
+  fax: '',
+  address: '',
+  creditLimit: 0,
+  usedCreditLimit: 0,
+  customerScore: 3,
+  paymentMethod: undefined,
+  vip: false,
+  remark: '',
+})
+
+const goToCustomerAdd = () => {
+  // 重置表单数据
+  Object.assign(customerFormData, {
+    customerId: undefined,
+    customerCode: '系统自动生成',
+    customerName: '',
+    customerShortName: '',
+    customerType: undefined,
+    customerLevel: undefined,
+    customerStatus: undefined,
+    industryCategory: '',
+    customerSource: undefined,
+    contactPerson: '',
+    contactPhone: '',
+    contactEmail: '',
+    fax: '',
+    address: '',
+    creditLimit: 0,
+    usedCreditLimit: 0,
+    customerScore: 3,
+    paymentMethod: undefined,
+    vip: false,
+    remark: '',
+  })
+  customerDialogVisible.value = true
+}
+
+const handleCustomerSuccess = (data: CustomerFormData) => {
+  customerDialogVisible.value = false
+  // 自动填充订单表单
+  form.customerId = data.customerId
+  form.contactPerson = data.contactPerson || ''
+  form.contactPhone = data.contactPhone || ''
+  // 刷新客户下拉列表
+  if (data.customerName) {
+    searchCustomer(data.customerName)
+  }
+}
+
+// 使用订单表单可组合函数
+const {
+  orderFormRef,
+  customerLoading,
+  productLoading,
+  submitting,
+  customerOptions,
+  productOptions,
+  currencyOptions,
+  paymentTermsOptions,
+  shippingMethodOptions,
+  orderTypeOptions,
+  salesPersonOptions,
+  form,
+  rules,
+  searchCustomer,
+  customerChanged,
+  loadSalesPersons,
+  salesPersonChanged,
+  searchProduct,
+  handleProductChange,
+  calculateItemAmount,
+  calculateTotalAmount,
+  addItem,
+  removeItem,
+  resetForm,
+  generateOrderNo,
+  loadOrderData,
+  submitForm: submitOrderForm,
+  formatCurrency,
+} = useOrderForm({ isEdit: props.isEdit, initialData: props.initialData })
+
+// 初始化
+onMounted(() => {
+  resetForm()
+  loadSalesPersons()
+  if (props.isEdit && props.orderId) {
+    loadOrderData(props.orderId)
+  } else if (!props.isEdit) {
+    generateOrderNo()
+  }
+})
+
+// 提交表单
+const submitForm = async (): Promise<boolean> => {
+  const success = await submitOrderForm()
+  if (success) {
+    emit('success')
+  }
+  return success
+}
+
+// 暴露给父组件的方法和属性
+defineExpose({
+  orderFormRef,
+  form,
+  submitting,
+  resetForm,
+  generateOrderNo,
+  loadOrderData,
+  submitForm,
+})
+</script>
+
+<style scoped>
+/* 无边框输入框样式 */
+.borderless-input :deep(.el-input__wrapper) {
+  box-shadow: none;
+  background-color: transparent;
+  padding: 0;
+}
+
+.borderless-input :deep(.el-input__wrapper:hover) {
+  box-shadow: none;
+}
+
+.borderless-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: none;
+}
+
+/* 无边框数字输入框 */
+.borderless-input-number :deep(.el-input__wrapper) {
+  box-shadow: none;
+  background-color: transparent;
+}
+
+.borderless-input-number :deep(.el-input-number__decrease),
+.borderless-input-number :deep(.el-input-number__increase) {
+  background: transparent;
+  border: none;
+}
+
+/* 无边框文本域 */
+.borderless-textarea :deep(.el-textarea__inner) {
+  box-shadow: none;
+  background-color: transparent;
+  border: none;
+  padding: 4px 0;
+  resize: none;
+}
+
+.borderless-textarea :deep(.el-textarea__inner:hover) {
+  border: none;
+  box-shadow: none;
+}
+
+.borderless-textarea :deep(.el-textarea__inner:focus) {
+  border: none;
+  box-shadow: none;
+}
+</style>

@@ -1,0 +1,42 @@
+import { createEnum } from '@/enums/base'
+
+/**
+ * 采购订单类型枚举
+ * 0=正常, 1=紧急, 2=补单, 3=退货单, 4=样品单
+ */
+export const PurchaseOrderTypeEnum = createEnum({
+  items: [
+    { value: 0, label: '正常', tagProps: { type: 'primary' } },
+    { value: 1, label: '紧急', tagProps: { type: 'danger' } },
+    { value: 2, label: '补单', tagProps: { type: 'warning' } },
+    { value: 3, label: '退货单', tagProps: { type: 'info' } },
+    { value: 4, label: '样品单', tagProps: { type: 'success' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
+/**
+ * 紧急标志枚举
+ */
+export const UrgentFlagEnum = createEnum({
+  items: [
+    { value: false, label: '正常', tagProps: { type: 'info' } },
+    { value: true, label: '紧急', tagProps: { type: 'danger' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+/**
+ * 审批状态枚举
+ * 1=草稿, 2=已取消, 3=待审批, 4=已批准, 5=已拒绝
+ */
+
+export const ApprovalStatusEnum = createEnum({
+  items: [
+    { value: 1, label: '草稿', tagProps: { type: 'info' } },
+    { value: 2, label: '已取消', tagProps: { type: 'danger' } },
+    { value: 3, label: '待审批', tagProps: { type: 'warning' } },
+    { value: 4, label: '已批准', tagProps: { type: 'success' } },
+    { value: 5, label: '已拒绝', tagProps: { type: 'danger' } },
+  ],
+  defaultTag: { type: 'info' },
+})

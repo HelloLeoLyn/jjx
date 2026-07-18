@@ -1,0 +1,12 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+	<title>形状-三角形</title>
+	<defs>
+		<image width="200" height="200" id="img1" href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB0PSIxNzc3MzIyMjc3Njc5IiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjUgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjI1MDA2IiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgd2lkdGg9IjIwMC4xOTUzMTI1IiBoZWlnaHQ9IjIwMCI+PHBhdGggZD0iTTk2MC43IDIzNC42djU1NC43SDY0LjNWMjM0LjZoODk2LjRtNjQuMy02NC4zSDB2NjgzLjNoMTAyNVYxNzAuM3oiIGZpbGw9IiMwMDAwMDAiIHAtaWQ9IjI1MDA3Ij48L3BhdGg+PC9zdmc+"/>
+		<image  width="170" height="12" id="img2" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKoAAAAMAgMAAACPXc7iAAAAAXNSR0IB2cksfwAAAAxQTFRFAAAAAAAAAAAAAAAANek3lgAAAAR0Uk5T//gA2SlOKHMAAAAZSURBVHicY2TAAFITgARbAKYE46jaYa8WAHWEDA358rASAAAAAElFTkSuQmCC"/>
+	</defs>
+	<style>
+		tspan { white-space:pre } 
+	</style>
+	<use id="面板2" href="#img1" transform="matrix(.94,0,0,.94,6,-2)"/>
+	<use id="图层 4" href="#img2" x="16" y="88"/>
+</svg>

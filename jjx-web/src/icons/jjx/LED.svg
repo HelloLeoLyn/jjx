@@ -1,0 +1,11 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+	<title>形状-三角形</title>
+	<style>
+		tspan { white-space:pre } 
+		.t0 { font-size: 177px;fill: #000000;font-weight: 400;font-family: "DejaVuSans", "DejaVu Sans" } 
+	</style>
+	<text id="LED" style="transform: matrix(.575,0,0,.601,0,139)" >
+		<tspan x="0" y="0" class="t0">L</tspan><tspan  y="0" class="t0">E</tspan><tspan  y="0" class="t0">D
+</tspan>
+	</text>
+</svg>

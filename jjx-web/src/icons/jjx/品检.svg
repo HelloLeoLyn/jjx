@@ -1,0 +1,11 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+	<title>新建项目</title>
+	<style>
+		tspan { white-space:pre } 
+		.t0 { font-size: 24px;fill: #000000;font-weight: 400;font-family: "DejaVuSans", "DejaVu Sans" } 
+	</style>
+	<text id="QC" style="transform: matrix(5.255,0,0,6.339,106.188,246.535)" >
+		<tspan x="0" y="0" class="t0">Q</tspan><tspan  y="0" class="t0">C
+</tspan>
+	</text>
+</svg>

@@ -1,0 +1,12 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+	<title>形状-三角形</title>
+	<defs>
+		<image  width="162" height="109" id="img1" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKIAAABtCAMAAAAVkkpIAAAAAXNSR0IB2cksfwAAAEVQTFRFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA3Orq9wAAABd0Uk5TzSn/M/jq4ePx3ZJjbrbITQATiALWJwi14lzWAAAAz0lEQVR4nO3bsQqDQBAGYVcLm5Tm/Z9QSJNGCNh5CQQOZOB2Yab6y69e2JiyFzGPJvSSSCSRSCJRLeIcMVLyW8TR5kVccxHfbV7ERy7iq02JN5NIJJFIIpFEIolEEokkEkkkkkgkkUgiUQHi8mk7KfE7iUQSiSQSSSSSSCSRSCKRRCKJRBKJJBJJJJJIJJFIIpFEIol3K3DrlkgkkUgikUQiiUQSiSQSSSSSSCSRSCKRRKL/xAJPdgVeFbMmkUgikUSiEsRpG23otMdzNKFXnMEhPIsPCBcwAAAAAElFTkSuQmCC"/>
+		<image  width="72" height="41" id="img2" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAAApAQMAAACsi/37AAAAAXNSR0IB2cksfwAAAAZQTFRFAAAAAAAApWe5zwAAAAJ0Uk5T/wDltzBKAAAAG0lEQVR4nGNkgAFGilj1DSD6P9NIZlEnJGEAAL/iNCrNRmbxAAAAAElFTkSuQmCC"/>
+	</defs>
+	<style>
+		tspan { white-space:pre } 
+	</style>
+	<use id="面板2" href="#img1" x="5" y="46"/>
+	<use id="图层 8" href="#img2" x="115" y="79"/>
+</svg>

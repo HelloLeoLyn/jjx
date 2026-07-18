@@ -1,0 +1,17 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+	<title>tx-长方形</title>
+	<defs>
+		<image  width="60" height="103" id="img1" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAABnAQMAAABme7MFAAAAAXNSR0IB2cksfwAAAAZQTFRFAAAAAAAApWe5zwAAAAJ0Uk5T/wDltzBKAAAAIUlEQVR4nGNkYJB/wMDA8JFxaDIgYGgxRoNuMAfLoGIAANPAgjiE9W08AAAAAElFTkSuQmCC"/>
+	</defs>
+	<style>
+		tspan { white-space:pre } 
+		.s0 { fill: #000000 } 
+		.t1 { font-size: 24px;fill: #000000;font-weight: 400;font-family: "DejaVuSans", "DejaVu Sans" } 
+	</style>
+	<path class="s0" d="m166 156.6h-153.9v-113.2h153.9zm-136.8-19.6h119.7v-74.2h-119.7z"/>
+	<use id="图层 1" href="#img1" x="59" y="52"/>
+	<text id="1" style="transform: matrix(2.996,0,0,1.909,160.125,156)" >
+		<tspan x="0" y="0" class="t1">1
+</tspan>
+	</text>
+</svg>
