@@ -67,7 +67,7 @@ export const locationApi = {
   },
 
   // 导入库位数据
-  importLocation(data: any[], warehouseId: number) {
+  importLocation(data: Record<string, unknown>[], warehouseId: number) {
     return request.post<R<string>>('/inventory/storage-location/import', data, {
       params: { warehouseId },
     })
