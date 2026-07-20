@@ -21,6 +21,7 @@
     "js-cookie": "^3.0.5",
     "lodash-es": "^4.17.23",
     "nprogress": "^0.2.0",
+    "path-browserify": "^1.0.1",
     "pinia": "^2.3.1",
     "screenfull": "^6.0.2",
     "sortablejs": "^1.15.7",

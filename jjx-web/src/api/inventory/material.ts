@@ -27,7 +27,11 @@ export const materialApi = {
 
   // 根据物料编码获取物料
   getByCode(materialCode: string) {
-    const queryParams: any = {
+    const queryParams: {
+      current: number
+      pageSize: number
+      materialCode: string
+    } = {
       current: 1,
       pageSize: 1,
       materialCode: materialCode,
@@ -100,7 +104,7 @@ export const materialApi = {
 
   // 获取物料下拉选项
   getOptions(keyword?: string) {
-    return request.get<R<any[]>>('/inventory/material/options', {
+    return request.get<R<InventoryMaterial[]>>('/inventory/material/options', {
       params: { keyword },
     })
   },

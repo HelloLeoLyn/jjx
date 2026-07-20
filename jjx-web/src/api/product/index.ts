@@ -42,14 +42,14 @@ export function getProductInfo(productId: number) {
 /**
  * 新增产品
  */
-export function addProduct(data: any) {
+export function addProduct(data: ProductFormData) {
   return request.post('/product', data)
 }
 
 /**
  * 修改产品
  */
-export function editProduct(data: any) {
+export function editProduct(data: ProductFormData) {
   return request.put('/product', data)
 }
 
@@ -69,7 +69,7 @@ export function exportProduct(params: ProductQueryParams) {
       params,
       responseType: 'blob',
     })
-    .then((response: any) => {
+    .then((response: Blob) => {
       // 创建下载链接
       const url = window.URL.createObjectURL(new Blob([response]))
       const link = document.createElement('a')
@@ -173,7 +173,7 @@ export function removeProductInstance(instanceId: number) {
 /**
  * 批量创建产品实例
  */
-export function batchCreateProductInstances(orderId: number, config: any) {
+export function batchCreateProductInstances(orderId: number, config: Record<string, unknown>) {
   return request.post(`/product/instance/batch/${orderId}`, config)
 }
 

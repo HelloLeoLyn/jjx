@@ -1,7 +1,8 @@
 import request from '@/utils/request'
+import type { PurchasePayment } from '@/types/purchase'
 
 // 查询采购付款列表
-export function listPayment(params?: any) {
+export function listPayment(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/payment/list',
     method: 'get',
@@ -18,7 +19,7 @@ export function getPayment(paymentId: number) {
 }
 
 // 新增采购付款
-export function addPayment(data: any) {
+export function addPayment(data: PurchasePayment) {
   return request({
     url: '/purchase/payment',
     method: 'post',
@@ -27,7 +28,7 @@ export function addPayment(data: any) {
 }
 
 // 修改采购付款
-export function updatePayment(data: any) {
+export function updatePayment(data: PurchasePayment) {
   return request({
     url: '/purchase/payment',
     method: 'put',
@@ -44,7 +45,7 @@ export function delPayment(paymentIds: number | number[]) {
 }
 
 // 导出采购付款列表
-export function exportPayment(params?: any) {
+export function exportPayment(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/payment/export',
     method: 'get',
@@ -164,7 +165,7 @@ export function getPaymentStatistics() {
 }
 
 // 批量付款
-export function batchPayment(data: any[]) {
+export function batchPayment(data: PurchasePayment[]) {
   return request({
     url: '/purchase/payment/batch',
     method: 'post',
@@ -173,7 +174,7 @@ export function batchPayment(data: any[]) {
 }
 
 // 批量审批
-export function batchApprove(data: any[]) {
+export function batchApprove(data: { paymentId: number; approvalStatus: string; approverName: string }[]) {
   return request({
     url: '/purchase/payment/batch-approve',
     method: 'post',
@@ -182,7 +183,7 @@ export function batchApprove(data: any[]) {
 }
 
 // 导入付款数据
-export function importPayment(data: any) {
+export function importPayment(data: Record<string, unknown>) {
   return request({
     url: '/purchase/payment/import',
     method: 'post',
@@ -233,7 +234,7 @@ export function getOverduePayments() {
 }
 
 // 获取付款趋势分析
-export function getPaymentTrendAnalysis(params?: any) {
+export function getPaymentTrendAnalysis(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/payment/trend-analysis',
     method: 'get',

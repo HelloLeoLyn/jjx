@@ -1,9 +1,10 @@
 import request from '@/utils/request'
+import type { StandardProcessFormData, StandardProcessQueryParams } from '@/types/product/standardProcess'
 
 // 标准工序定义接口
 
 // 查询标准工序列表
-export function listStep(query?: any) {
+export function listStep(query?: StandardProcessQueryParams) {
   return request({
     url: '/product/standard-process-step/list',
     method: 'get',
@@ -78,7 +79,7 @@ export function getStep(stepId: number) {
 }
 
 // 新增标准工序
-export function addStep(data: any) {
+export function addStep(data: StandardProcessFormData) {
   return request({
     url: '/product/standard-process-step',
     method: 'post',
@@ -87,7 +88,7 @@ export function addStep(data: any) {
 }
 
 // 修改标准工序
-export function updateStep(data: any) {
+export function updateStep(data: StandardProcessFormData) {
   return request({
     url: '/product/standard-process-step',
     method: 'put',
@@ -188,7 +189,7 @@ export function initDefaultSteps() {
 }
 
 // 导出标准工序
-export function exportStep(query?: any) {
+export function exportStep(query?: StandardProcessQueryParams) {
   return request({
     url: '/product/standard-process-step/export',
     method: 'get',
@@ -198,7 +199,7 @@ export function exportStep(query?: any) {
 }
 
 // 导入标准工序
-export function importStep(data: any) {
+export function importStep(data: FormData) {
   return request({
     url: '/product/standard-process-step/import',
     method: 'post',

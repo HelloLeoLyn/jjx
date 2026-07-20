@@ -1,8 +1,8 @@
 import request from '@/utils/request'
-import type { PurchaseOrder, PurchaseOrderItem } from '@/types/purchase'
+import type { PurchaseOrder, PurchaseOrderItem, OrderQueryParams, PurchaseDocument } from '@/types/purchase'
 
 // 查询采购订单列表
-export function listOrder(params?: any) {
+export function listOrder(params?: OrderQueryParams) {
   return request({
     url: '/purchase/order/list',
     method: 'get',
@@ -45,7 +45,7 @@ export function updateOrder(data: PurchaseOrder, itemList?: PurchaseOrderItem[])
 }
 
 // 导出采购订单列表
-export function exportOrder(params?: any) {
+export function exportOrder(params?: OrderQueryParams) {
   return request({
     url: '/purchase/order/export',
     method: 'get',
@@ -303,7 +303,7 @@ export function getDiskReceiptFiles(orderId: number) {
  * @param supplierId 供应商ID
  * @param files 文件信息列表 [{fileName, fileUrl, fileSize}]
  */
-export function confirmReceiptDocuments(orderId: number, supplierId: number, files: any[]) {
+export function confirmReceiptDocuments(orderId: number, supplierId: number, files: Pick<PurchaseDocument, 'fileName' | 'fileUrl' | 'fileSize'>[]) {
   return request({
     url: '/purchase/invoice/batch-confirm',
     method: 'post',

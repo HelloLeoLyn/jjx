@@ -183,14 +183,14 @@ export const orderValidationApi = {
    * 获取验证统计
    */
   getValidationStatistics() {
-    return request.get<R<any>>('/sales/orders/validation-statistics')
+    return request.get<R<Record<string, unknown>>>('/sales/orders/validation-statistics')
   },
 
   /**
    * 获取验证趋势数据
    */
-  getValidationTrend(params: any) {
-    return request.get<R<any>>('/sales/orders/validation-statistics/trend', { params })
+  getValidationTrend(params: Record<string, unknown>) {
+    return request.get<R<Record<string, unknown>>>('/sales/orders/validation-statistics/trend', { params })
   },
 
   // ==================== 集成验证 ====================
@@ -241,7 +241,7 @@ export const orderValidationApi = {
    * 获取实时验证状态
    */
   getRealTimeValidationStatus(sessionId: string) {
-    return request.get<R<any>>(`/sales/orders/real-time-validation/${sessionId}/status`)
+    return request.get<R<Record<string, unknown>>>(`/sales/orders/real-time-validation/${sessionId}/status`)
   },
 
   // ==================== 工具函数 ====================
@@ -263,7 +263,7 @@ export const orderValidationApi = {
   /**
    * 测试验证规则
    */
-  testValidationRule(ruleCode: string, testData: any) {
-    return request.post<R<any>>(`/sales/orders/test-validation-rule/${ruleCode}`, testData)
+  testValidationRule(ruleCode: string, testData: Record<string, unknown>) {
+    return request.post<R<Record<string, unknown>>>(`/sales/orders/test-validation-rule/${ruleCode}`, testData)
   },
 }
