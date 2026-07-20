@@ -95,37 +95,24 @@ body {
   text-align: left;
 }
 
-.mt-10 {
-  margin-top: 10px;
-}
-
-.mb-10 {
-  margin-bottom: 10px;
-}
-
-.ml-10 {
-  margin-left: 10px;
-}
-
-.mr-10 {
-  margin-right: 10px;
-}
-
-.pt-10 {
-  padding-top: 10px;
-}
-
-.pb-10 {
-  padding-bottom: 10px;
-}
-
-.pl-10 {
-  padding-left: 10px;
-}
-
-.pr-10 {
-  padding-right: 10px;
-}
+.mt-10 { margin-top: 10px; }
+.mt-16 { margin-top: 16px; }
+.mt-20 { margin-top: 20px; }
+.mb-10 { margin-bottom: 10px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-20 { margin-bottom: 20px; }
+.ml-10 { margin-left: 10px; }
+.ml-16 { margin-left: 16px; }
+.mr-10 { margin-right: 10px; }
+.mr-16 { margin-right: 16px; }
+.pt-10 { padding-top: 10px; }
+.pt-16 { padding-top: 16px; }
+.pb-10 { padding-bottom: 10px; }
+.pb-16 { padding-bottom: 16px; }
+.pl-10 { padding-left: 10px; }
+.pl-16 { padding-left: 16px; }
+.pr-10 { padding-right: 10px; }
+.pr-16 { padding-right: 16px; }
 
 .w-100 {
   width: 100%;
@@ -138,39 +125,211 @@ body {
 // 卡片样式
 .card {
   background: #fff;
-  border-radius: 4px;
+  border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e8eaef;
 }
 
-// 表格样式
+// 表格容器
 .table-container {
   background: #fff;
-  border-radius: 4px;
+  border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e8eaef;
 }
 
-// 表单样式
+// 表单容器
 .form-container {
   background: #fff;
-  border-radius: 4px;
-  padding: 20px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e8eaef;
 }
 
-// 按钮样式
+// 按钮组
 .btn-group {
   display: flex;
   gap: 10px;
   margin-bottom: 20px;
 }
 
-// 搜索框样式
+// 搜索区
 .search-container {
   background: #fff;
-  border-radius: 4px;
+  border-radius: 12px;
   padding: 20px;
   margin-bottom: 20px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e8eaef;
+}
+
+// ========================
+// Element Plus 覆盖
+// ========================
+
+// 卡片
+.el-card {
+  border-radius: 12px !important;
+  border: 1px solid #e8eaef !important;
+
+  &.is-always-shadow,
+  &.is-hover-shadow:focus,
+  &.is-hover-shadow:hover {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+  }
+}
+
+// 表格
+.el-table {
+  border-radius: 12px;
+  overflow: hidden;
+
+  th.el-table__cell {
+    background-color: #f8f9fc !important;
+    color: #606266;
+    font-weight: 600;
+  }
+
+  .el-table__header-wrapper,
+  .el-table__body-wrapper {
+    border-radius: 12px;
+  }
+}
+
+// 按钮
+.el-button--primary {
+  --el-button-bg-color: #409eff;
+  border-radius: 8px;
+}
+
+.el-button {
+  border-radius: 8px;
+}
+
+// 输入框
+.el-input__wrapper {
+  border-radius: 8px !important;
+}
+
+// 对话框
+.el-dialog {
+  border-radius: 12px !important;
+
+  .el-dialog__header {
+    padding: 20px 24px 0;
+    margin: 0;
+  }
+
+  .el-dialog__body {
+    padding: 20px 24px;
+  }
+
+  .el-dialog__footer {
+    padding: 0 24px 20px;
+  }
+}
+
+// 下拉菜单
+.el-dropdown-menu {
+  border-radius: 8px !important;
+  border: 1px solid #e8eaef !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+// 分页
+.el-pagination {
+  padding: 16px 0 !important;
+}
+
+// 表单label
+.el-form-item__label {
+  font-weight: 500;
+}
+
+// ========================
+// 菜单图标统一
+// ========================
+.menu-icon {
+  margin-right: 10px !important;
+  margin-left: 0 !important;
+  width: 18px !important;
+  height: 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+// ========================
+// 侧边栏折叠修复
+// ========================
+.el-menu--collapse {
+  .el-menu-item,
+  .el-sub-menu__title {
+    justify-content: center;
+    overflow: hidden !important;
+    padding: 0 !important;
+
+    // tooltip触发器居中
+    .el-menu-tooltip__trigger {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+      height: 100% !important;
+      padding: 0 !important;
+    }
+
+    // 清除所有内联边距
+    .el-icon,
+    .svg-icon,
+    svg,
+    img,
+    i {
+      margin: 0 !important;
+    }
+
+    .el-icon, .svg-icon {
+      font-size: 20px !important;
+      width: 20px !important;
+      height: 20px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    // 文字折叠隐藏（保留DOM）
+    > span {
+      width: 0 !important;
+      overflow: hidden !important;
+      display: inline-block !important;
+      opacity: 0 !important;
+    }
+  }
+
+  .el-sub-menu__icon-arrow {
+    display: none !important;
+  }
+}
+
+// 补丁：防止折叠时子菜单箭头重叠
+.el-menu--collapse .el-sub-menu .el-icon.el-sub-menu__icon-arrow {
+  display: none !important;
+}
+
+// ========================
+// 路由加载指示
+// ========================
+.route-loading {
+  .el-loading-spinner {
+    top: 4px;
+
+    .circular {
+      width: 24px;
+      height: 24px;
+    }
+  }
 }

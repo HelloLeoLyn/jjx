@@ -252,7 +252,7 @@ onMounted(() => {
 .login-container {
   width: 100%;
   height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #409eff 50%, #66b1ff 100%);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -263,20 +263,44 @@ onMounted(() => {
   width: 900px;
   height: 500px;
   background: white;
-  border-radius: 10px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(64, 158, 255, 0.25);
   display: flex;
   overflow: hidden;
 }
 
 .login-left {
   flex: 1;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #409eff 100%);
   color: white;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-left::before {
+  content: '';
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  top: -80px;
+  right: -80px;
+}
+
+.login-left::after {
+  content: '';
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  bottom: -50px;
+  left: -50px;
 }
 
 .logo-container {
@@ -324,12 +348,12 @@ onMounted(() => {
 
 .form-header h2 {
   font-size: 28px;
-  color: #333;
+  color: #303133;
   margin-bottom: 10px;
 }
 
 .form-header p {
-  color: #666;
+  color: #909399;
   font-size: 14px;
 }
 
@@ -370,6 +394,7 @@ onMounted(() => {
   width: 100%;
   height: 45px;
   font-size: 16px;
+  border-radius: 8px;
 }
 
 .form-footer {

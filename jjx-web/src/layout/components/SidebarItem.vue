@@ -8,9 +8,9 @@
             v-if="isSvgIcon"
             :name="item.icon!"
             :size="18"
-            style="margin-right: 12px; margin-left: 3px"
+            class="menu-icon"
           />
-          <el-icon v-else-if="item.icon" :size="18" style="margin-right: 8px">
+          <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
             <component :is="item.icon" />
           </el-icon>
           <span>{{ item.title }}</span>
@@ -29,9 +29,9 @@
           v-if="isSvgIcon"
           :name="item.icon!"
           :size="18"
-          style="margin-right: 12px; margin-left: 3px"
+          class="menu-icon"
         />
-        <el-icon v-else-if="item.icon" :size="18" style="margin-right: 8px">
+        <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
           <component :is="item.icon" />
         </el-icon>
         <template #title>

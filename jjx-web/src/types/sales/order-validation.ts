@@ -7,8 +7,6 @@ import type {
   FixStatusEnum,
 } from '@/enums/sales/ValidationEnum'
 import type { SalesOrderStatusEnum } from '@/enums/sales/OrderEnum'
-import type { ProductStatusEnum } from '@/enums/product/ProductEnum'
-import type { BomApproveStatusEnum } from '@/enums/product/BomEnum'
 
 /**
  * 验证错误项

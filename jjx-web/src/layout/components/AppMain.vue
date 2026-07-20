@@ -24,7 +24,7 @@ const cachedViews = computed(() => tagsViewStore.getCachedViews)
   flex: 1;
   overflow-y: auto;
   padding: 20px;
-  background-color: #f0f2f6;
+  background: transparent;
 
   &::-webkit-scrollbar {
     width: 6px;

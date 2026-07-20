@@ -1,5 +1,25 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { ElLoading } from 'element-plus'
+
+let loadingInstance: any = null
+
+// 页面加载进度条
+function startLoading() {
+  loadingInstance = ElLoading.service({
+    lock: false,
+    text: '',
+    background: 'transparent',
+    customClass: 'route-loading',
+  })
+}
+
+function endLoading() {
+  if (loadingInstance) {
+    loadingInstance.close()
+    loadingInstance = null
+  }
+}
 export const constantRoutes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -26,39 +46,6 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: {
       hidden: true,
     },
-  },
-  // 演示页面
-  {
-    path: '/demo',
-    name: 'Demo',
-    component: () => import('@/layout/index.vue'),
-    redirect: '/demo/jjx-icon',
-    meta: {
-      title: '演示',
-      icon: 'Tools',
-      hidden: false,
-      sort: 99,
-    },
-    children: [
-      {
-        path: 'jjx-icon',
-        name: 'DemoJJXIcon',
-        component: () => import('@/views/demo/jjx-icon-demo.vue'),
-        meta: {
-          title: 'JJX图标演示',
-          icon: 'PictureFilled',
-        },
-      },
-      {
-        path: 'permission',
-        name: 'DemoPermission',
-        component: () => import('@/views/demo/permission-demo.vue'),
-        meta: {
-          title: '权限演示',
-          icon: 'PictureFilled',
-        },
-      },
-    ],
   },
   // 首页作为静态路由，不需要权限控制
   {
@@ -88,6 +75,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     ],
   },
 ]
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -105,6 +93,18 @@ const router = createRouter({
       return { top: 0 }
     }
   },
+})
+
+// 路由切换加载指示
+router.beforeEach((to, from, next) => {
+  if (to.path !== from.path) {
+    startLoading()
+  }
+  next()
+})
+
+router.afterEach(() => {
+  endLoading()
 })
 
 export default router

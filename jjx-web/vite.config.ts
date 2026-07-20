@@ -39,8 +39,13 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: Number(env.VITE_PORT) || 3000,
       host: '0.0.0.0',
-      open: true,
+      open: false,
       hmr: { overlay: true },
+      // WSL2 文件系统需要轮询才能触发热更新
+      watch: {
+        usePolling: true,
+        interval: 500,
+      },
       proxy: {
         [env.VITE_BASE_API || '/api']: {
           target: env.VITE_PROXY_TARGET || 'http://localhost:8080',
