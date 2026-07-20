@@ -1,0 +1,173 @@
+package com.jjx.production.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jjx.common.core.page.PageResult;
+import com.jjx.common.exception.BusinessException;
+import com.jjx.production.domain.dto.*;
+import com.jjx.production.domain.entity.ProductionQualityInspection;
+import com.jjx.production.domain.entity.ProductionQualityInspectionItem;
+import com.jjx.production.domain.vo.QualityInspectionVO;
+import com.jjx.production.domain.vo.InspectionItemVO;
+import com.jjx.production.mapper.ProductionQualityInspectionMapper;
+import com.jjx.production.mapper.ProductionQualityInspectionItemMapper;
+import com.jjx.production.service.QualityInspectionService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class QualityInspectionServiceImpl implements QualityInspectionService {
+
+    private final ProductionQualityInspectionMapper inspectionMapper;
+    private final ProductionQualityInspectionItemMapper itemMapper;
+
+    @Override
+    public PageResult<QualityInspectionVO> page(QualityInspectionQueryDTO query) {
+        LambdaQueryWrapper<ProductionQualityInspection> wrapper = Wrappers.lambdaQuery();
+        if (StringUtils.isNotBlank(query.getInspectionNo()))
+            wrapper.like(ProductionQualityInspection::getInspectionNo, query.getInspectionNo());
+        if (StringUtils.isNotBlank(query.getInspectionType()))
+            wrapper.eq(ProductionQualityInspection::getInspectionType, query.getInspectionType());
+        if (query.getOrderId() != null)
+            wrapper.eq(ProductionQualityInspection::getOrderId, query.getOrderId());
+        if (StringUtils.isNotBlank(query.getResult()))
+            wrapper.eq(ProductionQualityInspection::getResult, query.getResult());
+        wrapper.orderByDesc(ProductionQualityInspection::getCreateTime);
+
+        Page<ProductionQualityInspection> page = new Page<>(query.getPageNum(), query.getPageSize());
+        Page<ProductionQualityInspection> result = inspectionMapper.selectPage(page, wrapper);
+        List<QualityInspectionVO> voList = result.getRecords().stream().map(this::toVO).collect(Collectors.toList());
+        return PageResult.build(voList, result.getTotal());
+    }
+
+    @Override
+    public QualityInspectionVO getById(Long id) {
+        ProductionQualityInspection entity = inspectionMapper.selectById(id);
+        if (entity == null) throw new BusinessException("检验单不存在");
+        QualityInspectionVO vo = toVO(entity);
+        // 加载检验项
+        LambdaQueryWrapper<ProductionQualityInspectionItem> iw = Wrappers.lambdaQuery();
+        iw.eq(ProductionQualityInspectionItem::getInspectionId, id);
+        List<InspectionItemVO> items = itemMapper.selectList(iw).stream().map(this::toItemVO).collect(Collectors.toList());
+        vo.setItems(items);
+        return vo;
+    }
+
+    @Override
+    @Transactional
+    public Long create(QualityInspectionCreateDTO dto) {
+        ProductionQualityInspection entity = new ProductionQualityInspection();
+        entity.setInspectionNo("QCI" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss")));
+        entity.setInspectionType(dto.getInspectionType());
+        entity.setOrderId(dto.getOrderId());
+        entity.setMaterialId(dto.getMaterialId());
+        entity.setProductId(dto.getProductId());
+        entity.setInspector(dto.getInspector());
+        entity.setResult("pending");
+        entity.setRemark(dto.getRemark());
+        inspectionMapper.insert(entity);
+
+        if (dto.getItems() != null) {
+            for (InspectionItemDTO item : dto.getItems()) {
+                ProductionQualityInspectionItem ei = new ProductionQualityInspectionItem();
+                ei.setInspectionId(entity.getInspectionId());
+                ei.setCheckItem(item.getCheckItem());
+                ei.setStandard(item.getStandard());
+                ei.setActualValue(item.getActualValue());
+                ei.setResult("pending");
+                itemMapper.insert(ei);
+            }
+        }
+        return entity.getInspectionId();
+    }
+
+    @Override
+    @Transactional
+    public void update(QualityInspectionUpdateDTO dto) {
+        ProductionQualityInspection entity = inspectionMapper.selectById(dto.getInspectionId());
+        if (entity == null) throw new BusinessException("检验单不存在");
+        entity.setResult(dto.getResult());
+        entity.setTotalQty(dto.getTotalQty());
+        entity.setPassQty(dto.getPassQty());
+        entity.setFailQty(dto.getFailQty());
+        entity.setDefectDesc(dto.getDefectDesc());
+        inspectionMapper.updateById(entity);
+
+        // 更新检验项
+        if (dto.getItems() != null) {
+            itemMapper.delete(Wrappers.lambdaQuery(ProductionQualityInspectionItem.class)
+                .eq(ProductionQualityInspectionItem::getInspectionId, dto.getInspectionId()));
+            for (InspectionItemDTO item : dto.getItems()) {
+                ProductionQualityInspectionItem ei = new ProductionQualityInspectionItem();
+                ei.setInspectionId(dto.getInspectionId());
+                ei.setCheckItem(item.getCheckItem());
+                ei.setStandard(item.getStandard());
+                ei.setActualValue(item.getActualValue());
+                ei.setResult(item.getResult());
+                itemMapper.insert(ei);
+            }
+        }
+    }
+
+    @Override
+    public void delete(Long id) {
+        inspectionMapper.deleteById(id);
+        itemMapper.delete(Wrappers.lambdaQuery(ProductionQualityInspectionItem.class)
+            .eq(ProductionQualityInspectionItem::getInspectionId, id));
+    }
+
+    private QualityInspectionVO toVO(ProductionQualityInspection e) {
+        QualityInspectionVO vo = new QualityInspectionVO();
+        vo.setInspectionId(e.getInspectionId());
+        vo.setInspectionNo(e.getInspectionNo());
+        vo.setInspectionType(e.getInspectionType());
+        vo.setInspectionTypeName(getTypeName(e.getInspectionType()));
+        vo.setOrderId(e.getOrderId());
+        vo.setInspector(e.getInspector());
+        vo.setInspectTime(e.getInspectTime());
+        vo.setResult(e.getResult());
+        vo.setResultName(getResultName(e.getResult()));
+        vo.setTotalQty(e.getTotalQty());
+        vo.setPassQty(e.getPassQty());
+        vo.setFailQty(e.getFailQty());
+        vo.setDefectDesc(e.getDefectDesc());
+        vo.setRemark(e.getRemark());
+        vo.setCreateTime(e.getCreateTime());
+        return vo;
+    }
+
+    private InspectionItemVO toItemVO(ProductionQualityInspectionItem e) {
+        InspectionItemVO vo = new InspectionItemVO();
+        vo.setItemId(e.getItemId());
+        vo.setCheckItem(e.getCheckItem());
+        vo.setStandard(e.getStandard());
+        vo.setActualValue(e.getActualValue());
+        vo.setResult(e.getResult());
+        vo.setRemark(e.getRemark());
+        return vo;
+    }
+
+    private String getTypeName(String t) {
+        if ("IQC".equals(t)) return "来料检验";
+        if ("IPQC".equals(t)) return "过程检验";
+        if ("OQC".equals(t)) return "成品检验";
+        return t;
+    }
+
+    private String getResultName(String r) {
+        if ("pass".equals(r)) return "合格";
+        if ("fail".equals(r)) return "不合格";
+        if ("pending".equals(r)) return "待检";
+        return r;
+    }
+}
