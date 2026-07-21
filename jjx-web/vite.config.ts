@@ -53,6 +53,14 @@ export default defineConfig(({ command, mode }) => {
           rewrite: (path) =>
             path.replace(new RegExp(`^${env.VITE_BASE_API || '/api'}`), ''),
         },
+        '/notification': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+        },
+        '/production': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+        },
       },
     },
     css: {

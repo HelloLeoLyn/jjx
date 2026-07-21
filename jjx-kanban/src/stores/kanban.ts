@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { BoardColumn, BoardCard, BoardFilter, BoardView, DragEvent, TemplateType } from '@/types/board'
 import { boardTemplates } from '@/config/board'
-import { fetchBoardData, fetchViews, moveCard, updateCard, fetchCardDetail, createCard } from '@/mock'
+import { fetchBoardData, fetchViews, moveCard, updateCard, fetchCardDetail, createCard } from '@/api/board-real'
 
 export const useKanbanStore = defineStore('kanban', () => {
   // 当前选中的模板类型

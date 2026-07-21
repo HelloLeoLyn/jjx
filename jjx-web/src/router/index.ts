@@ -1,23 +1,35 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
-import { ElLoading } from 'element-plus'
 
-let loadingInstance: any = null
+// 简易顶部进度条，不阻塞 UI
+let progressTimer: ReturnType<typeof setTimeout> | null = null
+let progressEl: HTMLElement | null = null
 
-// 页面加载进度条
-function startLoading() {
-  loadingInstance = ElLoading.service({
-    lock: false,
-    text: '',
-    background: 'transparent',
-    customClass: 'route-loading',
+function startProgress() {
+  // 如果已有进度条，重置
+  if (progressEl) progressEl.remove()
+  
+  progressEl = document.createElement('div')
+  progressEl.className = 'route-progress'
+  progressEl.style.cssText = 'position:fixed;top:0;left:0;width:0;height:2px;background:#409eff;z-index:99999;transition:width 0.2s ease;'
+  document.body.appendChild(progressEl)
+  
+  // 动画推进到 80%
+  requestAnimationFrame(() => {
+    if (progressEl) progressEl.style.width = '80%'
   })
+  
+  // 超时保护：5 秒后强制完成
+  progressTimer = setTimeout(() => endProgress(), 5000)
 }
 
-function endLoading() {
-  if (loadingInstance) {
-    loadingInstance.close()
-    loadingInstance = null
+function endProgress() {
+  if (progressTimer) { clearTimeout(progressTimer); progressTimer = null }
+  if (progressEl) {
+    progressEl.style.width = '100%'
+    setTimeout(() => {
+      if (progressEl) { progressEl.remove(); progressEl = null }
+    }, 300)
   }
 }
 export const constantRoutes: RouteRecordRaw[] = [
@@ -95,16 +107,20 @@ const router = createRouter({
   },
 })
 
-// 路由切换加载指示
+// 路由切换顶部进度条
 router.beforeEach((to, from, next) => {
   if (to.path !== from.path) {
-    startLoading()
+    startProgress()
   }
   next()
 })
 
 router.afterEach(() => {
-  endLoading()
+  endProgress()
+})
+
+router.onError(() => {
+  endProgress()
 })
 
 export default router

@@ -323,13 +323,6 @@ body {
 // ========================
 // 路由加载指示
 // ========================
-.route-loading {
-  .el-loading-spinner {
-    top: 4px;
-
-    .circular {
-      width: 24px;
-      height: 24px;
-    }
-  }
+.route-progress {
+  transition: width 0.2s ease, opacity 0.3s ease;
 }

@@ -25,7 +25,8 @@
         <el-tooltip :content="broadcastEnabled ? '语音播报已开启' : '语音播报已关闭'" placement="bottom">
           <el-button
             :type="broadcastEnabled ? 'primary' : 'default'"
-            :icon="broadcastEnabled ? Microphone : MicOff"
+            :icon="Microphone"
+            :class="{ 'muted': !broadcastEnabled }"
             text
             @click="toggleBroadcast"
           >
@@ -85,7 +86,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Refresh, Microphone, MicOff } from '@element-plus/icons-vue'
+import { Refresh, Microphone } from '@element-plus/icons-vue'
 import * as ElementIcons from '@element-plus/icons-vue'
 import { useKanbanStore } from '@/stores/kanban'
 import ViewSwitcher from '@/components/ViewSwitcher.vue'
@@ -221,5 +222,9 @@ function toggleBroadcast() {
   flex: 1;
   overflow: hidden;
   display: flex;
+}
+
+.muted {
+  opacity: 0.5;
 }
 </style>

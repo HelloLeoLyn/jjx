@@ -2,6 +2,7 @@ package com.jjx.production.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.result.Result;
+import com.jjx.production.domain.dto.ConvertPlanToWorkOrdersDTO;
 import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.domain.dto.ProductionOrderQueryDTO;
 import com.jjx.production.domain.dto.ProductionOrderUpdateDTO;
@@ -114,4 +115,19 @@ public interface ProductionOrderService {
      * 获取生产工单统计信息
      */
     OrderStatisticsVO getOrderStatistics(ProductionOrderQueryDTO queryDTO);
+
+    /**
+     * 计划转工单
+     */
+    List<Long> convertPlanToWorkOrders(ConvertPlanToWorkOrdersDTO dto);
+
+    /**
+     * 更新订单状态（通用）
+     */
+    boolean updateOrderStatus(Long orderId, Integer newStatus, String remark);
+
+    /**
+     * 批量更新订单状态
+     */
+    boolean batchUpdateOrderStatus(List<Long> orderIds, Integer newStatus, String remark);
 }

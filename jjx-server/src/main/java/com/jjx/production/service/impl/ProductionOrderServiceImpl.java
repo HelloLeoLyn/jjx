@@ -1,5 +1,12 @@
 package com.jjx.production.service.impl;
 
+import com.jjx.production.domain.dto.ConvertPlanToWorkOrdersDTO;
+import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.product.mapper.ProductRoutingItemMapper;
+import com.jjx.product.domain.entity.ProductRoutingItem;
+import java.util.ArrayList;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -23,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -37,6 +45,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOrderConverter productionOrderConverter;
 
+    private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
+    private final ProductRoutingItemMapper productRoutingItemMapper;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -771,5 +781,200 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         target.setRemark(source.getRemark());
 
         return target;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<Long> convertPlanToWorkOrders(ConvertPlanToWorkOrdersDTO dto) {
+        log.info("计划转工单: planId={}, count={}", dto.getPlanId(), dto.getWorkOrders().size());
+
+        // 校验计划是否存在
+        ProductionOrder plan = getById(dto.getPlanId());
+        if (plan == null) {
+            throw new BusinessException("生产计划不存在: " + dto.getPlanId());
+        }
+        if (!"PLAN".equals(plan.getOrderType())) {
+            throw new BusinessException("订单不是生产计划类型，无法转换: " + plan.getOrderNo());
+        }
+
+        List<Long> createdOrderIds = new ArrayList<>();
+        int seq = 0;
+
+        for (ConvertPlanToWorkOrdersDTO.WorkOrderItem item : dto.getWorkOrders()) {
+            seq++;
+
+            // 生成工单编号
+            String workOrderNo = generateWorkOrderNo(plan, seq);
+
+            // 创建工单
+            ProductionOrder workOrder = new ProductionOrder();
+            workOrder.setOrderNo(workOrderNo);
+            workOrder.setOrderType("WORK_ORDER");
+            workOrder.setParentOrderId(plan.getOrderId());
+            workOrder.setSalesOrderId(plan.getSalesOrderId());
+            workOrder.setSalesOrderNo(plan.getSalesOrderNo());
+            workOrder.setProductId(item.getProductId());
+            workOrder.setProductCode(item.getProductCode());
+            workOrder.setProductName(item.getProductName());
+            workOrder.setProductSpec(plan.getProductSpec());
+            workOrder.setProductUnit(plan.getProductUnit());
+            workOrder.setPlannedQuantity(item.getPlannedQuantity());
+            workOrder.setCompletedQuantity(BigDecimal.ZERO);
+            workOrder.setRemainingQuantity(item.getPlannedQuantity());
+            workOrder.setPlanStartDate(item.getPlanStartDate());
+            workOrder.setPlanEndDate(item.getPlanEndDate());
+            workOrder.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+            workOrder.setPriority(item.getPriority() != null ? item.getPriority() : "MEDIUM");
+            workOrder.setDepartmentId(plan.getDepartmentId());
+            workOrder.setDepartmentName(plan.getDepartmentName());
+            workOrder.setRemark(item.getRemark());
+            // 复制工艺路线
+            workOrder.setRoutingId(plan.getRoutingId());
+            workOrder.setRoutingCode(plan.getRoutingCode());
+
+            save(workOrder);
+            createdOrderIds.add(workOrder.getOrderId());
+
+            // 生成工序执行记录（基于工艺路线）
+            generateOperationExecutions(workOrder.getOrderId(), plan.getRoutingId(),
+                    item.getPlanStartDate(), item.getPlanEndDate());
+
+            log.info("工单已生成: {} (计划: {})", workOrderNo, plan.getOrderNo());
+        }
+
+        // 更新计划状态为"已转工单"
+        plan.setOrderStatus(OrderStatusEnum.PLANNED.getCode());
+        updateById(plan);
+
+        return createdOrderIds;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateOrderStatus(Long orderId, Integer newStatus, String remark) {
+        log.info("更新订单状态: orderId={}, newStatus={}", orderId, newStatus);
+
+        ProductionOrder order = getById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在: " + orderId);
+        }
+
+        // 状态流转校验
+        validateStatusTransition(order.getOrderStatus(), newStatus);
+
+        order.setOrderStatus(newStatus);
+        if (remark != null) {
+            order.setRemark(remark);
+        }
+
+        // 如果启动了，记录实际开始时间
+        if (OrderStatusEnum.IN_PROGRESS.getCode().equals(newStatus) && order.getActualStartTime() == null) {
+            order.setActualStartTime(LocalDateTime.now());
+        }
+        // 如果完成了，记录实际完成时间
+        if (OrderStatusEnum.COMPLETED.getCode().equals(newStatus)) {
+            order.setActualEndTime(LocalDateTime.now());
+            order.setCompletedQuantity(order.getPlannedQuantity());
+            order.setRemainingQuantity(BigDecimal.ZERO);
+        }
+
+        return updateById(order);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean batchUpdateOrderStatus(List<Long> orderIds, Integer newStatus, String remark) {
+        log.info("批量更新订单状态: count={}, newStatus={}", orderIds.size(), newStatus);
+        for (Long orderId : orderIds) {
+            updateOrderStatus(orderId, newStatus, remark);
+        }
+        return true;
+    }
+
+    /**
+     * 生成工单编号: WO-{计划编号}-{序号}
+     */
+    private String generateWorkOrderNo(ProductionOrder plan, int seq) {
+        String planNo = plan.getOrderNo();
+        return "WO-" + planNo + "-" + String.format("%02d", seq);
+    }
+
+    /**
+     * 根据工艺路线生成工序执行记录
+     */
+    private void generateOperationExecutions(Long orderId, Long routingId,
+                                              LocalDate planStartDate, LocalDate planEndDate) {
+        if (routingId == null) {
+            log.warn("工单 {} 未指定工艺路线，跳过工序生成", orderId);
+            return;
+        }
+
+        // 查询工艺路线下的所有工序
+        List<ProductRoutingItem> routingItems = productRoutingItemMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductRoutingItem>()
+                        .eq(ProductRoutingItem::getRoutingId, routingId)
+                        .orderByAsc(ProductRoutingItem::getProcessOrder)
+        );
+
+        if (routingItems.isEmpty()) {
+            log.warn("工艺路线 {} 下没有工序，跳过工序生成", routingId);
+            return;
+        }
+
+        long daySpan = planStartDate != null && planEndDate != null ?
+                java.time.temporal.ChronoUnit.DAYS.between(planStartDate, planEndDate) : 0;
+        long totalSteps = routingItems.size();
+        long daysPerStep = totalSteps > 0 ? Math.max(1, daySpan / totalSteps) : 1;
+
+        for (int i = 0; i < routingItems.size(); i++) {
+            ProductRoutingItem item = routingItems.get(i);
+
+            ProductionOperationExecution execution = new ProductionOperationExecution();
+            execution.setOrderId(orderId);
+            execution.setProcessId(item.getProcessId());
+            execution.setProcessOrder(item.getProcessOrder());
+
+            // 按工序分配时间
+            if (planStartDate != null && planEndDate != null) {
+                LocalDate stepStart = planStartDate.plusDays(i * daysPerStep);
+                LocalDate stepEnd = i == routingItems.size() - 1 ?
+                        planEndDate : planStartDate.plusDays((i + 1) * daysPerStep - 1);
+                execution.setPlannedStartTime(stepStart.atStartOfDay());
+                execution.setPlannedEndTime(stepEnd.atTime(23, 59, 59));
+            }
+
+            execution.setActualLaborHours(BigDecimal.ZERO);
+            execution.setActualMachineHours(BigDecimal.ZERO);
+
+            productionOperationExecutionMapper.insert(execution);
+        }
+
+        log.info("已为工单 {} 生成 {} 个工序执行记录", orderId, routingItems.size());
+    }
+
+    /**
+     * 校验状态流转是否合法
+     */
+    private void validateStatusTransition(Integer currentStatus, Integer newStatus) {
+        if (currentStatus.equals(newStatus)) return;
+
+        int cs = currentStatus;
+        int ns = newStatus;
+
+        if (cs == 0) { // DRAFT
+            if (ns != 1 && ns != 9) throw new BusinessException("草稿状态只能转为待审批或已取消");
+        } else if (cs == 1) { // PENDING_APPROVAL
+            if (ns != 2 && ns != 3 && ns != 9) throw new BusinessException("待审批状态只能转为已审批、已驳回或已取消");
+        } else if (cs == 2) { // APPROVED
+            if (ns != 6 && ns != 9) throw new BusinessException("已审批状态只能转为进行中或已取消");
+        } else if (cs == 6) { // IN_PROGRESS
+            if (ns != 8 && ns != 7 && ns != 9) throw new BusinessException("进行中状态只能转为已完成、已暂停或已取消");
+        } else if (cs == 7) { // PAUSED
+            if (ns != 6 && ns != 9) throw new BusinessException("已暂停状态只能转为进行中或已取消");
+        } else if (cs == 8) { // COMPLETED
+            if (ns != 10) throw new BusinessException("已完成状态只能转为已关闭");
+        } else {
+            throw new BusinessException("不支持的状态流转: " + currentStatus + " -> " + newStatus);
+        }
     }
 }

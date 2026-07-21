@@ -2,9 +2,15 @@ package com.jjx.production.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.result.Result;
+import com.jjx.production.domain.dto.ConvertPlanToWorkOrdersDTO;
 import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.domain.dto.ProductionOrderQueryDTO;
 import com.jjx.production.domain.dto.ProductionOrderUpdateDTO;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import lombok.Data;
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import com.jjx.production.domain.vo.OrderStatisticsVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.service.ProductionOrderService;
@@ -18,7 +24,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 /**
  * 生产工单控制器
@@ -194,5 +199,46 @@ public class ProductionOrderController {
     @GetMapping("/statistics")
     public Result<OrderStatisticsVO> getOrderStatistics(ProductionOrderQueryDTO queryDTO) {
         return Result.success(productionOrderService.getOrderStatistics(queryDTO));
+    }
+
+    @Operation(summary = "计划转工单")
+    @PostMapping("/convert-plan-to-work-orders")
+    @Log(module = "生产工单管理", businessType = BusinessType.INSERT)
+    @SaCheckPermission("production:order:add")
+    public Result<List<Long>> convertPlanToWorkOrders(@Validated @RequestBody ConvertPlanToWorkOrdersDTO dto) {
+        List<Long> orderIds = productionOrderService.convertPlanToWorkOrders(dto);
+        return Result.success(orderIds);
+    }
+
+    @Operation(summary = "更新订单状态")
+    @PutMapping("/status")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("production:order:edit")
+    public Result<Boolean> updateOrderStatus(@RequestParam Long orderId,
+                                              @RequestParam Integer orderStatus,
+                                              @RequestParam(required = false) String remark) {
+        boolean success = productionOrderService.updateOrderStatus(orderId, orderStatus, remark);
+        return Result.success(success);
+    }
+
+    @Operation(summary = "批量更新订单状态")
+    @PutMapping("/batch-status")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("production:order:edit")
+    public Result<Boolean> batchUpdateOrderStatus(@RequestBody BatchStatusUpdateDTO dto) {
+        boolean success = productionOrderService.batchUpdateOrderStatus(dto.getOrderIds(), dto.getOrderStatus(), dto.getRemark());
+        return Result.success(success);
+    }
+
+    @Data
+    public static class BatchStatusUpdateDTO {
+        @Schema(description = "订单ID列表")
+        @NotEmpty(message = "订单ID列表不能为空")
+        private List<Long> orderIds;
+        @Schema(description = "目标状态")
+        @NotBlank(message = "目标状态不能为空")
+        private Integer orderStatus;
+        @Schema(description = "备注")
+        private String remark;
     }
 }
