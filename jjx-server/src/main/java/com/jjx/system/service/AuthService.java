@@ -39,12 +39,20 @@ public class AuthService{
         // 校验信息
         validate(dto, user);
 
-        // 构建登录响应
+        // 先 Sa-Token 登录（生成 token）
+        StpUtil.login(user.getUserId());
+
+        // 构建登录响应（此时 token 已存在）
         LoginVO loginVO = buildLoginVO(user);
+        loginVO.setToken(StpUtil.getTokenValue());
 
-        // Sa-Token 登录
-        doSaTokenLogin(loginVO);
+        // 设置 session
+        SaLoginModel loginModel = new SaLoginModel()
+                .setIsWriteHeader(false);
+        StpUtil.getSession().set("loginVO", loginVO);
+        StpUtil.getSession().setId(loginVO.getUserInfo().getUserName());
 
+        log.info("登录成功: userId={}", user.getUserId());
         log.info("=== 登录接口结束 ===");
         return loginVO;
     }

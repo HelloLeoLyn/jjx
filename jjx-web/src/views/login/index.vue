@@ -116,7 +116,7 @@ const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
 // 验证码是否启用
-const captchaEnabled = ref(true)
+const captchaEnabled = ref(false)
 
 // 验证码图片
 const captchaImage = ref('')
