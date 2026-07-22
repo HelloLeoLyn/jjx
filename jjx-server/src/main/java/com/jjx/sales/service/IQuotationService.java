@@ -1,5 +1,6 @@
 package com.jjx.sales.service;
 
+import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesQuotation;
 
 import java.util.List;
@@ -17,6 +18,8 @@ public interface IQuotationService {
      * @return 销售报价单列表
      */
     List<SalesQuotation> selectQuotationList(SalesQuotation quotation);
+
+    PageResult<SalesQuotation> selectQuotationPage(SalesQuotation quotation, Integer pageNum, Integer pageSize);
 
     /**
      * 根据ID查询销售报价单

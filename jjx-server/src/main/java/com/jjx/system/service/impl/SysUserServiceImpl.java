@@ -183,7 +183,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         user.setPhone(dto.getPhone());
         user.setSex(dto.getSex());
         user.setAvatar(dto.getAvatar());
-        user.setPassword(dto.getPassword());
+        user.setPassword(BCrypt.hashpw(dto.getPassword()));
         user.setStatus(dto.getStatus());
         user.setDeptId(dto.getDeptId());
         user.setRemark(dto.getRemark());

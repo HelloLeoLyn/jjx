@@ -29,6 +29,16 @@ public class QuotationController extends BaseController {
     private final IQuotationService quotationService;
 
     /**
+     * 获取销售报价单分页列表
+     */
+    @Operation(summary = "获取销售报价单分页列表")
+    @SaCheckPermission("sales:quotation:view")
+    @GetMapping("/list")
+    public Result<PageResult<SalesQuotation>> list(SalesQuotation quotation) {
+        return Result.success(quotationService.selectQuotationPage(quotation, getPageNum(), getPageSize()));
+    }
+
+    /**
      * 获取销售报价单详细信息
      */
     @Operation(summary = "获取销售报价单详细信息")

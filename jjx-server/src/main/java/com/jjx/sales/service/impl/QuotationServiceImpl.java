@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.mapper.QuotationMapper;
+import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.service.IQuotationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,23 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     public List<SalesQuotation> selectQuotationList(SalesQuotation quotation) {
+        LambdaQueryWrapper<SalesQuotation> wrapper = buildQueryWrapper(quotation);
+        return quotationMapper.selectList(wrapper);
+    }
+
+    @Override
+    public PageResult<SalesQuotation> selectQuotationPage(SalesQuotation quotation, Integer pageNum, Integer pageSize) {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<SalesQuotation> page =
+            new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<SalesQuotation> wrapper = buildQueryWrapper(quotation);
+        com.baomidou.mybatisplus.core.metadata.IPage<SalesQuotation> result = quotationMapper.selectPage(page, wrapper);
+        return com.jjx.common.core.page.PageResult.build(result.getRecords(), result.getTotal());
+    }
+
+    /**
+     * 构建查询条件
+     */
+    private LambdaQueryWrapper<SalesQuotation> buildQueryWrapper(SalesQuotation quotation) {
         LambdaQueryWrapper<SalesQuotation> wrapper = Wrappers.lambdaQuery();
 
         // 根据报价单号查询
@@ -58,7 +76,7 @@ public class QuotationServiceImpl implements IQuotationService {
         // 按创建时间倒序排序
         wrapper.orderByDesc(SalesQuotation::getCreateTime);
 
-        return quotationMapper.selectList(wrapper);
+        return wrapper;
     }
 
     /**
