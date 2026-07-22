@@ -12,6 +12,8 @@
     </div>
 
     <div class="right-menu">
+      <!-- 环境标识 -->
+      <NavEnvBadge />
       <!-- 消息通知铃铛 -->
       <NavNotification />
       <el-dropdown trigger="click" @command="handleCommand">
@@ -49,6 +51,7 @@ import { DArrowLeft, DArrowRight, ArrowDown, User, Lock, SwitchButton } from '@e
 import { useUserStore } from '@/store/modules/user'
 import Breadcrumb from './Breadcrumb.vue'
 import NavNotification from './NavNotification.vue'
+import NavEnvBadge from './NavEnvBadge.vue'
 
 const router = useRouter()
 const userStore = useUserStore()

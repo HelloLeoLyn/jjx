@@ -4,41 +4,21 @@ import { useUserStore } from '@/store/modules/user'
 import { usePermissionStore } from '@/store/modules/permission'
 import { ElMessage, ElLoading } from 'element-plus'
 
-// 白名单路由（不需要登录）
 const whiteList = ['/login', '/404', '/401', '/redirect']
 
-// 初始化状态 - 基于用户ID，确保不同用户重新初始化
-let initializedUserId: number | null | undefined = null
+/**
+ * 初始化权限系统（加载动态路由）
+ * 只执行一次，第二次调用直接返回
+ */
 let initPromise: Promise<void> | null = null
 
-// 检查权限系统是否已为当前用户初始化
-function checkIsInitialized(): boolean {
-  const userStore = useUserStore()
-  const currentUserId = userStore.userInfo?.userId
-  return initializedUserId === currentUserId
-}
-
-/**
- * 初始化权限系统
- */
 async function initPermissionSystem(): Promise<void> {
-  const userStore = useUserStore()
-  const currentUserId = userStore.userInfo?.userId
-
-  // 如果已经为当前用户初始化过，直接返回
-  if (initializedUserId === currentUserId) {
-    return
-  }
-
-  // 如果正在初始化，等待完成
-  if (initPromise) {
-    return initPromise
-  }
+  if (initPromise) return initPromise
 
   initPromise = (async () => {
+    const userStore = useUserStore()
     const permissionStore = usePermissionStore()
 
-    // 显示加载提示
     const loading = ElLoading.service({
       fullscreen: true,
       text: '正在加载系统资源...',
@@ -46,53 +26,55 @@ async function initPermissionSystem(): Promise<void> {
     })
 
     try {
-      // 1. 获取用户信息（如果没有）
+      // 1. 确保用户信息已加载
       if (!userStore.userInfo) {
         await userStore.getUserInfo()
       }
 
       // 2. 确保权限已加载
-      // 如果权限为空，尝试从localStorage恢复
       if (userStore.permissions.length === 0) {
         const userInfoStr = localStorage.getItem('userInfo')
         if (userInfoStr) {
           try {
             const userInfo = JSON.parse(userInfoStr)
-            if (userInfo.permissions && userInfo.permissions.length > 0) {
+            if (userInfo.permissions?.length > 0) {
               userStore.setPermissions(userInfo.permissions)
             }
-          } catch (e) {
-            console.error('解析localStorage用户信息失败:', e)
-          }
+          } catch { /* ignore */ }
         }
       }
-
-      // 如果权限仍然为空，使用默认权限
       if (userStore.permissions.length === 0) {
         userStore.setPermissions(['*:*:*'])
       }
 
-      // 3. 重置之前的动态路由（如果有）
-      permissionStore.reset()
+      // 3. 从后端拉取并生成动态路由
+      const { routes, routeNames } = await permissionStore.generateRoutes()
 
-      // 4. 生成新的动态路由（基于当前用户的权限）
-      const routes = await permissionStore.generateRoutes()
+      // 4. 删除旧的动态路由（如果本次是重新初始化）
+      const oldNames = permissionStore.getTrackedRouteNames
+      for (const name of oldNames) {
+        if (router.hasRoute(name)) {
+          router.removeRoute(name)
+        }
+      }
 
-      // 5. 动态添加路由到router
-      routes.forEach((route) => {
+      // 5. 添加新的动态路由
+      for (const route of routes) {
         router.addRoute(route)
-      })
+      }
 
-      // 6. 添加404路由（必须在最后）
-      router.addRoute({
-        path: '/:pathMatch(.*)*',
-        name: 'NotFound',
-        component: () => import('@/views/error/404.vue'),
-        meta: { title: '404', hidden: true },
-      })
+      // 6. 添加 404 兜底（如果已有则覆盖）
+      if (!router.hasRoute('NotFound')) {
+        router.addRoute({
+          path: '/:pathMatch(.*)*',
+          name: 'NotFound',
+          component: () => import('@/views/error/404.vue'),
+          meta: { title: '404', hidden: true },
+        })
+      }
 
-      // 7. 标记为当前用户已初始化
-      initializedUserId = currentUserId
+      // 7. 记录本次添加的路由 name，方便下次清理
+      permissionStore.setTrackedRouteNames(routeNames)
     } catch (error) {
       console.error('权限系统初始化失败:', error)
       ElMessage.error('系统初始化失败，请重新登录')
@@ -110,10 +92,19 @@ async function initPermissionSystem(): Promise<void> {
  * 重置权限系统（登出时调用）
  */
 export function resetPermissionSystem(): void {
-  initializedUserId = null
   initPromise = null
-
   const permissionStore = usePermissionStore()
+  // 清理已添加的动态路由
+  const names = permissionStore.getTrackedRouteNames
+  for (const name of names) {
+    if (router.hasRoute(name)) {
+      router.removeRoute(name)
+    }
+  }
+  // 清理 404 路由
+  if (router.hasRoute('NotFound')) {
+    router.removeRoute('NotFound')
+  }
   permissionStore.reset()
 }
 
@@ -122,88 +113,68 @@ export function resetPermissionSystem(): void {
  */
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
+  const permissionStore = usePermissionStore()
   const hasToken = !!userStore.token
 
-  // 设置页面标题
-  if (to.meta && to.meta.title) {
+  // 页面标题
+  if (to.meta?.title) {
     document.title = `${to.meta.title} - ERP管理系统`
   }
 
-  // 1. 登录页特殊处理
+  // ── 登录页 ──
   if (to.path === '/login') {
-    if (hasToken && checkIsInitialized()) {
-      // 已登录且已初始化，跳转到首页
+    if (hasToken) {
       next({ path: '/' })
-    } else if (hasToken && !checkIsInitialized()) {
-      // 已登录但未初始化，尝试初始化后跳转
-      try {
-        await initPermissionSystem()
-        next({ path: '/' })
-      } catch {
-        next()
-      }
     } else {
       next()
     }
     return
   }
 
-  // 2. 白名单路由（不需要登录）
+  // ── 白名单 ──
   if (whiteList.includes(to.path)) {
     next()
     return
   }
 
-  // 3. 未登录处理
+  // ── 未登录 ──
   if (!hasToken) {
     next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
     return
   }
 
-  // 4. 已登录但权限系统未初始化
-  const initialized = checkIsInitialized()
-
-  if (!initialized) {
+  // ── 已登录，路由未初始化 ──
+  if (!permissionStore.isLoaded) {
     try {
       await initPermissionSystem()
-      // 重新进入目标路由
+      // 重点：重新进入目标路由（此时新路由已注册，Vue Router 能匹配到）
       next({ ...to, replace: true })
-    } catch (error) {
-      console.error('权限系统初始化失败:', error)
+      return
+    } catch {
       userStore.resetToken()
       resetPermissionSystem()
       next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
+      return
     }
-    return
-  } else {
   }
 
-  // 5. 权限验证（基于菜单权限）
-  if (to.meta && to.meta.permission) {
-    const hasPermission = userStore.hasPermission(to.meta.permission as string)
-    if (hasPermission) {
-      next()
-    } else {
+  // ── 权限验证 ──
+  if (to.meta?.permission) {
+    const hasPerm = userStore.hasPermission(to.meta.permission as string)
+    if (!hasPerm) {
       ElMessage.warning('您没有权限访问该页面')
       next('/401')
+      return
     }
-  } else {
-    // 调试：记录访问的路由
-    next()
   }
+
+  next()
 })
 
 // 路由错误处理
 router.onError((error) => {
   console.error('路由错误:', error)
-  const pattern = /Loading chunk (\d)+ failed/g
-  if (pattern.test(error.message)) {
-    // 动态加载失败，刷新页面
+  if (/Loading chunk \d+ failed/g.test(error.message)) {
     window.location.reload()
   }
-})
-
-// 路由完成后关闭loading（可选）
-router.afterEach(() => {
-  // 可以在这里做一些清理工作
 })

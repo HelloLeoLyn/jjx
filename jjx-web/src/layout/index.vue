@@ -26,7 +26,7 @@ import AppMain from './components/AppMain.vue'
 const userStore = useUserStore()
 
 const sidebar = computed(() => ({
-  opened: !userStore.getSidebarCollapsed,
+  opened: !userStore.sidebarCollapsed,
 }))
 
 const device = computed(() => 'desktop')

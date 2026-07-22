@@ -5,8 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "dev": "VITE_APP_BRANCH=$(git rev-parse --abbrev-ref HEAD) vite",
+    "dev:win": "for /f %i in ('git rev-parse --abbrev-ref HEAD') do set VITE_APP_BRANCH=%i && vite",
+    "build": "VITE_APP_BRANCH=$(git rev-parse --abbrev-ref HEAD) vue-tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "format": "prettier --write src/",
