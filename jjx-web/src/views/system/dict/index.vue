@@ -3,7 +3,7 @@
     <!-- 搜索表单 -->
     <SearchForm
       v-model="queryParams"
-      :options="uiConfig.searchOptions"
+      :fields="uiConfig.searchOptions"
       @search="handleSearch"
       @reset="handleReset"
     />
