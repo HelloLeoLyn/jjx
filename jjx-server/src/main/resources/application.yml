@@ -30,6 +30,11 @@ logging:
     console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
     file: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n'
 
+# 文件上传配置
+file:
+  upload:
+    path: ./upload
+
 # Sa-Token配置
 sa-token:
   # token名称 (同时也是cookie名称)

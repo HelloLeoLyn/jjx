@@ -317,10 +317,12 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       item.specification = '标准规格' // 默认规格
       item.productId = selectedProduct.productId
     } else if (item.productCode) {
-      // 如果没有找到匹配的产品，使用默认名称
-      item.productName = `产品_${item.productCode}`
-      item.unit = 'PCS'
-      item.specification = '标准规格'
+      // 没有匹配的产品（样品单或自定义编码）
+      // 保持用户输入的产品名和编码不变
+      if (!item.productName) {
+        item.productName = item.productCode
+      }
+      item.unit = item.unit || 'PCS'
     } else {
       item.productName = ''
       item.unit = ''
@@ -357,6 +359,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       productCode: '',
       productName: '',
       specification: '',
+      customerMaterialNo: '',
+      lineRemark: '',
       unit: 'PCS',
       quantity: 1,
       unitPrice: 0,

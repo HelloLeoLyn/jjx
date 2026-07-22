@@ -12,6 +12,8 @@
     </div>
 
     <div class="right-menu">
+      <!-- 消息通知铃铛 -->
+      <NavNotification />
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="avatar-wrapper">
           <el-avatar :size="32" :src="avatar" />
@@ -46,6 +48,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { DArrowLeft, DArrowRight, ArrowDown, User, Lock, SwitchButton } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 import Breadcrumb from './Breadcrumb.vue'
+import NavNotification from './NavNotification.vue'
 
 const router = useRouter()
 const userStore = useUserStore()

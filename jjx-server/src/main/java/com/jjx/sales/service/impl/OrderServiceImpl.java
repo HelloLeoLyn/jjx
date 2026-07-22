@@ -11,6 +11,7 @@ import com.jjx.product.domain.vo.ProductValidationVO;
 import com.jjx.sales.domain.converter.SalesOrderConverter;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesOrderEditDTO;
+import com.jjx.sales.domain.dto.SalesOrderProductDTO;
 import com.jjx.sales.domain.dto.SalesOrderQueryDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.vo.CustomerVO;
@@ -109,6 +110,8 @@ public class OrderServiceImpl implements IOrderService {
         entity.setOrderNo(orderNo);
         int insert = orderMapper.insert(entity);
         if(insert>0){
+            // 校验并处理产品明细
+            validateOrderItems(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
             return orderProductService.batchAdd(dto.getItems());
         }
@@ -131,6 +134,8 @@ public class OrderServiceImpl implements IOrderService {
         int insert = orderMapper.updateById(entity);
         orderProductService.deleteByOrderId(dto.getOrderId());
         if(insert>0){
+            // 校验并处理产品明细
+            validateOrderItems(dto.getItems(), dto.getOrderType());
             return orderProductService.batchAdd(dto.getItems());
         }
         throw new BusinessException(BusinessExceptionEnum.DB_UPDATE_FAILED);
@@ -398,6 +403,46 @@ public class OrderServiceImpl implements IOrderService {
         List<ProductValidationVO> items = orderProductService.validation(orderId);
         vo.setItems(items);
         return vo;
+    }
+
+    /**
+     * 校验订单产品明细（区分样品单与标准单）
+     * 样品单(orderType=2): productId 允许为空，productCode 允许自定义
+     * 标准单(orderType=1): productId 和 productCode 需要完整
+     */
+    private void validateOrderItems(List<SalesOrderProductDTO> items, Integer orderType) {
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("产品明细不能为空");
+        }
+
+        boolean isSample = Integer.valueOf(2).equals(orderType);
+
+        for (int i = 0; i < items.size(); i++) {
+            SalesOrderProductDTO item = items.get(i);
+
+            if (isSample) {
+                // 样品单：productId 可为空，但 productCode 必须有
+                if (item.getProductId() == null && !StringUtils.hasText(item.getProductCode())) {
+                    throw new BusinessException("第" + (i + 1) + "行产品：样品单未关联产品时，产品编码不能为空");
+                }
+                // 样品单 productCode 为空时自动生成
+                if (!StringUtils.hasText(item.getProductCode())) {
+                    item.setProductCode("SAMPLE-" + System.currentTimeMillis() % 1000000);
+                }
+            } else {
+                // 标准单：productId 不能为空
+                if (item.getProductId() == null) {
+                    throw new BusinessException("第" + (i + 1) + "行产品：标准单必须关联产品");
+                }
+                if (!StringUtils.hasText(item.getProductCode())) {
+                    throw new BusinessException("第" + (i + 1) + "行产品：产品编码不能为空");
+                }
+            }
+
+            if (!StringUtils.hasText(item.getProductName())) {
+                throw new BusinessException("第" + (i + 1) + "行产品：产品名称不能为空");
+            }
+        }
     }
 
     /**

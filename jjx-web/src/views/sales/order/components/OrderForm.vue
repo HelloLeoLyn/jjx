@@ -175,9 +175,11 @@
     >
     <el-table :data="form.items" style="width: 100%; margin-bottom: 20px" border>
       <el-table-column label="序号" type="index" width="60" align="center" />
-      <el-table-column label="产品编码" prop="productCode">
+      <el-table-column label="产品编码" prop="productCode" min-width="140">
         <template #default="scope">
+          <!-- 标准单：下拉选产品 -->
           <el-select
+            v-if="form.orderType === 1"
             v-model="scope.row.productCode"
             placeholder="请选择产品"
             filterable
@@ -196,14 +198,22 @@
               >{{ item.productCode }} - {{ item.productName }}</el-option
             >
           </el-select>
+          <!-- 样品单：手动输入 -->
+          <el-input
+            v-else
+            v-model="scope.row.productCode"
+            placeholder="手工输入产品编码"
+            @blur="handleProductChange(scope.row)"
+            class="borderless-input"
+          />
         </template>
       </el-table-column>
-      <el-table-column label="产品名称" prop="productName" width="180">
+      <el-table-column label="产品名称" prop="productName" width="160">
         <template #default="scope">
           <el-input
             v-model="scope.row.productName"
-            placeholder="产品名称"
-            readonly
+            :placeholder="form.orderType === 2 ? '样品名称' : '产品名称'"
+            :readonly="form.orderType === 1"
             class="borderless-input"
           />
         </template>
@@ -213,6 +223,15 @@
           <el-input
             v-model="scope.row.specification"
             placeholder="规格型号"
+            class="borderless-input"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="客户物料号" prop="customerMaterialNo" width="120">
+        <template #default="scope">
+          <el-input
+            v-model="scope.row.customerMaterialNo"
+            placeholder="客户物料号"
             class="borderless-input"
           />
         </template>
@@ -263,9 +282,9 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="定制要求" prop="customRequirements">
+      <el-table-column label="行备注" prop="lineRemark" min-width="120">
         <template #default="scope">
-          <el-input v-model="scope.row.customRequirements" placeholder="定制要求" />
+          <el-input v-model="scope.row.lineRemark" placeholder="行备注" />
         </template>
       </el-table-column>
       <el-table-column label="操作" width="80" align="center">
@@ -280,6 +299,30 @@
         <el-button type="primary" icon="Plus" @click="addItem()">添加明细</el-button>
       </el-col>
     </el-row>
+
+    <!-- 附件上传（编辑模式或有orderId时显示） -->
+    <div v-if="form.orderId">
+      <el-divider content-position="left">订单附件</el-divider>
+      <div class="attachment-section">
+        <el-upload
+          ref="uploadRef"
+          :http-request="customUpload"
+          :on-success="handleUploadSuccess"
+          :on-remove="handleUploadRemove"
+          :file-list="attachmentList"
+          :before-upload="beforeUpload"
+          list-type="text"
+          multiple
+        >
+          <el-button type="primary" size="small">
+            <el-icon><Upload /></el-icon> 上传附件
+          </el-button>
+          <template #tip>
+            <div class="el-upload__tip">支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB</div>
+          </template>
+        </el-upload>
+      </div>
+    </div>
 
     <!-- 金额汇总 -->
     <el-divider content-position="left">金额汇总</el-divider>
@@ -377,13 +420,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive } from 'vue'
+import { onMounted, ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { Upload } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
 import type { CustomerFormData } from '@/types/sales/customer'
-import { el } from 'element-plus/es/locale/index.mjs'
 
 interface Props {
   isEdit?: boolean
@@ -502,6 +547,64 @@ const {
   submitForm: submitOrderForm,
   formatCurrency,
 } = useOrderForm({ isEdit: props.isEdit, initialData: props.initialData })
+
+// ===== 附件上传 =====
+const uploadRef = ref()
+const attachmentList = ref([])
+
+// 自定义上传（使用axios拦截器，自动带token）
+const customUpload = async (options: any) => {
+  const formData = new FormData()
+  formData.append('file', options.file)
+  formData.append('bizType', 'sales_order')
+  formData.append('bizId', String(form.orderId))
+  try {
+    const res = await request({
+      url: '/system/attachment/upload',
+      method: 'post',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    if (res?.code === 200) {
+      options.onSuccess(res.data)
+      ElMessage.success('附件上传成功')
+    } else {
+      options.onError(new Error(res?.msg || '上传失败'))
+    }
+  } catch (e: any) {
+    options.onError(e)
+  }
+}
+
+// 附件上传成功回调
+const handleUploadSuccess = () => {}
+
+// 附件删除回调
+const handleUploadRemove = async (file: any) => {
+  if (file.response) {
+    try {
+      await request({ url: '/system/attachment/' + file.response, method: 'delete' })
+    } catch {
+      // 静默处理
+    }
+  }
+}
+
+// 上传前校验
+const beforeUpload = (file: File) => {
+  const maxSize = 10 * 1024 * 1024 // 10MB
+  const allowedTypes = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']
+  const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '')
+  if (!allowedTypes.includes(ext)) {
+    ElMessage.error('不支持的文件格式')
+    return false
+  }
+  if (file.size > maxSize) {
+    ElMessage.error('文件大小不能超过10MB')
+    return false
+  }
+  return true
+}
 
 // 初始化
 onMounted(() => {
