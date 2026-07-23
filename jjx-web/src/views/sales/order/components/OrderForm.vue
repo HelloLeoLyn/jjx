@@ -110,7 +110,7 @@
     <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="币种" prop="currency">
-          <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%">
+          <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%" @change="handleCurrencyChange">
             <el-option
               v-for="dict in currencyOptions"
               :key="dict.value"
@@ -130,6 +130,7 @@
             placeholder="请输入汇率"
             style="width: 100%"
           />
+          <span v-if="exchangeRateHint" class="rate-hint">{{ exchangeRateHint }}</span>
         </el-form-item>
       </el-col>
     </el-row>
@@ -300,28 +301,26 @@
       </el-col>
     </el-row>
 
-    <!-- 附件上传（编辑模式或有orderId时显示） -->
-    <div v-if="form.orderId">
-      <el-divider content-position="left">订单附件</el-divider>
-      <div class="attachment-section">
-        <el-upload
-          ref="uploadRef"
-          :http-request="customUpload"
-          :on-success="handleUploadSuccess"
-          :on-remove="handleUploadRemove"
-          :file-list="attachmentList"
-          :before-upload="beforeUpload"
-          list-type="text"
-          multiple
-        >
-          <el-button type="primary" size="small">
-            <el-icon><Upload /></el-icon> 上传附件
-          </el-button>
-          <template #tip>
-            <div class="el-upload__tip">支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB</div>
-          </template>
-        </el-upload>
-      </div>
+    <!-- 附件上传（新建和编辑都显示） -->
+    <el-divider content-position="left">订单附件</el-divider>
+    <div class="attachment-section">
+      <el-upload
+        ref="uploadRef"
+        :http-request="customUpload"
+        :on-success="handleUploadSuccess"
+        :on-remove="handleUploadRemove"
+        :file-list="attachmentList"
+        :before-upload="beforeUpload"
+        list-type="text"
+        multiple
+      >
+        <el-button type="primary" size="small">
+          <el-icon><Upload /></el-icon> 上传附件
+        </el-button>
+        <template #tip>
+          <div class="el-upload__tip">支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传</div>
+        </template>
+      </el-upload>
     </div>
 
     <!-- 金额汇总 -->
@@ -391,6 +390,15 @@
         </el-form-item>
       </el-col>
     </el-row>
+    <el-row :gutter="20" v-if="form.currency && form.currency !== 'CNY'">
+      <el-col :span="8">
+        <el-form-item :label="`外币总金额（${form.currency}）`">
+          <el-input v-model="foreignCurrencyDisplay" readonly style="width: 100%">
+            <template #append>{{ form.currency }}</template>
+          </el-input>
+        </el-form-item>
+      </el-col>
+    </el-row>
 
     <!-- 其他信息 -->
     <el-divider content-position="left">其他信息</el-divider>
@@ -420,11 +428,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive, computed } from 'vue'
+import { onMounted, ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { orderApi } from '@/api/sales/order'
 import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
@@ -548,18 +557,71 @@ const {
   formatCurrency,
 } = useOrderForm({ isEdit: props.isEdit, initialData: props.initialData })
 
+// ===== 汇率自动填充 =====
+const exchangeRateLoading = ref(false)
+
+// 外币总金额显示（订单选外币时，将人民币总金额折算成外币）
+const foreignCurrencyDisplay = computed(() => {
+  if (!form.exchangeRate || !form.totalAmount || form.currency === 'CNY') return 0
+  // 汇率 = 1外币 = N人民币，所以外币金额 = 人民币总金额 / 汇率
+  const foreignAmount = form.totalAmount / form.exchangeRate
+  return foreignAmount.toFixed(2)
+})
+
+// 汇率提示文字
+const exchangeRateHint = computed(() => {
+  if (!form.currency || form.currency === 'CNY') return ''
+  return `1 ${form.currency} = ${form.exchangeRate} CNY`
+})
+
+// 币种变化时自动获取汇率
+const handleCurrencyChange = async (val: string) => {
+  if (val === 'CNY') {
+    form.exchangeRate = 1
+    return
+  }
+  exchangeRateLoading.value = true
+  try {
+    const res = await orderApi.getExchangeRate(val)
+    if (res?.code === 200 && res.data) {
+      form.exchangeRate = res.data
+    }
+  } catch (e) {
+    console.error('获取汇率失败:', e)
+  } finally {
+    exchangeRateLoading.value = false
+  }
+}
+
 // ===== 附件上传 =====
 const uploadRef = ref()
-const attachmentList = ref([])
+const attachmentList = ref<any[]>([])
 
-// 自定义上传（使用axios拦截器，自动带token）
+// 新建订单时暂存的文件（订单保存后再上传）
+const pendingUploads = ref<Array<{ file: File }>>([])
+
+// 自定义上传（新建时暂存，编辑时立即上传）
 const customUpload = async (options: any) => {
+  // 新建订单：暂存文件，等保存成功后再上传
+  if (!form.orderId) {
+    pendingUploads.value.push({ file: options.file })
+    // 添加到显示列表
+    attachmentList.value.push({
+      name: options.file.name,
+      status: 'ready',
+      uid: options.file.uid,
+    })
+    options.onSuccess({ name: options.file.name, status: 'ready' })
+    return
+  }
+
+  // 编辑已有订单：立即上传
   const formData = new FormData()
   formData.append('file', options.file)
   formData.append('bizType', 'sales_order')
   formData.append('bizId', String(form.orderId))
   try {
-    const res = await request({
+    const res: any = await request({
       url: '/system/attachment/upload',
       method: 'post',
       data: formData,
@@ -581,6 +643,17 @@ const handleUploadSuccess = () => {}
 
 // 附件删除回调
 const handleUploadRemove = async (file: any) => {
+  // 新建订单的待上传文件：从暂存列表移除
+  if (!form.orderId) {
+    const idx = pendingUploads.value.findIndex(
+      (p) => p.file.name === file.name && (p.file as any).uid === (file as any).uid
+    )
+    if (idx !== -1) {
+      pendingUploads.value.splice(idx, 1)
+    }
+    return
+  }
+  // 已上传的文件：调用删除接口
   if (file.response) {
     try {
       await request({ url: '/system/attachment/' + file.response, method: 'delete' })
@@ -606,24 +679,117 @@ const beforeUpload = (file: File) => {
   return true
 }
 
+// 上传待处理的附件（订单保存后调用）
+const uploadPendingAttachments = async (orderId: number) => {
+  if (pendingUploads.value.length === 0) return
+
+  const uploadResults: boolean[] = []
+  for (const pending of pendingUploads.value) {
+    const formData = new FormData()
+    formData.append('file', pending.file)
+    formData.append('bizType', 'sales_order')
+    formData.append('bizId', String(orderId))
+    try {
+      await request({
+        url: '/system/attachment/upload',
+        method: 'post',
+        data: formData,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      uploadResults.push(true)
+    } catch (e: any) {
+      console.error('附件上传失败:', e)
+      uploadResults.push(false)
+    }
+  }
+
+  pendingUploads.value = []
+
+  const successCount = uploadResults.filter(Boolean).length
+  const failCount = uploadResults.length - successCount
+  if (failCount > 0) {
+    ElMessage.warning(`附件上传完成：${successCount}成功，${failCount}失败`)
+  } else if (successCount > 0) {
+    ElMessage.success(`附件上传完成（${successCount}个）`)
+  }
+}
+
 // 初始化
 onMounted(() => {
   resetForm()
   loadSalesPersons()
-  if (props.isEdit && props.orderId) {
-    loadOrderData(props.orderId)
-  } else if (!props.isEdit) {
+  if (!props.isEdit) {
     generateOrderNo()
   }
 })
 
-// 提交表单
+// 编辑模式：监听 orderId（父组件的 orderId 可能在 onMounted 之后才赋值）
+watch(
+  () => props.orderId,
+  (newId) => {
+    if (props.isEdit && newId) {
+      loadOrderData(newId)
+    }
+  },
+  { immediate: true }
+)
+
+// 提交表单（重写：保存订单后再上传附件）
 const submitForm = async (): Promise<boolean> => {
-  const success = await submitOrderForm()
-  if (success) {
-    emit('success')
+  if (props.isEdit) {
+    // 编辑模式：走原有逻辑（附件已直接上传）
+    const success = await submitOrderForm()
+    if (success) {
+      emit('success')
+    }
+    return success
   }
-  return success
+
+  // 新增模式：手动提交，获取新订单ID后上传附件
+  if (!orderFormRef.value) return false
+
+  // 先验证明细数量（独立于 element-plus 表单校验）
+  if (form.items.length === 0) {
+    ElMessage.warning('请至少添加一条订单明细')
+    return false
+  }
+
+  // 验证表单字段（使用 Promise 方式，校验失败会飘红）
+  try {
+    await orderFormRef.value.validate()
+  } catch {
+    // Element Plus 已自动将错误字段飘红
+    ElMessage.warning('请完善表单信息')
+    return false
+  }
+
+  // 构建提交数据
+  const submitData = {
+    ...form,
+    salesManagerId: form.salesPersonId!,
+    salesManagerName: form.salesPersonName,
+  }
+
+  try {
+    // 1. 保存订单，获取新订单ID
+    const orderResponse = await orderApi.addOrder(submitData as any)
+    if (orderResponse.code !== 200) {
+      ElMessage.error('新增订单失败')
+      return false
+    }
+    const newOrderId = orderResponse.data!
+
+    // 2. 上传待处理的附件
+    await uploadPendingAttachments(newOrderId)
+
+    ElMessage.success('新增成功')
+    emit('success')
+    return true
+  } catch (error) {
+    console.error('新增订单失败:', error)
+    ElMessage.error('新增订单失败')
+    return false
+  }
 }
 
 // 暴露给父组件的方法和属性
@@ -683,5 +849,14 @@ defineExpose({
 .borderless-textarea :deep(.el-textarea__inner:focus) {
   border: none;
   box-shadow: none;
+}
+
+/* 汇率提示文字 */
+.rate-hint {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 </style>

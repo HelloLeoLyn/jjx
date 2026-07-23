@@ -427,6 +427,44 @@ onMounted(() => {
   font-size: 12px;
 }
 
+.transition-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(2px);
+}
+
+.transition-content {
+  text-align: center;
+}
+
+.transition-spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 20px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.transition-text {
+  color: #fff;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .login-box {

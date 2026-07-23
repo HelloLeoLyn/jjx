@@ -34,7 +34,7 @@ export const orderApi = {
 
   /** 新增订单 */
   addOrder(data: SalesOrderAddDTO) {
-    return request.post<R<void>>('/sales/orders', data)
+    return request.post<R<number>>('/sales/orders', data)
   },
 
   /** 更新订单 */
@@ -271,5 +271,11 @@ export const orderApi = {
   /** 获取订单校验信息 */
   getOrderValidationInfo(orderId: number) {
     return request.get<R<OrderReferValidationVO>>(`/sales/orders/${orderId}/validation`)
+  },
+
+  // ==================== 汇率 ====================
+  /** 获取指定币种汇率（相对CNY） */
+  getExchangeRate(currency: string) {
+    return request.get<R<number>>('/system/exchange-rate/rate', { params: { currency } })
   },
 }

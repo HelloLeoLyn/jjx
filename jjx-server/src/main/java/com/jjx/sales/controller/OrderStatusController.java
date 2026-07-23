@@ -34,7 +34,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "提交审核")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:order:review")
+    @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/submissions")
     public Result<Void> submitReview(
             @Parameter(description = "订单ID", required = true)
@@ -108,7 +108,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "重新提交审核（驳回后）")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:order:review")
+    @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/resubmissions")
     public Result<Void> resubmit(
             @Parameter(description = "订单ID", required = true)
@@ -178,7 +178,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "客户确认订单")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:order:confirm")
+    @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/confirm")
     public Result<Void> confirmOrder(@PathVariable Long orderId,
                                      @RequestParam String confirmedBy) {

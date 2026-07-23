@@ -67,7 +67,7 @@ public class CustomerController extends BaseController {
      * 生成客户编码
      */
     @Operation(summary = "生成客户编码")
-    @SaCheckPermission("sales:customer:code")
+    @SaCheckPermission("sales:customer:add")
     @GetMapping("/generate-code")
     public Result<String> generateCustomerCode() {
         return Result.success(customerService.generateCustomerCode());
@@ -132,7 +132,7 @@ public class CustomerController extends BaseController {
      * 获取客户下拉列表
      */
     @Operation(summary = "获取客户下拉列表")
-    @SaCheckPermission("sales:customer:dropdown")
+    @SaCheckPermission("sales:customer:view")
     @GetMapping("/dropdown")
     public Result<List<SalesCustomer>> getCustomerDropdown() {
         return Result.success(customerService.selectCustomerDropdown());
@@ -143,7 +143,7 @@ public class CustomerController extends BaseController {
      */
     @Operation(summary = "变更客户状态")
     @Log(module = "客户管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:customer:status")
+    @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/status")
     public Result<Void> changeCustomerStatus(@PathVariable Long customerId, @RequestParam Integer status) {
         return toAjax(customerService.changeCustomerStatus(customerId, status));
@@ -154,7 +154,7 @@ public class CustomerController extends BaseController {
      */
     @Operation(summary = "批量审核客户")
     @Log(module = "客户管理", businessType = BusinessType.APPROVE)
-    @SaCheckPermission("sales:customer:approve")
+    @SaCheckPermission("sales:customer:edit")
     @PutMapping("/approve")
     public Result<Void> approveCustomers(@RequestBody Long[] customerIds) {
         return toAjax(customerService.approveCustomers(customerIds));
@@ -164,7 +164,7 @@ public class CustomerController extends BaseController {
      * 获取客户统计信息
      */
     @Operation(summary = "获取客户统计信息")
-    @SaCheckPermission("sales:customer:statistics")
+    @SaCheckPermission("sales:customer:view")
     @GetMapping("/statistics")
     public Result<Object> getCustomerStatistics() {
         return Result.success(customerService.getCustomerStatistics());
@@ -177,7 +177,7 @@ public class CustomerController extends BaseController {
      */
     @Operation(summary = "更新客户信用额度")
     @Log(module = "客户管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:customer:credit")
+    @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/credit")
     public Result<Void> updateCustomerCreditLimit(@PathVariable Long customerId, @RequestParam Double creditLimit) {
         return toAjax(customerService.updateCustomerCreditLimit(customerId, creditLimit));

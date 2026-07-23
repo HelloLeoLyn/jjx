@@ -46,7 +46,7 @@ public interface IOrderService {
      * @param order 销售订单
      * @return 结果
      */
-    boolean insertOrder(SalesOrderAddDTO order);
+    Long insertOrder(SalesOrderAddDTO order);
 
     /**
      * 修改销售订单

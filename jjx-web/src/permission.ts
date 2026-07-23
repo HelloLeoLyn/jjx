@@ -3,6 +3,10 @@ import router from './router'
 import { useUserStore } from '@/store/modules/user'
 import { usePermissionStore } from '@/store/modules/permission'
 import { ElMessage, ElLoading } from 'element-plus'
+import NProgress from 'nprogress'
+import 'nprogress/nprogress.css'
+
+NProgress.configure({ showSpinner: false })
 
 const whiteList = ['/login', '/404', '/401', '/redirect']
 
@@ -112,6 +116,7 @@ export function resetPermissionSystem(): void {
  * 路由守卫
  */
 router.beforeEach(async (to, from, next) => {
+  NProgress.start()
   const userStore = useUserStore()
   const permissionStore = usePermissionStore()
   const hasToken = !!userStore.token
@@ -169,6 +174,11 @@ router.beforeEach(async (to, from, next) => {
   }
 
   next()
+})
+
+// 路由完成后关闭进度条
+router.afterEach(() => {
+  NProgress.done()
 })
 
 // 路由错误处理

@@ -98,5 +98,6 @@ public class SalesOrderCalculator {
         // 5. 计算未付金额
         BigDecimal unpaidAmount = finalAmount.subtract(order.getPaidAmount());
         order.setUnpaidAmount(unpaidAmount.max(BigDecimal.ZERO));
+
     }
 }

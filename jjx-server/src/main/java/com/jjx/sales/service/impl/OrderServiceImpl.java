@@ -7,7 +7,10 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
 import com.jjx.framework.common.RedisSequenceService;
+import com.jjx.framework.common.controller.BaseController;
+import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ProductValidationVO;
+import com.jjx.product.mapper.ProductMapper;
 import com.jjx.sales.domain.converter.SalesOrderConverter;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesOrderEditDTO;
@@ -46,6 +49,7 @@ public class OrderServiceImpl implements IOrderService {
     private final SalesOrderConverter orderConverter;
     private final ISalesOrderProductService orderProductService;
     private final ICustomerService customerService;
+    private final ProductMapper productMapper;
 
     /**
      * 查询销售订单列表
@@ -94,7 +98,7 @@ public class OrderServiceImpl implements IOrderService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean insertOrder(SalesOrderAddDTO dto) {
+    public Long insertOrder(SalesOrderAddDTO dto) {
         // 自动生成订单编号（使用Redis）
 //        String orderNo = redisSequenceService.generateSalesOrderNumber();
 //        log.info("使用Redis生成订单编号：{}", orderNo);
@@ -112,8 +116,10 @@ public class OrderServiceImpl implements IOrderService {
         if(insert>0){
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType());
+            ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
-            return orderProductService.batchAdd(dto.getItems());
+            orderProductService.batchAdd(dto.getItems());
+            return entity.getOrderId();
         }
         throw new BusinessException(BusinessExceptionEnum.DB_INSERT_FAILED);
     }
@@ -136,6 +142,7 @@ public class OrderServiceImpl implements IOrderService {
         if(insert>0){
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType());
+            ensureProductIds(dto.getItems(), dto.getOrderType());
             return orderProductService.batchAdd(dto.getItems());
         }
         throw new BusinessException(BusinessExceptionEnum.DB_UPDATE_FAILED);
@@ -442,6 +449,53 @@ public class OrderServiceImpl implements IOrderService {
             if (!StringUtils.hasText(item.getProductName())) {
                 throw new BusinessException("第" + (i + 1) + "行产品：产品名称不能为空");
             }
+        }
+    }
+
+    /**
+     * 确保产品明细都有 productId
+     * 样品单中手动输入的产品编码，自动创建产品记录
+     */
+    private void ensureProductIds(List<SalesOrderProductDTO> items, Integer orderType) {
+        boolean isSample = Integer.valueOf(2).equals(orderType);
+        if (!isSample) {
+            // 标准单的 productId 由 validateOrderItems 保证不为空
+            return;
+        }
+
+        String currentUser = String.valueOf(cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong());
+
+        for (SalesOrderProductDTO item : items) {
+            if (item.getProductId() != null) {
+                continue;
+            }
+
+            // 按 productCode 查找是否已存在
+            if (StringUtils.hasText(item.getProductCode())) {
+                Product existing = productMapper.selectOne(
+                        new LambdaQueryWrapper<Product>()
+                                .eq(Product::getProductCode, item.getProductCode().trim())
+                );
+                if (existing != null) {
+                    item.setProductId(existing.getProductId());
+                    continue;
+                }
+            }
+
+            // 不存在则创建新产品
+            Product newProduct = new Product();
+            newProduct.setProductCode(item.getProductCode());
+            newProduct.setProductName(item.getProductName());
+            newProduct.setUnit(item.getUnit());
+            newProduct.setSpecJson("{\"specification\":\"" + (item.getSpecification() != null ? item.getSpecification() : "") + "\"}");
+            newProduct.setProductStatus(1); // 已发布
+            newProduct.setCreateBy(currentUser);
+            newProduct.setUpdateBy(currentUser);
+            productMapper.insert(newProduct);
+            item.setProductId(newProduct.getProductId());
+
+            log.info("样品单自动创建产品: code={}, name={}, productId={}",
+                    newProduct.getProductCode(), newProduct.getProductName(), newProduct.getProductId());
         }
     }
 
