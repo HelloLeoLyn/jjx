@@ -15,6 +15,10 @@ import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.domain.entity.ProductionOrder;
+import com.jjx.purchase.mapper.PurchaseOrderMapper;
+import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
+import com.jjx.purchase.domain.entity.PurchaseOrder;
+import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.inventory.enums.OrderStatusEnum;
 import com.jjx.inventory.mapper.InventoryInboundItemMapper;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
@@ -49,6 +53,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
     private final ProductionOrderMapper productionOrderMapper;
+    private final PurchaseOrderMapper purchaseOrderMapper;
+    private final PurchaseOrderItemMapper purchaseOrderItemMapper;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -326,10 +332,76 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createFromPurchase(Long purchaseOrderId) {
-        // TODO: 实现从采购订单创建入库单
         log.info("从采购订单创建入库单: purchaseOrderId={}", purchaseOrderId);
-        return 1L;
+
+        // 1. 查询采购订单
+        PurchaseOrder po = purchaseOrderMapper.selectById(purchaseOrderId);
+        if (po == null) {
+            throw new BusinessException("采购订单不存在: " + purchaseOrderId);
+        }
+
+        // 2. 检查是否已生成入库单
+        String inboundNo = "PO-" + po.getOrderNo();
+        LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getInboundNo, inboundNo);
+        if (inboundOrderMapper.selectCount(existCheck) > 0) {
+            log.warn("采购订单{}的入库单已存在", purchaseOrderId);
+            return null;
+        }
+
+        // 3. 查询采购订单明细
+        List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectItemsByOrderId(purchaseOrderId);
+        if (items.isEmpty()) {
+            throw new BusinessException("采购订单无物料明细");
+        }
+
+        // 4. 创建入库单
+        InventoryInboundOrder order = new InventoryInboundOrder();
+        order.setInboundNo(inboundNo);
+        order.setInboundType("PURCHASE");
+        order.setSourceType("PURCHASE");
+        order.setSourceId(purchaseOrderId);
+        order.setSourceNo(po.getOrderNo());
+        order.setWarehouseId(1L); // 默认仓库
+        order.setOrderStatus("draft");
+        inboundOrderMapper.insert(order);
+
+        // 5. 创建入库单明细
+        int sort = 1;
+        for (PurchaseOrderItem item : items) {
+            if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            BigDecimal receiveQty = item.getQuantity(); // 按采购数量入库
+            if (item.getReceivedQuantity() != null) {
+                receiveQty = receiveQty.subtract(item.getReceivedQuantity());
+            }
+            if (receiveQty.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            InventoryInboundItem inboundItem = new InventoryInboundItem();
+            inboundItem.setInboundId(order.getInboundId());
+            inboundItem.setMaterialId(item.getMaterialId());
+            inboundItem.setMaterialCode(item.getMaterialCode());
+            inboundItem.setMaterialName(item.getMaterialName());
+            inboundItem.setQuantity(receiveQty);
+            inboundItem.setUnitPrice(item.getUnitPrice());
+            inboundItem.setAmount(item.getAmount());
+            inboundItem.setBatchNo("PO-" + po.getOrderNo() + "-" + sort);
+            inboundItem.setSortOrder(sort++);
+            inboundItemMapper.insert(inboundItem);
+
+            // 更新采购订单已收数量
+            purchaseOrderItemMapper.updateReceivedQuantity(item.getItemId(), receiveQty);
+        }
+
+        // 6. 提交审批并自动审批
+        order.setOrderStatus("pending_approval");
+        inboundOrderMapper.updateById(order);
+        approve(order.getInboundId(), null, null, "采购到货入库");
+
+        log.info("采购入库完成: purchaseOrderId={}, inboundId={}", purchaseOrderId, order.getInboundId());
+        return order.getInboundId();
     }
 
     @Override

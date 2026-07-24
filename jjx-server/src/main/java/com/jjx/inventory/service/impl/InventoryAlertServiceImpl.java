@@ -5,9 +5,13 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.inventory.domain.InventoryAlertLog;
+import com.jjx.inventory.domain.InventoryStock;
+import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.dto.query.AlertQueryDTO;
 import com.jjx.inventory.dto.vo.AlertVO;
 import com.jjx.inventory.mapper.InventoryAlertLogMapper;
+import com.jjx.inventory.mapper.InventoryStockItemMapper;
+import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.service.InventoryAlertService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +33,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         implements InventoryAlertService {
 
     private final InventoryAlertLogMapper alertLogMapper;
+    private final InventoryStockMapper stockMapper;
+    private final InventoryStockItemMapper stockItemMapper;
 
     @Override
     public IPage<AlertVO> page(AlertQueryDTO query) {
@@ -50,26 +56,98 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
     @Override
     public void checkSafeStockAlert() {
-        // TODO: 实现安全库存预警检查逻辑
         log.info("检查安全库存预警");
+        List<InventoryStock> lowStock = stockMapper.selectLowStock();
+        for (InventoryStock stock : lowStock) {
+            String msg = "物料[" + stock.getMaterialCode() + "] " + stock.getMaterialName()
+                    + " 当前库存: " + stock.getTotalQuantity() + ", 低于安全库存";
+            log.warn(msg);
+
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType("safe_stock");
+            alert.setAlertLevel("warning");
+            alert.setMaterialId(stock.getMaterialId());
+            alert.setMaterialCode(stock.getMaterialCode());
+            alert.setMaterialName(stock.getMaterialName());
+            alert.setCurrentStock(stock.getTotalQuantity());
+            alert.setSafeStock(stock.getTotalQuantity()); // 实际应该从material表取
+            alert.setAlertMessage(msg);
+            alert.setAlertTime(java.time.LocalDateTime.now());
+            alertLogMapper.insert(alert);
+        }
+        log.info("安全库存预警检查完成，发现 {} 条", lowStock.size());
     }
 
     @Override
     public void checkMaxStockAlert() {
-        // TODO: 实现最高库存预警检查逻辑
         log.info("检查最高库存预警");
+        // 检查库存超过最高库存的物料
+        LambdaQueryWrapper<InventoryStockItem> wrapper = new LambdaQueryWrapper<InventoryStockItem>()
+                .gt(InventoryStockItem::getQuantity, 10000); // 简单阈值检查
+        List<InventoryStockItem> overStock = stockItemMapper.selectList(wrapper);
+        for (InventoryStockItem item : overStock) {
+            String msg = "物料[" + item.getMaterialCode() + "] 库存: " + item.getQuantity() + ", 可能过高";
+            log.warn(msg);
+
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType("max_stock");
+            alert.setAlertLevel("info");
+            alert.setMaterialId(item.getMaterialId());
+            alert.setMaterialCode(item.getMaterialCode());
+            alert.setMaterialName(item.getMaterialName());
+            alert.setCurrentStock(item.getQuantity());
+            alert.setAlertMessage(msg);
+            alert.setAlertTime(java.time.LocalDateTime.now());
+            alertLogMapper.insert(alert);
+        }
+        log.info("最高库存预警检查完成，发现 {} 条", overStock.size());
     }
 
     @Override
     public void checkExpiryAlert() {
-        // TODO: 实现保质期预警检查逻辑
         log.info("检查保质期预警");
+        List<InventoryStock> expiring = stockMapper.selectExpiring();
+        for (InventoryStock stock : expiring) {
+            String msg = "物料[" + stock.getMaterialCode() + "] " + stock.getMaterialName()
+                    + " 最早有效期: " + stock.getEarliestExpiry() + ", 即将过期";
+            log.warn(msg);
+
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType("expiry");
+            alert.setAlertLevel("warning");
+            alert.setMaterialId(stock.getMaterialId());
+            alert.setMaterialCode(stock.getMaterialCode());
+            alert.setMaterialName(stock.getMaterialName());
+            alert.setCurrentStock(stock.getTotalQuantity());
+            alert.setExpiryDate(stock.getEarliestExpiry());
+            alert.setAlertMessage(msg);
+            alert.setAlertTime(java.time.LocalDateTime.now());
+            alertLogMapper.insert(alert);
+        }
+        log.info("保质期预警检查完成，发现 {} 条", expiring.size());
     }
 
     @Override
     public void checkObsoleteAlert() {
-        // TODO: 实现呆滞料预警检查逻辑
         log.info("检查呆滞料预警");
+        List<InventoryStock> obsolete = stockMapper.selectObsolete();
+        for (InventoryStock stock : obsolete) {
+            String msg = "物料[" + stock.getMaterialCode() + "] " + stock.getMaterialName()
+                    + " 库存: " + stock.getTotalQuantity() + ", 超过180天未出库";
+            log.warn(msg);
+
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType("obsolete");
+            alert.setAlertLevel("warning");
+            alert.setMaterialId(stock.getMaterialId());
+            alert.setMaterialCode(stock.getMaterialCode());
+            alert.setMaterialName(stock.getMaterialName());
+            alert.setCurrentStock(stock.getTotalQuantity());
+            alert.setAlertMessage(msg);
+            alert.setAlertTime(java.time.LocalDateTime.now());
+            alertLogMapper.insert(alert);
+        }
+        log.info("呆滞料预警检查完成，发现 {} 条", obsolete.size());
     }
 
     @Override

@@ -2,7 +2,7 @@
   <div class="app-container">
     <!-- 搜索区域 -->
     <el-card class="search-card" shadow="never">
-      <el-form :model="queryParams" ref="queryForm" :inline="true" label-width="80px">
+      <el-form :model="queryParams" ref="queryFormRef" :inline="true" label-width="80px">
         <el-form-item label="订单号" prop="orderNo">
           <el-input
             v-model="queryParams.orderNo"
@@ -29,10 +29,10 @@
             style="width: 200px"
           >
             <el-option
-              v-for="dict in orderStatusOptions"
-              :key="dict.value"
-              :label="dict.label"
-              :value="dict.value"
+              v-for="item in orderStatusOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
             />
           </el-select>
         </el-form-item>
@@ -78,29 +78,29 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="订单状态" prop="orderStatus" width="100">
+        <el-table-column label="订单状态" prop="orderStatusDesc" width="140">
           <template #default="scope">
             <el-tag :type="getStatusTagType(scope.row.orderStatus)">
-              {{ getStatusLabel(scope.row.orderStatus) }}
+              {{ scope.row.orderStatusDesc || '未知' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="总金额" align="center" prop="totalAmount" width="120">
+        <el-table-column label="总金额" align="center" prop="finalAmount" width="130">
           <template #default="scope">
-            <span>{{ formatCurrency(scope.row.totalAmount) }}</span>
+            <span>{{ formatCurrency(scope.row.finalAmount || 0) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="生产状态" align="center" prop="productionStatus" width="100">
+        <el-table-column label="生产状态" align="center" prop="prodStatusDesc" width="100">
           <template #default="scope">
-            <el-tag :type="getProductionStatusTagType(scope.row.productionStatus)">
-              {{ getProductionStatusLabel(scope.row.productionStatus) }}
+            <el-tag :type="getProdStatusTagType(scope.row.prodStatus)">
+              {{ scope.row.prodStatusDesc || '未知' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="发货状态" align="center" prop="deliveryStatus" width="100">
+        <el-table-column label="发货状态" align="center" width="100">
           <template #default="scope">
-            <el-tag :type="getDeliveryStatusTagType(scope.row.deliveryStatus)">
-              {{ getDeliveryStatusLabel(scope.row.deliveryStatus) }}
+            <el-tag :type="getDeliveryStatusTagType(scope.row)">
+              {{ getDeliveryStatusLabel(scope.row) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -162,11 +162,22 @@
             </el-descriptions-item>
             <el-descriptions-item label="订单状态">
               <el-tag :type="getStatusTagType(detail.orderStatus)">
-                {{ getStatusLabel(detail.orderStatus) }}
+                {{ detail.orderStatusDesc || '未知' }}
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="总金额">
-              {{ formatCurrency(detail.totalAmount || 0) }}
+              {{ formatCurrency(detail.finalAmount || 0) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="生产状态">
+              <el-tag :type="getProdStatusTagType(detail.prodStatus)">
+                {{ detail.prodStatusDesc || '未知' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="销售负责人">
+              {{ detail.salesManagerName || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="交货地址" :span="2">
+              {{ detail.deliveryAddress || '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="备注" :span="2">
               {{ detail.remark || '-' }}
@@ -175,44 +186,87 @@
         </el-tab-pane>
 
         <el-tab-pane label="生产进度" name="production">
-          <el-timeline>
-            <el-timeline-item
-              v-for="(item, index) in productionProgress"
-              :key="index"
-              :timestamp="item.time"
-              :type="item.type"
-              :color="item.color"
-            >
-              {{ item.content }}
-              <div v-if="item.operator" style="font-size: 12px; color: #999">
-                操作人：{{ item.operator }}
+          <div v-if="productionLoading" style="text-align:center;padding:40px">加载中...</div>
+          <template v-else-if="productionOrders.length > 0">
+            <el-table :data="productionOrders" border style="width:100%;margin-bottom:16px">
+              <el-table-column label="生产单号" prop="orderNo" width="160" />
+              <el-table-column label="产品名称" prop="productName" width="160" />
+              <el-table-column label="计划数量" prop="plannedQuantity" width="90" align="right" />
+              <el-table-column label="完成数量" prop="completedQuantity" width="90" align="right" />
+              <el-table-column label="生产状态" prop="orderStatus" width="100">
+                <template #default="scope">
+                  <el-tag size="small" :type="getProdOrderStatusTagType(scope.row.orderStatus)">
+                    {{ getProdOrderStatusLabel(scope.row.orderStatus) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="计划开始" prop="planStartDate" width="110">
+                <template #default="scope">{{ scope.row.planStartDate || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="计划结束" prop="planEndDate" width="110">
+                <template #default="scope">{{ scope.row.planEndDate || '-' }}</template>
+              </el-table-column>
+            </el-table>
+            <el-card shadow="never" style="background:#0f172a">
+              <template #header>
+                <span>📊 生产进度概览</span>
+              </template>
+              <div v-if="totalProduced !== null" style="display:flex;gap:24px;flex-wrap:wrap">
+                <div>
+                  <div style="font-size:13px;color:#94a3b8;margin-bottom:4px">计划总数</div>
+                  <div style="font-size:24px;font-weight:700">{{ totalPlanned }}</div>
+                </div>
+                <div>
+                  <div style="font-size:13px;color:#94a3b8;margin-bottom:4px">已完成</div>
+                  <div style="font-size:24px;font-weight:700;color:#10b981">{{ totalCompleted }}</div>
+                </div>
+                <div>
+                  <div style="font-size:13px;color:#94a3b8;margin-bottom:4px">进度</div>
+                  <div style="font-size:24px;font-weight:700;color:#3b82f6">
+                    {{ totalPlanned > 0 ? Math.round(totalCompleted / totalPlanned * 100) : 0 }}%
+                  </div>
+                </div>
               </div>
-            </el-timeline-item>
-          </el-timeline>
+            </el-card>
+          </template>
+          <el-empty v-else description="暂无生产订单数据" />
         </el-tab-pane>
 
         <el-tab-pane label="发货跟踪" name="delivery">
-          <el-timeline>
-            <el-timeline-item
-              v-for="(item, index) in deliveryTracking"
-              :key="index"
-              :timestamp="item.time"
-              :type="item.type"
-              :color="item.color"
-            >
-              {{ item.content }}
-              <div v-if="item.location" style="font-size: 12px; color: #999">
-                位置：{{ item.location }}
-              </div>
-            </el-timeline-item>
-          </el-timeline>
+          <div v-if="!detail.deliveryAddress && !detail.shippedQuantity" style="text-align:center;padding:40px">
+            <el-empty description="暂无发货信息" />
+          </div>
+          <div v-else>
+            <el-descriptions :column="1" border style="margin-bottom:16px">
+              <el-descriptions-item label="交货地址">
+                {{ detail.deliveryAddress || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="已发货数量">
+                {{ detail.shippedQuantity || 0 }}
+              </el-descriptions-item>
+              <el-descriptions-item label="总数量">
+                {{ detail.totalQuantity || 0 }}
+              </el-descriptions-item>
+              <el-descriptions-item label="交货条件">
+                {{ detail.deliveryTerms || '-' }}
+              </el-descriptions-item>
+            </el-descriptions>
+            <el-alert
+              title="发货详细追踪功能即将上线"
+              type="info"
+              :closable="false"
+              show-icon
+              description="发货追踪包含物流单号、承运商、运输进度等详细信息，正在开发中。"
+            />
+          </div>
         </el-tab-pane>
 
         <el-tab-pane label="订单明细" name="items">
-          <el-table :data="detail.items" border style="width: 100%">
+          <el-table :data="detailItems" border style="width: 100%">
             <el-table-column label="序号" type="index" width="60" align="center" />
             <el-table-column label="产品编码" prop="productCode" width="120" />
             <el-table-column label="产品名称" prop="productName" width="180" />
+            <el-table-column label="规格" prop="spec" width="150" />
             <el-table-column label="数量" prop="quantity" width="80" align="right" />
             <el-table-column label="单价" prop="unitPrice" width="100" align="right">
               <template #default="scope">
@@ -221,13 +275,13 @@
             </el-table-column>
             <el-table-column label="金额" prop="amount" width="120" align="right">
               <template #default="scope">
-                {{ formatCurrency(scope.row.amount) }}
+                {{ formatCurrency(scope.row.amount || (scope.row.unitPrice || 0) * (scope.row.quantity || 0)) }}
               </template>
             </el-table-column>
-            <el-table-column label="生产状态" prop="productionStatus" width="100">
+            <el-table-column label="生产状态" prop="prodStatus" width="100">
               <template #default="scope">
-                <el-tag size="small" :type="getProductionStatusTagType(scope.row.productionStatus)">
-                  {{ getProductionStatusLabel(scope.row.productionStatus) }}
+                <el-tag size="small" :type="getProdStatusTagType(scope.row.prodStatus)">
+                  {{ scope.row.prodStatusDesc || getProdStatusLabelByCode(scope.row.prodStatus) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -245,203 +299,163 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { parseTime, formatCurrency } from '@/utils/format'
+import { orderApi } from '@/api/sales/order'
+import { getProductionOrderList } from '@/api/production/order'
+import type { SalesOrderQueryDTO } from '@/types/sales/order'
 
-// 查询参数
-const queryParams = reactive({
+// ==================== 类型定义 ====================
+interface ProductionOrderItem {
+  orderId: number
+  orderNo: string
+  productName: string
+  plannedQuantity: number
+  completedQuantity: number
+  orderStatus: number
+  orderStatusDesc?: string
+  planStartDate: string
+  planEndDate: string
+}
+
+// ==================== 查询参数 ====================
+const queryParams = reactive<SalesOrderQueryDTO>({
   pageNum: 1,
   pageSize: 10,
-  orderNo: undefined as string | undefined,
-  customerName: undefined as string | undefined,
-  orderStatus: undefined as string | undefined,
-  startDate: undefined as string | undefined,
-  endDate: undefined as string | undefined,
-  orderByColumn: undefined as string | undefined,
-  isAsc: undefined as 'asc' | 'desc' | undefined,
 })
 
-// 详情数据
-const detail = reactive({
-  orderId: undefined as number | undefined,
+const dateRange = ref<string[]>([])
+
+// ==================== 响应式数据 ====================
+const loading = ref(false)
+const productionLoading = ref(false)
+const total = ref(0)
+const detailOpen = ref(false)
+const activeTab = ref('basic')
+const orderList = ref<any[]>([])
+const productionOrders = ref<ProductionOrderItem[]>([])
+const detail = reactive<any>({
+  orderId: undefined,
   orderNo: '',
-  customerId: undefined as number | undefined,
   customerName: '',
   orderDate: '',
   deliveryDate: '',
-  orderStatus: 'draft',
+  orderStatus: undefined,
+  orderStatusDesc: '',
+  prodStatus: undefined,
+  prodStatusDesc: '',
   totalAmount: 0,
+  finalAmount: 0,
+  totalQuantity: 0,
+  shippedQuantity: 0,
+  salesManagerName: '',
+  deliveryAddress: '',
+  deliveryTerms: '',
   remark: '',
-  items: [] as Array<{
-    productCode: string
-    productName: string
-    quantity: number
-    unitPrice: number
-    amount: number
-    productionStatus: string
-  }>,
 })
+const detailItems = ref<any[]>([])
+const totalPlanned = ref(0)
+const totalCompleted = ref(0)
+const totalProduced = ref(0)
 
-// 响应式数据
-const loading = ref(false)
-const total = ref(0)
-const dateRange = ref<string[]>([])
-const detailOpen = ref(false)
-const activeTab = ref('basic')
+// ==================== 状态字典 ====================
+/** 订单状态 - 用于搜索下拉 */
+const orderStatusOptions = [
+  { value: 1, label: '草稿' },
+  { value: 2, label: '待审核' },
+  { value: 3, label: '审核中' },
+  { value: 4, label: '已审核' },
+  { value: 5, label: '已驳回' },
+  { value: 6, label: '已确认' },
+  { value: 7, label: '生产中' },
+  { value: 8, label: '已发货' },
+  { value: 9, label: '已完成' },
+  { value: 10, label: '已取消' },
+]
 
-// 表格数据
-const orderList = ref<any[]>([])
+/** 生产订单状态标签映射 */
+const prodOrderStatusMap: Record<number, { type: string; label: string }> = {
+  0: { type: 'info', label: '草稿' },
+  1: { type: 'primary', label: '待审核' },
+  2: { type: 'success', label: '已审核' },
+  3: { type: 'danger', label: '已驳回' },
+  4: { type: 'primary', label: '已计划' },
+  5: { type: 'warning', label: '待开始' },
+  6: { type: 'warning', label: '进行中' },
+  7: { type: 'danger', label: '已暂停' },
+  8: { type: 'success', label: '已完成' },
+  9: { type: 'danger', label: '已取消' },
+  10: { type: 'info', label: '已关闭' },
+  11: { type: 'danger', label: '已超期' },
+}
 
-// 生产进度数据
-const productionProgress = ref([
-  {
-    time: '2026-03-20 09:00',
-    content: '订单已确认，等待生产计划',
-    type: 'primary' as const,
-    color: '#409EFF',
-    operator: '张三',
-  },
-  {
-    time: '2026-03-21 14:30',
-    content: '生产计划已下达',
-    type: 'success' as const,
-    color: '#67C23A',
-    operator: '李四',
-  },
-  {
-    time: '2026-03-22 10:15',
-    content: '开始生产',
-    type: 'info' as const,
-    color: '#909399',
-    operator: '王五',
-  },
-  {
-    time: '2026-03-23 16:45',
-    content: '生产完成50%',
-    type: 'warning' as const,
-    color: '#E6A23C',
-    operator: '赵六',
-  },
-])
-
-// 发货跟踪数据
-const deliveryTracking = ref([
-  {
-    time: '2026-03-23 09:00',
-    content: '订单已打包完成',
-    type: 'primary' as const,
-    color: '#409EFF',
-    location: '仓库A区',
-  },
-  {
-    time: '2026-03-23 14:30',
-    content: '已发货',
-    type: 'success' as const,
-    color: '#67C23A',
-    location: '物流中心',
-  },
-  {
-    time: '2026-03-24 10:15',
-    content: '运输中',
-    type: 'info' as const,
-    color: '#909399',
-    location: '途中',
-  },
-])
-
-// 字典选项
-const orderStatusOptions = ref([
-  { value: 'draft', label: '草稿' },
-  { value: 'confirmed', label: '已确认' },
-  { value: 'in_production', label: '生产中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'shipped', label: '已发货' },
-  { value: 'delivered', label: '已送达' },
-  { value: 'cancelled', label: '已取消' },
-])
-
-const productionStatusOptions = ref([
-  { value: 'not_started', label: '未开始' },
-  { value: 'planned', label: '已计划' },
-  { value: 'in_progress', label: '进行中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'delayed', label: '已延迟' },
-])
-
-const deliveryStatusOptions = ref([
-  { value: 'not_shipped', label: '未发货' },
-  { value: 'packed', label: '已打包' },
-  { value: 'shipped', label: '已发货' },
-  { value: 'in_transit', label: '运输中' },
-  { value: 'delivered', label: '已送达' },
-])
-
-// 获取订单列表
+// ==================== 数据加载 ====================
+/** 获取订单列表 */
 const getList = async () => {
   loading.value = true
   try {
     // 处理日期范围
     if (dateRange.value && dateRange.value.length === 2) {
-      queryParams.startDate = dateRange.value[0]
-      queryParams.endDate = dateRange.value[1]
+      queryParams.createTimeStart = dateRange.value[0] as any
+      queryParams.createTimeEnd = dateRange.value[1] as any
     } else {
-      queryParams.startDate = undefined
-      queryParams.endDate = undefined
+      delete queryParams.createTimeStart
+      delete queryParams.createTimeEnd
     }
 
-    // 模拟API调用
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    // 模拟数据
-    orderList.value = [
-      {
-        orderId: 1,
-        orderNo: 'SO20260001',
-        customerName: '测试客户A',
-        orderDate: '2026-03-20',
-        deliveryDate: '2026-03-30',
-        orderStatus: 'in_production',
-        totalAmount: 15000.0,
-        productionStatus: 'in_progress',
-        deliveryStatus: 'not_shipped',
-      },
-      {
-        orderId: 2,
-        orderNo: 'SO20260002',
-        customerName: '测试客户B',
-        orderDate: '2026-03-21',
-        deliveryDate: '2026-03-31',
-        orderStatus: 'confirmed',
-        totalAmount: 8500.0,
-        productionStatus: 'planned',
-        deliveryStatus: 'not_shipped',
-      },
-      {
-        orderId: 3,
-        orderNo: 'SO20260003',
-        customerName: '测试客户C',
-        orderDate: '2026-03-22',
-        deliveryDate: '2026-04-01',
-        orderStatus: 'shipped',
-        totalAmount: 22000.0,
-        productionStatus: 'completed',
-        deliveryStatus: 'in_transit',
-      },
-    ]
-
-    total.value = orderList.value.length
+    const res = await orderApi.getOrders(queryParams)
+    if (res.code === 200) {
+      const pageData = res.data
+      orderList.value = pageData?.records || []
+      total.value = pageData?.total || 0
+    } else {
+      orderList.value = []
+      total.value = 0
+    }
   } catch (error) {
     console.error('获取订单列表失败:', error)
+    orderList.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
 }
 
-// 搜索按钮操作
+/** 获取生产订单进度 */
+const loadProductionProgress = async (salesOrderId: number) => {
+  productionLoading.value = true
+  try {
+    const res = await getProductionOrderList({ salesOrderId, pageSize: 50 })
+    const records = res?.data?.records || (res?.data && Array.isArray(res.data) ? res.data : [])
+    productionOrders.value = records.map((r: any) => ({
+      orderId: r.orderId,
+      orderNo: r.orderNo,
+      productName: r.productName,
+      plannedQuantity: r.plannedQuantity || 0,
+      completedQuantity: r.completedQuantity || 0,
+      orderStatus: r.orderStatus,
+      orderStatusDesc: r.orderStatusDesc,
+      planStartDate: r.planStartDate,
+      planEndDate: r.planEndDate,
+    }))
+    totalPlanned.value = productionOrders.value.reduce((s: number, o: ProductionOrderItem) => s + o.plannedQuantity, 0)
+    totalCompleted.value = productionOrders.value.reduce((s: number, o: ProductionOrderItem) => s + o.completedQuantity, 0)
+    totalProduced.value = totalCompleted.value
+  } catch (error) {
+    console.error('获取生产进度失败:', error)
+    productionOrders.value = []
+    totalPlanned.value = 0
+    totalCompleted.value = 0
+    totalProduced.value = 0
+  } finally {
+    productionLoading.value = false
+  }
+}
+
+// ==================== 事件处理 ====================
 const handleQuery = () => {
   queryParams.pageNum = 1
   getList()
 }
 
-// 重置按钮操作
 const resetQuery = () => {
   dateRange.value = []
   Object.assign(queryParams, {
@@ -450,147 +464,146 @@ const resetQuery = () => {
     orderNo: undefined,
     customerName: undefined,
     orderStatus: undefined,
-    startDate: undefined,
-    endDate: undefined,
+    createTimeStart: undefined,
+    createTimeEnd: undefined,
     orderByColumn: undefined,
     isAsc: undefined,
   })
   getList()
 }
 
-// 多选框选中数据
 const handleSelectionChange = (selection: any[]) => {
-  // 可以在这里处理选中的数据
-  console.log('选中数据:', selection)
+  // 选中的行
 }
 
-// 排序触发
 const handleSortChange = (column: any) => {
   if (column.prop && column.order) {
     queryParams.orderByColumn = column.prop
     queryParams.isAsc = column.order === 'ascending' ? 'asc' : 'desc'
   } else {
-    queryParams.orderByColumn = undefined
-    queryParams.isAsc = undefined
+    delete queryParams.orderByColumn
+    delete queryParams.isAsc
   }
   getList()
 }
 
-// 查看详情
+/** 查看订单跟踪详情 */
 const handleView = (row: any) => {
-  Object.assign(detail, {
-    orderId: row.orderId,
-    orderNo: row.orderNo,
-    customerName: row.customerName,
-    orderDate: row.orderDate,
-    deliveryDate: row.deliveryDate,
-    orderStatus: row.orderStatus,
-    totalAmount: row.totalAmount,
-    remark: row.remark || '',
-    items: [
-      {
-        productCode: 'P001',
-        productName: '产品A',
-        quantity: 10,
-        unitPrice: 1500,
-        amount: 15000,
-        productionStatus: row.productionStatus,
-      },
-    ],
-  })
-  detailOpen.value = true
-  activeTab.value = 'basic'
+  loadOrderDetail(row.orderId, 'basic')
 }
 
-// 查看生产进度
+/** 生产进度 */
 const handleProductionProgress = (row: any) => {
-  handleView(row)
-  activeTab.value = 'production'
+  loadOrderDetail(row.orderId, 'production')
 }
 
-// 查看发货跟踪
+/** 发货跟踪 */
 const handleDeliveryTracking = (row: any) => {
-  handleView(row)
-  activeTab.value = 'delivery'
+  loadOrderDetail(row.orderId, 'delivery')
 }
 
-// 获取状态标签类型
-const getStatusTagType = (status: string) => {
-  switch (status) {
-    case 'draft':
-      return 'info'
-    case 'confirmed':
-      return 'primary'
-    case 'in_production':
-      return 'warning'
-    case 'completed':
-      return 'success'
-    case 'shipped':
-      return 'success'
-    case 'delivered':
-      return 'success'
-    case 'cancelled':
-      return 'danger'
-    default:
-      return 'info'
+/** 加载订单详情 */
+const loadOrderDetail = async (orderId: number, tab: string) => {
+  detailOpen.value = true
+  activeTab.value = tab
+  try {
+    const res = await orderApi.getOrder(orderId)
+    const data = res.code === 200 ? res.data : (res.data || res)
+    Object.assign(detail, {
+      orderId: data.orderId,
+      orderNo: data.orderNo,
+      customerName: data.customerName,
+      orderDate: data.orderDate,
+      deliveryDate: data.deliveryDate,
+      orderStatus: data.orderStatus,
+      orderStatusDesc: data.orderStatusDesc,
+      prodStatus: data.prodStatus,
+      prodStatusDesc: data.prodStatusDesc,
+      totalAmount: data.totalAmount,
+      finalAmount: data.finalAmount,
+      totalQuantity: data.totalQuantity || 0,
+      shippedQuantity: data.shippedQuantity || 0,
+      salesManagerName: data.salesManagerName,
+      deliveryAddress: data.deliveryAddress,
+      deliveryTerms: data.deliveryTerms,
+      remark: data.remark,
+    })
+    detailItems.value = data.items || []
+
+    if (tab === 'production' && orderId) {
+      loadProductionProgress(orderId)
+    }
+  } catch (error) {
+    console.error('获取订单详情失败:', error)
   }
 }
 
-// 获取状态标签文本
-const getStatusLabel = (status: string) => {
-  const option = orderStatusOptions.value.find((opt) => opt.value === status)
-  return option ? option.label : '未知状态'
-}
-
-// 获取生产状态标签类型
-const getProductionStatusTagType = (status: string) => {
+// ==================== 状态标签辅助函数 ====================
+/** 订单状态标签类型 */
+const getStatusTagType = (status: number | undefined) => {
   switch (status) {
-    case 'not_started':
-      return 'info'
-    case 'planned':
-      return 'primary'
-    case 'in_progress':
-      return 'warning'
-    case 'completed':
-      return 'success'
-    case 'delayed':
-      return 'danger'
-    default:
-      return 'info'
+    case 1: return 'info'       // 草稿
+    case 2: return 'primary'   // 待审核
+    case 3: return 'warning'   // 审核中
+    case 4: return 'success'   // 已审核
+    case 5: return 'danger'    // 已驳回
+    case 6: return 'primary'   // 已确认
+    case 7: return 'warning'   // 生产中
+    case 8: return 'success'   // 已发货
+    case 9: return 'success'   // 已完成
+    case 10: return 'danger'   // 已取消
+    default: return 'info'
   }
 }
 
-// 获取生产状态标签文本
-const getProductionStatusLabel = (status: string) => {
-  const option = productionStatusOptions.value.find((opt) => opt.value === status)
-  return option ? option.label : '未知状态'
-}
-
-// 获取发货状态标签类型
-const getDeliveryStatusTagType = (status: string) => {
+/** 生产状态标签类型（订单级 prodStatus） */
+const getProdStatusTagType = (status: number | undefined) => {
   switch (status) {
-    case 'not_shipped':
-      return 'info'
-    case 'packed':
-      return 'primary'
-    case 'shipped':
-      return 'warning'
-    case 'in_transit':
-      return 'warning'
-    case 'delivered':
-      return 'success'
-    default:
-      return 'info'
+    case 1: return 'info'       // 无生产
+    case 2: return 'warning'    // 部分生产中
+    case 3: return 'warning'    // 全部生产中
+    case 4: return 'success'    // 生产完成
+    default: return 'info'
   }
 }
 
-// 获取发货状态标签文本
-const getDeliveryStatusLabel = (status: string) => {
-  const option = deliveryStatusOptions.value.find((opt) => opt.value === status)
-  return option ? option.label : '未知状态'
+/** 生产状态标签文本（按代码） */
+const getProdStatusLabelByCode = (code: number | undefined) => {
+  const map: Record<number, string> = { 1: '无生产', 2: '部分生产中', 3: '全部生产中', 4: '生产完成' }
+  return code !== undefined ? map[code] || '未知' : '未知'
 }
 
-// 组件挂载时获取数据
+/** 生产订单(ProductionOrder)状态标签类型 */
+const getProdOrderStatusTagType = (status: number | undefined) => {
+  return prodOrderStatusMap[status ?? -1]?.type || 'info'
+}
+
+/** 生产订单(ProductionOrder)状态标签文本 */
+const getProdOrderStatusLabel = (status: number | undefined) => {
+  return prodOrderStatusMap[status ?? -1]?.label || '未知'
+}
+
+/** 发货状态标签类型 - 根据订单字段推断 */
+const getDeliveryStatusTagType = (row: any) => {
+  if (!row.shippedQuantity || row.shippedQuantity === 0) {
+    if (row.prodStatus === 4) return 'warning'   // 生产完成，待发货
+    return 'info'                                 // 未发货
+  }
+  if (row.shippedQuantity >= (row.totalQuantity || 1)) return 'success' // 全部发货
+  return 'warning'                                // 部分发货
+}
+
+/** 发货状态标签文本 - 根据订单字段推断 */
+const getDeliveryStatusLabel = (row: any) => {
+  if (!row.shippedQuantity || row.shippedQuantity === 0) {
+    if (row.prodStatus === 4) return '待发货'
+    return '未发货'
+  }
+  if (row.shippedQuantity >= (row.totalQuantity || 1)) return '已全部发货'
+  return '部分发货'
+}
+
+// ==================== 初始化 ====================
 onMounted(() => {
   getList()
 })
