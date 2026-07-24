@@ -2,6 +2,7 @@ package com.jjx.purchase.controller;
 
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.purchase.domain.dto.PurchaseOrderApprovalDTO;
 import com.jjx.purchase.domain.dto.PurchaseOrderDTO;
@@ -215,5 +216,20 @@ public class PurchaseOrderController extends BaseController {
     @SaCheckPermission("purchase:order:export")
     public Result<String> exportDetail(@PathVariable Long orderId) {
         return Result.success(purchaseOrderService.exportOrderDetail(orderId));
+    }
+
+    /**
+     * 删除采购订单
+     */
+    @DeleteMapping("/{orderId}")
+    @Log(module = "采购订单管理", businessType = BusinessType.DELETE)
+    @SaCheckPermission("purchase:order:delete")
+    public Result<Void> deleteOrder(@PathVariable Long orderId) {
+        com.jjx.purchase.domain.entity.PurchaseOrder order = purchaseOrderService.getById(orderId);
+        if (order == null) {
+            throw new BusinessException("采购订单不存在");
+        }
+        purchaseOrderService.removeById(orderId);
+        return Result.success();
     }
 }

@@ -153,6 +153,7 @@ public class OrderServiceImpl implements IOrderService {
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType());
             ensureProductIds(dto.getItems(), dto.getOrderType());
+            dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
             return orderProductService.batchAdd(dto.getItems());
         }
         throw new BusinessException(BusinessExceptionEnum.DB_UPDATE_FAILED);

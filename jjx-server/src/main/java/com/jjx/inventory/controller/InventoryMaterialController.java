@@ -3,7 +3,7 @@ package com.jjx.inventory.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
-import com.jjx.common.enums.StatusEnum;
+
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
@@ -132,9 +132,9 @@ public class InventoryMaterialController extends BaseController {
     @PutMapping("/{id}/status")
     @Log(module = "物料管理", businessType = BusinessType.UPDATE)
     @SaCheckPermission("inventory:material:edit")
-    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam StatusEnum status) {
+    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
         // 调用Service更新状态
-        materialService.batchUpdateStatus(List.of(id), status.getCode());
+        materialService.batchUpdateStatus(List.of(id), status);
         return Result.success();
     }
 
@@ -144,13 +144,13 @@ public class InventoryMaterialController extends BaseController {
     @PutMapping("/batch-status")
     @Log(module = "物料管理", businessType = BusinessType.UPDATE)
     @SaCheckPermission("inventory:material:edit")
-    public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam StatusEnum status) {
+    public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam Integer status) {
         if (ids == null || ids.isEmpty()) {
             throw new BusinessException("请选择要更新的物料");
         }
 
         // 调用Service批量更新状态
-        materialService.batchUpdateStatus(ids, status.getCode());
+        materialService.batchUpdateStatus(ids, status);
         return Result.success();
     }
 

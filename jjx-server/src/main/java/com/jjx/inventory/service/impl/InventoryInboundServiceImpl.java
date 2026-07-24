@@ -4,20 +4,32 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.inventory.domain.InventoryInboundOrder;
+import com.jjx.inventory.domain.InventoryStockItem;
+import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
 import com.jjx.inventory.dto.vo.InboundItemVO;
 import com.jjx.inventory.dto.vo.InboundVO;
+import com.jjx.common.exception.BusinessException;
+import com.jjx.production.mapper.ProductionOrderMapper;
+import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.inventory.enums.OrderStatusEnum;
 import com.jjx.inventory.mapper.InventoryInboundItemMapper;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
+import com.jjx.inventory.mapper.InventoryStockItemMapper;
+import com.jjx.inventory.mapper.InventoryStockMapper;
+import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.service.InventoryInboundService;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +45,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     private final InventoryInboundOrderMapper inboundOrderMapper;
     private final InventoryInboundItemMapper inboundItemMapper;
+    private final InventoryStockItemMapper stockItemMapper;
+    private final InventoryStockMapper stockMapper;
+    private final InventoryTransactionMapper transactionMapper;
+    private final ProductionOrderMapper productionOrderMapper;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -210,6 +226,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean approve(Long inboundId, Long approverId, String approverName, String remark) {
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
         if (order == null) {
@@ -221,6 +238,71 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             log.error("入库单状态不正确，无法审批: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
+
+        // 执行库存增加
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+        for (InventoryInboundItem item : items) {
+            if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            // 查找现有批次库存
+            LambdaQueryWrapper<InventoryStockItem> wrapper = new LambdaQueryWrapper<InventoryStockItem>()
+                    .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
+                    .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
+                    .eq(InventoryStockItem::getStatus, 1);
+            if (item.getLocationId() != null) {
+                wrapper.eq(InventoryStockItem::getLocationId, item.getLocationId());
+            }
+            InventoryStockItem existing = stockItemMapper.selectOne(wrapper);
+
+            if (existing != null) {
+                // 已有批次，增加数量
+                existing.setQuantity(existing.getQuantity().add(item.getQuantity()));
+                existing.setLastInboundTime(LocalDateTime.now());
+                stockItemMapper.updateById(existing);
+            } else {
+                // 新建批次记录
+                InventoryStockItem newItem = new InventoryStockItem();
+                newItem.setMaterialId(item.getMaterialId());
+                newItem.setMaterialCode(item.getMaterialCode());
+                newItem.setMaterialName(item.getMaterialName());
+                newItem.setWarehouseId(order.getWarehouseId());
+                newItem.setLocationId(item.getLocationId());
+                newItem.setBatchNo(item.getBatchNo());
+                newItem.setProductionDate(item.getProductionDate());
+                newItem.setExpiryDate(item.getExpiryDate());
+                newItem.setQuantity(item.getQuantity());
+                newItem.setReservedQuantity(BigDecimal.ZERO);
+                newItem.setUnitCost(item.getUnitPrice());
+                newItem.setStatus(1);
+                newItem.setLastInboundTime(LocalDateTime.now());
+                stockItemMapper.insert(newItem);
+            }
+
+            // 刷新库存汇总
+            stockMapper.refreshSummary(item.getMaterialId());
+
+            // 记录流水
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setMaterialId(item.getMaterialId());
+            tx.setMaterialCode(item.getMaterialCode());
+            tx.setMaterialName(item.getMaterialName());
+            tx.setWarehouseId(order.getWarehouseId());
+            tx.setLocationId(item.getLocationId());
+            tx.setTransactionType("INBOUND");
+            tx.setSourceType("PURCHASE");
+            tx.setSourceId(inboundId);
+            tx.setSourceNo(order.getInboundNo());
+            tx.setBatchNo(item.getBatchNo());
+            tx.setQuantity(item.getQuantity());
+            tx.setUnitCost(item.getUnitPrice());
+            tx.setAmount(item.getAmount());
+            tx.setTransactionTime(LocalDateTime.now());
+            tx.setOperatorId(SecurityUtils.getUserId());
+            tx.setOperatorName(SecurityUtils.getUsername());
+            tx.setRemark("入库审批通过");
+            transactionMapper.insert(tx);
+        }
+
         order.setOrderStatus("approved");
         return inboundOrderMapper.updateById(order) > 0;
     }
@@ -251,10 +333,53 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createFromProduction(Long workOrderId) {
-        // TODO: 实现从生产工单创建入库单
         log.info("从生产工单创建入库单: workOrderId={}", workOrderId);
-        return 1L;
+
+        // 1. 查询生产工单
+        ProductionOrder prodOrder = productionOrderMapper.selectById(workOrderId);
+        if (prodOrder == null) {
+            throw new BusinessException("生产工单不存在: " + workOrderId);
+        }
+
+        // 2. 创建入库单
+        String inboundNo = "FINISH-" + prodOrder.getOrderNo();
+        LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getInboundNo, inboundNo);
+        if (inboundOrderMapper.selectCount(existCheck) > 0) {
+            log.warn("生产工单{}的完工入库单已存在", workOrderId);
+            return null;
+        }
+
+        InventoryInboundOrder order = new InventoryInboundOrder();
+        order.setInboundNo(inboundNo);
+        order.setInboundType("PRODUCTION_FINISH");
+        order.setSourceType("PRODUCTION");
+        order.setSourceId(workOrderId);
+        order.setSourceNo(prodOrder.getOrderNo());
+        order.setOrderStatus("draft");
+        inboundOrderMapper.insert(order);
+
+        // 3. 创建入库明细
+        InventoryInboundItem inboundItem = new InventoryInboundItem();
+        inboundItem.setInboundId(order.getInboundId());
+        inboundItem.setMaterialId(prodOrder.getProductId());
+        inboundItem.setMaterialCode(prodOrder.getProductCode());
+        inboundItem.setMaterialName(prodOrder.getProductName());
+        inboundItem.setQuantity(prodOrder.getCompletedQuantity() != null
+                ? prodOrder.getCompletedQuantity() : prodOrder.getPlannedQuantity());
+        inboundItem.setBatchNo("BATCH-" + prodOrder.getOrderNo());
+        inboundItem.setSortOrder(1);
+        inboundItemMapper.insert(inboundItem);
+
+        // 4. 提交审批并自动审批
+        order.setOrderStatus("pending_approval");
+        inboundOrderMapper.updateById(order);
+        approve(order.getInboundId(), null, null, "生产完工入库");
+
+        log.info("生产完工入库完成: workOrderId={}, inboundId={}", workOrderId, order.getInboundId());
+        return order.getInboundId();
     }
 
     @Override

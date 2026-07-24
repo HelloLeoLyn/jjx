@@ -8,6 +8,7 @@ import com.jjx.production.domain.dto.ProductionOrderQueryDTO;
 import com.jjx.production.domain.dto.ProductionOrderUpdateDTO;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
@@ -236,7 +237,7 @@ public class ProductionOrderController {
         @NotEmpty(message = "订单ID列表不能为空")
         private List<Long> orderIds;
         @Schema(description = "目标状态")
-        @NotBlank(message = "目标状态不能为空")
+        @NotNull(message = "目标状态不能为空")
         private Integer orderStatus;
         @Schema(description = "备注")
         private String remark;
