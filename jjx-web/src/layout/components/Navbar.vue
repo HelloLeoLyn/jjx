@@ -16,6 +16,12 @@
       <NavEnvBadge />
       <!-- 消息通知铃铛 -->
       <NavNotification />
+      <!-- 看板入口 -->
+      <el-tooltip content="看板" placement="bottom">
+        <el-button class="kanban-btn" text circle @click="openKanban">
+          <el-icon :size="18"><Grid /></el-icon>
+        </el-button>
+      </el-tooltip>
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="avatar-wrapper">
           <el-avatar :size="32" :src="avatar" />
@@ -47,7 +53,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { DArrowLeft, DArrowRight, ArrowDown, User, Lock, SwitchButton } from '@element-plus/icons-vue'
+import { DArrowLeft, DArrowRight, ArrowDown, User, Lock, SwitchButton, Grid } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 import Breadcrumb from './Breadcrumb.vue'
 import NavNotification from './NavNotification.vue'
@@ -63,6 +69,10 @@ const avatar = computed(
 
 const toggleSidebar = () => {
   userStore.toggleSidebar()
+}
+
+const openKanban = () => {
+  window.open('/kanban', '_blank')
 }
 
 const handleCommand = (command: string) => {
