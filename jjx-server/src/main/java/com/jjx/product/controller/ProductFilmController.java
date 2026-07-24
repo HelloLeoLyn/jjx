@@ -18,7 +18,7 @@ import java.util.List;
 
 @Tag(name = "产品菲林管理")
 @RestController
-@RequestMapping("/api/v1/product/films")
+@RequestMapping("/engineering/films")
 @RequiredArgsConstructor
 @Validated
 public class ProductFilmController {

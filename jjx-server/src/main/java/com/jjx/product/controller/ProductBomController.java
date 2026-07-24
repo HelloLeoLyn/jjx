@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/product/bom")
+@RequestMapping("/engineering/bom")
 @RequiredArgsConstructor
 public class ProductBomController extends BaseController {
     private final IProductBomService productBomService;
@@ -49,7 +49,7 @@ public class ProductBomController extends BaseController {
      */
     @PostMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.INSERT)
-    @SaCheckPermission("product:bom:add")
+    @SaCheckPermission("engineering:bom:add")
     public Result<Void> add(@Validated @RequestBody ProductBomDTO dto) {
         boolean result = productBomService.createBom(dto);
         return result ? Result.success() : Result.error();
@@ -60,7 +60,7 @@ public class ProductBomController extends BaseController {
      */
     @PutMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("product:bom:edit")
+    @SaCheckPermission("engineering:bom:edit")
     public Result<Void> edit(@Validated @RequestBody ProductBomDTO dto) {
         boolean result = productBomService.updateBom(dto);
         return result ? Result.success() : Result.error();
@@ -71,7 +71,7 @@ public class ProductBomController extends BaseController {
      */
     @DeleteMapping("/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.DELETE)
-    @SaCheckPermission("product:bom:delete")
+    @SaCheckPermission("engineering:bom:delete")
     public Result<Void> remove(@PathVariable Long bomId) {
         boolean result = productBomService.removeBomWithItems(bomId);
         return result ? Result.success() : Result.error();
@@ -82,7 +82,7 @@ public class ProductBomController extends BaseController {
      */
     @PutMapping("/approve/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE)
-    @SaCheckPermission("product:bom:approve")
+    @SaCheckPermission("engineering:bom:approve")
     public Result<Void> approve(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         boolean result = productBomService.approve(dto);
         return result ? Result.success() : Result.error();
@@ -93,7 +93,7 @@ public class ProductBomController extends BaseController {
      */
     @PutMapping("/reject/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE)
-    @SaCheckPermission("product:bom:reject")
+    @SaCheckPermission("engineering:bom:reject")
     public Result<Void> reject(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         boolean result = productBomService.reject(dto);
         return result ? Result.success() : Result.error();
@@ -104,7 +104,7 @@ public class ProductBomController extends BaseController {
      */
     @PutMapping("/setDefault/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("product:bom:edit")
+    @SaCheckPermission("engineering:bom:edit")
     public Result<Void> setDefault(@PathVariable Long bomId) {
         boolean result = productBomService.setDefaultBom(bomId);
         return result ? Result.success() : Result.error();

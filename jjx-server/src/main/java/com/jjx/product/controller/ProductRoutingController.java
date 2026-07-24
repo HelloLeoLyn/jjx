@@ -23,7 +23,7 @@ import java.util.List;
  */
 @Tag(name = "产品工艺路线管理", description = "产品工艺路线相关接口")
 @RestController
-@RequestMapping("/product/routings")
+@RequestMapping("/engineering/routings")
 @RequiredArgsConstructor
 @Validated
 public class ProductRoutingController {

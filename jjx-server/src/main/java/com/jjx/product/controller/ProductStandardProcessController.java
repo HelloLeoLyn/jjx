@@ -22,7 +22,7 @@ import java.util.List;
  */
 @Tag(name = "产品标准工序管理", description = "产品标准工序相关接口")
 @RestController
-@RequestMapping("/product/standard-processes")
+@RequestMapping("/engineering/standard-processes")
 @RequiredArgsConstructor
 @Validated
 public class ProductStandardProcessController {

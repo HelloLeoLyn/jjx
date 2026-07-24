@@ -19,7 +19,7 @@ import java.util.List;
  */
 @Tag(name = "产品路线明细管理", description = "产品路线明细相关接口")
 @RestController
-@RequestMapping("/api/v1/product/routing-items")
+@RequestMapping("/engineering/routing-items")
 @RequiredArgsConstructor
 @Validated
 public class ProductRoutingItemController {
