@@ -1,9 +1,12 @@
 package com.jjx.sales.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.service.ProductionOrderService;
+import com.jjx.product.domain.entity.ProductBom;
+import com.jjx.product.mapper.ProductBomMapper;
 import com.jjx.sales.domain.dto.ODRSendToCustomerDTO;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -40,6 +43,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final ProductionOrderService productionOrderService;
     private final SalesOrderProductMapper salesOrderProductMapper;
     private final RedisSequenceService redisSequenceService;
+    private final ProductBomMapper productBomMapper;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitReview(Long orderId) {
@@ -343,7 +347,24 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                         .eq(SalesOrderProduct::getOrderId, orderId)
         );
 
-        // 5. 为每个产品创建生产工单
+        // 5. 检查每个产品是否有BOM（提醒但不阻止）
+        for (SalesOrderProduct product : products) {
+            if (product.getProductId() == null) {
+                log.warn("订单{}产品{}无productId（样品单），跳过BOM检查", orderId, product.getProductCode());
+                continue;
+            }
+            long bomCount = productBomMapper.selectCount(
+                    new LambdaQueryWrapper<ProductBom>()
+                            .eq(ProductBom::getProductId, product.getProductId())
+                            .eq(ProductBom::getIsCurrent, 1)
+            );
+            if (bomCount == 0) {
+                log.warn("⚠️ 产品[{}] {} 没有当前生效的BOM，生产时将无法自动计算材料需求",
+                        product.getProductCode(), product.getProductName());
+            }
+        }
+
+        // 6. 为每个产品创建生产工单
         for (SalesOrderProduct product : products) {
             ProductionOrderCreateDTO createDTO = new ProductionOrderCreateDTO();
             createDTO.setOrderType("WORK_ORDER");
