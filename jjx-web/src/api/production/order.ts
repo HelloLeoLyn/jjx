@@ -307,7 +307,7 @@ export function getGanttData(params?: {
   orderType?: OrderType
 }) {
   return request({
-    url: '/production/order/gantt-data',
+    url: '/production/order/schedule/gantt',
     method: 'get',
     params,
   })
@@ -322,7 +322,7 @@ export function updateGanttData(data: {
   remark?: string
 }) {
   return request({
-    url: '/production/order/gantt-data',
+    url: '/production/order/schedule/gantt',
     method: 'put',
     data,
   })

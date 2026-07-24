@@ -130,4 +130,9 @@ public interface ProductionOrderService {
      * 批量更新订单状态
      */
     boolean batchUpdateOrderStatus(List<Long> orderIds, Integer newStatus, String remark);
+
+    /**
+     * 更新订单计划日期（排程用）
+     */
+    boolean updateOrderPlanDate(Long orderId, String planStartDate, String planEndDate);
 }

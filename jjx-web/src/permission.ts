@@ -54,17 +54,17 @@ async function initPermissionSystem(): Promise<void> {
       // 3. 从后端拉取并生成动态路由
       const { routes, routeNames } = await permissionStore.generateRoutes()
 
-      // 4. 删除旧的动态路由（如果本次是重新初始化）
-      const oldNames = permissionStore.getTrackedRouteNames
-      for (const name of oldNames) {
-        if (router.hasRoute(name)) {
-          router.removeRoute(name)
-        }
-      }
-
-      // 5. 添加新的动态路由
+      // 4. 先添加新的动态路由（防止中间态路由断档）
       for (const route of routes) {
         router.addRoute(route)
+      }
+
+      // 5. 再删除旧的动态路由（新路由已就绪，不会断档）
+      const oldNames = permissionStore.getTrackedRouteNames
+      for (const name of oldNames) {
+        if (router.hasRoute(name) && !routeNames.includes(name)) {
+          router.removeRoute(name)
+        }
       }
 
       // 6. 添加 404 兜底（如果已有则覆盖）

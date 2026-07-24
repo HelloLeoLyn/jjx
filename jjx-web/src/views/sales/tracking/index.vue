@@ -233,31 +233,37 @@
         </el-tab-pane>
 
         <el-tab-pane label="发货跟踪" name="delivery">
-          <div v-if="!detail.deliveryAddress && !detail.shippedQuantity" style="text-align:center;padding:40px">
+          <div v-if="deliveryRecords.length === 0 && !detail.deliveryAddress" style="text-align:center;padding:40px">
             <el-empty description="暂无发货信息" />
           </div>
           <div v-else>
-            <el-descriptions :column="1" border style="margin-bottom:16px">
-              <el-descriptions-item label="交货地址">
-                {{ detail.deliveryAddress || '-' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="已发货数量">
-                {{ detail.shippedQuantity || 0 }}
-              </el-descriptions-item>
-              <el-descriptions-item label="总数量">
-                {{ detail.totalQuantity || 0 }}
-              </el-descriptions-item>
-              <el-descriptions-item label="交货条件">
-                {{ detail.deliveryTerms || '-' }}
-              </el-descriptions-item>
-            </el-descriptions>
-            <el-alert
-              title="发货详细追踪功能即将上线"
-              type="info"
-              :closable="false"
-              show-icon
-              description="发货追踪包含物流单号、承运商、运输进度等详细信息，正在开发中。"
-            />
+            <el-timeline>
+              <el-timeline-item
+                v-for="(item, index) in deliveryTimeline"
+                :key="index"
+                :timestamp="item.time"
+                :type="item.type"
+                :color="item.color"
+                :hollow="item.hollow"
+              >
+                {{ item.content }}
+                <div v-if="item.detail" style="font-size:12px;color:#94a3b8;margin-top:4px">
+                  {{ item.detail }}
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+            <div v-if="deliveryRecords.length > 1" style="margin-top:16px">
+              <el-divider>发货单列表</el-divider>
+              <el-table :data="deliveryRecords" border size="small">
+                <el-table-column label="发货单号" prop="deliveryNo" width="150" />
+                <el-table-column label="发货日期" prop="deliveryDate" width="100" />
+                <el-table-column label="状态" prop="deliveryStatusDesc" width="80" />
+                <el-table-column label="数量" prop="totalQuantity" width="60" align="right" />
+                <el-table-column label="物流单号" prop="trackingNo" width="140" />
+                <el-table-column label="承运商" prop="carrier" width="100" />
+                <el-table-column label="收货人" prop="receiverName" width="100" />
+              </el-table>
+            </div>
           </div>
         </el-tab-pane>
 
@@ -297,9 +303,10 @@ defineOptions({
   name: 'SalesOrderTracking',
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { parseTime, formatCurrency } from '@/utils/format'
 import { orderApi } from '@/api/sales/order'
+import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { getProductionOrderList } from '@/api/production/order'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
 
@@ -327,6 +334,7 @@ const dateRange = ref<string[]>([])
 // ==================== 响应式数据 ====================
 const loading = ref(false)
 const productionLoading = ref(false)
+const deliveryRecords = ref<SalesDeliveryVO[]>([])
 const total = ref(0)
 const detailOpen = ref(false)
 const activeTab = ref('basic')
@@ -502,6 +510,68 @@ const handleDeliveryTracking = (row: any) => {
   loadOrderDetail(row.orderId, 'delivery')
 }
 
+/** 加载发货记录 */
+const loadDeliveryRecords = async (orderId: number) => {
+  try {
+    const res = await deliveryApi.listByOrderId(orderId)
+    if (res.code === 200) {
+      deliveryRecords.value = res.data || []
+    }
+  } catch (error) {
+    console.error('获取发货记录失败:', error)
+    deliveryRecords.value = []
+  }
+}
+
+/** 构建发货时间线 */
+const deliveryTimeline = computed(() => {
+  const timeline: Array<{
+    time: string
+    content: string
+    type: 'primary' | 'success' | 'warning' | 'danger' | 'info'
+    color: string
+    hollow?: boolean
+    detail?: string
+  }> = []
+
+  const records = deliveryRecords.value
+  if (records.length === 0) return timeline
+
+  // 按发货日期排序（旧->新）
+  const sorted = [...records].sort((a, b) =>
+    (a.deliveryDate || '').localeCompare(b.deliveryDate || '')
+  )
+
+  for (const r of sorted) {
+    const statusText = r.deliveryStatusDesc || '已发货'
+    timeline.push({
+      time: r.deliveryDate || '',
+      content: `${statusText} - ${r.deliveryNo}`,
+      type: r.deliveryStatus === 4 ? 'success' : r.deliveryStatus === 5 ? 'danger' : 'primary',
+      color: r.deliveryStatus === 4 ? '#10b981' : r.deliveryStatus === 5 ? '#ef4444' : '#3b82f6',
+      detail: [
+        r.carrier && `承运商: ${r.carrier}`,
+        r.trackingNo && `物流单号: ${r.trackingNo}`,
+        r.totalQuantity && `数量: ${r.totalQuantity}`,
+        r.receiverName && `收货人: ${r.receiverName}`,
+      ].filter(Boolean).join(' | '),
+    })
+
+    // 如果有签收记录，加一条
+    if (r.receiveTime) {
+      timeline.push({
+        time: r.receiveTime,
+        content: '已签收',
+        type: 'success',
+        color: '#10b981',
+        detail: r.receiveRemark ? `备注: ${r.receiveRemark}` : undefined,
+      })
+    }
+  }
+
+  return timeline
+})
+
 /** 加载订单详情 */
 const loadOrderDetail = async (orderId: number, tab: string) => {
   detailOpen.value = true
@@ -532,6 +602,9 @@ const loadOrderDetail = async (orderId: number, tab: string) => {
 
     if (tab === 'production' && orderId) {
       loadProductionProgress(orderId)
+    }
+    if (tab === 'delivery' && orderId) {
+      loadDeliveryRecords(orderId)
     }
   } catch (error) {
     console.error('获取订单详情失败:', error)

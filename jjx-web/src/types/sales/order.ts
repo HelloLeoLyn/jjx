@@ -1,5 +1,8 @@
 // 订单明细
 export interface OrderItem {
+  id?: number
+  productId?: number | null
+  orderId?: number
   productCode: string
   productName: string
   specification: string
@@ -9,6 +12,8 @@ export interface OrderItem {
   amount: number
   deliveryDays: number
   customRequirements: string
+  customerMaterialNo?: string
+  lineRemark?: string
 }
 
 // 查询参数

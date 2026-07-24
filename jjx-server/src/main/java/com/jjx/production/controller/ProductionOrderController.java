@@ -202,6 +202,42 @@ public class ProductionOrderController {
         return Result.success(productionOrderService.getOrderStatistics(queryDTO));
     }
 
+    @Operation(summary = "获取排程甘特图数据")
+    @SaCheckPermission("production:order:view")
+    @GetMapping("/schedule/gantt")
+    public Result<List<ProductionOrderVO>> getGanttData(
+            @RequestParam(required = false) @Schema(description = "开始日期") String startDate,
+            @RequestParam(required = false) @Schema(description = "结束日期") String endDate,
+            @RequestParam(required = false) @Schema(description = "产品ID") Long productId,
+            @RequestParam(required = false) @Schema(description = "订单类型") String orderType) {
+        ProductionOrderQueryDTO queryDTO = new ProductionOrderQueryDTO();
+        return Result.success(productionOrderService.queryOrderList(queryDTO));
+    }
+
+    @Operation(summary = "更新甘特图排期")
+    @PutMapping("/schedule/gantt")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("production:order:edit")
+    public Result<Boolean> updateGanttData(@RequestBody GanttUpdateDTO dto) {
+        boolean success = productionOrderService.updateOrderPlanDate(dto.getOrderId(), dto.getPlanStartDate(), dto.getPlanEndDate());
+        return Result.success(success);
+    }
+
+    @Data
+    public static class GanttUpdateDTO {
+        @Schema(description = "订单ID")
+        @NotNull
+        private Long orderId;
+        @Schema(description = "订单类型")
+        private String orderType;
+        @Schema(description = "计划开始日期")
+        private String planStartDate;
+        @Schema(description = "计划结束日期")
+        private String planEndDate;
+        @Schema(description = "备注")
+        private String remark;
+    }
+
     @Operation(summary = "计划转工单")
     @PostMapping("/convert-plan-to-work-orders")
     @Log(module = "生产工单管理", businessType = BusinessType.INSERT)

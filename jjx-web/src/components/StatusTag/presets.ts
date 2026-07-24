@@ -1,5 +1,13 @@
 // components/StatusTag/presets.ts
-import type { StatusConfig } from './index.vue'
+
+// 状态标签配置类型
+export interface StatusConfig {
+  [key: string]: {
+    label: string
+    type: 'success' | 'info' | 'warning' | 'danger' | 'primary'
+    effect?: 'dark' | 'light' | 'plain'
+  }
+}
 
 // 通用状态配置
 export const commonStatusConfig: StatusConfig = {

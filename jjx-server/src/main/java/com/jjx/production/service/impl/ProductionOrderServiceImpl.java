@@ -952,6 +952,22 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         log.info("已为工单 {} 生成 {} 个工序执行记录", orderId, routingItems.size());
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateOrderPlanDate(Long orderId, String planStartDate, String planEndDate) {
+        ProductionOrder order = baseMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在: " + orderId);
+        }
+        if (planStartDate != null && !planStartDate.isEmpty()) {
+            order.setPlanStartDate(LocalDate.parse(planStartDate));
+        }
+        if (planEndDate != null && !planEndDate.isEmpty()) {
+            order.setPlanEndDate(LocalDate.parse(planEndDate));
+        }
+        return baseMapper.updateById(order) > 0;
+    }
+
     /**
      * 校验状态流转是否合法
      */

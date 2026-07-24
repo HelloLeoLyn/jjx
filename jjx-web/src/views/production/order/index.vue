@@ -58,9 +58,12 @@
     />
 
     <!-- 甘特图视图 -->
-    <div v-if="activeView === 'gantt'" class="gantt-view">
-      <el-empty description="甘特图功能开发中..." />
-    </div>
+    <GanttChart
+      v-if="activeView === 'gantt'"
+      ref="ganttRef"
+      :order-type="searchForm.orderType"
+      @view="handleViewOrder"
+    />
 
     <!-- 订单表单对话框 -->
     <OrderFormDialog
@@ -108,6 +111,7 @@ import OrderTable from './components/OrderTable.vue'
 import OrderFormDialog from './components/OrderFormDialog.vue'
 import OrderStatusDialog from './components/OrderStatusDialog.vue'
 import OrderDeleteDialog from './components/OrderDeleteDialog.vue'
+import GanttChart from './components/GanttChart.vue'
 import type {
   ProductionOrderVO,
   ProductionOrderQuery,

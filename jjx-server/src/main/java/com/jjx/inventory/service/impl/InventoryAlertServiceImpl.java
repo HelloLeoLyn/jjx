@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -196,9 +197,28 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
     @Override
     public List<Map<String, Object>> generatePurchaseSuggestions() {
-        // TODO: 实现生成采购建议逻辑
         log.info("生成采购建议");
-        return List.of();
+        List<InventoryStock> lowStock = stockMapper.selectLowStock();
+        List<Map<String, Object>> suggestions = new ArrayList<>();
+
+        for (InventoryStock stock : lowStock) {
+            // 建议采购量 = 安全库存 * 2 - 当前库存（简单算法）
+            BigDecimal suggestQty = BigDecimal.valueOf(100).subtract(stock.getTotalQuantity() != null
+                    ? stock.getTotalQuantity() : BigDecimal.ZERO);
+            if (suggestQty.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            suggestions.add(Map.of(
+                    "materialCode", stock.getMaterialCode(),
+                    "materialName", stock.getMaterialName(),
+                    "currentStock", stock.getTotalQuantity() != null ? stock.getTotalQuantity().doubleValue() : 0,
+                    "suggestQuantity", suggestQty.doubleValue(),
+                    "reason", "低于安全库存，建议补货",
+                    "priority", "normal"
+            ));
+        }
+
+        log.info("生成采购建议完成，共 {} 条", suggestions.size());
+        return suggestions;
     }
 
     @Override
