@@ -17,7 +17,7 @@ import java.util.List;
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
-@TableName("product_routing")
+@TableName("engineering_routing")
 public class ProductRouting extends BaseEntity {
 
     @TableId(type = IdType.AUTO)

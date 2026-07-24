@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("product_film")
+@TableName("engineering_film")
 public class ProductFilm {
     
     @TableId(type = IdType.AUTO)

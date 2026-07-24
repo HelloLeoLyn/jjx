@@ -165,12 +165,12 @@ public class InventoryReportServiceImpl implements InventoryReportService {
     public List<Map<String, Object>> warehouseStockStat() {
         log.info("统计仓库库存");
         List<InventoryStock> stocks = stockMapper.selectList(null);
-        return stocks.stream().map(s -> (Map<String, Object>) Map.of(
+        return stocks.stream().<Map<String, Object>>map(s -> Map.of(
                 "materialCode", s.getMaterialCode(),
                 "materialName", s.getMaterialName(),
-                "totalQuantity", s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0,
-                "availableQuantity", s.getTotalQuantity() != null && s.getTotalReserved() != null
-                        ? s.getTotalQuantity().subtract(s.getTotalReserved()).doubleValue() : 0
+                "totalQuantity", (Object) (s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0),
+                "availableQuantity", (Object) (s.getTotalQuantity() != null && s.getTotalReserved() != null
+                        ? s.getTotalQuantity().subtract(s.getTotalReserved()).doubleValue() : 0)
         )).collect(Collectors.toList());
     }
 
@@ -245,11 +245,11 @@ public class InventoryReportServiceImpl implements InventoryReportService {
     @Override
     public List<Map<String, Object>> categoryStockStat() {
         List<InventoryStock> stocks = stockMapper.selectList(null);
-        return stocks.stream().limit(10).map(s -> (Map<String, Object>) Map.of(
+        return stocks.stream().limit(10).<Map<String, Object>>map(s -> Map.of(
                 "category", "默认",
                 "materialCode", s.getMaterialCode(),
                 "materialName", s.getMaterialName(),
-                "quantity", s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0
+                "quantity", (Object) (s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0)
         )).collect(Collectors.toList());
     }
 
@@ -257,10 +257,10 @@ public class InventoryReportServiceImpl implements InventoryReportService {
     public List<Map<String, Object>> obsoleteAnalysis(int days) {
         log.info("分析呆滞料: days={}", days);
         List<InventoryStock> obsolete = stockMapper.selectObsolete();
-        return obsolete.stream().limit(20).map(s -> (Map<String, Object>) Map.of(
+        return obsolete.stream().limit(20).<Map<String, Object>>map(s -> Map.of(
                 "materialCode", s.getMaterialCode(),
                 "materialName", s.getMaterialName(),
-                "quantity", s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0
+                "quantity", (Object) (s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0)
         )).collect(Collectors.toList());
     }
 
@@ -268,10 +268,10 @@ public class InventoryReportServiceImpl implements InventoryReportService {
     public List<Map<String, Object>> expiryAnalysis(int days) {
         log.info("分析保质期: days={}", days);
         List<InventoryStock> expiring = stockMapper.selectExpiring();
-        return expiring.stream().limit(20).map(s -> (Map<String, Object>) Map.of(
+        return expiring.stream().limit(20).<Map<String, Object>>map(s -> Map.of(
                 "materialCode", s.getMaterialCode(),
                 "materialName", s.getMaterialName(),
-                "quantity", s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0
+                "quantity", (Object) (s.getTotalQuantity() != null ? s.getTotalQuantity().doubleValue() : 0)
         )).collect(Collectors.toList());
     }
 }

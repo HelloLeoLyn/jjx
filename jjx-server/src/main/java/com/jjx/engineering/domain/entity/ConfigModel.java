@@ -5,7 +5,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("product_config_model")
+@TableName("engineering_config_model")
 public class ConfigModel {
     @TableId(type = IdType.AUTO)
     private Long modelId;

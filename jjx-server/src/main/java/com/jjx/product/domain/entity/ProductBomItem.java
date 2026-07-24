@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
-@TableName("product_bom_item")
+@TableName("engineering_bom_item")
 public class ProductBomItem {
 
     /**

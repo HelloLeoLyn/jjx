@@ -13,7 +13,7 @@ import java.util.Date;
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
-@TableName("product_bom")
+@TableName("engineering_bom")
 public class ProductBom {
 
     /**

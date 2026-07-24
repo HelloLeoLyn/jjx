@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
  * 产品路线明细实体类
  */
 @Data
-@TableName("product_routing_item")
+@TableName("engineering_routing_item")
 public class ProductRoutingItem {
 
     @TableId(type = IdType.AUTO)

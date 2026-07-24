@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
  * 产品标准工序实体类
  */
 @Data
-@TableName("product_standard_process")
+@TableName("engineering_standard_process")
 public class ProductStandardProcess {
     
     @TableId(type = IdType.AUTO)

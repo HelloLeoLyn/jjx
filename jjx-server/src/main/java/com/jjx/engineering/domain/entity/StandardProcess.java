@@ -2,7 +2,7 @@ package com.jjx.engineering.domain.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 import java.math.BigDecimal;
-@Data @TableName("product_standard_process")
+@Data @TableName("engineering_standard_process")
 public class StandardProcess {
     @TableId(type = IdType.AUTO)
     private Long processId;

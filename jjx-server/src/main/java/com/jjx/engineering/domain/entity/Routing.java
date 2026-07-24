@@ -2,7 +2,7 @@ package com.jjx.engineering.domain.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 import java.time.LocalDateTime;
-@Data @TableName("product_routing")
+@Data @TableName("engineering_routing")
 public class Routing {
     @TableId(type = IdType.AUTO)
     private Long routingId;
