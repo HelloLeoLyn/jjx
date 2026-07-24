@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -25,9 +27,26 @@ public class EngineeringBaseServiceImpl extends ServiceImpl<EngineeringBaseMappe
                 new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<EngineeringBase>().orderByDesc(EngineeringBase::getCreateTime)
         );
-        PageResult<EngineeringBase> result = new PageResult<>();
-        result.setRows(page.getRecords());
-        result.setTotal(page.getTotal());
-        return result;
+        return PageResult.build(page.getRecords(), page.getTotal());
+    }
+
+    @Override
+    public EngineeringBase getById(Long id) {
+        return baseMapper.selectById(id);
+    }
+
+    @Override
+    public boolean save(EngineeringBase entity) {
+        return baseMapper.insert(entity) > 0;
+    }
+
+    @Override
+    public boolean update(EngineeringBase entity) {
+        return baseMapper.updateById(entity) > 0;
+    }
+
+    @Override
+    public boolean deleteById(Long id) {
+        return baseMapper.deleteById(id) > 0;
     }
 }
