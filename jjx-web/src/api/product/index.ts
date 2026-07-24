@@ -214,14 +214,14 @@ export function getApprovedBomList(productId: number) {
  * 配置产品BOM
  */
 export function configProductBom(productId: number, currentBomId: number) {
-  return request.post('/product/config/bom', { productId, currentBomId })
+  return request.post('/engineering/config/bom', { productId, currentBomId })
 }
 
 /**
  * 配置产品工艺路线
  */
 export function configProductRoute(productId: number, currentRouteId: number) {
-  return request.post('/product/config/route', { productId, currentRouteId })
+  return request.post('/engineering/config/route', { productId, currentRouteId })
 }
 
 export function generateProductCode(categoryId: number) {

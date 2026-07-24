@@ -17,7 +17,7 @@ export function getMaterialOptions() {
  * 获取工序选项
  */
 export function getProcessOptions() {
-  return request.get('/product/standard-processes/enabled')
+  return request.get('/engineering/standard-processes/enabled')
 }
 export const productOptionsApi = {
   product: getProcessOptions,
