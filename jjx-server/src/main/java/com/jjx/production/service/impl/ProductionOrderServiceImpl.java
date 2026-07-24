@@ -1,11 +1,14 @@
 package com.jjx.production.service.impl;
 
+import com.jjx.event.EventPublisher;
 import com.jjx.production.domain.dto.ConvertPlanToWorkOrdersDTO;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import java.util.Map;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.product.mapper.ProductRoutingItemMapper;
 import com.jjx.product.domain.entity.ProductRoutingItem;
 import java.util.ArrayList;
+import java.util.Map;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -47,6 +50,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final ProductRoutingItemMapper productRoutingItemMapper;
+    private final EventPublisher eventPublisher;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -298,6 +302,16 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         boolean success = updateById(order);
         if (!success) {
             throw new BusinessException("完成生产工单失败");
+        }
+
+        // 触发联动事件
+        try {
+            eventPublisher.fire("production.completed", Map.of(
+                    "orderNo", order.getOrderNo(),
+                    "orderId", String.valueOf(orderId)
+            ));
+        } catch (Exception e) {
+            log.warn("事件联动失败（不影响主流程）: {}", e.getMessage());
         }
 
         log.info("生产工单完成成功, ID: {}", orderId);

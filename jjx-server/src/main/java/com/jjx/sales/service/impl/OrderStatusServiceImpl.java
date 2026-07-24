@@ -2,6 +2,7 @@ package com.jjx.sales.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.event.EventPublisher;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.service.ProductionOrderService;
@@ -31,6 +32,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -44,6 +46,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final SalesOrderProductMapper salesOrderProductMapper;
     private final RedisSequenceService redisSequenceService;
     private final ProductBomMapper productBomMapper;
+    private final EventPublisher eventPublisher;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitReview(Long orderId) {
@@ -414,6 +417,17 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         String desc = getOperationDescription(currentStatus, targetStatus);
         salesLogService.log(orderId, order.getOrderNo(), OperationTypeEnum.START_PRODUCTION,
                 desc, "开始生产，共创建" + products.size() + "个生产工单", OperationResultEnum.SUCCESS);
+
+        // 9. 触发联动事件
+        try {
+            eventPublisher.fire("order.confirmed", Map.of(
+                    "orderNo", order.getOrderNo(),
+                    "orderId", String.valueOf(orderId)
+            ));
+        } catch (Exception e) {
+            log.warn("事件联动失败（不影响主流程）: {}", e.getMessage());
+        }
+
         log.info("订单{}开始生产，操作人：{}，创建生产工单数：{}",
                 orderId, SecurityUtils.getUsername(), products.size());
     }

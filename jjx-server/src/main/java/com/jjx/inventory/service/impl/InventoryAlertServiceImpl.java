@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryAlertLog;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
@@ -36,6 +37,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final InventoryAlertLogMapper alertLogMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryStockItemMapper stockItemMapper;
+    private final EventPublisher eventPublisher;
 
     @Override
     public IPage<AlertVO> page(AlertQueryDTO query) {
@@ -76,6 +78,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setAlertTime(java.time.LocalDateTime.now());
             alertLogMapper.insert(alert);
         }
+        try { if (!lowStock.isEmpty()) eventPublisher.fire("stock.low", Map.of("count", String.valueOf(lowStock.size()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("安全库存预警检查完成，发现 {} 条", lowStock.size());
     }
 

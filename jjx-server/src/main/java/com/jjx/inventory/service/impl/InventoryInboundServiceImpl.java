@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.domain.InventoryStockItem;
@@ -55,6 +56,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final ProductionOrderMapper productionOrderMapper;
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
+    private final EventPublisher eventPublisher;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -400,6 +402,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundOrderMapper.updateById(order);
         approve(order.getInboundId(), null, null, "采购到货入库");
 
+        try { eventPublisher.fire("purchase.arrived", Map.of("sourceNo", order.getSourceNo(), "inboundId", String.valueOf(order.getInboundId()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("采购入库完成: purchaseOrderId={}, inboundId={}", purchaseOrderId, order.getInboundId());
         return order.getInboundId();
     }
