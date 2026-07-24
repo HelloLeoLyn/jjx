@@ -44,7 +44,7 @@ public class SalesLogController {
      * 分页查询操作日志
      */
     @Operation(summary = "分页查询操作日志")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping
     public Result<PageResult<SalesLogVO>> pageQuery(@Valid SalesLogQueryDTO queryDTO) {
         PageResult<SalesLogVO> page = salesLogService.pageQuery(queryDTO);
@@ -55,7 +55,7 @@ public class SalesLogController {
      * 根据日志ID查询
      */
     @Operation(summary = "根据日志ID查询")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/{logId}")
     public Result<SalesLogVO> getById(
             @Parameter(description = "日志ID", required = true)
@@ -68,7 +68,7 @@ public class SalesLogController {
      * 根据订单ID查询日志列表
      */
     @Operation(summary = "根据订单ID查询日志列表")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/order/{orderId}")
     public Result<List<SalesLogVO>> getByOrderId(
             @Parameter(description = "订单ID", required = true)
@@ -81,7 +81,7 @@ public class SalesLogController {
      * 根据订单号查询日志列表
      */
     @Operation(summary = "根据订单号查询日志列表")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/orderNo/{orderNo}")
     public Result<List<SalesLogVO>> getByOrderNo(
             @Parameter(description = "订单号", required = true)
@@ -94,7 +94,7 @@ public class SalesLogController {
      * 查询订单的最新操作日志
      */
     @Operation(summary = "查询订单的最新操作日志")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/order/{orderId}/latest")
     public Result<SalesLogVO> getLatestByOrderId(
             @Parameter(description = "订单ID", required = true)
@@ -107,7 +107,7 @@ public class SalesLogController {
      * 根据操作类型查询日志
      */
     @Operation(summary = "根据操作类型查询日志")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/type/{operationType}")
     public Result<PageResult<SalesLogVO>> getByOperationType(
             @Parameter(description = "操作类型", required = true)
@@ -126,7 +126,7 @@ public class SalesLogController {
      * 根据操作人查询日志
      */
     @Operation(summary = "根据操作人查询日志")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/operator/{operatorId}")
     public Result<PageResult<SalesLogVO>> getByOperator(
             @Parameter(description = "操作人ID", required = true)
@@ -145,7 +145,7 @@ public class SalesLogController {
      * 导出操作日志
      */
     @Operation(summary = "导出操作日志")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:export")
     @GetMapping("/export")
     public ResponseEntity<byte[]> exportLogs(@Valid SalesLogQueryDTO queryDTO) {
         // 设置默认时间范围（最近30天）
@@ -174,7 +174,7 @@ public class SalesLogController {
      */
     @Operation(summary = "删除指定订单的所有日志")
     @Log(module = "操作日志管理", businessType = BusinessType.DELETE)
-    @SaCheckPermission("sales:order:edit")
+    @SaCheckPermission("sales:log:delete")
     @DeleteMapping("/order/{orderId}")
     public Result<Void> deleteLogsByOrderId(
             @Parameter(description = "订单ID", required = true)
@@ -188,7 +188,7 @@ public class SalesLogController {
      */
     @Operation(summary = "删除指定日志")
     @Log(module = "操作日志管理", businessType = BusinessType.DELETE)
-    @SaCheckPermission("sales:order:edit")
+    @SaCheckPermission("sales:log:delete")
     @DeleteMapping("/{logId}")
     public Result<Void> deleteLog(
             @Parameter(description = "日志ID", required = true)
@@ -202,7 +202,7 @@ public class SalesLogController {
      */
     @Operation(summary = "批量删除日志")
     @Log(module = "操作日志管理", businessType = BusinessType.DELETE)
-    @SaCheckPermission("sales:order:edit")
+    @SaCheckPermission("sales:log:delete")
     @DeleteMapping("/batch")
     public Result<Void> batchDeleteLogs(
             @RequestBody @NotEmpty(message = "日志ID列表不能为空") List<Long> logIds) {
@@ -214,7 +214,7 @@ public class SalesLogController {
      * 获取操作类型统计
      */
     @Operation(summary = "获取操作类型统计")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/stats/operation-type")
     public Result<List<Map<String, Object>>> getOperationTypeStats(
             @RequestParam(required = false) LocalDateTime startTime,
@@ -227,7 +227,7 @@ public class SalesLogController {
      * 获取操作人统计
      */
     @Operation(summary = "获取操作人统计")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:log:view")
     @GetMapping("/stats/operator")
     public Result<List<Map<String, Object>>> getOperatorStats(
             @RequestParam(required = false) LocalDateTime startTime,

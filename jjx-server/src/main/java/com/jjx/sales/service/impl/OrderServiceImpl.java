@@ -26,6 +26,7 @@ import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.service.ICustomerService;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -135,6 +136,15 @@ public class OrderServiceImpl implements IOrderService {
         if (existingOrder == null) {
             throw new BusinessException(BusinessExceptionEnum.ORDER_NOT_FOUND);
         }
+
+        // 检查负责人权限（超级管理员除外）
+        Long currentUserId = SecurityUtils.getUserId();
+        if (existingOrder.getSalesManagerId() != null && !existingOrder.getSalesManagerId().equals(currentUserId)) {
+            if (!SecurityUtils.hasPermission("*:*:*")) {
+                throw new BusinessException("只能编辑本人负责的订单");
+            }
+        }
+
         SalesOrder entity = orderConverter.toEntity(dto);
 
         int insert = orderMapper.updateById(entity);
@@ -157,6 +167,14 @@ public class OrderServiceImpl implements IOrderService {
         SalesOrder order = orderMapper.selectById(orderId);
         if (order == null) {
             throw new BusinessException("订单不存在");
+        }
+
+        // 检查负责人权限（超级管理员除外）
+        Long currentUserId = SecurityUtils.getUserId();
+        if (order.getSalesManagerId() != null && !order.getSalesManagerId().equals(currentUserId)) {
+            if (!SecurityUtils.hasPermission("*:*:*")) {
+                throw new BusinessException("只能删除本人负责的订单");
+            }
         }
 
         // 检查订单状态，已确认或生产中的订单不能删除
@@ -348,6 +366,14 @@ public class OrderServiceImpl implements IOrderService {
         SalesOrder order = orderMapper.selectById(orderId);
         if (order == null) {
             throw new BusinessException("订单不存在");
+        }
+
+        // 检查负责人权限（超级管理员除外）
+        Long currentUserId = SecurityUtils.getUserId();
+        if (order.getSalesManagerId() != null && !order.getSalesManagerId().equals(currentUserId)) {
+            if (!SecurityUtils.hasPermission("*:*:*")) {
+                throw new BusinessException("只能为本人负责的订单创建实例");
+            }
         }
 
         // 只有已确认的订单可以创建产品实例

@@ -53,6 +53,14 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单产品不存在");
         }
 
+        // 1.5 检查负责人权限（超级管理员除外）
+        Long currentUserId = SecurityUtils.getUserId();
+        if (order.getSalesManagerId() != null && !order.getSalesManagerId().equals(currentUserId)) {
+            if (!SecurityUtils.hasPermission("*:*:*")) {
+                throw new BusinessException("只能提交本人负责的订单");
+            }
+        }
+
         // 2. 检查状态是否可提交审核
         OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
         if (!currentStatus.isSubmittable()) {
@@ -203,6 +211,14 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单不存在");
         }
 
+        // 1.5 检查负责人权限（超级管理员除外）
+        Long currentUserId = SecurityUtils.getUserId();
+        if (order.getSalesManagerId() != null && !order.getSalesManagerId().equals(currentUserId)) {
+            if (!SecurityUtils.hasPermission("*:*:*")) {
+                throw new BusinessException("只能重新提交本人负责的订单");
+            }
+        }
+
         // 2. 检查状态是否为已驳回
         OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
         if (currentStatus != OrderStatusEnum.REJECTED) {
@@ -234,6 +250,14 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         SalesOrder order = salesOrderMapper.selectById(orderId);
         if (order == null) {
             throw new BusinessException("订单不存在");
+        }
+
+        // 1.5 检查负责人权限（超级管理员除外）
+        Long currentUserId = SecurityUtils.getUserId();
+        if (order.getSalesManagerId() != null && !order.getSalesManagerId().equals(currentUserId)) {
+            if (!SecurityUtils.hasPermission("*:*:*")) {
+                throw new BusinessException("只能取消本人负责的订单");
+            }
         }
 
         // 2. 检查是否可取消
