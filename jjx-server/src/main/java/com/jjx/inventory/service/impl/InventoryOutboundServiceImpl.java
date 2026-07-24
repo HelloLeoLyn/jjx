@@ -273,7 +273,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     .multiply(prodOrder.getPlannedQuantity())
                     .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
                     .multiply(BigDecimal.ONE.add(
-                            bomItem.getLossRate() != null ? bomItem.getLossRate().divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
+                            bomItem.getLossRate() != null ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
                     ))
                     .setScale(0, java.math.RoundingMode.UP);
 

@@ -1,7 +1,9 @@
 package com.jjx.purchase.service;
 
+import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.purchase.domain.dto.POrderStatusDTO;
+import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.dto.PurchaseOrderApprovalDTO;
 import com.jjx.purchase.domain.dto.PurchaseOrderDTO;
 import com.jjx.purchase.domain.dto.PurchaseOrderQueryDTO;
@@ -17,7 +19,7 @@ import java.util.List;
  * 采购订单服务接口
  * 提供采购订单的业务逻辑操作
  */
-public interface IPurchaseOrderService {
+public interface IPurchaseOrderService extends IService<PurchaseOrder> {
 
     /**
      * 查询采购订单列表
