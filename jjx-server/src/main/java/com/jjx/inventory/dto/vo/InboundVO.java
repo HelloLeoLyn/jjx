@@ -16,13 +16,11 @@ public class InboundVO {
     private Long inboundId;
     private String inboundNo;
     private String inboundType;
-    private String inboundTypeName;
     private Long warehouseId;
     private String warehouseName;
     private Long locationId;
     private String locationName;
     private String sourceType;
-    private String sourceTypeName;
     private Long sourceId;
     private String sourceNo;
     private Long supplierId;
@@ -35,9 +33,7 @@ public class InboundVO {
     private BigDecimal totalQuantity;
     private BigDecimal totalAmount;
     private String orderStatus;
-    private String orderStatusName;
     private String approveStatus;
-    private String approveStatusName;
     private String remark;
     private String createBy;
     private String createByName;

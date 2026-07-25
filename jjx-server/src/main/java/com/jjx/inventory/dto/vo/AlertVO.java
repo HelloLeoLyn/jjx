@@ -15,9 +15,7 @@ public class AlertVO {
 
     private Long alertId;
     private String alertType;
-    private String alertTypeName;
     private String alertLevel;
-    private String alertLevelName;
     private Long materialId;
     private String materialCode;
     private String materialName;

@@ -68,7 +68,7 @@
     <el-card class="table-card">
       <el-table v-loading="loading" :data="transferList" border style="width: 100%">
         <el-table-column label="调拨单号" prop="transferNo" width="150" />
-        <el-table-column label="调拨类型" prop="transferTypeName" width="100" align="center">
+        <el-table-column label="调拨类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getTransferTypeTag(row.transferType)" size="small">
               {{ row.transferTypeName }}
@@ -85,7 +85,7 @@
         <el-table-column label="总金额" prop="totalAmount" width="120" align="right">
           <template #default="{ row }"> ¥ {{ formatCurrency(row.totalAmount) }} </template>
         </el-table-column>
-        <el-table-column label="状态" prop="statusName" width="100" align="center">
+        <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusTag(row.status)" size="small">
               {{ row.statusName }}

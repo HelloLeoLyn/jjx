@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 /**
@@ -35,10 +35,7 @@ public class RedisConfig {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(redisConnectionFactory);
 
-        // 使用Jackson2JsonRedisSerializer替换默认序列化
-        Jackson2JsonRedisSerializer<Object> jacksonSerializer = new Jackson2JsonRedisSerializer<>(Object.class);
-
-        // 配置ObjectMapper
+        // 使用GenericJackson2JsonRedisSerializer替换默认序列化，并配置ObjectMapper
         ObjectMapper objectMapper = new ObjectMapper();
         // 指定要序列化的域（field, getter, setter），以及访问修饰符范围
         objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
@@ -54,7 +51,7 @@ public class RedisConfig {
         // 忽略未知属性
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-        jacksonSerializer.setObjectMapper(objectMapper);
+        GenericJackson2JsonRedisSerializer jacksonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
 
         // key采用String序列化
         StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();

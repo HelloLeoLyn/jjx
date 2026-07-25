@@ -589,10 +589,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setUpdateTime(order.getUpdateTime());
 
         // 设置类型名称
-        vo.setInboundTypeName(getInboundTypeName(order.getInboundType()));
         vo.setSourceTypeName(getSourceTypeName(order.getSourceType()));
-        vo.setOrderStatusName(getOrderStatusName(order.getOrderStatus()));
-        vo.setApproveStatusName(getApproveStatusName(order.getApproveStatus()));
 
         return vo;
     }

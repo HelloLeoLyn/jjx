@@ -29,6 +29,25 @@ public interface ProductionOrderConverter {
     @Mapping(target = "actualEndTime", ignore = true)
     ProductionOrder toEntity(ProductionOrderCreateDTO createDTO);
 
+    @Mapping(target = "approvalStatusDesc", ignore = true)
+    @Mapping(target = "canComplete", ignore = true)
+    @Mapping(target = "canStart", ignore = true)
+    @Mapping(target = "delayDays", ignore = true)
+    @Mapping(target = "estimatedCompletionDate", ignore = true)
+    @Mapping(target = "hasEnded", ignore = true)
+    @Mapping(target = "hasStarted", ignore = true)
+    @Mapping(target = "isOverdue", ignore = true)
+    @Mapping(target = "isPlan", ignore = true)
+    @Mapping(target = "isWorkOrder", ignore = true)
+    @Mapping(target = "operationExecutions", ignore = true)
+    @Mapping(target = "operationRecords", ignore = true)
+    @Mapping(target = "orderStatusDesc", ignore = true)
+    @Mapping(target = "orderTypeDesc", ignore = true)
+    @Mapping(target = "parentOrderNo", ignore = true)
+    @Mapping(target = "priorityDesc", ignore = true)
+    @Mapping(target = "productionEfficiency", ignore = true)
+    @Mapping(target = "qualityQualifiedRate", ignore = true)
+    @Mapping(target = "routingName", ignore = true)
     ProductionOrderVO toVO(ProductionOrder order);
 
     List<ProductionOrderVO> toVOList(List<ProductionOrder> list);

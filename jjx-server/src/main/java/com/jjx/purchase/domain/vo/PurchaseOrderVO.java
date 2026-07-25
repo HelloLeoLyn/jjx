@@ -39,9 +39,7 @@ public class PurchaseOrderVO {
     private Integer orderType;
 
     /**
-     * 订单类型名称
      */
-    private String orderTypeName;
 
     /**
      * 订单日期
@@ -85,9 +83,7 @@ public class PurchaseOrderVO {
     private Integer approvalStatus;
 
     /**
-     * 审批状态名称
      */
-    private String approvalStatusName;
 
     /**
      * 收货状态（0待收货/1部分收货/2已收货）
@@ -95,9 +91,7 @@ public class PurchaseOrderVO {
     private Integer receiptStatus;
 
     /**
-     * 收货状态名称
      */
-    private String receiptStatusName;
 
     /**
      * 审批人ID
@@ -125,9 +119,7 @@ public class PurchaseOrderVO {
     private Integer paymentStatus;
 
     /**
-     * 付款状态名称
      */
-    private String paymentStatusName;
 
     /**
      * 已付款金额

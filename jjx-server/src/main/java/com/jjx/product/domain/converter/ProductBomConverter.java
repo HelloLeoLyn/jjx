@@ -24,5 +24,6 @@ public interface ProductBomConverter {
     @Mapping(target = "createTime", ignore = true)
     @Mapping(target = "createBy", ignore = true)
     @Mapping(target = "approveRemark", ignore = true)
+    @Mapping(target = "bomType", ignore = true)
     ProductBom toEntity(ProductBomDTO dto);
 }

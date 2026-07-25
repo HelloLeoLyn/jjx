@@ -23,6 +23,7 @@ public interface StockConverter {
     @Mapping(target = "expiring", ignore = true)
     @Mapping(target = "obsolete", ignore = true)
     @Mapping(target = "daysToExpiry", ignore = true)
+    @Mapping(target = "updateTime", ignore = true)
     @Mapping(target = "availableQuantity", expression = "java(entity.getTotalQuantity().subtract(entity.getTotalReserved() != null ? entity.getTotalReserved() : java.math.BigDecimal.ZERO))")
     StockVO toVO(InventoryStock entity);
 

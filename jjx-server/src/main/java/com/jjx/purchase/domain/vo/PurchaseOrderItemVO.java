@@ -72,9 +72,7 @@ public class PurchaseOrderItemVO {
     private Integer receiptStatus;
 
     /**
-     * 收货状态名称
      */
-    private String receiptStatusName;
 
     /**
      * 询价信息JSON

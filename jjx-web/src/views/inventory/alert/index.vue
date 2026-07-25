@@ -134,14 +134,14 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="预警类型" prop="alertTypeName" width="120" align="center">
+        <el-table-column label="预警类型" width="120" align="center">
           <template #default="{ row }">
             <el-tag :type="getAlertTypeTag(row.alertType)" size="small">
               {{ row.alertTypeName }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="预警级别" prop="alertLevelName" width="100" align="center">
+        <el-table-column label="预警级别" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getAlertLevelTag(row.alertLevel)" size="small">
               {{ row.alertLevelName }}

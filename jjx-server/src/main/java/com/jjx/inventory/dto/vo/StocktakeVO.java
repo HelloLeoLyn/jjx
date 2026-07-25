@@ -16,7 +16,6 @@ public class StocktakeVO {
     private Long stocktakeId;
     private String stocktakeNo;
     private String stocktakeType;
-    private String stocktakeTypeName;
     private Long warehouseId;
     private String warehouseName;
     private String locationIds;
@@ -43,9 +42,7 @@ public class StocktakeVO {
     private BigDecimal totalDiffQuantity;
     private BigDecimal totalDiffAmount;
     private String orderStatus;
-    private String orderStatusName;
     private String approveStatus;
-    private String approveStatusName;
     private Long approverId;
     private String approverName;
 

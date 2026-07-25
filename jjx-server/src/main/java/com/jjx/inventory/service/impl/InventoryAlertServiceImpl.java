@@ -330,9 +330,6 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         vo.setCreateBy(alert.getCreateBy());
         vo.setUpdateBy(alert.getUpdateBy());
         // 设置类型名称
-        vo.setAlertTypeName(getAlertTypeName(alert.getAlertType()));
-        vo.setAlertLevelName(getAlertLevelName(alert.getAlertLevel()));
-        vo.setStatusName(getStatusName(alert.getStatus()));
 
         return vo;
     }

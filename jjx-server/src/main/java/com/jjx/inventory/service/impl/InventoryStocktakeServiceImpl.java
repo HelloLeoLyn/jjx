@@ -293,9 +293,6 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         vo.setUpdateTime(order.getUpdateTime());
 
         // 设置类型名称
-        vo.setStocktakeTypeName(getStocktakeTypeName(order.getStocktakeType()));
-        vo.setOrderStatusName(getOrderStatusName(order.getOrderStatus()));
-        vo.setApproveStatusName(getApproveStatusName(order.getApproveStatus()));
 
         return vo;
     }

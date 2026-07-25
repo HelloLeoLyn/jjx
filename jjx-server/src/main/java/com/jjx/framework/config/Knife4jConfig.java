@@ -19,6 +19,7 @@ public class Knife4jConfig {
         return GroupedOpenApi.builder()
                 .group("jjx-erp")
                 .packagesToScan("com.jjx")
+                .pathsToMatch("/**")
                 .build();
     }
 

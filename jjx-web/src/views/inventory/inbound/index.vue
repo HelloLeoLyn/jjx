@@ -99,7 +99,7 @@
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="入库单号" prop="inboundNo" width="150" />
-        <el-table-column label="入库类型" prop="inboundTypeName" width="100" align="center">
+        <el-table-column label="入库类型" width="100" align="center">
           <template #default="{ row }"> </template>
         </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
@@ -112,7 +112,7 @@
         <el-table-column label="总金额" prop="totalAmount" width="120" align="right">
           <template #default="{ row }"> ¥ {{ formatCurrency(row.totalAmount) }} </template>
         </el-table-column>
-        <el-table-column label="状态" prop="statusName" width="100" align="center">
+        <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }"> </template>
         </el-table-column>
         <el-table-column label="审核状态" prop="approveStatus" width="100" align="center">

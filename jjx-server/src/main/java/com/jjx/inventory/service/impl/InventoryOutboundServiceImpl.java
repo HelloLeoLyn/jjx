@@ -523,10 +523,6 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         vo.setUpdateTime(order.getUpdateTime());
 
         // 设置类型名称
-        vo.setOutboundTypeName(getOutboundTypeName(order.getOutboundType()));
-        vo.setSourceTypeName(getSourceTypeName(order.getSourceType()));
-        vo.setOrderStatusName(getOrderStatusName(order.getOrderStatus()));
-        vo.setApproveStatusName(getApproveStatusName(order.getApproveStatus()));
 
         return vo;
     }
