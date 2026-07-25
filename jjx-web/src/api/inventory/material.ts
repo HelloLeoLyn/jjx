@@ -102,6 +102,11 @@ export const materialApi = {
     return request.get<R<InventoryMaterial[]>>('/inventory/material/low-stock')
   },
 
+  // 获取物料总数
+  getCount() {
+    return request.get<R<number>>('/inventory/material/count')
+  },
+
   // 获取物料下拉选项
   getOptions(keyword?: string) {
     return request.get<R<InventoryMaterial[]>>('/inventory/material/options', {

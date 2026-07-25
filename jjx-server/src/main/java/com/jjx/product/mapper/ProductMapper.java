@@ -54,8 +54,8 @@ public interface ProductMapper extends BaseMapper<Product> {
             sql.append("p.unit ");
             sql.append("FROM product p ");
             sql.append("LEFT JOIN product_category pc ON p.category_id = pc.category_id ");
-            sql.append("LEFT JOIN product_bom pb ON p.current_bom_id = pb.bom_id ");
-            sql.append("LEFT JOIN product_routing pr ON p.current_route_id = pr.routing_id ");
+            sql.append("LEFT JOIN engineering_bom pb ON p.current_bom_id = pb.bom_id ");
+            sql.append("LEFT JOIN engineering_routing pr ON p.current_route_id = pr.routing_id ");
 
             // 添加条件
             if (wrapper != null) {

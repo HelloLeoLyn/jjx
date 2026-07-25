@@ -30,6 +30,14 @@ public class ProductController extends BaseController {
     private final IProductService productService;
 
     /**
+     * 获取产品总数
+     */
+    @GetMapping("/count")
+    public Result<Long> count() {
+        return Result.success(productService.count());
+    }
+
+    /**
      * 获取产品列表
      */
     @GetMapping("/page")

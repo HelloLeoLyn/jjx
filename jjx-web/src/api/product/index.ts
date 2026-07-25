@@ -240,6 +240,13 @@ export function getFullProduct(productId: number) {
   return request.get<R<ProductFullVO>>(`/product/${productId}/full`)
 }
 
+/**
+ * 获取产品总数
+ */
+export function getProductCount() {
+  return request.get<R<number>>('/product/count')
+}
+
 import * as category from '@/api/product/category'
 import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'

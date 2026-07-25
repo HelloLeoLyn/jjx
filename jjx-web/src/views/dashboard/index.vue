@@ -175,8 +175,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { useUserStore } from '@/store/modules/user'
 import { materialApi } from '@/api/inventory/material'
 import { stockApi } from '@/api/inventory/stock'
-import { listOrder } from '@/api/purchase/order'
-import { listProductPage } from '@/api/product/index'
+import { getOrderCount } from '@/api/purchase/order'
+import { getProductCount } from '@/api/product/index'
 import { Box, Wallet, ShoppingCart, WarningFilled, Goods, User, Setting } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
@@ -204,18 +204,17 @@ onMounted(async () => {
 
   try {
     const [matRes, stkRes, orderRes, prodRes, alertRes] = await Promise.allSettled([
-      materialApi.list({ pageNum: 1, pageSize: 1 }),
-      stockApi.summary({ "pageNum": 1, "pageSize": 1 } as any),
-      listOrder({ pageNum: 1, pageSize: 1 }),
-      listProductPage({ pageNum: 1, pageSize: 1 }),
+      materialApi.getCount(),
+      stockApi.summary(),
+      getOrderCount(),
+      getProductCount(),
       stockApi.getLowStock(),
     ])
 
     clearTimeout(timeout)
 
-    if (matRes.status === 'fulfilled' && matRes.value?.data) {
-      const d = matRes.value.data as any
-      stats.materialCount = d?.total ?? d?.length ?? 823
+    if (matRes.status === 'fulfilled' && matRes.value?.data != null) {
+      stats.materialCount = Number(matRes.value.data) || 823
     }
 
     if (stkRes.status === 'fulfilled' && stkRes.value?.data) {
@@ -223,14 +222,12 @@ onMounted(async () => {
       stats.stockCount = d?.totalQuantity ?? 204
     }
 
-    if (orderRes.status === 'fulfilled') {
-      const d = (orderRes.value as any)?.data
-      stats.orderCount = d?.total ?? d?.length ?? 5
+    if (orderRes.status === 'fulfilled' && orderRes.value?.data != null) {
+      stats.orderCount = Number(orderRes.value.data) || 5
     }
 
-    if (prodRes.status === 'fulfilled' && prodRes.value?.data) {
-      const d = prodRes.value.data as any
-      stats.productCount = d?.total ?? d?.records?.length ?? 1
+    if (prodRes.status === 'fulfilled' && prodRes.value?.data != null) {
+      stats.productCount = Number(prodRes.value.data) || 1
     }
 
     if (alertRes.status === 'fulfilled' && alertRes.value?.data) {

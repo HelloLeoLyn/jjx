@@ -12,7 +12,7 @@ export const stockApi = {
   },
 
   // 获取库存汇总
-  summary(params: StockQueryParams) {
+  summary(params?: StockQueryParams) {
     return request.get<R<StockSummaryVO>>('/inventory/stock/summary', {
       params,
     })

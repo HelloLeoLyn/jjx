@@ -34,6 +34,14 @@ public class PurchaseOrderController extends BaseController {
     private final IPurchaseOrderService purchaseOrderService;
 
     /**
+     * 获取采购订单总数
+     */
+    @GetMapping("/count")
+    public Result<Long> count() {
+        return Result.success(purchaseOrderService.count());
+    }
+
+    /**
      * 查询采购订单列表
      */
     @GetMapping("/list")

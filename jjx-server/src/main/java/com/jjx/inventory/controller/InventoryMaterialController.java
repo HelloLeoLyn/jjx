@@ -39,6 +39,14 @@ public class InventoryMaterialController extends BaseController {
     private final InventoryMaterialService materialService;
 
     /**
+     * 获取物料总数
+     */
+    @GetMapping("/count")
+    public Result<Long> count() {
+        return Result.success(materialService.count());
+    }
+
+    /**
      * 分页查询物料列表
      */
     @GetMapping("/page")

@@ -1,7 +1,16 @@
 import request from '@/utils/request'
 import type { PurchaseOrder, PurchaseOrderItem, OrderQueryParams, PurchaseDocument } from '@/types/purchase'
 
-// 查询采购订单列表
+/**
+ * 获取采购订单总数
+ */
+export function getOrderCount() {
+  return request.get<R<number>>('/purchase/order/count')
+}
+
+/**
+ * 查询采购订单列表
+ */
 export function listOrder(params?: OrderQueryParams) {
   return request({
     url: '/purchase/order/list',

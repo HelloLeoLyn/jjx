@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.inventory.domain.InventoryInboundOrder;
@@ -587,9 +586,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setUpdateBy(order.getUpdateBy()) ;
         vo.setCreateTime(order.getCreateTime());
         vo.setUpdateTime(order.getUpdateTime());
-
-        // 设置类型名称
-        vo.setSourceTypeName(getSourceTypeName(order.getSourceType()));
 
         return vo;
     }
