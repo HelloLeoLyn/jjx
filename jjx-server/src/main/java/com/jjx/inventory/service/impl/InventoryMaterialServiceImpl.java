@@ -144,7 +144,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     public List<Map<String, Object>> getOptions(String keyword) {
         List<InventoryMaterial> materials = materialMapper.selectList(
                 new LambdaQueryWrapper<InventoryMaterial>()
-                        .eq(InventoryMaterial::getStatus, "0")
+                        .eq(InventoryMaterial::getStatus, 0)
                         .and(wrapper -> {
                             if (keyword != null && !keyword.isEmpty()) {
                                 wrapper.like(InventoryMaterial::getMaterialCode, keyword)

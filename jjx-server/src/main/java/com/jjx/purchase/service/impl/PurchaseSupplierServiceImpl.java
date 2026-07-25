@@ -25,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * 供应商服务实现类
@@ -294,8 +296,16 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
 
     @Override
     public Object getSupplierStatistics() {
-        // TODO: 实现统计功能
-        throw new BusinessException("统计功能暂未实现");
+        Map<String, Object> stats = new HashMap<>();
+        List<PurchaseSupplier> all = supplierMapper.selectList(Wrappers.emptyWrapper());
+        stats.put("totalCount", (long) all.size());
+        long disabledCount = all.stream().filter(s -> s.getStatus() != null && s.getStatus() == 1).count();
+        stats.put("normalCount", all.size() - disabledCount);
+        stats.put("disabledCount", disabledCount);
+        stats.put("materialsCount", all.stream().filter(s -> "M".equals(s.getSupplierType())).count());
+        stats.put("equipmentCount", all.stream().filter(s -> "E".equals(s.getSupplierType())).count());
+        stats.put("otherCount", all.stream().filter(s -> !"M".equals(s.getSupplierType()) && !"E".equals(s.getSupplierType())).count());
+        return stats;
     }
 
     @Override
