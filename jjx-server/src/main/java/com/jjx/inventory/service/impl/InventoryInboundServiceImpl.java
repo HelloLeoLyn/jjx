@@ -29,6 +29,7 @@ import com.jjx.inventory.service.InventoryInboundService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -564,84 +565,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         InboundVO vo = new InboundVO();
-        vo.setInboundId(order.getInboundId());
-        vo.setInboundNo(order.getInboundNo());
-        vo.setInboundType(order.getInboundType());
-        vo.setWarehouseId(order.getWarehouseId());
-        vo.setLocationId(order.getLocationId());
-        vo.setSourceType(order.getSourceType());
-        vo.setSourceId(order.getSourceId());
-        vo.setSourceNo(order.getSourceNo());
-        vo.setSupplierId(order.getSupplierId());
-        vo.setInboundDate(order.getInboundDate());
-        vo.setInspectorId(order.getInspectorId());
-        vo.setInspectionResult(order.getInspectionResult());
-        vo.setInspectionRemark(order.getInspectionRemark());
-        vo.setTotalQuantity(order.getTotalQuantity());
-        vo.setTotalAmount(order.getTotalAmount());
-        vo.setOrderStatus(order.getOrderStatus());
-        vo.setApproveStatus(order.getApproveStatus());
-        vo.setRemark(order.getRemark());
-        vo.setCreateBy(order.getCreateBy());
-        vo.setUpdateBy(order.getUpdateBy()) ;
-        vo.setCreateTime(order.getCreateTime());
-        vo.setUpdateTime(order.getUpdateTime());
-
+        BeanUtils.copyProperties(order, vo);
         return vo;
-    }
-
-    private static String getInboundTypeName(String inboundType) {
-        if (inboundType == null) {
-            return "";
-        }
-        switch (inboundType) {
-            case "purchase": return "采购入库";
-            case "production": return "生产入库";
-            case "return": return "退货入库";
-            case "transfer": return "调拨入库";
-            case "other": return "其他入库";
-            default: return inboundType;
-        }
-    }
-
-    private static String getSourceTypeName(String sourceType) {
-        if (sourceType == null) {
-            return "";
-        }
-        switch (sourceType) {
-            case "purchase_order": return "采购订单";
-            case "work_order": return "工单";
-            case "sales_return": return "销售退货";
-            case "transfer_order": return "调拨单";
-            default: return sourceType;
-        }
-    }
-
-    private static String getOrderStatusName(String orderStatus) {
-        if (orderStatus == null) {
-            return "";
-        }
-        switch (orderStatus) {
-            case "pending": return "待确认";
-            case "pending_approval": return "待审批";
-            case "approved": return "已审批";
-            case "completed": return "已完成";
-            case "cancelled": return "已取消";
-            case "rejected": return "已驳回";
-            default: return orderStatus;
-        }
-    }
-
-    private static String getApproveStatusName(String approveStatus) {
-        if (approveStatus == null) {
-            return "";
-        }
-        switch (approveStatus) {
-            case "pending": return "待审批";
-            case "approved": return "已通过";
-            case "rejected": return "已驳回";
-            default: return approveStatus;
-        }
     }
 
     private static List<InboundItemVO> convertToItemVOList(List<InventoryInboundItem> items) {

@@ -21,6 +21,7 @@ import com.jjx.inventory.service.InventoryOutboundService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -501,84 +502,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         OutboundVO vo = new OutboundVO();
-        vo.setOutboundId(order.getOutboundId());
-        vo.setOutboundNo(order.getOutboundNo());
-        vo.setOutboundType(order.getOutboundType());
-        vo.setWarehouseId(order.getWarehouseId());
-        vo.setSourceType(order.getSourceType());
-        vo.setSourceId(order.getSourceId());
-        vo.setSourceNo(order.getSourceNo());
-        vo.setCustomerId(order.getCustomerId());
-        vo.setOutboundDate(order.getOutboundDate());
-        vo.setTotalQuantity(order.getTotalQuantity());
-        vo.setTotalAmount(order.getTotalAmount());
-        vo.setOrderStatus(order.getOrderStatus());
-        vo.setApproveStatus(order.getApproveStatus());
-        vo.setRemark(order.getRemark());
-
-        // 处理createBy和updateBy，尝试转换为Long
-
-
-        vo.setCreateTime(order.getCreateTime());
-        vo.setUpdateTime(order.getUpdateTime());
+        BeanUtils.copyProperties(order, vo);
 
         // 设置类型名称
 
         return vo;
-    }
-
-    private static String getOutboundTypeName(String outboundType) {
-        if (outboundType == null) {
-            return "";
-        }
-        switch (outboundType) {
-            case "production": return "生产领料";
-            case "sales": return "销售出库";
-            case "return": return "退货出库";
-            case "transfer": return "调拨出库";
-            case "other": return "其他出库";
-            default: return outboundType;
-        }
-    }
-
-    private static String getSourceTypeName(String sourceType) {
-        if (sourceType == null) {
-            return "";
-        }
-        switch (sourceType) {
-            case "work_order": return "工单";
-            case "sales_order": return "销售订单";
-            case "purchase_return": return "采购退货";
-            case "transfer_order": return "调拨单";
-            default: return sourceType;
-        }
-    }
-
-    private static String getOrderStatusName(String orderStatus) {
-        if (orderStatus == null) {
-            return "";
-        }
-        switch (orderStatus) {
-            case "pending": return "待确认";
-            case "pending_approval": return "待审批";
-            case "approved": return "已审批";
-            case "completed": return "已完成";
-            case "cancelled": return "已取消";
-            case "rejected": return "已驳回";
-            default: return orderStatus;
-        }
-    }
-
-    private static String getApproveStatusName(String approveStatus) {
-        if (approveStatus == null) {
-            return "";
-        }
-        switch (approveStatus) {
-            case "pending": return "待审批";
-            case "approved": return "已通过";
-            case "rejected": return "已驳回";
-            default: return approveStatus;
-        }
     }
 
     private static List<OutboundItemVO> convertToItemVOList(List<InventoryOutboundItem> items) {

@@ -11,6 +11,7 @@ import com.jjx.inventory.mapper.InventoryStocktakeOrderMapper;
 import com.jjx.inventory.service.InventoryStocktakeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -261,31 +262,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         }
 
         StocktakeVO vo = new StocktakeVO();
-        vo.setStocktakeId(order.getStocktakeId());
-        vo.setStocktakeNo(order.getStocktakeNo());
-        vo.setStocktakeType(order.getStocktakeType());
-        vo.setWarehouseId(order.getWarehouseId());
-        vo.setLocationIds(order.getLocationIds());
-        vo.setMaterialIds(order.getMaterialIds());
-        vo.setPlanStartTime(order.getPlanStartTime());
-        vo.setPlanEndTime(order.getPlanEndTime());
-        vo.setActualStartTime(order.getActualStartTime());
-        vo.setActualEndTime(order.getActualEndTime());
-        vo.setStocktakerId(order.getStocktakerId());
-        vo.setStocktakerName(order.getStocktakerName());
-        vo.setSupervisorId(order.getSupervisorId());
-        vo.setSupervisorName(order.getSupervisorName());
-        vo.setTotalSystemQuantity(order.getTotalSystemQuantity());
-        vo.setTotalActualQuantity(order.getTotalActualQuantity());
-        vo.setTotalDiffQuantity(order.getTotalDiffQuantity());
-        vo.setTotalDiffAmount(order.getTotalDiffAmount());
-        vo.setOrderStatus(order.getOrderStatus());
-        vo.setApproveStatus(order.getApproveStatus());
-        vo.setApproverId(order.getApproverId());
-        vo.setApproverName(order.getApproverName());
-        vo.setApproveTime(order.getApproveTime());
-        vo.setApproveRemark(order.getApproveRemark());
-        vo.setRemark(order.getRemark());
+        BeanUtils.copyProperties(order, vo);
 
 
 
@@ -297,42 +274,4 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         return vo;
     }
 
-    private static String getStocktakeTypeName(String stocktakeType) {
-        if (stocktakeType == null) {
-            return "";
-        }
-        switch (stocktakeType) {
-            case "full": return "全盘";
-            case "partial": return "抽盘";
-            case "cycle": return "循环盘点";
-            default: return stocktakeType;
-        }
-    }
-
-    private static String getOrderStatusName(String orderStatus) {
-        if (orderStatus == null) {
-            return "";
-        }
-        switch (orderStatus) {
-            case "draft": return "草稿";
-            case "processing": return "盘点中";
-            case "confirmed": return "已确认";
-            case "processed": return "已处理";
-            case "closed": return "已关闭";
-            case "cancelled": return "已取消";
-            default: return orderStatus;
-        }
-    }
-
-    private static String getApproveStatusName(String approveStatus) {
-        if (approveStatus == null) {
-            return "";
-        }
-        switch (approveStatus) {
-            case "pending": return "待审批";
-            case "approved": return "已批准";
-            case "rejected": return "已驳回";
-            default: return approveStatus;
-        }
-    }
 }

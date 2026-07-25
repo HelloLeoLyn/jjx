@@ -334,41 +334,4 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         return vo;
     }
 
-    private static String getAlertTypeName(String alertType) {
-        if (alertType == null) {
-            return "";
-        }
-        switch (alertType) {
-            case "safe_stock": return "安全库存";
-            case "max_stock": return "最高库存";
-            case "expiry": return "保质期";
-            case "obsolete": return "呆滞料";
-            default: return alertType;
-        }
-    }
-
-    private static String getAlertLevelName(String alertLevel) {
-        if (alertLevel == null) {
-            return "";
-        }
-        switch (alertLevel) {
-            case "info": return "提示";
-            case "warning": return "警告";
-            case "urgent": return "紧急";
-            default: return alertLevel;
-        }
-    }
-
-    private static String getStatusName(String status) {
-        if (status == null) {
-            return "";
-        }
-        switch (status) {
-            case "new": return "新预警";
-            case "read": return "已读";
-            case "processed": return "已处理";
-            case "ignored": return "已忽略";
-            default: return status;
-        }
-    }
 }

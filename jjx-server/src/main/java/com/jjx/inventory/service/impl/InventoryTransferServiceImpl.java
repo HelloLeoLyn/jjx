@@ -11,6 +11,7 @@ import com.jjx.inventory.mapper.InventoryTransferOrderMapper;
 import com.jjx.inventory.service.InventoryTransferService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -237,44 +238,12 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     private static TransferVO convertToVO(InventoryTransferOrder order){
-        return new TransferVO();
+        if (order == null) {
+            return null;
+        }
+        TransferVO vo = new TransferVO();
+        BeanUtils.copyProperties(order, vo);
+        return vo;
     }
 
-    private static String getTransferTypeName(String transferType) {
-        if (transferType == null) {
-            return "";
-        }
-        switch (transferType) {
-            case "normal": return "普通调拨";
-            case "urgent": return "紧急调拨";
-            default: return transferType;
-        }
-    }
-
-    private static String getOrderStatusName(String orderStatus) {
-        if (orderStatus == null) {
-            return "";
-        }
-        switch (orderStatus) {
-            case "draft": return "草稿";
-            case "approved": return "已批准";
-            case "out_confirm": return "已出库";
-            case "in_confirm": return "已入库";
-            case "closed": return "已关闭";
-            case "cancelled": return "已取消";
-            default: return orderStatus;
-        }
-    }
-
-    private static String getApproveStatusName(String approveStatus) {
-        if (approveStatus == null) {
-            return "";
-        }
-        switch (approveStatus) {
-            case "pending": return "待审批";
-            case "approved": return "已批准";
-            case "rejected": return "已驳回";
-            default: return approveStatus;
-        }
-    }
 }
