@@ -142,16 +142,13 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     @Override
     public List<Map<String, Object>> getOptions(String keyword) {
-        List<InventoryMaterial> materials = materialMapper.selectList(
-                new LambdaQueryWrapper<InventoryMaterial>()
-                        .eq(InventoryMaterial::getStatus, 0)
-                        .and(wrapper -> {
-                            if (keyword != null && !keyword.isEmpty()) {
-                                wrapper.like(InventoryMaterial::getMaterialCode, keyword)
-                                        .or()
-                                        .like(InventoryMaterial::getMaterialName, keyword);
-                            }
-                        })
+        LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<InventoryMaterial>()
+                        .eq(InventoryMaterial::getStatus, 0);
+        if (keyword != null && !keyword.isEmpty()) {
+            wrapper.and(w -> w.like(InventoryMaterial::getMaterialCode, keyword)
+                .or().like(InventoryMaterial::getMaterialName, keyword));
+        }
+        List<InventoryMaterial> materials = materialMapper.selectList(wrapper
                         .orderByAsc(InventoryMaterial::getMaterialCode)
                         .last("LIMIT 100")
         );
