@@ -180,6 +180,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Check,
   Close,
@@ -314,9 +315,10 @@ const showSettings = () => {
   // TODO: 跳转到检验标准设置页面
 }
 
+const router = useRouter()
+
 const handleReport = () => {
-  console.log('生成质量报告')
-  // TODO: 生成质量报告
+  router.push('/production/quality/report')
 }
 
 const viewAllInspections = () => {
