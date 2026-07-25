@@ -80,7 +80,7 @@
               <el-icon :size="24"><WarningFilled /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ stats.lowStockCount }}</div>
+              <div class="stat-value">{{ stats["lowStockCount"] }}</div>
               <div class="stat-label">低库存预警</div>
             </div>
           </div>
@@ -156,7 +156,7 @@
           <el-descriptions :column="4" border>
             <el-descriptions-item label="系统名称">JJX ERP 薄膜开关管理系统</el-descriptions-item>
             <el-descriptions-item label="系统版本">v1.0.0</el-descriptions-item>
-            <el-descriptions-item label="当前用户">{{ userInfo?.userName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="当前用户">{{ (userInfo as any)?.userName || '-' }}</el-descriptions-item>
             <el-descriptions-item label="数据库状态">已连接 ✅</el-descriptions-item>
             <el-descriptions-item label="物料总数">{{ stats.materialCount }}</el-descriptions-item>
             <el-descriptions-item label="产品总数">{{ stats.productCount }}</el-descriptions-item>
@@ -205,7 +205,7 @@ onMounted(async () => {
   try {
     const [matRes, stkRes, orderRes, prodRes, alertRes] = await Promise.allSettled([
       materialApi.list({ pageNum: 1, pageSize: 1 }),
-      stockApi.summary({ pageNum: 1, pageSize: 1 }),
+      stockApi.summary({ "pageNum": 1, "pageSize": 1 } as any),
       listOrder({ pageNum: 1, pageSize: 1 }),
       listProductPage({ pageNum: 1, pageSize: 1 }),
       stockApi.getLowStock(),
@@ -237,9 +237,9 @@ onMounted(async () => {
       const items = alertRes.value.data as any[]
       if (Array.isArray(items)) {
         alertItems.value = items.slice(0, 8)
-        stats.lowStockCount = items.length
-      } else if (items?.lowStockCount !== undefined) {
-        stats.lowStockCount = items.lowStockCount
+        stats["lowStockCount"] = items.length
+      } else if ((items as any)?.lowStockCount) {
+        stats["lowStockCount"] = (items as any).lowStockCount
       }
     }
   } catch (e) {

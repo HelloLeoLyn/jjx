@@ -73,7 +73,7 @@ export function usePurchaseOrderOperations() {
   const updateOrderStatus = async (data: OrderStatusUpdateDTO): Promise<boolean> => {
     saving.value = true
     try {
-      await changeOrderStatus(Number(data.orderId), data.approvalStatus)
+      await changeOrderStatus(Number(data.orderId), data.approvalStatus as any)
       ElMessage.success('更新订单状态成功')
       return true
     } catch (error) {
@@ -92,7 +92,7 @@ export function usePurchaseOrderOperations() {
     saving.value = true
     try {
       await approveOrder({
-        orderId: Number(data.orderId),
+        orderId: Number(data.orderId as any),
         approverId: 0, // 需要从当前用户获取
         approverName: '', // 需要从当前用户获取
         approvalComment: data.approvalComment,
@@ -115,7 +115,7 @@ export function usePurchaseOrderOperations() {
   const updateReceiptStatus = async (data: ReceiptStatusUpdateDTO): Promise<boolean> => {
     saving.value = true
     try {
-      await changeReceiptStatus(Number(data.orderId), data.receiptStatus)
+      await changeReceiptStatus(Number(data.orderId), data.receiptStatus as any)
       ElMessage.success('更新收货状态成功')
       return true
     } catch (error) {
@@ -133,7 +133,7 @@ export function usePurchaseOrderOperations() {
   const updatePaymentStatus = async (data: PaymentStatusUpdateDTO): Promise<boolean> => {
     saving.value = true
     try {
-      await updatePaymentInfo(Number(data.orderId), data.paymentAmount || 0, data.paymentStatus)
+      await updatePaymentInfo(Number(data.orderId), data.paymentAmount || 0, data.paymentStatus as any)
       ElMessage.success('更新付款状态成功')
       return true
     } catch (error) {
@@ -151,7 +151,7 @@ export function usePurchaseOrderOperations() {
   const submitForApproval = async (orderId: string): Promise<boolean> => {
     saving.value = true
     try {
-      await submitOrder(Number(orderId))
+      await submitOrder(Number(orderId) as any)
       ElMessage.success('提交审批成功')
       return true
     } catch (error) {
@@ -169,7 +169,7 @@ export function usePurchaseOrderOperations() {
   const batchSubmitForApproval = async (orderIds: string[]): Promise<boolean> => {
     saving.value = true
     try {
-      const ids = orderIds.map((id) => Number(id))
+      const ids = orderIds.map((id) => Number(id) as any)
       await batchSubmitOrders(ids)
       ElMessage.success(`批量提交 ${orderIds.length} 个订单审批成功`)
       return true
@@ -188,7 +188,7 @@ export function usePurchaseOrderOperations() {
   const cancleOrder = async (orderId: string): Promise<boolean> => {
     saving.value = true
     try {
-      await apiCancleOrder(Number(orderId))
+      await apiCancleOrder(Number(orderId) as any)
       ElMessage.success('取消订单成功')
       return true
     } catch (error) {
@@ -206,7 +206,7 @@ export function usePurchaseOrderOperations() {
   const copyOrder = async (orderId: string): Promise<boolean> => {
     saving.value = true
     try {
-      await apiCopyOrder(Number(orderId))
+      await apiCopyOrder(Number(orderId) as any)
       ElMessage.success('复制订单成功')
       return true
     } catch (error) {

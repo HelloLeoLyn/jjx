@@ -345,8 +345,8 @@ const fetchOrderDetail = async () => {
     orderDetail.value = response.data
 
     // 获取订单明细
-    if (response.data.items) {
-      orderItems.value = response.data.items
+    if ((response as any).data.items) {
+      orderItems.value = (response as any).data.items
     }
   } catch (error) {
     console.error('获取订单详情失败', error)

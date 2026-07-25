@@ -73,7 +73,7 @@ export const standardProcessApi = {
    * GET /engineering/standard-processes/enabled
    */
   getEnabledProcesses() {
-    return request.get<R<StandardProcessItem[]>>('/engineering/standard-processes/enabled')
+    return request.get<R<StandardProcessItem[]>>('/engineering/standard-process/enabled')
   },
 
   /**

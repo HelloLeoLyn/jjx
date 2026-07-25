@@ -159,7 +159,7 @@ watch(
 const loadDetail = async () => {
   loading.value = true
   try {
-    const response = await getOrder(Number(props.orderId))
+    const response = await getOrder(Number(props.orderId) as any)
     orderDetail.value = response.data || null
   } catch (error) {
     console.error('加载订单详情失败:', error)

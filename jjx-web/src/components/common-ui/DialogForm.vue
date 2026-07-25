@@ -17,7 +17,7 @@
     >
       <el-row :gutter="20">
         <el-col
-          v-for="field in fields"
+          v-for="field in resolvedFields"
           :key="field.prop"
           :span="field.span || 24"
         >
@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { FormInstance } from 'element-plus'
 import type { FormOptions } from './type'
 
@@ -106,6 +106,15 @@ const emit = defineEmits<{
   (e: 'submit', data: Record<string, any>): void
   (e: 'cancel'): void
 }>()
+
+// 解析字段配置中的函数类型值（如 disabled/readonly 可能是函数）
+const resolvedFields = computed(() => props.fields.map(f => ({
+  ...f,
+  disabled: typeof f.disabled === 'function' ? (f.disabled as (d: any) => boolean)(props.formData) : f.disabled,
+  readonly: typeof f.readonly === 'function' ? (f.readonly as (d: any) => boolean)(props.formData) : f.readonly,
+  multiple: typeof f.multiple === 'function' ? (f.multiple as (d: any) => boolean)(props.formData) : f.multiple,
+  clearable: typeof f.clearable === 'function' ? (f.clearable as (d: any) => boolean)(props.formData) : f.clearable,
+})))
 
 const formRef = ref<FormInstance>()
 

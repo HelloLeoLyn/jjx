@@ -178,9 +178,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long create(Map<String, Object> params) {
-        // TODO: 实现创建入库单逻辑
         log.info("创建入库单: {}", params);
-        return 1L;
+        InventoryInboundOrder order = new InventoryInboundOrder();
+        order.setInboundNo((String) params.getOrDefault("inboundNo", "IN-" + System.currentTimeMillis()));
+        order.setInboundType((String) params.getOrDefault("inboundType", "purchase"));
+        order.setSourceType((String) params.get("sourceType"));
+        if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
+        order.setSourceNo((String) params.get("sourceNo"));
+        if (params.get("warehouseId") != null) order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
+        order.setOrderStatus("pending");
+        inboundOrderMapper.insert(order);
+        return order.getInboundId();
     }
 
     @Override
@@ -197,7 +205,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // TODO: 执行库存增加逻辑
+        order.setOrderStatus("approved");
+        inboundOrderMapper.updateById(order);
+        // 执行库存增加（复用审批中的库存逻辑）
+        approve(inboundId, operatorId, operatorName, "直接确认入库");
         order.setOrderStatus("completed");
         return inboundOrderMapper.updateById(order) > 0;
     }
@@ -530,8 +541,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     public Map<String, Object> getDetail(Map<String, Object> params) {
-        // TODO: 实现获取入库单详情，包括明细项
-        return Map.of("message", "详情功能待实现");
+        if (params != null && params.get("inboundId") != null) {
+            Long inboundId = Long.valueOf(params.get("inboundId").toString());
+            InboundVO detail = getDetail(inboundId);
+            if (detail != null) {
+                return Map.of("code", 200, "data", detail);
+            }
+        }
+        return Map.of("code", 404, "message", "入库单不存在");
     }
 
     private static List<InboundVO> convertToVOList(List<InventoryInboundOrder> orders) {

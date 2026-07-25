@@ -832,7 +832,7 @@ const handleView = (row: any) => {
 const searchCustomer = (query: string) => {
   if (query) {
     customerLoading.value = true
-    customerApi.list({ customerName: query, pageSize: 10 }).then((response: any) => {
+    (customerApi as any).list({ customerName: query, pageSize: 10 }).then((response: any) => {
       customerOptions.value = response.rows.map((item: any) => ({
         customerId: item.customerId,
         customerName: item.customerName,

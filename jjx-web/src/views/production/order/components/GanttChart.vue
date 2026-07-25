@@ -15,7 +15,7 @@
         />
         <el-button @click="zoomIn" :disabled="zoomLevel >= 3">🔍+</el-button>
         <el-button @click="zoomOut" :disabled="zoomLevel <= 0">🔍-</el-button>
-        <el-button @click="today">📅 今天</el-button>
+        <el-button @click="scrollToToday">📅 今天</el-button>
       </div>
       <div class="gantt-toolbar-right">
         <span style="color:#94a3b8;font-size:13px;margin-right:8px">图例:</span>
@@ -110,13 +110,13 @@
                 class="gantt-bar"
                 :class="'gantt-bar-' + (order.orderType === 'PLAN' ? 'plan' : 'work')"
                 :style="{
-                  left: order.barLeft + 'px',
-                  width: Math.max(order.barWidth, 4) + 'px',
+                  left: (order.barLeft != null ? order.barLeft : 0) + 'px',
+                  width: Math.max(order.barWidth != null ? order.barWidth : 0, 4) + 'px',
                 }"
                 :title="order.orderNo + ': ' + order.planStartDate + ' ~ ' + order.planEndDate"
                 @click="$emit('view', order)"
               >
-                <span class="gantt-bar-text" v-if="order.barWidth > 60">
+                <span class="gantt-bar-text" v-if="(order.barWidth != null ? order.barWidth : 0) > 60">
                   {{ order.productName || order.orderNo }}
                 </span>
               </div>
@@ -125,7 +125,7 @@
               <span
                 v-if="order.isOverdue"
                 class="gantt-overdue-badge"
-                :style="{ left: Math.min(order.barLeft + order.barWidth + 4, timelinePixels - 30) + 'px' }"
+                :style="{ left: Math.min((order.barLeft != null ? order.barLeft : 0) + (order.barWidth != null ? order.barWidth : 0) + 4, timelinePixels - 30) + 'px' }"
                 title="已超期"
               >⚠️</span>
             </div>
@@ -293,7 +293,7 @@ async function loadData() {
       params.orderType = props.orderType
     }
 
-    const res = await getProductionOrderList(params)
+    const res = await getProductionOrderList(params as any)
     let items = res?.data?.records || []
     if (!Array.isArray(items)) items = []
 
@@ -347,7 +347,7 @@ function zoomOut() {
 }
 
 /** 跳到今天 */
-function today() {
+function scrollToToday() {
   const now = new Date()
   viewRange.value = [
     formatDate(new Date(now.getTime() - 15 * 86400000)),

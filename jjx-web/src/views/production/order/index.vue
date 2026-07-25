@@ -410,17 +410,17 @@ const handleSelectionChange = (selection: ProductionOrderVO[]) => {
   selectedRows.value = selection
 }
 
-const handleViewOrder = (order: ProductionOrderVO) => {
+const handleViewOrder = (order: any) => {
   // 跳转到详情页或打开详情对话框
   ElMessage.info(`查看订单 ${order.orderNo}`)
 }
 
-const handleEditOrder = (order: ProductionOrderVO) => {
+const handleEditOrder = (order: any) => {
   currentOrder.value = order
   formDialogVisible.value = true
 }
 
-const handleConvertOrder = (order: ProductionOrderVO) => {
+const handleConvertOrder = (order: any) => {
   ElMessageBox.confirm(`确定要将计划 ${order.orderNo} 转为工单吗？`, '转为工单确认', {
     confirmButtonText: '确认',
     cancelButtonText: '取消',
@@ -437,17 +437,17 @@ const handleConvertOrder = (order: ProductionOrderVO) => {
   })
 }
 
-const handleStartOrder = (order: ProductionOrderVO) => {
+const handleStartOrder = (order: any) => {
   currentOrder.value = order
   statusDialogVisible.value = true
 }
 
-const handleCompleteOrder = (order: ProductionOrderVO) => {
+const handleCompleteOrder = (order: any) => {
   currentOrder.value = order
   statusDialogVisible.value = true
 }
 
-const handleCancelOrder = (order: ProductionOrderVO) => {
+const handleCancelOrder = (order: any) => {
   ElMessageBox.confirm(`确定要取消订单 ${order.orderNo} 吗？`, '取消订单确认', {
     confirmButtonText: '确认',
     cancelButtonText: '取消',
@@ -468,7 +468,7 @@ const handleCancelOrder = (order: ProductionOrderVO) => {
   })
 }
 
-const handleDeleteOrder = (order: ProductionOrderVO) => {
+const handleDeleteOrder = (order: any) => {
   currentOrder.value = order
   deleteDialogVisible.value = true
 }
@@ -492,19 +492,19 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
   }
 }
 
-const handleCopyOrder = (order: ProductionOrderVO) => {
+const handleCopyOrder = (order: any) => {
   ElMessage.info(`复制订单 ${order.orderNo}`)
 }
 
-const handleExportOrder = (order: ProductionOrderVO) => {
+const handleExportOrder = (order: any) => {
   ElMessage.info(`导出订单 ${order.orderNo}`)
 }
 
-const handlePrintOrder = (order: ProductionOrderVO) => {
+const handlePrintOrder = (order: any) => {
   ElMessage.info(`打印订单 ${order.orderNo}`)
 }
 
-const handleViewHistory = (order: ProductionOrderVO) => {
+const handleViewHistory = (order: any) => {
   ElMessage.info(`查看订单 ${order.orderNo} 的操作历史`)
 }
 

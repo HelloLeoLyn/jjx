@@ -41,10 +41,22 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
     @Override
     public IPage<AlertVO> page(AlertQueryDTO query) {
-        // 这里需要实现分页查询，返回AlertVO
-        // 暂时返回空分页，实际需要实现查询逻辑
-        Page<AlertVO> page = new Page<>(query.getCurrent(), query.getSize());
-        return page;
+        LambdaQueryWrapper<InventoryAlertLog> wrapper = new LambdaQueryWrapper<>();
+        if (query.getAlertType() != null && !query.getAlertType().isEmpty()) wrapper.eq(InventoryAlertLog::getAlertType, query.getAlertType());
+        if (query.getAlertLevel() != null && !query.getAlertLevel().isEmpty()) wrapper.eq(InventoryAlertLog::getAlertLevel, query.getAlertLevel());
+        if (query.getStatus() != null && !query.getStatus().isEmpty()) wrapper.eq(InventoryAlertLog::getStatus, query.getStatus());
+        if (query.getStartDate() != null && !query.getStartDate().isEmpty()) wrapper.ge(InventoryAlertLog::getAlertTime, query.getStartDate());
+        if (query.getEndDate() != null && !query.getEndDate().isEmpty()) wrapper.le(InventoryAlertLog::getAlertTime, query.getEndDate());
+        if (query.getMaterialId() != null) wrapper.eq(InventoryAlertLog::getMaterialId, query.getMaterialId());
+        wrapper.orderByDesc(InventoryAlertLog::getAlertTime);
+
+        Page<InventoryAlertLog> logPage = new Page<>(query.getCurrent(), query.getSize());
+        IPage<InventoryAlertLog> logResult = alertLogMapper.selectPage(logPage, wrapper);
+        Page<AlertVO> voPage = new Page<>(query.getCurrent(), query.getSize());
+        voPage.setTotal(logResult.getTotal());
+        voPage.setPages(logResult.getPages());
+        voPage.setRecords(convertToVOList(logResult.getRecords()));
+        return voPage;
     }
 
     @Override
@@ -104,6 +116,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setAlertTime(java.time.LocalDateTime.now());
             alertLogMapper.insert(alert);
         }
+        try { if (!overStock.isEmpty()) eventPublisher.fire("stock.max", Map.of("count", String.valueOf(overStock.size()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("最高库存预警检查完成，发现 {} 条", overStock.size());
     }
 
@@ -128,6 +141,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setAlertTime(java.time.LocalDateTime.now());
             alertLogMapper.insert(alert);
         }
+        try { if (!expiring.isEmpty()) eventPublisher.fire("stock.expiry", Map.of("count", String.valueOf(expiring.size()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("保质期预警检查完成，发现 {} 条", expiring.size());
     }
 
@@ -151,6 +165,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setAlertTime(java.time.LocalDateTime.now());
             alertLogMapper.insert(alert);
         }
+        try { if (!obsolete.isEmpty()) eventPublisher.fire("stock.obsolete", Map.of("count", String.valueOf(obsolete.size()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("呆滞料预警检查完成，发现 {} 条", obsolete.size());
     }
 

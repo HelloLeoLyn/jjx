@@ -350,7 +350,7 @@ export interface OrderItem {
   amount: number
   deliveryDays: number
   customRequirements: string
-  productId?: number
+  productId?: number | null
   orderId?: number
 }
 

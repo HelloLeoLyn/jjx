@@ -195,7 +195,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import type { SearchOptions } from '@/components/common-ui/type'
-import { materialCategoryApi } from '@/api/inventory/material'
+import { materialCategoryApi } from '@/api/inventory/materialCategory'
 import type {
   MaterialCategoryItem,
   MaterialCategoryFormData,
@@ -282,13 +282,13 @@ const ids = ref<number[]>([])
 const getCategoryTree = async () => {
   try {
     loading.value = true
-    const response = await materialCategoryApi.getTree(queryParams)
+    const response = await materialCategoryApi.getTree(queryParams as any)
     if (response.code === 200) {
       categoryTree.value = response.data || []
       if (response.data) {
         categoryTreeOptions.value = [
           { categoryId: 0, categoryName: '顶级分类', children: [] },
-          ...response.data,
+          ...(response.data as any),
         ]
       }
     }

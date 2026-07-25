@@ -107,7 +107,7 @@
               width="100%"
               :active-only="true"
               @change="
-                (warehouse) => {
+                (warehouse: any) => {
                   row.warehouseName = warehouse?.warehouseName || ''
                 }
               "

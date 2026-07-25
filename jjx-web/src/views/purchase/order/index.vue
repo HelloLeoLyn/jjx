@@ -132,7 +132,7 @@
               v-for="dict in approvalStatusOptions"
               :key="dict.value"
               :label="dict.label"
-              :value="Number(dict.value)"
+              :value="Number(dict.value as any)"
             />
           </el-select>
         </el-form-item>
@@ -541,7 +541,7 @@ const handleUpdate = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要修改的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   formDialogVisible.value = true
 }
@@ -603,14 +603,14 @@ const handleApprove = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要审批的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   approveDialogVisible.value = true
 }
 
 // 查看详情
 const handleView = (row: PurchaseOrderVO) => {
-  currentOrderId.value = Number(row.orderId)
+  currentOrderId.value = Number(row.orderId as any)
   currentOrderNo.value = row.orderNo
   detailDialogVisible.value = true
 }
@@ -622,7 +622,7 @@ const handleReceive = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要收货的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   receiveDialogVisible.value = true
 }
@@ -634,7 +634,7 @@ const handlePayment = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要付款的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   currentOrderTotalAmount.value = order.orderTotalAmount || 0
   currentPaidAmount.value = (order as any).paidAmount || 0
@@ -656,7 +656,7 @@ const handleCopy = async (row?: PurchaseOrderVO) => {
     type: 'info',
   }).then(async () => {
     try {
-      await copyOrder(Number(order.orderId))
+      await copyOrder(Number(order.orderId) as any)
       ElMessage.success('复制订单成功')
       handleSuccess()
     } catch (error) {
@@ -678,7 +678,7 @@ const handleCancle = async (row: PurchaseOrderVO) => {
     }
   ).then(async () => {
     try {
-      await cancleOrder(Number(row.orderId))
+      await cancleOrder(Number(row.orderId) as any)
       ElMessage.success('取消订单成功')
       handleSuccess()
     } catch (error) {

@@ -53,25 +53,68 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     @Override
     public IPage<OutboundVO> page(OutboundQueryDTO query) {
-        // 这里需要实现分页查询，返回OutboundVO
-        // 暂时返回空分页，实际需要实现查询逻辑
-        Page<OutboundVO> page = new Page<>(query.getCurrent(), query.getSize());
-        return page;
+        LambdaQueryWrapper<InventoryOutboundOrder> wrapper = new LambdaQueryWrapper<>();
+        if (query.getOutboundId() != null) wrapper.eq(InventoryOutboundOrder::getOutboundId, query.getOutboundId());
+        if (query.getOutboundNo() != null && !query.getOutboundNo().isEmpty()) wrapper.like(InventoryOutboundOrder::getOutboundNo, query.getOutboundNo());
+        if (query.getOutboundType() != null && !query.getOutboundType().isEmpty()) wrapper.eq(InventoryOutboundOrder::getOutboundType, query.getOutboundType());
+        if (query.getWarehouseId() != null) wrapper.eq(InventoryOutboundOrder::getWarehouseId, query.getWarehouseId());
+        if (query.getSourceType() != null && !query.getSourceType().isEmpty()) wrapper.eq(InventoryOutboundOrder::getSourceType, query.getSourceType());
+        if (query.getSourceNo() != null && !query.getSourceNo().isEmpty()) wrapper.like(InventoryOutboundOrder::getSourceNo, query.getSourceNo());
+        if (query.getOrderStatus() != null && !query.getOrderStatus().isEmpty()) wrapper.eq(InventoryOutboundOrder::getOrderStatus, query.getOrderStatus());
+        if (query.getApproveStatus() != null && !query.getApproveStatus().isEmpty()) wrapper.eq(InventoryOutboundOrder::getApproveStatus, query.getApproveStatus());
+        if (query.getOutboundDateStart() != null) wrapper.ge(InventoryOutboundOrder::getOutboundDate, query.getOutboundDateStart());
+        if (query.getOutboundDateEnd() != null) wrapper.le(InventoryOutboundOrder::getOutboundDate, query.getOutboundDateEnd());
+        if (query.getCreateTimeStart() != null && !query.getCreateTimeStart().isEmpty()) wrapper.ge(InventoryOutboundOrder::getCreateTime, query.getCreateTimeStart());
+        if (query.getCreateTimeEnd() != null && !query.getCreateTimeEnd().isEmpty()) wrapper.le(InventoryOutboundOrder::getCreateTime, query.getCreateTimeEnd());
+        if (query.getOrderBy() != null && !query.getOrderBy().isEmpty()) {
+            boolean isAsc = "asc".equalsIgnoreCase(query.getOrderDirection());
+            switch (query.getOrderBy()) {
+                case "outboundNo": wrapper.orderBy(true, isAsc, InventoryOutboundOrder::getOutboundNo); break;
+                case "outboundDate": wrapper.orderBy(true, isAsc, InventoryOutboundOrder::getOutboundDate); break;
+                case "createTime": wrapper.orderBy(true, isAsc, InventoryOutboundOrder::getCreateTime); break;
+                case "totalAmount": wrapper.orderBy(true, isAsc, InventoryOutboundOrder::getTotalAmount); break;
+                default: wrapper.orderByDesc(InventoryOutboundOrder::getCreateTime);
+            }
+        } else wrapper.orderByDesc(InventoryOutboundOrder::getCreateTime);
+
+        Page<InventoryOutboundOrder> orderPage = new Page<>(query.getCurrent(), query.getSize());
+        IPage<InventoryOutboundOrder> orderResult = outboundOrderMapper.selectPage(orderPage, wrapper);
+        Page<OutboundVO> voPage = new Page<>(query.getCurrent(), query.getSize());
+        voPage.setTotal(orderResult.getTotal());
+        voPage.setPages(orderResult.getPages());
+        voPage.setRecords(convertToVOList(orderResult.getRecords()));
+        return voPage;
     }
 
     @Override
     public OutboundVO getDetail(Long outboundId) {
-        // TODO: 实现获取出库单详情，包括明细项
-        // 暂时返回空对象
-        return new OutboundVO();
+        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        if (order == null) {
+            log.error("出库单不存在: outboundId={}", outboundId);
+            return null;
+        }
+        OutboundVO vo = convertToVO(order);
+        List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
+        if (items != null && !items.isEmpty()) {
+            vo.setItems(convertToItemVOList(items));
+        }
+        return vo;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long create(Map<String, Object> params) {
-        // TODO: 实现创建出库单逻辑
         log.info("创建出库单: {}", params);
-        return 1L;
+        InventoryOutboundOrder order = new InventoryOutboundOrder();
+        order.setOutboundNo((String) params.getOrDefault("outboundNo", "OUT-" + System.currentTimeMillis()));
+        order.setOutboundType((String) params.getOrDefault("outboundType", "sales"));
+        order.setSourceType((String) params.get("sourceType"));
+        if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
+        order.setSourceNo((String) params.get("sourceNo"));
+        if (params.get("warehouseId") != null) order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
+        order.setOrderStatus("pending");
+        outboundOrderMapper.insert(order);
+        return order.getOutboundId();
     }
 
     @Override
@@ -88,7 +131,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        // TODO: 执行库存扣减逻辑
+        order.setOrderStatus("approved");
+        outboundOrderMapper.updateById(order);
+        // 执行库存扣减（复用审批中的库存逻辑）
+        approve(outboundId, operatorId, operatorName, "直接确认出库");
         order.setOrderStatus("completed");
         return outboundOrderMapper.updateById(order) > 0;
     }
@@ -430,8 +476,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     @Override
     public Map<String, Object> getDetail(Map<String, Object> params) {
-        // TODO: 实现获取出库单详情，包括明细项
-        return Map.of("message", "详情功能待实现");
+        if (params != null && params.get("outboundId") != null) {
+            Long outboundId = Long.valueOf(params.get("outboundId").toString());
+            OutboundVO detail = getDetail(outboundId);
+            if (detail != null) {
+                return Map.of("code", 200, "data", detail);
+            }
+        }
+        return Map.of("code", 404, "message", "出库单不存在");
     }
 
     private static List<OutboundVO> convertToVOList(List<InventoryOutboundOrder> orders) {
