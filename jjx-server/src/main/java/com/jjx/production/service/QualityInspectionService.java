@@ -12,4 +12,5 @@ public interface QualityInspectionService {
     Long create(QualityInspectionCreateDTO dto);
     void update(QualityInspectionUpdateDTO dto);
     void delete(Long id);
+    Object getStatistics();
 }

@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -169,5 +171,24 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         if ("fail".equals(r)) return "不合格";
         if ("pending".equals(r)) return "待检";
         return r;
+    }
+
+    @Override
+    public Object getStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+        List<ProductionQualityInspection> all = inspectionMapper.selectList(Wrappers.emptyWrapper());
+        stats.put("totalCount", (long) all.size());
+        long passCount = all.stream().filter(q -> "pass".equals(q.getResult())).count();
+        long failCount = all.stream().filter(q -> "fail".equals(q.getResult())).count();
+        long pendingCount = all.stream().filter(q -> q.getResult() == null || "pending".equals(q.getResult())).count();
+        stats.put("passCount", passCount);
+        stats.put("failCount", failCount);
+        stats.put("pendingCount", pendingCount);
+        double totalQty = all.stream().filter(q -> q.getTotalQty() != null).mapToInt(q -> q.getTotalQty()).sum();
+        double passQty = all.stream().filter(q -> q.getPassQty() != null).mapToInt(q -> q.getPassQty()).sum();
+        stats.put("totalQty", totalQty);
+        stats.put("passQty", passQty);
+        stats.put("passRate", totalQty > 0 ? Math.round(passQty / totalQty * 1000.0) / 10.0 : 100.0);
+        return stats;
     }
 }

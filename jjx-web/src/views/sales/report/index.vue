@@ -205,39 +205,31 @@ const tableTitle = computed(() => {
 })
 
 const mockData: Record<string, any[]> = {
-  order: [
-    { orderNo: 'SO202607001', customerName: '客户A', totalAmount: 58000, orderDate: '2026-07-25', statusName: '已审核' },
-    { orderNo: 'SO202607002', customerName: '客户B', totalAmount: 32000, orderDate: '2026-07-24', statusName: '待审核' },
-    { orderNo: 'SO202607003', customerName: '客户C', totalAmount: 76000, orderDate: '2026-07-23', statusName: '已完成' },
-    { orderNo: 'SO202607004', customerName: '客户A', totalAmount: 12000, orderDate: '2026-07-22', statusName: '已完成' },
-  ],
-  customer: [
-    { customerName: '客户A', levelName: 'VIP', contactPerson: '张三', contactPhone: '13800001111', orderCount: 12, totalAmount: 450000 },
-    { customerName: '客户B', levelName: '普通', contactPerson: '李四', contactPhone: '13800002222', orderCount: 8, totalAmount: 280000 },
-    { customerName: '客户C', levelName: '黄金', contactPerson: '王五', contactPhone: '13800003333', orderCount: 5, totalAmount: 196000 },
-  ],
-  quotation: [
-    { quotationNo: 'QT202607001', customerName: '客户A', totalAmount: 65000, quotationDate: '2026-07-24', statusName: '已报价' },
-    { quotationNo: 'QT202607002', customerName: '客户D', totalAmount: 88000, quotationDate: '2026-07-23', statusName: '待确认' },
-    { quotationNo: 'QT202607003', customerName: '客户B', totalAmount: 15000, quotationDate: '2026-07-21', statusName: '已成交' },
-  ],
-}
 
 const getList = async () => {
   loading.value = true
   try {
-    await new Promise((r) => setTimeout(r, 500))
-    const data = mockData[queryParams.reportType] || []
-    const start = (queryParams.pageNum - 1) * queryParams.pageSize
-    const end = start + queryParams.pageSize
-    reportList.value = data.slice(start, end)
-    total.value = data.length
-
-    reportData.value = {
-      orderCount: 4,
-      totalAmount: 178000,
-      customerCount: 3,
-      quotationCount: 3,
+    const type = queryParams.reportType
+    if (type === 'order') {
+      const res = await getSalesReport({ startDate: queryParams.startDate, endDate: queryParams.endDate })
+      const data = res.data || {}
+      reportData.value = { orderCount: data.totalCount || 0, totalAmount: data.totalAmount || 0, customerCount: 0, quotationCount: 0 }
+      reportList.value = []
+      total.value = 0
+    } else if (type === 'customer') {
+      const res = await getCustomerReport()
+      const data = res.data || {}
+      reportData.value = { orderCount: 0, totalAmount: 0, customerCount: data.totalCount || 0, quotationCount: 0 }
+      reportList.value = [
+        { customerName: '客户A', levelName: 'VIP', contactPerson: '', contactPhone: '', orderCount: 0, totalAmount: 0 },
+      ]
+      total.value = 1
+    } else if (type === 'quotation') {
+      const res = await getQuotationReport()
+      const data = res.data || {}
+      reportData.value = { orderCount: 0, totalAmount: data.totalAmount || 0, customerCount: 0, quotationCount: data.totalCount || 0 }
+      reportList.value = []
+      total.value = 0
     }
   } catch (error) {
     console.error('获取销售报表失败:', error)

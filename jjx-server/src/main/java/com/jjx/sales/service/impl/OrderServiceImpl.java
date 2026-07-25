@@ -36,6 +36,8 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * 销售订单服务实现类
@@ -419,9 +421,17 @@ public class OrderServiceImpl implements IOrderService {
      */
     @Override
     public Object getOrderStatistics() {
-        // 这里应该实现订单统计逻辑
-        // 暂时返回空对象
-        return new Object();
+        Map<String, Object> stats = new HashMap<>();
+        List<SalesOrder> allOrders = orderMapper.selectList(Wrappers.emptyWrapper());
+        long totalCount = allOrders.size();
+        stats.put("totalCount", totalCount);
+        stats.put("totalAmount", allOrders.stream().filter(o -> o.getTotalAmount() != null).mapToDouble(o -> o.getTotalAmount().doubleValue()).sum());
+        stats.put("draftCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.DRAFT.getCode()).count());
+        stats.put("pendingCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.PENDING_REVIEW.getCode()).count());
+        stats.put("approvedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.APPROVED.getCode()).count());
+        stats.put("completedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.COMPLETED.getCode()).count());
+        stats.put("cancelledCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.CANCELLED.getCode()).count());
+        return stats;
     }
 
     @Override

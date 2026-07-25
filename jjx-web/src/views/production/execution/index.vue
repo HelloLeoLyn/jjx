@@ -1,6 +1,18 @@
 <template>
   <div class="app-container">
     <el-card class="search-card" shadow="never">
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <el-tab-pane label="我的任务" name="my">
+          <template #label>
+            <span><el-icon><UserFilled /></el-icon> 我的任务</span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="全部任务" name="all">
+          <template #label>
+            <span><el-icon><List /></el-icon> 全部任务</span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
       <el-form :model="queryParams" ref="queryForm" :inline="true" label-width="100px">
         <el-form-item label="工单编号" prop="orderNo">
           <el-input
@@ -265,6 +277,7 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { UserFilled, List } from '@element-plus/icons-vue'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import type {
   OperationExecutionVO,
@@ -276,6 +289,7 @@ import { parseTime } from '@/utils/format'
 const loading = ref(false)
 const executionList = ref<OperationExecutionVO[]>([])
 const total = ref(0)
+const activeTab = ref('my')
 const detailOpen = ref(false)
 const recordOpen = ref(false)
 const recordFormRef = ref()
@@ -285,6 +299,7 @@ const queryParams = reactive<OperationExecutionQuery>({
   orderNo: '',
   processName: '',
   executionStatus: '',
+  operatorName: '',
   pageNum: 1,
   pageSize: 10,
 })
@@ -306,6 +321,11 @@ const recordForm = reactive({
 // ==================== API ====================
 const getList = async () => {
   loading.value = true
+  if (activeTab.value === 'my') {
+    queryParams.operatorName = '当前用户'
+  } else {
+    queryParams.operatorName = ''
+  }
   try {
     const res = await operationExecutionApi.list(queryParams)
     executionList.value = res.data?.records || []
@@ -318,6 +338,16 @@ const getList = async () => {
 }
 
 // ==================== 事件 ====================
+const handleTabChange = () => {
+  queryParams.pageNum = 1
+  if (activeTab.value === 'my') {
+    queryParams.operatorName = '当前用户'
+  } else {
+    queryParams.operatorName = ''
+  }
+  getList()
+}
+
 const handleQuery = () => {
   queryParams.pageNum = 1
   getList()
@@ -327,6 +357,7 @@ const resetQuery = () => {
   queryParams.orderNo = ''
   queryParams.processName = ''
   queryParams.executionStatus = ''
+  queryParams.operatorName = ''
   handleQuery()
 }
 

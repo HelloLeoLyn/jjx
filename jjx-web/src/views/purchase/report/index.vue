@@ -207,13 +207,20 @@ const mockData: Record<string, any[]> = {
 const getList = async () => {
   loading.value = true
   try {
-    await new Promise((r) => setTimeout(r, 500))
-    const data = mockData[queryParams.reportType] || []
-    const start = (queryParams.pageNum - 1) * queryParams.pageSize
-    const end = start + queryParams.pageSize
-    reportList.value = data.slice(start, end)
-    total.value = data.length
-    reportData.value = { orderCount: 4, totalAmount: 150000, supplierCount: 3, pendingCount: 1 }
+    const type = queryParams.reportType
+    if (type === 'order') {
+      const res = await getPurchaseReport({ startDate: queryParams.startDate, endDate: queryParams.endDate })
+      const data = res.data || {}
+      reportData.value = { orderCount: data.totalCount || 0, totalAmount: data.totalAmount || 0, supplierCount: 0, pendingCount: 0 }
+      reportList.value = []
+      total.value = 0
+    } else if (type === 'supplier') {
+      const res = await getSupplierReport()
+      const data = res.data || {}
+      reportData.value = { orderCount: 0, totalAmount: 0, supplierCount: data.totalCount || 0, pendingCount: 0 }
+      reportList.value = []
+      total.value = 0
+    }
   } catch (error) {
     console.error('获取采购报表失败:', error)
     ElMessage.error('获取报表数据失败')

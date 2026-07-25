@@ -41,25 +41,3 @@ public class OutboundVO {
     private LocalDateTime updateTime;
     private List<OutboundItemVO> items;
 }
-
-/**
- * 出库单明细视图对象VO
- */
-@Data
-class OutboundItemVO {
-    private Long outboundItemId;
-    private Long outboundId;
-    private Long materialId;
-    private String materialCode;
-    private String materialName;
-    private String specification;
-    private String unit;
-    private BigDecimal quantity;
-    private BigDecimal unitPrice;
-    private BigDecimal amount;
-    private String batchNo;
-    private Long locationId;
-    private String locationName;
-    private Integer sortOrder;
-    private String remark;
-}

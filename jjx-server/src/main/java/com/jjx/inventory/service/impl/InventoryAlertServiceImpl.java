@@ -45,8 +45,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         if (query.getAlertType() != null && !query.getAlertType().isEmpty()) wrapper.eq(InventoryAlertLog::getAlertType, query.getAlertType());
         if (query.getAlertLevel() != null && !query.getAlertLevel().isEmpty()) wrapper.eq(InventoryAlertLog::getAlertLevel, query.getAlertLevel());
         if (query.getStatus() != null && !query.getStatus().isEmpty()) wrapper.eq(InventoryAlertLog::getStatus, query.getStatus());
-        if (query.getStartDate() != null && !query.getStartDate().isEmpty()) wrapper.ge(InventoryAlertLog::getAlertTime, query.getStartDate());
-        if (query.getEndDate() != null && !query.getEndDate().isEmpty()) wrapper.le(InventoryAlertLog::getAlertTime, query.getEndDate());
+        if (query.getAlertTimeStart() != null) wrapper.ge(InventoryAlertLog::getAlertTime, query.getAlertTimeStart());
+        if (query.getAlertTimeEnd() != null) wrapper.le(InventoryAlertLog::getAlertTime, query.getAlertTimeEnd());
         if (query.getMaterialId() != null) wrapper.eq(InventoryAlertLog::getMaterialId, query.getMaterialId());
         wrapper.orderByDesc(InventoryAlertLog::getAlertTime);
 

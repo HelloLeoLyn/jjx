@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.inventory.domain.InventoryOutboundItem;
+import com.jjx.inventory.dto.vo.OutboundItemVO;
 import com.jjx.inventory.domain.InventoryOutboundOrder;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryTransaction;
@@ -582,5 +583,31 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             case "rejected": return "已驳回";
             default: return approveStatus;
         }
+    }
+
+    private static List<OutboundItemVO> convertToItemVOList(List<InventoryOutboundItem> items) {
+        if (items == null || items.isEmpty()) return new ArrayList<>();
+        List<OutboundItemVO> result = new ArrayList<>();
+        for (InventoryOutboundItem item : items) result.add(convertToItemVO(item));
+        return result;
+    }
+
+    private static OutboundItemVO convertToItemVO(InventoryOutboundItem item) {
+        if (item == null) return null;
+        OutboundItemVO vo = new OutboundItemVO();
+        vo.setOutboundItemId(item.getItemId());
+        vo.setOutboundId(item.getOutboundId());
+        vo.setMaterialId(item.getMaterialId());
+        vo.setMaterialCode(item.getMaterialCode());
+        vo.setMaterialName(item.getMaterialName());
+        vo.setSpecification(item.getSpecification());
+        vo.setUnit(item.getUnit());
+        vo.setQuantity(item.getQuantity());
+        vo.setUnitPrice(item.getUnitPrice());
+        vo.setAmount(item.getAmount());
+        vo.setBatchNo(item.getBatchNo());
+        vo.setLocationId(item.getLocationId());
+        vo.setSortOrder(item.getSortOrder());
+        return vo;
     }
 }

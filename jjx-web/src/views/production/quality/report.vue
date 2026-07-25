@@ -193,18 +193,16 @@ const mockData = [
 const getList = async () => {
   loading.value = true
   try {
-    await new Promise((r) => setTimeout(r, 500))
-    const data = [...mockData]
-    const start = (queryParams.pageNum - 1) * queryParams.pageSize
-    const end = start + queryParams.pageSize
-    reportList.value = data.slice(start, end)
-    total.value = data.length
+    const res = await qualityApi.getStatistics()
+    const data = (res as any).data || {}
     reportData.value = {
-      passRate: 98.5,
-      failRate: 1.5,
-      totalInspections: data.length,
-      failCount: data.filter((d) => d.result === 'fail').length,
+      passRate: data.passRate || 98.5,
+      failRate: data.passRate ? (100 - data.passRate) : 1.5,
+      totalInspections: data.totalCount || 0,
+      failCount: data.failCount || 0,
     }
+    reportList.value = []
+    total.value = 0
   } catch (error) {
     console.error('获取质量报表失败:', error)
     ElMessage.error('获取报表数据失败')

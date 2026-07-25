@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * 销售报价单服务实现类
@@ -518,7 +520,19 @@ public class QuotationServiceImpl implements IQuotationService {
     @Override
     public Object getQuotationStatistics() {
         // 暂时返回空对象
-        return new Object();
+        Map<String, Object> stats = new HashMap<>();
+        List<SalesQuotation> all = quotationMapper.selectList(Wrappers.emptyWrapper());
+        stats.put("totalCount", (long) all.size());
+        stats.put("totalAmount", all.stream().filter(q -> q.getTotalAmount() != null).mapToDouble(q -> q.getTotalAmount().doubleValue()).sum());
+        long draftCount = all.stream().filter(q -> "draft".equals(q.getQuotationStatus())).count();
+        long sentCount = all.stream().filter(q -> "sent".equals(q.getQuotationStatus())).count();
+        long acceptedCount = all.stream().filter(q -> "accepted".equals(q.getQuotationStatus())).count();
+        long rejectedCount = all.stream().filter(q -> "rejected".equals(q.getQuotationStatus()) || "expired".equals(q.getQuotationStatus())).count();
+        stats.put("draftCount", draftCount);
+        stats.put("sentCount", sentCount);
+        stats.put("acceptedCount", acceptedCount);
+        stats.put("rejectedCount", rejectedCount);
+        return stats;
     }
 
     /**

@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/engineering/bom")
+@RequestMapping("/product/bom")
 @RequiredArgsConstructor
 public class ProductBomController extends BaseController {
     private final IProductBomService productBomService;

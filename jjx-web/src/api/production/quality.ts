@@ -57,4 +57,7 @@ export const qualityApi = {
   remove(id: number) {
     return request.delete<R<void>>(`/production/quality/${id}`)
   },
+  getStatistics() {
+    return request.get<R<any>>('/production/quality/statistics')
+  },
 }

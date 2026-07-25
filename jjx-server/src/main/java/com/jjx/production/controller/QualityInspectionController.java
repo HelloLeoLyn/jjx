@@ -1,5 +1,6 @@
 package com.jjx.production.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.dto.QualityInspectionCreateDTO;
@@ -50,5 +51,12 @@ public class QualityInspectionController {
     public Result<Void> delete(@PathVariable Long id) {
         qualityService.delete(id);
         return Result.success();
+    }
+
+    @Operation(summary = "质量检验统计")
+    @SaCheckPermission("production:quality:view")
+    @GetMapping("/statistics")
+    public Result<?> statistics() {
+        return Result.success(qualityService.getStatistics());
     }
 }
