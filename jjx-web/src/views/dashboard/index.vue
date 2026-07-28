@@ -97,7 +97,7 @@
     </el-row>
     <el-row :gutter="16">
       <!-- 销售widget -->
-      <el-col :span="8" v-if="userStore.hasPermission('sales:dashboard')">
+      <el-col :span="8" v-if="hasPermi('sales:dashboard')">
         <el-card shadow="never" class="widget-card widget-sales">
           <div class="widget-header">📈 本月销售</div>
           <div class="widget-grid">
@@ -122,7 +122,7 @@
       </el-col>
 
       <!-- 生产widget -->
-      <el-col :span="8" v-if="userStore.hasPermission('production:dashboard')">
+      <el-col :span="8" v-if="hasPermi('production:dashboard')">
         <el-card shadow="never" class="widget-card widget-production">
           <div class="widget-header">🏭 生产概况</div>
           <div class="widget-grid">
@@ -147,7 +147,7 @@
       </el-col>
 
       <!-- 管理widget -->
-      <el-col :span="8" v-if="userStore.hasPermission('admin:dashboard')">
+      <el-col :span="8" v-if="hasPermi('admin:dashboard')">
         <el-card shadow="never" class="widget-card widget-admin">
           <div class="widget-header">📊 公司总览</div>
           <div class="widget-grid">
@@ -278,6 +278,19 @@ const stats = reactive({
 })
 
 const alertItems = ref<any[]>([])
+const dashboardData = reactive({
+  sales: null as any,
+  production: null as any,
+  admin: null as any
+})
+
+// 权限检查：超级用户或特定权限 → 显示widget
+// 权限未加载时默认显示（避免异步加载导致widget被移除）
+function hasPermi(permission: string): boolean {
+  const perms = userStore.getPermissions
+  if (perms.length === 0 || perms.includes('*:*:*')) return true
+  return perms.includes(permission)
+}
 
 onMounted(async () => {
   // 最多等3秒，超时就显示内容
