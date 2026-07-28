@@ -97,7 +97,7 @@
     </el-row>
     <el-row :gutter="16">
       <!-- 销售widget -->
-      <el-col :span="8" v-hasPermi="['sales:dashboard']">
+      <el-col :span="8" v-if="userStore.hasPermission('sales:dashboard')">
         <el-card shadow="never" class="widget-card widget-sales">
           <div class="widget-header">📈 本月销售</div>
           <div class="widget-grid">
@@ -122,7 +122,7 @@
       </el-col>
 
       <!-- 生产widget -->
-      <el-col :span="8" v-hasPermi="['production:dashboard']">
+      <el-col :span="8" v-if="userStore.hasPermission('production:dashboard')">
         <el-card shadow="never" class="widget-card widget-production">
           <div class="widget-header">🏭 生产概况</div>
           <div class="widget-grid">
@@ -147,7 +147,7 @@
       </el-col>
 
       <!-- 管理widget -->
-      <el-col :span="8" v-hasPermi="['admin:dashboard']">
+      <el-col :span="8" v-if="userStore.hasPermission('admin:dashboard')">
         <el-card shadow="never" class="widget-card widget-admin">
           <div class="widget-header">📊 公司总览</div>
           <div class="widget-grid">
