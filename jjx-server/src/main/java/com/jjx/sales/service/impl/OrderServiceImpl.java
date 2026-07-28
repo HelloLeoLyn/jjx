@@ -481,6 +481,14 @@ public class OrderServiceImpl implements IOrderService {
                 if (!StringUtils.hasText(item.getProductCode())) {
                     throw new BusinessException("第" + (i + 1) + "行产品：产品编码不能为空");
                 }
+                // 校验产品是否已发布(RELEASED)
+                Product product = productMapper.selectById(item.getProductId());
+                if (product == null) {
+                    throw new BusinessException("第" + (i + 1) + "行产品：产品不存在");
+                }
+                if (!ProductEnums.Status.RELEASED.getValue().equals(product.getProductStatus())) {
+                    throw new BusinessException("第" + (i + 1) + "行产品：产品[" + product.getProductName() + "]尚未发布，请先发布产品后再下单");
+                }
             }
 
             if (!StringUtils.hasText(item.getProductName())) {
