@@ -28,4 +28,12 @@ public @interface Event {
 
     /** 业务类型，如 product */
     String bizType() default "";
+
+    /**
+     * 自定义事件参数（SpEL表达式）
+     * 格式: "key = #spelExpression"
+     * 如: "orderNo = #order.orderNo"
+     * 自动合并到事件payload中
+     */
+    String[] params() default {};
 }

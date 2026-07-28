@@ -8,6 +8,9 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.expression.Expression;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -27,6 +30,7 @@ import java.util.Map;
 public class EventAspect {
 
     private final EventPublisher eventPublisher;
+    private final SpelExpressionParser spelParser = new SpelExpressionParser();
 
     @Around("@annotation(eventAnnotation)")
     public Object around(ProceedingJoinPoint pjp, Event eventAnnotation) throws Throwable {
@@ -53,13 +57,40 @@ public class EventAspect {
             payload.put("bizType", eventAnnotation.bizType());
         }
 
-        // 方法参数
+        // 方法参数（旧方式，保留兼容）
         MethodSignature signature = (MethodSignature) pjp.getSignature();
         String[] paramNames = signature.getParameterNames();
         Object[] paramValues = pjp.getArgs();
         if (paramNames != null) {
             for (int i = 0; i < paramNames.length; i++) {
                 payload.put(paramNames[i], paramValues[i]);
+            }
+        }
+
+        // SpEL params（新方式，覆盖旧方式同名key）
+        String[] spelParams = eventAnnotation.params();
+        if (spelParams != null && spelParams.length > 0) {
+            StandardEvaluationContext spelCtx = new StandardEvaluationContext();
+            if (paramNames != null) {
+                for (int i = 0; i < paramNames.length && i < paramValues.length; i++) {
+                    spelCtx.setVariable(paramNames[i], paramValues[i]);
+                }
+            }
+            spelCtx.setVariable("result", result);
+
+            for (String expr : spelParams) {
+                if (expr == null || expr.trim().isEmpty()) continue;
+                int eqIdx = expr.indexOf('=');
+                if (eqIdx < 0) continue;
+                String key = expr.substring(0, eqIdx).trim();
+                String spel = expr.substring(eqIdx + 1).trim();
+                try {
+                    Expression exp = spelParser.parseExpression(spel);
+                    Object value = exp.getValue(spelCtx);
+                    payload.put(key, value);
+                } catch (Exception e) {
+                    log.warn("SpEL解析失败: {} (key={}, expr={})", e.getMessage(), key, spel);
+                }
             }
         }
 
