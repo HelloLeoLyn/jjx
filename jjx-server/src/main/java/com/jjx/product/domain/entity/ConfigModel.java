@@ -1,22 +1,21 @@
-package com.jjx.engineering.domain.entity;
+package com.jjx.product.domain.entity;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("engineering_config_model")
+@TableName("product_config_model")
 public class ConfigModel {
-    @TableId(type = IdType.AUTO)
     private Long modelId;
     private String modelCode;
     private String modelName;
     private Long productId;
     private Integer isDefault;
     private String status;
-    private String remark;
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;
     private LocalDateTime updateTime;
+    private String remark;
 }
