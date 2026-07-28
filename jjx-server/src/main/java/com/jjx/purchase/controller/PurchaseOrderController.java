@@ -99,6 +99,21 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
+     * 采购退货
+     */
+    @Operation(summary = "采购退货")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("purchase:order:edit")
+    @PostMapping("/return/{orderId}")
+    public Result<Void> returnGoods(@PathVariable Long orderId,
+                                    @RequestParam String reason,
+                                    @RequestParam(defaultValue = "0") Long materialId,
+                                    @RequestParam(defaultValue = "0") Integer quantity) {
+        purchaseOrderService.returnGoods(orderId, reason, materialId, quantity);
+        return Result.success();
+    }
+
+    /**
      * 提交审批
      */
     @PutMapping("/submit/{orderId}")

@@ -239,6 +239,15 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
     void cancelOrder(Long orderId);
 
     /**
+     * 采购退货
+     * @param orderId 采购订单ID
+     * @param reason 退货原因
+     * @param materialId 退货物料ID（0=全部）
+     * @param quantity 退货数量
+     */
+    void returnGoods(Long orderId, String reason, Long materialId, Integer quantity);
+
+    /**
      * 修改订单状态
      */
     void updateOrderStatus(POrderStatusDTO dto);

@@ -999,4 +999,21 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         orderMapper.updateReceiptStatus(orderId, receiptStatus);
     }
+
+    @Override
+    public void returnGoods(Long orderId, String reason, Long materialId, Integer quantity) {
+        PurchaseOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+        }
+        log.info("采购退货: orderId={}, reason={}, materialId={}, quantity={}", orderId, reason, materialId, quantity);
+
+        // 记录退货状态
+        order.setRemark("退货: " + reason);
+        orderMapper.updateById(order);
+
+        // TODO: 完善退货库存扣减逻辑
+        // TODO: 调用InventoryOutboundService创建出库单
+        log.info("采购退货成功: orderId={}", orderId);
+    }
 }
