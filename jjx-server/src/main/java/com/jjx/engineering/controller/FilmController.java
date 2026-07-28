@@ -2,7 +2,7 @@ package com.jjx.engineering.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
-import com.jjx.engineering.service.IFilmService;
+import com.jjx.product.service.IProductFilmService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/engineering/film")
 @RequiredArgsConstructor
 public class FilmController {
-    private final IFilmService filmService;
+    private final IProductFilmService filmService;
 
     @Operation(summary = "薄膜列表")
     @SaCheckPermission("engineering:film:view")
