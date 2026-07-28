@@ -33,6 +33,7 @@
 
     <!-- 真实内容 -->
     <template v-else>
+    <!-- ① 通用统计卡片 -->
     <el-row :gutter="16">
       <el-col :span="6">
         <el-card shadow="never" class="stat-card">
@@ -82,6 +83,89 @@
             <div class="stat-info">
               <div class="stat-value">{{ stats["lowStockCount"] }}</div>
               <div class="stat-label">低库存预警</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- ② 我的工作台（v-hasPermi 控制widget显隐） -->
+    <el-row :gutter="16" class="mt-16">
+      <el-col :span="24">
+        <div class="section-title">📌 我的工作台</div>
+      </el-col>
+    </el-row>
+    <el-row :gutter="16">
+      <!-- 销售widget -->
+      <el-col :span="8" v-hasPermi="['sales:dashboard']">
+        <el-card shadow="never" class="widget-card widget-sales">
+          <div class="widget-header">📈 本月销售</div>
+          <div class="widget-grid">
+            <div class="wg-item">
+              <div class="wg-value primary">¥{{ dashboardData.sales?.monthlySales || 0 }}</div>
+              <div class="wg-label">销售额</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value success">{{ dashboardData.sales?.completionRate || 0 }}%</div>
+              <div class="wg-label">完成率</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value">{{ dashboardData.sales?.orderCount || 0 }}</div>
+              <div class="wg-label">订单数</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value warning">{{ dashboardData.sales?.paymentRate || 0 }}%</div>
+              <div class="wg-label">回款率</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+
+      <!-- 生产widget -->
+      <el-col :span="8" v-hasPermi="['production:dashboard']">
+        <el-card shadow="never" class="widget-card widget-production">
+          <div class="widget-header">🏭 生产概况</div>
+          <div class="widget-grid">
+            <div class="wg-item">
+              <div class="wg-value danger">{{ dashboardData.production?.activeOrders || 0 }}</div>
+              <div class="wg-label">在产工单</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value success">{{ dashboardData.production?.todayCompleted || 0 }}</div>
+              <div class="wg-label">今日完工</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value primary">{{ dashboardData.production?.progress || 0 }}%</div>
+              <div class="wg-label">工序进度</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value danger">{{ dashboardData.production?.alerts || 0 }}</div>
+              <div class="wg-label">设备告警</div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+
+      <!-- 管理widget -->
+      <el-col :span="8" v-hasPermi="['admin:dashboard']">
+        <el-card shadow="never" class="widget-card widget-admin">
+          <div class="widget-header">📊 公司总览</div>
+          <div class="widget-grid">
+            <div class="wg-item">
+              <div class="wg-value primary">¥{{ dashboardData.admin?.totalSales || 0 }}</div>
+              <div class="wg-label">本月销售额</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value success">{{ dashboardData.admin?.profitRate || 0 }}%</div>
+              <div class="wg-label">净利润率</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value">¥{{ dashboardData.admin?.totalCost || 0 }}</div>
+              <div class="wg-label">本月成本</div>
+            </div>
+            <div class="wg-item">
+              <div class="wg-value">{{ dashboardData.admin?.employeeCount || 0 }}</div>
+              <div class="wg-label">在职员工</div>
             </div>
           </div>
         </el-card>
@@ -202,6 +286,18 @@ onMounted(async () => {
     loading.value = false
   }, 3000)
 
+  // 获取角色widget数据
+  try {
+    const res = await request.get('/dashboard/my-stats')
+    if (res?.data) {
+      dashboardData.sales = res.data.sales
+      dashboardData.production = res.data.production
+      dashboardData.admin = res.data.admin
+    }
+  } catch (e) {
+    console.warn('仪表盘widget数据加载失败', e)
+  }
+
   try {
     const [matRes, stkRes, orderRes, prodRes, alertRes] = await Promise.allSettled([
       materialApi.getCount(),
@@ -305,4 +401,28 @@ function fillDefaults() {
 }
 
 .quick-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.section-title {
+  font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 12px;
+}
+
+.widget-card { border-radius: 10px; margin-bottom: 16px; }
+.widget-card .widget-header {
+  font-size: 14px; font-weight: 600; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.widget-sales { border-top: 3px solid #409eff; }
+.widget-production { border-top: 3px solid #f56c6c; }
+.widget-admin { border-top: 3px solid #67c23a; }
+
+.widget-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.wg-item { text-align: center; padding: 10px; background: #f7f8fa; border-radius: 8px; }
+.wg-value { font-size: 18px; font-weight: 700; color: #303133; }
+.wg-value.primary { color: #409eff; }
+.wg-value.success { color: #67c23a; }
+.wg-value.warning { color: #e6a23c; }
+.wg-value.danger { color: #f56c6c; }
+.wg-label { font-size: 11px; color: #909399; margin-top: 2px; }
 </style>
