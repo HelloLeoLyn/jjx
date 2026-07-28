@@ -1,13 +1,13 @@
 package com.jjx.system.controller;
 
 import com.jjx.common.core.result.Result;
-import com.jjx.inventory.service.InventoryMaterialService;
-import com.jjx.inventory.service.InventoryStockService;
-import com.jjx.product.service.IProductService;
-import com.jjx.sales.service.ICustomerService;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
+import com.jjx.inventory.mapper.InventoryStockMapper;
+import com.jjx.product.mapper.ProductMapper;
+import com.jjx.sales.mapper.CustomerMapper;
 import com.jjx.system.annotation.Log;
 import com.jjx.system.annotation.BusinessType;
-import com.jjx.system.service.ISysUserService;
+import com.jjx.system.mapper.SysUserMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -28,11 +28,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DashboardController {
 
-    private final InventoryMaterialService materialService;
-    private final InventoryStockService stockService;
-    private final IProductService productService;
-    private final ICustomerService customerService;
-    private final ISysUserService userService;
+    private final InventoryMaterialMapper materialMapper;
+    private final InventoryStockMapper stockMapper;
+    private final ProductMapper productMapper;
+    private final CustomerMapper customerMapper;
+    private final SysUserMapper userMapper;
 
     @GetMapping("/my-stats")
     @Operation(summary = "获取仪表盘统计数据")
@@ -41,11 +41,11 @@ public class DashboardController {
         Map<String, Object> data = new HashMap<>();
 
         // 通用统计（所有人可见）
-        data.put("materialCount", materialService.count());
-        data.put("stockCount", stockService.count());
-        data.put("productCount", productService.count());
-        data.put("customerCount", customerService.count());
-        data.put("userCount", userService.count());
+        data.put("materialCount", materialMapper.selectCount(null));
+        data.put("stockCount", stockMapper.selectCount(null));
+        data.put("productCount", productMapper.selectCount(null));
+        data.put("customerCount", customerMapper.selectCount(null));
+        data.put("userCount", userMapper.selectCount(null));
 
         // 销售数据（v-hasPermi="sales:dashboard" 控制）
         Map<String, Object> sales = new HashMap<>();
