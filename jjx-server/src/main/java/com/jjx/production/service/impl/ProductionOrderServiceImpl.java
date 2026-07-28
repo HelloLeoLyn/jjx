@@ -308,6 +308,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         try {
             eventPublisher.fire("production.completed", Map.of(
                     "orderNo", order.getOrderNo(),
+                    "productId", String.valueOf(order.getProductId()),
+                    "productName", order.getProductName(),
+                    "quantity", order.getCompletedQuantity() != null ? order.getCompletedQuantity().toString() : "0"));
                     "orderId", String.valueOf(orderId)
             ));
         } catch (Exception e) {
