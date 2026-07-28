@@ -6,6 +6,8 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.common.core.page.PageResult;
+import com.jjx.sales.domain.dto.SalesOrderAddDTO;
+import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ import java.util.HashMap;
 public class QuotationServiceImpl implements IQuotationService {
 
     private final QuotationMapper quotationMapper;
+    private final IOrderService orderService;
 
     /**
      * 查询销售报价单列表
@@ -272,12 +275,15 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("只有已接受的报价单可以转为订单");
         }
 
-        // 这里应该调用订单服务创建订单
-        // 暂时返回一个占位符结果
-        return new Object() {
-            public final Long orderId = 1L;
-            public final String orderNo = "ORDER_" + quotation.getQuotationNo();
-        };
+        // 从报价单创建订单
+        SalesOrderAddDTO orderDTO = new SalesOrderAddDTO();
+        orderDTO.setCustomerId(quotation.getCustomerId());
+        orderDTO.setCustomerName(quotation.getCustomerName());
+        orderDTO.setRemark("由报价单[" + quotation.getQuotationNo() + "]转换");
+
+        Long orderId = orderService.insertOrder(orderDTO);
+        log.info("报价单{}已转为订单: orderId={}", quotationId, orderId);
+        return orderId;
     }
 
     /**
