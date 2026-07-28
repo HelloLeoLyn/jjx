@@ -7,7 +7,6 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
 import com.jjx.framework.common.RedisSequenceService;
-import com.jjx.framework.common.controller.BaseController;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ProductValidationVO;
 import com.jjx.product.mapper.ProductMapper;
@@ -32,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import com.jjx.product.enums.ProductEnums;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
