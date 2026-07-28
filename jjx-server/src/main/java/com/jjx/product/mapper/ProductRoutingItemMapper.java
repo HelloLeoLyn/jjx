@@ -15,7 +15,7 @@ public interface ProductRoutingItemMapper extends BaseMapper<ProductRoutingItem>
     /**
      * 根据路线ID查询明细（按工序顺序排序）
      */
-    @Select("SELECT * FROM product_routing_item WHERE routing_id = #{routingId} ORDER BY process_order")
+    @Select("SELECT * FROM engineering_routing_item WHERE routing_id = #{routingId} ORDER BY process_order")
     List<ProductRoutingItem> selectByRoutingId(@Param("routingId") Long routingId);
 
     @Select("SELECT " +
@@ -29,7 +29,7 @@ public interface ProductRoutingItemMapper extends BaseMapper<ProductRoutingItem>
             "p.standard_labor_hours, p.standard_machine_hours, " +
             "p.equipment_type, p.skill_requirement, " +
             "p.is_enabled, p.display_order, p.icon " +
-            "FROM product_routing_item i " +
+            "FROM engineering_routing_item i " +
             "LEFT JOIN product_standard_process p ON i.process_id = p.process_id " +
             "WHERE i.routing_id = #{routingId} " +
             "ORDER BY i.group_order, i.process_order")
@@ -38,6 +38,6 @@ public interface ProductRoutingItemMapper extends BaseMapper<ProductRoutingItem>
     /**
      * 删除路线的所有明细
      */
-    @Select("DELETE FROM product_routing_item WHERE routing_id = #{routingId}")
+    @Select("DELETE FROM engineering_routing_item WHERE routing_id = #{routingId}")
     void deleteByRoutingId(@Param("routingId") Long routingId);
 }

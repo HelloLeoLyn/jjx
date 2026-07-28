@@ -10,6 +10,8 @@ import com.jjx.product.service.IProductBomService;
 import com.jjx.product.service.IProductRoutingService;
 import com.jjx.product.service.IProductCategoryService;
 import com.jjx.product.service.IProductFilmService;
+import com.jjx.engineering.service.EngineeringBaseService;
+import com.jjx.notification.service.NotificationService;
 import org.junit.jupiter.api.*;
 import org.mockito.*;
 
@@ -29,6 +31,8 @@ class ProductFlowTest {
     @Mock private IProductRoutingService routingService;
     @Mock private IProductCategoryService categoryService;
     @Mock private IProductFilmService filmService;
+    @Mock private EngineeringBaseService engineeringBaseService;
+    @Mock private NotificationService notificationService;
 
     private ProductServiceImpl productService;
 
@@ -37,7 +41,8 @@ class ProductFlowTest {
         MockitoAnnotations.openMocks(this);
         productService = new ProductServiceImpl(
             productMapper, productCodeGenerator, productConverter,
-            bomService, routingService, categoryService, filmService
+            bomService, routingService, categoryService, filmService,
+            notificationService
         );
     }
 

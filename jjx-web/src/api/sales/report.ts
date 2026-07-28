@@ -5,7 +5,7 @@ export function getSalesReport(params?: { startDate?: string; endDate?: string }
 }
 
 export function getCustomerReport() {
-  return request({ url: '/sales/customer/statistics', method: 'get' })
+  return request({ url: '/sales/customers/statistics', method: 'get' })
 }
 
 export function getQuotationReport() {

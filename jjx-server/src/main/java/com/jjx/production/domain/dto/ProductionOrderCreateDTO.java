@@ -58,6 +58,8 @@ public class ProductionOrderCreateDTO {
 
     @Schema(description = "使用的工艺路线ID", example = "1")
     private Long routingId;
+    private Long bomId;
+    private String bomCode;
 
     @Schema(description = "工艺路线编码", example = "ROUTE-001")
     @Size(max = 50, message = "工艺路线编码长度不能超过50个字符")

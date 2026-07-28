@@ -1,4 +1,5 @@
 package com.jjx.inventory.service.impl;
+import org.springframework.beans.BeanUtils;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -225,27 +226,7 @@ public class InventoryTransactionServiceImpl extends ServiceImpl<InventoryTransa
         }
 
         TransactionVO vo = new TransactionVO();
-        vo.setTransactionId(transaction.getTransactionId());
-        vo.setMaterialId(transaction.getMaterialId());
-        vo.setMaterialCode(transaction.getMaterialCode());
-        vo.setMaterialName(transaction.getMaterialName());
-        vo.setWarehouseId(transaction.getWarehouseId());
-        vo.setLocationId(transaction.getLocationId());
-        vo.setTransactionType(transaction.getTransactionType());
-        vo.setSourceType(transaction.getSourceType());
-        vo.setSourceId(transaction.getSourceId());
-        vo.setSourceNo(transaction.getSourceNo());
-        vo.setBatchNo(transaction.getBatchNo());
-        vo.setQuantity(transaction.getQuantity());
-        vo.setBeforeQuantity(transaction.getBeforeQuantity());
-        vo.setAfterQuantity(transaction.getAfterQuantity());
-        vo.setUnitCost(transaction.getUnitCost());
-        vo.setAmount(transaction.getAmount());
-        vo.setTransactionTime(transaction.getTransactionTime());
-        vo.setOperatorId(transaction.getOperatorId());
-        vo.setOperatorName(transaction.getOperatorName());
-        vo.setCreateTime(transaction.getCreateTime());
-        vo.setRemark(transaction.getRemark());
+        BeanUtils.copyProperties(transaction, vo);
 
         // 设置类型名称
         vo.setTransactionTypeName(getTransactionTypeName(transaction.getTransactionType()));

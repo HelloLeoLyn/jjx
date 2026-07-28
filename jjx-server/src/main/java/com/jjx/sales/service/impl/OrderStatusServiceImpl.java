@@ -1,4 +1,5 @@
 package com.jjx.sales.service.impl;
+import com.jjx.product.domain.entity.ProductRouting;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
@@ -8,6 +9,9 @@ import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.service.ProductionOrderService;
 import com.jjx.product.domain.entity.ProductBom;
 import com.jjx.product.mapper.ProductBomMapper;
+import com.jjx.product.domain.entity.Product;
+import com.jjx.product.mapper.ProductMapper;
+import com.jjx.product.mapper.ProductRoutingMapper;
 import com.jjx.sales.domain.dto.ODRSendToCustomerDTO;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -20,8 +24,13 @@ import com.jjx.sales.enums.OrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.SalesOrderProductMapper;
 import com.jjx.sales.service.IOrderStatusService;
+import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.sales.enums.OperationResultEnum;
+import com.jjx.sales.enums.OperationTypeEnum;
 import com.jjx.sales.service.ISalesOrderProductService;
-import com.jjx.sales.service.SalesLogService;
+import com.jjx.system.annotation.Event;
+import com.jjx.system.service.LogSaveService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,13 +49,29 @@ import java.util.Map;
 public class OrderStatusServiceImpl implements IOrderStatusService {
 
     private final OrderMapper salesOrderMapper;
-    private final SalesLogService salesLogService;
+    private final LogSaveService logSaveService;
     private final ISalesOrderProductService orderProductService;
     private final ProductionOrderService productionOrderService;
     private final SalesOrderProductMapper salesOrderProductMapper;
     private final RedisSequenceService redisSequenceService;
     private final ProductBomMapper productBomMapper;
+    private final ProductMapper productMapper;
+    private final ProductRoutingMapper productRoutingMapper;
     private final EventPublisher eventPublisher;
+    
+    private void saveOrderLog(String orderNo, String desc, String remark, int status) {
+        SysOperLog log = new SysOperLog();
+        log.setBizType("ORDER");
+        log.setBizId(orderNo);
+        log.setModule("sales_order");
+        log.setBusinessType(0);
+        log.setOperUrl("order." + desc);
+        log.setOperParam(remark);
+        log.setStatus(status);
+        log.setUsername(SecurityUtils.getUsername());
+        logSaveService.saveOperLog(log);
+    }
+    @Event("order.submitted")
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitReview(Long orderId) {
@@ -89,7 +114,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 5. 记录成功日志
         String desc = getOperationDescription(currentStatus,targetStatus);
-        salesLogService.log(orderId,order.getOrderNo(), OperationTypeEnum.SUBMIT_REVIEW,desc,"", OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "submit_review", desc, 1);
         log.info("订单{}提交审核，操作人：{}", orderId, SecurityUtils.getUsername());
     }
     private static String getOperationDescription(OrderStatusEnum current, OrderStatusEnum target){
@@ -130,7 +155,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 6. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
-        salesLogService.log(orderId,order.getOrderNo(), OperationTypeEnum.START_REVIEW,desc,"", OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "start_review", desc, 1);
         log.info("订单{}开始审核，审核人：{}", orderId, SecurityUtils.getUsername());
     }
 
@@ -164,7 +189,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 6. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
-        salesLogService.log(order.getOrderId(),order.getOrderNo(), OperationTypeEnum.APPROVE,desc,reviewDTO.getRemark(), OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "approve", desc, 1);
         log.info("订单{}审核通过，审核人：{}", reviewDTO.getOrderId(), SecurityUtils.getUsername());
     }
 
@@ -203,7 +228,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 7. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
-        salesLogService.log(order.getOrderId(),order.getOrderNo(), OperationTypeEnum.REJECT,desc,reviewDTO.getRemark(), OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "reject", desc, 0);
         log.info("订单{}审核驳回，审核人：{}，原因：{}",
                  reviewDTO.getOrderId(), SecurityUtils.getUsername(), reviewDTO.getRemark());
     }
@@ -246,7 +271,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 5. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
-        salesLogService.log(order.getOrderId(),order.getOrderNo(), OperationTypeEnum.SUBMIT_REVIEW,desc,"重新提交审核", OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "resubmit", desc, 1);
         log.info("订单{}重新提交审核，操作人：{}", orderId, SecurityUtils.getUsername());
     }
 
@@ -287,7 +312,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 5. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
-        salesLogService.log(order.getOrderId(),order.getOrderNo(), OperationTypeEnum.CANCEL,desc,"", OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "cancel", desc, 1);
         log.info("订单{}已取消，操作人：{}，原因：{}", orderId, SecurityUtils.getUsername(), reason);
     }
 
@@ -320,7 +345,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 5. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
-        salesLogService.log(order.getOrderId(),order.getOrderNo(), OperationTypeEnum.CANCEL,desc,"", OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "cancel", desc, 1);
         log.info("订单{}已发送客户确认，操作人：{}，原因：{}", order.getOrderId(), SecurityUtils.getUsername(), "");
     }
 
@@ -362,8 +387,16 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                             .eq(ProductBom::getIsCurrent, 1)
             );
             if (bomCount == 0) {
-                log.warn("⚠️ 产品[{}] {} 没有当前生效的BOM，生产时将无法自动计算材料需求",
-                        product.getProductCode(), product.getProductName());
+                throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前生效的BOM，请先配置并审批BOM");
+            }
+            // 路线检查
+            long routeCount = productRoutingMapper.selectCount(
+                    new LambdaQueryWrapper<ProductRouting>()
+                            .eq(ProductRouting::getProductId, product.getProductId())
+                            .eq(ProductRouting::getIsCurrent, 1)
+            );
+            if (routeCount == 0) {
+                throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前工艺路线，请先配置并审批工艺路线");
             }
         }
 
@@ -392,6 +425,14 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             createDTO.setPriority(order.getIsUrgent() != null && order.getIsUrgent() == 1 ? "HIGH" : "MEDIUM");
             createDTO.setRemark("由销售订单[" + order.getOrderNo() + "]自动生成");
             createDTO.setOrderNo(redisSequenceService.generateBusinessNumber("WO","YYMMDD"));
+            // 记录当时使用的BOM ID和路线ID
+            if (product.getProductId() != null) {
+                Product productInfo = productMapper.selectById(product.getProductId());
+                if (productInfo != null) {
+                    createDTO.setBomId(productInfo.getCurrentBomId());
+                    createDTO.setRoutingId(productInfo.getCurrentRouteId());
+                }
+            }
             // 调用生产模块创建生产工单
             Long productionOrderId = productionOrderService.createOrder(createDTO);
             log.info("为销售订单{}创建生产工单{}，产品：{}，数量：{}",
@@ -415,8 +456,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 8. 记录日志
         String desc = getOperationDescription(currentStatus, targetStatus);
-        salesLogService.log(orderId, order.getOrderNo(), OperationTypeEnum.START_PRODUCTION,
-                desc, "开始生产，共创建" + products.size() + "个生产工单", OperationResultEnum.SUCCESS);
+        saveOrderLog(order.getOrderNo(), "start_production",
+                "开始生产，共创建" + products.size() + "个生产工单", 1);
 
         // 9. 触发联动事件
         try {
@@ -442,5 +483,41 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         return List.of();
     }
 
+
+
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark) {
+        SalesOrder order = salesOrderMapper.selectById(orderId);
+        if (order == null) throw new BusinessException("订单不存在");
+
+        OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
+        if (currentStatus != OrderStatusEnum.APPROVED) {
+            throw new BusinessException("只有已审核的订单才能确认，当前状态：" + currentStatus.getName());
+        }
+
+        // 更新状态为 CONFIRMED
+        order.setOrderStatus(OrderStatusEnum.CONFIRMED.getCode());
+        salesOrderMapper.updateById(order);
+
+        // 记录日志
+        String desc = getOperationDescription(OrderStatusEnum.APPROVED, OrderStatusEnum.CONFIRMED);
+        saveOrderLog(order.getOrderNo(), "confirm", desc + " 确认人:" + confirmedBy, 1);
+
+        // 触发联动事件
+        try {
+            eventPublisher.fire("order.confirmed", Map.of(
+                    "orderNo", order.getOrderNo(),
+                    "orderId", String.valueOf(orderId),
+                    "confirmedBy", confirmedBy,
+                    "confirmMethod", confirmMethod != null ? confirmMethod : ""
+            ));
+        } catch (Exception e) {
+            log.warn("事件联动失败（不影响主流程）: {}", e.getMessage());
+        }
+
+        log.info("订单{}客户确认成功，确认人：{}，方式：{}", orderId, confirmedBy, confirmMethod);
+    }
 
 }

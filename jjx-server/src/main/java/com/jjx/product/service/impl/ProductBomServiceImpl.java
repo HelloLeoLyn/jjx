@@ -11,6 +11,7 @@ import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.common.enums.YesNoEnum;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
+import com.jjx.system.annotation.Event;
 import com.jjx.product.domain.converter.ProductBomConverter;
 import com.jjx.product.domain.dto.ProductBomDTO;
 import com.jjx.product.domain.dto.ProductBomItemDTO;
@@ -339,19 +340,32 @@ public class ProductBomServiceImpl extends ServiceImpl<ProductBomMapper,ProductB
         return PageResult.build(records, total);
     }
 
+    @Event("bom.submitted")
+    @Override
+    public boolean submitApprove(Long bomId) {
+        ProductBom bom = productBomMapper.selectById(bomId);
+        if (bom == null) throw new BusinessException("BOM不存在");
+        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.DRAFT.getValue())) {
+            throw new BusinessException("只有草稿状态的BOM才能提交审批");
+        }
+        LambdaQueryWrapper<ProductBomItem> checkItems = new LambdaQueryWrapper<>();
+        checkItems.eq(ProductBomItem::getBomId, bomId);
+        if (!productBomItemMapper.exists(checkItems)) {
+            throw new BusinessException("BOM明细不能为空");
+        }
+        // 用 updateStatus 改为 PENDING
+        UpdateBomStatusDTO dto = new UpdateBomStatusDTO();
+        dto.setBomId(bomId);
+        dto.setCurrent(ProductEnums.BomStatus.DRAFT.getValue());
+        dto.setTarget(ProductEnums.BomStatus.REVIEWING.getValue());
+        return updateStatus(dto);
+    }
+
+    @Event("bom.approved")
     @Override
     public boolean approve(UpdateBomStatusDTO dto) {
         ProductBom productBom = productBomMapper.selectById(dto.getBomId());
-        if (!Objects.equals(productBom.getApproveStatus(), ProductEnums.BomStatus.DRAFT.getValue())) {
-            throw new BusinessException(BusinessExceptionEnum.BOM_APPROVE_FAILED);
-        }
-        LambdaQueryWrapper<ProductBomItem> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ProductBomItem::getBomId,dto.getBomId());
-        boolean exists = productBomItemMapper.exists(queryWrapper);
-        if(!exists){
-            throw new BusinessException(BusinessExceptionEnum.BOM_MATERIAL_NOT_FOUND);
-        }
-        dto.setCurrent(ProductEnums.BomStatus.DRAFT.getValue());
+        dto.setCurrent(ProductEnums.BomStatus.REVIEWING.getValue());
         dto.setTarget(ProductEnums.BomStatus.APPROVED.getValue());
         return updateStatus(dto);
     }

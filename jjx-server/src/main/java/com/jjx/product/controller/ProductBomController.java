@@ -78,6 +78,17 @@ public class ProductBomController extends BaseController {
     }
 
     /**
+     * 提交BOM审批
+     */
+    @PutMapping("/submit/{bomId}")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("engineering:bom:edit")
+    public Result<Void> submit(@PathVariable Long bomId) {
+        boolean result = productBomService.submitApprove(bomId);
+        return result ? Result.success() : Result.error();
+    }
+
+    /**
      * 审批BOM
      */
     @PutMapping("/approve/{bomId}")

@@ -17,6 +17,13 @@ public class FilmController {
 
     @Operation(summary = "薄膜列表")
     @SaCheckPermission("engineering:film:view")
+    @GetMapping
+    public Result<?> list() {
+        return Result.success(filmService.listPage(null));
+    }
+
+    @Operation(summary = "薄膜分页")
+    @SaCheckPermission("engineering:film:view")
     @GetMapping("/page")
     public Result<?> page() {
         return Result.success(filmService.listPage(null));

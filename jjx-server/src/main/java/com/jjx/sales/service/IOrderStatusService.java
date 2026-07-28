@@ -49,6 +49,7 @@ public interface IOrderStatusService {
      * 开始生产 - 创建生产工单并更新销售订单状态
      */
     void startProduction(Long orderId);
+    void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark);
 
     /**
      * 获取订单审核状态

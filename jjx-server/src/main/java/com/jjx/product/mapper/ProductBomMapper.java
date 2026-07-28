@@ -19,7 +19,7 @@ public interface ProductBomMapper extends BaseMapper<ProductBom> {
      */
     @Select({
         "<script>",
-        "SELECT COUNT(*) FROM product_bom pb ",
+        "SELECT COUNT(*) FROM engineering_bom pb ",
         "LEFT JOIN product p ON pb.product_id = p.product_id ",
         "WHERE 1=1 ",
         "<if test='query.bomCode != null and query.bomCode != \"\"'>",
@@ -60,7 +60,7 @@ public interface ProductBomMapper extends BaseMapper<ProductBom> {
         "   pb.bom_type, pb.is_current, pb.effective_date, pb.expiry_date, ",
         "   pb.create_time, pb.update_time, pb.approve_status, pb.remark, ",
         "   p.product_code, p.product_name ",
-        "FROM product_bom pb ",
+        "FROM engineering_bom pb ",
         "LEFT JOIN product p ON pb.product_id = p.product_id ",
         "WHERE 1=1 ",
         "<if test='query.bomCode != null and query.bomCode != \"\"'>",
@@ -112,7 +112,7 @@ public interface ProductBomMapper extends BaseMapper<ProductBom> {
     /**
      * 查询产品的最新BOM版本
      */
-    @Select("SELECT * FROM product_bom WHERE product_id = #{productId} ORDER BY create_time DESC LIMIT 1")
+    @Select("SELECT * FROM engineering_bom WHERE product_id = #{productId} ORDER BY create_time DESC LIMIT 1")
     @Results({
         @Result(property = "bomId", column = "bom_id", id = true),
         @Result(property = "bomCode", column = "bom_code"),

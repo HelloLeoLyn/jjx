@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("order_review_record")
+@TableName("sales_order_review")
 public class OrderReviewRecord extends BaseEntity {
 
     /**

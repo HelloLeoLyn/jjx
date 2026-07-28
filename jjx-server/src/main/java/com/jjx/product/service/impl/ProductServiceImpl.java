@@ -17,6 +17,8 @@ import com.jjx.product.domain.vo.*;
 import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.*;
+import com.jjx.system.annotation.Event;
+import com.jjx.notification.service.NotificationService;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final IProductRoutingService routingService;
     private final IProductCategoryService categoryService;
     private final IProductFilmService filmService;
+    private final NotificationService notificationService;
     @Override
     public List<ProductVo> getProductList(ProductQuery query) {
         LambdaQueryWrapper<Product> wrapper = buildWrapper(query);
@@ -151,6 +154,14 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_ALREADY_OBSOLETE);
         }
 
+        // 2.5 校验：BOM和路线是否已配置且审批通过
+        if (product.getCurrentBomId() == null) {
+            throw new BusinessException(BusinessExceptionEnum.BOM_NOT_FOUND);
+        }
+        if (product.getCurrentRouteId() == null) {
+            throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
+        }
+
         // 3. 更新状态为已发布
         product.setProductStatus(ProductEnums.Status.RELEASED.getValue());
         boolean updated = productMapper.updateById(product) > 0;
@@ -244,6 +255,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         return fullVO;
     }
 
+    @Event("product.submitted")
     @Override
     public boolean submitProduct(Long productId) {
         Product product = productMapper.selectById(productId);
@@ -261,6 +273,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         return updateStatus(dto);
     }
 
+    @Event("product.approved")
     @Override
     public boolean approveProduct(ProductUpdateDTO dto) {
         Product product = productMapper.selectById(dto.getProductId());
@@ -270,9 +283,11 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         if(!Objects.equals(ProductEnums.Status.PENDING.getValue(), product.getProductStatus())){
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_CANNOT_APPROVED);
         }
+        dto.setProductName(product.getProductName());
         dto.setCurrentStatus(ProductEnums.Status.PENDING.getValue());
         dto.setTargetStatus(ProductEnums.Status.APPROVED.getValue());
-        return updateStatus(dto);
+        boolean updated = updateStatus(dto);
+        return updated;
     }
 
     @Override

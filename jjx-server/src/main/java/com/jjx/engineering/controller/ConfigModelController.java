@@ -12,6 +12,11 @@ public class ConfigModelController {
     private final IConfigModelService configService;
     @Operation(summary = "配置模型列表")
     @SaCheckPermission("engineering:config:view")
+    @GetMapping
+    public Result<?> list() { return Result.success(configService.listPage(null)); }
+
+    @Operation(summary = "配置模型分页")
+    @SaCheckPermission("engineering:config:view")
     @GetMapping("/page")
     public Result<?> page() { return Result.success(configService.listPage(null)); }
 }

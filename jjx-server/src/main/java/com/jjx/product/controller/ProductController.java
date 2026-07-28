@@ -92,6 +92,16 @@ public class ProductController extends BaseController {
     }
 
     /**
+     * 新增产品
+     */
+    @PostMapping
+    @Log(module = "产品管理", businessType = BusinessType.INSERT)
+    @SaCheckPermission("product:index:add")
+    public Result<Void> add(@Validated @RequestBody ProductDTO productDTO) {
+        return toAjax(productService.addProduct(productDTO));
+    }
+
+    /**
      * 修改产品
      */
     @PutMapping

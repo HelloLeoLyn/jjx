@@ -101,3 +101,5 @@ Dockerfile.tmp
 *.tar.gz
 *.rar
 *.7z
+# Maven exploded archive
+BOOT-INF/

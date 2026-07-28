@@ -22,7 +22,6 @@ public class EngineeringController {
     private final EngineeringBaseService engineeringBaseService;
 
     @Operation(summary = "分页查询工程记录")
-    @SaCheckPermission("engineering:view")
     @GetMapping("/page")
     public Result<PageResult<EngineeringBase>> page(@RequestParam(defaultValue = "1") int pageNum,
                                                      @RequestParam(defaultValue = "10") int pageSize) {
@@ -30,7 +29,6 @@ public class EngineeringController {
     }
 
     @Operation(summary = "查询工程详情")
-    @SaCheckPermission("engineering:view")
     @GetMapping("/{id}")
     public Result<EngineeringBase> getById(@PathVariable Long id) {
         return Result.success(engineeringBaseService.getById(id));

@@ -76,6 +76,7 @@ public interface IProductBomService extends IService<ProductBom> {
     PageResult<ProductBomVO> listPage(ProductBomQuery query);
 
     boolean approve(UpdateBomStatusDTO dto);
+    boolean submitApprove(Long bomId);
 
     boolean updateStatus(UpdateBomStatusDTO dto);
 

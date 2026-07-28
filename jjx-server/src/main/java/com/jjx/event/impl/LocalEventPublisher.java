@@ -2,22 +2,28 @@ package com.jjx.event.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.event.EventPublisher;
-import com.jjx.kanban.domain.entity.KanbanTask;
-import com.jjx.kanban.service.KanbanTaskService;
 import com.jjx.notification.domain.dto.NotificationCreateDTO;
 import com.jjx.notification.service.NotificationService;
 import com.jjx.system.domain.entity.SysEventConfig;
 import com.jjx.system.domain.entity.SysEventKanban;
 import com.jjx.system.domain.entity.SysEventNotification;
+import com.jjx.system.domain.entity.SysTask;
 import com.jjx.system.mapper.SysEventConfigMapper;
 import com.jjx.system.mapper.SysEventKanbanMapper;
 import com.jjx.system.mapper.SysEventNotificationMapper;
+import com.jjx.system.mapper.SysTaskMapper;
+import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.service.LogSaveService;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.beans.PropertyDescriptor;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 本地事件联动器
@@ -33,7 +39,8 @@ public class LocalEventPublisher implements EventPublisher {
     private final SysEventNotificationMapper eventNotificationMapper;
     private final SysEventKanbanMapper eventKanbanMapper;
     private final NotificationService notificationService;
-    private final KanbanTaskService kanbanTaskService;
+    private final SysTaskMapper sysTaskMapper;
+    private final LogSaveService logSaveService;
 
     @Override
     public void fire(String eventCode, Map<String, Object> payload) {
@@ -49,7 +56,25 @@ public class LocalEventPublisher implements EventPublisher {
         }
         log.info("🔥 触发事件: {} ({})", eventCode, event.getEventName());
 
-        // 2. 执行通知
+        // 2. 写操作日志
+        try {
+            SysOperLog operLog = new SysOperLog();
+            operLog.setModule(event.getBizModule());
+            operLog.setBusinessType(0);
+            operLog.setOperUrl(eventCode);
+            operLog.setOperParam(resolveTemplate(eventCode, payload));
+            operLog.setStatus(1);
+            try {
+                operLog.setUsername(SecurityUtils.getUsername());
+                operLog.setUserId(SecurityUtils.getUserId());
+            } catch (Exception ignored) {}
+            logSaveService.saveOperLog(operLog);
+            log.info("   📝 已记录操作日志: event={}", eventCode);
+        } catch (Exception e) {
+            log.error("   ❌ 操作日志记录失败: {}", e.getMessage());
+        }
+
+        // 3. 执行通知
         List<SysEventNotification> notifications = eventNotificationMapper.selectList(
                 new LambdaQueryWrapper<SysEventNotification>()
                         .eq(SysEventNotification::getEventId, event.getEventId())
@@ -58,8 +83,8 @@ public class LocalEventPublisher implements EventPublisher {
         for (SysEventNotification notif : notifications) {
             try {
                 NotificationCreateDTO dto = new NotificationCreateDTO();
-                dto.setTitle(resolveTemplate(eventCode + " 触发通知", payload));
-                dto.setContent(resolveTemplate("事件[" + event.getEventName() + "]已触发，请处理", payload));
+                dto.setTitle(resolveTemplate(event.getEventName(), payload));
+                dto.setContent(resolveTemplate(event.getEventName() + " - 请及时处理", payload));
                 dto.setNotificationType("system");
                 dto.setBizType(eventCode);
                 dto.setReceiverId(notif.getRoleId());
@@ -79,17 +104,18 @@ public class LocalEventPublisher implements EventPublisher {
         );
         for (SysEventKanban kb : kanbans) {
             try {
-                KanbanTask task = new KanbanTask();
+                SysTask task = new SysTask();
                 task.setTaskCode(eventCode + "-" + System.currentTimeMillis());
                 task.setTitle(resolveTemplate(kb.getCardTitleTemplate(), payload));
                 task.setDescription(resolveTemplate(kb.getCardDescTemplate(), payload));
-                task.setKanbanType(kb.getKanbanType());
-                task.setColumnId(kb.getTargetColumn());
+                task.setTaskType(kb.getKanbanType());
+                task.setStartTime(java.time.LocalDateTime.now());
                 task.setSourceEvent(eventCode);
                 task.setAssignRole(kb.getAssignRoleId());
                 task.setPriority("normal");
-                kanbanTaskService.createTask(task);
-                log.info("   📋 已创建看板任务: type={}, column={}", kb.getKanbanType(), kb.getTargetColumn());
+                task.setStatus("pending");
+                sysTaskMapper.insert(task);
+                log.info("   📋 已创建看板任务: id={}, type={}, column={}", task.getTaskId(), kb.getKanbanType(), kb.getTargetColumn());
             } catch (Exception e) {
                 log.error("   ❌ 创建看板任务失败: {}", e.getMessage());
             }
@@ -101,9 +127,65 @@ public class LocalEventPublisher implements EventPublisher {
     private String resolveTemplate(String template, Map<String, Object> payload) {
         if (template == null || payload == null) return template;
         String result = template;
-        for (Map.Entry<String, Object> entry : payload.entrySet()) {
-            result = result.replace("${" + entry.getKey() + "}", String.valueOf(entry.getValue()));
+
+        // 正则匹配所有 ${xxx} 占位符
+        Pattern pattern = Pattern.compile("\\$\\{([^}]+)\\}");
+        Matcher matcher = pattern.matcher(result);
+
+        while (matcher.find()) {
+            String expr = matcher.group(1);
+            String value = resolvePlaceholder(expr, payload);
+            if (value != null) {
+                result = result.replace("${" + expr + "}", value);
+            }
         }
         return result;
+    }
+
+    /**
+     * 解析单个占位符
+     * 支持：
+     *   直接key: ${productName}
+     *   嵌套属性: ${dto.productName}
+     *   自动扫描: ${productName} 从payload中任意对象查找匹配的getter
+     */
+    private String resolvePlaceholder(String expr, Map<String, Object> payload) {
+        // 1. 直接 key 匹配
+        if (payload.containsKey(expr)) {
+            Object val = payload.get(expr);
+            return val != null ? String.valueOf(val) : null;
+        }
+
+        // 2. 点号嵌套：${dto.productName}
+        if (expr.contains(".")) {
+            String[] parts = expr.split("\\.", 2);
+            Object obj = payload.get(parts[0]);
+            if (obj != null) {
+                return getPropertyValue(obj, parts[1]);
+            }
+            return null;
+        }
+
+        // 3. 自动扫描：从payload中所有Java Bean对象查找匹配的getter
+        for (Object obj : payload.values()) {
+            if (obj == null || obj instanceof String) continue;
+            String val = getPropertyValue(obj, expr);
+            if (val != null) return val;
+        }
+
+        return null;
+    }
+
+    /**
+     * 通过getter反射获取对象的属性值
+     */
+    private String getPropertyValue(Object obj, String property) {
+        try {
+            PropertyDescriptor pd = new PropertyDescriptor(property, obj.getClass());
+            Object val = pd.getReadMethod().invoke(obj);
+            return val != null ? String.valueOf(val) : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }
