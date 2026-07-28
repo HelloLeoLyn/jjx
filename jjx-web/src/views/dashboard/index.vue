@@ -262,6 +262,7 @@ import { stockApi } from '@/api/inventory/stock'
 import { getOrderCount } from '@/api/purchase/order'
 import { getProductCount } from '@/api/product/index'
 import { Box, Wallet, ShoppingCart, WarningFilled, Goods, User, Setting } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 
 const userStore = useUserStore()
 const loading = ref(true)
