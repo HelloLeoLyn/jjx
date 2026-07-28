@@ -177,11 +177,15 @@ public class OrderStatusController {
      * 客户确认订单
      */
     @Operation(summary = "客户确认订单")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE,
+         bizId = "#orderId", bizType = "'sales_order'")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/confirm")
     public Result<Void> confirmOrder(@PathVariable Long orderId,
-                                     @RequestParam String confirmedBy) {
+                                     @RequestParam String confirmedBy,
+                                     @RequestParam(required = false) String confirmMethod,
+                                     @RequestParam(required = false) String remark) {
+        orderStatusService.confirmOrder(orderId, confirmedBy, confirmMethod, remark);
         return Result.success();
     }
 }
