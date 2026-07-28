@@ -119,4 +119,17 @@ public class SysDictController extends BaseController {
     public Result<Void> changeDictItemStatus(@PathVariable Long itemId, @RequestParam Integer isActive) {
         return toAjax(dictService.changeDictItemStatus(itemId, isActive));
     }
+
+    @Operation(summary = "导出字典")
+    @SaCheckPermission("system:dict:export")
+    @GetMapping("/export/{dictCode}")
+    public Result<List<SysDictItemVO>> exportDict(@PathVariable String dictCode) {
+        return Result.success(dictService.selectActiveItemsByDictCode(dictCode));
+    }
+
+    @Operation(summary = "按分组列表")
+    @GetMapping("/group/{dictGroup}")
+    public Result<List<SysDictVO>> getByGroup(@PathVariable String dictGroup) {
+        return Result.success(dictService.selectDictListByGroup(dictGroup));
+    }
 }

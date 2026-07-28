@@ -31,6 +31,9 @@ public class SysDictDTO implements Serializable {
     @Schema(description = "字典名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "订单状态")
     private String dictName;
 
+    @Schema(description = "分组", example = "sales")
+    private String dictGroup;
+
     @Size(max = 500, message = "备注长度不能超过500个字符")
     @Schema(description = "备注", example = "订单状态字典")
     private String remark;

@@ -22,6 +22,9 @@ public class SysDictVO {
     @Schema(description = "字典名称", example = "订单状态")
     private String dictName;
 
+    @Schema(description = "分组", example = "sales")
+    private String dictGroup;
+
     @Schema(description = "备注", example = "订单状态字典")
     private String remark;
 
