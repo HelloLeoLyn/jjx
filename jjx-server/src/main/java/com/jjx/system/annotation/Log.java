@@ -11,4 +11,16 @@ public @interface Log {
     BusinessType businessType() default BusinessType.OTHER;
     boolean saveParam() default true;
     String[] excludeParamNames() default {"password", "pwd", "token"};
+
+    /**
+     * 业务ID SpEL表达式，从参数或返回值中提取
+     * 如: "#product.productId" 或 "#result.data.productId"
+     */
+    String bizId() default "";
+
+    /**
+     * 业务类型 SpEL表达式，从参数或返回值中提取
+     * 如: "'product'" 或 "#dto.bizType"
+     */
+    String bizType() default "";
 }

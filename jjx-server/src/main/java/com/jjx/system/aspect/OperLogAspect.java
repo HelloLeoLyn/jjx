@@ -18,6 +18,12 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.context.expression.MethodBasedEvaluationContext;
+import org.springframework.core.DefaultParameterNameDiscoverer;
+import org.springframework.core.ParameterNameDiscoverer;
+import org.springframework.expression.Expression;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -32,6 +38,7 @@ import java.util.*;
 public class OperLogAspect {
     
     private final LogSaveService logSaveService;
+    private final SpelExpressionParser spelParser = new SpelExpressionParser();
     
     @Around("@annotation(logAnnotation)")
     public Object around(ProceedingJoinPoint point, Log logAnnotation) throws Throwable {
@@ -47,8 +54,36 @@ public class OperLogAspect {
                 operLog.setOperParam(getRequestParams(point, logAnnotation));
             }
             
+            // 准备SpEL上下文（方法参数）
+            Object[] args = point.getArgs();
+            StandardEvaluationContext spelCtx = new StandardEvaluationContext();
+            String[] paramNames = ((MethodSignature) point.getSignature()).getParameterNames();
+            if (paramNames != null) {
+                for (int i = 0; i < paramNames.length && i < args.length; i++) {
+                    spelCtx.setVariable(paramNames[i], args[i]);
+                }
+            }
+            
+            // 先从参数提取bizId/bizType
+            String bizId = evaluateSpel(spelCtx, logAnnotation.bizId());
+            String bizType = evaluateSpel(spelCtx, logAnnotation.bizType());
+            
             // 执行业务方法
             Object result = point.proceed();
+            
+            // 如果参数没提取到，再从返回值提取
+            if ((bizId == null || bizId.isEmpty()) && !logAnnotation.bizId().isEmpty()) {
+                spelCtx.setVariable("result", result);
+                bizId = evaluateSpel(spelCtx, logAnnotation.bizId());
+            }
+            if ((bizType == null || bizType.isEmpty()) && !logAnnotation.bizType().isEmpty()) {
+                spelCtx.setVariable("result", result);
+                bizType = evaluateSpel(spelCtx, logAnnotation.bizType());
+            }
+            
+            operLog.setBizId(bizId);
+            operLog.setBizType(bizType);
+            
             if(result instanceof Result<?> resultObj){
                 if(resultObj.getCode()==200){
                     operLog.setStatus(YesNoEnum.YES.getCode());
@@ -127,6 +162,23 @@ public class OperLogAspect {
 
     private static String toJSONString(Map<String, Object> paramMap) {
         return JSONUtil.toJsonStr(paramMap);
+    }
+
+    /**
+     * 安全解析SpEL表达式，返回String值（失败返回空字符串）
+     */
+    private String evaluateSpel(StandardEvaluationContext ctx, String expression) {
+        if (expression == null || expression.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            Expression exp = spelParser.parseExpression(expression);
+            Object value = exp.getValue(ctx);
+            return value == null ? null : String.valueOf(value);
+        } catch (Exception e) {
+            log.warn("SpEL解析失败: expression={}, error={}", expression, e.getMessage());
+            return null;
+        }
     }
 }
 

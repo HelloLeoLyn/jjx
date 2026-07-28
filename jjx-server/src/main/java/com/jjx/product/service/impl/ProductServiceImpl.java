@@ -209,7 +209,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
 
     @Override
-    public boolean addProduct(ProductDTO productDTO) {
+    public Long addProduct(ProductDTO productDTO) {
         // 这里需要实现新增产品的逻辑，包括校验、转换和保存
         if (StringUtils.isNotBlank(productDTO.getProductCode())&&!checkProductCodeUnique(productDTO.getProductCode(), null)) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_CODE_DUPLICATE);
@@ -221,7 +221,8 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         Product product = new Product();
         BeanUtils.copyProperties(productDTO, product);
         product.setProductStatus(ProductEnums.Status.DEVELOPING.getValue());
-        return save(product);
+        boolean saved = save(product);
+        return saved ? product.getProductId() : null;
     }
 
     @Override

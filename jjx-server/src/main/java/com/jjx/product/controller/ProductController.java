@@ -95,17 +95,20 @@ public class ProductController extends BaseController {
      * 新增产品
      */
     @PostMapping
-    @Log(module = "产品管理", businessType = BusinessType.INSERT)
+    @Log(module = "产品管理", businessType = BusinessType.INSERT,
+         bizId = "#result.data", bizType = "'product'")
     @SaCheckPermission("product:index:add")
-    public Result<Void> add(@Validated @RequestBody ProductDTO productDTO) {
-        return toAjax(productService.addProduct(productDTO));
+    public Result<Long> add(@Validated @RequestBody ProductDTO productDTO) {
+        Long productId = productService.addProduct(productDTO);
+        return productId != null ? Result.success(productId) : Result.error();
     }
 
     /**
      * 修改产品
      */
     @PutMapping
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productDTO.productId", bizType = "'product'")
     @SaCheckPermission("product:index:edit")
     public Result<Void> edit(@Validated @RequestBody ProductDTO productDTO) {
         if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
@@ -124,7 +127,8 @@ public class ProductController extends BaseController {
      * 删除产品
      */
     @DeleteMapping("/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.DELETE)
+    @Log(module = "产品管理", businessType = BusinessType.DELETE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:delete")
     public Result<Void> remove(@PathVariable Long productId) {
         boolean result = productService.removeById(productId);
@@ -135,7 +139,8 @@ public class ProductController extends BaseController {
      * 发布产品
      */
     @PutMapping("/release/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:release")
     public Result<Void> release(@PathVariable Long productId) {
         // 执行发布，验证逻辑在service层处理
@@ -146,7 +151,8 @@ public class ProductController extends BaseController {
      * 提交审核
      */
     @PutMapping("/submit/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:submit")
     public Result<Void> submit(@PathVariable Long productId) {
         // 执行发布，验证逻辑在service层处理
@@ -158,7 +164,8 @@ public class ProductController extends BaseController {
      * 审核通过
      */
     @PutMapping("/approve/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:approve")
     public Result<Void> approve(@PathVariable Long productId, ProductUpdateDTO dto) {
         // 执行发布，验证逻辑在service层处理
@@ -169,7 +176,8 @@ public class ProductController extends BaseController {
      * 驳回审核
      */
     @PutMapping("/reject/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:reject")
     public Result<Void> reject(@PathVariable Long productId, ProductUpdateDTO dto) {
         // 执行发布，验证逻辑在service层处理

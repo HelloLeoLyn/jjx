@@ -69,7 +69,7 @@ public interface IProductService extends IService<Product> {
     /**
      * 新增产品
      */
-    boolean addProduct(ProductDTO productDTO);
+    Long addProduct(ProductDTO productDTO);
 
     String getProductCode(String categoryCode);
 
