@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JJX ERP — 产品工程流程</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;color:#e2e8f0;padding:24px}
+h1{text-align:center;font-size:20px;margin-bottom:4px}
+.sub{text-align:center;color:#94a3b8;font-size:13px;margin-bottom:20px}
+.fc{max-width:960px;margin:0 auto;background:#1e293b;border-radius:12px;padding:24px;border:1px solid rgba(255,255,255,.06)}
+.fc-title{font-size:16px;font-weight:600;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+.node{padding:7px 12px;border-radius:6px;font-size:12px;white-space:nowrap;border:1.5px solid;text-align:center;line-height:1.3;flex-shrink:0}
+.node-b{background:rgba(59,130,246,.1);border-color:#3b82f6}
+.node-g{background:rgba(34,197,94,.1);border-color:#22c55e}
+.node-p{background:rgba(168,85,247,.1);border-color:#a855f7}
+.node-y{background:rgba(245,158,11,.1);border-color:#f59e0b}
+.node-r{background:rgba(239,68,68,.1);border-color:#ef4444}
+.node-c{background:rgba(6,182,212,.1);border-color:#06b6d4}
+.node-k{background:rgba(236,72,153,.1);border-color:#ec4899}
+.node-d{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.12)}
+.node-sub{font-size:11px;padding:4px 10px;border-radius:4px;opacity:.85}
+.node-dash{border-style:dashed;opacity:.55}
+.c{color:#475569;font-size:14px;margin:0 3px;flex-shrink:0}
+.dia{display:inline-flex;align-items:center;justify-content:center;border:2px solid #f59e0b;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;color:#f59e0b;background:rgba(245,158,11,.06);text-align:center;line-height:1.3;min-width:56px;flex-shrink:0}
+.h-row{display:flex;align-items:center;gap:0;justify-content:center;flex-wrap:nowrap;padding:0 0 10px}
+.b-row{display:flex;align-items:center;gap:4px;margin:2px 0 2px 32px;flex-wrap:nowrap}
+.b-label{font-size:11px;white-space:nowrap;margin:0 2px}
+.b-yes{color:#22c55e}
+.b-no{color:#ef4444}
+.tag{font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,.06);color:#94a3b8;white-space:nowrap}
+.note{text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:11px;color:#475569}
+</style>
+</head>
+<body>
+
+<h1>📊 产品工程流程</h1>
+<div class="sub">阶段二：产品立项→审批→发布 | BOM设计→审批→设默认 | 路线设计→审批→设当前</div>
+
+<div class="fc" style="border-color:#22c55e">
+  <div class="fc-title" style="color:#22c55e">阶段二：产品设计与工程（三线审批）</div>
+
+  <!-- R1: 产品创建 -->
+  <div class="h-row">
+    <span class="node node-g">➕ 创建产品</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">选择分类/客户/编码要素</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">填名称/规格/单位</span>
+    <span class="c">→</span>
+    <span class="node node-g">💾 保存(DEVELOPING/1)</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">📝 操作日志写入</span>
+  </div>
+
+  <!-- R2: 提交审核 -->
+  <div class="h-row"><span class="c">⬇</span></div>
+  <div class="h-row">
+    <span class="node node-g">📤 提交审核</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">状态→PENDING(2)</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">操作日志</span>
+  </div>
+
+  <!-- R3: 审核 -->
+  <div class="h-row"><span class="c">⬇</span></div>
+  <div class="h-row">
+    <span class="node node-g">🔍 产品审核</span>
+    <span class="c">→</span>
+    <span class="dia">审核<br>通过？</span>
+    <span class="b-label b-yes">通过 →</span>
+    <span class="node node-g">✅ 审批通过(APPROVED/4)</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">📋 自动派工程任务(T1)</span>
+  </div>
+  <div class="b-row">
+    <span style="width:245px"></span>
+    <span class="b-label b-no">驳回 →</span>
+    <span class="node node-r node-sub">⛔ 退回修改(回到1)</span>
+  </div>
+
+  <!-- Divider -->
+  <div style="display:flex;align-items:center;margin:16px 0;gap:0">
+    <div style="flex:1;height:2px;background:rgba(255,255,255,.06)"></div>
+    <span style="color:#475569;font-size:11px;padding:0 10px">并行设计</span>
+    <div style="flex:1;height:2px;background:rgba(255,255,255,.06)"></div>
+  </div>
+
+  <!-- R4: BOM -->
+  <div class="b-row">
+    <span class="c">├</span>
+    <span style="font-size:12px;color:#94a3b8;min-width:30px">BOM</span>
+    <span class="node node-g">📋 创建BOM</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">BOM信息/物料明细</span>
+    <span class="c">→</span>
+    <span class="node node-g">💾 保存(DRAFT/1)</span>
+  </div>
+  <div class="b-row">
+    <span style="width:58px"></span>
+    <span class="c">→</span>
+    <span class="node node-g">📤 提交审核</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">状态→REVIEWING(2)</span>
+    <span class="c">→</span>
+    <span class="node node-g">✅ 审核通过(APPROVED/3)</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">检查物料明细</span>
+  </div>
+  <div class="b-row">
+    <span style="width:58px"></span>
+    <span class="c">→</span>
+    <span class="node node-g">⭐ 设为默认BOM</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">is_current=1 绑定产品</span>
+  </div>
+
+  <!-- R5: Route -->
+  <div class="b-row" style="margin-top:6px">
+    <span class="c">└</span>
+    <span style="font-size:12px;color:#94a3b8;min-width:30px">路线</span>
+    <span class="node node-g">🛤️ 创建路线</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">路线信息/工序</span>
+    <span class="c">→</span>
+    <span class="node node-g">💾 保存(DRAFT/1)</span>
+  </div>
+  <div class="b-row">
+    <span style="width:58px"></span>
+    <span class="c">→</span>
+    <span class="node node-g">📤 提交审核</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">状态→REVIEWING(2)</span>
+    <span class="c">→</span>
+    <span class="node node-g">✅ 审核通过(APPROVED/3)</span>
+    <span class="c">→</span>
+    <span class="node node-g">⭐ 设为当前版本</span>
+    <span class="c">→</span>
+    <span class="node node-g node-sub">is_current=1 绑定产品</span>
+  </div>
+
+  <!-- R6: Publish -->
+  <div style="display:flex;align-items:center;margin:16px 0;gap:0">
+    <div style="flex:1;height:2px;background:rgba(255,255,255,.06)"></div>
+    <span style="color:#475569;font-size:11px;padding:0 10px">BOM/路线就绪后 → 发布</span>
+    <div style="flex:1;height:2px;background:rgba(255,255,255,.06)"></div>
+  </div>
+
+  <div class="h-row">
+    <span class="node node-g">🎯 产品发布</span>
+    <span class="c">→</span>
+    <span class="node node-g" style="border-color:#ef4444;background:rgba(239,68,68,.08)">🔴 校验BOM已审批通过</span>
+    <span class="c">→</span>
+    <span class="node node-g" style="border-color:#ef4444;background:rgba(239,68,68,.08)">🔴 校验路线已审批通过</span>
+    <span class="c">→</span>
+    <span class="node node-g">✅ 发布(RELEASED/6)</span>
+    <span class="tag">#130</span>
+  </div>
+
+  <!-- Additional info -->
+  <div style="margin-top:16px;padding:12px;background:rgba(255,255,255,.03);border-radius:8px">
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:6px">📌 产品相关子模块</div>
+    <div class="h-row" style="gap:6px;flex-wrap:wrap">
+      <span class="node node-d node-sub" style="font-size:10px">🎨 配置模型(config) — 已迁至product包</span>
+      <span class="node node-d node-sub" style="font-size:10px">📸 菲林管理(film) — 合并至product包，删除冗余Film.java</span>
+      <span class="node node-d node-sub" style="font-size:10px">🔄 产品实例生命周期(9态) — 设计→客户确认→备料→生产→质检→发货→完成</span>
+    </div>
+    <div class="h-row" style="gap:6px;margin-top:6px">
+      <span class="node node-d node-sub" style="font-size:10px">产品状态: developing(1)→pending(2)→reviewing(3)→approved(4)→<strong>released(6)</strong></span>
+      <span class="node node-d node-sub" style="font-size:10px">BOM状态: draft(1)→reviewing(2)→<strong>approved(3)</strong>→obsolete(5)</span>
+      <span class="node node-d node-sub" style="font-size:10px">路线状态: draft(1)→reviewing(2)→<strong>approved(3)</strong>→obsolete(4)</span>
+    </div>
+  </div>
+</div>
+
+<div class="note">◆ 菱形 = 判断分支 &nbsp;|&nbsp; 🔴 = 代码校验点(#130) &nbsp;|&nbsp; 产品RELEASED后才能在订单中选中</div>
+
+</body>
+</html>
