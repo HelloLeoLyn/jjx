@@ -371,7 +371,7 @@ const MODULES = [
       { id: 1,  title: '创建询价单',                  pre: '客户已建', steps: '①销售→询价→②新增→③选客户→④填需求/规格/数量→⑤上传图纸→⑥保存', expect: '询价单生成，状态=草稿，文件关联正确', codeStatus: 'new' },
       { id: 2,  title: '询价单编辑',                  pre: '询价单已存在', steps: '①勾选询价单→②编辑→③修改内容→④保存', expect: '字段更新，日志记录', codeStatus: 'new' },
       { id: 3,  title: '询价单搜索',                  pre: '有询价数据', steps: '①根据客户名/单号/日期范围搜索', expect: '搜索结果正确，空数据不报错', codeStatus: 'new' },
-      { id: 4,  title: '询价→报价转换',              pre: '询价单状态=草稿', steps: '①勾选询价单→②点"转为报价"→③自动跳转报价页预填', expect: '新报价单创建，客户/需求预填，询价单状态标记', codeStatus: 'new' },
+      { id: 4,  title: '询价→报价转换',              pre: '询价单状态=草稿', steps: '①勾选询价单→②点"转为报价"→③自动跳转报价页预填', expect: '新报价单创建，客户/需求预填，询价单状态→converted，操作日志写入(bizType=inquiry)，消息通知销售报价单已生成', codeStatus: 'new' },
     ]
   },
   {
@@ -562,6 +562,20 @@ const MODULES = [
       { id: 75, title: '查看采购报表',                pre: '有采购数据', steps: '①报表→采购报表', expect: '数据显示，图表正确', codeStatus: 'existing' },
       { id: 76, title: '查看库存报表',                pre: '有库存数据', steps: '①报表→库存报表', expect: '数据显示，周转率正确', codeStatus: 'existing' },
       { id: 77, title: '报表导出',                    pre: '报表可正常查看', steps: '①打开报表→②点"导出"', expect: '文件下载，数据一致', codeStatus: 'existing' },
+    ]
+  },
+  {
+    id: 'phase15-trace',
+    name: 'P15 链路追踪 ⭐',
+    desc: '按trace_id查询完整业务链路 → 时间线展示 → 操作日志追溯',
+    deps: [],
+    codeStatus: 'new',
+    cases: [
+      { id: 78, title: '操作日志-查看trace_id',        pre: '已有业务操作日志', steps: '①系统→操作日志→②检查操作日志是否记录trace_id', expect: '日志列表显示trace_id字段，每条日志关联trace_id', codeStatus: 'new' },
+      { id: 79, title: '链路追踪-按trace_id查询',       pre: '已有trace_id', steps: '①系统→链路追踪→②输入trace_id→③查询', expect: '时间线展示全部关联节点，按模块分组，按时间排序', codeStatus: 'new' },
+      { id: 80, title: '链路追踪-按业务编号搜索',       pre: '已有业务编号(如INQ/QT/SO)', steps: '①链路追踪→②输入业务编号(如QT2607290001)→③搜索', expect: '反查到trace_id并展示完整链路，支持模糊匹配', codeStatus: 'new' },
+      { id: 81, title: '链路追踪-节点展开操作日志',     pre: '链路查询有结果', steps: '①链路时间线→②点击任一节点卡片', expect: '展开显示该模块下所有操作日志(操作人/时间/动作/结果)', codeStatus: 'new' },
+      { id: 82, title: '链路追踪-空结果处理',           pre: '已清理数据', steps: '①链路追踪→②输入不存在的trace_id→③查询', expect: '显示"未找到匹配的业务链路"，不报错', codeStatus: 'new' },
     ]
   },
 ];

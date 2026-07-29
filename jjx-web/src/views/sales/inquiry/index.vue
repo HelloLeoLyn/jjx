@@ -126,6 +126,7 @@
               @click="handleUpdate(scope.row)"
               :disabled="scope.row.inquiryStatus === 'converted'"
             >编辑</el-button>
+            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)">查看流水</el-button>
             <template v-if="scope.row.inquiryStatus === 'converted'">
               <el-button link type="success" icon="Link" @click="gotoQuotation(scope.row)">查看报价</el-button>
             </template>
@@ -377,11 +378,14 @@
       </template>
     </el-dialog>
   </div>
+  <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { FormInstance, UploadInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import { Upload } from '@element-plus/icons-vue'
@@ -865,6 +869,14 @@ onMounted(() => {
     statusOptions.value = res.data || []
   }).catch(() => {})
 })
+// 链路追踪抽屉
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: any) {
+  currentTraceId.value = row.traceId || ''
+  traceDrawerVisible.value = true
+}
+
 </script>
 
 <style scoped lang="scss">

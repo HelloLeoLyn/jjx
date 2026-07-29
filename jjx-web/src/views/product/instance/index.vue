@@ -126,12 +126,12 @@
         </el-table-column>
         <el-table-column label="生产日期" align="center" prop="productionDate" width="120">
           <template #default="scope">
-            <span>{{ parseTime(scope.row.productionDate, '{y}-{m}-{d}') }}</span>
+            <span>{{ parseTime(scope.row.productionDate, 'yyyy-MM-dd') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="出厂日期" align="center" prop="shipmentDate" width="120">
           <template #default="scope">
-            <span>{{ parseTime(scope.row.shipmentDate, '{y}-{m}-{d}') }}</span>
+            <span>{{ parseTime(scope.row.shipmentDate, 'yyyy-MM-dd') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="创建时间" align="center" prop="createTime" width="180">
@@ -309,10 +309,10 @@
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="生产日期">
-          {{ parseTime(detail.productionDate, '{y}-{m}-{d}') }}
+          {{ parseTime(detail.productionDate, 'yyyy-MM-dd') }}
         </el-descriptions-item>
         <el-descriptions-item label="出厂日期">
-          {{ parseTime(detail.shipmentDate, '{y}-{m}-{d}') }}
+          {{ parseTime(detail.shipmentDate, 'yyyy-MM-dd') }}
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{
           parseTime(detail.createTime)

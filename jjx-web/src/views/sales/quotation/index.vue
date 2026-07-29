@@ -164,6 +164,7 @@
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
+            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)">查看流水</el-button>
             <el-tooltip content="删除" placement="top">
               <el-button
                 link
@@ -524,6 +525,8 @@
       </el-table>
     </el-dialog>
   </div>
+  <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
 </template>
 
 <script setup lang="ts">
@@ -533,6 +536,7 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
 import { customerApi } from '@/api/sales/customer'
@@ -1068,6 +1072,14 @@ const getStatusLabel = (status: string) => {
 onMounted(() => {
   getList()
 })
+// 链路追踪抽屉
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: any) {
+  currentTraceId.value = row.traceId || ''
+  traceDrawerVisible.value = true
+}
+
 </script>
 
 <style scoped>

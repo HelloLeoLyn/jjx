@@ -67,13 +67,13 @@
         <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
         <el-table-column label="订单日期" align="center" prop="orderDate" width="120">
           <template #default="scope">
-            <span>{{ parseTime(scope.row.orderDate, '{y}-{m}-{d}') }}</span>
+            <span>{{ parseTime(scope.row.orderDate, 'yyyy-MM-dd') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="交货日期" prop="deliveryDate" width="120">
           <template #default="scope">
             <span v-if="scope.row.deliveryDate">{{
-              parseTime(scope.row.deliveryDate, '{y}-{m}-{d}')
+              parseTime(scope.row.deliveryDate, 'yyyy-MM-dd')
             }}</span>
             <span v-else>-</span>
           </template>
@@ -152,11 +152,11 @@
             <el-descriptions-item label="订单号">{{ detail.orderNo }}</el-descriptions-item>
             <el-descriptions-item label="客户名称">{{ detail.customerName }}</el-descriptions-item>
             <el-descriptions-item label="订单日期">
-              {{ parseTime(detail.orderDate, '{y}-{m}-{d}') }}
+              {{ parseTime(detail.orderDate, 'yyyy-MM-dd') }}
             </el-descriptions-item>
             <el-descriptions-item label="交货日期">
               <span v-if="detail.deliveryDate">{{
-                parseTime(detail.deliveryDate, '{y}-{m}-{d}')
+                parseTime(detail.deliveryDate, 'yyyy-MM-dd')
               }}</span>
               <span v-else>-</span>
             </el-descriptions-item>
@@ -186,9 +186,9 @@
         </el-tab-pane>
 
         <el-tab-pane label="生产进度" name="production">
-          <div v-if="productionLoading" style="text-align:center;padding:40px">加载中...</div>
+          <div v-if="productionLoading" style="text-align: center; padding: 40px">加载中...</div>
           <template v-else-if="productionOrders.length > 0">
-            <el-table :data="productionOrders" border style="width:100%;margin-bottom:16px">
+            <el-table :data="productionOrders" border style="width: 100%; margin-bottom: 16px">
               <el-table-column label="生产单号" prop="orderNo" width="160" />
               <el-table-column label="产品名称" prop="productName" width="160" />
               <el-table-column label="计划数量" prop="plannedQuantity" width="90" align="right" />
@@ -207,23 +207,25 @@
                 <template #default="scope">{{ scope.row.planEndDate || '-' }}</template>
               </el-table-column>
             </el-table>
-            <el-card shadow="never" style="background:#0f172a">
+            <el-card shadow="never" style="background: #0f172a">
               <template #header>
                 <span>📊 生产进度概览</span>
               </template>
-              <div v-if="totalProduced !== null" style="display:flex;gap:24px;flex-wrap:wrap">
+              <div v-if="totalProduced !== null" style="display: flex; gap: 24px; flex-wrap: wrap">
                 <div>
-                  <div style="font-size:13px;color:#94a3b8;margin-bottom:4px">计划总数</div>
-                  <div style="font-size:24px;font-weight:700">{{ totalPlanned }}</div>
+                  <div style="font-size: 13px; color: #94a3b8; margin-bottom: 4px">计划总数</div>
+                  <div style="font-size: 24px; font-weight: 700">{{ totalPlanned }}</div>
                 </div>
                 <div>
-                  <div style="font-size:13px;color:#94a3b8;margin-bottom:4px">已完成</div>
-                  <div style="font-size:24px;font-weight:700;color:#10b981">{{ totalCompleted }}</div>
+                  <div style="font-size: 13px; color: #94a3b8; margin-bottom: 4px">已完成</div>
+                  <div style="font-size: 24px; font-weight: 700; color: #10b981">
+                    {{ totalCompleted }}
+                  </div>
                 </div>
                 <div>
-                  <div style="font-size:13px;color:#94a3b8;margin-bottom:4px">进度</div>
-                  <div style="font-size:24px;font-weight:700;color:#3b82f6">
-                    {{ totalPlanned > 0 ? Math.round(totalCompleted / totalPlanned * 100) : 0 }}%
+                  <div style="font-size: 13px; color: #94a3b8; margin-bottom: 4px">进度</div>
+                  <div style="font-size: 24px; font-weight: 700; color: #3b82f6">
+                    {{ totalPlanned > 0 ? Math.round((totalCompleted / totalPlanned) * 100) : 0 }}%
                   </div>
                 </div>
               </div>
@@ -233,7 +235,10 @@
         </el-tab-pane>
 
         <el-tab-pane label="发货跟踪" name="delivery">
-          <div v-if="deliveryRecords.length === 0 && !detail.deliveryAddress" style="text-align:center;padding:40px">
+          <div
+            v-if="deliveryRecords.length === 0 && !detail.deliveryAddress"
+            style="text-align: center; padding: 40px"
+          >
             <el-empty description="暂无发货信息" />
           </div>
           <div v-else>
@@ -247,12 +252,12 @@
                 :hollow="item.hollow"
               >
                 {{ item.content }}
-                <div v-if="item.detail" style="font-size:12px;color:#94a3b8;margin-top:4px">
+                <div v-if="item.detail" style="font-size: 12px; color: #94a3b8; margin-top: 4px">
                   {{ item.detail }}
                 </div>
               </el-timeline-item>
             </el-timeline>
-            <div v-if="deliveryRecords.length > 1" style="margin-top:16px">
+            <div v-if="deliveryRecords.length > 1" style="margin-top: 16px">
               <el-divider>发货单列表</el-divider>
               <el-table :data="deliveryRecords" border size="small">
                 <el-table-column label="发货单号" prop="deliveryNo" width="150" />
@@ -281,7 +286,11 @@
             </el-table-column>
             <el-table-column label="金额" prop="amount" width="120" align="right">
               <template #default="scope">
-                {{ formatCurrency(scope.row.amount || (scope.row.unitPrice || 0) * (scope.row.quantity || 0)) }}
+                {{
+                  formatCurrency(
+                    scope.row.amount || (scope.row.unitPrice || 0) * (scope.row.quantity || 0)
+                  )
+                }}
               </template>
             </el-table-column>
             <el-table-column label="生产状态" prop="prodStatus" width="100">
@@ -444,8 +453,14 @@ const loadProductionProgress = async (salesOrderId: number) => {
       planStartDate: r.planStartDate,
       planEndDate: r.planEndDate,
     }))
-    totalPlanned.value = productionOrders.value.reduce((s: number, o: ProductionOrderItem) => s + o.plannedQuantity, 0)
-    totalCompleted.value = productionOrders.value.reduce((s: number, o: ProductionOrderItem) => s + o.completedQuantity, 0)
+    totalPlanned.value = productionOrders.value.reduce(
+      (s: number, o: ProductionOrderItem) => s + o.plannedQuantity,
+      0
+    )
+    totalCompleted.value = productionOrders.value.reduce(
+      (s: number, o: ProductionOrderItem) => s + o.completedQuantity,
+      0
+    )
     totalProduced.value = totalCompleted.value
   } catch (error) {
     console.error('获取生产进度失败:', error)
@@ -554,7 +569,9 @@ const deliveryTimeline = computed(() => {
         r.trackingNo && `物流单号: ${r.trackingNo}`,
         r.totalQuantity && `数量: ${r.totalQuantity}`,
         r.receiverName && `收货人: ${r.receiverName}`,
-      ].filter(Boolean).join(' | '),
+      ]
+        .filter(Boolean)
+        .join(' | '),
     })
 
     // 如果有签收记录，加一条
@@ -578,7 +595,7 @@ const loadOrderDetail = async (orderId: number, tab: string) => {
   activeTab.value = tab
   try {
     const res = await orderApi.getOrder(orderId)
-    const data = res.code === 200 ? res.data : (res.data || res)
+    const data = res.code === 200 ? res.data : res.data || res
     Object.assign(detail, {
       orderId: data.orderId,
       orderNo: data.orderNo,
@@ -615,34 +632,55 @@ const loadOrderDetail = async (orderId: number, tab: string) => {
 /** 订单状态标签类型 */
 const getStatusTagType = (status: number | undefined) => {
   switch (status) {
-    case 1: return 'info'       // 草稿
-    case 2: return 'primary'   // 待审核
-    case 3: return 'warning'   // 审核中
-    case 4: return 'success'   // 已审核
-    case 5: return 'danger'    // 已驳回
-    case 6: return 'primary'   // 已确认
-    case 7: return 'warning'   // 生产中
-    case 8: return 'success'   // 已发货
-    case 9: return 'success'   // 已完成
-    case 10: return 'danger'   // 已取消
-    default: return 'info'
+    case 1:
+      return 'info' // 草稿
+    case 2:
+      return 'primary' // 待审核
+    case 3:
+      return 'warning' // 审核中
+    case 4:
+      return 'success' // 已审核
+    case 5:
+      return 'danger' // 已驳回
+    case 6:
+      return 'primary' // 已确认
+    case 7:
+      return 'warning' // 生产中
+    case 8:
+      return 'success' // 已发货
+    case 9:
+      return 'success' // 已完成
+    case 10:
+      return 'danger' // 已取消
+    default:
+      return 'info'
   }
 }
 
 /** 生产状态标签类型（订单级 prodStatus） */
 const getProdStatusTagType = (status: number | undefined) => {
   switch (status) {
-    case 1: return 'info'       // 无生产
-    case 2: return 'warning'    // 部分生产中
-    case 3: return 'warning'    // 全部生产中
-    case 4: return 'success'    // 生产完成
-    default: return 'info'
+    case 1:
+      return 'info' // 无生产
+    case 2:
+      return 'warning' // 部分生产中
+    case 3:
+      return 'warning' // 全部生产中
+    case 4:
+      return 'success' // 生产完成
+    default:
+      return 'info'
   }
 }
 
 /** 生产状态标签文本（按代码） */
 const getProdStatusLabelByCode = (code: number | undefined) => {
-  const map: Record<number, string> = { 1: '无生产', 2: '部分生产中', 3: '全部生产中', 4: '生产完成' }
+  const map: Record<number, string> = {
+    1: '无生产',
+    2: '部分生产中',
+    3: '全部生产中',
+    4: '生产完成',
+  }
   return code !== undefined ? map[code] || '未知' : '未知'
 }
 
@@ -659,11 +697,11 @@ const getProdOrderStatusLabel = (status: number | undefined) => {
 /** 发货状态标签类型 - 根据订单字段推断 */
 const getDeliveryStatusTagType = (row: any) => {
   if (!row.shippedQuantity || row.shippedQuantity === 0) {
-    if (row.prodStatus === 4) return 'warning'   // 生产完成，待发货
-    return 'info'                                 // 未发货
+    if (row.prodStatus === 4) return 'warning' // 生产完成，待发货
+    return 'info' // 未发货
   }
   if (row.shippedQuantity >= (row.totalQuantity || 1)) return 'success' // 全部发货
-  return 'warning'                                // 部分发货
+  return 'warning' // 部分发货
 }
 
 /** 发货状态标签文本 - 根据订单字段推断 */

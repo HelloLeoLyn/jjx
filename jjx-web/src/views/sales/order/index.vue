@@ -143,6 +143,7 @@
         <el-table-column label="操作" width="360" fixed="right">
           <template #default="{ row }">
             <div class="operation-buttons">
+              <el-button link type="info" icon="Connection" @click="showTrace(row)">查看流水</el-button>
               <!-- 草稿状态 (1) -->
               <template v-if="row.orderStatus === 1">
                 <el-button type="primary" size="small" @click="handleSubmitReview(row)">
@@ -277,6 +278,8 @@
       @cancel="handleValidationCancel"
     />
   </div>
+  <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
 </template>
 
 <script setup lang="ts">
@@ -287,6 +290,7 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
@@ -656,6 +660,14 @@ const handleValidationCancel = () => {
 onMounted(() => {
   getList()
 })
+// 链路追踪抽屉
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: any) {
+  currentTraceId.value = row.traceId || ''
+  traceDrawerVisible.value = true
+}
+
 </script>
 
 <style scoped lang="scss">
