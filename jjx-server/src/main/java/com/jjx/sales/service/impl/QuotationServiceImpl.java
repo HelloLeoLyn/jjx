@@ -9,6 +9,7 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
+import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -239,6 +240,7 @@ public class QuotationServiceImpl implements IQuotationService {
      * 发送报价单给客户
      */
     @Override
+    @Event(value = "quotation.sent", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int sendQuotation(Long quotationId) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -263,6 +265,7 @@ public class QuotationServiceImpl implements IQuotationService {
      * 报价单转为订单
      */
     @Override
+    @Event(value = "quotation.converted", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public Object convertToOrder(Long quotationId) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -343,6 +346,7 @@ public class QuotationServiceImpl implements IQuotationService {
      * 提交报价单审核
      */
     @Override
+    @Event(value = "quotation.submitted", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int submitReview(Long quotationId) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -367,6 +371,7 @@ public class QuotationServiceImpl implements IQuotationService {
      * 审核报价单
      */
     @Override
+    @Event(value = "quotation.reviewed", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int reviewQuotation(Long quotationId, Boolean approved, String remark) {
         SalesQuotation quotation = selectQuotationById(quotationId);

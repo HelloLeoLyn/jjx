@@ -122,6 +122,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                 current.getName(), target.getName(), current.getCode(), target.getCode());
     }
     @Override
+    @Event(value = "order.review_started", bizId = "#orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void startReview(Long orderId) {
         // 1. 查询订单
@@ -160,6 +161,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     }
 
     @Override
+    @Event(value = "order.approved", bizId = "#reviewDTO.orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void approveOrder(ReviewDTO reviewDTO) {
         // 1. 查询订单
@@ -194,6 +196,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     }
 
     @Override
+    @Event(value = "order.rejected", bizId = "#reviewDTO.orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void rejectOrder(ReviewDTO reviewDTO) {
         // 1. 查询订单
@@ -235,6 +238,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
 
     @Override
+    @Event(value = "order.resubmitted", bizId = "#orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void resubmit(Long orderId) {
         // 1. 查询订单
@@ -276,6 +280,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     }
 
     @Override
+    @Event(value = "order.cancelled", bizId = "#orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void cancelOrder(Long orderId, String reason) {
         // 1. 查询订单
@@ -317,6 +322,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     }
 
     @Override
+    @Event(value = "order.sent_to_customer", bizId = "#dto.orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void sendToCustomer(ODRSendToCustomerDTO dto) {
         // 1. 查询订单

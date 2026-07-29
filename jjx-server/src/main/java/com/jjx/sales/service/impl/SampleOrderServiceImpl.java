@@ -11,6 +11,7 @@ import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
+import com.jjx.system.annotation.Event;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -97,6 +98,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.submitted", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder submitReview(Long orderId) {
         safeTransition(orderId,
@@ -107,6 +109,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.approved", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder approveReview(Long orderId, String remark) {
         safeTransition(orderId,
@@ -129,6 +132,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.rejected", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder rejectReview(Long orderId, String remark) {
         safeTransition(orderId,
@@ -160,6 +164,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.ready", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder markSampleReady(Long orderId, Integer sampleQty) {
         safeTransition(orderId,
@@ -179,6 +184,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.sent", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder sendSample(Long orderId, String trackingNo) {
         safeTransition(orderId,
@@ -197,6 +203,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.confirmed", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder confirmSample(Long orderId, String clientName) {
         safeTransition(orderId,
@@ -215,6 +222,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.rejected_by_customer", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder rejectSample(Long orderId, String rejectReason) {
         SalesOrder current = orderMapper.selectById(orderId);
@@ -246,6 +254,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.converted", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder convertToProduction(Long orderId) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);

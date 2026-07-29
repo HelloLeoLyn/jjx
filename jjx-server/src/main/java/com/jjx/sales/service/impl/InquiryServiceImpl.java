@@ -11,6 +11,7 @@ import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.mapper.SalesInquiryMapper;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.service.IInquiryService;
+import com.jjx.system.annotation.Event;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -190,6 +191,7 @@ public class InquiryServiceImpl implements IInquiryService {
      * 创建报价单并返回报价单ID
      */
     @Override
+    @Event(value = "inquiry.converted", bizId = "#inquiryId", bizType = "'inquiry'")
     @Transactional(rollbackFor = Exception.class)
     public Long convertToQuotation(Long inquiryId) {
         SalesInquiry inquiry = selectInquiryById(inquiryId);
