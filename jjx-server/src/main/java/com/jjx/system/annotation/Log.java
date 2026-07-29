@@ -23,4 +23,11 @@ public @interface Log {
      * 如: "'product'" 或 "#dto.bizType"
      */
     String bizType() default "";
+
+    /**
+     * 链路追踪ID SpEL表达式
+     * 从参数或返回值中提取 trace_id
+     * 如: "#inquiry.traceId" 或 "#result.data.traceId"
+     */
+    String traceId() default "";
 }

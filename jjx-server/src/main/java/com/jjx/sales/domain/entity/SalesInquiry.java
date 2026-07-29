@@ -25,6 +25,9 @@ public class SalesInquiry extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long inquiryId;
 
+    /** 链路追踪ID */
+    private String traceId;
+
     /** 询价单编号 */
     private String inquiryNo;
 

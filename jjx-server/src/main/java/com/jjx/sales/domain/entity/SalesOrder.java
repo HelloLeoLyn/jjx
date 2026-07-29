@@ -26,6 +26,9 @@ public class SalesOrder extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long orderId;
 
+    /** 链路追踪ID */
+    private String traceId;
+
     /**
      * 订单编号
      */

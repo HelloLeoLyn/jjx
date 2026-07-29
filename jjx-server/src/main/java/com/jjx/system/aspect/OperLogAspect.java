@@ -64,9 +64,10 @@ public class OperLogAspect {
                 }
             }
             
-            // 先从参数提取bizId/bizType
+            // 先从参数提取bizId/bizType/traceId
             String bizId = evaluateSpel(spelCtx, logAnnotation.bizId());
             String bizType = evaluateSpel(spelCtx, logAnnotation.bizType());
+            String traceId = evaluateSpel(spelCtx, logAnnotation.traceId());
             
             // 执行业务方法
             Object result = point.proceed();
@@ -79,6 +80,10 @@ public class OperLogAspect {
             if ((bizType == null || bizType.isEmpty()) && !logAnnotation.bizType().isEmpty()) {
                 spelCtx.setVariable("result", result);
                 bizType = evaluateSpel(spelCtx, logAnnotation.bizType());
+            }
+            if ((traceId == null || traceId.isEmpty()) && !logAnnotation.traceId().isEmpty()) {
+                spelCtx.setVariable("result", result);
+                traceId = evaluateSpel(spelCtx, logAnnotation.traceId());
             }
             
             operLog.setBizId(bizId);

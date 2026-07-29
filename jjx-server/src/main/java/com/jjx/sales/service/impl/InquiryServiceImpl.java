@@ -101,8 +101,10 @@ public class InquiryServiceImpl implements IInquiryService {
     @Transactional(rollbackFor = Exception.class)
     public int insertInquiry(SalesInquiry inquiry) {
         // 自动生成询价单号
+        // 自动生成询价单号和链路追踪ID
         String inquiryNo = redisSequenceService.generateBusinessNumber("INQ", "询价单号");
         inquiry.setInquiryNo(inquiryNo);
+        inquiry.setTraceId(java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16));
 
         // 设置默认值
         if (inquiry.getInquiryStatus() == null || inquiry.getInquiryStatus().isEmpty()) {
@@ -214,6 +216,7 @@ public class InquiryServiceImpl implements IInquiryService {
         quotation.setExchangeRate(java.math.BigDecimal.ONE);
         quotation.setSalesPersonId(inquiry.getSalesPersonId());
         quotation.setSalesPersonName(inquiry.getSalesPersonName());
+        quotation.setTraceId(inquiry.getTraceId());
         quotation.setRemark("由询价单[" + inquiry.getInquiryNo() + "]自动创建");
 
         quotationMapper.insert(quotation);

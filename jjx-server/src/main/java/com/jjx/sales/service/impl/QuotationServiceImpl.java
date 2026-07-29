@@ -283,6 +283,8 @@ public class QuotationServiceImpl implements IQuotationService {
         orderDTO.setCustomerId(quotation.getCustomerId());
         orderDTO.setCustomerName(quotation.getCustomerName());
         orderDTO.setRemark("由报价单[" + quotation.getQuotationNo() + "]转换");
+        // 透传链路追踪ID
+        orderDTO.setTraceId(quotation.getTraceId());
 
         Long orderId = orderService.insertOrder(orderDTO);
         log.info("报价单{}已转为订单: orderId={}", quotationId, orderId);

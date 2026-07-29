@@ -453,6 +453,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             createDTO.setPriority(order.getIsUrgent() != null && order.getIsUrgent() == 1 ? "HIGH" : "MEDIUM");
             createDTO.setRemark("由销售订单[" + order.getOrderNo() + "]自动生成");
             createDTO.setOrderNo(redisSequenceService.generateBusinessNumber("WO","YYMMDD"));
+            createDTO.setTraceId(order.getTraceId());
             // 记录当时使用的BOM ID和路线ID
             if (product.getProductId() != null) {
                 Product productInfo = productMapper.selectById(product.getProductId());

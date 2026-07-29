@@ -26,6 +26,9 @@ public class ProductionOrder{
     @TableId(type = IdType.AUTO)
     private Long orderId;
 
+    /** 链路追踪ID */
+    private String traceId;
+
     @Schema(description = "订单编号")
     private String orderNo;
 

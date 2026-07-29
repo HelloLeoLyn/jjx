@@ -27,6 +27,9 @@ public class SalesQuotation extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long quotationId;
 
+    /** 链路追踪ID */
+    private String traceId;
+
     /**
      * 报价单编号
      */

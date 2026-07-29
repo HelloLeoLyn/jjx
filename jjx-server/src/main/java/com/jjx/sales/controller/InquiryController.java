@@ -54,7 +54,7 @@ public class InquiryController extends BaseController {
      * 新增询价单
      */
     @Operation(summary = "新增询价单")
-    @Log(module = "询价单管理", businessType = BusinessType.INSERT)
+    @Log(module = "询价单管理", businessType = BusinessType.INSERT, traceId = "#inquiry.traceId")
     @SaCheckPermission("sales:inquiry:add")
     @PostMapping
     public Result<Void> add(@Validated @RequestBody SalesInquiry inquiry) {

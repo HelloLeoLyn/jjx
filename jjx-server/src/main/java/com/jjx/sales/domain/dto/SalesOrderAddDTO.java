@@ -28,6 +28,7 @@ public class SalesOrderAddDTO {
 
     @NotNull(message = "订单编号不能为空")
     @Schema(description = "订单编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "SO260526015")
+    private String traceId;
     private String orderNo;
 
     @NotBlank(message = "客户名称不能为空")

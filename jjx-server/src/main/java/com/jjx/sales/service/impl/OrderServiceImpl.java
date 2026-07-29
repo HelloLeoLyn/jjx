@@ -115,6 +115,7 @@ public class OrderServiceImpl implements IOrderService {
         }
         SalesOrder entity = orderConverter.toEntity(dto);
         entity.setOrderNo(orderNo);
+        entity.setTraceId(dto.getTraceId());
         int insert = orderMapper.insert(entity);
         if(insert>0){
             // 校验并处理产品明细
