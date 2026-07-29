@@ -84,6 +84,11 @@
           >
         </el-col>
         <el-col :span="1.5">
+          <el-button type="warning" plain icon="Collection" :disabled="single" @click="handleConvertToSample"
+            >转为样品单</el-button
+          >
+        </el-col>
+        <el-col :span="1.5">
           <el-button
             type="primary"
             plain
@@ -176,6 +181,14 @@
                 type="success"
                 icon="Switch"
                 @click="handleConvert(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip content="转为样品单" placement="top">
+              <el-button
+                link
+                type="warning"
+                icon="Collection"
+                @click="handleConvertToSample(scope.row)"
               ></el-button>
             </el-tooltip>
             <el-tooltip content="详情" placement="top">
@@ -523,6 +536,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
 import { customerApi } from '@/api/sales/customer'
+import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { parseTime, download, formatCurrency } from '@/utils/format'
 
 // 查询参数
@@ -761,6 +775,25 @@ const handleExport = () => {
       download(response, '报价单列表.xlsx')
     })
     .catch(() => {})
+}
+
+// 转为样品单按钮操作
+const handleConvertToSample = async (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) return
+  
+  const { value } = await ElMessageBox.prompt('打样数量', '转为样品单', {
+    inputValue: '10',
+    confirmButtonText: '转为样品单',
+  })
+  const qty = parseInt(value || '0')
+  if (qty <= 0) { ElMessage.warning('请输入有效数量'); return }
+  
+  try {
+    await sampleOrderApi.createFromQuotation(quotationId, { sampleQty: qty })
+    ElMessage.success('报价单已成功转为样品单')
+    getList()
+  } catch (e: any) { ElMessage.error(e.message || '转换失败') }
 }
 
 // 发送报价按钮操作

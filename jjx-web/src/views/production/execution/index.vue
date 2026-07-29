@@ -118,6 +118,14 @@
             <el-button type="info" link icon="Document" @click="handleRecord(scope.row)"
               >记录</el-button
             >
+            <el-button
+              type="warning"
+              link
+              icon="WarningFilled"
+              @click="handleQualityCheck(scope.row)"
+              v-if="scope.row.executionStatus === 'IN_PROGRESS' || scope.row.executionStatus === 'COMPLETED'"
+              >质检</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
@@ -187,6 +195,40 @@
         <div class="dialog-footer">
           <el-button @click="detailOpen = false">关 闭</el-button>
         </div>
+      </template>
+    </el-dialog>
+
+    <!-- 首检/巡检对话框 -->
+    <el-dialog title="工序质量检验" v-model="qcVisible" width="500px" append-to-body>
+      <el-form :model="qcForm" label-width="100px">
+        <el-form-item label="检验类型">
+          <el-select v-model="qcForm.checkType" placeholder="请选择">
+            <el-option label="首检（首批确认）" value="first_piece" />
+            <el-option label="巡检（过程抽检）" value="spot_check" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="抽检数量">
+          <el-input-number v-model="qcForm.checkQty" :min="1" :max="9999" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="合格数量">
+          <el-input-number v-model="qcForm.passQty" :min="0" :max="qcForm.checkQty" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="检验结果">
+          <el-radio-group v-model="qcForm.result">
+            <el-radio value="pass">✅ 合格</el-radio>
+            <el-radio value="fail">❌ 不合格</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="缺陷描述" v-if="qcForm.result === 'fail'">
+          <el-input v-model="qcForm.defectDesc" type="textarea" :rows="2" placeholder="请描述不合格项" maxlength="500" />
+        </el-form-item>
+        <el-form-item label="检验人">
+          <el-input v-model="qcForm.inspector" placeholder="输入检验人姓名" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="qcVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitQc">提交检验</el-button>
       </template>
     </el-dialog>
 
@@ -292,6 +334,43 @@ const total = ref(0)
 const activeTab = ref('my')
 const detailOpen = ref(false)
 const recordOpen = ref(false)
+
+// 质检
+const qcVisible = ref(false)
+const qcForm = reactive({
+  checkType: 'first_piece',
+  checkQty: 5,
+  passQty: 5,
+  result: 'pass',
+  defectDesc: '',
+  inspector: '',
+})
+let qcCurrentRow: any = null
+
+const handleQualityCheck = (row: any) => {
+  qcCurrentRow = row
+  qcForm.checkType = 'first_piece'
+  qcForm.checkQty = 5
+  qcForm.passQty = 5
+  qcForm.result = 'pass'
+  qcForm.defectDesc = ''
+  qcForm.inspector = ''
+  qcVisible.value = true
+}
+
+const submitQc = () => {
+  if (qcForm.passQty > qcForm.checkQty) {
+    ElMessage.warning('合格数量不能大于抽检数量')
+    return
+  }
+  const resultText = qcForm.result === 'pass' ? '合格' : '不合格'
+  const typeText = qcForm.checkType === 'first_piece' ? '首检' : '巡检'
+  ElMessage.success(`${typeText}完成：${qcForm.passQty}/${qcForm.checkQty} ${resultText}`)
+  qcVisible.value = false
+  if (qcForm.result === 'fail') {
+    ElMessage.warning('不合格，请暂停工序排查问题！')
+  }
+}
 const recordFormRef = ref()
 const queryForm = ref()
 

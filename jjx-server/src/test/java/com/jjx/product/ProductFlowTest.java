@@ -2,6 +2,8 @@ package com.jjx.product;
 
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.entity.Product;
+import com.jjx.product.domain.entity.ProductBom;
+import com.jjx.product.domain.entity.ProductRouting;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.impl.ProductServiceImpl;
 import com.jjx.product.service.ProductCodeGenerator;
@@ -67,7 +69,24 @@ class ProductFlowTest {
     @Test
     @DisplayName("3. 发布产品")
     void testReleaseProduct() {
-        when(productMapper.selectById(1L)).thenReturn(new Product());
+        // 准备：有BOM和路线的已审批产品
+        Product product = new Product();
+        product.setProductId(1L);
+        product.setCurrentBomId(100L);
+        product.setCurrentRouteId(200L);
+        product.setProductStatus(4); // APPROVED
+
+        ProductBom bom = new ProductBom();
+        bom.setBomId(100L);
+        bom.setApproveStatus(3); // APPROVED
+
+        ProductRouting routing = new ProductRouting();
+        routing.setRoutingId(200L);
+        routing.setApproveStatus(3); // APPROVED
+
+        when(productMapper.selectById(1L)).thenReturn(product);
+        when(bomService.getById(100L)).thenReturn(bom);
+        when(routingService.getById(200L)).thenReturn(routing);
         when(productMapper.updateById(any(Product.class))).thenReturn(1);
 
         boolean result = productService.releaseProduct(1L);

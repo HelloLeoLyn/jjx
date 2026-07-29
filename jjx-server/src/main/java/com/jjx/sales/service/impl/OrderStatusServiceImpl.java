@@ -375,28 +375,50 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                         .eq(SalesOrderProduct::getOrderId, orderId)
         );
 
-        // 5. 检查每个产品是否有BOM（提醒但不阻止）
+        // 5. 检查每个产品是否有BOM且已审批（阻止不通过）
         for (SalesOrderProduct product : products) {
             if (product.getProductId() == null) {
                 log.warn("订单{}产品{}无productId（样品单），跳过BOM检查", orderId, product.getProductCode());
                 continue;
             }
+            // BOM检查：必须有当前生效版本且已审批通过(approve_status=3)
             long bomCount = productBomMapper.selectCount(
                     new LambdaQueryWrapper<ProductBom>()
                             .eq(ProductBom::getProductId, product.getProductId())
                             .eq(ProductBom::getIsCurrent, 1)
+                            .eq(ProductBom::getApproveStatus, 3)
             );
             if (bomCount == 0) {
-                throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前生效的BOM，请先配置并审批BOM");
+                // 检查是否存在未审批的BOM
+                long draftBomCount = productBomMapper.selectCount(
+                        new LambdaQueryWrapper<ProductBom>()
+                                .eq(ProductBom::getProductId, product.getProductId())
+                                .eq(ProductBom::getIsCurrent, 1)
+                );
+                if (draftBomCount > 0) {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 当前BOM尚未审批通过，请先完成BOM审批");
+                } else {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前生效的BOM，请先配置并审批BOM");
+                }
             }
-            // 路线检查
+            // 路线检查：必须有当前生效版本且已审批通过(approve_status=3)
             long routeCount = productRoutingMapper.selectCount(
                     new LambdaQueryWrapper<ProductRouting>()
                             .eq(ProductRouting::getProductId, product.getProductId())
                             .eq(ProductRouting::getIsCurrent, 1)
+                            .eq(ProductRouting::getApproveStatus, 3)
             );
             if (routeCount == 0) {
-                throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前工艺路线，请先配置并审批工艺路线");
+                long draftRouteCount = productRoutingMapper.selectCount(
+                        new LambdaQueryWrapper<ProductRouting>()
+                                .eq(ProductRouting::getProductId, product.getProductId())
+                                .eq(ProductRouting::getIsCurrent, 1)
+                );
+                if (draftRouteCount > 0) {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 当前工艺路线尚未审批通过，请先完成路线审批");
+                } else {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前工艺路线，请先配置并审批工艺路线");
+                }
             }
         }
 

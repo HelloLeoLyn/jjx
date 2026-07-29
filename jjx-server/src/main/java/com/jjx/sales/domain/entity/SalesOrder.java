@@ -79,6 +79,59 @@ public class SalesOrder extends BaseEntity {
     private Integer orderStatus;
 
     /**
+     * 样品单状态: 1=已创建,2=待审核,3=工程打样中,4=样品待送样,5=已送样待确认,6=样品确认,7=已转量产,8=已关闭,9=客户退回,10=已取消
+     */
+    private Integer sampleStatus;
+
+    /**
+     * 样品迭代轮次
+     */
+    private Integer sampleRound;
+
+    /**
+     * 打样数量
+     */
+    private Integer sampleQty;
+
+    /**
+     * 工程备注
+     */
+    private String engineeringNote;
+
+    /**
+     * 送样快递单号
+     */
+    private String sampleTrackingNo;
+
+    /**
+     * 送样日期
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date sampleSendDate;
+
+    /**
+     * 客户确认日期
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date sampleConfirmDate;
+
+    /**
+     * 客户方确认人
+     */
+    private String sampleClientName;
+
+    /**
+     * 转量产后的标准订单ID
+     */
+    private Long convertedOrderId;
+
+    /**
+     * 转量产时间
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date convertOrderTime;
+
+    /**
      * 生产状态: 1无生产,2部分生产中,3全部生产中,4生产完成
      */
     private Integer prodStatus;

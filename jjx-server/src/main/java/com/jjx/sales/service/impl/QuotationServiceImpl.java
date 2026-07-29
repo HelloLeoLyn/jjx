@@ -247,7 +247,7 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         // 只有草稿状态的报价单可以发送
-        if (!"draft".equals(quotation.getQuotationStatus())) {
+        if (!"draft".equalsIgnoreCase(quotation.getQuotationStatus())) {
             throw new BusinessException("只有草稿状态的报价单可以发送");
         }
 
@@ -351,7 +351,7 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         // 只有草稿状态的报价单可以提交审核
-        if (!"draft".equals(quotation.getQuotationStatus())) {
+        if (!"draft".equalsIgnoreCase(quotation.getQuotationStatus())) {
             throw new BusinessException("只有草稿状态的报价单可以提交审核");
         }
 
