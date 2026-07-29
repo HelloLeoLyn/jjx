@@ -81,6 +81,12 @@
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="询价单号" align="center" prop="inquiryNo" width="180" />
+        <el-table-column label="类型" align="center" width="80">
+          <template #default="scope">
+            <el-tag v-if="scope.row.inquiryType === 2" type="warning" size="small">样品</el-tag>
+            <el-tag v-else type="primary" size="small">标准</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
         <el-table-column label="联系人" align="center" prop="contactPerson" width="120" />
         <el-table-column label="预估数量" align="center" prop="expectedQuantity" width="100">
@@ -254,6 +260,12 @@
         <el-divider content-position="left">其他信息</el-divider>
         <el-row :gutter="20">
           <el-col :span="24">
+            <el-form-item label="询价类型" prop="inquiryType">
+              <el-radio-group v-model="form.inquiryType">
+                <el-radio :value="1" border>标准品</el-radio>
+                <el-radio :value="2" border>样品（需打样）</el-radio>
+              </el-radio-group>
+            </el-form-item>
             <el-form-item label="产品描述" prop="productDescription">
               <el-input v-model="form.productDescription" type="textarea" :rows="3" placeholder="详细描述产品规格/功能要求" maxlength="2000" show-word-limit />
             </el-form-item>
@@ -316,6 +328,10 @@
       <template v-if="detailData">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="询价单号" :span="2">{{ detailData.inquiryNo }}</el-descriptions-item>
+          <el-descriptions-item label="类型">
+            <el-tag v-if="detailData.inquiryType === 2" type="warning" size="small">样品</el-tag>
+            <el-tag v-else type="primary" size="small">标准</el-tag>
+          </el-descriptions-item>
           <el-descriptions-item label="客户名称">{{ detailData.customerName }}</el-descriptions-item>
           <el-descriptions-item label="联系人">{{ detailData.contactPerson || '-' }}</el-descriptions-item>
           <el-descriptions-item label="联系电话">{{ detailData.contactPhone || '-' }}</el-descriptions-item>
@@ -432,6 +448,7 @@ const form = reactive({
   specialRequirements: '',
   hasDrawing: 0,
   inquiryStatus: 'draft',
+  inquiryType: 1,
   remark: '',
   salesPersonId: undefined as number | undefined,
   salesPersonName: '',
@@ -711,6 +728,7 @@ function handleUpdate(row?: any) {
       specialRequirements: data.specialRequirements,
       hasDrawing: data.hasDrawing ?? 0,
       inquiryStatus: data.inquiryStatus,
+      inquiryType: data.inquiryType ?? 1,
       remark: data.remark,
       salesPersonId: data.salesPersonId,
       salesPersonName: data.salesPersonName,

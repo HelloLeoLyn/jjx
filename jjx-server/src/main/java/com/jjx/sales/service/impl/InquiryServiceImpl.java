@@ -107,6 +107,9 @@ public class InquiryServiceImpl implements IInquiryService {
         if (inquiry.getInquiryStatus() == null || inquiry.getInquiryStatus().isEmpty()) {
             inquiry.setInquiryStatus("draft");
         }
+        if (inquiry.getInquiryType() == null) {
+            inquiry.setInquiryType(1); // 默认标准品
+        }
         if (inquiry.getInquiryDate() == null) {
             inquiry.setInquiryDate(LocalDate.now());
         }

@@ -33,6 +33,7 @@ export interface InquiryBase {
   specialRequirements?: string
   hasDrawing?: number
   inquiryStatus: string
+  inquiryType?: number
   convertedQuotationId?: number
   convertTime?: string
   remark?: string

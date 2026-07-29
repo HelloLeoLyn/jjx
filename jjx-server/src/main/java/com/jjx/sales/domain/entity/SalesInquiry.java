@@ -74,6 +74,9 @@ public class SalesInquiry extends BaseEntity {
     /** 状态: draft/pending/sent/accepted/rejected/converted */
     private String inquiryStatus;
 
+    /** 询价类型: 1标准品 2样品 */
+    private Integer inquiryType;
+
     /** 转报价单ID */
     private Long convertedQuotationId;
 

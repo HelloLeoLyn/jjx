@@ -674,7 +674,7 @@ const getList = async () => {
     }
 
     const response = await quotationApi.list(queryParams)
-    quotationList.value = response.data ? response.data.rows : []
+    quotationList.value = response.data ? response.data.records : []
     total.value = response.data ? response.data.total : 0
   } catch (error) {
     console.error('获取报价单列表失败:', error)
