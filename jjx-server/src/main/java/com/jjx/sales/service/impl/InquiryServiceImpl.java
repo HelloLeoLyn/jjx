@@ -231,13 +231,16 @@ public class InquiryServiceImpl implements IInquiryService {
     public List<Object> getStatusOptions() {
         List<Map<String, Object>> options = new ArrayList<>();
 
+        // 💡 询价单是纯登记入口，不涉及复杂流转
+        //    只有 draft(创建) 和 converted(转报价) 两个状态有实际逻辑
+        //    pending/sent/accepted/rejected 为预留状态，暂不实现
         String[][] statuses = {
-            {"draft", "草稿"},
-            {"pending", "待处理"},
-            {"sent", "已发送"},
-            {"accepted", "已确认"},
-            {"rejected", "已拒绝"},
-            {"converted", "已转报价"}
+            {"draft", "草稿"},          // ✅ 新建时默认
+            {"pending", "待处理"},      // 💤 预留
+            {"sent", "已发送"},         // 💤 预留
+            {"accepted", "已确认"},     // 💤 预留
+            {"rejected", "已拒绝"},     // 💤 预留
+            {"converted", "已转报价"}   // ✅ 转报价时自动设置
         };
 
         for (String[] s : statuses) {

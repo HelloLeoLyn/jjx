@@ -355,7 +355,7 @@ async function loadQuotationOptions() {
       url: '/sales/quotation/list', method: 'get',
       params: { pageNum: 1, pageSize: 50, quotationStatus: 'accepted' },
     })
-    quotationOptions.value = res.data?.rows || []
+    quotationOptions.value = res.data?.records || []
   } catch { quotationOptions.value = [] }
 }
 

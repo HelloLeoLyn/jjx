@@ -291,7 +291,7 @@
                 </el-button>
                 <template #tip>
                   <div class="el-upload__tip">
-                    支持客户来图(PDF/DWG/DXF/图片/Word/Excel/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传
+                    支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传
                   </div>
                 </template>
               </el-upload>
@@ -341,19 +341,19 @@
           <el-descriptions-item label="备注" :span="2">{{ detailData.remark || '-' }}</el-descriptions-item>
         </el-descriptions>
       </template>
-          <el-descriptions-item label="附件">
-            <template v-if="detailAttachments.length > 0">
-              <div v-for="att in detailAttachments" :key="att.id" style="margin-bottom:4px">
-                <el-link type="primary" :href="'/system/attachment/download/' + att.id" target="_blank">
-                  📎 {{ att.fileName }}
-                </el-link>
-                <span style="color:#999;font-size:12px;margin-left:8px">{{ (att.fileSize / 1024).toFixed(1) }}KB</span>
-              </div>
-            </template>
-            <span v-else>-</span>
-          </el-descriptions-item>
-        </el-descriptions>
-      </template>
+      <el-descriptions :column="1" border style="margin-top:12px">
+        <el-descriptions-item label="附件">
+          <template v-if="detailAttachments.length > 0">
+            <div v-for="att in detailAttachments" :key="att.id" style="margin-bottom:4px">
+              <el-link type="primary" :href="'/system/attachment/download/' + att.id" target="_blank">
+                📎 {{ att.fileName }}
+              </el-link>
+              <span style="color:#999;font-size:12px;margin-left:8px">{{ (att.fileSize / 1024).toFixed(1) }}KB</span>
+            </div>
+          </template>
+          <span v-else>-</span>
+        </el-descriptions-item>
+      </el-descriptions>
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="detailVisible = false">关 闭</el-button>
@@ -510,10 +510,10 @@ const handleUploadRemove: UploadProps['onRemove'] = async (file) => {
 // 上传前校验
 const beforeUpload: UploadProps['beforeUpload'] = (file: UploadRawFile) => {
   const maxSize = 10 * 1024 * 1024 // 10MB
-  const allowedTypes = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.dwg', '.dxf', '.zip']
+  const allowedTypes = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.dwg', '.dxf', '.zip', '.md']
   const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '')
   if (!allowedTypes.includes(ext)) {
-    ElMessage.error('不支持的文件格式，支持 PDF/Word/Excel/图片/DWG/DXF/ZIP')
+    ElMessage.error('不支持的文件格式，支持 PDF/Word/Excel/图片/DWG/DXF/Markdown/ZIP')
     return false
   }
   if (file.size > maxSize) {
@@ -624,7 +624,7 @@ async function getList() {
       ;(params as any).endDate = dateRange.value[1]
     }
     const res = await inquiryApi.list(params)
-    inquiryList.value = res.data.rows || []
+    inquiryList.value = res.data.records || []
     total.value = res.data.total || 0
   } catch (e) {
     console.error('获取询价单列表失败:', e)
@@ -745,15 +745,6 @@ function handleConvert(row: any) {
     })
   }).catch(() => {})
 }
-
-// 查看报价单（跳转）
-function gotoQuotation(row: any) {
-  if (row.convertedQuotationId) {
-    window.open(`/sales/quotation`, '_blank')
-    ElMessage.info(`已打开的报价单页面，可搜索关联的询价单`)
-  }
-}
-
 // 删除
 function handleDelete(row?: any) {
   const delIds = row ? [row.inquiryId] : ids.value
