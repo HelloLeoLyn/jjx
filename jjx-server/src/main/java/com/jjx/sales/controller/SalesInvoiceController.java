@@ -35,7 +35,7 @@ public class SalesInvoiceController {
     }
 
     @Operation(summary = "新增发票")
-    @Log(module = "销售发票", businessType = BusinessType.INSERT)
+    @Log(module = "销售发票", businessType = BusinessType.INSERT, bizType = "'invoice'")
     @SaCheckPermission("sales:order:edit")
     @PostMapping
     public Result<Long> create(@RequestBody SalesInvoice invoice) {
@@ -43,7 +43,7 @@ public class SalesInvoiceController {
     }
 
     @Operation(summary = "删除发票")
-    @Log(module = "销售发票", businessType = BusinessType.DELETE)
+    @Log(module = "销售发票", businessType = BusinessType.DELETE, bizType = "'invoice'")
     @SaCheckPermission("sales:order:delete")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {

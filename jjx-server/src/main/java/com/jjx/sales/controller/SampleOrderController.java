@@ -28,7 +28,7 @@ public class SampleOrderController extends BaseController {
     private final ISampleOrderService sampleOrderService;
 
     @Operation(summary = "从报价单创建样品单")
-    @Log(module = "样品单管理", businessType = BusinessType.INSERT)
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'")
     @SaCheckPermission("sales:sample:add")
     @PostMapping("/create-from-quotation/{quotationId}")
     public Result<SalesOrder> createFromQuotation(
@@ -56,7 +56,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品单提交审核")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:edit")
     @PutMapping("/submit-review/{orderId}")
     public Result<SalesOrder> submitReview(@PathVariable Long orderId) {
@@ -64,7 +64,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品单审核通过（进入工程打样）")
-    @Log(module = "样品单管理", businessType = BusinessType.APPROVE)
+    @Log(module = "样品单管理", businessType = BusinessType.APPROVE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:approve")
     @PutMapping("/approve/{orderId}")
     public Result<SalesOrder> approve(@PathVariable Long orderId,
@@ -73,7 +73,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品单审核驳回")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:approve")
     @PutMapping("/reject-review/{orderId}")
     public Result<SalesOrder> rejectReview(@PathVariable Long orderId,
@@ -82,7 +82,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "工程接单（记录工程备注）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:engineering")
     @PutMapping("/start-engineering/{orderId}")
     public Result<SalesOrder> startEngineering(@PathVariable Long orderId,
@@ -91,7 +91,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "工程标记样品完成（待送样）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:engineering")
     @PutMapping("/mark-ready/{orderId}")
     public Result<SalesOrder> markReady(@PathVariable Long orderId,
@@ -100,7 +100,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "销售送样登记")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:deliver")
     @PutMapping("/send-sample/{orderId}")
     public Result<SalesOrder> sendSample(@PathVariable Long orderId,
@@ -109,7 +109,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "客户确认样品OK")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:confirm")
     @PutMapping("/confirm/{orderId}")
     public Result<SalesOrder> confirm(@PathVariable Long orderId,
@@ -118,7 +118,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "客户退回样品（多轮迭代）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:confirm")
     @PutMapping("/reject-sample/{orderId}")
     public Result<SalesOrder> rejectSample(@PathVariable Long orderId,
@@ -127,7 +127,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品转量产（生成标准订单）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:convert")
     @PutMapping("/convert-to-production/{orderId}")
     public Result<SalesOrder> convertToProduction(@PathVariable Long orderId) {
