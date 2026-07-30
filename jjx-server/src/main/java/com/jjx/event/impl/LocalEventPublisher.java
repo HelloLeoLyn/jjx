@@ -1,22 +1,20 @@
 package com.jjx.event.impl;
 
+import cn.hutool.json.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.event.EventPublisher;
 import com.jjx.notification.domain.dto.NotificationCreateDTO;
 import com.jjx.notification.service.NotificationService;
 import com.jjx.system.domain.entity.SysEventConfig;
-import com.jjx.system.domain.entity.SysEventKanban;
-import com.jjx.system.domain.entity.SysEventNotification;
 import com.jjx.system.domain.entity.SysTask;
+import com.jjx.system.domain.entity.SysUserRole;
 import com.jjx.system.mapper.SysEventConfigMapper;
-import com.jjx.system.mapper.SysEventKanbanMapper;
-import com.jjx.system.mapper.SysEventNotificationMapper;
 import com.jjx.system.mapper.SysTaskMapper;
+import com.jjx.system.mapper.SysUserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.beans.PropertyDescriptor;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -24,7 +22,7 @@ import java.util.regex.Pattern;
 
 /**
  * 本地事件联动器
- * 查配置表 → 发通知 + 创看板任务
+ * 查 sys_event_config 统一配置 → 发通知 + 创任务
  * 同进程同步执行，事务内执行，失败回滚
  */
 @Slf4j
@@ -33,14 +31,12 @@ import java.util.regex.Pattern;
 public class LocalEventPublisher implements EventPublisher {
 
     private final SysEventConfigMapper eventConfigMapper;
-    private final SysEventNotificationMapper eventNotificationMapper;
-    private final SysEventKanbanMapper eventKanbanMapper;
     private final NotificationService notificationService;
     private final SysTaskMapper sysTaskMapper;
+    private final SysUserRoleMapper userRoleMapper;
 
     @Override
     public void fire(String eventCode, Map<String, Object> payload) {
-        // 1. 查事件配置
         SysEventConfig event = eventConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysEventConfig>()
                         .eq(SysEventConfig::getEventCode, eventCode)
@@ -52,118 +48,84 @@ public class LocalEventPublisher implements EventPublisher {
         }
         log.info("🔥 触发事件: {} ({})", eventCode, event.getEventName());
 
-        // 2. 执行通知
-        List<SysEventNotification> notifications = eventNotificationMapper.selectList(
-                new LambdaQueryWrapper<SysEventNotification>()
-                        .eq(SysEventNotification::getEventId, event.getEventId())
-                        .eq(SysEventNotification::getIsEnabled, 1)
-        );
-        for (SysEventNotification notif : notifications) {
-            try {
-                NotificationCreateDTO dto = new NotificationCreateDTO();
-                dto.setTitle(resolveTemplate(event.getEventName(), payload));
-                dto.setContent(resolveTemplate(event.getEventName() + " - 请及时处理", payload));
-                dto.setNotificationType("system");
-                dto.setBizType(eventCode);
-                dto.setReceiverId(notif.getRoleId());
-                dto.setPriority("normal");
-                notificationService.createNotification(dto);
-                log.info("   📨 已创建通知: event={}, roleId={}", eventCode, notif.getRoleId());
-            } catch (Exception e) {
-                log.error("   ❌ 通知失败: {}", e.getMessage());
+        String eventType = event.getEventType() != null ? event.getEventType() : "notification";
+
+        // 通知处理：展开角色→查用户→每人发一条
+        if ("notification".equals(eventType) || "both".equals(eventType)) {
+            JSONArray roles = parseRoles(event.getTargetRole());
+            if (roles != null) {
+                for (int i = 0; i < roles.size(); i++) {
+                    Long roleId = roles.getLong(i);
+                    List<SysUserRole> userRoles = userRoleMapper.selectList(
+                            new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, roleId)
+                    );
+                    for (SysUserRole ur : userRoles) {
+                        try {
+                            NotificationCreateDTO dto = new NotificationCreateDTO();
+                            dto.setTitle(resolveTemplate(event.getTitle(), payload));
+                            dto.setContent(resolveTemplate(event.getContent(), payload));
+                            dto.setNotificationType("system");
+                            dto.setBizType(eventCode);
+                            dto.setReceiverId(ur.getUserId());
+                            dto.setPriority("normal");
+                            notificationService.createNotification(dto);
+                            log.debug("   📨 通知已创建: event={}, userId={}", eventCode, ur.getUserId());
+                        } catch (Exception e) {
+                            log.error("   ❌ 通知失败: userId={}, {}", ur.getUserId(), e.getMessage());
+                        }
+                    }
+                }
             }
         }
 
-        // 3. 执行看板任务创建
-        List<SysEventKanban> kanbans = eventKanbanMapper.selectList(
-                new LambdaQueryWrapper<SysEventKanban>()
-                        .eq(SysEventKanban::getEventId, event.getEventId())
-                        .eq(SysEventKanban::getIsEnabled, 1)
-        );
-        for (SysEventKanban kb : kanbans) {
-            try {
-                SysTask task = new SysTask();
-                task.setTaskCode(eventCode + "-" + System.currentTimeMillis());
-                task.setTitle(resolveTemplate(kb.getCardTitleTemplate(), payload));
-                task.setDescription(resolveTemplate(kb.getCardDescTemplate(), payload));
-                task.setTaskType(kb.getKanbanType());
-                task.setStartTime(java.time.LocalDateTime.now());
-                task.setSourceEvent(eventCode);
-                task.setAssignRole(kb.getAssignRoleId());
-                task.setPriority("normal");
-                task.setStatus("pending");
-                sysTaskMapper.insert(task);
-                log.info("   📋 已创建看板任务: id={}, type={}, column={}", task.getTaskId(), kb.getKanbanType(), kb.getTargetColumn());
-            } catch (Exception e) {
-                log.error("   ❌ 创建看板任务失败: {}", e.getMessage());
+        // 任务处理：派给角色级别，排除触发者（待任务系统对接后生效）
+        if ("task".equals(eventType) || "both".equals(eventType)) {
+            Long assignRole = parseSingleRole(event.getTargetRole());
+            if (assignRole != null) {
+                try {
+                    SysTask task = new SysTask();
+                    task.setTaskCode(eventCode + "-" + System.currentTimeMillis());
+                    task.setTitle(resolveTemplate(event.getTitle(), payload));
+                    task.setDescription(resolveTemplate(event.getContent(), payload));
+                    task.setTaskType(eventCode.contains("sample") ? "sample" : "general");
+                    task.setStartTime(java.time.LocalDateTime.now());
+                    task.setSourceEvent(eventCode);
+                    task.setAssignRole(assignRole);
+                    task.setPriority("normal");
+                    task.setStatus("pending");
+                    sysTaskMapper.insert(task);
+                    log.info("   📋 任务已创建: title={}, assignRole={}", event.getTitle(), assignRole);
+                } catch (Exception e) {
+                    log.error("   ❌ 创建任务失败: {}", e.getMessage());
+                }
             }
         }
 
         log.info("✅ 事件[{}]处理完成", eventCode);
     }
 
+    private JSONArray parseRoles(String targetRole) {
+        if (targetRole == null || targetRole.isEmpty()) return null;
+        try { return new JSONArray(targetRole); }
+        catch (Exception e) { return null; }
+    }
+
+    private Long parseSingleRole(String targetRole) {
+        JSONArray arr = parseRoles(targetRole);
+        if (arr == null || arr.isEmpty()) return null;
+        return arr.getLong(0);
+    }
+
     private String resolveTemplate(String template, Map<String, Object> payload) {
         if (template == null || payload == null) return template;
         String result = template;
-
-        // 正则匹配所有 ${xxx} 占位符
         Pattern pattern = Pattern.compile("\\$\\{([^}]+)\\}");
         Matcher matcher = pattern.matcher(result);
-
         while (matcher.find()) {
             String expr = matcher.group(1);
-            String value = resolvePlaceholder(expr, payload);
-            if (value != null) {
-                result = result.replace("${" + expr + "}", value);
-            }
+            Object val = payload.get(expr);
+            if (val != null) result = result.replace("${" + expr + "}", String.valueOf(val));
         }
         return result;
-    }
-
-    /**
-     * 解析单个占位符
-     * 支持：
-     *   直接key: ${productName}
-     *   嵌套属性: ${dto.productName}
-     *   自动扫描: ${productName} 从payload中任意对象查找匹配的getter
-     */
-    private String resolvePlaceholder(String expr, Map<String, Object> payload) {
-        // 1. 直接 key 匹配
-        if (payload.containsKey(expr)) {
-            Object val = payload.get(expr);
-            return val != null ? String.valueOf(val) : null;
-        }
-
-        // 2. 点号嵌套：${dto.productName}
-        if (expr.contains(".")) {
-            String[] parts = expr.split("\\.", 2);
-            Object obj = payload.get(parts[0]);
-            if (obj != null) {
-                return getPropertyValue(obj, parts[1]);
-            }
-            return null;
-        }
-
-        // 3. 自动扫描：从payload中所有Java Bean对象查找匹配的getter
-        for (Object obj : payload.values()) {
-            if (obj == null || obj instanceof String) continue;
-            String val = getPropertyValue(obj, expr);
-            if (val != null) return val;
-        }
-
-        return null;
-    }
-
-    /**
-     * 通过getter反射获取对象的属性值
-     */
-    private String getPropertyValue(Object obj, String property) {
-        try {
-            PropertyDescriptor pd = new PropertyDescriptor(property, obj.getClass());
-            Object val = pd.getReadMethod().invoke(obj);
-            return val != null ? String.valueOf(val) : null;
-        } catch (Exception ignored) {
-            return null;
-        }
     }
 }

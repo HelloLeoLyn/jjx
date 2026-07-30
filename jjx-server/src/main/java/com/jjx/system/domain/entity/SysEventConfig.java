@@ -7,13 +7,22 @@ import java.time.LocalDateTime;
 @Data
 @TableName("sys_event_config")
 public class SysEventConfig {
-    @TableId(type = IdType.AUTO)
+    @TableId(value = "id", type = IdType.AUTO)
     private Long eventId;
     private String eventCode;
     private String eventName;
     private String bizModule;
+    /** notification / task / both */
+    private String eventType;
     private Integer isEnabled;
-    private String remark;
+    /** 角色ID列表 JSON: [7, 8] */
+    private String targetRole;
+    /** 通知标题/任务标题 */
+    private String title;
+    /** 通知内容/任务描述 */
+    private String content;
+    /** 排除触发者（任务侧） */
+    private Integer excludeTrigger;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

@@ -2,6 +2,7 @@ package com.jjx.system.aspect;
 
 import com.jjx.event.EventPublisher;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -42,6 +43,13 @@ public class EventAspect {
 
         // 构建事件参数
         Map<String, Object> payload = new HashMap<>();
+
+        // 当前操作者
+        try {
+            Long userId = SecurityUtils.getUserId();
+            payload.put("triggerUserId", userId);
+        } catch (Exception ignored) {
+        }
 
         // 事件编码
         String eventCode = eventAnnotation.value();
