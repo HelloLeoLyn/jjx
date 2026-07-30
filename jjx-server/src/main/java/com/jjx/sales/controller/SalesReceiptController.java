@@ -28,7 +28,7 @@ public class SalesReceiptController {
     }
 
     @Operation(summary = "新增收款")
-    @Log(module = "销售收款", businessType = BusinessType.INSERT)
+    @Log(module = "销售收款", businessType = BusinessType.INSERT, bizType = "'receipt'")
     @SaCheckPermission("sales:order:edit")
     @PostMapping
     public Result<Long> create(@RequestBody SalesReceipt receipt) {
