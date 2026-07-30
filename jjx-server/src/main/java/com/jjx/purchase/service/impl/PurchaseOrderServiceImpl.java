@@ -20,6 +20,7 @@ import com.jjx.purchase.domain.vo.*;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.service.IPurchaseOrderService;
+import com.jjx.system.annotation.Event;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -205,6 +206,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "purchase.submitted", bizId = "#orderId", bizType = "'purchase'")
     public int submitOrder(Long orderId) {
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(orderId);
