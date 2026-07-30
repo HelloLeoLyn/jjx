@@ -1,5 +1,5 @@
 <template>
-  <div class="operation-log-page">
+  <div class="exception-log-page">
     <!-- 搜索表单 -->
     <SearchForm
       v-model="queryParams"
@@ -30,20 +30,13 @@
       @page-change="handlePageChange"
       @size-change="handleSizeChange"
     >
-      <!-- 操作状态列自定义渲染 -->
-      <template #status="{ row }">
-        <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
-          {{ row.status === 1 ? '成功' : '失败' }}
-        </el-tag>
-      </template>
-
       <!-- 操作列 -->
       <template #action="{ row }">
         <el-button
           link
           type="primary"
           @click="handleView(row)"
-          v-hasPermi="['system:log:operation:view']"
+          v-hasPermi="['system:log:exception:view']"
         >
           查看
         </el-button>
@@ -59,7 +52,7 @@
       :rules="formRules"
       :submit-loading="submitLoading"
       label-width="100px"
-      width="800px"
+      width="900px"
       :show-footer="false"
       @cancel="handleCancel"
     />
@@ -68,33 +61,33 @@
 
 <script setup lang="ts">
 defineOptions({
-  name: 'LogOperation',
+  name: 'LogException',
 })
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Toolbar, DataTable, DialogForm, SearchForm } from '@/components/common-ui/index'
-import { operationLogApi } from '@/api/system/operation-log'
-import type { SysOperLog, SysOperLogQuery } from '@/types/system'
+import { exceptionLogApi } from '@/api/system/exception-log'
+import type { SysErrorLog, SysExceptionLogQuery } from '@/types/system'
 import * as uiConfig from './index'
 
 // 响应式数据
 const loading = ref(false)
-const logList = ref<SysOperLog[]>([])
+const logList = ref<SysErrorLog[]>([])
 const total = ref(0)
-const selectedRows = ref<SysOperLog[]>([])
-const queryParams = reactive<SysOperLogQuery>({
+const selectedRows = ref<SysErrorLog[]>([])
+const queryParams = reactive<SysExceptionLogQuery>({
   pageNum: 1,
   pageSize: 10,
-  module: undefined,
-  bizType: undefined,
-  status: undefined,
+  exceptionName: undefined,
+  requestUrl: undefined,
+  handleStatus: undefined,
 })
 
 // 表单对话框
 const dialogVisible = ref(false)
-const dialogTitle = ref('操作日志详情')
-const formData = ref<SysOperLog>({})
+const dialogTitle = ref('异常日志详情')
+const formData = ref<SysErrorLog>({})
 const formOptions = ref(uiConfig.getFormOptions())
 const formRules = ref({}) // 查看详情不需要验证规则
 const submitLoading = ref(false)
@@ -103,7 +96,7 @@ const submitLoading = ref(false)
 const getList = async () => {
   loading.value = true
   try {
-    const res = await operationLogApi.getLogs(queryParams)
+    const res = await exceptionLogApi.list(queryParams)
     logList.value = res.data?.records || []
     total.value = res.data?.total || 0
   } finally {
@@ -118,9 +111,9 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  queryParams.module = undefined
-  queryParams.bizType = undefined
-  queryParams.status = undefined
+  queryParams.exceptionName = undefined
+  queryParams.requestUrl = undefined
+  queryParams.handleStatus = undefined
   getList()
 }
 
@@ -128,7 +121,7 @@ const handleRefresh = () => {
   getList()
 }
 
-const handleSelectionChange = (selection: SysOperLog[]) => {
+const handleSelectionChange = (selection: SysErrorLog[]) => {
   selectedRows.value = selection
 }
 
@@ -147,10 +140,10 @@ const handleToolbarClick = (key: string) => {
   if (key === 'export') handleExport()
 }
 
-const handleView = async (row: SysOperLog) => {
+const handleView = async (row: SysErrorLog) => {
   try {
-    if (row.logId) {
-      const res = await operationLogApi.getInfo(row.logId)
+    if (row.id) {
+      const res = await exceptionLogApi.getInfo(row.id)
       if (res.data) {
         formData.value = res.data
         dialogVisible.value = true
@@ -176,7 +169,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.operation-log-page {
+.exception-log-page {
   padding: 20px;
 }
 </style>

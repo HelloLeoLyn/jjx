@@ -18,6 +18,7 @@ TRUNCATE sales_performance;
 TRUNCATE sales_contract;
 TRUNCATE sales_quotation;
 TRUNCATE sales_order;
+TRUNCATE sales_inquiry;
 TRUNCATE sales_customer;
 
 -- ==================== 2. 产品模块 ====================
@@ -65,7 +66,7 @@ TRUNCATE inventory_warehouse;
 -- ==================== 6. 工程模块 ====================
 TRUNCATE engineering_bom_item;
 TRUNCATE engineering_routing_item;
-TRUNCATE engineering_design_task;
+-- engineering_design_task 已迁移为 sys_task，不再存在
 TRUNCATE engineering_film;
 TRUNCATE engineering_routing;
 TRUNCATE engineering_standard_process;

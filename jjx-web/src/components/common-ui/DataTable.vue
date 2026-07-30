@@ -63,6 +63,7 @@
           :align="column.align || 'left'"
           :sortable="column.sortable"
           :fixed="column.fixed"
+          :formatter="column.formatter"
           show-overflow-tooltip
         />
       </template>
@@ -71,7 +72,8 @@
       <el-table-column
         v-if="hasActionSlot"
         label="操作"
-        :width="actionWidth"
+        :width="actionMinWidth ? undefined : actionWidth"
+        :min-width="actionMinWidth || undefined"
         :fixed="actionFixed"
         align="center"
       >
@@ -108,6 +110,7 @@ interface Props {
   showSelection?: boolean
   showIndex?: boolean
   actionWidth?: number
+  actionMinWidth?: number
   actionFixed?: boolean | 'left' | 'right'
   pageSizes?: number[]
   modelValue?: { pageNum: number; pageSize: number }
@@ -128,6 +131,7 @@ const props = withDefaults(defineProps<Props>(), {
   showSelection: true,
   showIndex: true,
   actionWidth: 150,
+  actionMinWidth: undefined,
   actionFixed: 'right',
   pageSizes: () => [10, 20, 50, 100],
   modelValue: () => ({ pageNum: 1, pageSize: 10 }),

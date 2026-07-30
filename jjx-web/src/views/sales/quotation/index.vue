@@ -158,7 +158,7 @@
           label="操作"
           align="center"
           class-name="small-padding fixed-width"
-          width="250"
+          min-width="250"
         >
           <template #default="scope">
             <el-tooltip content="修改" placement="top">
@@ -169,9 +169,15 @@
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
-              >查看流水</el-button
-            >
+            <el-tooltip content="查看流水" placement="top"
+              ><el-button
+                link
+                type="info"
+                icon="Connection"
+                @click="showTrace(scope.row)"
+              ></el-button
+            ></el-tooltip>
+
             <el-tooltip content="删除" placement="top">
               <el-button
                 link
@@ -181,7 +187,7 @@
               ></el-button>
             </el-tooltip>
             <el-tooltip content="发送报价" placement="top">
-              <el-button link type="info" icon="Send" @click="handleSend(scope.row)"></el-button>
+              <el-button link type="info" icon="Upload" @click="handleSend(scope.row)"></el-button>
             </el-tooltip>
             <el-tooltip content="转为订单" placement="top">
               <el-button
@@ -531,8 +537,8 @@
         <el-table-column label="定制要求" prop="customRequirements" />
       </el-table>
     </el-dialog>
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
-  <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 </template>
 
 <script setup lang="ts">
@@ -879,15 +885,14 @@ const handleView = (row: any) => {
 // 搜索客户
 const searchCustomer = (query: string) => {
   if (query) {
-    customerLoading.value = true(customerApi as any)
-      .list({ customerName: query, pageSize: 10 })
-      .then((response: any) => {
-        customerOptions.value = response.rows.map((item: any) => ({
-          customerId: item.customerId,
-          customerName: item.customerName,
-        }))
-        customerLoading.value = false
-      })
+    customerLoading.value = true
+    ;(customerApi as any).list({ customerName: query, pageSize: 10 }).then((response: any) => {
+      customerOptions.value = response.rows.map((item: any) => ({
+        customerId: item.customerId,
+        customerName: item.customerName,
+      }))
+      customerLoading.value = false
+    })
   } else {
     customerOptions.value = []
   }

@@ -5,37 +5,44 @@ import type {
   TableOptions,
 } from '@/components/common-ui/type'
 
-// 搜索表单配置
+// 业务类型字典（与后端 @Log#businessType 枚举对齐）
+// 对齐后端 BusinessType 枚举 code
+const businessTypeMap: Record<number, string> = {
+  1: '新增',
+  2: '修改',
+  3: '删除',
+  4: '导出',
+  5: '导入',
+  6: '审批',
+  7: '登录',
+  8: '登出',
+  9: '其他',
+  10: '重置密码',
+  11: '转换',
+}
+
+const businessTypeOptions = Object.entries(businessTypeMap).map(([value, label]) => ({
+  value: Number(value),
+  label,
+}))
+
+// 搜索表单配置（对齐后端 OperLogController 查询参数）
 const searchOptions: SearchOptions[] = [
   { prop: 'module', label: '模块', type: 'input' },
   {
-    prop: 'businessType',
-    label: '业务类型',
-    type: 'select',
-    options: [
-      { value: '0', label: '其它' },
-      { value: '1', label: '新增' },
-      { value: '2', label: '修改' },
-      { value: '3', label: '删除' },
-      { value: '4', label: '授权' },
-      { value: '5', label: '导出' },
-      { value: '6', label: '导入' },
-      { value: '7', label: '强退' },
-      { value: '8', label: '生成代码' },
-      { value: '9', label: '清空数据' },
-    ],
+    prop: 'bizType',
+    label: '业务类型标识',
+    type: 'input',
   },
-  { prop: 'operatorName', label: '操作人员', type: 'input' },
   {
     prop: 'status',
     label: '操作状态',
     type: 'select',
     options: [
-      { value: '0', label: '成功' },
-      { value: '1', label: '失败' },
+      { value: 1, label: '成功' },
+      { value: 0, label: '失败' },
     ],
   },
-  { prop: 'time', label: '开始时间', type: 'daterange' },
 ]
 
 // 工具栏配置
@@ -53,62 +60,44 @@ const toolbarOptions: ToolbarOptions[] = [
 const getFormOptions = () => {
   const formOptions: FormOptions[] = [
     {
-      prop: 'title',
-      label: '日志标题',
+      prop: 'module',
+      label: '操作内容',
       type: 'input',
-      readonly: true,
-      span: 24,
-    },
-    {
-      prop: 'businessType',
-      label: '业务类型',
-      type: 'select',
-      options: [
-        { value: '0', label: '其它' },
-        { value: '1', label: '新增' },
-        { value: '2', label: '修改' },
-        { value: '3', label: '删除' },
-        { value: '4', label: '授权' },
-        { value: '5', label: '导出' },
-        { value: '6', label: '导入' },
-        { value: '7', label: '强退' },
-        { value: '8', label: '生成代码' },
-        { value: '9', label: '清空数据' },
-      ],
       readonly: true,
       span: 12,
     },
     {
-      prop: 'operatorName',
+      prop: 'businessType',
+      label: '操作类型',
+      type: 'select',
+      options: businessTypeOptions,
+      readonly: true,
+      span: 12,
+    },
+    {
+      prop: 'username',
       label: '操作人员',
       type: 'input',
       readonly: true,
       span: 12,
     },
     {
-      prop: 'requestUrl',
-      label: '请求URL',
+      prop: 'realName',
+      label: '真实姓名',
+      type: 'input',
+      readonly: true,
+      span: 12,
+    },
+    {
+      prop: 'operUrl',
+      label: '操作接口',
       type: 'input',
       readonly: true,
       span: 24,
     },
     {
-      prop: 'requestMethod',
-      label: '请求方式',
-      type: 'input',
-      readonly: true,
-      span: 12,
-    },
-    {
-      prop: 'requestIp',
+      prop: 'operIp',
       label: '请求IP',
-      type: 'input',
-      readonly: true,
-      span: 12,
-    },
-    {
-      prop: 'requestLocation',
-      label: '操作地点',
       type: 'input',
       readonly: true,
       span: 12,
@@ -118,14 +107,21 @@ const getFormOptions = () => {
       label: '操作状态',
       type: 'select',
       options: [
-        { value: '0', label: '成功' },
-        { value: '1', label: '失败' },
+        { value: 0, label: '失败' },
+        { value: 1, label: '成功' },
       ],
       readonly: true,
       span: 12,
     },
     {
-      prop: 'operationTime',
+      prop: 'detail',
+      label: '业务状态',
+      type: 'input',
+      readonly: true,
+      span: 12,
+    },
+    {
+      prop: 'createTime',
       label: '操作时间',
       type: 'input',
       readonly: true,
@@ -139,16 +135,22 @@ const getFormOptions = () => {
       span: 12,
     },
     {
-      prop: 'requestParam',
-      label: '请求参数',
-      type: 'textarea',
+      prop: 'bizId',
+      label: '关联业务ID',
+      type: 'input',
       readonly: true,
-      rows: 4,
-      span: 24,
+      span: 12,
     },
     {
-      prop: 'jsonResult',
-      label: '返回结果',
+      prop: 'traceId',
+      label: '跟踪ID',
+      type: 'input',
+      readonly: true,
+      span: 12,
+    },
+    {
+      prop: 'operParam',
+      label: '请求参数',
       type: 'textarea',
       readonly: true,
       rows: 4,
@@ -162,55 +164,54 @@ const getFormOptions = () => {
       rows: 3,
       span: 24,
     },
+    {
+      prop: 'userAgent',
+      label: '用户代理',
+      type: 'input',
+      readonly: true,
+      span: 24,
+    },
   ]
   return formOptions
 }
 
-// 表格列配置
+// 表格列配置（对齐后端 SysOperLog 字段）
 const tableOptions: TableOptions[] = [
-  { label: '日志ID', prop: 'logId', width: 80, align: 'center' },
-  { label: '日志标题', prop: 'title', width: 180 },
+  { label: 'ID', prop: 'id', width: 60, align: 'center' },
   {
-    label: '业务类型',
-    prop: 'businessType',
-    width: 100,
+    label: '操作内容',
+    prop: 'module',
+    width: 200,
     formatter: (row: any) => {
-      const map: Record<string, string> = {
-        '0': '其它',
-        '1': '新增',
-        '2': '修改',
-        '3': '删除',
-        '4': '授权',
-        '5': '导出',
-        '6': '导入',
-        '7': '强退',
-        '8': '生成代码',
-        '9': '清空数据',
-      }
-      return map[row.businessType] || row.businessType
+      const bt = businessTypeMap[row.businessType] ?? ''
+      const mod = (row.module || '').replace(/管理$/, '')
+      return mod + ' - ' + bt
     },
   },
-  { label: '操作人员', prop: 'operatorName', width: 120 },
-  { label: '请求IP', prop: 'requestIp', width: 120 },
+  { label: '操作人员', prop: 'username', width: 100 },
+  { label: '请求IP', prop: 'operIp', width: 120 },
   {
     label: '操作状态',
     prop: 'status',
     width: 100,
     align: 'center',
     formatter: (row: any) => {
-      return row.status === 0 ? '成功' : '失败'
+      if (row.status === 1) return '成功'
+      if (row.status === 0) return '失败'
+      return row.status
     },
   },
   {
     label: '操作时间',
-    prop: 'operationTime',
-    width: 180,
+    prop: 'createTime',
+    width: 170,
     formatter: (row: any) => {
-      if (!row.operationTime) return ''
-      return new Date(row.operationTime).toLocaleString('zh-CN')
+      if (!row.createTime) return ''
+      return new Date(row.createTime).toLocaleString('zh-CN')
     },
   },
-  { label: '耗时(ms)', prop: 'costTime', width: 100, align: 'center' },
+  { label: '业务状态', prop: 'detail', width: 100 },
+  { label: '耗时(ms)', prop: 'costTime', width: 90, align: 'center' },
 ]
 
 export { searchOptions, toolbarOptions, getFormOptions, tableOptions }

@@ -277,8 +277,8 @@
       @success="handleValidationSuccess"
       @cancel="handleValidationCancel"
     />
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
-  <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
 </template>
 

@@ -61,10 +61,14 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate">修改</el-button>
+          <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
+            >修改</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete">删除</el-button>
+          <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
+            >删除</el-button
+          >
         </el-col>
         <el-col :span="1.5">
           <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
@@ -74,12 +78,9 @@
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
-      <el-table
-        v-loading="loading"
-        :data="inquiryList"
-        @selection-change="handleSelectionChange"
-      >
+      <el-table v-loading="loading" :data="inquiryList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
+        <el-table-column label="流水号" width="155" align="center" prop="traceId" />
         <el-table-column label="询价单号" align="center" prop="inquiryNo" width="180" />
         <el-table-column label="类型" align="center" width="80">
           <template #default="scope">
@@ -116,27 +117,36 @@
           </template>
         </el-table-column>
         <el-table-column label="销售负责人" align="center" prop="salesPersonName" width="120" />
-        <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="250">
+        <el-table-column
+          label="操作"
+          align="center"
+          class-name="small-padding fixed-width"
+          width="350"
+        >
           <template #default="scope">
-            <el-button link type="primary" icon="View" @click="handleDetail(scope.row)">查看</el-button>
+            <el-button link type="primary" icon="View" @click="handleDetail(scope.row)"
+              >查看</el-button
+            >
             <el-button
               link
               type="primary"
               icon="Edit"
               @click="handleUpdate(scope.row)"
               :disabled="scope.row.inquiryStatus === 'converted'"
-            >编辑</el-button>
-            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)">查看流水</el-button>
+              >编辑</el-button
+            >
+            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
+              >查看流水</el-button
+            >
             <template v-if="scope.row.inquiryStatus === 'converted'">
-              <el-button link type="success" icon="Link" @click="gotoQuotation(scope.row)">查看报价</el-button>
+              <el-button link type="success" icon="Link" @click="gotoQuotation(scope.row)"
+                >查看报价</el-button
+              >
             </template>
             <template v-else>
-              <el-button
-                link
-                type="primary"
-                icon="Right"
-                @click="handleConvert(scope.row)"
-              >转报价</el-button>
+              <el-button link type="primary" icon="Right" @click="handleConvert(scope.row)"
+                >转报价</el-button
+              >
             </template>
           </template>
         </el-table-column>
@@ -215,7 +225,12 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="预估数量" prop="expectedQuantity">
-              <el-input-number v-model="form.expectedQuantity" :min="0" placeholder="预估数量" style="width: 100%" />
+              <el-input-number
+                v-model="form.expectedQuantity"
+                :min="0"
+                placeholder="预估数量"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -224,7 +239,12 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="按键数量" prop="keyCount">
-              <el-input-number v-model="form.keyCount" :min="0" placeholder="按键数" style="width: 100%" />
+              <el-input-number
+                v-model="form.keyCount"
+                :min="0"
+                placeholder="按键数"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -236,19 +256,31 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="材料要求" prop="materialRequirements">
-              <el-input v-model="form.materialRequirements" placeholder="PET/银浆/弹片等" maxlength="500" />
+              <el-input
+                v-model="form.materialRequirements"
+                placeholder="PET/银浆/弹片等"
+                maxlength="500"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="线路要求" prop="circuitRequirements">
-              <el-input v-model="form.circuitRequirements" placeholder="线路类型/阻值等" maxlength="500" />
+              <el-input
+                v-model="form.circuitRequirements"
+                placeholder="线路类型/阻值等"
+                maxlength="500"
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="连接器要求" prop="connectorRequirements">
-              <el-input v-model="form.connectorRequirements" placeholder="连接器型号/引脚数" maxlength="500" />
+              <el-input
+                v-model="form.connectorRequirements"
+                placeholder="连接器型号/引脚数"
+                maxlength="500"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -268,49 +300,70 @@
               </el-radio-group>
             </el-form-item>
             <el-form-item label="产品描述" prop="productDescription">
-              <el-input v-model="form.productDescription" type="textarea" :rows="3" placeholder="详细描述产品规格/功能要求" maxlength="2000" show-word-limit />
+              <el-input
+                v-model="form.productDescription"
+                type="textarea"
+                :rows="3"
+                placeholder="详细描述产品规格/功能要求"
+                maxlength="2000"
+                show-word-limit
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="特殊要求" prop="specialRequirements">
-              <el-input v-model="form.specialRequirements" type="textarea" :rows="2" placeholder="其他特殊要求" maxlength="1000" show-word-limit />
+              <el-input
+                v-model="form.specialRequirements"
+                type="textarea"
+                :rows="2"
+                placeholder="其他特殊要求"
+                maxlength="1000"
+                show-word-limit
+              />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="备注" prop="remark">
-              <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="备注" maxlength="500" show-word-limit />
+              <el-input
+                v-model="form.remark"
+                type="textarea"
+                :rows="2"
+                placeholder="备注"
+                maxlength="500"
+                show-word-limit
+              />
             </el-form-item>
           </el-col>
         </el-row>
-          <el-divider content-position="left">附件</el-divider>
-          <el-row>
-            <el-col :span="24">
-              <el-upload
-                ref="uploadRef"
-                :http-request="customUpload"
-                :on-success="handleUploadSuccess"
-                :on-remove="handleUploadRemove"
-                :file-list="attachmentList"
-                :before-upload="beforeUpload"
-                list-type="text"
-                multiple
-              >
-                <el-button type="primary" size="small">
-                  <el-icon><Upload /></el-icon> 上传客户资料
-                </el-button>
-                <template #tip>
-                  <div class="el-upload__tip">
-                    支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传
-                  </div>
-                </template>
-              </el-upload>
-            </el-col>
-          </el-row>
-        </el-form>
+        <el-divider content-position="left">附件</el-divider>
+        <el-row>
+          <el-col :span="24">
+            <el-upload
+              ref="uploadRef"
+              :http-request="customUpload"
+              :on-success="handleUploadSuccess"
+              :on-remove="handleUploadRemove"
+              :file-list="attachmentList"
+              :before-upload="beforeUpload"
+              list-type="text"
+              multiple
+            >
+              <el-button type="primary" size="small">
+                <el-icon><Upload /></el-icon> 上传客户资料
+              </el-button>
+              <template #tip>
+                <div class="el-upload__tip">
+                  支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传
+                </div>
+              </template>
+            </el-upload>
+          </el-col>
+        </el-row>
+      </el-form>
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="cancel">取 消</el-button>
@@ -320,31 +373,50 @@
     </el-dialog>
 
     <!-- 查看详情对话框 -->
-    <el-dialog
-      title="询价单详情"
-      v-model="detailVisible"
-      width="700px"
-      append-to-body
-    >
+    <el-dialog title="询价单详情" v-model="detailVisible" width="700px" append-to-body>
       <template v-if="detailData">
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="询价单号" :span="2">{{ detailData.inquiryNo }}</el-descriptions-item>
+          <el-descriptions-item label="询价单号" :span="2">{{
+            detailData.inquiryNo
+          }}</el-descriptions-item>
           <el-descriptions-item label="类型">
             <el-tag v-if="detailData.inquiryType === 2" type="warning" size="small">样品</el-tag>
             <el-tag v-else type="primary" size="small">标准</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="客户名称">{{ detailData.customerName }}</el-descriptions-item>
-          <el-descriptions-item label="联系人">{{ detailData.contactPerson || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="联系电话">{{ detailData.contactPhone || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="客户名称">{{
+            detailData.customerName
+          }}</el-descriptions-item>
+          <el-descriptions-item label="联系人">{{
+            detailData.contactPerson || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="联系电话">{{
+            detailData.contactPhone || '-'
+          }}</el-descriptions-item>
           <el-descriptions-item label="询价日期">{{ detailData.inquiryDate }}</el-descriptions-item>
-          <el-descriptions-item label="预估数量">{{ detailData.expectedQuantity || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="按键数量">{{ detailData.keyCount ?? '-' }}</el-descriptions-item>
-          <el-descriptions-item label="尺寸要求">{{ detailData.sizeDescription || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="材料要求" :span="2">{{ detailData.materialRequirements || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="线路要求" :span="2">{{ detailData.circuitRequirements || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="连接器要求" :span="2">{{ detailData.connectorRequirements || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="产品描述" :span="2">{{ detailData.productDescription || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="特殊要求" :span="2">{{ detailData.specialRequirements || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="预估数量">{{
+            detailData.expectedQuantity || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="按键数量">{{
+            detailData.keyCount ?? '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="尺寸要求">{{
+            detailData.sizeDescription || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="材料要求" :span="2">{{
+            detailData.materialRequirements || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="线路要求" :span="2">{{
+            detailData.circuitRequirements || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="连接器要求" :span="2">{{
+            detailData.connectorRequirements || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="产品描述" :span="2">{{
+            detailData.productDescription || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="特殊要求" :span="2">{{
+            detailData.specialRequirements || '-'
+          }}</el-descriptions-item>
           <el-descriptions-item label="需求图纸">
             <el-tag v-if="detailData.hasDrawing" type="success" size="small">有图纸</el-tag>
             <el-tag v-else type="info" size="small">无图纸</el-tag>
@@ -354,18 +426,28 @@
               {{ statusLabel(detailData.inquiryStatus) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="销售负责人" :span="2">{{ detailData.salesPersonName || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="备注" :span="2">{{ detailData.remark || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="销售负责人" :span="2">{{
+            detailData.salesPersonName || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">{{
+            detailData.remark || '-'
+          }}</el-descriptions-item>
         </el-descriptions>
       </template>
-      <el-descriptions :column="1" border style="margin-top:12px">
+      <el-descriptions :column="1" border style="margin-top: 12px">
         <el-descriptions-item label="附件">
           <template v-if="detailAttachments.length > 0">
-            <div v-for="att in detailAttachments" :key="att.id" style="margin-bottom:4px">
-              <el-link type="primary" :href="'/system/attachment/download/' + att.id" target="_blank">
+            <div v-for="att in detailAttachments" :key="att.id" style="margin-bottom: 4px">
+              <el-link
+                type="primary"
+                :href="'/system/attachment/download/' + att.id"
+                target="_blank"
+              >
                 📎 {{ att.fileName }}
               </el-link>
-              <span style="color:#999;font-size:12px;margin-left:8px">{{ (att.fileSize / 1024).toFixed(1) }}KB</span>
+              <span style="color: #999; font-size: 12px; margin-left: 8px"
+                >{{ (att.fileSize / 1024).toFixed(1) }}KB</span
+              >
             </div>
           </template>
           <span v-else>-</span>
@@ -377,9 +459,8 @@
         </div>
       </template>
     </el-dialog>
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
-  <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
-
 </template>
 
 <script setup lang="ts">
@@ -531,7 +612,20 @@ const handleUploadRemove: UploadProps['onRemove'] = async (file) => {
 // 上传前校验
 const beforeUpload: UploadProps['beforeUpload'] = (file: UploadRawFile) => {
   const maxSize = 10 * 1024 * 1024 // 10MB
-  const allowedTypes = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.dwg', '.dxf', '.zip', '.md']
+  const allowedTypes = [
+    '.pdf',
+    '.doc',
+    '.docx',
+    '.xls',
+    '.xlsx',
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.dwg',
+    '.dxf',
+    '.zip',
+    '.md',
+  ]
   const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '')
   if (!allowedTypes.includes(ext)) {
     ElMessage.error('不支持的文件格式，支持 PDF/Word/Excel/图片/DWG/DXF/Markdown/ZIP')
@@ -595,7 +689,7 @@ async function loadDetailAttachments(bizId: number) {
       method: 'get',
       params: { bizType: 'inquiry', bizId },
     })
-    detailAttachments.value = res?.code === 200 ? (res.data || []) : []
+    detailAttachments.value = res?.code === 200 ? res.data || [] : []
   } catch {
     detailAttachments.value = []
   }
@@ -756,32 +850,36 @@ function handleConvert(row: any) {
     return
   }
 
-  ElMessageBox.confirm(
-    `确定将询价单 [${row.inquiryNo}] 转为报价单吗？`,
-    '转报价确认',
-    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
-  ).then(() => {
-    inquiryApi.convert(row.inquiryId).then((res) => {
-      ElMessage.success(`询价单已成功转为报价单`)
-      getList()
+  ElMessageBox.confirm(`确定将询价单 [${row.inquiryNo}] 转为报价单吗？`, '转报价确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => {
+      inquiryApi.convert(row.inquiryId).then((res) => {
+        ElMessage.success(`询价单已成功转为报价单`)
+        getList()
+      })
     })
-  }).catch(() => {})
+    .catch(() => {})
 }
 // 删除
 function handleDelete(row?: any) {
   const delIds = row ? [row.inquiryId] : ids.value
   if (!delIds.length) return
 
-  ElMessageBox.confirm(
-    `确定删除选中的 ${delIds.length} 条询价单吗？`,
-    '删除确认',
-    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
-  ).then(() => {
-    inquiryApi.remove(delIds).then(() => {
-      ElMessage.success('删除成功')
-      getList()
+  ElMessageBox.confirm(`确定删除选中的 ${delIds.length} 条询价单吗？`, '删除确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => {
+      inquiryApi.remove(delIds).then(() => {
+        ElMessage.success('删除成功')
+        getList()
+      })
     })
-  }).catch(() => {})
+    .catch(() => {})
 }
 
 // 导出
@@ -865,9 +963,12 @@ onMounted(() => {
   getList()
   initCustomerOptions()
   // 加载状态选项
-  inquiryApi.getStatusOptions().then((res) => {
-    statusOptions.value = res.data || []
-  }).catch(() => {})
+  inquiryApi
+    .getStatusOptions()
+    .then((res) => {
+      statusOptions.value = res.data || []
+    })
+    .catch(() => {})
 })
 // 链路追踪抽屉
 const traceDrawerVisible = ref(false)
@@ -876,7 +977,6 @@ function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''
   traceDrawerVisible.value = true
 }
-
 </script>
 
 <style scoped lang="scss">
