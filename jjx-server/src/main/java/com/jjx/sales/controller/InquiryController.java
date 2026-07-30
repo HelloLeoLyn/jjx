@@ -5,6 +5,7 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.entity.SalesInquiry;
+import com.jjx.sales.domain.vo.InquiryToQuotationVO;
 import com.jjx.sales.service.IInquiryService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
@@ -88,16 +89,12 @@ public class InquiryController extends BaseController {
      * 询价转报价
      */
     @Operation(summary = "询价转报价")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizStatus = 3)
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizStatus = 3,
+         traceId = "#result.data.traceId")
     @SaCheckPermission("sales:inquiry:convert")
     @PostMapping("/convert/{inquiryId}")
-    public Result<Object> convert(@PathVariable Long inquiryId) {
-        SalesInquiry inquiry = inquiryService.selectInquiryById(inquiryId);
-        Long quotationId = inquiryService.convertToQuotation(inquiryId);
-        java.util.Map<String, Object> result = new java.util.HashMap<>();
-        result.put("quotationId", quotationId);
-        result.put("traceId", inquiry.getTraceId());
-        return Result.success(result);
+    public Result<InquiryToQuotationVO> convert(@PathVariable Long inquiryId) {
+        return Result.success(inquiryService.convertToQuotation(inquiryId));
     }
 
     /**

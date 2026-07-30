@@ -2,6 +2,7 @@ package com.jjx.sales.service;
 
 import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesInquiry;
+import com.jjx.sales.domain.vo.InquiryToQuotationVO;
 
 import java.util.List;
 
@@ -54,7 +55,7 @@ public interface IInquiryService {
      * 询价转报价
      * 创建报价单并返回报价单ID
      */
-    Long convertToQuotation(Long inquiryId);
+    InquiryToQuotationVO convertToQuotation(Long inquiryId);
 
     /**
      * 获取询价单状态选项
