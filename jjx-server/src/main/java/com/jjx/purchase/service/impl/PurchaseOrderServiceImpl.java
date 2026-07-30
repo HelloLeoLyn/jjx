@@ -915,6 +915,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "purchase.received", bizId = "#dto.orderId", bizType = "'purchase'")
     public int batchReceiveOrderItems(PurchaseOrderReceiveDTO dto) {
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());

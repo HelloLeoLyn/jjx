@@ -25,6 +25,7 @@ import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.enums.OrderStatusEnum;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.ProductionOrderService;
+import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -227,6 +228,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "production.started", bizId = "#orderId", bizType = "'production'")
     public boolean startOrder(Long orderId) {
         log.info("启动生产工单: {}", orderId);
 
