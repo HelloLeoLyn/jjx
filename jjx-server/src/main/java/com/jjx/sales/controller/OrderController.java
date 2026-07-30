@@ -117,7 +117,7 @@ public class OrderController extends BaseController {
      * 创建产品实例
      */
     @Operation(summary = "创建产品实例")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/create-instances/{orderId}")
     public Result<Void> createOrderInstances(@PathVariable Long orderId) {
@@ -128,7 +128,7 @@ public class OrderController extends BaseController {
      * 更新付款信息
      */
     @Operation(summary = "更新付款信息")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/payment/{orderId}")
     public Result<Void> updateOrderPayment(@PathVariable Long orderId,

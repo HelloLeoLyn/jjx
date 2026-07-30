@@ -77,7 +77,7 @@ public class CustomerController extends BaseController {
      * 新增客户
      */
     @Operation(summary = "新增客户")
-    @Log(module = "客户管理", businessType = BusinessType.INSERT)
+    @Log(module = "客户管理", businessType = BusinessType.INSERT, bizType = "'custom'", bizId = "#dto.customerId")
     @SaCheckPermission("sales:customer:add")
     @PostMapping
     public Result<Void> addCustomer(@Validated @RequestBody CustomerAddDTO dto) {
@@ -98,7 +98,7 @@ public class CustomerController extends BaseController {
      * 修改客户
      */
     @Operation(summary = "修改客户")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}")
     public Result<Void> updateCustomer(@PathVariable Long customerId, @Validated @RequestBody CustomerEditDTO dto) {
@@ -110,7 +110,7 @@ public class CustomerController extends BaseController {
      * 删除客户
      */
     @Operation(summary = "删除客户")
-    @Log(module = "客户管理", businessType = BusinessType.DELETE)
+    @Log(module = "客户管理", businessType = BusinessType.DELETE, bizType = "'custom'")
     @SaCheckPermission("sales:customer:delete")
     @DeleteMapping("/{customerIds}")
     public Result<Void> deleteCustomers(@PathVariable Long[] customerIds) {
@@ -142,7 +142,7 @@ public class CustomerController extends BaseController {
      * 变更客户状态
      */
     @Operation(summary = "变更客户状态")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/status")
     public Result<Void> changeCustomerStatus(@PathVariable Long customerId, @RequestParam Integer status) {
@@ -153,7 +153,7 @@ public class CustomerController extends BaseController {
      * 批量审核客户
      */
     @Operation(summary = "批量审核客户")
-    @Log(module = "客户管理", businessType = BusinessType.APPROVE)
+    @Log(module = "客户管理", businessType = BusinessType.APPROVE, bizType = "'custom'")
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/approve")
     public Result<Void> approveCustomers(@RequestBody Long[] customerIds) {
@@ -176,7 +176,7 @@ public class CustomerController extends BaseController {
      * 更新客户信用额度
      */
     @Operation(summary = "更新客户信用额度")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/credit")
     public Result<Void> updateCustomerCreditLimit(@PathVariable Long customerId, @RequestParam Double creditLimit) {
