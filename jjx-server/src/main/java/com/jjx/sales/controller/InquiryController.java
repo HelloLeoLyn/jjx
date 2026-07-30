@@ -88,12 +88,16 @@ public class InquiryController extends BaseController {
      * 询价转报价
      */
     @Operation(summary = "询价转报价")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizStatus = 3)
     @SaCheckPermission("sales:inquiry:convert")
     @PostMapping("/convert/{inquiryId}")
     public Result<Object> convert(@PathVariable Long inquiryId) {
+        SalesInquiry inquiry = inquiryService.selectInquiryById(inquiryId);
         Long quotationId = inquiryService.convertToQuotation(inquiryId);
-        return Result.success(java.util.Collections.singletonMap("quotationId", quotationId));
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("quotationId", quotationId);
+        result.put("traceId", inquiry.getTraceId());
+        return Result.success(result);
     }
 
     /**

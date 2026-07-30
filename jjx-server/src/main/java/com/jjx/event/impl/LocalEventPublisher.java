@@ -12,9 +12,6 @@ import com.jjx.system.mapper.SysEventConfigMapper;
 import com.jjx.system.mapper.SysEventKanbanMapper;
 import com.jjx.system.mapper.SysEventNotificationMapper;
 import com.jjx.system.mapper.SysTaskMapper;
-import com.jjx.system.domain.entity.SysOperLog;
-import com.jjx.system.service.LogSaveService;
-import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -40,7 +37,6 @@ public class LocalEventPublisher implements EventPublisher {
     private final SysEventKanbanMapper eventKanbanMapper;
     private final NotificationService notificationService;
     private final SysTaskMapper sysTaskMapper;
-    private final LogSaveService logSaveService;
 
     @Override
     public void fire(String eventCode, Map<String, Object> payload) {
@@ -56,25 +52,7 @@ public class LocalEventPublisher implements EventPublisher {
         }
         log.info("🔥 触发事件: {} ({})", eventCode, event.getEventName());
 
-        // 2. 写操作日志
-        try {
-            SysOperLog operLog = new SysOperLog();
-            operLog.setModule(event.getBizModule());
-            operLog.setBusinessType(0);
-            operLog.setOperUrl(eventCode);
-            operLog.setOperParam(resolveTemplate(eventCode, payload));
-            operLog.setStatus(1);
-            try {
-                operLog.setUsername(SecurityUtils.getUsername());
-                operLog.setUserId(SecurityUtils.getUserId());
-            } catch (Exception ignored) {}
-            logSaveService.saveOperLog(operLog);
-            log.info("   📝 已记录操作日志: event={}", eventCode);
-        } catch (Exception e) {
-            log.error("   ❌ 操作日志记录失败: {}", e.getMessage());
-        }
-
-        // 3. 执行通知
+        // 2. 执行通知
         List<SysEventNotification> notifications = eventNotificationMapper.selectList(
                 new LambdaQueryWrapper<SysEventNotification>()
                         .eq(SysEventNotification::getEventId, event.getEventId())

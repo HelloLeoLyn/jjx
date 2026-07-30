@@ -23,7 +23,11 @@
     <!-- 平铺表格 -->
     <el-table v-else :data="flatOps" size="small" stripe border>
       <el-table-column prop="time" label="时间" width="160" />
-      <el-table-column prop="bizStatus" label="状态" width="100" />
+      <el-table-column label="状态" width="100">
+        <template #default="scope">
+          {{ formatBizStatus(scope.row.bizStatus, scope.row.module) }}
+        </template>
+      </el-table-column>
       <el-table-column prop="module" label="模块" width="120" />
       <el-table-column label="操作" min-width="180">
         <template #default="scope">
@@ -90,6 +94,25 @@ function formatBusinessType(code: number): string {
     6: '审批', 7: '登录', 8: '登出', 9: '其他', 10: '重置密码', 11: '转换',
   }
   return map[code] ?? ''
+}
+
+/** 按模块显示业务状态名 */
+function formatBizStatus(code: number, module: string): string {
+  if (code == null) return ''
+  const mod = module || ''
+  if (mod.includes('询价')) {
+    const m: Record<number, string> = { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已转报价', 4:'已确认', 5:'已拒绝', 6:'已过期' }
+    return m[code] ?? String(code)
+  }
+  if (mod.includes('报价')) {
+    const m: Record<number, string> = { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已报价', 4:'已确认', 5:'已拒绝', 6:'已过期' }
+    return m[code] ?? String(code)
+  }
+  if (mod.includes('订单') || mod.includes('销售')) {
+    const m: Record<number, string> = { 0:'待确认', 1:'已确认', 2:'生产中', 3:'已完成', 4:'已取消' }
+    return m[code] ?? String(code)
+  }
+  return String(code)
 }
 
 async function loadTrace() {
