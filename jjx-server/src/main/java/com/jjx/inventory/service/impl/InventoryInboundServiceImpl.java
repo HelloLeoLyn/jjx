@@ -26,6 +26,7 @@ import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.service.InventoryInboundService;
+import com.jjx.inventory.service.InventoryAlertService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +58,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final EventPublisher eventPublisher;
+    private final InventoryAlertService alertService;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -210,6 +212,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 执行库存增加（复用审批中的库存逻辑）
         approve(inboundId, operatorId, operatorName, "直接确认入库");
         order.setOrderStatus("completed");
+        // 安全库存检查
+        try {
+            List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+            for (InventoryInboundItem item : items) {
+                alertService.checkSafeStockAlert(item.getMaterialId());
+            }
+        } catch (Exception e) {
+            log.warn("安全库存检查失败: {}", e.getMessage());
+        }
         return inboundOrderMapper.updateById(order) > 0;
     }
 

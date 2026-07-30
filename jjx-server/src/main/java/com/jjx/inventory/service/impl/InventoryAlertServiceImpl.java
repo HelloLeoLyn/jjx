@@ -94,6 +94,53 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         log.info("安全库存预警检查完成，发现 {} 条", lowStock.size());
     }
 
+
+    @Override
+    public void checkSafeStockAlert(Long materialId) {
+        log.info("检查单物料安全库存预警: materialId={}", materialId);
+        InventoryStock stock = stockMapper.selectByMaterialId(materialId);
+        if (stock == null) return;
+
+        java.math.BigDecimal safe = java.math.BigDecimal.ZERO;
+        try {
+            String sql = "SELECT safe_stock FROM inventory_material WHERE material_id = " + materialId;
+            java.util.List<java.util.Map<String,Object>> rows = java.util.Collections.emptyList();
+            // 使用 MyBatis-Plus 的 selectMaps 搭配 QueryWrapper 需要指定类型
+            // 通过 stockMapper 的现有方法查询
+            if (stockMapper.selectByMaterialId(materialId) != null) {
+                var qw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<InventoryStock>();
+                qw.select("safe_stock").eq("material_id", materialId);
+                rows = stockMapper.selectMaps(qw);
+            }
+            if (!rows.isEmpty() && rows.get(0).get("safe_stock") != null)
+                safe = new java.math.BigDecimal(rows.get(0).get("safe_stock").toString());
+        } catch (Exception e) {
+            log.warn("查询安全库存失败: {}", e.getMessage());
+        }
+
+        if (safe.compareTo(java.math.BigDecimal.ZERO) <= 0) return;
+        if (stock.getTotalQuantity() != null && stock.getTotalQuantity().compareTo(safe) >= 0) return;
+
+        String msg = "物料[" + stock.getMaterialCode() + "] " + stock.getMaterialName()
+                + " 当前库存: " + stock.getTotalQuantity() + ", 安全库存: " + safe + ", 低于安全库存";
+        log.warn(msg);
+
+        InventoryAlertLog alert = new InventoryAlertLog();
+        alert.setAlertType("safe_stock");
+        alert.setAlertLevel("warning");
+        alert.setMaterialId(stock.getMaterialId());
+        alert.setMaterialCode(stock.getMaterialCode());
+        alert.setMaterialName(stock.getMaterialName());
+        alert.setCurrentStock(stock.getTotalQuantity());
+        alert.setSafeStock(safe);
+        alert.setAlertMessage(msg);
+        alert.setAlertTime(java.time.LocalDateTime.now());
+        alertLogMapper.insert(alert);
+
+        try { eventPublisher.fire("stock.low", java.util.Map.of("materialId", String.valueOf(materialId), "currentStock", String.valueOf(stock.getTotalQuantity()), "safeStock", String.valueOf(safe))); }
+        catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
+        log.info("单物料安全库存预警检查完成: materialId={}", materialId);
+    }
     @Override
     public void checkMaxStockAlert() {
         log.info("检查最高库存预警");

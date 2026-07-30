@@ -25,7 +25,13 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     void executeAlertCheck();
 
     /**
-     * 检查安全库存预警
+     * 检查单个物料的安全库存预警
+     * 出库/入库确认后调用
+     */
+    void checkSafeStockAlert(Long materialId);
+
+    /**
+     * 检查全量物料的安全库存（批量扫描用）
      */
     void checkSafeStockAlert();
 

@@ -17,7 +17,9 @@ import com.jjx.inventory.mapper.InventoryOutboundOrderMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
+import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.service.InventoryOutboundService;
+import com.jjx.inventory.service.InventoryAlertService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +53,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.product.mapper.ProductBomMapper productBomMapper;
     private final com.jjx.product.mapper.ProductBomItemMapper productBomItemMapper;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
+    private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
 
     @Override
@@ -133,10 +136,60 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        order.setOrderStatus("approved");
-        outboundOrderMapper.updateById(order);
-        // 执行库存扣减（复用审批中的库存逻辑）
-        approve(outboundId, operatorId, operatorName, "直接确认出库");
+        // 直接执行库存扣减（不经过 approve，避免状态不匹配）
+        List<InventoryOutboundItem> outItems = outboundItemMapper.selectByOutboundId(outboundId);
+        for (InventoryOutboundItem item : outItems) {
+            if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            BigDecimal remaining = item.getQuantity();
+            List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(item.getMaterialId());
+            for (InventoryStockItem si : fifoItems) {
+                if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+                BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
+                if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
+                stockItemMapper.deductStock(si.getItemId(), deductQty);
+                remaining = remaining.subtract(deductQty);
+            }
+            if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+                throw new BusinessException("物料[" + item.getMaterialCode() + "]库存不足，缺少: " + remaining);
+            }
+            stockMapper.refreshSummary(item.getMaterialId());
+            // 获取扣减前的库存汇总
+            java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
+            InventoryStock currentStock = stockMapper.selectByMaterialId(item.getMaterialId());
+            if (currentStock != null && currentStock.getTotalQuantity() != null) {
+                beforeQty = currentStock.getTotalQuantity().add(item.getQuantity());
+            }
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setMaterialId(item.getMaterialId());
+            tx.setMaterialCode(item.getMaterialCode());
+            tx.setMaterialName(item.getMaterialName());
+            tx.setWarehouseId(order.getWarehouseId());
+            tx.setLocationId(item.getLocationId());
+            tx.setTransactionType("OUTBOUND");
+            tx.setSourceType(order.getSourceType());
+            tx.setSourceId(outboundId);
+            tx.setSourceNo(order.getOutboundNo());
+            tx.setBatchNo(item.getBatchNo());
+            tx.setQuantity(item.getQuantity().negate());
+            tx.setBeforeQuantity(beforeQty);
+            tx.setAfterQuantity(beforeQty.subtract(item.getQuantity()));
+            tx.setUnitCost(item.getUnitPrice());
+            tx.setAmount(item.getAmount());
+            tx.setTransactionTime(LocalDateTime.now());
+            tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
+            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+            tx.setRemark("出库确认完成");
+            transactionMapper.insert(tx);
+        }
+        // 安全库存检查
+        try {
+            for (InventoryOutboundItem item : outItems) {
+                alertService.checkSafeStockAlert();
+            }
+        } catch (Exception e) {
+            log.warn("安全库存检查失败: {}", e.getMessage());
+        }
         order.setOrderStatus("completed");
         return outboundOrderMapper.updateById(order) > 0;
     }
