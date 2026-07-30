@@ -12,7 +12,7 @@ import java.util.Map;
 
 @Tag(name = "业务链路追踪")
 @RestController
-@RequestMapping("/trace")
+@RequestMapping("/api/trace")
 @RequiredArgsConstructor
 public class TraceController {
 

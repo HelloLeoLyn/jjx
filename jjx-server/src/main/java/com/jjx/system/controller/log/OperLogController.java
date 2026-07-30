@@ -15,7 +15,7 @@ import java.util.List;
 
 @Tag(name = "操作日志管理")
 @RestController
-@RequestMapping("/logs")
+@RequestMapping("/api/logs")
 @RequiredArgsConstructor
 public class OperLogController {
 

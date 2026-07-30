@@ -110,7 +110,7 @@ async function loadTrace() {
   if (!props.traceId) return
   loading.value = true
   try {
-    const res = await request.get(`/trace/${props.traceId}`)
+    const res = await request.get(`/api/trace/${props.traceId}`)
     let data = (res as any).data || []
     // 如果指定了模块，过滤并固定
     if (filterModule.value) {
