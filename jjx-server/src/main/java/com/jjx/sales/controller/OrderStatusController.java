@@ -33,7 +33,7 @@ public class OrderStatusController {
      * 提交审核
      */
     @Operation(summary = "提交审核")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/submissions")
     public Result<Void> submitReview(
@@ -47,7 +47,7 @@ public class OrderStatusController {
      * 开始审核
      */
     @Operation(summary = "开始审核")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:review")
     @PutMapping("/{orderId}/status/review")
     public Result<Void> startReview(
@@ -61,7 +61,7 @@ public class OrderStatusController {
      * 审核通过
      */
     @Operation(summary = "审核通过")
-    @Log(module = "订单状态管理", businessType = BusinessType.APPROVE)
+    @Log(module = "订单状态管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:approve")
     @PutMapping("/{orderId}/status/approval")
     public Result<Void> approveOrder(
@@ -77,7 +77,7 @@ public class OrderStatusController {
      * 发送客户确认
      */
     @Operation(summary = "发送客户确认")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:review")
     @PutMapping("/{orderId}/status/send-to-customer")
     public Result<Void> sendToCustomer(
@@ -91,7 +91,7 @@ public class OrderStatusController {
      * 审核驳回
      */
     @Operation(summary = "审核驳回")
-    @Log(module = "订单状态管理", businessType = BusinessType.APPROVE)
+    @Log(module = "订单状态管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:approve")
     @PutMapping("/{orderId}/status/rejection")
     public Result<Void> rejectOrder(
@@ -107,7 +107,7 @@ public class OrderStatusController {
      * 重新提交审核（驳回后）
      */
     @Operation(summary = "重新提交审核（驳回后）")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/resubmissions")
     public Result<Void> resubmit(
@@ -121,7 +121,7 @@ public class OrderStatusController {
      * 取消订单
      */
     @Operation(summary = "取消订单")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @DeleteMapping("/{orderId}/status")
     public Result<Void> cancelOrder(
@@ -163,7 +163,7 @@ public class OrderStatusController {
      * 开始生产
      */
     @Operation(summary = "开始生产")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE)
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/start-production")
     public Result<Void> startProduction(
