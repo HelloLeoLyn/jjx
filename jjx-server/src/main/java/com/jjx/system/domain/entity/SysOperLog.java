@@ -21,7 +21,8 @@ public class SysOperLog {
     private Integer businessType;
     private String operUrl;
     private String operIp;
-    private String operParam;    private String bizType;
+    private String operParam;
+    private String bizType;
     private String bizId;
     private String traceId;
     private String detail;

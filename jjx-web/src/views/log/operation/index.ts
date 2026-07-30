@@ -211,6 +211,7 @@ const tableOptions: TableOptions[] = [
     },
   },
   { label: '业务状态', prop: 'detail', width: 100 },
+  { label: '追踪ID', prop: 'traceId', width: 180 },
   { label: '耗时(ms)', prop: 'costTime', width: 90, align: 'center' },
 ]
 

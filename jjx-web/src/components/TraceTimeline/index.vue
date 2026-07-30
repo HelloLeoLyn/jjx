@@ -96,7 +96,7 @@ async function loadTrace() {
   if (!props.traceId) return
   loading.value = true
   try {
-    const res = await request.get(`/trace/${props.traceId}`)
+    const res = await request.get(`/api/trace/${props.traceId}`)
     nodes.value = (res as any).data || []
   } catch {
     nodes.value = []
