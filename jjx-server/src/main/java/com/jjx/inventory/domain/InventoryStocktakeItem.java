@@ -1,11 +1,13 @@
 package com.jjx.inventory.domain;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.jjx.common.core.domain.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * 盘点明细表实体类
@@ -65,5 +67,12 @@ public class InventoryStocktakeItem extends BaseEntity {
 
     /** 差异原因 */
     private String reason;
+
+    /** 盘点时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime stocktakeTime;
+
+    /** 盘点人 */
+    private String stocktakeBy;
 
 }

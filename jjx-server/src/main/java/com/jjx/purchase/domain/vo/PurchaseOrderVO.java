@@ -34,9 +34,9 @@ public class PurchaseOrderVO {
     private String supplierName;
 
     /**
-     * 订单类型（0正常/1紧急）
+     * 订单类型（normal正常/urgent紧急）
      */
-    private Integer orderType;
+    private String orderType;
 
     /**
      */

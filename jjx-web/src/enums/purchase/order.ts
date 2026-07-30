@@ -2,15 +2,15 @@ import { createEnum } from '@/enums/base'
 
 /**
  * 采购订单类型枚举
- * 0=正常, 1=紧急, 2=补单, 3=退货单, 4=样品单
+ * normal=正常, urgent=紧急, reorder=补单, return=退货, sample=样品
  */
 export const PurchaseOrderTypeEnum = createEnum({
   items: [
-    { value: 0, label: '正常', tagProps: { type: 'primary' } },
-    { value: 1, label: '紧急', tagProps: { type: 'danger' } },
-    { value: 2, label: '补单', tagProps: { type: 'warning' } },
-    { value: 3, label: '退货单', tagProps: { type: 'info' } },
-    { value: 4, label: '样品单', tagProps: { type: 'success' } },
+    { value: 'normal', label: '正常', tagProps: { type: 'primary' } },
+    { value: 'urgent', label: '紧急', tagProps: { type: 'danger' } },
+    { value: 'reorder', label: '补单', tagProps: { type: 'warning' } },
+    { value: 'return', label: '退货单', tagProps: { type: 'info' } },
+    { value: 'sample', label: '样品单', tagProps: { type: 'success' } },
   ],
   defaultTag: { type: 'info' },
 })

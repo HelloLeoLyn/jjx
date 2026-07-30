@@ -23,8 +23,8 @@
             (orderDetail as any).actualDeliveryDate || '-'
           }}</el-descriptions-item>
           <el-descriptions-item label="订单类型">
-            <el-tag :type="orderDetail.orderType === 1 ? 'danger' : 'info'" size="small">
-              {{ orderDetail.orderType === 1 ? '紧急订单' : '普通订单' }}
+            <el-tag :type="orderDetail.orderType === 'urgent' ? 'danger' : 'info'" size="small">
+              {{ orderDetail.orderType === 'urgent' ? '紧急订单' : '普通订单' }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="币种">{{ orderDetail.currency }}</el-descriptions-item>

@@ -48,6 +48,29 @@ public class InventoryEventBridge {
     @EventListener(condition = "#payload?.eventCode == 'order.delivering'")
     public void onSalesDelivery(Map<String, Object> payload) {
         log.info("🚛 销售发货联动出库: {}", payload);
-        // TODO: 完善销售出库逻辑
+        try {
+            // 先尝试使用更完善的 createFromSales 方式（含明细行 + 自动审批）
+            Object salesOrderId = payload.get("salesOrderId");
+            if (salesOrderId != null) {
+                Long orderId = Long.valueOf(salesOrderId.toString());
+                Long outboundId = outboundService.createFromSales(orderId);
+                if (outboundId != null) {
+                    log.info("   ✅ 销售出库单已创建并审批: outboundId={}", outboundId);
+                    return;
+                }
+            }
+
+            // 兜底：使用通用方式创建
+            Map<String, Object> params = new HashMap<>();
+            params.put("sourceType", "sales");
+            params.put("sourceNo", payload.getOrDefault("orderNo", ""));
+            params.put("outboundType", "sales");
+            params.put("remark", "销售发货自动出库");
+            Long outboundId = outboundService.create(params);
+            outboundService.confirm(outboundId, null, "system");
+            log.info("   ✅ 销售出库单已创建并确认: outboundId={}", outboundId);
+        } catch (Exception e) {
+            log.error("   ❌ 创建销售出库单失败: {}", e.getMessage(), e);
+        }
     }
 }

@@ -11,7 +11,7 @@ export interface PurchaseOrderVO {
   orderDate: string
   expectedDeliveryDate: string
   currency: string
-  orderType: number
+  orderType: string
   deliveryMethod?: string
   contractNo?: string
   deliveryAddress?: string
@@ -65,7 +65,7 @@ export interface PurchaseOrderQuery {
 
   // 其他筛选
   urgentFlag?: boolean
-  orderType?: number
+  orderType?: string
 
   // 分页参数
   pageNum: number
@@ -83,7 +83,7 @@ export interface PurchaseOrderCreateDTO {
   orderDate: string
   expectedDeliveryDate: string
   currency: string
-  orderType: number
+  orderType: string
   deliveryMethod?: string
   contractNo?: string
   deliveryAddress?: string

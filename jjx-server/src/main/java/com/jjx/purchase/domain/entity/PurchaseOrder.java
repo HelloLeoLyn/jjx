@@ -39,9 +39,9 @@ public class PurchaseOrder {
     private String supplierName;
 
     /**
-     * 订单类型（0正常/1紧急）
+     * 订单类型（normal正常/urgent紧急/reorder补单/return退货/sample样品）
      */
-    private Integer orderType;
+    private String orderType;
 
     /**
      * 订单日期
