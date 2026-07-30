@@ -84,7 +84,12 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Collection" :disabled="single" @click="handleConvertToSample"
+          <el-button
+            type="warning"
+            plain
+            icon="Collection"
+            :disabled="single"
+            @click="handleConvertToSample"
             >转为样品单</el-button
           >
         </el-col>
@@ -119,13 +124,13 @@
         <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
         <el-table-column label="报价日期" align="center" prop="quotationDate" width="120">
           <template #default="scope">
-            <span>{{ parseTime(scope.row.quotationDate, '{y}-{m}-{d}') }}</span>
+            <span>{{ parseTime(scope.row.quotationDate, 'yyyy-MM-dd') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="有效期至" prop="validUntil" width="120">
           <template #default="scope">
             <span v-if="scope.row.validUntil">{{
-              parseTime(scope.row.validUntil, '{y}-{m}-{d}')
+              parseTime(scope.row.validUntil, 'yyyy-MM-dd')
             }}</span>
             <span v-else>-</span>
           </template>
@@ -164,7 +169,9 @@
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)">查看流水</el-button>
+            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
+              >查看流水</el-button
+            >
             <el-tooltip content="删除" placement="top">
               <el-button
                 link
@@ -461,10 +468,10 @@
         <el-descriptions-item label="报价单号">{{ detail.quotationNo }}</el-descriptions-item>
         <el-descriptions-item label="客户名称">{{ detail.customerName }}</el-descriptions-item>
         <el-descriptions-item label="报价日期">
-          {{ parseTime(detail.quotationDate, '{y}-{m}-{d}') }}
+          {{ parseTime(detail.quotationDate, 'yyyy-MM-dd') }}
         </el-descriptions-item>
         <el-descriptions-item label="有效期至">
-          <span v-if="detail.validUntil">{{ parseTime(detail.validUntil, '{y}-{m}-{d}') }}</span>
+          <span v-if="detail.validUntil">{{ parseTime(detail.validUntil, 'yyyy-MM-dd') }}</span>
           <span v-else>-</span>
         </el-descriptions-item>
         <el-descriptions-item label="报价状态">
@@ -526,7 +533,6 @@
     </el-dialog>
   </div>
   <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
-
 </template>
 
 <script setup lang="ts">
@@ -785,19 +791,24 @@ const handleExport = () => {
 const handleConvertToSample = async (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   if (!quotationId) return
-  
+
   const { value } = await ElMessageBox.prompt('打样数量', '转为样品单', {
     inputValue: '10',
     confirmButtonText: '转为样品单',
   })
   const qty = parseInt(value || '0')
-  if (qty <= 0) { ElMessage.warning('请输入有效数量'); return }
-  
+  if (qty <= 0) {
+    ElMessage.warning('请输入有效数量')
+    return
+  }
+
   try {
     await sampleOrderApi.createFromQuotation(quotationId, { sampleQty: qty })
     ElMessage.success('报价单已成功转为样品单')
     getList()
-  } catch (e: any) { ElMessage.error(e.message || '转换失败') }
+  } catch (e: any) {
+    ElMessage.error(e.message || '转换失败')
+  }
 }
 
 // 发送报价按钮操作
@@ -868,14 +879,15 @@ const handleView = (row: any) => {
 // 搜索客户
 const searchCustomer = (query: string) => {
   if (query) {
-    customerLoading.value = true
-    (customerApi as any).list({ customerName: query, pageSize: 10 }).then((response: any) => {
-      customerOptions.value = response.rows.map((item: any) => ({
-        customerId: item.customerId,
-        customerName: item.customerName,
-      }))
-      customerLoading.value = false
-    })
+    customerLoading.value = true(customerApi as any)
+      .list({ customerName: query, pageSize: 10 })
+      .then((response: any) => {
+        customerOptions.value = response.rows.map((item: any) => ({
+          customerId: item.customerId,
+          customerName: item.customerName,
+        }))
+        customerLoading.value = false
+      })
   } else {
     customerOptions.value = []
   }
@@ -1079,7 +1091,6 @@ function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''
   traceDrawerVisible.value = true
 }
-
 </script>
 
 <style scoped>
