@@ -114,7 +114,7 @@ const getFormOptions = () => {
       span: 12,
     },
     {
-      prop: 'detail',
+      prop: 'bizStatus',
       label: '业务状态',
       type: 'input',
       readonly: true,
@@ -210,7 +210,7 @@ const tableOptions: TableOptions[] = [
       return new Date(row.createTime).toLocaleString('zh-CN')
     },
   },
-  { label: '业务状态', prop: 'detail', width: 100 },
+  { label: '业务状态', prop: 'bizStatus', width: 100 },
   { label: '追踪ID', prop: 'traceId', width: 180 },
   { label: '耗时(ms)', prop: 'costTime', width: 90, align: 'center' },
 ]

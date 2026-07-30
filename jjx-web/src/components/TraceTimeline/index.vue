@@ -23,7 +23,7 @@
     <!-- 平铺表格 -->
     <el-table v-else :data="flatOps" size="small" stripe border>
       <el-table-column prop="time" label="时间" width="160" />
-      <el-table-column prop="detail" label="状态" width="100" />
+      <el-table-column prop="bizStatus" label="状态" width="100" />
       <el-table-column prop="module" label="模块" width="120" />
       <el-table-column label="操作" min-width="180">
         <template #default="scope">
