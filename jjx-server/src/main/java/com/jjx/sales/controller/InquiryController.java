@@ -58,6 +58,7 @@ public class InquiryController extends BaseController {
     @SaCheckPermission("sales:inquiry:add")
     @PostMapping
     public Result<Void> add(@Validated @RequestBody SalesInquiry inquiry) {
+
         return toAjax(inquiryService.insertInquiry(inquiry));
     }
 
@@ -115,6 +116,5 @@ public class InquiryController extends BaseController {
         // 简版导出提示，后续可完善为真实导出
         return Result.success("导出功能待完善");
     }
-
 
 }

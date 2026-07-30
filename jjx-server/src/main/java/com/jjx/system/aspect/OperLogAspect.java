@@ -101,6 +101,7 @@ public class OperLogAspect {
             operLog.setBizId(bizId);
             operLog.setBizType(bizType);
             operLog.setTraceId(traceId);
+            operLog.setBizStatus(logAnnotation.bizStatus());
 
             if (result instanceof Result<?> resultObj) {
                 if (resultObj.getCode() == 200) {

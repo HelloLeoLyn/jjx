@@ -25,7 +25,7 @@ public class SysOperLog {
     private String bizType;
     private String bizId;
     private String traceId;
-    private String detail;
+    private Integer bizStatus;
 
     private Long costTime;
     private Integer status;

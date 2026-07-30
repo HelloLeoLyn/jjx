@@ -8,9 +8,12 @@ import java.lang.annotation.*;
 @Documented
 public @interface Log {
     String module() default "";
+
     BusinessType businessType() default BusinessType.OTHER;
+
     boolean saveParam() default true;
-    String[] excludeParamNames() default {"password", "pwd", "token"};
+
+    String[] excludeParamNames() default { "password", "pwd", "token" };
 
     /**
      * 业务ID SpEL表达式，从参数或返回值中提取
@@ -30,4 +33,10 @@ public @interface Log {
      * 如: "#inquiry.traceId" 或 "#result.data.traceId"
      */
     String traceId() default "";
+
+    /**
+     * 业务状态值，如 draft / converted / approved
+     * 对应实体中的 *Status 字段值
+     */
+    int bizStatus() default 0;
 }
