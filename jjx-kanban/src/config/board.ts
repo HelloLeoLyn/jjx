@@ -105,4 +105,32 @@ export const boardTemplates: BoardTemplate[] = [
       },
     ],
   },
+
+  {
+    type: 'dev',
+    name: '开发任务',
+    icon: 'Tools',
+    views: [
+      {
+        id: 'priority',
+        name: '优先级视图',
+        groupBy: 'priority',
+        columns: [
+          { id: 'p0', label: 'P0 紧急', color: '#f56c6c', filterValue: 'urgent' },
+          { id: 'p1', label: 'P1 高', color: '#e6a23c', filterValue: 'high' },
+          { id: 'p2', label: 'P2 中', color: '#409eff', filterValue: 'normal' },
+          { id: 'p3', label: 'P3 低', color: '#909399', filterValue: 'low' },
+        ],
+      },
+      {
+        id: 'status',
+        name: '状态视图',
+        groupBy: 'status',
+        columns: [
+          { id: 'todo', label: '待处理', color: '#f59e0b', filterValue: 'pending' },
+          { id: 'done', label: '已完成', color: '#10b981', filterValue: 'completed' },
+        ],
+      },
+    ],
+  },
 ]

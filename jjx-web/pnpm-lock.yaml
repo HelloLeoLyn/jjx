@@ -39,8 +39,8 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
       sortablejs:
-        specifier: ^1.15.7
-        version: 1.15.7
+        specifier: 1.14.0
+        version: 1.14.0
       vue:
         specifier: ^3.4.0
         version: 3.5.32(typescript@5.3.3)
@@ -54,8 +54,8 @@ importers:
         specifier: ^4.6.4
         version: 4.6.4(vue@3.5.32(typescript@5.3.3))
       vuedraggable:
-        specifier: ^2.24.3
-        version: 2.24.3
+        specifier: 4.1.0
+        version: 4.1.0(vue@3.5.32(typescript@5.3.3))
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
@@ -2080,11 +2080,8 @@ packages:
     resolution: {integrity: sha512-FtyOnWN/wCHTVXOMwvSv26d+ko5vWlIDD6zoUJ7LW8vh+ZBC8QdljveRP+crNrtBwioEUWy/4dMtbBjA4ioNlg==}
     engines: {node: '>=0.10.0'}
 
-  sortablejs@1.10.2:
-    resolution: {integrity: sha512-YkPGufevysvfwn5rfdlGyrGjt7/CRHwvRPogD/lC+TnvcN29jDpCifKP+rBqf+LRldfXSTh+0CGLcSg0VIxq3A==}
-
-  sortablejs@1.15.7:
-    resolution: {integrity: sha512-Kk8wLQPlS+yi1ZEf48a4+fzHa4yxjC30M/Sr2AnQu+f/MPwvvX9XjZ6OWejiz8crBsLwSq8GHqaxaET7u6ux0A==}
+  sortablejs@1.14.0:
+    resolution: {integrity: sha512-pBXvQCs5/33fdN1/39pPL0NZF20LeRbLQ5jtnheIPN9JQAaufGjKdWduZn4U7wCtVuzKhmRkI0DFYHYRbB2H1w==}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -2425,8 +2422,10 @@ packages:
       typescript:
         optional: true
 
-  vuedraggable@2.24.3:
-    resolution: {integrity: sha512-6/HDXi92GzB+Hcs9fC6PAAozK1RLt1ewPTLjK0anTYguXLAeySDmcnqE8IC0xa7shvSzRjQXq3/+dsZ7ETGF3g==}
+  vuedraggable@4.1.0:
+    resolution: {integrity: sha512-FU5HCWBmsf20GpP3eudURW3WdWTKIbEIQxh9/8GE806hydR9qZqRRxRE3RjqX7PkuLuMQG/A7n3cfj9rCEchww==}
+    peerDependencies:
+      vue: ^3.0.1
 
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
@@ -4601,9 +4600,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  sortablejs@1.10.2: {}
-
-  sortablejs@1.15.7: {}
+  sortablejs@1.14.0: {}
 
   source-map-js@1.2.1: {}
 
@@ -4988,9 +4985,10 @@ snapshots:
     optionalDependencies:
       typescript: 5.3.3
 
-  vuedraggable@2.24.3:
+  vuedraggable@4.1.0(vue@3.5.32(typescript@5.3.3)):
     dependencies:
-      sortablejs: 1.10.2
+      sortablejs: 1.14.0
+      vue: 3.5.32(typescript@5.3.3)
 
   webpack-virtual-modules@0.6.2: {}
 

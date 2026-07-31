@@ -51,7 +51,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         if (query.getCustomerId() != null) {
             wrapper.eq(ProductInstance::getCustomerId, query.getCustomerId());
         }
-        if (query.getInstanceStatus() != null && !query.getInstanceStatus().isEmpty()) {
+        if (query.getInstanceStatus() != null) {
             wrapper.eq(ProductInstance::getInstanceStatus, query.getInstanceStatus());
         }
         return wrapper;
@@ -85,8 +85,8 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         }
 
         // 设置默认状态
-        if (instance.getInstanceStatus() == null || instance.getInstanceStatus().isEmpty()) {
-            instance.setInstanceStatus("created");
+        if (instance.getInstanceStatus() == null) {
+            instance.setInstanceStatus(1);
         }
 
         return productInstanceMapper.insert(instance) > 0;
@@ -116,7 +116,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean updateInstanceStatus(Long instanceId, String status) {
+    public boolean updateInstanceStatus(Long instanceId, Integer status) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
         if (instance == null) {
             return false;
@@ -141,11 +141,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         }
 
         // 检查是否可以开始生产
-        if (!"created".equals(instance.getInstanceStatus()) && !"planned".equals(instance.getInstanceStatus())) {
+        if (!Integer.valueOf(1).equals(instance.getInstanceStatus()) && !Integer.valueOf(2).equals(instance.getInstanceStatus())) {
             throw new BusinessException(BusinessExceptionEnum.OPERATION_NOT_ALLOWED);
         }
 
-        instance.setInstanceStatus("in_production");
+        instance.setInstanceStatus(3);
 //        instance.setProductionStartTime(new java.util.Date());
 //        return productInstanceMapper.update(instance) > 0;
         return false;
@@ -160,11 +160,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         }
 
         // 检查是否可以完成生产
-        if (!"in_production".equals(instance.getInstanceStatus())) {
+        if (!Integer.valueOf(3).equals(instance.getInstanceStatus())) {
             throw new BusinessException(BusinessExceptionEnum.OPERATION_NOT_ALLOWED);
         }
 
-        instance.setInstanceStatus("completed");
+        instance.setInstanceStatus(5);
 //        instance.setProductionEndTime(new java.util.Date());
 //        return productInstanceMapper.update(instance) > 0;
         return false;
@@ -179,11 +179,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         }
 
         // 检查是否可以交付
-        if (!"completed".equals(instance.getInstanceStatus())) {
+        if (!Integer.valueOf(5).equals(instance.getInstanceStatus())) {
             throw new BusinessException(BusinessExceptionEnum.OPERATION_NOT_ALLOWED);
         }
 
-        instance.setInstanceStatus("delivered");
+        instance.setInstanceStatus(9);
 //        instance.setDeliveryTime(new java.util.Date());
 //        productCategoryMapper.update(category) > 0
         return false;
@@ -230,20 +230,20 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     /**
      * 验证状态转换是否合法
      */
-    private static boolean isValidStatusTransition(String currentStatus, String newStatus) {
+    private static boolean isValidStatusTransition(Integer currentStatus, Integer newStatus) {
         // 定义合法的状态转换
         switch (currentStatus) {
-            case "created":
-                return "planned".equals(newStatus) || "in_production".equals(newStatus) || "cancelled".equals(newStatus);
-            case "planned":
-                return "in_production".equals(newStatus) || "cancelled".equals(newStatus);
-            case "in_production":
-                return "completed".equals(newStatus) || "cancelled".equals(newStatus);
-            case "completed":
-                return "delivered".equals(newStatus);
-            case "delivered":
+            case 1: // created
+                return Integer.valueOf(2).equals(newStatus) || Integer.valueOf(3).equals(newStatus) || Integer.valueOf(17).equals(newStatus);
+            case 2: // planned
+                return Integer.valueOf(3).equals(newStatus) || Integer.valueOf(17).equals(newStatus);
+            case 3: // in_production
+                return Integer.valueOf(5).equals(newStatus) || Integer.valueOf(17).equals(newStatus);
+            case 5: // completed
+                return Integer.valueOf(9).equals(newStatus);
+            case 9: // delivered
                 return false; // 已交付状态不能再转换
-            case "cancelled":
+            case 17: // cancelled
                 return false; // 已取消状态不能再转换
             default:
                 return false;

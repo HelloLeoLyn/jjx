@@ -72,7 +72,7 @@ public interface InventoryTransferService extends IService<InventoryTransferOrde
     /**
      * 更新调拨单状态
      */
-    boolean updateStatus(Long transferId, String status);
+    boolean updateStatus(Long transferId, Integer status);
 
     /**
      * 分页查询调拨单（旧方法，兼容性）

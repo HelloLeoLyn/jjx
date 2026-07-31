@@ -99,35 +99,35 @@ const emit = defineEmits<Emits>()
 const canBatchApprove = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderType === 'plan' && row.orderStatus === 'pending_approval'
+    (row) => row.orderType === 'plan' && row.orderStatus === 1
   )
 })
 
 const canBatchStart = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderType === 'work_order' && row.orderStatus === 'scheduled'
+    (row) => row.orderType === 'work_order' && row.orderStatus === 4
   )
 })
 
 const canBatchComplete = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderType === 'work_order' && row.orderStatus === 'in_progress'
+    (row) => row.orderType === 'work_order' && row.orderStatus === 6
   )
 })
 
 const canBatchCancel = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderStatus !== 'completed' && row.orderStatus !== 'cancelled'
+    (row) => row.orderStatus !== 8 && row.orderStatus !== 9
   )
 })
 
 const canBatchDelete = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderStatus === 'draft' || row.orderStatus === 'cancelled'
+    (row) => row.orderStatus === 0 || row.orderStatus === 9
   )
 })
 

@@ -74,8 +74,8 @@ public class SalesInquiry extends BaseEntity {
     /** 是否有图纸文件 */
     private Integer hasDrawing;
 
-    /** 状态: draft/pending/sent/accepted/rejected/converted */
-    private String inquiryStatus;
+    /** 状态: 0草稿/1待处理/2已发送/3已转报价/4已确认/5已拒绝/6已过期 */
+    private Integer inquiryStatus;
 
     /** 询价类型: 1标准品 2样品 */
     private Integer inquiryType;

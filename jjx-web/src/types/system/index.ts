@@ -383,6 +383,28 @@ export interface SysDictData {
 // 字典类型别名，用于向后兼容
 export type SysDict = SysDictType
 
+// 事件配置
+export interface SysEventConfig {
+  eventId?: number
+  eventCode: string
+  eventName: string
+  bizModule?: string
+  /** notification / task / both */
+  eventType?: string
+  /** 看板模块: office/emergency/production/dev */
+  kanbanModule?: string
+  /** 任务优先级: urgent/high/normal/low */
+  priority?: string
+  isEnabled?: number
+  /** 角色ID列表 JSON: [7, 8] */
+  targetRole?: string
+  title?: string
+  content?: string
+  excludeTrigger?: number
+  createTime?: string
+  updateTime?: string
+}
+
 // 日志相关类型
 export * from './operation-log'
 export * from './login-log'

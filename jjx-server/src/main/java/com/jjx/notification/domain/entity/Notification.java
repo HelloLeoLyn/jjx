@@ -23,7 +23,7 @@ public class Notification {
     private Integer isRead;
     private LocalDateTime readTime;
     private String priority;
-    private String status;
+    private Integer status;
     private String failReason;
     private LocalDateTime sendTime;
     private LocalDateTime createTime;

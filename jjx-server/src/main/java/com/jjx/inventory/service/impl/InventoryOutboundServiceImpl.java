@@ -117,7 +117,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
         order.setSourceNo((String) params.get("sourceNo"));
         if (params.get("warehouseId") != null) order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
-        order.setOrderStatus("pending");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.insert(order);
         return order.getOutboundId();
     }
@@ -131,7 +131,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        if (!"pending".equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
             log.error("出库单状态不正确，无法确认: outboundId={}, status={}", outboundId, order.getOrderStatus());
             return false;
         }
@@ -190,7 +190,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         } catch (Exception e) {
             log.warn("安全库存检查失败: {}", e.getMessage());
         }
-        order.setOrderStatus("completed");
+        order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
         return outboundOrderMapper.updateById(order) > 0;
     }
 
@@ -203,12 +203,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        if ("completed".equals(order.getOrderStatus())) {
+        if (OrderStatusEnum.COMPLETED.getCode().equals(order.getOrderStatus())) {
             log.error("已完成的出库单无法取消: outboundId={}", outboundId);
             return false;
         }
 
-        order.setOrderStatus("cancelled");
+        order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
         order.setRemark(reason);
         return outboundOrderMapper.updateById(order) > 0;
     }
@@ -221,7 +221,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        order.setOrderStatus("pending_approval");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         return outboundOrderMapper.updateById(order) > 0;
     }
 
@@ -234,7 +234,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        if (!"pending_approval".equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
             log.error("出库单状态不正确，无法审批: outboundId={}, status={}", outboundId, order.getOrderStatus());
             return false;
         }
@@ -286,7 +286,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             transactionMapper.insert(tx);
         }
 
-        order.setOrderStatus("approved");
+        order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
         return outboundOrderMapper.updateById(order) > 0;
     }
 
@@ -298,7 +298,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        if (!"pending_approval".equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
             log.error("出库单状态不正确，无法驳回: outboundId={}, status={}", outboundId, order.getOrderStatus());
             return false;
         }
@@ -360,7 +360,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceType("PRODUCTION");
         order.setSourceId(workOrderId);
         order.setSourceNo(prodOrder.getOrderNo());
-        order.setOrderStatus("draft");
+        order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         outboundOrderMapper.insert(order);
 
         // 5. 创建出库单明细
@@ -389,7 +389,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         // 6. 提交审批并自动审批
-        order.setOrderStatus("pending_approval");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.updateById(order);
         approve(order.getOutboundId(), null, null, "生产自动领料");
 
@@ -432,7 +432,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceType("SALES");
         order.setSourceId(salesOrderId);
         order.setSourceNo(salesOrder.getOrderNo());
-        order.setOrderStatus("draft");
+        order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         outboundOrderMapper.insert(order);
 
         // 4. 创建出库单明细
@@ -450,7 +450,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         // 5. 提交审批并自动审批
-        order.setOrderStatus("pending_approval");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.updateById(order);
         approve(order.getOutboundId(), null, null, "销售发货出库");
 
@@ -462,7 +462,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     public List<OutboundVO> getPendingApproval() {
         List<InventoryOutboundOrder> orders = outboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryOutboundOrder>()
-                        .eq(InventoryOutboundOrder::getOrderStatus, "pending_approval")
+                        .eq(InventoryOutboundOrder::getOrderStatus, OrderStatusEnum.PENDING.getCode())
                         .orderByAsc(InventoryOutboundOrder::getCreateTime)
         );
         return convertToVOList(orders);
@@ -493,7 +493,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
-    public boolean updateStatus(Long outboundId, String status) {
+    public boolean updateStatus(Long outboundId, Integer status) {
         InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);

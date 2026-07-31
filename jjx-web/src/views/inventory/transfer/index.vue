@@ -30,10 +30,10 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="待调拨" value="draft" />
-            <el-option label="调拨中" value="in_progress" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="已取消" value="cancelled" />
+            <el-option label="待调拨" :value="0" />
+            <el-option label="调拨中" :value="12" />
+            <el-option label="已完成" :value="10" />
+            <el-option label="已取消" :value="9" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -97,14 +97,14 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
-            <el-button v-if="row.status === 'draft'" link type="primary" @click="handleEdit(row)"
+            <el-button v-if="row.status === 0" link type="primary" @click="handleEdit(row)"
               >编辑</el-button
             >
-            <el-button v-if="row.status === 'draft'" link type="success" @click="handleStart(row)"
+            <el-button v-if="row.status === 0" link type="success" @click="handleStart(row)"
               >开始调拨</el-button
             >
             <el-button
-              v-if="row.status === 'in_progress'"
+              v-if="row.status === 12"
               link
               type="warning"
               @click="handleComplete(row)"
@@ -165,7 +165,7 @@ const mockTransferData = [
     toWarehouseName: '成品仓库',
     totalQuantity: 100,
     totalAmount: 5000,
-    status: 'completed',
+    status: 10,
     statusName: '已完成',
     createBy: '张三',
     createTime: '2024-03-28 10:00:00',
@@ -185,7 +185,7 @@ const mockTransferData = [
     toLocationName: 'B01库位',
     totalQuantity: 50,
     totalAmount: 2500,
-    status: 'in_progress',
+    status: 12,
     statusName: '调拨中',
     createBy: '李四',
     createTime: '2024-03-28 11:00:00',
@@ -201,7 +201,7 @@ const mockTransferData = [
     toWarehouseName: '原材料仓库',
     totalQuantity: 30,
     totalAmount: 1500,
-    status: 'draft',
+    status: 0,
     statusName: '待调拨',
     createBy: '王五',
     createTime: '2024-03-28 12:00:00',
@@ -309,12 +309,12 @@ const getTransferTypeTag = (
 }
 
 // 获取状态标签样式
-const getStatusTag = (status: string): 'success' | 'warning' | 'info' | 'danger' | undefined => {
-  const statusMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    draft: 'info',
-    in_progress: 'warning',
-    completed: 'success',
-    cancelled: 'danger',
+const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
+  const statusMap: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
+    0: 'info',     // draft
+    12: 'warning', // in_progress
+    10: 'success', // completed
+    9: 'danger',   // cancelled
   }
   return statusMap[status]
 }

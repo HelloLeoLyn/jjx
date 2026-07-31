@@ -76,7 +76,7 @@ public interface IQuotationService {
      * @param status 报价单状态
      * @return 结果
      */
-    int updateQuotationStatus(Long quotationId, String status);
+    int updateQuotationStatus(Long quotationId, Integer status);
 
     /**
      * 发送报价单给客户

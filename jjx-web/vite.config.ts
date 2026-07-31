@@ -65,6 +65,15 @@ export default defineConfig(({ command, mode }) => {
           target: 'http://localhost:8080',
           changeOrigin: true,
         },
+        '/kanban/board': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+        },
+        '/dev-tasks': {
+          target: 'http://localhost:8899',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/dev-tasks/, ''),
+        },
       },
     },
     css: {

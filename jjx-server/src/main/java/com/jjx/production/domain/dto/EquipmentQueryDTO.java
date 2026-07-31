@@ -8,5 +8,5 @@ public class EquipmentQueryDTO extends PageQuery {
     private String equipmentNo;
     private String equipmentName;
     private String equipmentType;
-    private String status;
+    private Integer status;
 }

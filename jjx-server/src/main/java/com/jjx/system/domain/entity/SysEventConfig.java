@@ -14,6 +14,10 @@ public class SysEventConfig {
     private String bizModule;
     /** notification / task / both */
     private String eventType;
+    /** 看板模块: office/emergency/production/dev */
+    private String kanbanModule;
+    /** 任务优先级: urgent/high/normal/low */
+    private String priority;
     private Integer isEnabled;
     /** 角色ID列表 JSON: [7, 8] */
     private String targetRole;

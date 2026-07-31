@@ -11,6 +11,22 @@ const eventTypeOptions = [
   { value: 'both', label: '通知+任务' },
 ]
 
+// 看板模块选项
+const kanbanModuleOptions = [
+  { value: 'office', label: '办公室任务' },
+  { value: 'emergency', label: '紧急任务' },
+  { value: 'production', label: '生产工单' },
+  { value: 'dev', label: '开发任务' },
+]
+
+// 任务优先级选项
+const priorityOptions = [
+  { value: 'urgent', label: '紧急' },
+  { value: 'high', label: '高' },
+  { value: 'normal', label: '普通' },
+  { value: 'low', label: '低' },
+]
+
 // 启用状态选项
 const enabledOptions = [
   { value: 1, label: '启用' },
@@ -63,6 +79,20 @@ export const tableOptions: TableOptions[] = [
     label: '类型',
     width: 100,
     align: 'center',
+  },
+  {
+    prop: 'kanbanModule',
+    label: '看板模块',
+    width: 100,
+    align: 'center',
+    formatter: (row: any) => kanbanModuleOptions.find(o => o.value === row.kanbanModule)?.label ?? row.kanbanModule ?? '-',
+  },
+  {
+    prop: 'priority',
+    label: '优先级',
+    width: 80,
+    align: 'center',
+    formatter: (row: any) => priorityOptions.find(o => o.value === row.priority)?.label ?? row.priority ?? '-',
   },
   {
     prop: 'targetRole',

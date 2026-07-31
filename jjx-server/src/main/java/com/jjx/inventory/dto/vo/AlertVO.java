@@ -41,7 +41,7 @@ public class AlertVO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime alertTime;
 
-    private String status;
+    private Integer status;
     private String statusName;
     private String processedBy;
 

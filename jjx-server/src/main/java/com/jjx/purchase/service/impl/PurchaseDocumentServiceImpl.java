@@ -59,7 +59,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             if (dto.getSupplierId() != null) {
                 wrapper.eq(PurchaseDocument::getSupplierId, dto.getSupplierId());
             }
-            if (StringUtils.isNotEmpty(dto.getDocumentStatus())) {
+            if (dto.getDocumentStatus() != null) {
                 wrapper.eq(PurchaseDocument::getDocumentStatus, dto.getDocumentStatus());
             }
         }

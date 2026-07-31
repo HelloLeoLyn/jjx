@@ -132,13 +132,13 @@
               type="primary"
               icon="Edit"
               @click="handleUpdate(scope.row)"
-              :disabled="scope.row.inquiryStatus === 'converted'"
+              :disabled="scope.row.inquiryStatus === 3"
               >编辑</el-button
             >
             <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
               >查看流水</el-button
             >
-            <template v-if="scope.row.inquiryStatus === 'converted'">
+            <template v-if="scope.row.inquiryStatus === 3">
               <el-button link type="success" icon="Link" @click="gotoQuotation(scope.row)"
                 >查看报价</el-button
               >
@@ -532,7 +532,7 @@ const form = reactive({
   connectorRequirements: '',
   specialRequirements: '',
   hasDrawing: 0,
-  inquiryStatus: 'draft',
+  inquiryStatus: 0,
   inquiryType: 1,
   remark: '',
   salesPersonId: undefined as number | undefined,
@@ -711,20 +711,21 @@ const pendingUploads = ref<Array<{ file: File }>>([])
 const detailAttachments = ref<any[]>([])
 
 // ==================== 状态映射 ====================
-const statusMap: Record<string, { label: string; type: string }> = {
-  draft: { label: '草稿', type: 'info' },
-  pending: { label: '待处理', type: 'warning' },
-  sent: { label: '已发送', type: 'primary' },
-  accepted: { label: '已确认', type: 'success' },
-  rejected: { label: '已拒绝', type: 'danger' },
-  converted: { label: '已转报价', type: '' },
+const statusMap: Record<number, { label: string; type: string }> = {
+  0: { label: '草稿', type: 'info' },
+  1: { label: '待处理', type: 'warning' },
+  2: { label: '已发送', type: 'primary' },
+  3: { label: '已转报价', type: 'success' },
+  4: { label: '已确认', type: 'success' },
+  5: { label: '已拒绝', type: 'danger' },
+  6: { label: '已过期', type: 'info' },
 }
 
-function statusLabel(status: string): string {
-  return statusMap[status]?.label || status
+function statusLabel(status: number): string {
+  return statusMap[status]?.label || String(status ?? '')
 }
 
-function statusTagType(status: string): string {
+function statusTagType(status: number): string {
   return statusMap[status]?.type || 'info'
 }
 
@@ -845,7 +846,7 @@ function handleDetail(row: any) {
 
 // 转报价
 function handleConvert(row: any) {
-  if (row.inquiryStatus === 'converted') {
+  if (row.inquiryStatus === 3) {
     ElMessage.warning('该询价单已转换')
     return
   }
@@ -906,7 +907,7 @@ function resetForm() {
     connectorRequirements: '',
     specialRequirements: '',
     hasDrawing: 0,
-    inquiryStatus: 'draft',
+    inquiryStatus: 0,
     remark: '',
     salesPersonId: undefined,
     salesPersonName: '',

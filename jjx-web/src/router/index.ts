@@ -86,6 +86,32 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  // 任务看板（jjx-kanban 合并）放在首页下面
+  // ⚠️ name 不能叫 Kanban：数据库“车间看板”菜单 path=kanban 会自动生成同名路由，addRoute 会覆盖静态路由
+  {
+    path: '/kanban',
+    name: 'TaskKanban',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/kanban/index',
+    meta: {
+      title: '任务看板',
+      icon: 'DataBoard',
+      hidden: false,
+      sort: 1,
+    },
+    children: [
+      {
+        path: 'index',
+        name: 'TaskKanbanIndex',
+        component: () => import('@/views/kanban/index.vue'),
+        meta: {
+          title: '任务看板',
+          icon: 'DataBoard',
+          hidden: true,
+        },
+      },
+    ],
+  },
 ]
 
 const router = createRouter({

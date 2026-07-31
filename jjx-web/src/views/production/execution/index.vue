@@ -39,11 +39,11 @@
             clearable
             style="width: 200px"
           >
-            <el-option label="待执行" value="PENDING" />
-            <el-option label="执行中" value="IN_PROGRESS" />
-            <el-option label="已完成" value="COMPLETED" />
-            <el-option label="已暂停" value="PAUSED" />
-            <el-option label="已取消" value="CANCELLED" />
+            <el-option label="待执行" :value="0" />
+            <el-option label="执行中" :value="2" />
+            <el-option label="已完成" :value="4" />
+            <el-option label="已暂停" :value="3" />
+            <el-option label="已取消" :value="6" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -93,7 +93,7 @@
               link
               icon="PlayCircle"
               @click="handleStart(scope.row)"
-              v-if="scope.row.executionStatus === 'PENDING'"
+              v-if="scope.row.executionStatus === 0"
               >开始</el-button
             >
             <el-button
@@ -101,7 +101,7 @@
               link
               icon="Pause"
               @click="handlePause(scope.row)"
-              v-if="scope.row.executionStatus === 'IN_PROGRESS'"
+              v-if="scope.row.executionStatus === 2"
               >暂停</el-button
             >
             <el-button
@@ -109,7 +109,7 @@
               link
               icon="Check"
               @click="handleComplete(scope.row)"
-              v-if="scope.row.executionStatus === 'IN_PROGRESS'"
+              v-if="scope.row.executionStatus === 2"
               >完成</el-button
             >
             <el-button type="primary" link icon="View" @click="handleView(scope.row)"
@@ -123,7 +123,7 @@
               link
               icon="WarningFilled"
               @click="handleQualityCheck(scope.row)"
-              v-if="scope.row.executionStatus === 'IN_PROGRESS' || scope.row.executionStatus === 'COMPLETED'"
+              v-if="scope.row.executionStatus === 2 || scope.row.executionStatus === 4"
               >质检</el-button
             >
           </template>
@@ -563,16 +563,16 @@ function formatJson(json: string | null) {
 }
 
 function getStatusTagType(
-  status: string | undefined
+  status: number | undefined
 ): 'primary' | 'success' | 'warning' | 'info' | 'danger' | undefined {
-  const map: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    PENDING: 'info',
-    IN_PROGRESS: 'warning',
-    COMPLETED: 'success',
-    PAUSED: 'danger',
-    CANCELLED: 'info',
+  const map: Record<number, 'primary' | 'success' | 'warning' | 'info' | 'danger' | undefined> = {
+    0: 'info',    // 待执行
+    2: 'warning', // 执行中
+    4: 'success', // 已完成
+    3: 'danger',  // 已暂停
+    6: 'info',    // 已取消
   }
-  return map[status ?? ''] ?? undefined
+  return map[status ?? -1] ?? undefined
 }
 
 onMounted(() => {

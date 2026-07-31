@@ -66,7 +66,7 @@ public class InventoryAlertLog extends BaseEntity {
     private LocalDateTime alertTime;
 
     /** 处理状态：new新预警/read已读/processed已处理/ignored已忽略 */
-    private String status;
+    private Integer status;
 
     /** 处理人 */
     private String processedBy;

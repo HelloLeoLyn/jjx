@@ -145,6 +145,29 @@
 
         <el-row :gutter="20">
           <el-col :span="12">
+            <el-form-item label="看板模块" prop="kanbanModule">
+              <el-select v-model="form.kanbanModule" placeholder="任务进入哪个看板" style="width:100%">
+                <el-option label="办公室任务" value="office" />
+                <el-option label="紧急任务" value="emergency" />
+                <el-option label="生产工单" value="production" />
+                <el-option label="开发任务" value="dev" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="优先级" prop="priority">
+              <el-select v-model="form.priority" placeholder="任务优先级" style="width:100%">
+                <el-option label="紧急" value="urgent" />
+                <el-option label="高" value="high" />
+                <el-option label="普通" value="normal" />
+                <el-option label="低" value="low" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
             <el-form-item label="目标角色" prop="targetRole">
               <el-input v-model="form.targetRole" placeholder='如: [7, 8]' />
             </el-form-item>
@@ -226,6 +249,8 @@ const form = reactive({
   eventName: '',
   bizModule: '',
   eventType: 'notification',
+  kanbanModule: 'office',
+  priority: 'normal',
   isEnabled: 1,
   targetRole: '',
   title: '',
@@ -280,7 +305,7 @@ function handleToolbarClick(key: string) {
 // 新增
 function handleAdd() {
   dialogTitle.value = '新增事件配置'
-  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', isEnabled: 1, targetRole: '', title: '', content: '', excludeTrigger: 0 })
+  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'office', priority: 'normal', isEnabled: 1, targetRole: '', title: '', content: '', excludeTrigger: 0 })
   dialogVisible.value = true
 }
 

@@ -70,7 +70,7 @@ public class PurchaseDocumentDTO {
      * 票据状态（pending待处理/verified已核验/archived已归档）
      */
     @Pattern(regexp = "^(pending|verified|archived)$", message = "票据状态不正确")
-    private String documentStatus;
+    private Integer documentStatus;
 
     /**
      * 核验日期

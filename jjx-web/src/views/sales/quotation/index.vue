@@ -561,7 +561,7 @@ const queryParams = reactive({
   pageSize: 10,
   quotationNo: undefined as string | undefined,
   customerName: undefined as string | undefined,
-  quotationStatus: undefined as string | undefined,
+  quotationStatus: undefined as number | undefined,
   startDate: undefined as string | undefined,
   endDate: undefined as string | undefined,
   orderByColumn: undefined as string | undefined,
@@ -584,7 +584,7 @@ const form = reactive({
   totalAmount: 0,
   discountAmount: 0,
   finalAmount: 0,
-  quotationStatus: 'draft',
+  quotationStatus: 0,
   salesPersonId: undefined as number | undefined,
   salesPersonName: '',
   remark: '',
@@ -614,7 +614,7 @@ const detail = reactive({
   totalAmount: 0,
   discountAmount: 0,
   finalAmount: 0,
-  quotationStatus: 'draft',
+  quotationStatus: 0,
   salesPersonId: undefined as number | undefined,
   salesPersonName: '',
   remark: '',
@@ -654,11 +654,13 @@ const quotationFormRef = ref<FormInstance>()
 
 // 字典选项
 const quotationStatusOptions = ref([
-  { value: 'draft', label: '草稿' },
-  { value: 'sent', label: '已发送' },
-  { value: 'accepted', label: '已接受' },
-  { value: 'rejected', label: '已拒绝' },
-  { value: 'expired', label: '已过期' },
+  { value: 0, label: '草稿' },
+  { value: 1, label: '已发送' },
+  { value: 2, label: '已确认' },
+  { value: 3, label: '已拒绝' },
+  { value: 4, label: '已过期' },
+  { value: 5, label: '待审核' },
+  { value: 6, label: '已审核' },
 ])
 
 const currencyOptions = ref([
@@ -1002,7 +1004,7 @@ const resetForm = () => {
     totalAmount: 0,
     discountAmount: 0,
     finalAmount: 0,
-    quotationStatus: 'draft',
+    quotationStatus: 0,
     salesPersonId: undefined,
     salesPersonName: '',
     remark: '',
@@ -1062,25 +1064,29 @@ const cancel = () => {
 }
 
 // 获取状态标签类型
-const getStatusTagType = (status: string) => {
+const getStatusTagType = (status: number) => {
   switch (status) {
-    case 'draft':
+    case 0:
       return 'info'
-    case 'sent':
+    case 1:
       return 'warning'
-    case 'accepted':
+    case 2:
       return 'success'
-    case 'rejected':
+    case 3:
       return 'danger'
-    case 'expired':
+    case 4:
       return 'info'
+    case 5:
+      return 'warning'
+    case 6:
+      return 'primary'
     default:
       return 'info'
   }
 }
 
 // 获取状态标签文本
-const getStatusLabel = (status: string) => {
+const getStatusLabel = (status: number) => {
   const option = quotationStatusOptions.value.find((opt) => opt.value === status)
   return option ? option.label : '未知状态'
 }

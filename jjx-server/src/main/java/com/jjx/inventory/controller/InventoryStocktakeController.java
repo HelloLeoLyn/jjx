@@ -137,7 +137,7 @@ public class InventoryStocktakeController {
     @Log(module = "盘点管理", businessType = BusinessType.UPDATE)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> updateStatus(@PathVariable Long stocktakeId,
-                                        @RequestParam String status) {
+                                        @RequestParam Integer status) {
         return Result.success(stocktakeService.updateStatus(stocktakeId, status));
     }
 

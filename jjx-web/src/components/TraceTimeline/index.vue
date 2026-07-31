@@ -23,15 +23,15 @@
     <!-- 平铺表格 -->
     <el-table v-else :data="flatOps" size="small" stripe border>
       <el-table-column prop="time" label="时间" width="160" />
-      <el-table-column label="状态" width="100">
+      <el-table-column label="状态" width="110">
         <template #default="scope">
-          {{ formatBizStatus(scope.row.bizStatus, scope.row.bizType) }}-{{ scope.row.bizStatus }}
+          {{ formatBizStatus(scope.row.bizStatus, scope.row.bizType) }}
         </template>
       </el-table-column>
       <el-table-column prop="module" label="模块" width="120" />
       <el-table-column label="操作" min-width="180">
         <template #default="scope">
-          {{  formatBusinessType(scope.row.businessType) }}-{{ scope.row.businessType }}
+          {{ formatBusinessType(scope.row.businessType) }}
         </template>
       </el-table-column>
       <el-table-column prop="operator" label="操作人" width="80" />
@@ -93,26 +93,46 @@ function formatBusinessType(code: number): string {
     1: '新增', 2: '修改', 3: '删除', 4: '导出', 5: '导入',
     6: '审批', 7: '登录', 8: '登出', 9: '其他', 10: '重置密码', 11: '转换',
   }
-  return map[code] ?? ''
+  return map[code] ?? String(code ?? '')
 }
 
-/** 按模块显示业务状态名 */
-function formatBizStatus(code: number, module: string): string {
-  if (code == null) return ''
-  const mod = module || ''
-  if (mod.includes('inquiry')) {
-    const m: Record<number, string> = { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已转报价', 4:'已确认', 5:'已拒绝', 6:'已过期' }
-    return m[code] ?? String(code)
+/**
+ * 业务码 → 状态码枚举 映射表
+ * 根据 @Log#bizType（业务码）找到对应业务的状态码枚举，
+ * 再用 bizStatus 查状态名。与后端各 StatusEnum 对齐。
+ */
+const BIZ_STATUS_MAP: Record<string, Record<number, string>> = {
+  // 销售询价单 InquiryStatus
+  inquiry: { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已转报价', 4:'已确认', 5:'已拒绝', 6:'已过期' },
+  // 报价单
+  quotation: { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已报价', 4:'已确认', 5:'已拒绝', 6:'已过期' },
+  // 销售订单 OrderStatusEnum
+  order: { 1:'草稿', 2:'待审核', 3:'审核中', 4:'已审核', 5:'已驳回', 6:'已确认', 7:'生产中', 8:'已发货', 9:'已完成', 10:'已取消' },
+  sales_order: { 1:'草稿', 2:'待审核', 3:'审核中', 4:'已审核', 5:'已驳回', 6:'已确认', 7:'生产中', 8:'已发货', 9:'已完成', 10:'已取消' },
+  // 样品订单 SampleOrderStatusEnum
+  sample: { 1:'样品需求已创建', 2:'待审核', 3:'工程打样中', 4:'样品待送样', 5:'已送样待确认', 6:'样品确认', 7:'已转量产', 8:'已关闭', 9:'客户退回', 10:'已取消' },
+  // 采购订单 PurchaseOrderStatusEnum
+  purchase: { 0:'草稿', 1:'询价中', 2:'比价中', 3:'已提交', 4:'已批准', 5:'执行中', 6:'已完成', 7:'已关闭' },
+  // 生产订单（production OrderStatusEnum）
+  production: { 0:'草稿', 1:'待审核', 2:'已审核', 3:'已驳回', 4:'已计划', 5:'待开始', 6:'进行中', 7:'已暂停', 8:'已完成', 9:'已取消', 10:'已关闭', 11:'已超期' },
+  // 产品 ProductEnums.Status
+  product: { 1:'开发中', 2:'待审核', 3:'审核中', 4:'已通过', 5:'已驳回', 6:'已发布', 7:'停产', 8:'取消' },
+  // 客户 CustomerStatusEnum
+  custom: { 1:'潜在客户', 2:'正式客户', 3:'暂停合作', 4:'终止合作' },
+  // 采购收货 ReceiptStatusEnum
+  receipt: { 0:'待收货', 1:'部分收货', 2:'已收货' },
+}
+
+/**
+ * 按业务码获取状态名：bizType(业务码) → 状态码枚举 → bizStatus → 状态名
+ */
+function formatBizStatus(bizStatus: number, bizType: string): string {
+  if (bizStatus == null) return ''
+  const statusMap = BIZ_STATUS_MAP[bizType || '']
+  if (statusMap) {
+    return statusMap[bizStatus] ?? String(bizStatus)
   }
-  if (mod.includes('quotation')) {
-    const m: Record<number, string> = { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已报价', 4:'已确认', 5:'已拒绝', 6:'已过期' }
-    return m[code] ?? String(code)
-  }
-  if (mod.includes('order') || mod.includes('销售')) {
-    const m: Record<number, string> = { 0:'待确认', 1:'已确认', 2:'生产中', 3:'已完成', 4:'已取消' }
-    return m[code] ?? String(code)
-  }
-  return String(code)
+  return String(bizStatus)
 }
 
 async function loadTrace() {

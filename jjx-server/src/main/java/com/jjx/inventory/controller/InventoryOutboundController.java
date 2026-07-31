@@ -142,7 +142,7 @@ public class InventoryOutboundController {
     @Log(module = "出库管理", businessType = BusinessType.UPDATE)
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> updateStatus(@PathVariable Long outboundId,
-                                        @RequestParam String status) {
+                                        @RequestParam Integer status) {
         return Result.success(outboundService.updateStatus(outboundId, status));
     }
 

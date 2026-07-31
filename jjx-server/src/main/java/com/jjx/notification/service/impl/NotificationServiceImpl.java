@@ -33,11 +33,11 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
         Notification notif = new Notification();
         BeanUtils.copyProperties(dto, notif);
         notif.setIsRead(0);
-        notif.setStatus("PENDING");
+        notif.setStatus(0);
         notif.setSendTime(LocalDateTime.now());
         save(notif);
         // 立即标记为已发送（简化处理，后续可加MQ异步）
-        notif.setStatus("SENT");
+        notif.setStatus(1);
         updateById(notif);
         log.info("通知已创建: {} -> {} [{}]", dto.getTitle(), dto.getReceiverName(), dto.getNotificationType());
         return notif.getNotificationId();

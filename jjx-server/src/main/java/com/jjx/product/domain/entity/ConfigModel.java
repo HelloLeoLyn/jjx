@@ -12,7 +12,7 @@ public class ConfigModel {
     private String modelName;
     private Long productId;
     private Integer isDefault;
-    private String status;
+    private Integer status;
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;

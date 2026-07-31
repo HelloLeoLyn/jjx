@@ -1,0 +1,198 @@
+package com.jjx.kanban.controller;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jjx.common.core.result.Result;
+import com.jjx.production.domain.entity.ProductionOrder;
+import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.mapper.ProductionOrderMapper;
+import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.system.domain.entity.SysTask;
+import com.jjx.system.mapper.SysTaskMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * 看板任务接口 — 供 jjx-kanban（已合并进 jjx-web）读取
+ * 统一入口：GET /kanban/board/{module}/tasks
+ *   office/emergency/dev → sys_task 表
+ *   production → production_order 表（进行中的生产工单）
+ */
+@Tag(name = "看板任务")
+@RestController
+@RequestMapping("/kanban/board")
+@RequiredArgsConstructor
+public class BoardTaskController {
+
+    private final SysTaskMapper sysTaskMapper;
+    private final ProductionOrderMapper productionOrderMapper;
+    private final ProductionOperationExecutionMapper executionMapper;
+
+    @Operation(summary = "按模块获取看板任务")
+    @GetMapping("/{module}/tasks")
+    public Result<List<?>> getBoardTasks(
+            @PathVariable String module,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String priority) {
+        if ("production".equals(module)) {
+            return Result.success(fetchProductionTasks());
+        }
+        LambdaQueryWrapper<SysTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysTask::getKanbanModule, module);
+        if (status != null) {
+            wrapper.eq(SysTask::getStatus, status);
+        }
+        if (StringUtils.hasText(priority)) {
+            wrapper.eq(SysTask::getPriority, priority);
+        }
+        wrapper.orderByAsc(SysTask::getCreateTime);
+        return Result.success(sysTaskMapper.selectList(wrapper));
+    }
+
+    /**
+     * 生产工单 → 看板卡片格式
+     * 状态: 2已审核/6进行中/7已暂停（进行中工单）
+     * 优先级: URGENT/HIGH/MEDIUM/LOW → urgent/high/normal/low
+     */
+    private List<Map<String, Object>> fetchProductionTasks() {
+        List<ProductionOrder> orders = productionOrderMapper.selectList(
+                new LambdaQueryWrapper<ProductionOrder>()
+                        .eq(ProductionOrder::getOrderType, "WORK_ORDER")
+                        .in(ProductionOrder::getOrderStatus, 2, 6, 7)
+                        .orderByAsc(ProductionOrder::getPlanEndDate)
+                        .last("LIMIT 100")
+        );
+        return orders.stream().map(order -> {
+            Map<String, Object> card = new HashMap<>();
+            card.put("taskId", order.getOrderId());
+            card.put("title", order.getProductName());
+            card.put("workOrderNo", order.getOrderNo());
+            card.put("productName", order.getProductName());
+            card.put("quantity", order.getPlannedQuantity());
+            card.put("priority", mapPriority(order.getPriority()));
+            card.put("status", mapOrderStatus(order.getOrderStatus()));
+            card.put("assigneeName", order.getCreateBy());
+            card.put("deadline", order.getPlanEndDate() != null ? order.getPlanEndDate().toString() : null);
+            card.put("taskType", "production");
+            card.put("kanbanModule", "production");
+            card.put("currentProcess", getCurrentProcess(order.getOrderId()));
+            return card;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 获取当前工序（未完成的工序里最靠前的）
+     * process_id: 1印刷 2冲切 3贴合 4SMT贴片 5装配 6测试 7包装
+     */
+    private String getCurrentProcess(Long orderId) {
+        List<ProductionOperationExecution> execs = executionMapper.selectList(
+                new LambdaQueryWrapper<ProductionOperationExecution>()
+                        .eq(ProductionOperationExecution::getOrderId, orderId)
+                        .isNull(ProductionOperationExecution::getActualEndTime)
+                        .orderByAsc(ProductionOperationExecution::getProcessOrder)
+                        .last("LIMIT 1")
+        );
+        if (!execs.isEmpty()) {
+            Long processId = execs.get(0).getProcessId();
+            return switch (processId != null ? processId.intValue() : 0) {
+                case 1 -> "印刷";
+                case 2 -> "冲切";
+                case 3 -> "贴合";
+                case 4 -> "SMT贴片";
+                case 5 -> "装配";
+                case 6 -> "测试";
+                case 7 -> "包装";
+                default -> "待开始";
+            };
+        }
+        return "待开始";
+    }
+
+    private String mapOrderStatus(Integer status) {
+        if (status == null) return "pending";
+        return switch (status) {
+            case 6 -> "in_progress";   // 进行中
+            case 2 -> "review";        // 已审核→待审核
+            case 8 -> "completed";     // 已完成
+            case 7, 11 -> "blocked";   // 已暂停/已超期
+            default -> "pending";      // 草稿/待审核/已计划/待开始
+        };
+    }
+
+    private String mapPriority(String priority) {
+        if (priority == null) return "normal";
+        return switch (priority) {
+            case "URGENT" -> "urgent";
+            case "HIGH" -> "high";
+            case "MEDIUM" -> "normal";
+            case "LOW" -> "low";
+            default -> "normal";
+        };
+    }
+
+    @Operation(summary = "任务详情")
+    @GetMapping("/{module}/tasks/{taskId}")
+    public Result<SysTask> getTaskDetail(@PathVariable String module, @PathVariable Long taskId) {
+        if ("production".equals(module)) {
+            return Result.error("生产工单详情请走生产订单接口");
+        }
+        SysTask task = sysTaskMapper.selectById(taskId);
+        if (task == null || !module.equals(task.getKanbanModule())) {
+            return Result.error("任务不存在");
+        }
+        return Result.success(task);
+    }
+
+    @Operation(summary = "新建看板任务")
+    @PostMapping("/{module}/tasks")
+    public Result<Long> createTask(@PathVariable String module, @RequestBody SysTask task) {
+        task.setTaskId(null);
+        task.setKanbanModule(module);
+        if (!StringUtils.hasText(task.getTaskCode())) {
+            task.setTaskCode(module + "-" + System.currentTimeMillis());
+        }
+        if (!StringUtils.hasText(task.getTaskType())) {
+            task.setTaskType("general");
+        }
+        if (task.getPriority() == null) {
+            task.setPriority("normal");
+        }
+        if (task.getStatus() == null) {
+            task.setStatus(0);
+        }
+        task.setCreateTime(LocalDateTime.now());
+        sysTaskMapper.insert(task);
+        return Result.success(task.getTaskId());
+    }
+
+    @Operation(summary = "更新看板任务（拖拽/编辑）")
+    @PatchMapping("/{module}/tasks/{taskId}")
+    public Result<Boolean> updateTask(@PathVariable String module, @PathVariable Long taskId,
+                                      @RequestBody Map<String, Object> updates) {
+        if ("production".equals(module)) {
+            return Result.error("生产工单不允许在此修改");
+        }
+        SysTask task = sysTaskMapper.selectById(taskId);
+        if (task == null || !module.equals(task.getKanbanModule())) {
+            return Result.error("任务不存在");
+        }
+        if (updates.containsKey("title")) task.setTitle(String.valueOf(updates.get("title")));
+        if (updates.containsKey("description")) task.setDescription(updates.get("description") != null ? String.valueOf(updates.get("description")) : null);
+        if (updates.containsKey("priority")) task.setPriority(String.valueOf(updates.get("priority")));
+        if (updates.containsKey("status")) task.setStatus(updates.get("status") != null ? ((Number) updates.get("status")).intValue() : 0);
+        if (updates.containsKey("assigneeName")) task.setAssigneeName(updates.get("assigneeName") != null ? String.valueOf(updates.get("assigneeName")) : null);
+        if (updates.containsKey("deadline")) task.setDeadline(updates.get("deadline") != null ? java.time.LocalDate.parse(String.valueOf(updates.get("deadline"))) : null);
+        if (updates.containsKey("remark")) task.setRemark(updates.get("remark") != null ? String.valueOf(updates.get("remark")) : null);
+        task.setUpdateTime(LocalDateTime.now());
+        sysTaskMapper.updateById(task);
+        return Result.success(true);
+    }
+}

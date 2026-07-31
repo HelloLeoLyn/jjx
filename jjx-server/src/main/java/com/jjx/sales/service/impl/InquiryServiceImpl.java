@@ -9,6 +9,8 @@ import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.vo.InquiryToQuotationVO;
+import com.jjx.sales.enums.InquiryStatus;
+import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.sales.mapper.SalesInquiryMapper;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.service.IInquiryService;
@@ -68,7 +70,7 @@ public class InquiryServiceImpl implements IInquiryService {
         if (inquiry.getCustomerName() != null && !inquiry.getCustomerName().isEmpty()) {
             wrapper.like(SalesInquiry::getCustomerName, inquiry.getCustomerName());
         }
-        if (inquiry.getInquiryStatus() != null && !inquiry.getInquiryStatus().isEmpty()) {
+        if (inquiry.getInquiryStatus() != null) {
             wrapper.eq(SalesInquiry::getInquiryStatus, inquiry.getInquiryStatus());
         }
         if (inquiry.getSalesPersonId() != null) {
@@ -108,8 +110,8 @@ public class InquiryServiceImpl implements IInquiryService {
         inquiry.setTraceId(java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16));
 
         // 设置默认值
-        if (inquiry.getInquiryStatus() == null || inquiry.getInquiryStatus().isEmpty()) {
-            inquiry.setInquiryStatus("draft");
+        if (inquiry.getInquiryStatus() == null) {
+            inquiry.setInquiryStatus(InquiryStatus.DRAFT.getCode());
         }
         if (inquiry.getInquiryType() == null) {
             inquiry.setInquiryType(1); // 默认标准品
@@ -146,7 +148,7 @@ public class InquiryServiceImpl implements IInquiryService {
         }
 
         // 已转换的询价单不能修改
-        if ("converted".equals(existing.getInquiryStatus())) {
+        if (InquiryStatus.CONVERTED.getCode().equals(existing.getInquiryStatus())) {
             throw new BusinessException("已转换的询价单不能修改");
         }
 
@@ -199,7 +201,7 @@ public class InquiryServiceImpl implements IInquiryService {
     public InquiryToQuotationVO convertToQuotation(Long inquiryId) {
         SalesInquiry inquiry = selectInquiryById(inquiryId);
 
-        if ("converted".equals(inquiry.getInquiryStatus())) {
+        if (InquiryStatus.CONVERTED.getCode().equals(inquiry.getInquiryStatus())) {
             throw new BusinessException("该询价单已转换，不能重复转换");
         }
 
@@ -212,7 +214,7 @@ public class InquiryServiceImpl implements IInquiryService {
         quotation.setContactPhone(inquiry.getContactPhone());
         quotation.setQuotationDate(LocalDate.now());
         quotation.setValidUntil(LocalDate.now().plusDays(30));
-        quotation.setQuotationStatus("draft");
+        quotation.setQuotationStatus(QuotationStatus.DRAFT.getCode());
         quotation.setCurrency("CNY");
         quotation.setExchangeRate(java.math.BigDecimal.ONE);
         quotation.setSalesPersonId(inquiry.getSalesPersonId());
@@ -223,7 +225,7 @@ public class InquiryServiceImpl implements IInquiryService {
         quotationMapper.insert(quotation);
 
         // 更新询价单状态
-        inquiry.setInquiryStatus("converted");
+        inquiry.setInquiryStatus(InquiryStatus.CONVERTED.getCode());
         inquiry.setConvertedQuotationId(quotation.getQuotationId());
         inquiry.setConvertTime(LocalDateTime.now());
         inquiryMapper.updateById(inquiry);
@@ -244,18 +246,18 @@ public class InquiryServiceImpl implements IInquiryService {
         List<Map<String, Object>> options = new ArrayList<>();
 
         // 💡 询价单是纯登记入口，不涉及复杂流转
-        //    只有 draft(创建) 和 converted(转报价) 两个状态有实际逻辑
+        //    只有 草稿(0) 和 已转报价(3) 两个状态有实际逻辑
         //    pending/sent/accepted/rejected 为预留状态，暂不实现
-        String[][] statuses = {
-            {"draft", "草稿"},          // ✅ 新建时默认
-            {"pending", "待处理"},      // 💤 预留
-            {"sent", "已发送"},         // 💤 预留
-            {"accepted", "已确认"},     // 💤 预留
-            {"rejected", "已拒绝"},     // 💤 预留
-            {"converted", "已转报价"}   // ✅ 转报价时自动设置
+        Object[][] statuses = {
+            {InquiryStatus.DRAFT.getCode(), "草稿"},          // ✅ 新建时默认
+            {InquiryStatus.PENDING.getCode(), "待处理"},      // 💤 预留
+            {InquiryStatus.SENT.getCode(), "已发送"},         // 💤 预留
+            {InquiryStatus.ACCEPTED.getCode(), "已确认"},     // 💤 预留
+            {InquiryStatus.REJECTED.getCode(), "已拒绝"},     // 💤 预留
+            {InquiryStatus.CONVERTED.getCode(), "已转报价"}   // ✅ 转报价时自动设置
         };
 
-        for (String[] s : statuses) {
+        for (Object[] s : statuses) {
             Map<String, Object> item = new HashMap<>();
             item.put("value", s[0]);
             item.put("label", s[1]);

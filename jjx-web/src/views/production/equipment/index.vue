@@ -86,10 +86,10 @@
                 clearable
               />
               <el-select v-model="filterStatus" placeholder="设备状态" clearable>
-                <el-option label="运行中" value="running" />
-                <el-option label="待机中" value="idle" />
-                <el-option label="故障中" value="fault" />
-                <el-option label="维护中" value="maintenance" />
+                <el-option label="运行中" :value="1" />
+                <el-option label="待机中" :value="0" />
+                <el-option label="故障中" :value="3" />
+                <el-option label="维护中" :value="2" />
               </el-select>
             </div>
           </div>
@@ -259,7 +259,7 @@ const equipmentList = ref<Equipment[]>([
     model: 'SP-2000',
     department: '印刷车间',
     location: 'A区-01号',
-    status: 'running',
+    status: 1,
     utilization: 92,
     lastMaintenance: '2024-03-15',
     nextMaintenance: '2024-05-15',
@@ -272,7 +272,7 @@ const equipmentList = ref<Equipment[]>([
     model: 'MC-1500',
     department: '成型车间',
     location: 'B区-03号',
-    status: 'running',
+    status: 1,
     utilization: 88,
     lastMaintenance: '2024-03-20',
     nextMaintenance: '2024-05-20',
@@ -285,7 +285,7 @@ const equipmentList = ref<Equipment[]>([
     model: 'HP-1800',
     department: '贴合车间',
     location: 'C区-02号',
-    status: 'idle',
+    status: 0,
     utilization: 65,
     lastMaintenance: '2024-03-10',
     nextMaintenance: '2024-05-10',
@@ -298,7 +298,7 @@ const equipmentList = ref<Equipment[]>([
     model: 'TEST-500',
     department: '测试车间',
     location: 'D区-01号',
-    status: 'fault',
+    status: 3,
     utilization: 0,
     lastMaintenance: '2024-02-28',
     nextMaintenance: '2024-04-28',
@@ -311,7 +311,7 @@ const equipmentList = ref<Equipment[]>([
     model: 'PK-1000',
     department: '包装车间',
     location: 'E区-01号',
-    status: 'maintenance',
+    status: 2,
     utilization: 0,
     lastMaintenance: '2024-04-05',
     nextMaintenance: '2024-06-05',
@@ -324,7 +324,7 @@ const equipmentList = ref<Equipment[]>([
     model: 'LC-3000',
     department: '切割车间',
     location: 'A区-02号',
-    status: 'running',
+    status: 1,
     utilization: 95,
     lastMaintenance: '2024-03-25',
     nextMaintenance: '2024-05-25',

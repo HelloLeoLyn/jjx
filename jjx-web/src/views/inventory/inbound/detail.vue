@@ -9,28 +9,28 @@
           </div>
           <div class="header-actions">
             <el-button @click="handleBack">返回</el-button>
-            <el-button v-if="inboundData.status === 'draft'" type="primary" @click="handleEdit">
+            <el-button v-if="inboundData.status === 0" type="primary" @click="handleEdit">
               编辑
             </el-button>
-            <el-button v-if="inboundData.status === 'draft'" type="success" @click="handleSubmit">
+            <el-button v-if="inboundData.status === 0" type="success" @click="handleSubmit">
               提交审批
             </el-button>
             <el-button
-              v-if="inboundData.status === 'pending'"
+              v-if="inboundData.status === 1"
               type="success"
               @click="handleApprove"
             >
               审批通过
             </el-button>
             <el-button
-              v-if="inboundData.status === 'approved'"
+              v-if="inboundData.status === 2"
               type="warning"
               @click="handleConfirm"
             >
               确认入库
             </el-button>
             <el-button
-              v-if="inboundData.status === 'draft' || inboundData.status === 'pending'"
+              v-if="inboundData.status === 0 || inboundData.status === 1"
               type="danger"
               @click="handleCancel"
             >

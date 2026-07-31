@@ -9,34 +9,34 @@ export enum OrderType {
 // 订单状态枚举（统一状态机）
 export enum OrderStatus {
   // 计划状态
-  DRAFT = 'draft', // 草稿
-  PENDING_APPROVAL = 'pending_approval', // 待审批
-  APPROVED = 'approved', // 已批准
+  DRAFT = 0, // 草稿
+  PENDING_APPROVAL = 1, // 待审批
+  APPROVED = 2, // 已批准
 
   // 工单状态
-  SCHEDULED = 'scheduled', // 已排程
-  IN_PROGRESS = 'in_progress', // 进行中
-  COMPLETED = 'completed', // 已完成
+  SCHEDULED = 4, // 已排程(已计划)
+  IN_PROGRESS = 6, // 进行中
+  COMPLETED = 8, // 已完成
 
   // 通用状态
-  CANCELLED = 'cancelled', // 已取消
+  CANCELLED = 9, // 已取消
 }
 
 // 审批状态枚举（计划特有）
 export enum ApprovalStatus {
-  PENDING = 'pending', // 待审批
-  APPROVED = 'approved', // 已批准
-  REJECTED = 'rejected', // 已拒绝
-  CANCELLED = 'cancelled', // 已取消
+  PENDING = 1, // 待审批
+  APPROVED = 2, // 已批准
+  REJECTED = 3, // 已拒绝
+  CANCELLED = 4, // 已取消
 }
 
 // 执行状态枚举（工单特有）
 export enum ExecutionStatus {
-  NOT_STARTED = 'not_started', // 未开始
-  IN_PROGRESS = 'in_progress', // 进行中
-  COMPLETED = 'completed', // 已完成
-  PAUSED = 'paused', // 已暂停
-  CANCELLED = 'cancelled', // 已取消
+  NOT_STARTED = 0, // 未开始(待执行)
+  IN_PROGRESS = 2, // 进行中(执行中)
+  COMPLETED = 4, // 已完成
+  PAUSED = 3, // 已暂停
+  CANCELLED = 6, // 已取消
 }
 
 // 优先级枚举

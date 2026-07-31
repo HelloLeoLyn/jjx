@@ -168,7 +168,7 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/status/{quotationId}")
     public Result<Void> changeStatus(@PathVariable Long quotationId,
-                                     @RequestParam String status) {
+                                     @RequestParam Integer status) {
         return toAjax(quotationService.updateQuotationStatus(quotationId, status));
     }
 

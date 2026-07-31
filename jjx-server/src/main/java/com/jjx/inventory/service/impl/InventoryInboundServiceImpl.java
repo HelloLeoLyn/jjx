@@ -188,7 +188,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
         order.setSourceNo((String) params.get("sourceNo"));
         if (params.get("warehouseId") != null) order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
-        order.setOrderStatus("pending");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         inboundOrderMapper.insert(order);
         return order.getInboundId();
     }
@@ -202,16 +202,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if (!"pending".equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法确认: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
-        order.setOrderStatus("approved");
+        order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
         inboundOrderMapper.updateById(order);
         // 执行库存增加（复用审批中的库存逻辑）
         approve(inboundId, operatorId, operatorName, "直接确认入库");
-        order.setOrderStatus("completed");
+        order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
         // 安全库存检查
         try {
             List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
@@ -233,12 +233,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if ("completed".equals(order.getOrderStatus())) {
+        if (OrderStatusEnum.COMPLETED.getCode().equals(order.getOrderStatus())) {
             log.error("已完成的入库单无法取消: inboundId={}", inboundId);
             return false;
         }
 
-        order.setOrderStatus("cancelled");
+        order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
         order.setRemark(reason);
         return inboundOrderMapper.updateById(order) > 0;
     }
@@ -251,7 +251,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        order.setOrderStatus("pending_approval");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         return inboundOrderMapper.updateById(order) > 0;
     }
 
@@ -264,7 +264,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if (!"pending_approval".equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法审批: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
@@ -333,7 +333,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             transactionMapper.insert(tx);
         }
 
-        order.setOrderStatus("approved");
+        order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
         return inboundOrderMapper.updateById(order) > 0;
     }
 
@@ -345,7 +345,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if (!"pending_approval".equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法驳回: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
@@ -389,7 +389,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceId(purchaseOrderId);
         order.setSourceNo(po.getOrderNo());
         order.setWarehouseId(1L); // 默认仓库
-        order.setOrderStatus("draft");
+        order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         inboundOrderMapper.insert(order);
 
         // 5. 创建入库单明细
@@ -420,7 +420,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         // 6. 提交审批并自动审批
-        order.setOrderStatus("pending_approval");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         inboundOrderMapper.updateById(order);
         approve(order.getInboundId(), null, null, "采购到货入库");
 
@@ -455,7 +455,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceType("PRODUCTION");
         order.setSourceId(workOrderId);
         order.setSourceNo(prodOrder.getOrderNo());
-        order.setOrderStatus("draft");
+        order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         inboundOrderMapper.insert(order);
 
         // 3. 创建入库明细
@@ -471,7 +471,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundItemMapper.insert(inboundItem);
 
         // 4. 提交审批并自动审批
-        order.setOrderStatus("pending_approval");
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         inboundOrderMapper.updateById(order);
         approve(order.getInboundId(), null, null, "生产完工入库");
 
@@ -483,7 +483,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     public List<InboundVO> getPendingApproval() {
         List<InventoryInboundOrder> orders = inboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryInboundOrder>()
-                        .eq(InventoryInboundOrder::getOrderStatus, "pending_approval")
+                        .eq(InventoryInboundOrder::getOrderStatus, OrderStatusEnum.PENDING.getCode())
                         .orderByAsc(InventoryInboundOrder::getCreateTime)
         );
         return convertToVOList(orders);
@@ -514,7 +514,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
-    public boolean updateStatus(Long inboundId, String status) {
+    public boolean updateStatus(Long inboundId, Integer status) {
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);

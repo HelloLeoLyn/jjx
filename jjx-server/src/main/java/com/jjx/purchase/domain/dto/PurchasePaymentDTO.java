@@ -66,7 +66,7 @@ public class PurchasePaymentDTO {
      * 付款状态（pending待付款/approved已批准/paid已付款）
      */
     @Pattern(regexp = "^(pending|approved|paid)$", message = "付款状态不正确")
-    private String paymentStatus;
+    private Integer paymentStatus;
 
     /**
      * 批准时间

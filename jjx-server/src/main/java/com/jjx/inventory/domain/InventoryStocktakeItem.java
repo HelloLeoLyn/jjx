@@ -60,7 +60,7 @@ public class InventoryStocktakeItem extends BaseEntity {
     private BigDecimal diffAmount;
 
     /** 调整状态：pending待处理/processed已处理/skipped已跳过 */
-    private String adjustStatus;
+    private Integer adjustStatus;
 
     /** 生成的调整单ID */
     private Long adjustOrderId;

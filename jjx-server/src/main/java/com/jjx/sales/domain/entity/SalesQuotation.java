@@ -78,7 +78,8 @@ public class SalesQuotation extends BaseEntity {
     /**
      * 报价状态 (draft: 草稿, sent: 已发送, accepted: 已接受, rejected: 已拒绝, expired: 已过期)
      */
-    private String quotationStatus;
+    /** 状态: 0草稿/1已发送/2已确认/3已拒绝/4已过期/5待审核/6已审核 */
+    private Integer quotationStatus;
 
     /**
      * 小计金额

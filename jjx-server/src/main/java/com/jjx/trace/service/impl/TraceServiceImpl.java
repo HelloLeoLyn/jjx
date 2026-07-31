@@ -54,6 +54,9 @@ public class TraceServiceImpl implements TraceService {
                 op.put("time", l.getCreateTime());
                 op.put("status", l.getStatus());
                 op.put("bizId", l.getBizId());
+                op.put("bizType", l.getBizType());
+                op.put("bizStatus", l.getBizStatus());
+                op.put("businessType", l.getBusinessType());
                 return op;
             }).collect(Collectors.toList());
             node.put("operations", ops);

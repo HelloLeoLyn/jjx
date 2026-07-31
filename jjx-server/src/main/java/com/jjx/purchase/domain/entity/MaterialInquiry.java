@@ -105,7 +105,7 @@ public class MaterialInquiry {
     /**
      * 询价状态（active/inactive/expired）
      */
-    private String inquiryStatus;
+    private Integer inquiryStatus;
 
     /**
      * 备注
@@ -135,9 +135,9 @@ public class MaterialInquiry {
     private String updateBy;
 
     // 状态常量
-    public static final String STATUS_ACTIVE = "active";
-    public static final String STATUS_INACTIVE = "inactive";
-    public static final String STATUS_EXPIRED = "expired";
+    public static final Integer STATUS_ACTIVE = 0;
+    public static final Integer STATUS_INACTIVE = 1;
+    public static final Integer STATUS_EXPIRED = 2;
 
     /**
      * 判断询价是否有效

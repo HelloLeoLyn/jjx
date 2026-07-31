@@ -18,5 +18,5 @@ public interface QuotationMapper extends BaseMapper<SalesQuotation> {
      * @param status 状态
      * @return 更新结果
      */
-    int updateQuotationStatus(Long quotationId, String status);
+    int updateQuotationStatus(Long quotationId, Integer status);
 }

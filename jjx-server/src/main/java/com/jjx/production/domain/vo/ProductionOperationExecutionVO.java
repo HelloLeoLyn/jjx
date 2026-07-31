@@ -96,7 +96,7 @@ public class ProductionOperationExecutionVO {
     private String qualityCheckResult;
 
     @Schema(description = "执行状态：PENDING待执行/PROCESSING执行中/COMPLETED已完成/SKIPPED已跳过")
-    private String executionStatus;
+    private Integer executionStatus;
 
     @Schema(description = "执行状态描述")
     private String executionStatusDesc;

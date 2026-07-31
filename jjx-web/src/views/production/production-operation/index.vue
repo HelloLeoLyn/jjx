@@ -196,7 +196,7 @@
           <el-table-column label="操作" width="180" align="center" fixed="right">
             <template #default="scope">
               <el-button
-                v-if="scope.row.operationStatus === 'pending'"
+                v-if="scope.row.operationStatus === 0"
                 type="primary"
                 link
                 icon="Edit"
@@ -205,8 +205,8 @@
               >
               <el-button
                 v-if="
-                  scope.row.operationStatus === 'pending' ||
-                  scope.row.operationStatus === 'in_progress'
+                  scope.row.operationStatus === 0 ||
+                  scope.row.operationStatus === 1
                 "
                 type="success"
                 link
@@ -215,7 +215,7 @@
                 >开始</el-button
               >
               <el-button
-                v-if="scope.row.operationStatus === 'in_progress'"
+                v-if="scope.row.operationStatus === 1"
                 type="warning"
                 link
                 icon="Check"
@@ -397,7 +397,7 @@ interface OperationItem {
   equipmentCode: string
   plannedQuantity: number
   completedQuantity: number
-  operationStatus: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  operationStatus: number
   startTime: string
   endTime: string
   parameters: string
@@ -510,7 +510,7 @@ const getList = async () => {
         equipmentCode: 'PRINT-001',
         plannedQuantity: 1000,
         completedQuantity: 0,
-        operationStatus: 'pending',
+        operationStatus: 0,
         startTime: '',
         endTime: '',
         parameters: '{"inkType": "UV油墨", "pressure": "2.5kg"}',
@@ -531,7 +531,7 @@ const getList = async () => {
         equipmentCode: 'LAMINATE-001',
         plannedQuantity: 1000,
         completedQuantity: 500,
-        operationStatus: 'in_progress',
+        operationStatus: 1,
         startTime: '2025-04-10 08:00:00',
         endTime: '',
         parameters: '{"temperature": "120℃", "time": "30s"}',
@@ -552,7 +552,7 @@ const getList = async () => {
         equipmentCode: 'CUT-001',
         plannedQuantity: 800,
         completedQuantity: 800,
-        operationStatus: 'completed',
+        operationStatus: 2,
         startTime: '2025-04-09 09:00:00',
         endTime: '2025-04-09 17:00:00',
         parameters: '{"bladeType": "精密刀模", "pressure": "3.0kg"}',
@@ -752,7 +752,7 @@ const handleStart = async (row: OperationItem) => {
 
     // 模拟API调用
     ElMessage.success('操作任务已开始')
-    row.operationStatus = 'in_progress'
+    row.operationStatus = 1
     row.startTime = new Date().toISOString()
   } catch {
     // 用户取消
@@ -770,7 +770,7 @@ const handleComplete = async (row: OperationItem) => {
 
     // 模拟API调用
     ElMessage.success('操作任务已完成')
-    row.operationStatus = 'completed'
+    row.operationStatus = 2
     row.endTime = new Date().toISOString()
     row.completedQuantity = row.plannedQuantity
   } catch {
@@ -881,7 +881,7 @@ const submitForm = async () => {
         equipmentCode: equipment?.equipmentCode || '',
         plannedQuantity: form.plannedQuantity,
         completedQuantity: 0,
-        operationStatus: 'pending',
+        operationStatus: 0,
         startTime: '',
         endTime: '',
         parameters: form.parameters,

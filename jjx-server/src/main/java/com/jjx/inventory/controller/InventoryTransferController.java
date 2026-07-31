@@ -127,7 +127,7 @@ public class InventoryTransferController {
     @Log(module = "调拨管理", businessType = BusinessType.UPDATE)
     @SaCheckPermission("inventory:transfer:edit")
     public Result<Boolean> updateStatus(@PathVariable Long transferId,
-                                        @RequestParam String status) {
+                                        @RequestParam Integer status) {
         return Result.success(transferService.updateStatus(transferId, status));
     }
 

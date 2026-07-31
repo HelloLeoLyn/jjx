@@ -91,8 +91,9 @@ public class LocalEventPublisher implements EventPublisher {
                     task.setStartTime(java.time.LocalDateTime.now());
                     task.setSourceEvent(eventCode);
                     task.setAssignRole(assignRole);
-                    task.setPriority("normal");
-                    task.setStatus("pending");
+                    task.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
+                    task.setKanbanModule(event.getKanbanModule() != null ? event.getKanbanModule() : "office");
+                    task.setStatus(0);
                     sysTaskMapper.insert(task);
                     log.info("   📋 任务已创建: title={}, assignRole={}", event.getTitle(), assignRole);
                 } catch (Exception e) {

@@ -61,7 +61,7 @@ public class PurchasePayment {
     /**
      * 付款状态（pending待付款/approved已批准/paid已付款）
      */
-    private String paymentStatus;
+    private Integer paymentStatus;
 
     /**
      * 批准时间

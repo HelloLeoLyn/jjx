@@ -117,7 +117,7 @@ public class MaterialInquiryVO {
     /**
      * 询价状态（active/inactive/expired）
      */
-    private String inquiryStatus;
+    private Integer inquiryStatus;
 
     /**
      * 询价状态标签
@@ -295,11 +295,11 @@ public class MaterialInquiryVO {
             return statusTagType;
         }
 
-        if ("active".equals(inquiryStatus)) {
+        if (Integer.valueOf(0).equals(inquiryStatus)) {
             return withinValidityPeriod != null && withinValidityPeriod ? "success" : "warning";
-        } else if ("expired".equals(inquiryStatus)) {
+        } else if (Integer.valueOf(2).equals(inquiryStatus)) {
             return "danger";
-        } else if ("inactive".equals(inquiryStatus)) {
+        } else if (Integer.valueOf(1).equals(inquiryStatus)) {
             return "info";
         }
         return "default";
@@ -314,14 +314,14 @@ public class MaterialInquiryVO {
         }
 
         switch (inquiryStatus) {
-            case "active":
+            case 0:
                 return "有效";
-            case "inactive":
+            case 1:
                 return "无效";
-            case "expired":
+            case 2:
                 return "已过期";
             default:
-                return inquiryStatus;
+                return inquiryStatus != null ? String.valueOf(inquiryStatus) : "";
         }
     }
 
@@ -332,7 +332,7 @@ public class MaterialInquiryVO {
         if (canUse != null) {
             return canUse;
         }
-        return "active".equals(inquiryStatus) &&
+        return Integer.valueOf(0).equals(inquiryStatus) &&
                (withinValidityPeriod == null || withinValidityPeriod);
     }
 }

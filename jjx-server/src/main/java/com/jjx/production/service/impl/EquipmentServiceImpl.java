@@ -62,7 +62,7 @@ public class EquipmentServiceImpl extends ServiceImpl<ProductionEquipmentMapper,
         if (StringUtils.isNotBlank(q.getEquipmentNo())) w.like(ProductionEquipment::getEquipmentNo, q.getEquipmentNo());
         if (StringUtils.isNotBlank(q.getEquipmentName())) w.like(ProductionEquipment::getEquipmentName, q.getEquipmentName());
         if (StringUtils.isNotBlank(q.getEquipmentType())) w.eq(ProductionEquipment::getEquipmentType, q.getEquipmentType());
-        if (StringUtils.isNotBlank(q.getStatus())) w.eq(ProductionEquipment::getStatus, q.getStatus());
+        if (q.getStatus() != null) w.eq(ProductionEquipment::getStatus, q.getStatus());
         return w;
     }
 }

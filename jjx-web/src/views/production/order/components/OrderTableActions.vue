@@ -90,7 +90,7 @@ const emit = defineEmits<Emits>()
 
 // 计算属性
 const canDelete = computed(() => {
-  return props.order.orderStatus === 'draft' || props.order.orderStatus === 'cancelled'
+  return props.order.orderStatus === 0 || props.order.orderStatus === 9
 })
 
 // 方法

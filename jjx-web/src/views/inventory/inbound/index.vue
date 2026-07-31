@@ -44,11 +44,11 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="待提交" value="draft" />
-            <el-option label="待审批" value="pending" />
-            <el-option label="已审批" value="approved" />
-            <el-option label="已入库" value="completed" />
-            <el-option label="已取消" value="cancelled" />
+            <el-option label="待提交" :value="0" />
+            <el-option label="待审批" :value="1" />
+            <el-option label="已审批" :value="2" />
+            <el-option label="已入库" :value="7" />
+            <el-option label="已取消" :value="9" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -124,25 +124,25 @@
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="row.status === 'draft'" link type="primary" @click="handleSubmit(row)"
+            <el-button v-if="row.status === 0" link type="primary" @click="handleSubmit(row)"
               >提交</el-button
             >
             <el-button
-              v-if="row.status === 'pending'"
+              v-if="row.status === 1"
               link
               type="success"
               @click="handleApprove(row)"
               >审批</el-button
             >
             <el-button
-              v-if="row.status === 'approved'"
+              v-if="row.status === 2"
               link
               type="warning"
               @click="handleConfirm(row)"
               >确认入库</el-button
             >
             <el-button
-              v-if="row.status === 'draft' || row.status === 'pending'"
+              v-if="row.status === 0 || row.status === 1"
               link
               type="danger"
               @click="handleCancel(row)"
@@ -460,13 +460,14 @@ const handleCancel = async (row: InboundVO) => {
 import { InboundEnum } from '@/enums/inventory'
 
 // 获取状态标签样式
-const getStatusTag = (status: string): 'success' | 'warning' | 'info' | 'danger' | undefined => {
-  const statusMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    draft: 'info',
-    pending: 'warning',
-    approved: 'success',
-    completed: 'success',
-    cancelled: 'danger',
+const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
+  const statusMap: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
+    0: 'info',    // draft
+    1: 'warning', // pending
+    2: 'success', // approved
+    4: 'warning', // processing
+    7: 'success', // in_confirm
+    9: 'danger',  // cancelled
   }
   return statusMap[status]
 }

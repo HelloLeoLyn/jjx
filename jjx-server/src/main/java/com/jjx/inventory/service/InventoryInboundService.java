@@ -82,7 +82,7 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     /**
      * 更新入库单状态
      */
-    boolean updateStatus(Long inboundId, String status);
+    boolean updateStatus(Long inboundId, Integer status);
 
     /**
      * 分页查询入库单（旧方法，兼容性）

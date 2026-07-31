@@ -1,5 +1,6 @@
 package com.jjx.production.service.impl;
 
+import com.jjx.production.enums.ExecutionStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -47,7 +48,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 转换为实体
         ProductionOperationExecution execution = convertCreateDTOToEntity(createDTO);
-        execution.setExecutionStatus("PENDING"); // 默认状态为待执行
+        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode()); // 默认状态为待执行
 
         // 保存到数据库
         boolean success = save(execution);
@@ -204,7 +205,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为进行中
-        execution.setExecutionStatus("IN_PROGRESS");
+        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
         execution.setActualStartTime(LocalDateTime.now());
 
         boolean success = updateById(execution);
@@ -232,7 +233,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为暂停
-        execution.setExecutionStatus("PAUSED");
+        execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getCode());
 
         boolean success = updateById(execution);
         if (!success) {
@@ -259,7 +260,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为已完成
-        execution.setExecutionStatus("COMPLETED");
+        execution.setExecutionStatus(ExecutionStatusEnum.COMPLETED.getCode());
         execution.setActualEndTime(LocalDateTime.now());
 
         // 如果没有设置产出数量，默认使用投入数量
@@ -303,7 +304,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为已取消
-        execution.setExecutionStatus("CANCELLED");
+        execution.setExecutionStatus(ExecutionStatusEnum.CANCELLED.getCode());
 
         boolean success = updateById(execution);
         if (!success) {
@@ -360,7 +361,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
                 // 转换为实体并保存
                 ProductionOperationExecution execution = convertCreateDTOToEntity(dto);
-                execution.setExecutionStatus("PENDING");
+                execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
                 save(execution);
 
                 successCount++;
@@ -413,19 +414,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 按状态统计
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "PENDING");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.PENDING.getCode());
         long pendingCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "IN_PROGRESS");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getCode());
         long inProgressCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "COMPLETED");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode());
         long completedCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "CANCELLED");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.CANCELLED.getCode());
         long cancelledCount = count(wrapper);
 
         // 构建统计结果
@@ -449,7 +450,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         // 查询该工单下所有已完成工序的合格数量总和
         LambdaQueryWrapper<ProductionOperationExecution> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ProductionOperationExecution::getOrderId, orderId)
-                .eq(ProductionOperationExecution::getExecutionStatus, "COMPLETED");
+                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode());
 
         List<ProductionOperationExecution> completedExecutions = list(wrapper);
         BigDecimal totalQualified = completedExecutions.stream()
@@ -531,8 +532,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canDeleteExecution(ProductionOperationExecution execution) {
         // 只有待执行和已取消状态的记录可以删除
-        String status = execution.getExecutionStatus();
-        return "PENDING".equals(status) || "CANCELLED".equals(status);
+        Integer status = execution.getExecutionStatus();
+        return ExecutionStatusEnum.PENDING.getCode().equals(status) || ExecutionStatusEnum.CANCELLED.getCode().equals(status);
     }
 
     /**
@@ -540,7 +541,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canStartExecution(ProductionOperationExecution execution) {
         // 只有待执行状态的记录可以开始
-        return "PENDING".equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.PENDING.getCode().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -548,7 +549,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canPauseExecution(ProductionOperationExecution execution) {
         // 只有进行中状态的记录可以暂停
-        return "IN_PROGRESS".equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -556,7 +557,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canCompleteExecution(ProductionOperationExecution execution) {
         // 只有进行中状态的记录可以完成
-        return "IN_PROGRESS".equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -564,8 +565,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canCancelExecution(ProductionOperationExecution execution) {
         // 只有待执行和进行中状态的记录可以取消
-        String status = execution.getExecutionStatus();
-        return "PENDING".equals(status) || "IN_PROGRESS".equals(status);
+        Integer status = execution.getExecutionStatus();
+        return ExecutionStatusEnum.PENDING.getCode().equals(status) || ExecutionStatusEnum.EXECUTING.getCode().equals(status);
     }
 
     /**
@@ -715,16 +716,16 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     /**
      * 获取状态描述
      */
-    private static String getStatusDesc(String status) {
+    private static String getStatusDesc(Integer status) {
         if (status == null) {
             return "未知";
         }
         switch (status) {
-            case "PENDING": return "待执行";
-            case "IN_PROGRESS": return "进行中";
-            case "PAUSED": return "已暂停";
-            case "COMPLETED": return "已完成";
-            case "CANCELLED": return "已取消";
+            case 0: return "待执行";
+            case 2: return "进行中";
+            case 3: return "已暂停";
+            case 4: return "已完成";
+            case 6: return "已取消";
             default: return "未知";
         }
     }

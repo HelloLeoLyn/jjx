@@ -64,7 +64,7 @@ public class ProductionOperationExecutionUpdateDTO {
     private String operatorName;
 
     @Schema(description = "执行状态：NOT_STARTED未开始/IN_PROGRESS进行中/PAUSED已暂停/COMPLETED已完成/CANCELLED已取消", example = "IN_PROGRESS")
-    private String executionStatus;
+    private Integer executionStatus;
 
     @Schema(description = "质量状态：PENDING待检/QUALIFIED合格/DEFECTIVE不良/REWORK返修/SCRAP报废", example = "QUALIFIED")
     private String qualityStatus;

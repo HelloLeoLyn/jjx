@@ -225,7 +225,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             return false;
         }
 
-        alert.setStatus("read");
+        alert.setStatus(1);
         return alertLogMapper.updateById(alert) > 0;
     }
 
@@ -238,7 +238,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
         List<InventoryAlertLog> alerts = alertLogMapper.selectBatchIds(alertIds);
         for (InventoryAlertLog alert : alerts) {
-            alert.setStatus("read");
+            alert.setStatus(1);
         }
 
         return updateBatchById(alerts);
@@ -253,7 +253,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             return false;
         }
 
-        alert.setStatus("processed");
+        alert.setStatus(2);
         alert.setProcessedBy(processedBy);
         alert.setProcessedTime(LocalDateTime.now());
         alert.setProcessRemark(remark);
@@ -290,7 +290,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     public List<AlertVO> getUnprocessed() {
         List<InventoryAlertLog> alerts = alertLogMapper.selectList(
                 new LambdaQueryWrapper<InventoryAlertLog>()
-                        .eq(InventoryAlertLog::getStatus, "new")
+                        .eq(InventoryAlertLog::getStatus, 0)
                         .orderByDesc(InventoryAlertLog::getAlertTime)
         );
         return convertToVOList(alerts);
@@ -302,7 +302,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 new LambdaQueryWrapper<InventoryAlertLog>()
                         .eq(InventoryAlertLog::getAlertType, alertType)
                         .eq(InventoryAlertLog::getMaterialId, materialId)
-                        .eq(InventoryAlertLog::getStatus, "new")
+                        .eq(InventoryAlertLog::getStatus, 0)
         );
         return count != null && count > 0;
     }
@@ -324,8 +324,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         if (alertLevel != null && !alertLevel.isEmpty()) {
             wrapper.eq(InventoryAlertLog::getAlertLevel, alertLevel);
         }
-        if (status != null && !status.isEmpty()) {
-            wrapper.eq(InventoryAlertLog::getStatus, status);
+        if (status != null) {
+            wrapper.eq(InventoryAlertLog::getStatus, Integer.valueOf(status));
         }
 
         if (startDate != null && !startDate.isEmpty()) {

@@ -42,10 +42,10 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="待盘点" value="draft" />
-            <el-option label="盘点中" value="in_progress" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="已取消" value="cancelled" />
+            <el-option label="待盘点" :value="0" />
+            <el-option label="盘点中" :value="4" />
+            <el-option label="已完成" :value="11" />
+            <el-option label="已取消" :value="9" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -126,20 +126,20 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
-            <el-button v-if="row.status === 'draft'" link type="primary" @click="handleEdit(row)"
+            <el-button v-if="row.status === 0" link type="primary" @click="handleEdit(row)"
               >编辑</el-button
             >
-            <el-button v-if="row.status === 'draft'" link type="success" @click="handleStart(row)"
+            <el-button v-if="row.status === 0" link type="success" @click="handleStart(row)"
               >开始盘点</el-button
             >
             <el-button
-              v-if="row.status === 'in_progress'"
+              v-if="row.status === 4"
               link
               type="warning"
               @click="handleComplete(row)"
               >完成盘点</el-button
             >
-            <el-button v-if="row.status === 'completed'" link type="info" @click="handleAdjust(row)"
+            <el-button v-if="row.status === 11" link type="info" @click="handleAdjust(row)"
               >生成调整单</el-button
             >
           </template>
@@ -197,7 +197,7 @@ const mockStocktakeData = [
     materialCount: 50,
     differenceCount: 3,
     differenceAmount: 1500,
-    status: 'completed',
+    status: 11,
     statusName: '已完成',
     createBy: '张三',
     createTime: '2024-03-28 10:00:00',
@@ -212,7 +212,7 @@ const mockStocktakeData = [
     materialCount: 30,
     differenceCount: 0,
     differenceAmount: 0,
-    status: 'in_progress',
+    status: 4,
     statusName: '盘点中',
     createBy: '李四',
     createTime: '2024-03-28 11:00:00',
@@ -227,7 +227,7 @@ const mockStocktakeData = [
     materialCount: 20,
     differenceCount: 1,
     differenceAmount: -500,
-    status: 'draft',
+    status: 0,
     statusName: '待盘点',
     createBy: '王五',
     createTime: '2024-03-28 12:00:00',
@@ -343,12 +343,13 @@ const getStocktakeTypeTag = (
 }
 
 // 获取状态标签样式
-const getStatusTag = (status: string): 'success' | 'warning' | 'info' | 'danger' | undefined => {
-  const statusMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    draft: 'info',
-    in_progress: 'warning',
-    completed: 'success',
-    cancelled: 'danger',
+const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
+  const statusMap: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
+    0: 'info',    // draft
+    4: 'warning', // processing
+    5: 'success', // confirmed
+    11: 'success', // processed
+    9: 'danger',  // cancelled
   }
   return statusMap[status]
 }

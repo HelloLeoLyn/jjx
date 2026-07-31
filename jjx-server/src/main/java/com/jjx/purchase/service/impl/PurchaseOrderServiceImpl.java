@@ -1,5 +1,6 @@
 package com.jjx.purchase.service.impl;
 
+import com.jjx.purchase.domain.enums.InquiryStatus;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -743,7 +744,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 item.setReceiptStatus(ReceiptStatusEnum.PENDING.getCode());
             }
             if (item.getInquiryStatus() == null) {
-                item.setInquiryStatus("pending");
+                item.setInquiryStatus(InquiryStatus.PENDING.getCode());
             }
 
             orderItemMapper.insert(item);

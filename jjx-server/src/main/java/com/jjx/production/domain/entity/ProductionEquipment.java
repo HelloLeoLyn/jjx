@@ -13,7 +13,7 @@ public class ProductionEquipment {
     private String model;
     private String department;
     private String location;
-    private String status;
+    private Integer status;
     private java.math.BigDecimal utilization;
     private LocalDateTime lastMaintenance;
     private LocalDateTime nextMaintenance;

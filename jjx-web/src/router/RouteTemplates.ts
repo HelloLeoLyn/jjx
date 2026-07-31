@@ -54,4 +54,28 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  // 任务看板（jjx-kanban 合并）作为静态路由，放在首页下面
+  {
+    path: '/kanban',
+    name: 'TaskKanban',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/kanban/index',
+    meta: {
+      title: '任务看板',
+      icon: 'DataBoard',
+      hidden: false,
+      sort: 1,
+    },
+    children: [
+      {
+        path: 'index',
+        name: 'TaskKanbanIndex',
+        component: () => import('@/views/kanban/index.vue'),
+        meta: {
+          title: '任务看板',
+          icon: 'DataBoard',
+        },
+      },
+    ],
+  },
 ]

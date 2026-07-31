@@ -65,6 +65,6 @@ public class InventoryTransferItem extends BaseEntity {
     private BigDecimal inQuantity;
 
     /** 状态：pending待处理/partial部分完成/completed已完成 */
-    private String status;
+    private Integer status;
 
 }

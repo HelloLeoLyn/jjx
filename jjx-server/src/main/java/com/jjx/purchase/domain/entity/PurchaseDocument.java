@@ -61,7 +61,7 @@ public class PurchaseDocument {
     /**
      * 票据状态（pending待处理/verified已核验/archived已归档）
      */
-    private String documentStatus;
+    private Integer documentStatus;
 
     /**
      * 核验日期

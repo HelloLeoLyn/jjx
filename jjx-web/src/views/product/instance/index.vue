@@ -348,7 +348,7 @@ const queryParams = reactive({
   instanceCode: undefined as string | undefined,
   productCode: undefined as string | undefined,
   productName: undefined as string | undefined,
-  instanceStatus: undefined as string | undefined,
+  instanceStatus: undefined as number | undefined,
   startDate: undefined as string | undefined,
   endDate: undefined as string | undefined,
   orderByColumn: undefined as string | undefined,
@@ -378,7 +378,7 @@ const form = reactive({
   productCode: '',
   productName: '',
   serialNumber: '',
-  instanceStatus: 'active',
+  instanceStatus: 1,
   productionDate: '',
   shipmentDate: '',
   remark: '',
@@ -418,10 +418,16 @@ const instanceList = ref<any[]>([])
 
 // 字典选项
 const instanceStatusOptions = ref([
-  { value: 'active', label: '激活' },
-  { value: 'inactive', label: '停用' },
-  { value: 'scrapped', label: '报废' },
-  { value: 'maintenance', label: '维修中' },
+  { value: 1, label: '已创建' },
+  { value: 2, label: '已计划' },
+  { value: 3, label: '生产中' },
+  { value: 4, label: '已暂停' },
+  { value: 5, label: '已完成' },
+  { value: 6, label: '已发货' },
+  { value: 9, label: '已交付' },
+  { value: 12, label: '维护中' },
+  { value: 16, label: '已报废' },
+  { value: 17, label: '已取消' },
 ])
 
 // 获取实例列表
@@ -440,29 +446,26 @@ const getList = async () => {
 }
 
 // 状态标签类型/文本
-const getInstanceStatusTagType = (status: string) => {
+const getInstanceStatusTagType = (status: number) => {
   switch (status) {
-    case 'active':
-      return 'success'
-    case 'inactive':
+    case 3:  // 生产中
       return 'warning'
-    case 'scrapped':
+    case 5:  // 已完成
+      return 'success'
+    case 16: // 已报废
       return 'danger'
-    case 'maintenance':
+    case 12: // 维护中
       return 'info'
+    case 17: // 已取消
+      return 'danger'
     default:
       return 'info'
   }
 }
 
-const getInstanceStatusLabel = (status: string) => {
-  const map: Record<string, string> = {
-    active: '激活',
-    inactive: '停用',
-    scrapped: '报废',
-    maintenance: '维修中',
-  }
-  return map[status] || '未知'
+const getInstanceStatusLabel = (status: number) => {
+  const option = instanceStatusOptions.value.find((opt) => opt.value === status)
+  return option ? option.label : '未知'
 }
 
 // 搜索按钮操作
@@ -528,7 +531,7 @@ const handleUpdate = (row?: any) => {
       productCode: 'P001',
       productName: '产品A',
       serialNumber: 'SN001',
-      instanceStatus: 'active',
+      instanceStatus: 1,
       productionDate: '2024-01-15',
       shipmentDate: '2024-01-20',
       remark: '测试实例',
@@ -625,7 +628,7 @@ const handleView = (row: any) => {
       productCode: 'P001',
       productName: '产品A',
       serialNumber: 'SN001',
-      instanceStatus: 'active',
+      instanceStatus: 1,
       productionDate: '2024-01-15',
       shipmentDate: '2024-01-20',
       remark: '测试实例',
@@ -685,7 +688,7 @@ const resetForm = () => {
     productCode: '',
     productName: '',
     serialNumber: '',
-    instanceStatus: 'active',
+    instanceStatus: 1,
     productionDate: '',
     shipmentDate: '',
     remark: '',

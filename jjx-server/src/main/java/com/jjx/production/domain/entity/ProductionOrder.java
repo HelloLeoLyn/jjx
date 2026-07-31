@@ -94,7 +94,7 @@ public class ProductionOrder{
     private Integer orderStatus;
 
     @Schema(description = "审批状态：PENDING待审批/APPROVED已批准/REJECTED已拒绝/CANCELLED已取消")
-    private String approvalStatus;
+    private Integer approvalStatus;
 
     @Schema(description = "审批人ID")
     private Long approverId;

@@ -209,7 +209,7 @@ public class InventoryReportServiceImpl implements InventoryReportService {
     public Map<String, Object> alertStat() {
         log.info("统计库存预警");
         List<InventoryAlertLog> allAlerts = alertLogMapper.selectList(null);
-        long unprocessed = allAlerts.stream().filter(a -> "new".equals(a.getStatus())).count();
+        long unprocessed = allAlerts.stream().filter(a -> Integer.valueOf(0).equals(a.getStatus())).count();
         long urgent = allAlerts.stream().filter(a -> "urgent".equals(a.getAlertLevel())).count();
         long warning = allAlerts.stream().filter(a -> "warning".equals(a.getAlertLevel())).count();
         long info = allAlerts.stream().filter(a -> "info".equals(a.getAlertLevel())).count();

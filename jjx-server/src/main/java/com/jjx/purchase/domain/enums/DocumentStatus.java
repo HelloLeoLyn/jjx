@@ -11,22 +11,22 @@ public enum DocumentStatus {
     /**
      * 待处理
      */
-    PENDING("pending", "待处理"),
+    PENDING(0, "待处理"),
 
     /**
      * 已核验
      */
-    VERIFIED("verified", "已核验"),
+    VERIFIED(1, "已核验"),
 
     /**
      * 已归档
      */
-    ARCHIVED("archived", "已归档");
+    ARCHIVED(2, "已归档");
 
-    private final String code;
+    private final Integer code;
     private final String description;
 
-    DocumentStatus(String code, String description) {
+    DocumentStatus(Integer code, String description) {
         this.code = code;
         this.description = description;
     }
@@ -34,7 +34,7 @@ public enum DocumentStatus {
     /**
      * 根据code获取枚举
      */
-    public static DocumentStatus getByCode(String code) {
+    public static DocumentStatus getByCode(Integer code) {
         for (DocumentStatus status : values()) {
             if (status.getCode().equals(code)) {
                 return status;

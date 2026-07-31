@@ -16,6 +16,9 @@ public class SysTask {
 
     private String taskType;
 
+    /** 看板模块: office/emergency/production/dev */
+    private String kanbanModule;
+
     private String title;
 
     private String description;
@@ -30,7 +33,7 @@ public class SysTask {
 
     private Long assignRole;
 
-    private String status;
+    private Integer status;
 
     private String priority;
 

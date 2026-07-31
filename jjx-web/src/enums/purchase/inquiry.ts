@@ -6,11 +6,10 @@ import { createEnum } from '@/enums/base'
  */
 export const InquiryStatusEnum = createEnum({
   items: [
-    { value: 0, label: '待报价', tagProps: { type: 'warning' } },
-    { value: 1, label: '已报价', tagProps: { type: 'primary' } },
-    { value: 2, label: '已确认', tagProps: { type: 'success' } },
-    { value: 3, label: '已过期', tagProps: { type: 'danger' } },
-    { value: 4, label: '已取消', tagProps: { type: 'info' } },
+    { value: 0, label: '待询价', tagProps: { type: 'warning' } },
+    { value: 1, label: '已询价', tagProps: { type: 'primary' } },
+    { value: 2, label: '比价中', tagProps: { type: 'warning' } },
+    { value: 3, label: '已选中', tagProps: { type: 'success' } },
   ],
   defaultTag: { type: 'info' },
 })

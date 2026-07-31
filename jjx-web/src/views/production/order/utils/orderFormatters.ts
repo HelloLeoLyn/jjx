@@ -16,31 +16,31 @@ export function getStatusLabel(
   executionStatus?: ExecutionStatus
 ): string {
   switch (orderStatus) {
-    case 'draft':
+    case 0:
       return '草稿'
-    case 'pending_approval':
-      return approvalStatus === 'pending'
+    case 1:
+      return approvalStatus === 1
         ? '待审批'
-        : approvalStatus === 'approved'
+        : approvalStatus === 2
           ? '已批准'
-          : approvalStatus === 'rejected'
+          : approvalStatus === 3
             ? '已拒绝'
             : '待审批'
-    case 'approved':
+    case 2:
       return '已批准'
-    case 'scheduled':
+    case 4:
       return '已排程'
-    case 'in_progress':
-      return executionStatus === 'not_started'
+    case 6:
+      return executionStatus === 0
         ? '未开始'
-        : executionStatus === 'in_progress'
+        : executionStatus === 2
           ? '进行中'
-          : executionStatus === 'paused'
+          : executionStatus === 3
             ? '已暂停'
             : '进行中'
-    case 'completed':
+    case 8:
       return '已完成'
-    case 'cancelled':
+    case 9:
       return '已取消'
     default:
       return '未知'
@@ -56,31 +56,31 @@ export function getStatusType(
   executionStatus?: ExecutionStatus
 ): string {
   switch (orderStatus) {
-    case 'draft':
+    case 0:
       return 'info'
-    case 'pending_approval':
-      return approvalStatus === 'pending'
+    case 1:
+      return approvalStatus === 1
         ? 'warning'
-        : approvalStatus === 'approved'
+        : approvalStatus === 2
           ? 'success'
-          : approvalStatus === 'rejected'
+          : approvalStatus === 3
             ? 'danger'
             : 'warning'
-    case 'approved':
+    case 2:
       return 'success'
-    case 'scheduled':
+    case 4:
       return 'primary'
-    case 'in_progress':
-      return executionStatus === 'not_started'
+    case 6:
+      return executionStatus === 0
         ? 'info'
-        : executionStatus === 'in_progress'
+        : executionStatus === 2
           ? 'warning'
-          : executionStatus === 'paused'
+          : executionStatus === 3
             ? 'warning'
             : 'warning'
-    case 'completed':
+    case 8:
       return 'success'
-    case 'cancelled':
+    case 9:
       return 'danger'
     default:
       return 'info'

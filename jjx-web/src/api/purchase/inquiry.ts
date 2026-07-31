@@ -345,9 +345,11 @@ export function batchAddMaterialInquiry(
  */
 export function getInquiryStatusOptions() {
   return [
-    { value: 'active', label: '有效', tagType: 'success' },
-    { value: 'inactive', label: '无效', tagType: 'info' },
-    { value: 'expired', label: '已过期', tagType: 'danger' },
+    { value: 0, label: '有效', tagType: 'success' },
+    { value: 1, label: '无效', tagType: 'info' },
+    { value: 2, label: '已过期', tagType: 'danger' },
+    { value: 3, label: '已取消', tagType: 'info' },
+    { value: 4, label: '已完成', tagType: 'success' },
   ]
 }
 
@@ -372,14 +374,14 @@ export function getCurrencyOptions() {
  * @returns 标签类型
  */
 export function getStatusTagType(
-  status: string,
+  status: number,
   withinValidityPeriod?: boolean,
 ): string {
-  if (status === 'active') {
+  if (status === 0) {
     return withinValidityPeriod ? 'success' : 'warning'
-  } else if (status === 'expired') {
+  } else if (status === 2) {
     return 'danger'
-  } else if (status === 'inactive') {
+  } else if (status === 1) {
     return 'info'
   }
   return 'default'
@@ -390,13 +392,15 @@ export function getStatusTagType(
  * @param status 状态
  * @returns 标签文本
  */
-export function getStatusLabel(status: string): string {
-  const statusMap: Record<string, string> = {
-    active: '有效',
-    inactive: '无效',
-    expired: '已过期',
+export function getStatusLabel(status: number): string {
+  const statusMap: Record<number, string> = {
+    0: '有效',
+    1: '无效',
+    2: '已过期',
+    3: '已取消',
+    4: '已完成',
   }
-  return statusMap[status] || status
+  return statusMap[status] || String(status ?? '')
 }
 
 /**

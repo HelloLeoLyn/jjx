@@ -77,7 +77,7 @@ public class ProductionOrderUpdateDTO {
     private Integer orderStatus;
 
     @Schema(description = "审批状态：PENDING待审批/APPROVED已批准/REJECTED已拒绝/CANCELLED已取消", example = "APPROVED")
-    private String approvalStatus;
+    private Integer approvalStatus;
 
     @Schema(description = "审批人ID", example = "1")
     private Long approverId;
