@@ -1,5 +1,17 @@
 package com.jjx.inventory.service.impl;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -10,29 +22,21 @@ import com.jjx.common.enums.StatusEnum;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.inventory.converter.MaterialConverter;
 import com.jjx.inventory.domain.InventoryMaterial;
+import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.dto.imports.MaterialImportDTO;
 import com.jjx.inventory.dto.query.MaterialCheckDTO;
 import com.jjx.inventory.dto.query.MaterialQueryDTO;
 import com.jjx.inventory.dto.vo.MaterialVO;
 import com.jjx.inventory.enums.ProcessGroup;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
+import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.service.InventoryMaterialService;
 import com.jjx.purchase.domain.vo.PurchaseSupplierVO;
 import com.jjx.purchase.service.IPurchaseSupplierService;
+
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 物料主数据服务实现类
@@ -44,6 +48,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         implements InventoryMaterialService {
 
     private final InventoryMaterialMapper materialMapper;
+    private final InventoryStockMapper stockMapper;
     private final RedisSequenceService redisSequenceService;
     private final MaterialConverter materialConverter;
     private final IPurchaseSupplierService purchaseSupplierService;
@@ -55,7 +60,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         materialMapper.selectPage(page, wrapper);
         List<InventoryMaterial> records = page.getRecords();
         List<MaterialVO> voList = materialConverter.toVOList(records);
-        return PageResult.build(voList,page.getTotal());
+        return PageResult.build(voList, page.getTotal());
     }
 
     private static @NonNull LambdaQueryWrapper<InventoryMaterial> buildQueryWrapper(MaterialQueryDTO queryDTO) {
@@ -69,7 +74,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (queryDTO.getSpecification() != null && !queryDTO.getSpecification().isEmpty()) {
             wrapper.eq(InventoryMaterial::getSpecification, queryDTO.getSpecification());
         }
-        if (queryDTO.getSupplierId() != null ) {
+        if (queryDTO.getSupplierId() != null) {
             wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());
         }
         if (queryDTO.getCategoryId() != null) {
@@ -134,8 +139,18 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             return false;
         }
 
-        // TODO: 检查是否被库存、单据等使用
-        // 这里需要调用库存Mapper检查是否有库存记录
+        // 检查库存汇总
+        InventoryStock stock = new InventoryStock();
+        stock.setMaterialId(id);
+        Long stockCount = stockMapper
+                .selectCount(new LambdaQueryWrapper<InventoryStock>().eq(InventoryStock::getMaterialId, id));
+        if (stockCount != null && stockCount > 0) {
+            log.error("物料已被库存引用，无法删除: materialId={}", id);
+            throw new RuntimeException("物料已被库存引用，无法删除");
+        }
+
+        // TODO: 检查是否被采购订单、生产订单、销售订单引用
+        // 后续可扩展检查 purchase_order_item、production_order_material 等
 
         return materialMapper.deleteById(id) > 0;
     }
@@ -143,15 +158,14 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     public List<Map<String, Object>> getOptions(String keyword) {
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<InventoryMaterial>()
-                        .eq(InventoryMaterial::getStatus, 0);
+                .eq(InventoryMaterial::getStatus, 0);
         if (keyword != null && !keyword.isEmpty()) {
             wrapper.and(w -> w.like(InventoryMaterial::getMaterialCode, keyword)
-                .or().like(InventoryMaterial::getMaterialName, keyword));
+                    .or().like(InventoryMaterial::getMaterialName, keyword));
         }
         List<InventoryMaterial> materials = materialMapper.selectList(wrapper
-                        .orderByAsc(InventoryMaterial::getMaterialCode)
-                        .last("LIMIT 100")
-        );
+                .orderByAsc(InventoryMaterial::getMaterialCode)
+                .last("LIMIT 100"));
 
         List<Map<String, Object>> options = new ArrayList<>();
         for (InventoryMaterial material : materials) {
@@ -168,9 +182,6 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         return options;
     }
 
-
-
-
     @Override
     public boolean existsByCode(String materialCode) {
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
@@ -186,20 +197,22 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             return false;
         }
         LambdaUpdateWrapper<InventoryMaterial> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.set(InventoryMaterial::getStatus,status)
-                .in(InventoryMaterial::getMaterialId,ids);
-        return materialMapper.update(updateWrapper)>0;
+        updateWrapper.set(InventoryMaterial::getStatus, status)
+                .in(InventoryMaterial::getMaterialId, ids);
+        return materialMapper.update(updateWrapper) > 0;
     }
 
     @Override
     public PageResult<MaterialVO> search(MaterialQueryDTO queryDTO) {
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
         wrapper.like(InventoryMaterial::getMaterialCode, queryDTO.getMaterialCode());
-        wrapper.or().like(StringUtils.isNotBlank(queryDTO.getMaterialCode()),InventoryMaterial::getMaterialName, queryDTO.getMaterialName());
-        IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize()).setCurrent(queryDTO.getPageNum());
+        wrapper.or().like(StringUtils.isNotBlank(queryDTO.getMaterialCode()), InventoryMaterial::getMaterialName,
+                queryDTO.getMaterialName());
+        IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize())
+                .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
         List<MaterialVO> voList = materialConverter.toVOList(page.getRecords());
-        return PageResult.build(voList,page.getTotal());
+        return PageResult.build(voList, page.getTotal());
     }
 
     @Override
@@ -217,8 +230,9 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         for (int i = 0; i < importList.size(); i++) {
             MaterialImportDTO dto = importList.get(i);
             try {
-                PurchaseSupplierVO purchaseSupplierVO = purchaseSupplierService.selectSupplierByName(dto.getSupplierName());
-                if(purchaseSupplierVO==null){
+                PurchaseSupplierVO purchaseSupplierVO = purchaseSupplierService
+                        .selectSupplierByName(dto.getSupplierName());
+                if (purchaseSupplierVO == null) {
                     errors.add("第" + (i + 1) + "条数据导入失败: " + dto.getMaterialName() + " - 找不到对应供应商");
                     continue;
                 }
@@ -319,7 +333,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     private static String getProcessGroup(MaterialImportDTO dto) {
         ProcessGroup processGroup = ProcessGroup.fromCode(dto.getProcessGroup());
-        if(processGroup==null){
+        if (processGroup == null) {
             processGroup = ProcessGroup.fromName(dto.getProcessGroup());
             return processGroup.getCode();
         }
