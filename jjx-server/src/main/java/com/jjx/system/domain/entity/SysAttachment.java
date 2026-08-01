@@ -26,6 +26,9 @@ public class SysAttachment {
     @Schema(description = "业务记录ID")
     private Long bizId;
 
+    @Schema(description = "链路追踪ID（关联单据链路）")
+    private String traceId;
+
     @Schema(description = "原始文件名")
     private String fileName;
 
