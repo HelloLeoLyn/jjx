@@ -313,6 +313,7 @@ import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 
@@ -360,8 +361,8 @@ async function handleAcceptEngineering() {
       cancelButtonText: '取消',
       type: 'info',
     })
-    const userStore = (await import('@/store/user')).default?.()
-    const name = userStore?.name || '工程'
+    const userStore = useUserStore()
+    const name = userStore.nickName || '工程'
     await sampleOrderApi.acceptEngineering(detailData.value.orderId, name)
     ElMessage.success('接单成功')
     await reloadDetail()
