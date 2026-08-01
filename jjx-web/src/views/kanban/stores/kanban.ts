@@ -119,7 +119,10 @@ export const useKanbanStore = defineStore('kanban', () => {
 
   // 更新卡片
   async function handleUpdateCard(cardId: string, updates: Partial<BoardCard>) {
-    await updateCard(cardId, updates)
+    const allCards = columns.value.flatMap(col => col.cards)
+    const card = allCards.find(c => c.id === cardId)
+    const templateType = card?.templateType ?? currentTemplate.value
+    await updateCard(cardId, updates, templateType)
     await loadBoard()
   }
 
