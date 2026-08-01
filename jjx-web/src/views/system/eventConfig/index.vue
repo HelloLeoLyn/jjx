@@ -139,7 +139,14 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="业务模块" prop="bizModule">
-              <el-input v-model="form.bizModule" placeholder="如: sales" />
+              <el-select v-model="form.bizModule" placeholder="选择业务模块" style="width:100%">
+                <el-option label="销售" value="sales" />
+                <el-option label="采购" value="purchase" />
+                <el-option label="生产" value="production" />
+                <el-option label="产品工程" value="product" />
+                <el-option label="库存" value="inventory" />
+                <el-option label="品质" value="quality" />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
