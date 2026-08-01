@@ -730,6 +730,7 @@ import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
+import { QuotationStatusEnum } from '@/enums/sales'
 import { customerApi } from '@/api/sales/customer'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { listProduct } from '@/api/product'
@@ -835,17 +836,9 @@ const quotationList = ref<any[]>([])
 const quotationFormRef = ref<FormInstance>()
 
 // 字典选项
-const quotationStatusOptions = ref([
-  { value: 0, label: '草稿' },
-  { value: 1, label: '已发送' },
-  { value: 2, label: '已确认' },
-  { value: 3, label: '已拒绝' },
-  { value: 4, label: '已过期' },
-  { value: 5, label: '待审核' },
-  { value: 6, label: '已审核' },
-  { value: 8, label: '改单' },
-  { value: 9, label: '已完成' },
-])
+const quotationStatusOptions = ref(
+  QuotationStatusEnum.items.map((item) => ({ value: item.value, label: item.label })),
+)
 
 const currencyOptions = ref([
   { value: 'CNY', label: '人民币' },
@@ -1352,34 +1345,13 @@ const cancel = () => {
 
 // 获取状态标签类型
 const getStatusTagType = (status: number) => {
-  switch (status) {
-    case 0:
-      return 'info'
-    case 1:
-      return 'warning'
-    case 2:
-      return 'success'
-    case 3:
-      return 'danger'
-    case 4:
-      return 'info'
-    case 5:
-      return 'warning'
-    case 6:
-      return 'primary'
-    case 8:
-      return 'warning'
-    case 9:
-      return 'success'
-    default:
-      return 'info'
-  }
+  return (QuotationStatusEnum.getTagProps(status).type as string) || 'info'
 }
 
 // 获取状态标签文本
 const getStatusLabel = (status: number) => {
-  const option = quotationStatusOptions.value.find((opt) => opt.value === status)
-  return option ? option.label : '未知状态'
+  const label = QuotationStatusEnum.getLabel(status)
+  return label && label !== '未知' ? label : '未知状态'
 }
 
 // 组件挂载时获取数据

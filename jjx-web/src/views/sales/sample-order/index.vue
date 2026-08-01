@@ -221,6 +221,7 @@ import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { SampleOrderStatusEnum } from '@/enums/sales'
 
 defineOptions({ name: 'SalesSampleOrder' })
 
@@ -327,20 +328,14 @@ const createRules = {
 }
 
 // ==================== 状态映射 ====================
-const statusConfig: Record<number, { label: string; type: string }> = {
-  1:  { label: '已创建', type: 'info' },
-  2:  { label: '待审核', type: 'warning' },
-  3:  { label: '工程打样中', type: 'primary' },
-  4:  { label: '样品待送样', type: '' },
-  5:  { label: '已送样待确认', type: '' },
-  6:  { label: '样品确认', type: 'success' },
-  7:  { label: '已转量产', type: 'success' },
-  8:  { label: '已关闭', type: 'info' },
-  9:  { label: '客户退回', type: 'danger' },
-  10: { label: '已取消', type: 'info' },
+// 使用统一枚举（对应后端 SampleOrderStatusEnum）
+function statusLabel(status: number): string {
+  const label = SampleOrderStatusEnum.getLabel(status)
+  return label && label !== '未知' ? label : `未知(${status})`
 }
-function statusLabel(status: number): string { return statusConfig[status]?.label || `未知(${status})` }
-function statusTagType(status: number): string { return statusConfig[status]?.type || 'info' }
+function statusTagType(status: number): string {
+  return (SampleOrderStatusEnum.getTagProps(status).type as string) || 'info'
+}
 
 // ==================== 接口 ====================
 async function getList() {
@@ -585,7 +580,12 @@ async function handleConvert(row: any) {
 // ==================== 初始化 ====================
 onMounted(() => {
   getList()
-  sampleOrderApi.getStatusOptions().then(res => { statusOptions.value = res.data || [] }).catch(() => {})
+  statusOptions.value = SampleOrderStatusEnum.items.map((item) => ({
+    value: item.value,
+    label: item.label,
+    description: '',
+    terminal: false,
+  }))
 })
 </script>
 
