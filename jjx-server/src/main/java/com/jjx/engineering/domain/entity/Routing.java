@@ -10,6 +10,7 @@ public class Routing {
     private String routingName;
     private Long productId;
     private String routingType;
+    @com.baomidou.mybatisplus.annotation.TableField("approve_status")
     private Integer status;
     private String remark;
     private String createBy;

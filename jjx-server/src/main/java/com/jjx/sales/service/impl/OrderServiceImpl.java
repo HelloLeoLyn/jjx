@@ -7,9 +7,16 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
 import com.jjx.framework.common.RedisSequenceService;
+import com.jjx.engineering.domain.entity.Bom;
+import com.jjx.engineering.domain.entity.Routing;
+import com.jjx.engineering.service.IBomService;
+import com.jjx.engineering.service.IRoutingService;
+import com.jjx.system.annotation.Event;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ProductValidationVO;
 import com.jjx.product.mapper.ProductMapper;
+import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
+import com.jjx.production.service.ProductionOrderService;
 import com.jjx.sales.domain.converter.SalesOrderConverter;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesOrderEditDTO;
@@ -53,6 +60,9 @@ public class OrderServiceImpl implements IOrderService {
     private final ISalesOrderProductService orderProductService;
     private final ICustomerService customerService;
     private final ProductMapper productMapper;
+    private final ProductionOrderService productionOrderService;
+    private final IBomService bomService;
+    private final IRoutingService routingService;
 
     /**
      * 查询销售订单列表
@@ -365,6 +375,7 @@ public class OrderServiceImpl implements IOrderService {
      * 创建产品实例
      */
     @Override
+    @Event(value = "order.production_started", bizId = "#orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public int createInstances(Long orderId) {
         SalesOrder order = orderMapper.selectById(orderId);
@@ -385,10 +396,74 @@ public class OrderServiceImpl implements IOrderService {
             throw new BusinessException("只有已确认的订单可以创建产品实例");
         }
 
-        // 这里应该调用生产模块的接口创建产品实例
-        // 暂时只更新订单状态为生产中
-        order.setOrderStatus(4);
+        // 查询订单明细（产品列表）
+        List<SalesOrderProductVO> productList = orderProductService.getListByOrderId(orderId);
+        if (productList == null || productList.isEmpty()) {
+            throw new BusinessException("订单没有产品明细，无法创建生产工单");
+        }
 
+        // 为每个产品创建生产工单
+        for (SalesOrderProductVO product : productList) {
+            Long productId = product.getProductId();
+            if (productId == null) {
+                throw new BusinessException("订单明细缺少产品ID");
+            }
+
+            // 1. 校验产品已发布
+            Product prod = productMapper.selectById(productId);
+            if (prod == null) {
+                throw new BusinessException("产品不存在: " + product.getProductCode());
+            }
+            if (prod.getProductStatus() != null && prod.getProductStatus() != 6) {
+                throw new BusinessException("产品[" + prod.getProductCode() + "]未发布(状态=" + prod.getProductStatus() + ")，不能提交生产");
+            }
+
+            // 2. 校验 BOM 已批准（当前生效版本）
+            Bom bom = bomService.getOne(new LambdaQueryWrapper<Bom>()
+                    .eq(Bom::getProductId, productId)
+                    .eq(Bom::getIsCurrent, 1)
+                    .eq(Bom::getApproveStatus, 3)
+                    .orderByDesc(Bom::getBomId)
+                    .last("LIMIT 1"));
+            if (bom == null) {
+                throw new BusinessException("产品[" + prod.getProductCode() + "]没有已批准的BOM，不能提交生产");
+            }
+
+            // 3. 校验工艺路线已批准（当前生效版本）
+            Routing routing = routingService.getOne(new LambdaQueryWrapper<Routing>()
+                    .eq(Routing::getProductId, productId)
+                    .eq(Routing::getStatus, 3)
+                    .orderByDesc(Routing::getRoutingId)
+                    .last("LIMIT 1"));
+            if (routing == null) {
+                throw new BusinessException("产品[" + prod.getProductCode() + "]没有已批准的工艺路线，不能提交生产");
+            }
+
+            // 4. 创建生产工单
+            ProductionOrderCreateDTO dto = new ProductionOrderCreateDTO();
+            dto.setOrderNo(redisSequenceService.generateBizNumber(RedisSequenceService.BizCode.WPO));
+            dto.setOrderType("WORK_ORDER");
+            dto.setSalesOrderId(orderId);
+            dto.setSalesOrderNo(order.getOrderNo());
+            dto.setProductId(productId);
+            dto.setProductCode(product.getProductCode());
+            dto.setProductName(product.getProductName());
+            dto.setProductSpec(product.getSpecification());
+            dto.setProductUnit(product.getUnit() != null ? product.getUnit() : "PCS");
+            dto.setBomId(bom.getBomId());
+            dto.setBomCode(bom.getBomCode());
+            dto.setRoutingId(routing.getRoutingId());
+            dto.setRoutingCode(routing.getRoutingCode());
+            dto.setPlannedQuantity(product.getQuantity() != null ?
+                    java.math.BigDecimal.valueOf(product.getQuantity().longValue()) : java.math.BigDecimal.ONE);
+            dto.setPlanStartDate(java.time.LocalDate.now());
+            dto.setPlanEndDate(java.time.LocalDate.now().plusDays(7));
+            dto.setRemark("由销售订单[" + order.getOrderNo() + "]提交生产生成");
+            productionOrderService.createOrder(dto);
+        }
+
+        // 更新订单状态为生产中(4)
+        order.setOrderStatus(4);
         return orderMapper.updateById(order);
     }
 
