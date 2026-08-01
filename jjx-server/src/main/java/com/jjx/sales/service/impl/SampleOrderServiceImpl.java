@@ -543,6 +543,80 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
+     * 打样汇总（DEV-454 增强）：总工时 + 材料成本估算（自动计算，不手填）
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getSampleSummary(Long orderId) {
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        java.util.List<SalesSampleProcess> processes = sampleProcessMapper.selectByOrderId(orderId);
+
+        // 总工时（各工序 durationMinutes 之和，分钟→小时）
+        int totalMinutes = 0;
+        java.util.Map<String, java.util.Map<String, Object>> materialAgg = new java.util.LinkedHashMap<>();
+        for (SalesSampleProcess sp : processes) {
+            if (sp.getDurationMinutes() != null) totalMinutes += sp.getDurationMinutes();
+            if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
+            try {
+                java.util.List<java.util.Map<String, Object>> mats =
+                        new com.fasterxml.jackson.databind.ObjectMapper().readValue(sp.getMaterials(),
+                                new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+                for (java.util.Map<String, Object> m : mats) {
+                    String name = m.get("name") != null ? m.get("name").toString() : null;
+                    if (name == null) continue;
+                    String key = name + "|" + (m.get("spec") != null ? m.get("spec") : "");
+                    java.util.Map<String, Object> agg = materialAgg.get(key);
+                    if (agg == null) {
+                        agg = new java.util.LinkedHashMap<>();
+                        agg.put("name", name);
+                        agg.put("spec", m.get("spec"));
+                        agg.put("unit", m.get("unit") != null ? m.get("unit") : "PCS");
+                        agg.put("qty", java.math.BigDecimal.ZERO);
+                        // 匹配物料标准价
+                        try {
+                            com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectOne(
+                                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                                            .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, name)
+                                            .last("LIMIT 1"));
+                            if (mat != null && mat.getStandardPrice() != null) {
+                                agg.put("unitPrice", mat.getStandardPrice());
+                            }
+                        } catch (Exception me) { /* ignore */ }
+                        materialAgg.put(key, agg);
+                    }
+                    if (m.get("qty") != null) {
+                        try {
+                            java.math.BigDecimal qty = (java.math.BigDecimal) agg.get("qty");
+                            agg.put("qty", qty.add(new java.math.BigDecimal(m.get("qty").toString())));
+                        } catch (Exception qe) { /* ignore */ }
+                    }
+                }
+            } catch (Exception pe) {
+                log.warn("解析工序材料失败: {}", pe.getMessage());
+            }
+        }
+
+        // 材料成本估算
+        java.math.BigDecimal materialCost = java.math.BigDecimal.ZERO;
+        for (java.util.Map<String, Object> agg : materialAgg.values()) {
+            if (agg.get("unitPrice") != null && agg.get("qty") != null) {
+                try {
+                    materialCost = materialCost.add(
+                            ((java.math.BigDecimal) agg.get("qty")).multiply((java.math.BigDecimal) agg.get("unitPrice")));
+                } catch (Exception e) { /* ignore */ }
+            }
+        }
+
+        result.put("totalMinutes", totalMinutes);
+        result.put("totalHours", java.math.BigDecimal.valueOf(totalMinutes).divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP));
+        result.put("materialCount", materialAgg.size());
+        result.put("materials", new java.util.ArrayList<>(materialAgg.values()));
+        result.put("materialCost", materialCost.setScale(2, java.math.RoundingMode.HALF_UP));
+        result.put("processCount", processes.size());
+        return result;
+    }
+
+    /**
      * 查询打样BOM物料清单
      */
     @Override
@@ -661,15 +735,21 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         standardOrder.setTotalQuantity(sampleOrder.getTotalQuantity());
         standardOrder.setTotalAmount(sampleOrder.getTotalAmount());
         standardOrder.setFinalAmount(sampleOrder.getFinalAmount());
+        // 打样汇总自动计算（总工时+材料成本），替代手填 sampleCost/sampleWorkHours
+        java.util.Map<String, Object> summary = getSampleSummary(orderId);
+        java.math.BigDecimal totalHours = summary.get("totalHours") instanceof java.math.BigDecimal
+                ? (java.math.BigDecimal) summary.get("totalHours") : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal materialCost = summary.get("materialCost") instanceof java.math.BigDecimal
+                ? (java.math.BigDecimal) summary.get("materialCost") : java.math.BigDecimal.ZERO;
         standardOrder.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]转量产生成"
                 + (sampleOrder.getEngineeringNote() != null && !sampleOrder.getEngineeringNote().isEmpty()
                     ? "\n【工艺参数传承】" + sampleOrder.getEngineeringNote() : "")
                 + (sampleOrder.getCurrentProcess() != null && !sampleOrder.getCurrentProcess().isEmpty()
                     ? "\n【最后工序】" + sampleOrder.getCurrentProcess() : "")
-                + (sampleOrder.getSampleCost() != null && sampleOrder.getSampleCost().compareTo(java.math.BigDecimal.ZERO) > 0
-                    ? "\n【打样成本】" + sampleOrder.getSampleCost() + "元" : "")
-                + (sampleOrder.getSampleWorkHours() != null && sampleOrder.getSampleWorkHours().compareTo(java.math.BigDecimal.ZERO) > 0
-                    ? "\n【打样工时】" + sampleOrder.getSampleWorkHours() + "小时" : ""));
+                + (materialCost.compareTo(java.math.BigDecimal.ZERO) > 0
+                    ? "\n【材料成本】" + materialCost + "元" : "")
+                + (totalHours.compareTo(java.math.BigDecimal.ZERO) > 0
+                    ? "\n【打样工时】" + totalHours + "小时" : ""));
 
         orderMapper.insert(standardOrder);
 

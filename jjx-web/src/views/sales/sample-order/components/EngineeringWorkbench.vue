@@ -87,17 +87,28 @@
         <div v-else style="color:#999;font-size:13px;padding:8px 0">当前没有工序历史记录，录入工序后自动记录</div>
       </el-card>
 
-<!-- 成本/工时 -->
+<!-- 打样汇总（自动计算） -->
       <el-card shadow="never" style="margin-bottom:16px">
-        <template #header><span style="font-weight:600">成本 / 工时</span></template>
-        <div style="display:flex;align-items:center;gap:8px">
-          <el-input-number v-model="form.cost" :min="0" :precision="2" :controls="false" placeholder="成本" style="width:120px" />
-          <span style="color:#909399">元</span>
-          <el-input-number v-model="form.workHours" :min="0" :precision="1" :controls="false" placeholder="工时" style="width:120px" />
-          <span style="color:#909399">小时</span>
-          <el-button type="primary" size="small" @click="saveCost" :loading="saving">保存</el-button>
+        <template #header><span style="font-weight:600">📊 打样汇总（自动）</span></template>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:#409eff">{{ summary.totalHours ?? '-' }}</div>
+            <div style="font-size:12px;color:#909399;margin-top:2px">总工时(小时)</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:#67c23a">¥{{ summary.materialCost ?? '-' }}</div>
+            <div style="font-size:12px;color:#909399;margin-top:2px">材料成本(估算)</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:#606266">{{ summary.processCount ?? '-' }}</div>
+            <div style="font-size:12px;color:#909399;margin-top:2px">工序数</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:22px;font-weight:700;color:#e6a23c">{{ summary.materialCount ?? '-' }}</div>
+            <div style="font-size:12px;color:#909399;margin-top:2px">材料种类</div>
+          </div>
         </div>
-        <div v-if="card.sampleCost" style="margin-top:8px;color:#606266;font-size:13px">已录：¥{{ card.sampleCost }} / {{ card.sampleWorkHours || 0 }}h</div>
+        <div style="font-size:12px;color:#999;margin-top:8px">由工序单元自动汇总：总工时=各工序耗时之和，材料成本=材料用量×标准单价</div>
       </el-card>
 
       <!-- 图纸上传 -->
@@ -167,7 +178,7 @@ const emit = defineEmits<{
 
 const saving = ref(false)
 const form = reactive({
-  note: '', process: '', cost: 0, workHours: 0,
+  note: '', process: '',
   materials: [] as any[], processNote: '', duration: undefined as number | undefined,
 })
 // 添加材料行
@@ -197,11 +208,9 @@ function onClose(val: boolean) {
 
 async function onOpen() {
   if (!props.card?.orderId) return
-  await Promise.all([loadProcesses(), loadBom(), loadEngFiles()])
+  await Promise.all([loadProcesses(), loadBom(), loadEngFiles(), loadSummary()])
   form.note = props.card.engineeringNote || ''
   form.process = props.card.currentProcess || ''
-  form.cost = props.card.sampleCost || 0
-  form.workHours = props.card.sampleWorkHours || 0
   form.materials = []
   form.processNote = ''
   form.duration = undefined
@@ -283,6 +292,7 @@ async function saveProcess() {
     )
     props.card.currentProcess = form.process
     await loadProcesses()
+    await loadSummary()
     ElMessage.success(`已保存工序：${form.process}${validMats.length ? `（${validMats.length}种材料）` : ''}`)
     // 清空表单便于录下一道
     form.materials = []
@@ -296,20 +306,15 @@ async function saveProcess() {
   }
 }
 
-// 成本
-async function saveCost() {
+// 打样汇总
+const summary = ref<any>({})
+async function loadSummary() {
   if (!props.card?.orderId) return
-  saving.value = true
   try {
-    await sampleOrderApi.recordCost(props.card.orderId, form.cost, form.workHours)
-    props.card.sampleCost = form.cost
-    props.card.sampleWorkHours = form.workHours
-    ElMessage.success('成本/工时已保存')
-    emit('saved')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败')
-  } finally {
-    saving.value = false
+    const res = await request.get(`/sales/sample-order/summary/${props.card.orderId}`)
+    summary.value = res.data || {}
+  } catch {
+    summary.value = {}
   }
 }
 

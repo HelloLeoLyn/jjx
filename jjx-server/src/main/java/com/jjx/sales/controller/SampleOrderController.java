@@ -205,6 +205,12 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.listSampleProcesses(orderId));
     }
 
+    @Operation(summary = "打样汇总（总工时+材料成本估算）")
+    @GetMapping("/summary/{orderId}")
+    public Result<java.util.Map<String, Object>> summary(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.getSampleSummary(orderId));
+    }
+
     /**
      * 查询打样BOM物料清单
      */

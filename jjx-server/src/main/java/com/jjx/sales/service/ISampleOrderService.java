@@ -81,6 +81,11 @@ public interface ISampleOrderService {
     List<com.jjx.sales.domain.entity.SalesSampleProcess> listSampleProcesses(Long orderId);
 
     /**
+     * 打样汇总：总工时 + 材料成本估算（自动计算）
+     */
+    java.util.Map<String, Object> getSampleSummary(Long orderId);
+
+    /**
      * 查询打样BOM物料清单
      */
     List<com.jjx.sales.domain.entity.SalesSampleBom> listSampleBom(Long orderId);
