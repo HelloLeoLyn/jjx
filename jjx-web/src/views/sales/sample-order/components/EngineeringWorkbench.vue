@@ -7,7 +7,7 @@
     @update:model-value="onClose"
     @open="onOpen"
   >
-    <div v-if="card">
+    <div v-if="card" class="workbench-body">
       <!-- 单据信息 -->
       <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
         <el-descriptions-item label="样品单号">{{ card.orderNo }}</el-descriptions-item>
@@ -393,3 +393,22 @@ async function refreshCard() {
 
 watch(() => props.visible, (v) => { if (v) onOpen() })
 </script>
+
+<style scoped>
+.workbench-body {
+  height: 800px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+/* el-dialog 固定高度 800px（弹框整体） */
+:deep(.el-dialog) {
+  height: 800px;
+  display: flex;
+  flex-direction: column;
+}
+:deep(.el-dialog__body) {
+  flex: 1;
+  overflow: hidden;
+}
+</style>
