@@ -189,8 +189,11 @@ public class SampleOrderController extends BaseController {
     @SaCheckPermission("sales:sample:engineering")
     @PutMapping("/update-process/{orderId}")
     public Result<SalesOrder> updateProcess(@PathVariable Long orderId,
-                                            @RequestParam String process) {
-        return Result.success(sampleOrderService.updateSampleProcess(orderId, process));
+                                            @RequestParam String process,
+                                            @RequestParam(required = false) String materials,
+                                            @RequestParam(required = false) String processNote,
+                                            @RequestParam(required = false) Integer durationMinutes) {
+        return Result.success(sampleOrderService.updateSampleProcess(orderId, process, materials, processNote, durationMinutes));
     }
 
     /**

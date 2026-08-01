@@ -29,6 +29,12 @@ public class SalesSampleProcess {
     /** 工序名称 */
     private String processName;
 
+    /** 该工序材料明细(JSON: [{name,spec,qty,unit}]) */
+    private String materials;
+
+    /** 工艺说明(怎么做的) */
+    private String processNote;
+
     /** 操作人 */
     private String operator;
 

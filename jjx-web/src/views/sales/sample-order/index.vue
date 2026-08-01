@@ -225,14 +225,14 @@
               />
             </el-card>
 
-            <!-- 物料清单（只读） -->
+            <!-- 物料清单（只读，从工序单元聚合） -->
             <el-card shadow="never" style="margin-bottom:16px">
               <template #header><span style="font-weight:600">🧾 打样物料清单（BOM）</span></template>
               <el-table v-if="bomList.length > 0" :data="bomList" size="small" border style="width:100%">
-                <el-table-column prop="layerName" label="层结构" width="90" align="center" />
-                <el-table-column prop="materialName" label="物料名称" min-width="140" />
-                <el-table-column prop="specification" label="规格" min-width="130" />
-                <el-table-column prop="quantity" label="用量" width="90" />
+                <el-table-column prop="process" label="工序" width="90" />
+                <el-table-column prop="name" label="物料名称" min-width="140" />
+                <el-table-column prop="spec" label="规格" min-width="130" />
+                <el-table-column prop="qty" label="用量" width="90" />
                 <el-table-column prop="unit" label="单位" width="70" align="center" />
               </el-table>
               <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无物料清单</div>
@@ -510,25 +510,25 @@ async function reloadDetail() {
     } catch {
       processList.value = []
     }
-    // 加载打样BOM
+    // 加载打样BOM（从工序单元材料聚合）
     try {
-      const bRes = await sampleOrderApi.listBom(detailData.value.orderId)
-      bomList.value = bRes.data || []
+      const pRes2 = await sampleOrderApi.listProcesses(detailData.value.orderId)
+      const procs = pRes2.data || []
+      const agg: any[] = []
+      for (const p of procs) {
+        if (!p.materials) continue
+        try {
+          const mats = JSON.parse(p.materials)
+          for (const m of mats) {
+            agg.push({ process: p.processName, name: m.name, spec: m.spec, qty: m.qty, unit: m.unit })
+          }
+        } catch { /* ignore */ }
+      }
+      bomList.value = agg
     } catch {
       bomList.value = []
     }
   }
-}
-
-// 添加物料行
-function addBomRow() {
-  bomList.value.push({
-    layerName: '面板',
-    materialName: '',
-    specification: '',
-    quantity: 1,
-    unit: 'PCS',
-  })
 }
 
 // 删除物料行（本地行直接删，已有记录调接口）

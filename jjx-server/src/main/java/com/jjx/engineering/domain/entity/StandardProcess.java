@@ -9,7 +9,9 @@ public class StandardProcess {
     private String processCode;
     private String processName;
     private String processType;
+    private String processCategory;
     private BigDecimal standardLaborHours;
+    private BigDecimal standardMachineHours;
     private Integer isEnabled;
     private Integer displayOrder;
     private String description;

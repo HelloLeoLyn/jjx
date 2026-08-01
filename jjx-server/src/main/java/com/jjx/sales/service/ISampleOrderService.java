@@ -73,7 +73,7 @@ public interface ISampleOrderService {
     /**
      * 更新打样当前工序
      */
-    SalesOrder updateSampleProcess(Long orderId, String process);
+    SalesOrder updateSampleProcess(Long orderId, String process, String materials, String processNote, Integer durationMinutes);
 
     /**
      * 查询打样工序历史

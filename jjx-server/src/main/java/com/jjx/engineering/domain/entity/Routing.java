@@ -9,9 +9,16 @@ public class Routing {
     private String routingCode;
     private String routingName;
     private Long productId;
+    private String productCode;
+    private String productName;
     private String routingType;
+    private String routingVersion;
+    private Integer isCurrent;
     @com.baomidou.mybatisplus.annotation.TableField("approve_status")
     private Integer status;
+    private java.math.BigDecimal totalLaborHours;
+    private java.math.BigDecimal totalMachineHours;
+    private Integer processCount;
     private String remark;
     private String createBy;
     private LocalDateTime createTime;

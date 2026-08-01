@@ -46,24 +46,48 @@
       <el-card shadow="never" style="margin-bottom:16px">
         <template #header><span style="font-weight:600">工序进度</span></template>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <el-select v-model="form.process" placeholder="选择当前工序" style="width:220px">
+          <el-select v-model="form.process" placeholder="选择工序" style="width:170px">
             <el-option v-for="p in processOptions" :key="p" :label="p" :value="p" />
           </el-select>
+          <el-input-number v-model="form.duration" :min="0" :precision="0" :controls="false" placeholder="耗时(分)" style="width:100px" />
+          <span style="color:#909399;font-size:12px">分钟</span>
           <el-button type="primary" size="small" @click="saveProcess" :loading="saving">💾 保存工序</el-button>
           <span v-if="card.currentProcess" style="color:#909399;font-size:12px">当前：{{ card.currentProcess }}</span>
+        </div>
+        <!-- 该工序材料（工序单元：材料+工艺） -->
+        <div style="margin-bottom:8px">
+          <div style="font-size:12px;color:#909399;margin-bottom:4px">🧾 本工序材料</div>
+          <div v-for="(m, idx) in form.materials" :key="idx" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+            <el-input v-model="m.name" placeholder="材料名" style="width:140px" />
+            <el-input v-model="m.spec" placeholder="规格" style="width:120px" />
+            <el-input-number v-model="m.qty" :min="0" :precision="4" :controls="false" placeholder="用量" style="width:90px" />
+            <el-input v-model="m.unit" placeholder="单位" style="width:60px" />
+            <el-button type="danger" size="small" link @click="form.materials.splice(idx, 1)">删</el-button>
+          </div>
+          <el-button type="primary" size="small" plain icon="Plus" @click="addMaterialRow">添加材料</el-button>
+        </div>
+        <!-- 工艺说明 -->
+        <div style="margin-bottom:8px">
+          <div style="font-size:12px;color:#909399;margin-bottom:4px">🔧 工艺说明（怎么做的）</div>
+          <el-input v-model="form.processNote" type="textarea" :rows="2" placeholder="如：丝印机200目网版，刮刀压力3kg，室温干燥30分钟" />
         </div>
         <el-timeline v-if="processList.length > 0" style="padding-left:2px">
           <el-timeline-item v-for="(p, i) in processList" :key="p.processId" :timestamp="formatTime(p.startTime)" placement="top" :type="i === processList.length - 1 ? 'primary' : 'info'">
             <div style="font-size:13px">
               <span style="font-weight:600">{{ p.processName }}</span>
+              <span v-if="p.durationMinutes" style="margin-left:8px;color:#606266;font-size:12px">⏱ {{ p.durationMinutes }}分钟</span>
               <span v-if="p.operator" style="margin-left:8px;color:#909399;font-size:12px">操作人：{{ p.operator }}</span>
+              <div v-if="p.processNote" style="color:#606266;font-size:12px;margin-top:2px">🔧 {{ p.processNote }}</div>
+              <div v-if="p.materials" style="margin-top:2px">
+                <el-tag v-for="(m, mi) in parseMaterials(p.materials)" :key="mi" size="small" type="info" style="margin-right:4px">{{ m.name }}{{ m.spec ? ' ' + m.spec : '' }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag>
+              </div>
             </div>
           </el-timeline-item>
         </el-timeline>
-        <div v-else style="color:#999;font-size:13px;padding:8px 0">当前没有工序历史记录，选择工序后自动记录</div>
+        <div v-else style="color:#999;font-size:13px;padding:8px 0">当前没有工序历史记录，录入工序后自动记录</div>
       </el-card>
 
-      <!-- 成本/工时 -->
+<!-- 成本/工时 -->
       <el-card shadow="never" style="margin-bottom:16px">
         <template #header><span style="font-weight:600">成本 / 工时</span></template>
         <div style="display:flex;align-items:center;gap:8px">
@@ -99,47 +123,17 @@
         <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无工程文件，请上传图纸或工艺文件</div>
       </el-card>
 
-      <!-- 物料清单 -->
+      <!-- 物料汇总（从工序单元材料自动聚合，只读） -->
       <el-card shadow="never" style="margin-bottom:16px">
-        <template #header><span style="font-weight:600">🧾 打样物料清单（BOM）</span></template>
-        <el-table :data="bomList" size="small" border style="width:100%">
-          <el-table-column label="层结构" width="90" align="center">
-            <template #default="{ row }">
-              <el-select v-model="row.layerName" size="small" style="width:80px">
-                <el-option v-for="l in bomLayerOptions" :key="l" :label="l" :value="l" />
-              </el-select>
-            </template>
-          </el-table-column>
-          <el-table-column label="物料名称" min-width="140">
-            <template #default="{ row }">
-              <el-input v-model="row.materialName" size="small" placeholder="如PET面板膜" />
-            </template>
-          </el-table-column>
-          <el-table-column label="规格" min-width="130">
-            <template #default="{ row }">
-              <el-input v-model="row.specification" size="small" placeholder="如0.25mm" />
-            </template>
-          </el-table-column>
-          <el-table-column label="用量" width="105">
-            <template #default="{ row }">
-              <el-input-number v-model="row.quantity" :min="0" :precision="4" size="small" style="width:85px" />
-            </template>
-          </el-table-column>
-          <el-table-column label="单位" width="78" align="center">
-            <template #default="{ row }">
-              <el-input v-model="row.unit" size="small" placeholder="PCS" />
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="60" align="center">
-            <template #default="{ $index, row }">
-              <el-button type="danger" size="small" link @click="removeBomRow($index, row)">删</el-button>
-            </template>
-          </el-table-column>
+        <template #header><span style="font-weight:600">🧾 全单材料汇总</span></template>
+        <el-table v-if="bomList.length > 0" :data="bomList" size="small" border style="width:100%">
+          <el-table-column prop="process" label="工序" width="90" />
+          <el-table-column prop="name" label="材料" min-width="140" />
+          <el-table-column prop="spec" label="规格" min-width="120" />
+          <el-table-column prop="qty" label="用量" width="90" />
+          <el-table-column prop="unit" label="单位" width="70" />
         </el-table>
-        <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
-          <el-button type="primary" size="small" @click="addBomRow">＋ 添加物料</el-button>
-          <el-button type="success" size="small" @click="saveBomList" :loading="saving">💾 保存物料清单</el-button>
-        </div>
+        <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无材料（在工序录入中添加材料后自动汇总）</div>
       </el-card>
 
       <!-- 标记完成 -->
@@ -172,7 +166,24 @@ const emit = defineEmits<{
 }>()
 
 const saving = ref(false)
-const form = reactive({ note: '', process: '', cost: 0, workHours: 0 })
+const form = reactive({
+  note: '', process: '', cost: 0, workHours: 0,
+  materials: [] as any[], processNote: '', duration: undefined as number | undefined,
+})
+// 添加材料行
+function addMaterialRow() {
+  form.materials.push({ name: '', spec: '', qty: 1, unit: 'PCS' })
+}
+// 解析材料JSON
+function parseMaterials(json?: string) {
+  if (!json) return []
+  try {
+    const arr = JSON.parse(json)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
 const processList = ref<any[]>([])
 const bomList = ref<any[]>([])
 const processOptions = ['印刷', '冲切', '贴合', 'SMT贴片', '装配', '测试', '包装']
@@ -191,6 +202,9 @@ async function onOpen() {
   form.process = props.card.currentProcess || ''
   form.cost = props.card.sampleCost || 0
   form.workHours = props.card.sampleWorkHours || 0
+  form.materials = []
+  form.processNote = ''
+  form.duration = undefined
 }
 
 function formatTime(t?: string) {
@@ -257,10 +271,23 @@ async function saveProcess() {
   }
   saving.value = true
   try {
-    await sampleOrderApi.updateProcess(props.card.orderId, form.process)
+    // 材料 → JSON
+    const validMats = form.materials.filter((m: any) => m.name && m.name.trim())
+    const materialsJson = validMats.length > 0 ? JSON.stringify(validMats) : null
+    await sampleOrderApi.updateProcess(
+      props.card.orderId,
+      form.process,
+      materialsJson,
+      form.processNote || undefined,
+      form.duration,
+    )
     props.card.currentProcess = form.process
     await loadProcesses()
-    ElMessage.success(`已保存为：${form.process}`)
+    ElMessage.success(`已保存工序：${form.process}${validMats.length ? `（${validMats.length}种材料）` : ''}`)
+    // 清空表单便于录下一道
+    form.materials = []
+    form.processNote = ''
+    form.duration = undefined
     emit('saved')
   } catch (e: any) {
     ElMessage.error(e?.message || '保存工序失败')
@@ -334,33 +361,6 @@ async function loadEngFiles() {
   }
 }
 
-// 物料清单
-function addBomRow() {
-  bomList.value.push({ layerName: '面板', materialName: '', specification: '', quantity: 1, unit: 'PCS' })
-}
-async function removeBomRow(index: number, row: any) {
-  if (row.bomId) {
-    try { await sampleOrderApi.deleteBomItem(row.bomId) } catch (e: any) { ElMessage.error(e?.message || '删除失败'); return }
-  }
-  bomList.value.splice(index, 1)
-}
-async function saveBomList() {
-  if (!props.card?.orderId) return
-  const valid = bomList.value.filter(i => i.materialName && i.materialName.trim())
-  if (valid.length === 0) { ElMessage.warning('请至少填写一条物料名称'); return }
-  saving.value = true
-  try {
-    const res = await sampleOrderApi.saveBom(props.card.orderId, valid)
-    bomList.value = res.data || []
-    ElMessage.success(`已保存 ${bomList.value.length} 条物料`)
-    emit('saved')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败')
-  } finally {
-    saving.value = false
-  }
-}
-
 // 标记完成
 async function handleMarkReady() {
   if (!props.card?.orderId) return
@@ -383,8 +383,23 @@ async function loadProcesses() {
   try { const res = await sampleOrderApi.listProcesses(props.card.orderId); processList.value = res.data || [] } catch { processList.value = [] }
 }
 async function loadBom() {
+  // 从工序单元材料聚合（不再用 sales_sample_bom 表）
   if (!props.card?.orderId) return
-  try { const res = await sampleOrderApi.listBom(props.card.orderId); bomList.value = res.data || [] } catch { bomList.value = [] }
+  try {
+    const res = await sampleOrderApi.listProcesses(props.card.orderId)
+    const procs = res.data || []
+    const agg: any[] = []
+    for (const p of procs) {
+      if (!p.materials) continue
+      try {
+        const mats = JSON.parse(p.materials)
+        for (const m of mats) {
+          agg.push({ process: p.processName, name: m.name, spec: m.spec, qty: m.qty, unit: m.unit })
+        }
+      } catch { /* ignore */ }
+    }
+    bomList.value = agg
+  } catch { bomList.value = [] }
 }
 async function refreshCard() {
   if (!props.card?.orderId) return

@@ -51,6 +51,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.engineering.service.IRoutingService routingService;
     private final com.jjx.product.mapper.ProductBomItemMapper bomItemMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
+    private final com.jjx.engineering.mapper.RoutingItemMapper routingItemMapper;
+    private final com.jjx.engineering.mapper.StandardProcessMapper standardProcessMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -253,11 +255,31 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 }
             }
 
-            // ② BOM 物料快照
+            // ② BOM 物料快照（从工序单元材料聚合）
             try {
-                java.util.List<com.jjx.sales.domain.entity.SalesSampleBom> boms = sampleBomMapper.selectByOrderId(orderId);
-                if (boms != null && !boms.isEmpty()) {
-                    round.setBomSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(boms));
+                java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procs =
+                        sampleProcessMapper.selectByOrderId(orderId);
+                java.util.List<java.util.Map<String, Object>> aggMats = new java.util.ArrayList<>();
+                if (procs != null) {
+                    for (com.jjx.sales.domain.entity.SalesSampleProcess sp : procs) {
+                        if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
+                        try {
+                            java.util.List<java.util.Map<String, Object>> mats =
+                                    new com.fasterxml.jackson.databind.ObjectMapper().readValue(sp.getMaterials(),
+                                            new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+                            for (java.util.Map<String, Object> m : mats) {
+                                java.util.Map<String, Object> agg = new java.util.LinkedHashMap<>();
+                                agg.put("process", sp.getProcessName());
+                                agg.putAll(m);
+                                aggMats.add(agg);
+                            }
+                        } catch (Exception pe) {
+                            log.warn("解析工序材料失败: {}", pe.getMessage());
+                        }
+                    }
+                }
+                if (!aggMats.isEmpty()) {
+                    round.setBomSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(aggMats));
                 }
             } catch (Exception be) {
                 log.warn("归档BOM快照失败: {}", be.getMessage());
@@ -477,7 +499,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public SalesOrder updateSampleProcess(Long orderId, String process) {
+    public SalesOrder updateSampleProcess(Long orderId, String process, String materials, String processNote, Integer durationMinutes) {
         SalesOrder current = orderMapper.selectById(orderId);
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
@@ -488,13 +510,16 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("当前状态不可更新工序进度");
         }
 
-        // 记录工序历史（追加，不覆盖）
+        // 记录工序历史（追加，不覆盖）— 工序单元化：材料+工艺说明+耗时
         SalesSampleProcess record = new SalesSampleProcess();
         record.setOrderId(orderId);
         record.setRoundNo(current.getSampleRound() != null ? current.getSampleRound() : 1);
         record.setProcessName(process);
+        record.setMaterials(materials);
+        record.setProcessNote(processNote);
         record.setOperator(SecurityUtils.getUsername());
         record.setStartTime(LocalDateTime.now());
+        record.setDurationMinutes(durationMinutes);
         record.setRemark("工序进度更新");
         sampleProcessMapper.insert(record);
 
@@ -672,8 +697,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         update.setConvertOrderTime(new Date());
         orderMapper.updateById(update);
 
-        // ========== 转量产建档联动（DEV-457）==========
-        // 为订单明细产品检查/生成 BOM 草稿 + 工艺路线提醒
+        // ========== 转量产建档联动（DEV-457 重构：从工序单元聚合生成标准BOM+工艺路线）==========
         try {
             java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
                     orderProductService.getListByOrderId(standardOrder.getOrderId());
@@ -682,6 +706,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     Long pid = prod.getProductId();
                     if (pid == null) continue;
 
+                    // 查询打样工序单元（本单全部工序记录）
+                    java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes =
+                            sampleProcessMapper.selectByOrderId(orderId);
+
                     // 1. 检查是否已有 BOM（当前生效版）
                     com.jjx.engineering.domain.entity.Bom existBom = bomService.getOne(
                             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.Bom>()
@@ -689,10 +717,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     .eq(com.jjx.engineering.domain.entity.Bom::getIsCurrent, 1)
                                     .last("LIMIT 1"));
                     if (existBom == null) {
-                        // 2. 无BOM → 根据打样BOM生成草稿（approve_status=1）
-                        java.util.List<com.jjx.sales.domain.entity.SalesSampleBom> sampleBoms =
-                                sampleBomMapper.selectByOrderId(orderId);
-                        if (sampleBoms != null && !sampleBoms.isEmpty()) {
+                        // 2. 无BOM → 从工序单元材料聚合生成BOM草稿（approve_status=1）
+                        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procsWithMat =
+                                processes != null ? processes : java.util.Collections.emptyList();
+                        if (!procsWithMat.isEmpty()) {
                             com.jjx.engineering.domain.entity.Bom newBom = new com.jjx.engineering.domain.entity.Bom();
                             newBom.setBomCode("BOM-" + prod.getProductCode() + "-SAMPLE");
                             newBom.setBomName(prod.getProductName() + "（打样传承BOM）");
@@ -701,59 +729,129 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                             newBom.setBomType("manufacturing");
                             newBom.setIsCurrent(1);
                             newBom.setApproveStatus(1L); // 草稿
-                            newBom.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]打样数据自动生成，请工程确认后批准");
+                            newBom.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]打样工序单元自动生成，请工程确认后批准");
                             newBom.setCreateBy(SecurityUtils.getUsername());
                             bomService.save(newBom);
 
-                            // 明细：打样BOM → 正式BOM明细（物料名匹配库存物料表）
+                            // 明细：遍历工序单元的材料JSON → 正式BOM明细（按物料名聚合去重）
                             int order = 1;
-                            for (com.jjx.sales.domain.entity.SalesSampleBom sb : sampleBoms) {
-                                com.jjx.product.domain.entity.ProductBomItem item = new com.jjx.product.domain.entity.ProductBomItem();
-                                item.setBomId(newBom.getBomId());
-                                item.setMaterialName(sb.getMaterialName());
-                                item.setSpecification(sb.getSpecification());
-                                item.setQuantity(sb.getQuantity());
-                                item.setUnit(sb.getUnit());
-                                item.setLayer(sb.getLayerName());
-                                item.setItemOrder(order++);
-                                // 按物料名称匹配库存物料表，补 material_id/material_code
-                                if (sb.getMaterialName() != null) {
-                                    try {
-                                        com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectOne(
-                                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
-                                                        .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, sb.getMaterialName())
-                                                        .last("LIMIT 1"));
-                                        if (mat != null) {
-                                            item.setMaterialId(mat.getMaterialId());
-                                            item.setMaterialCode(mat.getMaterialCode());
+                            java.util.Map<String, com.jjx.product.domain.entity.ProductBomItem> aggMap = new java.util.LinkedHashMap<>();
+                            for (com.jjx.sales.domain.entity.SalesSampleProcess sp : procsWithMat) {
+                                if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
+                                try {
+                                    java.util.List<java.util.Map<String, Object>> mats =
+                                            new com.fasterxml.jackson.databind.ObjectMapper().readValue(sp.getMaterials(),
+                                                    new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+                                    for (java.util.Map<String, Object> m : mats) {
+                                        String name = m.get("name") != null ? m.get("name").toString() : null;
+                                        if (name == null || name.isEmpty()) continue;
+                                        String key = name + "|" + (m.get("spec") != null ? m.get("spec") : "");
+                                        com.jjx.product.domain.entity.ProductBomItem item = aggMap.get(key);
+                                        if (item == null) {
+                                            item = new com.jjx.product.domain.entity.ProductBomItem();
+                                            item.setBomId(newBom.getBomId());
+                                            item.setMaterialName(name);
+                                            item.setSpecification(m.get("spec") != null ? m.get("spec").toString() : null);
+                                            item.setUnit(m.get("unit") != null ? m.get("unit").toString() : "PCS");
+                                            item.setLayer(sp.getProcessName()); // 层=工序名，保留工序归属
+                                            item.setItemOrder(order++);
+                                            item.setQuantity(java.math.BigDecimal.ZERO);
+                                            aggMap.put(key, item);
+                                            // 按物料名称匹配库存物料表，补 material_id/material_code
+                                            try {
+                                                com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectOne(
+                                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                                                                .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, name)
+                                                                .last("LIMIT 1"));
+                                                if (mat != null) {
+                                                    item.setMaterialId(mat.getMaterialId());
+                                                    item.setMaterialCode(mat.getMaterialCode());
+                                                }
+                                            } catch (Exception me) {
+                                                log.warn("工序材料匹配物料失败: {}", me.getMessage());
+                                            }
                                         }
-                                    } catch (Exception me) {
-                                        log.warn("打样BOM物料匹配失败: {}", me.getMessage());
+                                        // 累加数量
+                                        if (m.get("qty") != null) {
+                                            try {
+                                                item.setQuantity(item.getQuantity().add(new java.math.BigDecimal(m.get("qty").toString())));
+                                            } catch (Exception qe) { /* ignore */ }
+                                        }
                                     }
+                                } catch (Exception pe) {
+                                    log.warn("解析工序材料失败: {}", pe.getMessage());
                                 }
+                            }
+                            for (com.jjx.product.domain.entity.ProductBomItem item : aggMap.values()) {
                                 bomItemMapper.insert(item);
                             }
-                            log.info("样品单[{}] 转量产自动生成BOM草稿[{}] ({}条明细)",
-                                    orderId, newBom.getBomCode(), sampleBoms.size());
+                            log.info("样品单[{}] 转量产从工序单元生成BOM草稿[{}] ({}条明细)",
+                                    orderId, newBom.getBomCode(), aggMap.size());
                         } else {
-                            log.warn("样品单[{}] 转量产：产品[{}]无打样BOM数据，未生成BOM草稿",
+                            log.warn("样品单[{}] 转量产：产品[{}]无打样工序记录，未生成BOM草稿",
                                     orderId, prod.getProductCode());
                         }
                     }
 
-                    // 3. 检查工艺路线（无则提醒）
+                    // 3. 工艺路线：从工序单元生成路线草稿（每道工序→一个步骤）
                     com.jjx.engineering.domain.entity.Routing existRouting = routingService.getOne(
                             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.Routing>()
                                     .eq(com.jjx.engineering.domain.entity.Routing::getProductId, pid)
                                     .last("LIMIT 1"));
-                    if (existRouting == null) {
-                        log.warn("样品单[{}] 转量产：产品[{}]无工艺路线，请工程补充", orderId, prod.getProductCode());
+                    if (existRouting == null && processes != null && !processes.isEmpty()) {
+                        com.jjx.engineering.domain.entity.Routing newRouting = new com.jjx.engineering.domain.entity.Routing();
+                        newRouting.setRoutingCode("RTE-" + prod.getProductCode() + "-SAMPLE");
+                        newRouting.setRoutingName(prod.getProductName() + "（打样传承工艺路线）");
+                        newRouting.setProductId(pid);
+                        newRouting.setProductCode(prod.getProductCode());
+                        newRouting.setProductName(prod.getProductName());
+                        newRouting.setRoutingVersion("V1");
+                        newRouting.setIsCurrent(1);
+                        newRouting.setStatus(1); // 草稿
+                        newRouting.setCreateBy(SecurityUtils.getUsername());
+                        routingService.save(newRouting);
+
+                        int stepOrder = 1;
+                        java.math.BigDecimal totalLabor = java.math.BigDecimal.ZERO;
+                        java.math.BigDecimal totalMachine = java.math.BigDecimal.ZERO;
+                        for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
+                            // 匹配标准工序（按名称）
+                            com.jjx.engineering.domain.entity.StandardProcess std = standardProcessMapper.selectOne(
+                                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.StandardProcess>()
+                                            .eq(com.jjx.engineering.domain.entity.StandardProcess::getProcessName, sp.getProcessName())
+                                            .last("LIMIT 1"));
+                            Long stdProcessId = std != null ? std.getProcessId() : null;
+                            String category = std != null ? std.getProcessCategory() : "M";
+                            // 耗时：分钟→小时
+                            java.math.BigDecimal laborHours = sp.getDurationMinutes() != null
+                                    ? java.math.BigDecimal.valueOf(sp.getDurationMinutes()).divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP)
+                                    : (std != null && std.getStandardLaborHours() != null ? std.getStandardLaborHours() : java.math.BigDecimal.ZERO);
+                            java.math.BigDecimal machineHours = std != null && std.getStandardMachineHours() != null
+                                    ? std.getStandardMachineHours() : laborHours;
+                            totalLabor = totalLabor.add(laborHours);
+                            totalMachine = totalMachine.add(machineHours);
+                            routingItemMapper.insertItem(newRouting.getRoutingId(),
+                                    stdProcessId != null ? stdProcessId : -1L,
+                                    stepOrder++, laborHours, machineHours,
+                                    sp.getProcessNote() != null ? sp.getProcessNote() : null,
+                                    "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
+                                    category);
+                        }
+                        newRouting.setTotalLaborHours(totalLabor);
+                        newRouting.setTotalMachineHours(totalMachine);
+                        newRouting.setProcessCount(processes.size());
+                        routingService.updateById(newRouting);
+                        log.info("样品单[{}] 转量产从工序单元生成路线草稿[{}] ({}道工序)",
+                                orderId, newRouting.getRoutingCode(), processes.size());
+                    } else if (existRouting == null) {
+                        log.warn("样品单[{}] 转量产：产品[{}]无工序记录，未生成工艺路线", orderId, prod.getProductCode());
                     }
                 }
             }
         } catch (Exception e) {
             log.warn("样品单[{}] 转量产建档联动失败: {}", orderId, e.getMessage());
         }
+
 
         log.info("样品单[{}] 转量产成功，生成标准订单[{}] (orderId={})",
                 sampleOrder.getOrderNo(), standardOrderNo, standardOrder.getOrderId());
