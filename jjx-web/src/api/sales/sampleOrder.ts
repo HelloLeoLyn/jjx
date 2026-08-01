@@ -167,6 +167,32 @@ export const sampleOrderApi = {
     })
   },
 
+  // 查询打样BOM物料清单
+  listBom(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/bom/${orderId}`,
+      method: 'get',
+    })
+  },
+
+  // 保存打样BOM物料清单（覆盖当前轮次）
+  saveBom(orderId: number, items: any[], roundNo?: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/bom/${orderId}`,
+      method: 'put',
+      params: roundNo ? { roundNo } : undefined,
+      data: items,
+    })
+  },
+
+  // 删除单条打样BOM
+  deleteBomItem(bomId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/bom/${bomId}`,
+      method: 'delete',
+    })
+  },
+
   // 录入打样成本/工时
   recordCost(orderId: number, cost?: number, workHours?: number): AxiosPromise<any> {
     return request({

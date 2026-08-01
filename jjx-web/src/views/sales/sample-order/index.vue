@@ -255,6 +255,55 @@
               <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无工程文件，请上传图纸或工艺文件</div>
             </el-card>
 
+            <!-- 打样物料清单 BOM -->
+            <el-card shadow="never" style="margin-bottom:16px">
+              <template #header><span style="font-weight:600">🧾 打样物料清单（BOM）</span></template>
+              <el-table :data="bomList" size="small" border style="width:100%">
+                <el-table-column label="层结构" width="90" align="center">
+                  <template #default="{ row }">
+                    <el-select v-if="isEditableStatus" v-model="row.layerName" size="small" style="width:80px">
+                      <el-option v-for="l in bomLayerOptions" :key="l" :label="l" :value="l" />
+                    </el-select>
+                    <span v-else>{{ row.layerName }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="物料名称" min-width="140">
+                  <template #default="{ row }">
+                    <el-input v-if="isEditableStatus" v-model="row.materialName" size="small" placeholder="如PET面板膜" />
+                    <span v-else>{{ row.materialName }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="规格" min-width="140">
+                  <template #default="{ row }">
+                    <el-input v-if="isEditableStatus" v-model="row.specification" size="small" placeholder="如0.25mm" />
+                    <span v-else>{{ row.specification }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="用量" width="110">
+                  <template #default="{ row }">
+                    <el-input-number v-if="isEditableStatus" v-model="row.quantity" :min="0" :precision="4" size="small" style="width:90px" />
+                    <span v-else>{{ row.quantity }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="单位" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-input v-if="isEditableStatus" v-model="row.unit" size="small" placeholder="PCS" />
+                    <span v-else>{{ row.unit }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="70" align="center" v-if="isEditableStatus">
+                  <template #default="{ $index, row }">
+                    <el-button type="danger" size="small" link @click="removeBomRow($index, row)">删</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div v-if="isEditableStatus" style="margin-top:8px;display:flex;align-items:center;gap:8px">
+                <el-button type="primary" size="small" @click="addBomRow">＋ 添加物料</el-button>
+                <el-button type="success" size="small" @click="saveBomList" :loading="savingBom">💾 保存物料清单</el-button>
+              </div>
+              <div v-if="bomList.length === 0 && !isEditableStatus" style="color:#999;font-size:13px;padding:8px 0">暂无物料清单</div>
+            </el-card>
+
             <!-- 打样轮次快照 -->
             <el-card shadow="never" style="margin-bottom:16px">
               <template #header><span style="font-weight:600">📦 打样轮次快照</span></template>
@@ -373,6 +422,9 @@ const savingEng = ref(false)
 const costForm = reactive({ cost: 0, workHours: 0 })
 const roundList = ref<any[]>([])
 const processList = ref<any[]>([])
+const bomList = ref<any[]>([])
+const savingBom = ref(false)
+const bomLayerOptions = ['面板', '线路', '间隔', '背胶', '连接器', '其他']
 
 // 打样工序选项（薄膜开关典型工艺）
 const sampleProcessOptions = ['印刷', '冲切', '贴合', 'SMT贴片', '装配', '测试', '包装']
@@ -470,6 +522,57 @@ async function reloadDetail() {
     } catch {
       processList.value = []
     }
+    // 加载打样BOM
+    try {
+      const bRes = await sampleOrderApi.listBom(detailData.value.orderId)
+      bomList.value = bRes.data || []
+    } catch {
+      bomList.value = []
+    }
+  }
+}
+
+// 添加物料行
+function addBomRow() {
+  bomList.value.push({
+    layerName: '面板',
+    materialName: '',
+    specification: '',
+    quantity: 1,
+    unit: 'PCS',
+  })
+}
+
+// 删除物料行（本地行直接删，已有记录调接口）
+async function removeBomRow(index: number, row: any) {
+  if (row.bomId) {
+    try {
+      await sampleOrderApi.deleteBomItem(row.bomId)
+    } catch (e: any) {
+      ElMessage.error(e?.message || '删除失败')
+      return
+    }
+  }
+  bomList.value.splice(index, 1)
+}
+
+// 保存物料清单
+async function saveBomList() {
+  if (!detailData.value?.orderId) return
+  const valid = bomList.value.filter(i => i.materialName && i.materialName.trim())
+  if (valid.length === 0) {
+    ElMessage.warning('请至少填写一条物料名称')
+    return
+  }
+  savingBom.value = true
+  try {
+    const res = await sampleOrderApi.saveBom(detailData.value.orderId, valid)
+    bomList.value = res.data || []
+    ElMessage.success(`已保存 ${bomList.value.length} 条物料`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    savingBom.value = false
   }
 }
 

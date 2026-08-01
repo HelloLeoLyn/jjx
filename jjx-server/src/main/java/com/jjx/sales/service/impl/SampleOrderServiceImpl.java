@@ -6,12 +6,14 @@ import com.jjx.sales.domain.dto.SalesOrderProductDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.entity.SalesSampleProcess;
+import com.jjx.sales.domain.entity.SalesSampleBom;
 import com.jjx.sales.enums.OrderTypeEnum;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.SalesSampleRoundMapper;
 import com.jjx.sales.mapper.SalesSampleProcessMapper;
+import com.jjx.sales.mapper.SalesSampleBomMapper;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
@@ -43,6 +45,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final ISalesOrderProductService orderProductService;
     private final SalesSampleRoundMapper sampleRoundMapper;
     private final SalesSampleProcessMapper sampleProcessMapper;
+    private final SalesSampleBomMapper sampleBomMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -444,6 +447,61 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Transactional(readOnly = true)
     public List<SalesSampleProcess> listSampleProcesses(Long orderId) {
         return sampleProcessMapper.selectByOrderId(orderId);
+    }
+
+    /**
+     * 查询打样BOM物料清单
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<SalesSampleBom> listSampleBom(Long orderId) {
+        return sampleBomMapper.selectByOrderId(orderId);
+    }
+
+    /**
+     * 保存打样BOM物料（覆盖当前轮次：先删后插，保持结构化一致）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<SalesSampleBom> saveSampleBom(Long orderId, Integer roundNo, List<SalesSampleBom> items) {
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("物料清单不能为空");
+        }
+
+        int round = roundNo != null ? roundNo : (current.getSampleRound() != null ? current.getSampleRound() : 1);
+        // 覆盖当前轮次：先删旧记录
+        sampleBomMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalesSampleBom>()
+                .eq(SalesSampleBom::getOrderId, orderId)
+                .eq(SalesSampleBom::getRoundNo, round));
+
+        String username = SecurityUtils.getUsername();
+        for (SalesSampleBom item : items) {
+            if (item.getLayerName() == null || item.getMaterialName() == null) {
+                throw new BusinessException("层结构和物料名称必填");
+            }
+            item.setBomId(null);
+            item.setOrderId(orderId);
+            item.setRoundNo(round);
+            item.setCreateBy(username);
+            if (item.getQuantity() == null) item.setQuantity(java.math.BigDecimal.ONE);
+            if (item.getUnit() == null) item.setUnit("PCS");
+            sampleBomMapper.insert(item);
+        }
+        log.info("样品单[{}] 保存打样BOM {} 条 (round={})", orderId, items.size(), round);
+        return sampleBomMapper.selectByOrderId(orderId);
+    }
+
+    /**
+     * 删除单条打样BOM
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteSampleBomItem(Long bomId) {
+        return sampleBomMapper.deleteById(bomId) > 0;
     }
 
     /**

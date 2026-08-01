@@ -81,6 +81,21 @@ public interface ISampleOrderService {
     List<com.jjx.sales.domain.entity.SalesSampleProcess> listSampleProcesses(Long orderId);
 
     /**
+     * 查询打样BOM物料清单
+     */
+    List<com.jjx.sales.domain.entity.SalesSampleBom> listSampleBom(Long orderId);
+
+    /**
+     * 保存打样BOM物料（覆盖当前轮次）
+     */
+    List<com.jjx.sales.domain.entity.SalesSampleBom> saveSampleBom(Long orderId, Integer roundNo, List<com.jjx.sales.domain.entity.SalesSampleBom> items);
+
+    /**
+     * 删除单条打样BOM
+     */
+    boolean deleteSampleBomItem(Long bomId);
+
+    /**
      * 录入打样成本/工时
      */
     SalesOrder recordSampleCost(Long orderId, java.math.BigDecimal cost, java.math.BigDecimal workHours);

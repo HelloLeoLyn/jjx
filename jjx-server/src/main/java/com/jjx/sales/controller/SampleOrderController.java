@@ -203,6 +203,37 @@ public class SampleOrderController extends BaseController {
     }
 
     /**
+     * 查询打样BOM物料清单
+     */
+    @Operation(summary = "查询打样BOM物料清单")
+    @GetMapping("/bom/{orderId}")
+    public Result<List<com.jjx.sales.domain.entity.SalesSampleBom>> listBom(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.listSampleBom(orderId));
+    }
+
+    /**
+     * 保存打样BOM物料清单
+     */
+    @Operation(summary = "保存打样BOM物料清单")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @SaCheckPermission("sales:sample:engineering")
+    @PutMapping("/bom/{orderId}")
+    public Result<List<com.jjx.sales.domain.entity.SalesSampleBom>> saveBom(@PathVariable Long orderId,
+                                                                            @RequestParam(required = false) Integer roundNo,
+                                                                            @RequestBody List<com.jjx.sales.domain.entity.SalesSampleBom> items) {
+        return Result.success(sampleOrderService.saveSampleBom(orderId, roundNo, items));
+    }
+
+    /**
+     * 删除单条打样BOM
+     */
+    @Operation(summary = "删除单条打样BOM")
+    @DeleteMapping("/bom/{bomId}")
+    public Result<Boolean> deleteBomItem(@PathVariable Long bomId) {
+        return Result.success(sampleOrderService.deleteSampleBomItem(bomId));
+    }
+
+    /**
      * 录入打样成本/工时
      */
     @Operation(summary = "录入打样成本/工时")
