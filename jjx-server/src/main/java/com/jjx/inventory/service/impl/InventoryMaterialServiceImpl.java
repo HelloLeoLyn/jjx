@@ -37,6 +37,7 @@ import com.jjx.purchase.service.IPurchaseSupplierService;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.jjx.system.annotation.Event;
 
 /**
  * 物料主数据服务实现类
@@ -99,6 +100,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
+    @Event(value = "inventory.material.created", bizId = "#material", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean create(InventoryMaterial material) {
         // 检查编码是否已存在
@@ -111,6 +113,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
+    @Event(value = "inventory.material.updated", bizId = "#material", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean update(InventoryMaterial material) {
         InventoryMaterial existing = materialMapper.selectById(material.getMaterialId());
@@ -131,6 +134,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
+    @Event(value = "inventory.material.deleted", bizId = "#id", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long id) {
         InventoryMaterial material = materialMapper.selectById(id);
@@ -191,6 +195,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
+    @Event(value = "inventory.material.status_updated", bizId = "#ids", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean batchUpdateStatus(List<Long> ids, Integer status) {
         if (ids == null || ids.isEmpty()) {

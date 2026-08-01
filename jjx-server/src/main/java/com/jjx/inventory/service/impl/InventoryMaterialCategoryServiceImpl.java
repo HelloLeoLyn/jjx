@@ -23,6 +23,7 @@ import com.jjx.inventory.service.InventoryMaterialCategoryService;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.jjx.system.annotation.Event;
 
 /**
  * 物料分类服务实现类
@@ -106,6 +107,7 @@ public class InventoryMaterialCategoryServiceImpl
     }
 
     @Override
+    @Event(value = "inventory.material_category.status_updated", bizId = "#categoryId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long categoryId, String status) {
         InventoryMaterialCategory category = materialCategoryMapper.selectById(categoryId);
@@ -119,6 +121,7 @@ public class InventoryMaterialCategoryServiceImpl
     }
 
     @Override
+    @Event(value = "inventory.material_category.deleted", bizId = "#categoryId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long categoryId) {
         // 检查是否有子分类

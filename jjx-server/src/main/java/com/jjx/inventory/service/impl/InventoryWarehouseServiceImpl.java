@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.jjx.system.annotation.Event;
 
 /**
  * 仓库服务实现类
@@ -59,6 +60,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
     }
 
     @Override
+    @Event(value = "inventory.warehouse.status_updated", bizId = "#warehouseId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long warehouseId, String status) {
         InventoryWarehouse warehouse = warehouseMapper.selectById(warehouseId);
@@ -72,6 +74,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
     }
 
     @Override
+    @Event(value = "inventory.warehouse.deleted", bizId = "#warehouseId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long warehouseId) {
         InventoryWarehouse warehouse = warehouseMapper.selectById(warehouseId);

@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.jjx.system.annotation.Event;
 
 /**
  * 库位服务实现类
@@ -161,6 +162,7 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
     }
 
     @Override
+    @Event(value = "inventory.storage_location.status_updated", bizId = "#locationId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long locationId, String status) {
         if (locationId == null || status == null) {
@@ -191,6 +193,7 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
     }
 
     @Override
+    @Event(value = "inventory.storage_location.deleted", bizId = "#locationId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long locationId) {
         if (locationId == null) {

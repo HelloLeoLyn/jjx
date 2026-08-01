@@ -32,6 +32,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.jjx.system.annotation.Event;
 
 /**
  * 调拨服务实现类
@@ -72,6 +73,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
+    @Event(value = "inventory.transfer.created", bizId = "#params", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public Long create(Map<String, Object> params) {
         log.info("创建调拨单: {}", params);
@@ -183,6 +185,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
+    @Event(value = "inventory.transfer.submitted", bizId = "#transferId", bizType = "'inventory'")
     public boolean submitApprove(Long transferId) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
         if (order == null) {
@@ -195,6 +198,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
+    @Event(value = "inventory.transfer.approved", bizId = "#transferId", bizType = "'inventory'")
     public boolean approve(Long transferId, Long approverId, String approverName, String remark) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
         if (order == null) {
@@ -216,6 +220,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
+    @Event(value = "inventory.transfer.rejected", bizId = "#transferId", bizType = "'inventory'")
     public boolean reject(Long transferId, Long approverId, String approverName, String remark) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
         if (order == null) {
@@ -237,6 +242,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
+    @Event(value = "inventory.transfer.confirmed_out", bizId = "#transferId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmOut(Long transferId, Long operatorId, String operatorName) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
@@ -331,6 +337,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
+    @Event(value = "inventory.transfer.confirmed_in", bizId = "#transferId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmIn(Long transferId, Long operatorId, String operatorName) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
@@ -420,6 +427,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
+    @Event(value = "inventory.transfer.cancelled", bizId = "#transferId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean cancel(Long transferId, String reason) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);

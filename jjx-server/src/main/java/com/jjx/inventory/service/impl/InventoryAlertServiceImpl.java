@@ -24,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.jjx.system.annotation.Event;
 
 /**
  * 库存预警服务实现类
@@ -245,6 +246,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     }
 
     @Override
+    @Event(value = "inventory.alert.processed", bizId = "#alertId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean processAlert(Long alertId, String processedBy, String remark) {
         InventoryAlertLog alert = alertLogMapper.selectById(alertId);

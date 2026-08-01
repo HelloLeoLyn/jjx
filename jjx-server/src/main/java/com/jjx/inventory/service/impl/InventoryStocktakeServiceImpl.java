@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.jjx.system.annotation.Event;
 
 /**
  * 盘点服务实现类
@@ -130,6 +131,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.created", bizId = "#params", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public Long create(Map<String, Object> params) {
         log.info("创建盘点单: {}", params);
@@ -282,6 +284,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.started", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean startStocktake(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -301,6 +304,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.data_inputted", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean inputStocktakeData(Long stocktakeId, List<Map<String, Object>> items) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -461,6 +465,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.result_confirmed", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmResult(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -480,6 +485,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.diff_processed", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean processDiff(Long stocktakeId, Long operatorId, String operatorName) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -652,6 +658,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.closed", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean closeStocktake(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -670,6 +677,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.submitted", bizId = "#stocktakeId", bizType = "'inventory'")
     public boolean submitApprove(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
         if (order == null) {
@@ -682,6 +690,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
+    @Event(value = "inventory.stocktake.approved", bizId = "#stocktakeId", bizType = "'inventory'")
     public boolean approve(Long stocktakeId, Long approverId, String approverName, String remark) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
         if (order == null) {

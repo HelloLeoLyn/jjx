@@ -39,6 +39,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.jjx.system.annotation.Event;
 
 /**
  * 入库服务实现类
@@ -179,6 +180,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "inventory.inbound.created", bizId = "#params", bizType = "'inventory'")
     public Long create(Map<String, Object> params) {
         log.info("创建入库单: {}", params);
         InventoryInboundOrder order = new InventoryInboundOrder();
@@ -195,6 +197,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "inventory.inbound.confirmed", bizId = "#inboundId", bizType = "'inventory'")
     public boolean confirm(Long inboundId, Long operatorId, String operatorName) {
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
         if (order == null) {
@@ -226,6 +229,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "inventory.inbound.cancelled", bizId = "#inboundId", bizType = "'inventory'")
     public boolean cancel(Long inboundId, String reason) {
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
         if (order == null) {
@@ -244,6 +248,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Event(value = "inventory.inbound.submitted", bizId = "#inboundId", bizType = "'inventory'")
     public boolean submitApprove(Long inboundId) {
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
         if (order == null) {
@@ -257,6 +262,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "inventory.inbound.approved", bizId = "#inboundId", bizType = "'inventory'")
     public boolean approve(Long inboundId, Long approverId, String approverName, String remark) {
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
         if (order == null) {
@@ -338,6 +344,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Event(value = "inventory.inbound.rejected", bizId = "#inboundId", bizType = "'inventory'")
     public boolean reject(Long inboundId, Long approverId, String approverName, String remark) {
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
         if (order == null) {
@@ -357,6 +364,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "inventory.inbound.created_from_purchase", bizId = "#purchaseOrderId", bizType = "'inventory'")
     public Long createFromPurchase(Long purchaseOrderId) {
         log.info("从采购订单创建入库单: purchaseOrderId={}", purchaseOrderId);
 
@@ -431,6 +439,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "inventory.inbound.created_from_production", bizId = "#workOrderId", bizType = "'inventory'")
     public Long createFromProduction(Long workOrderId) {
         log.info("从生产工单创建入库单: workOrderId={}", workOrderId);
 
