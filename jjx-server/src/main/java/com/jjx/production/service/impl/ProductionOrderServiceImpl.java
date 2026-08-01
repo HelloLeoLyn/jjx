@@ -52,6 +52,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final ProductRoutingItemMapper productRoutingItemMapper;
     private final EventPublisher eventPublisher;
+    private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -304,6 +305,21 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         boolean success = updateById(order);
         if (!success) {
             throw new BusinessException("完成生产工单失败");
+        }
+
+        // 完工自动创建质检单（DEV-473：TC-56 联动）
+        try {
+            com.jjx.production.domain.dto.QualityInspectionCreateDTO qcDto =
+                    new com.jjx.production.domain.dto.QualityInspectionCreateDTO();
+            qcDto.setInspectionType("FQC"); // 完工质检
+            qcDto.setOrderId(orderId);
+            qcDto.setProductId(order.getProductId());
+            qcDto.setInspector(com.jjx.system.utils.SecurityUtils.getUsername());
+            qcDto.setRemark("工单完工自动创建质检单");
+            Long qcId = qualityInspectionService.create(qcDto);
+            log.info("工单[{}] 完工自动创建质检单[{}]", order.getOrderNo(), qcId);
+        } catch (Exception e) {
+            log.warn("完工自动创建质检单失败（不影响主流程）: {}", e.getMessage());
         }
 
         // 触发联动事件
