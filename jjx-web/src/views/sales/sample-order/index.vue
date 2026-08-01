@@ -35,6 +35,22 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="工程接单" width="110" align="center">
+          <template #default="scope">
+            <template v-if="scope.row.sampleStatus === 3">
+              <el-tag v-if="scope.row.engineeringAcceptor" type="success" size="small">
+                {{ scope.row.engineeringAcceptor }}
+              </el-tag>
+              <el-tag v-else type="warning" size="small">待接单</el-tag>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="当前工序" width="110" align="center">
+          <template #default="scope">
+            <span>{{ scope.row.currentProcess || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="迭代轮次" width="90" align="center">
           <template #default="scope">Round {{ scope.row.sampleRound || 1 }}</template>
         </el-table-column>
