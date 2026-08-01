@@ -58,6 +58,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     // ============ 核心业务流程 ============
 
     @Override
+    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark) {
         SalesQuotation quotation = quotationMapper.selectById(quotationId);
