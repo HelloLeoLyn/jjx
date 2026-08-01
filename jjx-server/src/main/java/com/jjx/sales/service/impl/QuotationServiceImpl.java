@@ -211,15 +211,32 @@ public class QuotationServiceImpl implements IQuotationService {
         if (quotationId == null || items == null || items.isEmpty()) {
             return;
         }
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
         for (SalesQuotationItem item : items) {
             item.setItemId(null);
             item.setQuotationId(quotationId);
             if (item.getQuantity() == null) item.setQuantity(1);
             if (item.getUnitPrice() == null) item.setUnitPrice(java.math.BigDecimal.ZERO);
-            if (item.getAmount() == null) item.setAmount(java.math.BigDecimal.ZERO);
+            // 自动计算行金额 = 数量 × 单价
+            if (item.getAmount() == null) {
+                item.setAmount(java.math.BigDecimal.valueOf(item.getQuantity().longValue())
+                        .multiply(item.getUnitPrice()));
+            }
             if (item.getUnit() == null) item.setUnit("PCS");
             if (item.getItemOrder() == null) item.setItemOrder(0);
             quotationItemMapper.insert(item);
+            total = total.add(item.getAmount() != null ? item.getAmount() : java.math.BigDecimal.ZERO);
+        }
+        // 自动汇总报价单金额
+        try {
+            SalesQuotation q = new SalesQuotation();
+            q.setQuotationId(quotationId);
+            q.setSubtotalAmount(total);
+            q.setTotalAmount(total);
+            q.setFinalAmount(total);
+            quotationMapper.updateById(q);
+        } catch (Exception e) {
+            log.warn("汇总报价单金额失败: {}", e.getMessage());
         }
     }
 
