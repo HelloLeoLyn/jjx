@@ -35,6 +35,7 @@ class ProductFlowTest {
     @Mock private IProductFilmService filmService;
     @Mock private EngineeringBaseService engineeringBaseService;
     @Mock private NotificationService notificationService;
+    @Mock private com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
 
     private ProductServiceImpl productService;
 
@@ -44,7 +45,7 @@ class ProductFlowTest {
         productService = new ProductServiceImpl(
             productMapper, productCodeGenerator, productConverter,
             bomService, routingService, categoryService, filmService,
-            notificationService
+            notificationService, inventoryMaterialMapper
         );
     }
 
