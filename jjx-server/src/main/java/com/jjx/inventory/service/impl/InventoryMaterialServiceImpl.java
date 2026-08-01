@@ -53,6 +53,9 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     private final RedisSequenceService redisSequenceService;
     private final MaterialConverter materialConverter;
     private final IPurchaseSupplierService purchaseSupplierService;
+    private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
+    private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
+    private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
 
     @Override
     public PageResult<MaterialVO> pageQuery(MaterialQueryDTO queryDTO) {
@@ -153,8 +156,27 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             throw new RuntimeException("物料已被库存引用，无法删除");
         }
 
-        // TODO: 检查是否被采购订单、生产订单、销售订单引用
-        // 后续可扩展检查 purchase_order_item、production_order_material 等
+        // 检查采购订单引用
+        Long purchaseRef = purchaseOrderItemMapper.selectCount(
+                new LambdaQueryWrapper<com.jjx.purchase.domain.entity.PurchaseOrderItem>()
+                        .eq(com.jjx.purchase.domain.entity.PurchaseOrderItem::getMaterialId, id));
+        if (purchaseRef != null && purchaseRef > 0) {
+            throw new RuntimeException("物料已被采购订单引用，无法删除");
+        }
+
+        // 检查销售订单引用
+        Long salesRef = salesOrderProductMapper.selectCount(
+                new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesOrderProduct>()
+                        .eq(com.jjx.sales.domain.entity.SalesOrderProduct::getProductId, id));
+        // 销售订单引用的是产品ID，物料ID无直接引用——跳过产品侧
+        // 检查生产工单引用（工单关联产品+物料，这里查工单表是否存在该物料）
+        Long prodRef = productionOrderMapper.selectCount(
+                new LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionOrder>()
+                        .and(w -> w.eq(com.jjx.production.domain.entity.ProductionOrder::getProductId, id)
+                                .or().eq(com.jjx.production.domain.entity.ProductionOrder::getProductCode, material.getMaterialCode())));
+        if (prodRef != null && prodRef > 0) {
+            throw new RuntimeException("物料已被生产工单引用，无法删除");
+        }
 
         return materialMapper.deleteById(id) > 0;
     }

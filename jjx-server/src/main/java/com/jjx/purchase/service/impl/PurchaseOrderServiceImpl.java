@@ -50,6 +50,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final PurchaseOrderMapper orderMapper;
     private final PurchaseOrderItemMapper orderItemMapper;
     private final PurchaseConverter purchaseConverter;
+    private final com.jjx.inventory.mapper.InventoryStockItemMapper stockItemMapper;
+    private final com.jjx.inventory.mapper.InventoryStockMapper stockMapper;
+    private final com.jjx.inventory.mapper.InventoryTransactionMapper transactionMapper;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -1019,8 +1022,54 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         order.setRemark("退货: " + reason);
         orderMapper.updateById(order);
 
-        // TODO: 完善退货库存扣减逻辑
-        // TODO: 调用InventoryOutboundService创建出库单
+        // 退货扣库存（DEV-352 补全）：按 FIFO 扣减 + 写流水
+        if (materialId != null && quantity != null && quantity > 0) {
+            java.math.BigDecimal remaining = java.math.BigDecimal.valueOf(quantity);
+            java.util.List<com.jjx.inventory.domain.InventoryStockItem> fifoItems =
+                    stockItemMapper.selectFIFOAvailable(materialId);
+            if (fifoItems == null || fifoItems.isEmpty()) {
+                throw new BusinessException("物料无可用库存，无法退货");
+            }
+            for (com.jjx.inventory.domain.InventoryStockItem si : fifoItems) {
+                if (remaining.compareTo(java.math.BigDecimal.ZERO) <= 0) break;
+                java.math.BigDecimal deductQty = remaining.min(
+                        si.getQuantity().subtract(si.getReservedQuantity() == null ? java.math.BigDecimal.ZERO : si.getReservedQuantity()));
+                if (deductQty.compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
+                stockItemMapper.deductStock(si.getItemId(), deductQty);
+                remaining = remaining.subtract(deductQty);
+            }
+            if (remaining.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                throw new BusinessException("物料库存不足，缺少: " + remaining);
+            }
+            stockMapper.refreshSummary(materialId);
+
+            // 写库存流水
+            try {
+                com.jjx.inventory.domain.InventoryStock currentStock = stockMapper.selectByMaterialId(materialId);
+                java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
+                if (currentStock != null && currentStock.getTotalQuantity() != null) {
+                    beforeQty = currentStock.getTotalQuantity().add(java.math.BigDecimal.valueOf(quantity));
+                }
+                com.jjx.inventory.domain.InventoryTransaction tx = new com.jjx.inventory.domain.InventoryTransaction();
+                tx.setMaterialId(materialId);
+                tx.setTransactionType("RETURN");
+                tx.setSourceType("purchase_return");
+                tx.setSourceId(orderId);
+                tx.setSourceNo(order.getOrderNo());
+                tx.setQuantity(java.math.BigDecimal.valueOf(quantity).negate());
+                tx.setBeforeQuantity(beforeQty);
+                tx.setAfterQuantity(beforeQty.subtract(java.math.BigDecimal.valueOf(quantity)));
+                tx.setTransactionTime(java.time.LocalDateTime.now());
+                tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
+                tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
+                tx.setRemark("采购退货扣减: " + reason);
+                transactionMapper.insert(tx);
+            } catch (Exception e) {
+                log.warn("写退货库存流水失败: {}", e.getMessage());
+            }
+            log.info("采购退货扣库存完成: materialId={}, qty={}", materialId, quantity);
+        }
+
         log.info("采购退货成功: orderId={}", orderId);
     }
 }
