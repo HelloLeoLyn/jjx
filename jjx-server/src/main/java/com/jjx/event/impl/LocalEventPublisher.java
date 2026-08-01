@@ -91,6 +91,14 @@ public class LocalEventPublisher implements EventPublisher {
                     task.setStartTime(java.time.LocalDateTime.now());
                     task.setSourceEvent(eventCode);
                     task.setAssignRole(assignRole);
+                    // 业务类型：从事件payload取（如 inquiry/quotation/purchase），前端部门视图据此归类
+                    Object bizTypeVal = payload != null ? payload.get("bizType") : null;
+                    if (bizTypeVal != null) {
+                        String bt = String.valueOf(bizTypeVal).replace("'", "");
+                        if (!bt.isEmpty() && !"null".equals(bt)) {
+                            task.setBizType(bt);
+                        }
+                    }
                     task.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
                     task.setKanbanModule(event.getKanbanModule() != null ? event.getKanbanModule() : "office");
                     task.setStatus(0);

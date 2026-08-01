@@ -123,7 +123,17 @@ function mapSysTaskDept(t: any): string {
     production: '生产管理',
     quality: '品质部',
   }
-  return map[t.bizType] || (t.assignRole ? '生产管理' : '')
+  if (t.bizType && map[t.bizType]) return map[t.bizType]
+  // 兜底：按指派角色归属部门（角色ID → 部门）
+  const roleDept: Record<number, string> = {
+    7: '销售部',   // 销售人员
+    8: '销售部',   // 订单审核员
+    9: '设计部',   // 工程管理
+    10: '销售部',  // 销售管理
+    6: '系统',     // 系统用户
+  }
+  const roleId = Number(t.assignRole)
+  return roleDept[roleId] || ''
 }
 
 /** 从卡片 ID 解析 sys_task 的 taskId（ID 是纯数字） */
