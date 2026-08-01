@@ -47,6 +47,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final SalesSampleProcessMapper sampleProcessMapper;
     private final SalesSampleBomMapper sampleBomMapper;
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
+    private final com.jjx.engineering.service.IBomService bomService;
+    private final com.jjx.engineering.service.IRoutingService routingService;
+    private final com.jjx.product.mapper.ProductBomItemMapper bomItemMapper;
+    private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -649,6 +653,89 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         update.setConvertedOrderId(standardOrder.getOrderId());
         update.setConvertOrderTime(new Date());
         orderMapper.updateById(update);
+
+        // ========== 转量产建档联动（DEV-457）==========
+        // 为订单明细产品检查/生成 BOM 草稿 + 工艺路线提醒
+        try {
+            java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
+                    orderProductService.getListByOrderId(standardOrder.getOrderId());
+            if (prodList != null) {
+                for (com.jjx.sales.domain.vo.SalesOrderProductVO prod : prodList) {
+                    Long pid = prod.getProductId();
+                    if (pid == null) continue;
+
+                    // 1. 检查是否已有 BOM（当前生效版）
+                    com.jjx.engineering.domain.entity.Bom existBom = bomService.getOne(
+                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.Bom>()
+                                    .eq(com.jjx.engineering.domain.entity.Bom::getProductId, pid)
+                                    .eq(com.jjx.engineering.domain.entity.Bom::getIsCurrent, 1)
+                                    .last("LIMIT 1"));
+                    if (existBom == null) {
+                        // 2. 无BOM → 根据打样BOM生成草稿（approve_status=1）
+                        java.util.List<com.jjx.sales.domain.entity.SalesSampleBom> sampleBoms =
+                                sampleBomMapper.selectByOrderId(orderId);
+                        if (sampleBoms != null && !sampleBoms.isEmpty()) {
+                            com.jjx.engineering.domain.entity.Bom newBom = new com.jjx.engineering.domain.entity.Bom();
+                            newBom.setBomCode("BOM-" + prod.getProductCode() + "-SAMPLE");
+                            newBom.setBomName(prod.getProductName() + "（打样传承BOM）");
+                            newBom.setProductId(pid);
+                            newBom.setBomVersion("V1");
+                            newBom.setBomType("manufacturing");
+                            newBom.setIsCurrent(1);
+                            newBom.setApproveStatus(1L); // 草稿
+                            newBom.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]打样数据自动生成，请工程确认后批准");
+                            newBom.setCreateBy(SecurityUtils.getUsername());
+                            bomService.save(newBom);
+
+                            // 明细：打样BOM → 正式BOM明细（物料名匹配库存物料表）
+                            int order = 1;
+                            for (com.jjx.sales.domain.entity.SalesSampleBom sb : sampleBoms) {
+                                com.jjx.product.domain.entity.ProductBomItem item = new com.jjx.product.domain.entity.ProductBomItem();
+                                item.setBomId(newBom.getBomId());
+                                item.setMaterialName(sb.getMaterialName());
+                                item.setSpecification(sb.getSpecification());
+                                item.setQuantity(sb.getQuantity());
+                                item.setUnit(sb.getUnit());
+                                item.setLayer(sb.getLayerName());
+                                item.setItemOrder(order++);
+                                // 按物料名称匹配库存物料表，补 material_id/material_code
+                                if (sb.getMaterialName() != null) {
+                                    try {
+                                        com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectOne(
+                                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                                                        .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, sb.getMaterialName())
+                                                        .last("LIMIT 1"));
+                                        if (mat != null) {
+                                            item.setMaterialId(mat.getMaterialId());
+                                            item.setMaterialCode(mat.getMaterialCode());
+                                        }
+                                    } catch (Exception me) {
+                                        log.warn("打样BOM物料匹配失败: {}", me.getMessage());
+                                    }
+                                }
+                                bomItemMapper.insert(item);
+                            }
+                            log.info("样品单[{}] 转量产自动生成BOM草稿[{}] ({}条明细)",
+                                    orderId, newBom.getBomCode(), sampleBoms.size());
+                        } else {
+                            log.warn("样品单[{}] 转量产：产品[{}]无打样BOM数据，未生成BOM草稿",
+                                    orderId, prod.getProductCode());
+                        }
+                    }
+
+                    // 3. 检查工艺路线（无则提醒）
+                    com.jjx.engineering.domain.entity.Routing existRouting = routingService.getOne(
+                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.Routing>()
+                                    .eq(com.jjx.engineering.domain.entity.Routing::getProductId, pid)
+                                    .last("LIMIT 1"));
+                    if (existRouting == null) {
+                        log.warn("样品单[{}] 转量产：产品[{}]无工艺路线，请工程补充", orderId, prod.getProductCode());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("样品单[{}] 转量产建档联动失败: {}", orderId, e.getMessage());
+        }
 
         log.info("样品单[{}] 转量产成功，生成标准订单[{}] (orderId={})",
                 sampleOrder.getOrderNo(), standardOrderNo, standardOrder.getOrderId());
