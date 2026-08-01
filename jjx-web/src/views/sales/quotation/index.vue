@@ -195,7 +195,11 @@
         @sort-change="handleSortChange"
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="报价单号" align="center" prop="quotationNo" width="160" />
+        <el-table-column label="报价单号" align="center" width="160">
+          <template #default="scope">
+            <el-link type="primary" underline="never" @click="handleView(scope.row)">{{ scope.row.quotationNo }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
         <el-table-column label="报价日期" align="center" prop="quotationDate" width="120">
           <template #default="scope">
@@ -252,15 +256,6 @@
                 @click="showTrace(scope.row)"
               ></el-button
             ></el-tooltip>
-
-            <el-tooltip content="状态流转" placement="top">
-              <el-button
-                link
-                type="primary"
-                icon="Operation"
-                @click="handleFlow(scope.row)"
-              ></el-button>
-            </el-tooltip>
 
             <el-tooltip content="删除" placement="top" v-if="[1, 2, 8, 9].indexOf(scope.row.quotationStatus) === -1">
               <el-button
@@ -341,9 +336,6 @@
                 icon="CircleClose"
                 @click="() => handleReview(false, scope.row)"
               ></el-button>
-            </el-tooltip>
-            <el-tooltip content="详情" placement="top">
-              <el-button link type="warning" icon="View" @click="handleView(scope.row)"></el-button>
             </el-tooltip>
           </template>
         </el-table-column>

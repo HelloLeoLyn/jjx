@@ -81,7 +81,11 @@
       <el-table v-loading="loading" :data="inquiryList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="流水号" width="155" align="center" prop="traceId" />
-        <el-table-column label="询价单号" align="center" prop="inquiryNo" width="180" />
+        <el-table-column label="询价单号" align="center" width="180">
+          <template #default="scope">
+            <el-link type="primary" underline="never" @click="handleDetail(scope.row)">{{ scope.row.inquiryNo }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column label="类型" align="center" width="80">
           <template #default="scope">
             <el-tag v-if="scope.row.inquiryType === 2" type="warning" size="small">样品</el-tag>
@@ -121,12 +125,9 @@
           label="操作"
           align="center"
           class-name="small-padding fixed-width"
-          width="350"
+          width="300"
         >
           <template #default="scope">
-            <el-button link type="primary" icon="View" @click="handleDetail(scope.row)"
-              >查看</el-button
-            >
             <el-button
               link
               type="primary"
