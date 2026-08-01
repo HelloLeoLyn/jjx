@@ -324,6 +324,46 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
+     * 样品单作废
+     * 非终态（未转量产/未关闭/未作废）样品单可作废
+     */
+    @Override
+    public SalesOrder cancelSample(Long orderId, String cancelReason) {
+        SalesOrder sampleOrder = orderMapper.selectById(orderId);
+        if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+
+        // 终态不允许作废：已转量产(7)/已关闭(8)/已作废(10)
+        Integer current = sampleOrder.getSampleStatus();
+        if (SampleOrderStatusEnum.TRANSFERRED.getCode().equals(current)
+                || SampleOrderStatusEnum.CLOSED.getCode().equals(current)
+                || SampleOrderStatusEnum.CANCELLED.getCode().equals(current)) {
+            String name = SampleOrderStatusEnum.getByCodeSafe(current)
+                    .map(SampleOrderStatusEnum::getName).orElse("未知");
+            throw new BusinessException("当前状态[" + name + "]不允许作废");
+        }
+
+        int affected = orderMapper.updateSampleStatus(orderId, current, SampleOrderStatusEnum.CANCELLED.getCode());
+        if (affected == 0) {
+            throw new BusinessException("样品单状态已变更，无法作废，请刷新后重试");
+        }
+
+        // 记录作废原因
+        try {
+            SalesOrder update = new SalesOrder();
+            update.setOrderId(orderId);
+            update.setRemark("[作废] " + (cancelReason != null ? cancelReason : ""));
+            orderMapper.updateById(update);
+        } catch (Exception e) {
+            log.warn("记录样品单作废原因失败: {}", e.getMessage());
+        }
+
+        log.info("样品单[{}] 已作废，原因: {}", sampleOrder.getOrderNo(), cancelReason);
+        return orderMapper.selectById(orderId);
+    }
+
+    /**
      * 复制样品单的产品明细到新标准订单
      */
     private void copyOrderProducts(Long sourceOrderId, Long targetOrderId) {

@@ -49,9 +49,21 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="340" fixed="right">
+        <el-table-column label="操作" width="400" fixed="right">
           <template #default="scope">
             <el-button link type="primary" size="small" @click="showDetail(scope.row)">详情</el-button>
+
+            <!-- 查看流水 -->
+            <el-button link type="info" size="small" @click="showTrace(scope.row)">查看流水</el-button>
+
+            <!-- 作废：非终态（1-6）可作废 -->
+            <el-button
+              v-if="[1, 2, 3, 4, 5, 6].includes(scope.row.sampleStatus)"
+              link
+              type="danger"
+              size="small"
+              @click="handleCancel(scope.row)"
+            >作废</el-button>
 
             <template v-if="scope.row.sampleStatus === 1">
               <el-button link type="primary" size="small" @click="handleSubmitReview(scope.row)">提交审核</el-button>
@@ -75,6 +87,12 @@
             </template>
             <template v-else-if="scope.row.sampleStatus === 7">
               <el-tag size="small" type="success">已转量产</el-tag>
+            </template>
+            <template v-else-if="scope.row.sampleStatus === 8">
+              <el-tag size="small" type="info">已关闭</el-tag>
+            </template>
+            <template v-else-if="scope.row.sampleStatus === 10">
+              <el-tag size="small" type="danger">已作废</el-tag>
             </template>
           </template>
         </el-table-column>
@@ -209,8 +227,19 @@
           </el-tab-pane>
         </el-tabs>
       </template>
-      <template #footer><el-button @click="detailVisible = false">关闭</el-button></template>
+      <template #footer>
+        <el-button
+          v-if="detailData && [1, 2, 3, 4, 5, 6].includes(detailData.sampleStatus)"
+          type="danger"
+          plain
+          @click="handleCancel(detailData)"
+        >作废</el-button>
+        <el-button @click="detailVisible = false">关闭</el-button>
+      </template>
     </el-dialog>
+
+    <!-- 查看流水 -->
+    <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
   </div>
 </template>
 
@@ -220,6 +249,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 
@@ -575,6 +605,39 @@ async function handleConvert(row: any) {
   await sampleOrderApi.convertToProduction(row.orderId)
   ElMessage.success('转量产成功，已生成标准订单')
   getList()
+}
+
+// 作废
+async function handleCancel(row: any) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `确定将样品单 [${row.orderNo}] 作废？作废后不可恢复。`,
+      '作废确认',
+      {
+        confirmButtonText: '确定作废',
+        cancelButtonText: '取消',
+        type: 'warning',
+        inputPlaceholder: '请填写作废原因（选填）',
+        inputValidator: (v: string) => {
+          if (v && v.length > 200) return '作废原因不能超过200字'
+          return true
+        },
+      }
+    )
+    await sampleOrderApi.cancel(row.orderId, value || undefined)
+    ElMessage.success('样品单已作废')
+    getList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '作废失败')
+  }
+}
+
+// 查看流水
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: any) {
+  currentTraceId.value = row.traceId || ''
+  traceDrawerVisible.value = true
 }
 
 // ==================== 初始化 ====================

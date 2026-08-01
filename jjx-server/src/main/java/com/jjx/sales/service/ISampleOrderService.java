@@ -61,6 +61,12 @@ public interface ISampleOrderService {
     SalesOrder convertToProduction(Long orderId);
 
     /**
+     * 样品单作废
+     * 非终态（未转量产/未关闭/未作废）样品单可作废
+     */
+    SalesOrder cancelSample(Long orderId, String cancelReason);
+
+    /**
      * 查询样品单详情（含迭代历史）
      */
     SalesOrder selectById(Long orderId);

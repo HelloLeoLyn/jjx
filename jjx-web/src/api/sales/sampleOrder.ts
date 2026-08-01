@@ -115,6 +115,15 @@ export const sampleOrderApi = {
     })
   },
 
+  // 作废
+  cancel(orderId: number, cancelReason?: string): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/cancel/${orderId}`,
+      method: 'put',
+      params: cancelReason ? { cancelReason } : undefined,
+    })
+  },
+
   // 状态选项
   getStatusOptions(): AxiosPromise<Array<{ value: number; label: string; description: string; terminal: boolean }>> {
     return request({

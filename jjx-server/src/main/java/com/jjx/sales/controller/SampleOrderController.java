@@ -134,6 +134,18 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.convertToProduction(orderId));
     }
 
+    /**
+     * 样品单作废
+     */
+    @Operation(summary = "样品单作废")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "10")
+    @SaCheckPermission("sales:sample:edit")
+    @PutMapping("/cancel/{orderId}")
+    public Result<SalesOrder> cancel(@PathVariable Long orderId,
+                                     @RequestParam(required = false) String cancelReason) {
+        return Result.success(sampleOrderService.cancelSample(orderId, cancelReason));
+    }
+
     @Operation(summary = "获取样品单状态选项")
     @SaCheckPermission("sales:sample:view")
     @GetMapping("/status-options")
