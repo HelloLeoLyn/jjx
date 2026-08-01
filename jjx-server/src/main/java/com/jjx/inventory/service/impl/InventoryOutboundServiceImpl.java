@@ -12,6 +12,7 @@ import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.dto.query.OutboundQueryDTO;
 import com.jjx.inventory.dto.vo.OutboundVO;
 import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryOutboundItemMapper;
 import com.jjx.inventory.mapper.InventoryOutboundOrderMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
@@ -50,6 +51,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
+    private final InventoryMaterialMapper materialMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     private final com.jjx.product.mapper.ProductBomMapper productBomMapper;
     private final com.jjx.product.mapper.ProductBomItemMapper productBomItemMapper;
@@ -444,14 +446,27 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         outboundOrderMapper.insert(order);
 
-        // 4. 创建出库单明细
+        // 4. 创建出库单明细（成品物料映射：产品→inventory_material.product_id）
         int sort = 1;
         for (com.jjx.sales.domain.entity.SalesOrderProduct product : products) {
             InventoryOutboundItem outItem = new InventoryOutboundItem();
+            // 查成品物料档案（发布时自动创建，material_type='F'）
+            com.jjx.inventory.domain.InventoryMaterial finishMat = null;
+            try {
+                finishMat = materialMapper.selectOne(
+                        new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                                .eq(com.jjx.inventory.domain.InventoryMaterial::getProductId, product.getProductId())
+                                .last("LIMIT 1"));
+            } catch (Exception e) {
+                log.warn("查询成品物料失败: {}", e.getMessage());
+            }
+            if (finishMat == null) {
+                throw new BusinessException("产品[" + product.getProductCode() + "]无成品物料档案，请先发布产品");
+            }
             outItem.setOutboundId(order.getOutboundId());
-            outItem.setMaterialId(product.getProductId());
-            outItem.setMaterialCode(product.getProductCode());
-            outItem.setMaterialName(product.getProductName());
+            outItem.setMaterialId(finishMat.getMaterialId());
+            outItem.setMaterialCode(finishMat.getMaterialCode());
+            outItem.setMaterialName(finishMat.getMaterialName());
             outItem.setQuantity(BigDecimal.valueOf(product.getQuantity()));
             outItem.setUnitPrice(product.getUnitPrice());
             outItem.setSortOrder(sort++);

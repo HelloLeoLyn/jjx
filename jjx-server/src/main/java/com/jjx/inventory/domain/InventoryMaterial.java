@@ -24,6 +24,9 @@ public class InventoryMaterial extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long materialId;
 
+    /** 关联产品ID(成品物料) */
+    private Long productId;
+
     /** 物料编码 */
     private String materialCode;
 

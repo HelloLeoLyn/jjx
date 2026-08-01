@@ -17,6 +17,9 @@ public class Bom {
     private String bomType;
     private Integer isCurrent;
     private Long approveStatus;
+    private String approveBy;
+    private LocalDateTime approveTime;
+    private String approveRemark;
     private String remark;
     private String createBy;
     private LocalDateTime createTime;

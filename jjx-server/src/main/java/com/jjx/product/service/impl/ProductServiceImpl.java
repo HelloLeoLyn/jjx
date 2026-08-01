@@ -48,6 +48,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final IProductCategoryService categoryService;
     private final IProductFilmService filmService;
     private final NotificationService notificationService;
+    private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     @Override
     public List<ProductVo> getProductList(ProductQuery query) {
         LambdaQueryWrapper<Product> wrapper = buildWrapper(query);
@@ -179,6 +180,29 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
         if (updated) {
             log.info("产品发布成功，产品ID: {}, 产品编码: {}", productId, product.getProductCode());
+            // 发布时自动创建成品物料档案（DEV-290：销售发货/完工入库扣成品库存的前提）
+            try {
+                com.jjx.inventory.domain.InventoryMaterial exist = inventoryMaterialMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                                .eq(com.jjx.inventory.domain.InventoryMaterial::getProductId, productId)
+                                .last("LIMIT 1"));
+                if (exist == null) {
+                    com.jjx.inventory.domain.InventoryMaterial mat = new com.jjx.inventory.domain.InventoryMaterial();
+                    mat.setProductId(productId);
+                    mat.setMaterialCode(product.getProductCode());
+                    mat.setMaterialName(product.getProductName());
+                    mat.setMaterialType("F"); // 成品
+                    mat.setUnit(product.getUnit() != null ? product.getUnit() : "PCS");
+                    mat.setStatus(1);
+                    mat.setStandardPrice(product.getBasePrice());
+                    mat.setCreateBy("system");
+                    mat.setUpdateBy("system");
+                    inventoryMaterialMapper.insert(mat);
+                    log.info("产品[{}]发布，自动创建成品物料[{}]", product.getProductCode(), mat.getMaterialCode());
+                }
+            } catch (Exception e) {
+                log.warn("创建成品物料失败: {}", e.getMessage());
+            }
         }
 
         return updated;
