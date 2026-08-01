@@ -76,6 +76,11 @@ public interface ISampleOrderService {
     SalesOrder updateSampleProcess(Long orderId, String process);
 
     /**
+     * 查询打样工序历史
+     */
+    List<com.jjx.sales.domain.entity.SalesSampleProcess> listSampleProcesses(Long orderId);
+
+    /**
      * 录入打样成本/工时
      */
     SalesOrder recordSampleCost(Long orderId, java.math.BigDecimal cost, java.math.BigDecimal workHours);

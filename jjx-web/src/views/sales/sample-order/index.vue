@@ -203,6 +203,19 @@
                   </el-select>
                   <span v-if="detailData.currentProcess" style="margin-left:12px;color:#909399;font-size:12px">当前：{{ detailData.currentProcess }}</span>
                 </el-form-item>
+                <!-- 工序历史 -->
+                <el-form-item v-if="processList.length > 0" label="工序历史" style="margin-top:8px">
+                  <div style="width:100%">
+                    <el-timeline style="padding-left:2px">
+                      <el-timeline-item v-for="(p, i) in processList" :key="p.processId" :timestamp="formatTime(p.startTime)" placement="top" :type="i === processList.length - 1 ? 'primary' : 'info'">
+                        <div style="font-size:13px">
+                          <span style="font-weight:600">{{ p.processName }}</span>
+                          <span v-if="p.operator" style="margin-left:8px;color:#909399;font-size:12px">操作人：{{ p.operator }}</span>
+                        </div>
+                      </el-timeline-item>
+                    </el-timeline>
+                  </div>
+                </el-form-item>
                 <el-form-item v-if="detailData.rejectReason" label="拒单原因" style="margin-top:8px">
                   <span style="color:#f56c6c;font-size:13px">{{ detailData.rejectReason }}</span>
                 </el-form-item>
@@ -359,6 +372,7 @@ const engineeringForm = reactive({ note: '', process: '' })
 const savingEng = ref(false)
 const costForm = reactive({ cost: 0, workHours: 0 })
 const roundList = ref<any[]>([])
+const processList = ref<any[]>([])
 
 // 打样工序选项（薄膜开关典型工艺）
 const sampleProcessOptions = ['印刷', '冲切', '贴合', 'SMT贴片', '装配', '测试', '包装']
@@ -449,7 +463,20 @@ async function reloadDetail() {
     detailData.value = res.data
     engineeringForm.note = res.data.engineeringNote || ''
     engineeringForm.process = res.data.currentProcess || ''
+    // 加载工序历史
+    try {
+      const pRes = await sampleOrderApi.listProcesses(detailData.value.orderId)
+      processList.value = pRes.data || []
+    } catch {
+      processList.value = []
+    }
   }
+}
+
+// 时间格式化
+function formatTime(t?: string) {
+  if (!t) return ''
+  return t.replace('T', ' ').slice(0, 16)
 }
 
 // 迭代记录（基于现有字段动态生成）

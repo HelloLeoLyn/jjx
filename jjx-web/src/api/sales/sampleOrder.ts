@@ -159,6 +159,14 @@ export const sampleOrderApi = {
     })
   },
 
+  // 查询打样工序历史
+  listProcesses(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/processes/${orderId}`,
+      method: 'get',
+    })
+  },
+
   // 录入打样成本/工时
   recordCost(orderId: number, cost?: number, workHours?: number): AxiosPromise<any> {
     return request({

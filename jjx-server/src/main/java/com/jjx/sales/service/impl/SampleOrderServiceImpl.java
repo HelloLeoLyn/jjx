@@ -5,11 +5,13 @@ import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.sales.domain.dto.SalesOrderProductDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesQuotation;
+import com.jjx.sales.domain.entity.SalesSampleProcess;
 import com.jjx.sales.enums.OrderTypeEnum;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.SalesSampleRoundMapper;
+import com.jjx.sales.mapper.SalesSampleProcessMapper;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.ZoneId;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -39,6 +42,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final RedisSequenceService redisSequenceService;
     private final ISalesOrderProductService orderProductService;
     private final SalesSampleRoundMapper sampleRoundMapper;
+    private final SalesSampleProcessMapper sampleProcessMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -413,13 +417,33 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("当前状态不可更新工序进度");
         }
 
+        // 记录工序历史（追加，不覆盖）
+        SalesSampleProcess record = new SalesSampleProcess();
+        record.setOrderId(orderId);
+        record.setRoundNo(current.getSampleRound() != null ? current.getSampleRound() : 1);
+        record.setProcessName(process);
+        record.setOperator(SecurityUtils.getUsername());
+        record.setStartTime(LocalDateTime.now());
+        record.setRemark("工序进度更新");
+        sampleProcessMapper.insert(record);
+
+        // 更新当前工序字段（用于列表展示当前进度）
         SalesOrder update = new SalesOrder();
         update.setOrderId(orderId);
         update.setCurrentProcess(process);
         orderMapper.updateById(update);
 
-        log.info("样品单[{}] 更新当前工序: {}", current.getOrderNo(), process);
+        log.info("样品单[{}] 更新当前工序: {} (已记录历史)", current.getOrderNo(), process);
         return orderMapper.selectById(orderId);
+    }
+
+    /**
+     * 查询打样工序历史
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<SalesSampleProcess> listSampleProcesses(Long orderId) {
+        return sampleProcessMapper.selectByOrderId(orderId);
     }
 
     /**

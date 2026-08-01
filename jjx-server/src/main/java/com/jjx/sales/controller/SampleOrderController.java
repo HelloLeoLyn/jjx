@@ -194,6 +194,15 @@ public class SampleOrderController extends BaseController {
     }
 
     /**
+     * 查询打样工序历史
+     */
+    @Operation(summary = "查询打样工序历史")
+    @GetMapping("/processes/{orderId}")
+    public Result<List<com.jjx.sales.domain.entity.SalesSampleProcess>> listProcesses(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.listSampleProcesses(orderId));
+    }
+
+    /**
      * 录入打样成本/工时
      */
     @Operation(summary = "录入打样成本/工时")
