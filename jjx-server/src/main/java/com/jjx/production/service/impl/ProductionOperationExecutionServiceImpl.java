@@ -246,6 +246,69 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public boolean qualityCheck(Long executionId, String checkType, String checkResult, String checkItems, String remark) {
+        log.info("工序{}: executionId={}", "首检".equals(checkType) ? "首检" : "巡检", executionId);
+
+        ProductionOperationExecution execution = getById(executionId);
+        if (execution == null) {
+            throw new BusinessException("工序执行记录不存在: " + executionId);
+        }
+        // 只有执行中可质检
+        if (execution.getExecutionStatus() == null
+                || execution.getExecutionStatus() != ExecutionStatusEnum.EXECUTING.getCode()) {
+            throw new BusinessException("只有执行中的工序可以进行首检/巡检");
+        }
+        if (!"FIRST".equalsIgnoreCase(checkType) && !"PATROL".equalsIgnoreCase(checkType)) {
+            throw new BusinessException("质检类型不合法(FIRST首检/PATROL巡检)");
+        }
+        if (checkResult == null || (!"PASS".equalsIgnoreCase(checkResult) && !"FAIL".equalsIgnoreCase(checkResult))) {
+            throw new BusinessException("质检结论不合法(PASS/FAIL)");
+        }
+
+        // 记录质检结果到 quality_check_result(JSON数组追加)
+        String checkNo = "EXEC" + executionId + "-" + ("FIRST".equalsIgnoreCase(checkType) ? "F" : "P")
+                + System.currentTimeMillis() % 100000;
+        java.util.Map<String, Object> record = new java.util.LinkedHashMap<>();
+        record.put("checkNo", checkNo);
+        record.put("checkType", checkType);
+        record.put("checkResult", checkResult);
+        record.put("checkItems", checkItems);
+        record.put("remark", remark);
+        record.put("checker", com.jjx.system.utils.SecurityUtils.getUsername());
+        record.put("checkTime", java.time.LocalDateTime.now().toString());
+
+        String existing = execution.getQualityCheckResult();
+        java.util.List<java.util.Map<String, Object>> list = new java.util.ArrayList<>();
+        if (existing != null && !existing.isEmpty()) {
+            try {
+                list = new com.fasterxml.jackson.databind.ObjectMapper().readValue(existing,
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+            } catch (Exception e) {
+                log.warn("解析历史质检结果失败: {}", e.getMessage());
+                list = new java.util.ArrayList<>();
+            }
+        }
+        list.add(record);
+        try {
+            execution.setQualityCheckResult(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(list));
+        } catch (Exception e) {
+            throw new BusinessException("质检结果序列化失败");
+        }
+        updateById(execution);
+
+        // 不合格 → 自动暂停工序
+        if ("FAIL".equalsIgnoreCase(checkResult)) {
+            execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getCode());
+            updateById(execution);
+            log.warn("工序[{}] {}不合格，已自动暂停", executionId, checkType);
+        }
+
+        log.info("工序[{}] {}完成: {} ({})", executionId, checkType, checkResult, checkNo);
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean completeExecution(Long executionId) {
         log.info("完成工序执行: {}", executionId);
 

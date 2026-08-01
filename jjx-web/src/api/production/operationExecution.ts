@@ -69,6 +69,13 @@ export const operationExecutionApi = {
     return request.put<R<void>>(`/production/operation-execution/${executionId}/pause`)
   },
 
+  /** 工序首检/巡检（DEV-371） */
+  qualityCheck(executionId: number, checkType: string, checkResult: string, checkItems?: string, remark?: string) {
+    return request.put<R<void>>(`/production/operation-execution/${executionId}/quality-check`, null, {
+      params: { checkType, checkResult, checkItems, remark },
+    })
+  },
+
   /**
    * 完成工序执行
    */

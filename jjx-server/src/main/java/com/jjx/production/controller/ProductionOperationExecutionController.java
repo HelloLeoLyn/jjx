@@ -109,6 +109,20 @@ public class ProductionOperationExecutionController {
         return Result.success(success);
     }
 
+    @Operation(summary = "工序首检/巡检（DEV-371）")
+    @PutMapping("/{executionId}/quality-check")
+    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("production:operation-execution:edit")
+    public Result<Boolean> qualityCheck(@PathVariable Long executionId,
+                                        @RequestParam String checkType,
+                                        @RequestParam String checkResult,
+                                        @RequestParam(required = false) String checkItems,
+                                        @RequestParam(required = false) String remark) {
+        boolean success = productionOperationExecutionService.qualityCheck(
+                executionId, checkType, checkResult, checkItems, remark);
+        return Result.success(success);
+    }
+
     @Operation(summary = "完成工序执行")
     @PutMapping("/{executionId}/complete")
     @Log(module = "工序执行管理", businessType = BusinessType.UPDATE)

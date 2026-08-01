@@ -60,6 +60,13 @@ public interface ProductionOperationExecutionService {
     boolean pauseExecution(Long executionId);
 
     /**
+     * 工序首检/巡检（DEV-371）
+     * checkType: FIRST首检 / PATROL巡检
+     * 不合格自动暂停工序
+     */
+    boolean qualityCheck(Long executionId, String checkType, String checkResult, String checkItems, String remark);
+
+    /**
      * 完成工序执行
      */
     boolean completeExecution(Long executionId);

@@ -359,17 +359,31 @@ const handleQualityCheck = (row: any) => {
   qcVisible.value = true
 }
 
-const submitQc = () => {
+const submitQc = async () => {
   if (qcForm.passQty > qcForm.checkQty) {
     ElMessage.warning('合格数量不能大于抽检数量')
     return
   }
-  const resultText = qcForm.result === 'pass' ? '合格' : '不合格'
+  if (!qcCurrentRow?.executionId) return
   const typeText = qcForm.checkType === 'first_piece' ? '首检' : '巡检'
-  ElMessage.success(`${typeText}完成：${qcForm.passQty}/${qcForm.checkQty} ${resultText}`)
-  qcVisible.value = false
-  if (qcForm.result === 'fail') {
-    ElMessage.warning('不合格，请暂停工序排查问题！')
+  try {
+    const checkResult = qcForm.result === 'pass' ? 'PASS' : 'FAIL'
+    const checkItems = `抽检${qcForm.checkQty}件/合格${qcForm.passQty}件${qcForm.defectDesc ? '/' + qcForm.defectDesc : ''}`
+    await operationExecutionApi.qualityCheck(
+      qcCurrentRow.executionId,
+      qcForm.checkType === 'first_piece' ? 'FIRST' : 'PATROL',
+      checkResult,
+      checkItems,
+      qcForm.defectDesc || undefined,
+    )
+    ElMessage.success(`${typeText}完成：${qcForm.passQty}/${qcForm.checkQty} ${qcForm.result === 'pass' ? '合格' : '不合格'}`)
+    qcVisible.value = false
+    if (qcForm.result === 'fail') {
+      ElMessage.warning('不合格，工序已自动暂停，请排查问题！')
+    }
+    loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.message || `${typeText}提交失败`)
   }
 }
 const recordFormRef = ref()
