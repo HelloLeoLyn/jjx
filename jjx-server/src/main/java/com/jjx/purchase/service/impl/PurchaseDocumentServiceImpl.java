@@ -31,6 +31,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import com.jjx.system.annotation.Event;
 
 /**
  * 采购票据服务实现类
@@ -77,6 +78,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
+    @Event(value = "purchase.document.created", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertDocument(PurchaseDocumentDTO dto) {
         // 检查票据编号是否唯一
@@ -115,6 +117,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
+    @Event(value = "purchase.document.deleted", bizId = "#documentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteDocumentById(Long documentId) {
         PurchaseDocument document = documentMapper.selectById(documentId);
@@ -135,6 +138,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
+    @Event(value = "purchase.document.verified", bizId = "#documentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark) {
         PurchaseDocument document = documentMapper.selectById(documentId);

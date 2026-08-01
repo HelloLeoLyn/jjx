@@ -27,6 +27,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import com.jjx.system.annotation.Event;
 
 /**
  * 供应商服务实现类
@@ -89,6 +90,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.created", bizId = "#supplierDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertSupplier(PurchaseSupplierDTO supplierDTO) {
         // 检查供应商编码是否唯一
@@ -142,6 +144,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.updated", bizId = "#supplierDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int updateSupplier(PurchaseSupplierDTO supplierDTO) {
         if (supplierDTO.getSupplierId() == null) {
@@ -183,6 +186,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.deleted", bizId = "#supplierId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteSupplierById(Long supplierId) {
         // 检查供应商是否存在
@@ -224,6 +228,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.status_updated", bizId = "#supplierId", bizType = "'purchase'")
     public int updateSupplierStatus(Long supplierId, Integer status) {
         // 检查供应商是否存在
         PurchaseSupplier supplier = supplierMapper.selectById(supplierId);

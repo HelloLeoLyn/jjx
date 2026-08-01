@@ -268,6 +268,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
+    @Event(value = "purchase.approved", bizId = "#dto.orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int approveOrder(PurchaseOrderApprovalDTO dto) {
         // 检查订单是否存在
@@ -300,6 +301,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
+    @Event(value = "purchase.item_received", bizId = "#orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int receiveOrderItem(Long orderId, Long itemId, BigDecimal receivedQuantity, String inspectionResult, String inspectionRemark) {
         // 检查订单是否存在
@@ -351,6 +353,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
+    @Event(value = "purchase.payment_updated", bizId = "#orderId", bizType = "'purchase'")
     public int updatePaymentInfo(Long orderId, BigDecimal paidAmount, Integer paymentStatus) {
         return orderMapper.updatePaymentInfo(orderId, paidAmount, paymentStatus);
     }

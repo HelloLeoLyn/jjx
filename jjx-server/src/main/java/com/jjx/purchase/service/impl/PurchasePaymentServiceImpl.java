@@ -24,6 +24,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.jjx.system.annotation.Event;
 
 /**
  * 采购付款服务实现类
@@ -67,6 +68,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.created", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertPayment(PurchasePaymentDTO dto) {
         // 检查付款单号是否唯一
@@ -116,6 +118,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.deleted", bizId = "#paymentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deletePaymentById(Long paymentId) {
         PurchasePayment payment = paymentMapper.selectById(paymentId);
@@ -144,6 +147,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.approved", bizId = "#paymentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int approvePayment(Long paymentId, String approvalStatus, String approverName, String approvalComment) {
         PurchasePayment payment = paymentMapper.selectById(paymentId);
@@ -173,6 +177,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.confirmed", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int confirmPayment(PurchasePaymentDTO dto) {
         PurchasePayment payment = paymentMapper.selectById(dto.getPaymentId());

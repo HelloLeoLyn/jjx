@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.jjx.system.annotation.Event;
 
 /**
  * 材料询价服务实现类
@@ -92,6 +93,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.created", bizId = "#inquiryDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertMaterialInquiry(MaterialInquiryDTO inquiryDTO) {
         MaterialInquiry entity = new MaterialInquiry();
@@ -100,6 +102,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.updated", bizId = "#inquiryDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int updateMaterialInquiry(MaterialInquiryDTO inquiryDTO) {
         MaterialInquiry entity = new MaterialInquiry();
@@ -114,6 +117,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.deleted", bizId = "#inquiryId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteMaterialInquiryById(Long inquiryId) {
         return baseMapper.deleteById(inquiryId);
@@ -196,6 +200,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.status_updated", bizId = "#inquiryIds", bizType = "'purchase'")
     public int updateInquiryStatusBatch(List<Long> inquiryIds, String status) {
         if (inquiryIds == null || inquiryIds.isEmpty()) {
             return 0;
