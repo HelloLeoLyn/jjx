@@ -124,6 +124,14 @@ export const sampleOrderApi = {
     })
   },
 
+  // 退回后重新打样
+  restartEngineering(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/restart-engineering/${orderId}`,
+      method: 'put',
+    })
+  },
+
   // 状态选项
   getStatusOptions(): AxiosPromise<Array<{ value: number; label: string; description: string; terminal: boolean }>> {
     return request({

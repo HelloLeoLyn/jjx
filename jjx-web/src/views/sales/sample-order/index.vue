@@ -534,8 +534,8 @@ async function handleDetailMarkReady() {
 async function handleDetailRestartEngineering() {
   if (!detailData.value?.orderId) return
   await ElMessageBox.confirm('确认重新开始打样？将回到"工程打样中"状态。', '重新打样')
-  // 调用审核通过接口让状态从REJECTED(9)回到ENGINEERING(3)
-  await sampleOrderApi.approve(detailData.value.orderId, '重新打样')
+  // 调用重新打样接口让状态从REJECTED(9)回到ENGINEERING(3)
+  await sampleOrderApi.restartEngineering(detailData.value.orderId)
   ElMessage.success('已回到工程打样阶段')
   detailVisible.value = false
   getList()

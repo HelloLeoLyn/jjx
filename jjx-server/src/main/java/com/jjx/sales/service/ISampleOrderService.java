@@ -56,6 +56,11 @@ public interface ISampleOrderService {
     SalesOrder rejectSample(Long orderId, String rejectReason);
 
     /**
+     * 退回后重新打样（REJECTED → ENGINEERING，轮次已+1）
+     */
+    SalesOrder restartEngineering(Long orderId);
+
+    /**
      * 样品转量产（创建标准订单）
      */
     SalesOrder convertToProduction(Long orderId);

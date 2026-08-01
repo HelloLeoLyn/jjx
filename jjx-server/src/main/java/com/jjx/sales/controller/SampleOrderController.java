@@ -146,6 +146,17 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.cancelSample(orderId, cancelReason));
     }
 
+    /**
+     * 退回后重新打样（REJECTED → ENGINEERING）
+     */
+    @Operation(summary = "退回后重新打样")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3")
+    @SaCheckPermission("sales:sample:engineering")
+    @PutMapping("/restart-engineering/{orderId}")
+    public Result<SalesOrder> restartEngineering(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.restartEngineering(orderId));
+    }
+
     @Operation(summary = "获取样品单状态选项")
     @SaCheckPermission("sales:sample:view")
     @GetMapping("/status-options")

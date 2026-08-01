@@ -256,6 +256,36 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return orderMapper.selectById(orderId);
     }
 
+    /**
+     * 退回后重新打样（REJECTED → ENGINEERING，轮次已+1）
+     */
+    @Override
+    @Event(value = "sample.restarted", bizId = "#orderId", bizType = "'sample'")
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder restartEngineering(Long orderId) {
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+
+        // 只有客户退回(9)状态可以重新打样
+        if (!SampleOrderStatusEnum.REJECTED.getCode().equals(current.getSampleStatus())) {
+            String name = SampleOrderStatusEnum.getByCodeSafe(current.getSampleStatus())
+                    .map(SampleOrderStatusEnum::getName).orElse("未知");
+            throw new BusinessException("当前状态[" + name + "]不可重新打样，仅客户退回状态可重新打样");
+        }
+
+        int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.REJECTED.getCode(),
+                SampleOrderStatusEnum.ENGINEERING.getCode());
+        if (affected == 0) {
+            throw new BusinessException("样品单状态已变更，无法重新打样，请刷新后重试");
+        }
+
+        log.info("样品单[{}] 重新打样(Round{})，回到工程打样阶段", current.getOrderNo(),
+                current.getSampleRound() != null ? current.getSampleRound() : 1);
+        return orderMapper.selectById(orderId);
+    }
+
     @Override
     @Event(value = "sample.converted", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
