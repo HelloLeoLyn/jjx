@@ -53,6 +53,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.mapper.InventoryStockItemMapper stockItemMapper;
     private final com.jjx.inventory.mapper.InventoryStockMapper stockMapper;
     private final com.jjx.inventory.mapper.InventoryTransactionMapper transactionMapper;
+    private final com.jjx.inventory.mapper.InventoryMaterialMapper materialMapper;
+    private final com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -352,7 +354,113 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 检查订单整体收货状态
         updateOrderReceiptStatus(orderId);
 
+        // 采购到货→库存增加（DEV-471）：检验PASS才入良品库存
+        if ("PASS".equalsIgnoreCase(inspectionResult) || StringUtils.isEmpty(inspectionResult)) {
+            try {
+                increaseStockFromReceipt(order, item, receivedQuantity);
+            } catch (Exception e) {
+                log.error("采购到货加库存失败: {}", e.getMessage());
+                throw new BusinessException("到货登记成功但加库存失败: " + e.getMessage());
+            }
+        } else {
+            log.info("采购到货[{}] 检验{} 不入良品库存", order.getOrderNo(), inspectionResult);
+        }
+
         return result;
+    }
+
+    /**
+     * 采购到货加库存（DEV-471）：默认入原材料仓，无仓库时建批次库存+汇总+流水
+     */
+    private void increaseStockFromReceipt(PurchaseOrder order, PurchaseOrderItem item, BigDecimal receivedQuantity) {
+        // 默认仓库：物料默认仓库 或 第一个仓库
+        Long warehouseId = null;
+        Long locationId = null;
+        {
+            com.jjx.inventory.domain.InventoryMaterial mat = stockItemMapper == null ? null : null;
+            // 查物料默认仓库
+            try {
+                com.jjx.inventory.domain.InventoryMaterial m = materialMapper.selectById(item.getMaterialId());
+                if (m != null) {
+                    warehouseId = m.getDefaultWarehouseId();
+                }
+            } catch (Exception ignore) { }
+            if (warehouseId == null) {
+                // 取第一个仓库
+                com.jjx.inventory.domain.InventoryWarehouse wh = warehouseMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryWarehouse>()
+                                .orderByAsc(com.jjx.inventory.domain.InventoryWarehouse::getWarehouseId)
+                                .last("LIMIT 1"));
+                if (wh != null) warehouseId = wh.getWarehouseId();
+            }
+        }
+        if (warehouseId == null) {
+            throw new BusinessException("无可用仓库，无法入库存");
+        }
+
+        String batchNo = "PO-" + order.getOrderNo() + "-" + System.currentTimeMillis() % 100000;
+        // 查找现有同物料批次库存（同仓库同批次）
+        com.jjx.inventory.domain.InventoryStockItem existing = stockItemMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryStockItem>()
+                        .eq(com.jjx.inventory.domain.InventoryStockItem::getMaterialId, item.getMaterialId())
+                        .eq(com.jjx.inventory.domain.InventoryStockItem::getWarehouseId, warehouseId)
+                        .eq(com.jjx.inventory.domain.InventoryStockItem::getBatchNo, batchNo)
+                        .last("LIMIT 1"));
+        if (existing == null) {
+            existing = new com.jjx.inventory.domain.InventoryStockItem();
+            existing.setMaterialId(item.getMaterialId());
+            existing.setMaterialCode(item.getMaterialCode());
+            existing.setMaterialName(item.getMaterialName());
+            existing.setWarehouseId(warehouseId);
+            existing.setLocationId(locationId);
+            existing.setBatchNo(batchNo);
+            existing.setQuantity(receivedQuantity);
+            existing.setReservedQuantity(java.math.BigDecimal.ZERO);
+            existing.setUnitCost(item.getUnitPrice());
+            existing.setStatus(1);
+            existing.setLastInboundTime(java.time.LocalDateTime.now());
+            stockItemMapper.insert(existing);
+        } else {
+            existing.setQuantity(existing.getQuantity().add(receivedQuantity));
+            existing.setLastInboundTime(java.time.LocalDateTime.now());
+            stockItemMapper.updateById(existing);
+        }
+
+        // 刷新库存汇总
+        stockMapper.refreshSummary(item.getMaterialId());
+
+        // 写库存流水
+        try {
+            com.jjx.inventory.domain.InventoryStock cur = stockMapper.selectByMaterialId(item.getMaterialId());
+            java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
+            if (cur != null && cur.getTotalQuantity() != null) {
+                beforeQty = cur.getTotalQuantity().subtract(receivedQuantity);
+            }
+            com.jjx.inventory.domain.InventoryTransaction tx = new com.jjx.inventory.domain.InventoryTransaction();
+            tx.setMaterialId(item.getMaterialId());
+            tx.setMaterialCode(item.getMaterialCode());
+            tx.setMaterialName(item.getMaterialName());
+            tx.setWarehouseId(warehouseId);
+            tx.setLocationId(locationId);
+            tx.setTransactionType("INBOUND");
+            tx.setSourceType("PURCHASE");
+            tx.setSourceId(order.getOrderId());
+            tx.setSourceNo(order.getOrderNo());
+            tx.setBatchNo(batchNo);
+            tx.setQuantity(receivedQuantity);
+            tx.setBeforeQuantity(beforeQty);
+            tx.setAfterQuantity(beforeQty.add(receivedQuantity));
+            tx.setUnitCost(item.getUnitPrice());
+            tx.setTransactionTime(java.time.LocalDateTime.now());
+            tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
+            tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
+            tx.setRemark("采购到货入库: " + order.getOrderNo());
+            transactionMapper.insert(tx);
+        } catch (Exception e) {
+            log.warn("写采购到货流水失败: {}", e.getMessage());
+        }
+
+        log.info("采购到货[{}] 物料[{}] +{} 库存(仓库{})", order.getOrderNo(), item.getMaterialCode(), receivedQuantity, warehouseId);
     }
 
     @Override

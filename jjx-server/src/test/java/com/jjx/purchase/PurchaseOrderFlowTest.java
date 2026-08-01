@@ -32,12 +32,14 @@ class PurchaseOrderFlowTest {
     @Mock private com.jjx.inventory.mapper.InventoryStockItemMapper stockItemMapper;
     @Mock private com.jjx.inventory.mapper.InventoryStockMapper stockMapper;
     @Mock private com.jjx.inventory.mapper.InventoryTransactionMapper transactionMapper;
+    @Mock private com.jjx.inventory.mapper.InventoryMaterialMapper materialMapper;
+    @Mock private com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
 
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
         orderService = new PurchaseOrderServiceImpl(orderMapper, orderItemMapper, purchaseConverter,
-            stockItemMapper, stockMapper, transactionMapper);
+            stockItemMapper, stockMapper, transactionMapper, materialMapper, warehouseMapper);
     }
 
     @Test
