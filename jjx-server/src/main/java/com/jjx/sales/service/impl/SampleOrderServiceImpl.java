@@ -286,6 +286,87 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return orderMapper.selectById(orderId);
     }
 
+    /**
+     * 工程接单确认
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder acceptEngineering(Long orderId, String acceptorName) {
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())) {
+            throw new BusinessException("当前状态不可接单，仅工程打样中状态可接单");
+        }
+
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        update.setEngineeringAcceptor(acceptorName);
+        update.setEngineeringAcceptTime(new Date());
+        orderMapper.updateById(update);
+
+        log.info("样品单[{}] 工程接单: {}", current.getOrderNo(), acceptorName);
+        return orderMapper.selectById(orderId);
+    }
+
+    /**
+     * 工程拒单（回退到待审核，销售可改单重提）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder rejectEngineering(Long orderId, String rejectReason) {
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())) {
+            throw new BusinessException("当前状态不可拒单，仅工程打样中状态可拒单");
+        }
+        if (rejectReason == null || rejectReason.trim().isEmpty()) {
+            throw new BusinessException("拒单原因不能为空");
+        }
+
+        int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.ENGINEERING.getCode(),
+                SampleOrderStatusEnum.PENDING_REVIEW.getCode());
+        if (affected == 0) {
+            throw new BusinessException("样品单状态已变更，无法拒单，请刷新后重试");
+        }
+
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        update.setRejectReason(rejectReason);
+        orderMapper.updateById(update);
+
+        log.info("样品单[{}] 工程拒单: {}", current.getOrderNo(), rejectReason);
+        return orderMapper.selectById(orderId);
+    }
+
+    /**
+     * 更新打样当前工序
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder updateSampleProcess(Long orderId, String process) {
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_READY.getCode().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_SENT.getCode().equals(current.getSampleStatus())) {
+            throw new BusinessException("当前状态不可更新工序进度");
+        }
+
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        update.setCurrentProcess(process);
+        orderMapper.updateById(update);
+
+        log.info("样品单[{}] 更新当前工序: {}", current.getOrderNo(), process);
+        return orderMapper.selectById(orderId);
+    }
+
     @Override
     @Event(value = "sample.converted", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)

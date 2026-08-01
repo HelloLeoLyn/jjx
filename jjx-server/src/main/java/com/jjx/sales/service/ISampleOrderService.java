@@ -61,6 +61,21 @@ public interface ISampleOrderService {
     SalesOrder restartEngineering(Long orderId);
 
     /**
+     * 工程接单确认（工程打样中状态，记录接单人/时间）
+     */
+    SalesOrder acceptEngineering(Long orderId, String acceptorName);
+
+    /**
+     * 工程拒单（工程打样中状态，需拒单原因）
+     */
+    SalesOrder rejectEngineering(Long orderId, String rejectReason);
+
+    /**
+     * 更新打样当前工序
+     */
+    SalesOrder updateSampleProcess(Long orderId, String process);
+
+    /**
      * 样品转量产（创建标准订单）
      */
     SalesOrder convertToProduction(Long orderId);

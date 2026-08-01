@@ -132,6 +132,33 @@ export const sampleOrderApi = {
     })
   },
 
+  // 工程接单确认
+  acceptEngineering(orderId: number, acceptorName?: string): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/accept-engineering/${orderId}`,
+      method: 'put',
+      params: acceptorName ? { acceptorName } : undefined,
+    })
+  },
+
+  // 工程拒单
+  rejectEngineering(orderId: number, rejectReason: string): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/reject-engineering/${orderId}`,
+      method: 'put',
+      params: { rejectReason },
+    })
+  },
+
+  // 更新打样当前工序
+  updateProcess(orderId: number, process: string): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/update-process/${orderId}`,
+      method: 'put',
+      params: { process },
+    })
+  },
+
   // 状态选项
   getStatusOptions(): AxiosPromise<Array<{ value: number; label: string; description: string; terminal: boolean }>> {
     return request({

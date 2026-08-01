@@ -157,6 +157,42 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.restartEngineering(orderId));
     }
 
+    /**
+     * 工程接单确认
+     */
+    @Operation(summary = "工程接单确认")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3")
+    @SaCheckPermission("sales:sample:engineering")
+    @PutMapping("/accept-engineering/{orderId}")
+    public Result<SalesOrder> acceptEngineering(@PathVariable Long orderId,
+                                                @RequestParam(required = false) String acceptorName) {
+        return Result.success(sampleOrderService.acceptEngineering(orderId, acceptorName));
+    }
+
+    /**
+     * 工程拒单
+     */
+    @Operation(summary = "工程拒单")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "2")
+    @SaCheckPermission("sales:sample:engineering")
+    @PutMapping("/reject-engineering/{orderId}")
+    public Result<SalesOrder> rejectEngineering(@PathVariable Long orderId,
+                                                @RequestParam String rejectReason) {
+        return Result.success(sampleOrderService.rejectEngineering(orderId, rejectReason));
+    }
+
+    /**
+     * 更新打样当前工序
+     */
+    @Operation(summary = "更新打样当前工序")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @SaCheckPermission("sales:sample:engineering")
+    @PutMapping("/update-process/{orderId}")
+    public Result<SalesOrder> updateProcess(@PathVariable Long orderId,
+                                            @RequestParam String process) {
+        return Result.success(sampleOrderService.updateSampleProcess(orderId, process));
+    }
+
     @Operation(summary = "获取样品单状态选项")
     @SaCheckPermission("sales:sample:view")
     @GetMapping("/status-options")

@@ -167,10 +167,29 @@
                 </el-form-item>
                 <el-row v-if="isEngineeringStatus" :gutter="20">
                   <el-col>
-                    <el-button type="primary" size="small" @click="saveEngineeringNote" :loading="savingEng">💾 保存工艺参数</el-button>
-                    <el-button type="success" size="small" style="margin-left:12px" @click="handleDetailMarkReady">🎯 标记样品完成</el-button>
+                    <!-- 未接单：显示接单/拒单按钮 -->
+                    <template v-if="!detailData.engineeringAcceptor">
+                      <el-button type="primary" size="small" @click="handleAcceptEngineering" :loading="savingEng">✅ 工程接单</el-button>
+                      <el-button type="danger" size="small" plain style="margin-left:8px" @click="handleRejectEngineering">✋ 工程拒单</el-button>
+                    </template>
+                    <!-- 已接单：显示接单人和操作 -->
+                    <template v-else>
+                      <el-tag type="success" size="small">已接单：{{ detailData.engineeringAcceptor }}</el-tag>
+                      <el-button type="primary" size="small" style="margin-left:12px" @click="saveEngineeringNote" :loading="savingEng">💾 保存工艺参数</el-button>
+                      <el-button type="success" size="small" style="margin-left:8px" @click="handleDetailMarkReady">🎯 标记样品完成</el-button>
+                    </template>
                   </el-col>
                 </el-row>
+                <!-- 工序进度 -->
+                <el-form-item v-if="isEngineeringStatus && detailData.engineeringAcceptor" label="当前工序" style="margin-top:12px">
+                  <el-select v-model="engineeringForm.process" placeholder="选择当前工序" style="width:220px" @change="handleUpdateProcess">
+                    <el-option v-for="p in sampleProcessOptions" :key="p" :label="p" :value="p" />
+                  </el-select>
+                  <span v-if="detailData.currentProcess" style="margin-left:12px;color:#909399;font-size:12px">当前：{{ detailData.currentProcess }}</span>
+                </el-form-item>
+                <el-form-item v-if="detailData.rejectReason" label="拒单原因" style="margin-top:8px">
+                  <span style="color:#f56c6c;font-size:13px">{{ detailData.rejectReason }}</span>
+                </el-form-item>
               </el-form>
             </el-card>
 
@@ -203,6 +222,15 @@
               <template #header><span style="font-weight:600;color:#e6a23c">🔄 客户退回记录</span></template>
               <div style="color:#666;font-size:13px;margin-bottom:8px">退回原因：{{ detailData.remark || '-' }}</div>
               <div style="color:#666;font-size:13px;margin-bottom:12px">当前轮次：Round {{ detailData.sampleRound || 1 }}</div>
+              <!-- 退回佐证附件 -->
+              <div v-if="detailData.traceId" style="margin-bottom:12px">
+                <AttachmentPanel
+                  v-if="detailData.orderId"
+                  biz-type="sample"
+                  :biz-id="detailData.orderId"
+                  :trace-id="detailData.traceId"
+                />
+              </div>
               <el-button type="primary" size="small" @click="handleDetailRestartEngineering">🔄 重新开始打样</el-button>
             </el-card>
           </el-tab-pane>
@@ -276,13 +304,77 @@ const detailData = ref<any>(null)
 // ==================== 工程区数据 ====================
 const engUploadRef = ref()
 const engFileList = ref<any[]>([])
-const engineeringForm = reactive({ note: '' })
+const engineeringForm = reactive({ note: '', process: '' })
 const savingEng = ref(false)
+
+// 打样工序选项（薄膜开关典型工艺）
+const sampleProcessOptions = ['印刷', '冲切', '贴合', 'SMT贴片', '装配', '测试', '包装']
 
 // 工程区操作权限
 const isEngineeringStatus = computed(() => detailData.value?.sampleStatus === 3)
 const isRejectedStatus = computed(() => detailData.value?.sampleStatus === 9)
 const isEditableStatus = computed(() => [3, 4, 5].includes(detailData.value?.sampleStatus))
+
+// 工程接单
+async function handleAcceptEngineering() {
+  if (!detailData.value?.orderId) return
+  try {
+    await ElMessageBox.confirm('确认接单开始打样？', '工程接单', {
+      confirmButtonText: '确认接单',
+      cancelButtonText: '取消',
+      type: 'info',
+    })
+    const userStore = (await import('@/store/user')).default?.()
+    const name = userStore?.name || '工程'
+    await sampleOrderApi.acceptEngineering(detailData.value.orderId, name)
+    ElMessage.success('接单成功')
+    await reloadDetail()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '接单失败')
+  }
+}
+
+// 工程拒单
+async function handleRejectEngineering() {
+  if (!detailData.value?.orderId) return
+  try {
+    const { value } = await ElMessageBox.prompt('请填写拒单原因', '工程拒单', {
+      confirmButtonText: '确认拒单',
+      cancelButtonText: '取消',
+      type: 'warning',
+      inputPlaceholder: '拒单原因（必填）',
+      inputValidator: (v: string) => (v && v.trim() ? true : '拒单原因不能为空'),
+    })
+    await sampleOrderApi.rejectEngineering(detailData.value.orderId, value.trim())
+    ElMessage.success('已拒单，退回待审核')
+    detailVisible.value = false
+    getList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '拒单失败')
+  }
+}
+
+// 更新当前工序
+async function handleUpdateProcess(process: string) {
+  if (!detailData.value?.orderId || !process) return
+  try {
+    await sampleOrderApi.updateProcess(detailData.value.orderId, process)
+    detailData.value.currentProcess = process
+    ElMessage.success(`已更新为：${process}`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '更新工序失败')
+  }
+}
+
+// 重新加载详情（接单后刷新工程区）
+async function reloadDetail() {
+  if (detailData.value?.orderId) {
+    const res = await sampleOrderApi.getInfo(detailData.value.orderId)
+    detailData.value = res.data
+    engineeringForm.note = res.data.engineeringNote || ''
+    engineeringForm.process = res.data.currentProcess || ''
+  }
+}
 
 // 迭代记录（基于现有字段动态生成）
 const iterationHistory = computed(() => {
@@ -427,6 +519,7 @@ async function showDetail(row: any) {
 
   // 初始化工程表单
   engineeringForm.note = row.engineeringNote || ''
+  engineeringForm.process = row.currentProcess || ''
   // 加载工程附件
   await loadEngFiles(row.orderId)
 }
@@ -437,6 +530,7 @@ function onDetailOpen() {
     sampleOrderApi.getInfo(detailData.value.orderId).then(res => {
       detailData.value = res.data
       engineeringForm.note = res.data.engineeringNote || ''
+      engineeringForm.process = res.data.currentProcess || ''
     }).catch(() => {})
   }
 }

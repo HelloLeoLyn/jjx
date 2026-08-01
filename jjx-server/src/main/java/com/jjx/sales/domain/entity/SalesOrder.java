@@ -102,6 +102,27 @@ public class SalesOrder extends BaseEntity {
     private String engineeringNote;
 
     /**
+     * 工程接单人
+     */
+    private String engineeringAcceptor;
+
+    /**
+     * 工程接单时间
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date engineeringAcceptTime;
+
+    /**
+     * 工程拒单原因
+     */
+    private String rejectReason;
+
+    /**
+     * 打样当前工序
+     */
+    private String currentProcess;
+
+    /**
      * 送样快递单号
      */
     private String sampleTrackingNo;
