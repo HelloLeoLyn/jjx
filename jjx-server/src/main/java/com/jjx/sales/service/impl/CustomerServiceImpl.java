@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import com.jjx.system.annotation.Event;
 
 /**
  * 客户服务实现类
@@ -114,6 +115,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.created", bizId = "#dto", bizType = "'sales'")
     public int insertCustomer(CustomerAddDTO dto) {
         log.info("新增客户，DTO：{}", dto);
 
@@ -152,6 +154,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.updated", bizId = "#dto", bizType = "'sales'")
     public int updateCustomer(CustomerEditDTO dto) {
         log.info("修改客户，DTO：{}", dto);
 
@@ -188,6 +191,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.deleted", bizId = "#customerIds", bizType = "'sales'")
     public int deleteCustomerByIds(Long[] customerIds) {
         log.info("批量删除客户，客户ID数组：{}", Arrays.toString(customerIds));
 
@@ -230,6 +234,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.status_updated", bizId = "#customerId", bizType = "'sales'")
     public int changeCustomerStatus(Long customerId, Integer status) {
         log.info("变更客户状态，客户ID：{}，状态：{}", customerId, status);
 
@@ -268,6 +273,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.approved", bizId = "#customerIds", bizType = "'sales'")
     public int approveCustomers(Long[] customerIds) {
         log.info("批量审核客户，客户ID数组：{}", Arrays.toString(customerIds));
 

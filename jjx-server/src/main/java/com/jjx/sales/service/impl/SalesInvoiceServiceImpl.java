@@ -9,6 +9,7 @@ import com.jjx.sales.mapper.SalesInvoiceMapper;
 import com.jjx.sales.service.SalesInvoiceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.jjx.system.annotation.Event;
 
 @Service
 @RequiredArgsConstructor
@@ -23,5 +24,7 @@ public class SalesInvoiceServiceImpl extends ServiceImpl<SalesInvoiceMapper, Sal
     @Override public SalesInvoice getById(Long id) { return invoiceMapper.selectById(id); }
     @Override public Long create(SalesInvoice invoice) { invoiceMapper.insert(invoice); return invoice.getInvoiceId(); }
     @Override public boolean update(SalesInvoice invoice) { return invoiceMapper.updateById(invoice) > 0; }
+    @Event(value = "sales.invoice.updated", bizId = "#invoice", bizType = "'sales'")
     @Override public boolean delete(Long id) { return invoiceMapper.deleteById(id) > 0; }
+    @Event(value = "sales.invoice.deleted", bizId = "#id", bizType = "'sales'")
 }
