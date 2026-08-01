@@ -1,8 +1,8 @@
 <template>
-  <el-drawer
+  <el-dialog
     :model-value="visible"
     title="🔧 工程打样工作台"
-    size="620px"
+    width="1200px"
     append-to-body
     @update:model-value="onClose"
     @open="onOpen"
@@ -46,9 +46,10 @@
       <el-card shadow="never" style="margin-bottom:16px">
         <template #header><span style="font-weight:600">工序进度</span></template>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <el-select v-model="form.process" placeholder="选择当前工序" style="width:220px" @change="updateProcess">
+          <el-select v-model="form.process" placeholder="选择当前工序" style="width:220px">
             <el-option v-for="p in processOptions" :key="p" :label="p" :value="p" />
           </el-select>
+          <el-button type="primary" size="small" @click="saveProcess" :loading="saving">💾 保存工序</el-button>
           <span v-if="card.currentProcess" style="color:#909399;font-size:12px">当前：{{ card.currentProcess }}</span>
         </div>
         <el-timeline v-if="processList.length > 0" style="padding-left:2px">
@@ -146,7 +147,10 @@
         <el-button type="success" size="large" @click="handleMarkReady" :loading="saving" style="width:200px">🎯 标记样品完成（送样）</el-button>
       </div>
     </div>
-  </el-drawer>
+    <template #footer>
+      <el-button @click="onClose(false)">关闭</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -244,16 +248,24 @@ async function saveNote() {
   }
 }
 
-// 更新工序
-async function updateProcess(process: string) {
-  if (!props.card?.orderId || !process) return
+// 保存工序（选择后点保存才生效）
+async function saveProcess() {
+  if (!props.card?.orderId) return
+  if (!form.process) {
+    ElMessage.warning('请先选择工序')
+    return
+  }
+  saving.value = true
   try {
-    await sampleOrderApi.updateProcess(props.card.orderId, process)
-    props.card.currentProcess = process
+    await sampleOrderApi.updateProcess(props.card.orderId, form.process)
+    props.card.currentProcess = form.process
     await loadProcesses()
-    ElMessage.success(`已更新为：${process}`)
+    ElMessage.success(`已保存为：${form.process}`)
+    emit('saved')
   } catch (e: any) {
-    ElMessage.error(e?.message || '更新工序失败')
+    ElMessage.error(e?.message || '保存工序失败')
+  } finally {
+    saving.value = false
   }
 }
 
