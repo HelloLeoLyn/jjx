@@ -164,7 +164,7 @@
               <el-divider />
               <div v-if="engFileList.length > 0" style="margin-top:4px">
                 <div v-for="f in engFileList" :key="f.uid || f.name" style="padding:5px 0;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f0f0">
-                  <el-link v-if="f.url" :href="f.url" target="_blank" type="primary" :underline="false">📎 {{ f.name }}</el-link>
+                  <el-link v-if="f.url" :href="f.url" target="_blank" type="primary" underline="never">📎 {{ f.name }}</el-link>
                   <span v-else>{{ f.name }} <el-tag size="small" type="warning">待上传</el-tag></span>
                 </div>
               </div>

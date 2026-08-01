@@ -1,12 +1,18 @@
 -- =====================================================
--- 清理测试数据脚本
+-- 清理测试数据脚本（v2）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+--
+-- v2 变更（2026-07-31）：
+--   1. 保留 sales_customer（客户信息）
+--   2. sys_task 改为条件删除：只清 office/emergency 演示任务，
+--      保留 kanban_module='dev' 的开发任务（175 条）
+--   3. 移除死表 kanban_task 的 TRUNCATE（表已废弃）
 -- =====================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
 
--- ==================== 1. 销售模块 ====================
+-- ==================== 1. 销售模块（保留 sales_customer） ====================
 TRUNCATE sales_order_product;
 
 TRUNCATE sales_order_review;
@@ -28,7 +34,7 @@ TRUNCATE sales_quotation;
 TRUNCATE sales_order;
 
 TRUNCATE sales_inquiry;
-#TRUNCATE sales_customer;
+-- sales_customer 保留（客户信息）
 
 -- ==================== 2. 产品模块 ====================
 TRUNCATE product_instance;
@@ -126,13 +132,12 @@ TRUNCATE portal_language_config;
 
 TRUNCATE portal_inquiry;
 
--- ==================== 8. 看板 ====================
-TRUNCATE kanban_task;
+-- ==================== 8. 任务表（保留开发任务） ====================
+-- 只清 office/emergency 演示任务，保留 kanban_module='dev' 开发任务
+DELETE FROM sys_task WHERE kanban_module IS NULL OR kanban_module != 'dev';
 
 -- ==================== 9. 系统模块（可清理部分） ====================
 TRUNCATE sys_attachment;
-
-TRUNCATE sys_task;
 
 TRUNCATE sys_notification;
 

@@ -13,6 +13,8 @@ import com.jjx.sales.enums.InquiryStatus;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.sales.mapper.SalesInquiryMapper;
 import com.jjx.sales.mapper.QuotationMapper;
+import com.jjx.product.mapper.ProductMapper;
+import com.jjx.product.domain.entity.Product;
 import com.jjx.sales.service.IInquiryService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.utils.SecurityUtils;
@@ -37,6 +39,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final SalesInquiryMapper inquiryMapper;
     private final QuotationMapper quotationMapper;
     private final RedisSequenceService redisSequenceService;
+    private final ProductMapper productMapper;
 
     /**
      * 分页查询询价单列表
@@ -46,6 +49,7 @@ public class InquiryServiceImpl implements IInquiryService {
         Page<SalesInquiry> page = new Page<>(pageNum, pageSize);
         LambdaQueryWrapper<SalesInquiry> wrapper = buildQueryWrapper(inquiry);
         Page<SalesInquiry> result = inquiryMapper.selectPage(page, wrapper);
+        fillProductName(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
     }
 
@@ -55,7 +59,9 @@ public class InquiryServiceImpl implements IInquiryService {
     @Override
     public List<SalesInquiry> selectInquiryList(SalesInquiry inquiry) {
         LambdaQueryWrapper<SalesInquiry> wrapper = buildQueryWrapper(inquiry);
-        return inquiryMapper.selectList(wrapper);
+        List<SalesInquiry> list = inquiryMapper.selectList(wrapper);
+        fillProductName(list);
+        return list;
     }
 
     /**
@@ -94,7 +100,23 @@ public class InquiryServiceImpl implements IInquiryService {
         if (inquiry == null || inquiry.getDeleted() == 1) {
             throw new BusinessException("询价单不存在或已被删除");
         }
+        fillProductName(List.of(inquiry));
         return inquiry;
+    }
+
+    /**
+     * 填充关联产品名称
+     */
+    private void fillProductName(List<SalesInquiry> list) {
+        if (list == null || list.isEmpty()) return;
+        for (SalesInquiry inquiry : list) {
+            if (inquiry.getProductId() != null) {
+                Product product = productMapper.selectById(inquiry.getProductId());
+                if (product != null) {
+                    inquiry.setProductName(product.getProductName());
+                }
+            }
+        }
     }
 
     /**
@@ -196,7 +218,7 @@ public class InquiryServiceImpl implements IInquiryService {
      * 创建报价单并返回报价单ID
      */
     @Override
-    @Event(value = "inquiry.converted", bizId = "#inquiryId", bizType = "'inquiry'")
+    @Event(value = "inquiry.converted", bizId = "#result.inquiryNo", bizType = "'inquiry'")
     @Transactional(rollbackFor = Exception.class)
     public InquiryToQuotationVO convertToQuotation(Long inquiryId) {
         SalesInquiry inquiry = selectInquiryById(inquiryId);
@@ -208,6 +230,7 @@ public class InquiryServiceImpl implements IInquiryService {
         // 创建报价单
         SalesQuotation quotation = new SalesQuotation();
         quotation.setQuotationNo(redisSequenceService.generateBusinessNumber("QT", "报价单号"));
+        quotation.setQuotationType(inquiry.getInquiryType() != null ? inquiry.getInquiryType() : 1);
         quotation.setCustomerId(inquiry.getCustomerId());
         quotation.setCustomerName(inquiry.getCustomerName());
         quotation.setContactPerson(inquiry.getContactPerson());
@@ -234,6 +257,7 @@ public class InquiryServiceImpl implements IInquiryService {
 
         InquiryToQuotationVO vo = new InquiryToQuotationVO();
         vo.setQuotationId(quotation.getQuotationId());
+        vo.setInquiryNo(inquiry.getInquiryNo());
         vo.setTraceId(inquiry.getTraceId());
         return vo;
     }

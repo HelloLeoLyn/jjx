@@ -18,6 +18,10 @@
 
     <div class="card-title">{{ card.title }}</div>
 
+    <div v-if="card.remark" class="card-remark" :title="card.remark">
+      {{ card.remark }}
+    </div>
+
     <div v-if="card.productName" class="card-field">
       <el-icon><Goods /></el-icon>
       {{ card.productName }}
@@ -158,6 +162,17 @@ function onClick() {
   margin-bottom: 6px;
   line-height: 1.4;
   color: #303133;
+}
+
+.card-remark {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-field {

@@ -1,6 +1,7 @@
 package com.jjx.sales.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -11,6 +12,7 @@ import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 销售报价单实体类
@@ -34,6 +36,9 @@ public class SalesQuotation extends BaseEntity {
      * 报价单编号
      */
     private String quotationNo;
+
+    /** 报价单类型: 1标准品 2样品 */
+    private Integer quotationType;
 
     /**
      * 客户ID
@@ -170,6 +175,10 @@ public class SalesQuotation extends BaseEntity {
      * 转为订单时间
      */
     private LocalDateTime convertTime;
+
+    /** 报价单明细（非表字段，保存/查询时处理） */
+    @TableField(exist = false)
+    private List<SalesQuotationItem> items;
 
     /**
      * 删除标志 (0: 正常, 1: 删除)

@@ -79,6 +79,7 @@ export const tableOptions: TableOptions[] = [
     label: '类型',
     width: 100,
     align: 'center',
+    slot: 'eventType',
   },
   {
     prop: 'kanbanModule',
@@ -99,6 +100,7 @@ export const tableOptions: TableOptions[] = [
     label: '目标角色',
     width: 120,
     align: 'center',
+    slot: 'targetRole',
   },
   { prop: 'title', label: '标题', minWidth: 200 },
   {
@@ -106,17 +108,20 @@ export const tableOptions: TableOptions[] = [
     label: '排除触发者',
     width: 100,
     align: 'center',
+    slot: 'excludeTrigger',
   },
   {
     prop: 'isEnabled',
     label: '状态',
     width: 80,
     align: 'center',
+    slot: 'isEnabled',
   },
   {
     label: '创建时间',
     prop: 'createTime',
     width: 180,
     align: 'center',
+    slot: 'createTime',
   },
 ]

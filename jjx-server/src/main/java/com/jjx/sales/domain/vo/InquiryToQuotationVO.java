@@ -8,5 +8,6 @@ import lombok.Data;
 @Data
 public class InquiryToQuotationVO {
     private Long quotationId;
+    private String inquiryNo;
     private String traceId;
 }

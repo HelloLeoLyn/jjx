@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -24,10 +25,13 @@ public interface SysMenuMapper extends BaseMapper<SysMenu> {
                 .map(String::valueOf)
                 .collect(Collectors.joining(","));
         LambdaQueryWrapper<SysMenu> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.select(SysMenu::getPerms).apply("exists(select 1 from sys_role_menu rm where rm.menu_id = sys_menu.menu_id and rm.role_id in (" + roleIdsStr + "))")
+        queryWrapper.select(SysMenu::getPerms)
+                .isNotNull(SysMenu::getPerms)
+                .ne(SysMenu::getPerms, "")
+                .apply("exists(select 1 from sys_role_menu rm where rm.menu_id = sys_menu.menu_id and rm.role_id in (" + roleIdsStr + "))")
                 .orderByAsc(SysMenu::getPerms, SysMenu::getOrderNum);
         List<SysMenu> sysMenus = selectList(queryWrapper);
-        return sysMenus.stream().map(SysMenu::getPerms).collect(Collectors.toSet());
+        return sysMenus.stream().map(SysMenu::getPerms).filter(Objects::nonNull).collect(Collectors.toSet());
     }
 
     /**

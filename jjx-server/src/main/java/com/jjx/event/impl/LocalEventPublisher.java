@@ -120,12 +120,15 @@ public class LocalEventPublisher implements EventPublisher {
     private String resolveTemplate(String template, Map<String, Object> payload) {
         if (template == null || payload == null) return template;
         String result = template;
-        Pattern pattern = Pattern.compile("\\$\\{([^}]+)\\}");
+        // 兼容两种写法：${xxx} 和 {xxx}
+        Pattern pattern = Pattern.compile("\\$?\\{([^}]+)\\}");
         Matcher matcher = pattern.matcher(result);
         while (matcher.find()) {
             String expr = matcher.group(1);
             Object val = payload.get(expr);
-            if (val != null) result = result.replace("${" + expr + "}", String.valueOf(val));
+            if (val != null) {
+                result = result.replace(matcher.group(0), String.valueOf(val));
+            }
         }
         return result;
     }

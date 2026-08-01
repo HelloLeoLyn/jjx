@@ -28,13 +28,13 @@
               </div>
             </el-col>
           </el-row>
-          <el-table :data="output.byProduct" style="margin-top:16px" v-if="output.byProduct?.length">
+          <el-table v-if="output.byProduct?.length" :data="output.byProduct" style="margin-top:16px">
             <el-table-column prop="productName" label="产品名称" />
             <el-table-column prop="productCode" label="编码" width="120" />
             <el-table-column prop="planned" label="计划" width="100" align="right" />
             <el-table-column prop="completed" label="完成" width="100" align="right" />
           </el-table>
-          <el-empty v-else description="暂无产量数据" />
+          <el-empty v-if="!output.byProduct?.length" description="暂无产量数据" />
         </el-card>
       </el-tab-pane>
 
@@ -61,7 +61,7 @@
               </div>
             </el-col>
           </el-row>
-          <el-empty v-else-if="efficiency.totalOperations === 0" description="暂无效率数据" />
+          <el-empty v-if="efficiency.totalOperations === 0" description="暂无效率数据" />
         </el-card>
       </el-tab-pane>
 
@@ -94,7 +94,7 @@
               </div>
             </el-col>
           </el-row>
-          <el-empty v-else-if="quality.totalInspections === 0" description="暂无质量数据" />
+          <el-empty v-if="quality.totalInspections === 0" description="暂无质量数据" />
         </el-card>
       </el-tab-pane>
     </el-tabs>

@@ -112,6 +112,31 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  // 消息通知（放在任务看板下面，所有登录用户可见）
+  {
+    path: '/notification',
+    name: 'Notification',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/notification/index',
+    meta: {
+      title: '消息通知',
+      icon: 'Bell',
+      hidden: false,
+      sort: 2,
+    },
+    children: [
+      {
+        path: 'index',
+        name: 'NotificationIndex',
+        component: () => import('@/views/notification/index.vue'),
+        meta: {
+          title: '消息通知',
+          icon: 'Bell',
+          hidden: true,
+        },
+      },
+    ],
+  },
 ]
 
 const router = createRouter({

@@ -76,15 +76,43 @@ public interface IQuotationService {
      * @param status 报价单状态
      * @return 结果
      */
-    int updateQuotationStatus(Long quotationId, Integer status);
+    int updateQuotationStatus(Long quotationId, Integer status, String attachmentIds);
+
+    /**
+     * 客户确认报价
+     *
+     * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
+     * @return 结果
+     */
+    int confirmQuotation(Long quotationId, String attachmentIds);
+
+    /**
+     * 客户拒绝报价
+     *
+     * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
+     * @return 结果
+     */
+    int rejectQuotation(Long quotationId, String attachmentIds);
+
+    /**
+     * 已完成报价单改单
+     *
+     * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
+     * @return 结果
+     */
+    int modifyQuotation(Long quotationId, String attachmentIds);
 
     /**
      * 发送报价单给客户
      *
      * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
      * @return 结果
      */
-    int sendQuotation(Long quotationId);
+    int sendQuotation(Long quotationId, String attachmentIds);
 
     /**
      * 报价单转为订单
@@ -116,7 +144,7 @@ public interface IQuotationService {
      * @param quotationId 报价单ID
      * @return 结果
      */
-    int submitReview(Long quotationId);
+    int submitReview(Long quotationId, String attachmentIds);
 
     /**
      * 审核报价单
@@ -124,9 +152,18 @@ public interface IQuotationService {
      * @param quotationId 报价单ID
      * @param approved 是否通过
      * @param remark 审核备注
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
      * @return 结果
      */
-    int reviewQuotation(Long quotationId, Boolean approved, String remark);
+    int reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds);
+
+    /**
+     * 查询报价单流转记录
+     *
+     * @param quotationId 报价单ID
+     * @return 流转记录列表（时间倒序）
+     */
+    List<com.jjx.sales.domain.entity.SalesQuotationFlow> selectFlowRecords(Long quotationId);
 
     /**
      * 导出报价单列表

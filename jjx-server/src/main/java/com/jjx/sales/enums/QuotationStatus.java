@@ -14,7 +14,9 @@ public enum QuotationStatus {
     REJECTED(3, "已拒绝"),
     EXPIRED(4, "已过期"),
     PENDING_REVIEW(5, "待审核"),
-    APPROVED(6, "已审核");
+    APPROVED(6, "已审核"),
+    MODIFYING(8, "改单"),
+    COMPLETED(9, "已完成");
 
     private final Integer code;
     private final String name;

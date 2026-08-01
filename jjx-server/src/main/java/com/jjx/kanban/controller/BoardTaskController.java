@@ -53,7 +53,7 @@ public class BoardTaskController {
         if (StringUtils.hasText(priority)) {
             wrapper.eq(SysTask::getPriority, priority);
         }
-        wrapper.orderByAsc(SysTask::getCreateTime);
+        wrapper.orderByDesc(SysTask::getUpdateTime).orderByDesc(SysTask::getCreateTime);
         return Result.success(sysTaskMapper.selectList(wrapper));
     }
 

@@ -52,7 +52,17 @@
 
         <!-- 目标角色 -->
         <template #targetRole="{ row }">
-          <span>{{ row.targetRole || '-' }}</span>
+          <template v-if="parseTargetRole(row.targetRole).length">
+            <el-tag
+              v-for="rid in parseTargetRole(row.targetRole)"
+              :key="rid"
+              size="small"
+              style="margin-right: 4px"
+            >
+              {{ roleName(rid) }}
+            </el-tag>
+          </template>
+          <span v-else>-</span>
         </template>
 
         <!-- 排除触发者 -->
@@ -168,8 +178,20 @@
 
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="目标角色" prop="targetRole">
-              <el-input v-model="form.targetRole" placeholder='如: [7, 8]' />
+            <el-form-item label="目标角色" prop="targetRoleList">
+              <el-select
+                v-model="form.targetRoleList"
+                multiple
+                placeholder="请选择接收通知/任务的角色"
+                style="width:100%"
+              >
+                <el-option
+                  v-for="r in roleOptions"
+                  :key="r.roleId"
+                  :label="r.roleName"
+                  :value="r.roleId"
+                />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -220,6 +242,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { Toolbar, DataTable, SearchForm } from '@/components/common-ui/index'
 import { eventConfigApi } from '@/api/system/event-config'
+import { roleApi } from '@/api/system/role'
 import type { SysEventConfig } from '@/types/system'
 import * as uiConfig from './index'
 import { assignExisting } from '@/utils/object'
@@ -253,10 +276,37 @@ const form = reactive({
   priority: 'normal',
   isEnabled: 1,
   targetRole: '',
+  targetRoleList: [] as number[],
   title: '',
   content: '',
   excludeTrigger: 0,
 })
+
+// 角色选项
+const roleOptions = ref<{ roleId: number; roleName: string }[]>([])
+
+// 加载角色列表
+function loadRoles() {
+  roleApi.list({ pageNum: 1, pageSize: 100 }).then((res: any) => {
+    roleOptions.value = (res.data || []).map((r: any) => ({ roleId: r.roleId, roleName: r.roleName }))
+  })
+}
+
+/** 解析 targetRole JSON → 数组 */
+function parseTargetRole(str: string | null | undefined): number[] {
+  if (!str) return []
+  try {
+    const arr = JSON.parse(str)
+    return Array.isArray(arr) ? arr.map(Number).filter(n => !Number.isNaN(n)) : []
+  } catch {
+    return []
+  }
+}
+
+/** 角色ID → 角色名 */
+function roleName(roleId: number): string {
+  return roleOptions.value.find(r => r.roleId === roleId)?.roleName ?? `角色${roleId}`
+}
 
 const rules = {
   eventCode: [{ required: true, message: '事件编码不能为空', trigger: 'blur' }],
@@ -305,7 +355,7 @@ function handleToolbarClick(key: string) {
 // 新增
 function handleAdd() {
   dialogTitle.value = '新增事件配置'
-  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'office', priority: 'normal', isEnabled: 1, targetRole: '', title: '', content: '', excludeTrigger: 0 })
+  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'office', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', excludeTrigger: 0 })
   dialogVisible.value = true
 }
 
@@ -313,6 +363,7 @@ function handleAdd() {
 function handleUpdate(row: SysEventConfig) {
   dialogTitle.value = '修改事件配置'
   assignExisting(form, row as any)
+  form.targetRoleList = parseTargetRole(row.targetRole as string)
   dialogVisible.value = true
 }
 
@@ -342,7 +393,9 @@ function handleSubmit() {
   formRef.value?.validate((valid) => {
     if (!valid) return
     submitLoading.value = true
-    const api = form.eventId ? eventConfigApi.update(form) : eventConfigApi.add(form)
+    const { targetRoleList, ...rest } = form
+    const payload = { ...rest, targetRole: JSON.stringify(form.targetRoleList) }
+    const api = form.eventId ? eventConfigApi.update(payload) : eventConfigApi.add(payload)
     api.then((res: any) => {
       if (res.code === 200) {
         ElMessage.success(form.eventId ? '修改成功' : '新增成功')
@@ -356,6 +409,7 @@ function handleSubmit() {
 }
 
 onMounted(() => {
+  loadRoles()
   getList()
 })
 </script>

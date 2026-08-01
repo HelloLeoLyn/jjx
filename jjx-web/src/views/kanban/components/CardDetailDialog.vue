@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     :title="card?.title ?? '卡片详情'"
-    width="520px"
+    width="1200px"
     @close="onClose"
   >
     <template v-if="card">

@@ -35,6 +35,7 @@ public class OperLogAspect {
 
     private final LogSaveService logSaveService;
     private final SpelExpressionParser spelParser = new SpelExpressionParser();
+    private final com.jjx.sales.mapper.QuotationMapper quotationMapper;
 
     @Around("@annotation(logAnnotation)")
     public Object around(ProceedingJoinPoint point, Log logAnnotation) throws Throwable {
@@ -98,6 +99,28 @@ public class OperLogAspect {
                     }
                 }
             }
+
+            // traceId 最后回退：按 bizType+bizId 从历史操作日志继承（同一业务单据的所有操作共享 traceId）
+            if ((traceId == null || traceId.isEmpty()) && bizId != null && !bizId.isEmpty()) {
+                try {
+                    String inherited = logSaveService.findTraceIdByBiz(bizType, bizId);
+                    if (inherited != null && !inherited.isEmpty()) {
+                        traceId = inherited;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
+            // traceId 终极回退：报价单业务，直接查 sales_quotation.trace_id
+            if ((traceId == null || traceId.isEmpty()) && "quotation".equals(bizType) && bizId != null && !bizId.isEmpty()) {
+                try {
+                    com.jjx.sales.domain.entity.SalesQuotation q = quotationMapper.selectById(Long.valueOf(bizId));
+                    if (q != null && q.getTraceId() != null && !q.getTraceId().isEmpty()) {
+                        traceId = q.getTraceId();
+                    }
+                } catch (Exception ignored) {
+                }
+            }
             operLog.setBizId(bizId);
             operLog.setBizType(bizType);
             operLog.setTraceId(traceId);
@@ -109,6 +132,18 @@ public class OperLogAspect {
                 } else {
                     operLog.setStatus(YesNoEnum.NO.getCode());
                     operLog.setErrorMsg(resultObj.getMsg());
+                }
+                // traceId 回退：Result.data 是实体且带 getTraceId 时补上（如报价单/询价单等）
+                if ((traceId == null || traceId.isEmpty()) && resultObj.getData() != null) {
+                    try {
+                        java.lang.reflect.Method m = resultObj.getData().getClass().getMethod("getTraceId");
+                        Object val = m.invoke(resultObj.getData());
+                        if (val != null && !val.toString().isEmpty()) {
+                            traceId = val.toString();
+                            operLog.setTraceId(traceId);
+                        }
+                    } catch (Exception ignored) {
+                    }
                 }
             } else {
                 operLog.setStatus(3);

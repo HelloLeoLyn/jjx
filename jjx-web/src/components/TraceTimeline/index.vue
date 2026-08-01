@@ -53,6 +53,8 @@ import request from '@/utils/request'
 
 const props = defineProps<{
   traceId: string
+  bizType?: string
+  bizId?: string
   module?: string
   modelValue: boolean
 }>()
@@ -67,6 +69,7 @@ const nodes = ref<any[]>([])
 
 watch(() => props.modelValue, (v) => { visible.value = v })
 watch(() => props.traceId, () => { if (props.modelValue) loadTrace() })
+watch(() => props.bizId, () => { if (props.modelValue) loadTrace() })
 
 function handleClose() {
   emit('update:modelValue', false)
@@ -136,11 +139,25 @@ function formatBizStatus(bizStatus: number, bizType: string): string {
 }
 
 async function loadTrace() {
-  if (!props.traceId) return
+  // 优先按 traceId 查完整链路；查不到或没有 traceId 时，按 bizType+bizId 反查
+  if (!props.traceId && !props.bizId) return
   loading.value = true
   try {
-    const res = await request.get(`/api/trace/${props.traceId}`)
-    nodes.value = (res as any).data || []
+    if (props.traceId) {
+      const res = await request.get(`/api/trace/${props.traceId}`)
+      nodes.value = (res as any).data || []
+    }
+    if (!nodes.value.length && props.bizId) {
+      // 按业务ID反查：searchTrace 支持按 bizId 模糊匹配 trace_id
+      const res = await request.get('/api/trace/search', { params: { keyword: props.bizId } })
+      const traces: any[] = (res as any).data || []
+      // 优先取 bizType 匹配的链路
+      const match = traces.find((t) => {
+        const firstNode = t.nodes?.[0]
+        return !props.bizType || firstNode?.bizType === props.bizType
+      }) || traces[0]
+      nodes.value = match?.nodes || []
+    }
   } catch {
     nodes.value = []
   } finally {

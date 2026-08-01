@@ -196,7 +196,18 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         } else if (!checkEmailUnique(user)) {
             throw new BusinessException("新增用户'" + user.getUserName() + "'失败，邮箱账号已存在");
         }
-        return save(user);
+        boolean ok = save(user);
+        // 写入用户-角色关联
+        if (ok && dto.getRoleIds() != null && !dto.getRoleIds().isEmpty()) {
+            List<SysUserRole> userRoles = dto.getRoleIds().stream().map(rid -> {
+                SysUserRole userRole = new SysUserRole();
+                userRole.setRoleId(rid);
+                userRole.setUserId(user.getUserId());
+                return userRole;
+            }).toList();
+            userRoleService.getBaseMapper().insert(userRoles);
+        }
+        return ok;
     }
 
     @Override

@@ -10,7 +10,7 @@ export const authApi = {
 
   // 登出
   logout() {
-    return request.delete<R<void>>('/sessions/current')
+    return request.delete<R<void>>('/sessions/current/out')
   },
 
   // 刷新token

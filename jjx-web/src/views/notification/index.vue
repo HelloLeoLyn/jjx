@@ -105,11 +105,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getNotificationPage, getUnreadCount, markAsRead, markAllAsRead, deleteNotification } from '@/api/notification'
 import type { NotificationVO, NotificationQuery } from '@/api/notification'
+import { useUserStore } from '@/store/modules/user'
+
+const userStore = useUserStore()
+const currentUserId = computed(() => userStore.userId)
 
 const loading = ref(false)
 const list = ref<NotificationVO[]>([])
@@ -137,12 +141,13 @@ function typeLabel(type: string) {
 async function loadData() {
   loading.value = true
   try {
+    query.receiverId = currentUserId.value || 1
     const res = await getNotificationPage(query)
     if (res?.data) {
       list.value = res.data.records || []
       total.value = res.data.total || 0
     }
-    const cntRes = await getUnreadCount(1)
+    const cntRes = await getUnreadCount(currentUserId.value || 1)
     unreadCount.value = cntRes?.data || 0
     systemCount.value = list.value.filter((n: NotificationVO) => n.notificationType === 'SYSTEM').length
     emailCount.value = list.value.filter((n: NotificationVO) => n.notificationType === 'EMAIL').length
@@ -166,7 +171,7 @@ async function handleRead(row: NotificationVO) {
 
 async function handleMarkAllRead() {
   await ElMessageBox.confirm('确定全部标为已读？')
-  await markAllAsRead(1)
+  await markAllAsRead(currentUserId.value || 1)
   ElMessage.success('已全部标为已读')
   loadData()
 }

@@ -99,8 +99,9 @@ public class QuotationController extends BaseController {
     @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/send/{quotationId}")
-    public Result<Void> send(@PathVariable Long quotationId) {
-        return toAjax(quotationService.sendQuotation(quotationId));
+    public Result<Void> send(@PathVariable Long quotationId,
+                             @RequestParam(required = false) String attachmentIds) {
+        return toAjax(quotationService.sendQuotation(quotationId, attachmentIds));
     }
 
     /**
@@ -143,8 +144,9 @@ public class QuotationController extends BaseController {
     @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/submit-review/{quotationId}")
-    public Result<Void> submitReview(@PathVariable Long quotationId) {
-        return toAjax(quotationService.submitReview(quotationId));
+    public Result<Void> submitReview(@PathVariable Long quotationId,
+                                     @RequestParam(required = false) String attachmentIds) {
+        return toAjax(quotationService.submitReview(quotationId, attachmentIds));
     }
 
     /**
@@ -156,8 +158,19 @@ public class QuotationController extends BaseController {
     @PutMapping("/review/{quotationId}")
     public Result<Void> review(@PathVariable Long quotationId,
                                @RequestParam Boolean approved,
-                               @RequestParam(required = false) String remark) {
-        return toAjax(quotationService.reviewQuotation(quotationId, approved, remark));
+                               @RequestParam(required = false) String remark,
+                               @RequestParam(required = false) String attachmentIds) {
+        return toAjax(quotationService.reviewQuotation(quotationId, approved, remark, attachmentIds));
+    }
+
+    /**
+     * 获取报价单流转记录
+     */
+    @Operation(summary = "获取报价单流转记录")
+    @SaCheckPermission("sales:quotation:view")
+    @GetMapping("/flow/{quotationId}")
+    public Result<List<com.jjx.sales.domain.entity.SalesQuotationFlow>> flowRecords(@PathVariable Long quotationId) {
+        return Result.success(quotationService.selectFlowRecords(quotationId));
     }
 
     /**
@@ -168,8 +181,52 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/status/{quotationId}")
     public Result<Void> changeStatus(@PathVariable Long quotationId,
-                                     @RequestParam Integer status) {
-        return toAjax(quotationService.updateQuotationStatus(quotationId, status));
+                                     @RequestParam Integer status,
+                                     @RequestParam(required = false) String attachmentIds) {
+        // 客户确认/拒绝走独立接口（触发事件），其他状态直接更新
+        if (status != null && status == 2) {
+            return toAjax(quotationService.confirmQuotation(quotationId, attachmentIds));
+        }
+        if (status != null && status == 3) {
+            return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds));
+        }
+        return toAjax(quotationService.updateQuotationStatus(quotationId, status, attachmentIds));
+    }
+
+    /**
+     * 客户确认报价（独立接口，触发 quotation.confirmed 事件）
+     */
+    @Operation(summary = "客户确认报价")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId")
+    @SaCheckPermission("sales:quotation:edit")
+    @PutMapping("/confirm/{quotationId}")
+    public Result<Void> confirm(@PathVariable Long quotationId,
+                                @RequestParam(required = false) String attachmentIds) {
+        return toAjax(quotationService.confirmQuotation(quotationId, attachmentIds));
+    }
+
+    /**
+     * 客户拒绝报价（独立接口，触发 quotation.rejected 事件）
+     */
+    @Operation(summary = "客户拒绝报价")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId")
+    @SaCheckPermission("sales:quotation:edit")
+    @PutMapping("/reject/{quotationId}")
+    public Result<Void> reject(@PathVariable Long quotationId,
+                               @RequestParam(required = false) String attachmentIds) {
+        return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds));
+    }
+
+    /**
+     * 已完成报价单改单（回到改单状态，可重新编辑）
+     */
+    @Operation(summary = "已完成报价单改单")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId")
+    @SaCheckPermission("sales:quotation:edit")
+    @PutMapping("/modify/{quotationId}")
+    public Result<Void> modify(@PathVariable Long quotationId,
+                               @RequestParam(required = false) String attachmentIds) {
+        return toAjax(quotationService.modifyQuotation(quotationId, attachmentIds));
     }
 
     /**

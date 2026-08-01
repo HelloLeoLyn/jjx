@@ -55,16 +55,6 @@ public class EventAspect {
         String eventCode = eventAnnotation.value();
         payload.put("eventCode", eventCode);
 
-        // 业务ID
-        if (!eventAnnotation.bizId().isEmpty()) {
-            payload.put("bizId", eventAnnotation.bizId());
-        }
-
-        // bizType
-        if (!eventAnnotation.bizType().isEmpty()) {
-            payload.put("bizType", eventAnnotation.bizType());
-        }
-
         // 方法参数（旧方式，保留兼容）
         MethodSignature signature = (MethodSignature) pjp.getSignature();
         String[] paramNames = signature.getParameterNames();
@@ -75,17 +65,29 @@ public class EventAspect {
             }
         }
 
+        // SpEL 上下文（供 bizId / params 共用）
+        StandardEvaluationContext spelCtx = new StandardEvaluationContext();
+        if (paramNames != null) {
+            for (int i = 0; i < paramNames.length && i < paramValues.length; i++) {
+                spelCtx.setVariable(paramNames[i], paramValues[i]);
+            }
+        }
+        spelCtx.setVariable("result", result);
+
+        // 业务ID（支持SpEL表达式，如 #inquiryId / #result.inquiryNo）
+        if (!eventAnnotation.bizId().isEmpty()) {
+            String bizIdExpr = eventAnnotation.bizId();
+            payload.put("bizId", resolveSpel(bizIdExpr, spelCtx));
+        }
+
+        // bizType
+        if (!eventAnnotation.bizType().isEmpty()) {
+            payload.put("bizType", eventAnnotation.bizType());
+        }
+
         // SpEL params（新方式，覆盖旧方式同名key）
         String[] spelParams = eventAnnotation.params();
         if (spelParams != null && spelParams.length > 0) {
-            StandardEvaluationContext spelCtx = new StandardEvaluationContext();
-            if (paramNames != null) {
-                for (int i = 0; i < paramNames.length && i < paramValues.length; i++) {
-                    spelCtx.setVariable(paramNames[i], paramValues[i]);
-                }
-            }
-            spelCtx.setVariable("result", result);
-
             for (String expr : spelParams) {
                 if (expr == null || expr.trim().isEmpty()) continue;
                 int eqIdx = expr.indexOf('=');
@@ -121,5 +123,19 @@ public class EventAspect {
 
         log.debug("事件已触发: {}", eventCode);
         return result;
+    }
+
+    /**
+     * 解析 SpEL 表达式；表达式不以 # 开头或解析失败时原样返回
+     */
+    private Object resolveSpel(String expr, StandardEvaluationContext ctx) {
+        if (expr == null || expr.trim().isEmpty()) return expr;
+        try {
+            Expression exp = spelParser.parseExpression(expr.trim());
+            return exp.getValue(ctx);
+        } catch (Exception e) {
+            log.warn("bizId SpEL解析失败，原样返回: {} ({})", expr, e.getMessage());
+            return expr;
+        }
     }
 }

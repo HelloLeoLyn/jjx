@@ -16,6 +16,7 @@ function statusView() {
       { id: 'review', label: '待审核', color: '#e6a23c', filterValue: 'review' },
       { id: 'completed', label: '已完成', color: '#67c23a', filterValue: 'completed' },
       { id: 'blocked', label: '阻塞', color: '#f56c6c', filterValue: 'blocked' },
+      { id: 'cancelled', label: '已废弃', color: '#c0c4cc', filterValue: 'cancelled' },
     ],
   }
 }

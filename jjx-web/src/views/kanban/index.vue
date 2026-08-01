@@ -171,7 +171,7 @@ function onCreateCard(card: Partial<BoardCard>, targetColumnId: string) {
   store.addCard(card, targetColumnId)
 
   // 播报新建卡片
-  const col = store.currentView?.columns.find(c => c.def.id === targetColumnId)
+  const col = store.columns.find(c => c.def.id === targetColumnId)
   if (col) {
     broadcast.announceNewCard(card.title || '', col.def.label)
   }

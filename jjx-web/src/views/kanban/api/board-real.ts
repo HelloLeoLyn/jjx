@@ -85,14 +85,20 @@ async function fetchSysTaskBoardData(
 
 /** sys_task.status(tinyint) + completedTime → 看板状态 */
 function mapSysTaskStatus(t: any): BoardCard['status'] {
-  if (t.completedTime) return 'completed'
+  // 以 status 数字为准（10=已完成），completedTime 只作辅助兜底
   const map: Record<number, BoardCard['status']> = {
     0: 'pending',
     1: 'in_progress',
     2: 'review',
     3: 'blocked',
+    4: 'cancelled',
+    10: 'completed',
   }
-  return map[Number(t.status)] ?? 'pending'
+  const mapped = map[Number(t.status)]
+  if (mapped) return mapped
+  // status 无映射时兜底：有完成时间视为已完成
+  if (t.completedTime) return 'completed'
+  return 'pending'
 }
 
 /** 看板状态 → sys_task.status(tinyint) */
@@ -102,6 +108,7 @@ function mapStatusToSysTask(status: string): number {
     in_progress: 1,
     review: 2,
     blocked: 3,
+    cancelled: 4,
     completed: 10,
   }
   return map[status] ?? 0

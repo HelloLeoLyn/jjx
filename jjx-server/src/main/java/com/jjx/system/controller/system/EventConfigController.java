@@ -11,6 +11,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,9 +34,9 @@ public class EventConfigController extends BaseController {
     public Result<List<SysEventConfig>> list(SysEventConfig config) {
         List<SysEventConfig> list = eventConfigMapper.selectList(
                 new LambdaQueryWrapper<SysEventConfig>()
-                        .like(config.getEventCode() != null, SysEventConfig::getEventCode, config.getEventCode())
-                        .like(config.getEventName() != null, SysEventConfig::getEventName, config.getEventName())
-                        .eq(config.getEventType() != null, SysEventConfig::getEventType, config.getEventType())
+                        .like(StringUtils.hasText(config.getEventCode()), SysEventConfig::getEventCode, config.getEventCode())
+                        .like(StringUtils.hasText(config.getEventName()), SysEventConfig::getEventName, config.getEventName())
+                        .eq(StringUtils.hasText(config.getEventType()), SysEventConfig::getEventType, config.getEventType())
                         .eq(config.getIsEnabled() != null, SysEventConfig::getIsEnabled, config.getIsEnabled())
                         .orderByAsc(SysEventConfig::getEventCode)
         );
@@ -50,9 +51,9 @@ public class EventConfigController extends BaseController {
         Page<SysEventConfig> page = eventConfigMapper.selectPage(
                 new Page<>(getPageNum(), getPageSize()),
                 new LambdaQueryWrapper<SysEventConfig>()
-                        .like(config.getEventCode() != null, SysEventConfig::getEventCode, config.getEventCode())
-                        .like(config.getEventName() != null, SysEventConfig::getEventName, config.getEventName())
-                        .eq(config.getEventType() != null, SysEventConfig::getEventType, config.getEventType())
+                        .like(StringUtils.hasText(config.getEventCode()), SysEventConfig::getEventCode, config.getEventCode())
+                        .like(StringUtils.hasText(config.getEventName()), SysEventConfig::getEventName, config.getEventName())
+                        .eq(StringUtils.hasText(config.getEventType()), SysEventConfig::getEventType, config.getEventType())
                         .eq(config.getIsEnabled() != null, SysEventConfig::getIsEnabled, config.getIsEnabled())
                         .orderByAsc(SysEventConfig::getEventCode)
         );

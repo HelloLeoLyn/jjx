@@ -40,6 +40,29 @@ public class LogSaveService {
         }
     }
 
+    /**
+     * 按 bizType+bizId 从历史操作日志继承 traceId（同单据所有操作共享链路）
+     */
+    public String findTraceIdByBiz(String bizType, String bizId) {
+        try {
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysOperLog> w =
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+            if (bizType != null && !bizType.isEmpty()) {
+                w.eq(SysOperLog::getBizType, bizType);
+            }
+            w.eq(SysOperLog::getBizId, bizId)
+                    .isNotNull(SysOperLog::getTraceId)
+                    .ne(SysOperLog::getTraceId, "")
+                    .orderByDesc(SysOperLog::getId)
+                    .last("LIMIT 1");
+            SysOperLog log = operLogMapper.selectOne(w);
+            return log != null ? log.getTraceId() : null;
+        } catch (Exception e) {
+            log.error("查询历史traceId失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
     @Async("logExecutor")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveErrorLog(SysErrorLog errorLog) {

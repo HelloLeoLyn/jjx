@@ -43,12 +43,12 @@ public class SecurityUtils {
 
     public static String getUsername() {
         LoginVO user = getLoginUser();
-        return user != null ? user.getUserInfo().getUserName() : null;
+        return user != null && user.getUserInfo() != null ? user.getUserInfo().getUserName() : null;
     }
 
     public static String getRealName() {
         LoginVO user = getLoginUser();
-        return user != null ? user.getUserInfo().getRealName() : null;
+        return user != null && user.getUserInfo() != null ? user.getUserInfo().getRealName() : null;
     }
 
     public static Long getTenantId() {

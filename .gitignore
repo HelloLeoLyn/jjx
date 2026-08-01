@@ -103,3 +103,9 @@ Dockerfile.tmp
 *.7z
 # Maven exploded archive
 BOOT-INF/
+
+# ====================
+# 运行时文件
+# ====================
+upload/
+*.tsbuildinfo

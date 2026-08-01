@@ -1,6 +1,7 @@
 package com.jjx.sales.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -52,6 +53,13 @@ public class SalesInquiry extends BaseEntity {
 
     /** 产品描述/规格要求 */
     private String productDescription;
+
+    /** 关联产品ID（标准品必填） */
+    private Long productId;
+
+    /** 产品名称（非表字段，查询时关联填充） */
+    @TableField(exist = false)
+    private String productName;
 
     /** 按键数量 */
     private Integer keyCount;

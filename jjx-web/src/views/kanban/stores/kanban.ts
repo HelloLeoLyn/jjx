@@ -104,7 +104,7 @@ export const useKanbanStore = defineStore('kanban', () => {
 
   // 打开详情
   async function openDetail(cardId: string) {
-    const res = await fetchCardDetail(cardId)
+    const res = await fetchCardDetail(cardId, currentTemplate.value)
     if ((res.code === 200 || res.code === 0) && res.data) {
       selectedCard.value = res.data
       detailVisible.value = true

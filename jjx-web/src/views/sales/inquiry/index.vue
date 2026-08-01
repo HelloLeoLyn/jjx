@@ -299,7 +299,35 @@
                 <el-radio :value="2" border>样品（需打样）</el-radio>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="产品描述" prop="productDescription">
+            <!-- 标准品：从产品库选择，自动带出描述 -->
+            <el-form-item v-if="form.inquiryType === 1" label="选择产品" prop="productId">
+              <el-select
+                v-model="form.productId"
+                filterable
+                placeholder="请选择产品"
+                style="width: 100%"
+                @change="onProductSelect"
+              >
+                <el-option
+                  v-for="p in productOptions"
+                  :key="p.productId"
+                  :label="`${p.productName}（${p.productCode}）`"
+                  :value="p.productId"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="form.inquiryType === 1" label="产品描述" prop="productDescription">
+              <el-input
+                v-model="form.productDescription"
+                type="textarea"
+                :rows="3"
+                placeholder="选择产品后自动带出，可修改"
+                maxlength="2000"
+                show-word-limit
+              />
+            </el-form-item>
+            <!-- 样品：手填描述 -->
+            <el-form-item v-else label="产品描述" prop="productDescription">
               <el-input
                 v-model="form.productDescription"
                 type="textarea"
@@ -383,6 +411,9 @@
             <el-tag v-if="detailData.inquiryType === 2" type="warning" size="small">样品</el-tag>
             <el-tag v-else type="primary" size="small">标准</el-tag>
           </el-descriptions-item>
+          <el-descriptions-item label="关联产品">{{
+            detailData.productName || (detailData.productId ? '产品#' + detailData.productId : '-')
+          }}</el-descriptions-item>
           <el-descriptions-item label="客户名称">{{
             detailData.customerName
           }}</el-descriptions-item>
@@ -472,6 +503,8 @@ import request from '@/utils/request'
 import { Upload } from '@element-plus/icons-vue'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
+import { listProduct } from '@/api/product'
+import type { ProductItem } from '@/types/product'
 import type { CustomerSearchVO } from '@/types/sales/customer'
 
 defineOptions({
@@ -501,6 +534,10 @@ const dateRange = ref<string[]>([])
 const customerOptions = ref<CustomerOption[]>([])
 const customerLoading = ref(false)
 
+// 产品选项（标准品选择用）
+const productOptions = ref<ProductItem[]>([])
+const productLoading = ref(false)
+
 const statusOptions = ref<Array<{ value: string; label: string }>>([])
 
 // 查询参数
@@ -524,6 +561,7 @@ const form = reactive({
   contactPhone: '',
   inquiryDate: '',
   expectedQuantity: undefined as number | undefined,
+  productId: undefined as number | undefined,
   productDescription: '',
   keyCount: undefined as number | undefined,
   sizeDescription: '',
@@ -793,6 +831,27 @@ function customerChanged(val: number) {
   }
 }
 
+// 加载产品列表（标准品选择用）
+async function loadProducts() {
+  productLoading.value = true
+  try {
+    const res = await listProduct({ pageNum: 1, pageSize: 100 } as any)
+    productOptions.value = (res?.data as any)?.records || res?.data || []
+  } catch {
+    productOptions.value = []
+  } finally {
+    productLoading.value = false
+  }
+}
+
+// 选择产品：自动带出产品描述
+function onProductSelect(val: number) {
+  const product = productOptions.value.find((p: any) => p.productId === val)
+  if (product) {
+    form.productDescription = `${product.productName}（${product.productCode}）`
+  }
+}
+
 // 新增
 function handleAdd() {
   dialogTitle.value = '新增询价单'
@@ -818,6 +877,7 @@ function handleUpdate(row?: any) {
       contactPhone: data.contactPhone,
       inquiryDate: data.inquiryDate,
       expectedQuantity: data.expectedQuantity,
+      productId: data.productId,
       productDescription: data.productDescription,
       keyCount: data.keyCount,
       sizeDescription: data.sizeDescription,
@@ -899,6 +959,7 @@ function resetForm() {
     contactPhone: '',
     inquiryDate: '',
     expectedQuantity: undefined,
+    productId: undefined,
     productDescription: '',
     keyCount: undefined,
     sizeDescription: '',
@@ -963,6 +1024,7 @@ function handleClose() {
 onMounted(() => {
   getList()
   initCustomerOptions()
+  loadProducts()
   // 加载状态选项
   inquiryApi
     .getStatusOptions()
