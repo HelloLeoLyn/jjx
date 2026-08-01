@@ -28,7 +28,7 @@ public class SampleOrderController extends BaseController {
     private final ISampleOrderService sampleOrderService;
 
     @Operation(summary = "从报价单创建样品单")
-    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'")
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId")
     @SaCheckPermission("sales:sample:add")
     @PostMapping("/create-from-quotation/{quotationId}")
     public Result<SalesOrder> createFromQuotation(

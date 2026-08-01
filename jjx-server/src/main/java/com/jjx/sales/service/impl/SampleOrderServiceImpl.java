@@ -88,6 +88,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setTotalQuantity(sampleQty != null ? sampleQty : 0);
         order.setTotalAmount(quotation.getTotalAmount());
         order.setFinalAmount(quotation.getFinalAmount());
+        // 继承报价单链路追踪ID（同一业务链路）
+        order.setTraceId(quotation.getTraceId());
         if (quotation.getValidUntil() != null) {
             order.setDeliveryDate(Date.from(quotation.getValidUntil().atStartOfDay(ZoneId.systemDefault()).toInstant()));
         }
