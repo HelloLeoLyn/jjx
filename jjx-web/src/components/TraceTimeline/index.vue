@@ -103,12 +103,14 @@ function formatBusinessType(code: number): string {
  * 业务码 → 状态枚举 映射
  * 与后端各 StatusEnum 一一对应，统一走 enums 目录（不硬编码）
  */
-import { QuotationStatusEnum, SalesOrderStatusEnum, SampleOrderStatusEnum } from '@/enums/sales'
+import { QuotationStatusEnum, SalesOrderStatusEnum, SampleOrderStatusEnum, InquiryStatusEnum } from '@/enums/sales'
+import { ProductionOrderStatusEnum } from '@/enums/production'
+import { PurchaseOrderStatusEnum } from '@/enums/purchase/order'
 
 // 按 bizType 查对应状态枚举
 const BIZ_STATUS_ENUMS: Record<string, { getLabel: (v: number) => string }> = {
-  // 销售询价单（后端 InquiryStatus，前端无独立枚举时用内联字典，后续补枚举后替换）
-  inquiry: { getLabel: (v) => ({ 0:'草稿', 1:'待处理', 2:'已发送', 3:'已转报价', 4:'已确认', 5:'已拒绝', 6:'已过期' } as Record<number, string>)[v] ?? String(v) },
+  // 销售询价单 InquiryStatus
+  inquiry: InquiryStatusEnum,
   // 报价单 QuotationStatus
   quotation: QuotationStatusEnum,
   // 销售订单 OrderStatusEnum
@@ -116,6 +118,10 @@ const BIZ_STATUS_ENUMS: Record<string, { getLabel: (v: number) => string }> = {
   sales_order: SalesOrderStatusEnum,
   // 样品单 SampleOrderStatusEnum
   sample: SampleOrderStatusEnum,
+  // 采购订单 PurchaseOrderStatusEnum
+  purchase: PurchaseOrderStatusEnum,
+  // 生产工单（production OrderStatusEnum）
+  production: ProductionOrderStatusEnum,
 }
 
 /**

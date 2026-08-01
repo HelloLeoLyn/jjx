@@ -40,3 +40,22 @@ export const ApprovalStatusEnum = createEnum({
   ],
   defaultTag: { type: 'info' },
 })
+
+/**
+ * 采购订单状态枚举
+ * 对应后端 PurchaseOrderStatusEnum
+ */
+export const PurchaseOrderStatusEnum = createEnum({
+  items: [
+    { value: 0, label: '草稿', tagProps: { type: 'info' } },
+    { value: 1, label: '询价中', tagProps: { type: 'warning' } },
+    { value: 2, label: '比价中', tagProps: { type: 'warning' } },
+    { value: 3, label: '已提交', tagProps: { type: 'primary' } },
+    { value: 4, label: '已批准', tagProps: { type: 'success' } },
+    { value: 5, label: '执行中', tagProps: { type: 'primary' } },
+    { value: 6, label: '已完成', tagProps: { type: 'success' } },
+    { value: 7, label: '已关闭', tagProps: { type: 'info' } },
+    { value: 8, label: '已取消', tagProps: { type: 'danger' } },
+  ],
+  defaultTag: { type: 'info' },
+})

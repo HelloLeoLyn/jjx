@@ -321,6 +321,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UserFilled, List } from '@element-plus/icons-vue'
 import { operationExecutionApi } from '@/api/production/operationExecution'
+import { ExecutionStatusEnum } from '@/enums/production'
 import type {
   OperationExecutionVO,
   OperationExecutionQuery,
@@ -565,14 +566,12 @@ function formatJson(json: string | null) {
 function getStatusTagType(
   status: number | undefined
 ): 'primary' | 'success' | 'warning' | 'info' | 'danger' | undefined {
-  const map: Record<number, 'primary' | 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    0: 'info',    // 待执行
-    2: 'warning', // 执行中
-    4: 'success', // 已完成
-    3: 'danger',  // 已暂停
-    6: 'info',    // 已取消
-  }
-  return map[status ?? -1] ?? undefined
+  // 统一枚举：对应后端 ExecutionStatusEnum
+  const props = ExecutionStatusEnum.getTagProps(status ?? -1)
+  const type = props.type as string
+  return (['primary', 'success', 'warning', 'info', 'danger'] as const).includes(type as any)
+    ? (type as any)
+    : undefined
 }
 
 onMounted(() => {

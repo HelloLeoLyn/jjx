@@ -1,17 +1,13 @@
 import type { OrderStatus, OrderType, PlanType, Priority } from '@/types/production/order'
+import { ProductionOrderStatusEnum, ExecutionStatusEnum } from '@/enums/production'
 
 /**
- * 订单状态选项
+ * 订单状态选项（来自统一枚举）
  */
-export const ORDER_STATUS_OPTIONS = [
-  { label: '草稿', value: 0 as OrderStatus },
-  { label: '待审批', value: 1 as OrderStatus },
-  { label: '已批准', value: 2 as OrderStatus },
-  { label: '已排程', value: 4 as OrderStatus },
-  { label: '进行中', value: 6 as OrderStatus },
-  { label: '已完成', value: 8 as OrderStatus },
-  { label: '已取消', value: 9 as OrderStatus },
-]
+export const ORDER_STATUS_OPTIONS = ProductionOrderStatusEnum.items.map((item) => ({
+  label: item.label,
+  value: item.value as OrderStatus,
+}))
 
 /**
  * 订单类型选项
@@ -52,15 +48,12 @@ export const APPROVAL_STATUS_OPTIONS = [
 ]
 
 /**
- * 执行状态选项
+ * 执行状态选项（来自统一枚举）
  */
-export const EXECUTION_STATUS_OPTIONS = [
-  { label: '未开始', value: 0 },
-  { label: '进行中', value: 2 },
-  { label: '已完成', value: 4 },
-  { label: '已暂停', value: 3 },
-  { label: '已取消', value: 4 },
-]
+export const EXECUTION_STATUS_OPTIONS = ExecutionStatusEnum.items.map((item) => ({
+  label: item.label,
+  value: item.value,
+}))
 
 /**
  * 分页配置
