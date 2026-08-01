@@ -80,6 +80,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("报价单不存在");
         }
 
+        // 防重复转换：已完成(9)的报价单不可再转样品
+        if (quotation.getQuotationStatus() != null
+                && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode()) {
+            throw new BusinessException("报价单已完成，不可重复转样品单");
+        }
+
         // 生成订单编号
         String orderNo = redisSequenceService.generateBusinessNumber("SP", "样品单号");
 
@@ -111,6 +117,18 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         orderMapper.insert(order);
         log.info("从报价单[{}]创建样品单[{}] orderId={}", quotation.getQuotationNo(), orderNo, order.getOrderId());
+
+        // 报价单状态更新：已确认(2) → 已完成(9)（报价已转化为样品打样，不可重复转）
+        try {
+            SalesQuotation update = new SalesQuotation();
+            update.setQuotationId(quotationId);
+            update.setQuotationStatus(com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode());
+            quotationMapper.updateById(update);
+            log.info("报价单[{}] 转样品后状态 → 已完成(9)", quotation.getQuotationNo());
+        } catch (Exception e) {
+            log.warn("更新报价单状态失败: {}", e.getMessage());
+        }
+
         return order;
     }
 
