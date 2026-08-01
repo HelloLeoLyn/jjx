@@ -204,9 +204,9 @@
                   <span v-if="detailData.currentProcess" style="margin-left:12px;color:#909399;font-size:12px">当前：{{ detailData.currentProcess }}</span>
                 </el-form-item>
                 <!-- 工序历史 -->
-                <el-form-item v-if="processList.length > 0" label="工序历史" style="margin-top:8px">
+                <el-form-item v-if="detailData.engineeringAcceptor" label="工序历史" style="margin-top:8px">
                   <div style="width:100%">
-                    <el-timeline style="padding-left:2px">
+                    <el-timeline v-if="processList.length > 0" style="padding-left:2px">
                       <el-timeline-item v-for="(p, i) in processList" :key="p.processId" :timestamp="formatTime(p.startTime)" placement="top" :type="i === processList.length - 1 ? 'primary' : 'info'">
                         <div style="font-size:13px">
                           <span style="font-weight:600">{{ p.processName }}</span>
@@ -214,6 +214,7 @@
                         </div>
                       </el-timeline-item>
                     </el-timeline>
+                    <div v-else style="color:#999;font-size:13px;padding:8px 0">当前没有工序历史记录，选择工序后自动记录</div>
                   </div>
                 </el-form-item>
                 <el-form-item v-if="detailData.rejectReason" label="拒单原因" style="margin-top:8px">
@@ -495,6 +496,13 @@ async function handleUpdateProcess(process: string) {
   try {
     await sampleOrderApi.updateProcess(detailData.value.orderId, process)
     detailData.value.currentProcess = process
+    // 刷新工序历史（选完立即显示新记录）
+    try {
+      const pRes = await sampleOrderApi.listProcesses(detailData.value.orderId)
+      processList.value = pRes.data || []
+    } catch {
+      /* 忽略历史刷新失败 */
+    }
     ElMessage.success(`已更新为：${process}`)
   } catch (e: any) {
     ElMessage.error(e?.message || '更新工序失败')
