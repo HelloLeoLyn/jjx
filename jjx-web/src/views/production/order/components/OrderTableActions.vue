@@ -42,6 +42,10 @@
               <el-icon><CopyDocument /></el-icon>
               复制订单
             </el-dropdown-item>
+            <el-dropdown-item command="pick-material" v-if="order.orderStatus === 2">
+              <el-icon><Box /></el-icon>
+              生成领料单
+            </el-dropdown-item>
             <el-dropdown-item command="export">
               <el-icon><Download /></el-icon>
               导出订单
@@ -67,7 +71,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { More, CopyDocument, Download, Printer, Clock } from '@element-plus/icons-vue'
+import { More, CopyDocument, Download, Printer, Clock, Box } from '@element-plus/icons-vue'
 import type { ProductionOrderVO } from '@/types/production/order'
 
 interface Props {

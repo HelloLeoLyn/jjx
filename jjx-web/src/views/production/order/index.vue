@@ -487,8 +487,32 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
     case 'history':
       handleViewHistory(order)
       break
+    case 'pick-material':
+      handlePickMaterial(order)
+      break
     default:
       ElMessage.warning('暂不支持该操作')
+  }
+}
+
+// 生成领料单（调用库存出库单 create-from-production）
+async function handlePickMaterial(order: any) {
+  try {
+    await ElMessageBox.confirm(
+      `按 BOM 为工单 [${order.orderNo}] 生成领料单？将扣减物料库存。`,
+      '生成领料单',
+      { confirmButtonText: '生成', cancelButtonText: '取消', type: 'warning' },
+    )
+    const { materialPickApi } = await import('@/api/inventory/materialPick')
+    const res = await materialPickApi.createFromProduction(order.orderId)
+    if (res.data) {
+      ElMessage.success(`领料单已生成（出库单 ${res.data}）`)
+      loadData()
+    } else {
+      ElMessage.info('未生成领料单（无已批准BOM或已存在领料单）')
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '生成领料单失败')
   }
 }
 

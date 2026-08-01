@@ -335,7 +335,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 new LambdaQueryWrapper<com.jjx.product.domain.entity.ProductBom>()
                         .eq(com.jjx.product.domain.entity.ProductBom::getProductId, prodOrder.getProductId())
                         .eq(com.jjx.product.domain.entity.ProductBom::getIsCurrent, 1)
-                        .eq(com.jjx.product.domain.entity.ProductBom::getApproveStatus, 1)
+                        .eq(com.jjx.product.domain.entity.ProductBom::getApproveStatus, 3)
                         .orderByDesc(com.jjx.product.domain.entity.ProductBom::getCreateTime)
                         .last("LIMIT 1");
         com.jjx.product.domain.entity.ProductBom bom = productBomMapper.selectOne(bomWrapper);
