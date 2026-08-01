@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import com.jjx.system.annotation.Event;
 
 /**
  * 产品实例Service实现
@@ -77,6 +78,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     }
 
     @Override
+    @Event(value = "product.instance.created", bizId = "#instance", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean createInstance(ProductInstance instance) {
         // 检查实例编码是否唯一
@@ -93,6 +95,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     }
 
     @Override
+    @Event(value = "product.instance.batch_created", bizId = "#instances", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean batchCreateInstances(List<ProductInstance> instances) {
         if (instances == null || instances.isEmpty()) {
@@ -115,6 +118,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     }
 
     @Override
+    @Event(value = "product.instance.status_updated", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateInstanceStatus(Long instanceId, Integer status) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
@@ -133,6 +137,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     }
 
     @Override
+    @Event(value = "product.instance.production_started", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean startProduction(Long instanceId) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
@@ -152,6 +157,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     }
 
     @Override
+    @Event(value = "product.instance.production_completed", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean completeProduction(Long instanceId) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
@@ -171,6 +177,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     }
 
     @Override
+    @Event(value = "product.instance.delivered", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deliverInstance(Long instanceId) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);

@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.jjx.system.annotation.Event;
 
 /**
  * 产品标准工序服务实现类
@@ -127,6 +128,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     }
 
     @Override
+    @Event(value = "product.standard_process.deleted", bizId = "#processId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void deleteProcess(Long processId) {
         ProductStandardProcess process = getById(processId);
@@ -203,6 +205,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     // ==================== 状态管理 ====================
 
     @Override
+    @Event(value = "product.standard_process.status_updated", bizId = "#processId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void setEnabled(Long processId, Boolean enabled) {
         ProductStandardProcess process = getById(processId);

@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import com.jjx.system.annotation.Event;
 
 @Slf4j
 @Service
@@ -93,6 +94,7 @@ public class ProductFilmServiceImpl extends ServiceImpl<ProductFilmMapper, Produ
     }
 
     @Override
+    @Event(value = "product.film.deleted", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void deleteFilm(Long filmId) {
         ProductFilm film = getById(filmId);
@@ -110,6 +112,7 @@ public class ProductFilmServiceImpl extends ServiceImpl<ProductFilmMapper, Produ
     }
 
     @Override
+    @Event(value = "product.film.submitted", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void submitApprove(Long filmId) {
         ProductFilm film = getById(filmId);
@@ -129,6 +132,7 @@ public class ProductFilmServiceImpl extends ServiceImpl<ProductFilmMapper, Produ
     }
 
     @Override
+    @Event(value = "product.film.approved", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long filmId, String remark) {
         ProductFilm film = getById(filmId);
@@ -150,6 +154,7 @@ public class ProductFilmServiceImpl extends ServiceImpl<ProductFilmMapper, Produ
     }
 
     @Override
+    @Event(value = "product.film.rejected", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void reject(Long filmId, String remark) {
         ProductFilm film = getById(filmId);
@@ -240,6 +245,7 @@ public class ProductFilmServiceImpl extends ServiceImpl<ProductFilmMapper, Produ
     }
 
     @Override
+    @Event(value = "product.film.released", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void releaseToProduction(Long filmId) {
         ProductFilm film = getById(filmId);

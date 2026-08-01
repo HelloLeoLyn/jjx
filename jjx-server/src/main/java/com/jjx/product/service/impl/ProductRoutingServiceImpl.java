@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.jjx.system.annotation.Event;
 
 @Slf4j
 @Service
@@ -132,6 +133,7 @@ public class ProductRoutingServiceImpl extends ServiceImpl<ProductRoutingMapper,
     }
 
     @Override
+    @Event(value = "product.routing.version_changed", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void setCurrentVersion(Long routingId) {
         ProductRouting routing = getById(routingId);
@@ -150,6 +152,7 @@ public class ProductRoutingServiceImpl extends ServiceImpl<ProductRoutingMapper,
     }
 
     @Override
+    @Event(value = "product.routing.submitted", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void submitApprove(Long routingId) {
         ProductRouting routing = getById(routingId);
@@ -168,6 +171,7 @@ public class ProductRoutingServiceImpl extends ServiceImpl<ProductRoutingMapper,
     }
 
     @Override
+    @Event(value = "product.routing.approved", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long routingId, String remark) {
         ProductRouting routing = getById(routingId);
@@ -186,6 +190,7 @@ public class ProductRoutingServiceImpl extends ServiceImpl<ProductRoutingMapper,
     }
 
     @Override
+    @Event(value = "product.routing.rejected", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void reject(Long routingId, String remark) {
         ProductRouting routing = getById(routingId);
