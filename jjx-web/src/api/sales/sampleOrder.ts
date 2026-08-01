@@ -159,6 +159,23 @@ export const sampleOrderApi = {
     })
   },
 
+  // 录入打样成本/工时
+  recordCost(orderId: number, cost?: number, workHours?: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/record-cost/${orderId}`,
+      method: 'put',
+      params: { cost, workHours },
+    })
+  },
+
+  // 查询打样轮次快照
+  getRounds(orderId: number): AxiosPromise<any[]> {
+    return request({
+      url: `/sales/sample-order/rounds/${orderId}`,
+      method: 'get',
+    })
+  },
+
   // 状态选项
   getStatusOptions(): AxiosPromise<Array<{ value: number; label: string; description: string; terminal: boolean }>> {
     return request({

@@ -123,6 +123,16 @@ public class SalesOrder extends BaseEntity {
     private String currentProcess;
 
     /**
+     * 打样成本
+     */
+    private java.math.BigDecimal sampleCost;
+
+    /**
+     * 打样工时(小时)
+     */
+    private java.math.BigDecimal sampleWorkHours;
+
+    /**
      * 送样快递单号
      */
     private String sampleTrackingNo;

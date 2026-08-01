@@ -9,6 +9,7 @@ import com.jjx.sales.enums.OrderTypeEnum;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.QuotationMapper;
+import com.jjx.sales.mapper.SalesSampleRoundMapper;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
@@ -37,6 +38,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final QuotationMapper quotationMapper;
     private final RedisSequenceService redisSequenceService;
     private final ISalesOrderProductService orderProductService;
+    private final SalesSampleRoundMapper sampleRoundMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -182,6 +184,20 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             orderMapper.updateById(update);
         }
 
+        // 归档本轮快照（工艺参数 + 图纸附件，附件从attachment按traceId查）
+        try {
+            SalesOrder full = orderMapper.selectById(orderId);
+            com.jjx.sales.domain.entity.SalesSampleRound round = new com.jjx.sales.domain.entity.SalesSampleRound();
+            round.setOrderId(orderId);
+            round.setRoundNo(full.getSampleRound() != null ? full.getSampleRound() : 1);
+            round.setEngineeringNote(full.getEngineeringNote());
+            round.setResult("pending");
+            round.setCreateTime(java.time.LocalDateTime.now());
+            sampleRoundMapper.insert(round);
+        } catch (Exception e) {
+            log.warn("归档样品轮次快照失败: {}", e.getMessage());
+        }
+
         log.info("样品单[{}] 样品制作完成，待送样", orderId);
         return orderMapper.selectById(orderId);
     }
@@ -251,6 +267,21 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         update.setSampleRound(nextRound);
         update.setRemark(rejectReason);
         orderMapper.updateById(update);
+
+        // 更新本轮快照结果：rejected + 退回原因
+        try {
+            List<com.jjx.sales.domain.entity.SalesSampleRound> rounds = sampleRoundMapper.selectByOrderId(orderId);
+            if (!rounds.isEmpty()) {
+                com.jjx.sales.domain.entity.SalesSampleRound latest = rounds.get(rounds.size() - 1);
+                if ("pending".equals(latest.getResult())) {
+                    latest.setResult("rejected");
+                    latest.setRejectReason(rejectReason);
+                    sampleRoundMapper.updateById(latest);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("更新轮次快照结果失败: {}", e.getMessage());
+        }
 
         log.info("样品单[{}] 客户退回(Round{})，退回原因:{}", orderId, nextRound, rejectReason);
         return orderMapper.selectById(orderId);
@@ -365,6 +396,35 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         log.info("样品单[{}] 更新当前工序: {}", current.getOrderNo(), process);
         return orderMapper.selectById(orderId);
+    }
+
+    /**
+     * 录入打样成本/工时
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder recordSampleCost(Long orderId, java.math.BigDecimal cost, java.math.BigDecimal workHours) {
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        if (cost != null) update.setSampleCost(cost);
+        if (workHours != null) update.setSampleWorkHours(workHours);
+        orderMapper.updateById(update);
+
+        log.info("样品单[{}] 录入打样成本: {}, 工时: {}h", current.getOrderNo(), cost, workHours);
+        return orderMapper.selectById(orderId);
+    }
+
+    /**
+     * 查询打样轮次快照列表
+     */
+    @Override
+    public List<com.jjx.sales.domain.entity.SalesSampleRound> listSampleRounds(Long orderId) {
+        return sampleRoundMapper.selectByOrderId(orderId);
     }
 
     @Override

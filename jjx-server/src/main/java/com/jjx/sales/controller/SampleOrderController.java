@@ -193,6 +193,29 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.updateSampleProcess(orderId, process));
     }
 
+    /**
+     * 录入打样成本/工时
+     */
+    @Operation(summary = "录入打样成本/工时")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @SaCheckPermission("sales:sample:engineering")
+    @PutMapping("/record-cost/{orderId}")
+    public Result<SalesOrder> recordCost(@PathVariable Long orderId,
+                                         @RequestParam(required = false) java.math.BigDecimal cost,
+                                         @RequestParam(required = false) java.math.BigDecimal workHours) {
+        return Result.success(sampleOrderService.recordSampleCost(orderId, cost, workHours));
+    }
+
+    /**
+     * 查询打样轮次快照列表
+     */
+    @Operation(summary = "查询打样轮次快照")
+    @SaCheckPermission("sales:sample:view")
+    @GetMapping("/rounds/{orderId}")
+    public Result<List<com.jjx.sales.domain.entity.SalesSampleRound>> rounds(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.listSampleRounds(orderId));
+    }
+
     @Operation(summary = "获取样品单状态选项")
     @SaCheckPermission("sales:sample:view")
     @GetMapping("/status-options")

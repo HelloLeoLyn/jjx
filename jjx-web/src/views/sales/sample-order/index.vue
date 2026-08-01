@@ -190,6 +190,15 @@
                 <el-form-item v-if="detailData.rejectReason" label="拒单原因" style="margin-top:8px">
                   <span style="color:#f56c6c;font-size:13px">{{ detailData.rejectReason }}</span>
                 </el-form-item>
+                <!-- 成本/工时 -->
+                <el-form-item v-if="detailData.engineeringAcceptor" label="成本/工时" style="margin-top:8px">
+                  <el-input-number v-model="costForm.cost" :min="0" :precision="2" :controls="false" placeholder="成本" style="width:120px" />
+                  <span style="margin:0 8px;color:#909399">元</span>
+                  <el-input-number v-model="costForm.workHours" :min="0" :precision="1" :controls="false" placeholder="工时" style="width:120px" />
+                  <span style="margin:0 8px;color:#909399">小时</span>
+                  <el-button type="primary" size="small" @click="handleRecordCost">保存</el-button>
+                  <span v-if="detailData.sampleCost" style="margin-left:12px;color:#606266;font-size:12px">已录：¥{{ detailData.sampleCost }} / {{ detailData.sampleWorkHours || 0 }}h</span>
+                </el-form-item>
               </el-form>
             </el-card>
 
@@ -215,6 +224,31 @@
                 </div>
               </div>
               <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无工程文件，请上传图纸或工艺文件</div>
+            </el-card>
+
+            <!-- 打样轮次快照 -->
+            <el-card shadow="never" style="margin-bottom:16px">
+              <template #header><span style="font-weight:600">📦 打样轮次快照</span></template>
+              <el-timeline v-if="roundList.length > 0">
+                <el-timeline-item
+                  v-for="r in roundList"
+                  :key="r.roundId"
+                  :timestamp="r.createTime || ''"
+                  :type="r.result === 'rejected' ? 'danger' : r.result === 'confirmed' ? 'success' : 'primary'"
+                  placement="top"
+                >
+                  <div style="font-weight:500">Round {{ r.roundNo }}
+                    <el-tag size="small" :type="r.result === 'rejected' ? 'danger' : r.result === 'confirmed' ? 'success' : 'info'" style="margin-left:8px">
+                      {{ r.result === 'rejected' ? '已退回' : r.result === 'confirmed' ? '已确认' : '待确认' }}
+                    </el-tag>
+                  </div>
+                  <div v-if="r.engineeringNote" style="color:#666;font-size:13px;margin-top:4px;white-space:pre-wrap">
+                    {{ r.engineeringNote }}
+                  </div>
+                  <div v-if="r.rejectReason" style="color:#f56c6c;font-size:13px;margin-top:4px">退回原因：{{ r.rejectReason }}</div>
+                </el-timeline-item>
+              </el-timeline>
+              <div v-else style="color:#999;text-align:center;padding:12px">暂无轮次快照（标记样品完成后自动归档）</div>
             </el-card>
 
             <!-- 退回记录（仅退回状态显示） -->
@@ -306,6 +340,8 @@ const engUploadRef = ref()
 const engFileList = ref<any[]>([])
 const engineeringForm = reactive({ note: '', process: '' })
 const savingEng = ref(false)
+const costForm = reactive({ cost: 0, workHours: 0 })
+const roundList = ref<any[]>([])
 
 // 打样工序选项（薄膜开关典型工艺）
 const sampleProcessOptions = ['印刷', '冲切', '贴合', 'SMT贴片', '装配', '测试', '包装']
@@ -363,6 +399,29 @@ async function handleUpdateProcess(process: string) {
     ElMessage.success(`已更新为：${process}`)
   } catch (e: any) {
     ElMessage.error(e?.message || '更新工序失败')
+  }
+}
+
+// 录入成本/工时
+async function handleRecordCost() {
+  if (!detailData.value?.orderId) return
+  try {
+    await sampleOrderApi.recordCost(detailData.value.orderId, costForm.cost, costForm.workHours)
+    ElMessage.success('成本/工时已保存')
+    detailData.value.sampleCost = costForm.cost
+    detailData.value.sampleWorkHours = costForm.workHours
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  }
+}
+
+// 加载轮次快照
+async function loadRounds(orderId: number) {
+  try {
+    const res = await sampleOrderApi.getRounds(orderId)
+    roundList.value = (res as any)?.data || []
+  } catch {
+    roundList.value = []
   }
 }
 
@@ -516,6 +575,7 @@ async function showDetail(row: any) {
   detailData.value = row
   detailTab.value = 'basic'
   detailVisible.value = true
+  loadRounds(row.orderId)
 
   // 初始化工程表单
   engineeringForm.note = row.engineeringNote || ''
@@ -531,6 +591,9 @@ function onDetailOpen() {
       detailData.value = res.data
       engineeringForm.note = res.data.engineeringNote || ''
       engineeringForm.process = res.data.currentProcess || ''
+      costForm.cost = res.data.sampleCost || 0
+      costForm.workHours = res.data.sampleWorkHours || 0
+      loadRounds(detailData.value.orderId)
     }).catch(() => {})
   }
 }
