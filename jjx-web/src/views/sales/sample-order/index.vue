@@ -317,6 +317,9 @@
       @saved="onWorkbenchSaved"
     />
 
+    <!-- 操作结果弹窗 -->
+    <OperationResultDialog v-model:visible="resultVisible" :data="resultData" />
+
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
   </div>
@@ -333,6 +336,7 @@ import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 import EngineeringWorkbench from './components/EngineeringWorkbench.vue'
+import OperationResultDialog from '@/components/OperationResultDialog/index.vue'
 
 defineOptions({ name: 'SalesSampleOrder' })
 
@@ -353,6 +357,21 @@ const detailVisible = ref(false)
 const detailTab = ref('basic')
 const workbenchVisible = ref(false)
 const workbenchCard = ref<any>(null)
+
+// 操作结果弹窗
+const resultVisible = ref(false)
+const resultData = ref<any>(null)
+
+// 弹出操作结果（DEV-481 多视图）
+function showResult(payload: any) {
+  const userStore = useUserStore()
+  resultData.value = {
+    operator: userStore.nickName || 'admin',
+    time: new Date().toLocaleString('zh-CN', { hour12: false }),
+    ...payload,
+  }
+  resultVisible.value = true
+}
 
 // 当前用户是否工程角色（9=工程管理）
 const isEngineerRole = computed(() => {
@@ -841,6 +860,14 @@ async function handleSubmitReview(row: any) {
   await ElMessageBox.confirm(`确定提交样品单 [${row.orderNo}] 审核？`, '确认')
   await sampleOrderApi.submitReview(row.orderId)
   ElMessage.success('已提交审核')
+  showResult({
+    actionName: '样品单提交审核',
+    docNo: row.orderNo,
+    fromStatus: statusLabel(row.sampleStatus),
+    toStatus: '待审核',
+    docType: 'audit',
+    nextSteps: ['审核员审核样品单', '审核通过后进入工程打样'],
+  })
   getList()
 }
 
@@ -848,6 +875,15 @@ async function handleApprove(row: any) {
   const { value } = await ElMessageBox.prompt('审核备注（可选）', '审核通过', { inputType: 'textarea' })
   await sampleOrderApi.approve(row.orderId, value || '')
   ElMessage.success('审核通过，已进入工程打样阶段')
+  showResult({
+    actionName: '样品单审核通过',
+    docNo: row.orderNo,
+    fromStatus: '待审核',
+    toStatus: '工程打样中',
+    remark: value || '',
+    docType: 'audit',
+    nextSteps: ['工程接单', '记录工序进度', '标记样品完成'],
+  })
   getList()
 }
 
@@ -856,6 +892,15 @@ async function handleRejectReview(row: any) {
   if (!value) { ElMessage.warning('请输入驳回原因'); return }
   await sampleOrderApi.rejectReview(row.orderId, value)
   ElMessage.success('已驳回')
+  showResult({
+    actionName: '样品单审核驳回',
+    docNo: row.orderNo,
+    fromStatus: '待审核',
+    toStatus: '创建(可改重提)',
+    remark: value,
+    docType: 'audit',
+    nextSteps: ['销售修改样品单', '重新提交审核'],
+  })
   getList()
 }
 
@@ -865,6 +910,14 @@ async function handleMarkReady(row: any) {
   if (qty <= 0) { ElMessage.warning('请输入有效数量'); return }
   await sampleOrderApi.markReady(row.orderId, qty)
   ElMessage.success('样品已完成，待送样')
+  showResult({
+    actionName: '样品制作完成',
+    docNo: row.orderNo,
+    fromStatus: '工程打样中',
+    toStatus: '待送样',
+    sampleQty: qty,
+    nextSteps: ['销售登记送样(快递单号)', '客户确认/退回'],
+  })
   getList()
 }
 
@@ -872,6 +925,18 @@ async function handleSendSample(row: any) {
   const { value } = await ElMessageBox.prompt('快递单号（可选）', '送样登记')
   await sampleOrderApi.sendSample(row.orderId, value || '')
   ElMessage.success('送样登记成功')
+  showResult({
+    actionName: '样品送样登记',
+    docNo: row.orderNo,
+    fromStatus: '待送样',
+    toStatus: '已送样',
+    docType: 'express',
+    customerName: row.customerName,
+    contactPhone: row.contactPhone,
+    sampleQty: row.sampleQty,
+    express: { trackingNo: value || '-', receiver: row.customerName, qty: row.sampleQty },
+    nextSteps: ['等待客户确认样品OK', '客户退回则重新打样'],
+  })
   getList()
 }
 
@@ -879,6 +944,15 @@ async function handleConfirm(row: any) {
   const { value } = await ElMessageBox.prompt('客户方确认人姓名', '客户确认样品OK', { inputValue: row.sampleClientName || '' })
   await sampleOrderApi.confirm(row.orderId, value || '客户确认')
   ElMessage.success('客户已确认样品OK')
+  showResult({
+    actionName: '客户确认样品OK',
+    docNo: row.orderNo,
+    fromStatus: '已送样',
+    toStatus: '已确认',
+    remark: `确认人：${value || '客户确认'}`,
+    docType: 'audit',
+    nextSteps: ['转量产生成标准订单', '或继续多轮样品'],
+  })
   getList()
 }
 
@@ -889,6 +963,15 @@ async function handleRejectSample(row: any) {
   if (!value) { ElMessage.warning('请输入退回原因'); return }
   await sampleOrderApi.rejectSample(row.orderId, value)
   ElMessage.success(`已退回要求修改（进入Round ${(row.sampleRound || 1) + 1}）`)
+  showResult({
+    actionName: '客户退回样品',
+    docNo: row.orderNo,
+    fromStatus: '已送样',
+    toStatus: '客户退回(工程重打)',
+    remark: value,
+    docType: 'audit',
+    nextSteps: [`工程重新打样(Round ${(row.sampleRound || 1) + 1})`, '重新送样确认'],
+  })
   getList()
 }
 
@@ -900,6 +983,14 @@ async function handleConvert(row: any) {
   )
   await sampleOrderApi.convertToProduction(row.orderId)
   ElMessage.success('转量产成功，已生成标准订单')
+  showResult({
+    actionName: '样品转量产',
+    docNo: row.orderNo,
+    fromStatus: '已确认',
+    toStatus: '已转量产',
+    docType: 'audit',
+    nextSteps: ['标准订单提交审核', '订单确认后提交生产'],
+  })
   getList()
 }
 
