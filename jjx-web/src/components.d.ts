@@ -7,6 +7,8 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    AttachmentPanel: typeof import('./components/AttachmentPanel/index.vue')['default']
+    AttachmentUploadDialog: typeof import('./components/AttachmentUploadDialog/index.vue')['default']
     BomItemEditor: typeof import('./components/BomItemEditor.vue')['default']
     CompactInput: typeof import('./components/CompactInput.vue')['default']
     CustomerSelector: typeof import('./components/Selector/CustomerSelector.vue')['default']

@@ -465,25 +465,12 @@
           }}</el-descriptions-item>
         </el-descriptions>
       </template>
-      <el-descriptions :column="1" border style="margin-top: 12px">
-        <el-descriptions-item label="附件">
-          <template v-if="detailAttachments.length > 0">
-            <div v-for="att in detailAttachments" :key="att.id" style="margin-bottom: 4px">
-              <el-link
-                type="primary"
-                :href="'/system/attachment/download/' + att.id"
-                target="_blank"
-              >
-                📎 {{ att.fileName }}
-              </el-link>
-              <span style="color: #999; font-size: 12px; margin-left: 8px"
-                >{{ (att.fileSize / 1024).toFixed(1) }}KB</span
-              >
-            </div>
-          </template>
-          <span v-else>-</span>
-        </el-descriptions-item>
-      </el-descriptions>
+      <el-divider content-position="left">相关文档</el-divider>
+      <AttachmentPanel
+        v-if="detailData?.inquiryId"
+        biz-type="inquiry"
+        :biz-id="detailData.inquiryId"
+      />
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="detailVisible = false">关 闭</el-button>
@@ -498,6 +485,7 @@
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import type { FormInstance, UploadInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import { Upload } from '@element-plus/icons-vue'
@@ -719,20 +707,6 @@ async function loadAttachments(bizId: number) {
   }
 }
 
-// 加载详情附件（只读）
-async function loadDetailAttachments(bizId: number) {
-  try {
-    const res: any = await request({
-      url: '/system/attachment/list',
-      method: 'get',
-      params: { bizType: 'inquiry', bizId },
-    })
-    detailAttachments.value = res?.code === 200 ? res.data || [] : []
-  } catch {
-    detailAttachments.value = []
-  }
-}
-
 // 表单验证规则
 const rules: Record<string, any> = {
   customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
@@ -746,7 +720,6 @@ const detailData = ref<any>(null)
 const uploadRef = ref<UploadInstance>()
 const attachmentList = ref<any[]>([])
 const pendingUploads = ref<Array<{ file: File }>>([])
-const detailAttachments = ref<any[]>([])
 
 // ==================== 状态映射 ====================
 const statusMap: Record<number, { label: string; type: string }> = {
@@ -901,7 +874,6 @@ function handleUpdate(row?: any) {
 function handleDetail(row: any) {
   detailData.value = row
   detailVisible.value = true
-  loadDetailAttachments(row.inquiryId)
 }
 
 // 转报价

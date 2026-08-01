@@ -124,6 +124,14 @@
               <el-descriptions-item label="转量产时间">{{ detailData.convertOrderTime || '-' }}</el-descriptions-item>
               <el-descriptions-item label="备注" :span="2">{{ detailData.remark || '-' }}</el-descriptions-item>
             </el-descriptions>
+
+            <!-- 相关文档 -->
+            <el-divider content-position="left">相关文档</el-divider>
+            <AttachmentPanel
+              v-if="detailData?.orderId"
+              biz-type="sample"
+              :biz-id="detailData.orderId"
+            />
           </el-tab-pane>
 
           <!-- 🔧 工程区 -->
@@ -211,6 +219,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 
 defineOptions({ name: 'SalesSampleOrder' })

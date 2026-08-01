@@ -277,6 +277,18 @@
           </el-timeline>
           <el-empty v-else description="暂无操作历史" :image-size="80" />
         </el-card>
+
+        <!-- 相关文档 -->
+        <el-card class="info-card" shadow="never">
+          <template #header>
+            <span>相关文档</span>
+          </template>
+          <AttachmentPanel
+            v-if="props.orderId"
+            biz-type="order"
+            :biz-id="props.orderId"
+          />
+        </el-card>
       </template>
 
       <template v-else-if="!loading">
@@ -288,6 +300,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import { ElMessage } from 'element-plus'
 import { orderApi } from '@/api/sales/order'
 import { salesLogApi } from '@/api/sales/log'

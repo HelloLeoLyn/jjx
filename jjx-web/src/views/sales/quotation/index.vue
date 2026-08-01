@@ -173,6 +173,16 @@
             >改单</el-button
           >
         </el-col>
+        <el-col :span="1.5">
+          <el-button
+            type="info"
+            plain
+            icon="FolderOpened"
+            :disabled="single"
+            @click="handleAttachment"
+            >附件</el-button
+          >
+        </el-col>
       </el-row>
     </el-card>
 
@@ -677,6 +687,14 @@
         <el-table-column label="交期(天)" prop="deliveryDays" width="100" />
         <el-table-column label="定制要求" prop="customRequirements" />
       </el-table>
+
+      <!-- 相关文档 -->
+      <el-divider content-position="left">相关文档</el-divider>
+      <AttachmentPanel
+        v-if="detail.quotationId"
+        biz-type="quotation"
+        :biz-id="detail.quotationId"
+      />
     </el-dialog>
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
@@ -687,6 +705,14 @@
       :quotation-no="flowQuotationNo"
       :current-status="flowCurrentStatus"
       @success="getList"
+    />
+
+    <!-- 附件管理弹窗 -->
+    <AttachmentUploadDialog
+      v-model="attachmentDialogVisible"
+      biz-type="quotation"
+      :biz-id="attachmentQuotationId"
+      :dialog-title="attachmentQuotationNo"
     />
   </div>
 </template>
@@ -700,6 +726,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import QuotationFlowDialog from './components/QuotationFlowDialog.vue'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
 import { customerApi } from '@/api/sales/customer'
@@ -1376,6 +1404,18 @@ function handleFlow(row: any) {
   flowQuotationNo.value = row.quotationNo || ''
   flowCurrentStatus.value = row.quotationStatus
   flowDialogVisible.value = true
+}
+
+// 附件管理弹窗
+const attachmentDialogVisible = ref(false)
+const attachmentQuotationId = ref<number | null>(null)
+const attachmentQuotationNo = ref('')
+function handleAttachment() {
+  const q = selectedQuotation.value
+  if (!q) return
+  attachmentQuotationId.value = q.quotationId
+  attachmentQuotationNo.value = q.quotationNo || ''
+  attachmentDialogVisible.value = true
 }
 
 // 改单（已完成 → 改单状态）
