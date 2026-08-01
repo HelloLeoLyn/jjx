@@ -694,6 +694,7 @@
         v-if="detail.quotationId"
         biz-type="quotation"
         :biz-id="detail.quotationId"
+        :trace-id="detail.traceId"
       />
     </el-dialog>
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
@@ -712,6 +713,7 @@
       v-model="attachmentDialogVisible"
       biz-type="quotation"
       :biz-id="attachmentQuotationId"
+      :trace-id="attachmentTraceId"
       :dialog-title="attachmentQuotationNo"
     />
   </div>
@@ -1382,11 +1384,13 @@ function handleFlow(row: any) {
 const attachmentDialogVisible = ref(false)
 const attachmentQuotationId = ref<number | null>(null)
 const attachmentQuotationNo = ref('')
+const attachmentTraceId = ref('')
 function handleAttachment() {
   const q = selectedQuotation.value
   if (!q) return
   attachmentQuotationId.value = q.quotationId
   attachmentQuotationNo.value = q.quotationNo || ''
+  attachmentTraceId.value = q.traceId || ''
   attachmentDialogVisible.value = true
 }
 

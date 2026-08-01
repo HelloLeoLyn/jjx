@@ -587,6 +587,7 @@ const customUpload: UploadProps['httpRequest'] = async (options) => {
   formData.append('file', options.file)
   formData.append('bizType', 'inquiry')
   formData.append('bizId', String(form.inquiryId))
+  if ((form as any).traceId) formData.append('traceId', (form as any).traceId)
   try {
     const res: any = await request({
       url: '/system/attachment/upload',
@@ -665,13 +666,14 @@ const beforeUpload: UploadProps['beforeUpload'] = (file: UploadRawFile) => {
 }
 
 // 上传暂存的文件（在保存成功后调用）
-async function uploadPendingFiles(inquiryId: number) {
+async function uploadPendingFiles(inquiryId: number, traceId?: string) {
   if (pendingUploads.value.length === 0) return
   for (const item of pendingUploads.value) {
     const formData = new FormData()
     formData.append('file', item.file)
     formData.append('bizType', 'inquiry')
     formData.append('bizId', String(inquiryId))
+    if (traceId) formData.append('traceId', traceId)
     try {
       await request({
         url: '/system/attachment/upload',
@@ -968,9 +970,12 @@ async function submitForm() {
       ElMessage.success('修改成功')
     } else {
       const res = await inquiryApi.add(form as any)
-      // 保存成功后上传暂存的文件
+      // 保存成功后用返回的新ID和traceId上传暂存的文件
       if (pendingUploads.value.length > 0) {
-        await uploadPendingFiles(form.inquiryId || 0)
+        const newId = (res as any)?.data?.inquiryId || form.inquiryId || 0
+        const newTraceId = (res as any)?.data?.traceId || ''
+        form.inquiryId = newId
+        await uploadPendingFiles(newId, newTraceId)
       }
       ElMessage.success('新增成功')
     }

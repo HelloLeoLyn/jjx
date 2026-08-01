@@ -26,6 +26,14 @@ export const attachmentApi = {
     })
   },
 
+  // 按链路追踪ID获取附件（含来源单据文档）
+  listByTrace(traceId: string): AxiosPromise<any[]> {
+    return request({
+      url: `/system/attachment/by-trace/${traceId}`,
+      method: 'get',
+    })
+  },
+
   // 删除附件
   remove(id: number): AxiosPromise<boolean> {
     return request({

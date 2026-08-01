@@ -38,7 +38,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Long uploadAttachment(MultipartFile file, String bizType, Long bizId) {
+    public Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("上传文件不能为空");
         }
@@ -69,6 +69,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         SysAttachment attachment = new SysAttachment();
         attachment.setBizType(bizType);
         attachment.setBizId(bizId);
+        attachment.setTraceId(traceId);
         attachment.setFileName(originalName != null ? originalName : "unknown");
         attachment.setFilePath(relativePath);
         attachment.setFileSize(file.getSize());
@@ -85,9 +86,18 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         List<Long> ids = new ArrayList<>();
         if (files == null) return ids;
         for (MultipartFile file : files) {
-            ids.add(uploadAttachment(file, bizType, bizId));
+            ids.add(uploadAttachment(file, bizType, bizId, null));
         }
         return ids;
+    }
+
+    @Override
+    public List<SysAttachment> getAttachmentsByTraceId(String traceId) {
+        if (traceId == null || traceId.isEmpty()) return new ArrayList<>();
+        LambdaQueryWrapper<SysAttachment> wrapper = new LambdaQueryWrapper<SysAttachment>()
+                .eq(SysAttachment::getTraceId, traceId)
+                .orderByAsc(SysAttachment::getCreateTime);
+        return list(wrapper);
     }
 
     @Override

@@ -69,21 +69,30 @@ import { attachmentApi } from '@/api/system/attachment'
 const props = defineProps<{
   bizType: string
   bizId: number | null | undefined
+  /** 链路追踪ID：同时展示同链路来源单据的文档 */
+  traceId?: string
 }>()
 
 const attachments = ref<any[]>([])
 const loading = ref(false)
 
-// 加载附件列表
+// 加载附件列表（本类型 + 同traceId的来源文档）
 async function loadAttachments() {
+  attachments.value = []
   if (!props.bizType || !props.bizId) {
-    attachments.value = []
+    if (props.traceId) {
+      await loadByTrace()
+    }
     return
   }
   loading.value = true
   try {
     const res = await attachmentApi.list(props.bizType, props.bizId)
     attachments.value = (res as any)?.data || []
+    // 追加同链路来源单据的文档（去重）
+    if (props.traceId) {
+      await loadByTrace()
+    }
   } catch {
     attachments.value = []
   } finally {
@@ -91,7 +100,24 @@ async function loadAttachments() {
   }
 }
 
-watch(() => [props.bizType, props.bizId], loadAttachments, { immediate: true })
+// 按traceId加载关联附件（去重合并）
+async function loadByTrace() {
+  try {
+    const res = await attachmentApi.listByTrace(props.traceId as string)
+    const traceAtts: any[] = (res as any)?.data || []
+    const existing = new Set(attachments.value.map((a) => a.id))
+    for (const att of traceAtts) {
+      if (!existing.has(att.id)) {
+        attachments.value.push(att)
+        existing.add(att.id)
+      }
+    }
+  } catch {
+    // 忽略：trace查询失败不影响本类型附件
+  }
+}
+
+watch(() => [props.bizType, props.bizId, props.traceId], loadAttachments, { immediate: true })
 
 function downloadUrl(id: number): string {
   return attachmentApi.downloadUrl(id)

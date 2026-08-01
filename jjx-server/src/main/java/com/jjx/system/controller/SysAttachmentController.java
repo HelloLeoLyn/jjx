@@ -36,8 +36,9 @@ public class SysAttachmentController {
     @PostMapping("/upload")
     public Result<Long> upload(@RequestParam("file") MultipartFile file,
                                @RequestParam("bizType") String bizType,
-                               @RequestParam("bizId") Long bizId) {
-        Long id = attachmentService.uploadAttachment(file, bizType, bizId);
+                               @RequestParam("bizId") Long bizId,
+                               @RequestParam(required = false) String traceId) {
+        Long id = attachmentService.uploadAttachment(file, bizType, bizId, traceId);
         return Result.success(id);
     }
 
@@ -55,6 +56,12 @@ public class SysAttachmentController {
     public Result<List<SysAttachment>> list(@RequestParam String bizType,
                                             @RequestParam Long bizId) {
         return Result.success(attachmentService.getAttachments(bizType, bizId));
+    }
+
+    @Operation(summary = "按链路追踪ID获取附件（含来源单据文档）")
+    @GetMapping("/by-trace/{traceId}")
+    public Result<List<SysAttachment>> listByTrace(@PathVariable String traceId) {
+        return Result.success(attachmentService.getAttachmentsByTraceId(traceId));
     }
 
     @Operation(summary = "删除附件")

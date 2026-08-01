@@ -149,6 +149,7 @@
               v-if="detailData?.orderId"
               biz-type="sample"
               :biz-id="detailData.orderId"
+              :trace-id="detailData.traceId"
             />
           </el-tab-pane>
 

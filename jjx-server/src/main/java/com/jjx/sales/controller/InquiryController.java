@@ -58,9 +58,16 @@ public class InquiryController extends BaseController {
     @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = "0")
     @SaCheckPermission("sales:inquiry:add")
     @PostMapping
-    public Result<Void> add(@Validated @RequestBody SalesInquiry inquiry) {
-
-        return toAjax(inquiryService.insertInquiry(inquiry));
+    public Result<java.util.Map<String, Object>> add(@Validated @RequestBody SalesInquiry inquiry) {
+        int rows = inquiryService.insertInquiry(inquiry);
+        if (rows > 0) {
+            // 返回新询价单ID和traceId（前端用于上传附件/流水）
+            java.util.Map<String, Object> data = new java.util.HashMap<>();
+            data.put("inquiryId", inquiry.getInquiryId());
+            data.put("traceId", inquiry.getTraceId());
+            return Result.success(data);
+        }
+        return Result.error("新增失败");
     }
 
     /**

@@ -19,7 +19,7 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
      * @param bizId   业务记录ID
      * @return 附件ID
      */
-    Long uploadAttachment(MultipartFile file, String bizType, Long bizId);
+    Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId);
 
     /**
      * 批量上传附件
@@ -30,6 +30,11 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
      * 获取附件列表
      */
     List<SysAttachment> getAttachments(String bizType, Long bizId);
+
+    /**
+     * 按链路追踪ID查询所有关联附件（含来源单据的文档）
+     */
+    List<SysAttachment> getAttachmentsByTraceId(String traceId);
 
     /**
      * 删除附件（含物理文件）

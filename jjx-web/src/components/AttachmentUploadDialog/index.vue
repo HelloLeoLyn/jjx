@@ -54,6 +54,8 @@ const props = defineProps<{
   modelValue: boolean
   bizType: string
   bizId: number | null | undefined
+  /** 链路追踪ID：上传时写入，方便来源单据追溯 */
+  traceId?: string
   dialogTitle?: string
 }>()
 
@@ -84,6 +86,7 @@ const uploadHeaders = computed(() => {
 const uploadData = computed(() => ({
   bizType: props.bizType,
   bizId: props.bizId ?? 0,
+  ...(props.traceId ? { traceId: props.traceId } : {}),
 }))
 
 function downloadUrl(id: number): string {
