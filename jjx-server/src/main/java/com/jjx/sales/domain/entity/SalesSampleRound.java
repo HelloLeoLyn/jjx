@@ -32,6 +32,12 @@ public class SalesSampleRound {
     /** 该轮图纸附件ID(JSON数组) */
     private String attachmentIds;
 
+    /** 该轮BOM物料快照(JSON) */
+    private String bomSnapshot;
+
+    /** 该轮工序记录汇总(JSON) */
+    private String processSnapshot;
+
     /** 该轮结果: pending/confirmed/rejected */
     private String result;
 

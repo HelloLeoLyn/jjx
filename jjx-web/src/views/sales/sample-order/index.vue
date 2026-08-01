@@ -323,6 +323,22 @@
                   <div v-if="r.engineeringNote" style="color:#666;font-size:13px;margin-top:4px;white-space:pre-wrap">
                     {{ r.engineeringNote }}
                   </div>
+                  <div v-if="r.bomSnapshot" style="margin-top:6px">
+                    <div style="font-size:12px;color:#909399;margin-bottom:4px">🧾 物料清单（{{ parseBom(r.bomSnapshot).length }} 项）</div>
+                    <el-table :data="parseBom(r.bomSnapshot)" size="mini" border style="width:100%">
+                      <el-table-column prop="layerName" label="层" width="60" />
+                      <el-table-column prop="materialName" label="物料" min-width="110" />
+                      <el-table-column prop="specification" label="规格" min-width="90" />
+                      <el-table-column prop="quantity" label="用量" width="70" />
+                      <el-table-column prop="unit" label="单位" width="60" />
+                    </el-table>
+                  </div>
+                  <div v-if="r.processSnapshot" style="margin-top:6px">
+                    <div style="font-size:12px;color:#909399;margin-bottom:4px">🔧 工序记录（{{ parseProcess(r.processSnapshot).length }} 道）</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px">
+                      <el-tag v-for="p in parseProcess(r.processSnapshot)" :key="p.processId" size="small" type="info">{{ p.processName }}</el-tag>
+                    </div>
+                  </div>
                   <div v-if="r.rejectReason" style="color:#f56c6c;font-size:13px;margin-top:4px">退回原因：{{ r.rejectReason }}</div>
                 </el-timeline-item>
               </el-timeline>
@@ -580,6 +596,28 @@ async function saveBomList() {
 function formatTime(t?: string) {
   if (!t) return ''
   return t.replace('T', ' ').slice(0, 16)
+}
+
+// 解析BOM快照 JSON
+function parseBom(json?: string) {
+  if (!json) return []
+  try {
+    const arr = JSON.parse(json)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+// 解析工序快照 JSON
+function parseProcess(json?: string) {
+  if (!json) return []
+  try {
+    const arr = JSON.parse(json)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
 }
 
 // 迭代记录（基于现有字段动态生成）

@@ -46,6 +46,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final SalesSampleRoundMapper sampleRoundMapper;
     private final SalesSampleProcessMapper sampleProcessMapper;
     private final SalesSampleBomMapper sampleBomMapper;
+    private final com.jjx.system.service.ISysAttachmentService attachmentService;
 
     // ============ 状态更新辅助 ============
 
@@ -201,7 +202,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             orderMapper.updateById(update);
         }
 
-        // 归档本轮快照（工艺参数 + 图纸附件，附件从attachment按traceId查）
+        // 归档本轮快照（工艺参数 + 图纸附件 + BOM + 工序，DEV-456 补全）
         try {
             SalesOrder full = orderMapper.selectById(orderId);
             com.jjx.sales.domain.entity.SalesSampleRound round = new com.jjx.sales.domain.entity.SalesSampleRound();
@@ -210,7 +211,52 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             round.setEngineeringNote(full.getEngineeringNote());
             round.setResult("pending");
             round.setCreateTime(java.time.LocalDateTime.now());
+
+            // ① 图纸附件ID：按 traceId 查附件，写入 attachmentIds(JSON数组)
+            if (full.getTraceId() != null) {
+                try {
+                    java.util.List<com.jjx.system.domain.entity.SysAttachment> atts =
+                            attachmentService.getAttachmentsByTraceId(full.getTraceId());
+                    if (atts != null && !atts.isEmpty()) {
+                        java.util.List<Long> ids = new java.util.ArrayList<>();
+                        for (com.jjx.system.domain.entity.SysAttachment a : atts) {
+                            if (a.getId() != null) ids.add(a.getId());
+                        }
+                        if (!ids.isEmpty()) {
+                            round.setAttachmentIds(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(ids));
+                        }
+                    }
+                } catch (Exception ae) {
+                    log.warn("归档图纸附件失败: {}", ae.getMessage());
+                }
+            }
+
+            // ② BOM 物料快照
+            try {
+                java.util.List<com.jjx.sales.domain.entity.SalesSampleBom> boms = sampleBomMapper.selectByOrderId(orderId);
+                if (boms != null && !boms.isEmpty()) {
+                    round.setBomSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(boms));
+                }
+            } catch (Exception be) {
+                log.warn("归档BOM快照失败: {}", be.getMessage());
+            }
+
+            // ③ 工序记录快照
+            try {
+                java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procs = sampleProcessMapper.selectByOrderId(orderId);
+                if (procs != null && !procs.isEmpty()) {
+                    round.setProcessSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(procs));
+                }
+            } catch (Exception pe) {
+                log.warn("归档工序快照失败: {}", pe.getMessage());
+            }
+
             sampleRoundMapper.insert(round);
+            log.info("样品单[{}] 归档轮次快照 round={} (附件{}个/BOM{}条/工序{}条)",
+                    orderId, round.getRoundNo(),
+                    round.getAttachmentIds() != null ? "有" : "无",
+                    round.getBomSnapshot() != null ? "有" : "无",
+                    round.getProcessSnapshot() != null ? "有" : "无");
         } catch (Exception e) {
             log.warn("归档样品轮次快照失败: {}", e.getMessage());
         }
