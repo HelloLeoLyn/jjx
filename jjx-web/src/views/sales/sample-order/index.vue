@@ -72,6 +72,15 @@
             <!-- 查看流水 -->
             <el-button link type="info" size="small" @click="showTrace(scope.row)">查看流水</el-button>
 
+            <!-- 工程打样工作台（仅工程角色 + 打样中状态3） -->
+            <el-button
+              v-if="scope.row.sampleStatus === 3 && isEngineerRole"
+              link
+              type="warning"
+              size="small"
+              @click="openWorkbench(scope.row)"
+            >🔧 工程打样</el-button>
+
             <!-- 作废：非终态（1-6）可作废 -->
             <el-button
               v-if="[1, 2, 3, 4, 5, 6].includes(scope.row.sampleStatus)"
@@ -169,140 +178,64 @@
             />
           </el-tab-pane>
 
-          <!-- 🔧 工程区 -->
-          <el-tab-pane label="🔧 工程区" name="engineering">
-            <!-- 工程备注 / 工艺参数 -->
+          <!-- 打样过程（只读） -->
+          <el-tab-pane label="🔧 打样过程" name="engineering">
+            <!-- 工艺参数 -->
             <el-card shadow="never" style="margin-bottom:16px">
-              <template #header><span style="font-weight:600">工程备注 / 工艺参数</span></template>
-              <el-form label-width="100px">
-                <el-form-item label="工艺备注">
-                  <el-input v-model="engineeringForm.note" type="textarea" :rows="4"
-                    :disabled="!isEngineeringStatus"
-                    placeholder="填写工艺参数/材料规格/丝印要求/模切尺寸等"
-                    maxlength="2000" show-word-limit />
-                </el-form-item>
-                <el-row v-if="isEngineeringStatus" :gutter="20">
-                  <el-col>
-                    <!-- 未接单：显示接单/拒单按钮 -->
-                    <template v-if="!detailData.engineeringAcceptor">
-                      <el-button type="primary" size="small" @click="handleAcceptEngineering" :loading="savingEng">✅ 工程接单</el-button>
-                      <el-button type="danger" size="small" plain style="margin-left:8px" @click="handleRejectEngineering">✋ 工程拒单</el-button>
-                    </template>
-                    <!-- 已接单：显示接单人和操作 -->
-                    <template v-else>
-                      <el-tag type="success" size="small">已接单：{{ detailData.engineeringAcceptor }}</el-tag>
-                      <el-button type="primary" size="small" style="margin-left:12px" @click="saveEngineeringNote" :loading="savingEng">💾 保存工艺参数</el-button>
-                      <el-button type="success" size="small" style="margin-left:8px" @click="handleDetailMarkReady">🎯 标记样品完成</el-button>
-                    </template>
-                  </el-col>
-                </el-row>
-                <!-- 工序进度 -->
-                <el-form-item v-if="isEngineeringStatus && detailData.engineeringAcceptor" label="当前工序" style="margin-top:12px">
-                  <el-select v-model="engineeringForm.process" placeholder="选择当前工序" style="width:220px" @change="handleUpdateProcess">
-                    <el-option v-for="p in sampleProcessOptions" :key="p" :label="p" :value="p" />
-                  </el-select>
-                  <span v-if="detailData.currentProcess" style="margin-left:12px;color:#909399;font-size:12px">当前：{{ detailData.currentProcess }}</span>
-                </el-form-item>
-                <!-- 工序历史 -->
-                <el-form-item v-if="detailData.engineeringAcceptor" label="工序历史" style="margin-top:8px">
-                  <div style="width:100%">
-                    <el-timeline v-if="processList.length > 0" style="padding-left:2px">
-                      <el-timeline-item v-for="(p, i) in processList" :key="p.processId" :timestamp="formatTime(p.startTime)" placement="top" :type="i === processList.length - 1 ? 'primary' : 'info'">
-                        <div style="font-size:13px">
-                          <span style="font-weight:600">{{ p.processName }}</span>
-                          <span v-if="p.operator" style="margin-left:8px;color:#909399;font-size:12px">操作人：{{ p.operator }}</span>
-                        </div>
-                      </el-timeline-item>
-                    </el-timeline>
-                    <div v-else style="color:#999;font-size:13px;padding:8px 0">当前没有工序历史记录，选择工序后自动记录</div>
+              <template #header><span style="font-weight:600">工艺参数 / 工程备注</span></template>
+              <div v-if="detailData.engineeringNote" style="color:#606266;font-size:13px;white-space:pre-wrap;line-height:1.8">{{ detailData.engineeringNote }}</div>
+              <div v-else style="color:#999;font-size:13px">暂无工艺参数</div>
+              <div v-if="detailData.engineeringAcceptor" style="margin-top:8px">
+                <el-tag type="success" size="small">接单人：{{ detailData.engineeringAcceptor }}</el-tag>
+              </div>
+              <div v-if="detailData.rejectReason" style="margin-top:8px;color:#f56c6c;font-size:13px">拒单原因：{{ detailData.rejectReason }}</div>
+            </el-card>
+
+            <!-- 工序历史 -->
+            <el-card shadow="never" style="margin-bottom:16px">
+              <template #header><span style="font-weight:600">工序历史</span></template>
+              <el-timeline v-if="processList.length > 0" style="padding-left:2px">
+                <el-timeline-item v-for="(p, i) in processList" :key="p.processId" :timestamp="formatTime(p.startTime)" placement="top" :type="i === processList.length - 1 ? 'primary' : 'info'">
+                  <div style="font-size:13px">
+                    <span style="font-weight:600">{{ p.processName }}</span>
+                    <span v-if="p.operator" style="margin-left:8px;color:#909399;font-size:12px">操作人：{{ p.operator }}</span>
                   </div>
-                </el-form-item>
-                <el-form-item v-if="detailData.rejectReason" label="拒单原因" style="margin-top:8px">
-                  <span style="color:#f56c6c;font-size:13px">{{ detailData.rejectReason }}</span>
-                </el-form-item>
-                <!-- 成本/工时 -->
-                <el-form-item v-if="detailData.engineeringAcceptor" label="成本/工时" style="margin-top:8px">
-                  <el-input-number v-model="costForm.cost" :min="0" :precision="2" :controls="false" placeholder="成本" style="width:120px" />
-                  <span style="margin:0 8px;color:#909399">元</span>
-                  <el-input-number v-model="costForm.workHours" :min="0" :precision="1" :controls="false" placeholder="工时" style="width:120px" />
-                  <span style="margin:0 8px;color:#909399">小时</span>
-                  <el-button type="primary" size="small" @click="handleRecordCost">保存</el-button>
-                  <span v-if="detailData.sampleCost" style="margin-left:12px;color:#606266;font-size:12px">已录：¥{{ detailData.sampleCost }} / {{ detailData.sampleWorkHours || 0 }}h</span>
-                </el-form-item>
-              </el-form>
+                </el-timeline-item>
+              </el-timeline>
+              <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无工序历史</div>
+            </el-card>
+
+            <!-- 成本/工时 -->
+            <el-card shadow="never" style="margin-bottom:16px">
+              <template #header><span style="font-weight:600">成本 / 工时</span></template>
+              <div style="font-size:13px;color:#606266">
+                成本：{{ detailData.sampleCost ? '¥' + detailData.sampleCost : '-' }}
+                ｜ 工时：{{ detailData.sampleWorkHours ? detailData.sampleWorkHours + 'h' : '-' }}
+              </div>
             </el-card>
 
             <!-- 图纸 / 工艺文件 -->
             <el-card shadow="never" style="margin-bottom:16px">
               <template #header><span style="font-weight:600">图纸 / 工艺文件</span></template>
-              <el-upload ref="engUploadRef" :http-request="engUploadFile" :on-remove="engRemoveFile"
-                :file-list="engFileList" :before-upload="engBeforeUpload"
-                :disabled="!isEditableStatus" list-type="text" multiple>
-                <el-button type="primary" size="small" :disabled="!isEditableStatus">📤 上传图纸/文件</el-button>
-                <template #tip>
-                  <div class="el-upload__tip" style="font-size:12px;color:#999;margin-top:6px">
-                    菲林图 / 丝印图 / 模切图 / 规格书（PDF/DWG/DXF/图片/Word，单文件≤10MB）<br>
-                    <span v-if="!isEditableStatus" style="color:#e6a23c">💡 工程打样中和送样阶段可上传文件</span>
-                  </div>
-                </template>
-              </el-upload>
-              <el-divider />
-              <div v-if="engFileList.length > 0" style="margin-top:4px">
-                <div v-for="f in engFileList" :key="f.uid || f.name" style="padding:5px 0;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f0f0">
-                  <el-link v-if="f.url" :href="f.url" target="_blank" type="primary" underline="never">📎 {{ f.name }}</el-link>
-                  <span v-else>{{ f.name }} <el-tag size="small" type="warning">待上传</el-tag></span>
-                </div>
-              </div>
-              <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无工程文件，请上传图纸或工艺文件</div>
+              <AttachmentPanel
+                v-if="detailData?.orderId"
+                biz-type="sample"
+                :biz-id="detailData.orderId"
+                :trace-id="detailData.traceId"
+              />
             </el-card>
 
-            <!-- 打样物料清单 BOM -->
+            <!-- 物料清单（只读） -->
             <el-card shadow="never" style="margin-bottom:16px">
               <template #header><span style="font-weight:600">🧾 打样物料清单（BOM）</span></template>
-              <el-table :data="bomList" size="small" border style="width:100%">
-                <el-table-column label="层结构" width="90" align="center">
-                  <template #default="{ row }">
-                    <el-select v-if="isEditableStatus" v-model="row.layerName" size="small" style="width:80px">
-                      <el-option v-for="l in bomLayerOptions" :key="l" :label="l" :value="l" />
-                    </el-select>
-                    <span v-else>{{ row.layerName }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="物料名称" min-width="140">
-                  <template #default="{ row }">
-                    <el-input v-if="isEditableStatus" v-model="row.materialName" size="small" placeholder="如PET面板膜" />
-                    <span v-else>{{ row.materialName }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="规格" min-width="140">
-                  <template #default="{ row }">
-                    <el-input v-if="isEditableStatus" v-model="row.specification" size="small" placeholder="如0.25mm" />
-                    <span v-else>{{ row.specification }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="用量" width="110">
-                  <template #default="{ row }">
-                    <el-input-number v-if="isEditableStatus" v-model="row.quantity" :min="0" :precision="4" size="small" style="width:90px" />
-                    <span v-else>{{ row.quantity }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="单位" width="80" align="center">
-                  <template #default="{ row }">
-                    <el-input v-if="isEditableStatus" v-model="row.unit" size="small" placeholder="PCS" />
-                    <span v-else>{{ row.unit }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="70" align="center" v-if="isEditableStatus">
-                  <template #default="{ $index, row }">
-                    <el-button type="danger" size="small" link @click="removeBomRow($index, row)">删</el-button>
-                  </template>
-                </el-table-column>
+              <el-table v-if="bomList.length > 0" :data="bomList" size="small" border style="width:100%">
+                <el-table-column prop="layerName" label="层结构" width="90" align="center" />
+                <el-table-column prop="materialName" label="物料名称" min-width="140" />
+                <el-table-column prop="specification" label="规格" min-width="130" />
+                <el-table-column prop="quantity" label="用量" width="90" />
+                <el-table-column prop="unit" label="单位" width="70" align="center" />
               </el-table>
-              <div v-if="isEditableStatus" style="margin-top:8px;display:flex;align-items:center;gap:8px">
-                <el-button type="primary" size="small" @click="addBomRow">＋ 添加物料</el-button>
-                <el-button type="success" size="small" @click="saveBomList" :loading="savingBom">💾 保存物料清单</el-button>
-              </div>
-              <div v-if="bomList.length === 0 && !isEditableStatus" style="color:#999;font-size:13px;padding:8px 0">暂无物料清单</div>
+              <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无物料清单</div>
             </el-card>
 
             <!-- 打样轮次快照 -->
@@ -321,9 +254,7 @@
                       {{ r.result === 'rejected' ? '已退回' : r.result === 'confirmed' ? '已确认' : '待确认' }}
                     </el-tag>
                   </div>
-                  <div v-if="r.engineeringNote" style="color:#666;font-size:13px;margin-top:4px;white-space:pre-wrap">
-                    {{ r.engineeringNote }}
-                  </div>
+                  <div v-if="r.engineeringNote" style="color:#666;font-size:13px;margin-top:4px;white-space:pre-wrap">{{ r.engineeringNote }}</div>
                   <div v-if="r.bomSnapshot" style="margin-top:6px">
                     <div style="font-size:12px;color:#909399;margin-bottom:4px">🧾 物料清单（{{ parseBom(r.bomSnapshot).length }} 项）</div>
                     <el-table :data="parseBom(r.bomSnapshot)" size="mini" border style="width:100%">
@@ -344,23 +275,6 @@
                 </el-timeline-item>
               </el-timeline>
               <div v-else style="color:#999;text-align:center;padding:12px">暂无轮次快照（标记样品完成后自动归档）</div>
-            </el-card>
-
-            <!-- 退回记录（仅退回状态显示） -->
-            <el-card shadow="never" v-if="detailData.sampleStatus === 9">
-              <template #header><span style="font-weight:600;color:#e6a23c">🔄 客户退回记录</span></template>
-              <div style="color:#666;font-size:13px;margin-bottom:8px">退回原因：{{ detailData.remark || '-' }}</div>
-              <div style="color:#666;font-size:13px;margin-bottom:12px">当前轮次：Round {{ detailData.sampleRound || 1 }}</div>
-              <!-- 退回佐证附件 -->
-              <div v-if="detailData.traceId" style="margin-bottom:12px">
-                <AttachmentPanel
-                  v-if="detailData.orderId"
-                  biz-type="sample"
-                  :biz-id="detailData.orderId"
-                  :trace-id="detailData.traceId"
-                />
-              </div>
-              <el-button type="primary" size="small" @click="handleDetailRestartEngineering">🔄 重新开始打样</el-button>
             </el-card>
           </el-tab-pane>
 
@@ -396,6 +310,13 @@
       </template>
     </el-dialog>
 
+    <!-- 工程打样工作台 -->
+    <EngineeringWorkbench
+      v-model:visible="workbenchVisible"
+      :card="workbenchCard"
+      @saved="onWorkbenchSaved"
+    />
+
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
   </div>
@@ -411,6 +332,7 @@ import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
+import EngineeringWorkbench from './components/EngineeringWorkbench.vue'
 
 defineOptions({ name: 'SalesSampleOrder' })
 
@@ -429,6 +351,29 @@ const queryParams = reactive({
 const createVisible = ref(false)
 const detailVisible = ref(false)
 const detailTab = ref('basic')
+const workbenchVisible = ref(false)
+const workbenchCard = ref<any>(null)
+
+// 当前用户是否工程角色（9=工程管理）
+const isEngineerRole = computed(() => {
+  const userStore = useUserStore()
+  const roles = userStore.roles || []
+  return roles.some((r: any) => String(r) === '9' || String(r).includes('工程') || String(r) === 'engineering')
+})
+
+// 打开工程打样工作台
+function openWorkbench(row: any) {
+  workbenchCard.value = row
+  workbenchVisible.value = true
+}
+
+// 工作台保存后刷新列表（详情未打开时reloadDetail会报错，仅刷新列表）
+function onWorkbenchSaved() {
+  getList()
+  if (detailVisible.value && detailData.value) {
+    reloadDetail()
+  }
+}
 const detailData = ref<any>(null)
 
 // ==================== 工程区数据 ====================
