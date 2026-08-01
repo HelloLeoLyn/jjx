@@ -130,7 +130,6 @@ TRUNCATE portal_page_content;
 
 TRUNCATE portal_language_config;
 
-TRUNCATE portal_inquiry;
 
 -- ==================== 8. 任务表（保留开发任务） ====================
 -- 只清 office/emergency 演示任务，保留 kanban_module='dev' 开发任务
@@ -141,9 +140,7 @@ TRUNCATE sys_attachment;
 
 TRUNCATE sys_notification;
 
-TRUNCATE sys_event_notification;
 
-TRUNCATE sys_event_kanban;
 
 TRUNCATE sys_oper_log;
 
