@@ -124,7 +124,19 @@ public class OperLogAspect {
             operLog.setBizId(bizId);
             operLog.setBizType(bizType);
             operLog.setTraceId(traceId);
-            operLog.setBizStatus(logAnnotation.bizStatus());
+            // bizStatus 支持 SpEL 表达式（如 "#approved ? 6 : 3"），解析后转数字
+            try {
+                String bizStatusExpr = logAnnotation.bizStatus();
+                if (bizStatusExpr != null && bizStatusExpr.startsWith("#")) {
+                    Object val = evaluateSpel(spelCtx, bizStatusExpr);
+                    operLog.setBizStatus(val instanceof Number ? ((Number) val).intValue() : Integer.parseInt(String.valueOf(val)));
+                } else {
+                    operLog.setBizStatus(Integer.parseInt(bizStatusExpr));
+                }
+            } catch (Exception e) {
+                log.warn("bizStatus解析失败: {} ({})", logAnnotation.bizStatus(), e.getMessage());
+                operLog.setBizStatus(0);
+            }
 
             if (result instanceof Result<?> resultObj) {
                 if (resultObj.getCode() == 200) {

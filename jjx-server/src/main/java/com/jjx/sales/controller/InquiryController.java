@@ -55,7 +55,7 @@ public class InquiryController extends BaseController {
      * 新增询价单
      */
     @Operation(summary = "新增询价单")
-    @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = 0)
+    @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = "0")
     @SaCheckPermission("sales:inquiry:add")
     @PostMapping
     public Result<Void> add(@Validated @RequestBody SalesInquiry inquiry) {
@@ -89,7 +89,7 @@ public class InquiryController extends BaseController {
      * 询价转报价
      */
     @Operation(summary = "询价转报价")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = 3,
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "3",
          traceId = "#result.data.traceId")
     @SaCheckPermission("sales:inquiry:convert")
     @PostMapping("/convert/{inquiryId}")

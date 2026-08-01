@@ -52,7 +52,7 @@ public class QuotationController extends BaseController {
      * 新增销售报价单
      */
     @Operation(summary = "新增销售报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = 0)
+    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = "0")
     @SaCheckPermission("sales:quotation:add")
     @PostMapping
     public Result<Void> add(@Validated @RequestBody SalesQuotation quotation) {
@@ -63,7 +63,7 @@ public class QuotationController extends BaseController {
      * 修改销售报价单
      */
     @Operation(summary = "修改销售报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = 0)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = "0")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping
     public Result<Void> edit(@Validated @RequestBody SalesQuotation quotation) {
@@ -74,7 +74,7 @@ public class QuotationController extends BaseController {
      * 删除销售报价单
      */
     @Operation(summary = "删除销售报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.DELETE, bizType = "'quotation'", bizStatus = 0)
+    @Log(module = "报价单管理", businessType = BusinessType.DELETE, bizType = "'quotation'", bizStatus = "0")
     @SaCheckPermission("sales:quotation:delete")
     @DeleteMapping("/{quotationIds}")
     public Result<Void> remove(@PathVariable Long[] quotationIds) {
@@ -96,7 +96,7 @@ public class QuotationController extends BaseController {
      * 发送报价单给客户
      */
     @Operation(summary = "发送报价单给客户")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = 1)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "1")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/send/{quotationId}")
     public Result<Void> send(@PathVariable Long quotationId,
@@ -108,7 +108,7 @@ public class QuotationController extends BaseController {
      * 报价单转为订单
      */
     @Operation(summary = "报价单转为订单")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = 9)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "9")
     @SaCheckPermission("sales:quotation:edit")
     @PostMapping("/convert/{quotationId}")
     public Result<Object> convert(@PathVariable Long quotationId) {
@@ -130,7 +130,7 @@ public class QuotationController extends BaseController {
      * 复制报价单
      */
     @Operation(summary = "复制报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotationId", bizStatus = 0)
+    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "0")
     @SaCheckPermission("sales:quotation:add")
     @PostMapping("/copy/{quotationId}")
     public Result<SalesQuotation> copy(@PathVariable Long quotationId) {
@@ -141,7 +141,7 @@ public class QuotationController extends BaseController {
      * 提交报价单审核
      */
     @Operation(summary = "提交报价单审核")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = 5)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "5")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/submit-review/{quotationId}")
     public Result<Void> submitReview(@PathVariable Long quotationId,
@@ -197,7 +197,7 @@ public class QuotationController extends BaseController {
      * 客户确认报价（独立接口，触发 quotation.confirmed 事件）
      */
     @Operation(summary = "客户确认报价")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = 2)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "2")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/confirm/{quotationId}")
     public Result<Void> confirm(@PathVariable Long quotationId,
@@ -209,7 +209,7 @@ public class QuotationController extends BaseController {
      * 客户拒绝报价（独立接口，触发 quotation.rejected 事件）
      */
     @Operation(summary = "客户拒绝报价")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = 3)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "3")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/reject/{quotationId}")
     public Result<Void> reject(@PathVariable Long quotationId,
@@ -221,7 +221,7 @@ public class QuotationController extends BaseController {
      * 已完成报价单改单（回到改单状态，可重新编辑）
      */
     @Operation(summary = "已完成报价单改单")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = 8)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "8")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/modify/{quotationId}")
     public Result<Void> modify(@PathVariable Long quotationId,
@@ -263,7 +263,7 @@ public class QuotationController extends BaseController {
      * 根据模板创建报价单
      */
     @Operation(summary = "根据模板创建报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizStatus = 0)
+    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizStatus = "0")
     @SaCheckPermission("sales:quotation:add")
     @PostMapping("/template/{templateId}")
     public Result<SalesQuotation> createFromTemplate(@PathVariable Long templateId,

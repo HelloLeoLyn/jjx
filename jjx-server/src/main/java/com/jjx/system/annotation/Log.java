@@ -36,7 +36,7 @@ public @interface Log {
 
     /**
      * 业务状态值，如 draft / converted / approved
-     * 对应实体中的 *Status 字段值
+     * 对应实体中的 *Status 字段值；支持 SpEL 表达式（如 "#approved ? 6 : 3"）
      */
-    int bizStatus() default 0;
+    String bizStatus() default "0";
 }
