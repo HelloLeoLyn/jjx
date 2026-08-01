@@ -140,10 +140,20 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Event(value = "sample.rejected", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder rejectReview(Long orderId, String remark) {
+        // 审核驳回：回到创建状态(1)，销售可改单后重新提交（语义与客户退回9区分）
         safeTransition(orderId,
                 SampleOrderStatusEnum.PENDING_REVIEW,
-                SampleOrderStatusEnum.REJECTED,
+                SampleOrderStatusEnum.CREATED,
                 "审核驳回");
+        // 记录驳回原因
+        try {
+            SalesOrder update = new SalesOrder();
+            update.setOrderId(orderId);
+            update.setRemark("[审核驳回] " + (remark != null ? remark : ""));
+            orderMapper.updateById(update);
+        } catch (Exception e) {
+            log.warn("记录审核驳回原因失败: {}", e.getMessage());
+        }
         return orderMapper.selectById(orderId);
     }
 
@@ -235,6 +245,20 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         update.setSampleClientName(clientName);
         update.setSampleConfirmDate(new Date());
         orderMapper.updateById(update);
+
+        // 更新本轮快照结果：confirmed
+        try {
+            List<com.jjx.sales.domain.entity.SalesSampleRound> rounds = sampleRoundMapper.selectByOrderId(orderId);
+            if (!rounds.isEmpty()) {
+                com.jjx.sales.domain.entity.SalesSampleRound latest = rounds.get(rounds.size() - 1);
+                if ("pending".equals(latest.getResult())) {
+                    latest.setResult("confirmed");
+                    sampleRoundMapper.updateById(latest);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("更新轮次快照确认结果失败: {}", e.getMessage());
+        }
 
         log.info("样品单[{}] 客户[{}]已确认样品OK", orderId, clientName);
         return orderMapper.selectById(orderId);
@@ -462,7 +486,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         standardOrder.setTotalQuantity(sampleOrder.getTotalQuantity());
         standardOrder.setTotalAmount(sampleOrder.getTotalAmount());
         standardOrder.setFinalAmount(sampleOrder.getFinalAmount());
-        standardOrder.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]转量产生成");
+        standardOrder.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]转量产生成"
+                + (sampleOrder.getEngineeringNote() != null && !sampleOrder.getEngineeringNote().isEmpty()
+                    ? "\n【工艺参数传承】" + sampleOrder.getEngineeringNote() : "")
+                + (sampleOrder.getCurrentProcess() != null && !sampleOrder.getCurrentProcess().isEmpty()
+                    ? "\n【最后工序】" + sampleOrder.getCurrentProcess() : "")
+                + (sampleOrder.getSampleCost() != null && sampleOrder.getSampleCost().compareTo(java.math.BigDecimal.ZERO) > 0
+                    ? "\n【打样成本】" + sampleOrder.getSampleCost() + "元" : "")
+                + (sampleOrder.getSampleWorkHours() != null && sampleOrder.getSampleWorkHours().compareTo(java.math.BigDecimal.ZERO) > 0
+                    ? "\n【打样工时】" + sampleOrder.getSampleWorkHours() + "小时" : ""));
 
         orderMapper.insert(standardOrder);
 
