@@ -395,6 +395,9 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("只有草稿或已审核状态的报价单可以发送");
         }
 
+        // 发送前校验报价单信息完整性（客户/日期/金额，与提交审核一致）
+        validateQuotationForReview(quotation);
+
         // 更新发送信息
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(QuotationStatus.SENT.getCode());
@@ -784,9 +787,9 @@ public class QuotationServiceImpl implements IQuotationService {
     }
 
     /**
-     * 验证报价单信息是否完整（用于提交审核）
+     * 验证报价单信息是否完整（提交审核/发送报价共用）
      */
-    private static void validateQuotationForReview(SalesQuotation quotation) {
+    private void validateQuotationForReview(SalesQuotation quotation) {
         if (quotation.getCustomerId() == null) {
             throw new BusinessException("客户信息不能为空");
         }
@@ -803,6 +806,12 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("最终金额必须大于0");
         }
 
-        // 这里可以添加更多验证规则
+        // 报价明细不能为空（没有明细的报价单无法发送/审核）
+        Long itemCount = quotationItemMapper.selectCount(
+                new LambdaQueryWrapper<SalesQuotationItem>()
+                        .eq(SalesQuotationItem::getQuotationId, quotation.getQuotationId()));
+        if (itemCount == null || itemCount == 0) {
+            throw new BusinessException("报价明细不能为空，请先添加报价明细");
+        }
     }
 }
