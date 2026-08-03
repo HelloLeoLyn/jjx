@@ -68,14 +68,27 @@
         <!-- 该工序材料（工序单元：材料+工艺） -->
         <div style="margin-bottom:8px">
           <div style="font-size:12px;color:#909399;margin-bottom:4px">🧾 本工序材料</div>
-          <div v-for="(m, idx) in form.materials" :key="idx" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
-            <el-input v-model="m.name" placeholder="材料名" style="width:140px" />
-            <el-input v-model="m.spec" placeholder="规格" style="width:120px" />
+          <div v-for="(m, idx) in form.materials" :key="idx" style="display:flex;gap:6px;margin-bottom:6px;align-items:center;flex-wrap:wrap">
+            <el-select
+              v-model="m.materialId"
+              filterable
+              remote
+              :remote-method="(q: string) => searchMaterials(q, m)"
+              :loading="m.loading"
+              placeholder="搜索物料档案（必选）"
+              style="width: 190px"
+              @change="(v: any) => onMaterialSelected(m, v)"
+            >
+              <el-option v-for="opt in m.options" :key="opt.materialId" :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`" :value="opt.materialId" />
+            </el-select>
+            <el-input v-model="m.spec" placeholder="规格" style="width:100px" :disabled="!!m.materialId" />
             <el-input-number v-model="m.qty" :min="0" :precision="4" :controls="false" placeholder="用量" style="width:90px" />
-            <el-input v-model="m.unit" placeholder="单位" style="width:60px" />
+            <el-input v-model="m.unit" placeholder="单位" style="width:60px" :disabled="!!m.materialId" />
+            <el-button type="primary" size="small" link @click="openMaterialCreate(m)">新建物料</el-button>
             <el-button type="danger" size="small" link @click="form.materials.splice(idx, 1)">删</el-button>
           </div>
           <el-button type="primary" size="small" plain icon="Plus" @click="addMaterialRow">添加材料</el-button>
+          <span style="margin-left:8px;color:#909399;font-size:12px">材料必须从物料档案选择；档案中没有的先「新建物料」建档</span>
         </div>
         <!-- 工艺说明 -->
         <div style="margin-bottom:8px">
@@ -215,6 +228,13 @@
     <template #footer>
       <el-button @click="onClose(false)">关闭</el-button>
     </template>
+    <!-- 物料建档弹窗（DEV-526：材料必须建档后选择） -->
+    <MaterialFormDialog
+      v-model="materialCreateVisible"
+      :preset-data="materialPreset"
+      @success="onMaterialCreated"
+    />
+
   </el-dialog>
 </template>
 
@@ -224,6 +244,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { materialApi } from '@/api/inventory/material'
+import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 
 const props = defineProps<{
@@ -241,9 +263,57 @@ const form = reactive({
   note: '', process: '',
   materials: [] as any[], processNote: '', duration: undefined as number | undefined,
 })
-// 添加材料行
+// 添加材料行（DEV-526：从物料档案选择，materialId 记录）
 function addMaterialRow() {
-  form.materials.push({ name: '', spec: '', qty: 1, unit: 'PCS' })
+  form.materials.push({ name: '', spec: '', qty: 1, unit: 'PCS', materialId: undefined as number | undefined, materialCode: '', options: [], loading: false })
+}
+
+// 远程搜索物料档案
+async function searchMaterials(query: string, m: any) {
+  if (!query || query.trim().length < 1) {
+    m.options = []
+    return
+  }
+  m.loading = true
+  try {
+    const res: any = await materialApi.search({ materialName: query.trim(), pageNum: 1, pageSize: 10 })
+    m.options = res?.data?.records || res?.data || []
+  } catch {
+    m.options = []
+  } finally {
+    m.loading = false
+  }
+}
+
+// 选中物料 → 自动填名称/规格/单位
+function onMaterialSelected(m: any, materialId: number) {
+  const mat = (m.options || []).find((o: any) => o.materialId === materialId)
+  if (!mat) return
+  m.name = mat.materialName
+  m.spec = mat.specification || ''
+  m.unit = mat.unit || 'PCS'
+  m.materialCode = mat.materialCode || ''
+}
+
+// 建档弹窗
+const materialCreateVisible = ref(false)
+const materialPreset = ref<any>({})
+function openMaterialCreate(m: any) {
+  materialPreset.value = { materialName: m.name || '', specification: m.spec || '', unit: m.unit || 'PCS' }
+  materialCreateVisible.value = true
+}
+
+// 建档成功 → 选中新建物料
+function onMaterialCreated(mat: any) {
+  const row = form.materials[form.materials.length - 1] || form.materials[0]
+  if (row) {
+    row.materialId = mat.materialId
+    row.materialCode = mat.materialCode || ''
+    row.name = mat.materialName
+    row.spec = mat.specification || ''
+    row.unit = mat.unit || 'PCS'
+    row.options = [mat]
+  }
 }
 // 解析材料JSON
 function parseMaterials(json?: string) {
