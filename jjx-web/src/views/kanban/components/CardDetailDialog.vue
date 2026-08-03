@@ -127,7 +127,7 @@ const priorityType = computed<TagType>(() => {
 
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
-    pending: '待处理', in_progress: '进行中', review: '待审核',
+    pending: '待开始', in_progress: '进行中', review: '待审核',
     completed: '已完成', blocked: '阻塞', cancelled: '已取消',
   }
   return map[props.card?.status ?? ''] ?? ''

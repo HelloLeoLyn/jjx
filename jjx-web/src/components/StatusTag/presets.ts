@@ -38,7 +38,7 @@ export const orderStatusConfig: StatusConfig = {
 
 // 任务状态配置
 export const taskStatusConfig: StatusConfig = {
-  todo: { label: '待处理', type: 'info' },
+  todo: { label: '待开始', type: 'info' },
   in_progress: { label: '进行中', type: 'warning' },
   review: { label: '待审核', type: 'warning' },
   done: { label: '已完成', type: 'success' },

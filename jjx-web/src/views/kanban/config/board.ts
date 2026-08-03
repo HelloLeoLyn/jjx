@@ -11,7 +11,7 @@ function statusView() {
     name: '状态视图',
     groupBy: 'status',
     columns: [
-      { id: 'pending', label: '待处理', color: '#909399', filterValue: 'pending' },
+      { id: 'pending', label: '待开始', color: '#909399', filterValue: 'pending' },
       { id: 'in_progress', label: '进行中', color: '#409eff', filterValue: 'in_progress' },
       { id: 'review', label: '待审核', color: '#e6a23c', filterValue: 'review' },
       { id: 'completed', label: '已完成', color: '#67c23a', filterValue: 'completed' },
