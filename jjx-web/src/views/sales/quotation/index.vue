@@ -310,7 +310,7 @@
                 @click="handleModify(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-tooltip content="提交审核" placement="top" v-if="scope.row.quotationStatus === 0">
+            <el-tooltip content="提交审核" placement="top" v-if="[0, 8].includes(scope.row.quotationStatus)">
               <el-button
                 link
                 type="primary"
