@@ -300,6 +300,22 @@ export const sampleOperations: OperationDef[] = [
     },
     api: ({ bizId }) => sampleOrderApi.convertToProduction(bizId),
   },
+  {
+    key: 'sample.restart',
+    bizType: 'sample_order',
+    name: '重新打样',
+    fromStatus: [9],
+    toStatus: 3,
+    events: ['sample.restarted'],
+    result: {
+      name: '样品重新打样',
+      from: '客户退回',
+      to: '工程打样中',
+      docType: 'audit',
+      nextSteps: ['工程接单', '记录工序进度', '标记样品完成'],
+    },
+    api: ({ bizId }) => sampleOrderApi.restartEngineering(bizId),
+  },
 ]
 
 /** 全模块注册表汇总（后续模块在此追加） */

@@ -406,10 +406,9 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("报价单不存在");
         }
 
-        // 只有草稿或已审核状态的报价单可以发送
-        if (!QuotationStatus.DRAFT.getCode().equals(quotation.getQuotationStatus())
-                && !QuotationStatus.APPROVED.getCode().equals(quotation.getQuotationStatus())) {
-            throw new BusinessException("只有草稿或已审核状态的报价单可以发送");
+        // 只有审核通过(6)状态的报价单可以发送（规则：仅审核通过的报价单才能上传/发送报价）
+        if (!QuotationStatus.APPROVED.getCode().equals(quotation.getQuotationStatus())) {
+            throw new BusinessException("只有审核通过的报价单可以发送");
         }
 
         // 发送前校验报价单信息完整性（客户/日期/金额，与提交审核一致）
@@ -551,9 +550,10 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("报价单不存在");
         }
 
-        // 只有草稿状态的报价单可以提交审核
-        if (!QuotationStatus.DRAFT.getCode().equals(quotation.getQuotationStatus())) {
-            throw new BusinessException("只有草稿状态的报价单可以提交审核");
+        // 草稿(0)或改单(8)状态的报价单可以提交审核（改单后重新流转）
+        if (!QuotationStatus.DRAFT.getCode().equals(quotation.getQuotationStatus())
+                && !QuotationStatus.MODIFYING.getCode().equals(quotation.getQuotationStatus())) {
+            throw new BusinessException("只有草稿或改单状态的报价单可以提交审核");
         }
 
         // 检查报价单信息是否完整

@@ -108,13 +108,16 @@
               <el-button link type="warning" size="small" @click="handleRejectSample(scope.row)">退回修改</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 6">
-              <el-button link type="primary" size="small" @click="handleConvert(scope.row)">转量产</el-button>
+              <el-button v-hasPermi="['sales:sample:convert']" link type="primary" size="small" @click="handleConvert(scope.row)">转量产</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 7">
               <el-tag size="small" type="success">已转量产</el-tag>
             </template>
             <template v-else-if="scope.row.sampleStatus === 8">
               <el-tag size="small" type="info">已关闭</el-tag>
+            </template>
+            <template v-else-if="scope.row.sampleStatus === 9">
+              <el-button link type="warning" size="small" @click="handleRestart(scope.row)">重新打样</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 10">
               <el-tag size="small" type="danger">已作废</el-tag>
@@ -306,6 +309,12 @@
           plain
           @click="handleCancel(detailData)"
         >作废</el-button>
+        <el-button
+          v-if="detailData && detailData.sampleStatus === 9"
+          type="warning"
+          plain
+          @click="handleRestart(detailData)"
+        >重新打样</el-button>
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -856,15 +865,9 @@ async function handleDetailMarkReady() {
   getList()
 }
 
-// 退回后重新打样（在工程区内操作）
-async function handleDetailRestartEngineering() {
-  if (!detailData.value?.orderId) return
-  await ElMessageBox.confirm('确认重新开始打样？将回到"工程打样中"状态。', '重新打样')
-  // 调用重新打样接口让状态从REJECTED(9)回到ENGINEERING(3)
-  await sampleOrderApi.restartEngineering(detailData.value.orderId)
-  ElMessage.success('已回到工程打样阶段')
-  detailVisible.value = false
-  getList()
+// 退回后重新打样（客户退回9 → 工程打样中3，走操作预览器）
+async function handleRestart(row: any) {
+  openPreview('sample.restart', row)
 }
 
 // ==================== 列表操作（操作预览器方式） ====================

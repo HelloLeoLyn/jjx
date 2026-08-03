@@ -159,6 +159,11 @@
           >
         </el-col>
         <el-col :span="1.5">
+          <el-button type="warning" plain icon="RefreshLeft" :disabled="single || !quotationActions.canReQuote" @click="handleReQuote"
+            >重新报价</el-button
+          >
+        </el-col>
+        <el-col :span="1.5">
           <el-button type="info" plain icon="CopyDocument" :disabled="single" @click="handleCopy"
             >复制报价</el-button
           >
@@ -271,6 +276,14 @@
                 type="info"
                 icon="Upload"
                 @click="handleSend(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip content="重新报价" placement="top" v-if="[3, 4].includes(scope.row.quotationStatus)">
+              <el-button
+                link
+                type="warning"
+                icon="RefreshLeft"
+                @click="handleReQuote(scope.row)"
               ></el-button>
             </el-tooltip>
             <el-tooltip content="转为订单" placement="top" v-if="scope.row.quotationStatus === 2 && scope.row.quotationType !== 2">
@@ -926,11 +939,12 @@ const quotationActions = computed(() => {
   const completed = status === 9
   return {
     canSend: status === 6,                              // 仅审核通过的报价单可发送（上传报价）
-    canSubmitReview: status === 0,                      // 草稿可提交审核
+    canSubmitReview: [0, 8].includes(status),               // 草稿/改单可提交审核
     canApprove: status === 5,                           // 待审核可审核
     canCustomerConfirm: status === 1,                   // 已发送可确认/拒绝
     canConvert: status === 2 && !completed,             // 已确认可转订单
     canConvertToSample: type !== 1 && !completed,       // 非标准品可转样品单
+    canReQuote: [3, 4].includes(status),                // 已拒绝/已过期可重新报价
     canDelete: ![1, 2, 8, 9].includes(status) && !completed, // 已发送/已确认/已完成/改单禁删
     canEdit: ![1, 2, 3, 4].includes(status) && !completed, // 流转中/已拒绝/已过期/已完成禁改
     canModify: status === 9,                            // 已完成可改单
@@ -1059,6 +1073,22 @@ const handleCopy = (row?: any) => {
     title.value = '复制报价单'
     ElMessage.success('复制成功，请修改报价单号后保存')
   })
+}
+
+// 重新报价（已拒绝/已过期 → 复制成新草稿重新走流程）
+const handleReQuote = async (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) return
+  try {
+    const res: any = await quotationApi.copy(quotationId)
+    Object.assign(form, res.data)
+    form.quotationNo = `COPY_${form.quotationNo}`
+    open.value = true
+    title.value = '重新报价'
+    ElMessage.success('已复制为新的草稿报价单，请修改后重新提交审核')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '重新报价失败')
+  }
 }
 
 // 查看详情按钮操作
