@@ -14,18 +14,18 @@ public interface ProductStandardProcessMapper extends BaseMapper<ProductStandard
     /**
      * 查询启用的工序
      */
-    @Select("SELECT * FROM product_standard_process WHERE is_enabled = 1 ORDER BY display_order")
+    @Select("SELECT * FROM engineering_standard_process WHERE is_enabled = 1 ORDER BY display_order")
     List<ProductStandardProcess> selectEnabledProcesses();
     
     /**
      * 根据工序类型查询
      */
-    @Select("SELECT * FROM product_standard_process WHERE process_type = #{processType} AND is_enabled = 1 ORDER BY display_order")
+    @Select("SELECT * FROM engineering_standard_process WHERE process_type = #{processType} AND is_enabled = 1 ORDER BY display_order")
     List<ProductStandardProcess> selectByProcessType(@Param("processType") String processType);
     
     /**
      * 根据工序类别查询
      */
-    @Select("SELECT * FROM product_standard_process WHERE process_category = #{processCategory} AND is_enabled = 1")
+    @Select("SELECT * FROM engineering_standard_process WHERE process_category = #{processCategory} AND is_enabled = 1")
     List<ProductStandardProcess> selectByProcessCategory(@Param("processCategory") String processCategory);
 }

@@ -138,40 +138,47 @@ export const constantRoutes: RouteRecordRaw[] = [
     ],
   },
   // 产品工程独立子页（工艺路线/标准工序 新增编辑，无菜单项，静态注册隐藏路由）
-  // 页面内 router.push 使用 /product/route 前缀，redirect 对齐菜单体系 /engineering/*
+  // 包裹在隐藏 Layout 下：保持左侧菜单/顶栏框架，页面内 router.push 使用 /product 前缀
   {
-    path: '/product/route',
-    redirect: '/engineering/route',
+    path: '/product',
+    component: () => import('@/layout/index.vue'),
     meta: { hidden: true },
-  },
-  {
-    path: '/product/route/add',
-    name: 'ProductRouteAdd',
-    component: () => import('@/views/product/route/add.vue'),
-    meta: { hidden: true, title: '新增工艺路线', permission: 'engineering:routing:add' },
-  },
-  {
-    path: '/product/route/edit/:routingId',
-    name: 'ProductRouteEdit',
-    component: () => import('@/views/product/route/edit.vue'),
-    meta: { hidden: true, title: '编辑工艺路线', permission: 'engineering:routing:edit' },
-  },
-  {
-    path: '/product/standard-process',
-    redirect: '/engineering/standard-process',
-    meta: { hidden: true },
-  },
-  {
-    path: '/product/standard-process/add',
-    name: 'StandardProcessAdd',
-    component: () => import('@/views/product/standard-process/add.vue'),
-    meta: { hidden: true, title: '新增标准工序', permission: 'engineering:standard-process:add' },
-  },
-  {
-    path: '/product/standard-process/edit/:processId',
-    name: 'StandardProcessEdit',
-    component: () => import('@/views/product/standard-process/edit.vue'),
-    meta: { hidden: true, title: '编辑标准工序', permission: 'engineering:standard-process:edit' },
+    children: [
+      {
+        path: 'route',
+        redirect: '/engineering/route',
+        meta: { hidden: true },
+      },
+      {
+        path: 'route/add',
+        name: 'ProductRouteAdd',
+        component: () => import('@/views/product/route/add.vue'),
+        meta: { hidden: true, title: '新增工艺路线', permission: 'engineering:routing:add' },
+      },
+      {
+        path: 'route/edit/:routingId',
+        name: 'ProductRouteEdit',
+        component: () => import('@/views/product/route/edit.vue'),
+        meta: { hidden: true, title: '编辑工艺路线', permission: 'engineering:routing:edit' },
+      },
+      {
+        path: 'standard-process',
+        redirect: '/engineering/standard-process',
+        meta: { hidden: true },
+      },
+      {
+        path: 'standard-process/add',
+        name: 'StandardProcessAdd',
+        component: () => import('@/views/product/standard-process/add.vue'),
+        meta: { hidden: true, title: '新增标准工序', permission: 'engineering:standard-process:add' },
+      },
+      {
+        path: 'standard-process/edit/:processId',
+        name: 'StandardProcessEdit',
+        component: () => import('@/views/product/standard-process/edit.vue'),
+        meta: { hidden: true, title: '编辑标准工序', permission: 'engineering:standard-process:edit' },
+      },
+    ],
   },
 ]
 

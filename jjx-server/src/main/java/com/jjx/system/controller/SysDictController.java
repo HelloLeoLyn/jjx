@@ -84,8 +84,7 @@ public class SysDictController extends BaseController {
 
     // ==================== 字典项接口 ====================
 
-    @Operation(summary = "根据字典编码获取字典项列表")
-    @SaCheckPermission("system:dict:query")
+    @Operation(summary = "根据字典编码获取字典项列表（页面基础数据，登录用户可读）")
     @GetMapping("/code/{dictCode}")
     public Result<List<SysDictItemVO>> getDictItems(@PathVariable String dictCode) {
         return Result.success(dictService.selectActiveItemsByDictCode(dictCode));

@@ -6,7 +6,7 @@
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
-        <el-button type="primary" icon="Plus" @click="handleAdd">新增工艺路线</el-button>
+        <el-button v-hasPermi="['engineering:routing:add']" type="primary" icon="Plus" @click="handleAdd">新增工艺路线</el-button>
       </div>
     </el-card>
 
@@ -52,6 +52,7 @@
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="scope">
             <el-button
+              v-hasPermi="['engineering:routing:edit']"
               link
               type="primary"
               size="small"

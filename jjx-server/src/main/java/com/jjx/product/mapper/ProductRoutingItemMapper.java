@@ -30,7 +30,7 @@ public interface ProductRoutingItemMapper extends BaseMapper<ProductRoutingItem>
             "p.equipment_type, p.skill_requirement, " +
             "p.is_enabled, p.display_order, p.icon " +
             "FROM engineering_routing_item i " +
-            "LEFT JOIN product_standard_process p ON i.process_id = p.process_id " +
+            "LEFT JOIN engineering_standard_process p ON i.process_id = p.process_id " +
             "WHERE i.routing_id = #{routingId} " +
             "ORDER BY i.group_order, i.process_order")
     List<ProductRoutingItemVO> selectVOsByRoutingId(@Param("routingId") Long routingId);
