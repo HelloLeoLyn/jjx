@@ -31,6 +31,10 @@ TRUNCATE sales_contract;
 
 TRUNCATE sales_quotation;
 
+TRUNCATE sales_quotation_item;
+
+TRUNCATE sales_quotation_flow;
+
 TRUNCATE sales_order;
 
 TRUNCATE sales_inquiry;
@@ -74,6 +78,15 @@ TRUNCATE production_trace_log;
 TRUNCATE production_order;
 
 TRUNCATE production_equipment;
+
+-- ==================== 4.5 样品单子表（sales_order 已清，子表独立） ====================
+TRUNCATE sales_sample_bom;
+
+TRUNCATE sales_sample_process;
+
+TRUNCATE sales_sample_round;
+
+TRUNCATE sales_sample_transfer;
 
 -- ==================== 5. 库存模块 ====================
 TRUNCATE inventory_alert_log;
