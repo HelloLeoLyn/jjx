@@ -53,6 +53,17 @@ public class BomController {
         return Result.success(result);
     }
 
+    @Operation(summary = "获取BOM明细列表")
+    @SaCheckPermission("engineering:bom:view")
+    @GetMapping("/items/{bomId}")
+    public Result<List<ProductBomItem>> getBomItems(@PathVariable Long bomId) {
+        List<ProductBomItem> items = bomItemMapper.selectList(
+                new LambdaQueryWrapper<ProductBomItem>()
+                        .eq(ProductBomItem::getBomId, bomId)
+                        .orderByAsc(ProductBomItem::getItemOrder));
+        return Result.success(items == null ? List.of() : items);
+    }
+
     @Operation(summary = "获取BOM列表")
     @GetMapping("/page")
     public Result<?> page() {

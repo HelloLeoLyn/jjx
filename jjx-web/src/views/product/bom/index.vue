@@ -131,12 +131,12 @@
             <span>{{ parseTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="备注" align="center" prop="remark" width="180" />
+        <el-table-column label="备注" align="center" prop="remark" min-width="180" />
         <el-table-column
           label="操作"
           align="center"
           class-name="small-padding fixed-width"
-          width="300"
+          min-width="300"
         >
           <template #default="scope">
             <el-tooltip content="修改" placement="top">
