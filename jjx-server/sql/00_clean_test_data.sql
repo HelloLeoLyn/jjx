@@ -114,12 +114,7 @@ TRUNCATE inventory_stock_item;
 TRUNCATE inventory_stock;
 
 TRUNCATE inventory_storage_location;
-
-TRUNCATE inventory_material;
-
-TRUNCATE inventory_material_category;
-
-TRUNCATE inventory_warehouse;
+-- 基础档案保留：inventory_material（物料）/ inventory_material_category（材料分类）/ inventory_warehouse（仓库）不清（2026-08-03 真实物料数据）
 
 -- ==================== 6. 工程模块 ====================
 TRUNCATE engineering_bom_item;
@@ -129,8 +124,7 @@ TRUNCATE engineering_routing_item;
 TRUNCATE engineering_film;
 
 TRUNCATE engineering_routing;
-
-TRUNCATE engineering_standard_process;
+-- 基础档案保留：engineering_standard_process（标准工序）不清
 
 TRUNCATE engineering_bom;
 

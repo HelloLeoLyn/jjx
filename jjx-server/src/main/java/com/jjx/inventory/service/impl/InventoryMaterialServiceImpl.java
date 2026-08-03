@@ -231,10 +231,15 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     @Override
     public PageResult<MaterialVO> search(MaterialQueryDTO queryDTO) {
+        // 按编码/名称/英文名模糊匹配（8-03 修复：原条件错位导致搜不到）
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
-        wrapper.like(InventoryMaterial::getMaterialCode, queryDTO.getMaterialCode());
-        wrapper.or().like(StringUtils.isNotBlank(queryDTO.getMaterialCode()), InventoryMaterial::getMaterialName,
-                queryDTO.getMaterialName());
+        String code = queryDTO.getMaterialCode();
+        String name = queryDTO.getMaterialName();
+        wrapper.and(w -> {
+            w.like(StringUtils.isNotBlank(code), InventoryMaterial::getMaterialCode, code)
+                    .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name)
+                    .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialNameEn, name);
+        });
         IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize())
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
