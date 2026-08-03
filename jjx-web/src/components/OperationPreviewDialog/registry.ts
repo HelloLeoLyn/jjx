@@ -316,6 +316,22 @@ export const sampleOperations: OperationDef[] = [
     },
     api: ({ bizId }) => sampleOrderApi.restartEngineering(bizId),
   },
+  {
+    key: 'sample.transfer',
+    bizType: 'sample_order',
+    name: '资料转移',
+    // 已确认(6)/已转量产(7)可转移；不改变样品单状态（建档前置动作）
+    fromStatus: [6, 7],
+    events: ['sample.transferred'],
+    result: {
+      name: '产品资料转移',
+      from: '样品确认',
+      to: '档案已建档（状态不变）',
+      docType: 'normal',
+      nextSteps: ['工程完善产品/BOM/工艺档案', '提交审核', '产品发布后转量产'],
+    },
+    api: ({ bizId }) => sampleOrderApi.transfer(bizId),
+  },
 ]
 
 /** 全模块注册表汇总（后续模块在此追加） */

@@ -973,27 +973,9 @@ async function handleRejectSample(row: any) {
   openPreview('sample.rejectSample', row)
 }
 
-// 产品资料转移（DEV-505）：建档产品/BOM/工艺路线，状态初始化，通知工程完善
+// 产品资料转移（DEV-505）：建档产品/BOM/工艺路线，状态初始化，通知工程完善（走操作预览器）
 async function handleTransfer(row: any) {
-  if (!row?.orderId) return
-  try {
-    await ElMessageBox.confirm(
-      `确认对样品单 [${row.orderNo}] 执行资料转移？\n\n将执行：\n① 产品建档（无则新建，状态待审核）\n② BOM 建档（最新轮次工序材料聚合，草稿）\n③ 工艺路线建档（最新轮次工序聚合，草稿）\n\n建档后状态全部初始化，并通知工程完善后提交审核。`,
-      '产品资料转移',
-      { confirmButtonText: '执行转移', cancelButtonText: '取消', type: 'warning' },
-    )
-    const res: any = await sampleOrderApi.transfer(row.orderId)
-    const d = res.data || {}
-    const actionText = (a: string) => (a === 'CREATE' ? '✅ 新建' : a === 'EXISTS' ? '⏸ 已有' : a === 'SKIP_NO_PROCESS' ? '⚠️ 无工序跳过' : '—')
-    await ElMessageBox.alert(
-      `转移单号：${d.transferNo || '-'}\n\n产品：${actionText(d.productAction)}\nBOM：${actionText(d.bomAction)}\n工艺路线：${actionText(d.routingAction)}\n\n已通知工程完善档案并提交审核。`,
-      '资料转移完成',
-      { confirmButtonText: '好的', type: 'success' },
-    )
-    getList()
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '资料转移失败')
-  }
+  openPreview('sample.transfer', row)
 }
 
 async function handleConvert(row: any) {
