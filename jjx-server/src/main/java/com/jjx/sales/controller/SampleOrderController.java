@@ -199,10 +199,12 @@ public class SampleOrderController extends BaseController {
     /**
      * 查询打样工序历史
      */
-    @Operation(summary = "查询打样工序历史")
+    @Operation(summary = "查询打样工序历史（可传 roundNo 按轮次过滤，DEV-500）")
     @GetMapping("/processes/{orderId}")
-    public Result<List<com.jjx.sales.domain.entity.SalesSampleProcess>> listProcesses(@PathVariable Long orderId) {
-        return Result.success(sampleOrderService.listSampleProcesses(orderId));
+    public Result<List<com.jjx.sales.domain.entity.SalesSampleProcess>> listProcesses(
+            @PathVariable Long orderId,
+            @RequestParam(required = false) Integer roundNo) {
+        return Result.success(sampleOrderService.listSampleProcesses(orderId, roundNo));
     }
 
     @Operation(summary = "打样汇总（总工时+材料成本估算）")
@@ -258,6 +260,13 @@ public class SampleOrderController extends BaseController {
     /**
      * 查询打样轮次快照列表
      */
+    @Operation(summary = "产品资料转移（DEV-505：建档产品/BOM/工艺路线，状态初始化，事件通知+派任务）")
+    @SaCheckPermission("sales:sample:convert")
+    @PostMapping("/transfer/{orderId}")
+    public Result<java.util.Map<String, Object>> transfer(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.transferMaterials(orderId));
+    }
+
     @Operation(summary = "查询打样轮次快照")
     @SaCheckPermission("sales:sample:view")
     @GetMapping("/rounds/{orderId}")

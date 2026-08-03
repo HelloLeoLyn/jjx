@@ -159,11 +159,12 @@ export const sampleOrderApi = {
     })
   },
 
-  // 查询打样工序历史
-  listProcesses(orderId: number): AxiosPromise<any> {
+  // 查询打样工序历史（roundNo 可选，DEV-500 按轮次过滤）
+  listProcesses(orderId: number, roundNo?: number): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/processes/${orderId}`,
       method: 'get',
+      params: roundNo ? { roundNo } : undefined,
     })
   },
 
@@ -199,6 +200,14 @@ export const sampleOrderApi = {
       url: `/sales/sample-order/record-cost/${orderId}`,
       method: 'put',
       params: { cost, workHours },
+    })
+  },
+
+  // 产品资料转移（DEV-505：建档产品/BOM/工艺路线）
+  transfer(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/transfer/${orderId}`,
+      method: 'post',
     })
   },
 

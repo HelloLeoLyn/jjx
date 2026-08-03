@@ -109,6 +109,7 @@
             </template>
             <template v-else-if="scope.row.sampleStatus === 6">
               <el-button v-hasPermi="['sales:sample:convert']" link type="primary" size="small" @click="handleConvert(scope.row)">转量产</el-button>
+              <el-button v-hasPermi="['sales:sample:convert']" link type="warning" size="small" @click="handleTransfer(scope.row)">资料转移</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 7">
               <el-tag size="small" type="success">已转量产</el-tag>
@@ -303,18 +304,6 @@
         </el-tabs>
       </template>
       <template #footer>
-        <el-button
-          v-if="detailData && [1, 2, 3, 4, 5, 6].includes(detailData.sampleStatus)"
-          type="danger"
-          plain
-          @click="handleCancel(detailData)"
-        >作废</el-button>
-        <el-button
-          v-if="detailData && detailData.sampleStatus === 9"
-          type="warning"
-          plain
-          @click="handleRestart(detailData)"
-        >重新打样</el-button>
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -982,6 +971,29 @@ async function handleConfirm(row: any) {
 
 async function handleRejectSample(row: any) {
   openPreview('sample.rejectSample', row)
+}
+
+// 产品资料转移（DEV-505）：建档产品/BOM/工艺路线，状态初始化，通知工程完善
+async function handleTransfer(row: any) {
+  if (!row?.orderId) return
+  try {
+    await ElMessageBox.confirm(
+      `确认对样品单 [${row.orderNo}] 执行资料转移？\n\n将执行：\n① 产品建档（无则新建，状态待审核）\n② BOM 建档（最新轮次工序材料聚合，草稿）\n③ 工艺路线建档（最新轮次工序聚合，草稿）\n\n建档后状态全部初始化，并通知工程完善后提交审核。`,
+      '产品资料转移',
+      { confirmButtonText: '执行转移', cancelButtonText: '取消', type: 'warning' },
+    )
+    const res: any = await sampleOrderApi.transfer(row.orderId)
+    const d = res.data || {}
+    const actionText = (a: string) => (a === 'CREATE' ? '✅ 新建' : a === 'EXISTS' ? '⏸ 已有' : a === 'SKIP_NO_PROCESS' ? '⚠️ 无工序跳过' : '—')
+    await ElMessageBox.alert(
+      `转移单号：${d.transferNo || '-'}\n\n产品：${actionText(d.productAction)}\nBOM：${actionText(d.bomAction)}\n工艺路线：${actionText(d.routingAction)}\n\n已通知工程完善档案并提交审核。`,
+      '资料转移完成',
+      { confirmButtonText: '好的', type: 'success' },
+    )
+    getList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '资料转移失败')
+  }
 }
 
 async function handleConvert(row: any) {

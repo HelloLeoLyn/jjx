@@ -20,6 +20,17 @@
         <el-descriptions-item label="接单人">{{ card.engineeringAcceptor || '-' }}</el-descriptions-item>
       </el-descriptions>
 
+      <!-- 轮次切换（DEV-500） -->
+      <el-tabs v-model="activeRound" style="margin-bottom:8px">
+        <el-tab-pane
+          v-for="r in roundList"
+          :key="r.roundNo"
+          :name="String(r.roundNo)"
+          :label="`Round ${r.roundNo}${r.roundNo === (card.sampleRound || 1) ? '（当前）' : ''}`"
+        />
+      </el-tabs>
+
+      <div v-if="isCurrentRound">
       <!-- 接单/拒单 -->
       <el-card shadow="never" style="margin-bottom:16px">
         <template #header><span style="font-weight:600">接单</span></template>
@@ -151,6 +162,55 @@
       <div style="text-align:center;margin-top:8px">
         <el-button type="success" size="large" @click="handleMarkReady" :loading="saving" style="width:200px">🎯 标记样品完成（送样）</el-button>
       </div>
+      </div>
+
+      <!-- 历史轮次（只读，DEV-500） -->
+      <div v-else class="round-readonly">
+        <el-alert
+          type="info" :closable="false" show-icon style="margin-bottom:12px"
+          title="历史轮次（只读）"
+          description="该轮次已归档，如需调整请在当前轮次重新打样"
+        />
+        <div v-if="activeRoundData" style="margin-bottom:12px">
+          <el-tag :type="activeRoundData.result === 'confirmed' ? 'success' : activeRoundData.result === 'rejected' ? 'danger' : 'info'">
+            {{ activeRoundData.result === 'confirmed' ? '✅ 已确认' : activeRoundData.result === 'rejected' ? '⛔ 已退回' : '🔄 进行中' }}
+          </el-tag>
+          <span v-if="activeRoundData.rejectReason" style="margin-left:8px;color:#f56c6c;font-size:13px">
+            退回原因：{{ activeRoundData.rejectReason }}
+          </span>
+          <span v-if="activeRoundData.engineeringNote" style="margin-left:12px;color:#606266;font-size:13px">
+            工艺参数：{{ activeRoundData.engineeringNote }}
+          </span>
+        </div>
+        <el-card shadow="never" style="margin-bottom:16px">
+          <template #header><span style="font-weight:600">📜 工序快照</span></template>
+          <el-timeline v-if="activeRoundProcesses.length" style="padding-left:2px">
+            <el-timeline-item v-for="(p, i) in activeRoundProcesses" :key="i" :timestamp="formatTime(p.startTime)" placement="top" :type="i === activeRoundProcesses.length - 1 ? 'primary' : 'info'">
+              <div style="font-size:13px">
+                <span style="font-weight:600">{{ p.processName }}</span>
+                <span v-if="p.durationMinutes" style="margin-left:8px;color:#606266;font-size:12px">⏱ {{ p.durationMinutes }}分钟</span>
+                <span v-if="p.operator" style="margin-left:8px;color:#909399;font-size:12px">操作人：{{ p.operator }}</span>
+                <div v-if="p.processNote" style="color:#606266;font-size:12px;margin-top:2px">🔧 {{ p.processNote }}</div>
+                <div v-if="p.materials" style="margin-top:2px">
+                  <el-tag v-for="(m, mi) in parseMaterials(p.materials)" :key="mi" size="small" type="info" style="margin-right:4px">{{ m.name }}{{ m.spec ? ' ' + m.spec : '' }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag>
+                </div>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+          <div v-else style="color:#999;font-size:13px">该轮次无工序快照</div>
+        </el-card>
+        <el-card shadow="never">
+          <template #header><span style="font-weight:600">🧾 BOM 物料快照</span></template>
+          <el-table v-if="activeRoundBom.length" :data="activeRoundBom" size="small" border style="width:100%">
+            <el-table-column prop="process" label="工序" width="90" />
+            <el-table-column prop="name" label="材料" min-width="140" />
+            <el-table-column prop="spec" label="规格" min-width="120" />
+            <el-table-column prop="qty" label="用量" width="90" />
+            <el-table-column prop="unit" label="单位" width="70" />
+          </el-table>
+          <div v-else style="color:#999;font-size:13px">该轮次无物料快照</div>
+        </el-card>
+      </div>
     </div>
     <template #footer>
       <el-button @click="onClose(false)">关闭</el-button>
@@ -159,7 +219,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
@@ -195,6 +255,48 @@ function parseMaterials(json?: string) {
     return []
   }
 }
+// ===== 轮次展示（DEV-500）=====
+const roundList = ref<any[]>([])
+const activeRound = ref('')
+const isCurrentRound = computed(() => Number(activeRound.value) === (props.card?.sampleRound || 1))
+const activeRoundData = computed(() => roundList.value.find((r) => String(r.roundNo) === activeRound.value) || null)
+const activeRoundProcesses = computed(() => {
+  const d = activeRoundData.value
+  if (!d?.processSnapshot) return []
+  try {
+    const arr = JSON.parse(d.processSnapshot)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+})
+const activeRoundBom = computed(() => {
+  const d = activeRoundData.value
+  if (!d?.bomSnapshot) return []
+  try {
+    const arr = JSON.parse(d.bomSnapshot)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+})
+async function loadRounds() {
+  if (!props.card?.orderId) return
+  try {
+    const res = await sampleOrderApi.getRounds(props.card.orderId)
+    const rounds: any[] = res.data || []
+    const current = props.card?.sampleRound || 1
+    // 当前轮可能还没归档快照，补充占位
+    if (!rounds.some((r) => r.roundNo === current)) {
+      rounds.push({ roundNo: current, result: 'pending' })
+    }
+    roundList.value = rounds.sort((a, b) => a.roundNo - b.roundNo)
+    activeRound.value = String(current)
+  } catch {
+    roundList.value = [{ roundNo: props.card?.sampleRound || 1, result: 'pending' }]
+    activeRound.value = String(props.card?.sampleRound || 1)
+  }
+}
 const processList = ref<any[]>([])
 const bomList = ref<any[]>([])
 const processOptions = ['印刷', '冲切', '贴合', 'SMT贴片', '装配', '测试', '包装']
@@ -208,7 +310,7 @@ function onClose(val: boolean) {
 
 async function onOpen() {
   if (!props.card?.orderId) return
-  await Promise.all([loadProcesses(), loadBom(), loadEngFiles(), loadSummary()])
+  await Promise.all([loadRounds(), loadProcesses(), loadBom(), loadEngFiles(), loadSummary()])
   form.note = props.card.engineeringNote || ''
   form.process = props.card.currentProcess || ''
   form.materials = []
@@ -385,7 +487,13 @@ async function handleMarkReady() {
 // 数据加载
 async function loadProcesses() {
   if (!props.card?.orderId) return
-  try { const res = await sampleOrderApi.listProcesses(props.card.orderId); processList.value = res.data || [] } catch { processList.value = [] }
+  // DEV-500：当前轮次工序（历史轮走快照展示）
+  try {
+    const res = await sampleOrderApi.listProcesses(props.card.orderId, props.card?.sampleRound || undefined)
+    processList.value = res.data || []
+  } catch {
+    processList.value = []
+  }
 }
 async function loadBom() {
   // 从工序单元材料聚合（不再用 sales_sample_bom 表）

@@ -19,4 +19,10 @@ public interface SalesSampleProcessMapper extends BaseMapper<SalesSampleProcess>
      */
     @Select("SELECT * FROM sales_sample_process WHERE order_id = #{orderId} ORDER BY process_id ASC")
     List<SalesSampleProcess> selectByOrderId(@Param("orderId") Long orderId);
+
+    /**
+     * 查询样品单指定轮次工序记录（DEV-500 按轮次展示）
+     */
+    @Select("SELECT * FROM sales_sample_process WHERE order_id = #{orderId} AND round_no = #{roundNo} ORDER BY process_id ASC")
+    List<SalesSampleProcess> selectByOrderAndRound(@Param("orderId") Long orderId, @Param("roundNo") Integer roundNo);
 }

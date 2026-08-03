@@ -81,6 +81,13 @@ public interface ISampleOrderService {
     List<com.jjx.sales.domain.entity.SalesSampleProcess> listSampleProcesses(Long orderId);
 
     /**
+     * 按轮次查询打样工序（DEV-500）
+     *
+     * @param roundNo 为空则返回全部
+     */
+    List<com.jjx.sales.domain.entity.SalesSampleProcess> listSampleProcesses(Long orderId, Integer roundNo);
+
+    /**
      * 打样汇总：总工时 + 材料成本估算（自动计算）
      */
     java.util.Map<String, Object> getSampleSummary(Long orderId);
@@ -114,6 +121,11 @@ public interface ISampleOrderService {
      * 样品转量产（创建标准订单）
      */
     SalesOrder convertToProduction(Long orderId);
+
+    /**
+     * 产品资料转移（DEV-505）：样品确认后建档产品/BOM/工艺路线
+     */
+    java.util.Map<String, Object> transferMaterials(Long orderId);
 
     /**
      * 样品单作废
