@@ -185,16 +185,17 @@ public class SampleOrderController extends BaseController {
     /**
      * 更新打样当前工序
      */
-    @Operation(summary = "更新打样当前工序")
+    @Operation(summary = "更新打样当前工序（材料JSON走body，避免长URL，8-03改DTO）")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission("sales:sample:engineering")
     @PutMapping("/update-process/{orderId}")
     public Result<SalesOrder> updateProcess(@PathVariable Long orderId,
-                                            @RequestParam String process,
-                                            @RequestParam(required = false) String materials,
-                                            @RequestParam(required = false) String processNote,
-                                            @RequestParam(required = false) Integer durationMinutes) {
-        return Result.success(sampleOrderService.updateSampleProcess(orderId, process, materials, processNote, durationMinutes));
+                                            @RequestBody(required = false) com.jjx.sales.dto.save.SampleProcessDTO dto) {
+        return Result.success(sampleOrderService.updateSampleProcess(orderId,
+                dto != null ? dto.getProcess() : null,
+                dto != null ? dto.getMaterials() : null,
+                dto != null ? dto.getProcessNote() : null,
+                dto != null ? dto.getDurationMinutes() : null));
     }
 
     /**

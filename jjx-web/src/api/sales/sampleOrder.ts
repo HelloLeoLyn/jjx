@@ -151,12 +151,12 @@ export const sampleOrderApi = {
     })
   },
 
-  // 更新打样当前工序（工序单元：材料+工艺说明+耗时）
+  // 更新打样当前工序（工序单元：材料+工艺说明+耗时；材料JSON走body，8-03避免长URL）
   updateProcess(orderId: number, process: string, materials?: string | null, processNote?: string, durationMinutes?: number): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/update-process/${orderId}`,
       method: 'put',
-      params: { process, materials, processNote, durationMinutes },
+      data: { process, materials, processNote, durationMinutes },
     })
   },
 

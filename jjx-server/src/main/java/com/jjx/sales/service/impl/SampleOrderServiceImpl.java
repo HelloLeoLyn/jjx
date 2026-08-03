@@ -45,6 +45,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.product.mapper.ProductMapper productMapper;
     private final com.jjx.sales.mapper.SalesSampleTransferMapper sampleTransferMapper;
     private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
+    private final com.jjx.system.mapper.SysTaskMapper sysTaskMapper;
     private final RedisSequenceService redisSequenceService;
     private final ISalesOrderProductService orderProductService;
     private final SalesSampleRoundMapper sampleRoundMapper;

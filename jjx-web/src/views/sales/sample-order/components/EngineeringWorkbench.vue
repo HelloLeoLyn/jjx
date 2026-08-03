@@ -452,8 +452,17 @@ async function saveProcess() {
   }
   saving.value = true
   try {
-    // 材料 → JSON
-    const validMats = form.materials.filter((m: any) => m.name && m.name.trim())
+    // 材料 → JSON（剔除 UI 辅助字段 options/loading，只留业务字段，8-03防长URL）
+    const validMats = form.materials
+      .filter((m: any) => m.name && m.name.trim())
+      .map((m: any) => ({
+        name: m.name,
+        spec: m.spec || '',
+        qty: m.qty ?? 1,
+        unit: m.unit || 'PCS',
+        materialId: m.materialId,
+        materialCode: m.materialCode || '',
+      }))
     const materialsJson = validMats.length > 0 ? JSON.stringify(validMats) : null
     await sampleOrderApi.updateProcess(
       props.card.orderId,

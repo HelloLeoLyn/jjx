@@ -18,6 +18,7 @@ server:
     uri-encoding: UTF-8
     max-threads: 200
     min-spare-threads: 10
+    max-http-header-size: 64KB
 
 # 日志配置
 logging:
