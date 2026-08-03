@@ -89,8 +89,6 @@ import { ref, reactive, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-// @ts-ignore
-import { getEnabledProcesses } from '@/api/product'
 import { productRouteApi } from '@/api/product/routing'
 import type { StandardProcessOption } from '@/types/product'
 import type { ProductRouteFormData, ProductRoutingItemVO } from '@/types/product/routing'
@@ -131,7 +129,7 @@ const rules = reactive<FormRules<ProductRouteFormData>>({
 // 加载标准工序
 const loadStandardProcesses = async () => {
   try {
-    const response = await getEnabledProcesses()
+    const response = await productRouteApi.getEnabledProcesses()
     standardProcesses.value = response.data || []
   } catch (error) {
     console.error('加载标准工序失败:', error)

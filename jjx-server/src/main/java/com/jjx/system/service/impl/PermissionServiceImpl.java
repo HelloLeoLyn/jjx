@@ -24,6 +24,11 @@ public class PermissionServiceImpl implements IPermissionService {
             return List.of();
         }
 
+        // 超级管理员（用户ID=1）返回通配权限，Sa-Token 通配匹配所有权限码
+        if (userId != null && userId == 1L) {
+            return List.of("*:*:*");
+        }
+
         // 获取用户的菜单权限
         Set<String> menuPerms = sysMenuService.selectMenuPermsByUserId(userId);
 
