@@ -20,7 +20,7 @@
 
     <!-- 操作按钮 -->
     <el-card class="operation-card" shadow="never">
-      <el-button type="primary" plain icon="Plus" @click="showCreateDialog">新增样品单</el-button>
+      <el-button v-hasPermi="['sales:sample:add']" type="primary" plain icon="Plus" @click="showCreateDialog">新增样品单</el-button>
     </el-card>
 
     <!-- 表格 -->
@@ -74,6 +74,7 @@
 
             <!-- 工程打样工作台（仅工程角色 + 打样中状态3） -->
             <el-button
+              v-hasPermi="['sales:sample:engineering']"
               v-if="scope.row.sampleStatus === 3 && isEngineerRole"
               link
               type="warning"
@@ -83,6 +84,7 @@
 
             <!-- 作废：非终态（1-6）可作废 -->
             <el-button
+              v-hasPermi="['sales:sample:edit']"
               v-if="[1, 2, 3, 4, 5, 6].includes(scope.row.sampleStatus)"
               link
               type="danger"
@@ -91,21 +93,21 @@
             >作废</el-button>
 
             <template v-if="scope.row.sampleStatus === 1">
-              <el-button link type="primary" size="small" @click="handleSubmitReview(scope.row)">提交审核</el-button>
+              <el-button v-hasPermi="['sales:sample:edit']" link type="primary" size="small" @click="handleSubmitReview(scope.row)">提交审核</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 2">
-              <el-button link type="success" size="small" @click="handleApprove(scope.row)">通过</el-button>
-              <el-button link type="danger" size="small" @click="handleRejectReview(scope.row)">驳回</el-button>
+              <el-button v-hasPermi="['sales:sample:approve']" link type="success" size="small" @click="handleApprove(scope.row)">通过</el-button>
+              <el-button v-hasPermi="['sales:sample:approve']" link type="danger" size="small" @click="handleRejectReview(scope.row)">驳回</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 3">
-              <el-button link type="primary" size="small" @click="handleMarkReady(scope.row)">样品完成</el-button>
+              <el-button v-hasPermi="['sales:sample:engineering']" link type="primary" size="small" @click="handleMarkReady(scope.row)">样品完成</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 4">
-              <el-button link type="primary" size="small" @click="handleSendSample(scope.row)">送样登记</el-button>
+              <el-button v-hasPermi="['sales:sample:deliver']" link type="primary" size="small" @click="handleSendSample(scope.row)">送样登记</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 5">
-              <el-button link type="success" size="small" @click="handleConfirm(scope.row)">客户确认OK</el-button>
-              <el-button link type="warning" size="small" @click="handleRejectSample(scope.row)">退回修改</el-button>
+              <el-button v-hasPermi="['sales:sample:confirm']" link type="success" size="small" @click="handleConfirm(scope.row)">客户确认OK</el-button>
+              <el-button v-hasPermi="['sales:sample:confirm']" link type="warning" size="small" @click="handleRejectSample(scope.row)">退回修改</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 6">
               <el-button v-hasPermi="['sales:sample:convert']" link type="primary" size="small" @click="handleConvert(scope.row)">转量产</el-button>
@@ -118,7 +120,7 @@
               <el-tag size="small" type="info">已关闭</el-tag>
             </template>
             <template v-else-if="scope.row.sampleStatus === 9">
-              <el-button link type="warning" size="small" @click="handleRestart(scope.row)">重新打样</el-button>
+              <el-button v-hasPermi="['sales:sample:engineering']" link type="warning" size="small" @click="handleRestart(scope.row)">重新打样</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 10">
               <el-tag size="small" type="danger">已作废</el-tag>
