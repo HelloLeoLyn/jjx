@@ -24,7 +24,7 @@ class BroadcastService {
     }
 
     // 监听播报完成，播放下一条
-    window.speechSynthesis.onend = () => {
+    ;(window.speechSynthesis as any).onend = () => {
       this.speaking = false
       this.processQueue()
     }

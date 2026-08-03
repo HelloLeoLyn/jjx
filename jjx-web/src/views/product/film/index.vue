@@ -151,6 +151,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus } from '@element-plus/icons-vue'
 import { filmApi, type ProductFilm } from '@/api/product/film'
@@ -226,8 +227,8 @@ function resetQuery() {
   filmList.value = []
 }
 
-function approveTagType(status: number | undefined | null): string {
-  const map: Record<number, string> = { 1: 'info', 2: 'warning', 3: 'success', 4: 'danger' }
+function approveTagType(status: number | undefined | null): TagType {
+  const map: Record<number, TagType> = { 1: 'info', 2: 'warning', 3: 'success', 4: 'danger' }
   return map[status ?? 1] ?? 'info'
 }
 

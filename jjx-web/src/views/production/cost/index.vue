@@ -73,6 +73,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import type { TagType } from '@/types'
 import { getCostList, getCostSummary } from '@/api/production/cost'
 
 const loading = ref(false)
@@ -90,8 +91,9 @@ function formatMoney(v: number | string) {
   return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function statusType(s: string) {
-  return { DRAFT: 'info', PENDING_APPROVAL: 'warning', APPROVED: 'primary', IN_PROGRESS: '', COMPLETED: 'success', CANCELLED: 'danger', CLOSED: 'info' }[s] || 'info'
+function statusType(s: string): TagType {
+  const map: Record<string, TagType> = { DRAFT: 'info', PENDING_APPROVAL: 'warning', APPROVED: 'primary', IN_PROGRESS: 'info', COMPLETED: 'success', CANCELLED: 'danger', CLOSED: 'info' }
+  return map[s] || 'info'
 }
 
 function statusLabel(s: string) {

@@ -265,7 +265,7 @@
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-tooltip content="发送报价" placement="top" v-if="[0, 6].indexOf(scope.row.quotationStatus) !== -1">
+            <el-tooltip content="发送报价" placement="top" v-if="scope.row.quotationStatus === 6">
               <el-button
                 link
                 type="info"
@@ -708,6 +708,15 @@
       :trace-id="attachmentTraceId"
       :dialog-title="attachmentQuotationNo"
     />
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="quotationStatusTextMap"
+      @success="getList"
+    />
   </div>
 </template>
 
@@ -717,11 +726,14 @@ defineOptions({
 })
 
 import { ref, reactive, computed, onMounted } from 'vue'
+import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import QuotationFlowDialog from './components/QuotationFlowDialog.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
 import { QuotationStatusEnum } from '@/enums/sales'
@@ -776,6 +788,7 @@ const form = reactive({
 
 // 详情数据
 const detail = reactive({
+  traceId: undefined as string | undefined,
   quotationId: undefined as number | undefined,
   quotationNo: '',
   customerId: undefined as number | undefined,
@@ -912,7 +925,7 @@ const quotationActions = computed(() => {
   const type = q?.quotationType
   const completed = status === 9
   return {
-    canSend: [0, 6].includes(status) && !completed,     // 草稿/已审核可发送
+    canSend: status === 6,                              // 仅审核通过的报价单可发送（上传报价）
     canSubmitReview: status === 0,                      // 草稿可提交审核
     canApprove: status === 5,                           // 待审核可审核
     canCustomerConfirm: status === 1,                   // 已发送可确认/拒绝
@@ -988,118 +1001,45 @@ const handleExport = () => {
     .catch(() => {})
 }
 
-// 转为样品单按钮操作
-const handleConvertToSample = async (row?: any) => {
+// 操作预览器状态
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+// 状态码 → 状态名（预览器状态跳转展示用）
+const quotationStatusTextMap = Object.fromEntries(
+  QuotationStatusEnum.items.map((i: any) => [i.value, i.label]),
+)
+function openPreview(opKey: string, row?: any) {
   const quotationId = row?.quotationId || ids.value[0]
   if (!quotationId) return
-
-  const { value } = await ElMessageBox.prompt('打样数量', '转为样品单', {
-    inputValue: '10',
-    confirmButtonText: '转为样品单',
-  })
-  const qty = parseInt(value || '0')
-  if (qty <= 0) {
-    ElMessage.warning('请输入有效数量')
-    return
-  }
-
-  try {
-    await sampleOrderApi.createFromQuotation(quotationId, { sampleQty: qty })
-    ElMessage.success('报价单已成功转为样品单')
-    getList()
-  } catch (e: any) {
-    ElMessage.error(e.message || '转换失败')
-  }
+  const op = getOperation(opKey)
+  if (!op) return
+  previewOperation.value = op
+  previewBizId.value = quotationId
+  previewBizNo.value = row?.quotationNo || selectedQuotation.value?.quotationNo || ''
+  previewVisible.value = true
 }
+
+// 转为样品单
+const handleConvertToSample = async (row?: any) => openPreview('quotation.toSample', row)
 
 // 提交审核
-const handleSubmitReview = async (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  if (!quotationId) return
-  try {
-    await quotationApi.submitReview(quotationId)
-    ElMessage.success('已提交审核')
-    getList()
-  } catch (e: any) {
-    ElMessage.error(e.message || '提交失败')
-  }
-}
+const handleSubmitReview = async (row?: any) => openPreview('quotation.submitReview', row)
 
 // 审核（通过/驳回）
-const handleReview = async (approved: boolean, row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  if (!quotationId) return
-  const action = approved ? '通过' : '驳回'
-  try {
-    const { value } = await ElMessageBox.prompt(`请输入审核意见（${action}）`, `审核${action}`, {
-      confirmButtonText: `确认${action}`,
-      cancelButtonText: '取消',
-    })
-    await quotationApi.review(quotationId, approved, value || undefined)
-    ElMessage.success(`已${action}`)
-    getList()
-  } catch (e: any) {
-    if (e !== 'cancel' && e?.message) ElMessage.error(e.message || `${action}失败`)
-  }
-}
+const handleReview = async (approved: boolean, row?: any) =>
+  openPreview(approved ? 'quotation.approve' : 'quotation.reject', row)
 
 // 客户确认/拒绝（状态=1 已发送时）
-const handleCustomerConfirm = async (confirmed: boolean, row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  if (!quotationId) return
-  const action = confirmed ? '确认' : '拒绝'
-  try {
-    await ElMessageBox.confirm(`确认该报价单客户${action}？`, `客户${action}`, {
-      confirmButtonText: `确定${action}`,
-      cancelButtonText: '取消',
-      type: confirmed ? 'success' : 'warning',
-    })
-    // 已确认=2 已拒绝=3
-    await quotationApi.changeStatus(quotationId, confirmed ? 2 : 3)
-    ElMessage.success(`客户已${action}`)
-    getList()
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e.message || `${action}失败`)
-  }
-}
+const handleCustomerConfirm = async (confirmed: boolean, row?: any) =>
+  openPreview(confirmed ? 'quotation.customerConfirm' : 'quotation.customerReject', row)
 
-// 发送报价按钮操作
-const handleSend = (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  ElMessageBox.confirm('是否确认发送报价单给客户？', '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'info',
-  })
-    .then(() => {
-      return quotationApi.send(quotationId)
-    })
-    .then(() => {
-      getList()
-      ElMessage.success('发送成功')
-    })
-    .catch(() => {})
-}
+// 发送报价
+const handleSend = (row?: any) => openPreview('quotation.send', row)
 
-// 转为订单按钮操作
-const handleConvert = (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  ElMessageBox.confirm('是否确认将报价单转为销售订单？', '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'info',
-  })
-    .then(() => {
-      return quotationApi.convert(quotationId)
-    })
-    .then((response: any) => {
-      ElMessage.success(`报价单已成功转为订单，订单号：${response.data?.orderNo ?? response.data?.orderId ?? ''}`)
-      getList()
-    })
-    .catch((e: any) => {
-      if (e !== 'cancel') ElMessage.error(e?.message || '转订单失败')
-    })
-}
+// 转为订单
+const handleConvert = (row?: any) => openPreview('quotation.convert', row)
 
 // 导出PDF按钮操作
 const handleExportPdf = (row?: any) => {
@@ -1338,8 +1278,8 @@ const cancel = () => {
 }
 
 // 获取状态标签类型
-const getStatusTagType = (status: number) => {
-  return (QuotationStatusEnum.getTagProps(status).type as string) || 'info'
+const getStatusTagType = (status: number): TagType => {
+  return (QuotationStatusEnum.getTagProps(status).type as TagType) || 'info'
 }
 
 // 获取状态标签文本

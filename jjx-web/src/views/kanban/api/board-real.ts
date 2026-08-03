@@ -69,9 +69,9 @@ async function fetchSysTaskBoardData(
     if (filter) {
       if (filter.keyword) {
         const kw = filter.keyword.toLowerCase()
-        filtered = filtered.filter(c => c.title.toLowerCase().includes(kw) || c.remark.toLowerCase().includes(kw))
+        filtered = filtered.filter(c => c.title.toLowerCase().includes(kw) || (c.remark || '').toLowerCase().includes(kw))
       }
-      if (filter.assignee) filtered = filtered.filter(c => c.assignee.includes(filter.assignee))
+      if (filter.assignee) filtered = filtered.filter(c => (c.assignee || '').includes(filter.assignee || ''))
       if (filter.priority) filtered = filtered.filter(c => c.priority === filter.priority)
       if (filter.status) filtered = filtered.filter(c => c.status === filter.status)
     }
@@ -248,7 +248,7 @@ export function groupCardsByColumn(
   return columns.map(col => ({
     column: col,
     cards: cards.filter(c => {
-      const val = (c as Record<string, unknown>)[groupBy] ?? ''
+      const val = (c as unknown as Record<string, unknown>)[groupBy] ?? ''
       return String(val) === String(col.filterValue ?? col.label)
     }),
   }))

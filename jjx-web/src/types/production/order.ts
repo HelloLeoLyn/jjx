@@ -198,6 +198,7 @@ export interface ProductionOrderQuery {
   createTimeEnd?: string // 创建时间结束
 
   // 关联筛选
+  salesOrderId?: number // 销售订单ID
   salesOrderNo?: string // 销售订单编号
   instanceCode?: string // 产品实例编码
 

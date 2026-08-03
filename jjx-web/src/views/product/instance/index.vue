@@ -392,7 +392,7 @@ const detail = reactive({
   productCode: '',
   productName: '',
   serialNumber: '',
-  instanceStatus: '',
+  instanceStatus: undefined as number | undefined,
   productionDate: '',
   shipmentDate: '',
   remark: '',
@@ -446,7 +446,7 @@ const getList = async () => {
 }
 
 // 状态标签类型/文本
-const getInstanceStatusTagType = (status: number) => {
+const getInstanceStatusTagType = (status: number | undefined) => {
   switch (status) {
     case 3:  // 生产中
       return 'warning'
@@ -463,7 +463,7 @@ const getInstanceStatusTagType = (status: number) => {
   }
 }
 
-const getInstanceStatusLabel = (status: number) => {
+const getInstanceStatusLabel = (status: number | undefined) => {
   const option = instanceStatusOptions.value.find((opt) => opt.value === status)
   return option ? option.label : '未知'
 }

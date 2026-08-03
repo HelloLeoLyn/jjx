@@ -381,7 +381,7 @@ const submitQc = async () => {
     if (qcForm.result === 'fail') {
       ElMessage.warning('不合格，工序已自动暂停，请排查问题！')
     }
-    loadData()
+    getList()
   } catch (e: any) {
     ElMessage.error(e?.message || `${typeText}提交失败`)
   }

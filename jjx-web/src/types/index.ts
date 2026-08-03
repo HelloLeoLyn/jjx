@@ -19,3 +19,6 @@ export interface R<T = any> {
   msg: string
   data: T | null
 }
+
+/** Element Plus 标签/时间线 type 联合类型 */
+export type TagType = 'success' | 'danger' | 'info' | 'warning' | 'primary'

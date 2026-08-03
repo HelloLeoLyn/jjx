@@ -179,7 +179,7 @@ const inboundData = ref<InboundVO>({
   sourceNo: '',
   totalQuantity: 0,
   totalAmount: 0,
-  status: '',
+  status: 0,
   statusName: '',
   remark: '',
   createBy: '',

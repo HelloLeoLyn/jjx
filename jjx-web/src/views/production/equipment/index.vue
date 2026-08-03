@@ -226,7 +226,7 @@ interface Equipment {
   model: string
   department: string
   location: string
-  status: string
+  status: number
   utilization: number
   lastMaintenance: string
   nextMaintenance: string
@@ -372,7 +372,7 @@ const filteredEquipment = computed(() => {
 
   // 按状态筛选
   if (filterStatus.value) {
-    filtered = filtered.filter((item) => item.status === filterStatus.value)
+    filtered = filtered.filter((item) => item.status === Number(filterStatus.value))
   }
 
   // 分页

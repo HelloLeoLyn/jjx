@@ -7,7 +7,7 @@ export interface QuotationQueryParams {
   pageSize?: number
   quotationNo?: string
   customerName?: string
-  quotationStatus?: string
+  quotationStatus?: number
   startDate?: string
   endDate?: string
   orderByColumn?: string
@@ -66,11 +66,13 @@ export interface QuotationItem {
 // 完整的报价单信息
 export interface QuotationInfo extends QuotationBase {
   items?: QuotationItem[]
+  /** 链路追踪ID */
+  traceId?: string
 }
 
 // 报价单列表响应
 export interface QuotationListResponse {
-  rows: QuotationInfo[]
+  records: QuotationInfo[]
   total: number
 }
 

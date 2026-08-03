@@ -120,8 +120,8 @@ onMounted(async () => {
   await store.switchTemplate('production')
 })
 
-function onTemplateChange(type: TemplateType) {
-  store.switchTemplate(type)
+function onTemplateChange(val: string | number | boolean | undefined) {
+  store.switchTemplate(val as TemplateType)
 }
 
 function onViewChange(viewId: string) {

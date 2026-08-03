@@ -18,6 +18,9 @@ export interface ProductFilm {
   filmSize?: string
   filmThickness?: number
   filmMaterial?: string
+  color?: string
+  technicalSpec?: string
+  designNotes?: string
   remark?: string
   status?: number
   statusName?: string

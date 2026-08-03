@@ -147,7 +147,7 @@ const fetchOrderDetail = async () => {
 
   try {
     const response = await orderApi.getOrder(props.orderId)
-    const data = response.data
+    const data = response.data!
 
     orderDetail.value = data
     formData.value.orderId = data.orderId

@@ -149,8 +149,8 @@ const handleToolbarClick = (key: string) => {
 
 const handleView = async (row: SysOperLog) => {
   try {
-    if (row.logId) {
-      const res = await operationLogApi.getInfo(row.logId)
+    if (row.id) {
+      const res = await operationLogApi.getInfo(row.id)
       if (res.data) {
         formData.value = res.data
         dialogVisible.value = true

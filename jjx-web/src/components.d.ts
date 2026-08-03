@@ -84,6 +84,7 @@ declare module 'vue' {
     MaterialSelector: typeof import('./components/Selector/MaterialSelector.vue')['default']
     MenuButtonPermission: typeof import('./components/system/MenuButtonPermission.vue')['default']
     MenuEditFormDialog: typeof import('./components/system/MenuEditFormDialog.vue')['default']
+    OperationPreviewDialog: typeof import('./components/OperationPreviewDialog/index.vue')['default']
     OperationResultDialog: typeof import('./components/OperationResultDialog/index.vue')['default']
     Pagination: typeof import('./components/Pagination/index.vue')['default']
     ProductCategorySelect: typeof import('./components/ProductCategorySelect.vue')['default']

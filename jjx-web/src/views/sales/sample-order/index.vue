@@ -257,7 +257,7 @@
                   <div v-if="r.engineeringNote" style="color:#666;font-size:13px;margin-top:4px;white-space:pre-wrap">{{ r.engineeringNote }}</div>
                   <div v-if="r.bomSnapshot" style="margin-top:6px">
                     <div style="font-size:12px;color:#909399;margin-bottom:4px">🧾 物料清单（{{ parseBom(r.bomSnapshot).length }} 项）</div>
-                    <el-table :data="parseBom(r.bomSnapshot)" size="mini" border style="width:100%">
+                    <el-table :data="parseBom(r.bomSnapshot)" size="small" border style="width:100%">
                       <el-table-column prop="layerName" label="层" width="60" />
                       <el-table-column prop="materialName" label="物料" min-width="110" />
                       <el-table-column prop="specification" label="规格" min-width="90" />
@@ -319,6 +319,15 @@
 
     <!-- 操作结果弹窗 -->
     <OperationResultDialog v-model:visible="resultVisible" :data="resultData" />
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="sampleStatusTextMap"
+      @success="onPreviewSuccess"
+    />
 
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
@@ -327,6 +336,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
@@ -337,6 +347,8 @@ import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 import EngineeringWorkbench from './components/EngineeringWorkbench.vue'
 import OperationResultDialog from '@/components/OperationResultDialog/index.vue'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
 
 defineOptions({ name: 'SalesSampleOrder' })
 
@@ -596,7 +608,7 @@ function parseProcess(json?: string) {
 const iterationHistory = computed(() => {
   const d = detailData.value
   if (!d) return []
-  const history: Array<{ time: string; action: string; detail: string | null; type: string }> = []
+  const history: Array<{ time: string; action: string; detail: string | null; type: TagType }> = []
 
   // 创建
   history.push({
@@ -672,8 +684,8 @@ function statusLabel(status: number): string {
   const label = SampleOrderStatusEnum.getLabel(status)
   return label && label !== '未知' ? label : `未知(${status})`
 }
-function statusTagType(status: number): string {
-  return (SampleOrderStatusEnum.getTagProps(status).type as string) || 'info'
+function statusTagType(status: number): TagType {
+  return (SampleOrderStatusEnum.getTagProps(status).type as TagType) || 'info'
 }
 
 // ==================== 接口 ====================
@@ -786,7 +798,7 @@ function engBeforeUpload(file: UploadRawFile) {
 // 上传文件
 const engUploadFile: UploadProps['httpRequest'] = async (options) => {
   const orderId = detailData.value?.orderId
-  if (!orderId) { options.onError(new Error('无订单ID')); return }
+  if (!orderId) { options.onError(new Error('无订单ID') as any); return }
 
   const fd = new FormData()
   fd.append('file', options.file)
@@ -803,7 +815,7 @@ const engUploadFile: UploadProps['httpRequest'] = async (options) => {
       // 刷新文件列表
       await loadEngFiles(orderId)
     } else {
-      options.onError(new Error(res?.msg || '上传失败'))
+      options.onError(new Error(res?.msg || '上传失败') as any)
     }
   } catch (e: any) { options.onError(e) }
 }
@@ -855,168 +867,122 @@ async function handleDetailRestartEngineering() {
   getList()
 }
 
-// ==================== 列表操作（Prompt弹窗方式） ====================
-async function handleSubmitReview(row: any) {
-  await ElMessageBox.confirm(`确定提交样品单 [${row.orderNo}] 审核？`, '确认')
-  await sampleOrderApi.submitReview(row.orderId)
-  ElMessage.success('已提交审核')
-  showResult({
-    actionName: '样品单提交审核',
-    docNo: row.orderNo,
-    fromStatus: statusLabel(row.sampleStatus),
-    toStatus: '待审核',
-    docType: 'audit',
-    nextSteps: ['审核员审核样品单', '审核通过后进入工程打样'],
-  })
-  getList()
+// ==================== 列表操作（操作预览器方式） ====================
+// 操作预览器状态
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+const previewRow = ref<any>(null)
+// 状态码 → 状态名（预览器状态跳转展示用）
+const sampleStatusTextMap = Object.fromEntries(
+  SampleOrderStatusEnum.items.map((i: any) => [i.value, i.label]),
+)
+function openPreview(opKey: string, row: any) {
+  if (!row?.orderId) return
+  let op = getOperation(opKey)
+  if (!op) return
+  // 动态默认值：实际打样数量默认取单据数量
+  if (opKey === 'sample.markReady' && row.sampleQty) {
+    op = {
+      ...op,
+      fields: (op.fields || []).map((f) =>
+        f.key === 'sampleQty' ? { ...f, defaultValue: row.sampleQty } : f,
+      ),
+    }
+  }
+  previewOperation.value = op
+  previewBizId.value = row.orderId
+  previewBizNo.value = row.orderNo || ''
+  previewRow.value = row
+  previewVisible.value = true
 }
 
-async function handleApprove(row: any) {
-  const { value } = await ElMessageBox.prompt('审核备注（可选）', '审核通过', { inputType: 'textarea' })
-  await sampleOrderApi.approve(row.orderId, value || '')
-  ElMessage.success('审核通过，已进入工程打样阶段')
-  showResult({
-    actionName: '样品单审核通过',
-    docNo: row.orderNo,
-    fromStatus: '待审核',
-    toStatus: '工程打样中',
-    remark: value || '',
-    docType: 'audit',
-    nextSteps: ['工程接单', '记录工序进度', '标记样品完成'],
-  })
+// 预览器执行成功 → 刷新 + 结果展示器
+function onPreviewSuccess(payload?: any) {
+  const row = previewRow.value
+  const op = previewOperation.value
   getList()
+  if (!row || !op?.result) return
+  const r = op.result
+  const values = payload?.values || {}
+  const base: any = {
+    actionName: r.name,
+    docNo: row.orderNo,
+    fromStatus: r.from || statusLabel(row.sampleStatus),
+    toStatus: r.to,
+    docType: r.docType || 'audit',
+    nextSteps: r.nextSteps || [],
+  }
+  if (op.key === 'sample.approve') base.remark = values.remark || ''
+  if (op.key === 'sample.rejectReview') base.remark = values.remark
+  if (op.key === 'sample.markReady') base.sampleQty = Number(values.sampleQty)
+  if (op.key === 'sample.sendSample') {
+    Object.assign(base, {
+      customerName: row.customerName,
+      contactPhone: row.contactPhone,
+      sampleQty: row.sampleQty,
+      express: {
+        trackingNo: values.trackingNo || '-',
+        receiver: row.customerName,
+        qty: row.sampleQty,
+      },
+    })
+  }
+  if (op.key === 'sample.confirm') base.remark = `确认人：${values.clientName || '客户确认'}`
+  if (op.key === 'sample.rejectSample') base.remark = values.reason
+  showResult(base)
 }
 
-async function handleRejectReview(row: any) {
-  const { value } = await ElMessageBox.prompt('驳回原因', '审核驳回', { inputType: 'textarea' })
-  if (!value) { ElMessage.warning('请输入驳回原因'); return }
-  await sampleOrderApi.rejectReview(row.orderId, value)
-  ElMessage.success('已驳回')
-  showResult({
-    actionName: '样品单审核驳回',
-    docNo: row.orderNo,
-    fromStatus: '待审核',
-    toStatus: '创建(可改重提)',
-    remark: value,
-    docType: 'audit',
-    nextSteps: ['销售修改样品单', '重新提交审核'],
-  })
-  getList()
-}
-
-async function handleMarkReady(row: any) {
-  const { value } = await ElMessageBox.prompt('实际打样数量', '样品完成', { inputValue: String(row.sampleQty || 10) })
-  const qty = parseInt(value || '0')
-  if (qty <= 0) { ElMessage.warning('请输入有效数量'); return }
-  await sampleOrderApi.markReady(row.orderId, qty)
-  ElMessage.success('样品已完成，待送样')
-  showResult({
-    actionName: '样品制作完成',
-    docNo: row.orderNo,
-    fromStatus: '工程打样中',
-    toStatus: '待送样',
-    sampleQty: qty,
-    nextSteps: ['销售登记送样(快递单号)', '客户确认/退回'],
-  })
-  getList()
-}
-
-async function handleSendSample(row: any) {
-  const { value } = await ElMessageBox.prompt('快递单号（可选）', '送样登记')
-  await sampleOrderApi.sendSample(row.orderId, value || '')
-  ElMessage.success('送样登记成功')
-  showResult({
-    actionName: '样品送样登记',
-    docNo: row.orderNo,
-    fromStatus: '待送样',
-    toStatus: '已送样',
-    docType: 'express',
-    customerName: row.customerName,
-    contactPhone: row.contactPhone,
-    sampleQty: row.sampleQty,
-    express: { trackingNo: value || '-', receiver: row.customerName, qty: row.sampleQty },
-    nextSteps: ['等待客户确认样品OK', '客户退回则重新打样'],
-  })
-  getList()
-}
-
-async function handleConfirm(row: any) {
-  const { value } = await ElMessageBox.prompt('客户方确认人姓名', '客户确认样品OK', { inputValue: row.sampleClientName || '' })
-  await sampleOrderApi.confirm(row.orderId, value || '客户确认')
-  ElMessage.success('客户已确认样品OK')
-  showResult({
-    actionName: '客户确认样品OK',
-    docNo: row.orderNo,
-    fromStatus: '已送样',
-    toStatus: '已确认',
-    remark: `确认人：${value || '客户确认'}`,
-    docType: 'audit',
-    nextSteps: ['转量产生成标准订单', '或继续多轮样品'],
-  })
-  getList()
-}
-
-async function handleRejectSample(row: any) {
-  const { value } = await ElMessageBox.prompt('退回原因/修改要求', '退回修改', {
-    inputType: 'textarea', confirmButtonText: '退回',
-  })
-  if (!value) { ElMessage.warning('请输入退回原因'); return }
-  await sampleOrderApi.rejectSample(row.orderId, value)
-  ElMessage.success(`已退回要求修改（进入Round ${(row.sampleRound || 1) + 1}）`)
-  showResult({
-    actionName: '客户退回样品',
-    docNo: row.orderNo,
-    fromStatus: '已送样',
-    toStatus: '客户退回(工程重打)',
-    remark: value,
-    docType: 'audit',
-    nextSteps: [`工程重新打样(Round ${(row.sampleRound || 1) + 1})`, '重新送样确认'],
-  })
-  getList()
-}
-
-async function handleConvert(row: any) {
-  await ElMessageBox.confirm(
-    `确定将样品单 [${row.orderNo}] 转量产？将自动生成标准订单。`,
-    '转量产确认',
-    { confirmButtonText: '确定转量产', cancelButtonText: '取消', type: 'warning' }
-  )
-  await sampleOrderApi.convertToProduction(row.orderId)
-  ElMessage.success('转量产成功，已生成标准订单')
-  showResult({
-    actionName: '样品转量产',
-    docNo: row.orderNo,
-    fromStatus: '已确认',
-    toStatus: '已转量产',
-    docType: 'audit',
-    nextSteps: ['标准订单提交审核', '订单确认后提交生产'],
-  })
-  getList()
-}
-
-// 作废
+// 作废样品单（列表行 + 详情弹窗共用）
 async function handleCancel(row: any) {
+  const orderId = row?.orderId
+  if (!orderId) return
   try {
-    const { value } = await ElMessageBox.prompt(
-      `确定将样品单 [${row.orderNo}] 作废？作废后不可恢复。`,
-      '作废确认',
-      {
-        confirmButtonText: '确定作废',
-        cancelButtonText: '取消',
-        type: 'warning',
-        inputPlaceholder: '请填写作废原因（选填）',
-        inputValidator: (v: string) => {
-          if (v && v.length > 200) return '作废原因不能超过200字'
-          return true
-        },
-      }
-    )
-    await sampleOrderApi.cancel(row.orderId, value || undefined)
+    const { value } = await ElMessageBox.prompt('请输入作废原因', '作废样品单', {
+      inputType: 'textarea',
+      confirmButtonText: '确认作废',
+      cancelButtonText: '取消',
+      inputValidator: (v: string) => (v && v.trim() ? true : '请输入作废原因'),
+    })
+    await sampleOrderApi.cancel(orderId, value)
     ElMessage.success('样品单已作废')
+    detailVisible.value = false
     getList()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '作废失败')
   }
+}
+
+async function handleSubmitReview(row: any) {
+  openPreview('sample.submitReview', row)
+}
+async function handleApprove(row: any) {
+  openPreview('sample.approve', row)
+}
+
+async function handleRejectReview(row: any) {
+  openPreview('sample.rejectReview', row)
+}
+
+async function handleMarkReady(row: any) {
+  openPreview('sample.markReady', row)
+}
+
+async function handleSendSample(row: any) {
+  openPreview('sample.sendSample', row)
+}
+
+async function handleConfirm(row: any) {
+  openPreview('sample.confirm', row)
+}
+
+async function handleRejectSample(row: any) {
+  openPreview('sample.rejectSample', row)
+}
+
+async function handleConvert(row: any) {
+  openPreview('sample.convert', row)
 }
 
 // 查看流水

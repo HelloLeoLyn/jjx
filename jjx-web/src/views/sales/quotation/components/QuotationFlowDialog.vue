@@ -120,6 +120,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import type { TagType } from '@/types'
 import { ElMessage } from 'element-plus'
 import { Document, Upload, UploadFilled, Promotion, Check, Close, EditPen, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { quotationApi } from '@/api/sales/quotation'
@@ -152,8 +153,8 @@ const statusMap: Record<number, string> = {
 }
 
 const statusLabel = computed(() => statusMap[props.currentStatus ?? -1] ?? '-')
-const statusTagType = computed(() => {
-  const map: Record<number, string> = { 0: 'info', 1: 'primary', 2: 'success', 3: 'danger', 4: 'info', 5: 'warning', 6: 'success', 8: 'warning', 9: 'success' }
+const statusTagType = computed<TagType>(() => {
+  const map: Record<number, TagType> = { 0: 'info', 1: 'primary', 2: 'success', 3: 'danger', 4: 'info', 5: 'warning', 6: 'success', 8: 'warning', 9: 'success' }
   return map[props.currentStatus ?? -1] ?? 'info'
 })
 
@@ -342,14 +343,14 @@ function formatTime(t: string | null | undefined): string {
   return String(t).replace('T', ' ').slice(0, 19)
 }
 
-function timelineType(flow: any, idx: number): string {
+function timelineType(flow: any, idx: number): TagType | '' {
   if (idx !== 0) return ''
   const map: Record<string, string> = {
     APPROVE: 'success', CUSTOMER_CONFIRM: 'success',
     REJECT: 'danger', CUSTOMER_REJECT: 'danger', MODIFY: 'warning',
     SUBMIT_REVIEW: 'primary', SEND: 'primary',
   }
-  return map[flow.actionCode] || 'primary'
+  return (map[flow.actionCode] || 'primary') as TagType
 }
 
 function actionIcon(code: string) {

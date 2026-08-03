@@ -91,6 +91,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import type { TagType } from '@/types'
 import type { BoardCard } from '@/views/kanban/types/board'
 
 const props = defineProps<{
@@ -119,8 +120,8 @@ const priorityLabel = computed(() => {
   return map[props.card?.priority ?? ''] ?? ''
 })
 
-const priorityType = computed(() => {
-  const map: Record<string, string> = { urgent: 'danger', high: 'warning', normal: 'info', low: 'info' }
+const priorityType = computed<TagType>(() => {
+  const map: Record<string, TagType> = { urgent: 'danger', high: 'warning', normal: 'info', low: 'info' }
   return map[props.card?.priority ?? ''] ?? 'info'
 })
 
@@ -132,8 +133,8 @@ const statusLabel = computed(() => {
   return map[props.card?.status ?? ''] ?? ''
 })
 
-const statusType = computed(() => {
-  const map: Record<string, string> = {
+const statusType = computed<TagType>(() => {
+  const map: Record<string, TagType> = {
     pending: 'info', in_progress: 'primary', review: 'warning',
     completed: 'success', blocked: 'danger', cancelled: 'info',
   }

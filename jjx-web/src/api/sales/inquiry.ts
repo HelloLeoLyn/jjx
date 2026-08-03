@@ -24,6 +24,7 @@ export interface InquiryBase {
   contactPhone?: string
   inquiryDate: string
   expectedQuantity?: number
+  productId?: number
   productDescription?: string
   keyCount?: number
   sizeDescription?: string
@@ -43,7 +44,7 @@ export interface InquiryBase {
 
 // 询价单列表响应
 export interface InquiryListResponse {
-  rows: InquiryBase[]
+  records: InquiryBase[]
   total: number
 }
 

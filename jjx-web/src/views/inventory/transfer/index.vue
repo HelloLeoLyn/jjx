@@ -227,7 +227,7 @@ const getList = async () => {
     }
 
     if (queryParams.status) {
-      filteredData = filteredData.filter((item) => item.status === queryParams.status)
+      filteredData = filteredData.filter((item) => item.status === Number(queryParams.status))
     }
 
     // 模拟分页

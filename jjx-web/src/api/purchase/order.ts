@@ -1,5 +1,7 @@
 import request from '@/utils/request'
-import type { PurchaseOrder, PurchaseOrderItem, OrderQueryParams, PurchaseDocument } from '@/types/purchase'
+import type { R } from '@/types'
+import type { PurchaseOrder, PurchaseOrderItem, PurchaseDocument } from '@/types/purchase'
+import type { PurchaseOrderQuery } from '@/types/purchase/order'
 
 /**
  * 获取采购订单总数
@@ -11,7 +13,7 @@ export function getOrderCount() {
 /**
  * 查询采购订单列表
  */
-export function listOrder(params?: OrderQueryParams) {
+export function listOrder(params?: PurchaseOrderQuery) {
   return request({
     url: '/purchase/order/list',
     method: 'get',
@@ -53,8 +55,13 @@ export function updateOrder(data: PurchaseOrder, itemList?: PurchaseOrderItem[])
   })
 }
 
-// 导出采购订单列表
-export function exportOrder(params?: OrderQueryParams) {
+// 导出采购订单列表（支持按查询条件导出或按ID导出）
+export interface PurchaseExportParams extends Partial<PurchaseOrderQuery> {
+  orderId?: string
+  orderIds?: string
+  format?: 'excel' | 'pdf'
+}
+export function exportOrder(params?: PurchaseExportParams) {
   return request({
     url: '/purchase/order/export',
     method: 'get',

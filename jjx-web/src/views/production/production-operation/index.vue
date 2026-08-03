@@ -653,23 +653,19 @@ const handleWorkOrderChange = (workOrderId: string) => {
 }
 
 // 获取状态标签类型
-const getStatusTagType = (status: string): 'info' | 'warning' | 'success' | 'danger' => {
-  const typeMap: Record<string, 'info' | 'warning' | 'success' | 'danger'> = {
-    pending: 'info',
-    in_progress: 'warning',
-    completed: 'success',
-    cancelled: 'danger',
+const getStatusTagType = (status: number): 'info' | 'warning' | 'success' | 'danger' | 'primary' => {
+  const typeMap: Record<number, 'info' | 'warning' | 'success' | 'danger' | 'primary'> = {
+    0: 'info', 1: 'warning', 2: 'primary', 3: 'warning',
+    4: 'success', 5: 'info', 6: 'info', 7: 'danger', 8: 'danger', 9: 'warning',
   }
   return typeMap[status] || 'info'
 }
 
 // 获取状态标签文本
-const getStatusLabel = (status: string) => {
-  const labelMap: Record<string, string> = {
-    pending: '待分配',
-    in_progress: '进行中',
-    completed: '已完成',
-    cancelled: '已取消',
+const getStatusLabel = (status: number) => {
+  const labelMap: Record<number, string> = {
+    0: '待执行', 1: '准备中', 2: '执行中', 3: '已暂停',
+    4: '已完成', 5: '已跳过', 6: '已取消', 7: '已超期', 8: '异常中', 9: '待确认',
   }
   return labelMap[status] || '未知'
 }

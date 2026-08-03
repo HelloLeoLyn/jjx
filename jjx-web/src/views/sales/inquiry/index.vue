@@ -484,6 +484,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick } from 'vue'
+import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
@@ -600,7 +601,7 @@ const customUpload: UploadProps['httpRequest'] = async (options) => {
       options.onSuccess(res.data)
       ElMessage.success('附件上传成功')
     } else {
-      options.onError(new Error(res?.msg || '上传失败'))
+      options.onError(new Error(res?.msg || '上传失败') as any)
     }
   } catch (e: any) {
     options.onError(e)
@@ -739,8 +740,8 @@ function statusLabel(status: number): string {
   return statusMap[status]?.label || String(status ?? '')
 }
 
-function statusTagType(status: number): string {
-  return statusMap[status]?.type || 'info'
+function statusTagType(status: number): TagType {
+  return (statusMap[status]?.type || 'info') as TagType
 }
 
 // ==================== 方法 ====================

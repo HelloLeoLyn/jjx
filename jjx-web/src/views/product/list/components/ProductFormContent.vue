@@ -503,10 +503,10 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (isEdit.value) {
-      await productApi.edit(submitData)
+      await productApi.edit(submitData as ProductFormData)
       ElMessage.success('更新成功')
     } else {
-      await productApi.add(submitData)
+      await productApi.add(submitData as ProductFormData)
       ElMessage.success('创建成功')
     }
     emit('success')

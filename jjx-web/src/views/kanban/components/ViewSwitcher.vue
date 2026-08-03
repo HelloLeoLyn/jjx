@@ -35,8 +35,8 @@ const activeView = computed({
   set: (val: string) => emit('update:modelValue', val),
 })
 
-function onChange(val: string) {
-  emit('change', val)
+function onChange(val: string | number | boolean | undefined) {
+  emit('change', String(val ?? ''))
 }
 </script>
 

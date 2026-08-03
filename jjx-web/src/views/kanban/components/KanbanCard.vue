@@ -62,6 +62,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { TagType } from '@/types'
 import type { BoardCard } from '@/views/kanban/types/board'
 import { Goods, Ticket, UserFilled, Warning, Clock, OfficeBuilding } from '@element-plus/icons-vue'
 
@@ -78,8 +79,8 @@ const priorityLabel = computed(() => {
   return map[props.card.priority] ?? '普通'
 })
 
-const priorityTagType = computed(() => {
-  const map: Record<string, string> = { urgent: 'danger', high: 'warning', normal: 'info', low: 'info' }
+const priorityTagType = computed<TagType>(() => {
+  const map: Record<string, TagType> = { urgent: 'danger', high: 'warning', normal: 'info', low: 'info' }
   return map[props.card.priority] ?? 'info'
 })
 

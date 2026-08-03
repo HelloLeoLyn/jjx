@@ -313,6 +313,7 @@ defineOptions({
 })
 
 import { ref, reactive, computed, onMounted } from 'vue'
+import type { TagType } from '@/types'
 import { parseTime, formatCurrency } from '@/utils/format'
 import { orderApi } from '@/api/sales/order'
 import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
@@ -440,7 +441,7 @@ const getList = async () => {
 const loadProductionProgress = async (salesOrderId: number) => {
   productionLoading.value = true
   try {
-    const res = await getProductionOrderList({ salesOrderId, pageSize: 50 })
+    const res = await getProductionOrderList({ salesOrderId, pageSize: 50, pageNum: 1 })
     const records = res?.data?.records || (res?.data && Array.isArray(res.data) ? res.data : [])
     productionOrders.value = records.map((r: any) => ({
       orderId: r.orderId,
@@ -595,7 +596,7 @@ const loadOrderDetail = async (orderId: number, tab: string) => {
   activeTab.value = tab
   try {
     const res = await orderApi.getOrder(orderId)
-    const data = res.code === 200 ? res.data : res.data || res
+    const data = (res.code === 200 ? res.data : res.data) || (res as any)
     Object.assign(detail, {
       orderId: data.orderId,
       orderNo: data.orderNo,
@@ -685,8 +686,8 @@ const getProdStatusLabelByCode = (code: number | undefined) => {
 }
 
 /** 生产订单(ProductionOrder)状态标签类型 */
-const getProdOrderStatusTagType = (status: number | undefined) => {
-  return prodOrderStatusMap[status ?? -1]?.type || 'info'
+const getProdOrderStatusTagType = (status: number | undefined): TagType => {
+  return (prodOrderStatusMap[status ?? -1]?.type || 'info') as TagType
 }
 
 /** 生产订单(ProductionOrder)状态标签文本 */

@@ -9,6 +9,6 @@
       "@/*": ["./src/*"]
     },
     "types": ["element-plus/global"],
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "5.0"
   }
 }

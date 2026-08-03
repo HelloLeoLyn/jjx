@@ -106,7 +106,7 @@ export interface ProductInstanceQueryParams extends PageQuery {
   productCode?: string
   productName?: string
   orderNo?: string
-  instanceStatus?: string
+  instanceStatus?: number
   lifecycleStatus?: string
   startDate?: string
   endDate?: string

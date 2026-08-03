@@ -204,8 +204,6 @@ const tableTitle = computed(() => {
   return map[queryParams.reportType] || '销售报表'
 })
 
-const mockData: Record<string, any[]> = {
-
 const getList = async () => {
   loading.value = true
   try {
