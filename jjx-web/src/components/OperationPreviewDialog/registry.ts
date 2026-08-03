@@ -1,5 +1,14 @@
 import { quotationApi } from '@/api/sales/quotation'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { inboundApi } from '@/api/inventory/inbound'
+import { outboundApi } from '@/api/inventory/outbound'
+import { useUserStore } from '@/store/modules/user'
+
+// 当前用户（入库/出库审批人等字段用）
+function currentUser() {
+  const store = useUserStore()
+  return { id: String(store.userId || 1), name: store.nickName || '当前用户' }
+}
 
 /**
  * 操作预览器 - 操作注册表
@@ -334,10 +343,77 @@ export const sampleOperations: OperationDef[] = [
   },
 ]
 
+/** ==================== 库存模块 · 入库单 ==================== */
+
+export const inboundOperations: OperationDef[] = [
+  {
+    key: 'inbound.submit',
+    bizType: 'inbound',
+    name: '提交审核',
+    fromStatus: [0],
+    toStatus: 1,
+    events: ['inventory.inbound.submitted'],
+    api: ({ bizId }) => inboundApi.submitApprove(String(bizId)),
+  },
+  {
+    key: 'inbound.approve',
+    bizType: 'inbound',
+    name: '审批通过',
+    fromStatus: [1],
+    toStatus: 2,
+    fields: [{ key: 'remark', label: '审批备注', type: 'textarea', placeholder: '选填' }],
+    events: ['inventory.inbound.approved'],
+    api: ({ bizId, values }) => {
+      const u = currentUser()
+      return inboundApi.approve({ inboundId: String(bizId), approverId: u.id, approverName: u.name, remark: values.remark || '' })
+    },
+  },
+  {
+    key: 'inbound.confirm',
+    bizType: 'inbound',
+    name: '确认入库',
+    fromStatus: [2],
+    toStatus: 3,
+    events: ['inventory.inbound.confirmed'],
+    api: ({ bizId }) => {
+      const u = currentUser()
+      return inboundApi.confirm(String(bizId), u.id, u.name)
+    },
+  },
+  {
+    key: 'inbound.cancel',
+    bizType: 'inbound',
+    name: '取消入库单',
+    fromStatus: [0, 1],
+    fields: [{ key: 'reason', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
+    events: ['inventory.inbound.cancelled'],
+    api: ({ bizId, values }) => inboundApi.cancel(String(bizId), values.reason),
+  },
+]
+
+/** ==================== 库存模块 · 出库单 ==================== */
+
+export const outboundOperations: OperationDef[] = [
+  {
+    key: 'outbound.confirm',
+    bizType: 'outbound',
+    name: '确认出库',
+    fromStatus: [2],
+    toStatus: 3,
+    events: ['inventory.outbound.confirmed'],
+    api: ({ bizId }) => {
+      const u = currentUser()
+      return outboundApi.confirm(String(bizId), u.id, u.name)
+    },
+  },
+]
+
 /** 全模块注册表汇总（后续模块在此追加） */
 export const operationRegistry: Record<string, OperationDef> = {
   ...Object.fromEntries(quotationOperations.map((op) => [op.key, op])),
   ...Object.fromEntries(sampleOperations.map((op) => [op.key, op])),
+  ...Object.fromEntries(inboundOperations.map((op) => [op.key, op])),
+  ...Object.fromEntries(outboundOperations.map((op) => [op.key, op])),
 }
 
 export function getOperation(key: string): OperationDef | undefined {

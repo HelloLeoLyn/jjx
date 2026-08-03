@@ -134,6 +134,16 @@
         @pagination="getList"
       />
     </el-card>
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="outboundStatusTextMap"
+      @success="getList"
+    />
+
   </div>
 </template>
 
@@ -147,6 +157,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Refresh } from '@element-plus/icons-vue'
 import { outboundApi } from '@/api/inventory/outbound'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { OutboundQueryParams, OutboundVO } from '@/types/inventory/outbound'
 
@@ -225,11 +237,23 @@ const handleEdit = (row: OutboundVO) => {
 }
 
 // 确认出库
-const handleConfirm = (row: OutboundVO) => {
-  ElMessage.success(`确认出库成功: ${row.outboundNo}`)
-  getList()
+// 确认出库（操作预览器，Phase 2）
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+const outboundStatusTextMap: Record<number, string> = { 0: '草稿', 1: '待审批', 2: '已审批', 3: '已出库' }
+function openPreview(opKey: string, row: OutboundVO) {
+  if (!row?.outboundId) return
+  const op = getOperation(opKey)
+  if (!op) return
+  previewOperation.value = op
+  previewBizId.value = Number(row.outboundId)
+  previewBizNo.value = row.outboundNo || ''
+  previewVisible.value = true
 }
 
+const handleConfirm = (row: OutboundVO) => openPreview('outbound.confirm', row)
 // 获取出库类型标签样式
 const getOutboundTypeTag = (
   type: string

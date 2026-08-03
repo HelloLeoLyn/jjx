@@ -231,6 +231,16 @@
         <el-button @click="detailDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="inboundStatusTextMap"
+      @success="getList"
+    />
+
   </div>
 </template>
 
@@ -244,6 +254,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Download, Refresh } from '@element-plus/icons-vue'
 import { inboundApi } from '@/api/inventory/inbound'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { InboundQueryParams, InboundVO } from '@/types/inventory/inbound'
 
@@ -356,107 +368,32 @@ const handleView = (row: InboundVO) => {
 }
 
 // 提交审批
-const handleSubmit = async (row: InboundVO) => {
-  try {
-    await ElMessageBox.confirm('确认提交审批吗？', '提示', { type: 'warning' })
-    const res = await inboundApi.submitApprove(row.inboundId)
-    if (res.data) {
-      ElMessage.success('提交审批成功')
-      getList()
-    } else {
-      ElMessage.error('提交审批失败')
-    }
-  } catch (error) {
-    console.error('提交审批失败:', error)
-    ElMessage.error('提交审批失败')
-  }
+// ===== 操作预览器（Phase 2：库存模块）=====
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+const inboundStatusTextMap: Record<number, string> = { 0: '草稿', 1: '待审批', 2: '已审批', 3: '已入库' }
+function openPreview(opKey: string, row: InboundVO) {
+  if (!row?.inboundId) return
+  const op = getOperation(opKey)
+  if (!op) return
+  previewOperation.value = op
+  previewBizId.value = Number(row.inboundId)
+  previewBizNo.value = row.inboundNo || ''
+  previewVisible.value = true
 }
+
+const handleSubmit = async (row: InboundVO) => openPreview('inbound.submit', row)
 
 // 审批通过
-const handleApprove = async (row: InboundVO) => {
-  try {
-    const { value } = await ElMessageBox.prompt('请输入审批备注', '审批通过', {
-      confirmButtonText: '通过',
-      cancelButtonText: '取消',
-      inputPlaceholder: '请输入备注（可选）',
-    })
-
-    // 这里需要获取当前用户信息，暂时使用模拟数据
-    const currentUser = {
-      id: '1',
-      name: '当前用户',
-    }
-
-    const res = await inboundApi.approve({
-      inboundId: row.inboundId,
-      approverId: currentUser.id,
-      approverName: currentUser.name,
-      remark: value || '',
-    })
-
-    if (res.data) {
-      ElMessage.success('审批通过成功')
-      getList()
-    } else {
-      ElMessage.error('审批通过失败')
-    }
-  } catch (error) {
-    console.error('审批通过失败:', error)
-    ElMessage.error('审批通过失败')
-  }
-}
+const handleApprove = async (row: InboundVO) => openPreview('inbound.approve', row)
 
 // 确认入库
-const handleConfirm = async (row: InboundVO) => {
-  try {
-    await ElMessageBox.confirm('确认入库吗？', '提示', { type: 'warning' })
-
-    // 这里需要获取当前用户信息，暂时使用模拟数据
-    const currentUser = {
-      id: '1',
-      name: '当前用户',
-    }
-
-    const res = await inboundApi.confirm(row.inboundId, currentUser.id, currentUser.name)
-    if (res.data) {
-      ElMessage.success('确认入库成功')
-      getList()
-    } else {
-      ElMessage.error('确认入库失败')
-    }
-  } catch (error) {
-    console.error('确认入库失败:', error)
-    ElMessage.error('确认入库失败')
-  }
-}
+const handleConfirm = async (row: InboundVO) => openPreview('inbound.confirm', row)
 
 // 取消入库单
-const handleCancel = async (row: InboundVO) => {
-  try {
-    const { value } = await ElMessageBox.prompt('请输入取消原因', '取消入库单', {
-      confirmButtonText: '确认取消',
-      cancelButtonText: '取消',
-      inputPlaceholder: '请输入取消原因',
-      inputValidator: (value) => {
-        if (!value) {
-          return '取消原因不能为空'
-        }
-        return true
-      },
-    })
-
-    const res = await inboundApi.cancel(row.inboundId, value)
-    if (res.data) {
-      ElMessage.success('取消成功')
-      getList()
-    } else {
-      ElMessage.error('取消失败')
-    }
-  } catch (error) {
-    console.error('取消失败:', error)
-    ElMessage.error('取消失败')
-  }
-}
+const handleCancel = async (row: InboundVO) => openPreview('inbound.cancel', row)
 import { InboundEnum } from '@/enums/inventory'
 
 // 获取状态标签样式
