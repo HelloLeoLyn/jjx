@@ -221,6 +221,22 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Event(value = "sample.ready", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder markSampleReady(Long orderId, Integer sampleQty) {
+        // 前置校验（DEV-491）：① 必须已工程接单
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (current.getEngineeringAcceptor() == null || current.getEngineeringAcceptor().isEmpty()) {
+            throw new BusinessException("请先工程接单，再进行样品完成");
+        }
+        // ② 当前轮次至少 1 条工序记录（DEV-500 轮次语义对齐）
+        Integer roundNo = current.getSampleRound() != null ? current.getSampleRound() : 1;
+        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> roundProcs =
+                sampleProcessMapper.selectByOrderAndRound(orderId, roundNo);
+        if (roundProcs == null || roundProcs.isEmpty()) {
+            throw new BusinessException("当前轮次(Round" + roundNo + ")无工序记录，请先录入工序再标记完成");
+        }
+
         safeTransition(orderId,
                 SampleOrderStatusEnum.ENGINEERING,
                 SampleOrderStatusEnum.SAMPLE_READY,

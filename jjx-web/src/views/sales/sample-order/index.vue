@@ -958,6 +958,16 @@ async function handleRejectReview(row: any) {
 }
 
 async function handleMarkReady(row: any) {
+  // 软提醒（DEV-491）：工艺参数为空时确认
+  if (!row?.engineeringNote) {
+    try {
+      await ElMessageBox.confirm('该样品单未填写工艺参数（工程备注），仍要标记完成？', '提示', {
+        confirmButtonText: '仍要完成', cancelButtonText: '返回', type: 'warning',
+      })
+    } catch {
+      return
+    }
+  }
   openPreview('sample.markReady', row)
 }
 
