@@ -52,6 +52,14 @@
               :min="1"
               style="width: 100%"
             />
+            <el-select
+              v-else-if="field.type === 'select'"
+              v-model="formValues[field.key]"
+              :placeholder="field.placeholder || `请选择${field.label}`"
+              style="width: 100%"
+            >
+              <el-option v-for="opt in field.options || []" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
           </el-form-item>
         </el-form>
       </div>

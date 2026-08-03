@@ -245,6 +245,16 @@
         }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="customerStatusTextMap"
+      @success="getList"
+    />
+
   </div>
 </template>
 
@@ -256,6 +266,8 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { customerApi } from '@/api/sales/customer'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { parseTime, download } from '@/utils/format'
 import CustomerFormDialog from './components/CustomerFormDialog.vue'
 import { CustomerTypeEnum, CustomerLevelEnum, CustomerStatusEnum } from '@/enums/sales/CustomerEnum'
@@ -489,28 +501,21 @@ const handleApprove = () => {
     .catch(() => {})
 }
 
-// 状态变更按钮操作
+// 状态变更按钮操作（操作预览器：目标状态选择器 + 事件预告）
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+const customerStatusTextMap: Record<number, string> = { 1: '潜在客户', 2: '正式客户', 3: '暂停合作', 4: '终止合作' }
 const handleChangeStatus = (row: CustomerItem | MouseEvent) => {
   if (row instanceof MouseEvent) return
-  const customerId = row.customerId
-  ElMessageBox.prompt(
-    '请输入新的状态值（1:潜在客户, 2:正式客户, 3:暂停合作, 4:终止合作）',
-    '状态变更',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputPattern: /^[1-4]$/,
-      inputErrorMessage: '状态值必须是1-4之间的数字',
-    }
-  )
-    .then(({ value }) => {
-      return customerApi.changeCustomerStatus(customerId, parseInt(value))
-    })
-    .then(() => {
-      getList()
-      ElMessage.success('状态变更成功')
-    })
-    .catch(() => {})
+  if (!row.customerId) return
+  const op = getOperation('customer.changeStatus')
+  if (!op) return
+  previewOperation.value = op
+  previewBizId.value = row.customerId
+  previewBizNo.value = row.customerName || ''
+  previewVisible.value = true
 }
 
 // 查看详情按钮操作

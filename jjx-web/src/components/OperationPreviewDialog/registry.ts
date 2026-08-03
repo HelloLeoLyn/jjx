@@ -1,3 +1,4 @@
+import { customerApi } from '@/api/sales/customer'
 import { quotationApi } from '@/api/sales/quotation'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { inboundApi } from '@/api/inventory/inbound'
@@ -18,7 +19,12 @@ function currentUser() {
  */
 
 /** 表单字段类型 */
-export type OperationFieldType = 'input' | 'textarea' | 'number'
+export type OperationFieldType = 'input' | 'textarea' | 'number' | 'select'
+
+export interface OperationFieldOption {
+  label: string
+  value: string | number
+}
 
 export interface OperationField {
   key: string
@@ -27,6 +33,8 @@ export interface OperationField {
   required?: boolean
   placeholder?: string
   defaultValue?: string | number
+  /** select 类型选项 */
+  options?: OperationFieldOption[]
 }
 
 export interface OperationContext {
@@ -343,6 +351,35 @@ export const sampleOperations: OperationDef[] = [
   },
 ]
 
+/** ==================== 销售模块 · 客户状态 ==================== */
+
+export const customerOperations: OperationDef[] = [
+  {
+    key: 'customer.changeStatus',
+    bizType: 'customer',
+    name: '状态变更',
+    // 目标状态由选择器决定，不做固定跳转展示
+    fromStatus: [1, 2, 3, 4],
+    fields: [
+      {
+        key: 'status',
+        label: '目标状态',
+        type: 'select',
+        required: true,
+        options: [
+          { label: '潜在客户', value: 1 },
+          { label: '正式客户', value: 2 },
+          { label: '暂停合作', value: 3 },
+          { label: '终止合作', value: 4 },
+        ],
+      },
+      { key: 'remark', label: '变更说明', type: 'textarea', placeholder: '选填' },
+    ],
+    events: ['sales.customer.status_updated'],
+    api: ({ bizId, values }) => customerApi.changeCustomerStatus(Number(bizId), Number(values.status)),
+  },
+]
+
 /** ==================== 库存模块 · 入库单 ==================== */
 
 export const inboundOperations: OperationDef[] = [
@@ -414,6 +451,7 @@ export const operationRegistry: Record<string, OperationDef> = {
   ...Object.fromEntries(sampleOperations.map((op) => [op.key, op])),
   ...Object.fromEntries(inboundOperations.map((op) => [op.key, op])),
   ...Object.fromEntries(outboundOperations.map((op) => [op.key, op])),
+  ...Object.fromEntries(customerOperations.map((op) => [op.key, op])),
 }
 
 export function getOperation(key: string): OperationDef | undefined {
