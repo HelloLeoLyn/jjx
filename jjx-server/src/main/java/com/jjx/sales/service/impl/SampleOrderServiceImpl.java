@@ -91,6 +91,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode()) {
             throw new BusinessException("报价单已完成，不可重复转样品单");
         }
+        // 只有客户已确认(2)的报价单可转样品单（8-03 规则）
+        if (quotation.getQuotationStatus() == null
+                || quotation.getQuotationStatus() != com.jjx.sales.enums.QuotationStatus.ACCEPTED.getCode()) {
+            throw new BusinessException("只有客户已确认的报价单可以转为样品单");
+        }
 
         // 生成订单编号
         String orderNo = redisSequenceService.generateBusinessNumber("SP", "样品单号");

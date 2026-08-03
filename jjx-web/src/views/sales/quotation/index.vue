@@ -294,7 +294,7 @@
                 @click="handleConvert(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-tooltip content="转为样品单" placement="top" v-if="scope.row.quotationType !== 1 && scope.row.quotationStatus !== 9">
+            <el-tooltip content="转为样品单" placement="top" v-if="scope.row.quotationType !== 1 && scope.row.quotationStatus === 2">
               <el-button
                 link
                 type="warning"
@@ -943,7 +943,7 @@ const quotationActions = computed(() => {
     canApprove: status === 5,                           // 待审核可审核
     canCustomerConfirm: status === 1,                   // 已发送可确认/拒绝
     canConvert: status === 2 && !completed,             // 已确认可转订单
-    canConvertToSample: type !== 1 && !completed,       // 非标准品可转样品单
+    canConvertToSample: status === 2 && !completed,     // 已确认(2)的非标准品可转样品单
     canReQuote: [3, 4].includes(status),                // 已拒绝/已过期可重新报价
     canDelete: ![1, 2, 8, 9].includes(status) && !completed, // 已发送/已确认/已完成/改单禁删
     canEdit: ![1, 2, 3, 4].includes(status) && !completed, // 流转中/已拒绝/已过期/已完成禁改
