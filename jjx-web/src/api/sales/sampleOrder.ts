@@ -20,6 +20,7 @@ export const sampleOrderApi = {
     customerId?: number
     sampleStatus?: number
     salesPersonId?: number
+    hasAcceptor?: boolean
   }): AxiosPromise<any[]> {
     return request({
       url: '/sales/sample-order/list',
@@ -215,6 +216,14 @@ export const sampleOrderApi = {
   getRounds(orderId: number): AxiosPromise<any[]> {
     return request({
       url: `/sales/sample-order/rounds/${orderId}`,
+      method: 'get',
+    })
+  },
+
+  // 打样汇总（总工时+材料成本，DEV-526 打样平台进度展示用）
+  getSummary(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/summary/${orderId}`,
       method: 'get',
     })
   },

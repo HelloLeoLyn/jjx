@@ -1207,6 +1207,26 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     @Override
     public List<SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId) {
-        return orderMapper.selectSampleOrders();
+        return selectSampleList(customerId, sampleStatus, salesPersonId, null);
+    }
+
+    @Override
+    public List<SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor) {
+        java.util.List<SalesOrder> list = orderMapper.selectSampleOrders();
+        if (list == null || list.isEmpty()) {
+            return list;
+        }
+        java.util.List<SalesOrder> result = list;
+        if (customerId != null) {
+            result = result.stream().filter(o -> customerId.equals(o.getCustomerId())).collect(java.util.stream.Collectors.toList());
+        }
+        if (sampleStatus != null) {
+            result = result.stream().filter(o -> sampleStatus.equals(o.getSampleStatus())).collect(java.util.stream.Collectors.toList());
+        }
+        if (hasAcceptor != null && hasAcceptor) {
+            result = result.stream().filter(o -> o.getEngineeringAcceptor() != null && !o.getEngineeringAcceptor().isEmpty())
+                    .collect(java.util.stream.Collectors.toList());
+        }
+        return result;
     }
 }

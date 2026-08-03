@@ -51,8 +51,9 @@ public class SampleOrderController extends BaseController {
     public Result<List<SalesOrder>> list(
             @RequestParam(required = false) Long customerId,
             @RequestParam(required = false) Integer sampleStatus,
-            @RequestParam(required = false) Long salesPersonId) {
-        return Result.success(sampleOrderService.selectSampleList(customerId, sampleStatus, salesPersonId));
+            @RequestParam(required = false) Long salesPersonId,
+            @RequestParam(required = false) Boolean hasAcceptor) {
+        return Result.success(sampleOrderService.selectSampleList(customerId, sampleStatus, salesPersonId, hasAcceptor));
     }
 
     @Operation(summary = "样品单提交审核")

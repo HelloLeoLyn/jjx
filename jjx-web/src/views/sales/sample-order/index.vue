@@ -72,15 +72,23 @@
             <!-- 查看流水 -->
             <el-button link type="info" size="small" @click="showTrace(scope.row)">查看流水</el-button>
 
-            <!-- 工程打样工作台（仅工程角色 + 打样中状态3） -->
+            <!-- 工程接单（预览器）：接单后到工程管理-打样平台操作 -->
             <el-button
               v-hasPermi="['sales:sample:engineering']"
-              v-if="scope.row.sampleStatus === 3 && isEngineerRole"
+              v-if="scope.row.sampleStatus === 3 && isEngineerRole && !scope.row.engineeringAcceptor"
               link
               type="warning"
               size="small"
-              @click="openWorkbench(scope.row)"
-            >🔧 工程打样</el-button>
+              @click="handleAcceptSample(scope.row)"
+            >🔧 工程接单</el-button>
+            <el-button
+              v-hasPermi="['sales:sample:engineering']"
+              v-if="scope.row.sampleStatus === 3 && isEngineerRole && scope.row.engineeringAcceptor"
+              link
+              type="success"
+              size="small"
+              @click="goWorkbench"
+            >✅ 已接单</el-button>
 
             <!-- 作废：非终态（1-6）可作废 -->
             <el-button
@@ -100,7 +108,7 @@
               <el-button v-hasPermi="['sales:sample:approve']" link type="danger" size="small" @click="handleRejectReview(scope.row)">驳回</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 3">
-              <el-button v-hasPermi="['sales:sample:engineering']" link type="primary" size="small" @click="handleMarkReady(scope.row)">样品完成</el-button>
+              <el-tag size="small" type="warning">打样中</el-tag>
             </template>
             <template v-else-if="scope.row.sampleStatus === 4">
               <el-button v-hasPermi="['sales:sample:deliver']" link type="primary" size="small" @click="handleSendSample(scope.row)">送样登记</el-button>
@@ -859,6 +867,16 @@ async function handleDetailMarkReady() {
 // 退回后重新打样（客户退回9 → 工程打样中3，走操作预览器）
 async function handleRestart(row: any) {
   openPreview('sample.restart', row)
+}
+
+// 工程接单（预览器，DEV-526）
+async function handleAcceptSample(row: any) {
+  openPreview('sample.accept', row)
+}
+
+// 已接单 → 引导到打样平台
+function goWorkbench() {
+  ElMessage.info('请到「工程管理 → 打样平台」继续打样操作')
 }
 
 // ==================== 列表操作（操作预览器方式） ====================

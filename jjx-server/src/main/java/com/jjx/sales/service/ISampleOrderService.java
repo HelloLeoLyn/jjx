@@ -128,6 +128,11 @@ public interface ISampleOrderService {
     java.util.Map<String, Object> transferMaterials(Long orderId);
 
     /**
+     * 样品单列表（DEV-526 打样平台：支持按是否已接单筛选）
+     */
+    List<com.jjx.sales.domain.entity.SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor);
+
+    /**
      * 样品单作废
      * 非终态（未转量产/未关闭/未作废）样品单可作废
      */

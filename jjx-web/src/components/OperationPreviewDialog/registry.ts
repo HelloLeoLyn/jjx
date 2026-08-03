@@ -334,6 +334,25 @@ export const sampleOperations: OperationDef[] = [
     api: ({ bizId }) => sampleOrderApi.restartEngineering(bizId),
   },
   {
+    key: 'sample.accept',
+    bizType: 'sample_order',
+    name: '工程接单',
+    // 接单在工程打样中(3)内进行，状态不变（记录接单人）
+    fromStatus: [3],
+    events: [],
+    result: {
+      name: '工程接单',
+      from: '工程打样中',
+      to: '打样中（已接单）',
+      docType: 'normal',
+      nextSteps: ['到「工程管理 → 打样平台」录工序/工艺', '材料按物料档案选择', '打样完成后在打样平台标记完成'],
+    },
+    api: ({ bizId }) => {
+      const u = currentUser()
+      return sampleOrderApi.acceptEngineering(bizId, u.name)
+    },
+  },
+  {
     key: 'sample.transfer',
     bizType: 'sample_order',
     name: '资料转移',
