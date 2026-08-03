@@ -951,12 +951,16 @@ async function handleCancel(row: any) {
   const orderId = row?.orderId
   if (!orderId) return
   try {
-    const { value } = await ElMessageBox.prompt('请输入作废原因', '作废样品单', {
-      inputType: 'textarea',
-      confirmButtonText: '确认作废',
-      cancelButtonText: '取消',
-      inputValidator: (v: string) => (v && v.trim() ? true : '请输入作废原因'),
-    })
+    const { value } = await ElMessageBox.prompt(
+      '请输入作废原因\n\n⚠️ 作废后将通知销售/工程管理' + (row?.engineeringAcceptor ? `，并派任务给接单人【${row.engineeringAcceptor}】` : ''),
+      '作废样品单',
+      {
+        inputType: 'textarea',
+        confirmButtonText: '确认作废',
+        cancelButtonText: '取消',
+        inputValidator: (v: string) => (v && v.trim() ? true : '请输入作废原因'),
+      },
+    )
     await sampleOrderApi.cancel(orderId, value)
     ElMessage.success('样品单已作废')
     detailVisible.value = false

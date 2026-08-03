@@ -55,7 +55,8 @@
         </el-table-column>
         <el-table-column label="状态" width="110" align="center">
           <template #default="scope">
-            <el-tag v-if="scope.row.engineeringAcceptor" type="success" size="small">打样中（已接单）</el-tag>
+            <el-tag v-if="scope.row.sampleStatus === 10" type="danger" size="small">已作废</el-tag>
+            <el-tag v-else-if="scope.row.engineeringAcceptor" type="success" size="small">打样中（已接单）</el-tag>
             <el-tag v-else type="warning" size="small">待接单</el-tag>
           </template>
         </el-table-column>
@@ -146,7 +147,7 @@ function openWorkbench(row: any) {
 async function getList() {
   loading.value = true
   try {
-    const params: any = {}
+    const params: any = { sampleStatus: 3 }
     if (queryParams.group === 'pending') params.hasAcceptor = false
     else if (queryParams.group === 'accepted') params.hasAcceptor = true
     const res = await sampleOrderApi.list(params)

@@ -1104,6 +1104,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 非终态（未转量产/未关闭/未作废）样品单可作废
      */
     @Override
+    @Event(value = "sample.cancelled", bizId = "#orderId", bizType = "'sample'")
     public SalesOrder cancelSample(Long orderId, String cancelReason) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
@@ -1133,6 +1134,31 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             orderMapper.updateById(update);
         } catch (Exception e) {
             log.warn("记录样品单作废原因失败: {}", e.getMessage());
+        }
+
+        // DEV-527：已接单 → 派任务到接单人（具体人），未接单由事件按角色通知工程管理
+        if (sampleOrder.getEngineeringAcceptor() != null && !sampleOrder.getEngineeringAcceptor().isEmpty()) {
+            try {
+                com.jjx.system.domain.entity.SysTask task = new com.jjx.system.domain.entity.SysTask();
+                task.setTaskCode("sample.cancelled-" + System.currentTimeMillis());
+                task.setTaskType("general");
+                task.setTitle("样品单【" + sampleOrder.getOrderNo() + "】已作废，请停止打样并确认");
+                task.setDescription("作废原因：" + (cancelReason != null ? cancelReason : "-")
+                        + "\n接单人：" + sampleOrder.getEngineeringAcceptor());
+                task.setKanbanModule("office");
+                task.setAssignRole(9L);
+                task.setAssigneeName(sampleOrder.getEngineeringAcceptor());
+                task.setSourceEvent("sample.cancelled");
+                task.setBizType("sample");
+                task.setBizId(orderId);
+                task.setPriority("high");
+                task.setStatus(0);
+                task.setStartTime(java.time.LocalDateTime.now());
+                sysTaskMapper.insert(task);
+                log.info("样品单[{}] 作废，已派任务给接单人[{}]", sampleOrder.getOrderNo(), sampleOrder.getEngineeringAcceptor());
+            } catch (Exception te) {
+                log.warn("派任务给接单人失败: {}", te.getMessage());
+            }
         }
 
         log.info("样品单[{}] 已作废，原因: {}", sampleOrder.getOrderNo(), cancelReason);
