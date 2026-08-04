@@ -4,11 +4,22 @@
 
     <!-- 上方：图标选择区（Tabs + 拖拽源） -->
     <div class="icon-selector-area">
-      <div class="group-mode-switch">
+      <div class="selector-toolbar">
         <el-radio-group v-model="groupMode" size="small">
           <el-radio-button value="category">按工序类别</el-radio-button>
           <el-radio-button value="type">按工序类型</el-radio-button>
         </el-radio-group>
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索工序名称/编码..."
+          clearable
+          size="small"
+          style="width: 220px"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
       </div>
       <el-tabs v-model="activeTab" type="border-card">
         <el-tab-pane
@@ -197,6 +208,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessTypeEnum, ProcessCategoryEnum } from '@/enums/product'
@@ -230,6 +242,9 @@ const emit = defineEmits<{
 /** 分组维度：category=按工序类别 / type=按工序类型 */
 const groupMode = ref<'category' | 'type'>('category')
 
+/** 搜索关键字（按名称/编码过滤图标） */
+const searchKeyword = ref('')
+
 const activeTab = ref('')
 const groups = ref<RouteItemGroup[]>([])
 const isDragOverTable = ref(false)
@@ -254,10 +269,16 @@ const generateTempItemId = (): number => {
 
 // ==================== 计算属性 ====================
 
-// 按所选维度分组的标准工序（类别或类型）
+// 按所选维度分组的标准工序（类别或类型），支持关键字过滤
 const groupedProcesses = computed(() => {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  const filtered = kw
+    ? props.standardProcesses.filter((p) =>
+        (p.processName || '').toLowerCase().includes(kw)
+        || (p.processCode || '').toLowerCase().includes(kw))
+    : props.standardProcesses
   const groups = new Map<string, StandardProcessOption[]>()
-  props.standardProcesses.forEach((p) => {
+  filtered.forEach((p) => {
     const key = groupMode.value === 'category' ? p.processCategory : p.processType
     if (!groups.has(key)) {
       groups.set(key, [])
@@ -707,6 +728,15 @@ defineExpose({
 
 .group-mode-switch {
   margin-bottom: 8px;
+}
+
+.selector-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .icon-grid {
