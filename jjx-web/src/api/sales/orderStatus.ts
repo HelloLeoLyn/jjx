@@ -36,14 +36,14 @@ export const orderStatusApi = {
 
   // 发送客户确认
   sendToCustomer: (orderId: number) =>
-    request.post(`/sales/orders/${orderId}/status/send-to-customer`, { orderId }),
+    request.put(`/sales/orders/${orderId}/status/send-to-customer`, { orderId }),
 
   // 开始生产
   startProduction: (orderId: number) =>
     request.put(`/sales/orders/${orderId}/status/start-production`),
 
   // 完成订单
-  completeOrder: (orderId: number) => request.post(`/sales/orders/${orderId}/status/complete`),
+  completeOrder: (orderId: number) => request.put(`/sales/orders/${orderId}/status/complete`),
 
   // 取消订单
   cancelOrder: (orderId: number, reason: string) =>

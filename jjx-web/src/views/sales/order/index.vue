@@ -189,26 +189,31 @@
                 </el-button>
               </template>
 
-              <!-- 已发货状态 (7) -->
+              <!-- 生产中状态 (7) -->
               <template v-else-if="row.orderStatus === 7">
+                <el-button type="warning" size="small" disabled> 生产中 </el-button>
+              </template>
+
+              <!-- 已发货状态 (8) -->
+              <template v-else-if="row.orderStatus === 8">
                 <el-button type="success" size="small" @click="handleCompleteOrder(row)">
                   完成订单
                 </el-button>
               </template>
 
-              <!-- 已完成状态 (8) -->
-              <template v-else-if="row.orderStatus === 8">
+              <!-- 已完成状态 (9) -->
+              <template v-else-if="row.orderStatus === 9">
                 <el-button type="info" size="small" disabled> 订单已完成 </el-button>
               </template>
 
-              <!-- 已取消状态 (9) -->
-              <template v-else-if="row.orderStatus === 9">
+              <!-- 已取消状态 (10) -->
+              <template v-else-if="row.orderStatus === 10">
                 <el-button type="info" size="small" disabled> 订单已取消 </el-button>
               </template>
 
-              <!-- 取消订单按钮（所有状态都显示） -->
+              <!-- 取消订单按钮（已发货/已完成/已取消不显示） -->
               <el-button
-                v-if="row.orderStatus !== 10 && row.orderStatus !== 8"
+                v-if="row.orderStatus !== 8 && row.orderStatus !== 9 && row.orderStatus !== 10"
                 type="danger"
                 size="small"
                 @click="handleCancelOrder(row)"

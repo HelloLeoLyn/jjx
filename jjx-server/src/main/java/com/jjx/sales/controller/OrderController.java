@@ -67,7 +67,7 @@ public class OrderController extends BaseController {
      * 新增销售订单
      */
     @Operation(summary = "新增销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.INSERT)
+    @Log(module = "销售订单管理", businessType = BusinessType.INSERT, bizType = "'order'", bizId = "#result.data")
     @SaCheckPermission("sales:order:add")
     @PostMapping
     public Result<Long> addOrder(@Validated(ValidationGroups.Add.class) @RequestBody SalesOrderAddDTO dto) {
@@ -79,7 +79,7 @@ public class OrderController extends BaseController {
      * 修改销售订单
      */
     @Operation(summary = "修改销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}")
     public Result<Void> updateOrder(@PathVariable Long orderId, @Validated(ValidationGroups.Update.class) @RequestBody SalesOrderEditDTO dto) {
@@ -93,7 +93,7 @@ public class OrderController extends BaseController {
      * 删除销售订单
      */
     @Operation(summary = "删除销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.DELETE)
+    @Log(module = "销售订单管理", businessType = BusinessType.DELETE, bizType = "'order'", bizId = "#orderIds[0]")
     @SaCheckPermission("sales:order:delete")
     @DeleteMapping("/{orderIds}")
     public Result<Void> deleteOrders(@PathVariable Long[] orderIds) {

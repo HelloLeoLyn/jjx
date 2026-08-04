@@ -506,7 +506,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     public ReviewStatusVO getReviewStatus(Long orderId) {
         return null;
     }
-
     @Override
     public List<ReviewHistoryVO> getReviewHistory(Long orderId) {
         return List.of();
@@ -514,6 +513,37 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
 
 
+
+    @Override
+    @Event(value = "order.completed", bizId = "#orderId", bizType = "'order'")
+    @Transactional(rollbackFor = Exception.class)
+    public void completeOrder(Long orderId) {
+        // 1. 查询订单
+        SalesOrder order = salesOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+
+        // 2. 校验状态流转（仅已发货可完成）
+        OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
+        if (!currentStatus.canTransitionTo(OrderStatusEnum.COMPLETED)) {
+            throw new BusinessException("订单当前状态[" + currentStatus.getName() + "]不能直接完成，仅已发货订单可完成");
+        }
+
+        // 3. 更新状态
+        int result = salesOrderMapper.updateStatusWithCheck(
+                orderId, OrderStatusEnum.COMPLETED.getCode(), currentStatus.getCode()
+        );
+        if (result == 0) {
+            throw new BusinessException("订单状态已被修改，请刷新后重试");
+        }
+
+        // 4. 记录日志
+        String desc = getOperationDescription(currentStatus, OrderStatusEnum.COMPLETED);
+        saveOrderLog(order.getOrderNo(), "complete", desc, 1);
+
+        log.info("订单{}完成，操作人：{}", orderId, SecurityUtils.getUsername());
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)

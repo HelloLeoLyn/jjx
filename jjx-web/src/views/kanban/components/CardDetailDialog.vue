@@ -94,7 +94,7 @@
         <el-input
           v-model="remarkEdit"
           type="textarea"
-          :rows="2"
+          :rows="8"
           placeholder="添加备注..."
           style="margin-top: 12px"
         />

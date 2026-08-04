@@ -174,6 +174,20 @@ public class OrderStatusController {
     }
 
     /**
+     * 完成订单
+     */
+    @Operation(summary = "完成订单")
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @SaCheckPermission("sales:order:edit")
+    @PutMapping("/{orderId}/status/complete")
+    public Result<Void> completeOrder(
+            @Parameter(description = "订单ID", required = true)
+            @PathVariable @NotNull Long orderId) {
+        orderStatusService.completeOrder(orderId);
+        return Result.success();
+    }
+
+    /**
      * 客户确认订单
      */
     @Operation(summary = "客户确认订单")

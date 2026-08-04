@@ -52,6 +52,11 @@ public interface IOrderStatusService {
     void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark);
 
     /**
+     * 完成订单 - 已发货订单完结（SHIPPED -> COMPLETED）
+     */
+    void completeOrder(Long orderId);
+
+    /**
      * 获取订单审核状态
      */
     ReviewStatusVO getReviewStatus(Long orderId);
