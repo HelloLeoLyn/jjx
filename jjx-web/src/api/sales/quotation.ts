@@ -286,7 +286,7 @@ export const quotationApi = {
   // 复制报价单
   copy(quotationId: number): AxiosPromise<QuotationInfo> {
     return request({
-      url: `/sales/quotation/${quotationId}/copy`,
+      url: `/sales/quotation/copy/${quotationId}`,
       method: 'post',
     })
   },

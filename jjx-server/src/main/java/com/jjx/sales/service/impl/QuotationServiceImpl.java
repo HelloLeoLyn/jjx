@@ -770,7 +770,7 @@ public class QuotationServiceImpl implements IQuotationService {
         // accepted -> completed (转订单) / modifying (改单)
         // completed -> modifying (改单)
         // modifying -> draft (编辑后重新提交)
-        // rejected, expired -> (不能转换)
+        // rejected, expired -> draft (重新报价：原单状态流转复活)
 
         if (QuotationStatus.DRAFT.getCode().equals(currentStatus) && (QuotationStatus.PENDING_REVIEW.getCode().equals(newStatus) || QuotationStatus.SENT.getCode().equals(newStatus))) {
             return;
@@ -797,6 +797,12 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         if (QuotationStatus.MODIFYING.getCode().equals(currentStatus) && QuotationStatus.DRAFT.getCode().equals(newStatus)) {
+            return;
+        }
+
+        // 重新报价：已拒绝/已过期 → 草稿（原单状态流转，保留单号与历史）
+        if ((QuotationStatus.REJECTED.getCode().equals(currentStatus) || QuotationStatus.EXPIRED.getCode().equals(currentStatus))
+                && QuotationStatus.DRAFT.getCode().equals(newStatus)) {
             return;
         }
 

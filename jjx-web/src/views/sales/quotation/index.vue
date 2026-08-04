@@ -1075,17 +1075,14 @@ const handleCopy = (row?: any) => {
   })
 }
 
-// 重新报价（已拒绝/已过期 → 复制成新草稿重新走流程）
+// 重新报价（已拒绝/已过期 → 原单状态流转回草稿，保留单号重新走流程）
 const handleReQuote = async (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   if (!quotationId) return
   try {
-    const res: any = await quotationApi.copy(quotationId)
-    Object.assign(form, res.data)
-    form.quotationNo = `COPY_${form.quotationNo}`
-    open.value = true
-    title.value = '重新报价'
-    ElMessage.success('已复制为新的草稿报价单，请修改后重新提交审核')
+    await quotationApi.changeStatus(quotationId, 0)
+    ElMessage.success('已重新报价：原单状态恢复为草稿，请修改后重新提交审核')
+    getList()
   } catch (e: any) {
     ElMessage.error(e?.message || '重新报价失败')
   }
