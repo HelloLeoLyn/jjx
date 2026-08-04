@@ -16,6 +16,8 @@ public class AlertVO {
     private Long alertId;
     private String alertType;
     private String alertLevel;
+    /** 关联订单号（order_shortage 缺料预警） */
+    private String orderNo;
     private Long materialId;
     private String materialCode;
     private String materialName;

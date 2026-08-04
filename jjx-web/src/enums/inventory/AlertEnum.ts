@@ -10,6 +10,7 @@ export const AlertTypeEnum = createEnum({
     { value: 'max_stock', label: '最高库存', tagProps: { type: 'warning' } },
     { value: 'expiry', label: '保质期', tagProps: { type: 'danger' } },
     { value: 'obsolete', label: '呆滞料', tagProps: { type: 'info' } },
+    { value: 'order_shortage', label: '订单缺料', tagProps: { type: 'danger' } },
   ],
   defaultTag: { type: 'info' },
 })

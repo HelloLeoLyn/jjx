@@ -187,6 +187,9 @@
                 <el-button type="primary" size="small" @click="handleStartProduction(row)">
                   开始生产
                 </el-button>
+                <el-button type="warning" size="small" @click="handleRecheckShortage(row)">
+                  齐套检查
+                </el-button>
               </template>
 
               <!-- 生产中状态 (7) -->
@@ -298,6 +301,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
+import { alertApi } from '@/api/inventory/alert'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import OrderAdd from './components/OrderAdd.vue'
 import OrderEdit from './components/OrderEdit.vue'
@@ -542,6 +546,23 @@ const handleSendToCustomer = async (row: any) => {
   } catch (error) {
     if (error !== 'cancel') {
       console.error('发送失败', error)
+    }
+  }
+}
+
+// 订单齐套检查（手动重新检查，DEV-572 8-04）
+const handleRecheckShortage = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确定要对订单【${row.orderNo}】重新执行齐套检查（按BOM算料，缺口生成预警）吗？`, '齐套检查', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await alertApi.checkOrderShortage(row.orderId)
+    ElMessage.success('齐套检查完成，缺料预警已更新（可在库存预警查看）')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('齐套检查失败', error)
     }
   }
 }

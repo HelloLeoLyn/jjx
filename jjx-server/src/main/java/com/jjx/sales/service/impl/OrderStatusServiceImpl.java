@@ -58,6 +58,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final ProductMapper productMapper;
     private final EngineeringRoutingMapper productRoutingMapper;
     private final EventPublisher eventPublisher;
+    private final com.jjx.inventory.service.InventoryAlertService inventoryAlertService;
     
     private void saveOrderLog(String orderNo, String desc, String remark, int status) {
         SysOperLog log = new SysOperLog();
@@ -367,6 +368,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         String desc = getOperationDescription(currentStatus,targetStatus);
         saveOrderLog(order.getOrderNo(), "cancel", desc, 1);
         log.info("订单{}已发送客户确认，操作人：{}，原因：{}", order.getOrderId(), SecurityUtils.getUsername(), "");
+
+        // 6. 订单齐套检查（DEV-572 8-04）：按 BOM 算料，缺口生成 order_shortage 预警
+        try {
+            inventoryAlertService.checkOrderShortage(order.getOrderId());
+        } catch (Exception e) {
+            log.error("订单{}齐套检查异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
+        }
     }
 
     @Override

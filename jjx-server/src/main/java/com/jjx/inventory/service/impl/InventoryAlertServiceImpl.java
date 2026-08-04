@@ -14,6 +14,14 @@ import com.jjx.inventory.mapper.InventoryAlertLogMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.service.InventoryAlertService;
+import com.jjx.engineering.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBomItem;
+import com.jjx.product.mapper.EngineeringBomMapper;
+import com.jjx.product.mapper.EngineeringBomItemMapper;
+import com.jjx.sales.domain.entity.SalesOrder;
+import com.jjx.sales.domain.entity.SalesOrderProduct;
+import com.jjx.sales.mapper.OrderMapper;
+import com.jjx.sales.mapper.SalesOrderProductMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +47,10 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final InventoryStockMapper stockMapper;
     private final InventoryStockItemMapper stockItemMapper;
     private final EventPublisher eventPublisher;
+    private final OrderMapper orderMapper;
+    private final SalesOrderProductMapper orderProductMapper;
+    private final EngineeringBomMapper bomMapper;
+    private final EngineeringBomItemMapper bomItemMapper;
 
     @Override
     public IPage<AlertVO> page(AlertQueryDTO query) {
@@ -68,6 +80,111 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         checkExpiryAlert();
         checkObsoleteAlert();
         log.info("库存预警检查完成");
+    }
+
+    @Override
+    public void checkOrderShortage(Long orderId) {
+        log.info("订单齐套检查开始: orderId={}", orderId);
+        // 1. 查订单（拿订单号）
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            log.warn("订单不存在，跳过齐套检查: {}", orderId);
+            return;
+        }
+        String orderNo = order.getOrderNo();
+
+        // 2. 幂等：清掉该订单旧的未处理缺料预警
+        alertLogMapper.delete(new LambdaQueryWrapper<InventoryAlertLog>()
+                .eq(InventoryAlertLog::getAlertType, "order_shortage")
+                .eq(InventoryAlertLog::getOrderNo, orderNo)
+                .eq(InventoryAlertLog::getStatus, 0));
+
+        // 3. 查订单明细
+        List<SalesOrderProduct> products = orderProductMapper.selectList(
+                new LambdaQueryWrapper<SalesOrderProduct>()
+                        .eq(SalesOrderProduct::getOrderId, orderId));
+        if (products == null || products.isEmpty()) {
+            log.info("订单{}无明细，跳过齐套检查", orderNo);
+            return;
+        }
+
+        // 4. 逐产品按 BOM 算料，汇总物料需求（需求 = Σ产品数量 × BOM用量 × (1+损耗率/100)）
+        Map<Long, BigDecimal> demandMap = new java.util.HashMap<>();
+        Map<Long, String> codeMap = new java.util.HashMap<>();
+        Map<Long, String> nameMap = new java.util.HashMap<>();
+        int noBomCount = 0;
+        for (SalesOrderProduct p : products) {
+            if (p.getProductId() == null) {
+                log.info("订单{}明细产品ID为空，跳过", orderNo);
+                continue;
+            }
+            // 生效已审批 BOM
+            EngineeringBom bom = bomMapper.selectOne(new LambdaQueryWrapper<EngineeringBom>()
+                    .eq(EngineeringBom::getProductId, p.getProductId())
+                    .eq(EngineeringBom::getIsCurrent, true)
+                    .eq(EngineeringBom::getApproveStatus, 3));
+            if (bom == null) {
+                noBomCount++;
+                log.info("产品{}无生效已审批BOM，跳过（不阻断）", p.getProductCode());
+                continue;
+            }
+            List<EngineeringBomItem> items = bomItemMapper.selectList(
+                    new LambdaQueryWrapper<EngineeringBomItem>()
+                            .eq(EngineeringBomItem::getBomId, bom.getBomId()));
+            BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
+            for (EngineeringBomItem item : items) {
+                if (item.getMaterialId() == null) continue;
+                BigDecimal unitQty = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
+                BigDecimal loss = BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate());
+                BigDecimal need = orderQty.multiply(unitQty)
+                        .multiply(BigDecimal.ONE.add(loss.divide(BigDecimal.valueOf(100))));
+                demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
+                codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
+                nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
+            }
+        }
+
+        // 5. 对比可用库存，缺口生成预警
+        int shortageCount = 0;
+        for (Map.Entry<Long, BigDecimal> entry : demandMap.entrySet()) {
+            Long materialId = entry.getKey();
+            BigDecimal demand = entry.getValue();
+            InventoryStock stock = stockMapper.selectByMaterialId(materialId);
+            BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
+                    ? stock.getAvailableQuantity() : BigDecimal.ZERO;
+            BigDecimal gap = demand.subtract(available);
+            if (gap.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            String msg = "订单[" + orderNo + "]缺料：物料[" + codeMap.get(materialId) + "] "
+                    + nameMap.get(materialId) + " 需求" + demand + " 可用" + available + " 缺口" + gap;
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType("order_shortage");
+            alert.setAlertLevel("warning");
+            alert.setOrderNo(orderNo);
+            alert.setMaterialId(materialId);
+            alert.setMaterialCode(codeMap.get(materialId));
+            alert.setMaterialName(nameMap.get(materialId));
+            alert.setCurrentStock(available);
+            alert.setSuggestion("建议补货 " + gap);
+            alert.setAlertMessage(msg);
+            alert.setAlertTime(LocalDateTime.now());
+            alertLogMapper.insert(alert);
+            shortageCount++;
+        }
+        // 缺料联动（DEV-573 8-04）：触发 stock.shortage 事件通知采购/计划角色（配置表 target_role 控制）
+        if (shortageCount > 0) {
+            try {
+                eventPublisher.fire("stock.shortage", java.util.Map.of(
+                        "orderNo", orderNo,
+                        "orderId", String.valueOf(order.getOrderId()),
+                        "shortageCount", String.valueOf(shortageCount),
+                        "noBomCount", String.valueOf(noBomCount),
+                        "bizType", "order"));
+            } catch (Exception e) {
+                log.warn("订单缺料事件联动失败: {}", e.getMessage());
+            }
+        }
+        log.info("订单{}齐套检查完成：缺料{}条，无BOM产品{}个", orderNo, shortageCount, noBomCount);
     }
 
     @Override
@@ -265,9 +382,10 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     @Override
     public List<Map<String, Object>> generatePurchaseSuggestions() {
         log.info("生成采购建议");
-        List<InventoryStock> lowStock = stockMapper.selectLowStock();
         List<Map<String, Object>> suggestions = new ArrayList<>();
 
+        // 来源1：低库存物料（安全库存算法）
+        List<InventoryStock> lowStock = stockMapper.selectLowStock();
         for (InventoryStock stock : lowStock) {
             // 建议采购量 = 安全库存 * 2 - 当前库存（简单算法）
             BigDecimal suggestQty = BigDecimal.valueOf(100).subtract(stock.getTotalQuantity() != null
@@ -284,7 +402,34 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             ));
         }
 
-        log.info("生成采购建议完成，共 {} 条", suggestions.size());
+        // 来源2：未处理的订单缺料预警（DEV-573 8-04 衔接齐套检查）
+        List<InventoryAlertLog> shortageAlerts = alertLogMapper.selectList(
+                new LambdaQueryWrapper<InventoryAlertLog>()
+                        .eq(InventoryAlertLog::getAlertType, "order_shortage")
+                        .eq(InventoryAlertLog::getStatus, 0));
+        for (InventoryAlertLog alert : shortageAlerts) {
+            // 缺口 = 需求 - 可用，建议补货量取缺口（从 alertMessage 冗余在 suggestion 中，优先解析 suggestion）
+            BigDecimal gap = BigDecimal.ZERO;
+            if (alert.getSuggestion() != null && alert.getSuggestion().startsWith("建议补货 ")) {
+                try {
+                    gap = new BigDecimal(alert.getSuggestion().substring("建议补货 ".length()).trim());
+                } catch (Exception e) { /* fallthrough */ }
+            }
+            if (gap.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            suggestions.add(Map.of(
+                    "materialCode", alert.getMaterialCode(),
+                    "materialName", alert.getMaterialName(),
+                    "currentStock", alert.getCurrentStock() != null ? alert.getCurrentStock().doubleValue() : 0,
+                    "suggestQuantity", gap.doubleValue(),
+                    "reason", "订单[" + (alert.getOrderNo() != null ? alert.getOrderNo() : "") + "]缺料，建议补货",
+                    "priority", "urgent",
+                    "sourceAlertId", alert.getAlertId()
+            ));
+        }
+
+        log.info("生成采购建议完成，共 {} 条（低库存{} + 订单缺料{}）", suggestions.size(),
+                lowStock.size(), shortageAlerts.size());
         return suggestions;
     }
 
@@ -359,6 +504,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         vo.setAlertId(alert.getAlertId());
         vo.setAlertType(alert.getAlertType());
         vo.setAlertLevel(alert.getAlertLevel());
+        vo.setOrderNo(alert.getOrderNo());
         vo.setMaterialId(alert.getMaterialId());
         vo.setMaterialCode(alert.getMaterialCode());
         vo.setMaterialName(alert.getMaterialName());

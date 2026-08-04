@@ -25,6 +25,12 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     void executeAlertCheck();
 
     /**
+     * 订单确认齐套检查：按订单产品BOM算料，对比库存，缺口生成订单缺料预警(order_shortage)
+     * 幂等：同订单重算先清旧未处理缺料预警再重建
+     */
+    void checkOrderShortage(Long orderId);
+
+    /**
      * 检查单个物料的安全库存预警
      * 出库/入库确认后调用
      */

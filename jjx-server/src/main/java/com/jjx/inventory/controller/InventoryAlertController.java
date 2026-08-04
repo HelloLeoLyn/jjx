@@ -79,6 +79,15 @@ public class InventoryAlertController {
         return Result.success();
     }
 
+    @PostMapping("/check-order-shortage/{orderId}")
+    @Operation(summary = "订单齐套检查（按BOM算料缺料预警，手动重新检查）")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#orderId")
+    @SaCheckPermission("inventory:alert:edit")
+    public Result<Void> checkOrderShortage(@PathVariable Long orderId) {
+        alertService.checkOrderShortage(orderId);
+        return Result.success();
+    }
+
     @PostMapping("/mark-read/{alertId}")
     @Operation(summary = "标记预警已读")
     @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertId")

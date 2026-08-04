@@ -13,7 +13,8 @@ public enum AlertTypeEnum {
     SAFE_STOCK("safe_stock", "安全库存预警"),
     MAX_STOCK("max_stock", "最高库存预警"),
     EXPIRY("expiry", "保质期预警"),
-    OBSOLETE("obsolete", "呆滞料预警");
+    OBSOLETE("obsolete", "呆滞料预警"),
+    ORDER_SHORTAGE("order_shortage", "订单缺料预警");
 
     private final String code;
     private final String label;
