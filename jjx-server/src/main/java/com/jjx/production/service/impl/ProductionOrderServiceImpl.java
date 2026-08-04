@@ -368,6 +368,33 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public int[] cancelBySalesOrderId(Long salesOrderId) {
+        List<ProductionOrder> orders = productionOrderMapper.selectList(
+                new LambdaQueryWrapper<ProductionOrder>()
+                        .eq(ProductionOrder::getSalesOrderId, salesOrderId));
+        if (orders == null || orders.isEmpty()) {
+            return new int[]{0, 0};
+        }
+
+        int cancelled = 0;
+        int skipped = 0;
+        for (ProductionOrder order : orders) {
+            if (canCancelOrder(order)) {
+                order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
+                updateById(order);
+                cancelled++;
+                log.info("销售订单{}取消联动：生产工单{}已取消", salesOrderId, order.getOrderId());
+            } else {
+                skipped++;
+                log.info("销售订单{}取消联动：生产工单{}状态[{}]不可取消，跳过",
+                        salesOrderId, order.getOrderId(), order.getOrderStatus());
+            }
+        }
+        return new int[]{cancelled, skipped};
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean closeOrder(Long orderId) {
         log.info("关闭生产工单: {}", orderId);
 
@@ -687,13 +714,15 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
      * 检查工单是否可以取消
      */
     private static boolean canCancelOrder(ProductionOrder order) {
-        // 只有草稿、待审批、已批准、已排程和进行中状态的工单可以取消
+        // 草稿、待审批、已批准、已计划、待开始、进行中、已暂停状态的工单可以取消
         Integer status = order.getOrderStatus();
         return OrderStatusEnum.DRAFT.getCode().equals(status) ||
                OrderStatusEnum.PENDING_APPROVAL.getCode().equals(status) ||
                OrderStatusEnum.APPROVED.getCode().equals(status) ||
                OrderStatusEnum.PLANNED.getCode().equals(status) ||
-               OrderStatusEnum.IN_PROGRESS.getCode().equals(status);
+               OrderStatusEnum.PENDING_START.getCode().equals(status) ||
+               OrderStatusEnum.IN_PROGRESS.getCode().equals(status) ||
+               OrderStatusEnum.PAUSED.getCode().equals(status);
     }
 
     /**

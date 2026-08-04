@@ -318,6 +318,20 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         // 5. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
         saveOrderLog(order.getOrderNo(), "cancel", desc, 1);
+
+        // 6. 联动取消关联的生产工单（跳过已完成/已取消/已关闭）
+        int[] result2 = productionOrderService.cancelBySalesOrderId(orderId);
+        int cancelled = result2[0];
+        int skipped = result2[1];
+        if (cancelled > 0 || skipped > 0) {
+            String remark = "取消原因:" + reason + "；联动取消生产工单" + cancelled + "个";
+            if (skipped > 0) {
+                remark += "，跳过" + skipped + "个不可取消工单(已完成等)";
+            }
+            saveOrderLog(order.getOrderNo(), "cancel_work_order", remark, 1);
+            log.info("订单{}取消联动：取消{}个生产工单，跳过{}个", orderId, cancelled, skipped);
+        }
+
         log.info("订单{}已取消，操作人：{}，原因：{}", orderId, SecurityUtils.getUsername(), reason);
     }
 

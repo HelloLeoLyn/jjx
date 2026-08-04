@@ -77,6 +77,14 @@ public interface ProductionOrderService {
     boolean cancelOrder(Long orderId);
 
     /**
+     * 取消销售订单关联的未完成生产工单（跳过已完成/已取消/已关闭）
+     *
+     * @param salesOrderId 销售订单ID
+     * @return int[0]=取消数量, int[1]=跳过数量
+     */
+    int[] cancelBySalesOrderId(Long salesOrderId);
+
+    /**
      * 关闭生产工单
      */
     boolean closeOrder(Long orderId);
