@@ -199,7 +199,7 @@ const handleSubmit = async () => {
       items: itemDTOs as any,
     })
     ElMessage.success('新增成功')
-    router.push('/product/route')
+    router.push('/engineering/route')
   } catch (error) {
     console.error('新增工艺路线失败:', error)
   } finally {
@@ -209,7 +209,7 @@ const handleSubmit = async () => {
 
 // 返回
 const handleBack = () => {
-  router.push('/product/route')
+  router.push('/engineering/route')
 }
 
 onMounted(() => {

@@ -216,7 +216,7 @@ const handlePreview = async (row: ProductBomVO) => {
 // 去创建BOM
 const handleGoCreateBom = () => {
   visible.value = false
-  router.push('/product/bom')
+  router.push('/engineering/bom')
 }
 
 // 加载已审批BOM列表

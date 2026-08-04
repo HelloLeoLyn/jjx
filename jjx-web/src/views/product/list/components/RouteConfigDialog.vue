@@ -218,7 +218,7 @@ const handlePreview = async (row: ProductRoutingVO) => {
 // 去创建工艺路线
 const handleGoCreateRoute = () => {
   visible.value = false
-  router.push('/product/route')
+  router.push('/engineering/route')
 }
 
 // 加载已审批工艺路线列表
