@@ -63,6 +63,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
+    private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
 
     @Override
     public IPage<OutboundVO> page(OutboundQueryDTO query) {
@@ -148,6 +149,17 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
         // 直接执行库存扣减（不经过 approve，避免状态不匹配）
         List<InventoryOutboundItem> outItems = outboundItemMapper.selectByOutboundId(outboundId);
+        // DEV-580：销售发货出库时，先同步释放该订单的成品预留（扣减前释放，FIFO才能扣到预留部分）
+        if ("SALES".equals(order.getSourceType()) && order.getSourceId() != null) {
+            for (InventoryOutboundItem item : outItems) {
+                if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+                try {
+                    orderStockReserveService.releaseForOutbound(order.getSourceId(), item.getMaterialId(), item.getQuantity());
+                } catch (Exception e) {
+                    log.warn("出库联动释放成品预留失败（不影响扣减）: {}", e.getMessage());
+                }
+            }
+        }
         for (InventoryOutboundItem item : outItems) {
             if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
 
@@ -390,6 +402,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceType("work_order");
         order.setSourceId(workOrderId);
         order.setSourceNo(prodOrder.getOrderNo());
+        order.setTraceId(prodOrder.getTraceId()); // 链路追踪（DEV-568）：工单→领料出库单继承
         order.setOutboundDate(LocalDate.now());
         // 默认取第一个启用仓库（工单无仓库字段）
         try {
@@ -482,6 +495,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceType("SALES");
         order.setSourceId(salesOrderId);
         order.setSourceNo(salesOrder.getOrderNo());
+        order.setTraceId(salesOrder.getTraceId()); // 链路追踪（DEV-568）：销售订单→发货出库单继承
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         outboundOrderMapper.insert(order);
 

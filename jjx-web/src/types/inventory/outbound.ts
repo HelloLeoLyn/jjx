@@ -21,6 +21,7 @@ export interface OutboundQueryParams {
 export interface OutboundVO {
   outboundId: string
   outboundNo: string
+  traceId?: string
   outboundType: string
   outboundTypeName: string
   warehouseId: string

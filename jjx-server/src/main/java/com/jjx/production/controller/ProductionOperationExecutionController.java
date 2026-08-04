@@ -159,7 +159,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "导入工序执行数据")
     @PostMapping("/import")
-    @Log(module = "工序执行管理", businessType = BusinessType.IMPORT, bizType = "'production_execution'")
+    @Log(module = "工序执行管理", businessType = BusinessType.IMPORT, bizType = "'production_execution'", bizId = "#importData[0].orderId")
     @SaCheckPermission("production:operation-execution:import")
     public Result<String> importExecutionData(@RequestBody List<ProductionOperationExecutionCreateDTO> importData) {
         productionOperationExecutionService.importExecutionData(importData);

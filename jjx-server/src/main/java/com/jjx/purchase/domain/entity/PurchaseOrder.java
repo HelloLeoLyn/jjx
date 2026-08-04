@@ -28,6 +28,9 @@ public class PurchaseOrder {
      */
     private String orderNo;
 
+    /** 链路追踪ID（DEV-568） */
+    private String traceId;
+
     /**
      * 供应商ID
      */

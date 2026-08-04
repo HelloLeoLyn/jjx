@@ -55,6 +55,7 @@
       @cancel="handleCancelOrder"
       @delete="handleDeleteOrder"
       @more-action="handleMoreAction"
+      @trace="handleTrace"
       @refresh="refreshData"
     />
 
@@ -94,6 +95,9 @@
       @confirm="handleDeleteConfirm"
       @close="handleDeleteClose"
     />
+
+    <!-- 查看流水（DEV-569） -->
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
 </template>
 
@@ -113,6 +117,7 @@ import OrderFormDialog from './components/OrderFormDialog.vue'
 import OrderStatusDialog from './components/OrderStatusDialog.vue'
 import OrderDeleteDialog from './components/OrderDeleteDialog.vue'
 import GanttChart from './components/GanttChart.vue'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type {
   ProductionOrderVO,
   ProductionOrderQuery,
@@ -531,6 +536,14 @@ const handlePrintOrder = (order: any) => {
 
 const handleViewHistory = (order: any) => {
   ElMessage.info(`查看订单 ${order.orderNo} 的操作历史`)
+}
+
+// 查看流水（DEV-569）
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+const handleTrace = (order: any) => {
+  currentTraceId.value = order.traceId || ''
+  traceDrawerVisible.value = true
 }
 
 // 创建订单

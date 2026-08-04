@@ -15,6 +15,9 @@ public class InboundVO {
 
     private Long inboundId;
     private String inboundNo;
+
+    /** 链路追踪ID（DEV-568/569） */
+    private String traceId;
     private String inboundType;
     private Long warehouseId;
     private String warehouseName;

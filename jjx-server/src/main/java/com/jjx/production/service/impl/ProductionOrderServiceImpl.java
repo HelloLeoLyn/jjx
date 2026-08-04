@@ -53,6 +53,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final EngineeringRoutingItemMapper productRoutingItemMapper;
     private final EventPublisher eventPublisher;
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
+    private final com.jjx.inventory.service.InventoryInboundService inventoryInboundService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -68,6 +69,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         // 转换为实体
         ProductionOrder order = productionOrderConverter.toEntity(createDTO);
+        // 链路追踪（DEV-568）：无上游 traceId 则生成 UUID
+        if (order.getTraceId() == null || order.getTraceId().isEmpty()) {
+            order.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
+        }
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         // 保存到数据库
         boolean success = save(order);
@@ -320,6 +325,16 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             log.info("工单[{}] 完工自动创建质检单[{}]", order.getOrderNo(), qcId);
         } catch (Exception e) {
             log.warn("完工自动创建质检单失败（不影响主流程）: {}", e.getMessage());
+        }
+
+        // 完工自动生成成品入库单（DEV-579：拍板4 生产完成→自动生成成品入库单，走入库流程）
+        try {
+            Long inboundId = inventoryInboundService.createFromProduction(orderId);
+            if (inboundId != null) {
+                log.info("工单[{}] 完工自动生成成品入库单[{}]", order.getOrderNo(), inboundId);
+            }
+        } catch (Exception e) {
+            log.warn("完工自动生成成品入库单失败（不影响主流程，可手动重试）: {}", e.getMessage());
         }
 
         // 触发联动事件

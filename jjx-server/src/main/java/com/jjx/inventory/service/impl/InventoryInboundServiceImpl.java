@@ -22,6 +22,7 @@ import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.inventory.enums.OrderStatusEnum;
 import com.jjx.inventory.mapper.InventoryInboundItemMapper;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
@@ -55,6 +56,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
+    private final InventoryMaterialMapper inventoryMaterialMapper;
     private final ProductionOrderMapper productionOrderMapper;
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
@@ -396,6 +398,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceType("PURCHASE");
         order.setSourceId(purchaseOrderId);
         order.setSourceNo(po.getOrderNo());
+        order.setTraceId(po.getTraceId()); // 链路追踪（DEV-568）：采购到货→入库单继承
         order.setWarehouseId(1L); // 默认仓库
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         inboundOrderMapper.insert(order);
@@ -464,15 +467,32 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceType("PRODUCTION");
         order.setSourceId(workOrderId);
         order.setSourceNo(prodOrder.getOrderNo());
+        order.setTraceId(prodOrder.getTraceId()); // 链路追踪（DEV-568）：工单→完工入库单继承
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         inboundOrderMapper.insert(order);
 
-        // 3. 创建入库明细
+        // 3. 创建入库明细（DEV-579：物料=成品物料档案 F类型，产品ID→物料ID映射）
         InventoryInboundItem inboundItem = new InventoryInboundItem();
         inboundItem.setInboundId(order.getInboundId());
-        inboundItem.setMaterialId(prodOrder.getProductId());
-        inboundItem.setMaterialCode(prodOrder.getProductCode());
-        inboundItem.setMaterialName(prodOrder.getProductName());
+        // 通过产品ID查成品物料档案（material_type=F），无档案则回退用产品ID（兼容旧数据）
+        Long materialId = prodOrder.getProductId();
+        String materialCode = prodOrder.getProductCode();
+        String materialName = prodOrder.getProductName();
+        if (prodOrder.getProductId() != null) {
+            com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                            .eq(com.jjx.inventory.domain.InventoryMaterial::getProductId, prodOrder.getProductId())
+                            .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialType, "F")
+                            .last("LIMIT 1"));
+            if (mat != null) {
+                materialId = mat.getMaterialId();
+                materialCode = mat.getMaterialCode();
+                materialName = mat.getMaterialName();
+            }
+        }
+        inboundItem.setMaterialId(materialId);
+        inboundItem.setMaterialCode(materialCode);
+        inboundItem.setMaterialName(materialName);
         inboundItem.setQuantity(prodOrder.getCompletedQuantity() != null
                 ? prodOrder.getCompletedQuantity() : prodOrder.getPlannedQuantity());
         inboundItem.setBatchNo("BATCH-" + prodOrder.getOrderNo());

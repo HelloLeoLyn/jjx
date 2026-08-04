@@ -122,6 +122,7 @@
         <el-table-column label="创建时间" prop="createTime" width="150" align="center" />
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
+            <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="row.status === 0" link type="primary" @click="handleSubmit(row)"
@@ -160,6 +161,12 @@
         @pagination="getList"
       />
     </el-card>
+
+    <!-- 查看流水（DEV-569） -->
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
+    <!-- 查看流水（DEV-569） -->
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
     <!-- 入库单详情对话框 -->
     <el-dialog :title="dialogTitle" v-model="detailDialogVisible" width="900px" append-to-body>
@@ -257,6 +264,7 @@ import { inboundApi } from '@/api/inventory/inbound'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber } from '@/utils/format'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { InboundQueryParams, InboundVO } from '@/types/inventory/inbound'
 
 const router = useRouter()
@@ -395,6 +403,14 @@ const handleConfirm = async (row: InboundVO) => openPreview('inbound.confirm', r
 // 取消入库单
 const handleCancel = async (row: InboundVO) => openPreview('inbound.cancel', row)
 import { InboundEnum } from '@/enums/inventory'
+
+// 查看流水（DEV-569）
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: InboundVO) {
+  currentTraceId.value = (row as any).traceId || ''
+  traceDrawerVisible.value = true
+}
 
 // 获取状态标签样式
 const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {

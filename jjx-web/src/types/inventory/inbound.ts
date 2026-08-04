@@ -21,6 +21,7 @@ export interface InboundQueryParams {
 export interface InboundVO {
   inboundId: string
   inboundNo: string
+  traceId?: string
   inboundType: string
   inboundTypeName: string
   warehouseId: string

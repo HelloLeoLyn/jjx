@@ -117,7 +117,7 @@ public class ProductionOperationRecordController {
 
     @Operation(summary = "导入工序记录数据")
     @PostMapping("/import")
-    @Log(module = "工序记录管理", businessType = BusinessType.IMPORT, bizType = "'production_record'")
+    @Log(module = "工序记录管理", businessType = BusinessType.IMPORT, bizType = "'production_record'", bizId = "#importData[0].executionId")
     @SaCheckPermission("production:operation-record:import")
     public Result<String> importRecordData(@RequestBody List<ProductionOperationRecordCreateDTO> importData) {
         productionOperationRecordService.importRecordData(importData);

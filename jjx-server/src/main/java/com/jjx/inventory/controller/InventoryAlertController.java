@@ -36,7 +36,7 @@ public class InventoryAlertController {
 
     @PostMapping("/execute-check")
     @Operation(summary = "执行预警检查")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> executeAlertCheck() {
         alertService.executeAlertCheck();
@@ -45,7 +45,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-safe-stock")
     @Operation(summary = "检查安全库存预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkSafeStockAlert() {
         alertService.checkSafeStockAlert();
@@ -54,7 +54,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-max-stock")
     @Operation(summary = "检查最高库存预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkMaxStockAlert() {
         alertService.checkMaxStockAlert();
@@ -63,7 +63,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-expiry")
     @Operation(summary = "检查保质期预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkExpiryAlert() {
         alertService.checkExpiryAlert();
@@ -72,7 +72,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-obsolete")
     @Operation(summary = "检查呆滞料预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkObsoleteAlert() {
         alertService.checkObsoleteAlert();
@@ -86,6 +86,12 @@ public class InventoryAlertController {
     public Result<Void> checkOrderShortage(@PathVariable Long orderId) {
         alertService.checkOrderShortage(orderId);
         return Result.success();
+    }
+
+    @GetMapping("/count-unprocessed-shortage/{orderId}")
+    @Operation(summary = "查询订单未处理缺料预警数（DEV-583 前端确认后弹窗提示）")
+    public Result<Long> countUnprocessedShortage(@PathVariable Long orderId) {
+        return Result.success(alertService.countUnprocessedOrderShortage(orderId));
     }
 
     @PostMapping("/mark-read/{alertId}")

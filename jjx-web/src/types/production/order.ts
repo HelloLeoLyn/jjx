@@ -60,6 +60,7 @@ export interface ProductionOrderBase {
   // 标识信息
   orderId: string
   orderNo: string
+  traceId?: string
   orderType: OrderType
 
   // 关联信息

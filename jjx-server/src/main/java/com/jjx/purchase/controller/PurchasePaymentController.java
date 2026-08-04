@@ -212,7 +212,7 @@ public class PurchasePaymentController extends BaseController {
      * 批量付款
      */
     @PostMapping("/batch")
-    @Log(module = "采购付款管理", businessType = BusinessType.INSERT, bizType = "'purchase_payment'")
+    @Log(module = "采购付款管理", businessType = BusinessType.INSERT, bizType = "'purchase_payment'", bizId = "#batchData[0].paymentId")
     @SaCheckPermission("purchase:payment:add")
     public Result<Void> batchPayment(@RequestBody List<PurchasePaymentDTO> batchData) {
         for (PurchasePaymentDTO dto : batchData) {
@@ -225,7 +225,7 @@ public class PurchasePaymentController extends BaseController {
      * 批量审批
      */
     @PostMapping("/batch-approve")
-    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'")
+    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'", bizId = "#batchData[0]['paymentId']")
     @SaCheckPermission("purchase:payment:approve")
     public Result<Void> batchApprove(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -242,7 +242,7 @@ public class PurchasePaymentController extends BaseController {
      * 导入付款数据
      */
     @PostMapping("/import")
-    @Log(module = "采购付款管理", businessType = BusinessType.IMPORT, bizType = "'purchase_payment'")
+    @Log(module = "采购付款管理", businessType = BusinessType.IMPORT, bizType = "'purchase_payment'", bizId = "#importData[0].paymentId")
     @SaCheckPermission("purchase:payment:import")
     public Result<Void> importPayment(@RequestBody List<PurchasePaymentDTO> importData) {
         for (PurchasePaymentDTO dto : importData) {

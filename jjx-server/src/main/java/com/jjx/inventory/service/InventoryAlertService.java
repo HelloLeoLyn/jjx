@@ -31,6 +31,11 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     void checkOrderShortage(Long orderId);
 
     /**
+     * 查询订单未处理缺料预警数（DEV-583 前端弹窗用）
+     */
+    long countUnprocessedOrderShortage(Long orderId);
+
+    /**
      * 检查单个物料的安全库存预警
      * 出库/入库确认后调用
      */

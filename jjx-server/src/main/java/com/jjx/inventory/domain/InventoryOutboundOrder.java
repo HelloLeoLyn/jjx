@@ -28,6 +28,9 @@ public class InventoryOutboundOrder extends BaseEntity {
     /** 出库单号，格式：OUT+YYYYMMDD+流水号 */
     private String outboundNo;
 
+    /** 链路追踪ID（DEV-568） */
+    private String traceId;
+
     /** 出库类型：production生产领料/sales销售出库/return退货出库/scrap报废出库/transfer调拨出库/adjust盘亏出库 */
     private String outboundType;
 

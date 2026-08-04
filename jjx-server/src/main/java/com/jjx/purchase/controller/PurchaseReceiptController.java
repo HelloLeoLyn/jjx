@@ -267,7 +267,7 @@ public class PurchaseReceiptController extends BaseController {
      * 批量收货
      */
     @PostMapping("/batch")
-    @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'")
+    @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'", bizId = "#batchData[0]['orderId']")
     @SaCheckPermission("purchase:receipt:add")
     public Result<Void> batchReceive(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -285,7 +285,7 @@ public class PurchaseReceiptController extends BaseController {
      * 批量检验
      */
     @PostMapping("/batch-inspect")
-    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'")
+    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#batchData[0]['itemId']")
     @SaCheckPermission("purchase:receipt:edit")
     public Result<Void> batchInspect(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -307,7 +307,7 @@ public class PurchaseReceiptController extends BaseController {
      * 导入收货数据
      */
     @PostMapping("/import")
-    @Log(module = "采购收货管理", businessType = BusinessType.IMPORT, bizType = "'purchase_receipt'")
+    @Log(module = "采购收货管理", businessType = BusinessType.IMPORT, bizType = "'purchase_receipt'", bizId = "#importData[0]['orderId']")
     @SaCheckPermission("purchase:receipt:import")
     public Result<Void> importReceipt(@RequestBody List<Map<String, Object>> importData) {
         for (Map<String, Object> data : importData) {

@@ -59,6 +59,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final EngineeringRoutingMapper productRoutingMapper;
     private final EventPublisher eventPublisher;
     private final com.jjx.inventory.service.InventoryAlertService inventoryAlertService;
+    private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     
     private void saveOrderLog(String orderNo, String desc, String remark, int status) {
         SysOperLog log = new SysOperLog();
@@ -333,6 +334,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             log.info("订单{}取消联动：取消{}个生产工单，跳过{}个", orderId, cancelled, skipped);
         }
 
+        // 7. 释放成品库存预留（DEV-578）：订单取消 → 预留释放
+        try {
+            orderStockReserveService.releaseByOrder(orderId);
+        } catch (Exception e) {
+            log.error("订单{}释放成品库存预留异常（不影响取消主流程）: {}", orderId, e.getMessage());
+        }
+
         log.info("订单{}已取消，操作人：{}，原因：{}", orderId, SecurityUtils.getUsername(), reason);
     }
 
@@ -375,6 +383,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         } catch (Exception e) {
             log.error("订单{}齐套检查异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
         }
+
+        // 7. 成品库存预留（DEV-578 8-04）：确认时检查成品可用库存，库存部分预留，缺货部分进生产
+        try {
+            orderStockReserveService.reserveForOrder(order.getOrderId());
+        } catch (Exception e) {
+            log.error("订单{}成品库存预留异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
+        }
     }
 
     @Override
@@ -402,6 +417,9 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalesOrderProduct>()
                         .eq(SalesOrderProduct::getOrderId, orderId)
         );
+
+        // 4.5 成品库存预留缺货量（DEV-578）：productId -> 缺货量（无预留记录=全量）
+        Map<Long, BigDecimal> shortageMap = orderStockReserveService.getShortageQty(orderId);
 
         // 5. 检查每个产品是否有BOM且已审批（阻止不通过）
         for (SalesOrderProduct product : products) {
@@ -450,8 +468,21 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             }
         }
 
-        // 6. 为每个产品创建生产工单
+        // 6. 为每个产品创建生产工单（DEV-578：按缺货量建，库存已满足的不建）
+        int createdCount = 0;
         for (SalesOrderProduct product : products) {
+            // 缺货量（无productId的样品明细按全量）
+            BigDecimal planQty;
+            if (product.getProductId() == null) {
+                planQty = BigDecimal.valueOf(product.getQuantity() == null ? 0 : product.getQuantity());
+            } else {
+                BigDecimal shortage = shortageMap.getOrDefault(product.getProductId(), BigDecimal.ZERO);
+                if (shortage.compareTo(BigDecimal.ZERO) <= 0) {
+                    log.info("订单{}产品{}成品库存已满足，跳过生成工单", orderId, product.getProductCode());
+                    continue;
+                }
+                planQty = shortage;
+            }
             ProductionOrderCreateDTO createDTO = new ProductionOrderCreateDTO();
             createDTO.setOrderType("WORK_ORDER");
             createDTO.setSalesOrderId(orderId);
@@ -461,7 +492,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             createDTO.setProductName(product.getProductName());
             createDTO.setProductSpec("");
             createDTO.setProductUnit(product.getUnit());
-            createDTO.setPlannedQuantity(BigDecimal.valueOf(product.getQuantity()));
+            createDTO.setPlannedQuantity(planQty);
             // 计划开始日期使用销售订单的交货日期作为参考，默认从当天开始
             createDTO.setPlanStartDate(LocalDate.now());
             // 计划结束日期使用销售订单的交货日期
@@ -486,8 +517,17 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             }
             // 调用生产模块创建生产工单
             Long productionOrderId = productionOrderService.createOrder(createDTO);
+            createdCount++;
             log.info("为销售订单{}创建生产工单{}，产品：{}，数量：{}",
-                    orderId, productionOrderId, product.getProductName(), product.getQuantity());
+                    orderId, productionOrderId, product.getProductName(), planQty);
+        }
+
+        // 6.1 全部库存已满足，无需生产（DEV-578 拍板3：全库存满足不生成工单，手动走发货）
+        if (createdCount == 0) {
+            log.info("订单{}成品库存全部满足，无需生成生产工单，可直接发货", orderId);
+            // 记录日志提示
+            saveOrderLog(order.getOrderNo(), "start_production", "成品库存全部满足，无需生产，可直接发货", 1);
+            return;
         }
 
         // 6. 更新销售订单状态为生产中
@@ -508,7 +548,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         // 8. 记录日志
         String desc = getOperationDescription(currentStatus, targetStatus);
         saveOrderLog(order.getOrderNo(), "start_production",
-                "开始生产，共创建" + products.size() + "个生产工单", 1);
+                "开始生产，共创建" + createdCount + "个生产工单", 1);
 
         // 9. 触发联动事件
         try {

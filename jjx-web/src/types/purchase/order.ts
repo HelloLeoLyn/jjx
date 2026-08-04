@@ -6,6 +6,7 @@
 export interface PurchaseOrderVO {
   orderId?: string
   orderNo: string
+  traceId?: string
   supplierId?: string
   supplierName: string
   orderDate: string

@@ -111,6 +111,7 @@
         <el-table-column label="创建时间" prop="createTime" width="150" align="center" />
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
+            <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button v-if="row.status === 0" link type="primary" @click="handleEdit(row)"
               >编辑</el-button
@@ -134,6 +135,10 @@
         @pagination="getList"
       />
     </el-card>
+
+    <!-- 查看流水（DEV-569） -->
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -160,7 +165,16 @@ import { outboundApi } from '@/api/inventory/outbound'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber } from '@/utils/format'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { OutboundQueryParams, OutboundVO } from '@/types/inventory/outbound'
+
+// 查看流水（DEV-569）
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: OutboundVO) {
+  currentTraceId.value = (row as any).traceId || ''
+  traceDrawerVisible.value = true
+}
 
 const router = useRouter()
 

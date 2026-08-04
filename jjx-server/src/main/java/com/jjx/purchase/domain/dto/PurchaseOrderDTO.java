@@ -28,6 +28,9 @@ public class PurchaseOrderDTO {
     @Size(max = 50, message = "采购订单号长度不能超过50个字符")
     private String orderNo;
 
+    /** 链路追踪ID（DEV-568） */
+    private String traceId;
+
     /**
      * 供应商ID
      */

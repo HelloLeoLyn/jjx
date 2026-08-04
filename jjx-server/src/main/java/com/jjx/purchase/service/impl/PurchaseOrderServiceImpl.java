@@ -117,6 +117,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 转换实体
         PurchaseOrder order = purchaseConverter.toEntity(orderDTO);
 
+        // 链路追踪（DEV-568）：无上游则生成 UUID，有上游继承（DTO 透传）
+        order.setTraceId(orderDTO.getTraceId() != null && !orderDTO.getTraceId().isEmpty()
+                ? orderDTO.getTraceId() : UUID.randomUUID().toString().replace("-", ""));
+
         // 设置默认状态
         if (order.getApprovalStatus() == null) {
             order.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
@@ -738,6 +742,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         newOrder.setRemark(sourceOrder.getRemark());
         newOrder.setUrgentFlag(sourceOrder.getUrgentFlag());
         newOrder.setUrgentReason(sourceOrder.getUrgentReason());
+        // 链路追踪（DEV-568）：复制订单继承源订单 traceId
+        newOrder.setTraceId(sourceOrder.getTraceId() != null && !sourceOrder.getTraceId().isEmpty()
+                ? sourceOrder.getTraceId() : UUID.randomUUID().toString().replace("-", ""));
 
         // 保存新订单
         int result = orderMapper.insert(newOrder);

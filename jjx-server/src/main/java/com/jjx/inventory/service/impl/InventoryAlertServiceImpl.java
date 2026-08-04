@@ -188,6 +188,18 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     }
 
     @Override
+    public long countUnprocessedOrderShortage(Long orderId) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            return 0;
+        }
+        return alertLogMapper.selectCount(new LambdaQueryWrapper<InventoryAlertLog>()
+                .eq(InventoryAlertLog::getAlertType, "order_shortage")
+                .eq(InventoryAlertLog::getOrderNo, order.getOrderNo())
+                .eq(InventoryAlertLog::getStatus, 0));
+    }
+
+    @Override
     public void checkSafeStockAlert() {
         log.info("检查安全库存预警");
         List<InventoryStock> lowStock = stockMapper.selectLowStock();

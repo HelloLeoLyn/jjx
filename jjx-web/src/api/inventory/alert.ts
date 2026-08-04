@@ -45,4 +45,8 @@ export const alertApi = {
   // 订单齐套检查（按BOM算料缺料预警，手动重新检查）
   checkOrderShortage: (orderId: number) =>
     request.post(`/inventory/alert/check-order-shortage/${orderId}`),
+
+  // 查询订单未处理缺料预警数（DEV-583）
+  countUnprocessedShortage: (orderId: number) =>
+    request.get(`/inventory/alert/count-unprocessed-shortage/${orderId}`),
 }

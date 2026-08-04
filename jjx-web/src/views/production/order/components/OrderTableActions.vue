@@ -70,6 +70,10 @@
               <el-icon><Clock /></el-icon>
               操作历史
             </el-dropdown-item>
+            <el-dropdown-item command="trace">
+              <el-icon><Connection /></el-icon>
+              查看流水
+            </el-dropdown-item>
             <el-dropdown-item divided command="delete" v-if="canDelete">
               <el-icon><Delete /></el-icon>
               删除订单
@@ -114,6 +118,7 @@ const emit = defineEmits<{
   cancel: []
   delete: []
   'more-action': [command: string]
+  trace: [order: any]
   refresh: []
 }>()
 
@@ -186,6 +191,8 @@ const handleMoreActionCommand = (command: string) => {
     openPreview('production.reject')
   } else if (command === 'delete') {
     handleDelete()
+  } else if (command === 'trace') {
+    emit('trace', props.order)
   } else {
     emit('more-action', command)
   }

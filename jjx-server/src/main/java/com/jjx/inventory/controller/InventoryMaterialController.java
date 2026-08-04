@@ -196,7 +196,7 @@ public class InventoryMaterialController extends BaseController {
      * 导入物料数据
      */
     @PostMapping("/import")
-    @Log(module = "物料管理", businessType = BusinessType.IMPORT, bizType = "'material'")
+    @Log(module = "物料管理", businessType = BusinessType.IMPORT, bizType = "'material'", bizId = "'batch'")
     @SaCheckPermission("inventory:material:add")
     public Result<String> importMaterial(MultipartFile file) {
         List<MaterialImportDTO> importList = ExcelUtils.importExcel(file, MaterialImportDTO.class);

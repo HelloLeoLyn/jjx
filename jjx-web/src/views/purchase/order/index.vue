@@ -317,6 +317,15 @@
                 @click="() => handlePayment(scope.row)"
               ></el-button>
             </el-tooltip>
+            <!-- 查看流水（DEV-569） -->
+            <el-tooltip content="查看流水" placement="top">
+              <el-button
+                link
+                type="info"
+                icon="Connection"
+                @click="showTrace(scope.row)"
+              ></el-button>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -368,6 +377,9 @@
     <!-- 详情对话框 -->
     <OrderDetailDialog v-model:visible="detailDialogVisible" :orderId="currentOrderId" />
 
+    <!-- 查看流水（DEV-569） -->
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -399,6 +411,14 @@ import {
   isOrderPayable,
 } from './utils/orderFormatters'
 import { usePurchaseOrder } from './composables/usePurchaseOrder'
+
+// 查看流水（DEV-569）
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: PurchaseOrderVO) {
+  currentTraceId.value = row.traceId || ''
+  traceDrawerVisible.value = true
+}
 import { usePurchaseOrderStats } from './composables/usePurchaseOrderStats'
 import { usePurchaseOrderOperations } from './composables/usePurchaseOrderOperations'
 import OrderFormDialog from './components/OrderFormDialog.vue'
@@ -406,6 +426,7 @@ import OrderApproveDialog from './components/OrderApproveDialog.vue'
 import OrderReceiveDialog from './components/OrderReceiveDialog.vue'
 import OrderPaymentDialog from './components/OrderPaymentDialog.vue'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { copyOrder, exportOrder as apiExportOrder, cancleOrder } from '@/api/purchase/order'

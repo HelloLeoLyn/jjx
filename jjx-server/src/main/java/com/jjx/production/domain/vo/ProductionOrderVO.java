@@ -20,6 +20,9 @@ public class ProductionOrderVO {
     @Schema(description = "订单编号")
     private String orderNo;
 
+    /** 链路追踪ID（DEV-568/569） */
+    private String traceId;
+
     @Schema(description = "订单类型：PLAN生产计划/WORK_ORDER生产工单")
     private String orderType;
 

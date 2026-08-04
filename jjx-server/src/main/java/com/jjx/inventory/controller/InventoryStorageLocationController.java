@@ -372,7 +372,7 @@ public class InventoryStorageLocationController extends BaseController {
      * 导入库位数据
      */
     @PostMapping("/import")
-    @Log(module = "库位管理", businessType = BusinessType.IMPORT, bizType = "'storage_location'")
+    @Log(module = "库位管理", businessType = BusinessType.IMPORT, bizType = "'storage_location'", bizId = "#warehouseId")
     @SaCheckPermission("inventory:storage-location:add")
     public Result<String> importStorageLocation(@RequestBody List<StorageLocationImportDTO> importList, @RequestParam Long warehouseId) {
         String operName = getUsername();

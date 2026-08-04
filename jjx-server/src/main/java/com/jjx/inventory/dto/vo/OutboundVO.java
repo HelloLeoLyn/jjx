@@ -15,6 +15,9 @@ public class OutboundVO {
 
     private Long outboundId;
     private String outboundNo;
+
+    /** 链路追踪ID（DEV-568/569） */
+    private String traceId;
     private String outboundType;
     private String outboundTypeName;
     private Long warehouseId;

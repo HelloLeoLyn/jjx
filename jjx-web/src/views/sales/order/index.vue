@@ -542,6 +542,20 @@ const handleSendToCustomer = async (row: any) => {
     })
     await orderStatusApi.sendToCustomer(row.orderId)
     ElMessage.success('发送成功，等待客户确认')
+    // DEV-583：确认后检查缺料，有则弹窗提示（不阻断）
+    try {
+      const res: any = await alertApi.countUnprocessedShortage(row.orderId)
+      const shortageCount = res?.data ?? 0
+      if (Number(shortageCount) > 0) {
+        ElMessageBox.alert(
+          `订单【${row.orderNo}】齐套检查发现 ${shortageCount} 种物料缺料，已生成缺料预警，请及时安排补货（可在库存预警查看明细）。`,
+          '缺料提示',
+          { confirmButtonText: '知道了', type: 'warning' },
+        )
+      }
+    } catch (e) {
+      console.error('缺料检查失败', e)
+    }
     getList()
   } catch (error) {
     if (error !== 'cancel') {

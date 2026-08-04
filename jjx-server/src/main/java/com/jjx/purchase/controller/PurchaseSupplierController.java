@@ -191,7 +191,7 @@ public class PurchaseSupplierController extends BaseController {
      * 导入供应商数据
      */
     @Operation(summary = "导入供应商数据")
-    @Log(module = "供应商管理", businessType = BusinessType.IMPORT, bizType = "'purchase_supplier'")
+    @Log(module = "供应商管理", businessType = BusinessType.IMPORT, bizType = "'purchase_supplier'", bizId = "'batch'")
     @SaCheckPermission("purchase:supplier:import")
     @PostMapping("/import")
     public Result<String> importSuppliers(MultipartFile file) throws Exception {

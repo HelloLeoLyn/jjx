@@ -104,7 +104,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "启动生产工单")
     @PutMapping("/{orderId}/start")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "6")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> startOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.startOrder(orderId);
@@ -113,7 +113,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "暂停生产工单")
     @PutMapping("/{orderId}/pause")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "7")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> pauseOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.pauseOrder(orderId);
@@ -122,7 +122,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "完成生产工单")
     @PutMapping("/{orderId}/complete")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "8")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> completeOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.completeOrder(orderId);
@@ -131,7 +131,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "取消生产工单")
     @PutMapping("/{orderId}/cancel")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "9")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> cancelOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.cancelOrder(orderId);
@@ -140,7 +140,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "关闭生产工单")
     @PutMapping("/{orderId}/close")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "10")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> closeOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.closeOrder(orderId);
@@ -181,7 +181,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "导入生产工单数据")
     @PostMapping("/import")
-    @Log(module = "生产工单管理", businessType = BusinessType.IMPORT, bizType = "'production_order'")
+    @Log(module = "生产工单管理", businessType = BusinessType.IMPORT, bizType = "'production_order'", bizId = "#importData[0].orderNo")
     @SaCheckPermission("production:order:add")
     public Result importOrderData(@RequestBody List<ProductionOrderCreateDTO> importData) {
         return productionOrderService.importOrderData(importData);
@@ -189,7 +189,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "导出生产工单数据")
     @PostMapping("/export")
-    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'")
+    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "'export'")
     @SaCheckPermission("production:order:export")
     public Result<List<ProductionOrderVO>> exportOrderData(@RequestBody ProductionOrderQueryDTO queryDTO) {
         List<ProductionOrderVO> exportData = productionOrderService.exportOrderData(queryDTO);
@@ -260,7 +260,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "批量更新订单状态")
     @PutMapping("/batch-status")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#dto.orderIds[0]")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> batchUpdateOrderStatus(@RequestBody BatchStatusUpdateDTO dto) {
         boolean success = productionOrderService.batchUpdateOrderStatus(dto.getOrderIds(), dto.getOrderStatus(), dto.getRemark());

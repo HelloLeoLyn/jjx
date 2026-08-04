@@ -86,7 +86,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 删除采购发票
      */
     @DeleteMapping("/{invoiceIds}")
-    @Log(module = "采购发票管理", businessType = BusinessType.DELETE, bizType = "'purchase_invoice'")
+    @Log(module = "采购发票管理", businessType = BusinessType.DELETE, bizType = "'purchase_invoice'", bizId = "#invoiceIds[0]")
     @SaCheckPermission("purchase:invoice:delete")
     public Result<Void> remove(@PathVariable Long[] invoiceIds) {
         documentService.deleteDocumentByIds(invoiceIds);
@@ -205,7 +205,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 批量核销
      */
     @PostMapping("/batch-verify")
-    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'")
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'", bizId = "#batchData[0]['invoiceId']")
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> batchVerify(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -222,7 +222,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 导入发票数据
      */
     @PostMapping("/import")
-    @Log(module = "采购发票管理", businessType = BusinessType.IMPORT, bizType = "'purchase_invoice'")
+    @Log(module = "采购发票管理", businessType = BusinessType.IMPORT, bizType = "'purchase_invoice'", bizId = "#importData[0].documentId")
     @SaCheckPermission("purchase:invoice:import")
     public Result<Void> importInvoice(@RequestBody List<PurchaseDocumentDTO> importData) {
         for (PurchaseDocumentDTO dto : importData) {
@@ -359,7 +359,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 批量删除发票文件
      */
     @PostMapping("/batch-delete-files")
-    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'")
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'", bizId = "#request['invoiceIds'][0]")
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> batchDeleteFiles(@RequestBody Map<String, List<Long>> request) {
         List<Long> invoiceIds = request.get("invoiceIds");
@@ -445,7 +445,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 批量确认票据（将临时文件插入数据库）
      */
     @PostMapping("/batch-confirm")
-    @Log(module = "采购发票管理", businessType = BusinessType.INSERT, bizType = "'purchase_invoice'")
+    @Log(module = "采购发票管理", businessType = BusinessType.INSERT, bizType = "'purchase_invoice'", bizId = "#params['orderId']")
     @SaCheckPermission("purchase:invoice:add")
     public Result<Void> batchConfirm(@RequestBody Map<String, Object> params) {
         Long orderId = Long.valueOf(params.get("orderId").toString());
