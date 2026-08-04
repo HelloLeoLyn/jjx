@@ -90,24 +90,29 @@
       </el-form-item>
 
       <el-form-item label="截图">
-        <div class="screenshot-upload" @paste="handlePaste">
-          <el-upload
-            :auto-upload="false"
-            :show-file-list="false"
-            accept="image/*"
-            multiple
-            :on-change="handleFileChange"
-          >
-            <div class="upload-tip">
-              <el-icon style="font-size: 20px"><Picture /></el-icon>
-              <span>点击选择 或 Ctrl+V 粘贴截图</span>
+        <div
+          ref="chatRef"
+          class="screenshot-chat"
+          tabindex="0"
+          @paste="handlePaste"
+          @click="focusChat"
+        >
+          <div v-if="form.screenshots.length > 0" class="screenshot-bubbles">
+            <div v-for="(img, idx) in form.screenshots" :key="idx" class="shot-bubble">
+              <el-image
+                :src="img.url"
+                fit="cover"
+                class="shot-thumb"
+                preview-teleported
+                :preview-src-list="form.screenshots.map((s) => s.url)"
+                :initial-index="idx"
+              />
+              <el-icon class="shot-remove" @click="form.screenshots.splice(idx, 1)"><Close /></el-icon>
             </div>
-          </el-upload>
-          <div v-if="form.screenshots.length > 0" class="screenshot-preview">
-            <div v-for="(img, idx) in form.screenshots" :key="idx" class="preview-item">
-              <el-image :src="img.url" fit="cover" class="preview-thumb" preview-teleported :preview-src-list="form.screenshots.map(s => s.url)" :initial-index="idx" />
-              <el-icon class="preview-remove" @click="form.screenshots.splice(idx, 1)"><Close /></el-icon>
-            </div>
+          </div>
+          <div class="chat-placeholder">
+            <el-icon style="font-size: 18px"><Picture /></el-icon>
+            <span>截图后直接 Ctrl+V 粘贴到这里（可贴多张）</span>
           </div>
         </div>
       </el-form-item>
@@ -198,15 +203,10 @@ function resetForm() {
   form.screenshots = []
 }
 
-// 选择文件（含拖入）
-function handleFileChange(uploadFile: any) {
-  const file: File | undefined = uploadFile?.raw
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    ElMessage.warning('仅支持图片文件')
-    return
-  }
-  form.screenshots.push({ file, url: URL.createObjectURL(file) })
+// 聚焦聊天区（点击时聚焦，便于直接粘贴）
+const chatRef = ref<HTMLDivElement | null>(null)
+function focusChat() {
+  chatRef.value?.focus()
 }
 
 // 粘贴截图（Ctrl+V）
@@ -283,48 +283,46 @@ async function onSubmit() {
 </script>
 
 <style scoped>
-.screenshot-upload {
+/* 对话式截图粘贴区 */
+.screenshot-chat {
   width: 100%;
-}
-
-.upload-tip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: center;
+  min-height: 96px;
   border: 1px dashed #dcdfe6;
-  border-radius: 6px;
-  padding: 14px 0;
-  color: #909399;
-  cursor: pointer;
-  font-size: 13px;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fafbfc;
+  cursor: text;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
 }
 
-.upload-tip:hover {
+.screenshot-chat:focus {
   border-color: #409eff;
-  color: #409eff;
+  background: #f5f9ff;
 }
 
-.screenshot-preview {
+.screenshot-bubbles {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
-.preview-item {
+.shot-bubble {
   position: relative;
 }
 
-.preview-thumb {
-  width: 80px;
-  height: 60px;
-  border-radius: 4px;
+.shot-thumb {
+  width: 88px;
+  height: 66px;
+  border-radius: 6px;
   border: 1px solid #e4e7ed;
   cursor: zoom-in;
+  display: block;
 }
 
-.preview-remove {
+.shot-remove {
   position: absolute;
   top: -6px;
   right: -6px;
@@ -334,5 +332,14 @@ async function onSubmit() {
   padding: 2px;
   cursor: pointer;
   font-size: 12px;
+}
+
+.chat-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a8abb2;
+  font-size: 13px;
+  min-height: 36px;
 }
 </style>
