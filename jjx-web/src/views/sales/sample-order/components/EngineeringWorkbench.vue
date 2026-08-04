@@ -474,6 +474,7 @@ async function saveProcess() {
     props.card.currentProcess = form.process
     await loadProcesses()
     await loadSummary()
+    await loadBom() // 8-04: 保存工序后同步刷新全单材料汇总（修复汇总不及时）
     ElMessage.success(`已保存工序：${form.process}${validMats.length ? `（${validMats.length}种材料）` : ''}`)
     // 清空表单便于录下一道
     form.materials = []

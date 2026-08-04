@@ -38,6 +38,18 @@
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item command="submit-review" v-if="order.orderStatus === 0">
+              <el-icon><Promotion /></el-icon>
+              提交审核
+            </el-dropdown-item>
+            <el-dropdown-item command="approve" v-if="order.orderStatus === 1">
+              <el-icon><Check /></el-icon>
+              审核通过
+            </el-dropdown-item>
+            <el-dropdown-item command="reject" v-if="order.orderStatus === 1">
+              <el-icon><CloseBold /></el-icon>
+              审核驳回
+            </el-dropdown-item>
             <el-dropdown-item command="copy">
               <el-icon><CopyDocument /></el-icon>
               复制订单
@@ -66,36 +78,75 @@
         </template>
       </el-dropdown>
     </el-space>
+
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="orderStatusTextMap"
+      @success="handlePreviewSuccess"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { More, CopyDocument, Download, Printer, Clock, Box } from '@element-plus/icons-vue'
+import { computed, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold } from '@element-plus/icons-vue'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
+import { ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'
 import type { ProductionOrderVO } from '@/types/production/order'
 
 interface Props {
   order: ProductionOrderVO
 }
 
-interface Emits {
-  (e: 'view'): void
-  (e: 'edit'): void
-  (e: 'convert'): void
-  (e: 'start'): void
-  (e: 'complete'): void
-  (e: 'cancel'): void
-  (e: 'delete'): void
-  (e: 'more-action', command: string): void
-}
-
 const props = defineProps<Props>()
-const emit = defineEmits<Emits>()
+const emit = defineEmits<{
+  view: []
+  edit: []
+  convert: []
+  start: []
+  complete: []
+  cancel: []
+  delete: []
+  'more-action': [command: string]
+  refresh: []
+}>()
 
 // 计算属性
 const canDelete = computed(() => {
   return props.order.orderStatus === 0 || props.order.orderStatus === 9
 })
+
+// 操作预览器状态
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+
+const orderStatusTextMap: Record<number, string> = Object.fromEntries(
+  ProductionOrderStatusEnum.items.map((i) => [Number(i.value), i.label])
+)
+
+function openPreview(opKey: string) {
+  const op = getOperation(opKey)
+  if (!op) {
+    ElMessage.warning(`未注册的操作：${opKey}`)
+    return
+  }
+  previewOperation.value = op
+  previewBizId.value = Number(props.order.orderId)
+  previewBizNo.value = props.order.orderNo
+  previewVisible.value = true
+}
+
+function handlePreviewSuccess() {
+  emit('refresh')
+}
 
 // 方法
 const handleView = () => {
@@ -111,15 +162,15 @@ const handleConvert = () => {
 }
 
 const handleStart = () => {
-  emit('start')
+  openPreview('production.start')
 }
 
 const handleComplete = () => {
-  emit('complete')
+  openPreview('production.complete')
 }
 
 const handleCancel = () => {
-  emit('cancel')
+  openPreview('production.cancel')
 }
 
 const handleDelete = () => {
@@ -127,7 +178,13 @@ const handleDelete = () => {
 }
 
 const handleMoreActionCommand = (command: string) => {
-  if (command === 'delete') {
+  if (command === 'submit-review') {
+    openPreview('production.submitReview')
+  } else if (command === 'approve') {
+    openPreview('production.approve')
+  } else if (command === 'reject') {
+    openPreview('production.reject')
+  } else if (command === 'delete') {
     handleDelete()
   } else {
     emit('more-action', command)

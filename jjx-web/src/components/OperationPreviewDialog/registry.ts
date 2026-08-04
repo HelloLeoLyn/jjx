@@ -3,6 +3,8 @@ import { quotationApi } from '@/api/sales/quotation'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { inboundApi } from '@/api/inventory/inbound'
 import { outboundApi } from '@/api/inventory/outbound'
+import * as purchaseOrderApi from '@/api/purchase/order'
+import * as productionOrderApi from '@/api/production/order'
 import { useUserStore } from '@/store/modules/user'
 
 // 当前用户（入库/出库审批人等字段用）
@@ -464,6 +466,253 @@ export const outboundOperations: OperationDef[] = [
   },
 ]
 
+/** ==================== 采购模块 · 采购订单 ==================== */
+
+export const purchaseOperations: OperationDef[] = [
+  {
+    key: 'purchase.submitReview',
+    bizType: 'purchase_order',
+    name: '提交审核',
+    fromStatus: [1],
+    toStatus: 3,
+    events: ['purchase.submitted'],
+    result: {
+      name: '采购订单提交审核',
+      from: '草稿',
+      to: '待审批',
+      docType: 'audit',
+      nextSteps: ['采购主管审批订单', '审批通过后可收货/付款'],
+    },
+    api: ({ bizId }) => purchaseOrderApi.submitOrder(Number(bizId)),
+  },
+  {
+    key: 'purchase.approve',
+    bizType: 'purchase_order',
+    name: '审核通过',
+    fromStatus: [3],
+    toStatus: 4,
+    fields: [{ key: 'approvalComment', label: '审批意见', type: 'textarea', placeholder: '选填，审批意见/说明' }],
+    evidence: true,
+    events: ['purchase.approved'],
+    result: {
+      name: '采购订单审批通过',
+      from: '待审批',
+      to: '已批准',
+      docType: 'audit',
+      nextSteps: ['按订单收货登记', '按约定安排付款'],
+    },
+    api: ({ bizId, values }) => {
+      const u = currentUser()
+      return purchaseOrderApi.approveOrder({
+        orderId: Number(bizId),
+        approverId: Number(u.id),
+        approverName: u.name,
+        approvalComment: values.approvalComment || '',
+        approvalStatus: 4,
+      })
+    },
+  },
+  {
+    key: 'purchase.reject',
+    bizType: 'purchase_order',
+    name: '审核驳回',
+    fromStatus: [3],
+    toStatus: 5,
+    fields: [{ key: 'approvalComment', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
+    evidence: true,
+    events: ['purchase.approved'],
+    result: {
+      name: '采购订单审核驳回',
+      from: '待审批',
+      to: '已拒绝',
+      docType: 'audit',
+      nextSteps: ['采购员修改订单', '重新提交审核'],
+    },
+    api: ({ bizId, values }) => {
+      const u = currentUser()
+      return purchaseOrderApi.approveOrder({
+        orderId: Number(bizId),
+        approverId: Number(u.id),
+        approverName: u.name,
+        approvalComment: values.approvalComment || '',
+        approvalStatus: 5,
+      })
+    },
+  },
+  {
+    key: 'purchase.cancel',
+    bizType: 'purchase_order',
+    name: '取消订单',
+    fromStatus: [1, 3, 5],
+    toStatus: 2,
+    fields: [{ key: 'reason', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
+    evidence: true,
+    events: [],
+    result: {
+      name: '采购订单取消',
+      from: '草稿/待审批/已拒绝',
+      to: '已取消',
+      docType: 'normal',
+      nextSteps: ['如需重新采购，复制该订单生成新单'],
+    },
+    api: ({ bizId }) => purchaseOrderApi.cancleOrder(Number(bizId)),
+  },
+]
+
+/** ==================== 生产模块 · 生产工单 ==================== */
+
+export const productionOperations: OperationDef[] = [
+  {
+    key: 'production.submitReview',
+    bizType: 'production_order',
+    name: '提交审核',
+    fromStatus: [0],
+    toStatus: 1,
+    events: [],
+    result: {
+      name: '生产工单提交审核',
+      from: '草稿',
+      to: '待审批',
+      docType: 'audit',
+      nextSteps: ['生产主管审批工单', '批准后排程排期'],
+    },
+    api: ({ bizId }) =>
+      productionOrderApi.submitApproval(String(bizId), {
+        approvalStatus: 1,
+      }),
+  },
+  {
+    key: 'production.approve',
+    bizType: 'production_order',
+    name: '审核通过',
+    fromStatus: [1],
+    toStatus: 2,
+    fields: [{ key: 'approvalRemark', label: '审批意见', type: 'textarea', placeholder: '选填，审批意见/说明' }],
+    evidence: true,
+    events: [],
+    result: {
+      name: '生产工单审批通过',
+      from: '待审批',
+      to: '已批准',
+      docType: 'audit',
+      nextSteps: ['排程/下达计划', '排程后可开始执行'],
+    },
+    api: ({ bizId, values }) =>
+      productionOrderApi.updateOrderStatus({
+        orderId: String(bizId),
+        orderStatus: 2,
+        approvalStatus: 2,
+        approvalRemark: values.approvalRemark || '',
+      }),
+  },
+  {
+    key: 'production.reject',
+    bizType: 'production_order',
+    name: '审核驳回',
+    fromStatus: [1],
+    toStatus: 3,
+    fields: [{ key: 'approvalRemark', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
+    evidence: true,
+    events: [],
+    result: {
+      name: '生产工单审核驳回',
+      from: '待审批',
+      to: '已驳回',
+      docType: 'audit',
+      nextSteps: ['修改工单信息', '重新提交审核'],
+    },
+    api: ({ bizId, values }) =>
+      productionOrderApi.updateOrderStatus({
+        orderId: String(bizId),
+        // 3=已驳回（WorkOrderEnum 状态，OrderStatus 类型缺该成员，后端合法）
+        orderStatus: 3 as any,
+        approvalStatus: 3,
+        approvalRemark: values.approvalRemark || '',
+      }),
+  },
+  {
+    key: 'production.start',
+    bizType: 'production_order',
+    name: '开始执行',
+    fromStatus: [4],
+    toStatus: 6,
+    fields: [{ key: 'remark', label: '开始备注', type: 'textarea', placeholder: '选填，开工说明' }],
+    evidence: true,
+    events: ['product.instance.production_started'],
+    result: {
+      name: '生产工单开始执行',
+      from: '已排程',
+      to: '进行中',
+      docType: 'normal',
+      nextSteps: ['按工艺路线逐工序执行', '完成后登记完工数量'],
+    },
+    api: ({ bizId, values }) =>
+      productionOrderApi.startExecution(String(bizId), {
+        remark: values.remark || '',
+      }),
+  },
+  {
+    key: 'production.complete',
+    bizType: 'production_order',
+    name: '完成工单',
+    fromStatus: [6],
+    toStatus: 8,
+    fields: [
+      { key: 'completedQuantity', label: '完成数量', type: 'number', required: true, defaultValue: 1 },
+      {
+        key: 'qualityResult',
+        label: '质量结果',
+        type: 'select',
+        required: true,
+        options: [
+          { label: '合格', value: 'qualified' },
+          { label: '不合格', value: 'unqualified' },
+          { label: '待检', value: 'pending' },
+        ],
+      },
+      { key: 'remark', label: '完成备注', type: 'textarea', placeholder: '选填' },
+    ],
+    evidence: true,
+    events: ['production.completed'],
+    result: {
+      name: '生产工单完工',
+      from: '进行中',
+      to: '已完成',
+      docType: 'normal',
+      nextSteps: ['质检登记', '办理入库/转下工序'],
+    },
+    api: ({ bizId, values }) =>
+      productionOrderApi.completeExecution(String(bizId), {
+        completedQuantity: Number(values.completedQuantity),
+        qualityResult: values.qualityResult,
+        remark: values.remark || '',
+      }),
+  },
+  {
+    key: 'production.cancel',
+    bizType: 'production_order',
+    name: '取消工单',
+    fromStatus: [0, 1, 2, 3, 4, 6],
+    toStatus: 9,
+    fields: [{ key: 'remark', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
+    evidence: true,
+    events: [],
+    result: {
+      name: '生产工单取消',
+      from: '未完成状态',
+      to: '已取消',
+      docType: 'normal',
+      nextSteps: ['如需重新生产，复制该工单新建'],
+    },
+    api: ({ bizId, values }) =>
+      productionOrderApi.updateOrderStatus({
+        orderId: String(bizId),
+        orderStatus: 9,
+        remark: values.remark || '',
+      }),
+  },
+]
+
 /** 全模块注册表汇总（后续模块在此追加） */
 export const operationRegistry: Record<string, OperationDef> = {
   ...Object.fromEntries(quotationOperations.map((op) => [op.key, op])),
@@ -471,6 +720,8 @@ export const operationRegistry: Record<string, OperationDef> = {
   ...Object.fromEntries(inboundOperations.map((op) => [op.key, op])),
   ...Object.fromEntries(outboundOperations.map((op) => [op.key, op])),
   ...Object.fromEntries(customerOperations.map((op) => [op.key, op])),
+  ...Object.fromEntries(purchaseOperations.map((op) => [op.key, op])),
+  ...Object.fromEntries(productionOperations.map((op) => [op.key, op])),
 }
 
 export function getOperation(key: string): OperationDef | undefined {

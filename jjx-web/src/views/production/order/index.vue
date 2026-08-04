@@ -55,6 +55,7 @@
       @cancel="handleCancelOrder"
       @delete="handleDeleteOrder"
       @more-action="handleMoreAction"
+      @refresh="refreshData"
     />
 
     <!-- 甘特图视图 -->

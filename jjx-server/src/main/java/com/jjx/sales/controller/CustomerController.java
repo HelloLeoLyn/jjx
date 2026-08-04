@@ -47,7 +47,7 @@ public class CustomerController extends BaseController {
      * 根据关键词搜索客户
      */
     @Operation(summary = "根据关键词搜索客户")
-    @SaCheckPermission("sales:customer:view")
+    // @SaCheckPermission("sales:customer:view")
     @GetMapping("/search")
     public Result<List<CustomerVO>> searchCustomers(@RequestParam String keyword) {
         return Result.success(customerService.search(keyword));
@@ -132,7 +132,7 @@ public class CustomerController extends BaseController {
      * 获取客户下拉列表
      */
     @Operation(summary = "获取客户下拉列表")
-    @SaCheckPermission("sales:customer:view")
+    // @SaCheckPermission("sales:customer:view")
     @GetMapping("/dropdown")
     public Result<List<SalesCustomer>> getCustomerDropdown() {
         return Result.success(customerService.selectCustomerDropdown());

@@ -249,20 +249,46 @@
                 link
                 type="danger"
                 icon="Delete"
-                @click="() => handleCancle(scope.row)"
+                @click="() => openPreview('purchase.cancel', scope.row)"
               ></el-button>
             </el-tooltip>
             <!-- 审批按钮（待审批可审批） -->
             <el-tooltip
               v-if="isOrderApprovable(scope.row.approvalStatus)"
-              content="审批"
+              content="审批通过"
               placement="top"
             >
               <el-button
                 link
                 type="warning"
                 icon="Check"
-                @click="() => handleApprove(scope.row)"
+                @click="() => openPreview('purchase.approve', scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <!-- 驳回按钮（待审批可驳回） -->
+            <el-tooltip
+              v-if="isOrderApprovable(scope.row.approvalStatus)"
+              content="审批驳回"
+              placement="top"
+            >
+              <el-button
+                link
+                type="danger"
+                icon="CloseBold"
+                @click="() => openPreview('purchase.reject', scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <!-- 提交审核按钮（草稿可提交） -->
+            <el-tooltip
+              v-if="scope.row.approvalStatus === 1"
+              content="提交审核"
+              placement="top"
+            >
+              <el-button
+                link
+                type="primary"
+                icon="Promotion"
+                @click="() => openPreview('purchase.submitReview', scope.row)"
               ></el-button>
             </el-tooltip>
             <!-- 收货按钮（已批准且未完全收货） -->
@@ -341,6 +367,16 @@
 
     <!-- 详情对话框 -->
     <OrderDetailDialog v-model:visible="detailDialogVisible" :orderId="currentOrderId" />
+
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="approvalStatusTextMap"
+      @success="handleSuccess"
+    />
   </div>
 </template>
 
@@ -370,6 +406,8 @@ import OrderApproveDialog from './components/OrderApproveDialog.vue'
 import OrderReceiveDialog from './components/OrderReceiveDialog.vue'
 import OrderPaymentDialog from './components/OrderPaymentDialog.vue'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { copyOrder, exportOrder as apiExportOrder, cancleOrder } from '@/api/purchase/order'
 
 // 使用Composables
@@ -693,6 +731,29 @@ const handleCancle = async (row: PurchaseOrderVO) => {
  */
 function isOrderDeletable(approvalStatus: number): boolean {
   return approvalStatus === 1 || approvalStatus === 5
+}
+
+// ===== 操作预览器 =====
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+
+/** 审批状态文本映射（1草稿 2已取消 3待审批 4已批准 5已拒绝） */
+const approvalStatusTextMap: Record<number, string> = Object.fromEntries(
+  PurchaseEnum.approvalStatus.items.map((i) => [Number(i.value), i.label])
+)
+
+function openPreview(opKey: string, row?: PurchaseOrderVO) {
+  const op = getOperation(opKey)
+  if (!op) {
+    ElMessage.warning(`未注册的操作：${opKey}`)
+    return
+  }
+  previewOperation.value = op
+  previewBizId.value = Number(row?.orderId)
+  previewBizNo.value = row?.orderNo || ''
+  previewVisible.value = true
 }
 </script>
 

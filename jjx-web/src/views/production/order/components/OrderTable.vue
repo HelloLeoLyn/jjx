@@ -102,7 +102,8 @@
             @complete="() => handleComplete(row)"
             @cancel="() => handleCancel(row)"
             @delete="() => handleDelete(row)"
-            @more-action="(command) => handleMoreAction(row, command)"
+            @more-action="(command: string) => handleMoreAction(row, command)"
+            @refresh="emit('refresh')"
           />
         </template>
       </el-table-column>
@@ -147,20 +148,6 @@ interface Props {
   pageSize?: number
 }
 
-interface Emits {
-  (e: 'selection-change', selection: ProductionOrderVO[]): void
-  (e: 'sort-change', prop: string, order: 'ascending' | 'descending' | null): void
-  (e: 'page-change', page: number, size: number): void
-  (e: 'view', order: ProductionOrderVO): void
-  (e: 'edit', order: ProductionOrderVO): void
-  (e: 'convert', order: ProductionOrderVO): void
-  (e: 'start', order: ProductionOrderVO): void
-  (e: 'complete', order: ProductionOrderVO): void
-  (e: 'cancel', order: ProductionOrderVO): void
-  (e: 'delete', order: ProductionOrderVO): void
-  (e: 'more-action', order: ProductionOrderVO, command: string): void
-}
-
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   total: 0,
@@ -168,7 +155,20 @@ const props = withDefaults(defineProps<Props>(), {
   pageSize: 20,
 })
 
-const emit = defineEmits<Emits>()
+const emit = defineEmits<{
+  'selection-change': [selection: ProductionOrderVO[]]
+  'sort-change': [prop: string, order: 'ascending' | 'descending' | null]
+  'page-change': [page: number, size: number]
+  view: [order: ProductionOrderVO]
+  edit: [order: ProductionOrderVO]
+  convert: [order: ProductionOrderVO]
+  start: [order: ProductionOrderVO]
+  complete: [order: ProductionOrderVO]
+  cancel: [order: ProductionOrderVO]
+  delete: [order: ProductionOrderVO]
+  'more-action': [order: ProductionOrderVO, command: string]
+  refresh: []
+}>()
 
 // 分页状态
 const currentPage = ref(props.pageNum)
