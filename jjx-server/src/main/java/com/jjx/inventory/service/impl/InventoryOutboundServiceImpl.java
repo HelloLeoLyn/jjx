@@ -192,11 +192,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             tx.setRemark("出库确认完成");
             transactionMapper.insert(tx);
         }
-        // 安全库存检查
+        // 安全库存检查（移到循环外只调一次，原实现在循环内全量重复执行）
         try {
-            for (InventoryOutboundItem item : outItems) {
-                alertService.checkSafeStockAlert();
-            }
+            alertService.checkSafeStockAlert();
         } catch (Exception e) {
             log.warn("安全库存检查失败: {}", e.getMessage());
         }

@@ -86,7 +86,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setMaterialCode(stock.getMaterialCode());
             alert.setMaterialName(stock.getMaterialName());
             alert.setCurrentStock(stock.getTotalQuantity());
-            alert.setSafeStock(stock.getTotalQuantity()); // 实际应该从material表取
+            alert.setSafeStock(stock.getSafeStock() != null ? stock.getSafeStock() : stock.getTotalQuantity()); // 真实安全库存从物料表取
             alert.setAlertMessage(msg);
             alert.setAlertTime(java.time.LocalDateTime.now());
             alertLogMapper.insert(alert);
