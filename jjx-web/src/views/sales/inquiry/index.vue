@@ -402,9 +402,19 @@
     </el-dialog>
 
     <!-- 查看详情对话框 -->
-    <el-dialog title="询价单详情" v-model="detailVisible" width="700px" append-to-body>
-      <template v-if="detailData">
-        <el-descriptions :column="2" border>
+        <BizFlowDetail
+      v-model="detailVisible"
+      biz-type="inquiry"
+      :biz-id="detailData?.inquiryId"
+      title="询价单详情"
+      :status-steps="inquiryFlowSteps"
+      :current-status="detailData?.inquiryStatus"
+      confirm-text="确认询价"
+      @confirm-success="handleDetailConfirm"
+    >
+      <template #detail>
+        <template v-if="detailData">
+          <el-descriptions :column="2" border>
           <el-descriptions-item label="询价单号" :span="2">{{
             detailData.inquiryNo
           }}</el-descriptions-item>
@@ -465,29 +475,21 @@
             detailData.remark || '-'
           }}</el-descriptions-item>
         </el-descriptions>
+        </template>
       </template>
-      <el-divider content-position="left">相关文档</el-divider>
-      <AttachmentPanel
-        v-if="detailData?.inquiryId"
-        biz-type="inquiry"
-        :biz-id="detailData.inquiryId"
-      />
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="detailVisible = false">关 闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    </BizFlowDetail>
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, nextTick, computed } from 'vue'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
+import { InquiryStatusEnum } from '@/enums/sales'
+import type { FlowStep } from '@/components/BizFlowDetail/StatusFlowBar.vue'
 import type { FormInstance, UploadInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import { Upload } from '@element-plus/icons-vue'
@@ -515,6 +517,17 @@ const inquiryList = ref<any[]>([])
 const total = ref(0)
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
+
+// 询价状态流转步骤（顶部状态条）
+const inquiryFlowSteps = computed<FlowStep[]>(() =>
+  InquiryStatusEnum.items.map((i) => ({ key: i.value, label: i.label })),
+)
+
+// 详情确认按钮回调（样板：可接后端确认接口）
+function handleDetailConfirm() {
+  ElMessage.info('确认询价：可在此接入后端确认接口')
+}
+
 const dialogTitle = ref('')
 const single = ref(true)
 const multiple = ref(true)
