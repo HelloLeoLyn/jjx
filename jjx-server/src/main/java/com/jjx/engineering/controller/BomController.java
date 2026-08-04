@@ -1,106 +1,157 @@
 package com.jjx.engineering.controller;
 
-import cn.dev33.satoken.annotation.SaCheckPermission;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
-import com.jjx.engineering.domain.entity.Bom;
-import com.jjx.engineering.service.IBomService;
+import com.jjx.framework.common.controller.BaseController;
+import com.jjx.product.domain.dto.ProductBomDTO;
+import com.jjx.product.domain.dto.UpdateBomStatusDTO;
+import com.jjx.product.domain.entity.ProductBom;
 import com.jjx.product.domain.entity.ProductBomItem;
-import com.jjx.product.mapper.ProductBomItemMapper;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import com.jjx.product.domain.query.ProductBomQuery;
+import com.jjx.product.domain.vo.ProductBomVO;
+import com.jjx.product.enums.ProductEnums;
+import com.jjx.product.mapper.ProductBomMapper;
+import com.jjx.product.service.IProductBomService;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.annotation.Log;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-@Tag(name = "工程BOM管理")
+/**
+ * BOM管理（engineering 统一入口）
+ * 前端 api/product/bom.ts 全部走 /engineering/bom/*
+ */
 @RestController
 @RequestMapping("/engineering/bom")
 @RequiredArgsConstructor
-public class BomController {
+public class BomController extends BaseController {
 
-    private final IBomService bomService;
-    private final ProductBomItemMapper bomItemMapper;
-    private final com.jjx.product.mapper.ProductBomMapper productBomMapper;
+    private final IProductBomService productBomService;
+    private final ProductBomMapper productBomMapper;
 
-    @Operation(summary = "获取产品已审批BOM列表（产品配置BOM用）")
-    @SaCheckPermission("engineering:bom:view")
-    @GetMapping("/approved/{productId}")
-    public Result<List<com.jjx.product.domain.vo.ProductBomVO>> getApprovedBoms(@PathVariable Long productId) {
-        com.jjx.product.domain.query.ProductBomQuery query = new com.jjx.product.domain.query.ProductBomQuery();
-        query.setProductId(productId);
-        query.setApproveStatus(String.valueOf(com.jjx.product.enums.ProductEnums.BomStatus.APPROVED.getValue()));
-        return Result.success(productBomMapper.selectBomList(query, 0));
+    /**
+     * 获取BOM列表
+     */
+    @GetMapping("/page")
+    public Result<PageResult<ProductBomVO>> listPage(ProductBomQuery query) {
+        return Result.success(productBomService.listPage(query));
     }
 
-    @Operation(summary = "获取BOM详情（含明细）")
-    @SaCheckPermission("engineering:bom:view")
+    /**
+     * 获取BOM详情
+     */
     @GetMapping("/{bomId}")
-    public Result<Map<String, Object>> getBomDetail(@PathVariable Long bomId) {
-        Bom bom = bomService.getById(bomId);
-        if (bom == null) {
-            throw new com.jjx.common.exception.BusinessException("BOM不存在");
-        }
-        Map<String, Object> result = new HashMap<>();
-        result.put("bomId", bom.getBomId());
-        result.put("bomCode", bom.getBomCode());
-        result.put("bomName", bom.getBomName());
-        result.put("bomType", bom.getBomType());
-        result.put("bomVersion", bom.getBomVersion());
-        result.put("productId", bom.getProductId());
-        result.put("approveStatus", bom.getApproveStatus());
-        result.put("isCurrent", bom.getIsCurrent());
-        result.put("remark", bom.getRemark());
-        result.put("createBy", bom.getCreateBy());
-        result.put("createTime", bom.getCreateTime());
-        List<ProductBomItem> items = bomItemMapper.selectList(
-                new LambdaQueryWrapper<ProductBomItem>()
-                        .eq(ProductBomItem::getBomId, bomId)
-                        .orderByAsc(ProductBomItem::getItemOrder));
-        result.put("items", items == null ? List.of() : items);
-        return Result.success(result);
+    public Result<ProductBomVO> getInfo(@PathVariable Long bomId) {
+        return Result.success(productBomService.getBomDetail(bomId));
     }
 
-    @Operation(summary = "获取BOM明细列表")
-    @SaCheckPermission("engineering:bom:view")
+    /**
+     * 获取BOM明细列表
+     */
     @GetMapping("/items/{bomId}")
     public Result<List<ProductBomItem>> getBomItems(@PathVariable Long bomId) {
-        List<ProductBomItem> items = bomItemMapper.selectList(
-                new LambdaQueryWrapper<ProductBomItem>()
-                        .eq(ProductBomItem::getBomId, bomId)
-                        .orderByAsc(ProductBomItem::getItemOrder));
-        return Result.success(items == null ? List.of() : items);
+        return Result.success(productBomService.getBomItems(bomId));
     }
 
-    @Operation(summary = "获取BOM列表")
-    @GetMapping("/page")
-    public Result<?> page() {
-        return Result.success(bomService.listPage(null));
+    /**
+     * 获取产品已审批的BOM列表（用于产品新增/编辑时选择）
+     */
+    @GetMapping("/approved/{productId}")
+    public Result<List<ProductBomVO>> getApprovedBomList(@PathVariable Long productId) {
+        ProductBomQuery query = new ProductBomQuery();
+        query.setProductId(productId);
+        query.setApproveStatus(String.valueOf(ProductEnums.BomStatus.APPROVED.getValue()));
+        return Result.success(productBomService.getBomList(query));
     }
 
-    @Operation(summary = "BOM提交审核")
+    /**
+     * 获取产品的默认BOM
+     */
+    @GetMapping("/default/{productId}")
+    public Result<ProductBom> getDefaultBom(@PathVariable Long productId) {
+        return Result.success(productBomService.getDefaultBomByProductId(productId));
+    }
+
+    /**
+     * 新增BOM
+     */
+    @PostMapping
+    @Log(module = "产品BOM管理", businessType = BusinessType.INSERT)
+    @SaCheckPermission("engineering:bom:add")
+    public Result<Void> add(@Validated @RequestBody ProductBomDTO dto) {
+        return productBomService.createBom(dto) ? Result.success() : Result.error();
+    }
+
+    /**
+     * 修改BOM
+     */
+    @PutMapping
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("engineering:bom:edit")
+    public Result<Void> edit(@Validated @RequestBody ProductBomDTO dto) {
+        return productBomService.updateBom(dto) ? Result.success() : Result.error();
+    }
+
+    /**
+     * 删除BOM
+     */
+    @DeleteMapping("/{bomId}")
+    @Log(module = "产品BOM管理", businessType = BusinessType.DELETE)
+    @SaCheckPermission("engineering:bom:delete")
+    public Result<Void> remove(@PathVariable Long bomId) {
+        return productBomService.removeBomWithItems(bomId) ? Result.success() : Result.error();
+    }
+
+    /**
+     * 提交BOM审批
+     */
     @PutMapping("/submit/{bomId}")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("engineering:bom:edit")
     public Result<Void> submit(@PathVariable Long bomId) {
-        bomService.submitApprove(bomId);
-        return Result.success();
+        return productBomService.submitApprove(bomId) ? Result.success() : Result.error();
     }
 
-    @Operation(summary = "审核BOM")
+    /**
+     * 审批BOM
+     */
     @PutMapping("/approve/{bomId}")
-    public Result<Void> approve(@PathVariable Long bomId, @RequestBody(required = false) Map<String, Object> dto) {
-        String remark = dto != null && dto.get("remark") != null ? String.valueOf(dto.get("remark")) : null;
-        bomService.approve(bomId, remark);
-        return Result.success();
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE)
+    @SaCheckPermission("engineering:bom:approve")
+    public Result<Void> approve(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
+        return productBomService.approve(dto) ? Result.success() : Result.error();
     }
 
-    @Operation(summary = "驳回BOM")
+    /**
+     * 驳回BOM
+     */
     @PutMapping("/reject/{bomId}")
-    public Result<Void> reject(@PathVariable Long bomId, @RequestBody(required = false) Map<String, Object> dto) {
-        String remark = dto != null && dto.get("remark") != null ? String.valueOf(dto.get("remark")) : null;
-        bomService.reject(bomId, remark);
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE)
+    @SaCheckPermission("engineering:bom:reject")
+    public Result<Void> reject(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
+        return productBomService.reject(dto) ? Result.success() : Result.error();
+    }
+
+    /**
+     * 设置默认BOM
+     */
+    @PutMapping("/setDefault/{bomId}")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
+    @SaCheckPermission("engineering:bom:edit")
+    public Result<Void> setDefault(@PathVariable Long bomId) {
+        return productBomService.setDefaultBom(bomId) ? Result.success() : Result.error();
+    }
+
+    /**
+     * 计算BOM成本
+     */
+    @PostMapping("/calculateCost/{bomId}")
+    public Result<Void> calculateCost(@PathVariable Long bomId) {
+        productBomService.calculateBomCost(bomId);
         return Result.success();
     }
 }

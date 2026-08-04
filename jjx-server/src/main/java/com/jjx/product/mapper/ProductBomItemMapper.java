@@ -12,7 +12,7 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface ProductBomItemMapper extends BaseMapper<ProductBomItem> {
 
-    @Delete("delete from product_bom_item where bom_id=#{bomId}")
+    @Delete("delete from engineering_bom_item where bom_id=#{bomId}")
     void deleteByBomId(@Param("bomId") Long bomId);
 
 }
