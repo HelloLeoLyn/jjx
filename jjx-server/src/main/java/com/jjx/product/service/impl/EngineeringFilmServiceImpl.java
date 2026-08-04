@@ -7,7 +7,7 @@ import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
 import com.jjx.product.domain.dto.EngineeringFilmDTO;
-import com.jjx.product.domain.entity.EngineeringFilm;
+import com.jjx.engineering.domain.entity.EngineeringFilm;
 import com.jjx.product.domain.vo.EngineeringFilmVO;
 import com.jjx.product.enums.FilmTypeEnum;
 import com.jjx.product.mapper.EngineeringFilmMapper;

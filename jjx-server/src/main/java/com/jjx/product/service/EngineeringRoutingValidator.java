@@ -1,7 +1,7 @@
 package com.jjx.product.service;
 
-import com.jjx.product.domain.entity.EngineeringRouting;
-import com.jjx.product.domain.entity.EngineeringRoutingItem;
+import com.jjx.engineering.domain.entity.EngineeringRouting;
+import com.jjx.engineering.domain.entity.EngineeringRoutingItem;
 import com.jjx.product.domain.entity.ProductStandardProcess;
 import com.jjx.product.domain.vo.EngineeringRoutingValidationVO;
 import com.jjx.product.mapper.EngineeringRoutingItemMapper;

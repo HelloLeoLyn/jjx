@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.product.domain.dto.EngineeringRoutingDTO;
 import com.jjx.product.domain.dto.EngineeringRoutingQueryDTO;
-import com.jjx.product.domain.entity.EngineeringRouting;
+import com.jjx.engineering.domain.entity.EngineeringRouting;
 import com.jjx.product.domain.vo.EngineeringRoutingVO;
 
 import java.util.List;

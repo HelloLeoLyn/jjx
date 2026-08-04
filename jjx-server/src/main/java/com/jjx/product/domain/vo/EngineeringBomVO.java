@@ -1,6 +1,6 @@
 package com.jjx.product.domain.vo;
 
-import com.jjx.product.domain.entity.EngineeringBomItem;
+import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import lombok.Data;
 
 import java.time.LocalDateTime;

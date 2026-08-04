@@ -7,10 +7,10 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
 import com.jjx.framework.common.RedisSequenceService;
-import com.jjx.engineering.domain.entity.Bom;
-import com.jjx.engineering.domain.entity.Routing;
-import com.jjx.engineering.service.IBomService;
-import com.jjx.engineering.service.IRoutingService;
+import com.jjx.engineering.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringRouting;
+import com.jjx.product.service.IEngineeringBomService;
+import com.jjx.product.service.IEngineeringRoutingService;
 import com.jjx.system.annotation.Event;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ProductValidationVO;
@@ -61,8 +61,8 @@ public class OrderServiceImpl implements IOrderService {
     private final ICustomerService customerService;
     private final ProductMapper productMapper;
     private final ProductionOrderService productionOrderService;
-    private final IBomService bomService;
-    private final IRoutingService routingService;
+    private final IEngineeringBomService bomService;
+    private final IEngineeringRoutingService routingService;
 
     /**
      * 查询销售订单列表
@@ -419,21 +419,21 @@ public class OrderServiceImpl implements IOrderService {
             }
 
             // 2. 校验 BOM 已批准（当前生效版本）
-            Bom bom = bomService.getOne(new LambdaQueryWrapper<Bom>()
-                    .eq(Bom::getProductId, productId)
-                    .eq(Bom::getIsCurrent, 1)
-                    .eq(Bom::getApproveStatus, 3)
-                    .orderByDesc(Bom::getBomId)
+            EngineeringBom bom = bomService.getOne(new LambdaQueryWrapper<EngineeringBom>()
+                    .eq(EngineeringBom::getProductId, productId)
+                    .eq(EngineeringBom::getIsCurrent, true)
+                    .eq(EngineeringBom::getApproveStatus, 3)
+                    .orderByDesc(EngineeringBom::getBomId)
                     .last("LIMIT 1"));
             if (bom == null) {
                 throw new BusinessException("产品[" + prod.getProductCode() + "]没有已批准的BOM，不能提交生产");
             }
 
             // 3. 校验工艺路线已批准（当前生效版本）
-            Routing routing = routingService.getOne(new LambdaQueryWrapper<Routing>()
-                    .eq(Routing::getProductId, productId)
-                    .eq(Routing::getStatus, 3)
-                    .orderByDesc(Routing::getRoutingId)
+            EngineeringRouting routing = routingService.getOne(new LambdaQueryWrapper<EngineeringRouting>()
+                    .eq(EngineeringRouting::getProductId, productId)
+                    .eq(EngineeringRouting::getApproveStatus, 3)
+                    .orderByDesc(EngineeringRouting::getRoutingId)
                     .last("LIMIT 1"));
             if (routing == null) {
                 throw new BusinessException("产品[" + prod.getProductCode() + "]没有已批准的工艺路线，不能提交生产");

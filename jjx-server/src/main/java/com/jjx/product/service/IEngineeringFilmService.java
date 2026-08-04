@@ -2,7 +2,7 @@ package com.jjx.product.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.product.domain.dto.EngineeringFilmDTO;
-import com.jjx.product.domain.entity.EngineeringFilm;
+import com.jjx.engineering.domain.entity.EngineeringFilm;
 import com.jjx.product.domain.vo.EngineeringFilmVO;
 import org.springframework.web.multipart.MultipartFile;
 

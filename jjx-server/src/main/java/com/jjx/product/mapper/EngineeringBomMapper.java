@@ -1,7 +1,7 @@
 package com.jjx.product.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.product.domain.query.EngineeringBomQuery;
 import com.jjx.product.domain.vo.EngineeringBomVO;
 import org.apache.ibatis.annotations.*;

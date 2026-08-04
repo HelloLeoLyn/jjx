@@ -1,7 +1,7 @@
 package com.jjx.product.service;
 
-import com.jjx.product.domain.entity.EngineeringBom;
-import com.jjx.product.domain.entity.EngineeringBomItem;
+import com.jjx.engineering.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;

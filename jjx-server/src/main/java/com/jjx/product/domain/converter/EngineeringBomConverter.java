@@ -1,7 +1,7 @@
 package com.jjx.product.domain.converter;
 
 import com.jjx.product.domain.dto.EngineeringBomDTO;
-import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.product.domain.vo.EngineeringBomVO;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

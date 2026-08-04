@@ -1,6 +1,7 @@
-package com.jjx.product.domain.entity;
+package com.jjx.engineering.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jjx.product.domain.entity.ProductStandardProcess;
 import lombok.Data;
 
 import java.math.BigDecimal;

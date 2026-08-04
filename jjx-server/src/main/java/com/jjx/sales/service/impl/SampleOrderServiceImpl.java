@@ -52,8 +52,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final SalesSampleProcessMapper sampleProcessMapper;
     private final SalesSampleBomMapper sampleBomMapper;
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
-    private final com.jjx.engineering.service.IBomService bomService;
-    private final com.jjx.engineering.service.IRoutingService routingService;
+    private final com.jjx.product.service.IEngineeringBomService bomService;
+    private final com.jjx.product.service.IEngineeringRoutingService routingService;
     private final com.jjx.product.mapper.EngineeringBomItemMapper bomItemMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final com.jjx.engineering.mapper.RoutingItemMapper routingItemMapper;
@@ -826,27 +826,27 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 if (pid == null) continue;
 
                 // ===== ② BOM 建档：从工序单元材料聚合生成草稿 =====
-                com.jjx.engineering.domain.entity.Bom existBom = bomService.getOne(
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.Bom>()
-                                .eq(com.jjx.engineering.domain.entity.Bom::getProductId, pid)
-                                .eq(com.jjx.engineering.domain.entity.Bom::getIsCurrent, 1)
+                com.jjx.engineering.domain.entity.EngineeringBom existBom = bomService.getOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
+                                .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, pid)
+                                .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, true)
                                 .last("LIMIT 1"));
                 if (existBom == null) {
                     if (processes != null && !processes.isEmpty()) {
-                        com.jjx.engineering.domain.entity.Bom newBom = new com.jjx.engineering.domain.entity.Bom();
+                        com.jjx.engineering.domain.entity.EngineeringBom newBom = new com.jjx.engineering.domain.entity.EngineeringBom();
                         newBom.setBomCode("BOM-" + prod.getProductCode() + "-SAMPLE");
                         newBom.setBomName(prod.getProductName() + "（打样传承BOM）");
                         newBom.setProductId(pid);
                         newBom.setBomVersion("V1");
                         newBom.setBomType("manufacturing");
-                        newBom.setIsCurrent(1);
-                        newBom.setApproveStatus(1L); // 草稿
+                        newBom.setIsCurrent(true);
+                        newBom.setApproveStatus(1); // 草稿
                         newBom.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]资料转移生成，请工程确认后批准");
                         newBom.setCreateBy(SecurityUtils.getUsername());
                         bomService.save(newBom);
 
                         int order = 1;
-                        java.util.Map<String, com.jjx.product.domain.entity.EngineeringBomItem> aggMap = new java.util.LinkedHashMap<>();
+                        java.util.Map<String, com.jjx.engineering.domain.entity.EngineeringBomItem> aggMap = new java.util.LinkedHashMap<>();
                         for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
                             if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
                             try {
@@ -857,9 +857,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     String name = m.get("name") != null ? m.get("name").toString() : null;
                                     if (name == null || name.isEmpty()) continue;
                                     String key = name + "|" + (m.get("spec") != null ? m.get("spec") : "");
-                                    com.jjx.product.domain.entity.EngineeringBomItem item = aggMap.get(key);
+                                    com.jjx.engineering.domain.entity.EngineeringBomItem item = aggMap.get(key);
                                     if (item == null) {
-                                        item = new com.jjx.product.domain.entity.EngineeringBomItem();
+                                        item = new com.jjx.engineering.domain.entity.EngineeringBomItem();
                                         item.setBomId(newBom.getBomId());
                                         item.setMaterialName(name);
                                         item.setSpecification(m.get("spec") != null ? m.get("spec").toString() : null);
@@ -891,7 +891,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 log.warn("解析工序材料失败: {}", pe.getMessage());
                             }
                         }
-                        for (com.jjx.product.domain.entity.EngineeringBomItem item : aggMap.values()) {
+                        for (com.jjx.engineering.domain.entity.EngineeringBomItem item : aggMap.values()) {
                             bomItemMapper.insert(item);
                         }
                         builtBomId = newBom.getBomId();
@@ -908,13 +908,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 }
 
                 // ===== ③ 工艺路线建档：从工序单元生成草稿 =====
-                com.jjx.engineering.domain.entity.Routing existRouting = routingService.getOne(
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.Routing>()
-                                .eq(com.jjx.engineering.domain.entity.Routing::getProductId, pid)
+                com.jjx.engineering.domain.entity.EngineeringRouting existRouting = routingService.getOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRouting>()
+                                .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getProductId, pid)
                                 .last("LIMIT 1"));
                 if (existRouting == null) {
                     if (processes != null && !processes.isEmpty()) {
-                        com.jjx.engineering.domain.entity.Routing newRouting = new com.jjx.engineering.domain.entity.Routing();
+                        com.jjx.engineering.domain.entity.EngineeringRouting newRouting = new com.jjx.engineering.domain.entity.EngineeringRouting();
                         newRouting.setRoutingCode("RTE-" + prod.getProductCode() + "-SAMPLE");
                         newRouting.setRoutingName(prod.getProductName() + "（打样传承工艺路线）");
                         newRouting.setProductId(pid);
@@ -922,7 +922,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         newRouting.setProductName(prod.getProductName());
                         newRouting.setRoutingVersion("V1");
                         newRouting.setIsCurrent(1);
-                        newRouting.setStatus(1); // 草稿
+                        newRouting.setApproveStatus(1); // 草稿
                         newRouting.setCreateBy(SecurityUtils.getUsername());
                         routingService.save(newRouting);
 

@@ -1,7 +1,7 @@
 package com.jjx.product.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.jjx.product.domain.entity.EngineeringRoutingItem;
+import com.jjx.engineering.domain.entity.EngineeringRoutingItem;
 import com.jjx.product.domain.vo.EngineeringRoutingItemVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;

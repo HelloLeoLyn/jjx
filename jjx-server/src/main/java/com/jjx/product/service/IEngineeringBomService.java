@@ -4,8 +4,8 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.UpdateBomStatusDTO;
-import com.jjx.product.domain.entity.EngineeringBom;
-import com.jjx.product.domain.entity.EngineeringBomItem;
+import com.jjx.engineering.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.query.EngineeringBomQuery;
 import com.jjx.product.domain.vo.EngineeringBomVO;
 

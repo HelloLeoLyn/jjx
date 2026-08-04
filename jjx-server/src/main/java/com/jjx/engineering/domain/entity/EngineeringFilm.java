@@ -1,4 +1,4 @@
-package com.jjx.product.domain.entity;
+package com.jjx.engineering.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;

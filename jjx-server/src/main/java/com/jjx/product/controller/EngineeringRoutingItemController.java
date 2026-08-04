@@ -1,7 +1,7 @@
 package com.jjx.product.controller;
 
 import com.jjx.common.core.result.Result;
-import com.jjx.product.domain.entity.EngineeringRoutingItem;
+import com.jjx.engineering.domain.entity.EngineeringRoutingItem;
 import com.jjx.product.mapper.EngineeringRoutingItemMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

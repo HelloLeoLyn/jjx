@@ -2,7 +2,7 @@ package com.jjx.product.domain.converter;
 
 import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.product.domain.dto.EngineeringRoutingDTO;
-import com.jjx.product.domain.entity.EngineeringRouting;
+import com.jjx.engineering.domain.entity.EngineeringRouting;
 import com.jjx.product.domain.vo.EngineeringRoutingVO;
 import com.jjx.product.enums.ProcessCategoryEnum;
 import com.jjx.product.enums.ProcessTypeEnum;

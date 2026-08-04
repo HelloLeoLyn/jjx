@@ -1,5 +1,5 @@
 package com.jjx.sales.service.impl;
-import com.jjx.product.domain.entity.EngineeringRouting;
+import com.jjx.engineering.domain.entity.EngineeringRouting;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
@@ -7,7 +7,7 @@ import com.jjx.event.EventPublisher;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.service.ProductionOrderService;
-import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
