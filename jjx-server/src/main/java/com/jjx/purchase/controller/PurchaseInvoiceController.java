@@ -59,7 +59,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 新增采购发票
      */
     @PostMapping
-    @Log(module = "采购发票管理", businessType = BusinessType.INSERT)
+    @Log(module = "采购发票管理", businessType = BusinessType.INSERT, bizType = "'purchase_invoice'", bizId = "#dto.documentId")
     @SaCheckPermission("purchase:invoice:add")
     public Result<Void> add(@Valid PurchaseDocumentDTO dto) {
         dto.setDocumentType("invoice");
@@ -74,7 +74,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 修改采购发票
      */
     @PutMapping
-    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'", bizId = "#dto.documentId")
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> edit(@Valid PurchaseDocumentDTO dto) {
         dto.setDocumentType("invoice");
@@ -86,7 +86,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 删除采购发票
      */
     @DeleteMapping("/{invoiceIds}")
-    @Log(module = "采购发票管理", businessType = BusinessType.DELETE)
+    @Log(module = "采购发票管理", businessType = BusinessType.DELETE, bizType = "'purchase_invoice'")
     @SaCheckPermission("purchase:invoice:delete")
     public Result<Void> remove(@PathVariable Long[] invoiceIds) {
         documentService.deleteDocumentByIds(invoiceIds);
@@ -110,7 +110,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 核销发票
      */
     @PutMapping("/verify/{invoiceId}")
-    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'", bizId = "#invoiceId")
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> verify(@PathVariable Long invoiceId,
                                @RequestParam String verificationDate,
@@ -205,7 +205,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 批量核销
      */
     @PostMapping("/batch-verify")
-    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'")
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> batchVerify(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -222,7 +222,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 导入发票数据
      */
     @PostMapping("/import")
-    @Log(module = "采购发票管理", businessType = BusinessType.IMPORT)
+    @Log(module = "采购发票管理", businessType = BusinessType.IMPORT, bizType = "'purchase_invoice'")
     @SaCheckPermission("purchase:invoice:import")
     public Result<Void> importInvoice(@RequestBody List<PurchaseDocumentDTO> importData) {
         for (PurchaseDocumentDTO dto : importData) {
@@ -359,7 +359,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 批量删除发票文件
      */
     @PostMapping("/batch-delete-files")
-    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'")
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> batchDeleteFiles(@RequestBody Map<String, List<Long>> request) {
         List<Long> invoiceIds = request.get("invoiceIds");
@@ -423,7 +423,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 临时上传票据文件（只保存到磁盘，不插入数据库）
      */
     @PostMapping("/upload-temp/{orderId}")
-    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'", bizId = "#orderId")
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Map<String, Object>> uploadTempFile(@PathVariable Long orderId,
                                                        @RequestParam("file") MultipartFile file) {
@@ -445,7 +445,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 批量确认票据（将临时文件插入数据库）
      */
     @PostMapping("/batch-confirm")
-    @Log(module = "采购发票管理", businessType = BusinessType.INSERT)
+    @Log(module = "采购发票管理", businessType = BusinessType.INSERT, bizType = "'purchase_invoice'")
     @SaCheckPermission("purchase:invoice:add")
     public Result<Void> batchConfirm(@RequestBody Map<String, Object> params) {
         Long orderId = Long.valueOf(params.get("orderId").toString());
@@ -460,7 +460,7 @@ public class PurchaseInvoiceController extends BaseController {
      * 删除临时票据文件
      */
     @DeleteMapping("/temp-file")
-    @Log(module = "采购发票管理", businessType = BusinessType.DELETE)
+    @Log(module = "采购发票管理", businessType = BusinessType.DELETE, bizType = "'purchase_invoice'", bizId = "#fileUrl")
     @SaCheckPermission("purchase:invoice:delete")
     public Result<Void> deleteTempFile(@RequestParam String fileUrl) {
         documentService.deleteTempFile(fileUrl);

@@ -127,7 +127,7 @@ public class BomController extends BaseController {
      * 新增BOM
      */
     @PostMapping
-    @Log(module = "产品BOM管理", businessType = BusinessType.INSERT)
+    @Log(module = "产品BOM管理", businessType = BusinessType.INSERT, bizType = "'bom'", bizId = "#dto.bomId")
     @SaCheckPermission("engineering:bom:add")
     public Result<Void> add(@Validated @RequestBody EngineeringBomDTO dto) {
         return productBomService.createBom(dto) ? Result.success() : Result.error();
@@ -137,7 +137,7 @@ public class BomController extends BaseController {
      * 修改BOM
      */
     @PutMapping
-    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#dto.bomId")
     @SaCheckPermission("engineering:bom:edit")
     public Result<Void> edit(@Validated @RequestBody EngineeringBomDTO dto) {
         return productBomService.updateBom(dto) ? Result.success() : Result.error();
@@ -147,7 +147,7 @@ public class BomController extends BaseController {
      * 删除BOM
      */
     @DeleteMapping("/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.DELETE)
+    @Log(module = "产品BOM管理", businessType = BusinessType.DELETE, bizType = "'bom'", bizId = "#bomId")
     @SaCheckPermission("engineering:bom:delete")
     public Result<Void> remove(@PathVariable Long bomId) {
         return productBomService.removeBomWithItems(bomId) ? Result.success() : Result.error();
@@ -157,7 +157,7 @@ public class BomController extends BaseController {
      * 提交BOM审批
      */
     @PutMapping("/submit/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId")
     @SaCheckPermission("engineering:bom:edit")
     public Result<Void> submit(@PathVariable Long bomId) {
         return productBomService.submitApprove(bomId) ? Result.success() : Result.error();
@@ -167,7 +167,7 @@ public class BomController extends BaseController {
      * 审批BOM
      */
     @PutMapping("/approve/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE)
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId")
     @SaCheckPermission("engineering:bom:approve")
     public Result<Void> approve(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.approve(dto) ? Result.success() : Result.error();
@@ -177,7 +177,7 @@ public class BomController extends BaseController {
      * 驳回BOM
      */
     @PutMapping("/reject/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE)
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId")
     @SaCheckPermission("engineering:bom:reject")
     public Result<Void> reject(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.reject(dto) ? Result.success() : Result.error();
@@ -187,7 +187,7 @@ public class BomController extends BaseController {
      * 设置默认BOM
      */
     @PutMapping("/setDefault/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId")
     @SaCheckPermission("engineering:bom:edit")
     public Result<Void> setDefault(@PathVariable Long bomId) {
         return productBomService.setDefaultBom(bomId) ? Result.success() : Result.error();

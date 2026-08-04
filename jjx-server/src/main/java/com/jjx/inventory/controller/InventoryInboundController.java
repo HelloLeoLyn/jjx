@@ -43,7 +43,7 @@ public class InventoryInboundController {
 
     @PostMapping("/create")
     @Operation(summary = "创建入库单")
-    @Log(module = "入库管理", businessType = BusinessType.INSERT)
+    @Log(module = "入库管理", businessType = BusinessType.INSERT, bizType = "'inbound'", bizId = "#result.data")
     @SaCheckPermission("inventory:inbound:add")
     public Result<Long> create(@RequestBody Map<String, Object> params) {
         return Result.success(inboundService.create(params));
@@ -51,7 +51,7 @@ public class InventoryInboundController {
 
     @PostMapping("/confirm/{inboundId}")
     @Operation(summary = "确认入库")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> confirm(@PathVariable Long inboundId,
                                    @RequestParam Long operatorId,
@@ -61,7 +61,7 @@ public class InventoryInboundController {
 
     @PostMapping("/cancel/{inboundId}")
     @Operation(summary = "取消入库单")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> cancel(@PathVariable Long inboundId,
                                   @RequestParam String reason) {
@@ -70,7 +70,7 @@ public class InventoryInboundController {
 
     @PostMapping("/submit-approve/{inboundId}")
     @Operation(summary = "提交审批")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> submitApprove(@PathVariable Long inboundId) {
         return Result.success(inboundService.submitApprove(inboundId));
@@ -78,7 +78,7 @@ public class InventoryInboundController {
 
     @PostMapping("/approve/{inboundId}")
     @Operation(summary = "审批通过")
-    @Log(module = "入库管理", businessType = BusinessType.APPROVE)
+    @Log(module = "入库管理", businessType = BusinessType.APPROVE, bizType = "'inbound'", bizId = "#inboundId")
     @SaCheckPermission("inventory:inbound:approve")
     public Result<Boolean> approve(@PathVariable Long inboundId,
                                    @RequestParam Long approverId,
@@ -89,7 +89,7 @@ public class InventoryInboundController {
 
     @PostMapping("/reject/{inboundId}")
     @Operation(summary = "审批驳回")
-    @Log(module = "入库管理", businessType = BusinessType.APPROVE)
+    @Log(module = "入库管理", businessType = BusinessType.APPROVE, bizType = "'inbound'", bizId = "#inboundId")
     @SaCheckPermission("inventory:inbound:approve")
     public Result<Boolean> reject(@PathVariable Long inboundId,
                                   @RequestParam Long approverId,
@@ -100,7 +100,7 @@ public class InventoryInboundController {
 
     @PostMapping("/create-from-purchase/{purchaseOrderId}")
     @Operation(summary = "从采购订单创建入库单")
-    @Log(module = "入库管理", businessType = BusinessType.INSERT)
+    @Log(module = "入库管理", businessType = BusinessType.INSERT, bizType = "'inbound'", bizId = "#purchaseOrderId")
     @SaCheckPermission("inventory:inbound:add")
     public Result<Long> createFromPurchase(@PathVariable Long purchaseOrderId) {
         return Result.success(inboundService.createFromPurchase(purchaseOrderId));
@@ -108,7 +108,7 @@ public class InventoryInboundController {
 
     @PostMapping("/create-from-production/{workOrderId}")
     @Operation(summary = "从生产工单创建入库单")
-    @Log(module = "入库管理", businessType = BusinessType.INSERT)
+    @Log(module = "入库管理", businessType = BusinessType.INSERT, bizType = "'inbound'", bizId = "#workOrderId")
     @SaCheckPermission("inventory:inbound:add")
     public Result<Long> createFromProduction(@PathVariable Long workOrderId) {
         return Result.success(inboundService.createFromProduction(workOrderId));
@@ -139,7 +139,7 @@ public class InventoryInboundController {
 
     @PostMapping("/update-status/{inboundId}")
     @Operation(summary = "更新入库单状态")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> updateStatus(@PathVariable Long inboundId,
                                         @RequestParam Integer status) {

@@ -35,7 +35,7 @@ public class EngineeringController {
     }
 
     @Operation(summary = "新增工程记录")
-    @Log(module = "工程管理", businessType = BusinessType.INSERT)
+    @Log(module = "工程管理", businessType = BusinessType.INSERT, bizType = "'engineering'", bizId = "#entity.id")
     @SaCheckPermission("engineering:add")
     @PostMapping
     public Result<Void> save(@Validated @RequestBody EngineeringBase entity) {
@@ -44,7 +44,7 @@ public class EngineeringController {
     }
 
     @Operation(summary = "更新工程记录")
-    @Log(module = "工程管理", businessType = BusinessType.UPDATE)
+    @Log(module = "工程管理", businessType = BusinessType.UPDATE, bizType = "'engineering'", bizId = "#entity.id")
     @SaCheckPermission("engineering:edit")
     @PutMapping
     public Result<Void> update(@Validated @RequestBody EngineeringBase entity) {
@@ -53,7 +53,7 @@ public class EngineeringController {
     }
 
     @Operation(summary = "删除工程记录")
-    @Log(module = "工程管理", businessType = BusinessType.DELETE)
+    @Log(module = "工程管理", businessType = BusinessType.DELETE, bizType = "'engineering'", bizId = "#id")
     @SaCheckPermission("engineering:delete")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {

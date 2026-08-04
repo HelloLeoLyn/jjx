@@ -43,7 +43,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create")
     @Operation(summary = "创建出库单")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT)
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#result.data")
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> create(@RequestBody Map<String, Object> params) {
         return Result.success(outboundService.create(params));
@@ -51,7 +51,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/confirm/{outboundId}")
     @Operation(summary = "确认出库")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId")
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> confirm(@PathVariable Long outboundId,
                                    @RequestParam Long operatorId,
@@ -61,7 +61,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/cancel/{outboundId}")
     @Operation(summary = "取消出库单")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId")
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> cancel(@PathVariable Long outboundId,
                                   @RequestParam String reason) {
@@ -70,7 +70,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/submit-approve/{outboundId}")
     @Operation(summary = "提交审批")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId")
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> submitApprove(@PathVariable Long outboundId) {
         return Result.success(outboundService.submitApprove(outboundId));
@@ -78,7 +78,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/approve/{outboundId}")
     @Operation(summary = "审批通过")
-    @Log(module = "出库管理", businessType = BusinessType.APPROVE)
+    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId")
     @SaCheckPermission("inventory:outbound:approve")
     public Result<Boolean> approve(@PathVariable Long outboundId,
                                    @RequestParam Long approverId,
@@ -89,7 +89,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/reject/{outboundId}")
     @Operation(summary = "审批驳回")
-    @Log(module = "出库管理", businessType = BusinessType.APPROVE)
+    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId")
     @SaCheckPermission("inventory:outbound:approve")
     public Result<Boolean> reject(@PathVariable Long outboundId,
                                   @RequestParam Long approverId,
@@ -100,7 +100,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create-from-production/{workOrderId}")
     @Operation(summary = "从生产工单创建出库单")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT)
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId")
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createFromProduction(@PathVariable Long workOrderId) {
         return Result.success(outboundService.createFromProduction(workOrderId));
@@ -108,7 +108,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create-from-sales/{salesOrderId}")
     @Operation(summary = "从销售订单创建出库单")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT)
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#salesOrderId")
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createFromSales(@PathVariable Long salesOrderId) {
         return Result.success(outboundService.createFromSales(salesOrderId));
@@ -139,7 +139,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/update-status/{outboundId}")
     @Operation(summary = "更新出库单状态")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE)
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId")
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> updateStatus(@PathVariable Long outboundId,
                                         @RequestParam Integer status) {

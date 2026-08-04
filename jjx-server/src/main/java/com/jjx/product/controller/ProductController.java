@@ -75,7 +75,7 @@ public class ProductController extends BaseController {
      * 停产
      */
     @PutMapping("/obsolete/{id}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id")
     @SaCheckPermission("product:product:obsolete")
     public Result<Void> obsolete(@PathVariable Long id) {
         return toAjax(productService.obsoleteProduct(id));
@@ -85,7 +85,7 @@ public class ProductController extends BaseController {
      * 取消（取消审核/取消发布）
      */
     @PutMapping("/cancel/{id}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id")
     @SaCheckPermission("product:product:edit")
     public Result<Void> cancel(@PathVariable Long id) {
         return toAjax(productService.cancelProduct(id));

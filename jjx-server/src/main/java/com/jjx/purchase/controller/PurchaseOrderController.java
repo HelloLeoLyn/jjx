@@ -70,7 +70,7 @@ public class PurchaseOrderController extends BaseController {
      * 新增采购订单
      */
     @PostMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT)
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderDTO.orderId")
     @SaCheckPermission("purchase:order:add")
     public Result<Void> add(@Valid @RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.insertOrder(orderDTO);
@@ -81,7 +81,7 @@ public class PurchaseOrderController extends BaseController {
      * 修改采购订单
      */
     @PutMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderDTO.orderId")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> edit(@Valid @RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.updateOrder(orderDTO);
@@ -92,7 +92,7 @@ public class PurchaseOrderController extends BaseController {
      * 取消采购订单
      */
     @PutMapping("/cancel/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> cancel(@PathVariable Long orderId) {
         purchaseOrderService.cancelOrder(orderId);
@@ -103,7 +103,7 @@ public class PurchaseOrderController extends BaseController {
      * 采购退货
      */
     @Operation(summary = "采购退货")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:edit")
     @PostMapping("/return/{orderId}")
     public Result<Void> returnGoods(@PathVariable Long orderId,
@@ -118,7 +118,7 @@ public class PurchaseOrderController extends BaseController {
      * 提交审批
      */
     @PutMapping("/submit/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> submit(@PathVariable Long orderId) {
         purchaseOrderService.submitOrder(orderId);
@@ -129,7 +129,7 @@ public class PurchaseOrderController extends BaseController {
      * 批量提交审批
      */
     @PutMapping("/batch-submit")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderIds[0]")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> batchSubmit(@RequestBody List<Long> orderIds) {
         purchaseOrderService.batchSubmitOrders(orderIds);
@@ -140,7 +140,7 @@ public class PurchaseOrderController extends BaseController {
      * 审批订单
      */
     @PutMapping("/approve")
-    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE)
+    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE, bizType = "'purchase_order'", bizId = "#dto.orderId")
     @SaCheckPermission("purchase:order:approve")
     public Result<Void> approve(@Valid @RequestBody PurchaseOrderApprovalDTO dto) {
         purchaseOrderService.approveOrder(dto);
@@ -151,7 +151,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新订单审批状态
      */
     @PutMapping("/status")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> updateStatus(@RequestParam Long orderId, @RequestParam Integer approvalStatus) {
         purchaseOrderService.updateOrderStatus(orderId, approvalStatus);
@@ -163,7 +163,7 @@ public class PurchaseOrderController extends BaseController {
      * 使用DTO模式，一次请求可同时收货多个明细项
      */
     @PostMapping("/{orderId}/receive")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> receive(@PathVariable Long orderId, @Valid @RequestBody PurchaseOrderReceiveDTO dto) {
         dto.setOrderId(orderId);
@@ -175,7 +175,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新收货状态
      */
     @PutMapping("/receiptStatus")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> updateReceiptStatus(@RequestParam Long orderId, @RequestParam Integer receiptStatus) {
         purchaseOrderService.updateReceiptStatus(orderId, receiptStatus);
@@ -186,7 +186,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新付款信息
      */
     @PutMapping("/payment")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#result.data")
     @SaCheckPermission("purchase:order:edit")
     public Result<Integer> updatePayment(@RequestParam Long orderId,
                                       @RequestParam(required = false) BigDecimal paidAmount,
@@ -216,7 +216,7 @@ public class PurchaseOrderController extends BaseController {
      * 复制订单
      */
     @PostMapping("/copy/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT)
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:add")
     public Result<Long> copy(@PathVariable Long orderId) {
         return Result.success(purchaseOrderService.copyOrder(orderId));
@@ -226,7 +226,7 @@ public class PurchaseOrderController extends BaseController {
      * 导出采购订单列表
      */
     @PostMapping("/export")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT)
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'")
     @SaCheckPermission("purchase:order:export")
     public Result<String> export(@RequestBody PurchaseOrderQueryDTO queryVO) {
         return Result.success(purchaseOrderService.exportOrderList(queryVO));
@@ -236,7 +236,7 @@ public class PurchaseOrderController extends BaseController {
      * 导出采购订单详情
      */
     @PostMapping("/export/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT)
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:export")
     public Result<String> exportDetail(@PathVariable Long orderId) {
         return Result.success(purchaseOrderService.exportOrderDetail(orderId));
@@ -246,7 +246,7 @@ public class PurchaseOrderController extends BaseController {
      * 删除采购订单
      */
     @DeleteMapping("/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.DELETE)
+    @Log(module = "采购订单管理", businessType = BusinessType.DELETE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:delete")
     public Result<Void> deleteOrder(@PathVariable Long orderId) {
         com.jjx.purchase.domain.entity.PurchaseOrder order = purchaseOrderService.getById(orderId);

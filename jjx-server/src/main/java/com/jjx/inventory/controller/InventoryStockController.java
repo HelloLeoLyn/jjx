@@ -111,7 +111,7 @@ public class InventoryStockController {
 
     @PostMapping("/batch-import")
     @Operation(summary = "批量导入库存")
-    @Log(module = "库存管理", businessType = BusinessType.IMPORT)
+    @Log(module = "库存管理", businessType = BusinessType.IMPORT, bizType = "'stock'")
     @SaCheckPermission("inventory:stock:import")
     public Result<StockImportResultVO> batchImport(@RequestBody List<StockImportDTO> list) {
         return Result.success(stockService.batchImport(list));

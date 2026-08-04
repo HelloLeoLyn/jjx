@@ -86,7 +86,7 @@ public class InventoryMaterialController extends BaseController {
      * 新增物料
      */
     @PostMapping
-    @Log(module = "物料管理", businessType = BusinessType.INSERT)
+    @Log(module = "物料管理", businessType = BusinessType.INSERT, bizType = "'material'", bizId = "#dto.materialId")
     @SaCheckPermission("inventory:material:add")
     public Result<Void> add(@RequestBody MaterialSaveDTO dto) {
         // 检查物料编码是否已存在
@@ -107,7 +107,7 @@ public class InventoryMaterialController extends BaseController {
      * 修改物料
      */
     @PutMapping
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#dto.materialId")
     @SaCheckPermission("inventory:material:edit")
     public Result<Void> update(@RequestBody MaterialUpdateDTO dto) {
         if (dto.getMaterialId() == null) {
@@ -127,7 +127,7 @@ public class InventoryMaterialController extends BaseController {
      * 删除物料
      */
     @DeleteMapping("/{id}")
-    @Log(module = "物料管理", businessType = BusinessType.DELETE)
+    @Log(module = "物料管理", businessType = BusinessType.DELETE, bizType = "'material'", bizId = "#id")
     @SaCheckPermission("inventory:material:delete")
     public Result<Void> delete(@PathVariable Long id) {
         materialService.deleteWithCheck(id);
@@ -138,7 +138,7 @@ public class InventoryMaterialController extends BaseController {
      * 更新物料状态
      */
     @PutMapping("/{id}/status")
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#id")
     @SaCheckPermission("inventory:material:edit")
     public Result<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
         // 调用Service更新状态
@@ -150,7 +150,7 @@ public class InventoryMaterialController extends BaseController {
      * 批量更新物料状态
      */
     @PutMapping("/batch-status")
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#ids[0]")
     @SaCheckPermission("inventory:material:edit")
     public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam Integer status) {
         if (ids == null || ids.isEmpty()) {
@@ -196,7 +196,7 @@ public class InventoryMaterialController extends BaseController {
      * 导入物料数据
      */
     @PostMapping("/import")
-    @Log(module = "物料管理", businessType = BusinessType.IMPORT)
+    @Log(module = "物料管理", businessType = BusinessType.IMPORT, bizType = "'material'")
     @SaCheckPermission("inventory:material:add")
     public Result<String> importMaterial(MultipartFile file) {
         List<MaterialImportDTO> importList = ExcelUtils.importExcel(file, MaterialImportDTO.class);
