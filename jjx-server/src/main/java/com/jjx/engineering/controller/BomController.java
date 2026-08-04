@@ -2,12 +2,14 @@ package com.jjx.engineering.controller;
 
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.UpdateBomStatusDTO;
 import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.query.EngineeringBomQuery;
+import com.jjx.product.domain.vo.EngineeringBomExportVO;
 import com.jjx.product.domain.vo.EngineeringBomVO;
 import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.mapper.EngineeringBomMapper;
@@ -15,10 +17,13 @@ import com.jjx.product.service.IEngineeringBomService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -39,6 +44,48 @@ public class BomController extends BaseController {
     @GetMapping("/page")
     public Result<PageResult<EngineeringBomVO>> listPage(EngineeringBomQuery query) {
         return Result.success(productBomService.listPage(query));
+    }
+
+    /**
+     * 导出BOM列表Excel
+     */
+    @GetMapping("/export")
+    @Operation(summary = "导出BOM列表")
+    @SaCheckPermission("engineering:bom:view")
+    public void exportBom(EngineeringBomQuery query, HttpServletResponse response) {
+        PageResult<EngineeringBomVO> page = productBomService.listPage(query);
+        List<EngineeringBomExportVO> rows = new ArrayList<>();
+        if (page != null && page.getRecords() != null) {
+            for (EngineeringBomVO vo : page.getRecords()) {
+                EngineeringBomExportVO row = new EngineeringBomExportVO();
+                row.setBomCode(vo.getBomCode());
+                row.setBomVersion(vo.getBomVersion());
+                row.setProductCode(vo.getProductCode());
+                row.setProductName(vo.getProductName());
+                row.setBomTypeName(vo.getBomType());
+                row.setApproveStatusName(approveStatusText(vo.getApproveStatus()));
+                row.setIsCurrentName(Boolean.TRUE.equals(vo.getIsCurrent()) ? "是" : "否");
+                row.setEffectiveDate(vo.getEffectiveDate());
+                row.setExpiryDate(vo.getExpiryDate());
+                row.setRemark(vo.getRemark());
+                rows.add(row);
+            }
+        }
+        if (rows.isEmpty()) {
+            throw new com.jjx.common.exception.BusinessException("导出数据为空");
+        }
+        ExcelUtils.export(response, rows, EngineeringBomExportVO.class, "BOM列表");
+    }
+
+    private String approveStatusText(Integer status) {
+        if (status == null) return "";
+        return switch (status) {
+            case 1 -> "草稿";
+            case 2 -> "待审批";
+            case 3 -> "已批准";
+            case 4 -> "已驳回";
+            default -> String.valueOf(status);
+        };
     }
 
     /**

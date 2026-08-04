@@ -341,7 +341,15 @@ const handleExport = () => {
     .then(() => {
       return productBomApi.exportEngineeringBom(queryParams)
     })
-    .then(() => {
+    .then((res) => {
+      const blob = new Blob([res as any], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `BOM列表_${new Date().toISOString().slice(0, 10)}.xlsx`
+      link.click()
+      URL.revokeObjectURL(link.href)
       ElMessage.success('导出成功')
     })
     .catch(() => {})
