@@ -71,7 +71,7 @@
       </el-form>
 
       <!-- 工序明细编辑器 -->
-      <RouteItemEditor
+      <RouteItemIconEditor
         ref="routeItemEditorRef"
         :model-value="formData.items"
         :standard-processes="standardProcesses"
@@ -92,7 +92,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { productRouteApi } from '@/api/product/routing'
 import type { StandardProcessOption } from '@/types/product'
 import type { ProductRouteFormData, EngineeringRoutingItemVO } from '@/types/product/routing'
-import RouteItemEditor from './components/RouteItemEditor.vue'
+import RouteItemIconEditor from './components/RouteItemIconEditor.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -102,7 +102,7 @@ const routingId = Number(route.params.routingId)
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const submitLoading = ref(false)
-const routeItemEditorRef = ref<InstanceType<typeof RouteItemEditor>>()
+const routeItemEditorRef = ref<InstanceType<typeof RouteItemIconEditor>>()
 
 const standardProcesses = ref<StandardProcessOption[]>([])
 
@@ -196,7 +196,7 @@ const loadRouteDetail = async () => {
       items,
     })
 
-    // 等待组件挂载后，通过 ref 设置 RouteItemEditor 的数据
+    // 等待组件挂载后，通过 ref 设置 RouteItemIconEditor 的数据
     await nextTick()
     if (routeItemEditorRef.value) {
       routeItemEditorRef.value.setItems(items as any)
@@ -216,7 +216,7 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
 
-    // 从 RouteItemEditor 获取最新的工序数据
+    // 从 RouteItemIconEditor 获取最新的工序数据
     const items = routeItemEditorRef.value?.getItems() || []
     if (items.length === 0) {
       ElMessage.warning('请至少添加一道工序')
