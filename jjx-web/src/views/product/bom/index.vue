@@ -165,9 +165,21 @@
               ></el-button>
             </el-tooltip>
             <el-tooltip
-              content="审核"
+              content="提交审核"
               placement="top"
               v-if="ProductEnum.bomStatus.canDo(scope.row.approveStatus, ProductActions.SUBMIT)"
+            >
+              <el-button
+                link
+                type="warning"
+                icon="Promotion"
+                @click="handleSubmitApprove(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip
+              content="审核"
+              placement="top"
+              v-if="ProductEnum.bomStatus.canDo(scope.row.approveStatus, ProductActions.APPROVE)"
             >
               <el-button
                 link
@@ -365,6 +377,24 @@ const handleApprove = (row?: EngineeringBom) => {
 
   selectedBomForApprove.value = bomId
   bomApproveOpen.value = true
+}
+
+// 提交BOM审核（草稿→审核中）
+const handleSubmitApprove = async (row: EngineeringBom) => {
+  try {
+    await ElMessageBox.confirm(`确定提交 BOM [${row.bomCode}] 审核吗？`, '提交审核', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await productBomApi.submitEngineeringBom(row.bomId)
+    ElMessage.success('提交审核成功')
+    getList()
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e?.message || '提交审核失败')
+    }
+  }
 }
 
 // 查看详情按钮操作

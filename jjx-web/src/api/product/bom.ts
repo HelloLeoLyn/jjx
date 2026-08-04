@@ -62,6 +62,13 @@ export const productBomApi = {
   },
 
   /**
+   * 提交BOM审核（草稿→审核中）
+   */
+  submitEngineeringBom(bomId: number) {
+    return request.put(`/engineering/bom/submit/${bomId}`)
+  },
+
+  /**
    * 审批BOM
    */
   approveEngineeringBom(bomId: number, remark?: string) {
