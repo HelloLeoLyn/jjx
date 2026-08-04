@@ -209,7 +209,22 @@ export async function createCard(
       taskType: card.taskType || 'general',
       bizType: templateType === 'emergency' ? 'production' : 'production',
     })
-    if (isOk(res?.code)) return { code: 200, data: { ...card, id: String(res?.data ?? Date.now()) } as BoardCard, message: 'ok' }
+    if (isOk(res?.code)) {
+      const taskId = Number(res?.data)
+      // 上传任务截图（bizType=task, bizId=taskId）
+      const shots = (card as any).screenshots as { file: File }[] | undefined
+      if (taskId && shots && shots.length > 0) {
+        try {
+          const { attachmentApi } = await import('@/api/system/attachment')
+          for (const s of shots) {
+            await attachmentApi.upload(s.file, 'task', taskId)
+          }
+        } catch (e) {
+          console.error('任务截图上传失败:', e)
+        }
+      }
+      return { code: 200, data: { ...card, id: String(taskId) } as BoardCard, message: 'ok' }
+    }
     return { code: 500, data: card as BoardCard, message: res?.msg || 'create failed' }
   }
   return { code: 500, data: card as BoardCard, message: 'unknown template' }

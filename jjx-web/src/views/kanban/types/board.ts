@@ -76,6 +76,9 @@ export interface BoardCard {
   sourceOrderNo?: string
   reason?: string
 
+  // 任务截图（新建时携带，File 数组）
+  screenshots?: { file: File }[]
+
   // 额外数据（扩展用）
   extraData?: Record<string, unknown>
 }

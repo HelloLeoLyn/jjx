@@ -88,6 +88,29 @@
       <el-form-item label="备注">
         <el-input v-model="form.remark" type="textarea" :rows="2" />
       </el-form-item>
+
+      <el-form-item label="截图">
+        <div class="screenshot-upload" @paste="handlePaste">
+          <el-upload
+            :auto-upload="false"
+            :show-file-list="false"
+            accept="image/*"
+            multiple
+            :on-change="handleFileChange"
+          >
+            <div class="upload-tip">
+              <el-icon style="font-size: 20px"><Picture /></el-icon>
+              <span>点击选择 或 Ctrl+V 粘贴截图</span>
+            </div>
+          </el-upload>
+          <div v-if="form.screenshots.length > 0" class="screenshot-preview">
+            <div v-for="(img, idx) in form.screenshots" :key="idx" class="preview-item">
+              <el-image :src="img.url" fit="cover" class="preview-thumb" preview-teleported :preview-src-list="form.screenshots.map(s => s.url)" :initial-index="idx" />
+              <el-icon class="preview-remove" @click="form.screenshots.splice(idx, 1)"><Close /></el-icon>
+            </div>
+          </div>
+        </div>
+      </el-form-item>
     </el-form>
 
     <template #footer>
@@ -99,6 +122,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Picture, Close } from '@element-plus/icons-vue'
 import type { TemplateType, BoardCard, Priority } from '@/views/kanban/types/board'
 
 const props = defineProps<{
@@ -140,6 +165,7 @@ const form = reactive({
   deadline: '',
   priority: 'normal' as Priority,
   remark: '',
+  screenshots: [] as { file: File; url: string }[],
 })
 
 watch(() => props.visible, (val) => {
@@ -169,6 +195,34 @@ function resetForm() {
   form.deadline = ''
   form.priority = 'normal'
   form.remark = ''
+  form.screenshots = []
+}
+
+// 选择文件（含拖入）
+function handleFileChange(uploadFile: any) {
+  const file: File | undefined = uploadFile?.raw
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('仅支持图片文件')
+    return
+  }
+  form.screenshots.push({ file, url: URL.createObjectURL(file) })
+}
+
+// 粘贴截图（Ctrl+V）
+function handlePaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items || []
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) {
+        form.screenshots.push({ file, url: URL.createObjectURL(file) })
+      }
+    }
+  }
+  if (form.screenshots.length > 0) {
+    ElMessage.success(`已添加 ${form.screenshots.length} 张截图`)
+  }
 }
 
 function onClose() {
@@ -214,6 +268,7 @@ async function onSubmit() {
       reason: form.reason,
       currentProcess: props.targetColumnLabel,
     }),
+    screenshots: form.screenshots.map((s) => ({ file: s.file })),
   }
 
   emit('create', newCard, props.targetColumnId)
@@ -226,3 +281,58 @@ async function onSubmit() {
   }, 200)
 }
 </script>
+
+<style scoped>
+.screenshot-upload {
+  width: 100%;
+}
+
+.upload-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  padding: 14px 0;
+  color: #909399;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.upload-tip:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.screenshot-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.preview-item {
+  position: relative;
+}
+
+.preview-thumb {
+  width: 80px;
+  height: 60px;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+  cursor: zoom-in;
+}
+
+.preview-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #f56c6c;
+  color: #fff;
+  border-radius: 50%;
+  padding: 2px;
+  cursor: pointer;
+  font-size: 12px;
+}
+</style>

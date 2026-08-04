@@ -73,6 +73,23 @@
         </el-descriptions-item>
       </el-descriptions>
 
+      <!-- 任务截图 -->
+      <div v-if="screenshots.length > 0" class="detail-screenshots">
+        <div class="screenshot-title">截图（{{ screenshots.length }}）</div>
+        <div class="screenshot-list">
+          <el-image
+            v-for="(img, idx) in screenshots"
+            :key="img.id"
+            :src="img.url"
+            :preview-src-list="screenshots.map(s => s.url)"
+            :initial-index="idx"
+            fit="cover"
+            class="screenshot-thumb"
+            preview-teleported
+          />
+        </div>
+      </div>
+
       <div class="detail-actions">
         <el-input
           v-model="remarkEdit"
@@ -106,8 +123,40 @@ const emit = defineEmits<{
 
 const remarkEdit = ref('')
 
+// 任务截图（复用通用附件：bizType=task, bizId=taskId）
+const screenshots = ref<{ id: number; url: string; name: string }[]>([])
+
+function extractTaskId(cardId: string): string {
+  return cardId.replace(/^TASK-/, '').replace(/^DEV-/, '')
+}
+
+async function loadScreenshots(card: BoardCard | null) {
+  screenshots.value = []
+  if (!card) return
+  const taskId = Number(extractTaskId(card.id))
+  if (!taskId) return
+  try {
+    const { attachmentApi } = await import('@/api/system/attachment')
+    const res = await attachmentApi.list('task', taskId)
+    const list = (res.data as any[]) || []
+    screenshots.value = list
+      .filter((a) => {
+        const t = (a.fileType || a.fileName || '').toLowerCase()
+        return t.includes('image') || /\.(png|jpe?g|gif|webp|bmp)$/.test(a.fileName || '')
+      })
+      .map((a) => ({
+        id: a.id,
+        url: attachmentApi.downloadUrl(a.id),
+        name: a.fileName || '',
+      }))
+  } catch (e) {
+    console.error('加载任务截图失败:', e)
+  }
+}
+
 watch(() => props.card, (card) => {
   remarkEdit.value = card?.remark ?? ''
+  loadScreenshots(card)
 }, { immediate: true })
 
 const visible = computed({
@@ -165,6 +214,31 @@ function onSaveRemark() {
 
 .detail-actions {
   margin-top: 8px;
+}
+
+.detail-screenshots {
+  margin-top: 12px;
+}
+
+.screenshot-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 8px;
+}
+
+.screenshot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.screenshot-thumb {
+  width: 96px;
+  height: 72px;
+  border-radius: 6px;
+  border: 1px solid #e4e7ed;
+  cursor: zoom-in;
 }
 
 .detail-buttons {
