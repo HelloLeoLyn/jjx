@@ -4,12 +4,18 @@
 
     <!-- 上方：图标选择区（Tabs + 拖拽源） -->
     <div class="icon-selector-area">
+      <div class="group-mode-switch">
+        <el-radio-group v-model="groupMode" size="small">
+          <el-radio-button value="category">按工序类别</el-radio-button>
+          <el-radio-button value="type">按工序类型</el-radio-button>
+        </el-radio-group>
+      </div>
       <el-tabs v-model="activeTab" type="border-card">
         <el-tab-pane
           v-for="group in groupedProcesses"
-          :key="group.label"
+          :key="group.key"
           :label="group.label"
-          :name="group.label"
+          :name="group.key"
         >
           <div class="icon-grid">
             <div
@@ -106,10 +112,10 @@
               @change="(val: string) => handleProcessCategoryChange(scope.$index, val)"
             >
               <el-option
-                v-for="item in processCategoryOptions"
-                :key="item.itemValue"
+                v-for="item in ProcessCategoryEnum.items"
+                :key="item.value"
                 :label="item.label"
-                :value="item.itemValue"
+                :value="item.value"
               />
             </el-select>
           </template>
@@ -193,8 +199,7 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
-import { getDictLabel } from '@/utils/dict'
-import { useDict } from '@/composables/useDict'
+import { ProcessTypeEnum, ProcessCategoryEnum } from '@/enums/product'
 
 // ==================== 类型定义 ====================
 
@@ -222,12 +227,18 @@ const emit = defineEmits<{
 
 // ==================== 状态 ====================
 
-const { options: processCategoryOptions } = useDict('process_category')
+/** 分组维度：category=按工序类别 / type=按工序类型 */
+const groupMode = ref<'category' | 'type'>('category')
 
 const activeTab = ref('')
 const groups = ref<RouteItemGroup[]>([])
 const isDragOverTable = ref(false)
 const dragOverGroupIndex = ref<number | null>(null)
+
+// 分组维度切换时重置选中tab
+watch(groupMode, () => {
+  activeTab.value = ''
+})
 
 // 拖拽数据
 let draggedProcess: StandardProcessOption | null = null
@@ -243,23 +254,26 @@ const generateTempItemId = (): number => {
 
 // ==================== 计算属性 ====================
 
-// 按工序类别分组的标准工序
+// 按所选维度分组的标准工序（类别或类型）
 const groupedProcesses = computed(() => {
   const groups = new Map<string, StandardProcessOption[]>()
   props.standardProcesses.forEach((p) => {
-    const key = p.processCategory
+    const key = groupMode.value === 'category' ? p.processCategory : p.processType
     if (!groups.has(key)) {
       groups.set(key, [])
     }
     groups.get(key)!.push(p)
   })
   const result = Array.from(groups.entries()).map(([key, options]) => ({
-    label: getDictLabel(processCategoryOptions.value, key) || key,
+    key,
+    label: groupMode.value === 'category'
+      ? ProcessCategoryEnum.getLabel(key)
+      : ProcessTypeEnum.getLabel(key),
     options,
   }))
   // 默认选中第一个tab
   if (result.length > 0 && !activeTab.value) {
-    activeTab.value = result[0].label
+    activeTab.value = result[0].key
   }
   return result
 })
@@ -689,6 +703,10 @@ defineExpose({
 
 .icon-selector-area {
   margin-bottom: 16px;
+}
+
+.group-mode-switch {
+  margin-bottom: 8px;
 }
 
 .icon-grid {
