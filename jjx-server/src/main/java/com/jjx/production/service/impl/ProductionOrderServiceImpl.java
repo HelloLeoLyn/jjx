@@ -6,7 +6,7 @@ import com.jjx.production.domain.entity.ProductionOperationExecution;
 import java.util.Map;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.product.mapper.EngineeringRoutingItemMapper;
-import com.jjx.product.domain.entity.EngineeringRoutingItem;
+import com.jjx.engineering.domain.entity.EngineeringRoutingItem;
 import java.util.ArrayList;
 import java.util.Map;
 
