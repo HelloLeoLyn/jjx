@@ -84,7 +84,9 @@ public class LocalEventPublisher implements EventPublisher {
             if (assignRole != null) {
                 try {
                     SysTask task = new SysTask();
-                    task.setTaskCode(eventCode + "-" + System.currentTimeMillis());
+                    String rawCode = eventCode + "-" + System.currentTimeMillis();
+                    // task_code 列宽 50，超长截断（事件前缀长如 inventory.outbound.created_from_production）
+                    task.setTaskCode(rawCode.length() > 50 ? rawCode.substring(0, 50) : rawCode);
                     task.setTitle(resolveTemplate(event.getTitle(), payload));
                     task.setDescription(resolveTemplate(event.getContent(), payload));
                     task.setTaskType(eventCode.contains("sample") ? "sample" : "general");

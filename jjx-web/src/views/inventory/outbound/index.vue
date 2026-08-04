@@ -116,11 +116,11 @@
               >编辑</el-button
             >
             <el-button
-              v-if="row.status === 2"
+              v-if="row.status === 1"
               link
               type="warning"
               @click="handleConfirm(row)"
-              >确认出库</el-button
+              >{{ row.outboundType === 'production' ? '确认发料' : '确认出库' }}</el-button
             >
           </template>
         </el-table-column>
@@ -277,6 +277,7 @@ const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger'
     4: 'warning', // processing
     6: 'success', // out_confirm
     9: 'danger',  // cancelled
+    10: 'success', // completed
   }
   return statusMap[status]
 }

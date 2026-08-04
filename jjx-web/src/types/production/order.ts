@@ -164,6 +164,8 @@ export interface ProductionOrderVO extends ProductionOrderBase {
   statusLabel: string // 状态标签
   statusType: string // 状态类型（用于标签颜色）
   priorityLabel: string // 优先级标签
+  materialStatus?: number // 领料状态：0未领料/1待发料/2已领料
+  materialStatusLabel?: string // 领料状态标签
 
   // 时间显示
   planDateRange: string // 计划日期范围显示

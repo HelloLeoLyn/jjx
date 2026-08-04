@@ -106,6 +106,20 @@ export function getPriorityLabel(priority: Priority): string {
 }
 
 /**
+ * 领料状态文案：0未领料/1待发料/2已领料
+ */
+export function getMaterialStatusLabel(status?: number | null): string {
+  switch (status) {
+    case 1:
+      return '待发料'
+    case 2:
+      return '已领料'
+    default:
+      return '未领料'
+  }
+}
+
+/**
  * 获取优先级标签类型（用于标签颜色）
  */
 export function getPriorityTagType(priority: Priority): 'success' | 'warning' | 'danger' | 'info' {

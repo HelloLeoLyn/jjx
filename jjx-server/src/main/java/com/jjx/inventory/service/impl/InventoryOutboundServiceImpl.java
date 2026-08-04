@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.inventory.domain.InventoryOutboundItem;
+import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.vo.OutboundItemVO;
 import com.jjx.inventory.domain.InventoryOutboundOrder;
 import com.jjx.inventory.domain.InventoryStockItem;
@@ -12,12 +13,14 @@ import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.dto.query.OutboundQueryDTO;
 import com.jjx.inventory.dto.vo.OutboundVO;
 import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.enums.OutboundTypeEnum;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryOutboundItemMapper;
 import com.jjx.inventory.mapper.InventoryOutboundOrderMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
+import com.jjx.inventory.mapper.InventoryWarehouseMapper;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.service.InventoryOutboundService;
 import com.jjx.inventory.service.InventoryAlertService;
@@ -29,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +55,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
+    private final InventoryWarehouseMapper outboundWarehouseMapper;
     private final InventoryMaterialMapper materialMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     private final com.jjx.product.mapper.ProductBomMapper productBomMapper;
@@ -196,7 +201,24 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             log.warn("安全库存检查失败: {}", e.getMessage());
         }
         order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
-        return outboundOrderMapper.updateById(order) > 0;
+        boolean updated = outboundOrderMapper.updateById(order) > 0;
+
+        // 生产领料单确认发料后，同步更新工单领料状态为已领料(2)
+        try {
+            if ("work_order".equals(order.getSourceType()) && order.getSourceId() != null) {
+                com.jjx.production.domain.entity.ProductionOrder prodOrder =
+                        productionOrderMapper.selectById(order.getSourceId());
+                if (prodOrder != null && prodOrder.getMaterialStatus() != null
+                        && prodOrder.getMaterialStatus() < 2) {
+                    prodOrder.setMaterialStatus(2);
+                    productionOrderMapper.updateById(prodOrder);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("确认发料后更新工单领料状态失败: {}", e.getMessage());
+        }
+
+        return updated;
     }
 
     @Override
@@ -366,15 +388,30 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
         InventoryOutboundOrder order = new InventoryOutboundOrder();
         order.setOutboundNo(outboundNo);
-        order.setOutboundType("PRODUCTION_PICK");
-        order.setSourceType("PRODUCTION");
+        order.setOutboundType(OutboundTypeEnum.PRODUCTION.getCode());
+        order.setSourceType("work_order");
         order.setSourceId(workOrderId);
         order.setSourceNo(prodOrder.getOrderNo());
-        order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+        order.setOutboundDate(LocalDate.now());
+        // 默认取第一个启用仓库（工单无仓库字段）
+        try {
+            InventoryWarehouse defaultWh = outboundWarehouseMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryWarehouse>()
+                            .eq(InventoryWarehouse::getStatus, 1)
+                            .orderByAsc(InventoryWarehouse::getWarehouseId)
+                            .last("LIMIT 1"));
+            if (defaultWh != null) {
+                order.setWarehouseId(defaultWh.getWarehouseId());
+            }
+        } catch (Exception e) {
+            log.warn("获取默认仓库失败: {}", e.getMessage());
+        }
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.insert(order);
 
         // 5. 创建出库单明细
         int sort = 1;
+        BigDecimal totalQty = BigDecimal.ZERO;
         for (com.jjx.product.domain.entity.ProductBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
 
@@ -393,17 +430,21 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             outItem.setMaterialId(bomItem.getMaterialId());
             outItem.setMaterialCode(bomItem.getMaterialCode());
             outItem.setMaterialName(bomItem.getMaterialName());
+            outItem.setSpecification(bomItem.getSpecification());
+            outItem.setUnit(bomItem.getUnit());
             outItem.setQuantity(qtyNeeded);
             outItem.setSortOrder(sort++);
+            totalQty = totalQty.add(qtyNeeded);
             outboundItemMapper.insert(outItem);
         }
 
-        // 6. 提交审批并自动审批
-        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
+        // 6. 汇总并更新工单领料状态（待发料）
+        order.setTotalQuantity(totalQty);
         outboundOrderMapper.updateById(order);
-        approve(order.getOutboundId(), null, null, "生产自动领料");
+        prodOrder.setMaterialStatus(1);
+        productionOrderMapper.updateById(prodOrder);
 
-        log.info("生产领料完成: workOrderId={}, outboundId={}", workOrderId, order.getOutboundId());
+        log.info("生产领料单已生成(待发料): workOrderId={}, outboundId={}", workOrderId, order.getOutboundId());
         return order.getOutboundId();
     }
 
@@ -581,7 +622,25 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         OutboundVO vo = new OutboundVO();
         BeanUtils.copyProperties(order, vo);
 
-        // 设置类型名称
+        // 设置类型名称与状态名称
+        OutboundTypeEnum typeEnum = OutboundTypeEnum.getByCode(order.getOutboundType());
+        vo.setOutboundTypeName(typeEnum != null ? typeEnum.getLabel() : order.getOutboundType());
+        OrderStatusEnum statusEnum = OrderStatusEnum.getByCode(order.getOrderStatus());
+        vo.setStatus(order.getOrderStatus());
+        if (statusEnum != null) {
+            // 生产领料单：待审批显示"待发料"，已完成显示"已发料"
+            if (OutboundTypeEnum.PRODUCTION.getCode().equals(order.getOutboundType())) {
+                if (OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
+                    vo.setStatusName("待发料");
+                } else if (OrderStatusEnum.COMPLETED.getCode().equals(order.getOrderStatus())) {
+                    vo.setStatusName("已发料");
+                } else {
+                    vo.setStatusName(statusEnum.getLabel());
+                }
+            } else {
+                vo.setStatusName(statusEnum.getLabel());
+            }
+        }
 
         return vo;
     }

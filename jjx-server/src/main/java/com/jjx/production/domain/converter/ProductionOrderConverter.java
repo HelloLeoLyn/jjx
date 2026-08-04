@@ -39,6 +39,7 @@ public interface ProductionOrderConverter {
     @Mapping(target = "isOverdue", ignore = true)
     @Mapping(target = "isPlan", ignore = true)
     @Mapping(target = "isWorkOrder", ignore = true)
+    @Mapping(target = "materialStatusDesc", ignore = true)
     @Mapping(target = "operationExecutions", ignore = true)
     @Mapping(target = "operationRecords", ignore = true)
     @Mapping(target = "orderStatusDesc", ignore = true)

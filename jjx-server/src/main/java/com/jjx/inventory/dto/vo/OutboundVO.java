@@ -16,6 +16,7 @@ public class OutboundVO {
     private Long outboundId;
     private String outboundNo;
     private String outboundType;
+    private String outboundTypeName;
     private Long warehouseId;
     private String warehouseName;
     private String sourceType;
@@ -27,6 +28,8 @@ public class OutboundVO {
     private BigDecimal totalQuantity;
     private BigDecimal totalAmount;
     private String orderStatus;
+    private Integer status;
+    private String statusName;
     private String approveStatus;
     private String remark;
     private String createBy;

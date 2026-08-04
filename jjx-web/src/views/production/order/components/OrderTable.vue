@@ -75,6 +75,14 @@
         </template>
       </el-table-column>
 
+      <el-table-column prop="materialStatusLabel" label="领料状态" width="100" align="center">
+        <template #default="{ row }">
+          <el-tag :type="getMaterialStatusTagType(row.materialStatus) as any" size="small" effect="plain">
+            {{ row.materialStatusLabel || '未领料' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+
       <el-table-column prop="priority" label="优先级" width="80">
         <template #default="{ row }">
           <el-tag :type="getPriorityTagType(row.priority) as any" size="small" effect="plain">
@@ -120,6 +128,16 @@ import { ref, computed } from 'vue'
 import OrderTableActions from './OrderTableActions.vue'
 import type { ProductionOrderVO } from '@/types/production/order'
 import { getPriorityTagType } from '../utils/orderFormatters'
+
+// 领料状态标签样式
+function getMaterialStatusTagType(status?: number | null): string {
+  const map: Record<number, string> = {
+    0: 'info', // 未领料
+    1: 'warning', // 待发料
+    2: 'success', // 已领料
+  }
+  return map[status ?? 0] || 'info'
+}
 
 interface Props {
   orderList: ProductionOrderVO[]

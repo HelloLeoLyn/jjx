@@ -32,7 +32,7 @@ export interface OutboundVO {
   sourceNo?: string
   totalQuantity: number
   totalAmount: number
-  status: string
+  status: number
   statusName: string
   remark?: string
   createBy: string

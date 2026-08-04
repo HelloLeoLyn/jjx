@@ -121,6 +121,9 @@ public class ProductionOrder{
     @Schema(description = "材料成本")
     private BigDecimal materialCost;
 
+    @Schema(description = "领料状态：0未领料/1待发料/2已领料")
+    private Integer materialStatus;
+
     @Schema(description = "人工成本")
     private BigDecimal laborCost;
 

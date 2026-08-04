@@ -19,6 +19,7 @@ import {
   getStatusLabel,
   getStatusType,
   getPriorityLabel,
+  getMaterialStatusLabel,
   calculateProgress,
   formatDateRange,
 } from '../utils/orderFormatters'
@@ -91,6 +92,7 @@ export function useProductionOrder() {
           ),
           statusType: getStatusType(order.orderStatus, order.approvalStatus, order.executionStatus),
           priorityLabel: getPriorityLabel(order.priority),
+          materialStatusLabel: getMaterialStatusLabel(order.materialStatus),
           planDateRange: formatDateRange(order.planStartDate, order.planEndDate),
           actualTimeRange: formatDateRange(order.actualStartDate, order.actualEndDate),
           progress: calculateProgress(order.completedQuantity, order.plannedQuantity),

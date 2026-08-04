@@ -122,6 +122,12 @@ public class ProductionOrderVO {
     @Schema(description = "生产部门名称")
     private String departmentName;
 
+    @Schema(description = "领料状态：0未领料/1待发料/2已领料")
+    private Integer materialStatus;
+
+    @Schema(description = "领料状态描述")
+    private String materialStatusDesc;
+
     @Schema(description = "材料成本")
     private BigDecimal materialCost;
 
