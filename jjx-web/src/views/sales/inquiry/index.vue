@@ -401,20 +401,11 @@
       </template>
     </el-dialog>
 
+    
     <!-- 查看详情对话框 -->
-        <BizFlowDetail
-      v-model="detailVisible"
-      biz-type="inquiry"
-      :biz-id="detailData?.inquiryId"
-      title="询价单详情"
-      :status-steps="inquiryFlowSteps"
-      :current-status="detailData?.inquiryStatus"
-      confirm-text="确认询价"
-      @confirm-success="handleDetailConfirm"
-    >
-      <template #detail>
-        <template v-if="detailData">
-          <el-descriptions :column="2" border>
+    <el-dialog title="询价单详情" v-model="detailVisible" width="700px" append-to-body>
+      <template v-if="detailData">
+        <el-descriptions :column="2" border>
           <el-descriptions-item label="询价单号" :span="2">{{
             detailData.inquiryNo
           }}</el-descriptions-item>
@@ -475,21 +466,47 @@
             detailData.remark || '-'
           }}</el-descriptions-item>
         </el-descriptions>
-        </template>
       </template>
-    </BizFlowDetail>
+      <el-divider content-position="left">相关文档</el-divider>
+      <AttachmentPanel
+        v-if="detailData?.inquiryId"
+        biz-type="inquiry"
+        :biz-id="detailData.inquiryId"
+      />
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="detailVisible = false">关 闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+    <!-- 操作状态流转弹窗（审核/转报价） -->
+    <BizFlowDetail
+      v-model="opDialogVisible"
+      :biz-type="'inquiry'"
+      :biz-id="opRow?.inquiryId"
+      :title="opTitle"
+      :operation-name="opName"
+      :biz-no="opRow?.inquiryNo"
+      :from-status="opFromStatus"
+      :from-status-label="opFromLabel"
+      :to-status="opToStatus"
+      :to-status-label="opToLabel"
+      :confirm-text="opConfirmText"
+      :data="opRow"
+      :detail-items="inquiryDetailItems"
+      :confirm-api="opConfirmApi"
+      @confirm-success="handleOpSuccess"
+    />
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick, computed } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
-import { InquiryStatusEnum } from '@/enums/sales'
-import type { FlowStep } from '@/components/BizFlowDetail/StatusFlowBar.vue'
 import type { FormInstance, UploadInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import { Upload } from '@element-plus/icons-vue'
@@ -517,16 +534,6 @@ const inquiryList = ref<any[]>([])
 const total = ref(0)
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
-
-// 询价状态流转步骤（顶部状态条）
-const inquiryFlowSteps = computed<FlowStep[]>(() =>
-  InquiryStatusEnum.items.map((i) => ({ key: i.value, label: i.label })),
-)
-
-// 详情确认按钮回调（样板：可接后端确认接口）
-function handleDetailConfirm() {
-  ElMessage.info('确认询价：可在此接入后端确认接口')
-}
 
 const dialogTitle = ref('')
 const single = ref(true)
@@ -733,6 +740,62 @@ const rules: Record<string, any> = {
 // 详情数据
 const detailData = ref<any>(null)
 
+// ==================== 操作状态流转弹窗 ====================
+const opDialogVisible = ref(false)
+const opRow = ref<any>(null)
+const opTitle = ref('')
+const opName = ref('')
+const opFromStatus = ref<number | null>(null)
+const opFromLabel = ref('')
+const opToStatus = ref<number | null>(null)
+const opToLabel = ref('')
+const opConfirmText = ref('确认')
+const opConfirmApi = ref<any>(null)
+
+// 询价通用详情字段配置
+const inquiryDetailItems = [
+  { key: 'inquiryNo', label: '询价单号' },
+  { key: 'inquiryType', label: '类型', type: 'tag' as const, tagType: 'primary' as const, format: (v: any) => (v === 2 ? '样品' : '标准') },
+  { key: 'customerName', label: '客户名称' },
+  { key: 'contactPerson', label: '联系人' },
+  { key: 'contactPhone', label: '联系电话' },
+  { key: 'inquiryDate', label: '询价日期' },
+  { key: 'expectedQuantity', label: '预估数量' },
+  { key: 'keyCount', label: '按键数量' },
+  { key: 'sizeDescription', label: '尺寸要求' },
+  { key: 'materialRequirements', label: '材料要求' },
+  { key: 'circuitRequirements', label: '线路要求' },
+  { key: 'connectorRequirements', label: '连接器要求' },
+  { key: 'productDescription', label: '产品描述' },
+  { key: 'specialRequirements', label: '特殊要求' },
+  { key: 'salesPersonName', label: '销售负责人' },
+  { key: 'remark', label: '备注' },
+]
+
+// 打开操作弹窗
+function openOperation(row: any, kind: 'convert') {
+  opRow.value = row
+  const cur = Number(row.inquiryStatus)
+  opFromStatus.value = cur
+  opFromLabel.value = statusLabel(cur)
+  opTitle.value = '询价转报价'
+  opName.value = '转报价'
+  opToStatus.value = 3
+  opToLabel.value = '已转报价'
+  opConfirmText.value = '确认转报价'
+  opConfirmApi.value = {
+    url: `/sales/inquiry/convert/${row.inquiryId}`,
+    method: 'post',
+    buildParams: (id: number) => ({}),
+  }
+  opDialogVisible.value = true
+}
+
+// 操作确认成功
+function handleOpSuccess() {
+  getList()
+}
+
 // ==================== 附件管理 ====================
 const uploadRef = ref<UploadInstance>()
 const attachmentList = ref<any[]>([])
@@ -899,19 +962,7 @@ function handleConvert(row: any) {
     ElMessage.warning('该询价单已转换')
     return
   }
-
-  ElMessageBox.confirm(`确定将询价单 [${row.inquiryNo}] 转为报价单吗？`, '转报价确认', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(() => {
-      inquiryApi.convert(row.inquiryId).then((res) => {
-        ElMessage.success(`询价单已成功转为报价单`)
-        getList()
-      })
-    })
-    .catch(() => {})
+  openOperation(row, 'convert')
 }
 // 删除
 function handleDelete(row?: any) {

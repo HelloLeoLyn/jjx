@@ -9,32 +9,41 @@
     @open="handleOpen"
     @closed="handleClosed"
   >
-    <!-- 顶部：状态流转 -->
-    <StatusFlowBar :steps="flowSteps" :current="currentStatus" />
+    <!-- 顶部：操作信息 + 状态流转 -->
+    <div class="biz-flow-head">
+      <div class="biz-flow-op">
+        <el-tag size="small" type="primary" effect="dark">{{ operationName }}</el-tag>
+        <span class="biz-flow-no" v-if="bizNo">{{ bizNo }}</span>
+      </div>
+      <div v-if="fromStatus != null || toStatus != null" class="biz-flow-status">
+        <template v-if="fromStatus != null">
+          <el-tag size="small" type="info" effect="plain">{{ fromStatusLabel }}</el-tag>
+          <el-icon class="flow-arrow"><Right /></el-icon>
+        </template>
+        <el-tag size="small" :type="toStatusType || 'success'" effect="dark">
+          {{ toStatusLabel }}
+        </el-tag>
+      </div>
+    </div>
 
-    <!-- 操作区：备注 + 确认按钮 -->
-    <div class="biz-actions">
+    <!-- 备注输入 -->
+    <div class="biz-remark">
       <el-input
         v-model="remark"
         type="textarea"
         :rows="2"
-        placeholder="添加备注..."
-        class="biz-remark-input"
+        placeholder="操作备注（选填）..."
       />
-      <div class="biz-actions-right">
-        <slot name="actions" :confirm="handleConfirm">
-          <el-button type="primary" :loading="confirmLoading" @click="handleConfirm">
-            {{ confirmText }}
-          </el-button>
-        </slot>
-      </div>
     </div>
 
     <!-- 标签页 -->
     <el-tabs v-model="activeTab" class="biz-tabs">
-      <!-- Tab1 单据详情（默认，调用方插槽） -->
+      <!-- Tab1 单据详情 -->
       <el-tab-pane label="单据详情" name="detail">
-        <slot name="detail" />
+        <slot name="detail" :data="data">
+          <BizDetailPanel v-if="data" :data="data" :items="detailItems" :column="2" />
+          <el-empty v-else description="暂无单据数据" :image-size="50" />
+        </slot>
       </el-tab-pane>
 
       <!-- Tab2 文档流水 -->
@@ -65,17 +74,21 @@
     </el-tabs>
 
     <template #footer>
-      <slot name="footer">
-        <el-button @click="handleUpdateVisible(false)">关 闭</el-button>
+      <slot name="footer" :confirm="handleConfirm">
+        <el-button @click="handleUpdateVisible(false)">取 消</el-button>
+        <el-button type="primary" :loading="confirmLoading" @click="handleConfirm">
+          {{ confirmText }}
+        </el-button>
       </slot>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import StatusFlowBar, { type FlowStep } from './StatusFlowBar.vue'
+import { Right } from '@element-plus/icons-vue'
+import BizDetailPanel, { type DetailItem } from './BizDetailPanel.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import OperationLogPanel from './OperationLogPanel.vue'
 import EventPanel from './EventPanel.vue'
@@ -89,20 +102,30 @@ const props = defineProps<{
   bizId: number | null | undefined
   /** 弹窗标题 */
   title?: string
-  /** 状态流转步骤配置（调用方传入） */
-  statusSteps?: FlowStep[]
-  /** 当前状态 key */
-  currentStatus?: string | number
+  /** 操作名称（如：审核通过/转报价） */
+  operationName?: string
+  /** 单据号显示 */
+  bizNo?: string
+  /** 操作前状态 label（可空，如"草稿"） */
+  fromStatus?: string | number | null
+  fromStatusLabel?: string
+  /** 操作后状态 label */
+  toStatus?: string | number | null
+  toStatusLabel?: string
+  toStatusType?: 'info' | 'warning' | 'success' | 'danger' | 'primary'
   /** 确认按钮文案 */
   confirmText?: string
-  /** 可选：链路追踪ID（直达操作日志） */
+  /** 可选：链路追踪ID */
   traceId?: string
-  /** 确认接口配置：POST/GET + url + 参数映射 */
+  /** 单据详情数据（传给通用详情组件/插槽） */
+  data?: Record<string, any> | null
+  /** 通用详情字段配置 */
+  detailItems?: DetailItem[]
+  /** 确认接口配置 */
   confirmApi?: {
     url: string
     method?: 'post' | 'put' | 'get'
-    /** 从 bizId 构造请求体/参数，默认 { bizId } */
-    buildParams?: (bizId: number) => Record<string, unknown>
+    buildParams?: (bizId: number, remark: string) => Record<string, unknown>
   }
 }>()
 
@@ -115,7 +138,7 @@ const emit = defineEmits<{
 const activeTab = ref('detail')
 const remark = ref('')
 const confirmLoading = ref(false)
-const flowSteps = ref<FlowStep[]>(props.statusSteps || [])
+const detailItems = ref<DetailItem[]>(props.detailItems || [])
 
 function handleUpdateVisible(val: boolean) {
   emit('update:modelValue', val)
@@ -123,39 +146,39 @@ function handleUpdateVisible(val: boolean) {
 
 function handleOpen() {
   activeTab.value = 'detail'
-  remark.value = ''
 }
 
 function handleClosed() {
   remark.value = ''
 }
 
-// 通用确认：按 confirmApi 配置调用后端；未配置则直接发确认事件
 async function handleConfirm() {
   confirmLoading.value = true
   try {
     if (props.confirmApi?.url && props.bizId != null) {
-      const build = props.confirmApi.buildParams || ((id: number) => ({ bizId: id }))
-      const params = build(props.bizId)
+      const build = props.confirmApi.buildParams
+        || ((id: number) => ({ bizId: id }))
+      const params = build(props.bizId, remark.value.trim())
       const res: any = await request({
         url: props.confirmApi.url,
         method: props.confirmApi.method || 'post',
-        data: params,
+        data: props.confirmApi.method === 'get' ? undefined : params,
         params: props.confirmApi.method === 'get' ? params : undefined,
       })
       if (res?.code === 200) {
         ElMessage.success('操作成功')
-        // 备注一并保存（可选）
         if (remark.value.trim()) {
           emit('remark-save', remark.value.trim())
         }
         emit('confirm-success', res.data)
+        handleUpdateVisible(false)
       } else {
         ElMessage.error(res?.msg || '操作失败')
       }
     } else {
-      // 无后端配置：交回调用方处理
+      // 无后端配置：交回调用方
       emit('confirm-success', undefined)
+      handleUpdateVisible(false)
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '操作失败')
@@ -164,28 +187,36 @@ async function handleConfirm() {
   }
 }
 
-watch(() => props.modelValue, (v) => {
-  if (!v) {
-    remark.value = ''
-  }
-})
-
 defineExpose({ refresh: handleOpen })
 </script>
 
 <style scoped>
-.biz-actions {
+.biz-flow-head {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 12px;
+}
+.biz-flow-op {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.biz-flow-no {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+.biz-flow-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.flow-arrow {
+  color: #909399;
+}
+.biz-remark {
   margin-bottom: 4px;
-}
-.biz-remark-input {
-  flex: 1;
-}
-.biz-actions-right {
-  flex-shrink: 0;
-  padding-top: 4px;
 }
 .biz-tabs {
   margin-top: 8px;
