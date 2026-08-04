@@ -22,6 +22,7 @@
             <ProductSelector
               v-model="formData.productId"
               valueType="productId"
+              :options="productOptions"
               @change="handleProductChange"
             />
           </el-form-item>
@@ -129,6 +130,7 @@ import { productBomApi } from '@/api/product/bom'
 import BomItemEditor from '@/components/BomItemEditor.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import type { ProductBomFormData, ProductBomItem } from '@/types/product/bom'
+import type { ProductItem } from '@/types/product'
 import * as XLSX from 'xlsx'
 
 interface Props {
@@ -169,6 +171,18 @@ const toggleFullscreen = () => {
 
 // 标题
 const title = computed(() => (props.bomId ? '修改BOM' : '新增BOM'))
+
+// 编辑回填时，把当前产品对象传给 ProductSelector，让其能显示产品名称
+const productOptions = computed<ProductItem[]>(() => {
+  if (formData.productId && formData.productName) {
+    return [{
+      productId: formData.productId,
+      productCode: formData.productCode,
+      productName: formData.productName,
+    } as ProductItem]
+  }
+  return []
+})
 
 // 表单数据
 const formData = reactive<ProductBomFormData>({

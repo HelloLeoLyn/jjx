@@ -97,7 +97,7 @@ public class ProductController extends BaseController {
     @PostMapping
     @Log(module = "产品管理", businessType = BusinessType.INSERT,
          bizId = "#result.data", bizType = "'product'")
-    @SaCheckPermission("product:index:add")
+    @SaCheckPermission("product:create")
     public Result<Long> add(@Validated @RequestBody ProductDTO productDTO) {
         Long productId = productService.addProduct(productDTO);
         return productId != null ? Result.success(productId) : Result.error();
@@ -109,7 +109,7 @@ public class ProductController extends BaseController {
     @PutMapping
     @Log(module = "产品管理", businessType = BusinessType.UPDATE,
          bizId = "#productDTO.productId", bizType = "'product'")
-    @SaCheckPermission("product:index:edit")
+    @SaCheckPermission("product:edit")
     public Result<Void> edit(@Validated @RequestBody ProductDTO productDTO) {
         if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
             return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品编码已存在");
