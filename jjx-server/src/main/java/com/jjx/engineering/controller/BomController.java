@@ -24,6 +24,17 @@ public class BomController {
 
     private final IBomService bomService;
     private final ProductBomItemMapper bomItemMapper;
+    private final com.jjx.product.mapper.ProductBomMapper productBomMapper;
+
+    @Operation(summary = "获取产品已审批BOM列表（产品配置BOM用）")
+    @SaCheckPermission("engineering:bom:view")
+    @GetMapping("/approved/{productId}")
+    public Result<List<com.jjx.product.domain.vo.ProductBomVO>> getApprovedBoms(@PathVariable Long productId) {
+        com.jjx.product.domain.query.ProductBomQuery query = new com.jjx.product.domain.query.ProductBomQuery();
+        query.setProductId(productId);
+        query.setApproveStatus(String.valueOf(com.jjx.product.enums.ProductEnums.BomStatus.APPROVED.getValue()));
+        return Result.success(productBomMapper.selectBomList(query, 0));
+    }
 
     @Operation(summary = "获取BOM详情（含明细）")
     @SaCheckPermission("engineering:bom:view")
