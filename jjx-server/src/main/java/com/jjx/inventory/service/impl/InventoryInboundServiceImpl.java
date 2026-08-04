@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -192,8 +193,60 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
         order.setSourceNo((String) params.get("sourceNo"));
         if (params.get("warehouseId") != null) order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
+        if (params.get("supplierId") != null) order.setSupplierId(Long.valueOf(params.get("supplierId").toString()));
+        order.setSupplierName((String) params.get("supplierName"));
+        // 入库日期：缺省今天（DEV-436 修复：inbound_date NOT NULL 无默认值）
+        if (params.get("inboundDate") != null && !params.get("inboundDate").toString().isEmpty()) {
+            order.setInboundDate(LocalDate.parse(params.get("inboundDate").toString()));
+        } else {
+            order.setInboundDate(LocalDate.now());
+        }
+        order.setRemark((String) params.get("remark"));
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         inboundOrderMapper.insert(order);
+
+        // 保存明细（DEV-436 修复：原 create 不落 items，导致入库单无明细无法确认）
+        Object itemsObj = params.get("items");
+        if (itemsObj instanceof List<?> itemList && !itemList.isEmpty()) {
+            List<InventoryInboundItem> items = new ArrayList<>();
+            int sort = 1;
+            BigDecimal totalQty = BigDecimal.ZERO;
+            BigDecimal totalAmt = BigDecimal.ZERO;
+            for (Object obj : itemList) {
+                if (!(obj instanceof Map<?, ?> m)) continue;
+                InventoryInboundItem item = new InventoryInboundItem();
+                item.setInboundId(order.getInboundId());
+                if (m.get("materialId") != null) item.setMaterialId(Long.valueOf(m.get("materialId").toString()));
+                item.setMaterialCode((String) m.get("materialCode"));
+                item.setMaterialName((String) m.get("materialName"));
+                item.setSpecification((String) m.get("specification"));
+                item.setUnit((String) m.get("unit"));
+                if (m.get("quantity") != null) item.setQuantity(new BigDecimal(m.get("quantity").toString()));
+                if (m.get("unitPrice") != null) item.setUnitPrice(new BigDecimal(m.get("unitPrice").toString()));
+                BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+                BigDecimal price = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
+                item.setAmount(qty.multiply(price));
+                item.setBatchNo((String) m.get("batchNo"));
+                if (m.get("productionDate") != null && !m.get("productionDate").toString().isEmpty()) {
+                    item.setProductionDate(LocalDate.parse(m.get("productionDate").toString()));
+                }
+                if (m.get("expiryDate") != null && !m.get("expiryDate").toString().isEmpty()) {
+                    item.setExpiryDate(LocalDate.parse(m.get("expiryDate").toString()));
+                }
+                if (m.get("locationId") != null) item.setLocationId(Long.valueOf(m.get("locationId").toString()));
+                item.setRemark((String) m.get("remark"));
+                item.setSortOrder(sort++);
+                items.add(item);
+                totalQty = totalQty.add(qty);
+                totalAmt = totalAmt.add(item.getAmount());
+            }
+            if (!items.isEmpty()) {
+                inboundItemMapper.batchInsert(items);
+                order.setTotalQuantity(totalQty);
+                order.setTotalAmount(totalAmt);
+                inboundOrderMapper.updateById(order);
+            }
+        }
         return order.getInboundId();
     }
 

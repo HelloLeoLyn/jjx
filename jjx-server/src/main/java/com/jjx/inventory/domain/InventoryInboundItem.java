@@ -77,4 +77,7 @@ public class InventoryInboundItem extends BaseEntity {
     /** 排序 */
     private Integer sortOrder;
 
+    /** 备注 */
+    private String remark;
+
 }
