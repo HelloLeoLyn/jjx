@@ -389,6 +389,11 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             item.setRoutingId(routingId);
             item.setProcessOrder(order++);  // 重新生成全局顺序
 
+            // processId 无效(0/null)时置 null, 避免外键约束失败(fk_routing_detail_process)
+            if (item.getProcessId() != null && item.getProcessId() <= 0) {
+                item.setProcessId(null);
+            }
+
             // 空字符串转 null，避免数据库约束问题
             if (item.getCustomProcessParams() != null && item.getCustomProcessParams().isBlank()) {
                 item.setCustomProcessParams(null);

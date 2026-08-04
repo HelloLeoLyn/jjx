@@ -158,7 +158,7 @@ const loadRouteDetail = async () => {
       groupId: item.groupId || undefined,
       groupOrder: item.groupOrder || 0,
       groupName: item.groupName || '',
-      processId: item.processId || 0,
+      processId: item.processId ?? undefined,
       processOrder: item.processOrder || 0,
       customLaborHours: item.customLaborHours || 0,
       customMachineHours: item.customMachineHours || 0,
