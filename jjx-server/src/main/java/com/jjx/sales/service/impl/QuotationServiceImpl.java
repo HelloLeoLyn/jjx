@@ -263,7 +263,19 @@ public class QuotationServiceImpl implements IQuotationService {
         SalesQuotation deleteQuotation = new SalesQuotation();
         deleteQuotation.setQuotationId(quotationId);
         deleteQuotation.setDeleted(1);
-        return quotationMapper.updateById(deleteQuotation);
+        int rows = quotationMapper.updateById(deleteQuotation);
+
+        // 连带清理：明细与流转记录（子表无 deleted 字段，物理删除）
+        try {
+            quotationItemMapper.delete(new LambdaQueryWrapper<SalesQuotationItem>()
+                    .eq(SalesQuotationItem::getQuotationId, quotationId));
+            quotationFlowMapper.delete(new LambdaQueryWrapper<SalesQuotationFlow>()
+                    .eq(SalesQuotationFlow::getQuotationId, quotationId));
+        } catch (Exception e) {
+            // 子表清理失败不影响主表删除结果，记录日志
+            log.warn("删除报价单子表数据失败: quotationId={}, {}", quotationId, e.getMessage());
+        }
+        return rows;
     }
 
     /**

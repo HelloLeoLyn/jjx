@@ -1,5 +1,6 @@
 package com.jjx.product.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -8,6 +9,7 @@ import java.math.BigDecimal;
  * 产品路线明细 DTO
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class EngineeringRoutingItemDTO {
 
     /**

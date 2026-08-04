@@ -94,8 +94,17 @@ public class SysAttachmentController {
         String encodedName = URLEncoder.encode(attachment.getFileName(), StandardCharsets.UTF_8)
                 .replace("+", "%20");
 
+        // 图片等可预览类型用对应 MIME，浏览器内联预览；其他保持 octet-stream 下载
+        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        String fileType = attachment.getFileType();
+        if (fileType != null && fileType.startsWith("image/")) {
+            mediaType = MediaType.parseMediaType(fileType);
+        } else if (fileType != null && fileType.startsWith("application/pdf")) {
+            mediaType = MediaType.APPLICATION_PDF;
+        }
+
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentType(mediaType)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "inline; filename*=UTF-8''" + encodedName)
                 .body(resource);

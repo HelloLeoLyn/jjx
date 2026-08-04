@@ -57,6 +57,14 @@
         </div>
       </div>
     </div>
+
+    <!-- 图片预览（支持左右切换上一张/下一张） -->
+    <el-image-viewer
+      v-if="previewVisible"
+      :url-list="previewImageList"
+      :initial-index="previewIndex"
+      @close="previewVisible = false"
+    />
   </div>
 </template>
 
@@ -127,15 +135,30 @@ function onDownload(att: any) {
   window.open(downloadUrl(att.id), '_blank')
 }
 
+// ==================== 图片预览（左右切换） ====================
+const previewVisible = ref(false)
+const previewImageList = ref<string[]>([])
+const previewIndex = ref(0)
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
+
+function isImage(att: any): boolean {
+  return IMAGE_TYPES.includes(att.fileType)
+}
+
 function onPreview(att: any) {
-  // 图片/PDF 直接新窗口预览，其他类型走下载
-  const imgTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
-  const pdfType = 'application/pdf'
-  if (imgTypes.includes(att.fileType) || att.fileType === pdfType) {
-    window.open(downloadUrl(att.id), '_blank')
-  } else {
-    window.open(downloadUrl(att.id), '_blank')
+  // 图片：打开全屏预览，支持左右切换本组所有图片
+  if (isImage(att)) {
+    const images = attachments.value.filter((a) => isImage(a))
+    if (images.length === 0) return
+    previewImageList.value = images.map((a) => downloadUrl(a.id))
+    const idx = images.findIndex((a) => a.id === att.id)
+    previewIndex.value = idx >= 0 ? idx : 0
+    previewVisible.value = true
+    return
   }
+  // PDF/其他：新窗口预览/下载
+  window.open(downloadUrl(att.id), '_blank')
 }
 
 function formatSize(size: number | null | undefined): string {
