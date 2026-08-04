@@ -275,7 +275,7 @@ import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
 import { ProductEnum, StepTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
-import type { ProductRoutingItemVO } from '@/types/product/routing'
+import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 
 // Props
 interface Props {
@@ -315,7 +315,7 @@ const getApproveStatusText = (status: number): string => {
 interface GroupDisplay {
   groupOrder: number
   groupName: string
-  items: ProductRoutingItemVO[]
+  items: EngineeringRoutingItemVO[]
   totalLaborHours: number
   totalMachineHours: number
   remark: string
@@ -327,7 +327,7 @@ const routeGroups = computed<GroupDisplay[]>(() => {
   const items = productData.value.routing?.items
   if (!items || items.length === 0) return []
 
-  const groupMap = new Map<string, ProductRoutingItemVO[]>()
+  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
   items.forEach((item) => {
     const key = item.groupId
       ? 'group_' + item.groupId

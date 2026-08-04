@@ -140,8 +140,8 @@
 import { ref, reactive, watch, computed, nextTick } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { ProductFormData, ProductVo } from '@/types/product'
-import type { ProductBomVO } from '@/types/product/bom'
-import type { ProductRoutingVO } from '@/types/product/routing'
+import type { EngineeringBomVO } from '@/types/product/bom'
+import type { EngineeringRoutingVO } from '@/types/product/routing'
 import { getApprovedBomList } from '@/api/product'
 import ProductSpecForm from './ProductSpecForm.vue'
 
@@ -213,8 +213,8 @@ const productFormRef = ref<FormInstance>()
 const form = reactive<ProductFormData>({ ...props.formData })
 
 // BOM和Route选项
-const bomOptions = ref<ProductBomVO[]>([])
-const routeOptions = ref<ProductRoutingVO[]>([])
+const bomOptions = ref<EngineeringBomVO[]>([])
+const routeOptions = ref<EngineeringRoutingVO[]>([])
 
 // 监听props.formData变化，更新本地表单数据
 watch(

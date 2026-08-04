@@ -2,16 +2,16 @@ package com.jjx.product;
 
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.entity.Product;
-import com.jjx.product.domain.entity.ProductBom;
-import com.jjx.product.domain.entity.ProductRouting;
+import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.product.domain.entity.EngineeringRouting;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.impl.ProductServiceImpl;
 import com.jjx.product.service.ProductCodeGenerator;
 import com.jjx.product.domain.converter.ProductConverter;
-import com.jjx.product.service.IProductBomService;
-import com.jjx.product.service.IProductRoutingService;
+import com.jjx.product.service.IEngineeringBomService;
+import com.jjx.product.service.IEngineeringRoutingService;
 import com.jjx.product.service.IProductCategoryService;
-import com.jjx.product.service.IProductFilmService;
+import com.jjx.product.service.IEngineeringFilmService;
 import com.jjx.engineering.service.EngineeringBaseService;
 import com.jjx.notification.service.NotificationService;
 import org.junit.jupiter.api.*;
@@ -29,10 +29,10 @@ class ProductFlowTest {
     @Mock private ProductMapper productMapper;
     @Mock private ProductCodeGenerator productCodeGenerator;
     @Mock private ProductConverter productConverter;
-    @Mock private IProductBomService bomService;
-    @Mock private IProductRoutingService routingService;
+    @Mock private IEngineeringBomService bomService;
+    @Mock private IEngineeringRoutingService routingService;
     @Mock private IProductCategoryService categoryService;
-    @Mock private IProductFilmService filmService;
+    @Mock private IEngineeringFilmService filmService;
     @Mock private EngineeringBaseService engineeringBaseService;
     @Mock private NotificationService notificationService;
     @Mock private com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
@@ -77,11 +77,11 @@ class ProductFlowTest {
         product.setCurrentRouteId(200L);
         product.setProductStatus(4); // APPROVED
 
-        ProductBom bom = new ProductBom();
+        EngineeringBom bom = new EngineeringBom();
         bom.setBomId(100L);
         bom.setApproveStatus(3); // APPROVED
 
-        ProductRouting routing = new ProductRouting();
+        EngineeringRouting routing = new EngineeringRouting();
         routing.setRoutingId(200L);
         routing.setApproveStatus(3); // APPROVED
 

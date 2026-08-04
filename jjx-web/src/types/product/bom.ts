@@ -1,7 +1,7 @@
 // ==================== BOM管理类型 ====================
 // ==================== 通用类型 ====================
 import type { PageQuery, PageResult } from '@/types/index'
-export interface ProductBomQueryParams extends PageQuery {
+export interface EngineeringBomQueryParams extends PageQuery {
   bomCode?: string
   bomName?: string
   productCode?: string
@@ -12,7 +12,7 @@ export interface ProductBomQueryParams extends PageQuery {
   endDate?: string
 }
 
-export interface ProductBomFormData {
+export interface EngineeringBomFormData {
   bomId?: number
   bomCode: string
   bomName: string
@@ -25,10 +25,10 @@ export interface ProductBomFormData {
   effectiveDate?: string
   expiryDate?: string
   remark?: string
-  items: ProductBomItem[]
+  items: EngineeringBomItem[]
 }
 
-export interface ProductBomItem {
+export interface EngineeringBomItem {
   itemId?: number
   bomId?: number
   materialId: number
@@ -61,7 +61,7 @@ export interface BomSimpleVo {
   approveStatus: number
   materialCount: number
 }
-export interface ProductBom {
+export interface EngineeringBom {
   bomId: number
   bomCode: string
   bomName: string
@@ -80,7 +80,7 @@ export interface ProductBom {
   createBy: string
   updateBy: string
 }
-export interface ProductBomVO {
+export interface EngineeringBomVO {
   bomId: number
   bomCode: string
   bomName: string
@@ -98,5 +98,5 @@ export interface ProductBomVO {
   updateTime: string
   createBy: string
   updateBy: string
-  items: ProductBomItem[]
+  items: EngineeringBomItem[]
 }

@@ -13,7 +13,7 @@ import com.jjx.product.domain.converter.ProductStandardProcessConverter;
 import com.jjx.product.domain.dto.ProductStandardProcessQueryDTO;
 import com.jjx.product.domain.entity.ProductStandardProcess;
 import com.jjx.product.domain.vo.ProductStandardProcessVO;
-import com.jjx.product.mapper.ProductRoutingItemMapper;
+import com.jjx.product.mapper.EngineeringRoutingItemMapper;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.product.service.IProductStandardProcessService;
 import com.jjx.system.service.SysDictService;
@@ -38,7 +38,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         implements IProductStandardProcessService {
 
     private final ProductStandardProcessMapper processMapper;
-    private final ProductRoutingItemMapper routingItemMapper;
+    private final EngineeringRoutingItemMapper routingItemMapper;
     private final ProductStandardProcessConverter productStandardProcessConverter;
     private final SysDictService dictService;
 
@@ -367,7 +367,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     @Override
     public boolean canDelete(Long processId) {
         // 检查是否被工艺路线引用
-        // TODO: 实现引用检查，需要 ProductRoutingItemMapper 中的方法
+        // TODO: 实现引用检查，需要 EngineeringRoutingItemMapper 中的方法
         // return routingItemMapper.countByProcessId(processId) == 0;
         return true;
     }

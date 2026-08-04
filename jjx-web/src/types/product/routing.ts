@@ -1,9 +1,9 @@
-// types/product/ProductRoutingItem.ts
+// types/product/EngineeringRoutingItem.ts
 // ==================== 工艺路线类型 ====================
 
 /**
  * 工艺路线查询参数
- * 对应后端 ProductRoutingQueryDTO
+ * 对应后端 EngineeringRoutingQueryDTO
  */
 export interface ProductRouteQueryParams {
   routingCode?: string
@@ -20,7 +20,7 @@ export interface ProductRouteQueryParams {
 
 /**
  * 工艺路线表单数据
- * 对应后端 ProductRoutingDTO
+ * 对应后端 EngineeringRoutingDTO
  */
 export interface ProductRouteFormData {
   routingId?: number
@@ -32,14 +32,14 @@ export interface ProductRouteFormData {
   routingVersion: string
   description?: string
   remark?: string
-  items: ProductRoutingItemVO[]
+  items: EngineeringRoutingItemVO[]
 }
 
 /**
  * 工艺路线列表项
- * 对应后端 ProductRoutingVO
+ * 对应后端 EngineeringRoutingVO
  */
-export interface ProductRoutingVO {
+export interface EngineeringRoutingVO {
   routingId: number
   routingCode: string
   routingName: string
@@ -60,7 +60,7 @@ export interface ProductRoutingVO {
   updateBy: string
   updateTime: string
   remark: string
-  items: ProductRoutingItemVO[]
+  items: EngineeringRoutingItemVO[]
   groupSummaries?: GroupSummary[]
 }
 
@@ -78,7 +78,7 @@ export interface GroupSummary {
 
 /**
  * 工艺路线工序明细表单数据
- * 对应后端 ProductRoutingItem
+ * 对应后端 EngineeringRoutingItem
  */
 export interface ProductRouteItemFormData {
   itemId?: number
@@ -95,10 +95,10 @@ export interface ProductRouteItemFormData {
 
 /**
  * 工艺路线工序明细
- * 对应后端 ProductRoutingItem（含非数据库字段）
+ * 对应后端 EngineeringRoutingItem（含非数据库字段）
  * 产品路线明细VO
  */
-export interface ProductRoutingItemVO {
+export interface EngineeringRoutingItemVO {
   // 路线明细字段
   itemId: number
   routingId: number
@@ -140,9 +140,9 @@ export interface ProductRoutingItemVO {
 
 /**
  * 产品路线明细DTO（新增/编辑）
- * 对应后端 ProductRoutingItemDTO
+ * 对应后端 EngineeringRoutingItemDTO
  */
-export interface ProductRoutingItemDTO {
+export interface EngineeringRoutingItemDTO {
   itemId?: number
   routingId?: number
   groupId?: number
@@ -160,7 +160,7 @@ export interface ProductRoutingItemDTO {
 /**
  * 产品路线明细查询参数
  */
-export interface ProductRoutingItemQueryDTO {
+export interface EngineeringRoutingItemQueryDTO {
   routingId?: number
   processId?: number
   pageNum?: number

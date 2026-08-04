@@ -206,7 +206,7 @@
 
 <script setup lang="ts">
 defineOptions({
-  name: 'ProductBom',
+  name: 'EngineeringBom',
 })
 
 import { ref, reactive, onMounted, watch } from 'vue'
@@ -216,10 +216,10 @@ import { parseTime, parseDate } from '@/utils/format'
 import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
 import BomFormDialog from './components/BomFormDialog.vue'
-import type { ProductBomQueryParams, ProductBom } from '@/types/product/bom'
+import type { EngineeringBomQueryParams, EngineeringBom } from '@/types/product/bom'
 import { ProductEnum, ProductActions } from '@/enums/product'
 // 查询参数
-const queryParams = reactive<ProductBomQueryParams>({
+const queryParams = reactive<EngineeringBomQueryParams>({
   pageNum: 1,
   pageSize: 10,
   bomCode: undefined,
@@ -244,7 +244,7 @@ const selectedBomId = ref<number | undefined>(undefined)
 const selectedBomForApprove = ref<number | undefined>(undefined)
 
 // 表格数据
-const bomList = ref<ProductBom[]>([])
+const bomList = ref<EngineeringBom[]>([])
 
 // 字典选项
 const bomStatusOptions = ref([
@@ -259,7 +259,7 @@ const bomStatusOptions = ref([
 const getList = async () => {
   loading.value = true
   try {
-    const response = await productBomApi.listProductBom(queryParams)
+    const response = await productBomApi.listEngineeringBom(queryParams)
     bomList.value = response.data?.records || []
     total.value = response.data?.total || 0
   } catch (error) {
@@ -294,7 +294,7 @@ const resetQuery = () => {
 }
 
 // 多选框选中数据
-const handleSelectionChange = (selection: ProductBom[]) => {
+const handleSelectionChange = (selection: EngineeringBom[]) => {
   ids.value = selection.map((item) => item.bomId)
   single.value = selection.length !== 1
   multiple.value = !selection.length
@@ -307,14 +307,14 @@ const handleAdd = () => {
 }
 
 // 修改按钮操作
-const handleUpdate = (row?: ProductBom) => {
+const handleUpdate = (row?: EngineeringBom) => {
   const bomId = row?.bomId || ids.value[0]
   selectedBomId.value = bomId
   open.value = true
 }
 
 // 删除按钮操作
-const handleDelete = (row?: ProductBom) => {
+const handleDelete = (row?: EngineeringBom) => {
   const bomIds = row?.bomId || ids.value[0]
   ElMessageBox.confirm('是否确认删除BOM编码为"' + bomIds + '"的数据项？', '警告', {
     confirmButtonText: '确定',
@@ -322,7 +322,7 @@ const handleDelete = (row?: ProductBom) => {
     type: 'warning',
   })
     .then(() => {
-      return productBomApi.removeProductBom(bomIds)
+      return productBomApi.removeEngineeringBom(bomIds)
     })
     .then(() => {
       getList()
@@ -339,7 +339,7 @@ const handleExport = () => {
     type: 'warning',
   })
     .then(() => {
-      return productBomApi.exportProductBom(queryParams)
+      return productBomApi.exportEngineeringBom(queryParams)
     })
     .then(() => {
       ElMessage.success('导出成功')
@@ -348,7 +348,7 @@ const handleExport = () => {
 }
 
 // 审核按钮操作
-const handleApprove = (row?: ProductBom) => {
+const handleApprove = (row?: EngineeringBom) => {
   const bomId = row?.bomId || ids.value[0]
   if (!bomId) {
     ElMessage.warning('请选择要审核的BOM')
@@ -360,13 +360,13 @@ const handleApprove = (row?: ProductBom) => {
 }
 
 // 查看详情按钮操作
-const handleView = (row: ProductBom) => {
+const handleView = (row: EngineeringBom) => {
   selectedBomId.value = row.bomId
   bomDetailOpen.value = true
 }
 
 // 复制BOM按钮操作
-const handleCopyBom = (row: ProductBom) => {
+const handleCopyBom = (row: EngineeringBom) => {
   const bomId = row.bomId
   ElMessageBox.confirm('是否确认复制此BOM？', '提示', {
     confirmButtonText: '确定',
@@ -374,8 +374,8 @@ const handleCopyBom = (row: ProductBom) => {
     type: 'info',
   })
     .then(() => {
-      // 由于没有copyProductBom API，我们可以通过获取现有BOM信息然后创建新BOM来实现
-      return productBomApi.getProductBomInfo(bomId)
+      // 由于没有copyEngineeringBom API，我们可以通过获取现有BOM信息然后创建新BOM来实现
+      return productBomApi.getEngineeringBomInfo(bomId)
     })
     .then((response: any) => {
       const bomData = response.data
@@ -383,7 +383,7 @@ const handleCopyBom = (row: ProductBom) => {
       bomData.bomId = undefined
       bomData.bomCode = ''
       bomData.bomVersion = `${bomData.bomVersion}_copy`
-      return productBomApi.addProductBom(bomData)
+      return productBomApi.addEngineeringBom(bomData)
     })
     .then(() => {
       getList()

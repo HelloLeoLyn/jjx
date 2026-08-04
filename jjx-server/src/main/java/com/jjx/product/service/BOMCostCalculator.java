@@ -1,7 +1,7 @@
 package com.jjx.product.service;
 
-import com.jjx.product.domain.entity.ProductBom;
-import com.jjx.product.domain.entity.ProductBomItem;
+import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.product.domain.entity.EngineeringBomItem;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -24,7 +24,7 @@ public class BOMCostCalculator {
      * @param laborRates 人工费率映射表
      * @return 成本计算结果
      */
-    public BOMCostResult calculateTotalCost(ProductBom bom, List<ProductBomItem> items,
+    public BOMCostResult calculateTotalCost(EngineeringBom bom, List<EngineeringBomItem> items,
                                             Map<Long, BigDecimal> materialPrices,
                                             Map<Long, BigDecimal> laborRates) {
         BOMCostResult result = new BOMCostResult();
@@ -66,10 +66,10 @@ public class BOMCostCalculator {
      * @param materialPrices 物料单价映射表
      * @return 物料成本
      */
-    private BigDecimal calculateMaterialCost(List<ProductBomItem> items, Map<Long, BigDecimal> materialPrices) {
+    private BigDecimal calculateMaterialCost(List<EngineeringBomItem> items, Map<Long, BigDecimal> materialPrices) {
         BigDecimal totalMaterialCost = BigDecimal.ZERO;
 
-        for (ProductBomItem item : items) {
+        for (EngineeringBomItem item : items) {
             BigDecimal itemCost = item.calculateAmount(item.getUnitPrice());
 //            BigDecimal itemCost = unitPrice.multiply(effectiveQuantity);
             totalMaterialCost = totalMaterialCost.add(itemCost);
@@ -84,10 +84,10 @@ public class BOMCostCalculator {
      * @param laborRates 人工费率映射表
      * @return 人工成本
      */
-    private BigDecimal calculateLaborCost(List<ProductBomItem> items, Map<Long, BigDecimal> laborRates) {
+    private BigDecimal calculateLaborCost(List<EngineeringBomItem> items, Map<Long, BigDecimal> laborRates) {
         BigDecimal totalLaborCost = BigDecimal.ZERO;
 
-//        for (ProductBomItem item : items) {
+//        for (EngineeringBomItem item : items) {
 //            BigDecimal laborRate = getLaborRate(item.getProcessId(), laborRates);
 //            BigDecimal laborHours = item.getLaborHours() != null ? item.getLaborHours() : BigDecimal.ZERO;
 //

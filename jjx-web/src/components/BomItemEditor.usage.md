@@ -33,15 +33,15 @@
 
 | 属性名       | 类型                       | 默认值      | 说明                         |
 | ------------ | -------------------------- | ----------- | ---------------------------- |
-| `modelValue` | `ProductBomItemFormData[]` | `[]`        | BOM 明细数据数组（双向绑定） |
+| `modelValue` | `EngineeringBomItemFormData[]` | `[]`        | BOM 明细数据数组（双向绑定） |
 | `bomId`      | `number`                   | `undefined` | 关联的 BOM ID                |
 
 ### Emits
 
 | 事件名              | 参数类型                   | 说明         |
 | ------------------- | -------------------------- | ------------ |
-| `update:modelValue` | `ProductBomItemFormData[]` | 数据更新事件 |
-| `change`            | `ProductBomItemFormData[]` | 数据变化事件 |
+| `update:modelValue` | `EngineeringBomItemFormData[]` | 数据更新事件 |
+| `change`            | `EngineeringBomItemFormData[]` | 数据变化事件 |
 
 ## 使用方法
 
@@ -59,10 +59,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import BomItemEditor from '@/components/BomItemEditor.vue'
-import type { ProductBomItemFormData } from '@/types/product'
+import type { EngineeringBomItemFormData } from '@/types/product'
 
 const currentBomId = ref(1)
-const bomItems = ref<ProductBomItemFormData[]>([
+const bomItems = ref<EngineeringBomItemFormData[]>([
   {
     materialId: 1,
     materialCode: 'MAT001',
@@ -76,7 +76,7 @@ const bomItems = ref<ProductBomItemFormData[]>([
   },
 ])
 
-const handleItemsChange = (items: ProductBomItemFormData[]) => {
+const handleItemsChange = (items: EngineeringBomItemFormData[]) => {
   console.log('BOM明细已更新:', items)
 }
 </script>
@@ -110,10 +110,10 @@ const handleItemsChange = (items: ProductBomItemFormData[]) => {
 <script setup lang="ts">
 import { ref } from 'vue'
 import BomItemEditor from '@/components/BomItemEditor.vue'
-import type { ProductBomItemFormData } from '@/types/product'
+import type { EngineeringBomItemFormData } from '@/types/product'
 
 const bomEditorRef = ref<InstanceType<typeof BomItemEditor>>()
-const bomItems = ref<ProductBomItemFormData[]>([])
+const bomItems = ref<EngineeringBomItemFormData[]>([])
 
 const validateAndSubmit = () => {
   if (bomEditorRef.value?.validateItems()) {
@@ -128,10 +128,10 @@ const validateAndSubmit = () => {
 
 ## 数据模型
 
-### ProductBomItemFormData 接口
+### EngineeringBomItemFormData 接口
 
 ```typescript
-interface ProductBomItemFormData {
+interface EngineeringBomItemFormData {
   itemId?: number // 明细ID（编辑时使用）
   bomId?: number // BOM ID
   materialId: number // 物料ID
@@ -162,7 +162,7 @@ interface ProductBomItemFormData {
 
 | 方法名            | 参数 | 返回值                     | 说明                 |
 | ----------------- | ---- | -------------------------- | -------------------- |
-| `getItems()`      | 无   | `ProductBomItemFormData[]` | 获取当前所有明细项   |
+| `getItems()`      | 无   | `EngineeringBomItemFormData[]` | 获取当前所有明细项   |
 | `clearItems()`    | 无   | `void`                     | 清空所有明细项       |
 | `validateItems()` | 无   | `boolean`                  | 验证明细数据是否有效 |
 

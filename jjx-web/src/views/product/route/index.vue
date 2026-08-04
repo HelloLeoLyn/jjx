@@ -145,7 +145,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { productRouteApi } from '@/api/product/routing'
 
 import type { StandardProcessOption } from '@/types/product'
-import type { ProductRouteQueryParams, ProductRoutingVO } from '@/types/product/routing'
+import type { ProductRouteQueryParams, EngineeringRoutingVO } from '@/types/product/routing'
 
 import RouteSearch from './components/RouteSearch.vue'
 import RouteDetailDialog from './components/RouteDetailDialog.vue'
@@ -169,7 +169,7 @@ const queryParams = reactive<ProductRouteQueryParams>({
 })
 
 // ==================== 表格数据 ====================
-const tableData = ref<ProductRoutingVO[]>([])
+const tableData = ref<EngineeringRoutingVO[]>([])
 const total = ref(0)
 const loading = ref(false)
 
@@ -257,12 +257,12 @@ const handleAdd = () => {
 }
 
 // ==================== 编辑 ====================
-const handleEdit = (row: ProductRoutingVO) => {
+const handleEdit = (row: EngineeringRoutingVO) => {
   router.push(`/product/route/edit/${row.routingId}`)
 }
 
 // ==================== 删除 ====================
-const handleDelete = (row: ProductRoutingVO) => {
+const handleDelete = (row: EngineeringRoutingVO) => {
   ElMessageBox.confirm(
     `确定要删除工艺路线 "${row.routingName}" (${row.routingVersion}) 吗？`,
     '提示',
@@ -287,13 +287,13 @@ const handleDelete = (row: ProductRoutingVO) => {
 }
 
 // ==================== 详情 ====================
-const handleDetail = (row: ProductRoutingVO) => {
+const handleDetail = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   detailDialogVisible.value = true
 }
 
 // ==================== 复制版本 ====================
-const handleCopy = (row: ProductRoutingVO) => {
+const handleCopy = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   currentVersion.value = row.routingVersion
   copyDialogVisible.value = true
@@ -311,7 +311,7 @@ const handleCopyConfirm = async (newVersion: string) => {
 }
 
 // ==================== 提交审批 ====================
-const handleSubmitApprove = async (row: ProductRoutingVO) => {
+const handleSubmitApprove = async (row: EngineeringRoutingVO) => {
   try {
     await productRouteApi.submitProductRoute(row.routingId)
     ElMessage.success('已提交审批')
@@ -322,7 +322,7 @@ const handleSubmitApprove = async (row: ProductRoutingVO) => {
 }
 
 // ==================== 审批 ====================
-const handleApprove = (row: ProductRoutingVO) => {
+const handleApprove = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   approveDialogVisible.value = true
 }

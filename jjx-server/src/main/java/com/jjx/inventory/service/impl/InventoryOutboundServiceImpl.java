@@ -58,8 +58,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryWarehouseMapper outboundWarehouseMapper;
     private final InventoryMaterialMapper materialMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
-    private final com.jjx.product.mapper.ProductBomMapper productBomMapper;
-    private final com.jjx.product.mapper.ProductBomItemMapper productBomItemMapper;
+    private final com.jjx.product.mapper.EngineeringBomMapper productBomMapper;
+    private final com.jjx.product.mapper.EngineeringBomItemMapper productBomItemMapper;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
@@ -353,24 +353,24 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         // 2. 查询当前生效BOM
-        LambdaQueryWrapper<com.jjx.product.domain.entity.ProductBom> bomWrapper =
-                new LambdaQueryWrapper<com.jjx.product.domain.entity.ProductBom>()
-                        .eq(com.jjx.product.domain.entity.ProductBom::getProductId, prodOrder.getProductId())
-                        .eq(com.jjx.product.domain.entity.ProductBom::getIsCurrent, 1)
-                        .eq(com.jjx.product.domain.entity.ProductBom::getApproveStatus, 3)
-                        .orderByDesc(com.jjx.product.domain.entity.ProductBom::getCreateTime)
+        LambdaQueryWrapper<com.jjx.product.domain.entity.EngineeringBom> bomWrapper =
+                new LambdaQueryWrapper<com.jjx.product.domain.entity.EngineeringBom>()
+                        .eq(com.jjx.product.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
+                        .eq(com.jjx.product.domain.entity.EngineeringBom::getIsCurrent, 1)
+                        .eq(com.jjx.product.domain.entity.EngineeringBom::getApproveStatus, 3)
+                        .orderByDesc(com.jjx.product.domain.entity.EngineeringBom::getCreateTime)
                         .last("LIMIT 1");
-        com.jjx.product.domain.entity.ProductBom bom = productBomMapper.selectOne(bomWrapper);
+        com.jjx.product.domain.entity.EngineeringBom bom = productBomMapper.selectOne(bomWrapper);
         if (bom == null) {
             log.warn("生产工单{}的产品{}无生效BOM，跳过自动领料", workOrderId, prodOrder.getProductCode());
             return null;
         }
 
         // 3. 查询BOM明细
-        LambdaQueryWrapper<com.jjx.product.domain.entity.ProductBomItem> itemWrapper =
-                new LambdaQueryWrapper<com.jjx.product.domain.entity.ProductBomItem>()
-                        .eq(com.jjx.product.domain.entity.ProductBomItem::getBomId, bom.getBomId());
-        List<com.jjx.product.domain.entity.ProductBomItem> bomItems = productBomItemMapper.selectList(itemWrapper);
+        LambdaQueryWrapper<com.jjx.product.domain.entity.EngineeringBomItem> itemWrapper =
+                new LambdaQueryWrapper<com.jjx.product.domain.entity.EngineeringBomItem>()
+                        .eq(com.jjx.product.domain.entity.EngineeringBomItem::getBomId, bom.getBomId());
+        List<com.jjx.product.domain.entity.EngineeringBomItem> bomItems = productBomItemMapper.selectList(itemWrapper);
         if (bomItems.isEmpty()) {
             log.warn("BOM{}无明细，无法自动领料", bom.getBomCode());
             return null;
@@ -412,7 +412,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 5. 创建出库单明细
         int sort = 1;
         BigDecimal totalQty = BigDecimal.ZERO;
-        for (com.jjx.product.domain.entity.ProductBomItem bomItem : bomItems) {
+        for (com.jjx.product.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
 
             BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0

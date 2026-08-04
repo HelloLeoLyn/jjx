@@ -6,9 +6,9 @@
 import type {
   ProductItem,
   ProductInstanceItem,
-  ProductFilmVO,
+  EngineeringFilmVO,
 } from '@/types/product'
-import type { ProductBomFormData } from '@/types/product/bom'
+import type { EngineeringBomFormData } from '@/types/product/bom'
 
 // ==================== 20条产品测试数据 ====================
 export const productTestData: ProductItem[] = [

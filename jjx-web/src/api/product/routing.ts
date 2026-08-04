@@ -1,8 +1,8 @@
 import request from '@/utils/request'
 
 import type {
-  ProductRoutingItemVO,
-  ProductRoutingVO,
+  EngineeringRoutingItemVO,
+  EngineeringRoutingVO,
   ProductRouteQueryParams,
   ProductRouteFormData,
 } from '@/types/product/routing'
@@ -15,7 +15,7 @@ export const productRouteApi = {
    * 对应后端 GET /engineering/routings/page
    */
   listProductRoute(params: ProductRouteQueryParams) {
-    return request.get<R<PageResult<ProductRoutingVO>>>('/engineering/routings/page', {
+    return request.get<R<PageResult<EngineeringRoutingVO>>>('/engineering/routings/page', {
       params,
     })
   },
@@ -25,7 +25,7 @@ export const productRouteApi = {
    * 对应后端 GET /engineering/routings/{routingId}
    */
   getProductRouteInfo(routingId: number) {
-    return request.get<R<ProductRoutingVO>>(`/engineering/routings/${routingId}`)
+    return request.get<R<EngineeringRoutingVO>>(`/engineering/routings/${routingId}`)
   },
 
   /**
@@ -33,7 +33,7 @@ export const productRouteApi = {
    * 对应后端 POST /product/routings
    */
   addProductRoute(data: ProductRouteFormData) {
-    return request.post<R<ProductRoutingVO>>('/engineering/routings', data)
+    return request.post<R<EngineeringRoutingVO>>('/engineering/routings', data)
   },
 
   /**
@@ -41,7 +41,7 @@ export const productRouteApi = {
    * 对应后端 PUT /engineering/routings/{routingId}
    */
   editProductRoute(routingId: number, data: ProductRouteFormData) {
-    return request.put<R<ProductRoutingVO>>(`/engineering/routings/${routingId}`, data)
+    return request.put<R<EngineeringRoutingVO>>(`/engineering/routings/${routingId}`, data)
   },
   /**
    * 删除工艺路线
@@ -55,7 +55,7 @@ export const productRouteApi = {
    * 对应后端 POST /engineering/routings/{routingId}/copy?newVersion={newVersion}
    */
   copyProductRoute(routingId: number, newVersion: string) {
-    return request.post<R<ProductRoutingVO>>(`/engineering/routings/${routingId}/copy`, null, {
+    return request.post<R<EngineeringRoutingVO>>(`/engineering/routings/${routingId}/copy`, null, {
       params: { newVersion },
     })
   },
@@ -73,7 +73,7 @@ export const productRouteApi = {
    * 对应后端 GET /engineering/routings/product/{productId}/versions
    */
   getProductRouteVersions(productId: number) {
-    return request.get<R<ProductRoutingVO[]>>(`/engineering/routings/product/${productId}/versions`)
+    return request.get<R<EngineeringRoutingVO[]>>(`/engineering/routings/product/${productId}/versions`)
   },
 
   /**
@@ -81,7 +81,7 @@ export const productRouteApi = {
    * 对应后端 GET /engineering/routings/product/{productId}/current
    */
   getCurrentProductRoute(productId: number) {
-    return request.get<R<ProductRoutingVO>>(`/engineering/routings/product/${productId}/current`)
+    return request.get<R<EngineeringRoutingVO>>(`/engineering/routings/product/${productId}/current`)
   },
 
   /**

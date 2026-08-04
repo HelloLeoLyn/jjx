@@ -91,7 +91,7 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { productRouteApi } from '@/api/product/routing'
 import type { StandardProcessOption } from '@/types/product'
-import type { ProductRouteFormData, ProductRoutingItemVO } from '@/types/product/routing'
+import type { ProductRouteFormData, EngineeringRoutingItemVO } from '@/types/product/routing'
 import RouteItemEditor from './components/RouteItemEditor.vue'
 
 const route = useRoute()

@@ -54,7 +54,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
     private final com.jjx.engineering.service.IBomService bomService;
     private final com.jjx.engineering.service.IRoutingService routingService;
-    private final com.jjx.product.mapper.ProductBomItemMapper bomItemMapper;
+    private final com.jjx.product.mapper.EngineeringBomItemMapper bomItemMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final com.jjx.engineering.mapper.RoutingItemMapper routingItemMapper;
     private final com.jjx.engineering.mapper.StandardProcessMapper standardProcessMapper;
@@ -846,7 +846,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         bomService.save(newBom);
 
                         int order = 1;
-                        java.util.Map<String, com.jjx.product.domain.entity.ProductBomItem> aggMap = new java.util.LinkedHashMap<>();
+                        java.util.Map<String, com.jjx.product.domain.entity.EngineeringBomItem> aggMap = new java.util.LinkedHashMap<>();
                         for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
                             if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
                             try {
@@ -857,9 +857,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     String name = m.get("name") != null ? m.get("name").toString() : null;
                                     if (name == null || name.isEmpty()) continue;
                                     String key = name + "|" + (m.get("spec") != null ? m.get("spec") : "");
-                                    com.jjx.product.domain.entity.ProductBomItem item = aggMap.get(key);
+                                    com.jjx.product.domain.entity.EngineeringBomItem item = aggMap.get(key);
                                     if (item == null) {
-                                        item = new com.jjx.product.domain.entity.ProductBomItem();
+                                        item = new com.jjx.product.domain.entity.EngineeringBomItem();
                                         item.setBomId(newBom.getBomId());
                                         item.setMaterialName(name);
                                         item.setSpecification(m.get("spec") != null ? m.get("spec").toString() : null);
@@ -891,7 +891,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 log.warn("解析工序材料失败: {}", pe.getMessage());
                             }
                         }
-                        for (com.jjx.product.domain.entity.ProductBomItem item : aggMap.values()) {
+                        for (com.jjx.product.domain.entity.EngineeringBomItem item : aggMap.values()) {
                             bomItemMapper.insert(item);
                         }
                         builtBomId = newBom.getBomId();

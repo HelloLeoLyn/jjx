@@ -154,20 +154,20 @@ import { ref, reactive, onMounted } from 'vue'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus } from '@element-plus/icons-vue'
-import { filmApi, type ProductFilm } from '@/api/product/film'
+import { filmApi, type EngineeringFilm } from '@/api/product/film'
 import { listProductPage } from '@/api/product'
 
-defineOptions({ name: 'ProductFilm' })
+defineOptions({ name: 'EngineeringFilm' })
 
 const loading = ref(false)
 const submitting = ref(false)
-const filmList = ref<ProductFilm[]>([])
+const filmList = ref<EngineeringFilm[]>([])
 const productOptions = ref<any[]>([])
 const queryProductId = ref<number | null>(null)
 const queryName = ref('')
 const dialogVisible = ref(false)
 
-const form = reactive<Partial<ProductFilm>>({
+const form = reactive<Partial<EngineeringFilm>>({
   filmId: undefined,
   filmName: '',
   filmType: '',
@@ -237,7 +237,7 @@ function handleAdd() {
   dialogVisible.value = true
 }
 
-async function handleEdit(row: ProductFilm) {
+async function handleEdit(row: EngineeringFilm) {
   try {
     const res: any = await filmApi.getById(row.filmId!)
     Object.assign(form, res?.data || row)
@@ -269,20 +269,20 @@ async function handleSubmitForm() {
   }
 }
 
-async function handleSubmit(row: ProductFilm) {
+async function handleSubmit(row: EngineeringFilm) {
   await filmApi.submitApprove(row.filmId!)
   ElMessage.success('已提交审批')
   loadFilms()
 }
 
-async function handleApprove(row: ProductFilm) {
+async function handleApprove(row: EngineeringFilm) {
   await ElMessageBox.confirm(`确认通过菲林「${row.filmName}」？`, '审批通过')
   await filmApi.approve(row.filmId!)
   ElMessage.success('已通过')
   loadFilms()
 }
 
-async function handleReject(row: ProductFilm) {
+async function handleReject(row: EngineeringFilm) {
   try {
     const { value } = await ElMessageBox.prompt('请填写驳回原因', '审批驳回', {
       inputPlaceholder: '驳回原因（选填）',
@@ -295,28 +295,28 @@ async function handleReject(row: ProductFilm) {
   }
 }
 
-async function handleNewVersion(row: ProductFilm) {
+async function handleNewVersion(row: EngineeringFilm) {
   await ElMessageBox.confirm(`确认为「${row.filmName}」创建新版本？`, '新版本')
   await filmApi.newVersion(row.filmId!)
   ElMessage.success('新版本已创建')
   loadFilms()
 }
 
-async function handleSetCurrent(row: ProductFilm) {
+async function handleSetCurrent(row: EngineeringFilm) {
   await ElMessageBox.confirm(`确认将版本 ${row.version} 设为当前？`, '设为当前')
   await filmApi.setCurrent(row.filmId!)
   ElMessage.success('已设为当前版本')
   loadFilms()
 }
 
-async function handleRelease(row: ProductFilm) {
+async function handleRelease(row: EngineeringFilm) {
   await ElMessageBox.confirm(`确认将「${row.filmName}」下发生产？`, '下发生产', { type: 'warning' })
   await filmApi.release(row.filmId!)
   ElMessage.success('已下发生产')
   loadFilms()
 }
 
-async function handleDelete(row: ProductFilm) {
+async function handleDelete(row: EngineeringFilm) {
   await ElMessageBox.confirm(`确认删除菲林「${row.filmName}」？`, '删除确认', { type: 'warning' })
   await filmApi.remove(row.filmId!)
   ElMessage.success('已删除')

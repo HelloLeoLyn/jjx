@@ -129,7 +129,7 @@ import { FullScreen, UploadFilled } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
 import BomItemEditor from '@/components/BomItemEditor.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
-import type { ProductBomFormData, ProductBomItem } from '@/types/product/bom'
+import type { EngineeringBomFormData, EngineeringBomItem } from '@/types/product/bom'
 import type { ProductItem } from '@/types/product'
 import * as XLSX from 'xlsx'
 
@@ -185,7 +185,7 @@ const productOptions = computed<ProductItem[]>(() => {
 })
 
 // 表单数据
-const formData = reactive<ProductBomFormData>({
+const formData = reactive<EngineeringBomFormData>({
   bomId: undefined,
   bomCode: '',
   bomName: '',
@@ -221,7 +221,7 @@ const handleProductChange = (productId: number, product: any) => {
 }
 
 // 处理BOM明细变化
-const handleItemsChange = (items: ProductBomItem[]) => {
+const handleItemsChange = (items: EngineeringBomItem[]) => {
   console.log('BOM明细已更新:', items)
 }
 
@@ -289,13 +289,13 @@ const parseExcelFile = (file: File) => {
 }
 
 /**
- * 解析行数据为 ProductBomItem 数组
+ * 解析行数据为 EngineeringBomItem 数组
  *
  * Excel 列结构（从第3行开始为数据行）：
  * 序号 | 项目名称 | 材料名称 | 单位 | 宽度 | 规格(乘/跳) | 长度 | 模数 | 单用量 | 基数 | 应用料 | 预计不良 | 最低投料 | 实际投料
  */
-const parseRows = (rows: any[][]): ProductBomItem[] => {
-  const items: ProductBomItem[] = []
+const parseRows = (rows: any[][]): EngineeringBomItem[] => {
+  const items: EngineeringBomItem[] = []
 
   // 查找表头行（包含"序号"、"项目名称"等关键字的行）
   let headerRowIndex = -1
@@ -348,7 +348,7 @@ const parseRows = (rows: any[][]): ProductBomItem[] => {
     // 构建规格描述：第4/5/6列是什么就是什么，直接拼接
     const specification = col4 + col5 + col6
 
-    const item: ProductBomItem = {
+    const item: EngineeringBomItem = {
       itemId: undefined,
       materialId: 0,
       materialCode: '',
@@ -404,10 +404,10 @@ const resetForm = () => {
 // 加载BOM数据
 const loadBomData = async (bomId: number) => {
   try {
-    const response = await productBomApi.getProductBomInfo(bomId)
+    const response = await productBomApi.getEngineeringBomInfo(bomId)
     Object.assign(formData, response.data)
     // 加载BOM明细
-    const itemResponse = await productBomApi.listProductBomItem(bomId)
+    const itemResponse = await productBomApi.listEngineeringBomItem(bomId)
     formData.items = itemResponse.data || []
   } catch (error) {
     console.error('加载BOM数据失败:', error)
@@ -425,10 +425,10 @@ const submitForm = () => {
     submitting.value = true
     try {
       if (formData.bomId !== undefined) {
-        await productBomApi.editProductBom(formData as any)
+        await productBomApi.editEngineeringBom(formData as any)
         ElMessage.success('修改成功')
       } else {
-        await productBomApi.addProductBom(formData as any)
+        await productBomApi.addEngineeringBom(formData as any)
         ElMessage.success('新增成功')
       }
       visible.value = false

@@ -1,5 +1,5 @@
 package com.jjx.sales.service.impl;
-import com.jjx.product.domain.entity.ProductRouting;
+import com.jjx.product.domain.entity.EngineeringRouting;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
@@ -7,11 +7,11 @@ import com.jjx.event.EventPublisher;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.service.ProductionOrderService;
-import com.jjx.product.domain.entity.ProductBom;
-import com.jjx.product.mapper.ProductBomMapper;
+import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
-import com.jjx.product.mapper.ProductRoutingMapper;
+import com.jjx.product.mapper.EngineeringRoutingMapper;
 import com.jjx.sales.domain.dto.ODRSendToCustomerDTO;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -54,9 +54,9 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final ProductionOrderService productionOrderService;
     private final SalesOrderProductMapper salesOrderProductMapper;
     private final RedisSequenceService redisSequenceService;
-    private final ProductBomMapper productBomMapper;
+    private final EngineeringBomMapper productBomMapper;
     private final ProductMapper productMapper;
-    private final ProductRoutingMapper productRoutingMapper;
+    private final EngineeringRoutingMapper productRoutingMapper;
     private final EventPublisher eventPublisher;
     
     private void saveOrderLog(String orderNo, String desc, String remark, int status) {
@@ -389,17 +389,17 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             }
             // BOM检查：必须有当前生效版本且已审批通过(approve_status=3)
             long bomCount = productBomMapper.selectCount(
-                    new LambdaQueryWrapper<ProductBom>()
-                            .eq(ProductBom::getProductId, product.getProductId())
-                            .eq(ProductBom::getIsCurrent, 1)
-                            .eq(ProductBom::getApproveStatus, 3)
+                    new LambdaQueryWrapper<EngineeringBom>()
+                            .eq(EngineeringBom::getProductId, product.getProductId())
+                            .eq(EngineeringBom::getIsCurrent, 1)
+                            .eq(EngineeringBom::getApproveStatus, 3)
             );
             if (bomCount == 0) {
                 // 检查是否存在未审批的BOM
                 long draftBomCount = productBomMapper.selectCount(
-                        new LambdaQueryWrapper<ProductBom>()
-                                .eq(ProductBom::getProductId, product.getProductId())
-                                .eq(ProductBom::getIsCurrent, 1)
+                        new LambdaQueryWrapper<EngineeringBom>()
+                                .eq(EngineeringBom::getProductId, product.getProductId())
+                                .eq(EngineeringBom::getIsCurrent, 1)
                 );
                 if (draftBomCount > 0) {
                     throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 当前BOM尚未审批通过，请先完成BOM审批");
@@ -409,16 +409,16 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             }
             // 路线检查：必须有当前生效版本且已审批通过(approve_status=3)
             long routeCount = productRoutingMapper.selectCount(
-                    new LambdaQueryWrapper<ProductRouting>()
-                            .eq(ProductRouting::getProductId, product.getProductId())
-                            .eq(ProductRouting::getIsCurrent, 1)
-                            .eq(ProductRouting::getApproveStatus, 3)
+                    new LambdaQueryWrapper<EngineeringRouting>()
+                            .eq(EngineeringRouting::getProductId, product.getProductId())
+                            .eq(EngineeringRouting::getIsCurrent, 1)
+                            .eq(EngineeringRouting::getApproveStatus, 3)
             );
             if (routeCount == 0) {
                 long draftRouteCount = productRoutingMapper.selectCount(
-                        new LambdaQueryWrapper<ProductRouting>()
-                                .eq(ProductRouting::getProductId, product.getProductId())
-                                .eq(ProductRouting::getIsCurrent, 1)
+                        new LambdaQueryWrapper<EngineeringRouting>()
+                                .eq(EngineeringRouting::getProductId, product.getProductId())
+                                .eq(EngineeringRouting::getIsCurrent, 1)
                 );
                 if (draftRouteCount > 0) {
                     throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 当前工艺路线尚未审批通过，请先完成路线审批");

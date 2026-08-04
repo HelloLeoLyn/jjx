@@ -250,7 +250,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Refresh, CopyDocument, Rank } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
-import type { ProductBomItem } from '@/types/product/bom'
+import type { EngineeringBomItem } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import Sortable from 'sortablejs'
 import MaterialCompleteSelector from '@/components/Selector/MaterialCompleteSelector.vue'
@@ -259,15 +259,15 @@ import { materialApi } from '@/api/inventory/material'
 // ==================== Props & Emits ====================
 
 interface Props {
-  modelValue: ProductBomItem[]
+  modelValue: EngineeringBomItem[]
   bomId?: number
   readonly?: boolean
   maxItems?: number
 }
 
 interface Emits {
-  (e: 'update:modelValue', value: ProductBomItem[]): void
-  (e: 'change', value: ProductBomItem[]): void
+  (e: 'update:modelValue', value: EngineeringBomItem[]): void
+  (e: 'change', value: EngineeringBomItem[]): void
   (e: 'validate', valid: boolean): void
 }
 
@@ -283,8 +283,8 @@ const emit = defineEmits<Emits>()
 // ==================== 响应式数据 ====================
 
 const tableRef = ref()
-const items = ref<ProductBomItem[]>([])
-const selectedItems = ref<ProductBomItem[]>([])
+const items = ref<EngineeringBomItem[]>([])
+const selectedItems = ref<EngineeringBomItem[]>([])
 const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
@@ -354,7 +354,7 @@ onUnmounted(() => {
 /**
  * 物料选择处理
  */
-const handleMaterialSelect = (material: InventoryMaterial, row: ProductBomItem) => {
+const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomItem) => {
   if (!material) return
 
   row.materialId = material.materialId || 0
@@ -368,7 +368,7 @@ const handleMaterialSelect = (material: InventoryMaterial, row: ProductBomItem) 
  * 模数变化时自动计算数量
  * 数量 = 基数 ÷ 模数
  */
-const handleModuleQtyChange = (row: ProductBomItem) => {
+const handleModuleQtyChange = (row: EngineeringBomItem) => {
   const moduleQty = Number(row.moduleQty) || 1
   const baseQty = Number(row.baseQty) || 1
   row.quantity = Number((baseQty / moduleQty).toFixed(4))
@@ -378,7 +378,7 @@ const handleModuleQtyChange = (row: ProductBomItem) => {
  * 基数变化时自动计算数量
  * 数量 = 基数 ÷ 模数
  */
-const handleBaseQtyChange = (row: ProductBomItem) => {
+const handleBaseQtyChange = (row: EngineeringBomItem) => {
   const moduleQty = Number(row.moduleQty) || 1
   const baseQty = Number(row.baseQty) || 1
   row.quantity = Number((baseQty / moduleQty).toFixed(4))
@@ -412,7 +412,7 @@ const handleAddItem = () => {
     return
   }
 
-  const newItem: ProductBomItem = {
+  const newItem: EngineeringBomItem = {
     itemId: undefined,
     bomId: props.bomId,
     materialId: 0,
@@ -440,7 +440,7 @@ const handleAddItem = () => {
 /**
  * 复制物料
  */
-const handleCopyItem = (item: ProductBomItem, index: number) => {
+const handleCopyItem = (item: EngineeringBomItem, index: number) => {
   const copyItem = JSON.parse(JSON.stringify(item))
   copyItem.itemId = undefined
   copyItem.sortOrder = items.value.length + 1
@@ -601,7 +601,7 @@ const handleBatchQueryMaterialCode = async () => {
 /**
  * 快速建档：生成编码 → 新增物料 → 填充行
  */
-const handleCreateMaterial = async (row: ProductBomItem, index: number) => {
+const handleCreateMaterial = async (row: EngineeringBomItem, index: number) => {
   try {
     // 1. 生成物料编码
     const codeRes = await materialApi.generateCode()
@@ -637,7 +637,7 @@ const handleCreateMaterial = async (row: ProductBomItem, index: number) => {
 
 // ==================== 表格事件 ====================
 
-const handleSelectionChange = (selection: ProductBomItem[]) => {
+const handleSelectionChange = (selection: EngineeringBomItem[]) => {
   selectedItems.value = selection
 }
 

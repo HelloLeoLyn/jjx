@@ -3,10 +3,10 @@ package com.jjx.production.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.entity.Product;
-import com.jjx.product.domain.entity.ProductBom;
-import com.jjx.product.domain.entity.ProductBomItem;
-import com.jjx.product.mapper.ProductBomItemMapper;
-import com.jjx.product.mapper.ProductBomMapper;
+import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.product.domain.entity.EngineeringBomItem;
+import com.jjx.product.mapper.EngineeringBomItemMapper;
+import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.mapper.ProductionOrderMapper;
@@ -27,8 +27,8 @@ public class ProductionCostController {
 
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductMapper productMapper;
-    private final ProductBomMapper productBomMapper;
-    private final ProductBomItemMapper productBomItemMapper;
+    private final EngineeringBomMapper productBomMapper;
+    private final EngineeringBomItemMapper productBomItemMapper;
 
     @Operation(summary = "工单成本列表")
     @GetMapping("/list")
@@ -72,16 +72,16 @@ public class ProductionCostController {
             Product product = productMapper.selectById(order.getProductId());
             BigDecimal bomCost = BigDecimal.ZERO;
             if (order.getProductId() != null) {
-                ProductBom bom = productBomMapper.selectOne(
-                        new LambdaQueryWrapper<ProductBom>()
-                                .eq(ProductBom::getProductId, order.getProductId())
-                                .eq(ProductBom::getIsCurrent, 1)
+                EngineeringBom bom = productBomMapper.selectOne(
+                        new LambdaQueryWrapper<EngineeringBom>()
+                                .eq(EngineeringBom::getProductId, order.getProductId())
+                                .eq(EngineeringBom::getIsCurrent, 1)
                                 .last("LIMIT 1"));
                 if (bom != null) {
-                    List<ProductBomItem> bomItems = productBomItemMapper.selectList(
-                            new LambdaQueryWrapper<ProductBomItem>()
-                                    .eq(ProductBomItem::getBomId, bom.getBomId()));
-                    for (ProductBomItem bi : bomItems) {
+                    List<EngineeringBomItem> bomItems = productBomItemMapper.selectList(
+                            new LambdaQueryWrapper<EngineeringBomItem>()
+                                    .eq(EngineeringBomItem::getBomId, bom.getBomId()));
+                    for (EngineeringBomItem bi : bomItems) {
                         BigDecimal biQty = bi.getQuantity() != null ? bi.getQuantity() : BigDecimal.ZERO;
                         bomCost = bomCost.add(biQty);
                     }

@@ -192,7 +192,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { StandardProcessOption } from '@/types/product'
-import type { ProductRoutingItemVO } from '@/types/product/routing'
+import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { getDictLabel } from '@/utils/dict'
 import { useDict } from '@/composables/useDict'
 
@@ -201,7 +201,7 @@ import { useDict } from '@/composables/useDict'
 /** 组合工序 */
 interface RouteItemGroup {
   groupOrder: number
-  items: ProductRoutingItemVO[]
+  items: EngineeringRoutingItemVO[]
   totalLaborHours: number
   totalMachineHours: number
   remark: string
@@ -212,12 +212,12 @@ interface RouteItemGroup {
 // ==================== Props & Emits ====================
 
 const props = defineProps<{
-  modelValue: ProductRoutingItemVO[]
+  modelValue: EngineeringRoutingItemVO[]
   standardProcesses: StandardProcessOption[]
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [items: ProductRoutingItemVO[]]
+  'update:modelValue': [items: EngineeringRoutingItemVO[]]
 }>()
 
 // ==================== 状态 ====================
@@ -282,9 +282,9 @@ watch(
 /**
  * 根据后端返回的 items（含 groupId）重新组装为 groups
  */
-const setItemsFromData = (data: ProductRoutingItemVO[]) => {
+const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
   // 按 groupId 分组：有 groupId 的按组合分组，没有的各自独立
-  const groupMap = new Map<string, ProductRoutingItemVO[]>()
+  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
 
   data.forEach((item) => {
     // 有 groupId 的按组合分组，没有的各自独立（用 itemId 或 index 作为key）
@@ -436,7 +436,7 @@ const handleItemDrop = (event: DragEvent, targetGroupIndex: number, targetItemIn
 // ==================== 操作方法 ====================
 
 // 创建标准工序VO
-const createItemVO = (process: StandardProcessOption): ProductRoutingItemVO => {
+const createItemVO = (process: StandardProcessOption): EngineeringRoutingItemVO => {
   return {
     itemId: generateTempItemId(),
     routingId: 0,
@@ -617,7 +617,7 @@ const handleProcessCategoryChange = (groupIndex: number, category: string) => {
 
 // 同步数据到父组件（保留组合结构）
 const syncToParent = () => {
-  const flatItems: ProductRoutingItemVO[] = []
+  const flatItems: EngineeringRoutingItemVO[] = []
 
   groups.value.forEach((group) => {
     // 生成一个临时 groupId（负数，同一组合的工序共享）
@@ -654,7 +654,7 @@ defineExpose({
     groups.value = JSON.parse(JSON.stringify(data))
   },
   getItems: () => {
-    const flatItems: ProductRoutingItemVO[] = []
+    const flatItems: EngineeringRoutingItemVO[] = []
     groups.value.forEach((group) => {
       const tempGroupId = generateTempGroupId()
       group.items.forEach((item, idx) => {
@@ -676,7 +676,7 @@ defineExpose({
     })
     return JSON.parse(JSON.stringify(flatItems))
   },
-  setItems: (data: ProductRoutingItemVO[]) => {
+  setItems: (data: EngineeringRoutingItemVO[]) => {
     setItemsFromData(data)
   },
 })

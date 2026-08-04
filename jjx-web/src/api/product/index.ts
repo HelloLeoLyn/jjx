@@ -213,7 +213,7 @@ export function getApprovedBomList(productId: number) {
 /**
  * 配置产品BOM
  */
-export function configProductBom(productId: number, currentBomId: number) {
+export function configEngineeringBom(productId: number, currentBomId: number) {
   return request.post('/engineering/config/bom', { productId, currentBomId })
 }
 
@@ -275,7 +275,7 @@ export const productApi = {
   standardProcess: standardProcessApi,
   isUniqueProductCode,
   full: getFullProduct,
-  configBom: configProductBom,
+  configBom: configEngineeringBom,
   configRoute: configProductRoute,
 }
 

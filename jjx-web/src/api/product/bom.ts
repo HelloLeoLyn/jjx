@@ -1,9 +1,9 @@
 import request from '@/utils/request'
 import type {
-  ProductBomQueryParams,
-  ProductBom,
-  ProductBomFormData,
-  ProductBomItem,
+  EngineeringBomQueryParams,
+  EngineeringBom,
+  EngineeringBomFormData,
+  EngineeringBomItem,
   BomSimpleVo,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
@@ -15,8 +15,8 @@ export const productBomApi = {
   /**
    * 获取BOM列表
    */
-  listProductBom(params: ProductBomQueryParams) {
-    return request.get<R<PageResult<ProductBom>>>('/engineering/bom/page', {
+  listEngineeringBom(params: EngineeringBomQueryParams) {
+    return request.get<R<PageResult<EngineeringBom>>>('/engineering/bom/page', {
       params,
     })
   },
@@ -29,56 +29,56 @@ export const productBomApi = {
   /**
    * 获取BOM详情
    */
-  getProductBomInfo(bomId: number) {
+  getEngineeringBomInfo(bomId: number) {
     return request.get(`/engineering/bom/${bomId}`)
   },
 
   /**
    * 新增BOM
    */
-  addProductBom(data: ProductBomFormData) {
+  addEngineeringBom(data: EngineeringBomFormData) {
     return request.post('/engineering/bom', data)
   },
 
   /**
    * 修改BOM
    */
-  editProductBom(data: ProductBomFormData) {
+  editEngineeringBom(data: EngineeringBomFormData) {
     return request.put('/engineering/bom', data)
   },
 
   /**
    * 删除BOM
    */
-  removeProductBom(bomId: number) {
+  removeEngineeringBom(bomId: number) {
     return request.delete(`/engineering/bom/${bomId}`)
   },
 
   /**
    * 获取BOM明细列表
    */
-  listProductBomItem(bomId: number) {
+  listEngineeringBomItem(bomId: number) {
     return request.get(`/engineering/bom/items/${bomId}`)
   },
 
   /**
    * 审批BOM
    */
-  approveProductBom(bomId: number, remark?: string) {
+  approveEngineeringBom(bomId: number, remark?: string) {
     return request.put(`/engineering/bom/approve/${bomId}`, { bomId, remark })
   },
 
   /**
    * 驳回BOM
    */
-  rejectProductBom(bomId: number, remark: string) {
+  rejectEngineeringBom(bomId: number, remark: string) {
     return request.put(`/engineering/bom/reject/${bomId}`, { bomId, remark })
   },
 
   /**
    * 设置默认BOM（对应后端 PUT /engineering/bom/setDefault/{bomId}）
    */
-  setCurrentProductBom(bomId: number) {
+  setCurrentEngineeringBom(bomId: number) {
     return request.put(`/engineering/bom/setDefault/${bomId}`)
   },
 
@@ -91,7 +91,7 @@ export const productBomApi = {
   /**
    * 导出BOM数据
    */
-  exportProductBom(params: ProductBomQueryParams) {
+  exportEngineeringBom(params: EngineeringBomQueryParams) {
     return request.get('/engineering/bom/export', {
       params,
       responseType: 'blob',

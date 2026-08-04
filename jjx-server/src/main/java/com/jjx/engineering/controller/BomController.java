@@ -3,15 +3,15 @@ package com.jjx.engineering.controller;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
-import com.jjx.product.domain.dto.ProductBomDTO;
+import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.UpdateBomStatusDTO;
-import com.jjx.product.domain.entity.ProductBom;
-import com.jjx.product.domain.entity.ProductBomItem;
-import com.jjx.product.domain.query.ProductBomQuery;
-import com.jjx.product.domain.vo.ProductBomVO;
+import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.product.domain.entity.EngineeringBomItem;
+import com.jjx.product.domain.query.EngineeringBomQuery;
+import com.jjx.product.domain.vo.EngineeringBomVO;
 import com.jjx.product.enums.ProductEnums;
-import com.jjx.product.mapper.ProductBomMapper;
-import com.jjx.product.service.IProductBomService;
+import com.jjx.product.mapper.EngineeringBomMapper;
+import com.jjx.product.service.IEngineeringBomService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import cn.dev33.satoken.annotation.SaCheckPermission;
@@ -30,14 +30,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class BomController extends BaseController {
 
-    private final IProductBomService productBomService;
-    private final ProductBomMapper productBomMapper;
+    private final IEngineeringBomService productBomService;
+    private final EngineeringBomMapper productBomMapper;
 
     /**
      * 获取BOM列表
      */
     @GetMapping("/page")
-    public Result<PageResult<ProductBomVO>> listPage(ProductBomQuery query) {
+    public Result<PageResult<EngineeringBomVO>> listPage(EngineeringBomQuery query) {
         return Result.success(productBomService.listPage(query));
     }
 
@@ -45,7 +45,7 @@ public class BomController extends BaseController {
      * 获取BOM详情
      */
     @GetMapping("/{bomId}")
-    public Result<ProductBomVO> getInfo(@PathVariable Long bomId) {
+    public Result<EngineeringBomVO> getInfo(@PathVariable Long bomId) {
         return Result.success(productBomService.getBomDetail(bomId));
     }
 
@@ -53,7 +53,7 @@ public class BomController extends BaseController {
      * 获取BOM明细列表
      */
     @GetMapping("/items/{bomId}")
-    public Result<List<ProductBomItem>> getBomItems(@PathVariable Long bomId) {
+    public Result<List<EngineeringBomItem>> getBomItems(@PathVariable Long bomId) {
         return Result.success(productBomService.getBomItems(bomId));
     }
 
@@ -61,8 +61,8 @@ public class BomController extends BaseController {
      * 获取产品已审批的BOM列表（用于产品新增/编辑时选择）
      */
     @GetMapping("/approved/{productId}")
-    public Result<List<ProductBomVO>> getApprovedBomList(@PathVariable Long productId) {
-        ProductBomQuery query = new ProductBomQuery();
+    public Result<List<EngineeringBomVO>> getApprovedBomList(@PathVariable Long productId) {
+        EngineeringBomQuery query = new EngineeringBomQuery();
         query.setProductId(productId);
         query.setApproveStatus(String.valueOf(ProductEnums.BomStatus.APPROVED.getValue()));
         return Result.success(productBomService.getBomList(query));
@@ -72,7 +72,7 @@ public class BomController extends BaseController {
      * 获取产品的默认BOM
      */
     @GetMapping("/default/{productId}")
-    public Result<ProductBom> getDefaultBom(@PathVariable Long productId) {
+    public Result<EngineeringBom> getDefaultBom(@PathVariable Long productId) {
         return Result.success(productBomService.getDefaultBomByProductId(productId));
     }
 
@@ -82,7 +82,7 @@ public class BomController extends BaseController {
     @PostMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.INSERT)
     @SaCheckPermission("engineering:bom:add")
-    public Result<Void> add(@Validated @RequestBody ProductBomDTO dto) {
+    public Result<Void> add(@Validated @RequestBody EngineeringBomDTO dto) {
         return productBomService.createBom(dto) ? Result.success() : Result.error();
     }
 
@@ -92,7 +92,7 @@ public class BomController extends BaseController {
     @PutMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE)
     @SaCheckPermission("engineering:bom:edit")
-    public Result<Void> edit(@Validated @RequestBody ProductBomDTO dto) {
+    public Result<Void> edit(@Validated @RequestBody EngineeringBomDTO dto) {
         return productBomService.updateBom(dto) ? Result.success() : Result.error();
     }
 

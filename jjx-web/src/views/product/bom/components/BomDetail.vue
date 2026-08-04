@@ -63,7 +63,7 @@ import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { FullScreen } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
 import { parseDate, parseTime } from '@/utils/format'
-import type { ProductBomItem, ProductBom } from '@/types/product/bom'
+import type { EngineeringBomItem, EngineeringBom } from '@/types/product/bom'
 import { BomStatusEnum } from '@/enums/product'
 
 // Props
@@ -83,7 +83,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 // 详情数据
-const detail = reactive<ProductBom>({
+const detail = reactive<EngineeringBom>({
   bomId: 0,
   bomCode: '',
   bomName: '',
@@ -104,7 +104,7 @@ const detail = reactive<ProductBom>({
 })
 
 // BOM明细数据
-const bomDetailList = ref<ProductBomItem[]>([])
+const bomDetailList = ref<EngineeringBomItem[]>([])
 
 // Dialog visibility
 const visible = computed({
@@ -147,7 +147,7 @@ const loadBomDetail = () => {
   }
 
   // 加载BOM信息
-  productBomApi.getProductBomInfo(props.bomId).then((response: any) => {
+  productBomApi.getEngineeringBomInfo(props.bomId).then((response: any) => {
     Object.assign(detail, response.data)
     bomDetailList.value = response.data.items || []
   })

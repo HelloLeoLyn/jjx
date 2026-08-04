@@ -100,11 +100,11 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { productRouteApi } from '@/api/product/routing'
-import type { ProductRoutingVO, ProductRoutingItemVO } from '@/types/product/routing'
+import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/product/routing'
 import { RouteStatusEnum, StepTypeEnum } from '@/enums/product'
 
 const loading = ref(false)
-const detail = reactive<ProductRoutingVO>({
+const detail = reactive<EngineeringRoutingVO>({
   routingId: 0,
   routingCode: '',
   routingName: '',
@@ -131,7 +131,7 @@ const detail = reactive<ProductRoutingVO>({
 interface GroupDisplay {
   groupOrder: number
   groupName: string
-  items: ProductRoutingItemVO[]
+  items: EngineeringRoutingItemVO[]
   totalLaborHours: number
   totalMachineHours: number
   remark: string
@@ -140,12 +140,12 @@ interface GroupDisplay {
 
 const groups = ref<GroupDisplay[]>([])
 
-const buildGroups = (items: ProductRoutingItemVO[]) => {
+const buildGroups = (items: EngineeringRoutingItemVO[]) => {
   if (!items || items.length === 0) {
     groups.value = []
     return
   }
-  const groupMap = new Map<string, ProductRoutingItemVO[]>()
+  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
   items.forEach((item) => {
     const key = item.groupId
       ? 'group_' + item.groupId

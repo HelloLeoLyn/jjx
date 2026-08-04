@@ -257,12 +257,12 @@ export interface ValidationError {
   severity: 'error' | 'warning' | 'info'
 }
 
-import type { ProductRoutingItemVO } from '@/types/product/routing'
-import type { ProductBomItem } from '@/types/product/bom'
+import type { EngineeringRoutingItemVO } from '@/types/product/routing'
+import type { EngineeringBomItem } from '@/types/product/bom'
 export interface ConfigSummary {
   product: ProductItem
-  bom?: ProductBomItem
-  route?: ProductRoutingItemVO
+  bom?: EngineeringBomItem
+  route?: EngineeringRoutingItemVO
   hasBom: boolean
   hasRoute: boolean
   isComplete: boolean
@@ -378,19 +378,19 @@ export interface UnitVo {
   code: string
   name: string
 }
-import type { ProductBomVO } from '@/types/product/bom'
-import type { ProductRoutingVO } from '@/types/product/routing'
+import type { EngineeringBomVO } from '@/types/product/bom'
+import type { EngineeringRoutingVO } from '@/types/product/routing'
 import type { ProductCategoryDictItem } from '@/types/product/category'
 
 export interface ProductFullVO {
   product?: ProductVo
-  bom?: ProductBomVO
-  routing?: ProductRoutingVO
+  bom?: EngineeringBomVO
+  routing?: EngineeringRoutingVO
   category?: ProductCategoryDictItem
-  films: ProductFilmVO[]
+  films: EngineeringFilmVO[]
 }
 
-export interface ProductFilmVO {
+export interface EngineeringFilmVO {
   /** 菲林ID */
   filmId: number
   /** 菲林编码 */
@@ -472,7 +472,7 @@ export interface ProductFilmVO {
 /**
  * 菲林DTO（新增/编辑）
  */
-export interface ProductFilmDTO {
+export interface EngineeringFilmDTO {
   /** 菲林ID（编辑时必填） */
   filmId?: number
   /** 菲林编码 */
@@ -504,7 +504,7 @@ export interface ProductFilmDTO {
 /**
  * 菲林查询参数
  */
-export interface ProductFilmQuery {
+export interface EngineeringFilmQuery {
   /** 产品ID */
   productId?: number
   /** 菲林类型 */

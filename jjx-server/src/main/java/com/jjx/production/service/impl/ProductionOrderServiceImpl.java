@@ -5,8 +5,8 @@ import com.jjx.production.domain.dto.ConvertPlanToWorkOrdersDTO;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import java.util.Map;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
-import com.jjx.product.mapper.ProductRoutingItemMapper;
-import com.jjx.product.domain.entity.ProductRoutingItem;
+import com.jjx.product.mapper.EngineeringRoutingItemMapper;
+import com.jjx.product.domain.entity.EngineeringRoutingItem;
 import java.util.ArrayList;
 import java.util.Map;
 
@@ -50,7 +50,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final ProductionOrderConverter productionOrderConverter;
 
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
-    private final ProductRoutingItemMapper productRoutingItemMapper;
+    private final EngineeringRoutingItemMapper productRoutingItemMapper;
     private final EventPublisher eventPublisher;
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
     @Override
@@ -945,10 +945,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 查询工艺路线下的所有工序
-        List<ProductRoutingItem> routingItems = productRoutingItemMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductRoutingItem>()
-                        .eq(ProductRoutingItem::getRoutingId, routingId)
-                        .orderByAsc(ProductRoutingItem::getProcessOrder)
+        List<EngineeringRoutingItem> routingItems = productRoutingItemMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringRoutingItem>()
+                        .eq(EngineeringRoutingItem::getRoutingId, routingId)
+                        .orderByAsc(EngineeringRoutingItem::getProcessOrder)
         );
 
         if (routingItems.isEmpty()) {
@@ -962,7 +962,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         long daysPerStep = totalSteps > 0 ? Math.max(1, daySpan / totalSteps) : 1;
 
         for (int i = 0; i < routingItems.size(); i++) {
-            ProductRoutingItem item = routingItems.get(i);
+            EngineeringRoutingItem item = routingItems.get(i);
 
             ProductionOperationExecution execution = new ProductionOperationExecution();
             execution.setOrderId(orderId);

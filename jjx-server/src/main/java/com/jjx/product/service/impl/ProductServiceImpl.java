@@ -12,8 +12,8 @@ import com.jjx.product.domain.converter.ProductConverter;
 import com.jjx.product.domain.dto.ProductDTO;
 import com.jjx.product.domain.dto.ProductUpdateDTO;
 import com.jjx.product.domain.entity.Product;
-import com.jjx.product.domain.entity.ProductBom;
-import com.jjx.product.domain.entity.ProductRouting;
+import com.jjx.product.domain.entity.EngineeringBom;
+import com.jjx.product.domain.entity.EngineeringRouting;
 import com.jjx.product.domain.query.ProductQuery;
 import com.jjx.product.domain.vo.*;
 import com.jjx.product.enums.ProductEnums;
@@ -43,10 +43,10 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final ProductMapper productMapper;
     private final ProductCodeGenerator productCodeGenerator;
     private final ProductConverter productConverter;
-    private final IProductBomService bomService;
-    private final IProductRoutingService routingService;
+    private final IEngineeringBomService bomService;
+    private final IEngineeringRoutingService routingService;
     private final IProductCategoryService categoryService;
-    private final IProductFilmService filmService;
+    private final IEngineeringFilmService filmService;
     private final NotificationService notificationService;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     @Override
@@ -161,7 +161,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         if (product.getCurrentBomId() == null) {
             throw new BusinessException(BusinessExceptionEnum.BOM_NOT_FOUND);
         }
-        ProductBom bom = bomService.getById(product.getCurrentBomId());
+        EngineeringBom bom = bomService.getById(product.getCurrentBomId());
         if (bom == null || !ProductEnums.BomStatus.APPROVED.getValue().equals(bom.getApproveStatus())) {
             throw new BusinessException("当前BOM未审批通过，无法发布产品");
         }
@@ -169,7 +169,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         if (product.getCurrentRouteId() == null) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
-        ProductRouting routing = routingService.getById(product.getCurrentRouteId());
+        EngineeringRouting routing = routingService.getById(product.getCurrentRouteId());
         if (routing == null || !ProductEnums.RouteStatus.APPROVED.getValue().equals(routing.getApproveStatus())) {
             throw new BusinessException("当前工艺路线未审批通过，无法发布产品");
         }
@@ -276,16 +276,16 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         ProductVo vo = productConverter.toVO(product);
         fullVO.setProduct(vo);
 
-        ProductBomVO bomVO = bomService.getBomDetail(product.getCurrentBomId());
+        EngineeringBomVO bomVO = bomService.getBomDetail(product.getCurrentBomId());
         fullVO.setBom(bomVO);
 
-        ProductRoutingVO routingVO = routingService.getRoutingItems(product.getCurrentRouteId());
+        EngineeringRoutingVO routingVO = routingService.getRoutingItems(product.getCurrentRouteId());
         fullVO.setRouting(routingVO);
 
         ProductCategoryVO category = categoryService.getCategory(product.getCategoryId());
         fullVO.setCategory(category);
 
-        List<ProductFilmVO> films = filmService.getFilmsByProductId(productId);
+        List<EngineeringFilmVO> films = filmService.getFilmsByProductId(productId);
         fullVO.setFilms(films);
 
         return fullVO;
