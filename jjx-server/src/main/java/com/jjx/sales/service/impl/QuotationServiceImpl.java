@@ -10,6 +10,7 @@ import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.QuotationFlowMapper;
 import com.jjx.sales.mapper.SalesQuotationItemMapper;
 import com.jjx.common.core.page.PageResult;
+import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
@@ -38,6 +39,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final QuotationFlowMapper quotationFlowMapper;
     private final SalesQuotationItemMapper quotationItemMapper;
     private final IOrderService orderService;
+    private final ISysAttachmentService sysAttachmentService;
 
     /**
      * 查询销售报价单列表
@@ -271,6 +273,8 @@ public class QuotationServiceImpl implements IQuotationService {
                     .eq(SalesQuotationItem::getQuotationId, quotationId));
             quotationFlowMapper.delete(new LambdaQueryWrapper<SalesQuotationFlow>()
                     .eq(SalesQuotationFlow::getQuotationId, quotationId));
+            // 连带清理附件（记录+物理文件）
+            sysAttachmentService.deleteAttachmentsByBiz("quotation", quotationId);
         } catch (Exception e) {
             // 子表清理失败不影响主表删除结果，记录日志
             log.warn("删除报价单子表数据失败: quotationId={}, {}", quotationId, e.getMessage());
