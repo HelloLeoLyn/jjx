@@ -62,27 +62,6 @@ export const productBomApi = {
   },
 
   /**
-   * 新增BOM明细
-   */
-  addProductBomItem(bomId: number, data: ProductBomItem) {
-    return request.post(`/engineering/bom/${bomId}/items`, data)
-  },
-
-  /**
-   * 修改BOM明细
-   */
-  editProductBomItem(itemId: number, data: ProductBomItem) {
-    return request.put(`/engineering/bom/items/${itemId}`, data)
-  },
-
-  /**
-   * 删除BOM明细
-   */
-  removeProductBomItem(itemId: number) {
-    return request.delete(`/engineering/bom/items/${itemId}`)
-  },
-
-  /**
    * 审批BOM
    */
   approveProductBom(bomId: number, remark?: string) {

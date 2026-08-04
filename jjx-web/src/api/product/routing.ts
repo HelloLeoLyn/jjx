@@ -133,7 +133,7 @@ export const productRouteApi = {
    * 对应后端 GET /engineering/standard-processes/enabled
    */
   getEnabledProcesses() {
-    return request.get('/engineering/standard-process/enabled')
+    return request.get('/engineering/standard-processes/enabled')
   },
 
   /**

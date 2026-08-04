@@ -207,7 +207,7 @@ export function validateProductConfig(productId: number) {
  * 获取产品已审批的BOM列表
  */
 export function getApprovedBomList(productId: number) {
-  return request.get(`/product/bom/approved/${productId}`)
+  return request.get(`/engineering/bom/approved/${productId}`)
 }
 
 /**

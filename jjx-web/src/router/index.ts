@@ -163,7 +163,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
       {
         path: 'standard-process',
-        redirect: '/engineering/standard-process',
+        redirect: '/engineering/standard-processes',
         meta: { hidden: true },
       },
       {
