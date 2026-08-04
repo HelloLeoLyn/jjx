@@ -1,5 +1,8 @@
 // src/enums/product/ProductEnum.ts
 import { createEnum } from '../actionsEnum'
+import { ProcessTypeEnum, ProcessCategoryEnum } from './process'
+
+export { ProcessTypeEnum, ProcessCategoryEnum }
 
 /**
  * 产品操作类型常量

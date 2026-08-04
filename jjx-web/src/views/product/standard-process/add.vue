@@ -41,9 +41,9 @@
               >
                 <el-option
                   v-for="item in processTypeOptions"
-                  :key="item.itemValue"
+                  :key="item.value"
                   :label="item.label"
-                  :value="item.itemValue"
+                  :value="item.value"
                 />
               </el-select>
             </el-form-item>
@@ -58,9 +58,9 @@
               >
                 <el-option
                   v-for="item in processCategoryOptions"
-                  :key="item.itemValue"
+                  :key="item.value"
                   :label="item.label"
-                  :value="item.itemValue"
+                  :value="item.value"
                 />
               </el-select>
             </el-form-item>
@@ -196,7 +196,7 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useTagsViewStore } from '@/store/modules/tagsView'
 import { standardProcessApi } from '@/api/product/standardProcess'
-import { useDict } from '@/composables/useDict'
+import { ProcessTypeEnum, ProcessCategoryEnum } from '@/enums/product'
 import type { StandardProcessFormData } from '@/types/product/standardProcess'
 import JJXIcon from '@/components/JJXIcon/index.vue'
 
@@ -207,9 +207,9 @@ const tagsViewStore = useTagsViewStore()
 const formRef = ref<FormInstance>()
 const submitLoading = ref(false)
 
-// 使用 useDict composable（带 Pinia 缓存）
-const { options: processTypeOptions } = useDict('process_type')
-const { options: processCategoryOptions } = useDict('process_category')
+// 工序类型/类别选项（枚举）
+const processTypeOptions = ProcessTypeEnum.items
+const processCategoryOptions = ProcessCategoryEnum.items
 
 // 表单数据
 const formData = reactive<StandardProcessFormData>({

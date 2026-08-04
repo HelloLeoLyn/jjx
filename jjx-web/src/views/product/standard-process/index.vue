@@ -30,9 +30,9 @@
           >
             <el-option
               v-for="item in processTypeOptions"
-              :key="item.itemValue"
+              :key="item.value"
               :label="item.label"
-              :value="item.itemValue"
+              :value="item.value"
             />
           </el-select>
         </el-form-item>
@@ -45,9 +45,9 @@
           >
             <el-option
               v-for="item in processCategoryOptions"
-              :key="item.itemValue"
+              :key="item.value"
               :label="item.label"
-              :value="item.itemValue"
+              :value="item.value"
             />
           </el-select>
         </el-form-item>
@@ -92,17 +92,17 @@
           min-width="160"
           show-overflow-tooltip
         />
-        <el-table-column prop="processType" label="工序类型" width="100" align="center">
+        <el-table-column prop="processType" label="工序类型" width="130" align="center">
           <template #default="scope">
             <el-tag size="small">
-              {{ getDictLabel(processTypeOptions, scope.row.processType) }}
+              {{ getProcessTypeLabel(scope.row.processType) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="processCategory" label="工序类别" width="100" align="center">
           <template #default="scope">
             <el-tag size="small">
-              {{ getDictLabel(processCategoryOptions, scope.row.processCategory) }}
+              {{ getProcessCategoryLabel(scope.row.processCategory) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -163,8 +163,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { standardProcessApi } from '@/api/product/standardProcess'
-import { useDict } from '@/composables/useDict'
-import { getDictLabel } from '@/utils/dict'
+import { ProcessTypeEnum, ProcessCategoryEnum } from '@/enums/product'
 import type {
   StandardProcessQueryParams,
   StandardProcessItem,
@@ -173,9 +172,17 @@ import type { PageResult } from '@/types'
 
 const router = useRouter()
 
-// 使用 useDict composable（带 Pinia 缓存）
-const { options: processTypeOptions } = useDict('process_type')
-const { options: processCategoryOptions } = useDict('process_category')
+// 工序类型/类别选项（枚举）
+const processTypeOptions = ProcessTypeEnum.items
+const processCategoryOptions = ProcessCategoryEnum.items
+
+function getProcessTypeLabel(value: string): string {
+  return ProcessTypeEnum.getLabel(value)
+}
+
+function getProcessCategoryLabel(value: string): string {
+  return ProcessCategoryEnum.getLabel(value)
+}
 
 // ==================== 查询参数 ====================
 const queryParams = reactive<StandardProcessQueryParams>({
