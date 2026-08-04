@@ -57,7 +57,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.product.mapper.EngineeringBomItemMapper bomItemMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final com.jjx.engineering.mapper.RoutingItemMapper routingItemMapper;
-    private final com.jjx.engineering.mapper.StandardProcessMapper standardProcessMapper;
+    private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -930,9 +930,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         java.math.BigDecimal totalLabor = java.math.BigDecimal.ZERO;
                         java.math.BigDecimal totalMachine = java.math.BigDecimal.ZERO;
                         for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
-                            com.jjx.engineering.domain.entity.StandardProcess std = standardProcessMapper.selectOne(
-                                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.StandardProcess>()
-                                            .eq(com.jjx.engineering.domain.entity.StandardProcess::getProcessName, sp.getProcessName())
+                            com.jjx.product.domain.entity.ProductStandardProcess std = standardProcessMapper.selectOne(
+                                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.ProductStandardProcess>()
+                                            .eq(com.jjx.product.domain.entity.ProductStandardProcess::getProcessName, sp.getProcessName())
                                             .last("LIMIT 1"));
                             Long stdProcessId = std != null ? std.getProcessId() : null;
                             String category = std != null ? std.getProcessCategory() : "M";
