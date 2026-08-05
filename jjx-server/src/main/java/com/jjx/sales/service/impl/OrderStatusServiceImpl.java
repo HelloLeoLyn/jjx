@@ -635,6 +635,14 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         String desc = getOperationDescription(OrderStatusEnum.APPROVED, OrderStatusEnum.CONFIRMED);
         saveOrderLog(order.getOrderNo(), "confirm", desc + " 确认人:" + confirmedBy, 1);
 
+        // 二次齐套检查（DEV-640 8-05）：客户确认环节再次按 BOM 算料，缺口生成/刷新 order_shortage 预警
+        // 复用 checkOrderShortage 幂等逻辑（先清旧未处理预警再重算），异常不阻断确认主流程
+        try {
+            inventoryAlertService.checkOrderShortage(orderId);
+        } catch (Exception e) {
+            log.error("订单{}确认时齐套检查异常（不影响确认主流程）: {}", orderId, e.getMessage());
+        }
+
         // 触发联动事件
         try {
             eventPublisher.fire("order.confirmed", Map.of(

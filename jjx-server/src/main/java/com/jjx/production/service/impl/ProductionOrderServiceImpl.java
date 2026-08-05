@@ -54,6 +54,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final EventPublisher eventPublisher;
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
     private final com.jjx.inventory.service.InventoryInboundService inventoryInboundService;
+    private final com.jjx.inventory.service.InventoryOutboundService inventoryOutboundService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -255,6 +256,13 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         boolean success = updateById(order);
         if (!success) {
             throw new BusinessException("启动生产工单失败");
+        }
+
+        // 生产领料自动出库（DEV-625）：开工时按 BOM 自动生成领料出库单，幂等（已存在跳过）
+        try {
+            inventoryOutboundService.createFromProduction(orderId);
+        } catch (Exception e) {
+            log.error("生产领料自动出库失败（不影响开工主流程）: {}", e.getMessage());
         }
 
         log.info("生产工单启动成功, ID: {}", orderId);

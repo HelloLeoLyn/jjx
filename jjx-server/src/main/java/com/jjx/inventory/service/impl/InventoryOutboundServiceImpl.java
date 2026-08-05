@@ -496,6 +496,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceId(salesOrderId);
         order.setSourceNo(salesOrder.getOrderNo());
         order.setTraceId(salesOrder.getTraceId()); // 链路追踪（DEV-568）：销售订单→发货出库单继承
+        order.setOutboundDate(LocalDate.now());
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         outboundOrderMapper.insert(order);
 

@@ -453,6 +453,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceNo(po.getOrderNo());
         order.setTraceId(po.getTraceId()); // 链路追踪（DEV-568）：采购到货→入库单继承
         order.setWarehouseId(1L); // 默认仓库
+        order.setInboundDate(LocalDate.now());
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         inboundOrderMapper.insert(order);
 
@@ -495,6 +496,62 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createInboundRecordFromPurchase(Long purchaseOrderId) {
+        log.info("采购收货自动生成入库单: purchaseOrderId={}", purchaseOrderId);
+        PurchaseOrder po = purchaseOrderMapper.selectById(purchaseOrderId);
+        if (po == null) {
+            log.warn("采购订单不存在，跳过自动入库: {}", purchaseOrderId);
+            return null;
+        }
+        // 幂等：PO-单号已存在则返回已有ID
+        String inboundNo = "PO-" + po.getOrderNo();
+        InventoryInboundOrder exist = inboundOrderMapper.selectOne(new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getInboundNo, inboundNo).last("LIMIT 1"));
+        if (exist != null) {
+            log.info("采购订单{}入库单已存在 inboundId={}，跳过", purchaseOrderId, exist.getInboundId());
+            return exist.getInboundId();
+        }
+        List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectItemsByOrderId(purchaseOrderId);
+        if (items.isEmpty()) {
+            log.warn("采购订单无明细，跳过自动入库: {}", purchaseOrderId);
+            return null;
+        }
+        // 创建入库单（状态直接完成，库存由收货流程已加，不重复加）
+        InventoryInboundOrder order = new InventoryInboundOrder();
+        order.setInboundNo(inboundNo);
+        order.setInboundType("PURCHASE");
+        order.setSourceType("PURCHASE");
+        order.setSourceId(purchaseOrderId);
+        order.setSourceNo(po.getOrderNo());
+        order.setTraceId(po.getTraceId());
+        order.setWarehouseId(1L);
+        order.setInboundDate(LocalDate.now());
+        order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
+        order.setRemark("采购收货自动入库（DEV-624）");
+        inboundOrderMapper.insert(order);
+        // 明细=已收数量
+        int sort = 1;
+        for (PurchaseOrderItem item : items) {
+            if (item.getReceivedQuantity() == null || item.getReceivedQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+            InventoryInboundItem inboundItem = new InventoryInboundItem();
+            inboundItem.setInboundId(order.getInboundId());
+            inboundItem.setMaterialId(item.getMaterialId());
+            inboundItem.setMaterialCode(item.getMaterialCode());
+            inboundItem.setMaterialName(item.getMaterialName());
+            inboundItem.setQuantity(item.getReceivedQuantity());
+            inboundItem.setUnitPrice(item.getUnitPrice());
+            inboundItem.setAmount(item.getAmount() == null ? null : item.getAmount().multiply(item.getReceivedQuantity().divide(item.getQuantity(), 4, java.math.RoundingMode.HALF_UP)));
+            inboundItem.setBatchNo("PO-" + po.getOrderNo() + "-" + sort);
+            inboundItem.setSortOrder(sort++);
+            inboundItemMapper.insert(inboundItem);
+        }
+        try { eventPublisher.fire("purchase.arrived", Map.of("sourceNo", order.getSourceNo(), "inboundId", String.valueOf(order.getInboundId()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
+        log.info("采购收货自动入库单生成: purchaseOrderId={}, inboundId={}", purchaseOrderId, order.getInboundId());
+        return order.getInboundId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.inbound.created_from_production", bizId = "#workOrderId", bizType = "'inventory'")
     public Long createFromProduction(Long workOrderId) {
         log.info("从生产工单创建入库单: workOrderId={}", workOrderId);
@@ -521,6 +578,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceId(workOrderId);
         order.setSourceNo(prodOrder.getOrderNo());
         order.setTraceId(prodOrder.getTraceId()); // 链路追踪（DEV-568）：工单→完工入库单继承
+        order.setInboundDate(LocalDate.now());
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         inboundOrderMapper.insert(order);
 

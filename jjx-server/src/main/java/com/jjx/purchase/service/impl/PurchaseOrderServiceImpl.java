@@ -55,6 +55,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.mapper.InventoryTransactionMapper transactionMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper materialMapper;
     private final com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
+    private final com.jjx.inventory.service.InventoryInboundService inboundService;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -368,6 +369,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             }
         } else {
             log.info("采购到货[{}] 检验{} 不入良品库存", order.getOrderNo(), inspectionResult);
+        }
+
+        // 采购收货自动生成入库单（DEV-624）：幂等，明细=已收数量，不加库存（已由上面增加）
+        try {
+            inboundService.createInboundRecordFromPurchase(orderId);
+        } catch (Exception e) {
+            log.error("采购收货自动生成入库单失败（不影响收货主流程）: {}", e.getMessage());
         }
 
         return result;
@@ -1086,6 +1094,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 更新订单整体收货状态
         updateOrderReceiptStatus(dto.getOrderId());
+
+        // 采购收货自动生成入库单（DEV-624）：幂等，明细=已收数量，不加库存（已由收货流程维护）
+        try {
+            inboundService.createInboundRecordFromPurchase(dto.getOrderId());
+        } catch (Exception e) {
+            log.error("采购收货自动生成入库单失败（不影响收货主流程）: {}", e.getMessage());
+        }
 
         return totalCount;
     }
