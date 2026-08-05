@@ -17,6 +17,7 @@ import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
 import com.jjx.system.utils.SecurityUtils;
+import com.jjx.framework.common.RedisSequenceService;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -35,6 +36,8 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.stream.Collectors;
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /**
  * 销售报价单服务实现类
@@ -50,6 +53,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final SalesInquiryMapper salesInquiryMapper;
     private final IOrderService orderService;
     private final ISysAttachmentService sysAttachmentService;
+    private final RedisSequenceService redisSequenceService;
 
     /**
      * 查询销售报价单列表
@@ -125,6 +129,24 @@ public class QuotationServiceImpl implements IQuotationService {
             wrapper.eq(SalesQuotation::getSalesPersonId, quotation.getSalesPersonId());
         }
 
+        // 按来源询价单号过滤（DEV-590补充：traceId 关联 sales_inquiry，参数化查询防注入）
+        if (quotation.getInquiryNo() != null && !quotation.getInquiryNo().isEmpty()) {
+            List<SalesInquiry> matched = salesInquiryMapper.selectList(
+                    new LambdaQueryWrapper<SalesInquiry>()
+                            .like(SalesInquiry::getInquiryNo, quotation.getInquiryNo())
+                            .eq(SalesInquiry::getDeleted, 0));
+            List<String> traceIds = matched.stream()
+                    .map(SalesInquiry::getTraceId)
+                    .filter(t -> t != null && !t.isEmpty())
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (traceIds.isEmpty()) {
+                wrapper.eq(SalesQuotation::getQuotationId, -1L);
+            } else {
+                wrapper.in(SalesQuotation::getTraceId, traceIds);
+            }
+        }
+
         // 未删除的数据
         wrapper.eq(SalesQuotation::getDeleted, 0);
 
@@ -166,6 +188,10 @@ public class QuotationServiceImpl implements IQuotationService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertQuotation(SalesQuotation quotation) {
+        // 自动生成报价单号（未传入时，DEV-601修复：原逻辑只校验不生成，导致新增保存报错）
+        if (quotation.getQuotationNo() == null || quotation.getQuotationNo().isEmpty()) {
+            quotation.setQuotationNo(redisSequenceService.generateBusinessNumber("QT", "报价单号"));
+        }
         // 检查报价单号是否唯一
         if (!checkQuotationNoUnique(quotation.getQuotationNo())) {
             throw new BusinessException("报价单号已存在");
@@ -214,8 +240,9 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         int rows = quotationMapper.insert(quotation);
-        // 保存报价单明细
-        saveQuotationItems(quotation.getQuotationId(), quotation.getItems());
+        // 保存报价单明细（自动汇总金额：税率百分数÷100 算税额，total=subtotal+tax，final=total-折扣）
+        saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
+                quotation.getTaxRate(), quotation.getDiscountAmount());
         return rows;
     }
 
@@ -242,18 +269,21 @@ public class QuotationServiceImpl implements IQuotationService {
         // 先删后插，更新报价单明细
         quotationItemMapper.delete(new LambdaQueryWrapper<SalesQuotationItem>()
                 .eq(SalesQuotationItem::getQuotationId, quotation.getQuotationId()));
-        saveQuotationItems(quotation.getQuotationId(), quotation.getItems());
+        saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
+                quotation.getTaxRate(), quotation.getDiscountAmount());
         return rows;
     }
 
     /**
-     * 批量保存报价单明细
+     * 批量保存报价单明细（金额汇总参考销售订单口径：
+     * subtotal=行合计；tax=subtotal×税率÷100（税率存百分数）；total=subtotal+tax（含税）；final=total-折扣）
      */
-    private void saveQuotationItems(Long quotationId, List<SalesQuotationItem> items) {
+    private void saveQuotationItems(Long quotationId, List<SalesQuotationItem> items,
+                                    BigDecimal taxRate, BigDecimal discountAmount) {
         if (quotationId == null || items == null || items.isEmpty()) {
             return;
         }
-        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
         for (SalesQuotationItem item : items) {
             item.setItemId(null);
             item.setQuotationId(quotationId);
@@ -267,15 +297,24 @@ public class QuotationServiceImpl implements IQuotationService {
             if (item.getUnit() == null) item.setUnit("PCS");
             if (item.getItemOrder() == null) item.setItemOrder(0);
             quotationItemMapper.insert(item);
-            total = total.add(item.getAmount() != null ? item.getAmount() : java.math.BigDecimal.ZERO);
+            subtotal = subtotal.add(item.getAmount() != null ? item.getAmount() : java.math.BigDecimal.ZERO);
         }
-        // 自动汇总报价单金额
+        // 自动汇总报价单金额（参考销售订单口径）
         try {
+            BigDecimal rate = taxRate != null ? taxRate : java.math.BigDecimal.ZERO;
+            BigDecimal tax = subtotal.multiply(rate)
+                    .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+            BigDecimal total = subtotal.add(tax); // 含税总价
+            BigDecimal discount = discountAmount != null ? discountAmount : java.math.BigDecimal.ZERO;
+            BigDecimal finalAmount = total.subtract(discount).max(java.math.BigDecimal.ZERO);
+
             SalesQuotation q = new SalesQuotation();
             q.setQuotationId(quotationId);
-            q.setSubtotalAmount(total);
+            q.setSubtotalAmount(subtotal);
+            q.setTaxAmount(tax);
             q.setTotalAmount(total);
-            q.setFinalAmount(total);
+            q.setDiscountAmount(discount);
+            q.setFinalAmount(finalAmount);
             quotationMapper.updateById(q);
         } catch (Exception e) {
             log.warn("汇总报价单金额失败: {}", e.getMessage());
@@ -512,6 +551,11 @@ public class QuotationServiceImpl implements IQuotationService {
         orderDTO.setQuotationId(quotationId);
         // 透传链路追踪ID
         orderDTO.setTraceId(quotation.getTraceId());
+        // 金额信息传递（报价单→订单，税率百分数÷100 换算成订单小数口径，税/折扣继承报价）
+        if (quotation.getSubtotalAmount() != null) orderDTO.setTotalAmount(quotation.getSubtotalAmount());
+        if (quotation.getTaxRate() != null) orderDTO.setTaxRate(quotation.getTaxRate().divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
+        if (quotation.getTaxAmount() != null) orderDTO.setTaxAmount(quotation.getTaxAmount());
+        if (quotation.getDiscountAmount() != null) orderDTO.setDiscountAmount(quotation.getDiscountAmount());
 
         // 报价单明细 → 订单明细
         List<SalesQuotationItem> quotationItems = quotationItemMapper.selectList(

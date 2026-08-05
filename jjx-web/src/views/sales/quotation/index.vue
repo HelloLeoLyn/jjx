@@ -12,6 +12,15 @@
             @keyup.enter="handleQuery"
           />
         </el-form-item>
+        <el-form-item label="询价单号" prop="inquiryNo">
+          <el-input
+            v-model="queryParams.inquiryNo"
+            placeholder="请输入来源询价单号"
+            clearable
+            style="width: 200px"
+            @keyup.enter="handleQuery"
+          />
+        </el-form-item>
         <el-form-item label="客户名称" prop="customerName">
           <el-input
             v-model="queryParams.customerName"
@@ -417,6 +426,7 @@
                 :remote-method="searchCustomer"
                 :loading="customerLoading"
                 style="width: 100%"
+                @focus="loadCustomerOptions"
               >
                 <el-option
                   v-for="item in customerOptions"
@@ -782,6 +792,7 @@ const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
   quotationNo: undefined as string | undefined,
+  inquiryNo: undefined as string | undefined,
   customerName: undefined as string | undefined,
   quotationStatus: undefined as number | undefined,
   startDate: undefined as string | undefined,
@@ -935,6 +946,7 @@ const resetQuery = () => {
     pageNum: 1,
     pageSize: 10,
     quotationNo: undefined,
+    inquiryNo: undefined,
     customerName: undefined,
     quotationStatus: undefined,
     startDate: undefined,
@@ -1122,18 +1134,40 @@ const handleView = (row: any) => {
 }
 
 // 搜索客户
-const searchCustomer = (query: string) => {
-  if (query) {
-    customerLoading.value = true
-    ;(customerApi as any).list({ customerName: query, pageSize: 10 }).then((response: any) => {
-      customerOptions.value = response.rows.map((item: any) => ({
-        customerId: item.customerId,
-        customerName: item.customerName,
-      }))
-      customerLoading.value = false
-    })
-  } else {
+// 搜索客户（远程搜索，DEV修复：customerApi 只有 searchCustomers，原代码调用不存在的 list 导致无请求）
+const searchCustomer = async (query: string) => {
+  if (!query) {
     customerOptions.value = []
+    return
+  }
+  customerLoading.value = true
+  try {
+    const res: any = await customerApi.searchCustomers(query)
+    customerOptions.value = (res?.data || []).map((item: any) => ({
+      customerId: item.customerId,
+      customerName: item.customerName,
+    }))
+  } catch {
+    customerOptions.value = []
+  } finally {
+    customerLoading.value = false
+  }
+}
+
+// 下拉聚焦时加载全部客户（避免下拉空白）
+const loadCustomerOptions = async () => {
+  if (customerOptions.value.length > 0) return
+  customerLoading.value = true
+  try {
+    const res: any = await customerApi.searchCustomers('')
+    customerOptions.value = (res?.data || []).map((item: any) => ({
+      customerId: item.customerId,
+      customerName: item.customerName,
+    }))
+  } catch {
+    customerOptions.value = []
+  } finally {
+    customerLoading.value = false
   }
 }
 

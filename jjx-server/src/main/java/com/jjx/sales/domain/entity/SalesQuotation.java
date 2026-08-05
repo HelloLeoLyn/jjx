@@ -36,6 +36,10 @@ public class SalesQuotation extends BaseEntity {
     @TableField(exist = false)
     private String sourceInquiryNo;
 
+    /** 查询参数：来源询价单号（非表字段，按 traceId 子查询过滤） */
+    @TableField(exist = false)
+    private String inquiryNo;
+
     /**
      * 报价单编号
      */
