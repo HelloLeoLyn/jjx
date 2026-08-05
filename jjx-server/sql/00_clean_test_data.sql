@@ -1,5 +1,5 @@
 -- =====================================================
--- 清理测试数据脚本（v2）
+-- 清理测试数据脚本（v3）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
 --
@@ -8,6 +8,12 @@
 --   2. sys_task 改为条件删除：只清 office/emergency 演示任务，
 --      保留 kanban_module='dev' 的开发任务（175 条）
 --   3. 移除死表 kanban_task 的 TRUNCATE（表已废弃）
+--
+-- v3 变更（2026-08-05）：
+--   1. 产品域不再清理：product / product_category / product_instance 等保留
+--   2. 工程域不再清理：engineering_bom(_item) / engineering_routing(_item) / engineering_film 保留
+--      标准工序（engineering_standard_process）继续保留
+--   3. 如需单独清理产品脏数据（产品/BOM/路线/菲林），跑专用脚本：01_clean_product_test_data.sql
 -- =====================================================
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -40,16 +46,9 @@ TRUNCATE sales_order;
 TRUNCATE sales_inquiry;
 -- sales_customer 保留（客户信息）
 
--- ==================== 2. 产品模块 ====================
-TRUNCATE product_instance;
-
-TRUNCATE product_config_option;
-
-TRUNCATE product_config_model;
-
-TRUNCATE product;
-
-TRUNCATE product_category;
+-- ==================== 2. 产品模块（v3 起整体保留，不清） ====================
+-- 产品档案：product / product_category / product_instance / product_config_* 保留（v3）
+-- 产品脏数据用专用脚本：01_clean_product_test_data.sql
 
 -- ==================== 3. 采购模块 ====================
 TRUNCATE purchase_material_inquiry;
@@ -116,18 +115,10 @@ TRUNCATE inventory_stock;
 TRUNCATE inventory_storage_location;
 -- 基础档案保留：inventory_material（物料）/ inventory_material_category（材料分类）/ inventory_warehouse（仓库）不清（2026-08-03 真实物料数据）
 
--- ==================== 6. 工程模块 ====================
-TRUNCATE engineering_bom_item;
-
-TRUNCATE engineering_routing_item;
--- engineering_design_task 已迁移为 sys_task，不再存在
-TRUNCATE engineering_film;
-
-TRUNCATE engineering_routing;
+-- ==================== 6. 工程模块（v3 起保留产品关联档案，不清） ====================
+-- engineering_bom(_item) / engineering_routing(_item) / engineering_film 保留（v3）
+-- 工程脏数据用专用脚本：01_clean_product_test_data.sql
 -- 基础档案保留：engineering_standard_process（标准工序）不清
-
-TRUNCATE engineering_bom;
-
 TRUNCATE engineering_base;
 
 -- ==================== 7. 门户相关 ====================
