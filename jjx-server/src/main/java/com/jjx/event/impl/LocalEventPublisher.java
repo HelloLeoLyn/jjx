@@ -50,16 +50,24 @@ public class LocalEventPublisher implements EventPublisher {
 
         String eventType = event.getEventType() != null ? event.getEventType() : "notification";
 
-        // 通知处理：展开角色→查用户→每人发一条
+        // 通知处理：展开角色→查用户→每人发一条（exclude_trigger=1 时排除触发者，DEV-641）
         if ("notification".equals(eventType) || "both".equals(eventType)) {
             JSONArray roles = parseRoles(event.getTargetRole());
             if (roles != null) {
+                Object triggerUserId = payload != null ? payload.get("triggerUserId") : null;
+                boolean excludeTrigger = event.getExcludeTrigger() != null && event.getExcludeTrigger() == 1;
                 for (int i = 0; i < roles.size(); i++) {
                     Long roleId = roles.getLong(i);
                     List<SysUserRole> userRoles = userRoleMapper.selectList(
                             new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, roleId)
                     );
                     for (SysUserRole ur : userRoles) {
+                        // 排除触发者：自己操作不通知自己
+                        if (excludeTrigger && triggerUserId != null
+                                && ur.getUserId() != null
+                                && ur.getUserId().toString().equals(triggerUserId.toString())) {
+                            continue;
+                        }
                         try {
                             NotificationCreateDTO dto = new NotificationCreateDTO();
                             dto.setTitle(resolveTemplate(event.getTitle(), payload));

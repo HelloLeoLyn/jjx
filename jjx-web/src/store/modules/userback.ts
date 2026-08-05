@@ -309,7 +309,7 @@ export const useUserStore = defineStore('user', (): UserStoreReturn => {
 
   async function updatePassword(oldPassword: string, newPassword: string): Promise<any> {
     try {
-      const res = await userApi.updatePwd(oldPassword, newPassword)
+      const res = await userApi.updatePwd({ oldPassword, newPassword })
       return Promise.resolve(res)
     } catch (error) {
       return Promise.reject(error)
