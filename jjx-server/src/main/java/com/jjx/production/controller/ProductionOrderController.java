@@ -196,6 +196,18 @@ public class ProductionOrderController {
         return Result.success(exportData);
     }
 
+    @Operation(summary = "导出生产工单PDF（单张表单）")
+    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "#orderId")
+    @SaCheckPermission("production:order:export")
+    @GetMapping("/export-pdf/{orderId}")
+    public void exportPdf(@PathVariable Long orderId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        ProductionOrderVO vo = productionOrderService.getOrderById(orderId);
+        byte[] bytes = productionOrderService.exportPdf(orderId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + java.net.URLEncoder.encode(vo.getOrderNo() + ".pdf", java.nio.charset.StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
     @Operation(summary = "获取生产工单统计信息")
     @GetMapping("/statistics")
     public Result<OrderStatisticsVO> getOrderStatistics(ProductionOrderQueryDTO queryDTO) {

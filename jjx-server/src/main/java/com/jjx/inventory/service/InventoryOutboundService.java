@@ -94,4 +94,9 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     Map<String, Object> getDetail(Map<String, Object> params);
 
+    /**
+     * 导出入库单PDF（单张表单）
+     */
+    byte[] exportPdf(Long outboundId);
+
 }

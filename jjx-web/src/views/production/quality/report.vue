@@ -142,6 +142,12 @@
           <template #default="{ row }">{{ row.passQty || 0 }} / {{ row.totalQty || 0 }}</template>
         </el-table-column>
         <el-table-column label="备注" prop="remark" min-width="140" show-overflow-tooltip />
+        <el-table-column label="操作" width="160" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="handleExportPdf(row)">PDF</el-button>
+            <el-button link type="success" size="small" @click="handleExportExcel(row)">Excel</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <pagination
@@ -160,6 +166,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Close, List, WarningFilled } from '@element-plus/icons-vue'
 import { qualityApi } from '@/api/production/quality'
+import { download } from '@/utils/format'
 
 const queryParams = reactive({
   pageNum: 1,
@@ -212,6 +219,28 @@ const getList = async () => {
 }
 
 const handleQuery = () => { queryParams.pageNum = 1; getList() }
+
+// 导出质检报告PDF
+const handleExportPdf = (row: any) => {
+  if (!row?.inspectionId) {
+    ElMessage.warning('检验单ID缺失')
+    return
+  }
+  qualityApi.exportPdf(Number(row.inspectionId)).then((response: any) => {
+    download(response, `质检报告_${row.inspectionNo || row.inspectionId}.pdf`)
+  })
+}
+
+// 导出质检报告Excel
+const handleExportExcel = (row: any) => {
+  if (!row?.inspectionId) {
+    ElMessage.warning('检验单ID缺失')
+    return
+  }
+  qualityApi.exportExcel(Number(row.inspectionId)).then((response: any) => {
+    download(response, `质检报告_${row.inspectionNo || row.inspectionId}.xlsx`)
+  })
+}
 const handleReset = () => {
   queryParams.pageNum = 1
   queryParams.reportType = 'inspection'

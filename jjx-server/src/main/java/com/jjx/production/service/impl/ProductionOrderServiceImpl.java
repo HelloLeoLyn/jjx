@@ -1072,4 +1072,43 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("不支持的状态流转: " + currentStatus + " -> " + newStatus);
         }
     }
+
+    @Override
+    public byte[] exportPdf(Long orderId) {
+        ProductionOrderVO vo = getOrderById(orderId);
+        java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.00");
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+
+        java.util.Map<String, String> info = new java.util.LinkedHashMap<>();
+        info.put("工单号", vo.getOrderNo());
+        info.put("产品编码", vo.getProductCode());
+        info.put("产品名称", vo.getProductName());
+        info.put("产品规格", vo.getProductSpec() == null ? "-" : vo.getProductSpec());
+        info.put("来源销售单", vo.getSalesOrderNo() == null ? "-" : vo.getSalesOrderNo());
+        info.put("计划开始", vo.getPlanStartDate() == null ? "" : vo.getPlanStartDate().toString());
+        info.put("计划结束", vo.getPlanEndDate() == null ? "" : vo.getPlanEndDate().toString());
+        info.put("BOM", vo.getRoutingName() == null ? "-" : vo.getRoutingName());
+        info.put("工艺路线", vo.getRoutingCode() == null ? "-" : vo.getRoutingCode());
+        info.put("状态", vo.getOrderStatusDesc() == null ? "-" : vo.getOrderStatusDesc());
+
+        java.util.List<String[]> rows = new java.util.ArrayList<>();
+        rows.add(new String[]{"1", vo.getProductCode(), vo.getProductName(),
+                vo.getPlannedQuantity() == null ? "" : df.format(vo.getPlannedQuantity()),
+                vo.getProductUnit() == null ? "" : vo.getProductUnit(),
+                vo.getCompletedQuantity() == null ? "" : df.format(vo.getCompletedQuantity()),
+                vo.getRemainingQuantity() == null ? "" : df.format(vo.getRemainingQuantity())});
+
+        return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .title("生  产  工  单")
+                .info(info)
+                .items(new String[]{"序号", "产品编码", "产品名称", "计划数量", "单位", "已完成", "剩余"}, rows)
+                .amounts(new String[][]{
+                        {"材料成本", vo.getMaterialCost() == null ? "" : df.format(vo.getMaterialCost())},
+                        {"人工成本", vo.getLaborCost() == null ? "" : df.format(vo.getLaborCost())},
+                        {"总成本", vo.getTotalCost() == null ? "" : df.format(vo.getTotalCost())},
+                })
+                .remark(vo.getRemark())
+                .signatures("生产负责人：", "车间确认：", "日期：")
+                .toBytes();
+    }
 }

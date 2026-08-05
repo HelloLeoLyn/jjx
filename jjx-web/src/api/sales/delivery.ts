@@ -54,4 +54,11 @@ export const deliveryApi = {
   listByOrderId(orderId: number) {
     return request.get<R<SalesDeliveryVO[]>>(`/sales/deliveries/by-order/${orderId}`)
   },
+
+  /** 导出送货单PDF（单张表单） */
+  exportPdf(deliveryId: number) {
+    return request.get(`/sales/deliveries/export-pdf/${deliveryId}`, {
+      responseType: 'blob',
+    })
+  },
 }

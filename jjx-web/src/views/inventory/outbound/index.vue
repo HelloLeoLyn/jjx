@@ -72,6 +72,11 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
+          <el-button :disabled="selectedRows.length !== 1" @click="handleExportPdf">
+            <el-icon><Document /></el-icon>导出PDF
+          </el-button>
+        </el-col>
+        <el-col :span="1.5">
           <el-button @click="handleRefresh">
             <el-icon><Refresh /></el-icon>刷新
           </el-button>
@@ -81,7 +86,8 @@
 
     <!-- 表格 -->
     <el-card class="table-card">
-      <el-table v-loading="loading" :data="outboundList" border style="width: 100%">
+      <el-table v-loading="loading" :data="outboundList" border style="width: 100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="50" align="center" />
         <el-table-column label="出库单号" prop="outboundNo" width="150" />
         <el-table-column label="出库类型" width="100" align="center">
           <template #default="{ row }">
@@ -164,7 +170,7 @@ import { Plus, Download, Refresh } from '@element-plus/icons-vue'
 import { outboundApi } from '@/api/inventory/outbound'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
-import { formatCurrency, formatNumber } from '@/utils/format'
+import { formatCurrency, formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { OutboundQueryParams, OutboundVO } from '@/types/inventory/outbound'
 
@@ -232,6 +238,24 @@ const handleCreate = () => {
 // 导出
 const handleExport = () => {
   ElMessage.info('导出功能开发中')
+}
+
+// 行选中
+const selectedRows = ref<any[]>([])
+const handleSelectionChange = (selection: any[]) => {
+  selectedRows.value = selection
+}
+
+// 导出PDF（单张表单，需选中一行）
+const handleExportPdf = () => {
+  const row = selectedRows.value[0]
+  if (!row?.outboundId) {
+    ElMessage.warning('请先选中一行出库单')
+    return
+  }
+  outboundApi.exportPdf(row.outboundId).then((response: any) => {
+    download(response, `出库单_${row.outboundNo || row.outboundId}.pdf`)
+  })
 }
 
 // 刷新

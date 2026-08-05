@@ -267,6 +267,13 @@
                 <el-table-column label="物流单号" prop="trackingNo" width="140" />
                 <el-table-column label="承运商" prop="carrier" width="100" />
                 <el-table-column label="收货人" prop="receiverName" width="100" />
+                <el-table-column label="操作" width="90" align="center">
+                  <template #default="scope">
+                    <el-button link type="primary" size="small" @click="handleExportDeliveryPdf(scope.row)">
+                      导出PDF
+                    </el-button>
+                  </template>
+                </el-table-column>
               </el-table>
             </div>
           </div>
@@ -314,7 +321,7 @@ defineOptions({
 
 import { ref, reactive, computed, onMounted } from 'vue'
 import type { TagType } from '@/types'
-import { parseTime, formatCurrency } from '@/utils/format'
+import { parseTime, formatCurrency, download } from '@/utils/format'
 import { orderApi } from '@/api/sales/order'
 import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { getProductionOrderList } from '@/api/production/order'
@@ -537,6 +544,17 @@ const loadDeliveryRecords = async (orderId: number) => {
     console.error('获取发货记录失败:', error)
     deliveryRecords.value = []
   }
+}
+
+/** 导出送货单PDF */
+const handleExportDeliveryPdf = (row: any) => {
+  if (!row?.deliveryId) {
+    ElMessage.warning('送货单ID缺失')
+    return
+  }
+  deliveryApi.exportPdf(row.deliveryId).then((response: any) => {
+    download(response, `送货单_${row.deliveryNo || row.deliveryId}.pdf`)
+  })
 }
 
 /** 构建发货时间线 */

@@ -115,6 +115,15 @@ export function exportProductionOrder(params: ProductionOrderQuery) {
   })
 }
 
+// 导出生产工单PDF（单张表单）
+export function exportProductionOrderPdf(orderId: number) {
+  return request({
+    url: `/production/order/export-pdf/${orderId}`,
+    method: 'get',
+    responseType: 'blob',
+  })
+}
+
 // 导入生产订单数据
 export function importProductionOrder(file: File) {
   const formData = new FormData()

@@ -143,4 +143,9 @@ public interface ProductionOrderService {
      * 更新订单计划日期（排程用）
      */
     boolean updateOrderPlanDate(Long orderId, String planStartDate, String planEndDate);
+
+    /**
+     * 导出生产工单PDF（单张表单）
+     */
+    byte[] exportPdf(Long orderId);
 }

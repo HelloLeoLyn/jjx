@@ -60,4 +60,10 @@ export const qualityApi = {
   getStatistics() {
     return request.get<R<any>>('/production/quality/statistics')
   },
+  exportPdf(id: number) {
+    return request.get(`/production/quality/export-pdf/${id}`, { responseType: 'blob' })
+  },
+  exportExcel(id: number) {
+    return request.get(`/production/quality/export-excel/${id}`, { responseType: 'blob' })
+  },
 }

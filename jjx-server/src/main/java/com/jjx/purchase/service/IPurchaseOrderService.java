@@ -251,4 +251,9 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
      * 修改订单状态
      */
     void updateOrderStatus(POrderStatusDTO dto);
+
+    /**
+     * 导出采购订单PDF（单张表单）
+     */
+    byte[] exportPdf(Long orderId);
 }

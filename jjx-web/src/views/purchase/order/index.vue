@@ -48,6 +48,9 @@
           <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
+          <el-button type="info" plain icon="Document" :disabled="!single" @click="handleExportPdf">导出PDF</el-button>
+        </el-col>
+        <el-col :span="1.5">
           <el-button
             type="info"
             plain
@@ -429,7 +432,8 @@ import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
-import { copyOrder, exportOrder as apiExportOrder, cancleOrder } from '@/api/purchase/order'
+import { copyOrder, exportOrder as apiExportOrder, exportOrderPdf, cancleOrder } from '@/api/purchase/order'
+import { download } from '@/utils/format'
 
 // 使用Composables
 const { orderList, total, loading, loadData } = usePurchaseOrder()
@@ -619,6 +623,18 @@ const handleExport = () => {
       console.error('导出失败:', error)
       ElMessage.error('导出失败')
     }
+  })
+}
+
+// 导出PDF（单张表单，需选中一行）
+const handleExportPdf = () => {
+  const row = selectedRows.value[0]
+  if (!row?.orderId) {
+    ElMessage.warning('请先选中一行采购订单')
+    return
+  }
+  exportOrderPdf(Number(row.orderId)).then((response: any) => {
+    download(response, `采购订单_${row.orderNo || row.orderId}.pdf`)
   })
 }
 

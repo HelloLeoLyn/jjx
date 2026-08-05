@@ -702,4 +702,58 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         return vo;
     }
+
+    @Override
+    public byte[] exportPdf(Long inboundId) {
+        InboundVO vo = getDetail(inboundId);
+        if (vo == null) {
+            throw new BusinessException("入库单不存在: " + inboundId);
+        }
+        java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.00");
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+
+        java.util.Map<String, String> info = new java.util.LinkedHashMap<>();
+        info.put("入库单号", vo.getInboundNo());
+        info.put("入库日期", vo.getInboundDate() == null ? "" : vo.getInboundDate().toString());
+        info.put("入库类型", vo.getInboundType() == null ? "-" : vo.getInboundType());
+        info.put("来源单号", vo.getSourceNo() == null ? "-" : vo.getSourceNo());
+        info.put("仓库", vo.getWarehouseName() == null ? "-" : vo.getWarehouseName());
+        info.put("库位", vo.getLocationName() == null ? "-" : vo.getLocationName());
+        info.put("供应商", vo.getSupplierName() == null ? "-" : vo.getSupplierName());
+        info.put("验收人", vo.getInspectorName() == null ? "-" : vo.getInspectorName());
+        info.put("验收结果", vo.getInspectionResult() == null ? "-" : vo.getInspectionResult());
+
+        java.util.List<String[]> rows = new java.util.ArrayList<>();
+        if (vo.getItems() != null) {
+            for (com.jjx.inventory.dto.vo.InboundItemVO item : vo.getItems()) {
+                String spec = item.getMaterialName() == null ? "" : item.getMaterialName();
+                if (item.getSpecification() != null && !item.getSpecification().isBlank()) {
+                    spec = spec.isBlank() ? item.getSpecification() : spec + " / " + item.getSpecification();
+                }
+                rows.add(new String[]{
+                        String.valueOf(rows.size() + 1),
+                        item.getMaterialCode() == null ? "" : item.getMaterialCode(),
+                        spec,
+                        item.getQuantity() == null ? "" : df.format(item.getQuantity()),
+                        item.getUnit() == null ? "" : item.getUnit(),
+                        item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
+                        item.getAmount() == null ? "" : df.format(item.getAmount()),
+                        item.getBatchNo() == null ? "" : item.getBatchNo(),
+                });
+            }
+        }
+
+        return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .title("入  库  单")
+                .info(info)
+                .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额", "批次"}, rows)
+                .amounts(new String[][]{
+                        {"总数量", vo.getTotalQuantity() == null ? "" : df.format(vo.getTotalQuantity())},
+                        {"总金额", vo.getTotalAmount() == null ? "" : df.format(vo.getTotalAmount())},
+                })
+                .remark(vo.getRemark())
+                .signatures("验收人：" + (vo.getInspectorName() == null ? "" : vo.getInspectorName()),
+                        "仓管确认：", "日期：")
+                .toBytes();
+    }
 }

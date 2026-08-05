@@ -79,6 +79,14 @@ export function exportOrderDetail(orderId: number) {
   })
 }
 
+export function exportOrderPdf(orderId: number) {
+  return request({
+    url: `/purchase/order/export-pdf/${orderId}`,
+    method: 'get',
+    responseType: 'blob',
+  })
+}
+
 // 提交订单审批
 export function submitOrder(orderId: number) {
   return request({

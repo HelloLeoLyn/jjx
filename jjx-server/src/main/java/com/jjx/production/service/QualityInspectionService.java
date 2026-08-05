@@ -13,4 +13,10 @@ public interface QualityInspectionService {
     void update(QualityInspectionUpdateDTO dto);
     void delete(Long id);
     Object getStatistics();
+
+    /** 导出质检报告PDF（给客户看） */
+    byte[] exportPdf(Long id);
+
+    /** 导出质检报告Excel（给客户看） */
+    byte[] exportExcel(Long id);
 }

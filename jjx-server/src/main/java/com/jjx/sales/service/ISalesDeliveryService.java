@@ -26,4 +26,9 @@ public interface ISalesDeliveryService {
      * 根据销售订单ID查询发货单
      */
     List<SalesDeliveryVO> listByOrderId(Long orderId);
+
+    /**
+     * 导出送货单PDF（单张表单）
+     */
+    byte[] exportPdf(Long deliveryId);
 }

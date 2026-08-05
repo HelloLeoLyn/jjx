@@ -146,6 +146,17 @@ public class InventoryOutboundController {
         return Result.success(outboundService.updateStatus(outboundId, status));
     }
 
+    @GetMapping("/export-pdf/{outboundId}")
+    @Operation(summary = "导出出库单PDF（单张表单）")
+    @Log(module = "出库管理", businessType = BusinessType.EXPORT, bizType = "'outbound'", bizId = "#outboundId")
+    @SaCheckPermission("inventory:outbound:view")
+    public void exportPdf(@PathVariable Long outboundId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        byte[] bytes = outboundService.exportPdf(outboundId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=outbound_" + outboundId + ".pdf");
+        response.getOutputStream().write(bytes);
+    }
+
     @GetMapping("/dashboard")
     @Operation(summary = "获取出库仪表板数据")
     @SaCheckPermission("inventory:outbound:view")

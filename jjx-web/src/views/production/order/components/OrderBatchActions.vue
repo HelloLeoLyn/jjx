@@ -51,6 +51,14 @@
       <el-button icon="Refresh" @click="handleRefresh" :loading="loading"> 刷新 </el-button>
 
       <el-button icon="Download" @click="handleExport"> 导出 </el-button>
+
+      <el-button
+        icon="Document"
+        :disabled="selectedRows.length !== 1"
+        @click="emit('export-pdf')"
+      >
+        导出PDF
+      </el-button>
     </el-space>
 
     <div class="selection-info" v-if="selectedRows.length > 0">
@@ -83,6 +91,7 @@ interface Emits {
   (e: 'create'): void
   (e: 'refresh'): void
   (e: 'export'): void
+  (e: 'export-pdf'): void
   (e: 'batch-delete'): void
   (e: 'batch-command', command: string): void
 }
