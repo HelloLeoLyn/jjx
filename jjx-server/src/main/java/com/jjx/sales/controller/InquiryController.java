@@ -12,9 +12,14 @@ import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -120,9 +125,13 @@ public class InquiryController extends BaseController {
     @Operation(summary = "导出询价单列表")
     @SaCheckPermission("sales:inquiry:export")
     @GetMapping("/export")
-    public Result<String> export(SalesInquiry inquiry) {
-        // 简版导出提示，后续可完善为真实导出
-        return Result.success("导出功能待完善");
+    public ResponseEntity<byte[]> export(SalesInquiry inquiry) {
+        byte[] bytes = inquiryService.exportInquiryList(inquiry);
+        String fileName = URLEncoder.encode("询价单列表.xlsx", StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + fileName)
+            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+            .body(bytes);
     }
 
 }

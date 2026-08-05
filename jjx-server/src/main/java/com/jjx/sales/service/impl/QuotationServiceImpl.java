@@ -17,6 +17,10 @@ import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
 import com.jjx.system.utils.SecurityUtils;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.stream.Collectors;
+import java.io.ByteArrayOutputStream;
 
 /**
  * 销售报价单服务实现类
@@ -288,12 +293,14 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("报价单不存在");
         }
 
-        // 检查报价单状态，已发送/已确认/已完成/改单中的报价单不能删除
+        // 检查报价单状态：已发送/待审核/已审核/已确认/已完成/改单中的报价单不能删除（DEV-594 补待审核/已审核）
         if (QuotationStatus.SENT.getCode().equals(quotation.getQuotationStatus())
+                || QuotationStatus.PENDING_REVIEW.getCode().equals(quotation.getQuotationStatus())
+                || QuotationStatus.APPROVED.getCode().equals(quotation.getQuotationStatus())
                 || QuotationStatus.ACCEPTED.getCode().equals(quotation.getQuotationStatus())
                 || QuotationStatus.COMPLETED.getCode().equals(quotation.getQuotationStatus())
                 || QuotationStatus.MODIFYING.getCode().equals(quotation.getQuotationStatus())) {
-            throw new BusinessException("已发送、已确认、已完成或改单中的报价单不能删除");
+            throw new BusinessException("已发送、待审核、已审核、已确认、已完成或改单中的报价单不能删除");
         }
 
         // 使用逻辑删除
@@ -670,10 +677,57 @@ public class QuotationServiceImpl implements IQuotationService {
      * 导出报价单列表
      */
     @Override
-    public String exportQuotationList(SalesQuotation quotation) {
-        // 这里应该实现Excel导出逻辑
-        // 暂时返回一个占位符路径
-        return "/exports/quotation-list.xlsx";
+    public byte[] exportQuotationList(SalesQuotation quotation) {
+        List<SalesQuotation> list = selectQuotationList(quotation);
+        fillSourceInquiryNo(list);
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("报价单列表");
+            String[] headers = {"报价单号", "来源询价单", "客户名称", "报价日期", "有效期至", "状态", "币种", "总金额", "销售员", "创建时间"};
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            int r = 1;
+            for (SalesQuotation q : list) {
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(q.getQuotationNo() == null ? "" : q.getQuotationNo());
+                row.createCell(1).setCellValue(q.getSourceInquiryNo() == null ? "" : q.getSourceInquiryNo());
+                row.createCell(2).setCellValue(q.getCustomerName() == null ? "" : q.getCustomerName());
+                row.createCell(3).setCellValue(q.getQuotationDate() == null ? "" : q.getQuotationDate().toString());
+                row.createCell(4).setCellValue(q.getValidUntil() == null ? "" : q.getValidUntil().toString());
+                row.createCell(5).setCellValue(quotationStatusLabel(q.getQuotationStatus()));
+                row.createCell(6).setCellValue(q.getCurrency() == null ? "" : q.getCurrency());
+                row.createCell(7).setCellValue(q.getTotalAmount() == null ? 0d : q.getTotalAmount().doubleValue());
+                row.createCell(8).setCellValue(q.getSalesPersonName() == null ? "" : q.getSalesPersonName());
+                row.createCell(9).setCellValue(q.getCreateTime() == null ? "" : q.getCreateTime().toString().replace('T', ' '));
+            }
+            for (int i = 0; i < headers.length; i++) {
+                sheet.setColumnWidth(i, 16 * 256);
+            }
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new BusinessException("导出失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 报价单状态中文标签（导出用）
+     */
+    private String quotationStatusLabel(Integer status) {
+        if (status == null) return "";
+        return switch (status) {
+            case 0 -> "草稿";
+            case 1 -> "已发送";
+            case 2 -> "已确认";
+            case 3 -> "已拒绝";
+            case 4 -> "已过期";
+            case 5 -> "待审核";
+            case 6 -> "已审核";
+            case 8 -> "改单";
+            case 9 -> "已完成";
+            default -> String.valueOf(status);
+        };
     }
 
     /**
@@ -740,44 +794,6 @@ public class QuotationServiceImpl implements IQuotationService {
             public final String label = "港币";
         });
         return options;
-    }
-
-    /**
-     * 获取报价模板列表
-     */
-    @Override
-    public List<Object> getTemplates() {
-        // 暂时返回空列表
-        return new ArrayList<>();
-    }
-
-    /**
-     * 根据模板创建报价单
-     */
-    @Override
-    public SalesQuotation createFromTemplate(Long templateId, Long customerId) {
-        // 暂时返回一个空的报价单
-        SalesQuotation quotation = new SalesQuotation();
-        quotation.setQuotationNo("TEMP_" + System.currentTimeMillis());
-        quotation.setCustomerId(customerId);
-        quotation.setQuotationStatus(QuotationStatus.DRAFT.getCode());
-        quotation.setCurrency("CNY");
-        quotation.setExchangeRate(java.math.BigDecimal.valueOf(1.0000));
-        return quotation;
-    }
-
-    /**
-     * 快速报价
-     */
-    @Override
-    public SalesQuotation quickQuote(Object quickQuoteRequest) {
-        // 暂时返回一个空的报价单
-        SalesQuotation quotation = new SalesQuotation();
-        quotation.setQuotationNo("QUICK_" + System.currentTimeMillis());
-        quotation.setQuotationStatus(QuotationStatus.DRAFT.getCode());
-        quotation.setCurrency("CNY");
-        quotation.setExchangeRate(java.math.BigDecimal.valueOf(1.0000));
-        return quotation;
     }
 
     /**

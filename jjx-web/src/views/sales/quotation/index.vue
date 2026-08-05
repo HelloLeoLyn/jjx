@@ -54,6 +54,19 @@
       </el-form>
     </el-card>
 
+    <!-- 统计卡片（DEV-594） -->
+    <el-card class="stat-card" shadow="never" v-if="stats">
+      <el-row :gutter="16">
+        <el-col :span="3"><el-statistic title="报价单总数" :value="stats.totalCount || 0" /></el-col>
+        <el-col :span="5"><el-statistic title="报价总金额" :value="stats.totalAmount || 0" :precision="2" /></el-col>
+        <el-col :span="3"><el-statistic title="草稿" :value="stats.draftCount || 0" /></el-col>
+        <el-col :span="3"><el-statistic title="已发送" :value="stats.sentCount || 0" /></el-col>
+        <el-col :span="3"><el-statistic title="已确认" :value="stats.acceptedCount || 0" /></el-col>
+        <el-col :span="3"><el-statistic title="已拒绝" :value="stats.rejectedCount || 0" /></el-col>
+        <el-col :span="3"><el-statistic title="已过期" :value="stats.expiredCount || 0" /></el-col>
+      </el-row>
+    </el-card>
+
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
@@ -270,7 +283,7 @@
               ></el-button
             ></el-tooltip>
 
-            <el-tooltip content="删除" placement="top" v-if="[1, 2, 8, 9].indexOf(scope.row.quotationStatus) === -1">
+            <el-tooltip content="删除" placement="top" v-if="[1, 2, 5, 6, 8, 9].indexOf(scope.row.quotationStatus) === -1">
               <el-button
                 link
                 type="danger"
@@ -956,7 +969,7 @@ const quotationActions = computed(() => {
     canConvert: status === 2 && !completed,             // 已确认可转订单
     canConvertToSample: status === 2 && !completed,     // 已确认(2)的非标准品可转样品单
     canReQuote: [3, 4].includes(status),                // 已拒绝/已过期可重新报价
-    canDelete: ![1, 2, 8, 9].includes(status) && !completed, // 已发送/已确认/已完成/改单禁删
+    canDelete: ![1, 2, 5, 6, 8, 9].includes(status) && !completed, // 已发送/待审核/已审核/已确认/已完成/改单禁删（8-05 DEV-594 补审核中）
     canEdit: ![1, 2, 3, 4].includes(status) && !completed, // 流转中/已拒绝/已过期/已完成禁改
     canModify: status === 9,                            // 已完成可改单
   }
@@ -1335,7 +1348,19 @@ onMounted(() => {
       locateQuotation(Number(targetId))
     }
   })
+  loadStatistics()
 })
+
+// 加载统计面板（DEV-594）
+const stats = ref<any>(null)
+async function loadStatistics() {
+  try {
+    const res: any = await quotationApi.statistics()
+    stats.value = res?.data || null
+  } catch {
+    stats.value = null
+  }
+}
 
 // 定位到指定报价单（高亮当前行；不在当前列表则直接打开详情）
 async function locateQuotation(quotationId: number) {

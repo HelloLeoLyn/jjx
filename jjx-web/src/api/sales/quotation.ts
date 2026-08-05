@@ -237,45 +237,7 @@ export const quotationApi = {
     })
   },
 
-  // 获取报价模板列表
-  getTemplates(): AxiosPromise<
-    Array<{ templateId: number; templateName: string }>
-  > {
-    return request({
-      url: '/sales/quotation/templates',
-      method: 'get',
-    })
-  },
-
-  // 根据模板创建报价单
-  createFromTemplate(
-    templateId: number,
-    customerId: number,
-  ): AxiosPromise<QuotationInfo> {
-    return request({
-      url: `/sales/quotation/template/${templateId}`,
-      method: 'post',
-      params: { customerId },
-    })
-  },
-
-  // 快速报价（基于产品）
-  quickQuote(data: {
-    customerId: number
-    items: Array<{
-      productId: number
-      quantity: number
-      customRequirements?: string
-    }>
-  }): AxiosPromise<QuotationInfo> {
-    return request({
-      url: '/sales/quotation/quick',
-      method: 'post',
-      data,
-    })
-  },
-
-  // 获取客户历史报价
+    // 获取客户历史报价
   getCustomerHistory(customerId: number): AxiosPromise<QuotationInfo[]> {
     return request({
       url: `/sales/quotation/customer/${customerId}/history`,
@@ -288,6 +250,14 @@ export const quotationApi = {
     return request({
       url: `/sales/quotation/copy/${quotationId}`,
       method: 'post',
+    })
+  },
+
+  // 报价单统计（DEV-594 接前端）
+  statistics(): AxiosPromise {
+    return request({
+      url: '/sales/quotation/statistics',
+      method: 'get',
     })
   },
 }

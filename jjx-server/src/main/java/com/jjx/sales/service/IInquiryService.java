@@ -58,6 +58,14 @@ public interface IInquiryService {
     InquiryToQuotationVO convertToQuotation(Long inquiryId);
 
     /**
+     * 导出询价单列表
+     *
+     * @param inquiry 查询条件
+     * @return Excel 字节数组
+     */
+    byte[] exportInquiryList(SalesInquiry inquiry);
+
+    /**
      * 获取询价单状态选项
      */
     List<Object> getStatusOptions();

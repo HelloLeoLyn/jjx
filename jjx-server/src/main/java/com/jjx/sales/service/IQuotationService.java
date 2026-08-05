@@ -171,7 +171,7 @@ public interface IQuotationService {
      * @param quotation 查询条件
      * @return 导出文件路径
      */
-    String exportQuotationList(SalesQuotation quotation);
+    byte[] exportQuotationList(SalesQuotation quotation);
 
     /**
      * 获取报价单状态选项
@@ -186,30 +186,6 @@ public interface IQuotationService {
      * @return 币种选项列表
      */
     List<Object> getCurrencyOptions();
-
-    /**
-     * 获取报价模板列表
-     *
-     * @return 模板列表
-     */
-    List<Object> getTemplates();
-
-    /**
-     * 根据模板创建报价单
-     *
-     * @param templateId 模板ID
-     * @param customerId 客户ID
-     * @return 创建的报价单
-     */
-    SalesQuotation createFromTemplate(Long templateId, Long customerId);
-
-    /**
-     * 快速报价
-     *
-     * @param quickQuoteRequest 快速报价请求
-     * @return 创建的报价单
-     */
-    SalesQuotation quickQuote(Object quickQuoteRequest);
 
     /**
      * 获取客户历史报价

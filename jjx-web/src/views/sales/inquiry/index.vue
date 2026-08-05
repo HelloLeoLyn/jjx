@@ -517,6 +517,7 @@ import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
 import { listProduct, getProductInfo } from '@/api/product'
 import { parseSpecJson } from '@/utils/specJsonHelper'
+import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'
 import type { CustomerSearchVO } from '@/types/sales/customer'
 
@@ -1030,7 +1031,14 @@ function handleDelete(row?: any) {
 
 // 导出
 function handleExport() {
-  ElMessage.success('导出功能待完善')
+  inquiryApi
+    .export(queryParams as any)
+    .then((res: any) => {
+      download(res, '询价单列表.xlsx')
+    })
+    .catch(() => {
+      ElMessage.error('导出失败')
+    })
 }
 
 // 表单操作

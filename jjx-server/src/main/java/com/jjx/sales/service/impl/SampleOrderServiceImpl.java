@@ -133,13 +133,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 复制报价单明细到样品单（产品资料转移/转量产依赖明细，源头修复）
         copyQuotationItemsToOrder(quotationId, order.getOrderId());
 
-        // 报价单状态更新：已确认(2) → 已完成(9)（报价已转化为样品打样，不可重复转）
+        // 报价单状态更新：已确认(2) → 已完成(9)（报价已转化为样品打样，不可重复转），并回写转换结果（DEV-594，与转订单对齐）
         try {
             SalesQuotation update = new SalesQuotation();
             update.setQuotationId(quotationId);
             update.setQuotationStatus(com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode());
+            update.setConvertedOrderId(order.getOrderId());
+            update.setConvertTime(LocalDateTime.now());
             quotationMapper.updateById(update);
-            log.info("报价单[{}] 转样品后状态 → 已完成(9)", quotation.getQuotationNo());
+            log.info("报价单[{}] 转样品后状态 → 已完成(9)，样品单ID={}", quotation.getQuotationNo(), order.getOrderId());
         } catch (Exception e) {
             log.warn("更新报价单状态失败: {}", e.getMessage());
         }

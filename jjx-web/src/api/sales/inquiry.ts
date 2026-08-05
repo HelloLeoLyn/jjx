@@ -108,4 +108,14 @@ export const inquiryApi = {
       method: 'get',
     })
   },
+
+  // 导出询价单列表（DEV-591）
+  export(params?: Record<string, any>): AxiosPromise<Blob> {
+    return request({
+      url: '/sales/inquiry/export',
+      method: 'get',
+      params,
+      responseType: 'blob',
+    })
+  },
 }

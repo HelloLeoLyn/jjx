@@ -11,9 +11,14 @@ import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -87,9 +92,13 @@ public class QuotationController extends BaseController {
     @Operation(summary = "导出销售报价单列表")
     @SaCheckPermission("sales:quotation:export")
     @GetMapping("/export")
-    public Result<String> export(SalesQuotation quotation) {
-        String filePath = quotationService.exportQuotationList(quotation);
-        return Result.success(filePath);
+    public ResponseEntity<byte[]> export(SalesQuotation quotation) {
+        byte[] bytes = quotationService.exportQuotationList(quotation);
+        String fileName = URLEncoder.encode("报价单列表.xlsx", StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + fileName)
+            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+            .body(bytes);
     }
 
     /**
@@ -247,39 +256,6 @@ public class QuotationController extends BaseController {
     @GetMapping("/currency-options")
     public Result<List<Object>> getCurrencyOptions() {
         return Result.success(quotationService.getCurrencyOptions());
-    }
-
-    /**
-     * 获取报价模板列表
-     */
-    @Operation(summary = "获取报价模板列表")
-    @SaCheckPermission("sales:quotation:view")
-    @GetMapping("/templates")
-    public Result<List<Object>> getTemplates() {
-        return Result.success(quotationService.getTemplates());
-    }
-
-    /**
-     * 根据模板创建报价单
-     */
-    @Operation(summary = "根据模板创建报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizStatus = "0")
-    @SaCheckPermission("sales:quotation:add")
-    @PostMapping("/template/{templateId}")
-    public Result<SalesQuotation> createFromTemplate(@PathVariable Long templateId,
-                                                     @RequestParam Long customerId) {
-        return Result.success(quotationService.createFromTemplate(templateId, customerId));
-    }
-
-    /**
-     * 快速报价
-     */
-    @Operation(summary = "快速报价")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'")
-    @SaCheckPermission("sales:quotation:add")
-    @PostMapping("/quick")
-    public Result<SalesQuotation> quickQuote(@RequestBody Object quickQuoteRequest) {
-        return Result.success(quotationService.quickQuote(quickQuoteRequest));
     }
 
     /**

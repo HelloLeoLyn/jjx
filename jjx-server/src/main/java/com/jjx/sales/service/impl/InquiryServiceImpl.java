@@ -25,7 +25,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -356,6 +361,63 @@ public class InquiryServiceImpl implements IInquiryService {
         }
         String v = value.trim();
         return v.length() > maxLen ? v.substring(0, maxLen) : v;
+    }
+
+    /**
+     * 导出询价单列表（DEV-591）
+     */
+    @Override
+    public byte[] exportInquiryList(SalesInquiry inquiry) {
+        List<SalesInquiry> list = selectInquiryList(inquiry);
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("询价单列表");
+            String[] headers = {"询价单号", "客户名称", "联系人", "联系电话", "类型", "关联产品", "产品描述", "预估数量", "按键数量", "询价日期", "状态", "销售负责人", "创建时间"};
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            int r = 1;
+            for (SalesInquiry q : list) {
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(q.getInquiryNo() == null ? "" : q.getInquiryNo());
+                row.createCell(1).setCellValue(q.getCustomerName() == null ? "" : q.getCustomerName());
+                row.createCell(2).setCellValue(q.getContactPerson() == null ? "" : q.getContactPerson());
+                row.createCell(3).setCellValue(q.getContactPhone() == null ? "" : q.getContactPhone());
+                row.createCell(4).setCellValue(q.getInquiryType() != null && q.getInquiryType() == 2 ? "样品" : "标准");
+                row.createCell(5).setCellValue(q.getProductName() == null ? "" : q.getProductName());
+                row.createCell(6).setCellValue(q.getProductDescription() == null ? "" : q.getProductDescription());
+                row.createCell(7).setCellValue(q.getExpectedQuantity() == null ? 0 : q.getExpectedQuantity().doubleValue());
+                row.createCell(8).setCellValue(q.getKeyCount() == null ? 0 : q.getKeyCount().doubleValue());
+                row.createCell(9).setCellValue(q.getInquiryDate() == null ? "" : q.getInquiryDate().toString());
+                row.createCell(10).setCellValue(inquiryStatusLabel(q.getInquiryStatus()));
+                row.createCell(11).setCellValue(q.getSalesPersonName() == null ? "" : q.getSalesPersonName());
+                row.createCell(12).setCellValue(q.getCreateTime() == null ? "" : q.getCreateTime().toString().replace('T', ' '));
+            }
+            for (int i = 0; i < headers.length; i++) {
+                sheet.setColumnWidth(i, 16 * 256);
+            }
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new BusinessException("导出失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 询价单状态中文标签（导出用）
+     */
+    private String inquiryStatusLabel(Integer status) {
+        if (status == null) return "";
+        return switch (status) {
+            case 0 -> "草稿";
+            case 1 -> "待处理";
+            case 2 -> "已发送";
+            case 3 -> "已转报价";
+            case 4 -> "已确认";
+            case 5 -> "已拒绝";
+            case 6 -> "已过期";
+            default -> String.valueOf(status);
+        };
     }
 
     /**
