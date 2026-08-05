@@ -8,11 +8,13 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.domain.entity.SalesQuotation;
+import com.jjx.sales.domain.entity.SalesQuotationItem;
 import com.jjx.sales.domain.vo.InquiryToQuotationVO;
 import com.jjx.sales.enums.InquiryStatus;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.sales.mapper.SalesInquiryMapper;
 import com.jjx.sales.mapper.QuotationMapper;
+import com.jjx.sales.mapper.SalesQuotationItemMapper;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.sales.service.IInquiryService;
@@ -24,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -38,6 +41,7 @@ public class InquiryServiceImpl implements IInquiryService {
 
     private final SalesInquiryMapper inquiryMapper;
     private final QuotationMapper quotationMapper;
+    private final SalesQuotationItemMapper quotationItemMapper;
     private final RedisSequenceService redisSequenceService;
     private final ProductMapper productMapper;
 
@@ -81,6 +85,12 @@ public class InquiryServiceImpl implements IInquiryService {
         }
         if (inquiry.getSalesPersonId() != null) {
             wrapper.eq(SalesInquiry::getSalesPersonId, inquiry.getSalesPersonId());
+        }
+        if (inquiry.getStartDate() != null) {
+            wrapper.ge(SalesInquiry::getInquiryDate, inquiry.getStartDate());
+        }
+        if (inquiry.getEndDate() != null) {
+            wrapper.le(SalesInquiry::getInquiryDate, inquiry.getEndDate());
         }
 
         // 只查未删除
@@ -196,6 +206,16 @@ public class InquiryServiceImpl implements IInquiryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int deleteInquiryByIds(Long[] inquiryIds) {
+        if (inquiryIds == null || inquiryIds.length == 0) {
+            return 0;
+        }
+        // 已转报价的询价单禁止删除（保护报价单来源记录）
+        List<SalesInquiry> list = inquiryMapper.selectBatchIds(Arrays.asList(inquiryIds));
+        for (SalesInquiry inquiry : list) {
+            if (inquiry != null && InquiryStatus.CONVERTED.getCode().equals(inquiry.getInquiryStatus())) {
+                throw new BusinessException("询价单[" + inquiry.getInquiryNo() + "]已转报价，不能删除");
+            }
+        }
         return inquiryMapper.deleteBatchIds(Arrays.asList(inquiryIds));
     }
 
@@ -247,6 +267,9 @@ public class InquiryServiceImpl implements IInquiryService {
 
         quotationMapper.insert(quotation);
 
+        // 自动生成报价明细：从询价单带出产品/技术要求（DEV-588）
+        createQuotationItemFromInquiry(inquiry, quotation.getQuotationId());
+
         // 更新询价单状态
         inquiry.setInquiryStatus(InquiryStatus.CONVERTED.getCode());
         inquiry.setConvertedQuotationId(quotation.getQuotationId());
@@ -260,6 +283,79 @@ public class InquiryServiceImpl implements IInquiryService {
         vo.setInquiryNo(inquiry.getInquiryNo());
         vo.setTraceId(inquiry.getTraceId());
         return vo;
+    }
+
+    /**
+     * 从询价单生成报价明细（DEV-588）
+     * 标准品：映射产品ID/编码/名称、按键数量、连接器类型，数量取预估数量；
+     * 未选产品/样品：用产品描述作为产品名称兜底；
+     * 长文本（尺寸/材料/线路/特殊要求）拼接进自定义要求；
+     * 单价/金额默认0，待销售定价后修改。
+     */
+    private void createQuotationItemFromInquiry(SalesInquiry inquiry, Long quotationId) {
+        SalesQuotationItem item = new SalesQuotationItem();
+        item.setQuotationId(quotationId);
+
+        // 产品信息：标准品关联产品库；未选产品/样品用产品描述兜底
+        if (inquiry.getProductId() != null) {
+            Product product = productMapper.selectById(inquiry.getProductId());
+            if (product != null) {
+                item.setProductId(product.getProductId());
+                item.setProductCode(product.getProductCode());
+                item.setProductName(product.getProductName());
+            }
+        }
+        if (!StringUtils.hasText(item.getProductName())) {
+            item.setProductName(truncate(inquiry.getProductDescription(), 200));
+        }
+
+        // 技术参数结构化映射
+        item.setKeyCount(inquiry.getKeyCount());
+        if (StringUtils.hasText(inquiry.getConnectorRequirements())) {
+            item.setConnectorType(truncate(inquiry.getConnectorRequirements(), 50));
+        }
+
+        // 数量与金额（单价待销售定价，默认0）
+        item.setQuantity(inquiry.getExpectedQuantity() != null ? inquiry.getExpectedQuantity() : 1);
+        item.setUnit("PCS");
+        item.setUnitPrice(BigDecimal.ZERO);
+        item.setAmount(BigDecimal.ZERO);
+        item.setItemOrder(1);
+
+        // 长文本要求拼接进自定义要求（500字符内）
+        StringBuilder req = new StringBuilder();
+        appendReq(req, "尺寸要求", inquiry.getSizeDescription());
+        appendReq(req, "材料要求", inquiry.getMaterialRequirements());
+        appendReq(req, "线路要求", inquiry.getCircuitRequirements());
+        appendReq(req, "特殊要求", inquiry.getSpecialRequirements());
+        if (req.length() > 0) {
+            item.setCustomRequirements(truncate(req.toString(), 500));
+        }
+
+        quotationItemMapper.insert(item);
+    }
+
+    /**
+     * 拼接要求字段：字段名：内容；多个字段以分号分隔
+     */
+    private void appendReq(StringBuilder sb, String label, String value) {
+        if (StringUtils.hasText(value)) {
+            if (sb.length() > 0) {
+                sb.append("；");
+            }
+            sb.append(label).append("：").append(value.trim());
+        }
+    }
+
+    /**
+     * 截断字符串到指定长度
+     */
+    private String truncate(String value, int maxLen) {
+        if (value == null) {
+            return null;
+        }
+        String v = value.trim();
+        return v.length() > maxLen ? v.substring(0, maxLen) : v;
     }
 
     /**

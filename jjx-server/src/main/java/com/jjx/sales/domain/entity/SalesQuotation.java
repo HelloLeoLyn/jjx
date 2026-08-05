@@ -32,6 +32,10 @@ public class SalesQuotation extends BaseEntity {
     /** 链路追踪ID */
     private String traceId;
 
+    /** 来源询价单号（非表字段，查询时按 traceId 关联填充） */
+    @TableField(exist = false)
+    private String sourceInquiryNo;
+
     /**
      * 报价单编号
      */

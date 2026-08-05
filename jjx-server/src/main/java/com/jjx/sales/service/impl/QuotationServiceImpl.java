@@ -6,14 +6,17 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.entity.SalesQuotationItem;
 import com.jjx.sales.domain.entity.SalesQuotationFlow;
+import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.QuotationFlowMapper;
 import com.jjx.sales.mapper.SalesQuotationItemMapper;
+import com.jjx.sales.mapper.SalesInquiryMapper;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
+import com.jjx.system.utils.SecurityUtils;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.stream.Collectors;
 
 /**
  * 销售报价单服务实现类
@@ -38,6 +42,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final QuotationMapper quotationMapper;
     private final QuotationFlowMapper quotationFlowMapper;
     private final SalesQuotationItemMapper quotationItemMapper;
+    private final SalesInquiryMapper salesInquiryMapper;
     private final IOrderService orderService;
     private final ISysAttachmentService sysAttachmentService;
 
@@ -56,7 +61,37 @@ public class QuotationServiceImpl implements IQuotationService {
             new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
         LambdaQueryWrapper<SalesQuotation> wrapper = buildQueryWrapper(quotation);
         com.baomidou.mybatisplus.core.metadata.IPage<SalesQuotation> result = quotationMapper.selectPage(page, wrapper);
+        fillSourceInquiryNo(result.getRecords());
         return com.jjx.common.core.page.PageResult.build(result.getRecords(), result.getTotal());
+    }
+
+    /**
+     * 填充来源询价单号（DEV-590）：按 traceId 批量关联 sales_inquiry
+     */
+    private void fillSourceInquiryNo(List<SalesQuotation> quotations) {
+        if (quotations == null || quotations.isEmpty()) {
+            return;
+        }
+        List<String> traceIds = quotations.stream()
+            .map(SalesQuotation::getTraceId)
+            .filter(t -> t != null && !t.isEmpty())
+            .distinct()
+            .collect(Collectors.toList());
+        if (traceIds.isEmpty()) {
+            return;
+        }
+        List<SalesInquiry> inquiries = salesInquiryMapper.selectList(
+            new LambdaQueryWrapper<SalesInquiry>()
+                .in(SalesInquiry::getTraceId, traceIds)
+                .eq(SalesInquiry::getDeleted, 0));
+        Map<String, String> traceToInquiryNo = inquiries.stream()
+            .filter(i -> i.getTraceId() != null)
+            .collect(Collectors.toMap(SalesInquiry::getTraceId, SalesInquiry::getInquiryNo, (a, b) -> a));
+        for (SalesQuotation q : quotations) {
+            if (q.getTraceId() != null) {
+                q.setSourceInquiryNo(traceToInquiryNo.get(q.getTraceId()));
+            }
+        }
     }
 
     /**
@@ -466,6 +501,8 @@ public class QuotationServiceImpl implements IQuotationService {
         orderDTO.setOrderDate(new java.util.Date());
         orderDTO.setOrderType(1);
         orderDTO.setRemark("由报价单[" + quotation.getQuotationNo() + "]转换");
+        // 记录来源报价单（正向引用）
+        orderDTO.setQuotationId(quotationId);
         // 透传链路追踪ID
         orderDTO.setTraceId(quotation.getTraceId());
 
@@ -491,9 +528,11 @@ public class QuotationServiceImpl implements IQuotationService {
 
         Long orderId = orderService.insertOrder(orderDTO);
 
-        // 转订单成功后：报价单状态改为已完成(9)
+        // 转订单成功后：报价单状态改为已完成(9)，并回写转换结果（反向引用）
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(QuotationStatus.COMPLETED.getCode());
+        quotation.setConvertedOrderId(orderId);
+        quotation.setConvertTime(LocalDateTime.now());
         quotationMapper.updateById(quotation);
         recordFlow(quotation, "CONVERT_ORDER", "转订单完成", from, QuotationStatus.COMPLETED.getCode(), "转为销售订单，订单号:" + orderId, null);
 
@@ -600,9 +639,9 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("只有待审核状态的报价单可以审核");
         }
 
-        // 更新审核信息
-        quotation.setApproverId(1L); // 这里应该从上下文中获取审核人ID
-        quotation.setApproverName("系统管理员"); // 这里应该从上下文中获取审核人姓名
+        // 更新审核信息（从当前登录用户获取，不再硬编码）
+        quotation.setApproverId(SecurityUtils.getUserId());
+        quotation.setApproverName(SecurityUtils.getUsername());
         quotation.setApproveTime(LocalDateTime.now());
         quotation.setApproveRemark(remark);
 
@@ -766,11 +805,13 @@ public class QuotationServiceImpl implements IQuotationService {
         long draftCount = all.stream().filter(q -> QuotationStatus.DRAFT.getCode().equals(q.getQuotationStatus())).count();
         long sentCount = all.stream().filter(q -> QuotationStatus.SENT.getCode().equals(q.getQuotationStatus())).count();
         long acceptedCount = all.stream().filter(q -> QuotationStatus.ACCEPTED.getCode().equals(q.getQuotationStatus())).count();
-        long rejectedCount = all.stream().filter(q -> QuotationStatus.REJECTED.getCode().equals(q.getQuotationStatus()) || QuotationStatus.EXPIRED.getCode().equals(q.getQuotationStatus())).count();
+        long rejectedCount = all.stream().filter(q -> QuotationStatus.REJECTED.getCode().equals(q.getQuotationStatus())).count();
+        long expiredCount = all.stream().filter(q -> QuotationStatus.EXPIRED.getCode().equals(q.getQuotationStatus())).count();
         stats.put("draftCount", draftCount);
         stats.put("sentCount", sentCount);
         stats.put("acceptedCount", acceptedCount);
         stats.put("rejectedCount", rejectedCount);
+        stats.put("expiredCount", expiredCount);
         return stats;
     }
 

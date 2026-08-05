@@ -104,6 +104,14 @@ public class SalesInquiry extends BaseEntity {
     /** 销售负责人姓名 */
     private String salesPersonName;
 
+    /** 查询参数：开始日期（非表字段） */
+    @TableField(exist = false)
+    private LocalDate startDate;
+
+    /** 查询参数：结束日期（非表字段） */
+    @TableField(exist = false)
+    private LocalDate endDate;
+
     /** 删除标志 (0: 正常, 1: 删除) */
     @TableLogic
     private Integer deleted;

@@ -194,8 +194,10 @@
     <!-- 数据表格 -->
     <el-card class="table-card" shadow="never">
       <el-table
+        ref="tableRef"
         v-loading="loading"
         :data="quotationList"
+        highlight-current-row
         @selection-change="handleSelectionChange"
         @sort-change="handleSortChange"
       >
@@ -203,6 +205,12 @@
         <el-table-column label="报价单号" align="center" width="160">
           <template #default="scope">
             <el-link type="primary" underline="never" @click="handleView(scope.row)">{{ scope.row.quotationNo }}</el-link>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源询价单" align="center" width="140">
+          <template #default="scope">
+            <el-link v-if="scope.row.sourceInquiryNo" type="primary" underline="never" @click="gotoInquiry(scope.row)">{{ scope.row.sourceInquiryNo }}</el-link>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
@@ -738,7 +746,8 @@ defineOptions({
   name: 'Quotation',
 })
 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -834,6 +843,8 @@ const detail = reactive({
 
 // 响应式数据
 const loading = ref(false)
+const tableRef = ref<any>()
+const route = useRoute()
 const showSearch = ref(true)
 const ids = ref<number[]>([])
 const single = ref(true)
@@ -1317,8 +1328,34 @@ const getStatusLabel = (status: number) => {
 
 // 组件挂载时获取数据
 onMounted(() => {
-  getList()
+  getList().then(() => {
+    // DEV-590：从询价页跳转带 quotationId，定位来源报价单
+    const targetId = route.query.quotationId
+    if (targetId) {
+      locateQuotation(Number(targetId))
+    }
+  })
 })
+
+// 定位到指定报价单（高亮当前行；不在当前列表则直接打开详情）
+async function locateQuotation(quotationId: number) {
+  await nextTick()
+  const found = quotationList.value.find((r: any) => r.quotationId === quotationId)
+  if (found) {
+    tableRef.value?.setCurrentRow(found)
+    ElMessage.success(`已定位到报价单 ${found.quotationNo}`)
+  } else {
+    quotationApi.getInfo(quotationId).then((response: any) => {
+      Object.assign(detail, response.data)
+      detailOpen.value = true
+    })
+  }
+}
+
+// 跳转回询价管理页
+function gotoInquiry(row: any) {
+  window.open('/sales/inquiry', '_blank')
+}
 // 链路追踪抽屉
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')

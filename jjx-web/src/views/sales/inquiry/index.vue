@@ -66,7 +66,7 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
+          <el-button type="danger" plain icon="Delete" :disabled="multiple || !canDelete" @click="handleDelete"
             >删除</el-button
           >
         </el-col>
@@ -305,7 +305,10 @@
               <el-select
                 v-model="form.productId"
                 filterable
-                placeholder="请选择产品"
+                remote
+                :remote-method="searchProducts"
+                :loading="productLoading"
+                placeholder="请输入产品名称/编码搜索"
                 style="width: 100%"
                 @change="onProductSelect"
               >
@@ -502,7 +505,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -512,7 +515,8 @@ import request from '@/utils/request'
 import { Upload } from '@element-plus/icons-vue'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
-import { listProduct } from '@/api/product'
+import { listProduct, getProductInfo } from '@/api/product'
+import { parseSpecJson } from '@/utils/specJsonHelper'
 import type { ProductItem } from '@/types/product'
 import type { CustomerSearchVO } from '@/types/sales/customer'
 
@@ -539,6 +543,11 @@ const dialogTitle = ref('')
 const single = ref(true)
 const multiple = ref(true)
 const ids = ref<number[]>([])
+const selectedRows = ref<any[]>([])
+// 已转报价(3)的询价单禁止删除
+const canDelete = computed(() => {
+  return selectedRows.value.length > 0 && selectedRows.value.every((r) => r.inquiryStatus !== 3)
+})
 const dateRange = ref<string[]>([])
 
 const customerOptions = ref<CustomerOption[]>([])
@@ -628,11 +637,10 @@ const customUpload: UploadProps['httpRequest'] = async (options) => {
   }
 }
 
-// 查看报价单（跳转）
+// 查看报价单（跳转并定位，DEV-590）
 function gotoQuotation(row: any) {
   if (row.convertedQuotationId) {
-    window.open(`/sales/quotation`, '_blank')
-    ElMessage.info(`已打开的报价单页面，可搜索关联的询价单`)
+    window.open(`/sales/quotation?quotationId=${row.convertedQuotationId}`, '_blank')
   }
 }
 
@@ -857,6 +865,7 @@ function resetQuery() {
 
 function handleSelectionChange(selection: any[]) {
   ids.value = selection.map((item: any) => item.inquiryId)
+  selectedRows.value = selection
   single.value = selection.length !== 1
   multiple.value = !selection.length
 }
@@ -884,11 +893,11 @@ function customerChanged(val: number) {
   }
 }
 
-// 加载产品列表（标准品选择用）
+// 加载产品列表（标准品选择用，首次加载一批）
 async function loadProducts() {
   productLoading.value = true
   try {
-    const res = await listProduct({ pageNum: 1, pageSize: 100 } as any)
+    const res = await listProduct({ pageNum: 1, pageSize: 50 } as any)
     productOptions.value = (res?.data as any)?.records || res?.data || []
   } catch {
     productOptions.value = []
@@ -897,11 +906,42 @@ async function loadProducts() {
   }
 }
 
-// 选择产品：自动带出产品描述
-function onProductSelect(val: number) {
+// 产品远程搜索（DEV-590）
+async function searchProducts(query: string) {
+  if (!query || query.length < 1) return
+  productLoading.value = true
+  try {
+    const res = await listProduct({ pageNum: 1, pageSize: 50, productName: query } as any)
+    productOptions.value = (res?.data as any)?.records || res?.data || []
+  } catch {
+    productOptions.value = []
+  } finally {
+    productLoading.value = false
+  }
+}
+
+// 选择产品：带出描述 + 按规格参数回填技术要求（DEV-590）
+async function onProductSelect(val: number) {
   const product = productOptions.value.find((p: any) => p.productId === val)
   if (product) {
     form.productDescription = `${product.productName}（${product.productCode}）`
+  }
+  try {
+    const res: any = await getProductInfo(val)
+    const vo = res?.data
+    if (vo?.specJson) {
+      const specs = parseSpecJson(vo.specJson)
+      for (const s of specs) {
+        const v = String(s.value ?? '').trim()
+        if (!v) continue
+        if (/尺寸|规格/.test(s.name)) form.sizeDescription = form.sizeDescription || v
+        else if (/材质|材料/.test(s.name)) form.materialRequirements = form.materialRequirements || v
+        else if (/线路/.test(s.name)) form.circuitRequirements = form.circuitRequirements || v
+        else if (/连接器/.test(s.name)) form.connectorRequirements = form.connectorRequirements || v
+      }
+    }
+  } catch (e) {
+    console.error('加载产品规格失败:', e)
   }
 }
 
@@ -966,8 +1006,13 @@ function handleConvert(row: any) {
 }
 // 删除
 function handleDelete(row?: any) {
+  const delRows = row ? [row] : selectedRows.value
   const delIds = row ? [row.inquiryId] : ids.value
   if (!delIds.length) return
+  if (delRows.some((r: any) => r.inquiryStatus === 3)) {
+    ElMessage.warning('已转报价的询价单不能删除')
+    return
+  }
 
   ElMessageBox.confirm(`确定删除选中的 ${delIds.length} 条询价单吗？`, '删除确认', {
     confirmButtonText: '确定',

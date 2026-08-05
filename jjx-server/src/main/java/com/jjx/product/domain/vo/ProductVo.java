@@ -28,8 +28,8 @@ public class ProductVo {
     /** 产品类型 */
     private String productType;
 
-//    /** 规格参数（JSON字符串） */
-//    private String specJson;
+    /** 规格参数（JSON字符串） */
+    private String specJson;
 //
 //    /** 基础售价 */
 //    private Double basePrice;
