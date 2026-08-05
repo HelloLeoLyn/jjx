@@ -11,6 +11,7 @@ import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * 销售订单实体类
@@ -148,6 +149,16 @@ public class SalesOrder extends BaseEntity {
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date sampleConfirmDate;
+
+    /** 客户确认人（DEV-343/314） */
+    private String confirmBy;
+
+    /** 确认方式 */
+    private String confirmMethod;
+
+    /** 确认时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime confirmTime;
 
     /**
      * 客户方确认人

@@ -18,10 +18,14 @@ import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -110,6 +114,58 @@ public class OrderController extends BaseController {
         String filePath = orderService.exportOrderList(order);
         return Result.success(filePath);
     }
+
+    /**
+     * 导出销售订单PDF（单张表单）
+     */
+    @Operation(summary = "导出销售订单PDF")
+    @SaCheckPermission("sales:order:export")
+    @GetMapping("/export-pdf/{orderId}")
+    public void exportPdf(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
+        SalesOrderVO order = orderService.selectOrderById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        byte[] bytes = orderService.exportPdf(orderId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(order.getOrderNo() + ".pdf", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
+    /**
+     * 导出销售订单Excel（单张表单）
+     */
+    @Operation(summary = "导出销售订单Excel")
+    @SaCheckPermission("sales:order:export")
+    @GetMapping("/export-excel/{orderId}")
+    public void exportExcel(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
+        SalesOrderVO order = orderService.selectOrderById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        byte[] bytes = orderService.exportExcel(orderId);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(order.getOrderNo() + ".xlsx", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
+    /**
+     * 导出订单确认书PDF（DEV-343/314）
+     */
+    @Operation(summary = "导出订单确认书PDF")
+    @SaCheckPermission("sales:order:export")
+    @GetMapping("/{orderId}/confirmation/pdf")
+    public void exportConfirmationPdf(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
+        SalesOrderVO order = orderService.selectOrderById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        byte[] bytes = orderService.exportConfirmationPdf(orderId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode("确认书_" + order.getOrderNo() + ".pdf", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
 
 
 

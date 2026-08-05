@@ -239,6 +239,64 @@ public class InquiryServiceImpl implements IInquiryService {
     }
 
     /**
+     * 发送询价（草稿/待处理 → 已发送）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int sendInquiry(Long inquiryId) {
+        SalesInquiry inquiry = inquiryMapper.selectById(inquiryId);
+        if (inquiry == null || inquiry.getDeleted() == 1) {
+            throw new BusinessException("询价单不存在或已被删除");
+        }
+        Integer status = inquiry.getInquiryStatus();
+        if (!InquiryStatus.DRAFT.getCode().equals(status) && !InquiryStatus.PENDING.getCode().equals(status)) {
+            throw new BusinessException("只有草稿或待处理的询价单可以发送");
+        }
+        SalesInquiry update = new SalesInquiry();
+        update.setInquiryId(inquiryId);
+        update.setInquiryStatus(InquiryStatus.SENT.getCode());
+        return inquiryMapper.updateById(update);
+    }
+
+    /**
+     * 客户确认询价（已发送 → 已确认）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int acceptInquiry(Long inquiryId) {
+        SalesInquiry inquiry = inquiryMapper.selectById(inquiryId);
+        if (inquiry == null || inquiry.getDeleted() == 1) {
+            throw new BusinessException("询价单不存在或已被删除");
+        }
+        if (!InquiryStatus.SENT.getCode().equals(inquiry.getInquiryStatus())) {
+            throw new BusinessException("只有已发送的询价单可以确认");
+        }
+        SalesInquiry update = new SalesInquiry();
+        update.setInquiryId(inquiryId);
+        update.setInquiryStatus(InquiryStatus.ACCEPTED.getCode());
+        return inquiryMapper.updateById(update);
+    }
+
+    /**
+     * 客户拒绝询价（已发送 → 已拒绝）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int rejectInquiry(Long inquiryId) {
+        SalesInquiry inquiry = inquiryMapper.selectById(inquiryId);
+        if (inquiry == null || inquiry.getDeleted() == 1) {
+            throw new BusinessException("询价单不存在或已被删除");
+        }
+        if (!InquiryStatus.SENT.getCode().equals(inquiry.getInquiryStatus())) {
+            throw new BusinessException("只有已发送的询价单可以拒绝");
+        }
+        SalesInquiry update = new SalesInquiry();
+        update.setInquiryId(inquiryId);
+        update.setInquiryStatus(InquiryStatus.REJECTED.getCode());
+        return inquiryMapper.updateById(update);
+    }
+
+    /**
      * 询价转报价
      * 创建报价单并返回报价单ID
      */

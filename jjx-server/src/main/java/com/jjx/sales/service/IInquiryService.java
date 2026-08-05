@@ -58,6 +58,21 @@ public interface IInquiryService {
     InquiryToQuotationVO convertToQuotation(Long inquiryId);
 
     /**
+     * 发送询价（草稿/待处理 → 已发送）
+     */
+    int sendInquiry(Long inquiryId);
+
+    /**
+     * 客户确认询价（已发送 → 已确认）
+     */
+    int acceptInquiry(Long inquiryId);
+
+    /**
+     * 客户拒绝询价（已发送 → 已拒绝）
+     */
+    int rejectInquiry(Long inquiryId);
+
+    /**
      * 导出询价单列表
      *
      * @param inquiry 查询条件

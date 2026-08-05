@@ -65,6 +65,12 @@ public class ProductionOrder{
     @Schema(description = "工艺路线编码")
     private String routingCode;
 
+    @Schema(description = "使用的BOM ID（DEV-617：实体补字段，此前转换丢失导致落库为NULL）")
+    private Long bomId;
+
+    @Schema(description = "BOM编码")
+    private String bomCode;
+
     @Schema(description = "计划数量")
     private BigDecimal plannedQuantity;
 

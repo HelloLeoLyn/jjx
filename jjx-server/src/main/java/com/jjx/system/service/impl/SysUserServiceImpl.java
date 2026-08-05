@@ -132,12 +132,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         Long userId = user.getUserId() == null ? -1L : user.getUserId();
         LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(SysUser::getPhone, user.getPhone());
+        queryWrapper.ne(SysUser::getUserId, userId);
         queryWrapper.eq(SysUser::getDelFlag, "0");
-        SysUser info = userMapper.selectOne(queryWrapper);
-        if (info != null && !info.getUserId().equals(userId)) {
-            return false;
-        }
-        return true;
+        return userMapper.selectCount(queryWrapper) == 0;
     }
 
     @Override
@@ -145,12 +142,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         Long userId = user.getUserId() == null ? -1L : user.getUserId();
         LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(SysUser::getEmail, user.getEmail());
+        queryWrapper.ne(SysUser::getUserId, userId);
         queryWrapper.eq(SysUser::getDelFlag, "0");
-        SysUser info = userMapper.selectOne(queryWrapper);
-        if (info != null && !info.getUserId().equals(userId)) {
-            return false;
-        }
-        return true;
+        return userMapper.selectCount(queryWrapper) == 0;
     }
 
     @Override
@@ -221,23 +215,24 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         SysUser user = userMapper.selectById(dto.getUserId());
         checkUserAllowed(user);
         checkUserDataScope(user.getUserId());
-        if (!checkPhoneUnique(user)) {
+        // 将 DTO 的新值应用到 user，再基于新值做唯一性校验
+        user.setUserName(dto.getUserName());
+        user.setNickName(dto.getNickName());
+        user.setEmail(dto.getEmail());
+        user.setPhone(dto.getPhone());
+        user.setSex(dto.getSex());
+        user.setStatus(dto.getStatus());
+        user.setDeptId(dto.getDeptId());
+        user.setRemark(dto.getRemark());
+
+        if (!checkUserNameUnique(user)) {
+            throw new BusinessException(BusinessExceptionEnum.FAIL,"登录账号已存在");
+        } else if (!checkPhoneUnique(user)) {
             throw new BusinessException(BusinessExceptionEnum.FAIL,"手机号码已存在");
-        } else if (checkEmailUnique(user)) {
+        } else if (!checkEmailUnique(user)) {
             throw new BusinessException(BusinessExceptionEnum.FAIL,"邮箱账号已存在");
         }
-        LambdaQueryWrapper<SysUserRole> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(SysUserRole::getUserId, user.getUserId());
-        userRoleMapper.delete(queryWrapper);
-
-
-        List<SysUserRole> userRoles = dto.getRoleIds().stream().map(rid -> {
-            SysUserRole userRole = new SysUserRole();
-            userRole.setRoleId(rid);
-            userRole.setUserId(dto.getUserId());
-            return userRole;
-        }).toList();
-        userRoleService.getBaseMapper().insert(userRoles);
+        // 角色关联由“分配角色”功能（authRole）统一维护，编辑用户不再重写角色
         return updateById(user);
     }
 

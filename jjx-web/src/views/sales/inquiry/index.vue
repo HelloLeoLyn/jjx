@@ -125,7 +125,7 @@
           label="操作"
           align="center"
           class-name="small-padding fixed-width"
-          width="300"
+          width="400"
         >
           <template #default="scope">
             <el-button
@@ -139,6 +139,24 @@
             <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
               >查看流水</el-button
             >
+            <!-- 发送（草稿/待处理 → 已发送） -->
+            <el-button
+              v-if="[0, 1].includes(scope.row.inquiryStatus)"
+              link
+              type="warning"
+              icon="Promotion"
+              @click="handleSend(scope.row)"
+              >发送</el-button
+            >
+            <!-- 客户确认/拒绝（已发送） -->
+            <template v-if="scope.row.inquiryStatus === 2">
+              <el-button link type="success" icon="CircleCheck" @click="handleAccept(scope.row)"
+                >确认</el-button
+              >
+              <el-button link type="danger" icon="CircleClose" @click="handleReject(scope.row)"
+                >拒绝</el-button
+              >
+            </template>
             <template v-if="scope.row.inquiryStatus === 3">
               <el-button link type="success" icon="Link" @click="gotoQuotation(scope.row)"
                 >查看报价</el-button
@@ -1004,6 +1022,55 @@ function handleConvert(row: any) {
     return
   }
   openOperation(row, 'convert')
+}
+
+// 发送询价（草稿/待处理 → 已发送）
+function handleSend(row: any) {
+  ElMessageBox.confirm(`确认发送询价单「${row.inquiryNo}」给客户吗？`, '发送确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => {
+      inquiryApi.send(row.inquiryId).then(() => {
+        ElMessage.success('发送成功')
+        getList()
+      })
+    })
+    .catch(() => {})
+}
+
+// 客户确认询价（已发送 → 已确认）
+function handleAccept(row: any) {
+  ElMessageBox.confirm(`确认客户已接受询价单「${row.inquiryNo}」吗？`, '确认提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => {
+      inquiryApi.accept(row.inquiryId).then(() => {
+        ElMessage.success('已确认')
+        getList()
+      })
+    })
+    .catch(() => {})
+}
+
+// 客户拒绝询价（已发送 → 已拒绝）
+function handleReject(row: any) {
+  ElMessageBox.prompt(`请输入拒绝询价单「${row.inquiryNo}」的原因`, '拒绝确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    inputPlaceholder: '拒绝原因（可选）',
+    inputValidator: (value: string) => (value?.trim() ? true : '请输入拒绝原因'),
+  })
+    .then(() => {
+      inquiryApi.reject(row.inquiryId).then(() => {
+        ElMessage.success('已拒绝')
+        getList()
+      })
+    })
+    .catch(() => {})
 }
 // 删除
 function handleDelete(row?: any) {

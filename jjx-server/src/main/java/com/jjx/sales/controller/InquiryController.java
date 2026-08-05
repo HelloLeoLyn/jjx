@@ -110,6 +110,39 @@ public class InquiryController extends BaseController {
     }
 
     /**
+     * 发送询价（发给客户）
+     */
+    @Operation(summary = "发送询价（草稿/待处理 → 已发送）")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "2")
+    @SaCheckPermission("sales:inquiry:edit")
+    @PutMapping("/send/{inquiryId}")
+    public Result<Void> send(@PathVariable Long inquiryId) {
+        return toAjax(inquiryService.sendInquiry(inquiryId));
+    }
+
+    /**
+     * 客户确认询价
+     */
+    @Operation(summary = "客户确认询价（已发送 → 已确认）")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "4")
+    @SaCheckPermission("sales:inquiry:edit")
+    @PutMapping("/accept/{inquiryId}")
+    public Result<Void> accept(@PathVariable Long inquiryId) {
+        return toAjax(inquiryService.acceptInquiry(inquiryId));
+    }
+
+    /**
+     * 客户拒绝询价
+     */
+    @Operation(summary = "客户拒绝询价（已发送 → 已拒绝）")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "5")
+    @SaCheckPermission("sales:inquiry:edit")
+    @PutMapping("/reject/{inquiryId}")
+    public Result<Void> reject(@PathVariable Long inquiryId) {
+        return toAjax(inquiryService.rejectInquiry(inquiryId));
+    }
+
+    /**
      * 获取询价单状态选项
      */
     @Operation(summary = "获取询价单状态选项")

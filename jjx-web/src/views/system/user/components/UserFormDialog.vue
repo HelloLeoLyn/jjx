@@ -104,26 +104,6 @@
           </el-form-item>
         </el-col>
 
-        <!-- 角色 -->
-        <el-col :span="24">
-          <el-form-item label="角色" prop="roleIds">
-            <el-select
-              v-model="formData.roleIds"
-              placeholder="请选择角色"
-              multiple
-              clearable
-              style="width: 100%"
-            >
-              <el-option
-                v-for="item in roleOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </el-select>
-          </el-form-item>
-        </el-col>
-
         <!-- 部门 -->
         <el-col :span="24">
           <el-form-item label="部门" prop="deptId">
@@ -174,7 +154,6 @@ interface Props {
   formData: SysUserDTO
   rules?: FormRules
   submitLoading?: boolean
-  roleOptions?: { value: number; label: string }[]
   deptOptions?: any[]
 }
 
@@ -189,7 +168,6 @@ const props = withDefaults(defineProps<Props>(), {
   title: '用户表单',
   width: '600px',
   submitLoading: false,
-  roleOptions: () => [],
   deptOptions: () => [],
 })
 

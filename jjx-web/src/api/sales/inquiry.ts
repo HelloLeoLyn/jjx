@@ -101,6 +101,30 @@ export const inquiryApi = {
     })
   },
 
+  // 发送询价（草稿/待处理 → 已发送）
+  send(inquiryId: number): AxiosPromise<void> {
+    return request({
+      url: `/sales/inquiry/send/${inquiryId}`,
+      method: 'put',
+    })
+  },
+
+  // 客户确认询价（已发送 → 已确认）
+  accept(inquiryId: number): AxiosPromise<void> {
+    return request({
+      url: `/sales/inquiry/accept/${inquiryId}`,
+      method: 'put',
+    })
+  },
+
+  // 客户拒绝询价（已发送 → 已拒绝）
+  reject(inquiryId: number): AxiosPromise<void> {
+    return request({
+      url: `/sales/inquiry/reject/${inquiryId}`,
+      method: 'put',
+    })
+  },
+
   // 获取状态选项
   getStatusOptions(): AxiosPromise<Array<{ value: string; label: string }>> {
     return request({

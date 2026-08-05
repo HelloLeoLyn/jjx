@@ -11,6 +11,8 @@ import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.QuotationFlowMapper;
 import com.jjx.sales.mapper.SalesQuotationItemMapper;
 import com.jjx.sales.mapper.SalesInquiryMapper;
+import com.jjx.product.mapper.ProductMapper;
+import com.jjx.product.domain.entity.Product;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
@@ -22,6 +24,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import com.jjx.common.utils.pdf.PdfDocBuilder;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +41,8 @@ import java.util.stream.Collectors;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.DecimalFormat;
+import java.util.LinkedHashMap;
 
 /**
  * 销售报价单服务实现类
@@ -51,6 +56,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final QuotationFlowMapper quotationFlowMapper;
     private final SalesQuotationItemMapper quotationItemMapper;
     private final SalesInquiryMapper salesInquiryMapper;
+    private final ProductMapper productMapper;
     private final IOrderService orderService;
     private final ISysAttachmentService sysAttachmentService;
     private final RedisSequenceService redisSequenceService;
@@ -287,6 +293,18 @@ public class QuotationServiceImpl implements IQuotationService {
         for (SalesQuotationItem item : items) {
             item.setItemId(null);
             item.setQuotationId(quotationId);
+            // 兑底：标准单明细有产品编码但缺 productId 时回填（前端漏传/旧数据）
+            if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isEmpty()) {
+                try {
+                    Product matched = productMapper.selectOne(new LambdaQueryWrapper<Product>()
+                            .eq(Product::getProductCode, item.getProductCode()).last("LIMIT 1"));
+                    if (matched != null) {
+                        item.setProductId(matched.getProductId());
+                    }
+                } catch (Exception e) {
+                    log.warn("回填报价明细产品ID失败: {}", e.getMessage());
+                }
+            }
             if (item.getQuantity() == null) item.setQuantity(1);
             if (item.getUnitPrice() == null) item.setUnitPrice(java.math.BigDecimal.ZERO);
             // 自动计算行金额 = 数量 × 单价
@@ -556,6 +574,9 @@ public class QuotationServiceImpl implements IQuotationService {
         if (quotation.getTaxRate() != null) orderDTO.setTaxRate(quotation.getTaxRate().divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
         if (quotation.getTaxAmount() != null) orderDTO.setTaxAmount(quotation.getTaxAmount());
         if (quotation.getDiscountAmount() != null) orderDTO.setDiscountAmount(quotation.getDiscountAmount());
+        // 币种/汇率透传（DEV-605：报价单选外币转订单时币种丢失，订单金额仍为 CNY 口径，币种/汇率仅记录溯源）
+        if (quotation.getCurrency() != null) orderDTO.setCurrency(quotation.getCurrency());
+        if (quotation.getExchangeRate() != null) orderDTO.setExchangeRate(quotation.getExchangeRate());
 
         // 报价单明细 → 订单明细
         List<SalesQuotationItem> quotationItems = quotationItemMapper.selectList(
@@ -595,16 +616,198 @@ public class QuotationServiceImpl implements IQuotationService {
      * 导出报价单PDF
      */
     @Override
-    public String exportPdf(Long quotationId) {
+    public byte[] exportPdf(Long quotationId) {
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
             throw new BusinessException("报价单不存在");
         }
+        List<SalesQuotationItem> items = quotationItemMapper.selectList(
+                new LambdaQueryWrapper<SalesQuotationItem>().eq(SalesQuotationItem::getQuotationId, quotationId));
+        DecimalFormat df = new DecimalFormat("#,##0.00");
 
-        // 这里应该实现PDF导出逻辑
-        // 暂时返回一个占位符路径
-        return "/exports/quotations/" + quotation.getQuotationNo() + ".pdf";
+        Map<String, String> info = new LinkedHashMap<>();
+        info.put("报价单号", quotation.getQuotationNo());
+        info.put("报价日期", quotation.getQuotationDate() == null ? "" : quotation.getQuotationDate().toString());
+        info.put("客户名称", quotation.getCustomerName());
+        info.put("有效期至", quotation.getValidUntil() == null ? "" : quotation.getValidUntil().toString());
+        info.put("联系人", joinContact(quotation.getContactPerson(), quotation.getContactPhone()));
+        info.put("币种", buildCurrency(quotation));
+        info.put("来源询价", quotation.getInquiryNo() == null ? "-" : quotation.getInquiryNo());
+        info.put("销售负责人", quotation.getSalesPersonName() == null ? "-" : quotation.getSalesPersonName());
+
+        java.util.List<String[]> rows = new ArrayList<>();
+        for (SalesQuotationItem item : items) {
+            rows.add(new String[]{
+                    String.valueOf(rows.size() + 1),
+                    item.getProductCode(),
+                    buildItemSpec(item),
+                    item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
+                    item.getUnit(),
+                    item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
+                    item.getAmount() == null ? "" : df.format(item.getAmount()),
+            });
+        }
+
+        PdfDocBuilder builder = PdfDocBuilder.create()
+                .title("报  价  单")
+                .info(info)
+                .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)
+                .amounts(new String[][]{
+                        {"小计", fmt(quotation.getSubtotalAmount(), df)},
+                        {"税率(%)", quotation.getTaxRate() == null ? "" : df.format(quotation.getTaxRate())},
+                        {"税额", fmt(quotation.getTaxAmount(), df)},
+                        {"折扣", fmt(quotation.getDiscountAmount(), df)},
+                        {"合计", fmt(quotation.getFinalAmount(), df)},
+                })
+                .remark(quotation.getRemark())
+                .signatures("销售负责人：" + (quotation.getSalesPersonName() == null ? "" : quotation.getSalesPersonName()),
+                        "客户确认：", "日期：");
+        return builder.toBytes();
     }
+
+    @Override
+    public byte[] exportExcel(Long quotationId) {
+        SalesQuotation quotation = selectQuotationById(quotationId);
+        if (quotation == null) {
+            throw new BusinessException("报价单不存在");
+        }
+        List<SalesQuotationItem> items = quotationItemMapper.selectList(
+                new LambdaQueryWrapper<SalesQuotationItem>().eq(SalesQuotationItem::getQuotationId, quotationId));
+        return buildQuotationExcel(quotation, items);
+    }
+
+    /** 报价单 PDF 变量（占位符 → 值，行内容拼装） */
+
+    /** 报价单 Excel（单张表单） */
+    private byte[] buildQuotationExcel(SalesQuotation q, List<SalesQuotationItem> items) {
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("报价单");
+            int r = 0;
+            // 标题
+            Row title = sheet.createRow(r++);
+            title.createCell(0).setCellValue("报价单 " + (q.getQuotationNo() == null ? "" : q.getQuotationNo()));
+            // 单据信息（两列）
+            String[][] info = {
+                    {"客户名称", q.getCustomerName()}, {"报价日期", String.valueOf(q.getQuotationDate() == null ? "" : q.getQuotationDate())},
+                    {"联系人", joinContact(q.getContactPerson(), q.getContactPhone())}, {"有效期至", String.valueOf(q.getValidUntil() == null ? "" : q.getValidUntil())},
+                    {"币种", buildCurrency(q)}, {"来源询价", q.getInquiryNo() == null ? "-" : q.getInquiryNo()},
+                    {"销售负责人", q.getSalesPersonName() == null ? "-" : q.getSalesPersonName()}, {"备注", q.getRemark() == null ? "" : q.getRemark()},
+            };
+            for (int i = 0; i < info.length; i += 2) {
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(info[i][0]);
+                row.createCell(1).setCellValue(safe(info[i][1]));
+                row.createCell(3).setCellValue(info[i + 1][0]);
+                row.createCell(4).setCellValue(safe(info[i + 1][1]));
+            }
+            r++;
+            // 明细表头
+            String[] headers = {"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"};
+            Row head = sheet.createRow(r++);
+            for (int i = 0; i < headers.length; i++) {
+                head.createCell(i).setCellValue(headers[i]);
+            }
+            // 明细行
+            int idx = 0;
+            for (SalesQuotationItem item : items) {
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(++idx);
+                row.createCell(1).setCellValue(safe(item.getProductCode()));
+                row.createCell(2).setCellValue(buildItemSpec(item));
+                row.createCell(3).setCellValue(item.getQuantity() == null ? 0 : item.getQuantity().doubleValue());
+                row.createCell(4).setCellValue(safe(item.getUnit()));
+                row.createCell(5).setCellValue(item.getUnitPrice() == null ? 0 : item.getUnitPrice().doubleValue());
+                row.createCell(6).setCellValue(item.getAmount() == null ? 0 : item.getAmount().doubleValue());
+            }
+            r++;
+            // 汇总
+            String[][] sums = {
+                    {"小计", fmt(q.getSubtotalAmount(), df)}, {"税率(%)", q.getTaxRate() == null ? "" : df.format(q.getTaxRate())},
+                    {"税额", fmt(q.getTaxAmount(), df)}, {"折扣", fmt(q.getDiscountAmount(), df)},
+                    {"合计", fmt(q.getFinalAmount(), df)},
+            };
+            for (String[] s : sums) {
+                Row row = sheet.createRow(r++);
+                row.createCell(5).setCellValue(s[0]);
+                row.createCell(6).setCellValue(s[1]);
+            }
+            // 列宽
+            int[] widths = {6, 14, 36, 10, 8, 14, 16};
+            for (int i = 0; i < widths.length; i++) {
+                sheet.setColumnWidth(i, widths[i] * 256);
+            }
+            wb.write(os);
+            return os.toByteArray();
+        } catch (Exception e) {
+            throw new BusinessException("报价单Excel生成失败: " + e.getMessage());
+        }
+    }
+
+    /** 明细规格描述：尺寸×厚度+材质/颜色/线路/连接器/logo/认证（非空拼接） */
+    private String buildItemSpec(SalesQuotationItem item) {
+        StringBuilder sb = new StringBuilder();
+        if (item.getProductName() != null && !item.getProductName().isBlank()) {
+            sb.append(item.getProductName());
+        }
+        StringBuilder spec = new StringBuilder();
+        if (item.getWidth() != null && item.getHeight() != null) {
+            spec.append(item.getWidth().stripTrailingZeros().toPlainString()).append("×")
+                .append(item.getHeight().stripTrailingZeros().toPlainString());
+            if (item.getThickness() != null) {
+                spec.append("×").append(item.getThickness().stripTrailingZeros().toPlainString());
+            }
+        }
+        appendNonEmpty(spec, item.getMaterialType());
+        appendNonEmpty(spec, item.getColor());
+        appendNonEmpty(spec, item.getCircuitType());
+        appendNonEmpty(spec, item.getConnectorType());
+        if (spec.length() > 0) {
+            if (sb.length() > 0) {
+                sb.append(" / ");
+            }
+            sb.append(spec);
+        }
+        if (item.getCustomRequirements() != null && !item.getCustomRequirements().isBlank()) {
+            sb.append("\n备注:").append(item.getCustomRequirements());
+        }
+        return sb.toString();
+    }
+
+    private void appendNonEmpty(StringBuilder sb, String v) {
+        if (v != null && !v.isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(" / ");
+            }
+            sb.append(v);
+        }
+    }
+
+    private String joinContact(String person, String phone) {
+        if (person == null || person.isBlank()) {
+            return phone == null ? "" : phone;
+        }
+        return phone == null || phone.isBlank() ? person : person + " " + phone;
+    }
+
+    private String buildCurrency(SalesQuotation q) {
+        if (q.getCurrency() == null) {
+            return "CNY";
+        }
+        if (q.getExchangeRate() != null && q.getExchangeRate().compareTo(BigDecimal.ONE) != 0) {
+            return q.getCurrency() + " (汇率 " + q.getExchangeRate().stripTrailingZeros().toPlainString() + ")";
+        }
+        return q.getCurrency();
+    }
+
+    private String fmt(BigDecimal v, DecimalFormat df) {
+        return v == null ? "" : df.format(v);
+    }
+
+    private String safe(String s) {
+        return s == null ? "" : s;
+    }
+
 
     /**
      * 复制报价单

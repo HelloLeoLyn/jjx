@@ -14,6 +14,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.jjx.common.annotation.QuotationItemsValid;
+
 /**
  * 销售报价单实体类
  * 薄膜开关ERP系统的销售报价单核心实体
@@ -21,6 +23,7 @@ import java.util.List;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("sales_quotation")
+@QuotationItemsValid
 public class SalesQuotation extends BaseEntity {
 
     /**

@@ -185,6 +185,12 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- PDF 单据导出（DEV-160/595；OpenPDF 单 jar，字体走项目内嵌 Noto Sans CJK） -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>1.3.30</version>
+        </dependency>
     </dependencies>
 
     <build>

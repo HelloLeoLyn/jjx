@@ -181,6 +181,16 @@
           >
         </el-col>
         <el-col :span="1.5">
+          <el-button
+            type="success"
+            plain
+            icon="DocumentCopy"
+            :disabled="single"
+            @click="handleExportExcel"
+            >导出Excel</el-button
+          >
+        </el-col>
+        <el-col :span="1.5">
           <el-button type="warning" plain icon="RefreshLeft" :disabled="single || !quotationActions.canReQuote" @click="handleReQuote"
             >重新报价</el-button
           >
@@ -465,7 +475,7 @@
         <el-row>
           <el-col :span="12">
             <el-form-item label="币种" prop="currency">
-              <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%">
+              <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%" @change="handleCurrencyChange">
                 <el-option
                   v-for="dict in currencyOptions"
                   :key="dict.value"
@@ -485,6 +495,7 @@
                 placeholder="请输入汇率"
                 style="width: 100%"
               />
+              <span v-if="exchangeRateHint" class="rate-hint">{{ exchangeRateHint }}</span>
             </el-form-item>
           </el-col>
         </el-row>
@@ -631,6 +642,17 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row v-if="form.currency && form.currency !== 'CNY' && form.exchangeRate > 0">
+          <el-col :span="24">
+            <el-form-item label="外币折算">
+              <span class="rate-hint" style="font-size: 13px">
+                最终金额 {{ formatCurrency(form.finalAmount) }} CNY ≈
+                <b>{{ formatCurrency(Number(foreignCurrencyDisplay)) }} {{ form.currency }}</b>
+                （1 {{ form.currency }} = {{ form.exchangeRate }} CNY）
+              </span>
+            </el-form-item>
+          </el-col>
+        </el-row>
 
         <el-row>
           <el-col :span="24">
@@ -761,6 +783,13 @@
       :status-text-map="quotationStatusTextMap"
       @success="getList"
     />
+
+    <!-- 发送报价弹窗（报价表单 + 打印/导出） -->
+    <QuotationSendDialog
+      v-model:visible="sendDialogVisible"
+      :quotation-id="sendQuotationId"
+      @success="getList"
+    />
   </div>
 </template>
 
@@ -775,6 +804,7 @@ import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import QuotationFlowDialog from './components/QuotationFlowDialog.vue'
+import QuotationSendDialog from './components/QuotationSendDialog.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
@@ -823,6 +853,7 @@ const form = reactive({
   salesPersonName: '',
   remark: '',
   items: [] as Array<{
+    productId?: number
     productCode: string
     productName: string
     quantity: number
@@ -882,7 +913,7 @@ const dateRange = ref<string[]>([])
 const customerLoading = ref(false)
 const customerOptions = ref<Array<{ customerId: number; customerName: string }>>([])
 const productLoading = ref(false)
-const productOptions = ref<Array<{ productCode: string; productName: string }>>([])
+const productOptions = ref<Array<{ productId: number; productCode: string; productName: string }>>([])
 
 // 表格数据
 const quotationList = ref<any[]>([])
@@ -1012,6 +1043,17 @@ const handleUpdate = (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   quotationApi.getInfo(quotationId).then((response: any) => {
     Object.assign(form, response.data)
+    // DEV-602：回填当前客户到选项列表，避免 el-select（remote 模式）无匹配项时直接显示 id
+    if (response.data?.customerId != null) {
+      const current = {
+        customerId: response.data.customerId,
+        customerName: response.data.customerName || `客户#${response.data.customerId}`,
+      }
+      customerOptions.value = [
+        current,
+        ...customerOptions.value.filter((c) => c.customerId !== current.customerId),
+      ]
+    }
     open.value = true
     title.value = '修改报价单'
   })
@@ -1085,8 +1127,18 @@ const handleReview = async (approved: boolean, row?: any) =>
 const handleCustomerConfirm = async (confirmed: boolean, row?: any) =>
   openPreview(confirmed ? 'quotation.customerConfirm' : 'quotation.customerReject', row)
 
-// 发送报价
-const handleSend = (row?: any) => openPreview('quotation.send', row)
+// 发送报价（报价表单 + 打印/导出，DEV-637）
+const sendDialogVisible = ref(false)
+const sendQuotationId = ref<number>()
+const handleSend = (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) {
+    ElMessage.warning('请先选中一行报价单')
+    return
+  }
+  sendQuotationId.value = quotationId
+  sendDialogVisible.value = true
+}
 
 // 转为订单
 const handleConvert = (row?: any) => openPreview('quotation.convert', row)
@@ -1096,6 +1148,14 @@ const handleExportPdf = (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   quotationApi.exportPdf(quotationId).then((response: any) => {
     download(response, `报价单_${quotationId}.pdf`)
+  })
+}
+
+// 导出Excel按钮操作（单张表单）
+const handleExportExcel = (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  quotationApi.exportExcel(quotationId).then((response: any) => {
+    download(response, `报价单_${quotationId}.xlsx`)
   })
 }
 
@@ -1183,6 +1243,7 @@ const searchProduct = async (query: string, row: any) => {
     } as any)
     const data = (res?.data as any)?.records || res?.data || []
     productOptions.value = data.map((p: any) => ({
+      productId: p.productId,
       productCode: p.productCode,
       productName: p.productName,
     }))
@@ -1195,14 +1256,16 @@ const searchProduct = async (query: string, row: any) => {
 
 // 处理产品选择变化
 const handleProductChange = (item: any) => {
-  // 根据选择的产品编码自动填充产品名称
+  // 根据选择的产品编码自动填充产品名称和产品ID
   const selectedProduct = productOptions.value.find(
     (product) => product.productCode === item.productCode
   )
   if (selectedProduct) {
     item.productName = selectedProduct.productName
+    item.productId = selectedProduct.productId
   } else if (item.productCode) {
     // 没有匹配（用户自定义输入/样品）→ 名称留给用户手动输入，不再自动生成
+    item.productId = undefined
     if (!item.productName || item.productName.startsWith('产品_')) {
       item.productName = ''
     }
@@ -1217,6 +1280,7 @@ const handleProductFocus = async (item: any) => {
       const res = await listProduct({ pageNum: 1, pageSize: 50 } as any)
       const data = (res?.data as any)?.records || res?.data || []
       productOptions.value = data.map((p: any) => ({
+        productId: p.productId,
         productCode: p.productCode,
         productName: p.productName,
       }))
@@ -1264,9 +1328,45 @@ const calculateTotalAmount = () => {
   form.finalAmount = form.totalAmount - (form.discountAmount || 0)
 }
 
+// ===== 汇率自动填充（对齐销售订单 OrderForm 逻辑） =====
+const exchangeRateLoading = ref(false)
+
+// 外币折算显示：最终金额（CNY）÷ 汇率 = 外币金额
+const foreignCurrencyDisplay = computed(() => {
+  if (!form.exchangeRate || !form.finalAmount || form.currency === 'CNY') return '0.00'
+  const foreignAmount = form.finalAmount / form.exchangeRate
+  return foreignAmount.toFixed(2)
+})
+
+// 汇率提示文字
+const exchangeRateHint = computed(() => {
+  if (!form.currency || form.currency === 'CNY') return ''
+  return `1 ${form.currency} = ${form.exchangeRate} CNY`
+})
+
+// 币种变化时自动获取汇率
+const handleCurrencyChange = async (val: string) => {
+  if (val === 'CNY') {
+    form.exchangeRate = 1
+    return
+  }
+  exchangeRateLoading.value = true
+  try {
+    const res = await quotationApi.getExchangeRate(val)
+    if (res?.code === 200 && res.data) {
+      form.exchangeRate = res.data
+    }
+  } catch (e) {
+    console.error('获取汇率失败:', e)
+  } finally {
+    exchangeRateLoading.value = false
+  }
+}
+
 // 添加明细
 const addItem = () => {
   form.items.push({
+    productId: undefined,
     productCode: '',
     productName: '',
     quantity: 1,

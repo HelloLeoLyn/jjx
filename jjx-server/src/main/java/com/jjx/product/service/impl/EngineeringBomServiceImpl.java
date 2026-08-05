@@ -327,6 +327,52 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return true;
     }
 
+    /**
+     * 复制为新版本（DEV-619）
+     * 参照工艺路线 copyAsNewVersion：新版本号、明细复制、isCurrent=false（审批通过后由 set-current/setDefault 切换）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public EngineeringBomVO copyAsNewVersion(Long bomId, String newVersion) {
+        EngineeringBom oldBom = productBomMapper.selectById(bomId);
+        if (oldBom == null) {
+            throw new BusinessException("BOM不存在");
+        }
+        if (StringUtils.isBlank(newVersion)) {
+            throw new BusinessException("新版本号不能为空");
+        }
+        // 同编码下版本号唯一性校验
+        Long dupCount = productBomMapper.selectCount(new LambdaQueryWrapper<EngineeringBom>()
+                .eq(EngineeringBom::getBomCode, oldBom.getBomCode())
+                .eq(EngineeringBom::getBomVersion, newVersion));
+        if (dupCount != null && dupCount > 0) {
+            throw new BusinessException("版本号已存在：" + newVersion);
+        }
+
+        // 复制主记录
+        EngineeringBom newBom = new EngineeringBom();
+        cn.hutool.core.bean.BeanUtil.copyProperties(oldBom, newBom);
+        newBom.setBomId(null);
+        newBom.setBomVersion(newVersion);
+        newBom.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        newBom.setIsCurrent(false);
+        productBomMapper.insert(newBom);
+
+        // 复制明细
+        List<EngineeringBomItem> oldItems = productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+        for (EngineeringBomItem item : oldItems) {
+            EngineeringBomItem newItem = new EngineeringBomItem();
+            cn.hutool.core.bean.BeanUtil.copyProperties(item, newItem);
+            newItem.setItemId(null);
+            newItem.setBomId(newBom.getBomId());
+            productBomItemMapper.insert(newItem);
+        }
+
+        calculateBomCost(newBom.getBomId());
+        return getBomDetail(newBom.getBomId());
+    }
+
     @Override
     public PageResult<EngineeringBomVO> listPage(EngineeringBomQuery query) {
         // 计算偏移量

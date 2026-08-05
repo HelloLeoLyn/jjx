@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { AxiosPromise } from 'axios'
+import type { R } from '@/types'
 
 // 报价单查询参数
 export interface QuotationQueryParams {
@@ -221,6 +222,15 @@ export const quotationApi = {
     })
   },
 
+  // 导出报价单Excel（单张表单）
+  exportExcel(quotationId: number): AxiosPromise<Blob> {
+    return request({
+      url: `/sales/quotation/export-excel/${quotationId}`,
+      method: 'get',
+      responseType: 'blob',
+    })
+  },
+
   // 获取报价单状态选项
   getStatusOptions(): AxiosPromise<Array<{ value: string; label: string }>> {
     return request({
@@ -235,6 +245,11 @@ export const quotationApi = {
       url: '/sales/quotation/currency-options',
       method: 'get',
     })
+  },
+
+  // 获取指定币种汇率（相对CNY）
+  getExchangeRate(currency: string) {
+    return request.get<R<number>>('/system/exchange-rate/rate', { params: { currency } })
   },
 
     // 获取客户历史报价

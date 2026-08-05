@@ -75,6 +75,11 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
      */
     PageResult<EngineeringBomVO> listPage(EngineeringBomQuery query);
 
+    /**
+     * 复制为新版本（DEV-619：版本号递增、明细复制、isCurrent 保持非当前）
+     */
+    EngineeringBomVO copyAsNewVersion(Long bomId, String newVersion);
+
     boolean approve(UpdateBomStatusDTO dto);
     boolean submitApprove(Long bomId);
 

@@ -83,6 +83,15 @@ export const productBomApi = {
   },
 
   /**
+   * 复制为新版本（DEV-619：版本号递增、明细复制、isCurrent=false）
+   */
+  copyEngineeringBom(bomId: number, newVersion: string) {
+    return request.post(`/engineering/bom/${bomId}/copy`, null, {
+      params: { newVersion },
+    })
+  },
+
+  /**
    * 设置默认BOM（对应后端 PUT /engineering/bom/setDefault/{bomId}）
    */
   setCurrentEngineeringBom(bomId: number) {

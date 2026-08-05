@@ -47,6 +47,18 @@ public class BomController extends BaseController {
     }
 
     /**
+     * 复制为新版本（DEV-619，对应 TC-124）
+     * 版本号递增（newVersion 必传）、明细复制、isCurrent=false
+     */
+    @Operation(summary = "复制为新版本")
+    @SaCheckPermission("engineering:bom:add")
+    @PostMapping("/{bomId}/copy")
+    public Result<EngineeringBomVO> copyAsNewVersion(@PathVariable Long bomId,
+                                                     @RequestParam String newVersion) {
+        return Result.success(productBomService.copyAsNewVersion(bomId, newVersion));
+    }
+
+    /**
      * 导出BOM列表Excel
      */
     @GetMapping("/export")

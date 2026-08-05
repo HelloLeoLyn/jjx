@@ -126,9 +126,16 @@ public interface IQuotationService {
      * 导出报价单PDF
      *
      * @param quotationId 报价单ID
-     * @return PDF文件路径
+     * @return PDF字节数组
      */
-    String exportPdf(Long quotationId);
+    byte[] exportPdf(Long quotationId);
+
+    /**
+     * 导出报价单Excel（单张表单）
+     *
+     * @return xlsx字节数组
+     */
+    byte[] exportExcel(Long quotationId);
 
     /**
      * 复制报价单

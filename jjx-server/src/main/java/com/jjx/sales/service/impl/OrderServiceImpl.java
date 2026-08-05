@@ -27,6 +27,7 @@ import com.jjx.sales.domain.vo.CustomerVO;
 import com.jjx.sales.domain.vo.OrderReferValidationVO;
 import com.jjx.sales.domain.vo.SalesOrderProductVO;
 import com.jjx.sales.domain.vo.SalesOrderVO;
+import com.jjx.common.utils.pdf.PdfDocBuilder;
 import com.jjx.sales.enums.OrderStatus;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.service.ICustomerService;
@@ -41,7 +42,12 @@ import org.springframework.util.StringUtils;
 import com.jjx.product.enums.ProductEnums;
 
 import java.time.LocalDateTime;
+import java.text.DecimalFormat;
+import java.math.BigDecimal;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -473,16 +479,205 @@ public class OrderServiceImpl implements IOrderService {
      * 导出PDF
      */
     @Override
-    public String exportPdf(Long orderId) {
+    public byte[] exportPdf(Long orderId) {
         SalesOrder order = orderMapper.selectById(orderId);
         if (order == null) {
             throw new BusinessException("订单不存在");
         }
+        List<SalesOrderProductVO> items = orderProductService.getListByOrderId(orderId);
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
 
-        // 这里应该实现PDF导出逻辑
-        // 暂时返回一个占位符路径
-        return "/exports/orders/" + order.getOrderNo() + ".pdf";
+        Map<String, String> info = new LinkedHashMap<>();
+        info.put("订单号", order.getOrderNo());
+        info.put("下单日期", order.getOrderDate() == null ? "" : sdf.format(order.getOrderDate()));
+        info.put("客户名称", order.getCustomerName());
+        info.put("交货日期", order.getDeliveryDate() == null ? "" : sdf.format(order.getDeliveryDate()));
+        info.put("联系人", order.getContactPerson());
+        info.put("币种", order.getCurrency() == null ? "CNY" : order.getCurrency());
+        info.put("来源报价", order.getQuotationId() == null ? "-" : String.valueOf(order.getQuotationId()));
+        info.put("销售负责人", order.getCreateBy() == null ? "-" : order.getCreateBy());
+
+        java.util.List<String[]> rows = new ArrayList<>();
+        for (SalesOrderProductVO item : items) {
+            String spec = item.getProductName() == null ? "" : item.getProductName();
+            if (item.getSpecification() != null && !item.getSpecification().isBlank()) {
+                spec = spec.isBlank() ? item.getSpecification() : spec + " / " + item.getSpecification();
+            }
+            rows.add(new String[]{
+                    String.valueOf(rows.size() + 1),
+                    item.getProductCode(),
+                    spec,
+                    item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
+                    item.getUnit(),
+                    item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
+                    item.getAmount() == null ? "" : df.format(item.getAmount()),
+            });
+        }
+
+        PdfDocBuilder builder = PdfDocBuilder.create()
+                .title("销  售  订  单")
+                .info(info)
+                .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)
+                .amounts(new String[][]{
+                        {"小计(未税)", fmt(order.getTotalAmount(), df)},
+                        {"税率(%)", order.getTaxRate() == null ? "" : df.format(order.getTaxRate().multiply(BigDecimal.valueOf(100)).stripTrailingZeros())},
+                        {"税额", fmt(order.getTaxAmount(), df)},
+                        {"折扣", fmt(order.getDiscountAmount(), df)},
+                        {"合计(含税)", fmt(order.getFinalAmount(), df)},
+                })
+                .remark(order.getRemark())
+                .signatures("销售负责人：" + (order.getCreateBy() == null ? "" : order.getCreateBy()),
+                        "客户确认：", "日期：");
+        return builder.toBytes();
     }
+
+    @Override
+    public byte[] exportExcel(Long orderId) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        List<SalesOrderProductVO> items = orderProductService.getListByOrderId(orderId);
+        return buildOrderExcel(order, items);
+    }
+
+    /** 订单 PDF 变量 */
+
+    /** 订单 Excel（单张表单） */
+    private byte[] buildOrderExcel(SalesOrder o, List<SalesOrderProductVO> items) {
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+            org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("销售订单");
+            int r = 0;
+            org.apache.poi.ss.usermodel.Row title = sheet.createRow(r++);
+            title.createCell(0).setCellValue("销售订单 " + (o.getOrderNo() == null ? "" : o.getOrderNo()));
+            String[][] info = {
+                    {"客户名称", o.getCustomerName()}, {"下单日期", o.getOrderDate() == null ? "" : new java.text.SimpleDateFormat("yyyy-MM-dd").format(o.getOrderDate())},
+                    {"联系人", o.getContactPerson()}, {"交货日期", o.getDeliveryDate() == null ? "" : new java.text.SimpleDateFormat("yyyy-MM-dd").format(o.getDeliveryDate())},
+                    {"币种", o.getCurrency() == null ? "CNY" : o.getCurrency()}, {"来源报价", o.getQuotationId() == null ? "-" : String.valueOf(o.getQuotationId())},
+                    {"销售负责人", o.getCreateBy() == null ? "-" : o.getCreateBy()}, {"备注", o.getRemark()},
+            };
+            for (int i = 0; i < info.length; i += 2) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(info[i][0]);
+                row.createCell(1).setCellValue(safe(info[i][1]));
+                row.createCell(3).setCellValue(info[i + 1][0]);
+                row.createCell(4).setCellValue(safe(info[i + 1][1]));
+            }
+            r++;
+            String[] headers = {"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"};
+            org.apache.poi.ss.usermodel.Row head = sheet.createRow(r++);
+            for (int i = 0; i < headers.length; i++) {
+                head.createCell(i).setCellValue(headers[i]);
+            }
+            int idx = 0;
+            for (SalesOrderProductVO item : items) {
+                String spec = item.getProductName() == null ? "" : item.getProductName();
+                if (item.getSpecification() != null && !item.getSpecification().isBlank()) {
+                    spec = spec.isBlank() ? item.getSpecification() : spec + " / " + item.getSpecification();
+                }
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(++idx);
+                row.createCell(1).setCellValue(safe(item.getProductCode()));
+                row.createCell(2).setCellValue(spec);
+                row.createCell(3).setCellValue(item.getQuantity() == null ? 0 : item.getQuantity().doubleValue());
+                row.createCell(4).setCellValue(safe(item.getUnit()));
+                row.createCell(5).setCellValue(item.getUnitPrice() == null ? 0 : item.getUnitPrice().doubleValue());
+                row.createCell(6).setCellValue(item.getAmount() == null ? 0 : item.getAmount().doubleValue());
+            }
+            r++;
+            String[][] sums = {
+                    {"小计(未税)", fmt(o.getTotalAmount(), df)}, {"税率(%)", o.getTaxRate() == null ? "" : df.format(o.getTaxRate().multiply(BigDecimal.valueOf(100)).stripTrailingZeros())},
+                    {"税额", fmt(o.getTaxAmount(), df)}, {"折扣", fmt(o.getDiscountAmount(), df)},
+                    {"合计(含税)", fmt(o.getFinalAmount(), df)},
+            };
+            for (String[] s : sums) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(r++);
+                row.createCell(5).setCellValue(s[0]);
+                row.createCell(6).setCellValue(s[1]);
+            }
+            int[] widths = {6, 14, 36, 10, 8, 14, 16};
+            for (int i = 0; i < widths.length; i++) {
+                sheet.setColumnWidth(i, widths[i] * 256);
+            }
+            wb.write(os);
+            return os.toByteArray();
+        } catch (Exception e) {
+            throw new BusinessException("订单Excel生成失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 导出订单确认书PDF（DEV-343/314：确认声明 + 签字区）
+     */
+    @Override
+    public byte[] exportConfirmationPdf(Long orderId) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        List<SalesOrderProductVO> items = orderProductService.getListByOrderId(orderId);
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+
+        Map<String, String> info = new LinkedHashMap<>();
+        info.put("订单号", order.getOrderNo());
+        info.put("下单日期", order.getOrderDate() == null ? "" : new java.text.SimpleDateFormat("yyyy-MM-dd").format(order.getOrderDate()));
+        info.put("客户名称", order.getCustomerName());
+        info.put("币种", order.getCurrency() == null ? "CNY" : order.getCurrency());
+        info.put("确认人", order.getConfirmBy() == null ? "-" : order.getConfirmBy());
+        info.put("确认方式", order.getConfirmMethod() == null ? "-" : order.getConfirmMethod());
+        info.put("确认时间", order.getConfirmTime() == null ? "-" : sdf.format(java.sql.Timestamp.valueOf(order.getConfirmTime())));
+        info.put("销售负责人", order.getCreateBy() == null ? "-" : order.getCreateBy());
+
+        java.util.List<String[]> rows = new ArrayList<>();
+        for (SalesOrderProductVO item : items) {
+            String spec = item.getProductName() == null ? "" : item.getProductName();
+            if (item.getSpecification() != null && !item.getSpecification().isBlank()) {
+                spec = spec.isBlank() ? item.getSpecification() : spec + " / " + item.getSpecification();
+            }
+            rows.add(new String[]{
+                    String.valueOf(rows.size() + 1),
+                    item.getProductCode(),
+                    spec,
+                    item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
+                    item.getUnit(),
+                    item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
+                    item.getAmount() == null ? "" : df.format(item.getAmount()),
+            });
+        }
+
+        PdfDocBuilder builder = PdfDocBuilder.create()
+                .title("订  单  确  认  书")
+                .info(info)
+                .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)
+                .amounts(new String[][]{
+                        {"小计(未税)", fmt(order.getTotalAmount(), df)},
+                        {"税额", fmt(order.getTaxAmount(), df)},
+                        {"合计(含税)", fmt(order.getFinalAmount(), df)},
+                })
+                .remark(order.getRemark())
+                .signatures("客户签字：", "确认日期：");
+        return builder.toBytes();
+    }
+
+    private String joinContact(String person, String phone) {
+        if (person == null || person.isBlank()) {
+            return phone == null ? "" : phone;
+        }
+        return phone == null || phone.isBlank() ? person : person + " " + phone;
+    }
+
+    private String fmt(BigDecimal v, DecimalFormat df) {
+        return v == null ? "" : df.format(v);
+    }
+
+    private String safe(String s) {
+        return s == null ? "" : s;
+    }
+
 
     /**
      * 导出订单列表

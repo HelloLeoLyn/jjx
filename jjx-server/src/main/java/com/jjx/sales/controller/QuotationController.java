@@ -3,6 +3,7 @@ package com.jjx.sales.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.service.IQuotationService;
@@ -10,6 +11,7 @@ import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -130,9 +133,32 @@ public class QuotationController extends BaseController {
     @Operation(summary = "导出报价单PDF")
     @SaCheckPermission("sales:quotation:export")
     @GetMapping("/export-pdf/{quotationId}")
-    public Result<String> exportPdf(@PathVariable Long quotationId) {
-        String filePath = quotationService.exportPdf(quotationId);
-        return Result.success(filePath);
+    public void exportPdf(@PathVariable Long quotationId, HttpServletResponse response) throws IOException {
+        SalesQuotation quotation = quotationService.selectQuotationById(quotationId);
+        if (quotation == null) {
+            throw new BusinessException("报价单不存在");
+        }
+        byte[] bytes = quotationService.exportPdf(quotationId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(quotation.getQuotationNo() + ".pdf", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
+    /**
+     * 导出报价单Excel（单张表单）
+     */
+    @Operation(summary = "导出报价单Excel")
+    @SaCheckPermission("sales:quotation:export")
+    @GetMapping("/export-excel/{quotationId}")
+    public void exportExcel(@PathVariable Long quotationId, HttpServletResponse response) throws IOException {
+        SalesQuotation quotation = quotationService.selectQuotationById(quotationId);
+        if (quotation == null) {
+            throw new BusinessException("报价单不存在");
+        }
+        byte[] bytes = quotationService.exportExcel(quotationId);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(quotation.getQuotationNo() + ".xlsx", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
     }
 
     /**

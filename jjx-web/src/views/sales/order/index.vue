@@ -76,6 +76,9 @@
         <el-col :span="1.5">
           <el-button type="info" plain icon="Document" @click="handleExportPdf">导出PDF</el-button>
         </el-col>
+        <el-col :span="1.5">
+          <el-button type="success" plain icon="DocumentCopy" @click="handleExportExcel">导出Excel</el-button>
+        </el-col>
       </el-row>
     </el-card>
 
@@ -190,6 +193,17 @@
                 <el-button type="warning" size="small" @click="handleRecheckShortage(row)">
                   齐套检查
                 </el-button>
+                <el-tooltip
+                  :content="`确认人：${row.confirmBy || '-'}｜方式：${row.confirmMethod || '-'}｜时间：${row.confirmTime || '-'}`"
+                  placement="top"
+                >
+                  <el-button type="success" size="small" plain @click="handleExportConfirmPdf(row)">
+                    确认书
+                  </el-button>
+                </el-tooltip>
+                <el-button type="info" size="small" plain @click="openConfirmAttachment(row)">
+                  确认凭证
+                </el-button>
               </template>
 
               <!-- 生产中状态 (7) -->
@@ -277,6 +291,21 @@
     <!-- 订单详情对话框 -->
     <OrderDetailDrawer v-model="detailOpen" :order-id="currentOrderId" />
 
+    <!-- 发送客户确认弹窗（备注 + 凭证截图，DEV-343/314） -->
+    <OrderSendConfirmDialog
+      v-model:visible="sendConfirmVisible"
+      :order="sendConfirmOrder"
+      @success="getList"
+    />
+
+    <!-- 确认凭证附件弹窗 -->
+    <AttachmentUploadDialog
+      v-model="confirmAttachmentVisible"
+      biz-type="sales_order_confirmation"
+      :biz-id="confirmAttachmentOrderId"
+      :dialog-title="`确认凭证 - ${confirmAttachmentOrderNo}`"
+    />
+
     <!-- 验证对话框 -->
     <ValidationDialog
       v-model="validationDialogVisible"
@@ -307,6 +336,8 @@ import OrderAdd from './components/OrderAdd.vue'
 import OrderEdit from './components/OrderEdit.vue'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
+import OrderSendConfirmDialog from './components/OrderSendConfirmDialog.vue'
+import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import ValidationDialog from './components/ValidationDialog.vue'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
 import { SalesOrderStatusEnum, PaymentStatusEnum, ProdStatusEnum } from '@/enums/sales/OrderEnum'
@@ -468,9 +499,28 @@ const handleExport = () => {
     .catch(() => {})
 }
 
-// 导出PDF
+// 导出PDF（单张订单表单，需选中一行）
 const handleExportPdf = () => {
-  ElMessage.info('PDF导出功能开发中...')
+  const orderId = ids.value[0]
+  if (!orderId) {
+    ElMessage.warning('请先选中一行订单')
+    return
+  }
+  orderApi.exportOrderPdf(orderId).then((response: any) => {
+    download(response, `销售订单_${orderId}.pdf`)
+  })
+}
+
+// 导出Excel（单张订单表单，需选中一行）
+const handleExportExcel = () => {
+  const orderId = ids.value[0]
+  if (!orderId) {
+    ElMessage.warning('请先选中一行订单')
+    return
+  }
+  orderApi.exportOrderExcel(orderId).then((response: any) => {
+    download(response, `销售订单_${orderId}.xlsx`)
+  })
 }
 
 // 提交审核
@@ -532,36 +582,32 @@ const handleResubmit = async (row: any) => {
   }
 }
 
-// 发送客户确认
+// 发送客户确认（DEV-343/314：弹窗填写备注+凭证截图，替代原 confirm 提示框）
+const sendConfirmVisible = ref(false)
+const sendConfirmOrder = ref<any>(null)
 const handleSendToCustomer = async (row: any) => {
+  sendConfirmOrder.value = row
+  sendConfirmVisible.value = true
+}
+
+// 导出确认书 PDF（DEV-343/314）
+const handleExportConfirmPdf = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定要将订单【${row.orderNo}】发送给客户确认吗？`, '发送客户确认', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'info',
-    })
-    await orderStatusApi.sendToCustomer(row.orderId)
-    ElMessage.success('发送成功，等待客户确认')
-    // DEV-583：确认后检查缺料，有则弹窗提示（不阻断）
-    try {
-      const res: any = await alertApi.countUnprocessedShortage(row.orderId)
-      const shortageCount = res?.data ?? 0
-      if (Number(shortageCount) > 0) {
-        ElMessageBox.alert(
-          `订单【${row.orderNo}】齐套检查发现 ${shortageCount} 种物料缺料，已生成缺料预警，请及时安排补货（可在库存预警查看明细）。`,
-          '缺料提示',
-          { confirmButtonText: '知道了', type: 'warning' },
-        )
-      }
-    } catch (e) {
-      console.error('缺料检查失败', e)
-    }
-    getList()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('发送失败', error)
-    }
+    const res: any = await orderApi.exportConfirmationPdf(row.orderId)
+    download(res, `确认书_${row.orderNo}.pdf`)
+  } catch {
+    ElMessage.error('确认书导出失败')
   }
+}
+
+// 确认凭证附件（截图/文件查看与补充）
+const confirmAttachmentVisible = ref(false)
+const confirmAttachmentOrderId = ref<number>()
+const confirmAttachmentOrderNo = ref('')
+const openConfirmAttachment = (row: any) => {
+  confirmAttachmentOrderId.value = row.orderId
+  confirmAttachmentOrderNo.value = row.orderNo || ''
+  confirmAttachmentVisible.value = true
 }
 
 // 订单齐套检查（手动重新检查，DEV-572 8-04）

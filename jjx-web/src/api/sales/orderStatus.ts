@@ -35,8 +35,11 @@ export const orderStatusApi = {
   resubmit: (orderId: number) => request.put(`/sales/orders/${orderId}/status/resubmissions`),
 
   // 发送客户确认
-  sendToCustomer: (orderId: number) =>
-    request.put(`/sales/orders/${orderId}/status/send-to-customer`, { orderId }),
+  sendToCustomer: (orderId: number, context?: string) =>
+    request.put(`/sales/orders/${orderId}/status/send-to-customer`, {
+      orderId,
+      context: context || '',
+    }),
 
   // 开始生产
   startProduction: (orderId: number) =>

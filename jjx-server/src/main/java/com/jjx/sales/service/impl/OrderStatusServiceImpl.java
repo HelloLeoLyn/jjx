@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -363,6 +364,10 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         // 3. 更新状态
         final OrderStatusEnum targetStatus = OrderStatusEnum.CONFIRMED;
         order.setOrderStatus(targetStatus.getCode());
+        // 重新发送确认：清空上次确认记录
+        order.setConfirmBy(null);
+        order.setConfirmMethod(null);
+        order.setConfirmTime(null);
 
         // 4. 保存
         int result = salesOrderMapper.updateStatusWithCheck(
@@ -620,6 +625,10 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         // 更新状态为 CONFIRMED
         order.setOrderStatus(OrderStatusEnum.CONFIRMED.getCode());
+        // 确认记录落库（DEV-343/314：人/方式/时间）
+        order.setConfirmBy(confirmedBy);
+        order.setConfirmMethod(confirmMethod);
+        order.setConfirmTime(LocalDateTime.now());
         salesOrderMapper.updateById(order);
 
         // 记录日志

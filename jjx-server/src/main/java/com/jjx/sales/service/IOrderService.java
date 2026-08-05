@@ -160,9 +160,23 @@ public interface IOrderService {
      * 导出PDF
      *
      * @param orderId 订单ID
-     * @return PDF文件路径
+     * @return PDF字节数组
      */
-    String exportPdf(Long orderId);
+    byte[] exportPdf(Long orderId);
+
+    /**
+     * 导出销售订单Excel（单张表单）
+     *
+     * @return xlsx字节数组
+     */
+    byte[] exportExcel(Long orderId);
+
+    /**
+     * 导出订单确认书PDF（DEV-343/314）
+     *
+     * @return PDF字节数组
+     */
+    byte[] exportConfirmationPdf(Long orderId);
 
     /**
      * 导出订单列表

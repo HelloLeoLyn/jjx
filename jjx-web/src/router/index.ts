@@ -137,6 +137,29 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  // 个人中心（顶栏头像下拉入口，不进菜单）
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('@/layout/index.vue'),
+    redirect: '/profile/index',
+    meta: {
+      title: '个人中心',
+      icon: 'User',
+      hidden: true,
+    },
+    children: [
+      {
+        path: 'index',
+        name: 'ProfileIndex',
+        component: () => import('@/views/system/user/profile/index.vue'),
+        meta: {
+          title: '个人中心',
+          hidden: true,
+        },
+      },
+    ],
+  },
   // 产品工程独立子页（工艺路线/标准工序 新增编辑，无菜单项，静态注册隐藏路由）
   // 包裹在隐藏 Layout 下：保持左侧菜单/顶栏框架，页面内 router.push 使用 /product 前缀
   {

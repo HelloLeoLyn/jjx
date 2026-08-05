@@ -71,10 +71,8 @@ export const userApi = {
   },
 
   // 修改密码
-  updatePwd(oldPassword: string, newPassword: string) {
-    return request.put<R<void>>('/system/user/profile/updatePwd', null, {
-      params: { oldPassword, newPassword },
-    })
+  updatePwd(data: { oldPassword: string; newPassword: string }) {
+    return request.put<R<void>>('/system/user/profile/updatePwd', data)
   },
 
   // 修改头像

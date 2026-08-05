@@ -375,6 +375,14 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
 
         reviewRecordMapper.insert(record);
 
+        // 确认记录落库订单字段（DEV-343/314）
+        SalesOrder confirmUpdate = new SalesOrder();
+        confirmUpdate.setOrderId(orderId);
+        confirmUpdate.setConfirmBy(customerName);
+        confirmUpdate.setConfirmMethod("客户确认");
+        confirmUpdate.setConfirmTime(LocalDateTime.now());
+        orderMapper.updateById(confirmUpdate);
+
         // 更新订单状态
         updateOrderStatus(orderId, OrderStatus.CONFIRMED.getCode());
 

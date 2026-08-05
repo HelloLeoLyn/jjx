@@ -81,7 +81,7 @@ const handleCommand = (command: string) => {
       router.push('/profile')
       break
     case 'password':
-      router.push('/password')
+      router.push('/profile?tab=pwd')
       break
     case 'logout':
       handleLogout()

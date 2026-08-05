@@ -1,6 +1,7 @@
 package com.jjx.sales.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -39,14 +40,14 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品单详情")
-    @SaCheckPermission("sales:sample:view")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/{orderId}")
     public Result<SalesOrder> getInfo(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.selectById(orderId));
     }
 
     @Operation(summary = "样品单列表")
-    @SaCheckPermission("sales:sample:view")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/list")
     public Result<List<SalesOrder>> list(
             @RequestParam(required = false) Long customerId,
@@ -84,7 +85,7 @@ public class SampleOrderController extends BaseController {
 
     @Operation(summary = "工程接单（记录工程备注）")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/start-engineering/{orderId}")
     public Result<SalesOrder> startEngineering(@PathVariable Long orderId,
                                                @RequestParam(required = false) String engineeringNote) {
@@ -93,7 +94,7 @@ public class SampleOrderController extends BaseController {
 
     @Operation(summary = "工程标记样品完成（待送样）")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "4")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/mark-ready/{orderId}")
     public Result<SalesOrder> markReady(@PathVariable Long orderId,
                                         @RequestParam(required = false) Integer sampleQty) {
@@ -152,7 +153,7 @@ public class SampleOrderController extends BaseController {
      */
     @Operation(summary = "退回后重新打样")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/restart-engineering/{orderId}")
     public Result<SalesOrder> restartEngineering(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.restartEngineering(orderId));
@@ -163,7 +164,7 @@ public class SampleOrderController extends BaseController {
      */
     @Operation(summary = "工程接单确认")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/accept-engineering/{orderId}")
     public Result<SalesOrder> acceptEngineering(@PathVariable Long orderId,
                                                 @RequestParam(required = false) String acceptorName) {
@@ -175,7 +176,7 @@ public class SampleOrderController extends BaseController {
      */
     @Operation(summary = "工程拒单")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "2")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/reject-engineering/{orderId}")
     public Result<SalesOrder> rejectEngineering(@PathVariable Long orderId,
                                                 @RequestParam String rejectReason) {
@@ -187,7 +188,7 @@ public class SampleOrderController extends BaseController {
      */
     @Operation(summary = "更新打样当前工序（材料JSON走body，避免长URL，8-03改DTO）")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/update-process/{orderId}")
     public Result<SalesOrder> updateProcess(@PathVariable Long orderId,
                                             @RequestBody(required = false) com.jjx.sales.dto.save.SampleProcessDTO dto) {
@@ -229,7 +230,7 @@ public class SampleOrderController extends BaseController {
      */
     @Operation(summary = "保存打样BOM物料清单")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/bom/{orderId}")
     public Result<List<com.jjx.sales.domain.entity.SalesSampleBom>> saveBom(@PathVariable Long orderId,
                                                                             @RequestParam(required = false) Integer roundNo,
@@ -251,7 +252,7 @@ public class SampleOrderController extends BaseController {
      */
     @Operation(summary = "录入打样成本/工时")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
-    @SaCheckPermission("sales:sample:engineering")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/record-cost/{orderId}")
     public Result<SalesOrder> recordCost(@PathVariable Long orderId,
                                          @RequestParam(required = false) java.math.BigDecimal cost,
@@ -270,14 +271,14 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "查询打样轮次快照")
-    @SaCheckPermission("sales:sample:view")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/rounds/{orderId}")
     public Result<List<com.jjx.sales.domain.entity.SalesSampleRound>> rounds(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.listSampleRounds(orderId));
     }
 
     @Operation(summary = "获取样品单状态选项")
-    @SaCheckPermission("sales:sample:view")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/status-options")
     public Result<List<Map<String, Object>>> getStatusOptions() {
         List<Map<String, Object>> options = new ArrayList<>();

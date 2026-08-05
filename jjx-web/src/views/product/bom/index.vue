@@ -403,31 +403,31 @@ const handleView = (row: EngineeringBom) => {
   bomDetailOpen.value = true
 }
 
-// 复制BOM按钮操作
+// 复制BOM为新版本（DEV-619：真接口，版本号递增+明细复制，替代原“清ID重建”假复制）
 const handleCopyBom = (row: EngineeringBom) => {
   const bomId = row.bomId
-  ElMessageBox.confirm('是否确认复制此BOM？', '提示', {
+  ElMessageBox.prompt('请输入新版本号', '复制为新版本', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    type: 'info',
+    inputValue: suggestNextVersion(row.bomVersion),
+    inputValidator: (value: string) => (value?.trim() ? true : '版本号不能为空'),
   })
-    .then(() => {
-      // 由于没有copyEngineeringBom API，我们可以通过获取现有BOM信息然后创建新BOM来实现
-      return productBomApi.getEngineeringBomInfo(bomId)
-    })
-    .then((response: any) => {
-      const bomData = response.data
-      // 移除ID并创建新BOM
-      bomData.bomId = undefined
-      bomData.bomCode = ''
-      bomData.bomVersion = `${bomData.bomVersion}_copy`
-      return productBomApi.addEngineeringBom(bomData)
+    .then(({ value }) => {
+      return productBomApi.copyEngineeringBom(bomId!, value.trim())
     })
     .then(() => {
-      getList()
       ElMessage.success('复制成功')
+      getList()
     })
     .catch(() => {})
+}
+
+// 建议下一个版本号：V1.0 → V2.0
+function suggestNextVersion(version?: string): string {
+  if (!version) return 'V1.0'
+  const m = version.match(/V(\d+)\.(\d+)/)
+  if (!m) return 'V1.0'
+  return `V${parseInt(m[1]) + 1}.${m[2]}`
 }
 
 // 审核成功处理
