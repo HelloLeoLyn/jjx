@@ -441,6 +441,56 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             return false;
         }
 
+        // 方案A（2026-08-06）：OUT_CONFIRM（已调出未调入）取消 → 回补源仓库存，避免库存凭空消失
+        if (OrderStatusEnum.OUT_CONFIRM.getCode().equals(order.getOrderStatus())) {
+            List<InventoryTransferItem> items = transferItemMapper.selectByTransferId(transferId);
+            if (items != null) {
+                for (InventoryTransferItem item : items) {
+                    if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                        continue;
+                    }
+                    // 回补源仓库存（新增一条库存明细）
+                    InventoryStockItem newStock = new InventoryStockItem();
+                    newStock.setMaterialId(item.getMaterialId());
+                    newStock.setMaterialCode(item.getMaterialCode());
+                    newStock.setMaterialName(item.getMaterialName());
+                    newStock.setWarehouseId(order.getFromWarehouseId());
+                    newStock.setLocationId(item.getFromLocationId() != null ? item.getFromLocationId() : order.getFromLocationId());
+                    newStock.setBatchNo(item.getBatchNo() != null ? item.getBatchNo() : LocalDate.now().toString());
+                    newStock.setQuantity(item.getQuantity());
+                    newStock.setReservedQuantity(BigDecimal.ZERO);
+                    newStock.setUnitCost(item.getUnitCost());
+                    newStock.setStatus(1);
+                    newStock.setLastInboundTime(LocalDateTime.now());
+                    stockItemMapper.insert(newStock);
+
+                    // 刷新库存汇总
+                    stockMapper.refreshSummary(item.getMaterialId());
+
+                    // 记录库存流水（调拨取消回补）
+                    InventoryTransaction tx = new InventoryTransaction();
+                    tx.setMaterialId(item.getMaterialId());
+                    tx.setMaterialCode(item.getMaterialCode());
+                    tx.setMaterialName(item.getMaterialName());
+                    tx.setWarehouseId(order.getFromWarehouseId());
+                    tx.setLocationId(item.getFromLocationId() != null ? item.getFromLocationId() : order.getFromLocationId());
+                    tx.setTransactionType("TRANSFER_OUT");
+                    tx.setSourceType("INVENTORY_TRANSFER");
+                    tx.setSourceId(transferId);
+                    tx.setSourceNo(order.getTransferNo());
+                    tx.setBatchNo(item.getBatchNo());
+                    tx.setQuantity(item.getQuantity());
+                    tx.setUnitCost(item.getUnitCost());
+                    tx.setAmount(item.getAmount() != null ? item.getAmount() : null);
+                    tx.setTransactionTime(LocalDateTime.now());
+                    tx.setOperatorId(SecurityUtils.getUserId());
+                    tx.setOperatorName(SecurityUtils.getUsername());
+                    tx.setRemark("调拨取消回补源仓");
+                    transactionMapper.insert(tx);
+                }
+            }
+        }
+
         order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
         order.setRemark(reason);
         return transferOrderMapper.updateById(order) > 0;
