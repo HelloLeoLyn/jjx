@@ -38,11 +38,14 @@ export function getOrderItems(orderId: number) {
 }
 
 // 新增采购订单
+// DEV-664：data.items 传明细；data.saveAsPlan=true 时存为计划单（跳过供应商/明细强校验）
 export function addOrder(data: PurchaseOrder, itemList?: PurchaseOrderItem[]) {
+  const payload: any = { ...data }
+  if (itemList) payload.items = itemList
   return request({
     url: '/purchase/order',
     method: 'post',
-    data: { ...data, itemList },
+    data: payload,
   })
 }
 
@@ -344,5 +347,28 @@ export function deleteTempReceiptFile(fileUrl: string) {
     url: '/purchase/invoice/temp-file',
     method: 'delete',
     params: { fileUrl },
+  })
+}
+
+// ==================== DEV-664 采购计划 ====================
+
+/**
+ * 获取采购计划建议（安全库存预警 + 订单缺料预警）
+ */
+export function getPlanSuggestions() {
+  return request({
+    url: '/purchase/order/plan-suggestions',
+    method: 'get',
+  })
+}
+
+/**
+ * 确认计划单转正式采购单
+ */
+export function confirmPlan(orderId: string, supplierId: string, supplierName: string) {
+  return request({
+    url: `/purchase/order/${orderId}/confirm-plan`,
+    method: 'put',
+    params: { supplierId, supplierName },
   })
 }

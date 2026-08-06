@@ -1,4 +1,5 @@
 <!-- src/layout/components/Sidebar.vue -->
+<!-- 官方标准写法（DEV-663 重做）：el-menu 原生样式，不做自定义菜单项覆盖 -->
 <template>
   <div class="sidebar-container" :class="{ collapsed: isCollapse }">
     <div class="logo-container">
@@ -10,9 +11,6 @@
       :collapse="isCollapse"
       :unique-opened="true"
       :collapse-transition="false"
-      background-color="#fff"
-      text-color="#606266"
-      active-text-color="#409EFF"
       router
       class="sidebar-menu"
     >
@@ -75,112 +73,23 @@ const activeMenu = computed(() => {
     }
   }
 
-  // 折叠时隐藏标题
-  :deep(.el-menu--collapse) ~ & .logo-container .title {
-    display: none;
-  }
-
   .sidebar-menu {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     border-right: none;
     padding: 8px 0;
-
-    &:not(.el-menu--collapse) {
-      width: 100%;
-    }
-
-    // 展开状态样式
-    &:not(.el-menu--collapse) {
-      :deep(.el-menu-item) {
-        margin: 2px 8px;
-        width: calc(100% - 16px);
-        border-radius: 8px;
-        transition: all 0.2s;
-        height: 40px;
-        line-height: 40px;
-
-        &:hover {
-          background: #ecf5ff !important;
-        }
-
-        &.is-active {
-          background: #ecf5ff !important;
-          color: #409eff !important;
-          font-weight: 600;
-
-          &::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 3px;
-            height: 20px;
-            background: #409eff;
-            border-radius: 0 3px 3px 0;
-          }
-        }
-      }
-
-      :deep(.el-sub-menu__title) {
-        margin: 2px 8px;
-        width: calc(100% - 16px);
-        border-radius: 8px;
-        height: 40px;
-        line-height: 40px;
-
-        &:hover {
-          background: #ecf5ff !important;
-        }
-      }
-
-      :deep(.el-menu--inline) {
-        .el-menu-item {
-          margin: 1px 8px 1px 28px;
-          width: calc(100% - 36px);
-        }
-      }
-    }
-
-    // 折叠状态 - 只保留悬浮效果和文字隐藏
-    &.el-menu--collapse {
-      :deep(.el-menu-item),
-      :deep(.el-sub-menu__title) {
-        &.is-active {
-          background: #ecf5ff !important;
-          color: #409eff !important;
-        }
-
-        &:hover {
-          background: #ecf5ff !important;
-        }
-      }
-
-      :deep(.el-menu-item) {
-        &.is-active {
-          &::before {
-            display: none;
-          }
-        }
-      }
-    }
   }
-}
 
-.sidebar-container {
+  // 折叠时隐藏标题
+  .logo-container .title {
+    display: none;
+  }
+
   &.collapsed {
-    width: 64px !important;
+    .logo-container .title {
+      display: none;
+    }
   }
-}
-
-.sidebar-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.sidebar-container::-webkit-scrollbar-thumb {
-  background-color: #e8eaef;
-  border-radius: 2px;
 }
 </style>

@@ -24,6 +24,13 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
                                           @Param("sourceId") Long sourceId);
 
     /**
+     * 行锁查询入库单（DEV-651 方案A：并发锁单，杜绝重复出入库）
+     * 必须在事务内调用，锁住单据行直到事务提交/回滚
+     */
+    @Select("SELECT * FROM inventory_inbound_order WHERE inbound_id = #{inboundId} FOR UPDATE")
+    InventoryInboundOrder selectByIdForUpdate(@Param("inboundId") Long inboundId);
+
+    /**
      * 查询待审批的入库单
      */
     @Select("SELECT * FROM inventory_inbound_order WHERE approve_status = 'pending' AND order_status = 'draft'")

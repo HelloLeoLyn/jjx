@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 采购订单Controller
@@ -72,7 +73,7 @@ public class PurchaseOrderController extends BaseController {
     @PostMapping
     @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderDTO.orderId")
     @SaCheckPermission("purchase:order:add")
-    public Result<Void> add(@Valid @RequestBody PurchaseOrderDTO orderDTO) {
+    public Result<Void> add(@RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.insertOrder(orderDTO);
         return Result.success();
     }
@@ -210,6 +211,32 @@ public class PurchaseOrderController extends BaseController {
     @SaCheckPermission("purchase:order:add")
     public Result<String> generateOrderNo() {
         return Result.success(purchaseOrderService.generateOrderNo());
+    }
+
+    // ==================== DEV-664 采购计划 ====================
+
+    /**
+     * 确认计划单转正式采购单
+     */
+    @Operation(summary = "确认计划单转正式采购单")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
+    @SaCheckPermission("purchase:plan:confirm")
+    @PutMapping("/{orderId}/confirm-plan")
+    public Result<Void> confirmPlan(@PathVariable Long orderId,
+                                    @RequestParam Long supplierId,
+                                    @RequestParam String supplierName) {
+        purchaseOrderService.confirmPlan(orderId, supplierId, supplierName);
+        return Result.success();
+    }
+
+    /**
+     * 获取采购计划建议（安全库存预警 + 订单缺料预警）
+     */
+    @Operation(summary = "获取采购计划建议")
+    @SaCheckPermission("purchase:plan:view")
+    @GetMapping("/plan-suggestions")
+    public Result<List<Map<String, Object>>> planSuggestions() {
+        return Result.success(purchaseOrderService.getPlanSuggestions());
     }
 
     /**

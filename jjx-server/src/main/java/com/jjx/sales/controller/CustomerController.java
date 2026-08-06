@@ -3,9 +3,11 @@ package com.jjx.sales.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.dto.CustomerAddDTO;
 import com.jjx.sales.domain.dto.CustomerEditDTO;
+import com.jjx.sales.domain.dto.CustomerImportDTO;
 import com.jjx.sales.domain.dto.CustomerQueryDTO;
 import com.jjx.sales.domain.entity.SalesCustomer;
 import com.jjx.sales.domain.vo.CustomerVO;
@@ -17,7 +19,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 
 /**
@@ -126,6 +130,29 @@ public class CustomerController extends BaseController {
     public Result<String> exportCustomers(SalesCustomer customer) {
         String filePath = customerService.exportCustomerList(customer);
         return Result.success(filePath);
+    }
+
+    /**
+     * 导入客户（DEV-662）
+     */
+    @Operation(summary = "导入客户")
+    @Log(module = "客户管理", businessType = BusinessType.IMPORT, bizType = "'custom'")
+    @SaCheckPermission("sales:customer:import")
+    @PostMapping("/import")
+    public Result<String> importCustomers(MultipartFile file) throws Exception {
+        List<CustomerImportDTO> importList = ExcelUtils.importExcel(file, CustomerImportDTO.class);
+        String operName = getUsername();
+        return Result.success(customerService.importCustomers(importList, operName));
+    }
+
+    /**
+     * 下载客户导入模板（DEV-662）
+     */
+    @Operation(summary = "下载客户导入模板")
+    @SaCheckPermission("sales:customer:import")
+    @GetMapping("/importTemplate")
+    public void importTemplate(HttpServletResponse response) {
+        ExcelUtils.downloadTemplate(response, CustomerImportDTO.class, "客户导入模板");
     }
 
     /**

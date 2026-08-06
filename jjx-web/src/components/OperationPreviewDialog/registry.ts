@@ -430,7 +430,7 @@ export const inboundOperations: OperationDef[] = [
     key: 'inbound.confirm',
     bizType: 'inbound',
     name: '确认入库',
-    fromStatus: [2],
+    fromStatus: [1, 2],
     toStatus: 3,
     events: ['inventory.inbound.confirmed'],
     api: ({ bizId }) => {
@@ -456,7 +456,7 @@ export const outboundOperations: OperationDef[] = [
     key: 'outbound.confirm',
     bizType: 'outbound',
     name: '确认出库',
-    fromStatus: [2],
+    fromStatus: [1, 2],
     toStatus: 3,
     events: ['inventory.outbound.confirmed'],
     api: ({ bizId }) => {

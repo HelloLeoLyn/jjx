@@ -141,7 +141,7 @@
               >审批</el-button
             >
             <el-button
-              v-if="row.status === 2"
+              v-if="row.status === 1 || row.status === 2"
               link
               type="warning"
               @click="handleConfirm(row)"

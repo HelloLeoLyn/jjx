@@ -75,6 +75,19 @@ public class InventoryTransactionServiceImpl extends ServiceImpl<InventoryTransa
     }
 
     @Override
+    public List<TransactionVO> getByDocNo(String docNo) {
+        if (docNo == null || docNo.isBlank()) {
+            return new java.util.ArrayList<>();
+        }
+        LambdaQueryWrapper<InventoryTransaction> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(InventoryTransaction::getSourceNo, docNo)
+                .orderByDesc(InventoryTransaction::getTransactionTime);
+
+        List<InventoryTransaction> transactions = transactionMapper.selectList(wrapper);
+        return convertToVOList(transactions);
+    }
+
+    @Override
     public List<TransactionVO> getByMaterial(Long materialId, int limit) {
         LambdaQueryWrapper<InventoryTransaction> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(InventoryTransaction::getMaterialId, materialId)

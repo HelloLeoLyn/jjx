@@ -50,6 +50,16 @@ public class PurchaseOrderDTO {
     private String orderType;
 
     /**
+     * 计划状态: 0普通/1计划单/2已转正式（DEV-664）
+     */
+    private Integer planStatus;
+
+    /**
+     * 是否存为计划单（DEV-664）：true 时跳过供应商/明细强校验，plan_status=1
+     */
+    private Boolean saveAsPlan;
+
+    /**
      * 订单日期
      */
     @NotNull(message = "订单日期不能为空")

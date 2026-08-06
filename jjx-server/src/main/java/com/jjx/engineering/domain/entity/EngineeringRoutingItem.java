@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @TableName("engineering_routing_item")
 public class EngineeringRoutingItem {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(value = "detail_id", type = IdType.AUTO)
     private Long itemId;
 
     /**

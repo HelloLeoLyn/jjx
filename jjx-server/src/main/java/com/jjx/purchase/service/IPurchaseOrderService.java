@@ -14,6 +14,8 @@ import com.jjx.purchase.domain.vo.PurchaseOrderVO;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.List;
 
 /**
  * 采购订单服务接口
@@ -256,4 +258,20 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
      * 导出采购订单PDF（单张表单）
      */
     byte[] exportPdf(Long orderId);
+
+    /**
+     * 确认计划单转正式采购单（DEV-664）
+     *
+     * @param orderId  计划单ID
+     * @param supplierId   供应商ID
+     * @param supplierName 供应商名称
+     * @return 更新行数
+     */
+    int confirmPlan(Long orderId, Long supplierId, String supplierName);
+
+    /**
+     * 获取采购计划建议（DEV-664：安全库存预警 + 订单缺料预警）
+     * 供计划工作台"从预警加载"
+     */
+    List<Map<String, Object>> getPlanSuggestions();
 }

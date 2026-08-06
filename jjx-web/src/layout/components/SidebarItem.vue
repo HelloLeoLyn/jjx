@@ -1,15 +1,11 @@
 <!-- src/layout/components/SidebarItem.vue -->
+<!-- 官方标准写法（DEV-663 重做）：el-sub-menu/el-menu-item 原生结构，icon + span，无自定义装饰 -->
 <template>
   <div v-if="!item.hidden">
     <template v-if="hasChildren">
       <el-sub-menu :index="resolvePath">
         <template #title>
-          <svg-icon
-            v-if="isSvgIcon"
-            :name="item.icon!"
-            :size="18"
-            class="menu-icon"
-          />
+          <svg-icon v-if="isSvgIcon" :name="item.icon!" :size="18" class="menu-icon" />
           <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
             <component :is="item.icon" />
           </el-icon>
@@ -25,12 +21,7 @@
     </template>
     <template v-else>
       <el-menu-item :index="resolvePath" @click="handleClick">
-        <svg-icon
-          v-if="isSvgIcon"
-          :name="item.icon!"
-          :size="18"
-          class="menu-icon"
-        />
+        <svg-icon v-if="isSvgIcon" :name="item.icon!" :size="18" class="menu-icon" />
         <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
           <component :is="item.icon" />
         </el-icon>
@@ -47,7 +38,8 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import path from 'path-browserify'
 import type { MenuItem } from '@/types/system'
-import SvgIcon from '@/components/SvgIcon/index.vue'
+
+defineOptions({ name: 'SidebarItem' })
 
 const props = defineProps({
   item: {
@@ -62,39 +54,15 @@ const props = defineProps({
 
 const router = useRouter()
 
-// 常见 Element Plus 图标列表
 const commonElementIcons = [
-  'HomeFilled',
-  'Setting',
-  'User',
-  'UserFilled',
-  'Menu',
-  'OfficeBuilding',
-  'Goods',
-  'List',
-  'Folder',
-  'Document',
-  'SetUp',
-  'Box',
-  'Picture',
-  'ShoppingCart',
-  'PriceTag',
-  'Location',
-  'ShoppingBag',
-  'Money',
-  'Files',
-  'Dashboard',
-  'Route',
-  'Play',
-  'Check',
-  'Lock',
-  'Search',
-  'BellFilled',
-  'CirclePlusFilled',
-  'RemoveFilled',
-  'Switch',
-  'Plus',
-  'Edit',
+  'HomeFilled', 'Setting', 'User', 'UserFilled', 'Menu', 'OfficeBuilding',
+  'Goods', 'List', 'Folder', 'Document', 'SetUp', 'Box', 'Picture',
+  'ShoppingCart', 'PriceTag', 'Location', 'ShoppingBag', 'Money', 'Files',
+  'Dashboard', 'Route', 'Play', 'Check', 'Lock', 'Search', 'BellFilled',
+  'CirclePlusFilled', 'RemoveFilled', 'Switch', 'Plus', 'Edit', 'Tickets',
+  'FolderOpened', 'Sort', 'Calendar', 'CreditCard', 'Van', 'Notebook',
+  'DocumentAdd', 'Timer', 'DataAnalysis', 'Connection', 'RefreshRight',
+  'RefreshLeft', 'Bell', 'Star', 'TrendCharts',
 ]
 
 // 判断是否是 SVG 图标（不在常见 Element Plus 图标列表中的就是 SVG）

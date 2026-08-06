@@ -56,6 +56,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.mapper.InventoryMaterialMapper materialMapper;
     private final com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
     private final com.jjx.inventory.service.InventoryInboundService inboundService;
+    private final com.jjx.inventory.service.InventoryAlertService alertService;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -97,26 +98,42 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertOrder(PurchaseOrderDTO orderDTO) {
-        // 检查订单号是否唯一
-        if (checkOrderNoUnique(orderDTO.getOrderNo())) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NO_DUPLICATE.getMessage());
-        }
+        // DEV-664：计划单模式（saveAsPlan=true）——跳过供应商/明细强校验，plan_status=1
+        boolean isPlan = Boolean.TRUE.equals(orderDTO.getSaveAsPlan());
+        if (!isPlan) {
+            // 检查订单号是否唯一
+            if (checkOrderNoUnique(orderDTO.getOrderNo())) {
+                throw new BusinessException(PurchaseExceptionEnum.ORDER_NO_DUPLICATE.getMessage());
+            }
 
-        // 验证供应商信息
-        if (orderDTO.getSupplierId() == null || StringUtils.isEmpty(orderDTO.getSupplierName())) {
-            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
-        }
+            // 验证供应商信息
+            if (orderDTO.getSupplierId() == null || StringUtils.isEmpty(orderDTO.getSupplierName())) {
+                throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
+            }
 
-        // 验证订单明细
-        if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
-        }
+            // 验证订单明细
+            if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
+                throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+            }
 
-        // 计算订单金额
-        calculateOrderAmount(orderDTO);
+            // 计算订单金额
+            calculateOrderAmount(orderDTO);
+        }
 
         // 转换实体
         PurchaseOrder order = purchaseConverter.toEntity(orderDTO);
+        if (isPlan) {
+            order.setPlanStatus(1);
+            // DEV-664：计划单可无供应商，表字段 NOT NULL 用占位/默认值
+            if (order.getSupplierId() == null) order.setSupplierId(0L);
+            if (StringUtils.isEmpty(order.getSupplierName())) order.setSupplierName("待定供应商");
+            if (order.getOrderDate() == null) order.setOrderDate(java.time.LocalDate.now());
+            if (order.getExpectedDeliveryDate() == null) {
+                order.setExpectedDeliveryDate(java.time.LocalDate.now().plusDays(7));
+            }
+            if (order.getOrderAmount() == null) order.setOrderAmount(java.math.BigDecimal.ZERO);
+            if (order.getOrderTotalAmount() == null) order.setOrderTotalAmount(java.math.BigDecimal.ZERO);
+        }
 
         // 链路追踪（DEV-568）：无上游则生成 UUID，有上游继承（DTO 透传）
         order.setTraceId(orderDTO.getTraceId() != null && !orderDTO.getTraceId().isEmpty()
@@ -859,6 +876,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
      * 保存订单明细
      */
     private void saveOrderItems(Long orderId, List<PurchaseOrderItemDTO> itemDTOs) {
+        // DEV-664：计划单明细可能为空（空计划单），兼容跳过
+        if (itemDTOs == null || itemDTOs.isEmpty()) {
+            return;
+        }
         for (int i = 0; i < itemDTOs.size(); i++) {
             PurchaseOrderItemDTO itemDTO = itemDTOs.get(i);
             PurchaseOrderItem item = purchaseConverter.toEntity(itemDTO);
@@ -900,6 +921,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
         if (queryDTO.getPaymentStatus() != null) {
             wrapper.eq(PurchaseOrder::getPaymentStatus, queryDTO.getPaymentStatus());
+        }
+        // DEV-664：不传 planStatus 时默认只显示普通订单(0)；计划单走独立Tab（传 planStatus=1）
+        if (queryDTO.getPlanStatus() != null) {
+            wrapper.eq(PurchaseOrder::getPlanStatus, queryDTO.getPlanStatus());
+        } else {
+            wrapper.eq(PurchaseOrder::getPlanStatus, 0);
         }
 
         wrapper.orderByDesc(PurchaseOrder::getCreateTime);
@@ -1252,5 +1279,40 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 .signatures("采购负责人：" + (order.getCreateBy() == null ? "" : order.getCreateBy()),
                         "供应商确认：", "日期：")
                 .toBytes();
+    }
+
+    // ==================== DEV-664 采购计划 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int confirmPlan(Long orderId, Long supplierId, String supplierName) {
+        PurchaseOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+        }
+        if (!Objects.equals(1, order.getPlanStatus())) {
+            throw new BusinessException("只有计划单可以确认转正式，当前状态: " + order.getPlanStatus());
+        }
+        // 校验供应商和明细
+        if (supplierId == null || StringUtils.isEmpty(supplierName)) {
+            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
+        }
+        List<PurchaseOrderItem> items = orderItemMapper.selectList(
+                new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getOrderId, orderId));
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+        }
+
+        // 转正式：plan_status 1→0，补供应商信息，进入审批流（草稿态，需提交审批）
+        order.setPlanStatus(0);
+        order.setSupplierId(supplierId);
+        order.setSupplierName(supplierName);
+        return orderMapper.updateById(order) > 0 ? 1 : 0;
+    }
+
+    @Override
+    public List<Map<String, Object>> getPlanSuggestions() {
+        // 复用库存预警的采购建议（安全库存 + 订单缺料），算法已按 max_stock 优化
+        return alertService.generatePurchaseSuggestions();
     }
 }

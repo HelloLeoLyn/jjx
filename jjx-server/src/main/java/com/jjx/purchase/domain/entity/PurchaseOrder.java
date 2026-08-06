@@ -47,6 +47,11 @@ public class PurchaseOrder {
     private String orderType;
 
     /**
+     * 计划状态: 0普通订单/1计划单/2已转正式（DEV-664 采购计划）
+     */
+    private Integer planStatus;
+
+    /**
      * 订单日期
      */
     private LocalDate orderDate;

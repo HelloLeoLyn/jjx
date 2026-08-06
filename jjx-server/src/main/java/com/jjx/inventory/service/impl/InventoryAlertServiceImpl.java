@@ -11,6 +11,7 @@ import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.dto.query.AlertQueryDTO;
 import com.jjx.inventory.dto.vo.AlertVO;
 import com.jjx.inventory.mapper.InventoryAlertLogMapper;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.service.InventoryAlertService;
@@ -45,6 +46,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
     private final InventoryAlertLogMapper alertLogMapper;
     private final InventoryStockMapper stockMapper;
+    private final InventoryMaterialMapper materialMapper;
     private final InventoryStockItemMapper stockItemMapper;
     private final EventPublisher eventPublisher;
     private final OrderMapper orderMapper;
@@ -396,11 +398,23 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         log.info("生成采购建议");
         List<Map<String, Object>> suggestions = new ArrayList<>();
 
-        // 来源1：低库存物料（安全库存算法）
+        // 来源1：低库存物料（安全库存算法，DEV-664：用物料 max_stock，无则 safe_stock*2 兜底）
         List<InventoryStock> lowStock = stockMapper.selectLowStock();
         for (InventoryStock stock : lowStock) {
-            // 建议采购量 = 安全库存 * 2 - 当前库存（简单算法）
-            BigDecimal suggestQty = BigDecimal.valueOf(100).subtract(stock.getTotalQuantity() != null
+            // 查询物料最高库存参数
+            BigDecimal maxStock = null;
+            try {
+                com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(stock.getMaterialId());
+                if (mat != null && mat.getMaxStock() != null) {
+                    maxStock = mat.getMaxStock();
+                }
+            } catch (Exception e) {
+                log.warn("查询物料最高库存失败: materialId={}, err={}", stock.getMaterialId(), e.getMessage());
+            }
+            // 建议量 = max_stock - 当前库存；无 max_stock 时用 safe_stock*2 兜底
+            BigDecimal target = maxStock != null ? maxStock
+                    : (stock.getSafeStock() != null ? stock.getSafeStock().multiply(BigDecimal.valueOf(2)) : BigDecimal.valueOf(100));
+            BigDecimal suggestQty = target.subtract(stock.getTotalQuantity() != null
                     ? stock.getTotalQuantity() : BigDecimal.ZERO);
             if (suggestQty.compareTo(BigDecimal.ZERO) <= 0) continue;
 

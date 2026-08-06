@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.inventory.domain.InventoryInboundOrder;
+import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
@@ -254,21 +255,23 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.inbound.confirmed", bizId = "#inboundId", bizType = "'inventory'")
     public boolean confirm(Long inboundId, Long operatorId, String operatorName) {
-        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复入库
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())
+                && !OrderStatusEnum.APPROVED.getCode().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法确认: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
-        order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
-        inboundOrderMapper.updateById(order);
-        // 执行库存增加（复用审批中的库存逻辑）
-        approve(inboundId, operatorId, operatorName, "直接确认入库");
+        // DEV-651：库存操作统一发生在 confirm（confirm=审批+完成 单路径）
+        // 原实现：先置 APPROVED 再调 approve()，而 approve() 要求 PENDING，必然失败——库存根本没加
+        // 现在：直接内联执行加库存，approve 只做状态流转不动库存
+        addStock(order, operatorId, operatorName, "直接确认入库");
         order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
         // 安全库存检查
         try {
@@ -286,7 +289,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.inbound.cancelled", bizId = "#inboundId", bizType = "'inventory'")
     public boolean cancel(Long inboundId, String reason) {
-        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        // DEV-651 方案A：行锁
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);
             return false;
@@ -303,11 +307,22 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.inbound.submitted", bizId = "#inboundId", bizType = "'inventory'")
     public boolean submitApprove(Long inboundId) {
-        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        // DEV-651 方案A：行锁
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        // DEV-651：只有草稿/已驳回/已取消状态的单才能提交审批
+        Integer status = order.getOrderStatus();
+        if (!OrderStatusEnum.DRAFT.getCode().equals(status)
+                && !OrderStatusEnum.REJECTED.getCode().equals(status)
+                && !OrderStatusEnum.CANCELLED.getCode().equals(status)) {
+            log.error("入库单状态不允许提交审批: inboundId={}, status={}", inboundId, status);
             return false;
         }
 
@@ -319,7 +334,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.inbound.approved", bizId = "#inboundId", bizType = "'inventory'")
     public boolean approve(Long inboundId, Long approverId, String approverName, String remark) {
-        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        // DEV-651 方案A：行锁
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);
             return false;
@@ -330,8 +346,39 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // 执行库存增加
-        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+        // DEV-651：审批只做状态流转，库存增加统一由 confirm 执行（confirm=审批+完成 单路径）
+        // 原实现在这里加库存，导致：①confirm 先置 APPROVED 再调本方法时因状态校验失败而库存不加；②双路径重复维护
+        order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @Event(value = "inventory.inbound.rejected", bizId = "#inboundId", bizType = "'inventory'")
+    public boolean reject(Long inboundId, Long approverId, String approverName, String remark) {
+        // DEV-651 方案A：行锁
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
+        if (order == null) {
+            log.error("入库单不存在: inboundId={}", inboundId);
+            return false;
+        }
+
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
+            log.error("入库单状态不正确，无法驳回: inboundId={}, status={}", inboundId, order.getOrderStatus());
+            return false;
+        }
+
+        order.setOrderStatus(OrderStatusEnum.REJECTED.getCode());
+        order.setRemark(remark);
+        return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    /**
+     * 执行入库加库存（DEV-651：库存操作统一由 confirm 调用）
+     * 原 approve 中的加库存逻辑抽取，供 confirm 直接使用
+     */
+    private void addStock(InventoryInboundOrder order, Long operatorId, String operatorName, String remark) {
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(order.getInboundId());
         for (InventoryInboundItem item : items) {
             if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
 
@@ -372,7 +419,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             // 刷新库存汇总
             stockMapper.refreshSummary(item.getMaterialId());
 
-            // 记录流水
+            // 记录流水（DEV-651 补：before/after 为 NOT NULL，入库=加库存，before=当前汇总-本次数量）
+            java.math.BigDecimal currentTotal = java.math.BigDecimal.ZERO;
+            InventoryStock cur = stockMapper.selectByMaterialId(item.getMaterialId());
+            if (cur != null && cur.getTotalQuantity() != null) {
+                currentTotal = cur.getTotalQuantity();
+            }
             InventoryTransaction tx = new InventoryTransaction();
             tx.setMaterialId(item.getMaterialId());
             tx.setMaterialCode(item.getMaterialCode());
@@ -380,41 +432,21 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setWarehouseId(order.getWarehouseId());
             tx.setLocationId(item.getLocationId());
             tx.setTransactionType("INBOUND");
-            tx.setSourceType("PURCHASE");
-            tx.setSourceId(inboundId);
+            tx.setSourceType(order.getSourceType() != null ? order.getSourceType() : "PURCHASE");
+            tx.setSourceId(order.getInboundId());
             tx.setSourceNo(order.getInboundNo());
             tx.setBatchNo(item.getBatchNo());
             tx.setQuantity(item.getQuantity());
+            tx.setBeforeQuantity(currentTotal.subtract(item.getQuantity()));
+            tx.setAfterQuantity(currentTotal);
             tx.setUnitCost(item.getUnitPrice());
             tx.setAmount(item.getAmount());
             tx.setTransactionTime(LocalDateTime.now());
-            tx.setOperatorId(SecurityUtils.getUserId());
-            tx.setOperatorName(SecurityUtils.getUsername());
-            tx.setRemark("入库审批通过");
+            tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
+            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+            tx.setRemark(remark != null ? remark : "入库确认");
             transactionMapper.insert(tx);
         }
-
-        order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
-        return inboundOrderMapper.updateById(order) > 0;
-    }
-
-    @Override
-    @Event(value = "inventory.inbound.rejected", bizId = "#inboundId", bizType = "'inventory'")
-    public boolean reject(Long inboundId, Long approverId, String approverName, String remark) {
-        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
-        if (order == null) {
-            log.error("入库单不存在: inboundId={}", inboundId);
-            return false;
-        }
-
-        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
-            log.error("入库单状态不正确，无法驳回: inboundId={}, status={}", inboundId, order.getOrderStatus());
-            return false;
-        }
-
-        order.setOrderStatus(OrderStatusEnum.REJECTED.getCode());
-        order.setRemark(remark);
-        return inboundOrderMapper.updateById(order) > 0;
     }
 
     @Override
@@ -654,8 +686,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long inboundId, Integer status) {
-        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        // DEV-651 方案A：行锁
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);
             return false;

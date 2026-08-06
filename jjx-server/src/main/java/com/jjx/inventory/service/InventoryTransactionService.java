@@ -30,6 +30,11 @@ public interface InventoryTransactionService extends IService<InventoryTransacti
     List<TransactionVO> getBySource(String sourceType, Long sourceId);
 
     /**
+     * 根据单据号查询流水（DEV-661：出入库详情展示用，按 source_no 精确匹配）
+     */
+    List<TransactionVO> getByDocNo(String docNo);
+
+    /**
      * 查询指定物料的流水记录
      */
     List<TransactionVO> getByMaterial(Long materialId, int limit);

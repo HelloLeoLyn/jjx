@@ -1,9 +1,13 @@
 <template>
   <div class="outbound-list">
+    <!-- 页面标题（DEV-659：领料模式/出库模式区分） -->
+    <div class="page-title" style="font-size:16px;font-weight:600;margin-bottom:12px">
+      {{ isPickMode ? '生产领料' : '出库管理' }}
+    </div>
     <!-- 搜索栏 -->
     <el-card class="search-card">
       <el-form :model="queryParams" :inline="true">
-        <el-form-item label="出库单号">
+        <el-form-item :label="isPickMode ? '领料单号' : '出库单号'">
           <el-input
             v-model="queryParams.outboundNo"
             placeholder="请输入出库单号"
@@ -11,7 +15,7 @@
             @keyup.enter="handleQuery"
           />
         </el-form-item>
-        <el-form-item label="出库类型">
+        <el-form-item label="出库类型" v-if="!isPickMode">
           <el-select
             v-model="queryParams.outboundType"
             placeholder="请选择"
@@ -61,7 +65,7 @@
     <!-- 操作栏 -->
     <el-card class="operation-card">
       <el-row :gutter="10">
-        <el-col :span="1.5">
+        <el-col :span="1.5" v-if="!isPickMode">
           <el-button type="primary" @click="handleCreate">
             <el-icon><Plus /></el-icon>新建出库单
           </el-button>
@@ -88,8 +92,8 @@
     <el-card class="table-card">
       <el-table v-loading="loading" :data="outboundList" border style="width: 100%" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="50" align="center" />
-        <el-table-column label="出库单号" prop="outboundNo" width="150" />
-        <el-table-column label="出库类型" width="100" align="center">
+        <el-table-column :label="isPickMode ? '领料单号' : '出库单号'" prop="outboundNo" min-width="150" />
+        <el-table-column label="出库类型" width="100" align="center" v-if="!isPickMode">
           <template #default="{ row }">
             <el-tag :type="getOutboundTypeTag(row.outboundType)" size="small">
               {{ row.outboundTypeName }}
@@ -97,7 +101,9 @@
           </template>
         </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
-        <el-table-column label="客户" prop="customerName" width="150" show-overflow-tooltip />
+        <!-- DEV-659：领料模式显示工单号，出库模式显示客户 -->
+        <el-table-column v-if="isPickMode" label="来源工单" prop="sourceNo" width="150" show-overflow-tooltip />
+        <el-table-column v-else label="客户" prop="customerName" width="150" show-overflow-tooltip />
         <el-table-column label="总数量" prop="totalQuantity" width="100" align="right">
           <template #default="{ row }">
             {{ formatNumber(row.totalQuantity) }}
@@ -115,7 +121,7 @@
         </el-table-column>
         <el-table-column label="创建人" prop="createBy" width="100" />
         <el-table-column label="创建时间" prop="createTime" width="150" align="center" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" min-width="250" fixed="right">
           <template #default="{ row }">
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
@@ -123,7 +129,7 @@
               >编辑</el-button
             >
             <el-button
-              v-if="row.status === 1"
+              v-if="row.status === 1 || row.status === 2"
               link
               type="warning"
               @click="handleConfirm(row)"
@@ -145,6 +151,54 @@
     <!-- 查看流水（DEV-569） -->
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
+    <!-- 出库单详情抽屉（DEV-661：含基本信息/明细/库存流水） -->
+    <el-drawer v-model="detailVisible" :title="`出库单详情 - ${detailNo}`" size="720px">
+      <template v-if="currentDetail">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="单据号">{{ currentDetail.outboundNo }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ currentDetail.outboundTypeName }}</el-descriptions-item>
+          <el-descriptions-item label="仓库">{{ currentDetail.warehouseName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ currentDetail.statusName }}</el-descriptions-item>
+          <el-descriptions-item label="来源单号">{{ currentDetail.sourceNo || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="总数量">{{ formatNumber(currentDetail.totalQuantity) }}</el-descriptions-item>
+          <el-descriptions-item label="总金额">¥ {{ formatCurrency(currentDetail.totalAmount) }}</el-descriptions-item>
+          <el-descriptions-item label="创建人">{{ currentDetail.createBy || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ currentDetail.createTime || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">{{ currentDetail.remark || '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">出库明细</el-divider>
+        <el-table :data="currentDetail.items || []" border size="small" style="width: 100%">
+          <el-table-column label="物料编码" prop="materialCode" width="110" />
+          <el-table-column label="物料名称" prop="materialName" min-width="140" show-overflow-tooltip />
+          <el-table-column label="规格" prop="specification" min-width="100" show-overflow-tooltip />
+          <el-table-column label="数量" prop="quantity" width="80" align="right" />
+          <el-table-column label="单位" prop="unit" width="60" align="center" />
+          <el-table-column label="批次" prop="batchNo" width="110" />
+        </el-table>
+
+        <el-divider content-position="left">库存流水（DEV-661）</el-divider>
+        <el-table v-loading="txLoading" :data="detailTransactions" border size="small" style="width: 100%">
+          <el-table-column label="物料" prop="materialCode" width="110" />
+          <el-table-column label="名称" prop="materialName" min-width="120" show-overflow-tooltip />
+          <el-table-column label="变动" prop="quantity" width="90" align="right">
+            <template #default="{ row }">
+              <span :style="{ color: row.quantity < 0 ? '#f56c6c' : '#67c23a' }">
+                {{ row.quantity > 0 ? '+' : '' }}{{ formatNumber(row.quantity) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="变动前" prop="beforeQuantity" width="80" align="right" />
+          <el-table-column label="变动后" prop="afterQuantity" width="80" align="right" />
+          <el-table-column label="批次" prop="batchNo" width="110" />
+          <el-table-column label="操作人" prop="operatorName" width="90" />
+          <el-table-column label="时间" prop="transactionTime" width="150" />
+          <el-table-column label="备注" prop="remark" min-width="100" show-overflow-tooltip />
+        </el-table>
+        <el-empty v-if="!txLoading && detailTransactions.length === 0" description="暂无库存流水" :image-size="60" />
+      </template>
+    </el-drawer>
+
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -163,11 +217,13 @@ defineOptions({
   name: 'OutboundList',
 })
 
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Refresh } from '@element-plus/icons-vue'
 import { outboundApi } from '@/api/inventory/outbound'
+import { getTransactionsByDocNo } from '@/api/inventory/transaction'
+import type { TransactionVO } from '@/api/inventory/transaction'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber, download } from '@/utils/format'
@@ -183,6 +239,11 @@ function showTrace(row: OutboundVO) {
 }
 
 const router = useRouter()
+const route = useRoute()
+
+// DEV-659：领料单/出库单视图分离——同一组件两种模式
+// 路由 path 含 pick 即为领料模式（菜单「生产领料」path=pick）
+const isPickMode = computed(() => route.path.includes('pick'))
 
 // 查询参数
 const queryParams = reactive<OutboundQueryParams>({
@@ -192,6 +253,9 @@ const queryParams = reactive<OutboundQueryParams>({
   outboundType: '',
   warehouseId: '',
   status: '',
+  // DEV-659：领料模式只查 work_order 来源；出库模式排除 work_order
+  sourceType: isPickMode.value ? 'work_order' : '',
+  sourceTypeNe: isPickMode.value ? '' : 'work_order',
 })
 
 // 响应式数据
@@ -227,6 +291,8 @@ const handleReset = () => {
   queryParams.outboundType = ''
   queryParams.warehouseId = ''
   queryParams.status = ''
+  queryParams.sourceType = isPickMode.value ? 'work_order' : ''
+  queryParams.sourceTypeNe = isPickMode.value ? '' : 'work_order'
   getList()
 }
 
@@ -264,9 +330,35 @@ const handleRefresh = () => {
   ElMessage.success('数据已刷新')
 }
 
-// 查看详情
-const handleView = (row: OutboundVO) => {
-  ElMessage.info(`查看出库单详情: ${row.outboundNo}`)
+// 查看详情（DEV-661：抽屉展示基本信息/明细/库存流水）
+const detailVisible = ref(false)
+const detailNo = ref('')
+const currentDetail = ref<OutboundVO | null>(null)
+const detailTransactions = ref<TransactionVO[]>([])
+const txLoading = ref(false)
+
+const handleView = async (row: OutboundVO) => {
+  detailNo.value = row.outboundNo || ''
+  detailVisible.value = true
+  currentDetail.value = null
+  detailTransactions.value = []
+  try {
+    const res = await outboundApi.getById(String(row.outboundId))
+    currentDetail.value = res.data || null
+  } catch (e) {
+    ElMessage.error('获取出库单详情失败')
+  }
+  if (row.outboundNo) {
+    txLoading.value = true
+    try {
+      const txRes = await getTransactionsByDocNo(row.outboundNo)
+      detailTransactions.value = txRes.data || []
+    } catch (e) {
+      ElMessage.error('获取库存流水失败')
+    } finally {
+      txLoading.value = false
+    }
+  }
 }
 
 // 编辑出库单

@@ -11,6 +11,8 @@ export interface OutboundQueryParams {
   materialCode?: string
   materialName?: string
   status?: string
+  sourceType?: string
+  sourceTypeNe?: string
   createTimeStart?: string
   createTimeEnd?: string
   outboundTimeStart?: string

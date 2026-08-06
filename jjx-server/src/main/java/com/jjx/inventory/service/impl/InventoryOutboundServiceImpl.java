@@ -73,6 +73,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (query.getOutboundType() != null && !query.getOutboundType().isEmpty()) wrapper.eq(InventoryOutboundOrder::getOutboundType, query.getOutboundType());
         if (query.getWarehouseId() != null) wrapper.eq(InventoryOutboundOrder::getWarehouseId, query.getWarehouseId());
         if (query.getSourceType() != null && !query.getSourceType().isEmpty()) wrapper.eq(InventoryOutboundOrder::getSourceType, query.getSourceType());
+        if (query.getSourceTypeNe() != null && !query.getSourceTypeNe().isEmpty()) wrapper.ne(InventoryOutboundOrder::getSourceType, query.getSourceTypeNe());
         if (query.getSourceNo() != null && !query.getSourceNo().isEmpty()) wrapper.like(InventoryOutboundOrder::getSourceNo, query.getSourceNo());
         if (query.getOrderStatus() != null && !query.getOrderStatus().isEmpty()) wrapper.eq(InventoryOutboundOrder::getOrderStatus, query.getOrderStatus());
         if (query.getApproveStatus() != null && !query.getApproveStatus().isEmpty()) wrapper.eq(InventoryOutboundOrder::getApproveStatus, query.getApproveStatus());
@@ -136,17 +137,20 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Event(value = "inventory.outbound.confirmed", bizId = "#outboundId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirm(Long outboundId, Long operatorId, String operatorName) {
-        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复出入库
+        InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())
+                && !OrderStatusEnum.APPROVED.getCode().equals(order.getOrderStatus())) {
             log.error("出库单状态不正确，无法确认: outboundId={}, status={}", outboundId, order.getOrderStatus());
             return false;
         }
 
+        // 库存操作统一发生在 confirm（DEV-651：confirm=审批+完成 单路径，approve 不再动库存）
         // 直接执行库存扣减（不经过 approve，避免状态不匹配）
         List<InventoryOutboundItem> outItems = outboundItemMapper.selectByOutboundId(outboundId);
         // DEV-580：销售发货出库时，先同步释放该订单的成品预留（扣减前释放，FIFO才能扣到预留部分）
@@ -235,7 +239,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Event(value = "inventory.outbound.cancelled", bizId = "#outboundId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean cancel(Long outboundId, String reason) {
-        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        // DEV-651 方案A：行锁
+        InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);
             return false;
@@ -252,11 +257,22 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.outbound.submitted", bizId = "#outboundId", bizType = "'inventory'")
     public boolean submitApprove(Long outboundId) {
-        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        // DEV-651 方案A：行锁
+        InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);
+            return false;
+        }
+
+        // DEV-651：只有草稿/已驳回/已取消状态的单才能提交审批，防止把已完成/进行中的单打回待审批
+        Integer status = order.getOrderStatus();
+        if (!OrderStatusEnum.DRAFT.getCode().equals(status)
+                && !OrderStatusEnum.REJECTED.getCode().equals(status)
+                && !OrderStatusEnum.CANCELLED.getCode().equals(status)) {
+            log.error("出库单状态不允许提交审批: outboundId={}, status={}", outboundId, status);
             return false;
         }
 
@@ -268,7 +284,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Event(value = "inventory.outbound.approved", bizId = "#outboundId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean approve(Long outboundId, Long approverId, String approverName, String remark) {
-        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        // DEV-651 方案A：行锁
+        InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);
             return false;
@@ -279,61 +296,21 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
-        // 执行库存扣减
-        List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
-        for (InventoryOutboundItem item : items) {
-            if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
-
-            BigDecimal remaining = item.getQuantity();
-            // 按FIFO顺序扣减
-            List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(item.getMaterialId());
-            for (InventoryStockItem si : fifoItems) {
-                if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
-
-                BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
-                if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
-
-                stockItemMapper.deductStock(si.getItemId(), deductQty);
-                remaining = remaining.subtract(deductQty);
-            }
-
-            if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-                throw new BusinessException("物料[" + item.getMaterialCode() + "]库存不足，缺少: " + remaining);
-            }
-
-            // 刷新库存汇总
-            stockMapper.refreshSummary(item.getMaterialId());
-
-            // 记录流水
-            InventoryTransaction tx = new InventoryTransaction();
-            tx.setMaterialId(item.getMaterialId());
-            tx.setMaterialCode(item.getMaterialCode());
-            tx.setMaterialName(item.getMaterialName());
-            tx.setWarehouseId(order.getWarehouseId());
-            tx.setLocationId(item.getLocationId());
-            tx.setTransactionType("OUTBOUND");
-            tx.setSourceType(order.getSourceType());
-            tx.setSourceId(outboundId);
-            tx.setSourceNo(order.getOutboundNo());
-            tx.setBatchNo(item.getBatchNo());
-            tx.setQuantity(item.getQuantity().negate());
-            tx.setUnitCost(item.getUnitPrice());
-            tx.setAmount(item.getAmount());
-            tx.setTransactionTime(LocalDateTime.now());
-            tx.setOperatorId(SecurityUtils.getUserId());
-            tx.setOperatorName(SecurityUtils.getUsername());
-            tx.setRemark("出库审批通过");
-            transactionMapper.insert(tx);
-        }
-
+        // DEV-651：审批只做状态流转，库存扣减统一由 confirm 执行（confirm=审批+完成 单路径）
+        // 原实现在这里扣库存，导致：①与 confirm 重复维护扣减逻辑；②approve 后无出口到 COMPLETED，单子卡死
         order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+        if (remark != null) {
+            order.setApproveRemark(remark);
+        }
         return outboundOrderMapper.updateById(order) > 0;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.outbound.rejected", bizId = "#outboundId", bizType = "'inventory'")
     public boolean reject(Long outboundId, Long approverId, String approverName, String remark) {
-        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        // DEV-651 方案A：行锁
+        InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);
             return false;
@@ -423,6 +400,41 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 5. 创建出库单明细
         int sort = 1;
         BigDecimal totalQty = BigDecimal.ZERO;
+        // DEV-651：生成领料单前先做库存预检，不足则抛异常（由 startOrder 捕获记录，避免"工单已开工但领料失败"无人知晓）
+        List<String> shortageMsgs = new java.util.ArrayList<>();
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
+            if (!"buy".equals(bomItem.getSourceType())) continue;
+
+            BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
+                    ? bomItem.getBaseQty() : BigDecimal.ONE;
+            BigDecimal qtyNeeded = bomItem.getQuantity()
+                    .multiply(prodOrder.getPlannedQuantity())
+                    .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.ONE.add(
+                            bomItem.getLossRate() != null ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
+                    ))
+                    .setScale(0, java.math.RoundingMode.UP);
+
+            // 库存预检：按 FIFO 可用量（批次数量-预留）汇总对比
+            BigDecimal available = BigDecimal.ZERO;
+            try {
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(bomItem.getMaterialId());
+                for (InventoryStockItem si : fifoItems) {
+                    available = available.add(si.getQuantity().subtract(si.getReservedQuantity()));
+                }
+            } catch (Exception e) {
+                log.warn("领料预检查询库存失败: materialId={}, err={}", bomItem.getMaterialId(), e.getMessage());
+            }
+            if (available.compareTo(qtyNeeded) < 0) {
+                shortageMsgs.add("物料[" + bomItem.getMaterialCode() + "]需" + qtyNeeded + ", 可用" + available);
+            }
+        }
+        if (!shortageMsgs.isEmpty()) {
+            String msg = "库存不足，无法生成领料单: " + String.join("; ", shortageMsgs);
+            log.error("生产工单{}领料预检失败: {}", workOrderId, msg);
+            throw new BusinessException(msg);
+        }
+
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
 
@@ -571,8 +583,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long outboundId, Integer status) {
-        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        // DEV-651 方案A：行锁
+        InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);
             return false;
@@ -658,6 +672,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return vo;
     }
 
+    /**
+     * DEV-660：判断是否领料单（production 类型或 PICK- 单号前缀）
+     */
+    private static boolean isPickOrder(OutboundVO vo) {
+        if (vo == null) return false;
+        if (OutboundTypeEnum.PRODUCTION.getCode().equals(vo.getOutboundType())) return true;
+        return vo.getOutboundNo() != null && vo.getOutboundNo().startsWith("PICK-");
+    }
+
     private static List<OutboundItemVO> convertToItemVOList(List<InventoryOutboundItem> items) {
         if (items == null || items.isEmpty()) return new ArrayList<>();
         List<OutboundItemVO> result = new ArrayList<>();
@@ -723,7 +746,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         return com.jjx.common.utils.pdf.PdfDocBuilder.create()
-                .title("出  库  单")
+                // DEV-660：领料单（production 类型/PICK- 单号）打印标题为「领 料 单」，其余「出 库 单」
+                .title(isPickOrder(vo) ? "领  料  单" : "出  库  单")
                 .info(info)
                 .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额", "批次"}, rows)
                 .amounts(new String[][]{
