@@ -70,8 +70,10 @@ export const stockApi = {
   },
 
   // 批量导入库存数据（JSON格式）
-  batchImport(data: Record<string, unknown>[]) {
-    return request.post<R<StockImportResultVO>>('/inventory/stock/batch-import', data)
+  batchImport(data: Record<string, unknown>[], autoCreateLocation = false) {
+    return request.post<R<StockImportResultVO>>('/inventory/stock/batch-import', data, {
+      params: { autoCreateLocation },
+    })
   },
 
   // 下载库存导入模板（DEV-672：后端生成，不再用静态文件）

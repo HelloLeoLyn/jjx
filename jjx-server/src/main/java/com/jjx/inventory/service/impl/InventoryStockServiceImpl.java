@@ -299,7 +299,7 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public StockImportResultVO batchImport(List<StockImportDTO> list) {
+    public StockImportResultVO batchImport(List<StockImportDTO> list, boolean autoCreateLocation) {
         StockImportResultVO result = new StockImportResultVO();
 
         if (list == null || list.isEmpty()) {
@@ -348,12 +348,35 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                 .collect(Collectors.toList());
 
         Map<String, InventoryStorageLocation> locationCache = new HashMap<>();
+        Map<String, InventoryStorageLocation> locationNameCache = new HashMap<>();
         if (!locationCodes.isEmpty()) {
             LambdaQueryWrapper<InventoryStorageLocation> locationWrapper = new LambdaQueryWrapper<>();
             locationWrapper.in(InventoryStorageLocation::getLocationCode, locationCodes);
             List<InventoryStorageLocation> locations = locationMapper.selectList(locationWrapper);
             for (InventoryStorageLocation loc : locations) {
                 locationCache.put(loc.getLocationCode(), loc);
+                locationNameCache.put(normalizeName(loc.getLocationName()), loc);
+            }
+        }
+
+        // 2.1 若有摆放区域描述，补充加载匹配的库位（去空格名称匹配）
+        List<String> locationDescs = list.stream()
+                .map(StockImportDTO::getLocationDesc)
+                .filter(c -> c != null && !c.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+        if (!locationDescs.isEmpty()) {
+            for (String desc : locationDescs) {
+                if (locationNameCache.containsKey(normalizeName(desc))) {
+                    continue;
+                }
+                List<InventoryStorageLocation> matched = locationMapper.selectList(
+                        new LambdaQueryWrapper<InventoryStorageLocation>()
+                                .likeRight(InventoryStorageLocation::getLocationName, desc.trim()));
+                for (InventoryStorageLocation loc : matched) {
+                    locationCache.putIfAbsent(loc.getLocationCode(), loc);
+                    locationNameCache.putIfAbsent(normalizeName(loc.getLocationName()), loc);
+                }
             }
         }
 
@@ -394,23 +417,33 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                 continue;
             }
 
-            // 3.3 校验库位容量
+            // 3.3 校验库位：优先 locationCode，其次按摆放区域(去空格名称)匹配；匹配不到且 autoCreateLocation 时自动创建
+            InventoryStorageLocation location = null;
             if (dto.getLocationCode() != null && !dto.getLocationCode().isEmpty()) {
-                InventoryStorageLocation location = locationCache.get(dto.getLocationCode());
+                location = locationCache.get(dto.getLocationCode());
                 if (location == null) {
                     result.addFail(rowIndex, dto.getMaterialName(),
                             "库位编码'" + dto.getLocationCode() + "'不存在");
                     continue;
                 }
-                if (location.getCapacity() != null && location.getUsedCapacity() != null) {
-                    BigDecimal newUsed = location.getUsedCapacity().add(dto.getQuantity());
-                    if (newUsed.compareTo(location.getCapacity()) > 0) {
-                        result.addFail(rowIndex, dto.getMaterialName(),
-                                "库位'" + location.getLocationName() + "'容量不足，当前已用"
-                                        + location.getUsedCapacity() + "，最大容量"
-                                        + location.getCapacity() + "，导入后为" + newUsed);
-                        continue;
+            } else if (dto.getLocationDesc() != null && !dto.getLocationDesc().isEmpty()) {
+                location = locationNameCache.get(normalizeName(dto.getLocationDesc()));
+                if (location == null && autoCreateLocation) {
+                    location = createLocation(warehouseId, dto.getLocationDesc());
+                    if (location != null) {
+                        locationCache.put(location.getLocationCode(), location);
+                        locationNameCache.put(normalizeName(location.getLocationName()), location);
                     }
+                }
+            }
+            if (location != null && location.getCapacity() != null && location.getUsedCapacity() != null) {
+                BigDecimal newUsed = location.getUsedCapacity().add(dto.getQuantity());
+                if (newUsed.compareTo(location.getCapacity()) > 0) {
+                    result.addFail(rowIndex, dto.getMaterialName(),
+                            "库位'" + location.getLocationName() + "'容量不足，当前已用"
+                                    + location.getUsedCapacity() + "，最大容量"
+                                    + location.getCapacity() + "，导入后为" + newUsed);
+                    continue;
                 }
             }
 
@@ -452,27 +485,20 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             }
 
             // 设置库位
-            if (dto.getLocationCode() != null && !dto.getLocationCode().isEmpty()) {
-                InventoryStorageLocation location = locationCache.get(dto.getLocationCode());
-                if (location != null) {
-                    newItem.setLocationId(location.getLocationId());
-                }
+            if (location != null) {
+                newItem.setLocationId(location.getLocationId());
+            }
+            // 更新库位已使用容量
+            if (location != null && location.getCapacity() != null) {
+                BigDecimal newUsed = location.getUsedCapacity() != null
+                        ? location.getUsedCapacity().add(dto.getQuantity())
+                        : dto.getQuantity();
+                location.setUsedCapacity(newUsed);
+                locationMapper.updateById(location);
             }
 
             newItem.setLastInboundTime(LocalDateTime.now());
             stockItemMapper.insert(newItem);
-
-            // 3.5 更新库位已使用容量
-            if (dto.getLocationCode() != null && !dto.getLocationCode().isEmpty()) {
-                InventoryStorageLocation location = locationCache.get(dto.getLocationCode());
-                if (location != null && location.getCapacity() != null) {
-                    BigDecimal newUsed = location.getUsedCapacity() != null
-                            ? location.getUsedCapacity().add(dto.getQuantity())
-                            : dto.getQuantity();
-                    location.setUsedCapacity(newUsed);
-                    locationMapper.updateById(location);
-                }
-            }
 
             // 3.6 刷新汇总表
             refreshSummary(material.getMaterialId());
@@ -564,5 +590,51 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
         String cleanName = name != null ? name.trim() : "";
         String cleanSpec = spec != null ? spec.trim() : "";
         return cleanName + "|" + cleanSpec;
+    }
+
+    /**
+     * 规范化库位名称/区域描述：去空格，用于匹配
+     */
+    private String normalizeName(String name) {
+        return name == null ? "" : name.replaceAll("\\s+", "");
+    }
+
+    /**
+     * 自动创建库位（导入时区域无对应库位且 autoCreateLocation=true）
+     * 编码规则：<区域首字母>-<序号>，如 B-01；名称取区域描述
+     */
+    private InventoryStorageLocation createLocation(Long warehouseId, String locationDesc) {
+        try {
+            String desc = locationDesc.trim();
+            // 生成编码：取区域首个字母 + 序号
+            char prefix = 'L';
+            if (!desc.isEmpty()) {
+                char first = desc.charAt(0);
+                if (Character.isLetter(first)) {
+                    prefix = Character.toUpperCase(first);
+                }
+            }
+            int seq = locationMapper.selectCount(
+                    new LambdaQueryWrapper<InventoryStorageLocation>()
+                            .likeRight(InventoryStorageLocation::getLocationCode, prefix + "-")).intValue() + 1;
+            String code = String.format("%s-%02d", prefix, seq);
+
+            InventoryStorageLocation loc = new InventoryStorageLocation();
+            loc.setWarehouseId(warehouseId);
+            loc.setLocationCode(code);
+            loc.setLocationName(desc);
+            loc.setLocationType("normal");
+            loc.setCapacity(new BigDecimal("100000"));
+            loc.setUsedCapacity(BigDecimal.ZERO);
+            loc.setStatus("0");
+            loc.setCreateBy("admin");
+            loc.setCreateTime(LocalDateTime.now());
+            locationMapper.insert(loc);
+            log.info("导入自动创建库位: {} ({})", code, desc);
+            return loc;
+        } catch (Exception e) {
+            log.error("自动创建库位失败: {}", locationDesc, e);
+            return null;
+        }
     }
 }

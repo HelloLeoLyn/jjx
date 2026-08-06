@@ -782,6 +782,31 @@ const handleImport = async () => {
     )
   }
 
+  // 检测未匹配到库位的摆放区域，询问是否自动创建
+  let autoCreateLocation = false
+  const noLocationRows = dataList.value.filter(
+    (row) => row.checked !== false && row.locationDesc && !row.locationCode
+  )
+  if (noLocationRows.length > 0) {
+    const locationDescs = [...new Set(noLocationRows.map((row) => row.locationDesc))]
+    try {
+      await ElMessageBox.confirm(
+        `检测到 ${noLocationRows.length} 条数据的摆放区域（${locationDescs.slice(0, 5).join('、')}${locationDescs.length > 5 ? ' 等' : ''}）没有对应库位，是否自动创建库位？`,
+        '提示',
+        {
+          type: 'info',
+          confirmButtonText: '自动创建',
+          cancelButtonText: '不创建',
+          distinguishCancelAndClose: true,
+        }
+      )
+      autoCreateLocation = true
+    } catch {
+      // 用户选择不创建：正常导入，库位留空
+      autoCreateLocation = false
+    }
+  }
+
   importLoading.value = true
   try {
     const validData = dataList.value.filter((row) => row.checked !== false)
@@ -790,7 +815,7 @@ const handleImport = async () => {
       return
     }
 
-    await stockApi.batchImport(validData)
+    await stockApi.batchImport(validData, autoCreateLocation)
     ElMessage.success(`成功导入 ${validData.length} 条数据`)
     dialogVisible.value = false
     emit('success')
