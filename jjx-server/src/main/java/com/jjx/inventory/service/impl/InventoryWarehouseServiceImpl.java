@@ -2,6 +2,7 @@ package com.jjx.inventory.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.common.enums.StatusEnum;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.vo.WarehouseVO;
 import com.jjx.inventory.mapper.InventoryWarehouseMapper;
@@ -31,7 +32,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
     public List<InventoryWarehouse> getAllEnabled() {
         return warehouseMapper.selectList(
                 new LambdaQueryWrapper<InventoryWarehouse>()
-                        .eq(InventoryWarehouse::getStatus, "0")
+                        .eq(InventoryWarehouse::getStatus, String.valueOf(StatusEnum.NORMAL.getCode()))
                         .orderByAsc(InventoryWarehouse::getSortOrder)
         );
     }
@@ -46,7 +47,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
         return warehouseMapper.selectList(
                 new LambdaQueryWrapper<InventoryWarehouse>()
                         .eq(InventoryWarehouse::getWarehouseType, warehouseType)
-                        .eq(InventoryWarehouse::getStatus, "0")
+                        .eq(InventoryWarehouse::getStatus, String.valueOf(StatusEnum.NORMAL.getCode()))
                         .orderByAsc(InventoryWarehouse::getSortOrder)
         );
     }
