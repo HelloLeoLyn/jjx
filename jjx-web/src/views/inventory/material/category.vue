@@ -66,7 +66,7 @@
           label="操作"
           align="center"
           class-name="small-padding fixed-width"
-          width="200"
+          min-width="200"
         >
           <template #default="scope">
             <el-tooltip content="修改" placement="top">
