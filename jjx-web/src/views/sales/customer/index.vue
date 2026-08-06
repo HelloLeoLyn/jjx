@@ -473,10 +473,13 @@ const handleExport = () => {
     type: 'warning',
   })
     .then(() => {
-      return customerApi.exportCustomers(queryParams)
-    })
-    .then((response: any) => {
-      download(response, '客户列表.xlsx')
+      const loading = ElLoading.service({ text: '导出中...', lock: true })
+      return customerApi
+        .exportCustomers(queryParams)
+        .then((response: any) => {
+          download(response, '客户列表.xlsx')
+        })
+        .finally(() => loading.close())
     })
     .catch(() => {})
 }

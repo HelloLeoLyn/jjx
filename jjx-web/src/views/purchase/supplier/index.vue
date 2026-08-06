@@ -438,7 +438,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
   listSupplier,
@@ -722,10 +722,12 @@ const handleExport = () => {
     type: 'warning',
   })
     .then(() => {
+      const loading = ElLoading.service({ text: '导出中...', lock: true })
       return exportSupplier(queryParams)
-    })
-    .then((response: any) => {
-      download(response, '供应商列表.xlsx')
+        .then((response: any) => {
+          download(response, '供应商列表.xlsx')
+        })
+        .finally(() => loading.close())
     })
     .catch(() => {})
 }

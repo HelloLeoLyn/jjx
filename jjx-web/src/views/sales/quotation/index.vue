@@ -801,7 +801,7 @@ defineOptions({
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import type { TagType } from '@/types'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import QuotationFlowDialog from './components/QuotationFlowDialog.vue'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
@@ -1085,10 +1085,13 @@ const handleExport = () => {
     type: 'warning',
   })
     .then(() => {
-      return quotationApi.export(queryParams)
-    })
-    .then((response: any) => {
-      download(response, '报价单列表.xlsx')
+      const loading = ElLoading.service({ text: '导出中...', lock: true })
+      return quotationApi
+        .export(queryParams)
+        .then((response: any) => {
+          download(response, '报价单列表.xlsx')
+        })
+        .finally(() => loading.close())
     })
     .catch(() => {})
 }

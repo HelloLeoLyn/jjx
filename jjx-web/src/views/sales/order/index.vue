@@ -326,7 +326,7 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
@@ -492,9 +492,14 @@ const handleExport = () => {
     cancelButtonText: '取消',
     type: 'warning',
   })
-    .then(() => orderApi.exportOrders(queryParams))
-    .then((response: any) => {
-      download(response, '订单列表.xlsx')
+    .then(() => {
+      const loading = ElLoading.service({ text: '导出中...', lock: true })
+      return orderApi
+        .exportOrders(queryParams)
+        .then((response: any) => {
+          download(response, '订单列表.xlsx')
+        })
+        .finally(() => loading.close())
     })
     .catch(() => {})
 }

@@ -13,6 +13,15 @@ const service: AxiosInstance = axios.create({
   },
 })
 
+// DEV-672：导入导出等耗时接口超时时间（默认10s不够，导入导出可达20-60s）
+export const LONG_TIMEOUT = 120000
+
+// 判断是否为耗时接口（导入/导出/模板/批量导入/PDF导出等）
+const isLongRequest = (url?: string): boolean => {
+  if (!url) return false
+  return /(export|import|template|batch-import|export-pdf|export-excel)/i.test(url)
+}
+
 // 扩展 axios 类型声明
 declare module 'axios' {
   export interface AxiosInstance {
@@ -34,6 +43,10 @@ service.interceptors.request.use(
     if (token) {
       config.headers = config.headers || {}
       config.headers['token'] = token
+    }
+    // DEV-672：导入导出等耗时接口自动调大超时（避免10s abort导致导入中断/重复导入）
+    if (isLongRequest(config.url)) {
+      config.timeout = LONG_TIMEOUT
     }
     return config
   },

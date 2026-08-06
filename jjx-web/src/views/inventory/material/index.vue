@@ -124,7 +124,7 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import Toolbar from '@/components/common-ui/Toolbar.vue'
@@ -323,7 +323,10 @@ const handleImport = async () => {
 
 // 导出
 const handleExport = () => {
-  materialApi.export(queryParams)
+  const loading = ElLoading.service({ text: '导出中...', lock: true })
+  materialApi
+    .export(queryParams)
+    .finally(() => loading.close())
 }
 
 onMounted(() => {
