@@ -10,6 +10,7 @@ import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryTransaction;
+import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
 import com.jjx.inventory.dto.vo.InboundItemVO;
 import com.jjx.inventory.dto.vo.InboundVO;
@@ -27,6 +28,7 @@ import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
+import com.jjx.inventory.mapper.InventoryWarehouseMapper;
 import com.jjx.inventory.service.InventoryInboundService;
 import com.jjx.inventory.service.InventoryAlertService;
 import com.jjx.system.utils.SecurityUtils;
@@ -59,6 +61,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
     private final InventoryMaterialMapper inventoryMaterialMapper;
+    private final InventoryWarehouseMapper warehouseMapper;
     private final ProductionOrderMapper productionOrderMapper;
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
@@ -611,6 +614,19 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceNo(prodOrder.getOrderNo());
         order.setTraceId(prodOrder.getTraceId()); // 链路追踪（DEV-568）：工单→完工入库单继承
         order.setInboundDate(LocalDate.now());
+        // DEV-679：工单无仓库字段，默认取第一个启用仓库（与出库侧 createFromProduction 一致）
+        try {
+            InventoryWarehouse defaultWh = warehouseMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryWarehouse>()
+                            .eq(InventoryWarehouse::getStatus, 1)
+                            .orderByAsc(InventoryWarehouse::getWarehouseId)
+                            .last("LIMIT 1"));
+            if (defaultWh != null) {
+                order.setWarehouseId(defaultWh.getWarehouseId());
+            }
+        } catch (Exception e) {
+            log.warn("获取默认仓库失败: {}", e.getMessage());
+        }
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         inboundOrderMapper.insert(order);
 
