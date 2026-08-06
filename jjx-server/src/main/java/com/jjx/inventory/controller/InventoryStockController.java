@@ -113,9 +113,8 @@ public class InventoryStockController {
     @Operation(summary = "批量导入库存")
     @Log(module = "库存管理", businessType = BusinessType.IMPORT, bizType = "'stock'", bizId = "#list[0].materialCode")
     @SaCheckPermission("inventory:stock:import")
-    public Result<StockImportResultVO> batchImport(@RequestBody List<StockImportDTO> list,
-                                                   @RequestParam(required = false, defaultValue = "false") boolean autoCreateLocation) {
-        return Result.success(stockService.batchImport(list, autoCreateLocation));
+    public Result<StockImportResultVO> batchImport(@RequestBody List<StockImportDTO> list) {
+        return Result.success(stockService.batchImport(list));
     }
 
     /**

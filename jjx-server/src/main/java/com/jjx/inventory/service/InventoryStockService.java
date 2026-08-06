@@ -75,7 +75,7 @@ public interface InventoryStockService {
     /**
      * 批量导入库存
      */
-    StockImportResultVO batchImport(List<StockImportDTO> list, boolean autoCreateLocation);
+    StockImportResultVO batchImport(List<StockImportDTO> list);
 
     /**
      * 刷新指定物料的汇总数据
