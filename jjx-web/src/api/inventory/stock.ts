@@ -73,6 +73,13 @@ export const stockApi = {
   batchImport(data: Record<string, unknown>[]) {
     return request.post<R<StockImportResultVO>>('/inventory/stock/batch-import', data)
   },
+
+  // 下载库存导入模板（DEV-672：后端生成，不再用静态文件）
+  downloadImportTemplate() {
+    return request.get('/inventory/stock/importTemplate', {
+      responseType: 'blob',
+    })
+  },
 }
 
 // 库存校验结果类型

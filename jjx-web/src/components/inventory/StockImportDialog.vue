@@ -382,13 +382,21 @@ const handleExceed = () => {
   ElMessage.warning('每次只能上传一个文件')
 }
 
-// 下载导入模板
-const handleDownloadTemplate = () => {
-  // 使用本地模板文件
-  const link = document.createElement('a')
-  link.href = '/templates/库存导入模板.xlsx'
-  link.download = '库存导入模板.xlsx'
-  link.click()
+// 下载导入模板（DEV-672：改调后端接口，模板统一后端生成，不再用静态文件）
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await stockApi.downloadImportTemplate()
+    const blob = new Blob([res as any], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = '库存导入模板.xlsx'
+    link.click()
+    URL.revokeObjectURL(link.href)
+  } catch (error) {
+    ElMessage.error('下载模板失败')
+  }
 }
 
 // 解析文件

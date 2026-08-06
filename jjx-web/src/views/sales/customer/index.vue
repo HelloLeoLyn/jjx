@@ -548,7 +548,8 @@ const handleImportFileChange = async (event: Event) => {
     ElMessage.success(res.data || '导入完成')
     getList()
   } catch (e: any) {
-    ElMessage.error(e?.message || '导入失败')
+    // DEV-669：多行错误延长展示时间，便于阅读（ElMessage 支持 \n 换行）
+    ElMessage.error({ message: e?.message || '导入失败', duration: 8000 })
   } finally {
     loading.close()
   }

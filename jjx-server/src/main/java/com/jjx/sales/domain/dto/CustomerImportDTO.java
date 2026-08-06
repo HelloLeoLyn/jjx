@@ -12,7 +12,7 @@ public class CustomerImportDTO {
     /**
      * 客户名称（必填）
      */
-    @ExcelColumn(value = "客户名称(*)", order = 1, required = true, comment = "客户全称")
+    @ExcelColumn(value = "客户名称", order = 1, required = true, comment = "客户全称")
     private String customerName;
 
     /**

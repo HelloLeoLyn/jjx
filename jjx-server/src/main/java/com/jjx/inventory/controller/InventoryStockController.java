@@ -116,4 +116,15 @@ public class InventoryStockController {
     public Result<StockImportResultVO> batchImport(@RequestBody List<StockImportDTO> list) {
         return Result.success(stockService.batchImport(list));
     }
+
+    /**
+     * 下载库存导入模板（DEV-672：模板统一由后端生成，不再用静态文件）
+     */
+    @Operation(summary = "下载库存导入模板")
+    @SaCheckPermission("inventory:stock:import")
+    @GetMapping("/importTemplate")
+    public void importTemplate(jakarta.servlet.http.HttpServletResponse response) {
+        com.jjx.common.utils.ExcelUtils.downloadTemplate(response,
+                com.jjx.inventory.dto.imports.StockImportTemplateDTO.class, "库存导入模板");
+    }
 }
