@@ -9,6 +9,7 @@ import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryStorageLocation;
+import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.StockCheckDTO;
 import com.jjx.inventory.dto.query.StockImportDTO;
 import com.jjx.inventory.dto.query.StockQueryDTO;
@@ -305,6 +306,23 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             return result;
         }
 
+        // 0. 批量查询所有仓库，缓存到 Map<仓库名称, 仓库>（模板「仓库」列为名称）
+        List<String> warehouseNames = list.stream()
+                .map(StockImportDTO::getWarehouseName)
+                .filter(n -> n != null && !n.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<String, InventoryWarehouse> warehouseCache = new HashMap<>();
+        if (!warehouseNames.isEmpty()) {
+            LambdaQueryWrapper<InventoryWarehouse> warehouseWrapper = new LambdaQueryWrapper<>();
+            warehouseWrapper.in(InventoryWarehouse::getWarehouseName, warehouseNames);
+            List<InventoryWarehouse> warehouses = warehouseMapper.selectList(warehouseWrapper);
+            for (InventoryWarehouse w : warehouses) {
+                warehouseCache.put(w.getWarehouseName(), w);
+            }
+        }
+
         // 1. 批量查询所有物料，缓存到 Map<物料名称+规格, 物料>
         List<String> materialNames = list.stream()
                 .map(StockImportDTO::getMaterialName)
@@ -362,6 +380,20 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                 continue;
             }
 
+            // 3.2.1 解析仓库：模板「仓库」列为名称，转仓库ID；空或查不到报错
+            Long warehouseId;
+            if (dto.getWarehouseName() != null && !dto.getWarehouseName().isEmpty()) {
+                InventoryWarehouse warehouse = warehouseCache.get(dto.getWarehouseName());
+                if (warehouse == null) {
+                    result.addFail(rowIndex, dto.getMaterialName(), "仓库'" + dto.getWarehouseName() + "'不存在");
+                    continue;
+                }
+                warehouseId = warehouse.getWarehouseId();
+            } else {
+                result.addFail(rowIndex, dto.getMaterialName(), "仓库不能为空");
+                continue;
+            }
+
             // 3.3 校验库位容量
             if (dto.getLocationCode() != null && !dto.getLocationCode().isEmpty()) {
                 InventoryStorageLocation location = locationCache.get(dto.getLocationCode());
@@ -383,7 +415,6 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             }
 
             // 3.4 写入明细表
-            Long warehouseId = dto.getWarehouseId() != null ? dto.getWarehouseId() : 0L;
             String batchNo = dto.getBatchNo() != null && !dto.getBatchNo().isEmpty()
                     ? dto.getBatchNo()
                     : LocalDate.now().toString();
