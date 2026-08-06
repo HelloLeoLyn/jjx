@@ -19,7 +19,7 @@ public class StockImportTemplateDTO {
     /**
      * 规格型号
      */
-    @ExcelColumn(value = "规格", order = 2, comment = "规格型号")
+    @ExcelColumn(value = "规格", order = 2, required = true, comment = "规格型号")
     private String specification;
 
     /**
@@ -43,36 +43,36 @@ public class StockImportTemplateDTO {
     /**
      * 供应商
      */
-    @ExcelColumn(value = "供应商", order = 6, comment = "主要供应商名称")
+    @ExcelColumn(value = "供应商", order = 6, required = true, comment = "主要供应商名称")
     private String supplierName;
 
     /**
      * 仓库
      */
-    @ExcelColumn(value = "仓库", order = 7, comment = "仓库名称")
+    @ExcelColumn(value = "仓库", order = 7, required = true, comment = "仓库名称")
     private String warehouseName;
 
     /**
      * 批次号
      */
-    @ExcelColumn(value = "批次号", order = 8, comment = "批次号")
+    @ExcelColumn(value = "批次号", order = 8, required = true, comment = "批次号")
     private String batchNo;
 
     /**
      * 单位成本
      */
-    @ExcelColumn(value = "单位成本", order = 9, comment = "单位成本")
+    @ExcelColumn(value = "单位成本", order = 9, required = true, comment = "单位成本")
     private String unitCost;
 
     /**
      * 生产日期
      */
-    @ExcelColumn(value = "生产日期", order = 10, comment = "生产日期(yyyy-MM-dd)")
+    @ExcelColumn(value = "生产日期", order = 10, required = true, comment = "生产日期(yyyy-MM-dd)")
     private String productionDate;
 
     /**
      * 到期日期
      */
-    @ExcelColumn(value = "到期日期", order = 11, comment = "到期日期(yyyy-MM-dd)")
+    @ExcelColumn(value = "到期日期", order = 11, required = true, comment = "到期日期(yyyy-MM-dd)")
     private String expiryDate;
 }

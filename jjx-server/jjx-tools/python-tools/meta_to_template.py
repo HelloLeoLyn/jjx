@@ -128,12 +128,13 @@ def main():
             })
         else:
             # 库存导入模板 11列
+            spec_val = spec if spec is not None and str(spec).strip() else name  # 规格空用材料名填充
             out_rows.append({
-                '物料名称': name, '规格': base['规格'],
+                '物料名称': name, '规格': spec_val,
                 '库存数量': qty if qty is not None else '',
                 '备注': base['备注'], '摆放区域': ws.cell(r, COL_BU).value or '',
-                '供应商': base['供应商'], '仓库': '', '批次号': '',
-                '单位成本': '', '生产日期': '', '到期日期': '',
+                '供应商': base['供应商'], '仓库': '原料仓', '批次号': '20260806001',
+                '单位成本': '999', '生产日期': '20260806', '到期日期': '20270806',
             })
 
     # 写模板格式（表头与系统模板一致：必填列带 (*)）
