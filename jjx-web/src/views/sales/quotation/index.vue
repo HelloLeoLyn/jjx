@@ -428,23 +428,11 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="客户" prop="customerId">
-              <el-select
+              <CustomerSelector
                 v-model="form.customerId"
+                value-type="customerId"
                 placeholder="请选择客户"
-                filterable
-                remote
-                :remote-method="searchCustomer"
-                :loading="customerLoading"
-                style="width: 100%"
-                @focus="loadCustomerOptions"
-              >
-                <el-option
-                  v-for="item in customerOptions"
-                  :key="item.customerId"
-                  :label="item.customerName"
-                  :value="item.customerId"
-                />
-              </el-select>
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -808,6 +796,7 @@ import QuotationSendDialog from './components/QuotationSendDialog.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'

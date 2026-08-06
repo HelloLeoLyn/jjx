@@ -30,7 +30,7 @@ import type { CustomerSearchVO } from '@/types/sales/customer'
 import { customerApi } from '@/api/sales/customer'
 
 interface Props {
-  modelValue: CustomerSearchVO | number | string | null
+  modelValue: CustomerSearchVO | number | string | null | undefined
   placeholder?: string
   clearable?: boolean
   disabled?: boolean

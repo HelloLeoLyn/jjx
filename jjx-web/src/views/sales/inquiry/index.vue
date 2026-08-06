@@ -193,23 +193,12 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="客户" prop="customerId">
-              <el-select
+              <CustomerSelector
                 v-model="form.customerId"
+                value-type="customerId"
                 placeholder="请选择客户"
-                filterable
-                remote
-                :remote-method="searchCustomer"
-                :loading="customerLoading"
-                style="width: 100%"
                 @change="customerChanged"
-              >
-                <el-option
-                  v-for="item in customerOptions"
-                  :key="item.customerId"
-                  :label="item.customerName"
-                  :value="item.customerId"
-                />
-              </el-select>
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -528,6 +517,7 @@ import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
+import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import type { FormInstance, UploadInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import { Upload } from '@element-plus/icons-vue'

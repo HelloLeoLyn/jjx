@@ -15,23 +15,12 @@
       </el-col>
       <el-col :span="10">
         <el-form-item label="客户" prop="customerId">
-          <el-select
+          <CustomerSelector
             v-model="form.customerId"
+            value-type="customerId"
             placeholder="请选择客户"
-            filterable
-            remote
-            :remote-method="searchCustomer"
-            :loading="customerLoading"
-            style="width: 100%"
             @change="customerChanged"
-          >
-            <el-option
-              v-for="item in customerOptions"
-              :key="item.customerId"
-              :label="item.customerName"
-              :value="item.customerId"
-            />
-          </el-select>
+          />
         </el-form-item>
       </el-col>
       <el-col :span="2"
@@ -437,6 +426,7 @@ import { orderApi } from '@/api/sales/order'
 import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
+import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import type { CustomerFormData } from '@/types/sales/customer'
 
 interface Props {
