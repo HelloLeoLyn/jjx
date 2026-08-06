@@ -273,7 +273,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Search, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { stockApi } from '@/api/inventory/stock'
 import { materialApi } from '@/api/inventory/material'
-import { MaterialEnum } from '@/enums/inventory'
+import { MaterialEnum, WarehouseEnum } from '@/enums/inventory'
 import * as XLSX from 'xlsx'
 import type { UploadInstance } from 'element-plus'
 
@@ -494,11 +494,20 @@ const handleParseFile = async () => {
             k === '摆放区域'
         )
 
+        // 智能匹配仓库（模板「仓库」列）
+        let warehouseKey = keys.find((k) => k.includes('仓库') || k === '仓库')
+
         const name = nameKey ? String(item[nameKey] || '').trim() : ''
         const spec = specKey ? String(item[specKey] || '').trim() : ''
         const qty = parseFloat(item[qtyKey || ''] || 0)
         const remark = remarkKey ? String(item[remarkKey] || '').trim() : ''
         const location = locationKey ? String(item[locationKey] || '').trim() : ''
+        // 仓库：从 Excel 读取名称，反查 WAREHOUSE_LIST 得到 ID；找不到则留空（等手动选择）
+        const warehouseName = warehouseKey ? String(item[warehouseKey] || '').trim() : ''
+        const matchedWarehouse = WarehouseEnum.list.items.find(
+          (w: any) => w.label === warehouseName || String(w.value) === String(warehouseName)
+        )
+        const matchedWarehouseId = matchedWarehouse ? matchedWarehouse.value : ''
 
         // 从物料名称中提取供应商简写（括号内的内容）
         // 例如 "0.125中砂PC(尚昇)" → "尚昇"
@@ -513,8 +522,8 @@ const handleParseFile = async () => {
           remark: remark,
           locationDesc: location,
           materialCode: '',
-          warehouseId: '',
-          warehouseName: '',
+          warehouseId: matchedWarehouseId,
+          warehouseName,
           locationCode: '',
           batchNo: '',
           unitCost: 0,
