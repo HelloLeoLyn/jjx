@@ -45,10 +45,10 @@ export const WarehouseListEnum = createEnum({
  * 与数据库 inventory_warehouse 保持一致（2026-08-06 同步）
  */
 export const WAREHOUSE_LIST = [
-  { warehouseId: 1, warehouseName: '原料仓', warehouseCode: 'WH-RAW', status: 1 },
-  { warehouseId: 2, warehouseName: '半成品仓', warehouseCode: 'WH-SEMI', status: 1 },
-  { warehouseId: 3, warehouseName: '成品仓', warehouseCode: 'WH-FG', status: 1 },
-  { warehouseId: 4, warehouseName: '不良品仓', warehouseCode: 'WH-NG', status: 1 },
+  { warehouseId: 1, warehouseName: '原料仓', warehouseCode: 'WH-RAW', status: 0 },
+  { warehouseId: 2, warehouseName: '半成品仓', warehouseCode: 'WH-SEMI', status: 0 },
+  { warehouseId: 3, warehouseName: '成品仓', warehouseCode: 'WH-FG', status: 0 },
+  { warehouseId: 4, warehouseName: '不良品仓', warehouseCode: 'WH-NG', status: 0 },
 ]
 
 /**
