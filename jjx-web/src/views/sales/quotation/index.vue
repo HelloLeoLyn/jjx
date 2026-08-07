@@ -777,14 +777,14 @@
         </div>
       </template>
     </el-dialog>
-    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
-    <!-- 状态流转组件 -->
-    <QuotationFlowDialog
-      v-model="flowDialogVisible"
-      :quotation-id="flowQuotationId"
-      :quotation-no="flowQuotationNo"
-      :current-status="flowCurrentStatus"
+    <!-- 组合弹窗：业务流水 + 链路追踪（DEV-方案A） -->
+    <QuotationTraceDialog
+      v-model="traceDialogVisible"
+      :quotation-id="traceQuotationId"
+      :quotation-no="traceQuotationNo"
+      :current-status="traceCurrentStatus"
+      :trace-id="currentTraceId"
       @success="getList"
     />
 
@@ -824,8 +824,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
-import TraceTimeline from '@/components/TraceTimeline/index.vue'
-import QuotationFlowDialog from './components/QuotationFlowDialog.vue'
+import QuotationTraceDialog from './components/QuotationTraceDialog.vue'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
@@ -1581,24 +1580,18 @@ async function locateQuotation(quotationId: number) {
 function gotoInquiry(row: any) {
   window.open('/sales/inquiry', '_blank')
 }
-// 链路追踪抽屉
-const traceDrawerVisible = ref(false)
+// 组合弹窗：业务流水 + 链路追踪（DEV-方案A）
+const traceDialogVisible = ref(false)
 const currentTraceId = ref('')
+const traceQuotationId = ref<number | null>(null)
+const traceQuotationNo = ref('')
+const traceCurrentStatus = ref<number | null>(null)
 function showTrace(row: any) {
+  traceQuotationId.value = row.quotationId ?? null
+  traceQuotationNo.value = row.quotationNo || ''
+  traceCurrentStatus.value = row.quotationStatus ?? null
   currentTraceId.value = row.traceId || ''
-  traceDrawerVisible.value = true
-}
-
-// 状态流转组件
-const flowDialogVisible = ref(false)
-const flowQuotationId = ref<number | null>(null)
-const flowQuotationNo = ref('')
-const flowCurrentStatus = ref<number | null>(null)
-function handleFlow(row: any) {
-  flowQuotationId.value = row.quotationId
-  flowQuotationNo.value = row.quotationNo || ''
-  flowCurrentStatus.value = row.quotationStatus
-  flowDialogVisible.value = true
+  traceDialogVisible.value = true
 }
 
 // 附件管理弹窗
