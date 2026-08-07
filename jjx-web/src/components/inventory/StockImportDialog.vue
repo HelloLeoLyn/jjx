@@ -534,6 +534,13 @@ const handleParseFile = async () => {
       })
 
     parsed.value = true
+    // DEV-696：模式①快速导入仅支持 100 行，超出阻止进入表格（防浏览器崩溃）
+    if (dataList.value.length > 100) {
+      ElMessage.warning(`快速导入模式仅支持 100 行，当前 ${dataList.value.length} 行，请改用批量校验导入模式`)
+      dataList.value = []
+      parsed.value = false
+      return
+    }
     ElMessage.success(`成功解析 ${dataList.value.length} 条数据`)
   } catch (error) {
     console.error('解析文件失败:', error)

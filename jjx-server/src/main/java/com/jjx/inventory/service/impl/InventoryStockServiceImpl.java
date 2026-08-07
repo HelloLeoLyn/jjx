@@ -11,9 +11,11 @@ import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryStorageLocation;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.StockCheckDTO;
+import com.jjx.inventory.dto.query.StockBatchCheckItemDTO;
 import com.jjx.inventory.dto.query.StockImportDTO;
 import com.jjx.inventory.dto.query.StockQueryDTO;
 import com.jjx.inventory.dto.vo.StockCheckVO;
+import com.jjx.inventory.dto.vo.StockBatchCheckItemVO;
 import com.jjx.inventory.dto.vo.StockImportResultVO;
 import com.jjx.inventory.dto.vo.StockSummaryVO;
 import com.jjx.inventory.dto.vo.StockVO;
@@ -307,6 +309,114 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
         }
 
         return result;
+    }
+
+    @Override
+    public java.util.List<StockBatchCheckItemVO> batchCheck(java.util.List<StockBatchCheckItemDTO> items) {
+        java.util.List<StockBatchCheckItemVO> results = new java.util.ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return results;
+        }
+
+        // 批量查物料缓存：key=名称|规格|供应商 -> 物料（避免逐行查库）
+        java.util.Map<String, InventoryMaterial> materialCache = new java.util.HashMap<>();
+        java.util.List<String> names = items.stream()
+                .map(StockBatchCheckItemDTO::getMaterialName)
+                .filter(n -> n != null && !n.isEmpty())
+                .distinct().collect(java.util.stream.Collectors.toList());
+        if (!names.isEmpty()) {
+            LambdaQueryWrapper<InventoryMaterial> mw = new LambdaQueryWrapper<>();
+            mw.in(InventoryMaterial::getMaterialName, names);
+            for (InventoryMaterial m : materialMapper.selectList(mw)) {
+                String spec = m.getSpecification() == null ? "" : m.getSpecification().trim();
+                String sup = m.getSupplierName() == null ? "" : m.getSupplierName().trim();
+                materialCache.put(m.getMaterialName().trim() + "|" + spec + "|" + sup, m);
+            }
+        }
+
+        // 批量查仓库缓存：名称 -> 仓库
+        java.util.Map<String, InventoryWarehouse> warehouseCache = new java.util.HashMap<>();
+        java.util.List<String> whNames = items.stream()
+                .map(StockBatchCheckItemDTO::getWarehouseName)
+                .filter(n -> n != null && !n.isEmpty())
+                .distinct().collect(java.util.stream.Collectors.toList());
+        if (!whNames.isEmpty()) {
+            LambdaQueryWrapper<InventoryWarehouse> ww = new LambdaQueryWrapper<>();
+            ww.in(InventoryWarehouse::getWarehouseName, whNames);
+            for (InventoryWarehouse w : warehouseMapper.selectList(ww)) {
+                warehouseCache.put(w.getWarehouseName().trim(), w);
+            }
+        }
+
+        for (StockBatchCheckItemDTO item : items) {
+            StockBatchCheckItemVO vo = new StockBatchCheckItemVO();
+            vo.setRowIndex(item.getRowIndex());
+            vo.setStatus("ok");
+
+            // 1. 物料名称必填
+            String name = item.getMaterialName() == null ? "" : item.getMaterialName().trim();
+            if (name.isEmpty()) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "materialName", "MISSING_REQUIRED", "物料名称不能为空");
+            } else {
+                // 2. 查物料（名称+规格+供应商匹配，与单行 check 一致）
+                String spec = item.getSpecification() == null ? "" : item.getSpecification().trim();
+                String sup = item.getSupplierName() == null ? "" : item.getSupplierName().trim();
+                InventoryMaterial m = materialCache.get(name + "|" + spec + "|" + sup);
+                if (m == null) {
+                    // 降级：只按名称+规格匹配（供应商可不填）
+                    for (java.util.Map.Entry<String, InventoryMaterial> e : materialCache.entrySet()) {
+                        if (e.getKey().startsWith(name + "|" + spec + "|")) {
+                            m = e.getValue();
+                            break;
+                        }
+                    }
+                }
+                if (m == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "materialName", "NOT_FOUND", "物料未建档: " + name + (spec.isEmpty() ? "" : " / " + spec));
+                } else {
+                    vo.setMaterialId(m.getMaterialId());
+                    vo.setMaterialCode(m.getMaterialCode());
+                }
+            }
+
+            // 3. 仓库校验
+            if (vo.getStatus().equals("ok")) {
+                String whName = item.getWarehouseName() == null ? "" : item.getWarehouseName().trim();
+                if (whName.isEmpty()) {
+                    vo.setStatus("error");
+                    vo.setErrorType("MISSING_REQUIRED");
+                    addFieldError(vo, "warehouseName", "MISSING_REQUIRED", "仓库不能为空");
+                } else if (!warehouseCache.containsKey(whName)) {
+                    vo.setStatus("error");
+                    vo.setErrorType("WAREHOUSE_NOT_FOUND");
+                    addFieldError(vo, "warehouseName", "WAREHOUSE_NOT_FOUND", "仓库不存在: " + whName);
+                }
+            }
+
+            // 4. 数量校验
+            if (vo.getStatus().equals("ok")) {
+                if (item.getQuantity() == null || item.getQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    vo.setStatus("error");
+                    vo.setErrorType("INVALID");
+                    addFieldError(vo, "quantity", "INVALID", "库存数量必须大于0");
+                }
+            }
+
+            results.add(vo);
+        }
+        return results;
+    }
+
+    private void addFieldError(StockBatchCheckItemVO vo, String field, String type, String message) {
+        StockBatchCheckItemVO.FieldError fe = new StockBatchCheckItemVO.FieldError();
+        fe.setField(field);
+        fe.setType(type);
+        fe.setMessage(message);
+        vo.getErrors().add(fe);
     }
 
     @Override

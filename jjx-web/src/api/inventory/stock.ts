@@ -74,6 +74,11 @@ export const stockApi = {
     return request.post<R<StockImportResultVO>>('/inventory/stock/batch-import', data)
   },
 
+  // 批量校验导入数据（DEV-697 模式③：逐行返回校验结果）
+  batchCheck(data: Record<string, unknown>[]) {
+    return request.post<R<StockBatchCheckItemVO[]>>('/inventory/stock/batch-check', data)
+  },
+
   // 下载库存导入模板（DEV-672：后端生成，不再用静态文件）
   downloadImportTemplate() {
     return request.get('/inventory/stock/importTemplate', {
@@ -107,4 +112,20 @@ export interface StockImportFailDetail {
   rowIndex: number
   materialName: string
   reason: string
+}
+
+// 批量校验结果项（DEV-697 模式③）
+export interface StockBatchCheckItemVO {
+  rowIndex?: number
+  status: 'ok' | 'error'
+  materialId?: number
+  materialCode?: string
+  errorType?: 'NOT_FOUND' | 'WAREHOUSE_NOT_FOUND' | 'INVALID' | 'MISSING_REQUIRED'
+  errors?: StockBatchCheckFieldError[]
+}
+
+export interface StockBatchCheckFieldError {
+  field: string
+  type: string
+  message: string
 }

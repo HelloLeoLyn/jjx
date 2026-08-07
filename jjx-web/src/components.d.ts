@@ -104,6 +104,7 @@ declare module 'vue' {
     StatusFlowBar: typeof import('./components/BizFlowDetail/StatusFlowBar.vue')['default']
     StatusSelect: typeof import('./components/StatusSelect.vue')['default']
     StatusTag: typeof import('./components/StatusTag.vue')['default']
+    StockBatchImportDialog: typeof import('./components/inventory/StockBatchImportDialog.vue')['default']
     StockDetailDialog: typeof import('./components/inventory/StockDetailDialog.vue')['default']
     StockImportDialog: typeof import('./components/inventory/StockImportDialog.vue')['default']
     SupplierSelector: typeof import('./components/Selector/SupplierSelector.vue')['default']

@@ -2,9 +2,11 @@ package com.jjx.inventory.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.inventory.dto.query.StockCheckDTO;
+import com.jjx.inventory.dto.query.StockBatchCheckItemDTO;
 import com.jjx.inventory.dto.query.StockImportDTO;
 import com.jjx.inventory.dto.query.StockQueryDTO;
 import com.jjx.inventory.dto.vo.StockCheckVO;
+import com.jjx.inventory.dto.vo.StockBatchCheckItemVO;
 import com.jjx.inventory.dto.vo.StockImportResultVO;
 import com.jjx.inventory.dto.vo.StockSummaryVO;
 import com.jjx.inventory.dto.vo.StockVO;
@@ -71,6 +73,12 @@ public interface InventoryStockService {
      * 校验物料并解析仓库库位（用于导入）
      */
     StockCheckVO check(StockCheckDTO checkDTO);
+
+    /**
+     * 批量校验导入数据（DEV-697：模式③）
+     * 逐行校验，返回每行的校验结果（ok/error + 字段级错误 + 物料信息）
+     */
+    java.util.List<StockBatchCheckItemVO> batchCheck(java.util.List<StockBatchCheckItemDTO> items);
 
     /**
      * 批量导入库存
