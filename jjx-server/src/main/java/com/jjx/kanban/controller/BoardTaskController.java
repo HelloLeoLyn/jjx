@@ -36,12 +36,16 @@ public class BoardTaskController {
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOperationExecutionMapper executionMapper;
 
-    @Operation(summary = "按模块获取看板任务")
+    @Operation(summary = "按模块获取看板任务（支持状态分页+查询条件）")
     @GetMapping("/{module}/tasks")
-    public Result<List<?>> getBoardTasks(
+    public Result<?> getBoardTasks(
             @PathVariable String module,
             @RequestParam(required = false) Integer status,
-            @RequestParam(required = false) String priority) {
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String assignee,
+            @RequestParam(required = false) Integer pageNum,
+            @RequestParam(required = false) Integer pageSize) {
         if ("production".equals(module)) {
             return Result.success(fetchProductionTasks());
         }
@@ -53,8 +57,31 @@ public class BoardTaskController {
         if (StringUtils.hasText(priority)) {
             wrapper.eq(SysTask::getPriority, priority);
         }
+        // 关键字：标题/描述 模糊匹配
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(SysTask::getTitle, keyword)
+                    .or().like(SysTask::getDescription, keyword));
+        }
+        // 负责人模糊匹配
+        if (StringUtils.hasText(assignee)) {
+            wrapper.like(SysTask::getAssigneeName, assignee);
+        }
         wrapper.orderByDesc(SysTask::getUpdateTime).orderByDesc(SysTask::getCreateTime);
-        return Result.success(sysTaskMapper.selectList(wrapper));
+
+        // 兼容：不传 pageNum/pageSize 时返回全量数组（EventPanel 等调用方）
+        if (pageNum == null || pageSize == null) {
+            return Result.success(sysTaskMapper.selectList(wrapper));
+        }
+
+        // 分页
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<SysTask> page =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
+        com.baomidou.mybatisplus.core.metadata.IPage<SysTask> pageResult = sysTaskMapper.selectPage(page, wrapper);
+
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("records", pageResult.getRecords());
+        data.put("total", pageResult.getTotal());
+        return Result.success(data);
     }
 
     /**
