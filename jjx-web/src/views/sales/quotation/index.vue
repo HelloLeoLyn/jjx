@@ -83,20 +83,20 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" :disabled="single || !quotationActions.canEdit" @click="handleUpdate"
+          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:quotation:edit']" :disabled="single || !quotationActions.canEdit" @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple || !quotationActions.canDelete" @click="handleDelete"
+          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:quotation:delete']" :disabled="multiple || !quotationActions.canDelete" @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:quotation:export']" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Send" :disabled="single || !quotationActions.canSend" @click="handleSend"
+          <el-button type="info" plain icon="Send" v-hasPermi="['sales:quotation:edit']" :disabled="single || !quotationActions.canSend" @click="handleSend"
             >发送报价</el-button
           >
         </el-col>
@@ -105,6 +105,7 @@
             type="success"
             plain
             icon="Switch"
+            v-hasPermi="['sales:quotation:edit']"
             :disabled="single || !quotationActions.canConvert"
             @click="handleConvert"
             >转为订单</el-button
@@ -115,6 +116,7 @@
             type="warning"
             plain
             icon="Collection"
+            v-hasPermi="['sales:quotation:edit']"
             :disabled="single || !quotationActions.canConvertToSample"
             @click="handleConvertToSample"
             >转为样品单</el-button
@@ -125,6 +127,7 @@
             type="success"
             plain
             icon="CircleCheck"
+            v-hasPermi="['sales:quotation:edit']"
             :disabled="single || !quotationActions.canCustomerConfirm"
             @click="() => handleCustomerConfirm(true)"
             >客户确认</el-button
@@ -135,6 +138,7 @@
             type="danger"
             plain
             icon="CircleClose"
+            v-hasPermi="['sales:quotation:edit']"
             :disabled="single || !quotationActions.canCustomerConfirm"
             @click="() => handleCustomerConfirm(false)"
             >客户拒绝</el-button
@@ -145,6 +149,7 @@
             type="primary"
             plain
             icon="Upload"
+            v-hasPermi="['sales:quotation:edit']"
             :disabled="single || !quotationActions.canSubmitReview"
             @click="handleSubmitReview"
             >提交审核</el-button
@@ -155,6 +160,7 @@
             type="success"
             plain
             icon="CircleCheck"
+            v-hasPermi="['sales:quotation:approve']"
             :disabled="single || !quotationActions.canApprove"
             @click="() => handleReview(true)"
             >审核通过</el-button
@@ -165,6 +171,7 @@
             type="danger"
             plain
             icon="CircleClose"
+            v-hasPermi="['sales:quotation:approve']"
             :disabled="single || !quotationActions.canApprove"
             @click="() => handleReview(false)"
             >审核驳回</el-button
@@ -191,7 +198,7 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="RefreshLeft" :disabled="single || !quotationActions.canReQuote" @click="handleReQuote"
+          <el-button type="warning" plain icon="RefreshLeft" v-hasPermi="['sales:quotation:edit']" :disabled="single || !quotationActions.canReQuote" @click="handleReQuote"
             >重新报价</el-button
           >
         </el-col>
@@ -315,6 +322,7 @@
                 link
                 type="info"
                 icon="Upload"
+                 v-hasPermi="['sales:quotation:edit']"
                 @click="handleSend(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -323,6 +331,7 @@
                 link
                 type="warning"
                 icon="RefreshLeft"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="handleReQuote(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -331,6 +340,7 @@
                 link
                 type="success"
                 icon="Switch"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="handleConvert(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -339,6 +349,7 @@
                 link
                 type="warning"
                 icon="Collection"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="handleConvertToSample(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -347,6 +358,7 @@
                 link
                 type="warning"
                 icon="EditPen"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="handleModify(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -355,6 +367,7 @@
                 link
                 type="primary"
                 icon="Upload"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="handleSubmitReview(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -363,6 +376,7 @@
                 link
                 type="success"
                 icon="CircleCheck"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="() => handleCustomerConfirm(true, scope.row)"
               ></el-button>
             </el-tooltip>
@@ -371,6 +385,7 @@
                 link
                 type="danger"
                 icon="CircleClose"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="() => handleCustomerConfirm(false, scope.row)"
               ></el-button>
             </el-tooltip>
@@ -379,6 +394,7 @@
                 link
                 type="success"
                 icon="CircleCheck"
+                 v-hasPermi="['sales:quotation:approve']"
                 @click="() => handleReview(true, scope.row)"
               ></el-button>
             </el-tooltip>
@@ -387,6 +403,7 @@
                 link
                 type="danger"
                 icon="CircleClose"
+                 v-hasPermi="['sales:quotation:approve']"
                 @click="() => handleReview(false, scope.row)"
               ></el-button>
             </el-tooltip>
