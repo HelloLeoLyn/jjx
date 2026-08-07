@@ -1,9 +1,9 @@
 <template>
-  <!-- 组合弹窗：业务流水 + 链路追踪（Tab 切换，复用两个子组件独立弹窗） -->
-  <el-dialog
+  <!-- 组合抽屉：业务流水 + 链路追踪（Tab 切换） -->
+  <el-drawer
     :title="`查看流水 - ${quotationNo || ''}`"
     :model-value="modelValue"
-    width="760px"
+    size="720px"
     append-to-body
     destroy-on-close
     @update:model-value="onVisibleChange"
@@ -75,7 +75,7 @@
         </div>
       </el-tab-pane>
     </el-tabs>
-  </el-dialog>
+  </el-drawer>
 </template>
 
 <script setup lang="ts">
