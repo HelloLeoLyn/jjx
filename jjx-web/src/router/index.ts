@@ -43,6 +43,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/demo/a4-print',
+    name: 'A4PrintDemo',
+    component: () => import('@/views/demo/A4PrintDemo.vue'),
+    meta: {
+      title: 'A4打印演示',
+      hidden: true,
+    },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),
