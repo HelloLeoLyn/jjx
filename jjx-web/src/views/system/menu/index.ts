@@ -129,7 +129,6 @@ export const menuDict: Record<string, MenuDictItem> = {
   document: { label: '单据管理', icon: 'Document', text: '单据' },
   dashboard: { label: '仪表盘', icon: 'DataBoard', text: '仪表盘' },
   routing: { label: '工序管理', icon: 'Guide', text: '工序' },
-  'standard-process-step': { label: '标准工序管理', icon: 'Guide', text: '标准工序' },
   execution: { label: '生产执行管理', icon: 'Guide', text: '生产执行' },
   equipment: { label: '设备管理', icon: 'Guide', text: '设备' },
   quality: { label: '质量管理', icon: 'Guide', text: '质量' },
