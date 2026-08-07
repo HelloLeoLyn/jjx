@@ -320,9 +320,9 @@
             <el-tooltip content="发送报价" placement="top" v-if="scope.row.quotationStatus === 6">
               <el-button
                 link
-                type="info"
-                icon="Upload"
-                 v-hasPermi="['sales:quotation:edit']"
+                type="warning"
+                icon="Promotion"
+                v-hasPermi="['sales:quotation:edit']"
                 @click="handleSend(scope.row)"
               ></el-button>
             </el-tooltip>
