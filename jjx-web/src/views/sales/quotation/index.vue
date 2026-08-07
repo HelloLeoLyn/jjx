@@ -1206,12 +1206,14 @@ const handleSend = (row?: any) => {
 // 转为订单
 const handleConvert = (row?: any) => openPreview('quotation.convert', row)
 
-// 导出PDF按钮操作
+// 导出PDF按钮操作（跳转独立打印页，A4Canvas渲染）
 const handleExportPdf = (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
-  quotationApi.exportPdf(quotationId).then((response: any) => {
-    download(response, `报价单_${quotationId}.pdf`)
-  })
+  if (!quotationId) {
+    ElMessage.warning('请先选择报价单')
+    return
+  }
+  window.open(`/print/quotation/${quotationId}`, '_blank')
 }
 
 // 导出Excel按钮操作（单张表单）
