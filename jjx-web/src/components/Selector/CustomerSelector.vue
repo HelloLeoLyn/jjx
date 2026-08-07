@@ -164,6 +164,35 @@ const handleChange = (val: number) => {
   // 可在此处添加额外逻辑
 }
 
+// 编辑回显：modelValue 是数字/对象时，按 ID 加载客户名称（否则 el-select 直接显示原始值如 1）
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (!val) return
+    if (props.options && props.options.length > 0) return
+    const currentId = typeof val === 'object' ? (val as CustomerSearchVO).customerId : val
+    if (!currentId) return
+    if (remoteOptions.value.some((o) => o.customerId === currentId)) return
+
+    loading.value = true
+    customerApi
+      .getCustomer(Number(currentId))
+      .then((res: any) => {
+        if (res.code === 200 && res.data) {
+          const target = res.data as CustomerSearchVO
+          if (!remoteOptions.value.some((o) => o.customerId === target.customerId)) {
+            remoteOptions.value = [target, ...remoteOptions.value]
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        loading.value = false
+      })
+  },
+  { immediate: true }
+)
+
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer)
 })
