@@ -455,14 +455,16 @@ const handleSend = async () => {
   :global(.el-dialog) {
     box-shadow: none !important;
     border: none !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     max-height: none !important;
     overflow: visible !important;
+    width: 210mm !important;
   }
 
   :global(.el-dialog__body) {
     overflow: visible !important;
     max-height: none !important;
+    padding: 0 !important;
   }
 
   :global(.el-dialog__header),
@@ -470,9 +472,15 @@ const handleSend = async () => {
     display: none !important;
   }
 
+  .send-wrapper {
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
   .a4-print-area {
-    background: #fff;
-    padding: 0;
+    background: #fff !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 }
 </style>
