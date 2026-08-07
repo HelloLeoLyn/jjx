@@ -13,8 +13,19 @@
     <A4Canvas :padding-mm="15" v-if="info">
       <!-- 公司抬头 -->
       <div class="doc-header">
-        <div class="company-name">{{ companyName }}</div>
-        <div class="company-contact" v-if="companyContact">{{ companyContact }}</div>
+        <div class="company-head-row">
+          <img v-if="companyLogo" :src="companyLogo" class="company-logo" alt="logo" />
+          <div class="company-head-text">
+            <div class="company-name">{{ companyName }}</div>
+            <div class="company-contact" v-if="companyContact">{{ companyContact }}</div>
+          </div>
+        </div>
+        <div class="company-extra" v-if="companyTaxNo || companyBank || companyAccount || companyLegal">
+          <span v-if="companyTaxNo">税号：{{ companyTaxNo }}</span>
+          <span v-if="companyLegal">法人：{{ companyLegal }}</span>
+          <span v-if="companyBank">开户行：{{ companyBank }}</span>
+          <span v-if="companyAccount">账号：{{ companyAccount }}</span>
+        </div>
       </div>
 
       <!-- 单据标题 -->
@@ -128,11 +139,18 @@ const companyName = ref('')
 const companyAddress = ref('')
 const companyPhone = ref('')
 const companyEmail = ref('')
+const companyTaxNo = ref('')
+const companyBank = ref('')
+const companyAccount = ref('')
+const companyLegal = ref('')
+const companyWebsite = ref('')
+const companyLogo = ref('')
 const companyContact = computed(() => {
   const parts: string[] = []
   if (companyAddress.value) parts.push(`地址：${companyAddress.value}`)
   if (companyPhone.value) parts.push(`电话：${companyPhone.value}`)
   if (companyEmail.value) parts.push(`邮箱：${companyEmail.value}`)
+  if (companyWebsite.value) parts.push(`官网：${companyWebsite.value}`)
   return parts.join(' ｜ ')
 })
 
@@ -184,6 +202,12 @@ async function loadCompanyConfig() {
     companyAddress.value = map.company_address || ''
     companyPhone.value = map.company_phone || ''
     companyEmail.value = map.company_email || ''
+    companyTaxNo.value = map.company_tax_no || ''
+    companyBank.value = map.company_bank || ''
+    companyAccount.value = map.company_account || ''
+    companyLegal.value = map.company_legal || ''
+    companyWebsite.value = map.company_website || ''
+    companyLogo.value = map.company_logo || ''
   } catch (e) {
     console.error('加载公司配置失败:', e)
   }
@@ -251,6 +275,23 @@ onMounted(async () => {
   margin-bottom: 6px;
 }
 
+.company-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.company-logo {
+  max-height: 44px;
+  max-width: 120px;
+  object-fit: contain;
+}
+
+.company-head-text {
+  text-align: center;
+}
+
 .company-name {
   font-size: 20px;
   font-weight: 700;
@@ -262,6 +303,16 @@ onMounted(async () => {
   font-size: 9px;
   color: #888;
   margin-top: 2px;
+}
+
+.company-extra {
+  font-size: 9px;
+  color: #777;
+  margin-top: 3px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
 }
 
 .doc-title {
