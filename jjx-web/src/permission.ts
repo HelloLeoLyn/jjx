@@ -121,9 +121,10 @@ router.beforeEach(async (to, from, next) => {
   const permissionStore = usePermissionStore()
   const hasToken = !!userStore.token
 
-  // 页面标题
+  // 页面标题（系统名称从配置读取，登录页加载后写入 localStorage）
   if (to.meta?.title) {
-    document.title = `${to.meta.title} - ERP管理系统`
+    const sysName = localStorage.getItem('system_name') || 'ERP管理系统'
+    document.title = `${to.meta.title} - ${sysName}`
   }
 
   // ── 登录页 ──

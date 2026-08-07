@@ -30,6 +30,9 @@ const route = useRoute()
 const userStore = useUserStore()
 const permissionStore = usePermissionStore()
 
+// 系统名称（登录页加载配置后写入 localStorage）
+const systemName = computed(() => localStorage.getItem('system_name') || 'JJX ERP系统')
+
 const isCollapse = computed(() => userStore.sidebarCollapsed)
 const menuList = computed(() => permissionStore.getMenus)
 

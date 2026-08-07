@@ -7,9 +7,9 @@
           <div class="logo">
             <!-- Logo image commented out since file doesn't exist -->
             <!-- <img src="@/assets/logo.png" alt="Logo" /> -->
-            <div class="logo-text">JJX ERP</div>
+            <div class="logo-text">{{ systemName }}</div>
           </div>
-          <div class="slogan">智能制造管理系统</div>
+          <div class="slogan">{{ loginTitle }}</div>
         </div>
       </div>
 
@@ -18,7 +18,7 @@
         <div class="login-form">
           <div class="form-header">
             <h2>用户登录</h2>
-            <p>欢迎使用JJX ERP系统</p>
+            <p>{{ loginSubtitle }}</p>
           </div>
 
           <el-form
@@ -87,7 +87,7 @@
               <span class="divider">|</span>
               <a href="javascript:void(0);" @click="handleRegister">注册账号</a>
             </div>
-            <div class="copyright">© 2024 JJX ERP 版权所有</div>
+            <div class="copyright">{{ loginCopyright }}</div>
           </div>
         </div>
       </div>
@@ -102,9 +102,35 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock, Picture } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 import { captchaManager } from '@/utils/captcha'
+import { sysConfigApi } from '@/api/system/sysConfig'
 
 // 路由
 const router = useRouter()
+
+// 系统参数（登录页显示）
+const systemName = ref('JJX ERP')
+const loginTitle = ref('智能制造管理系统')
+const loginSubtitle = ref('欢迎使用JJX ERP系统')
+const loginCopyright = ref('© 2026 JJX ERP 版权所有')
+
+// 加载系统参数
+async function loadSystemConfig() {
+  try {
+    const res: any = await sysConfigApi.listByGroup('system')
+    const list: any[] = res?.data || []
+    const map: Record<string, string> = {}
+    for (const item of list) map[item.configKey] = item.configValue || ''
+    if (map.system_name) systemName.value = map.system_name
+    if (map.login_title) loginTitle.value = map.login_title
+    if (map.login_subtitle) loginSubtitle.value = map.login_subtitle
+    if (map.login_copyright) loginCopyright.value = map.login_copyright
+    // 系统名称存本地，供侧边栏/浏览器标题使用
+    localStorage.setItem('system_name', systemName.value)
+    document.title = systemName.value
+  } catch (e) {
+    console.error('加载系统参数失败:', e)
+  }
+}
 
 // 用户store
 const userStore = useUserStore()
@@ -228,6 +254,9 @@ const handleRegister = () => {
 
 // 页面加载时
 onMounted(() => {
+  // 加载系统参数（系统名称/登录页标题等）
+  loadSystemConfig()
+
   // 获取验证码
   getCaptcha()
 
