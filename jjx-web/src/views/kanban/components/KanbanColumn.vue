@@ -28,15 +28,23 @@
       ghost-class="ghost-card"
       :sort="true"
       @change="onChange"
-      @scroll="onScroll"
     >
       <template #item="{ element }">
         <KanbanCard :card="element" @click="onCardClick" />
+      </template>
+      <!-- 列内滚动触底监听（用于滚动加载） -->
+      <template #footer>
+        <div class="column-load-area" ref="loadAreaRef"></div>
       </template>
     </draggable>
 
     <div v-if="loadingMore" class="column-loading">
       <el-icon class="is-loading"><Loading /></el-icon> 加载中...
+    </div>
+    <div v-else-if="hasMore && column.cards.length > 0" class="column-more">
+      <el-button link type="primary" size="small" @click="onLoadMoreClick">
+        加载更多（还有 {{ moreCount }} 条）
+      </el-button>
     </div>
     <div v-else-if="!hasMore && column.cards.length > 0" class="column-end">
       已加载全部
@@ -49,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Plus, Loading } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 import KanbanCard from './KanbanCard.vue'
@@ -80,14 +88,63 @@ const countType = computed(() => {
   return 'info'
 })
 
-// 滚动到底部触发加载下一页（DEV-707）
-function onScroll(e: Event) {
+// 还有多少条未加载
+const moreCount = computed(() =>
+  Math.max(0, (props.total ?? props.column.cards.length) - props.column.cards.length),
+)
+
+// ---------- 加载更多触发（三保险） ----------
+const loadAreaRef = ref<HTMLElement | null>(null)
+let observer: IntersectionObserver | null = null
+
+// ① 按钮点击（最可靠）
+function onLoadMoreClick() {
+  emit('loadMore', props.column.def.id)
+}
+
+// ② IntersectionObserver：加载区进入视口时自动加载
+function setupObserver() {
+  if (typeof IntersectionObserver === 'undefined') return
+  observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && props.hasMore && !props.loadingMore) {
+          emit('loadMore', props.column.def.id)
+        }
+      }
+    },
+    { rootMargin: '80px' },
+  )
+  if (loadAreaRef.value) observer.observe(loadAreaRef.value)
+}
+
+// ③ 列容器滚动触底（兜底）
+function onColumnScroll(e: Event) {
   const el = e.target as HTMLElement
   if (!el || props.loadingMore) return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) {
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
     emit('loadMore', props.column.def.id)
   }
 }
+
+watch(
+  () => [props.column.cards.length, props.hasMore],
+  () => {
+    // 卡片变化后重新观察（新内容可能改变滚动位置）
+    if (observer && loadAreaRef.value) {
+      observer.unobserve(loadAreaRef.value)
+      observer.observe(loadAreaRef.value)
+    }
+  },
+)
+
+onMounted(() => {
+  setupObserver()
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+})
 
 function onCardClick(cardId: string) {
   emit('cardClick', cardId)
@@ -155,6 +212,25 @@ function onChange(evt: { added?: { element: { id: string }; newIndex: number } }
   flex: 1;
   overflow-y: auto;
   min-height: 60px;
+  max-height: calc(100vh - 200px);
+}
+
+.column-load-area {
+  height: 1px;
+}
+
+.column-more {
+  padding: 6px 8px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.column-loading {
+  padding: 8px;
+  text-align: center;
+  color: #909399;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .column-empty {
