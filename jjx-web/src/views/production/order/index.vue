@@ -131,7 +131,7 @@ import { OrderType, OrderStatus } from '@/types/production/order'
 import { useProductionOrder } from './composables/useProductionOrder'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
-import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus } from '@/api/production/order'
+import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus, convertPlanToWorkOrders } from '@/api/production/order'
 import { download } from '@/utils/format'
 
 // 视图状态
@@ -469,12 +469,41 @@ const handleConvertOrder = (order: any) => {
     type: 'warning',
   }).then(async () => {
     try {
-      // 模拟转为工单
-      ElMessage.success('转为工单成功')
-      refreshData()
-    } catch (error) {
+      // DEV-682：接真实接口——计划转工单
+      const today = new Date()
+      const fmt = (d: Date) => d.toISOString().slice(0, 10)
+      const startDate = order.planStartDate ? String(order.planStartDate).slice(0, 10) : fmt(today)
+      const endDate = order.planEndDate
+        ? String(order.planEndDate).slice(0, 10)
+        : fmt(new Date(today.getTime() + 7 * 24 * 3600 * 1000))
+
+      const dto = {
+        planId: String(order.orderId),
+        workOrders: [
+          {
+            productId: String(order.productId),
+            productCode: order.productCode || '',
+            productName: order.productName || '',
+            plannedQuantity: Number(order.plannedQuantity),
+            planStartDate: startDate,
+            planEndDate: endDate,
+            priority: (order.priority ? String(order.priority).toLowerCase() : 'medium') as any,
+            remark: '',
+          },
+        ],
+        batchConvert: false,
+      }
+
+      const res: any = await convertPlanToWorkOrders(dto)
+      if (res.code === 200 || res.code === 0) {
+        ElMessage.success('转为工单成功')
+        refreshData()
+      } else {
+        ElMessage.error(res.msg || '转为工单失败')
+      }
+    } catch (error: any) {
       console.error('转为工单失败:', error)
-      ElMessage.error('转为工单失败')
+      ElMessage.error(error?.msg || '转为工单失败')
     }
   })
 }
