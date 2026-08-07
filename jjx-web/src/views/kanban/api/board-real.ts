@@ -33,48 +33,6 @@ export async function fetchBoardData(
 }
 
 /**
- * 按列分页获取任务（DEV-707：每列按状态查询，每页5条，滚动加载下一页）
- * 后端返回 { records, total }，不传分页参数时返回全量数组
- */
-export async function fetchColumnTasks(
-  templateType: string,
-  status: number,
-  pageNum: number,
-  pageSize: number,
-  filter?: BoardFilter,
-): Promise<{ records: any[]; total: number }> {
-  const res = await http.get(`/kanban/board/${templateType}/tasks`, {
-    params: {
-      status,
-      pageNum,
-      pageSize,
-      keyword: filter?.keyword || undefined,
-      assignee: filter?.assignee || undefined,
-      priority: filter?.priority || undefined,
-    },
-  })
-  if (!isOk(res?.code)) throw new Error(res?.msg || '加载失败')
-  const data = res.data as any
-  return {
-    records: data?.records || [],
-    total: data?.total ?? 0,
-  }
-}
-
-/** 看板状态 → sys_task.status(tinyint) */
-export function statusToSysTask(status: string): number {
-  const map: Record<string, number> = {
-    pending: 0,
-    in_progress: 1,
-    review: 2,
-    blocked: 3,
-    cancelled: 4,
-    completed: 10,
-  }
-  return map[status] ?? 0
-}
-
-/**
  * 办公室/紧急任务看板：读 sys_task 表
  * 接口: GET /kanban/board/{module}/tasks → { code:200, data: SysTask[] }
  */

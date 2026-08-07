@@ -6,13 +6,9 @@
         :key="col.def.id"
         :column="col"
         :column-index="index"
-        :total="getColumnTotal(col.def.id)"
-        :has-more="getColumnHasMore(col.def.id)"
-        :loading-more="getColumnLoadingMore(col.def.id)"
         @card-click="onCardClick"
         @card-added="onCardAdded"
         @add-card="onAddCard"
-        @load-more="onLoadMore"
       />
     </div>
   </div>
@@ -26,16 +22,12 @@ import KanbanColumn from './KanbanColumn.vue'
 const props = defineProps<{
   columns: BoardColumn[]
   loading: boolean
-  getColumnTotal: (columnId: string) => number
-  getColumnHasMore: (columnId: string) => boolean
-  getColumnLoadingMore: (columnId: string) => boolean
 }>()
 
 const emit = defineEmits<{
   cardClick: [cardId: string]
   cardMoved: [data: { cardId: string; toColumnId: string }]
   addCard: [columnId: string, columnLabel: string]
-  loadMore: [columnId: string]
 }>()
 
 const boardRef = ref<HTMLElement | null>(null)
@@ -50,10 +42,6 @@ function onCardAdded(data: { cardId: string; toColumnId: string }) {
 
 function onAddCard(columnId: string, columnLabel: string) {
   emit('addCard', columnId, columnLabel)
-}
-
-function onLoadMore(columnId: string) {
-  emit('loadMore', columnId)
 }
 </script>
 

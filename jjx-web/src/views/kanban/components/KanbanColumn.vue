@@ -5,7 +5,7 @@
         <span class="column-dot" :style="{ background: column.def.color || '#909399' }"></span>
         <span class="column-label">{{ column.def.label }}</span>
         <el-tag :type="countType" size="small" effect="plain">
-          {{ totalCount }}
+          {{ column.cards.length }}
         </el-tag>
       </div>
       <el-button
@@ -28,19 +28,11 @@
       ghost-class="ghost-card"
       :sort="true"
       @change="onChange"
-      @scroll="onScroll"
     >
       <template #item="{ element }">
         <KanbanCard :card="element" @click="onCardClick" />
       </template>
     </draggable>
-
-    <div v-if="loadingMore" class="column-loading">
-      <el-icon class="is-loading"><Loading /></el-icon> 加载中...
-    </div>
-    <div v-else-if="!hasMore && column.cards.length > 0" class="column-end">
-      已加载全部
-    </div>
 
     <div v-if="column.cards.length === 0" class="column-empty">
       暂无卡片
@@ -50,7 +42,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Plus, Loading } from '@element-plus/icons-vue'
+import { Plus } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 import KanbanCard from './KanbanCard.vue'
 import type { BoardColumn } from '@/views/kanban/types/board'
@@ -58,36 +50,20 @@ import type { BoardColumn } from '@/views/kanban/types/board'
 const props = defineProps<{
   column: BoardColumn
   columnIndex: number
-  total?: number
-  hasMore?: boolean
-  loadingMore?: boolean
 }>()
 
 const emit = defineEmits<{
   cardClick: [cardId: string]
   cardAdded: [payload: { cardId: string; toColumnId: string }]
   addCard: [columnId: string, columnLabel: string]
-  loadMore: [columnId: string]
 }>()
 
-// 列头总数：优先用后端 total，回退到已加载卡片数
-const totalCount = computed(() => props.total ?? props.column.cards.length)
-
 const countType = computed(() => {
-  const count = totalCount.value
+  const count = props.column.cards.length
   if (count > 5) return 'danger'
   if (count > 2) return 'warning'
   return 'info'
 })
-
-// 滚动到底部触发加载下一页（DEV-707）
-function onScroll(e: Event) {
-  const el = e.target as HTMLElement
-  if (!el || props.loadingMore) return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) {
-    emit('loadMore', props.column.def.id)
-  }
-}
 
 function onCardClick(cardId: string) {
   emit('cardClick', cardId)

@@ -60,13 +60,9 @@
       <KanbanBoard
         :columns="store.columns"
         :loading="store.loading"
-        :get-column-total="store.getColumnCount"
-        :get-column-has-more="store.hasMore"
-        :get-column-loading-more="store.getColumnLoadingMore"
         @card-click="onCardClick"
         @card-moved="onCardMoved"
-        @add-card="onShowAddDialog"
-        @load-more="store.loadMore"
+      @add-card="onShowAddDialog"
       />
     </div>
 
