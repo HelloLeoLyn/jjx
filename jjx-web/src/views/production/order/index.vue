@@ -131,7 +131,7 @@ import { OrderType, OrderStatus } from '@/types/production/order'
 import { useProductionOrder } from './composables/useProductionOrder'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
-import { exportProductionOrderPdf } from '@/api/production/order'
+import { exportProductionOrderPdf, batchUpdateOrderStatus } from '@/api/production/order'
 import { download } from '@/utils/format'
 
 // 视图状态
@@ -347,8 +347,13 @@ const handleBatchApprove = async () => {
 
   if (confirm) {
     try {
-      // 模拟批量审批
+      await batchUpdateOrderStatus({
+        orderIds: selectedRows.value.map((row) => row.orderId),
+        orderStatus: OrderStatus.APPROVED,
+        remark: '批量审批',
+      })
       ElMessage.success('批量审批成功')
+      selectedRows.value = []
       refreshData()
     } catch (error) {
       console.error('批量审批失败:', error)
@@ -370,8 +375,13 @@ const handleBatchStart = async () => {
 
   if (confirm) {
     try {
-      // 模拟批量开始
+      await batchUpdateOrderStatus({
+        orderIds: selectedRows.value.map((row) => row.orderId),
+        orderStatus: OrderStatus.IN_PROGRESS,
+        remark: '批量开始',
+      })
       ElMessage.success('批量开始成功')
+      selectedRows.value = []
       refreshData()
     } catch (error) {
       console.error('批量开始失败:', error)
@@ -393,8 +403,13 @@ const handleBatchComplete = async () => {
 
   if (confirm) {
     try {
-      // 模拟批量完成
+      await batchUpdateOrderStatus({
+        orderIds: selectedRows.value.map((row) => row.orderId),
+        orderStatus: OrderStatus.COMPLETED,
+        remark: '批量完成',
+      })
       ElMessage.success('批量完成成功')
+      selectedRows.value = []
       refreshData()
     } catch (error) {
       console.error('批量完成失败:', error)
@@ -416,8 +431,13 @@ const handleBatchCancel = async () => {
 
   if (confirm) {
     try {
-      // 模拟批量取消
+      await batchUpdateOrderStatus({
+        orderIds: selectedRows.value.map((row) => row.orderId),
+        orderStatus: OrderStatus.CANCELLED,
+        remark: '批量取消',
+      })
       ElMessage.success('批量取消成功')
+      selectedRows.value = []
       refreshData()
     } catch (error) {
       console.error('批量取消失败:', error)

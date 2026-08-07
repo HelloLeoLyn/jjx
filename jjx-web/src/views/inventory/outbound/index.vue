@@ -175,6 +175,12 @@
           <el-table-column label="数量" prop="quantity" width="80" align="right" />
           <el-table-column label="单位" prop="unit" width="60" align="center" />
           <el-table-column label="批次" prop="batchNo" width="110" />
+          <el-table-column label="库位" prop="locationName" width="110">
+            <template #default="{ row }">
+              <span v-if="row.locationName">{{ row.locationName }}</span>
+              <span v-else style="color: #999">-</span>
+            </template>
+          </el-table-column>
         </el-table>
 
         <el-divider content-position="left">库存流水（DEV-661）</el-divider>

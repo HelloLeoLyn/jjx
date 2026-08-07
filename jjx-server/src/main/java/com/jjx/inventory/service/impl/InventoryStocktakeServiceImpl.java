@@ -48,6 +48,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     private final InventoryInboundItemMapper inboundItemMapper;
     private final InventoryOutboundOrderMapper outboundOrderMapper;
     private final InventoryOutboundItemMapper outboundItemMapper;
+    private final InventoryWarehouseMapper stocktakeWarehouseMapper;
 
     @Override
     public IPage<StocktakeVO> page(StocktakeQueryDTO query) {
@@ -781,7 +782,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
 
     // ==================== 转换方法 ====================
 
-    private static List<StocktakeVO> convertToVOList(List<InventoryStocktakeOrder> orders) {
+    private List<StocktakeVO> convertToVOList(List<InventoryStocktakeOrder> orders) {
         List<StocktakeVO> result = new ArrayList<>();
         for (InventoryStocktakeOrder order : orders) {
             result.add(convertToVO(order));
@@ -789,7 +790,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         return result;
     }
 
-    private static StocktakeVO convertToVO(InventoryStocktakeOrder order) {
+    private StocktakeVO convertToVO(InventoryStocktakeOrder order) {
         if (order == null) {
             return null;
         }
@@ -804,6 +805,26 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         vo.setUpdateBy(order.getUpdateBy());
         vo.setUpdateByName(order.getUpdateBy());
         vo.setRemark(order.getRemark());
+
+        // DEV-694：回填仓库名称
+        if (order.getWarehouseId() != null) {
+            try {
+                InventoryWarehouse wh = stocktakeWarehouseMapper.selectById(order.getWarehouseId());
+                if (wh != null) vo.setWarehouseName(wh.getWarehouseName());
+            } catch (Exception e) {
+                log.warn("回填盘点仓库名称失败: stocktakeId={}, err={}", order.getStocktakeId(), e.getMessage());
+            }
+        }
+
+        // DEV-694：物料数 = 明细行数
+        try {
+            Long count = stocktakeItemMapper.selectCount(
+                    new LambdaQueryWrapper<InventoryStocktakeItem>()
+                            .eq(InventoryStocktakeItem::getStocktakeId, order.getStocktakeId()));
+            vo.setMaterialCount(count);
+        } catch (Exception e) {
+            log.warn("统计盘点物料数失败: stocktakeId={}, err={}", order.getStocktakeId(), e.getMessage());
+        }
 
         return vo;
     }

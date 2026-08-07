@@ -1070,6 +1070,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             if (ns != 2 && ns != 3 && ns != 9) throw new BusinessException("待审批状态只能转为已审批、已驳回或已取消");
         } else if (cs == 2) { // APPROVED
             if (ns != 6 && ns != 9) throw new BusinessException("已审批状态只能转为进行中或已取消");
+        } else if (cs == 4) { // PLANNED
+            if (ns != 6 && ns != 9) throw new BusinessException("已计划状态只能转为进行中或已取消");
+        } else if (cs == 5) { // PENDING_START
+            if (ns != 6 && ns != 9) throw new BusinessException("待开始状态只能转为进行中或已取消");
         } else if (cs == 6) { // IN_PROGRESS
             if (ns != 8 && ns != 7 && ns != 9) throw new BusinessException("进行中状态只能转为已完成、已暂停或已取消");
         } else if (cs == 7) { // PAUSED

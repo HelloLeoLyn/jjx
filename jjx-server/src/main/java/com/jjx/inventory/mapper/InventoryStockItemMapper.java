@@ -35,6 +35,12 @@ public interface InventoryStockItemMapper extends BaseMapper<InventoryStockItem>
     List<InventoryStockItem> selectFIFOAvailable(@Param("materialId") Long materialId);
 
     /**
+     * 按FIFO顺序获取指定库位的可用批次明细（用于按库位拣货扣减，DEV-693）
+     */
+    @Select("SELECT * FROM inventory_stock_item WHERE material_id = #{materialId} AND location_id = #{locationId} AND status = 1 AND quantity - reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC")
+    List<InventoryStockItem> selectFIFOAvailableByLocation(@Param("materialId") Long materialId, @Param("locationId") Long locationId);
+
+    /**
      * 获取指定物料的总数量
      */
     @Select("SELECT COALESCE(SUM(quantity), 0) FROM inventory_stock_item WHERE material_id = #{materialId} AND status = 1")

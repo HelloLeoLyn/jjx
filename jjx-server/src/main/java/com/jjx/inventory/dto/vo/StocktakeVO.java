@@ -18,6 +18,8 @@ public class StocktakeVO {
     private String stocktakeType;
     private Long warehouseId;
     private String warehouseName;
+    /** 物料数（DEV-694：列表展示用） */
+    private Long materialCount;
     private String locationIds;
     private String materialIds;
 

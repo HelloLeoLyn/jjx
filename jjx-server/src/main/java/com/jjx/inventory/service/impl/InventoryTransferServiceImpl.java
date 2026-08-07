@@ -7,17 +7,21 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.InventoryStockItem;
+import com.jjx.inventory.domain.InventoryStorageLocation;
 import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.domain.InventoryTransferItem;
 import com.jjx.inventory.domain.InventoryTransferOrder;
+import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.TransferQueryDTO;
 import com.jjx.inventory.dto.vo.TransferItemVO;
 import com.jjx.inventory.dto.vo.TransferVO;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
+import com.jjx.inventory.mapper.InventoryStorageLocationMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.mapper.InventoryTransferItemMapper;
 import com.jjx.inventory.mapper.InventoryTransferOrderMapper;
+import com.jjx.inventory.mapper.InventoryWarehouseMapper;
 import com.jjx.inventory.service.InventoryTransferService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -48,13 +52,58 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
+    private final InventoryWarehouseMapper transferWarehouseMapper;
+    private final InventoryStorageLocationMapper transferLocationMapper;
 
     @Override
     public IPage<TransferVO> page(TransferQueryDTO query) {
-        // 这里需要实现分页查询，返回TransferVO
-        // 暂时返回空分页，实际需要实现查询逻辑
-        Page<TransferVO> page = new Page<>(query.getCurrent(), query.getSize());
-        return page;
+        // DEV-694：实现真实分页查询（原为空实现，导致调拨列表永远空白）
+        LambdaQueryWrapper<InventoryTransferOrder> wrapper = new LambdaQueryWrapper<>();
+
+        if (query.getTransferNo() != null && !query.getTransferNo().isEmpty()) {
+            wrapper.like(InventoryTransferOrder::getTransferNo, query.getTransferNo());
+        }
+        if (query.getTransferType() != null && !query.getTransferType().isEmpty()) {
+            wrapper.eq(InventoryTransferOrder::getTransferType, query.getTransferType());
+        }
+        if (query.getFromWarehouseId() != null) {
+            wrapper.eq(InventoryTransferOrder::getFromWarehouseId, query.getFromWarehouseId());
+        }
+        if (query.getToWarehouseId() != null) {
+            wrapper.eq(InventoryTransferOrder::getToWarehouseId, query.getToWarehouseId());
+        }
+        if (query.getOrderStatus() != null && !query.getOrderStatus().isEmpty()) {
+            wrapper.eq(InventoryTransferOrder::getOrderStatus, query.getOrderStatus());
+        }
+        if (query.getApproveStatus() != null && !query.getApproveStatus().isEmpty()) {
+            wrapper.eq(InventoryTransferOrder::getApproveStatus, query.getApproveStatus());
+        }
+        if (query.getTransferDateStart() != null) {
+            wrapper.ge(InventoryTransferOrder::getTransferDate, query.getTransferDateStart());
+        }
+        if (query.getTransferDateEnd() != null) {
+            wrapper.le(InventoryTransferOrder::getTransferDate, query.getTransferDateEnd());
+        }
+
+        if (query.getOrderBy() != null && !query.getOrderBy().isEmpty()) {
+            boolean isAsc = "asc".equalsIgnoreCase(query.getOrderDirection());
+            if ("transferNo".equals(query.getOrderBy())) {
+                wrapper.orderBy(true, isAsc, InventoryTransferOrder::getTransferNo);
+            } else {
+                wrapper.orderBy(true, isAsc, InventoryTransferOrder::getCreateTime);
+            }
+        } else {
+            wrapper.orderByDesc(InventoryTransferOrder::getCreateTime);
+        }
+
+        Page<InventoryTransferOrder> orderPage = new Page<>(query.getCurrent(), query.getSize());
+        IPage<InventoryTransferOrder> orderResult = transferOrderMapper.selectPage(orderPage, wrapper);
+
+        Page<TransferVO> voPage = new Page<>(query.getCurrent(), query.getSize());
+        voPage.setTotal(orderResult.getTotal());
+        voPage.setPages(orderResult.getPages());
+        voPage.setRecords(convertToVOList(orderResult.getRecords()));
+        return voPage;
     }
 
     @Override
@@ -565,7 +614,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         return Map.of("code", 404, "message", "调拨单不存在");
     }
 
-    private static List<TransferVO> convertToVOList(List<InventoryTransferOrder> orders) {
+    private List<TransferVO> convertToVOList(List<InventoryTransferOrder> orders) {
         List<TransferVO> result = new ArrayList<>();
         for (InventoryTransferOrder order : orders) {
             result.add(convertToVO(order));
@@ -573,12 +622,35 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         return result;
     }
 
-    private static TransferVO convertToVO(InventoryTransferOrder order){
+    private TransferVO convertToVO(InventoryTransferOrder order){
         if (order == null) {
             return null;
         }
         TransferVO vo = new TransferVO();
         BeanUtils.copyProperties(order, vo);
+
+        // DEV-694：回填仓库名与库位名（实体只有ID，前端需要名称显示）
+        try {
+            if (order.getFromWarehouseId() != null) {
+                InventoryWarehouse fromWh = transferWarehouseMapper.selectById(order.getFromWarehouseId());
+                if (fromWh != null) vo.setFromWarehouseName(fromWh.getWarehouseName());
+            }
+            if (order.getToWarehouseId() != null) {
+                InventoryWarehouse toWh = transferWarehouseMapper.selectById(order.getToWarehouseId());
+                if (toWh != null) vo.setToWarehouseName(toWh.getWarehouseName());
+            }
+            if (order.getFromLocationId() != null) {
+                InventoryStorageLocation fromLoc = transferLocationMapper.selectById(order.getFromLocationId());
+                if (fromLoc != null) vo.setFromLocationName(fromLoc.getLocationName());
+            }
+            if (order.getToLocationId() != null) {
+                InventoryStorageLocation toLoc = transferLocationMapper.selectById(order.getToLocationId());
+                if (toLoc != null) vo.setToLocationName(toLoc.getLocationName());
+            }
+        } catch (Exception e) {
+            log.warn("回填调拨仓库/库位名称失败: transferId={}, err={}", order.getTransferId(), e.getMessage());
+        }
+
         return vo;
     }
 

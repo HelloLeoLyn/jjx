@@ -9,6 +9,7 @@ import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.vo.OutboundItemVO;
 import com.jjx.inventory.domain.InventoryOutboundOrder;
 import com.jjx.inventory.domain.InventoryStockItem;
+import com.jjx.inventory.domain.InventoryStorageLocation;
 import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.dto.query.OutboundQueryDTO;
 import com.jjx.inventory.dto.vo.OutboundVO;
@@ -18,6 +19,7 @@ import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryOutboundItemMapper;
 import com.jjx.inventory.mapper.InventoryOutboundOrderMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
+import com.jjx.inventory.mapper.InventoryStorageLocationMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.mapper.InventoryWarehouseMapper;
@@ -53,6 +55,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryOutboundOrderMapper outboundOrderMapper;
     private final InventoryOutboundItemMapper outboundItemMapper;
     private final InventoryStockItemMapper stockItemMapper;
+    private final InventoryStorageLocationMapper storageLocationMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
     private final InventoryWarehouseMapper outboundWarehouseMapper;
@@ -111,7 +114,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         OutboundVO vo = convertToVO(order);
         List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
         if (items != null && !items.isEmpty()) {
-            vo.setItems(convertToItemVOList(items));
+            vo.setItems(convertToItemVOList(items, storageLocationMapper));
         }
         return vo;
     }
@@ -168,13 +171,26 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
 
             BigDecimal remaining = item.getQuantity();
-            List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(item.getMaterialId());
-            for (InventoryStockItem si : fifoItems) {
-                if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
-                BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
-                if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
-                stockItemMapper.deductStock(si.getItemId(), deductQty);
-                remaining = remaining.subtract(deductQty);
+            // DEV-693：明细指定了库位 → 先按该库位 FIFO 扣减，不足再从全局 FIFO 补齐
+            if (item.getLocationId() != null) {
+                List<InventoryStockItem> locItems = stockItemMapper.selectFIFOAvailableByLocation(item.getMaterialId(), item.getLocationId());
+                for (InventoryStockItem si : locItems) {
+                    if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+                    BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
+                    if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
+                    stockItemMapper.deductStock(si.getItemId(), deductQty);
+                    remaining = remaining.subtract(deductQty);
+                }
+            }
+            if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(item.getMaterialId());
+                for (InventoryStockItem si : fifoItems) {
+                    if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+                    BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
+                    if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
+                    stockItemMapper.deductStock(si.getItemId(), deductQty);
+                    remaining = remaining.subtract(deductQty);
+                }
             }
             if (remaining.compareTo(BigDecimal.ZERO) > 0) {
                 throw new BusinessException("物料[" + item.getMaterialCode() + "]库存不足，缺少: " + remaining);
@@ -457,6 +473,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             outItem.setUnit(bomItem.getUnit());
             outItem.setQuantity(qtyNeeded);
             outItem.setSortOrder(sort++);
+            // DEV-693：预填 FIFO 推荐库位（最早批次所在库位），供仓管按位拣货；确认时优先从该库位扣减
+            try {
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(bomItem.getMaterialId());
+                if (!fifoItems.isEmpty() && fifoItems.get(0).getLocationId() != null) {
+                    outItem.setLocationId(fifoItems.get(0).getLocationId());
+                }
+            } catch (Exception e) {
+                log.warn("领料单推荐库位失败(跳过): materialId={}, err={}", bomItem.getMaterialId(), e.getMessage());
+            }
             totalQty = totalQty.add(qtyNeeded);
             outboundItemMapper.insert(outItem);
         }
@@ -536,6 +561,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             outItem.setQuantity(BigDecimal.valueOf(product.getQuantity()));
             outItem.setUnitPrice(product.getUnitPrice());
             outItem.setSortOrder(sort++);
+            // DEV-693：预填 FIFO 推荐库位（最早批次所在库位）
+            try {
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(finishMat.getMaterialId());
+                if (!fifoItems.isEmpty() && fifoItems.get(0).getLocationId() != null) {
+                    outItem.setLocationId(fifoItems.get(0).getLocationId());
+                }
+            } catch (Exception e) {
+                log.warn("销售出库推荐库位失败(跳过): materialId={}, err={}", finishMat.getMaterialId(), e.getMessage());
+            }
             outboundItemMapper.insert(outItem);
         }
 
@@ -681,14 +715,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return vo.getOutboundNo() != null && vo.getOutboundNo().startsWith("PICK-");
     }
 
-    private static List<OutboundItemVO> convertToItemVOList(List<InventoryOutboundItem> items) {
+    private static List<OutboundItemVO> convertToItemVOList(List<InventoryOutboundItem> items, com.jjx.inventory.mapper.InventoryStorageLocationMapper locMapper) {
         if (items == null || items.isEmpty()) return new ArrayList<>();
         List<OutboundItemVO> result = new ArrayList<>();
-        for (InventoryOutboundItem item : items) result.add(convertToItemVO(item));
+        for (InventoryOutboundItem item : items) result.add(convertToItemVO(item, locMapper));
         return result;
     }
 
-    private static OutboundItemVO convertToItemVO(InventoryOutboundItem item) {
+    private static OutboundItemVO convertToItemVO(InventoryOutboundItem item, com.jjx.inventory.mapper.InventoryStorageLocationMapper locMapper) {
         if (item == null) return null;
         OutboundItemVO vo = new OutboundItemVO();
         vo.setOutboundItemId(item.getItemId());
@@ -703,6 +737,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         vo.setAmount(item.getAmount());
         vo.setBatchNo(item.getBatchNo());
         vo.setLocationId(item.getLocationId());
+        // DEV-693：回填库位名称（拣货指导）
+        if (item.getLocationId() != null && locMapper != null) {
+            try {
+                InventoryStorageLocation loc = locMapper.selectById(item.getLocationId());
+                if (loc != null) vo.setLocationName(loc.getLocationName());
+            } catch (Exception e) {
+                // 忽略库位名称填充失败
+            }
+        }
         vo.setSortOrder(item.getSortOrder());
         return vo;
     }
@@ -741,6 +784,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                         item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
                         item.getAmount() == null ? "" : df.format(item.getAmount()),
                         item.getBatchNo() == null ? "" : item.getBatchNo(),
+                        item.getLocationName() == null ? "" : item.getLocationName(),
                 });
             }
         }
@@ -749,7 +793,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 // DEV-660：领料单（production 类型/PICK- 单号）打印标题为「领 料 单」，其余「出 库 单」
                 .title(isPickOrder(vo) ? "领  料  单" : "出  库  单")
                 .info(info)
-                .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额", "批次"}, rows)
+                .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额", "批次", "库位"}, rows)
                 .amounts(new String[][]{
                         {"总数量", vo.getTotalQuantity() == null ? "" : df.format(vo.getTotalQuantity())},
                         {"总金额", vo.getTotalAmount() == null ? "" : df.format(vo.getTotalAmount())},
