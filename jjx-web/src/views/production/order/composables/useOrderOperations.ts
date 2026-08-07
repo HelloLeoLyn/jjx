@@ -1,14 +1,20 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import {
+  createProductionOrder,
+  updateProductionOrder,
+  deleteProductionOrder,
+  batchDeleteProductionOrders,
+  updateOrderStatus,
+} from '@/api/production/order'
 import type {
-  ProductionOrderVO,
   ProductionOrderCreateDTO,
   ProductionOrderUpdateDTO,
   OrderStatusUpdateDTO,
 } from '@/types/production/order'
 
 /**
- * 生产订单操作Composable
+ * 生产订单操作Composable（DEV-690：原为 setTimeout 模拟实现，已改为真实 API）
  */
 export function useOrderOperations() {
   // 状态
@@ -21,8 +27,7 @@ export function useOrderOperations() {
   const createOrder = async (data: ProductionOrderCreateDTO): Promise<boolean> => {
     saving.value = true
     try {
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await createProductionOrder(data)
       ElMessage.success('创建订单成功')
       return true
     } catch (error) {
@@ -40,8 +45,7 @@ export function useOrderOperations() {
   const updateOrder = async (data: ProductionOrderUpdateDTO): Promise<boolean> => {
     saving.value = true
     try {
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await updateProductionOrder(data)
       ElMessage.success('更新订单成功')
       return true
     } catch (error) {
@@ -54,13 +58,12 @@ export function useOrderOperations() {
   }
 
   /**
-   * 更新订单状态
+   * 更新订单状态（单行取消/状态对话框提交）
    */
-  const updateOrderStatus = async (data: OrderStatusUpdateDTO): Promise<boolean> => {
+  const updateOrderStatusAction = async (data: OrderStatusUpdateDTO): Promise<boolean> => {
     saving.value = true
     try {
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await updateOrderStatus(data)
       ElMessage.success('更新状态成功')
       return true
     } catch (error) {
@@ -78,8 +81,7 @@ export function useOrderOperations() {
   const deleteOrder = async (orderId: string, reason?: string): Promise<boolean> => {
     deleting.value = true
     try {
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await deleteProductionOrder(orderId)
       ElMessage.success('删除订单成功')
       return true
     } catch (error) {
@@ -97,8 +99,7 @@ export function useOrderOperations() {
   const batchDeleteOrders = async (orderIds: string[], reason?: string): Promise<boolean> => {
     deleting.value = true
     try {
-      // 模拟API调用
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      await batchDeleteProductionOrders(orderIds)
       ElMessage.success(`批量删除 ${orderIds.length} 个订单成功`)
       return true
     } catch (error) {
@@ -118,7 +119,7 @@ export function useOrderOperations() {
     // 方法
     createOrder,
     updateOrder,
-    updateOrderStatus,
+    updateOrderStatus: updateOrderStatusAction,
     deleteOrder,
     batchDeleteOrders,
   }
