@@ -59,6 +59,14 @@ public class InventoryOutboundController {
         return Result.success(outboundService.confirm(outboundId, operatorId, operatorName));
     }
 
+    @PutMapping("/update")
+    @Operation(summary = "更新出库单（含明细）")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#params.outboundId")
+    @SaCheckPermission("inventory:outbound:edit")
+    public Result<Boolean> update(@RequestBody Map<String, Object> params) {
+        return Result.success(outboundService.update(params));
+    }
+
     @PostMapping("/cancel/{outboundId}")
     @Operation(summary = "取消出库单")
     @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "9")

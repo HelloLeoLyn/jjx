@@ -179,14 +179,16 @@
     <!-- 底部操作栏 -->
     <div class="form-actions">
       <el-button @click="router.back()">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="handleSubmit">创建出库单</el-button>
+      <el-button type="primary" :loading="loading" @click="handleSubmit">
+        {{ isEdit ? '保存修改' : '创建出库单' }}
+      </el-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -198,8 +200,13 @@ import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import type { InventoryWarehouse } from '@/types/inventory/warehouse'
 
 const router = useRouter()
+const route = useRoute()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+
+// 编辑模式：路由带 :id
+const isEdit = computed(() => !!route.params.id)
+const outboundId = computed(() => String(route.params.id || ''))
 
 interface OutboundItemRow {
   materialId: string
@@ -252,7 +259,57 @@ const totalAmount = computed(() =>
 
 onMounted(async () => {
   await loadWarehouses()
+  if (isEdit.value) {
+    await loadDetail()
+  }
 })
+
+// 编辑模式：加载单头+明细回显
+const loadDetail = async () => {
+  try {
+    const res: any = await outboundApi.getById(outboundId.value)
+    if (res.code === 200 || res.code === 0) {
+      const d = res.data || {}
+      formData.outboundType = d.outboundType || 'sales'
+      formData.warehouseId = d.warehouseId ? String(d.warehouseId) : ''
+      formData.sourceType = d.sourceType || ''
+      formData.sourceNo = d.sourceNo || ''
+      formData.remark = d.remark || ''
+      if (d.warehouseId) await loadLocations(String(d.warehouseId))
+      const items: any[] = d.items || []
+      if (items.length > 0) {
+        formData.items = items.map((it) => ({
+          materialId: String(it.materialId ?? ''),
+          materialCode: it.materialCode || '',
+          materialName: it.materialName || '',
+          specification: it.specification || '',
+          unit: it.unit || '',
+          batchNo: it.batchNo || '',
+          quantity: Number(it.quantity ?? 1),
+          unitPrice: Number(it.unitPrice ?? 0),
+          locationId: it.locationId ? String(it.locationId) : '',
+          remark: it.remark || '',
+        }))
+      }
+    } else {
+      ElMessage.error(res.msg || '加载出库单失败')
+    }
+  } catch (error) {
+    console.error('加载出库单失败:', error)
+    ElMessage.error('加载出库单失败')
+  }
+}
+
+// 加载库位列表（抽出来供回显复用）
+const loadLocations = async (warehouseId: string) => {
+  try {
+    const res = await locationApi.getByWarehouse(Number(warehouseId))
+    locationList.value = res.data || []
+  } catch (error) {
+    console.error('加载库位列表失败:', error)
+    ElMessage.error('加载库位列表失败')
+  }
+}
 
 // 加载仓库列表
 const loadWarehouses = async () => {
@@ -273,13 +330,7 @@ const handleWarehouseChange = async (warehouseId: string) => {
   locationList.value = []
 
   if (!warehouseId) return
-  try {
-    const res = await locationApi.getByWarehouse(Number(warehouseId))
-    locationList.value = res.data || []
-  } catch (error) {
-    console.error('加载库位列表失败:', error)
-    ElMessage.error('加载库位列表失败')
-  }
+  await loadLocations(warehouseId)
 }
 
 // 选择物料后回填
@@ -341,6 +392,7 @@ const handleSubmit = async () => {
       loading.value = true
       try {
         const payload: any = {
+          outboundId: isEdit.value ? outboundId.value : undefined,
           outboundType: formData.outboundType,
           warehouseId: formData.warehouseId,
           sourceType: formData.sourceType || undefined,
@@ -359,8 +411,13 @@ const handleSubmit = async () => {
             remark: item.remark || undefined,
           })),
         }
-        const res: any = await outboundApi.create(payload)
-        ElMessage.success('出库单创建成功')
+        let res: any
+        if (isEdit.value) {
+          res = await outboundApi.update(payload)
+        } else {
+          res = await outboundApi.create(payload)
+        }
+        ElMessage.success(isEdit.value ? '出库单已更新' : '出库单创建成功')
         router.push('/inventory/outbound')
       } catch (error) {
         console.error('创建出库单失败:', error)

@@ -85,6 +85,11 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     boolean updateStatus(Long outboundId, Integer status);
 
     /**
+     * 更新出库单（含明细，DEV-695）
+     */
+    boolean update(Map<String, Object> params);
+
+    /**
      * 分页查询出库单（旧方法，兼容性）
      */
     IPage<InventoryOutboundOrder> pageQuery(Map<String, Object> params);
