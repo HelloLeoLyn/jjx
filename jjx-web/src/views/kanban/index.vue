@@ -67,6 +67,7 @@
         @card-moved="onCardMoved"
         @add-card="onShowAddDialog"
         @load-more="store.loadMore"
+        @refresh="store.reloadColumn"
       />
     </div>
 

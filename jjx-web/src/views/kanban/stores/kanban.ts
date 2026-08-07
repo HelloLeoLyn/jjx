@@ -144,6 +144,34 @@ export const useKanbanStore = defineStore('kanban', () => {
     }
   }
 
+  // 只刷新某一列（DEV-707：重载该列第一页，不影响其他列）
+  async function reloadColumn(columnId: string) {
+    const state = columnPageState.value[columnId]
+    const col = columns.value.find(c => c.def.id === columnId)
+    if (!state || !col) return
+    if (state.loadingMore) return
+
+    state.loadingMore = true
+    try {
+      const status = statusToSysTask(col.def.filterValue ?? col.def.id)
+      const { records, total } = await fetchColumnTasks(
+        currentTemplate.value,
+        status,
+        1,
+        PAGE_SIZE,
+        filter.value,
+      )
+      col.cards = records.map((t: any) => toBoardCard(t, currentTemplate.value))
+      state.pageNum = 1
+      state.total = total
+      state.hasMore = records.length < total
+    } catch (e) {
+      console.error(`刷新看板列 ${columnId} 失败:`, e)
+    } finally {
+      state.loadingMore = false
+    }
+  }
+
   // sys_task → 看板卡片
   function toBoardCard(t: any, templateType: TemplateType): BoardCard {
     return {
@@ -319,6 +347,7 @@ export const useKanbanStore = defineStore('kanban', () => {
     loadViews,
     loadBoard,
     loadMore,
+    reloadColumn,
     switchTemplate,
     switchView,
     handleDrag,

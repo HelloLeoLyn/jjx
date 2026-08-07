@@ -18,6 +18,15 @@
       >
         <el-icon><Plus /></el-icon>
       </el-button>
+      <el-button
+        circle
+        size="small"
+        class="refresh-btn"
+        :loading="loadingMore"
+        @click.stop="onRefresh"
+      >
+        <el-icon><Refresh /></el-icon>
+      </el-button>
     </div>
 
     <draggable
@@ -58,7 +67,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Plus, Loading } from '@element-plus/icons-vue'
+import { Plus, Loading, Refresh } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 import KanbanCard from './KanbanCard.vue'
 import type { BoardColumn } from '@/views/kanban/types/board'
@@ -76,6 +85,7 @@ const emit = defineEmits<{
   cardAdded: [payload: { cardId: string; toColumnId: string }]
   addCard: [columnId: string, columnLabel: string]
   loadMore: [columnId: string]
+  refresh: [columnId: string]
 }>()
 
 // 列头总数：优先用后端 total，回退到已加载卡片数
@@ -100,6 +110,11 @@ let observer: IntersectionObserver | null = null
 // ① 按钮点击（最可靠）
 function onLoadMoreClick() {
   emit('loadMore', props.column.def.id)
+}
+
+// 刷新本列（只重载该列第一页）
+function onRefresh() {
+  emit('refresh', props.column.def.id)
 }
 
 // ② IntersectionObserver：加载区进入视口时自动加载
@@ -247,6 +262,17 @@ function onChange(evt: { added?: { element: { id: string }; newIndex: number } }
 }
 
 .add-btn:hover {
+  opacity: 1;
+}
+
+.refresh-btn {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  margin-left: 4px;
+}
+
+.refresh-btn:hover {
   opacity: 1;
 }
 

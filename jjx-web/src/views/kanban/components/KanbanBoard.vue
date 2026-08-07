@@ -13,6 +13,7 @@
         @card-added="onCardAdded"
         @add-card="onAddCard"
         @load-more="onLoadMore"
+        @refresh="onRefreshColumn"
       />
     </div>
   </div>
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   cardMoved: [data: { cardId: string; toColumnId: string }]
   addCard: [columnId: string, columnLabel: string]
   loadMore: [columnId: string]
+  refresh: [columnId: string]
 }>()
 
 const boardRef = ref<HTMLElement | null>(null)
@@ -54,6 +56,10 @@ function onAddCard(columnId: string, columnLabel: string) {
 
 function onLoadMore(columnId: string) {
   emit('loadMore', columnId)
+}
+
+function onRefreshColumn(columnId: string) {
+  emit('refresh', columnId)
 }
 </script>
 
