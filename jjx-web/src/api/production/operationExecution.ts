@@ -112,7 +112,7 @@ export const operationExecutionApi = {
    * 获取工序执行统计
    */
   getStats(params?: OperationExecutionQuery) {
-    return request.get<R<OperationExecutionStats>>('/production/operation-execution/stats', {
+    return request.get<R<OperationExecutionStats>>('/production/operation-execution/statistics', {
       params,
     })
   },

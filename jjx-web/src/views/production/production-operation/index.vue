@@ -381,6 +381,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Clock, Loading, Check, Close } from '@element-plus/icons-vue'
+import { operationExecutionApi } from '@/api/production/operationExecution'
 
 // 类型定义
 interface OperationItem {
@@ -494,73 +495,47 @@ onMounted(() => {
 const getList = async () => {
   loading.value = true
   try {
-    // 模拟数据
-    operationList.value = [
-      {
-        operationId: 'OP001',
-        operationCode: 'OP20250410001',
-        workOrderId: 'WO001',
-        workOrderNo: 'WO20250410001',
-        productName: '薄膜开关A型',
-        stepId: 'STEP001',
-        stepName: '印刷',
-        operatorId: 'USER001',
-        operatorName: '张三',
-        equipmentId: 'EQ001',
-        equipmentCode: 'PRINT-001',
-        plannedQuantity: 1000,
-        completedQuantity: 0,
-        operationStatus: 0,
-        startTime: '',
-        endTime: '',
-        parameters: '{"inkType": "UV油墨", "pressure": "2.5kg"}',
-        qualityResult: '',
-        remark: '首批生产',
-      },
-      {
-        operationId: 'OP002',
-        operationCode: 'OP20250410002',
-        workOrderId: 'WO001',
-        workOrderNo: 'WO20250410001',
-        productName: '薄膜开关A型',
-        stepId: 'STEP002',
-        stepName: '层压',
-        operatorId: 'USER002',
-        operatorName: '李四',
-        equipmentId: 'EQ002',
-        equipmentCode: 'LAMINATE-001',
-        plannedQuantity: 1000,
-        completedQuantity: 500,
-        operationStatus: 1,
-        startTime: '2025-04-10 08:00:00',
-        endTime: '',
-        parameters: '{"temperature": "120℃", "time": "30s"}',
-        qualityResult: '合格',
-        remark: '注意温度控制',
-      },
-      {
-        operationId: 'OP003',
-        operationCode: 'OP20250410003',
-        workOrderId: 'WO002',
-        workOrderNo: 'WO20250410002',
-        productName: '薄膜开关B型',
-        stepId: 'STEP003',
-        stepName: '冲切',
-        operatorId: 'USER003',
-        operatorName: '王五',
-        equipmentId: 'EQ003',
-        equipmentCode: 'CUT-001',
-        plannedQuantity: 800,
-        completedQuantity: 800,
-        operationStatus: 2,
-        startTime: '2025-04-09 09:00:00',
-        endTime: '2025-04-09 17:00:00',
-        parameters: '{"bladeType": "精密刀模", "pressure": "3.0kg"}',
-        qualityResult: '合格',
-        remark: '已完成',
-      },
-    ]
-    total.value = operationList.value.length
+    const params: any = {
+      pageNum: queryParams.pageNum,
+      pageSize: queryParams.pageSize,
+    }
+    if (queryParams.workOrderNo) params.orderNo = queryParams.workOrderNo
+    if (queryParams.operatorName) params.operatorName = queryParams.operatorName
+    if (queryParams.operationStatus !== '' && queryParams.operationStatus !== null) {
+      params.executionStatus = queryParams.operationStatus
+    }
+    if (queryParams.equipmentCode) params.equipmentCode = queryParams.equipmentCode
+    if (queryParams.stepName) params.processName = queryParams.stepName
+
+    const res = await operationExecutionApi.list(params)
+    if (res.code === 200 || res.code === 0) {
+      const data = res.data as any
+      const list: any[] = data?.records || data?.list || []
+      operationList.value = list.map((t) => ({
+        operationId: String(t.executionId ?? ''),
+        operationCode: t.executionCode || t.executionNo || '',
+        workOrderId: String(t.orderId ?? ''),
+        workOrderNo: t.orderNo || '',
+        productName: t.productName || '',
+        stepId: String(t.processId ?? ''),
+        stepName: t.processName || '',
+        operatorId: String(t.operatorId ?? ''),
+        operatorName: t.operatorName || '',
+        equipmentId: String(t.equipmentId ?? ''),
+        equipmentCode: t.equipmentCode || '',
+        plannedQuantity: t.inputQuantity ?? 0,
+        completedQuantity: t.outputQuantity ?? 0,
+        operationStatus: t.executionStatus ?? 0,
+        startTime: t.actualStartTime ? String(t.actualStartTime).replace('T', ' ').slice(0, 19) : '',
+        endTime: t.actualEndTime ? String(t.actualEndTime).replace('T', ' ').slice(0, 19) : '',
+        parameters: t.parameters || '',
+        qualityResult: t.qualifiedQuantity != null && Number(t.defectiveQuantity) === 0 ? '合格' : (t.defectiveReason || ''),
+        remark: t.remark || '',
+      }))
+      total.value = data?.total ?? list.length
+    } else {
+      ElMessage.error(res.msg || '获取操作列表失败')
+    }
   } catch (error) {
     console.error('获取操作列表失败:', error)
     ElMessage.error('获取操作列表失败')
@@ -568,16 +543,18 @@ const getList = async () => {
     loading.value = false
   }
 }
-
-// 获取统计数据
+// 获取统计数据（DEV-685：接真实接口）
 const getStats = async () => {
   try {
-    // 模拟统计数据
-    stats.value = {
-      pendingCount: 5,
-      inProgressCount: 12,
-      completedCount: 48,
-      cancelledCount: 2,
+    const res = await operationExecutionApi.getStats()
+    if (res.code === 200 || res.code === 0) {
+      const d = (res.data || {}) as any
+      stats.value = {
+        pendingCount: d.pendingCount ?? 0,
+        inProgressCount: d.inProgressCount ?? 0,
+        completedCount: d.completedCount ?? 0,
+        cancelledCount: d.cancelledCount ?? 0,
+      }
     }
   } catch (error) {
     console.error('获取统计数据失败:', error)
@@ -746,12 +723,15 @@ const handleStart = async (row: OperationItem) => {
       type: 'warning',
     })
 
-    // 模拟API调用
+    // DEV-685：接真实接口
+    await operationExecutionApi.start(Number(row.operationId))
     ElMessage.success('操作任务已开始')
-    row.operationStatus = 1
-    row.startTime = new Date().toISOString()
-  } catch {
-    // 用户取消
+    getList()
+    getStats()
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error(e?.msg || '开始操作失败')
+    }
   }
 }
 
@@ -764,13 +744,15 @@ const handleComplete = async (row: OperationItem) => {
       type: 'warning',
     })
 
-    // 模拟API调用
+    // DEV-685：接真实接口
+    await operationExecutionApi.complete(Number(row.operationId))
     ElMessage.success('操作任务已完成')
-    row.operationStatus = 2
-    row.endTime = new Date().toISOString()
-    row.completedQuantity = row.plannedQuantity
-  } catch {
-    // 用户取消
+    getList()
+    getStats()
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error(e?.msg || '完成操作失败')
+    }
   }
 }
 
@@ -789,15 +771,15 @@ const handleDelete = async (row: OperationItem) => {
       type: 'warning',
     })
 
-    // 模拟API调用
-    const index = operationList.value.findIndex((item) => item.operationId === row.operationId)
-    if (index !== -1) {
-      operationList.value.splice(index, 1)
-      total.value = operationList.value.length
-      ElMessage.success('删除成功')
+    // DEV-685：接真实接口
+    await operationExecutionApi.remove([Number(row.operationId)])
+    ElMessage.success('删除成功')
+    getList()
+    getStats()
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error(e?.msg || '删除操作失败')
     }
-  } catch {
-    // 用户取消
   }
 }
 

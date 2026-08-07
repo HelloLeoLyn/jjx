@@ -20,9 +20,9 @@
                 <el-icon><Check /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-value">98.5%</div>
+                <div class="stat-value">{{ stats.passRate ?? '-' }}%</div>
                 <div class="stat-label">综合良品率</div>
-                <div class="stat-trend trend-up">+0.5%</div>
+                <div class="stat-trend">合格 {{ stats.passCount ?? 0 }} 批</div>
               </div>
             </div>
           </el-card>
@@ -34,9 +34,9 @@
                 <el-icon><Close /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-value">1.5%</div>
+                <div class="stat-value">{{ failRate }}%</div>
                 <div class="stat-label">不良品率</div>
-                <div class="stat-trend trend-down">-0.2%</div>
+                <div class="stat-trend">不合格 {{ stats.failCount ?? 0 }} 批</div>
               </div>
             </div>
           </el-card>
@@ -48,9 +48,9 @@
                 <el-icon><Warning /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-value">12</div>
-                <div class="stat-label">今日检验批次</div>
-                <div class="stat-trend trend-up">+3</div>
+                <div class="stat-value">{{ stats.totalCount ?? 0 }}</div>
+                <div class="stat-label">检验批次</div>
+                <div class="stat-trend">待检 {{ stats.pendingCount ?? 0 }} 批</div>
               </div>
             </div>
           </el-card>
@@ -62,9 +62,9 @@
                 <el-icon><TrendCharts /></el-icon>
               </div>
               <div class="stat-info">
-                <div class="stat-value">95.8%</div>
+                <div class="stat-value">{{ stats.passRate ?? '-' }}%</div>
                 <div class="stat-label">一次检验合格率</div>
-                <div class="stat-trend trend-up">+1.2%</div>
+                <div class="stat-trend">总数量 {{ stats.totalQty ?? 0 }}</div>
               </div>
             </div>
           </el-card>
@@ -87,27 +87,36 @@
               </div>
             </template>
 
-            <el-table :data="inspectionData" style="width: 100%" height="400">
+            <el-table :data="inspectionData" style="width: 100%" height="400" v-loading="tableLoading">
               <el-table-column prop="inspectionNo" label="检验单号" width="180" />
               <el-table-column prop="productName" label="产品名称" width="150" />
-              <el-table-column prop="batchNo" label="批次号" width="120" />
-              <el-table-column prop="inspectionType" label="检验类型" width="100">
+              <el-table-column prop="orderNo" label="关联订单" width="140" />
+              <el-table-column label="检验类型" width="110">
                 <template #default="{ row }">
-                  <el-tag size="small" :type="getInspectionTypeTag(row.inspectionType)">
-                    {{ row.inspectionType }}
+                  <el-tag size="small" :type="getInspectionTypeTag(row.inspectionTypeName || row.inspectionType)">
+                    {{ row.inspectionTypeName || row.inspectionType }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="totalQuantity" label="检验数量" width="100" />
-              <el-table-column prop="qualifiedQuantity" label="合格数量" width="100" />
-              <el-table-column prop="defectiveQuantity" label="不良数量" width="100" />
-              <el-table-column prop="qualifiedRate" label="合格率" width="100">
+              <el-table-column prop="totalQty" label="检验数量" width="100" />
+              <el-table-column prop="passQty" label="合格数量" width="100" />
+              <el-table-column prop="failQty" label="不良数量" width="100" />
+              <el-table-column label="合格率" width="100">
                 <template #default="{ row }">
-                  {{ (row.qualifiedRate * 100).toFixed(1) }}%
+                  {{ calcRate(row) }}
                 </template>
               </el-table-column>
               <el-table-column prop="inspector" label="检验员" width="100" />
-              <el-table-column prop="inspectionTime" label="检验时间" width="180" />
+              <el-table-column label="检验时间" width="170">
+                <template #default="{ row }">
+                  {{ formatTime(row.inspectTime) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="结果" width="90">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="resultTagType(row.result)">{{ row.resultName || row.result || '待检' }}</el-tag>
+                </template>
+              </el-table-column>
               <el-table-column label="操作" width="80" fixed="right">
                 <template #default="{ row }">
                   <el-button link size="small" @click="viewInspectionDetail(row)"> 详情 </el-button>
@@ -179,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Check,
@@ -190,19 +199,8 @@ import {
   Setting,
   Document,
 } from '@element-plus/icons-vue'
-
-interface InspectionRecord {
-  inspectionNo: string
-  productName: string
-  batchNo: string
-  inspectionType: string
-  totalQuantity: number
-  qualifiedQuantity: number
-  defectiveQuantity: number
-  qualifiedRate: number
-  inspector: string
-  inspectionTime: string
-}
+import { qualityApi } from '@/api/production/quality'
+import type { QualityVO } from '@/api/production/quality'
 
 interface DefectType {
   type: string
@@ -213,75 +211,20 @@ interface DefectType {
 // 响应式数据
 const trendTimeRange = ref('week')
 
-const inspectionData = ref<InspectionRecord[]>([
-  {
-    inspectionNo: 'QC-20240410-001',
-    productName: '薄膜开关-A型',
-    batchNo: 'BATCH-001',
-    inspectionType: '首件检验',
-    totalQuantity: 100,
-    qualifiedQuantity: 98,
-    defectiveQuantity: 2,
-    qualifiedRate: 0.98,
-    inspector: '张三',
-    inspectionTime: '2024-04-10 09:30:00',
-  },
-  {
-    inspectionNo: 'QC-20240410-002',
-    productName: '薄膜开关-B型',
-    batchNo: 'BATCH-002',
-    inspectionType: '过程检验',
-    totalQuantity: 200,
-    qualifiedQuantity: 197,
-    defectiveQuantity: 3,
-    qualifiedRate: 0.985,
-    inspector: '李四',
-    inspectionTime: '2024-04-10 11:15:00',
-  },
-  {
-    inspectionNo: 'QC-20240410-003',
-    productName: '薄膜开关-C型',
-    batchNo: 'BATCH-003',
-    inspectionType: '成品检验',
-    totalQuantity: 150,
-    qualifiedQuantity: 148,
-    defectiveQuantity: 2,
-    qualifiedRate: 0.987,
-    inspector: '王五',
-    inspectionTime: '2024-04-10 14:45:00',
-  },
-  {
-    inspectionNo: 'QC-20240409-001',
-    productName: '薄膜开关-A型',
-    batchNo: 'BATCH-004',
-    inspectionType: '首件检验',
-    totalQuantity: 100,
-    qualifiedQuantity: 97,
-    defectiveQuantity: 3,
-    qualifiedRate: 0.97,
-    inspector: '张三',
-    inspectionTime: '2024-04-09 10:20:00',
-  },
-  {
-    inspectionNo: 'QC-20240409-002',
-    productName: '薄膜开关-B型',
-    batchNo: 'BATCH-005',
-    inspectionType: '过程检验',
-    totalQuantity: 180,
-    qualifiedQuantity: 176,
-    defectiveQuantity: 4,
-    qualifiedRate: 0.978,
-    inspector: '李四',
-    inspectionTime: '2024-04-09 13:30:00',
-  },
-])
+const inspectionData = ref<QualityVO[]>([])
+const tableLoading = ref(false)
 
-const defectTypes = ref<DefectType[]>([
-  { type: '外观缺陷', count: 8, percentage: 40 },
-  { type: '尺寸偏差', count: 5, percentage: 25 },
-  { type: '功能失效', count: 4, percentage: 20 },
-  { type: '材料问题', count: 3, percentage: 15 },
-])
+// 后端统计接口返回
+const stats = ref<Record<string, any>>({})
+
+// 不良品率 = 100 - 良品率
+const failRate = computed(() => {
+  const rate = Number(stats.value.passRate)
+  return Number.isFinite(rate) ? (100 - rate).toFixed(1) : '0.0'
+})
+
+// 缺陷类型分布：由统计兜底为空数组（后端暂无缺陷分类统计）
+const defectTypes = ref<DefectType[]>([])
 
 // 方法
 const getInspectionTypeTag = (type: string) => {
@@ -294,6 +237,15 @@ const getInspectionTypeTag = (type: string) => {
   return map[type] || 'info'
 }
 
+const resultTagType = (result: string) => {
+  const map: Record<string, 'success' | 'danger' | 'info' | 'warning'> = {
+    pass: 'success',
+    fail: 'danger',
+    pending: 'info',
+  }
+  return map[result] || 'info'
+}
+
 const getDefectColor = (type: string) => {
   const map: Record<string, string> = {
     外观缺陷: '#e6a23c',
@@ -302,6 +254,36 @@ const getDefectColor = (type: string) => {
     材料问题: '#67c23a',
   }
   return map[type] || '#909399'
+}
+
+// 计算合格率（%）
+function calcRate(row: any): string {
+  const total = Number(row.totalQty)
+  const pass = Number(row.passQty)
+  if (!total) return '-'
+  return ((pass / total) * 100).toFixed(1) + '%'
+}
+
+function formatTime(t?: string): string {
+  return t ? String(t).replace('T', ' ').slice(0, 16) : '-'
+}
+
+// 加载统计 + 检验记录
+async function loadData() {
+  try {
+    const [statRes, pageRes] = await Promise.all([
+      qualityApi.getStatistics(),
+      qualityApi.page({ pageNum: 1, pageSize: 10 }),
+    ])
+    if (statRes.code === 200 || statRes.code === 0) stats.value = statRes.data || {}
+    if ((pageRes.code === 200 || pageRes.code === 0) && pageRes.data) {
+      inspectionData.value = (pageRes.data as any).records || (pageRes.data as any).list || []
+    }
+  } catch (e) {
+    console.error('加载质量数据失败:', e)
+  } finally {
+    tableLoading.value = false
+  }
 }
 
 // 事件处理
@@ -326,10 +308,13 @@ const viewAllInspections = () => {
   // TODO: 跳转到检验记录列表页面
 }
 
-const viewInspectionDetail = (record: InspectionRecord) => {
-  console.log('查看检验详情:', record)
-  // TODO: 跳转到检验详情页面
+const viewInspectionDetail = (record: any) => {
+  router.push({ path: '/production/quality/report', query: { id: record.inspectionId } })
 }
+
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <style scoped>
