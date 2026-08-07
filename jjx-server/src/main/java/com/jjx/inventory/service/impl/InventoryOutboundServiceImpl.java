@@ -133,6 +133,43 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (params.get("warehouseId") != null) order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.insert(order);
+
+        // 保存明细（DEV-695：原 create 不落 items，导致手动出库单无明细无法确认）
+        Object itemsObj = params.get("items");
+        if (itemsObj instanceof List<?> itemList && !itemList.isEmpty()) {
+            List<InventoryOutboundItem> items = new ArrayList<>();
+            int sort = 1;
+            BigDecimal totalQty = BigDecimal.ZERO;
+            BigDecimal totalAmt = BigDecimal.ZERO;
+            for (Object obj : itemList) {
+                if (!(obj instanceof Map<?, ?> m)) continue;
+                InventoryOutboundItem item = new InventoryOutboundItem();
+                item.setOutboundId(order.getOutboundId());
+                if (m.get("materialId") != null) item.setMaterialId(Long.valueOf(m.get("materialId").toString()));
+                item.setMaterialCode((String) m.get("materialCode"));
+                item.setMaterialName((String) m.get("materialName"));
+                item.setSpecification((String) m.get("specification"));
+                item.setUnit((String) m.get("unit"));
+                if (m.get("quantity") != null) item.setQuantity(new BigDecimal(m.get("quantity").toString()));
+                if (m.get("unitPrice") != null) item.setUnitPrice(new BigDecimal(m.get("unitPrice").toString()));
+                BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+                BigDecimal price = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
+                item.setAmount(qty.multiply(price));
+                item.setBatchNo((String) m.get("batchNo"));
+                if (m.get("locationId") != null) item.setLocationId(Long.valueOf(m.get("locationId").toString()));
+                if (m.get("remark") != null) item.setRemark(m.get("remark").toString());
+                item.setSortOrder(sort++);
+                items.add(item);
+                totalQty = totalQty.add(qty);
+                totalAmt = totalAmt.add(item.getAmount());
+            }
+            if (!items.isEmpty()) {
+                outboundItemMapper.batchInsert(items);
+                order.setTotalQuantity(totalQty);
+                order.setTotalAmount(totalAmt);
+                outboundOrderMapper.updateById(order);
+            }
+        }
         return order.getOutboundId();
     }
 
