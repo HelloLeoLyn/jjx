@@ -318,6 +318,16 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             return results;
         }
 
+        // DEV-701：统计文件内重复（物料+规格+仓库+摆放区域）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (StockBatchCheckItemDTO item : items) {
+            String k = (item.getMaterialName() == null ? "" : item.getMaterialName().trim())
+                    + "|" + (item.getSpecification() == null ? "" : item.getSpecification().trim())
+                    + "|" + (item.getWarehouseName() == null ? "" : item.getWarehouseName().trim())
+                    + "|" + (item.getLocationDesc() == null ? "" : item.getLocationDesc().trim());
+            dupCountMap.merge(k, 1, Integer::sum);
+        }
+
         // 批量查物料缓存：key=名称|规格|供应商 -> 物料（避免逐行查库）
         java.util.Map<String, InventoryMaterial> materialCache = new java.util.HashMap<>();
         java.util.List<String> names = items.stream()
@@ -352,6 +362,19 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             StockBatchCheckItemVO vo = new StockBatchCheckItemVO();
             vo.setRowIndex(item.getRowIndex());
             vo.setStatus("ok");
+
+            // 0. 文件内重复检测（DEV-701：同物料+规格+仓库+摆放区域重复行，导入会撞唯一键）
+            String dupKey = (item.getMaterialName() == null ? "" : item.getMaterialName().trim())
+                    + "|" + (item.getSpecification() == null ? "" : item.getSpecification().trim())
+                    + "|" + (item.getWarehouseName() == null ? "" : item.getWarehouseName().trim())
+                    + "|" + (item.getLocationDesc() == null ? "" : item.getLocationDesc().trim());
+            Integer dupCount = dupCountMap.get(dupKey);
+            if (dupCount != null && dupCount > 1) {
+                vo.setStatus("error");
+                vo.setErrorType("DUPLICATE");
+                addFieldError(vo, "materialName", "DUPLICATE",
+                        "文件内重复行（同一物料+仓库+摆放区域出现 " + dupCount + " 次），导入会冲突，请删除重复行或合并数量");
+            }
 
             // 1. 物料名称必填
             String name = item.getMaterialName() == null ? "" : item.getMaterialName().trim();

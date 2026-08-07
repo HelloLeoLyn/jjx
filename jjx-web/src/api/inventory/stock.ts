@@ -120,7 +120,7 @@ export interface StockBatchCheckItemVO {
   status: 'ok' | 'error'
   materialId?: number
   materialCode?: string
-  errorType?: 'NOT_FOUND' | 'WAREHOUSE_NOT_FOUND' | 'INVALID' | 'MISSING_REQUIRED'
+  errorType?: 'NOT_FOUND' | 'WAREHOUSE_NOT_FOUND' | 'INVALID' | 'MISSING_REQUIRED' | 'DUPLICATE'
   errors?: StockBatchCheckFieldError[]
 }
 
