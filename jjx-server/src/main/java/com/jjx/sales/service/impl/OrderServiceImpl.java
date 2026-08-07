@@ -69,6 +69,7 @@ public class OrderServiceImpl implements IOrderService {
     private final ProductionOrderService productionOrderService;
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
 
     /**
      * 查询销售订单列表
@@ -516,6 +517,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         PdfDocBuilder builder = PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
                 .title("销  售  订  单")
                 .info(info)
                 .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)
@@ -650,6 +652,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         PdfDocBuilder builder = PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
                 .title("订  单  确  认  书")
                 .info(info)
                 .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)

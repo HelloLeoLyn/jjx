@@ -60,6 +60,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final IOrderService orderService;
     private final ISysAttachmentService sysAttachmentService;
     private final RedisSequenceService redisSequenceService;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
 
     /**
      * 查询销售报价单列表
@@ -649,6 +650,7 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         PdfDocBuilder builder = PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
                 .title("报  价  单")
                 .info(info)
                 .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)

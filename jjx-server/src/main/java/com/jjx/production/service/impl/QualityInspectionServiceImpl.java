@@ -32,6 +32,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
 
     private final ProductionQualityInspectionMapper inspectionMapper;
     private final ProductionQualityInspectionItemMapper itemMapper;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
 
     @Override
     public PageResult<QualityInspectionVO> page(QualityInspectionQueryDTO query) {
@@ -227,6 +228,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         }
 
         return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
                 .title("质  检  报  告")
                 .info(info)
                 .items(new String[]{"序号", "检验项目", "标准要求", "实测值", "结果", "备注"}, rows)

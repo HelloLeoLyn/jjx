@@ -57,6 +57,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
     private final com.jjx.inventory.service.InventoryInboundService inboundService;
     private final com.jjx.inventory.service.InventoryAlertService alertService;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -1267,6 +1268,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
+                .withConfig(pdfConfigLoader.load())
                 .title("采  购  订  单")
                 .info(info)
                 .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额"}, rows)

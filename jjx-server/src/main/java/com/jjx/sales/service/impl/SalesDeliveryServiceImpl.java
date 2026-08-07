@@ -25,6 +25,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
     private static final String[] DELIVERY_STATUS_DESC = {"未知", "待发货", "已发货", "运输中", "已签收", "已拒收"};
 
     private final SalesDeliveryMapper salesDeliveryMapper;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
 
     @Override
     public Page<SalesDeliveryVO> pageQuery(SalesDeliveryQueryDTO dto) {
@@ -105,6 +106,8 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         info.put("状态", vo.getDeliveryStatusDesc() == null ? "-" : vo.getDeliveryStatusDesc());
 
         return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
+                .withConfig(pdfConfigLoader.load())
                 .title("送  货  单")
                 .info(info)
                 .items(new String[]{"序号", "项目", "数值"}, new java.util.ArrayList<>())

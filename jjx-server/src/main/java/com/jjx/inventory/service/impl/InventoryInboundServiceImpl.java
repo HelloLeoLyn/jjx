@@ -67,6 +67,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final EventPublisher eventPublisher;
     private final InventoryAlertService alertService;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -852,6 +853,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
+                .withConfig(pdfConfigLoader.load())
                 .title("入  库  单")
                 .info(info)
                 .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额", "批次"}, rows)

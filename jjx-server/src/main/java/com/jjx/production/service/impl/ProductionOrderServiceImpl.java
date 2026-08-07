@@ -55,6 +55,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
     private final com.jjx.inventory.service.InventoryInboundService inventoryInboundService;
     private final com.jjx.inventory.service.InventoryOutboundService inventoryOutboundService;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -1111,6 +1112,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 vo.getRemainingQuantity() == null ? "" : df.format(vo.getRemainingQuantity())});
 
         return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
+                .withConfig(pdfConfigLoader.load())
                 .title("生  产  工  单")
                 .info(info)
                 .items(new String[]{"序号", "产品编码", "产品名称", "计划数量", "单位", "已完成", "剩余"}, rows)

@@ -67,6 +67,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
 
     @Override
     public IPage<OutboundVO> page(OutboundQueryDTO query) {
@@ -898,6 +899,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
+                .withConfig(pdfConfigLoader.load())
                 // DEV-660：领料单（production 类型/PICK- 单号）打印标题为「领 料 单」，其余「出 库 单」
                 .title(isPickOrder(vo) ? "领  料  单" : "出  库  单")
                 .info(info)
