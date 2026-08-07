@@ -52,6 +52,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/quotation/:id',
+    name: 'QuotationPrint',
+    component: () => import('@/views/sales/quotation/print.vue'),
+    meta: {
+      title: '报价单打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),

@@ -234,9 +234,11 @@ const initData = async () => {
   }
 }
 
-// 打印报价单（浏览器打印 → 可另存为 PDF）
+// 打印报价单：跳转到独立干净打印页（无弹窗/无侧边栏，A4Canvas 渲染）
 const handlePrint = () => {
-  window.print()
+  if (!props.quotationId) return
+  const url = `/print/quotation/${props.quotationId}`
+  window.open(url, '_blank')
 }
 
 // 导出 Excel
