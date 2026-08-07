@@ -107,6 +107,7 @@ export const customerApi = {
   importCustomers(data: FormData, updateSupport: boolean = false) {
     return request.post<R<void>>('/sales/customers/import', data, {
       params: { updateSupport },
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
 
