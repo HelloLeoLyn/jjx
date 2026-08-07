@@ -14,7 +14,6 @@
           <el-button @click="handlePrint">
             <el-icon style="margin-right: 4px"><Printer /></el-icon>打印
           </el-button>
-          <el-button type="primary" plain @click="handleExportPdf">导出PDF</el-button>
           <el-button type="success" plain @click="handleExportExcel">导出Excel</el-button>
           <span class="toolbar-tip">发送前可打印或导出报价单给客户确认</span>
         </div>
@@ -238,13 +237,6 @@ const initData = async () => {
 // 打印报价单（浏览器打印 → 可另存为 PDF）
 const handlePrint = () => {
   window.print()
-}
-
-// 导出 PDF
-const handleExportPdf = async () => {
-  if (!props.quotationId) return
-  const res: any = await quotationApi.exportPdf(props.quotationId)
-  download(res, `${info.value?.quotationNo || props.quotationId}.pdf`)
 }
 
 // 导出 Excel
