@@ -554,6 +554,27 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                     ? dto.getBatchNo()
                     : LocalDate.now().toString();
 
+            // DEV-701：同(物料+仓库+库位+批次)已存在 → 数量累加，避免唯一键冲突导致整批回滚
+            InventoryStockItem existing = stockItemMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryStockItem>()
+                            .eq(InventoryStockItem::getMaterialId, material.getMaterialId())
+                            .eq(InventoryStockItem::getWarehouseId, warehouseId)
+                            .eq(locationId != null, InventoryStockItem::getLocationId, locationId)
+                            .eq(InventoryStockItem::getBatchNo, batchNo)
+                            .last("LIMIT 1"));
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity().add(dto.getQuantity()));
+                existing.setLastInboundTime(LocalDateTime.now());
+                if (dto.getUnitCost() != null && existing.getUnitCost() == null) {
+                    existing.setUnitCost(dto.getUnitCost());
+                }
+                stockItemMapper.updateById(existing);
+                log.info("库存导入累加数量: material={}, batch={}, qty+={}", material.getMaterialName(), batchNo, dto.getQuantity());
+                refreshSummary(material.getMaterialId());
+                result.addSuccess();
+                continue;
+            }
+
             // 查找或创建明细记录
             InventoryStockItem newItem = new InventoryStockItem();
             newItem.setMaterialId(material.getMaterialId());
