@@ -157,6 +157,9 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="订单号" align="center" prop="orderNo" width="160">
           <template #default="scope">
+            <el-tooltip content="打印" placement="top">
+              <el-button link type="info" @click="handlePrint(scope.row)">打印</el-button>
+            </el-tooltip>
             <el-tooltip content="详情" placement="top">
               <el-button link type="primary" @click="() => handleView(scope.row)">{{
                 scope.row.orderNo
@@ -684,6 +687,10 @@ const handleApprove = (row?: PurchaseOrderVO) => {
 }
 
 // 查看详情
+// 打印采购订单（跳转独立打印页）
+function handlePrint(row: PurchaseOrderVO) {
+  window.open(`/print/purchase-order/${row.orderId}`, '_blank')
+}
 const handleView = (row: PurchaseOrderVO) => {
   currentOrderId.value = Number(row.orderId as any)
   currentOrderNo.value = row.orderNo

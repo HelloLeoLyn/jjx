@@ -88,6 +88,51 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/inbound/:id',
+    name: 'InboundPrint',
+    component: () => import('@/views/inventory/inbound/print.vue'),
+    meta: {
+      title: '入库单打印',
+      hidden: true,
+    },
+  },
+  {
+    path: '/print/outbound/:id',
+    name: 'OutboundPrint',
+    component: () => import('@/views/inventory/outbound/print.vue'),
+    meta: {
+      title: '出库单打印',
+      hidden: true,
+    },
+  },
+  {
+    path: '/print/purchase-order/:id',
+    name: 'PurchaseOrderPrint',
+    component: () => import('@/views/purchase/order/print.vue'),
+    meta: {
+      title: '采购订单打印',
+      hidden: true,
+    },
+  },
+  {
+    path: '/print/production-order/:id',
+    name: 'ProductionOrderPrint',
+    component: () => import('@/views/production/order/print.vue'),
+    meta: {
+      title: '生产工单打印',
+      hidden: true,
+    },
+  },
+  {
+    path: '/print/quality/:id',
+    name: 'QualityPrint',
+    component: () => import('@/views/production/quality/print.vue'),
+    meta: {
+      title: '质检报告打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),

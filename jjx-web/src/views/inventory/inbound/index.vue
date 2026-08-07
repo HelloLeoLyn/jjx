@@ -129,6 +129,7 @@
           <template #default="{ row }">
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
+            <el-button link type="info" @click="handlePrint(row)">打印</el-button>
             <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="row.status === 0" link type="primary" @click="handleSubmit(row)"
               >提交</el-button
@@ -387,6 +388,10 @@ const handleRefresh = () => {
   ElMessage.success('数据已刷新')
 }
 
+// 打印入库单（跳转独立打印页）
+function handlePrint(row: InboundVO) {
+  window.open(`/print/inbound/${row.inboundId}`, '_blank')
+}
 // 查看详情
 const handleView = (row: InboundVO) => {
   router.push(`/inventory/inbound/detail/${row.inboundId}`)

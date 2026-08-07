@@ -144,6 +144,7 @@
         <el-table-column label="备注" prop="remark" min-width="140" show-overflow-tooltip />
         <el-table-column label="操作" width="160" align="center" fixed="right">
           <template #default="{ row }">
+            <el-button link type="info" size="small" @click="handlePrint(row)">打印</el-button>
             <el-button link type="primary" size="small" @click="handleExportPdf(row)">PDF</el-button>
             <el-button link type="success" size="small" @click="handleExportExcel(row)">Excel</el-button>
           </template>
@@ -221,6 +222,14 @@ const getList = async () => {
 const handleQuery = () => { queryParams.pageNum = 1; getList() }
 
 // 导出质检报告PDF
+// 打印质检报告（跳转独立打印页）
+function handlePrint(row: any) {
+  if (!row?.inspectionId) {
+    ElMessage.warning('检验单ID缺失')
+    return
+  }
+  window.open(`/print/quality/${row.inspectionId}`, '_blank')
+}
 const handleExportPdf = (row: any) => {
   if (!row?.inspectionId) {
     ElMessage.warning('检验单ID缺失')

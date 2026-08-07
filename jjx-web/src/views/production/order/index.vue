@@ -273,6 +273,7 @@ const refreshData = () => {
   loadStats()
 }
 
+
 // 导出功能
 const handleExport = async () => {
   try {
@@ -596,7 +597,7 @@ const handleExportOrder = (order: any) => {
 }
 
 const handlePrintOrder = (order: any) => {
-  ElMessage.info(`打印订单 ${order.orderNo}`)
+  window.open(`/print/production-order/${order.orderId}`, '_blank')
 }
 
 const handleViewHistory = (order: any) => {

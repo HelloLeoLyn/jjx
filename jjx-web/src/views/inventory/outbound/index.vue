@@ -125,6 +125,7 @@
           <template #default="{ row }">
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
+            <el-button link type="info" @click="handlePrint(row)">打印</el-button>
             <el-button v-if="row.status === 0" link type="primary" @click="handleEdit(row)"
               >编辑</el-button
             >
@@ -352,6 +353,11 @@ const detailNo = ref('')
 const currentDetail = ref<OutboundVO | null>(null)
 const detailTransactions = ref<TransactionVO[]>([])
 const txLoading = ref(false)
+
+// 打印出库单（跳转独立打印页）
+function handlePrint(row: OutboundVO) {
+  window.open(`/print/outbound/${row.outboundId}`, '_blank')
+}
 
 const handleView = async (row: OutboundVO) => {
   detailNo.value = row.outboundNo || ''
