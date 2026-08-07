@@ -433,14 +433,41 @@ const handleSend = async () => {
     display: none !important;
   }
 
-  :deep(.el-dialog__header),
-  :deep(.el-dialog__footer) {
-    display: none !important;
+  /* 只打印报价单画布：隐藏页面其他一切（含弹窗遮罩/对话框外壳） */
+  :global(body *:not(.a4-print-area):not(.a4-print-area *)) {
+    visibility: hidden !important;
   }
 
-  :deep(.el-dialog) {
+  /* 画布区域恢复正常显示（visibility 方案保持布局，避免跳动） */
+  :global(.a4-print-area),
+  :global(.a4-print-area *) {
+    visibility: visible !important;
+  }
+
+  /* 画布脱离弹窗滚动容器，铺满 A4 */
+  :global(.el-overlay) {
+    position: static !important;
+    overflow: visible !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+
+  :global(.el-dialog) {
     box-shadow: none !important;
     border: none !important;
+    margin: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  :global(.el-dialog__body) {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  :global(.el-dialog__header),
+  :global(.el-dialog__footer) {
+    display: none !important;
   }
 
   .a4-print-area {
