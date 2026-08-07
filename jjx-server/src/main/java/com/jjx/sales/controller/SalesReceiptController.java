@@ -3,14 +3,20 @@ package com.jjx.sales.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
-import com.jjx.sales.service.SalesReceiptService;
+import com.jjx.common.utils.ExcelUtils;
 import com.jjx.sales.domain.entity.SalesReceipt;
+import com.jjx.sales.domain.vo.SalesReceiptExportVO;
+import com.jjx.sales.service.SalesReceiptService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Tag(name = "销售收款管理")
 @RestController
@@ -33,5 +39,64 @@ public class SalesReceiptController {
     @PostMapping
     public Result<Long> create(@RequestBody SalesReceipt receipt) {
         return Result.success(receiptService.create(receipt));
+    }
+
+    /**
+     * 导出销售收款单（DEV-720：Excel）
+     */
+    @Operation(summary = "导出销售收款单")
+    @SaCheckPermission("sales:order:export")
+    @GetMapping("/export")
+    public void export(HttpServletResponse response) {
+        PageResult<SalesReceipt> page = receiptService.page(1, 100000);
+        List<SalesReceiptExportVO> rows = new ArrayList<>();
+        if (page != null && page.getRecords() != null) {
+            for (SalesReceipt r : page.getRecords()) {
+                SalesReceiptExportVO row = new SalesReceiptExportVO();
+                row.setReceiptNo(r.getReceiptNo());
+                row.setCustomerName(r.getCustomerName());
+                row.setReceiptDate(r.getReceiptDate());
+                row.setReceiptTypeDesc(receiptTypeText(r.getReceiptType()));
+                row.setPaymentMethodDesc(paymentMethodText(r.getPaymentMethod()));
+                row.setReceiptAmount(r.getReceiptAmount());
+                row.setCurrency(r.getCurrency());
+                row.setStatusDesc(statusText(r.getStatus()));
+                row.setRemark(r.getRemark());
+                rows.add(row);
+            }
+        }
+        if (rows.isEmpty()) {
+            throw new com.jjx.common.exception.BusinessException("导出数据为空");
+        }
+        ExcelUtils.export(response, rows, SalesReceiptExportVO.class, "销售收款单");
+    }
+
+    private String receiptTypeText(Integer type) {
+        if (type == null) return "";
+        return switch (type) {
+            case 1 -> "定金";
+            case 2 -> "进度款";
+            case 3 -> "尾款";
+            default -> String.valueOf(type);
+        };
+    }
+
+    private String paymentMethodText(Integer method) {
+        if (method == null) return "";
+        return switch (method) {
+            case 1 -> "银行转账";
+            case 2 -> "现金";
+            case 3 -> "承兑汇票";
+            default -> String.valueOf(method);
+        };
+    }
+
+    private String statusText(Integer status) {
+        if (status == null) return "";
+        return switch (status) {
+            case 0 -> "作废";
+            case 1 -> "正常";
+            default -> String.valueOf(status);
+        };
     }
 }

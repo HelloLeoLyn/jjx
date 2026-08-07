@@ -22,6 +22,9 @@
         <el-col :span="1.5">
           <el-button plain icon="Refresh" @click="clearPlan">清空</el-button>
         </el-col>
+        <el-col :span="1.5">
+          <el-button plain icon="Download" :disabled="planRows.length === 0" @click="handleExport">导出 Excel</el-button>
+        </el-col>
         <el-col :span="1.5" style="float: right">
           <el-button type="primary" icon="Check" :disabled="planRows.length === 0" @click="handleConfirmPlan">
             确认计划 → 生成采购订单
@@ -124,6 +127,7 @@ defineOptions({
 
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import * as XLSX from 'xlsx'
 import { getPlanSuggestions, confirmPlan, addOrder } from '@/api/purchase/order'
 import { listSupplier } from '@/api/purchase/supplier'
 import { materialApi } from '@/api/inventory/material'
@@ -324,4 +328,27 @@ const doConfirmPlan = async () => {
 onMounted(() => {
   loadSuggestions()
 })
+
+// 导出当前计划为 Excel（DEV-720）
+const handleExport = () => {
+  if (planRows.value.length === 0) {
+    ElMessage.warning('暂无计划数据可导出')
+    return
+  }
+  const rows = planRows.value.map((r) => ({
+    物料编码: r.materialCode,
+    物料名称: r.materialName,
+    当前库存: r.currentStock,
+    建议量: r.suggestQuantity,
+    采购数量: r.quantity,
+    单位: r.unit || '',
+    来源: r.reason,
+    优先级: r.priority === 'urgent' ? '紧急' : r.priority === 'high' ? '高' : '普通',
+  }))
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '采购计划')
+  XLSX.writeFile(wb, `采购计划_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  ElMessage.success(`已导出 ${rows.length} 行计划数据`)
+}
 </script>
