@@ -226,7 +226,7 @@ const form = reactive<MaterialCategoryFormData>({
   categoryName: '',
   categoryLevel: 1,
   sortOrder: 0,
-  status: '0',
+  status: '1',
   remark: '',
 })
 
@@ -260,7 +260,7 @@ const categoryFormRef = ref()
 
 // 状态选项
 const statusOptions = [
-  { label: '正常', value: '0' },
+  { label: '正常', value: '1' },
   { label: '停用', value: '1' },
 ]
 
@@ -450,7 +450,7 @@ const resetForm = () => {
     categoryName: '',
     categoryLevel: 1,
     sortOrder: 0,
-    status: '0',
+    status: '1',
     remark: '',
   })
 }

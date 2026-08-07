@@ -79,9 +79,9 @@ const filterableValue = computed(() => props.filterable ?? true)
 const filteredWarehouseList = computed(() => {
   let list = WAREHOUSE_LIST
 
-  // 只显示启用状态的仓库
+  // 只显示启用状态的仓库（StatusEnum: 1=正常/0=停用，2026-08-07 对齐）
   if (props.activeOnly) {
-    list = list.filter((w) => w.status === 0)
+    list = list.filter((w) => w.status === 1)
   }
 
   // 按仓库类型过滤（通过 warehouseCode 匹配）

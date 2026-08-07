@@ -280,8 +280,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="form.status">
-                <el-radio value="0">正常</el-radio>
-                <el-radio value="1">停用</el-radio>
+                <el-radio value="1">正常</el-radio>
+                <el-radio value="0">停用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -355,8 +355,8 @@
           {{ detail.lastEvaluationDate ? parseTime(detail.lastEvaluationDate) : '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="状态">
-          <el-tag :type="detail.status === '0' ? 'success' : 'danger'">
-            {{ detail.status === '0' ? '正常' : '停用' }}
+          <el-tag :type="detail.status === '1' ? 'success' : 'danger'">
+            {{ detail.status === '1' ? '正常' : '停用' }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{
@@ -494,7 +494,7 @@ const form = reactive({
   paymentTerms: '',
   bankAccount: '',
   taxNumber: '',
-  status: '0',
+  status: '1',
   remark: '',
 })
 
@@ -516,7 +516,7 @@ const detail = reactive({
   deliveryScore: 0,
   priceScore: 0,
   lastEvaluationDate: '',
-  status: '0',
+  status: '1',
   remark: '',
 })
 
@@ -811,7 +811,7 @@ const handleStatusChange = (row: any) => {
       getList()
     })
     .catch(() => {
-      row.status = row.status === '0' ? '1' : '0'
+      row.status = row.status === '1' ? '0' : '1'
     })
 }
 
@@ -832,7 +832,7 @@ const resetForm = () => {
     paymentTerms: '',
     bankAccount: '',
     taxNumber: '',
-    status: '0',
+    status: '1',
     remark: '',
   })
 }

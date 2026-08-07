@@ -19,8 +19,8 @@ export const searchConfig: SearchOptions[] = [
     label: '状态',
     type: 'select',
     options: [
-      { value: '0', label: '正常' },
-      { value: '1', label: '停用' },
+      { value: '1', label: '正常' },
+      { value: '0', label: '停用' },
     ],
   },
 ]
@@ -66,10 +66,10 @@ export const tableColumns: TableOptions[] = [
   },
 ]
 
-// 状态配置
+// 状态配置（StatusEnum: 1=正常/0=停用，2026-08-07 对齐）
 export const statusConfig = {
-  '0': { label: '正常', type: 'success' },
-  '1': { label: '停用', type: 'danger' },
+  '1': { label: '正常', type: 'success' },
+  '0': { label: '停用', type: 'danger' },
 }
 
 export const materialCategoryTypeConfig = {

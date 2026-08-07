@@ -2,6 +2,7 @@ package com.jjx.inventory.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.common.enums.StatusEnum;
 import com.jjx.inventory.domain.InventoryStorageLocation;
 import com.jjx.inventory.dto.imports.StorageLocationImportDTO;
 import com.jjx.inventory.mapper.InventoryStorageLocationMapper;
@@ -39,7 +40,7 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
 
         LambdaQueryWrapper<InventoryStorageLocation> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(InventoryStorageLocation::getWarehouseId, warehouseId);
-        wrapper.eq(InventoryStorageLocation::getStatus, "0"); // 只查询启用的库位
+        wrapper.eq(InventoryStorageLocation::getStatus, StatusEnum.NORMAL.getCode()); // 只查询启用的库位
         wrapper.orderByAsc(InventoryStorageLocation::getSortOrder);
 
         return storageLocationMapper.selectList(wrapper);
@@ -52,7 +53,7 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
         if (warehouseId != null) {
             wrapper.eq(InventoryStorageLocation::getWarehouseId, warehouseId);
         }
-        wrapper.eq(InventoryStorageLocation::getStatus, "0"); // 只查询启用的库位
+        wrapper.eq(InventoryStorageLocation::getStatus, StatusEnum.NORMAL.getCode()); // 只查询启用的库位
         wrapper.orderByAsc(InventoryStorageLocation::getSortOrder);
 
         List<InventoryStorageLocation> locations = storageLocationMapper.selectList(wrapper);
@@ -139,7 +140,7 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
         }
 
         InventoryStorageLocation location = storageLocationMapper.selectById(locationId);
-        if (location == null || !"0".equals(location.getStatus())) {
+        if (location == null || !String.valueOf(StatusEnum.NORMAL.getCode()).equals(location.getStatus())) {
             return false;
         }
 
@@ -257,7 +258,7 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
         }
 
         InventoryStorageLocation location = storageLocationMapper.selectById(locationId);
-        if (location == null || !"0".equals(location.getStatus())) {
+        if (location == null || !String.valueOf(StatusEnum.NORMAL.getCode()).equals(location.getStatus())) {
             return BigDecimal.ZERO;
         }
 
@@ -318,7 +319,7 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
                 location.setLocationCode(dto.getLocationCode());
                 location.setLocationName(dto.getLocationName());
                 location.setLocationType(dto.getLocationType());
-                location.setStatus("0"); // 默认启用
+                location.setStatus(String.valueOf(StatusEnum.NORMAL.getCode())); // 默认启用
 
                 // 转换数值字段
                 if (dto.getCapacity() != null && !dto.getCapacity().isEmpty()) {

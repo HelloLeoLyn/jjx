@@ -52,8 +52,8 @@
           <template #default="{ row }">
             <el-switch
               v-model="row.status"
-              active-value="0"
-              inactive-value="1"
+              active-value="1"
+              inactive-value="0"
               @change="handleStatusChange(row)"
             />
           </template>
@@ -130,8 +130,8 @@
 
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
-            <el-radio value="0">正常</el-radio>
-            <el-radio value="1">停用</el-radio>
+            <el-radio value="1">正常</el-radio>
+            <el-radio value="0">停用</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -217,7 +217,7 @@ const form = reactive<WarehouseUpdateDTO>({
   manager: '',
   contactPhone: '',
   sortOrder: 0,
-  status: '0',
+  status: '1',
   remark: '',
 })
 
