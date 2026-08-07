@@ -34,7 +34,7 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
             "    MIN(expiry_date) AS earliest_exp, " +
             "    (SELECT location_id FROM inventory_stock_item sub " +
             "     WHERE sub.material_id = #{materialId} AND sub.status = 1 AND sub.quantity > 0 " +
-            "     ORDER BY sub.expiry_date ASC, sub.last_inbound_time ASC LIMIT 1) AS loc_id " +
+            "     ORDER BY (sub.location_id IS NULL) ASC, sub.expiry_date ASC, sub.last_inbound_time ASC LIMIT 1) AS loc_id " +
             "  FROM inventory_stock_item " +
             "  WHERE material_id = #{materialId} AND status = 1 " +
             ") t ON s.material_id = t.material_id " +
