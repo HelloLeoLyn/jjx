@@ -742,6 +742,23 @@
         :biz-id="detail.quotationId"
         :trace-id="detail.traceId"
       />
+
+      <!-- DEV-706：提交审核模式 → 底部确认提交 -->
+      <template #footer>
+        <div v-if="detailMode === 'submitReview'" class="detail-footer">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            title="请核对报价单内容（客户/明细/金额）后确认提交，提交后将进入待审核状态"
+            style="margin-bottom: 12px"
+          />
+          <el-button @click="detailOpen = false">取消</el-button>
+          <el-button type="primary" :loading="submitReviewLoading" @click="handleConfirmSubmitReview">
+            确认提交审核
+          </el-button>
+        </div>
+      </template>
     </el-dialog>
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
@@ -898,6 +915,9 @@ const total = ref(0)
 const title = ref('')
 const open = ref(false)
 const detailOpen = ref(false)
+// 详情对话框模式：''=查看 / 'submitReview'=提交审核（底部显示确认提交）
+const detailMode = ref<'view' | 'submitReview'>('view')
+const submitReviewLoading = ref(false)
 const dateRange = ref<string[]>([])
 const customerLoading = ref(false)
 const customerOptions = ref<Array<{ customerId: number; customerName: string }>>([])
@@ -1108,8 +1128,43 @@ function openPreview(opKey: string, row?: any) {
 // 转为样品单
 const handleConvertToSample = async (row?: any) => openPreview('quotation.toSample', row)
 
-// 提交审核
-const handleSubmitReview = async (row?: any) => openPreview('quotation.submitReview', row)
+// 提交审核（DEV-706：展示完整详情供核对 + 确认提交，不再用操作预览器/附件）
+const handleSubmitReview = async (row?: any) => {
+  const quotationId = (row?.quotationId as number) ?? (row as any)?.quotationId
+  if (!quotationId) return
+  try {
+    const response: any = await quotationApi.getInfo(quotationId)
+    Object.assign(detail, response.data)
+    detailMode.value = 'submitReview'
+    detailOpen.value = true
+  } catch (e) {
+    console.error('加载报价详情失败:', e)
+    ElMessage.error('加载报价详情失败')
+  }
+}
+
+// 确认提交审核
+const handleConfirmSubmitReview = async () => {
+  const quotationId = detail.quotationId as number
+  if (!quotationId) return
+  submitReviewLoading.value = true
+  try {
+    const res: any = await quotationApi.submitReview(quotationId)
+    if (res.code === 200 || res.code === 0) {
+      ElMessage.success('提交审核成功')
+      detailOpen.value = false
+      detailMode.value = 'view'
+      getList()
+    } else {
+      ElMessage.error(res.msg || '提交审核失败')
+    }
+  } catch (e: any) {
+    console.error('提交审核失败:', e)
+    ElMessage.error(e?.msg || e?.message || '提交审核失败')
+  } finally {
+    submitReviewLoading.value = false
+  }
+}
 
 // 审核（通过/驳回）
 const handleReview = async (approved: boolean, row?: any) =>
@@ -1181,6 +1236,7 @@ const handleView = (row: any) => {
   const quotationId = row.quotationId as number
   quotationApi.getInfo(quotationId).then((response: any) => {
     Object.assign(detail, response.data)
+    detailMode.value = 'view'
     detailOpen.value = true
   })
 }
@@ -1498,6 +1554,7 @@ async function locateQuotation(quotationId: number) {
   } else {
     quotationApi.getInfo(quotationId).then((response: any) => {
       Object.assign(detail, response.data)
+      detailMode.value = 'view'
       detailOpen.value = true
     })
   }
@@ -1561,6 +1618,11 @@ const handleModify = async (row?: any) => {
 </script>
 
 <style scoped>
+.detail-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
 .search-card {
   margin-bottom: 16px;
 }
