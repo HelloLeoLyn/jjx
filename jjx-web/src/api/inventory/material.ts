@@ -126,7 +126,7 @@ export const materialApi = {
   importExcel(file: File) {
     const formData = new FormData()
     formData.append('file', file)
-    return request.post<string>('/inventory/material/import', formData, {
+    return request.post<MaterialImportResultVO>('/inventory/material/import', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
@@ -142,4 +142,18 @@ export const materialApi = {
   generateCode() {
     return request.get<R<string>>('/inventory/material/code')
   },
+}
+
+// 物料导入结果（DEV-702：失败明细可下载）
+export interface MaterialImportResultVO {
+  successCount: number
+  skipCount: number
+  failCount: number
+  failDetails: MaterialImportFailDetail[]
+}
+
+export interface MaterialImportFailDetail {
+  rowIndex: number
+  materialName: string
+  reason: string
 }

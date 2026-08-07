@@ -198,11 +198,10 @@ public class InventoryMaterialController extends BaseController {
     @PostMapping("/import")
     @Log(module = "物料管理", businessType = BusinessType.IMPORT, bizType = "'material'", bizId = "'batch'")
     @SaCheckPermission("inventory:material:add")
-    public Result<String> importMaterial(MultipartFile file) {
+    public Result<com.jjx.inventory.dto.vo.MaterialImportResultVO> importMaterial(MultipartFile file) {
         List<MaterialImportDTO> importList = ExcelUtils.importExcel(file, MaterialImportDTO.class);
         String operName = getUsername();
-        String message = materialService.importMaterial(importList, operName);
-        return Result.success(message);
+        return Result.success(materialService.importMaterial(importList, operName));
     }
 
     /**

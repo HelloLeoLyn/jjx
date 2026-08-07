@@ -249,23 +249,41 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public String importMaterial(List<MaterialImportDTO> importList, String operName) {
+    public com.jjx.inventory.dto.vo.MaterialImportResultVO importMaterial(List<MaterialImportDTO> importList, String operName) {
+        com.jjx.inventory.dto.vo.MaterialImportResultVO result = new com.jjx.inventory.dto.vo.MaterialImportResultVO();
         if (importList == null || importList.isEmpty()) {
-            return "导入数据为空";
+            return result;
         }
 
         int successCount = 0;
         int skipCount = 0;
-        List<String> errors = new ArrayList<>();
+        // DEV-702：文件内重复检测（材料+规格+供应商）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (MaterialImportDTO dto : importList) {
+            String k = (dto.getMaterialName() == null ? "" : dto.getMaterialName().trim())
+                    + "|" + (dto.getSpecification() == null ? "" : dto.getSpecification().trim())
+                    + "|" + (dto.getSupplierName() == null ? "" : dto.getSupplierName().trim());
+            dupCountMap.merge(k, 1, Integer::sum);
+        }
         String dateKey = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
 
         for (int i = 0; i < importList.size(); i++) {
             MaterialImportDTO dto = importList.get(i);
+            int excelRow = i + 2; // 第1行表头，数据从第2行开始
             try {
+                // 文件内重复检测
+                String dupKey = (dto.getMaterialName() == null ? "" : dto.getMaterialName().trim())
+                        + "|" + (dto.getSpecification() == null ? "" : dto.getSpecification().trim())
+                        + "|" + (dto.getSupplierName() == null ? "" : dto.getSupplierName().trim());
+                if (dupCountMap.getOrDefault(dupKey, 0) > 1) {
+                    result.addFail(excelRow, dto.getMaterialName(), "文件内重复行（同一材料+规格+供应商出现 " + dupCountMap.get(dupKey) + " 次），请删除重复行或合并");
+                    continue;
+                }
+
                 PurchaseSupplierVO purchaseSupplierVO = purchaseSupplierService
                         .selectSupplierByName(dto.getSupplierName());
                 if (purchaseSupplierVO == null) {
-                    errors.add("第" + (i + 1) + "条数据导入失败: " + dto.getMaterialName() + " - 找不到对应供应商");
+                    result.addFail(excelRow, dto.getMaterialName(), "找不到对应供应商: " + dto.getSupplierName());
                     continue;
                 }
                 // 检查是否已存在（按物料名称+规格+供应商去重）
@@ -310,21 +328,14 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
             } catch (Exception e) {
                 log.error("导入第{}条数据失败: {}", i + 1, dto.getMaterialName(), e);
-                errors.add("第" + (i + 1) + "条数据导入失败: " + dto.getMaterialName() + " - " + e.getMessage());
+                result.addFail(excelRow, dto.getMaterialName(), e.getMessage());
             }
         }
 
-        StringBuilder result = new StringBuilder();
-        result.append("导入完成：成功 ").append(successCount).append(" 条");
-        if (skipCount > 0) {
-            result.append("，跳过重复 ").append(skipCount).append(" 条");
-        }
-        if (!errors.isEmpty()) {
-            result.append("，失败 ").append(errors.size()).append(" 条");
-            log.warn("导入失败详情: {}", String.join("; ", errors));
-        }
-
-        return result.toString();
+        result.setSuccessCount(successCount);
+        result.setSkipCount(skipCount);
+        log.info("物料导入完成：成功{}条，跳过重复{}条，失败{}条", successCount, skipCount, result.getFailCount());
+        return result;
     }
 
     @Override
