@@ -134,4 +134,9 @@ public interface IPurchaseDocumentService {
      * @param fileUrl 文件URL
      */
     void deleteTempFile(String fileUrl);
+
+    /**
+     * 批量校验发票导入数据（DEV-726：不落库，逐行返回校验结果）
+     */
+    java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> batchCheckDocument(java.util.List<com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO> items);
 }

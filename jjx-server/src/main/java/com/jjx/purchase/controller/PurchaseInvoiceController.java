@@ -13,6 +13,7 @@ import com.jjx.purchase.service.IPurchaseDocumentService;
 import com.jjx.purchase.service.IPurchaseOrderService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -233,6 +234,16 @@ public class PurchaseInvoiceController extends BaseController {
             documentService.insertDocument(dto);
         }
         return Result.success();
+    }
+
+    /**
+     * 批量校验发票导入数据（DEV-726：不落库，逐行返回校验结果，防止裸插污染数据）
+     */
+    @PostMapping("/batch-check")
+    @Operation(summary = "批量校验发票导入数据（DEV-726：逐行返回校验结果）")
+    @SaCheckPermission("purchase:invoice:import")
+    public Result<java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO>> batchCheck(@RequestBody java.util.List<com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO> items) {
+        return Result.success(documentService.batchCheckDocument(items));
     }
 
     /**

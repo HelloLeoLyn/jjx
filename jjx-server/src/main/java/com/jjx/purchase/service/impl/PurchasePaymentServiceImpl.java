@@ -361,4 +361,86 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         payment.setVoucherFileUrl(dto.getVoucherFileUrl());
         payment.setRemark(dto.getRemark());
     }
+
+    @Override
+    public java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> batchCheckPayment(java.util.List<com.jjx.purchase.domain.dto.PaymentBatchCheckItemDTO> items) {
+        java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> results = new java.util.ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return results;
+        }
+
+        // 文件内重复检测（同付款单号）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (com.jjx.purchase.domain.dto.PaymentBatchCheckItemDTO item : items) {
+            String k = item.getPaymentNo() == null ? "" : item.getPaymentNo().trim();
+            dupCountMap.merge(k, 1, Integer::sum);
+        }
+
+        for (com.jjx.purchase.domain.dto.PaymentBatchCheckItemDTO item : items) {
+            com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO();
+            vo.setRowIndex(item.getRowIndex());
+            vo.setStatus("ok");
+
+            // 1. 付款单号必填
+            String paymentNo = item.getPaymentNo() == null ? "" : item.getPaymentNo().trim();
+            if (paymentNo.isEmpty()) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "paymentNo", "MISSING_REQUIRED", "付款单号不能为空");
+            } else {
+                // 2. 文件内重复
+                Integer dupCount = dupCountMap.get(paymentNo);
+                if (dupCount != null && dupCount > 1) {
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "paymentNo", "DUPLICATE", "文件内重复行（同一付款单号出现 " + dupCount + " 次），导入会冲突");
+                } else if (checkPaymentNoUnique(paymentNo)) {
+                    // 3. 库中已存在
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "paymentNo", "DUPLICATE", "付款单号已存在: " + paymentNo);
+                }
+            }
+
+            // 4. 订单存在性
+            if (vo.getStatus().equals("ok")) {
+                if (item.getOrderId() == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("MISSING_REQUIRED");
+                    addFieldError(vo, "orderId", "MISSING_REQUIRED", "采购订单ID不能为空");
+                } else if (orderMapper.selectById(item.getOrderId()) == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "orderId", "NOT_FOUND", "采购订单不存在: " + item.getOrderId());
+                }
+            }
+
+            // 5. 金额校验
+            if (vo.getStatus().equals("ok")) {
+                if (item.getPaymentAmount() == null || item.getPaymentAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    vo.setStatus("error");
+                    vo.setErrorType("INVALID");
+                    addFieldError(vo, "paymentAmount", "INVALID", "付款金额必须大于0");
+                }
+            }
+
+            // 6. 付款日期
+            if (vo.getStatus().equals("ok") && item.getPaymentDate() == null) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "paymentDate", "MISSING_REQUIRED", "付款日期不能为空");
+            }
+
+            results.add(vo);
+        }
+        return results;
+    }
+
+    private void addFieldError(com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo, String field, String type, String message) {
+        com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError fe = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError();
+        fe.setField(field);
+        fe.setType(type);
+        fe.setMessage(message);
+        vo.getErrors().add(fe);
+    }
 }

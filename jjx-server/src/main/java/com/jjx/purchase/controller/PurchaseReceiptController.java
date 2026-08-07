@@ -4,7 +4,11 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
+import com.jjx.purchase.domain.dto.ReceiptBatchCheckItemDTO;
+import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
+import com.jjx.purchase.domain.enums.ApprovalStatusEnum;
+import com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderVO;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
@@ -18,8 +22,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 采购收货Controller
@@ -317,6 +323,78 @@ public class PurchaseReceiptController extends BaseController {
             purchaseOrderService.receiveOrderItem(orderId, itemId, quantity, null, null);
         }
         return Result.success();
+    }
+
+    /**
+     * 批量校验收货导入数据（DEV-726：不落库，逐行返回校验结果，防止裸插污染数据）
+     */
+    @PostMapping("/batch-check")
+    @SaCheckPermission("purchase:receipt:import")
+    public Result<List<PurchaseBatchCheckItemVO>> batchCheck(@RequestBody List<ReceiptBatchCheckItemDTO> items) {
+        List<PurchaseBatchCheckItemVO> results = new ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return Result.success(results);
+        }
+        for (ReceiptBatchCheckItemDTO item : items) {
+            PurchaseBatchCheckItemVO vo = new PurchaseBatchCheckItemVO();
+            vo.setRowIndex(item.getRowIndex());
+            vo.setStatus("ok");
+
+            // 1. 订单存在性 + 状态可收货
+            if (item.getOrderId() == null) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "orderId", "MISSING_REQUIRED", "采购订单ID不能为空");
+            } else {
+                PurchaseOrder order = purchaseOrderService.getById(item.getOrderId());
+                if (order == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "orderId", "NOT_FOUND", "采购订单不存在: " + item.getOrderId());
+                } else {
+                    Integer status = order.getApprovalStatus();
+                    if (!Objects.equals(ApprovalStatusEnum.PENDING.getCode(), status)
+                            && !Objects.equals(ApprovalStatusEnum.APPROVED.getCode(), status)) {
+                        vo.setStatus("error");
+                        vo.setErrorType("INVALID");
+                        addFieldError(vo, "orderId", "INVALID", "订单当前状态不可收货（需待审批或已批准）");
+                    }
+                }
+            }
+
+            // 2. 明细存在性
+            if (vo.getStatus().equals("ok")) {
+                if (item.getItemId() == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("MISSING_REQUIRED");
+                    addFieldError(vo, "itemId", "MISSING_REQUIRED", "订单明细ID不能为空");
+                } else if (orderItemMapper.selectById(item.getItemId()) == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "itemId", "NOT_FOUND", "订单明细不存在: " + item.getItemId());
+                }
+            }
+
+            // 3. 数量校验
+            if (vo.getStatus().equals("ok")) {
+                if (item.getReceivedQuantity() == null || item.getReceivedQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                    vo.setStatus("error");
+                    vo.setErrorType("INVALID");
+                    addFieldError(vo, "receivedQuantity", "INVALID", "收货数量必须大于0");
+                }
+            }
+
+            results.add(vo);
+        }
+        return Result.success(results);
+    }
+
+    private void addFieldError(PurchaseBatchCheckItemVO vo, String field, String type, String message) {
+        PurchaseBatchCheckItemVO.FieldError fe = new PurchaseBatchCheckItemVO.FieldError();
+        fe.setField(field);
+        fe.setType(type);
+        fe.setMessage(message);
+        vo.getErrors().add(fe);
     }
 
     /**

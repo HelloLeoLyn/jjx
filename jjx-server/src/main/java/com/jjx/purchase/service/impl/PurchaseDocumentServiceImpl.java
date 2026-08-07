@@ -465,4 +465,84 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
         document.setFileSize(dto.getFileSize());
         document.setRemark(dto.getRemark());
     }
+
+    @Override
+    public java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> batchCheckDocument(java.util.List<com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO> items) {
+        java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> results = new java.util.ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return results;
+        }
+
+        // 文件内重复检测（同发票编号）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO item : items) {
+            String k = item.getDocumentNo() == null ? "" : item.getDocumentNo().trim();
+            dupCountMap.merge(k, 1, Integer::sum);
+        }
+
+        for (com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO item : items) {
+            com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO();
+            vo.setRowIndex(item.getRowIndex());
+            vo.setStatus("ok");
+
+            // 1. 发票编号必填 + 唯一
+            String documentNo = item.getDocumentNo() == null ? "" : item.getDocumentNo().trim();
+            if (documentNo.isEmpty()) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "documentNo", "MISSING_REQUIRED", "发票编号不能为空");
+            } else {
+                Integer dupCount = dupCountMap.get(documentNo);
+                if (dupCount != null && dupCount > 1) {
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "documentNo", "DUPLICATE", "文件内重复行（同一发票编号出现 " + dupCount + " 次），导入会冲突");
+                } else if (checkDocumentNoUnique(documentNo)) {
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "documentNo", "DUPLICATE", "发票编号已存在: " + documentNo);
+                }
+            }
+
+            // 2. 订单存在性
+            if (vo.getStatus().equals("ok")) {
+                if (item.getOrderId() == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("MISSING_REQUIRED");
+                    addFieldError(vo, "orderId", "MISSING_REQUIRED", "采购订单ID不能为空");
+                } else if (purchaseOrderMapper.selectById(item.getOrderId()) == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "orderId", "NOT_FOUND", "采购订单不存在: " + item.getOrderId());
+                }
+            }
+
+            // 3. 金额校验
+            if (vo.getStatus().equals("ok")) {
+                if (item.getDocumentAmount() == null || item.getDocumentAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    vo.setStatus("error");
+                    vo.setErrorType("INVALID");
+                    addFieldError(vo, "documentAmount", "INVALID", "发票金额必须大于0");
+                }
+            }
+
+            // 4. 开票日期
+            if (vo.getStatus().equals("ok") && item.getDocumentDate() == null) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "documentDate", "MISSING_REQUIRED", "开票日期不能为空");
+            }
+
+            results.add(vo);
+        }
+        return results;
+    }
+
+    private void addFieldError(com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo, String field, String type, String message) {
+        com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError fe = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError();
+        fe.setField(field);
+        fe.setType(type);
+        fe.setMessage(message);
+        vo.getErrors().add(fe);
+    }
 }

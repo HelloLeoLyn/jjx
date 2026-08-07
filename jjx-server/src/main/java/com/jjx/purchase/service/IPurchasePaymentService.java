@@ -105,4 +105,9 @@ public interface IPurchasePaymentService {
      * 导出付款列表
      */
     String exportPaymentList(PurchasePaymentDTO dto);
+
+    /**
+     * 批量校验付款导入数据（DEV-726：不落库，逐行返回校验结果）
+     */
+    java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> batchCheckPayment(java.util.List<com.jjx.purchase.domain.dto.PaymentBatchCheckItemDTO> items);
 }
