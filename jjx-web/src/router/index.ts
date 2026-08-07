@@ -70,6 +70,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/stocktake/:id',
+    name: 'StocktakePrint',
+    component: () => import('@/views/inventory/stocktake/print.vue'),
+    meta: {
+      title: '盘点单打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),

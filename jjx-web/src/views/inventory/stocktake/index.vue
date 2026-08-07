@@ -95,6 +95,7 @@
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
+            <el-button link type="info" @click="handlePrint(row)">打印</el-button>
             <el-button v-if="row.orderStatus === 0" link type="success" @click="handleStart(row)">开始盘点</el-button>
             <el-button v-if="row.orderStatus === 4" link type="primary" @click="handleInput(row)">录入实盘</el-button>
             <el-button v-if="row.orderStatus === 4" link type="success" @click="handleConfirmResult(row)">确认结果</el-button>
@@ -368,6 +369,11 @@ const handleView = async (row: StocktakeVO) => {
     console.error('获取盘点单详情失败:', error)
     ElMessage.error('获取盘点单详情失败')
   }
+}
+
+// 打印盘点单（跳转独立打印页）
+const handlePrint = (row: StocktakeVO) => {
+  window.open(`/print/stocktake/${row.stocktakeId}`, '_blank')
 }
 
 // 开始盘点
