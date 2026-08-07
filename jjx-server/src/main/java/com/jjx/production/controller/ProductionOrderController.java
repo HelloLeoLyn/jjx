@@ -187,13 +187,42 @@ public class ProductionOrderController {
         return productionOrderService.importOrderData(importData);
     }
 
-    @Operation(summary = "导出生产工单数据")
-    @PostMapping("/export")
+    @Operation(summary = "导出生产工单数据(Excel)")
+    @GetMapping("/export")
     @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "'export'")
     @SaCheckPermission("production:order:export")
-    public Result<List<ProductionOrderVO>> exportOrderData(@RequestBody ProductionOrderQueryDTO queryDTO) {
+    public void exportOrderData(ProductionOrderQueryDTO queryDTO, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
         List<ProductionOrderVO> exportData = productionOrderService.exportOrderData(queryDTO);
-        return Result.success(exportData);
+        if (exportData == null || exportData.isEmpty()) {
+            throw new com.jjx.common.exception.BusinessException("没有可导出的数据");
+        }
+        java.util.List<com.jjx.production.domain.vo.ProductionOrderExportVO> rows = new java.util.ArrayList<>();
+        for (ProductionOrderVO vo : exportData) {
+            com.jjx.production.domain.vo.ProductionOrderExportVO row = new com.jjx.production.domain.vo.ProductionOrderExportVO();
+            row.setOrderNo(vo.getOrderNo());
+            row.setOrderTypeDesc(vo.getOrderTypeDesc());
+            row.setSalesOrderNo(vo.getSalesOrderNo());
+            row.setProductCode(vo.getProductCode());
+            row.setProductName(vo.getProductName());
+            row.setProductSpec(vo.getProductSpec());
+            row.setPlannedQuantity(vo.getPlannedQuantity());
+            row.setCompletedQuantity(vo.getCompletedQuantity());
+            row.setRemainingQuantity(vo.getRemainingQuantity());
+            row.setCompletionPercentage(vo.getCompletionPercentage());
+            row.setPlanStartDate(vo.getPlanStartDate());
+            row.setPlanEndDate(vo.getPlanEndDate());
+            row.setOrderStatusDesc(vo.getOrderStatusDesc());
+            row.setApprovalStatusDesc(vo.getApprovalStatusDesc());
+            row.setPriorityDesc(vo.getPriorityDesc());
+            row.setDepartmentName(vo.getDepartmentName());
+            row.setMaterialStatusDesc(vo.getMaterialStatusDesc());
+            row.setRoutingName(vo.getRoutingName());
+            row.setCreateBy(vo.getCreateBy());
+            row.setCreateTime(vo.getCreateTime());
+            row.setRemark(vo.getRemark());
+            rows.add(row);
+        }
+        com.jjx.common.utils.ExcelUtils.export(response, rows, com.jjx.production.domain.vo.ProductionOrderExportVO.class, "生产订单");
     }
 
     @Operation(summary = "导出生产工单PDF（单张表单）")

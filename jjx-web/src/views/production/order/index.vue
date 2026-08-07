@@ -131,7 +131,7 @@ import { OrderType, OrderStatus } from '@/types/production/order'
 import { useProductionOrder } from './composables/useProductionOrder'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
-import { exportProductionOrderPdf, batchUpdateOrderStatus } from '@/api/production/order'
+import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus } from '@/api/production/order'
 import { download } from '@/utils/format'
 
 // 视图状态
@@ -276,8 +276,9 @@ const refreshData = () => {
 // 导出功能
 const handleExport = async () => {
   try {
-    // 模拟导出
-    ElMessage.success('导出功能开发中...')
+    const res = await exportProductionOrder({ ...searchForm })
+    download(res, `生产订单_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    ElMessage.success('导出成功')
   } catch (error) {
     console.error('导出失败:', error)
     ElMessage.error('导出失败')
