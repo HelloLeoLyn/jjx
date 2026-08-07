@@ -42,7 +42,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     private final PurchaseConverter purchaseConverter;
     private final SupplierConverter supplierConverter;
     @Override
-    public List<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO) {
+    public com.jjx.common.core.page.PageResult<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO) {
         LambdaQueryWrapper<PurchaseSupplier> wrapper = Wrappers.lambdaQuery();
 
         // 构建查询条件
@@ -68,8 +68,15 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         // 排序
         wrapper.orderByDesc(PurchaseSupplier::getCreateTime);
 
-        List<PurchaseSupplier> suppliers = supplierMapper.selectList(wrapper);
-        return supplierConverter.toVOList(suppliers);
+        // DEV-696：分页（pageNum/pageSize 为空时退化为全量，兼容下拉框等数组调用方）
+        int pageNum = queryVO.getPageNum() != null ? queryVO.getPageNum() : 1;
+        int pageSize = queryVO.getPageSize() != null ? queryVO.getPageSize() : Integer.MAX_VALUE;
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<PurchaseSupplier> page =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
+        com.baomidou.mybatisplus.core.metadata.IPage<PurchaseSupplier> pageResult = supplierMapper.selectPage(page, wrapper);
+
+        List<PurchaseSupplierVO> voList = supplierConverter.toVOList(pageResult.getRecords());
+        return new com.jjx.common.core.page.PageResult<>(voList, pageResult.getTotal());
     }
 
     @Override

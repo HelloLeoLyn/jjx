@@ -18,9 +18,9 @@ public interface IPurchaseSupplierService {
      * 查询供应商列表
      *
      * @param queryVO 供应商查询条件
-     * @return 供应商列表
+     * @return 供应商列表（DEV-696：分页返回 PageResult，兼容旧数组调用方）
      */
-    List<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO);
+    com.jjx.common.core.page.PageResult<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO);
 
     /**
      * 根据ID查询供应商

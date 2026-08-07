@@ -8,6 +8,12 @@ import lombok.Data;
 @Data
 public class PurchaseSupplierQueryVO {
 
+    /** 分页页码（DEV-696：供应商列表分页） */
+    private Integer pageNum = 1;
+
+    /** 分页大小（DEV-696） */
+    private Integer pageSize = 10;
+
     /**
      * 供应商编码
      */

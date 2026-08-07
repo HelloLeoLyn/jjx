@@ -621,8 +621,10 @@ const getList = async () => {
   loading.value = true
   try {
     const response = await listSupplier(queryParams)
-    supplierList.value = response.data?.records || []
-    total.value = response.data?.total || 0
+    // 兼容后端返回数组（当前实现）或分页对象（后续升级）
+    const data = response.data as any
+    supplierList.value = data?.records || data?.list || (Array.isArray(data) ? data : []) || []
+    total.value = data?.total ?? supplierList.value.length
   } catch (error) {
     console.error('获取供应商列表失败:', error)
   } finally {
