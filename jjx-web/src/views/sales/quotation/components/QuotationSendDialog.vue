@@ -18,48 +18,79 @@
           <span class="toolbar-tip">发送前可打印或导出报价单给客户确认</span>
         </div>
 
-        <!-- 报价单信息预览（普通表单+表格，打印走独立干净页） -->
-        <el-descriptions :column="2" border size="small" class="quotation-preview">
-          <el-descriptions-item label="报价单号">{{ info.quotationNo }}</el-descriptions-item>
-          <el-descriptions-item label="报价日期">{{ info.quotationDate || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="客户名称">{{ info.customerName || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="有效期至">{{ info.validUntil || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="联系人">{{ contactText }}</el-descriptions-item>
-          <el-descriptions-item label="币种">{{ currencyText }}</el-descriptions-item>
-          <el-descriptions-item label="来源询价">{{ info.inquiryNo || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="销售负责人">{{ info.salesPersonName || '-' }}</el-descriptions-item>
-        </el-descriptions>
+        <!-- 报价单预览（与打印页同布局，宽度自适应弹窗） -->
+        <div class="preview-doc">
+          <div class="doc-header">
+            <div class="company-name">{{ companyName }}</div>
+            <div class="company-contact" v-if="companyContact">{{ companyContact }}</div>
+          </div>
 
-        <!-- 明细表格 -->
-        <el-table :data="itemsList" border size="small" class="quotation-items" max-height="300">
-          <el-table-column label="序号" type="index" width="55" align="center" />
-          <el-table-column prop="productCode" label="产品编码" width="120" />
-          <el-table-column label="产品名称/规格" min-width="200">
-            <template #default="{ row }">{{ buildSpec(row) }}</template>
-          </el-table-column>
-          <el-table-column prop="quantity" label="数量" width="80" align="right" />
-          <el-table-column prop="unit" label="单位" width="60" align="center" />
-          <el-table-column label="单价" width="100" align="right">
-            <template #default="{ row }">{{ fmt(row.unitPrice) }}</template>
-          </el-table-column>
-          <el-table-column label="金额" width="110" align="right">
-            <template #default="{ row }">{{ fmt(row.amount) }}</template>
-          </el-table-column>
-        </el-table>
+          <div class="doc-title">报 价 单</div>
 
-        <!-- 金额汇总 -->
-        <el-descriptions :column="2" border size="small" class="quotation-total" direction="vertical">
-          <el-descriptions-item label="小计">{{ fmt(info.subtotalAmount) }}</el-descriptions-item>
-          <el-descriptions-item label="税率(%)">{{ info.taxRate ?? '' }}</el-descriptions-item>
-          <el-descriptions-item label="税额">{{ fmt(info.taxAmount) }}</el-descriptions-item>
-          <el-descriptions-item label="折扣">{{ fmt(info.discountAmount) }}</el-descriptions-item>
-        </el-descriptions>
-        <div class="quotation-final">
-          <span class="final-label">合计</span>
-          <span class="final-value">{{ fmt(info.finalAmount) }}</span>
+          <div class="doc-info">
+            <div class="info-item"><span class="info-label">报价单号</span>{{ info.quotationNo }}</div>
+            <div class="info-item"><span class="info-label">报价日期</span>{{ info.quotationDate || '-' }}</div>
+            <div class="info-item"><span class="info-label">客户名称</span>{{ info.customerName || '-' }}</div>
+            <div class="info-item"><span class="info-label">有效期至</span>{{ info.validUntil || '-' }}</div>
+            <div class="info-item"><span class="info-label">联系人</span>{{ contactText }}</div>
+            <div class="info-item"><span class="info-label">币种</span>{{ currencyText }}</div>
+            <div class="info-item"><span class="info-label">来源询价</span>{{ info.inquiryNo || '-' }}</div>
+            <div class="info-item"><span class="info-label">销售负责人</span>{{ info.salesPersonName || '-' }}</div>
+          </div>
+
+          <table class="doc-items">
+            <thead>
+              <tr>
+                <th style="width: 6%">序号</th>
+                <th style="width: 13%">产品编码</th>
+                <th>产品名称 / 规格</th>
+                <th style="width: 8%">数量</th>
+                <th style="width: 6%">单位</th>
+                <th style="width: 12%">单价</th>
+                <th style="width: 13%">金额</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, idx) in itemsList" :key="idx">
+                <td class="col-center">{{ idx + 1 }}</td>
+                <td>{{ item.productCode }}</td>
+                <td class="col-spec">{{ buildSpec(item) }}</td>
+                <td class="col-right">{{ item.quantity }}</td>
+                <td class="col-center">{{ item.unit || '' }}</td>
+                <td class="col-right">{{ fmt(item.unitPrice) }}</td>
+                <td class="col-right">{{ fmt(item.amount) }}</td>
+              </tr>
+              <tr v-if="!itemsList.length">
+                <td colspan="7" class="col-center">无明细</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="doc-amounts">
+            <div class="amount-row"><span>小计</span><span>{{ fmt(info.subtotalAmount) }}</span></div>
+            <div class="amount-row"><span>税率 (%)</span><span>{{ info.taxRate ?? '' }}</span></div>
+            <div class="amount-row"><span>税额</span><span>{{ fmt(info.taxAmount) }}</span></div>
+            <div class="amount-row"><span>折扣</span><span>{{ fmt(info.discountAmount) }}</span></div>
+            <div class="amount-row amount-total"><span>合计</span><span>{{ fmt(info.finalAmount) }}</span></div>
+          </div>
+
+          <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
+
+          <div class="doc-signs">
+            <div class="sign-item">
+              <div class="sign-line">销售负责人：{{ info.salesPersonName || '' }}</div>
+              <div class="sign-underline"></div>
+            </div>
+            <div class="sign-item">
+              <div class="sign-line">客户确认：</div>
+              <div class="sign-underline"></div>
+            </div>
+            <div class="sign-item">
+              <div class="sign-line">日期：</div>
+              <div class="sign-underline"></div>
+            </div>
+          </div>
         </div>
-
-        <div v-if="info.remark" class="quotation-remark">备注：{{ info.remark }}</div>
       </template>
     </div>
 
@@ -71,10 +102,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Printer } from '@element-plus/icons-vue'
 import { quotationApi } from '@/api/sales/quotation'
+import { sysConfigApi } from '@/api/system/sysConfig'
 import { download } from '@/utils/format'
 
 interface Props {
@@ -99,6 +131,38 @@ const dialogVisible = computed({
 const loading = ref(false)
 const sending = ref(false)
 const info = ref<any>(null)
+
+// 公司抬头（读后台配置 pdf_template）
+const companyName = ref('')
+const companyAddress = ref('')
+const companyPhone = ref('')
+const companyEmail = ref('')
+const companyContact = computed(() => {
+  const parts: string[] = []
+  if (companyAddress.value) parts.push(`地址：${companyAddress.value}`)
+  if (companyPhone.value) parts.push(`电话：${companyPhone.value}`)
+  if (companyEmail.value) parts.push(`邮箱：${companyEmail.value}`)
+  return parts.join(' ｜ ')
+})
+
+async function loadCompanyConfig() {
+  try {
+    const res: any = await sysConfigApi.listByGroup('pdf_template')
+    const list: any[] = res?.data || []
+    const map: Record<string, string> = {}
+    for (const item of list) map[item.configKey] = item.configValue || ''
+    companyName.value = map.company_name || ''
+    companyAddress.value = map.company_address || ''
+    companyPhone.value = map.company_phone || ''
+    companyEmail.value = map.company_email || ''
+  } catch (e) {
+    console.error('加载公司配置失败:', e)
+  }
+}
+
+onMounted(() => {
+  loadCompanyConfig()
+})
 
 // 明细列表（类型稳定，避免模板索引推断问题）
 const itemsList = computed<any[]>(() => info.value?.items || [])
@@ -213,40 +277,149 @@ const handleSend = async () => {
   }
 }
 
-/* 报价单信息预览 */
-.quotation-preview {
-  margin-bottom: 14px;
+/* 报价单预览：与打印页同布局，宽度自适应弹窗（无A4纸张规格） */
+.preview-doc {
+  width: 100%;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 16px 20px;
+  color: #333;
+  font-size: 12px;
 }
 
-.quotation-items {
-  margin-bottom: 14px;
+.doc-header {
+  text-align: center;
+  margin-bottom: 6px;
 }
 
-.quotation-total {
-  margin-bottom: 10px;
-  max-width: 400px;
+.company-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #2b5aa7;
+  letter-spacing: 2px;
 }
 
-.quotation-final {
+.company-contact {
+  font-size: 9px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.doc-title {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  margin: 14px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #2b5aa7;
+}
+
+.doc-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 24px;
+  margin-bottom: 12px;
+  font-size: 11px;
+}
+
+.info-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  max-width: 400px;
-  padding: 8px 12px;
+}
+
+.info-label {
+  width: 70px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.doc-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+
+.doc-items th {
   background: #2b5aa7;
   color: #fff;
-  border-radius: 4px;
-  font-weight: 700;
-  font-size: 14px;
-  margin-bottom: 12px;
+  padding: 6px 4px;
+  font-weight: 600;
+  border: 1px solid #2b5aa7;
 }
 
-.quotation-remark {
+.doc-items td {
+  border: 1px solid #dcdfe6;
+  padding: 5px 4px;
+}
+
+.doc-items tr:nth-child(even) td {
+  background: #f7f9fc;
+}
+
+.col-center {
+  text-align: center;
+}
+
+.col-right {
+  text-align: right;
+}
+
+.col-spec {
+  font-size: 10px;
+}
+
+.doc-amounts {
+  width: 45%;
+  margin-left: auto;
+  margin-bottom: 12px;
+  font-size: 11px;
+}
+
+.amount-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 8px;
+  border: 1px solid #dcdfe6;
+}
+
+.amount-row + .amount-row {
+  border-top: none;
+}
+
+.amount-total {
+  background: #2b5aa7;
+  color: #fff;
+  font-weight: 700;
   font-size: 13px;
-  color: #606266;
-  background: #f5f7fa;
-  padding: 8px 12px;
-  border-radius: 4px;
+}
+
+.doc-remark {
+  font-size: 10px;
+  color: #555;
+  margin-bottom: 20px;
+}
+
+.doc-signs {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 40px;
+  padding: 0 20px;
+}
+
+.sign-item {
+  width: 30%;
+  text-align: center;
+  font-size: 11px;
+}
+
+.sign-line {
+  padding-bottom: 4px;
+}
+
+.sign-underline {
+  border-bottom: 1px solid #999;
 }
 
 @media print {
