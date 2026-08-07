@@ -84,6 +84,7 @@
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
+            <el-button link type="info" @click="handlePrint(row)">打印</el-button>
             <el-button v-if="row.orderStatus === 0" link type="primary" @click="handleSubmitApprove(row)">提交审批</el-button>
             <el-button v-if="row.approveStatus === 1 && row.orderStatus === 1" link type="success" @click="handleApprove(row)">审批</el-button>
             <el-button v-if="row.orderStatus === 2" link type="warning" @click="handleConfirmOut(row)">确认调出</el-button>
@@ -377,6 +378,11 @@ const handleView = async (row: TransferVO) => {
     console.error('获取调拨单详情失败:', error)
     ElMessage.error('获取调拨单详情失败')
   }
+}
+
+// 打印调拨单（跳转独立打印页）
+const handlePrint = (row: TransferVO) => {
+  window.open(`/print/transfer/${row.transferId}`, '_blank')
 }
 
 // 状态流转

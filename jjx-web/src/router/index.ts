@@ -61,6 +61,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/transfer/:id',
+    name: 'TransferPrint',
+    component: () => import('@/views/inventory/transfer/print.vue'),
+    meta: {
+      title: '调拨单打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),
