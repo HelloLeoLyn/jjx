@@ -68,6 +68,7 @@
         <el-table-column label="操作" width="400" fixed="right">
           <template #default="scope">
             <el-button link type="primary" size="small" @click="showDetail(scope.row)">详情</el-button>
+            <el-button link type="info" size="small" @click="handlePrint(scope.row)">打印</el-button>
 
             <!-- 查看流水 -->
             <el-button link type="info" size="small" @click="showTrace(scope.row)">查看流水</el-button>
@@ -759,6 +760,11 @@ async function showDetail(row: any) {
   engineeringForm.process = row.currentProcess || ''
   // 加载工程附件
   await loadEngFiles(row.orderId)
+}
+
+// 打印样品单（跳转独立打印页）
+function handlePrint(row: any) {
+  window.open(`/print/sample-order/${row.orderId}`, '_blank')
 }
 
 function onDetailOpen() {

@@ -79,6 +79,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/sample-order/:id',
+    name: 'SampleOrderPrint',
+    component: () => import('@/views/sales/sample-order/print.vue'),
+    meta: {
+      title: '样品单打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),
