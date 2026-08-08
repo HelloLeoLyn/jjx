@@ -64,9 +64,11 @@
         <el-table-column label="当前工序" width="110" align="center">
           <template #default="scope">{{ scope.row.currentProcess || '-' }}</template>
         </el-table-column>
-        <el-table-column label="工序数" width="80" align="center">
+        <el-table-column label="工序数" width="100" align="center">
           <template #default="scope">
-            <span v-if="processCountMap[scope.row.orderId] !== undefined">{{ processCountMap[scope.row.orderId] }}</span>
+            <span v-if="doneCountMap[scope.row.orderId] !== undefined">
+              {{ doneCountMap[scope.row.orderId] }} / {{ processCountMap[scope.row.orderId] ?? 0 }}
+            </span>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -105,17 +107,18 @@
       </el-table>
     </el-card>
 
-    <!-- 工程打样工作台（复用） -->
-    <EngineeringWorkbench v-model:visible="workbenchVisible" :card="workbenchCard" @saved="getList" />
+    <!-- 工程打样工作台（独立路由页，标签页打开） -->
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onActivated } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
-import EngineeringWorkbench from '@/views/sales/sample-order/components/EngineeringWorkbench.vue'
+
+const router = useRouter()
 
 defineOptions({ name: 'SampleWorkbench' })
 
@@ -133,15 +136,13 @@ const queryParams = reactive({
 
 // 进度/汇总/最近操作缓存
 const processCountMap = ref<Record<number, number>>({})
+const doneCountMap = ref<Record<number, number>>({})
 const summaryMap = ref<Record<number, any>>({})
 const lastOperatorMap = ref<Record<number, any>>({})
 
-const workbenchVisible = ref(false)
-const workbenchCard = ref<any>(null)
-
 function openWorkbench(row: any) {
-  workbenchCard.value = row
-  workbenchVisible.value = true
+  // 独立路由页打开（标签页），不在侧边栏显示
+  router.push({ path: '/engineering-workbench/workbench', query: { orderId: row.orderId } })
 }
 
 async function getList() {
@@ -170,6 +171,7 @@ async function getList() {
 // 并行加载每单工序数/汇总/最近操作
 async function loadExtras(rows: any[]) {
   processCountMap.value = {}
+  doneCountMap.value = {}
   summaryMap.value = {}
   lastOperatorMap.value = {}
   const orderIds = rows.map((r) => r.orderId).filter(Boolean)
@@ -179,6 +181,7 @@ async function loadExtras(rows: any[]) {
         const procs: any = await sampleOrderApi.listProcesses(oid)
         const list: any[] = procs.data || []
         processCountMap.value[oid] = list.length
+        doneCountMap.value[oid] = list.filter((p) => p.status === 2).length
         const sum = await sampleOrderApi.getSummary(oid)
         if (sum.data) summaryMap.value[oid] = sum.data
         if (list.length) {
@@ -200,6 +203,7 @@ function resetQuery() {
 }
 
 onMounted(() => getList())
+onActivated(() => getList())
 </script>
 
 <style scoped>

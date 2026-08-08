@@ -37,9 +37,9 @@
               >
                 <el-option
                   v-for="item in processTypeOptions"
-                  :key="item.value"
+                  :key="item.itemValue"
                   :label="item.label"
-                  :value="item.value"
+                  :value="item.itemValue"
                 />
               </el-select>
             </el-form-item>
@@ -54,9 +54,9 @@
               >
                 <el-option
                   v-for="item in processCategoryOptions"
-                  :key="item.value"
+                  :key="item.itemValue"
                   :label="item.label"
-                  :value="item.value"
+                  :value="item.itemValue"
                 />
               </el-select>
             </el-form-item>
@@ -191,7 +191,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { standardProcessApi } from '@/api/product/standardProcess'
-import { ProcessTypeEnum, ProcessCategoryEnum } from '@/enums/product'
+import { useDict } from '@/composables/useDict'
 import type { StandardProcessFormData } from '@/types/product/standardProcess'
 import JJXIcon from '@/components/JJXIcon/index.vue'
 
@@ -202,9 +202,9 @@ const formRef = ref<FormInstance>()
 const submitLoading = ref(false)
 const loading = ref(false)
 
-// 工序类型/类别选项（枚举）
-const processTypeOptions = ProcessTypeEnum.items
-const processCategoryOptions = ProcessCategoryEnum.items
+// 工序类型/类别选项（字典维护）
+const { options: processTypeOptions } = useDict('process_type')
+const { options: processCategoryOptions } = useDict('process_category')
 
 // 获取路由参数中的 processId
 const processId = Number(route.params.processId)

@@ -49,6 +49,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final SalesQuotationItemMapper quotationItemMapper;
     private final RedisSequenceService redisSequenceService;
     private final ProductMapper productMapper;
+    private final com.jjx.product.service.IProductService productService;
 
     /**
      * 分页查询询价单列表
@@ -138,6 +139,34 @@ public class InquiryServiceImpl implements IInquiryService {
      * 新增询价单
      */
     @Override
+    public String nextProductSerial(String customerShort) {
+        if (customerShort == null || customerShort.isBlank()) {
+            return "001";
+        }
+        String prefix = customerShort.trim().substring(0, Math.min(3, customerShort.trim().length()));
+        try {
+            java.util.List<com.jjx.product.domain.entity.Product> list = productMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.Product>()
+                            .likeRight(com.jjx.product.domain.entity.Product::getProductCode, prefix)
+                            .last("LIMIT 500"));
+            int maxSerial = 0;
+            for (com.jjx.product.domain.entity.Product p : list) {
+                String code = p.getProductCode();
+                if (code != null && code.length() >= 6) {
+                    String s = code.substring(3, 6);
+                    if (s.matches("\\d{3}")) {
+                        maxSerial = Math.max(maxSerial, Integer.parseInt(s));
+                    }
+                }
+            }
+            return String.format("%03d", maxSerial + 1);
+        } catch (Exception e) {
+            log.warn("取下一个产品流水号失败: {}", e.getMessage());
+            return "001";
+        }
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertInquiry(SalesInquiry inquiry) {
         // 自动生成询价单号
@@ -170,6 +199,15 @@ public class InquiryServiceImpl implements IInquiryService {
             }
         }
 
+        // 样品询价：编码前置建档草稿产品（2026-08-08，DEV-750 关联）
+        if (java.lang.Integer.valueOf(2).equals(inquiry.getInquiryType())
+                && org.apache.commons.lang3.StringUtils.isNotBlank(inquiry.getProductCode())
+                && inquiry.getProductId() == null) {
+            Long pid = productService.ensureDraftProduct(
+                    inquiry.getProductCode(), inquiry.getProductName(), "PCS", "inquiry");
+            inquiry.setProductId(pid);
+        }
+
         return inquiryMapper.insert(inquiry);
     }
 
@@ -187,6 +225,15 @@ public class InquiryServiceImpl implements IInquiryService {
         // 已转换的询价单不能修改
         if (InquiryStatus.CONVERTED.getCode().equals(existing.getInquiryStatus())) {
             throw new BusinessException("已转换的询价单不能修改");
+        }
+
+        // 样品询价：修改时若编码变化且无产品关联，重新建档（2026-08-08）
+        if (java.lang.Integer.valueOf(2).equals(inquiry.getInquiryType())
+                && StringUtils.hasText(inquiry.getProductCode())
+                && inquiry.getProductId() == null) {
+            Long pid = productService.ensureDraftProduct(
+                    inquiry.getProductCode(), inquiry.getProductName(), "PCS", "inquiry");
+            inquiry.setProductId(pid);
         }
 
         return inquiryMapper.updateById(inquiry);
@@ -221,7 +268,18 @@ public class InquiryServiceImpl implements IInquiryService {
                 throw new BusinessException("询价单[" + inquiry.getInquiryNo() + "]已转报价，不能删除");
             }
         }
-        return inquiryMapper.deleteBatchIds(Arrays.asList(inquiryIds));
+        int rows = inquiryMapper.deleteBatchIds(Arrays.asList(inquiryIds));
+        // 作废联动：清理询价建档的草稿产品（2026-08-08）
+        for (SalesInquiry inquiry : list) {
+            if (inquiry != null && inquiry.getProductId() != null) {
+                try {
+                    productService.cleanupDraftProduct(inquiry.getProductId(), "inquiry");
+                } catch (Exception e) {
+                    log.warn("清理询价草稿产品失败: productId={}, err={}", inquiry.getProductId(), e.getMessage());
+                }
+            }
+        }
+        return rows;
     }
 
     /**
@@ -359,7 +417,7 @@ public class InquiryServiceImpl implements IInquiryService {
         SalesQuotationItem item = new SalesQuotationItem();
         item.setQuotationId(quotationId);
 
-        // 产品信息：标准品关联产品库；未选产品/样品用产品描述兜底
+        // 产品信息：标准品关联产品库；样品用询价生成的编码/名称（2026-08-08 编码前置链路）
         if (inquiry.getProductId() != null) {
             Product product = productMapper.selectById(inquiry.getProductId());
             if (product != null) {
@@ -368,8 +426,16 @@ public class InquiryServiceImpl implements IInquiryService {
                 item.setProductName(product.getProductName());
             }
         }
+        // 样品/未选产品：优先用询价单的编码生成器结果（productCode/productName），否则描述兜底
+        if (!StringUtils.hasText(item.getProductCode()) && StringUtils.hasText(inquiry.getProductCode())) {
+            item.setProductCode(inquiry.getProductCode());
+        }
         if (!StringUtils.hasText(item.getProductName())) {
-            item.setProductName(truncate(inquiry.getProductDescription(), 200));
+            if (StringUtils.hasText(inquiry.getProductName())) {
+                item.setProductName(inquiry.getProductName());
+            } else {
+                item.setProductName(truncate(inquiry.getProductDescription(), 200));
+            }
         }
 
         // 技术参数结构化映射

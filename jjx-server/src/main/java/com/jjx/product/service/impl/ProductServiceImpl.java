@@ -49,6 +49,8 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final IEngineeringFilmService filmService;
     private final NotificationService notificationService;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
+    private final com.jjx.sales.mapper.SalesQuotationItemMapper quotationItemMapper;
+    private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
     @Override
     public List<ProductVo> getProductList(ProductQuery query) {
         LambdaQueryWrapper<Product> wrapper = buildWrapper(query);
@@ -395,6 +397,47 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             }
         }
         return "001";
+    }
+
+    @Override
+    public Long ensureDraftProduct(String productCode, String productName, String unit, String source) {
+        if (productCode == null || productCode.isBlank()) return null;
+        String code = productCode.trim();
+        Product exist = productMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Product>()
+                        .eq(Product::getProductCode, code).last("LIMIT 1"));
+        if (exist != null) return exist.getProductId();
+        Product p = new Product();
+        p.setProductCode(code);
+        p.setProductName(productName != null && !productName.isBlank() ? productName : code);
+        p.setProductStatus(ProductEnums.Status.DEVELOPING.getValue());
+        p.setUnit(unit != null && !unit.isBlank() ? unit : "PCS");
+        p.setFromSource(source);
+        p.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
+        productMapper.insert(p);
+        return p.getProductId();
+    }
+
+    @Override
+    public boolean cleanupDraftProduct(Long productId, String source) {
+        if (productId == null) return false;
+        Product p = productMapper.selectById(productId);
+        if (p == null) return false;
+        if (source == null || !source.equals(p.getFromSource())) return false;
+        if (!ProductEnums.Status.DEVELOPING.getValue().equals(p.getProductStatus())) return false;
+        // 单据明细引用检查（报价明细/订单明细仍引用则不动）
+        Long qRef = quotationItemMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesQuotationItem>()
+                        .eq(com.jjx.sales.domain.entity.SalesQuotationItem::getProductId, productId));
+        Long oRef = orderProductMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesOrderProduct>()
+                        .eq(com.jjx.sales.domain.entity.SalesOrderProduct::getProductId, productId));
+        if (qRef != null && qRef > 0 || oRef != null && oRef > 0) return false;
+        Product upd = new Product();
+        upd.setProductId(productId);
+        upd.setProductStatus(ProductEnums.Status.CANCELLED.getValue());
+        productMapper.updateById(upd);
+        return true;
     }
 
 }

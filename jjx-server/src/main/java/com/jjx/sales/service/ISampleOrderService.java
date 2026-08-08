@@ -88,6 +88,25 @@ public interface ISampleOrderService {
     List<com.jjx.sales.domain.entity.SalesSampleProcess> listSampleProcesses(Long orderId, Integer roundNo);
 
     /**
+     * 保存打样工序计划（方案A：多选作业项目形成计划，整单覆盖当前轮次）
+     *
+     * @param orderId 样品单ID
+     * @param dto     工序计划（items有序）
+     * @return 保存后的工序计划列表
+     */
+    List<com.jjx.sales.domain.entity.SalesSampleProcess> saveProcessPlan(Long orderId, com.jjx.sales.dto.save.SampleProcessPlanDTO dto);
+
+    /**
+     * 推进打样工序状态（方案A：逐项开始/完成）
+     *
+     * @param orderId   样品单ID
+     * @param processId 工序记录ID
+     * @param dto       目标状态+可选耗时/说明/材料
+     * @return 更新后的工序
+     */
+    com.jjx.sales.domain.entity.SalesSampleProcess updateProcessItemStatus(Long orderId, Long processId, com.jjx.sales.dto.save.SampleProcessItemStatusDTO dto);
+
+    /**
      * 打样汇总：总工时 + 材料成本估算（自动计算）
      */
     java.util.Map<String, Object> getSampleSummary(Long orderId);
@@ -121,6 +140,16 @@ public interface ISampleOrderService {
      * 样品转量产（创建标准订单）
      */
     SalesOrder convertToProduction(Long orderId);
+
+    /**
+     * 样品转量产（产品标准化窗口：items 逐条指定正式产品，覆盖样品临时数据）
+     */
+    SalesOrder convertToProduction(Long orderId, java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items);
+
+    /**
+     * 转量产就绪检查（产品/BOM/工艺路线/菲林/资料转移清单）
+     */
+    com.jjx.sales.domain.vo.SampleConvertCheckVO checkConvertReady(Long orderId);
 
     /**
      * 产品资料转移（DEV-505）：样品确认后建档产品/BOM/工艺路线

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.jjx.common.core.domain.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -20,6 +21,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("sales_inquiry")
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SalesInquiry extends BaseEntity {
 
     /** 询价单ID */
@@ -56,6 +58,9 @@ public class SalesInquiry extends BaseEntity {
 
     /** 关联产品ID（标准品必填） */
     private Long productId;
+
+    /** 产品编码（编码生成器自动生成/标准品带出，可改） */
+    private String productCode;
 
     /** 产品名称（非表字段，查询时关联填充） */
     @TableField(exist = false)

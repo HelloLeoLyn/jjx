@@ -32,6 +32,11 @@ public interface IInquiryService {
     int insertInquiry(SalesInquiry inquiry);
 
     /**
+     * 编码生成器：按客户简称取下一个流水号（查询该客户已有产品编码第4-6位最大值+1）
+     */
+    String nextProductSerial(String customerShort);
+
+    /**
      * 修改询价单
      */
     int updateInquiry(SalesInquiry inquiry);

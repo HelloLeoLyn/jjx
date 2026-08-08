@@ -243,71 +243,17 @@
           </el-col>
         </el-row>
 
-        <el-divider content-position="left">规格要求</el-divider>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="按键数量" prop="keyCount">
-              <el-input-number
-                v-model="form.keyCount"
-                :min="0"
-                placeholder="按键数"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="尺寸要求" prop="sizeDescription">
-              <el-input v-model="form.sizeDescription" placeholder="长×宽×厚" maxlength="200" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="材料要求" prop="materialRequirements">
-              <el-input
-                v-model="form.materialRequirements"
-                placeholder="PET/银浆/弹片等"
-                maxlength="500"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="线路要求" prop="circuitRequirements">
-              <el-input
-                v-model="form.circuitRequirements"
-                placeholder="线路类型/阻值等"
-                maxlength="500"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="连接器要求" prop="connectorRequirements">
-              <el-input
-                v-model="form.connectorRequirements"
-                placeholder="连接器型号/引脚数"
-                maxlength="500"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="有图纸" prop="hasDrawing">
-              <el-switch v-model="form.hasDrawing" :active-value="1" :inactive-value="0" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-divider content-position="left">其他信息</el-divider>
+        <el-divider content-position="left">产品信息</el-divider>
         <el-row :gutter="20">
           <el-col :span="24">
-            <el-form-item label="询价类型" prop="inquiryType">
-              <el-radio-group v-model="form.inquiryType">
+            <el-form-item label="类型" prop="inquiryType">
+              <el-radio-group v-model="form.inquiryType" @change="onTypeChange">
                 <el-radio :value="1" border>标准品</el-radio>
                 <el-radio :value="2" border>样品（需打样）</el-radio>
               </el-radio-group>
             </el-form-item>
-            <!-- 标准品：从产品库选择，自动带出描述 -->
+
+            <!-- 标准品：选择产品，自动回填描述/编码/名称 -->
             <el-form-item v-if="form.inquiryType === 1" label="选择产品" prop="productId">
               <el-select
                 v-model="form.productId"
@@ -327,25 +273,101 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="form.inquiryType === 1" label="产品描述" prop="productDescription">
+
+            <!-- 样品：编码构成要素直接展示（客户简称+流水号+面板结构+线路结构） -->
+            <template v-if="form.inquiryType === 2">
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="客户简称">
+                    <el-input v-model="shortNameDisplay" readonly placeholder="选择客户后自动带出" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="流水号">
+                    <el-input v-model="codeSerialNo" maxlength="3" placeholder="3位，点生成编码自动取号可改" />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="面板结构" required>
+                    <el-select v-model="codePanelType" placeholder="面板类型" style="width: 100%" @change="composeCode">
+                      <el-option label="有面板有线路" value="M" />
+                      <el-option label="仅有线路" value="S" />
+                      <el-option label="仅有面板" value="P" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="面板特征" required>
+                    <el-select v-model="codePanelFeature" placeholder="面板特征" style="width: 100%" @change="composeCode">
+                      <el-option label="面板有凹凸" value="E" />
+                      <el-option label="面板有窗口" value="W" />
+                      <el-option label="有窗口也有凹凸" value="H" />
+                      <el-option label="无" value="O" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="线路类型" required>
+                    <el-select v-model="codeCircuitType" placeholder="线路类型" style="width: 100%" @change="composeCode">
+                      <el-option label="无(印银平key)" value="O" />
+                      <el-option label="有金属弹片" value="M" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="线路特征" required>
+                    <el-select v-model="codeCircuitFeature" placeholder="线路特征" style="width: 100%" @change="composeCode">
+                      <el-option label="无" value="O" />
+                      <el-option label="有发光二极体" value="L" />
+                      <el-option label="有连接器" value="C" />
+                      <el-option label="有连接器及发光二极体" value="H" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <div class="form-tip" style="margin-bottom: 12px">
+                编码格式：客户简称(3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)，如 JST001MEOL
+              </div>
+            </template>
+
+            <!-- 产品描述 -->
+            <el-form-item label="产品描述" prop="productDescription">
               <el-input
                 v-model="form.productDescription"
                 type="textarea"
                 :rows="3"
-                placeholder="选择产品后自动带出，可修改"
+                :placeholder="form.inquiryType === 1 ? '选择产品后自动带出，可修改' : '详细描述产品规格/功能要求'"
                 maxlength="2000"
                 show-word-limit
               />
             </el-form-item>
-            <!-- 样品：手填描述 -->
-            <el-form-item v-else label="产品描述" prop="productDescription">
+
+            <!-- 产品编码（标准品选产品回填/样品生成器生成，均可改） -->
+            <el-form-item label="产品编码">
               <el-input
-                v-model="form.productDescription"
-                type="textarea"
-                :rows="3"
-                placeholder="详细描述产品规格/功能要求"
-                maxlength="2000"
-                show-word-limit
+                v-model="form.productCode"
+                placeholder="标准品选产品自动带出；样品选编码要素自动生成，可手动修改"
+                maxlength="50"
+              >
+                <template #append>
+                  <el-button v-if="form.inquiryType === 2" @click="generateCode" :loading="generatingSerial">
+                    <el-icon><Refresh /></el-icon> 生成编码
+                  </el-button>
+                </template>
+              </el-input>
+            </el-form-item>
+
+            <!-- 产品名称（默认与编码一致，可改） -->
+            <el-form-item label="产品名称">
+              <el-input
+                v-model="form.productName"
+                placeholder="默认与编码一致，可修改"
+                maxlength="200"
+                @input="nameEdited = true"
               />
             </el-form-item>
           </el-col>
@@ -378,28 +400,31 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="有图纸" prop="hasDrawing">
+              <el-switch v-model="form.hasDrawing" :active-value="1" :inactive-value="0" />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-divider content-position="left">附件</el-divider>
         <el-row>
           <el-col :span="24">
-            <el-upload
-              ref="uploadRef"
-              :http-request="customUpload"
-              :on-success="handleUploadSuccess"
-              :on-remove="handleUploadRemove"
-              :file-list="attachmentList"
-              :before-upload="beforeUpload"
-              list-type="text"
-              multiple
-            >
-              <el-button type="primary" size="small">
-                <el-icon><Upload /></el-icon> 上传客户资料
-              </el-button>
-              <template #tip>
-                <div class="el-upload__tip">
-                  支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传
-                </div>
-              </template>
-            </el-upload>
+            <AttachmentPanel
+              v-if="form.inquiryId"
+              biz-type="inquiry"
+              :biz-id="form.inquiryId"
+              style="margin-bottom: 10px"
+            />
+            <AttachmentUploader
+              ref="uploaderRef"
+              biz-type="inquiry"
+              :biz-id="form.inquiryId"
+              :trace-id="(form as any).traceId"
+              :accept="['.pdf','.doc','.docx','.xls','.xlsx','.jpg','.jpeg','.png','.dwg','.dxf','.zip','.md']"
+              button-text="上传客户资料"
+              tip="支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传"
+            />
           </el-col>
         </el-row>
       </el-form>
@@ -423,7 +448,8 @@
             <el-tag v-if="detailData.inquiryType === 2" type="warning" size="small">样品</el-tag>
             <el-tag v-else type="primary" size="small">标准</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="关联产品">{{
+          <el-descriptions-item label="产品编码">{{ detailData.productCode || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="产品名称">{{
             detailData.productName || (detailData.productId ? '产品#' + detailData.productId : '-')
           }}</el-descriptions-item>
           <el-descriptions-item label="客户名称">{{
@@ -438,21 +464,6 @@
           <el-descriptions-item label="询价日期">{{ detailData.inquiryDate }}</el-descriptions-item>
           <el-descriptions-item label="预估数量">{{
             detailData.expectedQuantity || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="按键数量">{{
-            detailData.keyCount ?? '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="尺寸要求">{{
-            detailData.sizeDescription || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="材料要求" :span="2">{{
-            detailData.materialRequirements || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="线路要求" :span="2">{{
-            detailData.circuitRequirements || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="连接器要求" :span="2">{{
-            detailData.connectorRequirements || '-'
           }}</el-descriptions-item>
           <el-descriptions-item label="产品描述" :span="2">{{
             detailData.productDescription || '-'
@@ -518,9 +529,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
-import type { FormInstance, UploadInstance, UploadProps, UploadRawFile } from 'element-plus'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import type { FormInstance } from 'element-plus'
 import request from '@/utils/request'
-import { Upload } from '@element-plus/icons-vue'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
 import { listProduct, getProductInfo } from '@/api/product'
@@ -590,12 +602,10 @@ const form = reactive({
   inquiryDate: '',
   expectedQuantity: undefined as number | undefined,
   productId: undefined as number | undefined,
+  productCode: '',
+  productName: '',
+  customerShortName: '',
   productDescription: '',
-  keyCount: undefined as number | undefined,
-  sizeDescription: '',
-  materialRequirements: '',
-  circuitRequirements: '',
-  connectorRequirements: '',
   specialRequirements: '',
   hasDrawing: 0,
   inquiryStatus: 0,
@@ -605,146 +615,10 @@ const form = reactive({
   salesPersonName: '',
 })
 
-// 文件上传完成回调（占位，实际用途不大）
-const handleUploadSuccess: UploadProps['onSuccess'] = () => {}
-
-// 自定义上传：新建时暂存，编辑时立即上传
-const customUpload: UploadProps['httpRequest'] = async (options) => {
-  // 新建：暂存文件，等保存成功后再上传
-  if (!form.inquiryId) {
-    pendingUploads.value.push({ file: options.file })
-    attachmentList.value.push({
-      name: options.file.name,
-      status: 'ready',
-      uid: options.file.uid,
-    })
-    options.onSuccess({ name: options.file.name, status: 'ready' })
-    return
-  }
-
-  // 编辑已有记录：立即上传
-  const formData = new FormData()
-  formData.append('file', options.file)
-  formData.append('bizType', 'inquiry')
-  formData.append('bizId', String(form.inquiryId))
-  if ((form as any).traceId) formData.append('traceId', (form as any).traceId)
-  try {
-    const res: any = await request({
-      url: '/system/attachment/upload',
-      method: 'post',
-      data: formData,
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    if (res?.code === 200) {
-      options.onSuccess(res.data)
-      ElMessage.success('附件上传成功')
-    } else {
-      options.onError(new Error(res?.msg || '上传失败') as any)
-    }
-  } catch (e: any) {
-    options.onError(e)
-  }
-}
-
 // 查看报价单（跳转并定位，DEV-590）
 function gotoQuotation(row: any) {
   if (row.convertedQuotationId) {
     window.open(`/sales/quotation?quotationId=${row.convertedQuotationId}`, '_blank')
-  }
-}
-
-// 删除附件
-const handleUploadRemove: UploadProps['onRemove'] = async (file) => {
-  // 新建的待上传文件：从暂存列表移除
-  if (!form.inquiryId) {
-    const idx = pendingUploads.value.findIndex(
-      (p) => p.file.name === file.name && (p.file as any).uid === (file as any).uid
-    )
-    if (idx !== -1) {
-      pendingUploads.value.splice(idx, 1)
-    }
-    return
-  }
-  // 已上传的文件：调用删除接口
-  if (file.response) {
-    try {
-      await request({ url: '/system/attachment/' + file.response, method: 'delete' })
-    } catch {
-      // 静默处理
-    }
-  }
-}
-
-// 上传前校验
-const beforeUpload: UploadProps['beforeUpload'] = (file: UploadRawFile) => {
-  const maxSize = 10 * 1024 * 1024 // 10MB
-  const allowedTypes = [
-    '.pdf',
-    '.doc',
-    '.docx',
-    '.xls',
-    '.xlsx',
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.dwg',
-    '.dxf',
-    '.zip',
-    '.md',
-  ]
-  const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '')
-  if (!allowedTypes.includes(ext)) {
-    ElMessage.error('不支持的文件格式，支持 PDF/Word/Excel/图片/DWG/DXF/Markdown/ZIP')
-    return false
-  }
-  if (file.size > maxSize) {
-    ElMessage.error('文件大小不能超过10MB')
-    return false
-  }
-  return true
-}
-
-// 上传暂存的文件（在保存成功后调用）
-async function uploadPendingFiles(inquiryId: number, traceId?: string) {
-  if (pendingUploads.value.length === 0) return
-  for (const item of pendingUploads.value) {
-    const formData = new FormData()
-    formData.append('file', item.file)
-    formData.append('bizType', 'inquiry')
-    formData.append('bizId', String(inquiryId))
-    if (traceId) formData.append('traceId', traceId)
-    try {
-      await request({
-        url: '/system/attachment/upload',
-        method: 'post',
-        data: formData,
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-    } catch (e) {
-      console.error('上传附件失败:', item.file.name, e)
-    }
-  }
-  pendingUploads.value = []
-}
-
-// 加载已上传的附件
-async function loadAttachments(bizId: number) {
-  try {
-    const res: any = await request({
-      url: '/system/attachment/list',
-      method: 'get',
-      params: { bizType: 'inquiry', bizId },
-    })
-    if (res?.code === 200 && res.data) {
-      attachmentList.value = res.data.map((a: any) => ({
-        name: a.fileName,
-        url: `/system/attachment/download/${a.id}`,
-        response: a.id,
-        status: 'success',
-      }))
-    }
-  } catch {
-    attachmentList.value = []
   }
 }
 
@@ -778,11 +652,8 @@ const inquiryDetailItems = [
   { key: 'contactPhone', label: '联系电话' },
   { key: 'inquiryDate', label: '询价日期' },
   { key: 'expectedQuantity', label: '预估数量' },
-  { key: 'keyCount', label: '按键数量' },
-  { key: 'sizeDescription', label: '尺寸要求' },
-  { key: 'materialRequirements', label: '材料要求' },
-  { key: 'circuitRequirements', label: '线路要求' },
-  { key: 'connectorRequirements', label: '连接器要求' },
+  { key: 'productCode', label: '产品编码' },
+  { key: 'productName', label: '产品名称' },
   { key: 'productDescription', label: '产品描述' },
   { key: 'specialRequirements', label: '特殊要求' },
   { key: 'salesPersonName', label: '销售负责人' },
@@ -813,10 +684,8 @@ function handleOpSuccess() {
   getList()
 }
 
-// ==================== 附件管理 ====================
-const uploadRef = ref<UploadInstance>()
-const attachmentList = ref<any[]>([])
-const pendingUploads = ref<Array<{ file: File }>>([])
+// ==================== 附件管理（DEV-733 统一组件） ====================
+const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
 
 // ==================== 状态映射 ====================
 const statusMap: Record<number, { label: string; type: string }> = {
@@ -899,6 +768,74 @@ function customerChanged(val: number) {
     form.customerName = customer.customerName
     if (!form.contactPerson) form.contactPerson = (customer as any).contactPerson || ''
     if (!form.contactPhone) form.contactPhone = (customer as any).contactPhone || ''
+    // 编码生成器：带出客户简称并自动取号（样品询价）
+    form.customerShortName = (customer as any).customerShortName || ''
+    if (form.inquiryType === 2) {
+      generateCode()
+    }
+  }
+}
+
+// ==================== 编码生成器（参考产品新增面板线路） ====================
+const codeSerialNo = ref('')
+const codePanelType = ref('')
+const codePanelFeature = ref('')
+const codeCircuitType = ref('')
+const codeCircuitFeature = ref('')
+const nameEdited = ref(false)
+const generatingSerial = ref(false)
+
+const shortNameDisplay = computed(() => {
+  const s = form.customerShortName || ''
+  return s.substring(0, 3)
+})
+
+// 类型切换：标准品/样品切换时清掉编码生成状态（保留已填编码？切换时清空避免串数据）
+function onTypeChange() {
+  codeSerialNo.value = ''
+  codePanelType.value = ''
+  codePanelFeature.value = ''
+  codeCircuitType.value = ''
+  codeCircuitFeature.value = ''
+  form.productCode = ''
+  nameEdited.value = false
+  if (form.inquiryType === 1) {
+    form.productName = ''
+  } else {
+    form.productName = ''
+    if (form.customerShortName) generateCode()
+  }
+}
+
+// 自动取号 + 拼接编码
+async function generateCode() {
+  if (!form.customerShortName) {
+    ElMessage.warning('请先选择客户（用于客户简称）')
+    return
+  }
+  generatingSerial.value = true
+  try {
+    const res: any = await inquiryApi.nextSerial(shortNameDisplay.value)
+    codeSerialNo.value = (res as any)?.data || '001'
+  } catch {
+    codeSerialNo.value = '001'
+  } finally {
+    generatingSerial.value = false
+    composeCode()
+  }
+}
+
+// 拼接：客户简称3 + 流水号3 + 面板结构2 + 线路结构2
+function composeCode() {
+  const customerPart = shortNameDisplay.value
+  const serialPart = codeSerialNo.value || ''
+  const panelPart = `${codePanelType.value}${codePanelFeature.value}`
+  const circuitPart = `${codeCircuitType.value}${codeCircuitFeature.value}`
+  if (customerPart.length === 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
+    form.productCode = `${customerPart}${serialPart}${panelPart}${circuitPart}`
+    if (!nameEdited.value) {
+      form.productName = form.productCode
+    }
   }
 }
 
@@ -934,19 +871,29 @@ async function onProductSelect(val: number) {
   const product = productOptions.value.find((p: any) => p.productId === val)
   if (product) {
     form.productDescription = `${product.productName}（${product.productCode}）`
+    // 标准品：编码/名称带出产品档案（可改），并反解编码构成要素供查看/修改
+    form.productCode = product.productCode
+    form.productName = product.productName
+    nameEdited.value = true
+    const code = product.productCode || ''
+    if (code.length >= 10) {
+      form.customerShortName = code.substring(0, 3)
+      codeSerialNo.value = code.substring(3, 6)
+      codePanelType.value = code.substring(6, 7)
+      codePanelFeature.value = code.substring(7, 8)
+      codeCircuitType.value = code.substring(8, 9)
+      codeCircuitFeature.value = code.substring(9, 10)
+    }
   }
   try {
     const res: any = await getProductInfo(val)
     const vo = res?.data
     if (vo?.specJson) {
+      // 规格要素拼接进产品描述（规格要求字段已移除，2026-08-08）
       const specs = parseSpecJson(vo.specJson)
-      for (const s of specs) {
-        const v = String(s.value ?? '').trim()
-        if (!v) continue
-        if (/尺寸|规格/.test(s.name)) form.sizeDescription = form.sizeDescription || v
-        else if (/材质|材料/.test(s.name)) form.materialRequirements = form.materialRequirements || v
-        else if (/线路/.test(s.name)) form.circuitRequirements = form.circuitRequirements || v
-        else if (/连接器/.test(s.name)) form.connectorRequirements = form.connectorRequirements || v
+      const specParts = specs.map((s: any) => `${s.name}:${s.value ?? ''}`)
+      if (specParts.length && !form.productDescription) {
+        form.productDescription = `${form.productName}（${form.productCode}） ${specParts.join('；')}`
       }
     }
   } catch (e) {
@@ -980,12 +927,9 @@ function handleUpdate(row?: any) {
       inquiryDate: data.inquiryDate,
       expectedQuantity: data.expectedQuantity,
       productId: data.productId,
+      productCode: data.productCode || '',
+      productName: data.productName || '',
       productDescription: data.productDescription,
-      keyCount: data.keyCount,
-      sizeDescription: data.sizeDescription,
-      materialRequirements: data.materialRequirements,
-      circuitRequirements: data.circuitRequirements,
-      connectorRequirements: data.connectorRequirements,
       specialRequirements: data.specialRequirements,
       hasDrawing: data.hasDrawing ?? 0,
       inquiryStatus: data.inquiryStatus,
@@ -994,8 +938,17 @@ function handleUpdate(row?: any) {
       salesPersonId: data.salesPersonId,
       salesPersonName: data.salesPersonName,
     })
-    // 加载已上传附件
-    loadAttachments(id)
+    // 编码生成器回显：编码存在则反解构成要素（客户3/流水3/面板2/线路2）
+    const code = form.productCode || ''
+    if (code.length >= 10 && form.inquiryType === 2) {
+      form.customerShortName = code.substring(0, 3)
+      codeSerialNo.value = code.substring(3, 6)
+      codePanelType.value = code.substring(6, 7)
+      codePanelFeature.value = code.substring(7, 8)
+      codeCircuitType.value = code.substring(8, 9)
+      codeCircuitFeature.value = code.substring(9, 10)
+      nameEdited.value = form.productName !== code
+    }
   })
 }
 
@@ -1110,12 +1063,10 @@ function resetForm() {
     inquiryDate: '',
     expectedQuantity: undefined,
     productId: undefined,
+    productCode: '',
+    productName: '',
+    customerShortName: '',
     productDescription: '',
-    keyCount: undefined,
-    sizeDescription: '',
-    materialRequirements: '',
-    circuitRequirements: '',
-    connectorRequirements: '',
     specialRequirements: '',
     hasDrawing: 0,
     inquiryStatus: 0,
@@ -1123,6 +1074,13 @@ function resetForm() {
     salesPersonId: undefined,
     salesPersonName: '',
   })
+  // 重置编码生成器
+  codeSerialNo.value = ''
+  codePanelType.value = ''
+  codePanelFeature.value = ''
+  codeCircuitType.value = ''
+  codeCircuitFeature.value = ''
+  nameEdited.value = false
 }
 
 // 初始化客户选项（首次加载全部）
@@ -1147,12 +1105,10 @@ async function submitForm() {
     } else {
       const res = await inquiryApi.add(form as any)
       // 保存成功后用返回的新ID和traceId上传暂存的文件
-      if (pendingUploads.value.length > 0) {
-        const newId = (res as any)?.data?.inquiryId || form.inquiryId || 0
-        const newTraceId = (res as any)?.data?.traceId || ''
-        form.inquiryId = newId
-        await uploadPendingFiles(newId, newTraceId)
-      }
+      const newId = (res as any)?.data?.inquiryId || form.inquiryId || 0
+      const newTraceId = (res as any)?.data?.traceId || ''
+      form.inquiryId = newId
+      await uploaderRef.value?.flushPending(newId, newTraceId)
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false
@@ -1170,7 +1126,7 @@ function cancel() {
 
 // 关闭对话框后重置附件状态
 function handleClose() {
-  pendingUploads.value = []
+  uploaderRef.value?.clearPending()
 }
 
 // ==================== 初始化 ====================

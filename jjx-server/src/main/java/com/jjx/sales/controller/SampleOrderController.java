@@ -27,6 +27,7 @@ import java.util.*;
 public class SampleOrderController extends BaseController {
 
     private final ISampleOrderService sampleOrderService;
+    private final com.jjx.sales.service.ISalesOrderProductService orderProductService;
 
     @Operation(summary = "从报价单创建样品单")
     @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "1")
@@ -39,11 +40,25 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.createFromQuotation(quotationId, sampleQty, remark));
     }
 
-    @Operation(summary = "样品单详情")
+    @Operation(summary = "样品单详情（含明细）")
     @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/{orderId}")
     public Result<SalesOrder> getInfo(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.selectById(orderId));
+    }
+
+    @Operation(summary = "样品单明细（转量产标准化窗口用）")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/products/{orderId}")
+    public Result<java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO>> getProducts(@PathVariable Long orderId) {
+        return Result.success(orderProductService.getListByOrderId(orderId));
+    }
+
+    @Operation(summary = "转量产就绪检查（产品/BOM/工艺路线/菲林清单）")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/convert-check/{orderId}")
+    public Result<com.jjx.sales.domain.vo.SampleConvertCheckVO> convertCheck(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.checkConvertReady(orderId));
     }
 
     @Operation(summary = "样品单列表")
@@ -128,12 +143,13 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.rejectSample(orderId, rejectReason));
     }
 
-    @Operation(summary = "样品转量产（生成标准订单）")
+    @Operation(summary = "样品转量产（生成标准订单，可传产品标准化items）")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "7")
     @SaCheckPermission("sales:sample:convert")
     @PutMapping("/convert-to-production/{orderId}")
-    public Result<SalesOrder> convertToProduction(@PathVariable Long orderId) {
-        return Result.success(sampleOrderService.convertToProduction(orderId));
+    public Result<SalesOrder> convertToProduction(@PathVariable Long orderId,
+            @RequestBody(required = false) java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items) {
+        return Result.success(sampleOrderService.convertToProduction(orderId, items));
     }
 
     /**
@@ -197,6 +213,34 @@ public class SampleOrderController extends BaseController {
                 dto != null ? dto.getMaterials() : null,
                 dto != null ? dto.getProcessNote() : null,
                 dto != null ? dto.getDurationMinutes() : null));
+    }
+
+    /**
+     * 保存打样工序计划（方案A：多选作业项目形成计划，整单覆盖当前轮次）
+     */
+    @Operation(summary = "保存打样工序计划（多选作业项目，整单覆盖当前轮次）")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @PutMapping("/processes/{orderId}/plan")
+    public Result<List<com.jjx.sales.domain.entity.SalesSampleProcess>> saveProcessPlan(
+            @PathVariable Long orderId,
+            @RequestBody com.jjx.sales.dto.save.SampleProcessPlanDTO dto) {
+        return Result.success(sampleOrderService.saveProcessPlan(orderId, dto));
+    }
+
+    /**
+     * 推进打样工序状态（开始/完成）
+     */
+    @Operation(summary = "推进打样工序状态（开始/完成，可带耗时/说明/材料）")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @PutMapping("/processes/{orderId}/item/{processId}/status")
+    public Result<com.jjx.sales.domain.entity.SalesSampleProcess> updateProcessItemStatus(
+            @PathVariable Long orderId,
+            @PathVariable Long processId,
+            @RequestBody(required = false) com.jjx.sales.dto.save.SampleProcessItemStatusDTO dto) {
+        return Result.success(sampleOrderService.updateProcessItemStatus(orderId, processId,
+                dto != null ? dto : new com.jjx.sales.dto.save.SampleProcessItemStatusDTO()));
     }
 
     /**
@@ -264,6 +308,7 @@ public class SampleOrderController extends BaseController {
      * 查询打样轮次快照列表
      */
     @Operation(summary = "产品资料转移（DEV-505：建档产品/BOM/工艺路线，状态初始化，事件通知+派任务）")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "6")
     @SaCheckPermission("sales:sample:convert")
     @PostMapping("/transfer/{orderId}")
     public Result<java.util.Map<String, Object>> transfer(@PathVariable Long orderId) {

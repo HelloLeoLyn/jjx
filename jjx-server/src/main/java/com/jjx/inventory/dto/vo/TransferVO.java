@@ -37,8 +37,8 @@ public class TransferVO {
 
     private BigDecimal totalQuantity;
     private BigDecimal totalAmount;
-    private String orderStatus;
-    private String approveStatus;
+    private Integer orderStatus;
+    private Integer approveStatus;
     private Long approverId;
     private String approverName;
 

@@ -12,10 +12,10 @@ import java.util.stream.Collectors;
 @Getter
 public enum ProcessCategoryEnum {
     
-    PREPARATION("PREPARATION", "准备", "info"),
-    MAIN("MAIN", "主要", "primary"),
-    FINISHING("FINISHING", "后处理", "warning"),
-    QUALITY("QUALITY", "质量", "success");
+    PANEL("PANEL", "面板", "primary"),
+    UP_LINE("UP_LINE", "上线", "primary"),
+    DOWN_LINE("DOWN_LINE", "下线", "primary"),
+    OTHER("OTHER", "其他", "info");
 
     private final String code;
     private final String name;
@@ -36,5 +36,9 @@ public enum ProcessCategoryEnum {
             throw new IllegalArgumentException("无效的工序类别码: " + code);
         }
         return category;
+    }
+
+    public static boolean isValidCode(String code) {
+        return code != null && CODE_MAP.containsKey(code);
     }
 }

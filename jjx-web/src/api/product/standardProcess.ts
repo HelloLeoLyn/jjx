@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import type { AxiosPromise } from 'axios'
 import type {
   StandardProcessQueryParams,
   StandardProcessFormData,
@@ -101,6 +102,26 @@ export const standardProcessApi = {
   generateNextProcessCode(processType: string, processCategory: string) {
     return request.get<R<string>>('/engineering/standard-processes/generate-code', {
       params: { processType, processCategory },
+    })
+  },
+
+  /**
+   * 标准工序导入（2026-08-08）
+   */
+  importProcesses(file: File): AxiosPromise<any> {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request.post('/engineering/standard-processes/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  /**
+   * 下载标准工序导入模板
+   */
+  importTemplate() {
+    return request.post('/engineering/standard-processes/importTemplate', null, {
+      responseType: 'blob',
     })
   },
 }

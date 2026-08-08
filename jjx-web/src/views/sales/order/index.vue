@@ -347,6 +347,8 @@ import router from '@/router'
 const queryParams = reactive<SalesOrderQueryDTO>({
   pageNum: 1,
   pageSize: 10,
+  // 销售订单列表只显示标准订单(1)，样品单走样品单页，避免混入（DEV-xxx 修复）
+  orderType: 1,
   orderNo: undefined,
   customerName: undefined,
   orderStatus: undefined,

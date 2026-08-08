@@ -56,6 +56,10 @@ const props = defineProps<{
   bizId: number | null | undefined
   /** 链路追踪ID：上传时写入，方便来源单据追溯 */
   traceId?: string
+  /** 文件类别（产品文件库用，业务附件可空） */
+  category?: string
+  /** 版本号（产品文件库用） */
+  version?: string
   dialogTitle?: string
 }>()
 
@@ -87,6 +91,8 @@ const uploadData = computed(() => ({
   bizType: props.bizType,
   bizId: props.bizId ?? 0,
   ...(props.traceId ? { traceId: props.traceId } : {}),
+  ...(props.category ? { category: props.category } : {}),
+  ...(props.version ? { version: props.version } : {}),
 }))
 
 function downloadUrl(id: number): string {

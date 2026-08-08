@@ -58,6 +58,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final com.jjx.engineering.mapper.RoutingItemMapper routingItemMapper;
     private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
+    private final com.jjx.product.mapper.EngineeringFilmMapper engineeringFilmMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -586,6 +587,143 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
+     * 保存打样工序计划（方案A：多选作业项目形成计划，整单覆盖当前轮次）
+     */
+    @Override
+    @Transactional
+    public List<SalesSampleProcess> saveProcessPlan(Long orderId, com.jjx.sales.dto.save.SampleProcessPlanDTO dto) {
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_READY.getCode().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_SENT.getCode().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.CONFIRMED.getCode().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.TRANSFERRED.getCode().equals(current.getSampleStatus())) {
+            throw new BusinessException("当前状态不可保存工序计划");
+        }
+        Integer roundNo = dto.getRoundNo() != null ? dto.getRoundNo()
+                : (current.getSampleRound() != null ? current.getSampleRound() : 1);
+
+        // 覆盖式保存：删除该轮次旧计划后整单重插
+        sampleProcessMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalesSampleProcess>()
+                .eq(SalesSampleProcess::getOrderId, orderId)
+                .eq(SalesSampleProcess::getRoundNo, roundNo));
+
+        if (dto.getItems() != null) {
+            int order = 1;
+            for (com.jjx.sales.dto.save.SampleProcessPlanDTO.Item item : dto.getItems()) {
+                if (item.getProcessName() == null || item.getProcessName().isEmpty()) {
+                    continue;
+                }
+                SalesSampleProcess record = new SalesSampleProcess();
+                record.setOrderId(orderId);
+                record.setRoundNo(roundNo);
+                record.setProcessName(item.getProcessName());
+                record.setStdProcessId(item.getStdProcessId());
+                // 卡片组合：同一卡片多个作业项目传相同 processOrder（缺省按列表顺序）
+                record.setProcessOrder(item.getProcessOrder() != null && item.getProcessOrder() > 0
+                        ? item.getProcessOrder() : order++);
+                // 卡片项目结构（卡片级主结构）
+                record.setProcessCategory(item.getProcessCategory());
+                record.setStatus(item.getStatus() != null ? item.getStatus() : 0);
+                record.setMaterials(item.getMaterials());
+                record.setProcessNote(item.getProcessNote());
+                record.setOperator(SecurityUtils.getUsername());
+                record.setRemark("工序计划");
+                sampleProcessMapper.insert(record);
+            }
+        }
+
+        // 同步当前工序字段：优先进行中，其次第一个待做，全完成则最后一道
+        List<SalesSampleProcess> plan = sampleProcessMapper.selectByOrderAndRound(orderId, roundNo);
+        syncCurrentProcess(orderId, plan);
+
+        log.info("样品单[{}] 保存打样工序计划: Round{} 共{}道", orderId, roundNo, plan.size());
+        return plan;
+    }
+
+    /**
+     * 推进打样工序状态（方案A：逐项开始/完成）
+     */
+    @Override
+    @Transactional
+    public SalesSampleProcess updateProcessItemStatus(Long orderId, Long processId, com.jjx.sales.dto.save.SampleProcessItemStatusDTO dto) {
+        SalesSampleProcess record = sampleProcessMapper.selectById(processId);
+        if (record == null || !orderId.equals(record.getOrderId())) {
+            throw new BusinessException("工序记录不存在");
+        }
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null || current.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+
+        Integer status = dto.getStatus() != null ? dto.getStatus() : 2;
+        if (status < 0 || status > 2) {
+            throw new BusinessException("无效的工序状态");
+        }
+
+        if (status == 1 && record.getStartTime() == null) {
+            record.setStartTime(LocalDateTime.now());
+        }
+        if (status == 2) {
+            if (record.getStartTime() == null) {
+                record.setStartTime(LocalDateTime.now());
+            }
+            record.setEndTime(LocalDateTime.now());
+            if (dto.getDurationMinutes() != null) {
+                record.setDurationMinutes(dto.getDurationMinutes());
+            } else if (record.getDurationMinutes() == null) {
+                long mins = java.time.Duration.between(record.getStartTime(), LocalDateTime.now()).toMinutes();
+                record.setDurationMinutes((int) Math.max(1, mins));
+            }
+        }
+        record.setStatus(status);
+        if (dto.getProcessNote() != null) {
+            record.setProcessNote(dto.getProcessNote());
+        }
+        if (dto.getMaterials() != null) {
+            record.setMaterials(dto.getMaterials());
+        }
+        record.setOperator(SecurityUtils.getUsername());
+        record.setRemark("工序状态推进");
+        sampleProcessMapper.updateById(record);
+
+        // 完成后同步当前工序：指向下一个待做工序
+        if (status == 2) {
+            List<SalesSampleProcess> plan = sampleProcessMapper.selectByOrderAndRound(orderId, record.getRoundNo());
+            syncCurrentProcess(orderId, plan);
+        }
+        return sampleProcessMapper.selectById(processId);
+    }
+
+    /**
+     * 同步当前工序字段：优先进行中，其次第一个待做，全完成则最后一道
+     */
+    private void syncCurrentProcess(Long orderId, List<SalesSampleProcess> plan) {
+        String current = null;
+        if (plan != null && !plan.isEmpty()) {
+            current = plan.stream()
+                    .filter(p -> p.getStatus() != null && p.getStatus() == 1)
+                    .min(java.util.Comparator.comparing(p -> p.getProcessOrder() != null ? p.getProcessOrder() : 0))
+                    .map(SalesSampleProcess::getProcessName)
+                    .orElseGet(() -> plan.stream()
+                            .filter(p -> p.getStatus() == null || p.getStatus() == 0)
+                            .min(java.util.Comparator.comparing(p -> p.getProcessOrder() != null ? p.getProcessOrder() : 0))
+                            .map(SalesSampleProcess::getProcessName)
+                            .orElseGet(() -> plan.stream()
+                                    .max(java.util.Comparator.comparing(p -> p.getProcessOrder() != null ? p.getProcessOrder() : 0))
+                                    .map(SalesSampleProcess::getProcessName)
+                                    .orElse(null)));
+        }
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        update.setCurrentProcess(current);
+        orderMapper.updateById(update);
+    }
+
+    /**
      * 打样汇总（DEV-454 增强）：总工时 + 材料成本估算（自动计算，不手填）
      */
     @Override
@@ -777,6 +915,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
         // DEV-500 联动：聚合源用最新轮次工序（避免旧轮次试错工序混入量产BOM/路线）
+        // 方案A适配：计划模式取已完成工序（status=2）按 process_order 排序；
+        // 旧数据无状态标记（全为0）时退回全量，保证历史打样记录转移不丢
         java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> allProcesses =
                 sampleProcessMapper.selectByOrderId(orderId);
         java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes = allProcesses;
@@ -789,7 +929,19 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 processes = allProcesses.stream()
                         .filter(p -> latestRound.equals(p.getRoundNo()))
                         .collect(java.util.stream.Collectors.toList());
-                log.info("样品单[{}] 资料转移聚合源：最新轮次Round{} ({}条工序，全量{}条)",
+                long doneCount = processes.stream()
+                        .filter(p -> p.getStatus() != null && p.getStatus() == 2).count();
+                if (doneCount > 0) {
+                    processes = processes.stream()
+                            .filter(p -> p.getStatus() != null && p.getStatus() == 2)
+                            .collect(java.util.stream.Collectors.toList());
+                }
+                // 按工序顺序排序（计划模式），无顺序的旧数据按记录ID排尾部
+                processes.sort(java.util.Comparator.comparing(
+                                (com.jjx.sales.domain.entity.SalesSampleProcess p) ->
+                                        p.getProcessOrder() != null && p.getProcessOrder() > 0 ? p.getProcessOrder() : 999999)
+                        .thenComparing(p -> p.getProcessId() != null ? p.getProcessId() : 0L));
+                log.info("样品单[{}] 资料转移聚合源：最新轮次Round{} (已完成{}道，全量{}条)",
                         orderId, latestRound, processes.size(), allProcesses.size());
             }
         }
@@ -932,12 +1084,19 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         java.math.BigDecimal totalLabor = java.math.BigDecimal.ZERO;
                         java.math.BigDecimal totalMachine = java.math.BigDecimal.ZERO;
                         for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
-                            com.jjx.product.domain.entity.ProductStandardProcess std = standardProcessMapper.selectOne(
-                                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.ProductStandardProcess>()
-                                            .eq(com.jjx.product.domain.entity.ProductStandardProcess::getProcessName, sp.getProcessName())
-                                            .last("LIMIT 1"));
+                            // 方案A适配：优先用 std_process_id 精确关联作业项目，无则按名称匹配兑底（兼容旧数据/自定义工序）
+                            com.jjx.product.domain.entity.ProductStandardProcess std = null;
+                            if (sp.getStdProcessId() != null) {
+                                std = standardProcessMapper.selectById(sp.getStdProcessId());
+                            }
+                            if (std == null && sp.getProcessName() != null) {
+                                std = standardProcessMapper.selectOne(
+                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.ProductStandardProcess>()
+                                                .eq(com.jjx.product.domain.entity.ProductStandardProcess::getProcessName, sp.getProcessName())
+                                                .last("LIMIT 1"));
+                            }
                             Long stdProcessId = std != null ? std.getProcessId() : null;
-                            String category = std != null ? std.getProcessCategory() : "M";
+                            String category = std != null && std.getProcessCategory() != null ? std.getProcessCategory() : "OTHER";
                             java.math.BigDecimal laborHours = sp.getDurationMinutes() != null
                                     ? java.math.BigDecimal.valueOf(sp.getDurationMinutes()).divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP)
                                     : (std != null && std.getStandardLaborHours() != null ? std.getStandardLaborHours() : java.math.BigDecimal.ZERO);
@@ -1003,9 +1162,224 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    public com.jjx.sales.domain.vo.SampleConvertCheckVO checkConvertReady(Long orderId) {
+        return buildConvertCheck(orderId);
+    }
+
+    /**
+     * 转量产就绪检查：产品/BOM/工艺路线/菲林/资料转移（check 接口与 convert 共用）
+     */
+    private com.jjx.sales.domain.vo.SampleConvertCheckVO buildConvertCheck(Long orderId) {
+        com.jjx.sales.domain.vo.SampleConvertCheckVO vo = new com.jjx.sales.domain.vo.SampleConvertCheckVO();
+        SalesOrder sampleOrder = orderMapper.selectById(orderId);
+        vo.setOrderId(orderId);
+        vo.setOrderNo(sampleOrder != null ? sampleOrder.getOrderNo() : null);
+        java.util.List<com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem> items = new java.util.ArrayList<>();
+
+        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
+                orderProductService.getListByOrderId(orderId);
+        // 去重产品集合
+        java.util.LinkedHashSet<Long> productIds = new java.util.LinkedHashSet<>();
+        java.util.Map<Long, String> prodCodeMap = new java.util.HashMap<>();
+
+        // ===== ① 产品：建档 + 已发布 =====
+        boolean productPass = true;
+        if (prodList == null || prodList.isEmpty()) {
+            productPass = false;
+        } else {
+            for (com.jjx.sales.domain.vo.SalesOrderProductVO prod : prodList) {
+                Long pid = prod.getProductId();
+                if (pid == null) {
+                    productPass = false;
+                    continue;
+                }
+                com.jjx.product.domain.entity.Product product = productMapper.selectById(pid);
+                if (product == null) {
+                    productPass = false;
+                    continue;
+                }
+                productIds.add(pid);
+                prodCodeMap.putIfAbsent(pid, product.getProductCode());
+                if (product.getProductStatus() == null || product.getProductStatus() != 6) {
+                    productPass = false;
+                }
+            }
+        }
+        com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem productItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+        productItem.setCode("product");
+        productItem.setName("产品建档");
+        productItem.setLevel("required");
+        productItem.setPass(productPass);
+        if (productPass) {
+            productItem.setStatus("ready");
+            productItem.setMessage("明细产品已建档并发布");
+        } else {
+            productItem.setStatus("missing");
+            productItem.setAction("list-product");
+            // 找出第一个未建档/未发布产品
+            com.jjx.sales.domain.vo.SalesOrderProductVO bad = null;
+            if (prodList != null) {
+                for (com.jjx.sales.domain.vo.SalesOrderProductVO prod : prodList) {
+                    if (prod.getProductId() == null) {
+                        bad = prod;
+                        break;
+                    }
+                    com.jjx.product.domain.entity.Product p = productMapper.selectById(prod.getProductId());
+                    if (p == null || p.getProductStatus() == null || p.getProductStatus() != 6) {
+                        bad = prod;
+                        break;
+                    }
+                }
+            }
+            if (bad != null && bad.getProductId() == null) {
+                productItem.setMessage("明细产品[" + (bad.getProductCode() != null ? bad.getProductCode() : "未编码") + "]未建档，请先资料转移建档或在产品列表新建");
+                productItem.setAction("list-product");
+            } else if (bad != null) {
+                productItem.setMessage("产品[" + bad.getProductCode() + "]未发布（状态:" + (productMapper.selectById(bad.getProductId()) != null ? productMapper.selectById(bad.getProductId()).getProductStatus() : "?") + "），请到产品编辑页发布");
+                productItem.setAction("edit-product");
+                productItem.setProductId(bad.getProductId());
+            } else {
+                productItem.setMessage("请先完善样品单明细产品");
+            }
+        }
+        items.add(productItem);
+
+        // ===== ② BOM：每个产品有已批准BOM =====
+        boolean bomPass = true;
+        String bomMsg = "产品已有已批准BOM";
+        Long bomBadPid = null;
+        if (productIds.isEmpty()) {
+            bomPass = false;
+            bomMsg = "产品未建档，无法校验BOM";
+        } else {
+            for (Long pid : productIds) {
+                com.jjx.engineering.domain.entity.EngineeringBom bom = bomService.getOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
+                                .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, pid)
+                                .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, true)
+                                .last("LIMIT 1"));
+                if (bom == null || bom.getApproveStatus() == null || bom.getApproveStatus() != 3) {
+                    bomPass = false;
+                    bomBadPid = pid;
+                    bomMsg = "产品[" + prodCodeMap.getOrDefault(pid, String.valueOf(pid)) + "]无已批准BOM（请资料转移建档后走工程审核批准）";
+                    break;
+                }
+            }
+        }
+        com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem bomItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+        bomItem.setCode("bom");
+        bomItem.setName("BOM");
+        bomItem.setLevel("required");
+        bomItem.setPass(bomPass);
+        bomItem.setStatus(bomPass ? "ready" : "missing");
+        bomItem.setMessage(bomMsg);
+        if (!bomPass) {
+            bomItem.setAction("transfer");
+            bomItem.setProductId(bomBadPid);
+        }
+        items.add(bomItem);
+
+        // ===== ③ 工艺路线：每个产品有已批准路线 =====
+        boolean routingPass = true;
+        String routingMsg = "产品已有已批准工艺路线";
+        Long routingBadPid = null;
+        if (productIds.isEmpty()) {
+            routingPass = false;
+            routingMsg = "产品未建档，无法校验工艺路线";
+        } else {
+            for (Long pid : productIds) {
+                com.jjx.engineering.domain.entity.EngineeringRouting routing = routingService.getOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRouting>()
+                                .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getProductId, pid)
+                                .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getIsCurrent, true)
+                                .last("LIMIT 1"));
+                if (routing == null || routing.getApproveStatus() == null || routing.getApproveStatus() != 3) {
+                    routingPass = false;
+                    routingBadPid = pid;
+                    routingMsg = "产品[" + prodCodeMap.getOrDefault(pid, String.valueOf(pid)) + "]无已批准工艺路线（请资料转移建档后走工程审核批准）";
+                    break;
+                }
+            }
+        }
+        com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem routingItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+        routingItem.setCode("routing");
+        routingItem.setName("工艺路线");
+        routingItem.setLevel("required");
+        routingItem.setPass(routingPass);
+        routingItem.setStatus(routingPass ? "ready" : "missing");
+        routingItem.setMessage(routingMsg);
+        if (!routingPass) {
+            routingItem.setAction("transfer");
+            routingItem.setProductId(routingBadPid);
+        }
+        items.add(routingItem);
+
+        // ===== ④ 菲林：建议项 =====
+        boolean filmPass = true;
+        String filmMsg = "产品已有菲林档案";
+        if (productIds.isEmpty()) {
+            filmPass = false;
+            filmMsg = "产品未建档，无法校验菲林";
+        } else {
+            for (Long pid : productIds) {
+                Long cnt = engineeringFilmMapper.selectCount(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringFilm>()
+                                .eq(com.jjx.engineering.domain.entity.EngineeringFilm::getProductId, pid));
+                if (cnt == null || cnt == 0) {
+                    filmPass = false;
+                    filmMsg = "产品[" + prodCodeMap.getOrDefault(pid, String.valueOf(pid)) + "]无菲林档案（建议在产品档案补全，不阻塞转量产）";
+                    break;
+                }
+            }
+        }
+        com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem filmItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+        filmItem.setCode("film");
+        filmItem.setName("菲林");
+        filmItem.setLevel("suggest");
+        filmItem.setPass(filmPass);
+        filmItem.setStatus(filmPass ? "ready" : "missing");
+        filmItem.setMessage(filmMsg);
+        items.add(filmItem);
+
+        // ===== ⑤ 资料转移记录（辅助信息） =====
+        com.jjx.sales.domain.entity.SalesSampleTransfer transferRec = sampleTransferMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesSampleTransfer>()
+                        .eq(com.jjx.sales.domain.entity.SalesSampleTransfer::getOrderId, orderId)
+                        .orderByDesc(com.jjx.sales.domain.entity.SalesSampleTransfer::getTransferId)
+                        .last("LIMIT 1"));
+        com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem transferItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+        transferItem.setCode("transfer");
+        transferItem.setName("资料转移");
+        transferItem.setLevel("info");
+        transferItem.setPass(transferRec != null);
+        transferItem.setStatus(transferRec != null ? "done" : "none");
+        transferItem.setMessage(transferRec != null
+                ? "已生成转移单 " + transferRec.getTransferNo() + "（" + transferRec.getProductAction() + "/" + transferRec.getBomAction() + "/" + transferRec.getRoutingAction() + "）"
+                : "未执行资料转移（建档产品/BOM/路线的快捷方式）");
+        if (transferRec == null) {
+            transferItem.setAction("transfer");
+        }
+        items.add(transferItem);
+
+        vo.setItems(items);
+        vo.setAllPass(items.stream()
+                .filter(i -> "required".equals(i.getLevel()))
+                .allMatch(com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem::getPass));
+        return vo;
+    }
+
+    @Override
     @Event(value = "sample.converted", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder convertToProduction(Long orderId) {
+        return convertToProduction(orderId, null);
+    }
+
+    @Override
+    @Event(value = "sample.converted", bizId = "#orderId", bizType = "'sample'")
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder convertToProduction(Long orderId,
+                                          java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
@@ -1015,6 +1389,56 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 SampleOrderStatusEnum.CONFIRMED,
                 SampleOrderStatusEnum.TRANSFERRED,
                 "转量产");
+
+        // ========== 转量产：标准化（可选 items）→ 就绪校验 → 流转生成 ==========
+        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
+                orderProductService.getListByOrderId(sampleOrder.getOrderId());
+        if (prodList != null) {
+            // ① 标准化：前端传了 items 则按明细ID替换产品，并以产品档案信息覆盖明细（编码/名称/规格/单位）
+            if (items != null && !items.isEmpty()) {
+                java.util.Map<Long, Long> itemMap = new java.util.HashMap<>();
+                for (com.jjx.sales.domain.dto.SampleConvertItemDTO it : items) {
+                    if (it.getOrderProductId() != null) {
+                        itemMap.put(it.getOrderProductId(), it.getProductId());
+                    }
+                }
+                for (com.jjx.sales.domain.vo.SalesOrderProductVO prod : prodList) {
+                    Long newPid = itemMap.get(prod.getId());
+                    if (newPid != null) {
+                        com.jjx.product.domain.entity.Product product = productMapper.selectById(newPid);
+                        if (product == null) {
+                            throw new BusinessException("产品[" + newPid + "]不存在");
+                        }
+                        com.jjx.sales.domain.entity.SalesOrderProduct op = new com.jjx.sales.domain.entity.SalesOrderProduct();
+                        op.setId(prod.getId());
+                        op.setProductId(newPid);
+                        op.setProductCode(product.getProductCode());
+                        op.setProductName(product.getProductName());
+                        if (product.getSpecJson() != null) {
+                            op.setSpecification(product.getSpecJson());
+                        }
+                        if (product.getUnit() != null) {
+                            op.setUnit(product.getUnit());
+                        }
+                        orderProductMapper.updateById(op);
+                        // 刷新当前 VO 供后续校验
+                        prod.setProductId(newPid);
+                        prod.setProductCode(product.getProductCode());
+                        prod.setProductName(product.getProductName());
+                    }
+                }
+            }
+        }
+
+        // ② 就绪校验（产品/BOM/工艺路线/菲林，必需项强制）
+        com.jjx.sales.domain.vo.SampleConvertCheckVO check = buildConvertCheck(orderId);
+        if (!java.lang.Boolean.TRUE.equals(check.getAllPass())) {
+            String miss = check.getItems().stream()
+                    .filter(i -> "required".equals(i.getLevel()) && !java.lang.Boolean.TRUE.equals(i.getPass()))
+                    .map(com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem::getName)
+                    .collect(java.util.stream.Collectors.joining("、"));
+            throw new BusinessException("转量产资料未就绪：" + miss + "。请先补全（可在转量产就绪检查中查看明细）");
+        }
 
         // 生成标准订单
         String standardOrderNo = redisSequenceService.generateBusinessNumber("SO", "标准订单号");
@@ -1078,24 +1502,6 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         update.setConvertedOrderId(standardOrder.getOrderId());
         update.setConvertOrderTime(new Date());
         orderMapper.updateById(update);
-
-        // ========== 转量产校验（DEV-505 资料转移方案）==========
-        // 明细产品必须已建档且已发布（产品资料转移后走产品审核流）
-        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
-                orderProductService.getListByOrderId(standardOrder.getOrderId());
-        if (prodList != null) {
-            for (com.jjx.sales.domain.vo.SalesOrderProductVO prod : prodList) {
-                if (prod.getProductId() == null) continue;
-                com.jjx.product.domain.entity.Product product = productMapper.selectById(prod.getProductId());
-                if (product == null) {
-                    throw new BusinessException("产品[" + prod.getProductCode() + "]不存在，请先完成产品资料转移建档");
-                }
-                if (product.getProductStatus() != null && product.getProductStatus() != 6) {
-                    throw new BusinessException("产品[" + prod.getProductCode() + "]未发布（状态:" + product.getProductStatus() + "），请先完成产品资料转移并审核发布");
-                }
-            }
-        }
-        // 提示：量产 BOM/工艺路线由【产品资料转移】建档并走工程审核，此处不再自动生成
 
         log.info("样品单[{}] 转量产成功，生成标准订单[{}] (orderId={})",
                 sampleOrder.getOrderNo(), standardOrderNo, standardOrder.getOrderId());

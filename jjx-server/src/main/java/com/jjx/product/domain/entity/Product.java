@@ -41,6 +41,11 @@ public class Product {
     private Long categoryId;
 
     /**
+     * 来源标记（inquiry/quotation 建档草稿，草稿清理用）
+     */
+    private String fromSource;
+
+    /**
      * 类型：standard标准/custom定制
      */
     private String productType;

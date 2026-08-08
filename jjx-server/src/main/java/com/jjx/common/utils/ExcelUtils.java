@@ -390,10 +390,7 @@ public final class ExcelUtils {
      * 获取示例值
      */
     private static String getExampleValue(ExcelColumnMeta meta) {
-        if (meta.getComment() != null && !meta.getComment().isEmpty()) {
-            return "示例：" + meta.getComment();
-        }
-
+        // 先查内置真实示例（更贴近实际数据），无则用 comment 生成示例说明
         switch (meta.getFieldName()) {
             case "materialCode":
                 return "MTR-20240001";
@@ -409,7 +406,34 @@ public final class ExcelUtils {
                 return "2024-12-31";
             case "supplier":
                 return "XX科技有限公司";
+            case "processCode":
+                return "SP-001";
+            case "processName":
+                return "丝印";
+            case "processType":
+                return "PRINTING";
+            case "processCategory":
+                return "MAIN";
+            case "standardLaborHours":
+                return "0.5";
+            case "standardMachineHours":
+                return "0.3";
+            case "processParamTemplate":
+                return "温度:130℃;压力:3kg";
+            case "skillRequirement":
+                return "熟练丝印工";
+            case "equipmentType":
+                return "丝印机";
+            case "qualityStandard":
+                return "GB/T 标准";
+            case "displayOrder":
+                return "1";
+            case "isEnabled":
+                return "1";
             default:
+                if (meta.getComment() != null && !meta.getComment().isEmpty()) {
+                    return "示例：" + meta.getComment();
+                }
                 return "示例数据";
         }
     }

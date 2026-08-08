@@ -293,23 +293,20 @@
     <!-- 附件上传（新建和编辑都显示） -->
     <el-divider content-position="left">订单附件</el-divider>
     <div class="attachment-section">
-      <el-upload
-        ref="uploadRef"
-        :http-request="customUpload"
-        :on-success="handleUploadSuccess"
-        :on-remove="handleUploadRemove"
-        :file-list="attachmentList"
-        :before-upload="beforeUpload"
-        list-type="text"
-        multiple
-      >
-        <el-button type="primary" size="small">
-          <el-icon><Upload /></el-icon> 上传附件
-        </el-button>
-        <template #tip>
-          <div class="el-upload__tip">支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传</div>
-        </template>
-      </el-upload>
+      <AttachmentPanel
+        v-if="form.orderId"
+        biz-type="sales_order"
+        :biz-id="form.orderId"
+        style="margin-bottom: 10px"
+      />
+      <AttachmentUploader
+        ref="uploaderRef"
+        biz-type="sales_order"
+        :biz-id="form.orderId"
+        :accept="['.pdf','.doc','.docx','.xls','.xlsx','.jpg','.jpeg','.png']"
+        button-text="上传附件"
+        tip="支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传"
+      />
     </div>
 
     <!-- 金额汇总 -->
@@ -420,8 +417,8 @@
 import { onMounted, ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
-import request from '@/utils/request'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
@@ -583,126 +580,8 @@ const handleCurrencyChange = async (val: string) => {
   }
 }
 
-// ===== 附件上传 =====
-const uploadRef = ref()
-const attachmentList = ref<any[]>([])
-
-// 新建订单时暂存的文件（订单保存后再上传）
-const pendingUploads = ref<Array<{ file: File }>>([])
-
-// 自定义上传（新建时暂存，编辑时立即上传）
-const customUpload = async (options: any) => {
-  // 新建订单：暂存文件，等保存成功后再上传
-  if (!form.orderId) {
-    pendingUploads.value.push({ file: options.file })
-    // 添加到显示列表
-    attachmentList.value.push({
-      name: options.file.name,
-      status: 'ready',
-      uid: options.file.uid,
-    })
-    options.onSuccess({ name: options.file.name, status: 'ready' })
-    return
-  }
-
-  // 编辑已有订单：立即上传
-  const formData = new FormData()
-  formData.append('file', options.file)
-  formData.append('bizType', 'sales_order')
-  formData.append('bizId', String(form.orderId))
-  try {
-    const res: any = await request({
-      url: '/system/attachment/upload',
-      method: 'post',
-      data: formData,
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    if (res?.code === 200) {
-      options.onSuccess(res.data)
-      ElMessage.success('附件上传成功')
-    } else {
-      options.onError(new Error(res?.msg || '上传失败'))
-    }
-  } catch (e: any) {
-    options.onError(e)
-  }
-}
-
-// 附件上传成功回调
-const handleUploadSuccess = () => {}
-
-// 附件删除回调
-const handleUploadRemove = async (file: any) => {
-  // 新建订单的待上传文件：从暂存列表移除
-  if (!form.orderId) {
-    const idx = pendingUploads.value.findIndex(
-      (p) => p.file.name === file.name && (p.file as any).uid === (file as any).uid
-    )
-    if (idx !== -1) {
-      pendingUploads.value.splice(idx, 1)
-    }
-    return
-  }
-  // 已上传的文件：调用删除接口
-  if (file.response) {
-    try {
-      await request({ url: '/system/attachment/' + file.response, method: 'delete' })
-    } catch {
-      // 静默处理
-    }
-  }
-}
-
-// 上传前校验
-const beforeUpload = (file: File) => {
-  const maxSize = 10 * 1024 * 1024 // 10MB
-  const allowedTypes = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']
-  const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '')
-  if (!allowedTypes.includes(ext)) {
-    ElMessage.error('不支持的文件格式')
-    return false
-  }
-  if (file.size > maxSize) {
-    ElMessage.error('文件大小不能超过10MB')
-    return false
-  }
-  return true
-}
-
-// 上传待处理的附件（订单保存后调用）
-const uploadPendingAttachments = async (orderId: number) => {
-  if (pendingUploads.value.length === 0) return
-
-  const uploadResults: boolean[] = []
-  for (const pending of pendingUploads.value) {
-    const formData = new FormData()
-    formData.append('file', pending.file)
-    formData.append('bizType', 'sales_order')
-    formData.append('bizId', String(orderId))
-    try {
-      await request({
-        url: '/system/attachment/upload',
-        method: 'post',
-        data: formData,
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      uploadResults.push(true)
-    } catch (e: any) {
-      console.error('附件上传失败:', e)
-      uploadResults.push(false)
-    }
-  }
-
-  pendingUploads.value = []
-
-  const successCount = uploadResults.filter(Boolean).length
-  const failCount = uploadResults.length - successCount
-  if (failCount > 0) {
-    ElMessage.warning(`附件上传完成：${successCount}成功，${failCount}失败`)
-  } else if (successCount > 0) {
-    ElMessage.success(`附件上传完成（${successCount}个）`)
-  }
-}
+// ===== 附件上传（DEV-733 统一组件） =====
+const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
 
 // 初始化
 onMounted(() => {
@@ -770,7 +649,7 @@ const submitForm = async (): Promise<boolean> => {
     const newOrderId = orderResponse.data!
 
     // 2. 上传待处理的附件
-    await uploadPendingAttachments(newOrderId)
+    await uploaderRef.value?.flushPending(newOrderId)
 
     ElMessage.success('新增成功')
     emit('success')

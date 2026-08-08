@@ -47,4 +47,60 @@ export const attachmentApi = {
     const base = (import.meta.env.VITE_BASE_API || '/api') as string
     return `${base}/system/attachment/download/${id}`
   },
+
+  // 上传产品工程文件（产品文件库）
+  uploadProductFile(file: File, productCode: string, category: string, version?: string): AxiosPromise<number> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('productCode', productCode)
+    formData.append('category', category)
+    if (version) formData.append('version', version)
+    return request({
+      url: '/system/attachment/upload-product',
+      method: 'post',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  // 获取产品文件库（按产品编码）
+  productFiles(productCode: string): AxiosPromise<any[]> {
+    return request({
+      url: `/system/attachment/product/${productCode}`,
+      method: 'get',
+    })
+  },
+
+  // 回收站列表
+  recycleList(): AxiosPromise<any[]> {
+    return request({
+      url: '/system/attachment/recycle-list',
+      method: 'get',
+    })
+  },
+
+  // 恢复附件
+  restore(id: number): AxiosPromise<boolean> {
+    return request({
+      url: `/system/attachment/restore/${id}`,
+      method: 'post',
+    })
+  },
+
+  // 彻底删除（回收站）
+  permanent(id: number): AxiosPromise<boolean> {
+    return request({
+      url: `/system/attachment/permanent/${id}`,
+      method: 'delete',
+    })
+  },
+
+  // 清理回收站过期附件
+  permanentExpired(days = 30): AxiosPromise<number> {
+    return request({
+      url: '/system/attachment/permanent-expired',
+      method: 'post',
+      params: { days },
+    })
+  },
 }

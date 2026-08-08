@@ -29,6 +29,26 @@ public class SalesSampleProcess {
     /** 工序名称 */
     private String processName;
 
+    /**
+     * 关联作业项目(标准工序)ID，NULL=自定义工序
+     */
+    private Long stdProcessId;
+
+    /**
+     * 工序顺序
+     */
+    private Integer processOrder;
+
+    /**
+     * 卡片项目结构（PANEL/UP_LINE/DOWN_LINE/OTHER，卡片级主结构）
+     */
+    private String processCategory;
+
+    /**
+     * 状态：0待做 1进行中 2完成
+     */
+    private Integer status;
+
     /** 该工序材料明细(JSON: [{name,spec,qty,unit}]) */
     private String materials;
 

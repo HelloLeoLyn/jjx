@@ -426,16 +426,6 @@
       <el-form ref="quotationFormRef" :model="form" :rules="rules" label-width="100px">
         <el-row>
           <el-col :span="12">
-            <el-form-item label="报价单号" prop="quotationNo">
-              <el-input
-                v-model="form.quotationNo"
-                placeholder="系统自动生成"
-                maxlength="50"
-                :readonly="true"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="报价类型" prop="quotationType">
               <el-radio-group v-model="form.quotationType">
                 <el-radio :value="1" border>标准品</el-radio>
@@ -449,6 +439,7 @@
                 v-model="form.customerId"
                 value-type="customerId"
                 placeholder="请选择客户"
+                @change="onCustomerChange"
               />
             </el-form-item>
           </el-col>
@@ -501,6 +492,97 @@
                 style="width: 100%"
               />
               <span v-if="exchangeRateHint" class="rate-hint">{{ exchangeRateHint }}</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <!-- 编码生成器（样品报价：面板线路自动拼编码，自动填入明细，布局同询价） -->
+        <template v-if="form.quotationType === 2">
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="客户简称">
+                <el-input v-model="qShortName" readonly placeholder="选择客户后自动获取" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="流水号">
+                <el-input v-model="qSerialNo" maxlength="3" placeholder="3位，生成时自动取号可改" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="面板结构" required>
+                <el-select v-model="qPanelType" placeholder="面板类型" style="width: 100%">
+                  <el-option label="有面板有线路" value="M" />
+                  <el-option label="仅有线路" value="S" />
+                  <el-option label="仅有面板" value="P" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="面板特征" required>
+                <el-select v-model="qPanelFeature" placeholder="面板特征" style="width: 100%">
+                  <el-option label="面板有凹凸" value="E" />
+                  <el-option label="面板有窗口" value="W" />
+                  <el-option label="有窗口也有凹凸" value="H" />
+                  <el-option label="无" value="O" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="线路类型" required>
+                <el-select v-model="qCircuitType" placeholder="线路类型" style="width: 100%">
+                  <el-option label="无(印银平key)" value="O" />
+                  <el-option label="有金属弹片" value="M" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="线路特征" required>
+                <el-select v-model="qCircuitFeature" placeholder="线路特征" style="width: 100%">
+                  <el-option label="无" value="O" />
+                  <el-option label="有发光二极体" value="L" />
+                  <el-option label="有连接器" value="C" />
+                  <el-option label="有连接器及发光二极体" value="H" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="24">
+              <el-form-item label-width="0">
+                <el-button type="primary" @click="qGenerateCode" :loading="qGenerating">
+                  <el-icon><Refresh /></el-icon> 生成编码并填入明细
+                </el-button>
+                <span class="qcode-tip" style="margin-left: 8px; font-size: 12px; color: #909399">
+                  编码格式：客户简称(3位)+流水号(3位)+面板结构(2位)+线路结构(2位)，如 JST001MEOL；名称默认与编码一致，均可手动修改
+                </span>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
+
+        <el-row>
+          <el-col :span="12">
+            <el-form-item label="销售负责人" prop="salesPersonId">
+              <el-select
+                v-model="form.salesPersonId"
+                placeholder="请选择销售负责人"
+                filterable
+                clearable
+                style="width: 100%"
+                @change="onSalesPersonChange"
+              >
+                <el-option
+                  v-for="item in salesPersonOptions"
+                  :key="item.userId"
+                  :label="item.nickName"
+                  :value="item.userId"
+                />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -571,6 +653,7 @@
           <el-table-column label="操作" min-width="80" align="center">
             <template #default="scope">
               <el-button
+                v-if="form.quotationType === 1"
                 link
                 type="danger"
                 icon="Delete"
@@ -582,7 +665,8 @@
 
         <el-row>
           <el-col :span="24" style="text-align: right">
-            <el-button type="primary" icon="Plus" @click="addItem">添加明细</el-button>
+            <!-- 样品类型明细锁单行（2026-08-08）：不显示添加明细 -->
+            <el-button v-if="form.quotationType === 1" type="primary" icon="Plus" @click="addItem">添加明细</el-button>
           </el-col>
         </el-row>
 
@@ -831,12 +915,15 @@ import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vu
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
+import { useUserStore } from '@/store/modules/user'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
-import { QuotationStatusEnum } from '@/enums/sales'
 import { customerApi } from '@/api/sales/customer'
-import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { inquiryApi } from '@/api/sales/inquiry'
 import { listProduct } from '@/api/product'
+import { roleApi } from '@/api/system/role'
+import { QuotationStatusEnum } from '@/enums/sales'
+import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { parseTime, download, formatCurrency } from '@/utils/format'
 
 // 查询参数
@@ -945,6 +1032,7 @@ const quotationList = ref<any[]>([])
 
 // 表单引用
 const quotationFormRef = ref<FormInstance>()
+const userStore = useUserStore()
 
 // 字典选项
 const quotationStatusOptions = ref(
@@ -1058,6 +1146,9 @@ const handleSortChange = (column: any) => {
 // 新增按钮操作
 const handleAdd = () => {
   resetForm()
+  // 销售负责人默认当前登录用户（可改，2026-08-08）
+  form.salesPersonId = userStore.userId
+  form.salesPersonName = userStore.nickName || ''
   open.value = true
   title.value = '新增报价单'
 }
@@ -1080,7 +1171,7 @@ const handleUpdate = (row?: any) => {
       ]
     }
     open.value = true
-    title.value = '修改报价单'
+    title.value = `修改报价单【${response.data?.quotationNo || ''}】`
   })
 }
 
@@ -1321,6 +1412,125 @@ const searchProduct = async (query: string, row: any) => {
 }
 
 // 处理产品选择变化
+// ===== 编码生成器（样品报价：面板线路自动拼编码，自动填入唯一明细行，2026-08-08） =====
+const qShortName = ref('')
+const qSerialNo = ref('')
+const qPanelType = ref('')
+const qPanelFeature = ref('')
+const qCircuitType = ref('')
+const qCircuitFeature = ref('')
+const qGenerating = ref(false)
+
+async function qLoadShortName() {
+  if (!form.customerId) return
+  try {
+    const res: any = await customerApi.getCustomer(form.customerId)
+    const short = (res as any)?.data?.customerShortName || ''
+    qShortName.value = short.substring(0, 3)
+  } catch {
+    qShortName.value = ''
+  }
+}
+
+// 客户选择：回填客户名称 + 刷新编码生成器客户简称（2026-08-08）
+function onCustomerChange(val: any, customer: any) {
+  if (customer) {
+    form.customerName = customer.customerName
+    qShortName.value = (customer.customerShortName || '').substring(0, 3)
+  } else {
+    form.customerName = ''
+    qShortName.value = ''
+  }
+}
+
+// 销售负责人选项（角色ID=7，同订单表单）
+const salesPersonOptions = ref<Array<{ userId: number; nickName: string; userName: string }>>([])
+
+async function loadSalesPersons() {
+  try {
+    const res: any = await roleApi.allocatedList({ roleId: 7, pageNum: 1, pageSize: 999 })
+    if (res.code === 200 && res.data?.records) {
+      salesPersonOptions.value = res.data.records.map((u: any) => ({
+        userId: u.userId,
+        nickName: u.nickName || '',
+        userName: u.userName,
+      }))
+    }
+  } catch (error) {
+    console.error('加载销售负责人失败:', error)
+  }
+}
+
+function onSalesPersonChange(val: number) {
+  const u = salesPersonOptions.value.find((x) => x.userId === val)
+  form.salesPersonName = u ? u.nickName : ''
+}
+
+watch(() => form.customerId, (v) => {
+  if (v) qLoadShortName()
+})
+
+// 样品类型：明细锁单行（2026-08-08）
+watch(() => form.quotationType, (v) => {
+  if (v === 2) {
+    if (form.items.length > 1) {
+      form.items.splice(1)
+      ElMessage.info('样品类型仅支持一条明细，已保留第一行')
+    }
+    if (form.items.length === 0) {
+      form.items.push({
+        productId: undefined,
+        productCode: '',
+        productName: '',
+        quantity: 1,
+        unitPrice: 0,
+        amount: 0,
+        unit: 'PCS',
+      })
+    }
+  }
+})
+
+async function qGenerateCode() {
+  if (!form.customerId) {
+    ElMessage.warning('请先选择客户（用于客户简称）')
+    return
+  }
+  if (!qShortName.value) {
+    await qLoadShortName()
+  }
+  if (qShortName.value.length !== 3) {
+    ElMessage.warning('客户简称不足3位，无法生成编码')
+    return
+  }
+  qGenerating.value = true
+  try {
+    const res: any = await inquiryApi.nextSerial(qShortName.value)
+    qSerialNo.value = (res as any)?.data || '001'
+  } catch {
+    qSerialNo.value = '001'
+  } finally {
+    qGenerating.value = false
+  }
+  const customerPart = qShortName.value
+  const serialPart = qSerialNo.value || ''
+  const panelPart = `${qPanelType.value}${qPanelFeature.value}`
+  const circuitPart = `${qCircuitType.value}${qCircuitFeature.value}`
+  if (customerPart.length === 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
+    // 自动填入唯一明细行（样品类型单行明细）
+    const row = form.items[0]
+    if (!row) {
+      ElMessage.warning('请先添加明细')
+      return
+    }
+    row.productCode = `${customerPart}${serialPart}${panelPart}${circuitPart}`
+    row.productName = row.productCode
+    ElMessage.success('编码与名称已填入明细')
+  } else {
+    ElMessage.warning('请完整选择面板结构/特征、线路类型/特征')
+  }
+}
+
 const handleProductChange = (item: any) => {
   // 根据选择的产品编码自动填充产品名称和产品ID
   const selectedProduct = productOptions.value.find(
@@ -1549,6 +1759,7 @@ onMounted(() => {
     }
   })
   loadStatistics()
+  loadSalesPersons()
 })
 
 // 加载统计面板（DEV-594）

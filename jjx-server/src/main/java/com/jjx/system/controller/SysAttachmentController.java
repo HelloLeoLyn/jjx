@@ -37,8 +37,10 @@ public class SysAttachmentController {
     public Result<Long> upload(@RequestParam("file") MultipartFile file,
                                @RequestParam("bizType") String bizType,
                                @RequestParam("bizId") Long bizId,
-                               @RequestParam(required = false) String traceId) {
-        Long id = attachmentService.uploadAttachment(file, bizType, bizId, traceId);
+                               @RequestParam(required = false) String traceId,
+                               @RequestParam(required = false) String category,
+                               @RequestParam(required = false) String version) {
+        Long id = attachmentService.uploadAttachment(file, bizType, bizId, traceId, category, version);
         return Result.success(id);
     }
 
@@ -46,8 +48,10 @@ public class SysAttachmentController {
     @PostMapping("/batch-upload")
     public Result<List<Long>> batchUpload(@RequestParam("files") List<MultipartFile> files,
                                           @RequestParam("bizType") String bizType,
-                                          @RequestParam("bizId") Long bizId) {
-        List<Long> ids = attachmentService.batchUploadAttachments(files, bizType, bizId);
+                                          @RequestParam("bizId") Long bizId,
+                                          @RequestParam(required = false) String category,
+                                          @RequestParam(required = false) String version) {
+        List<Long> ids = attachmentService.batchUploadAttachments(files, bizType, bizId, category, version);
         return Result.success(ids);
     }
 
@@ -64,10 +68,49 @@ public class SysAttachmentController {
         return Result.success(attachmentService.getAttachmentsByTraceId(traceId));
     }
 
+    @Operation(summary = "上传产品工程文件（产品文件库，DEV-734）")
+    @PostMapping("/upload-product")
+    public Result<Long> uploadProduct(@RequestParam("file") MultipartFile file,
+                                      @RequestParam("productCode") String productCode,
+                                      @RequestParam("category") String category,
+                                      @RequestParam(required = false) String version) {
+        return Result.success(attachmentService.uploadProductFile(file, productCode, category, version));
+    }
+
+    @Operation(summary = "获取产品文件库（按产品编码）")
+    @GetMapping("/product/{productCode}")
+    public Result<List<SysAttachment>> productFiles(@PathVariable String productCode) {
+        return Result.success(attachmentService.getProductFiles(productCode));
+    }
+
     @Operation(summary = "删除附件")
     @DeleteMapping("/{id}")
     public Result<Boolean> delete(@PathVariable Long id) {
         return Result.success(attachmentService.deleteAttachment(id));
+    }
+
+    @Operation(summary = "回收站列表（已删除附件）")
+    @GetMapping("/recycle-list")
+    public Result<List<SysAttachment>> recycleList() {
+        return Result.success(attachmentService.getRecycled());
+    }
+
+    @Operation(summary = "恢复附件（回收站还原）")
+    @PostMapping("/restore/{id}")
+    public Result<Boolean> restore(@PathVariable Long id) {
+        return Result.success(attachmentService.restoreAttachment(id));
+    }
+
+    @Operation(summary = "彻底删除（回收站）")
+    @DeleteMapping("/permanent/{id}")
+    public Result<Boolean> permanent(@PathVariable Long id) {
+        return Result.success(attachmentService.permanentDelete(id));
+    }
+
+    @Operation(summary = "清理回收站过期附件（默认30天）")
+    @PostMapping("/permanent-expired")
+    public Result<Integer> permanentExpired(@RequestParam(required = false, defaultValue = "30") Integer days) {
+        return Result.success(attachmentService.permanentDeleteExpired(days));
     }
 
     @Operation(summary = "根据业务关联删除附件")

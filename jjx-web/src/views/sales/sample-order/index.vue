@@ -206,18 +206,30 @@
               <div v-if="detailData.rejectReason" style="margin-top:8px;color:#f56c6c;font-size:13px">拒单原因：{{ detailData.rejectReason }}</div>
             </el-card>
 
-            <!-- 工序历史 -->
+            <!-- 工序计划 -->
             <el-card shadow="never" style="margin-bottom:16px">
-              <template #header><span style="font-weight:600">工序历史</span></template>
+              <template #header><span style="font-weight:600">工序计划</span></template>
               <el-timeline v-if="processList.length > 0" style="padding-left:2px">
-                <el-timeline-item v-for="(p, i) in processList" :key="p.processId" :timestamp="formatTime(p.startTime)" placement="top" :type="i === processList.length - 1 ? 'primary' : 'info'">
+                <el-timeline-item
+                  v-for="(p, i) in processList" :key="p.processId"
+                  :timestamp="formatTime(p.startTime)" placement="top"
+                  :type="p.status === 1 ? 'primary' : p.status === 2 ? 'success' : 'info'"
+                >
                   <div style="font-size:13px">
                     <span style="font-weight:600">{{ p.processName }}</span>
+                    <el-tag v-if="p.status === 2" size="small" type="success" style="margin-left:6px">✓ 已完成</el-tag>
+                    <el-tag v-else-if="p.status === 1" size="small" type="warning" style="margin-left:6px">⏳ 进行中</el-tag>
+                    <el-tag v-else size="small" type="info" style="margin-left:6px">待做</el-tag>
+                    <span v-if="p.durationMinutes" style="margin-left:8px;color:#606266;font-size:12px">⏱ {{ p.durationMinutes }}分钟</span>
                     <span v-if="p.operator" style="margin-left:8px;color:#909399;font-size:12px">操作人：{{ p.operator }}</span>
+                    <div v-if="p.processNote" style="color:#606266;font-size:12px;margin-top:2px">🔧 {{ p.processNote }}</div>
+                    <div v-if="p.materials" style="margin-top:2px">
+                      <el-tag v-for="(m, mi) in parseProcessMaterials(p.materials)" :key="mi" size="small" type="info" style="margin-right:4px">{{ m.name }}{{ m.spec ? ' ' + m.spec : '' }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag>
+                    </div>
                   </div>
                 </el-timeline-item>
               </el-timeline>
-              <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无工序历史</div>
+              <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无工序计划（在打样工作台选择作业项目生成）</div>
             </el-card>
 
             <!-- 成本/工时 -->
@@ -319,13 +331,7 @@
       </template>
     </el-dialog>
 
-    <!-- 工程打样工作台 -->
-    <EngineeringWorkbench
-      v-model:visible="workbenchVisible"
-      :card="workbenchCard"
-      @saved="onWorkbenchSaved"
-    />
-
+    <!-- 工程打样工作台（独立路由页，按钮跳转） -->
     <!-- 操作结果弹窗 -->
     <OperationResultDialog v-model:visible="resultVisible" :data="resultData" />
     <!-- 操作预览器 -->
@@ -340,26 +346,38 @@
 
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
+
+    <!-- 转量产 · 就绪检查（DEV-xxx） -->
+    <SampleConvertCheckDialog
+      v-model="convertDialogVisible"
+      :order-id="convertRow?.orderId"
+      :order-no="convertRow?.orderNo"
+      @success="getList"
+      @go-transfer="onGoTransfer"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated } from 'vue'
+import { useRouter } from 'vue-router'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
-import EngineeringWorkbench from './components/EngineeringWorkbench.vue'
 import OperationResultDialog from '@/components/OperationResultDialog/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 
 defineOptions({ name: 'SalesSampleOrder' })
+
+const router = useRouter()
 
 // ==================== 数据 ====================
 const loading = ref(false)
@@ -376,8 +394,6 @@ const queryParams = reactive({
 const createVisible = ref(false)
 const detailVisible = ref(false)
 const detailTab = ref('basic')
-const workbenchVisible = ref(false)
-const workbenchCard = ref<any>(null)
 
 // 操作结果弹窗
 const resultVisible = ref(false)
@@ -401,18 +417,9 @@ const isEngineerRole = computed(() => {
   return roles.some((r: any) => String(r) === '9' || String(r).includes('工程') || String(r) === 'engineering')
 })
 
-// 打开工程打样工作台
+// 打开工程打样工作台（独立路由页，标签页打开）
 function openWorkbench(row: any) {
-  workbenchCard.value = row
-  workbenchVisible.value = true
-}
-
-// 工作台保存后刷新列表（详情未打开时reloadDetail会报错，仅刷新列表）
-function onWorkbenchSaved() {
-  getList()
-  if (detailVisible.value && detailData.value) {
-    reloadDetail()
-  }
+  router.push({ path: '/engineering-workbench/workbench', query: { orderId: row.orderId } })
 }
 const detailData = ref<any>(null)
 
@@ -524,10 +531,12 @@ async function reloadDetail() {
     detailData.value = res.data
     engineeringForm.note = res.data.engineeringNote || ''
     engineeringForm.process = res.data.currentProcess || ''
-    // 加载工序历史
+    // 加载工序计划（按顺序排序）
     try {
       const pRes = await sampleOrderApi.listProcesses(detailData.value.orderId)
-      processList.value = pRes.data || []
+      const list: any[] = pRes.data || []
+      list.sort((a, b) => (a.processOrder || 999) - (b.processOrder || 999) || (a.processId || 0) - (b.processId || 0))
+      processList.value = list
     } catch {
       processList.value = []
     }
@@ -604,6 +613,17 @@ function parseBom(json?: string) {
 
 // 解析工序快照 JSON
 function parseProcess(json?: string) {
+  if (!json) return []
+  try {
+    const arr = JSON.parse(json)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+// 解析工序材料 JSON
+function parseProcessMaterials(json?: string) {
   if (!json) return []
   try {
     const arr = JSON.parse(json)
@@ -1019,12 +1039,25 @@ async function handleTransfer(row: any) {
 }
 
 async function handleConvert(row: any) {
-  openPreview('sample.convert', row)
+  // 转量产：就绪检查（产品/BOM/工艺路线/菲林清单）
+  convertRow.value = row
+  convertDialogVisible.value = true
+}
+
+// 校验界面里点「去资料转移」→ 关闭弹窗并触发资料转移预览器
+function onGoTransfer() {
+  if (convertRow.value) {
+    handleTransfer(convertRow.value)
+  }
 }
 
 // 查看流水
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')
+
+// 转量产标准化窗口
+const convertDialogVisible = ref(false)
+const convertRow = ref<any>(null)
 function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''
   traceDrawerVisible.value = true
@@ -1040,6 +1073,7 @@ onMounted(() => {
     terminal: false,
   }))
 })
+onActivated(() => getList())
 </script>
 
 <style scoped lang="scss">

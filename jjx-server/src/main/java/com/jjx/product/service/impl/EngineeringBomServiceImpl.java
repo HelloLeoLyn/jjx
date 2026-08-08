@@ -44,13 +44,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private final EngineeringBomItemMapper productBomItemMapper;
     private final ProductMapper productMapper;
     private final EngineeringBomConverter bomConverter;
+    private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     public EngineeringBomServiceImpl(EngineeringBomMapper productBomMapper,
                                  EngineeringBomItemMapper productBomItemMapper,
-                                 ProductMapper productMapper, EngineeringBomConverter bomConverter) {
+                                 ProductMapper productMapper, EngineeringBomConverter bomConverter,
+                                 com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper) {
         this.productBomMapper = productBomMapper;
         this.productBomItemMapper = productBomItemMapper;
         this.productMapper = productMapper;
         this.bomConverter = bomConverter;
+        this.productionOrderMapper = productionOrderMapper;
     }
 
     @Override
@@ -249,9 +252,27 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             return false;
         }
 
-        // 如果BOM已审批，不允许删除
-        if ("approved".equals(bom.getApproveStatus())) {
-            throw new BusinessException("BOM已审批，不允许删除");
+        // 状态校验（2026-08-08 修复：原 "approved".equals(Integer) 永远不生效，已批准BOM可删）
+        Integer st = bom.getApproveStatus();
+        if (st != null && st == 3) {
+            throw new BusinessException("BOM已批准，不允许删除（如需废弃请走版本化/作废）");
+        }
+        if (st != null && st == 2) {
+            throw new BusinessException("BOM审核中，不允许删除");
+        }
+
+        // 被引用检查（2026-08-08：产品 current_bom_id / 生产工单 bom_id）
+        Long prodRef = productMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.Product>()
+                        .eq(com.jjx.product.domain.entity.Product::getCurrentBomId, bomId));
+        Long orderRef = productionOrderMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionOrder>()
+                        .eq(com.jjx.production.domain.entity.ProductionOrder::getBomId, bomId));
+        if (prodRef != null && prodRef > 0) {
+            throw new BusinessException("BOM已被产品档案引用（current_bom_id），不允许删除");
+        }
+        if (orderRef != null && orderRef > 0) {
+            throw new BusinessException("BOM已被生产工单引用，不允许删除");
         }
 
         // 删除BOM明细

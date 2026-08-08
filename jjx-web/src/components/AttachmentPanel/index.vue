@@ -28,10 +28,12 @@
               target="_blank"
               class="att-name"
             >
-              {{ att.fileName }}
+              {{ att.fileName || '-' }}
             </el-link>
             <div class="att-sub">
               <span>{{ formatSize(att.fileSize) }}</span>
+              <span v-if="att.category" class="att-cat">· {{ att.category }}</span>
+              <span v-if="att.version" class="att-cat">· v{{ att.version }}</span>
               <span v-if="att.createBy" class="att-uploader">· {{ att.createBy }}</span>
               <span v-if="att.createTime" class="att-time">· {{ formatTime(att.createTime) }}</span>
             </div>
@@ -251,6 +253,10 @@ defineExpose({ loadAttachments })
   color: #909399;
   font-size: 11px;
   margin-top: 2px;
+}
+
+.att-cat {
+  color: #409eff;
 }
 
 .att-actions {

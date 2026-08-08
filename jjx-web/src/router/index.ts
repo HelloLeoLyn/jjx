@@ -293,6 +293,20 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
+  // 工程打样工作台（隐藏路由：打样平台按钮进入，侧边栏不显示，标签页打开）
+  {
+    path: '/engineering-workbench',
+    component: () => import('@/layout/index.vue'),
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'workbench',
+        name: 'SampleWorkbenchPage',
+        component: () => import('@/views/engineering/sample-workbench/workbench.vue'),
+        meta: { hidden: true, title: '工程打样工作台', permission: 'engineering:sample:workbench' },
+      },
+    ],
+  },
 ]
 
 const router = createRouter({

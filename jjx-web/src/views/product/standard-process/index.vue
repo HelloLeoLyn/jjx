@@ -30,9 +30,9 @@
           >
             <el-option
               v-for="item in processTypeOptions"
-              :key="item.value"
+              :key="item.itemValue"
               :label="item.label"
-              :value="item.value"
+              :value="item.itemValue"
             />
           </el-select>
         </el-form-item>
@@ -45,9 +45,9 @@
           >
             <el-option
               v-for="item in processCategoryOptions"
-              :key="item.value"
+              :key="item.itemValue"
               :label="item.label"
-              :value="item.value"
+              :value="item.itemValue"
             />
           </el-select>
         </el-form-item>
@@ -73,8 +73,62 @@
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
         <el-button type="primary" icon="Plus" @click="handleAdd">新增标准工序</el-button>
+        <el-button type="success" plain icon="Upload" @click="openImportDialog">导入</el-button>
       </div>
     </el-card>
+
+    <!-- 导入对话框（2026-08-08，照物料导入模式） -->
+    <el-dialog title="导入标准工序" v-model="importDialogVisible" width="500px" append-to-body>
+      <el-upload
+        ref="uploadRef"
+        :auto-upload="false"
+        :limit="1"
+        :on-change="handleFileChange"
+        :on-exceed="handleExceed"
+        accept=".xlsx,.xls"
+        drag
+      >
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+        <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
+        <template #tip>
+          <div class="el-upload__tip">
+            <p>仅支持 .xlsx / .xls 格式的Excel文件</p>
+            <p>表头需包含：工序编码、工序名称、工序类型、工序类别等</p>
+            <el-button link type="primary" @click="handleDownloadTemplate">
+              下载导入模板
+            </el-button>
+          </div>
+        </template>
+      </el-upload>
+      <template #footer>
+        <el-button @click="handleImportCancel">取消</el-button>
+        <el-button type="primary" :loading="importLoading" @click="handleImport">
+          开始导入
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入结果弹窗（失败明细可下载） -->
+    <el-dialog title="导入结果" v-model="importResultVisible" width="640px" append-to-body>
+      <template v-if="importResult">
+        <el-alert
+          :title="`导入完成：成功 ${importResult.successCount} 条，跳过重复 ${importResult.skipCount} 条，失败 ${importResult.failCount} 条`"
+          :type="importResult.failCount > 0 ? 'warning' : 'success'"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 12px"
+        />
+        <el-table v-if="importResult.failDetails?.length > 0" :data="importResult.failDetails" border max-height="360" size="small" style="width: 100%">
+          <el-table-column label="行号" prop="rowIndex" width="80" align="center" />
+          <el-table-column label="工序" prop="materialName" min-width="160" show-overflow-tooltip />
+          <el-table-column label="失败原因" prop="reason" min-width="220" show-overflow-tooltip />
+        </el-table>
+      </template>
+      <template #footer>
+        <el-button type="primary" plain @click="handleDownloadFail">下载失败明细</el-button>
+        <el-button type="primary" @click="importResultVisible = false; handleImportCancel()">完成</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
@@ -110,7 +164,7 @@
         <el-table-column prop="standardMachineHours" label="机器工时" width="90" align="right" />
 
         <el-table-column prop="displayOrder" label="排序" width="60" align="center" />
-        <el-table-column prop="isEnabled" label="启用状态" width="80" align="center">
+        <el-table-column prop="isEnabled" label="启用状态" width="120" align="center">
           <template #default="scope">
             <el-tag :type="scope.row.isEnabled === 1 ? 'success' : 'info'" size="small">
               {{ scope.row.isEnabled === 1 ? '启用' : '禁用' }}
@@ -162,8 +216,10 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { UploadFilled } from '@element-plus/icons-vue'
+import * as XLSX from 'xlsx'
 import { standardProcessApi } from '@/api/product/standardProcess'
-import { ProcessTypeEnum, ProcessCategoryEnum } from '@/enums/product'
+import { useDict } from '@/composables/useDict'
 import type {
   StandardProcessQueryParams,
   StandardProcessItem,
@@ -172,16 +228,16 @@ import type { PageResult } from '@/types'
 
 const router = useRouter()
 
-// 工序类型/类别选项（枚举）
-const processTypeOptions = ProcessTypeEnum.items
-const processCategoryOptions = ProcessCategoryEnum.items
+// 工序类型/类别选项（字典维护）
+const { options: processTypeOptions } = useDict('process_type')
+const { options: processCategoryOptions } = useDict('process_category')
 
 function getProcessTypeLabel(value: string): string {
-  return ProcessTypeEnum.getLabel(value)
+  return processTypeOptions.value.find((i) => i.itemValue === value)?.label || value || '未知'
 }
 
 function getProcessCategoryLabel(value: string): string {
-  return ProcessCategoryEnum.getLabel(value)
+  return processCategoryOptions.value.find((i) => i.itemValue === value)?.label || value || '未知'
 }
 
 // ==================== 查询参数 ====================
@@ -309,6 +365,90 @@ const handleDelete = (row: StandardProcessItem) => {
 onMounted(() => {
   loadData()
 })
+
+// ==================== 导入（2026-08-08，照物料导入模式） ====================
+const importDialogVisible = ref(false)
+const importResultVisible = ref(false)
+const importResult = ref<any>(null)
+const importLoading = ref(false)
+const uploadRef = ref<any>()
+const importFile = ref<File | null>(null)
+
+function openImportDialog() {
+  importDialogVisible.value = true
+}
+
+const handleFileChange = (file: any) => {
+  importFile.value = file.raw
+}
+
+const handleExceed = (files: File[]) => {
+  uploadRef.value?.clearFiles()
+  uploadRef.value?.handleStart(files[0])
+}
+
+const handleImportCancel = () => {
+  importDialogVisible.value = false
+  importFile.value = null
+  uploadRef.value?.clearFiles()
+}
+
+const handleImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请先选择要导入的文件')
+    return
+  }
+  importLoading.value = true
+  try {
+    const res: any = await standardProcessApi.importProcesses(importFile.value)
+    const data = res.data as any
+    importResult.value = data
+    importResultVisible.value = true
+    if (!data?.failDetails?.length) {
+      ElMessage.success(`导入完成：成功 ${data?.successCount ?? 0} 条，跳过 ${data?.skipCount ?? 0} 条`)
+    }
+    loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '导入失败')
+  } finally {
+    importLoading.value = false
+    importDialogVisible.value = false
+    importFile.value = null
+    uploadRef.value?.clearFiles()
+  }
+}
+
+// 下载模板
+const handleDownloadTemplate = async () => {
+  try {
+    const res: any = await standardProcessApi.importTemplate()
+    // request 拦截器对 blob 直接返回 Blob 本身（照物料页写法）
+    const blob = new Blob([res as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '标准工序导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    ElMessage.error('模板下载失败')
+  }
+}
+
+// 下载失败明细
+const handleDownloadFail = () => {
+  const details = importResult.value?.failDetails || []
+  if (details.length === 0) return
+  const wb = XLSX.utils.book_new()
+  const rows = details.map((d: any) => ({
+    行号: d.rowIndex,
+    工序: d.materialName,
+    失败原因: d.reason,
+  }))
+  const ws = XLSX.utils.json_to_sheet(rows)
+  XLSX.utils.book_append_sheet(wb, ws, '失败明细')
+  XLSX.writeFile(wb, `标准工序导入失败明细_${new Date().toISOString().slice(0, 10)}.xlsx`)
+}
 </script>
 
 <style scoped>

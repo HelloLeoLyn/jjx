@@ -6,12 +6,26 @@ import com.jjx.product.domain.dto.ProductStandardProcessQueryDTO;
 import com.jjx.product.domain.entity.ProductStandardProcess;
 import com.jjx.product.domain.vo.ProductStandardProcessVO;
 import com.jjx.product.service.IProductStandardProcessService;
+import com.jjx.system.annotation.Log;
+import com.jjx.system.annotation.BusinessType;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -121,6 +135,24 @@ public class ProductStandardProcessController {
     }
 
     // ==================== 编码生成 ====================
+
+    @Operation(summary = "标准工序导入（2026-08-08，照物料导入模式：模板/校验/失败明细）")
+    @Log(module = "标准工序管理", businessType = BusinessType.IMPORT, bizType = "'standard_process'", bizId = "'batch'")
+    @SaCheckPermission("engineering:standardProcess:add")
+    @PostMapping("/import")
+    public Result<com.jjx.inventory.dto.vo.MaterialImportResultVO> importProcesses(
+            @RequestParam("file") MultipartFile file) {
+        java.util.List<com.jjx.product.dto.imports.StandardProcessImportDTO> importList =
+                com.jjx.common.utils.ExcelUtils.importExcel(file, com.jjx.product.dto.imports.StandardProcessImportDTO.class);
+        return Result.success(processService.importStandardProcesses(importList));
+    }
+
+    @Operation(summary = "下载标准工序导入模板")
+    @PostMapping("/importTemplate")
+    public void importTemplate(HttpServletResponse response) {
+        com.jjx.common.utils.ExcelUtils.downloadTemplate(response,
+                com.jjx.product.dto.imports.StandardProcessImportDTO.class, "标准工序导入模板");
+    }
 
     @Operation(summary = "生成下一个工序编码")
     @GetMapping("/generate-code")

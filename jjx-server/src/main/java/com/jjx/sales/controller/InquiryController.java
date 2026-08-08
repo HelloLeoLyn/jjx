@@ -59,6 +59,12 @@ public class InquiryController extends BaseController {
     /**
      * 新增询价单
      */
+    @Operation(summary = "编码生成器：按客户简称取下一个流水号（产品编码第4-6位）")
+    @GetMapping("/next-serial")
+    public Result<String> nextSerial(@RequestParam String customerShort) {
+        return Result.success(inquiryService.nextProductSerial(customerShort));
+    }
+
     @Operation(summary = "新增询价单")
     @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = "0")
     @SaCheckPermission("sales:inquiry:add")

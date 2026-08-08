@@ -25,6 +25,9 @@ export interface InquiryBase {
   inquiryDate: string
   expectedQuantity?: number
   productId?: number
+  productCode?: string
+  productName?: string
+  customerShortName?: string
   productDescription?: string
   keyCount?: number
   sizeDescription?: string
@@ -64,6 +67,15 @@ export const inquiryApi = {
     return request({
       url: `/sales/inquiry/${inquiryId}`,
       method: 'get',
+    })
+  },
+
+  // 编码生成器：按客户简称取下一个流水号
+  nextSerial(customerShort: string): AxiosPromise<string> {
+    return request({
+      url: '/sales/inquiry/next-serial',
+      method: 'get',
+      params: { customerShort },
     })
   },
 

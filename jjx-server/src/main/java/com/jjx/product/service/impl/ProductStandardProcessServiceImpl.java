@@ -425,4 +425,113 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
 
         return wrapper;
     }
+
+    // ==================== 导入（2026-08-08） ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public com.jjx.inventory.dto.vo.MaterialImportResultVO importStandardProcesses(
+            java.util.List<com.jjx.product.dto.imports.StandardProcessImportDTO> importList) {
+        com.jjx.inventory.dto.vo.MaterialImportResultVO result = new com.jjx.inventory.dto.vo.MaterialImportResultVO();
+        if (importList == null || importList.isEmpty()) {
+            return result;
+        }
+
+        // 文件内重复检测（工序编码）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (com.jjx.product.dto.imports.StandardProcessImportDTO dto : importList) {
+            String code = dto.getProcessCode() == null ? "" : dto.getProcessCode().trim();
+            dupCountMap.merge(code, 1, Integer::sum);
+        }
+
+        for (int i = 0; i < importList.size(); i++) {
+            com.jjx.product.dto.imports.StandardProcessImportDTO dto = importList.get(i);
+            int excelRow = i + 2; // 第1行表头，数据从第2行开始
+            String code = dto.getProcessCode() == null ? "" : dto.getProcessCode().trim();
+            try {
+                // 必填校验
+                if (code.isEmpty()) {
+                    result.addFail(excelRow, dto.getProcessName(), "工序编码不能为空");
+                    continue;
+                }
+                if (dto.getProcessName() == null || dto.getProcessName().trim().isEmpty()) {
+                    result.addFail(excelRow, code, "工序名称不能为空");
+                    continue;
+                }
+                // 文件内重复
+                if (dupCountMap.getOrDefault(code, 0) > 1) {
+                    result.addFail(excelRow, code, "文件内重复行（工序编码出现 " + dupCountMap.get(code) + " 次），请删除重复行或合并");
+                    continue;
+                }
+                // 类型/类别枚举校验
+                String type = dto.getProcessType() == null ? "" : dto.getProcessType().trim();
+                if (!type.isEmpty() && !com.jjx.product.enums.ProcessTypeEnum.isValidCode(type)) {
+                    result.addFail(excelRow, code, "工序类型不合法: " + type + "（MAIN_PAD/UP_LINE/DOWN_LINE/PRINTING/CUTTING/LAMINATING/TESTING/PACKAGING）");
+                    continue;
+                }
+                String category = dto.getProcessCategory() == null ? "" : dto.getProcessCategory().trim();
+                if (!category.isEmpty() && !com.jjx.product.enums.ProcessCategoryEnum.isValidCode(category)) {
+                    result.addFail(excelRow, code, "工序类别不合法: " + category + "（PREPARATION/MAIN/FINISHING/QUALITY）");
+                    continue;
+                }
+                // 工时/机时/排序数字解析
+                java.math.BigDecimal laborHours = parseDecimal(dto.getStandardLaborHours());
+                java.math.BigDecimal machineHours = parseDecimal(dto.getStandardMachineHours());
+                Integer displayOrder = parseInteger(dto.getDisplayOrder());
+                Integer isEnabled = parseInteger(dto.getIsEnabled());
+                if (isEnabled == null) isEnabled = 1;
+                if (isEnabled != 0 && isEnabled != 1) {
+                    result.addFail(excelRow, code, "启用列只能填 1 或 0");
+                    continue;
+                }
+
+                // 库内判重（按工序编码）
+                Long existCount = processMapper.selectCount(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.ProductStandardProcess>()
+                                .eq(com.jjx.product.domain.entity.ProductStandardProcess::getProcessCode, code));
+                if (existCount != null && existCount > 0) {
+                    result.setSkipCount(result.getSkipCount() + 1);
+                    continue;
+                }
+
+                com.jjx.product.domain.entity.ProductStandardProcess p = new com.jjx.product.domain.entity.ProductStandardProcess();
+                p.setProcessCode(code);
+                p.setProcessName(dto.getProcessName().trim());
+                p.setProcessType(type.isEmpty() ? null : type);
+                p.setProcessCategory(category.isEmpty() ? null : category);
+                p.setStandardLaborHours(laborHours);
+                p.setStandardMachineHours(machineHours);
+                p.setProcessParamTemplate(dto.getProcessParamTemplate());
+                p.setSkillRequirement(dto.getSkillRequirement());
+                p.setEquipmentType(dto.getEquipmentType());
+                p.setQualityStandard(dto.getQualityStandard());
+                p.setDescription(dto.getDescription());
+                p.setDisplayOrder(displayOrder == null ? 0 : displayOrder);
+                p.setIsEnabled(isEnabled);
+                processMapper.insert(p);
+                result.setSuccessCount(result.getSuccessCount() + 1);
+            } catch (Exception e) {
+                result.addFail(excelRow, code, "导入失败: " + e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    private java.math.BigDecimal parseDecimal(String v) {
+        if (v == null || v.trim().isEmpty()) return null;
+        try {
+            return new java.math.BigDecimal(v.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer parseInteger(String v) {
+        if (v == null || v.trim().isEmpty()) return null;
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 }

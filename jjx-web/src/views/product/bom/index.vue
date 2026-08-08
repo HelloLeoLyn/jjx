@@ -73,7 +73,7 @@
             type="danger"
             plain
             icon="Delete"
-            :disabled="multiple"
+            :disabled="multiple || !canDeleteSelected"
             @click="() => handleDelete()"
             >删除</el-button
           >
@@ -149,6 +149,7 @@
             </el-tooltip>
             <el-tooltip content="删除" placement="top">
               <el-button
+                v-if="ProductEnum.bomStatus.canDo(scope.row.approveStatus, ProductActions.DELETE)"
                 link
                 type="danger"
                 icon="Delete"
@@ -310,7 +311,13 @@ const handleSelectionChange = (selection: EngineeringBom[]) => {
   ids.value = selection.map((item) => item.bomId)
   single.value = selection.length !== 1
   multiple.value = !selection.length
+  // 勾选中有不可删除状态（已批准/审核中等）则禁用批量删除（2026-08-08）
+  canDeleteSelected.value = selection.length > 0 && selection.every((b) =>
+    ProductEnum.bomStatus.canDo(b.approveStatus, ProductActions.DELETE))
 }
+
+// 批量删除可用性（2026-08-08）
+const canDeleteSelected = ref(true)
 
 // 新增按钮操作
 const handleAdd = () => {

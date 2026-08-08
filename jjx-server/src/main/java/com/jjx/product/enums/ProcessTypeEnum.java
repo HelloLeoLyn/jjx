@@ -11,14 +11,24 @@ import java.util.stream.Collectors;
  */
 @Getter
 public enum ProcessTypeEnum {
-    MAIN_PAD("MAIN_PAD", "面板", "primary"),
+    PRINTING("PRINTING", "印刷", "primary"),
+    PUNCH_HOLE("PUNCH_HOLE", "冲孔", "primary"),
+    PUNCH_SHAPE("PUNCH_SHAPE", "冲型", "primary"),
+    LAMINATING("LAMINATING", "贴合", "warning"),
+    CUTTING("CUTTING", "裁切", "success"),
+    GASKET("GASKET", "垫片", "info"),
+    PROTECTIVE_FILM("PROTECTIVE_FILM", "保护膜", "info"),
+    SPACER("SPACER", "隔片", "info"),
+    CLEANING("CLEANING", "清洁", "info"),
+    FILM_APPLY("FILM_APPLY", "贴膜", "primary"),
+    FILM_REMOVE("FILM_REMOVE", "撕膜", "warning"),
+    RESISTOR("RESISTOR", "电阻", "danger"),
+    CONNECTOR("CONNECTOR", "连接器", "primary"),
+    QC("QC", "品检", "success"),
+    PANEL("PANEL", "面板", "primary"),
     UP_LINE("UP_LINE", "上线", "primary"),
     DOWN_LINE("DOWN_LINE", "下线", "primary"),
-    PRINTING("PRINTING", "印刷", "primary"),
-    CUTTING("CUTTING", "模切", "success"),
-    LAMINATING("LAMINATING", "贴合", "warning"),
-    TESTING("TESTING", "测试", "info"),
-    PACKAGING("PACKAGING", "包装", "danger");
+    OTHER("OTHER", "其他", "info");
 
     private final String code;
     private final String name;

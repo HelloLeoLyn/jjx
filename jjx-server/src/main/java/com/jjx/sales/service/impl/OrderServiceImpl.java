@@ -205,11 +205,9 @@ public class OrderServiceImpl implements IOrderService {
             throw new BusinessException("已确认或生产中的订单不能删除");
         }
 
-        // 使用逻辑删除
-        SalesOrder deleteOrder = new SalesOrder();
-        deleteOrder.setOrderId(orderId);
-        deleteOrder.setDeleted(1);
-        return orderMapper.updateById(deleteOrder);
+        // 逻辑删除（MP @TableLogic：deleteById 自动 SET deleted=1 WHERE id AND deleted=0）
+        // 注意：不能 setDeleted(1)+updateById —— MP 逻辑删除字段不参与 UPDATE SET，那样 deleted 不会变（同报价单删除修复）
+        return orderMapper.deleteById(orderId);
     }
 
     /**

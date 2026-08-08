@@ -3,6 +3,8 @@ package com.jjx.system.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.product.domain.entity.Product;
+import com.jjx.product.mapper.ProductMapper;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.system.service.ISysAttachmentService;
@@ -19,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,9 +39,19 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Value("${file.upload.path:./upload}")
     private String uploadBasePath;
 
+    private final SysAttachmentMapper attachmentMapper;
+    private final ProductMapper productMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId) {
+        return uploadAttachment(file, bizType, bizId, traceId, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId,
+                                 String category, String version) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("上传文件不能为空");
         }
@@ -70,6 +83,8 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setBizType(bizType);
         attachment.setBizId(bizId);
         attachment.setTraceId(traceId);
+        attachment.setCategory(category);
+        attachment.setVersion(version);
         attachment.setFileName(originalName != null ? originalName : "unknown");
         attachment.setFilePath(relativePath);
         attachment.setFileSize(file.getSize());
@@ -83,10 +98,17 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<Long> batchUploadAttachments(List<MultipartFile> files, String bizType, Long bizId) {
+        return batchUploadAttachments(files, bizType, bizId, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<Long> batchUploadAttachments(List<MultipartFile> files, String bizType, Long bizId,
+                                             String category, String version) {
         List<Long> ids = new ArrayList<>();
         if (files == null) return ids;
         for (MultipartFile file : files) {
-            ids.add(uploadAttachment(file, bizType, bizId, null));
+            ids.add(uploadAttachment(file, bizType, bizId, null, category, version));
         }
         return ids;
     }
@@ -112,22 +134,102 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long uploadProductFile(MultipartFile file, String productCode, String category, String version) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("上传文件不能为空");
+        }
+        if (productCode == null || productCode.trim().isEmpty()) {
+            throw new BusinessException("产品编码不能为空");
+        }
+        if (category == null || category.trim().isEmpty()) {
+            throw new BusinessException("文件类别不能为空");
+        }
+        // 校验产品存在
+        Product product = productMapper.selectOne(
+                new LambdaQueryWrapper<Product>().eq(Product::getProductCode, productCode.trim()));
+        if (product == null) {
+            throw new BusinessException("产品不存在: " + productCode);
+        }
+
+        // 存储：upload/product/{产品编码}/{类别}/{yyyy-MM-dd}/{原始文件名}（工程部习惯保留原名，重名加序号）
+        String originalName = file.getOriginalFilename();
+        if (originalName == null || originalName.trim().isEmpty()) {
+            originalName = "unknown";
+        }
+        String dateDir = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String relativePath = "product" + File.separator + productCode.trim() + File.separator
+                + category.trim() + File.separator + dateDir + File.separator + originalName;
+        String fullPath = uploadBasePath + File.separator + relativePath;
+
+        // 重名处理：追加序号 (1)/(2)...
+        Path target = Paths.get(fullPath);
+        if (Files.exists(target)) {
+            int dot = originalName.lastIndexOf('.');
+            String stem = dot > 0 ? originalName.substring(0, dot) : originalName;
+            String ext = dot > 0 ? originalName.substring(dot) : "";
+            int idx = 1;
+            while (Files.exists(target)) {
+                relativePath = "product" + File.separator + productCode.trim() + File.separator
+                        + category.trim() + File.separator + dateDir + File.separator
+                        + stem + "(" + idx + ")" + ext;
+                target = Paths.get(uploadBasePath + File.separator + relativePath);
+                idx++;
+            }
+        }
+
+        try {
+            Path dir = target.getParent();
+            if (dir != null) {
+                Files.createDirectories(dir);
+            }
+            file.transferTo(target);
+        } catch (IOException e) {
+            log.error("产品文件上传失败: {}", e.getMessage(), e);
+            throw new BusinessException("产品文件上传失败: " + e.getMessage());
+        }
+
+        SysAttachment attachment = new SysAttachment();
+        attachment.setBizType("product");
+        attachment.setBizId(product.getProductId());
+        attachment.setCategory(category.trim());
+        attachment.setVersion(version);
+        attachment.setFileName(originalName);
+        attachment.setFilePath(relativePath);
+        attachment.setFileSize(file.getSize());
+        attachment.setFileType(file.getContentType());
+
+        save(attachment);
+        log.info("产品文件上传成功: id={}, productCode={}, category={}, file={}",
+                attachment.getId(), productCode, category, originalName);
+        return attachment.getId();
+    }
+
+    @Override
+    public List<SysAttachment> getProductFiles(String productCode) {
+        if (productCode == null || productCode.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        Product product = productMapper.selectOne(
+                new LambdaQueryWrapper<Product>().eq(Product::getProductCode, productCode.trim()));
+        if (product == null) {
+            return new ArrayList<>();
+        }
+        return list(new LambdaQueryWrapper<SysAttachment>()
+                .eq(SysAttachment::getBizType, "product")
+                .eq(SysAttachment::getBizId, product.getProductId())
+                .orderByAsc(SysAttachment::getCategory)
+                .orderByDesc(SysAttachment::getCreateTime));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteAttachment(Long id) {
         SysAttachment attachment = getById(id);
         if (attachment == null) {
             throw new BusinessException("附件不存在: " + id);
         }
-
-        // 删除物理文件
-        String fullPath = uploadBasePath + File.separator + attachment.getFilePath();
-        try {
-            Files.deleteIfExists(Paths.get(fullPath));
-        } catch (IOException e) {
-            log.warn("删除物理文件失败: {}", fullPath, e);
-        }
-
-        // 删除记录
-        return removeById(id);
+        // 软删除（DEV-737）：进回收站，保留物理文件，update_time 记录删除时间
+        return attachmentMapper.logicalDelete(id) > 0;
     }
 
     @Override
@@ -138,6 +240,62 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
             deleteAttachment(attachment.getId());
         }
         return true;
+    }
+
+    @Override
+    public List<SysAttachment> getRecycled() {
+        return attachmentMapper.selectRecycled();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean restoreAttachment(Long id) {
+        SysAttachment recycled = attachmentMapper.selectRecycled().stream()
+                .filter(a -> a.getId().equals(id)).findFirst().orElse(null);
+        if (recycled == null) {
+            throw new BusinessException("回收站中不存在该附件: " + id);
+        }
+        return attachmentMapper.restore(id) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean permanentDelete(Long id) {
+        SysAttachment recycled = attachmentMapper.selectRecycled().stream()
+                .filter(a -> a.getId().equals(id)).findFirst().orElse(null);
+        if (recycled == null) {
+            throw new BusinessException("回收站中不存在该附件: " + id);
+        }
+        // 删物理文件 + 真删记录
+        String fullPath = uploadBasePath + File.separator + recycled.getFilePath();
+        try {
+            Files.deleteIfExists(Paths.get(fullPath));
+        } catch (IOException e) {
+            log.warn("删除物理文件失败: {}", fullPath);
+        }
+        return attachmentMapper.physicalDelete(id) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int permanentDeleteExpired(int days) {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(days);
+        List<SysAttachment> expired = attachmentMapper.selectRecycledBefore(cutoff);
+        int count = 0;
+        for (SysAttachment attachment : expired) {
+            String fullPath = uploadBasePath + File.separator + attachment.getFilePath();
+            try {
+                Files.deleteIfExists(Paths.get(fullPath));
+            } catch (IOException e) {
+                log.warn("清理回收站物理文件失败: {}", fullPath);
+            }
+            attachmentMapper.physicalDelete(attachment.getId());
+            count++;
+        }
+        if (count > 0) {
+            log.info("[回收站] 清理过期附件 {} 个（{} 天前）", count, days);
+        }
+        return count;
     }
 
     @Override

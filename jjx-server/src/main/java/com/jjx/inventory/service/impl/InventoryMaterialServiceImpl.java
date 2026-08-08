@@ -232,14 +232,18 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     public PageResult<MaterialVO> search(MaterialQueryDTO queryDTO) {
         // 按编码/名称/英文名模糊匹配（8-03 修复：原条件错位导致搜不到）
+        // 8-08 修复：无任何查询条件时不再拼 and() 空括号（SQL: WHERE () 语法错误），直接查全部
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
         String code = queryDTO.getMaterialCode();
         String name = queryDTO.getMaterialName();
-        wrapper.and(w -> {
-            w.like(StringUtils.isNotBlank(code), InventoryMaterial::getMaterialCode, code)
-                    .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name)
-                    .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialNameEn, name);
-        });
+        boolean hasCondition = StringUtils.isNotBlank(code) || StringUtils.isNotBlank(name);
+        if (hasCondition) {
+            wrapper.and(w -> {
+                w.like(StringUtils.isNotBlank(code), InventoryMaterial::getMaterialCode, code)
+                        .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name)
+                        .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialNameEn, name);
+            });
+        }
         IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize())
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);

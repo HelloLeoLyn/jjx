@@ -265,6 +265,13 @@
       <div v-else class="empty-section">
         <el-empty description="未配置菲林" :image-size="40" />
       </div>
+
+      <!-- 产品文件库（DEV-734） -->
+      <el-divider content-position="left">产品文件库</el-divider>
+      <ProductFileLibrary
+        v-if="productData.product?.productCode"
+        :product-code="productData.product.productCode"
+      />
     </div>
   </div>
 </template>
@@ -276,6 +283,7 @@ import { parseTime } from '@/utils/format'
 import { ProductEnum, StepTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
+import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 
 // Props
 interface Props {

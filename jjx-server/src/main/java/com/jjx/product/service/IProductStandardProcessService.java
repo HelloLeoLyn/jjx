@@ -13,6 +13,12 @@ import java.util.List;
  */
 public interface IProductStandardProcessService extends IService<ProductStandardProcess> {
 
+    /**
+     * 标准工序批量导入（2026-08-08）：编码必填+唯一、类型/类别枚举校验、库内判重跳过，返回结构化结果
+     */
+    com.jjx.inventory.dto.vo.MaterialImportResultVO importStandardProcesses(
+            java.util.List<com.jjx.product.dto.imports.StandardProcessImportDTO> importList);
+
     // ==================== 基础 CRUD ====================
 
     /**

@@ -109,10 +109,19 @@ export const sampleOrderApi = {
   },
 
   // 转量产
-  convertToProduction(orderId: number): AxiosPromise<any> {
+  convertToProduction(orderId: number, items?: Array<{ orderProductId: number; productId: number }>): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/convert-to-production/${orderId}`,
       method: 'put',
+      data: items || [],
+    })
+  },
+
+  // 转量产 · 产品标准化窗口（DEV-xxx）
+  convertCheck(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/convert-check/${orderId}`,
+      method: 'get',
     })
   },
 
@@ -166,6 +175,24 @@ export const sampleOrderApi = {
       url: `/sales/sample-order/processes/${orderId}`,
       method: 'get',
       params: roundNo ? { roundNo } : undefined,
+    })
+  },
+
+  // 保存打样工序计划（多选作业项目，整单覆盖当前轮次）
+  saveProcessPlan(orderId: number, data: any): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/processes/${orderId}/plan`,
+      method: 'put',
+      data,
+    })
+  },
+
+  // 推进打样工序状态（开始/完成，可带耗时/说明/材料）
+  updateProcessItemStatus(orderId: number, processId: number, data: any): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/processes/${orderId}/item/${processId}/status`,
+      method: 'put',
+      data,
     })
   },
 

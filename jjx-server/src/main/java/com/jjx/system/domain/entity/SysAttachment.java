@@ -26,6 +26,12 @@ public class SysAttachment {
     @Schema(description = "业务记录ID")
     private Long bizId;
 
+    @Schema(description = "文件类别（产品文件：客供稿/模具/确认图/菲林/规范等，业务附件可空）")
+    private String category;
+
+    @Schema(description = "版本号（产品文件用）")
+    private String version;
+
     @Schema(description = "链路追踪ID（关联单据链路）")
     private String traceId;
 

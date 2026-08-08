@@ -57,6 +57,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final SalesQuotationItemMapper quotationItemMapper;
     private final SalesInquiryMapper salesInquiryMapper;
     private final ProductMapper productMapper;
+    private final com.jjx.product.service.IProductService productService;
     private final IOrderService orderService;
     private final ISysAttachmentService sysAttachmentService;
     private final RedisSequenceService redisSequenceService;
@@ -195,6 +196,14 @@ public class QuotationServiceImpl implements IQuotationService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertQuotation(SalesQuotation quotation) {
+        // 销售负责人默认当前登录用户（2026-08-08）
+        if (quotation.getSalesPersonId() == null) {
+            quotation.setSalesPersonId(SecurityUtils.getUserId());
+        }
+        if (!org.apache.commons.lang3.StringUtils.isNotBlank(quotation.getSalesPersonName())) {
+            String realName = SecurityUtils.getRealName();
+            quotation.setSalesPersonName(realName != null && !realName.isBlank() ? realName : SecurityUtils.getUsername());
+        }
         // 自动生成报价单号（未传入时，DEV-601修复：原逻辑只校验不生成，导致新增保存报错）
         if (quotation.getQuotationNo() == null || quotation.getQuotationNo().isEmpty()) {
             quotation.setQuotationNo(redisSequenceService.generateBusinessNumber("QT", "报价单号"));
@@ -247,10 +256,31 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         int rows = quotationMapper.insert(quotation);
+        // 样品报价：编码前置建档草稿产品（2026-08-08）
+        ensureSampleDraftProducts(quotation);
         // 保存报价单明细（自动汇总金额：税率百分数÷100 算税额，total=subtotal+tax，final=total-折扣）
         saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
                 quotation.getTaxRate(), quotation.getDiscountAmount());
         return rows;
+    }
+
+    /**
+     * 样品报价建档草稿产品（2026-08-08）：明细有编码无产品 → 建档/复用，回填 productId
+     */
+    private void ensureSampleDraftProducts(SalesQuotation quotation) {
+        if (!java.lang.Integer.valueOf(2).equals(quotation.getQuotationType())) return;
+        if (quotation.getItems() == null) return;
+        for (SalesQuotationItem item : quotation.getItems()) {
+            if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
+                try {
+                    Long pid = productService.ensureDraftProduct(
+                            item.getProductCode(), item.getProductName(), item.getUnit(), "quotation");
+                    item.setProductId(pid);
+                } catch (Exception e) {
+                    log.warn("样品报价建档草稿产品失败: code={}, err={}", item.getProductCode(), e.getMessage());
+                }
+            }
+        }
     }
 
     /**
@@ -273,6 +303,8 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         int rows = quotationMapper.updateById(quotation);
+        // 样品报价：明细建档草稿产品（2026-08-08）
+        ensureSampleDraftProducts(quotation);
         // 先删后插，更新报价单明细
         quotationItemMapper.delete(new LambdaQueryWrapper<SalesQuotationItem>()
                 .eq(SalesQuotationItem::getQuotationId, quotation.getQuotationId()));
@@ -361,14 +393,18 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("已发送、待审核、已审核、已确认、已完成或改单中的报价单不能删除");
         }
 
-        // 使用逻辑删除
-        SalesQuotation deleteQuotation = new SalesQuotation();
-        deleteQuotation.setQuotationId(quotationId);
-        deleteQuotation.setDeleted(1);
-        int rows = quotationMapper.updateById(deleteQuotation);
+        // 逻辑删除（MP @TableLogic：deleteById 自动 SET deleted=1 WHERE id AND deleted=0）
+        // 注意：不能 setDeleted(1)+updateById —— MP 逻辑删除字段不参与 UPDATE SET，那样 deleted 不会变
+        int rows = quotationMapper.deleteById(quotationId);
 
         // 连带清理：明细与流转记录（子表无 deleted 字段，物理删除）
+        java.util.List<Long> deletedProductIds = new java.util.ArrayList<>();
         try {
+            java.util.List<SalesQuotationItem> items = quotationItemMapper.selectList(
+                    new LambdaQueryWrapper<SalesQuotationItem>().eq(SalesQuotationItem::getQuotationId, quotationId));
+            for (SalesQuotationItem item : items) {
+                if (item.getProductId() != null) deletedProductIds.add(item.getProductId());
+            }
             quotationItemMapper.delete(new LambdaQueryWrapper<SalesQuotationItem>()
                     .eq(SalesQuotationItem::getQuotationId, quotationId));
             quotationFlowMapper.delete(new LambdaQueryWrapper<SalesQuotationFlow>()
@@ -378,6 +414,14 @@ public class QuotationServiceImpl implements IQuotationService {
         } catch (Exception e) {
             // 子表清理失败不影响主表删除结果，记录日志
             log.warn("删除报价单子表数据失败: quotationId={}, {}", quotationId, e.getMessage());
+        }
+        // 作废联动：清理报价建档的草稿产品（2026-08-08）
+        for (Long pid : deletedProductIds) {
+            try {
+                productService.cleanupDraftProduct(pid, "quotation");
+            } catch (Exception e) {
+                log.warn("清理报价草稿产品失败: productId={}, err={}", pid, e.getMessage());
+            }
         }
         return rows;
     }

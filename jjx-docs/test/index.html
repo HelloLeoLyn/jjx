@@ -180,6 +180,7 @@ body {
   margin-top: 1px;
 }
 .case-title {
+  cursor: pointer;
   font-size: 14px;
   font-weight: 500;
   flex: 1;
@@ -492,7 +493,7 @@ const MODULES = [
       { id: 18, title: '样品单审核通过',              pre: '状态=PENDING_REVIEW', steps: '①审核人→②审核通过→③审核备注可选', expect: '状态→ENGINEERING，操作日志写入，消息通知工程部任务派发' },
       { id: 19, title: '样品单审核驳回',              pre: '状态=PENDING_REVIEW', steps: '①审核人→②审核驳回→③填驳回原因', expect: '状态→CREATED(可改重提)，驳回原因必填，操作日志写入' },
       { id: 20, title: '工程接单',                    pre: '状态=ENGINEERING', steps: '①样品单列表→②点"🔧工程打样"→③接单→④填写工艺备注', expect: '工程负责人锁定，工艺备注写入，操作日志写入（工作台抽屉入口）' },
-      { id: 21, title: '上传图纸/工艺文件',           pre: '状态=ENGINEERING', steps: '①样品单→②工程区→③上传菲林图/丝印图/模切图→④填写工艺参数', expect: '文件上传成功，关联样品单ID，操作日志写入' },
+      { id: 21, title: '上传图纸/工艺文件',           pre: '样品单状态=ENGINEERING（已审核通过进入工程阶段）', steps: '①样品单列表→②找到状态=ENGINEERING的样品单，点「工程处理」进入工程工作台→③在「图纸/工艺文件」卡片点"📤 上传图纸/文件"→④选择文件（菲林图/丝印图/模切图/规格书，支持PDF/DWG/DXF/图片/Word，单文件≤10MB，可多选）→⑤上传后文件列表出现该文件（可点击下载/预览，可移除）→⑥在「工艺参数/工程备注」填写工艺参数（材料规格/丝印要求/模切尺寸等）→⑦点"💾 保存工艺参数"→⑧保存成功提示', expect: '文件上传成功，关联样品单ID，文件列表可见可下载，操作日志写入；工艺参数保存成功' },
       { id: 22, title: '工程标记样品完成',            pre: '状态=ENGINEERING', steps: '①样品单→②点"样品完成"→③填样品数量/工时', expect: '状态→SAMPLE_READY，操作日志写入，消息通知销售可送样' },
       { id: 23, title: '销售送样登记',                pre: '状态=SAMPLE_READY', steps: '①样品单→②点"送样"→③填快递单号/送样日期→④确认', expect: '状态→SAMPLE_SENT，送样记录写入(sampleSendDate/sampleTrackingNo)，操作日志写入' },
       { id: 24, title: '客户确认样品OK',              pre: '状态=SAMPLE_SENT', steps: '①样品单→②点"客户确认OK"→③填确认人姓名→④确认', expect: '状态→CONFIRMED，记录确认人/确认日期，操作日志写入，消息通知销售可转量产，派发转量产任务' },
@@ -884,10 +885,10 @@ function renderCaseList() {
     }
 
     html += `
-      <div class="case-card" data-id="${c.id}" onclick="toggleExpand(event, ${c.id})">
+      <div class="case-card" data-id="${c.id}">
         <div class="case-header">
           <span class="case-id">#${c.id}</span>
-          <span class="case-title">${c.title}${codeTagHtml}</span>
+          <span class="case-title" onclick="toggleExpand(event, ${c.id})">${c.title}${codeTagHtml}</span>
           <span class="case-status ${s.status}">${statusLabel[s.status] || '待测'}</span>
         </div>
         <div class="case-details">
@@ -895,6 +896,7 @@ function renderCaseList() {
           <div class="detail-row"><strong>操作步骤：</strong>${c.steps || '-'}</div>
           <div class="detail-row"><strong>预期结果：</strong><pre>${exp}</pre></div>
           <div class="case-actions">
+            <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();copyCaseDetail(${c.id}, this)">📋 复制详情</button>
             <button class="btn btn-success btn-sm" onclick="event.stopPropagation();setStatus(${c.id},'pass')">✅ 通过</button>
             <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();setStatus(${c.id},'fail')">❌ 失败</button>
             <button class="btn btn-warning btn-sm" onclick="event.stopPropagation();setStatus(${c.id},'blocked')">⛔ 阻塞</button>
@@ -960,9 +962,45 @@ function renderAll() {
 
 // ==================== 操作函数 ====================
 function toggleExpand(e, id) {
-  const card = e.currentTarget;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'LABEL') return;
-  card.classList.toggle('expanded');
+  const card = document.querySelector(`.case-card[data-id="${id}"]`);
+  if (card) card.classList.toggle('expanded');
+}
+
+// 复制用例详情（标题/前置/步骤/预期）
+function copyCaseDetail(id, btn) {
+  const c = MODULES.flatMap(m => m.cases).find(x => x.id === id);
+  if (!c) return;
+  const exp = (c.expect || '-').replace(/<[^>]+>/g, '');
+  const text = [
+    `【TC-${c.id}】${c.title}`,
+    `前置条件：${c.pre || '-'}`,
+    `操作步骤：${c.steps || '-'}`,
+    `预期结果：${exp}`,
+  ].join('\n');
+  const done = () => {
+    if (btn) {
+      const old = btn.textContent;
+      btn.textContent = '✅ 已复制';
+      setTimeout(() => { btn.textContent = old; }, 1500);
+    }
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) {}
+  document.body.removeChild(ta);
 }
 
 function setStatus(id, status) {
