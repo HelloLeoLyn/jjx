@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>账号密码 - 文档中心</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f6fa; min-height: 100vh; }
+    .header { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 20px; }
+    .header .back { color: #fff; text-decoration: none; font-size: 14px; opacity: .9; }
+    .container { max-width: 1000px; margin: 20px auto; padding: 0 16px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .btn-primary { background: #667eea; color: #fff; }
+    .btn-danger { background: #f56c6c; color: #fff; }
+    .card { background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); padding: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
+    .card .icon { width: 44px; height: 44px; border-radius: 10px; background: #f0f2ff; color: #667eea; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    .card .info { flex: 1; min-width: 0; }
+    .card .system { font-weight: 600; font-size: 15px; }
+    .card .url { color: #909399; font-size: 12px; margin-top: 2px; }
+    .card .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+    .field { display: inline-flex; align-items: center; gap: 4px; background: #f5f6fa; border-radius: 6px; padding: 4px 10px; font-size: 13px; }
+    .field .label { color: #909399; }
+    .field .val { font-family: monospace; }
+    .copy { cursor: pointer; color: #667eea; font-size: 12px; }
+    .copy:hover { text-decoration: underline; }
+    .actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .empty { text-align: center; color: #c0c4cc; padding: 60px 0; }
+    .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .modal-mask.show { display: flex; }
+    .modal { background: #fff; border-radius: 12px; padding: 24px; width: 460px; max-width: 92vw; }
+    .modal h3 { margin-bottom: 16px; }
+    .modal .form-item { margin-bottom: 12px; }
+    .modal label { display: block; font-size: 13px; color: #606266; margin-bottom: 4px; }
+    .modal input, .modal textarea { width: 100%; padding: 8px 10px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+    .modal .btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #67c23a; color: #fff; padding: 10px 20px; border-radius: 8px; display: none; z-index: 999; font-size: 14px; }
+    .toast.show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🔑 账号密码</h1>
+    <a class="back" href="/">← 返回首页</a>
+  </div>
+  <div class="container">
+    <div class="toolbar">
+      <span style="color:#909399;font-size:13px">记录各系统账号密码，防止忘记（密码 AES 加密存储）</span>
+      <button class="btn btn-primary" onclick="openModal()">＋ 新增记录</button>
+    </div>
+    <div id="list"></div>
+  </div>
+
+  <!-- 新增/编辑弹窗 -->
+  <div class="modal-mask" id="modalMask">
+    <div class="modal">
+      <h3 id="modalTitle">新增账号记录</h3>
+      <div class="form-item"><label>系统名称 *</label><input id="fSystem" placeholder="如：ERP / MySQL / GitHub"></div>
+      <div class="form-item"><label>网址</label><input id="fUrl" placeholder="如：localhost:3000"></div>
+      <div class="form-item"><label>账号</label><input id="fUsername" placeholder="登录账号"></div>
+      <div class="form-item"><label>密码</label><input id="fPassword" type="text" placeholder="登录密码"><div style="font-size:11px;color:#c0c4cc;margin-top:2px">编辑时留空表示不修改</div></div>
+      <div class="form-item"><label>备注</label><textarea id="fRemark" rows="2" placeholder="备注（可选）"></textarea></div>
+      <div class="btns">
+        <button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="save()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = window.location.origin + '/api/accounts';
+    let editingId = null;
+    let list = [];
+
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 1800);
+    }
+
+    async function load() {
+      try {
+        const res = await fetch(API);
+        const json = await res.json();
+        if (json.code === 0 && Array.isArray(json.data)) list = json.data;
+      } catch(e) { toast('API 不可用'); }
+      render();
+    }
+
+    function render() {
+      const box = document.getElementById('list');
+      if (!list.length) { box.innerHTML = '<div class="empty">暂无记录，点右上角「新增记录」添加</div>'; return; }
+      const icons = ['🔐','🗄️','🐙','🌐','📦','🖥️','⚙️','🔑'];
+      box.innerHTML = list.map((a, i) => `
+        <div class="card">
+          <div class="icon">${icons[i % icons.length]}</div>
+          <div class="info">
+            <div class="system">${escapeHtml(a.system)}</div>
+            ${a.url ? `<div class="url">${escapeHtml(a.url)}</div>` : ''}
+            <div class="row">
+              <span class="field"><span class="label">账号</span><span class="val">${escapeHtml(a.username || '-')}</span><span class="copy" onclick="copy('${escapeHtml(a.username || '')}', '账号')">复制</span></span>
+              <span class="field"><span class="label">密码</span><span class="val" id="pwd_${a.id}">${hidePwd(a.password)}</span><span class="copy" onclick="togglePwd(${a.id})">显示</span><span class="copy" onclick="copy('${escapeHtml(a.password || '')}', '密码')">复制</span></span>
+              ${a.remark ? `<span class="field" style="color:#909399">${escapeHtml(a.remark)}</span>` : ''}
+            </div>
+          </div>
+          <div class="actions">
+            ${a.url ? `<button class="btn" style="background:#67c23a;color:#fff" onclick="openUrl('${escapeHtml(a.url)}')">访问</button>` : ''}
+            <button class="btn" onclick="openModal(${a.id})">编辑</button>
+            <button class="btn btn-danger" onclick="del(${a.id})">删除</button>
+          </div>
+        </div>`).join('');
+    }
+
+    function hidePwd(p) { return p ? '••••••' : '-'; }
+    function escapeHtml(s) { return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    function togglePwd(id) {
+      const a = list.find(x => x.id === id);
+      const el = document.getElementById('pwd_' + id);
+      if (el.textContent === '••••••') { el.textContent = a.password || '-'; el.nextElementSibling.textContent = '隐藏'; }
+      else { el.textContent = '••••••'; el.nextElementSibling.textContent = '显示'; }
+    }
+
+    // 跳转到对应地址（无协议自动补 http://）
+    function openUrl(url) {
+      if (!url) return;
+      if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+      window.open(url, '_blank');
+    }
+
+    async function copy(text, label) {
+      try { await navigator.clipboard.writeText(text); toast(label + '已复制'); }
+      catch { toast('复制失败（请手动复制）'); }
+    }
+
+    function openModal(id) {
+      editingId = id || null;
+      const a = id ? list.find(x => x.id === id) : null;
+      document.getElementById('modalTitle').textContent = a ? '编辑记录' : '新增账号记录';
+      document.getElementById('fSystem').value = a ? a.system : '';
+      document.getElementById('fUrl').value = a ? a.url || '' : '';
+      document.getElementById('fUsername').value = a ? a.username || '' : '';
+      document.getElementById('fPassword').value = '';
+      document.getElementById('fRemark').value = a ? a.remark || '' : '';
+      document.getElementById('modalMask').classList.add('show');
+    }
+    function closeModal() { document.getElementById('modalMask').classList.remove('show'); editingId = null; }
+
+    async function save() {
+      const system = document.getElementById('fSystem').value.trim();
+      if (!system) { toast('请填写系统名称'); return; }
+      const data = {
+        system,
+        url: document.getElementById('fUrl').value.trim(),
+        username: document.getElementById('fUsername').value.trim(),
+        password: document.getElementById('fPassword').value,
+        remark: document.getElementById('fRemark').value.trim(),
+      };
+      try {
+        if (editingId) {
+          data.id = editingId;
+          await fetch(API, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+          toast('已更新');
+        } else {
+          await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+          toast('已保存');
+        }
+        closeModal();
+        load();
+      } catch(e) { toast('保存失败'); }
+    }
+
+    async function del(id) {
+      if (!confirm('确认删除这条记录？')) return;
+      try { await fetch(API + '?id=' + id, { method: 'DELETE' }); toast('已删除'); load(); }
+      catch { toast('删除失败'); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

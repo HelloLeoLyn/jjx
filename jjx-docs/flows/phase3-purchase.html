@@ -25,9 +25,12 @@ h1{text-align:center;font-size:20px;margin-bottom:4px}
 </style></head>
 <body>
 <h1>📊 采购流程</h1>
-<div class="sub">阶段三：供应商 → 采购订单→审核 → 到货 → 入库 → 退货</div>
+<div class="sub">阶段三：供应商 → 采购计划 → 采购订单→审核 → 到货 → 入库 → 退货</div>
 <div class="fc" style="border-color:#a855f7">
   <div class="fc-title" style="color:#a855f7">采购管理</div>
+  <div class="h-row" style="justify-content:flex-start;gap:4px">
+    <span class="node node-c node-sub">📋 采购计划工作台（DEV-664 8-06）：从预警加载(安全库存max_stock-库存/订单缺料缺口) + 手动添加物料 → 确认计划选供应商 → 动态生成采购订单；计划单=purchase_order.plan_status=1 前置草拟态，不新增表</span>
+  </div>
   <div class="h-row">
     <span class="node node-p">🏢 创建供应商</span><span class="c">→</span>
     <span class="node node-p node-sub">名称/联系人/联系方式</span><span class="c">→</span>

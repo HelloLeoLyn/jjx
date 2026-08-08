@@ -173,9 +173,31 @@ h1{text-align:center;font-size:20px;margin-bottom:4px}
       <span class="node node-d node-sub" style="font-size:10px">路线状态: draft(1)→reviewing(2)→<strong>approved(3)</strong>→obsolete(4)</span>
     </div>
   </div>
+
+  <!-- ===== 8-03 新增：打样平台 / 资料转移 ===== -->
+  <div style="margin-top:14px;padding:12px;background:rgba(245,158,11,.05);border-radius:8px">
+    <div style="font-size:12px;color:#f59e0b;margin-bottom:8px">🔧 工程打样平台 & 产品资料转移（8-03 DEV-526/505）</div>
+    <div class="h-row" style="gap:6px;flex-wrap:wrap">
+      <span class="node node-y node-sub" style="font-size:11px">样品单「工程接单」预览器</span><span class="c">→</span>
+      <span class="node node-y node-sub" style="font-size:11px">工程管理 → 打样平台（待接单/打样中分组+进度可视化）</span><span class="c">→</span>
+      <span class="node node-y node-sub" style="font-size:11px">录工序（材料必须从物料档案选择，无则建档）</span><span class="c">→</span>
+      <span class="node node-y node-sub" style="font-size:11px">标记样品完成（唯一入口）</span>
+    </div>
+    <div class="h-row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+      <span class="node node-y node-sub" style="font-size:11px">样品已确认(6)</span><span class="c">→</span>
+      <span class="node node-y node-sub" style="font-size:11px">📦 资料转移：产品建档(待审核) + BOM草稿 + 路线草稿（最新轮次工序聚合）</span><span class="c">→</span>
+      <span class="node node-y node-sub" style="font-size:11px">事件通知+派任务给工程完善</span><span class="c">→</span>
+      <span class="node node-y node-sub" style="font-size:11px">BOM/路线提交审核→批准(3)</span><span class="c">→</span>
+      <span class="node node-y node-sub" style="font-size:11px">转量产（校验产品已发布）</span>
+    </div>
+    <div class="h-row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+      <span class="node node-d node-sub" style="font-size:10px">⛓ 工程→生产闭环：订单提交生产校验 产品发布 + BOM批准(3) + 路线批准(3)，工单带 BOM/路线ID 追溯</span>
+      <span class="node node-d node-sub" style="font-size:10px">📄 新增/编辑路由已修复；BOM详情/明细接口已补；标准工序表名已修正</span>
+    </div>
+  </div>
 </div>
 
-<div class="note">◆ 菱形 = 判断分支 &nbsp;|&nbsp; 🔴 = 代码校验点(#130) &nbsp;|&nbsp; 产品RELEASED后才能在订单中选中</div>
+<div class="note">◆ 菱形 = 判断分支 &nbsp;|&nbsp; 🔴 = 代码校验点(#130) &nbsp;|&nbsp; 产品RELEASED后才能在订单中选中 &nbsp;|&nbsp; 8-03：打样平台/资料转移/材料结构化</div>
 
 </body>
 </html>

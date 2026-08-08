@@ -1,0 +1,2022 @@
+[
+  {
+    "id": 1,
+    "title": "GitHub 仓库搭建",
+    "desc": "推送到 GitHub，建 dev / ai/dahuang 分支",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-18",
+    "tags": [
+      "环境"
+    ]
+  },
+  {
+    "id": 2,
+    "title": "开发环境搭建",
+    "desc": "Java 21 + Maven + MySQL + Redis + pnpm",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-18",
+    "tags": [
+      "环境"
+    ]
+  },
+  {
+    "id": 3,
+    "title": "项目跑起来",
+    "desc": "前端 :5174 / 后端 :8080",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-18",
+    "tags": [
+      "环境"
+    ]
+  },
+  {
+    "id": 4,
+    "title": "自动推送定时任务",
+    "desc": "每天 18:30 检查并推送",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-18",
+    "tags": [
+      "运维"
+    ]
+  },
+  {
+    "id": 5,
+    "title": "销售订单类型优化",
+    "desc": "API 32处 any → 0",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-18",
+    "tags": [
+      "前端",
+      "类型"
+    ]
+  },
+  {
+    "id": 6,
+    "title": "清理死代码/死路由",
+    "desc": "TestInventoryController + 路由",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-18",
+    "tags": [
+      "重构"
+    ]
+  },
+  {
+    "id": 7,
+    "title": "分支合并",
+    "desc": "ai/dahuang → dev",
+    "priority": "P3",
+    "status": "done",
+    "date": "07-18",
+    "tags": [
+      "Git"
+    ]
+  },
+  {
+    "id": 8,
+    "title": "安全加固",
+    "desc": "密码/JWT 密钥环境变量化",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "安全"
+    ]
+  },
+  {
+    "id": 9,
+    "title": "单元测试（15个）",
+    "desc": "销售/库存/采购/产品模块",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "测试"
+    ]
+  },
+  {
+    "id": 10,
+    "title": "数据库导入",
+    "desc": "66 张表恢复",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "数据"
+    ]
+  },
+  {
+    "id": 11,
+    "title": "API any 全面清理",
+    "desc": "12 文件 51 处 any → 0",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "前端",
+      "类型"
+    ]
+  },
+  {
+    "id": 12,
+    "title": "系统权限初始化",
+    "desc": "3 用户 / 4 角色 / 65 菜单",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 13,
+    "title": "仪表盘重做",
+    "desc": "真实数据指标卡 + 库存预警",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 14,
+    "title": "前端 UI 翻新",
+    "desc": "白底侧边栏 + 圆角卡片 + 骨架屏",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 15,
+    "title": "修复 TS 错误 + 删演示模块",
+    "desc": "mock/store/views + examples",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "前端",
+      "类型"
+    ]
+  },
+  {
+    "id": 16,
+    "title": "文档精简",
+    "desc": "6000行→1168行",
+    "priority": "P3",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "文档"
+    ]
+  },
+  {
+    "id": 17,
+    "title": "生产追溯",
+    "desc": "后端+前端+菜单已就绪",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 18,
+    "title": "日志管理修复",
+    "desc": "DialogForm 组件补齐",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 19,
+    "title": "质量检验",
+    "desc": "后端+API+菜单",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 20,
+    "title": "设备管理",
+    "desc": "后端+API+菜单",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 21,
+    "title": "生产看板 API",
+    "desc": "后端统计接口",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 22,
+    "title": "生产执行前端",
+    "desc": "views/production/execution/index.vue",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产",
+      "前端"
+    ]
+  },
+  {
+    "id": 23,
+    "title": "质量检验前端",
+    "desc": "views/production/quality/index.vue",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产",
+      "前端"
+    ]
+  },
+  {
+    "id": 24,
+    "title": "设备管理前端",
+    "desc": "views/production/equipment/index.vue",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产",
+      "前端"
+    ]
+  },
+  {
+    "id": 25,
+    "title": "排程管理",
+    "desc": "菜单+路由已就绪",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 26,
+    "title": "采购-入库联动",
+    "desc": "createFromPurchase 已实现",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "采购",
+      "库存"
+    ]
+  },
+  {
+    "id": 27,
+    "title": "库存预警",
+    "desc": "AlertController + AlertService 已实现",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 28,
+    "title": "库存周转率",
+    "desc": "GET /turnover endpoint 已实现",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 29,
+    "title": "工程管理",
+    "desc": "后端包 + 前端 views 已就绪",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-20",
+    "tags": [
+      "工程"
+    ]
+  },
+  {
+    "id": 30,
+    "title": "生产报表",
+    "desc": "产量/效率/质量报表（后端已就绪）",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-21",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 31,
+    "title": "成本核算",
+    "desc": "生产成本计算（前后端已就绪）",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-21",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 32,
+    "title": "看板前端对接",
+    "desc": "骨架页对接后端 API（board-real.ts 自动降级）",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-21",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 33,
+    "title": "消息通知",
+    "desc": "站内信、邮件通知（前后端已就绪）",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-21",
+    "tags": [
+      "通知"
+    ]
+  },
+  {
+    "id": 34,
+    "title": "车间工单看板",
+    "desc": "方案已出，待对接前端",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-21",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 35,
+    "title": "工单下发与排程",
+    "desc": "计划→工单转换，生成工序记录（后端已完成）",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-21",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 36,
+    "title": "样品单阶段一：基础准备",
+    "desc": "建 sys_attachment 表，sales_order_product 加字段",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "样品单"
+    ]
+  },
+  {
+    "id": 37,
+    "title": "样品单阶段二：后端逻辑改造",
+    "desc": "校验区分样品单vs标准单，附件API",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "样品单"
+    ]
+  },
+  {
+    "id": 38,
+    "title": "样品单阶段三：前端改造",
+    "desc": "产品编码下拉→可自定义，附件上传+预览",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "样品单"
+    ]
+  },
+  {
+    "id": 39,
+    "title": "路由标签页卡顿/刷新重构",
+    "desc": "routeHelper补name + permissionStore + layout修复",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 40,
+    "title": "环境标识徽章",
+    "desc": "Navbar右上角显示当前git分支名",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 41,
+    "title": "动态路由加载修复",
+    "desc": "路由未及时注入，需重新登录才生效",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 42,
+    "title": "消息提醒铃铛",
+    "desc": "Navbar头像左侧加消息铃铛+未读红点",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 43,
+    "title": "首次菜单点击卡顿",
+    "desc": "首次点击菜单页面卡死1-3秒",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 44,
+    "title": "客户管理状态Bug",
+    "desc": "CustomerConverter忽略customerStatus字段",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "后端"
+    ]
+  },
+  {
+    "id": 45,
+    "title": "客户管理路由404",
+    "desc": "Vue Router: No match found",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "前端"
+    ]
+  },
+  {
+    "id": 46,
+    "title": "报价管理API报错",
+    "desc": "获取报价单列表 Failed to convert",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-22",
+    "tags": [
+      "后端"
+    ]
+  },
+  {
+    "id": 47,
+    "title": "【工程】阶段一：菜单树重组",
+    "desc": "新增工程管理顶级菜单，BOM/工艺/图纸/标准工序迁移",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-24",
+    "tags": [
+      "工程"
+    ]
+  },
+  {
+    "id": 48,
+    "title": "全模块权限标准化",
+    "desc": "view/list/detail 统一标准CRUD权限",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-24",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 49,
+    "title": "非Sales模块权限普查",
+    "desc": "逐一校验 inventory/product/production/purchase/system",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-24",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 50,
+    "title": "提交审核校验责任人",
+    "desc": "非超级管理员只能提交本人负责的订单",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-24",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 51,
+    "title": "sales:log 独立授权",
+    "desc": "将SalesLogController权限标准化",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-24",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 52,
+    "title": "前端 v-permission 梳理",
+    "desc": "全局搜索 v-permission/hasPermi 使用情况",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-24",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 53,
+    "title": "模块结构优化",
+    "desc": "删重复菜单、隐藏编辑页、重排序、更新文档",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-24",
+    "tags": [
+      "重构"
+    ]
+  },
+  {
+    "id": 54,
+    "title": "【P0】修复前端404 API",
+    "desc": "StandardProcessController新增/enabled接口，前端3处路径单复数修正",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "Bug"
+    ]
+  },
+  {
+    "id": 55,
+    "title": "【P0】出入库核心逻辑",
+    "desc": "InboundServiceImpl+OutboundServiceImpl 8处TODO实现",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 56,
+    "title": "【P0】status参数转换",
+    "desc": "MaterialEnum/UserEnum 值对齐后端StatusEnum",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "Bug"
+    ]
+  },
+  {
+    "id": 57,
+    "title": "【P1】库存预警推送",
+    "desc": "AlertServiceImpl补齐page()分页+事件联动",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 58,
+    "title": "【P2】TS类型错误修复",
+    "desc": "50+个TS错误，27个文件",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "类型"
+    ]
+  },
+  {
+    "id": 59,
+    "title": "【P2】报表对接真实数据",
+    "desc": "后端新增统计接口+前端3个报表从mock切真实API",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "报表"
+    ]
+  },
+  {
+    "id": 60,
+    "title": "【P2】生产执行vs操作分离优化",
+    "desc": "execution页加'我的任务'标签",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 61,
+    "title": "销售/采购/质量报表页面",
+    "desc": "3个Vue页面+数据库菜单+权限",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "报表"
+    ]
+  },
+  {
+    "id": 62,
+    "title": "任务清单清理",
+    "desc": "全面审计，31个待办→17个真实待办",
+    "priority": "P3",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "文档"
+    ]
+  },
+  {
+    "id": 63,
+    "title": "修复 Swagger v3/api-docs 返回0条路径",
+    "desc": "Knife4j配置问题",
+    "priority": "P1",
+    "status": "done",
+    "date": null,
+    "tags": [
+      "文档"
+    ]
+  },
+  {
+    "id": 64,
+    "title": "清理多余权限记录",
+    "desc": "56条权限在后端找不到对应@SaCheckPermission",
+    "priority": "P3",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 65,
+    "title": "补齐遗漏唯一权限",
+    "desc": "后端engineering:*权限和库存部分权限未同步到sys_menu",
+    "priority": "P3",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "权限"
+    ]
+  },
+  {
+    "id": 67,
+    "title": "国际站门户开发",
+    "desc": "portal表已存在",
+    "priority": "P3",
+    "status": "done",
+    "date": null,
+    "tags": [
+      "门户"
+    ]
+  },
+  {
+    "id": 68,
+    "title": "了解 Metersphere",
+    "desc": "学习开源持续测试平台",
+    "priority": "P3",
+    "status": "done",
+    "date": null,
+    "tags": [
+      "学习"
+    ]
+  },
+  {
+    "id": 69,
+    "title": "生产领料自动扣库存",
+    "desc": "createFromProduction(outbound) 是 TODO 空壳",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "库存",
+      "生产",
+      "后端"
+    ]
+  },
+  {
+    "id": 70,
+    "title": "完工自动加成品库存",
+    "desc": "createFromProduction(inbound) 是 TODO 空壳",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "库存",
+      "生产",
+      "后端"
+    ]
+  },
+  {
+    "id": 71,
+    "title": "销售发货扣库存",
+    "desc": "createFromSales(outbound) 是 TODO 空壳",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "库存",
+      "销售",
+      "后端"
+    ]
+  },
+  {
+    "id": 72,
+    "title": "填充演示数据",
+    "desc": "product_bom 0行、product_routing 0行",
+    "priority": "P1",
+    "status": "done",
+    "date": null,
+    "tags": [
+      "数据"
+    ]
+  },
+  {
+    "id": 73,
+    "title": "清理死代码：未使用的私有方法",
+    "desc": "Inventory*ServiceImpl 中大量 private static get*Name 定义但无调用",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "后端",
+      "重构"
+    ]
+  },
+  {
+    "id": 74,
+    "title": "优化 VO 属性拷贝",
+    "desc": "setter逐行赋值→BeanUtils.copyProperties/MapStruct",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "后端",
+      "重构"
+    ]
+  },
+  {
+    "id": 76,
+    "title": "国际化",
+    "desc": "多语言门户",
+    "priority": "P3",
+    "status": "done",
+    "date": null,
+    "tags": [
+      "门户"
+    ]
+  },
+  {
+    "id": 77,
+    "title": "生产执行 vs 操作合并评估",
+    "desc": "execution(48)和production-operation(51)界限模糊",
+    "priority": "P2",
+    "status": "done",
+    "date": null,
+    "tags": [
+      "重构",
+      "生产"
+    ]
+  },
+  {
+    "id": 78,
+    "title": "🌐 企业官网：核心生成器",
+    "desc": "Node.js+EJS+Tailwind，20页+sitemap+后台管理",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "官网"
+    ]
+  },
+  {
+    "id": 82,
+    "title": "P0 — LoginUser ClassCastException",
+    "desc": "DevTools 双加载器冲突，spring-devtools.properties 排除数据类",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "Bug",
+      "后端",
+      "devtools"
+    ]
+  },
+  {
+    "id": 83,
+    "title": "【Bug】物料选项SQL语法错误",
+    "desc": "GET /inventory/material/options 返回SQL语法错误，检查Mapper XML",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "Bug",
+      "后端",
+      "库存",
+      "已修复"
+    ]
+  },
+  {
+    "id": 84,
+    "title": "【Bug】生产工单分页MyBatis异常",
+    "desc": "GET /production/order/page MyBatis执行异常",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "Bug",
+      "后端",
+      "生产",
+      "已修复"
+    ]
+  },
+  {
+    "id": 85,
+    "title": "【Bug】生产报表查询异常",
+    "desc": "GET /production/report/output MyBatis执行异常",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "Bug",
+      "后端",
+      "生产",
+      "已修复"
+    ]
+  },
+  {
+    "id": 86,
+    "title": "【Bug】客户统计500错误",
+    "desc": "GET /sales/customer/statistics 系统繁忙",
+    "priority": "P4",
+    "status": "done",
+    "date": "07-28",
+    "tags": [
+      "Bug",
+      "后端",
+      "销售"
+    ]
+  },
+  {
+    "id": 87,
+    "title": "【Bug】预警分页500错误",
+    "desc": "GET /inventory/alert/page 系统繁忙，刚修复的AlertServiceImpl可能有问题",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "Bug",
+      "后端",
+      "库存",
+      "已修复"
+    ]
+  },
+  {
+    "id": 88,
+    "title": "【Bug】库存报表/周转率500错误",
+    "desc": "GET /inventory/report/stock-summary 和 /turnover 均报错",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "Bug",
+      "后端",
+      "库存"
+    ]
+  },
+  {
+    "id": 90,
+    "title": "【Bug】工程管理config/film 500错误",
+    "desc": "GET /engineering/config 和 /engineering/film 系统繁忙",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "Bug",
+      "后端",
+      "工程"
+    ]
+  },
+  {
+    "id": 91,
+    "title": "【Bug】供应商统计未实现",
+    "desc": "GET /purchase/supplier/statistics 返回'统计功能暂未实现'",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能",
+      "后端",
+      "采购",
+      "已修复"
+    ]
+  },
+  {
+    "id": 92,
+    "title": "【Bug】Swagger v3/api-docs返回500",
+    "desc": "Springdoc 2.3.0不兼容Spring Boot 3.4.12，已升级Springdoc到2.6.0但需mvn package验证",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-25",
+    "tags": [
+      "Bug",
+      "后端",
+      "文档"
+    ]
+  },
+  {
+    "id": 93,
+    "title": "产品审批→自动派工程任务+通知工程师",
+    "desc": "产品APPROVED后自动创建工程任务给工程师做BOM/路线+sys_notification",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能",
+      "联动"
+    ]
+  },
+  {
+    "id": 94,
+    "title": "BOM提交审核加PENDING状态",
+    "desc": "当前DRAFT直通APPROVED，需加submit→PENDING，跟路线对齐",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能"
+    ]
+  },
+  {
+    "id": 95,
+    "title": "产品发布前校验BOM和路线",
+    "desc": "releaseProduct检查BOM/路线是否已配置且审批通过",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能"
+    ]
+  },
+  {
+    "id": 96,
+    "title": "所有审批事件联动",
+    "desc": "产品/BOM/路线/订单审核通过时→自动派任务+消息通知",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能",
+      "联动"
+    ]
+  },
+  {
+    "id": 97,
+    "title": "生产工单记录BOM/路线ID",
+    "desc": "避免换BOM/路线后历史工单追溯不清",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能"
+    ]
+  },
+  {
+    "id": 98,
+    "title": "提交生产前校验",
+    "desc": "BOM已审批+路线已审批+物料库存足够→通知车间+看板创任务",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能"
+    ]
+  },
+  {
+    "id": 99,
+    "title": "销售订单选产品只显示RELEASED",
+    "desc": "未发布产品不可选",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能"
+    ]
+  },
+  {
+    "id": 100,
+    "title": "客户确认流程完善",
+    "desc": "方案一+四：确认弹窗(人/方式/时间/备注)→CONFIRMED+PDF确认书+附件",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能"
+    ]
+  },
+  {
+    "id": 101,
+    "title": "提交生产→消息通知+任务派送",
+    "desc": "通知车间/生产计划+看板创建生产任务",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "功能",
+      "联动"
+    ]
+  },
+  {
+    "id": 102,
+    "title": "通知模块：sys_notification 加 event_code 字段",
+    "desc": "新增 event_code varchar(50) 字段，关联触发事件",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "后端"
+    ]
+  },
+  {
+    "id": 182,
+    "title": "通知模块：初始化事件配置数据",
+    "desc": "填充 sys_event_config 表：产品审批通过/BOM提交/BOM审批/路线提交/路线审批/订单提交/订单审批等事件定义",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "数据"
+    ]
+  },
+  {
+    "id": 103,
+    "title": "通知模块：初始化事件→通知映射数据",
+    "desc": "填充 sys_event_notification 表：每个事件配置通知对象(创建人/审核人/角色等)",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "数据"
+    ]
+  },
+  {
+    "id": 104,
+    "title": "通知模块：初始化通知模板数据",
+    "desc": "填充 sys_notification_template 表：每个事件配置标题模板和内容模板（支持变量替换）",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "数据"
+    ]
+  },
+  {
+    "id": 105,
+    "title": "通知模块：实现 EventBus.fire() 核心逻辑",
+    "desc": "①查事件定义→②查通知映射→③查角色用户→④查模板生成内容→⑤批量写入 sys_notification",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "后端"
+    ]
+  },
+  {
+    "id": 106,
+    "title": "通知模块：支持按角色通知",
+    "desc": "notify_target=ROLE 时，查 sys_user_role + sys_role 找到所有该角色的用户",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "后端"
+    ]
+  },
+  {
+    "id": 107,
+    "title": "通知模块：模板变量替换",
+    "desc": "title_pattern/content_pattern 中 {productName}/{operator}/{time} 等变量自动替换",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "后端"
+    ]
+  },
+  {
+    "id": 108,
+    "title": "通知模块：业务代码改抛事件",
+    "desc": "手动调 createNotification 的地方逐步改为 eventBus.fire()：产品审批/BOM审批/路线审批/订单审批等",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "后端"
+    ]
+  },
+  {
+    "id": 109,
+    "title": "通知模块：通知偏好表(可选)",
+    "desc": "sys_notification_preference(user_id, event_code, is_muted)，用户可静默某类通知",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "通知",
+      "后端"
+    ]
+  },
+  {
+    "title": "日志模块：sys_oper_log 加 biz_type/biz_id/trace_id 字段",
+    "desc": "新增biz_type(varchar20)/biz_id(varchar64)/trace_id(varchar50)/detail(json)，支持按业务单据查询日志",
+    "priority": "P0",
+    "tags": [
+      "日志",
+      "后端"
+    ],
+    "id": 110,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "日志模块：sales_log 合并到 sys_oper_log",
+    "desc": "统一操作日志入口，停止向 sales_log 写数据，迁移历史数据或保留sales_log为视图",
+    "priority": "P0",
+    "tags": [
+      "日志",
+      "后端"
+    ],
+    "id": 111,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "日志模块：sys_oper_log 按月分区/定期归档",
+    "desc": "按月分区表或定期归档旧数据，防止单表过大影响查询性能",
+    "priority": "P0",
+    "tags": [
+      "日志",
+      "运维"
+    ],
+    "id": 112,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "日志模块：sys_oper_log 加按 biz_id 索引",
+    "desc": "新增 idx_biz(biz_type, biz_id, create_time) 索引，支持按业务单据快速查询操作记录",
+    "priority": "P0",
+    "tags": [
+      "日志",
+      "后端"
+    ],
+    "id": 113,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "任务模块：新建统一 sys_task 表",
+    "desc": "合并 engineering_design_task + kanban_task + engineering_base 为一张 sys_task，含task_type/biz_type/biz_id/assignee/status/priority/source_event等字段",
+    "priority": "P0",
+    "tags": [
+      "任务",
+      "后端"
+    ],
+    "id": 114,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "任务模块：迁移 engineering_design_task 数据到 sys_task",
+    "desc": "将现 engineering_design_task 的数据按对应字段迁移到 sys_task，task_type='design'",
+    "priority": "P0",
+    "tags": [
+      "任务",
+      "后端"
+    ],
+    "id": 115,
+    "status": "done",
+    "date": "07-29"
+  },
+  {
+    "title": "任务模块：迁移 kanban_task 数据到 sys_task",
+    "desc": "将现 kanban_task 的数据迁移到 sys_task，kanban_type→task_type，status→column_id",
+    "priority": "P0",
+    "tags": [
+      "任务",
+      "后端"
+    ],
+    "id": 116,
+    "status": "done",
+    "date": "07-29"
+  },
+  {
+    "title": "任务模块：废弃旧表 engineering_design_task/kanban_task/engineering_base",
+    "desc": "数据迁移完成并验证后，标记旧表废弃或删除",
+    "priority": "P0",
+    "tags": [
+      "任务",
+      "后端"
+    ],
+    "id": 117,
+    "status": "done",
+    "date": "07-29"
+  },
+  {
+    "title": "任务模块：EventBus 联动创建任务",
+    "desc": "sys_event_kanban 配置不变，事件触发时自动创建 sys_task 记录",
+    "priority": "P0",
+    "tags": [
+      "任务",
+      "后端"
+    ],
+    "id": 118,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "EventBus：定义 @Event 注解 + AOP 切面",
+    "desc": "定义@Event注解，实现AOP切面拦截，方法成功后触发事件，支持SpEL解析bizId，事务提交后执行",
+    "priority": "P0",
+    "tags": [
+      "EventBus",
+      "后端"
+    ],
+    "id": 120,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "EventBus：实现核心 EventBus + 三个 Handler",
+    "desc": "EventBus.fire() + LogHandler(写日志)/TaskHandler(写任务)/NotifHandler(写通知)，Handler通过配置驱动",
+    "priority": "P0",
+    "tags": [
+      "EventBus",
+      "后端"
+    ],
+    "id": 121,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "EventBus：初始化事件配置数据",
+    "desc": "填充sys_event_config + sys_event_kanban + sys_event_notification + sys_notification_template 配置数据",
+    "priority": "P0",
+    "tags": [
+      "EventBus",
+      "数据"
+    ],
+    "id": 122,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "EventBus：业务代码逐步加 @Event 注解",
+    "desc": "在关键业务流程加@Event注解：产品审批/BOM审批/路线审批/订单审批/提交生产等",
+    "priority": "P0",
+    "tags": [
+      "EventBus",
+      "后端"
+    ],
+    "id": 123,
+    "status": "done",
+    "date": "07-26"
+  },
+  {
+    "title": "移动端适配",
+    "priority": "P2",
+    "status": "done",
+    "date": null,
+    "tags": [
+      "前端"
+    ],
+    "id": 124
+  },
+  {
+    "title": "🌐 企业官网：AI客服真后端",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-28",
+    "tags": [
+      "官网"
+    ],
+    "id": 125
+  },
+  {
+    "title": "🌐 企业官网：favicon+下载文件+替换图片",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-28",
+    "tags": [
+      "官网"
+    ],
+    "id": 126
+  },
+  {
+    "title": "🌐 企业官网：站内搜索+分页",
+    "priority": "P3",
+    "status": "done",
+    "date": "07-28",
+    "tags": [
+      "官网"
+    ],
+    "id": 127
+  },
+  {
+    "id": 128,
+    "title": "日志模块：@Log 注解支持 biz_id/biz_type（SpEL提取）",
+    "desc": "当前@Log注解不填biz_id/biz_type，加SpEL参数让AOP自动从方法参数/返回值提取并写入sys_oper_log",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-26",
+    "tags": [
+      "日志",
+      "后端"
+    ]
+  },
+  {
+    "id": 129,
+    "title": "【销售】订单客户确认流程完善",
+    "status": "done",
+    "priority": "p1",
+    "desc": "CONFIRMED状态+确认记录(人/方式/时间)+PDF确认书+附件",
+    "date": "07-28",
+    "tags": [
+      "销售"
+    ]
+  },
+  {
+    "id": 130,
+    "title": "【产品】发布前校验BOM和路线已审批",
+    "status": "done",
+    "priority": "p1",
+    "desc": "产品RELEASED前校验BOM和路线是否已审批通过",
+    "date": "07-28",
+    "tags": [
+      "产品"
+    ]
+  },
+  {
+    "id": 131,
+    "title": "【全局】审批事件联动",
+    "status": "done",
+    "priority": "p1",
+    "desc": "T1+T4：产品/BOM/路线/订单审核通过→自动派工程任务+通知相关人",
+    "date": "07-28",
+    "tags": [
+      "系统"
+    ]
+  },
+  {
+    "id": 132,
+    "title": "【全局】消息通知接入",
+    "status": "done",
+    "priority": "p1",
+    "desc": "T3：所有审核事件触发sys_notification消息通知",
+    "date": "07-28",
+    "tags": [
+      "系统"
+    ]
+  },
+  {
+    "id": 133,
+    "title": "【BOM】加PENDING中间状态",
+    "status": "done",
+    "priority": "p1",
+    "desc": "T2：DRAFT→PENDING→APPROVED，跟路线状态机对齐",
+    "date": "07-28",
+    "tags": [
+      "工程"
+    ]
+  },
+  {
+    "id": 134,
+    "title": "【生产】工单记录BOM/路线ID快照",
+    "status": "done",
+    "priority": "p1",
+    "desc": "创建工单时记录当时使用的BOM_ID和ROUTE_ID，避免产品换BOM后历史追溯不清",
+    "date": "07-28",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 135,
+    "title": "【生产】提交生产前校验+BOM警告",
+    "status": "done",
+    "priority": "p1",
+    "desc": "校验BOM已审批+路线已审批+库存足够，提交后通知车间+看板创建任务",
+    "date": "07-28",
+    "tags": [
+      "生产"
+    ]
+  },
+  {
+    "id": 136,
+    "title": "【销售】订单创建检查产品状态=RELEASED",
+    "status": "done",
+    "priority": "p1",
+    "desc": "未发布产品在订单中不可选，非仅检查已发布产品是否存在",
+    "date": "07-28",
+    "tags": [
+      "销售"
+    ]
+  },
+  {
+    "id": 137,
+    "title": "【库存】三个TODO空壳补齐",
+    "status": "done",
+    "priority": "p1",
+    "desc": "生产领料/完工入库/销售发货 三个库存功能完善",
+    "date": "07-28",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 138,
+    "title": "【采购】采购退货功能",
+    "status": "done",
+    "priority": "p2",
+    "desc": "退货后库存扣减+退货记录写入",
+    "date": "07-28",
+    "tags": [
+      "采购"
+    ]
+  },
+  {
+    "id": 139,
+    "title": "【销售】报价→订单转换流程",
+    "status": "done",
+    "priority": "p2",
+    "desc": "客户确认报价后自动/手动转为销售订单",
+    "date": "07-28",
+    "tags": [
+      "销售"
+    ]
+  },
+  {
+    "id": 140,
+    "title": "填充演示数据",
+    "status": "done",
+    "priority": "p1",
+    "desc": "product_bom/product_routing等表目前0行，补充演示数据",
+    "date": null,
+    "tags": [
+      "数据"
+    ]
+  },
+  {
+    "id": 141,
+    "title": "Swagger v3/api-docs修复",
+    "status": "done",
+    "priority": "p1",
+    "desc": "#63返回0条路径 + #92返回500，springdoc版本兼容问题",
+    "date": null,
+    "tags": [
+      "后端"
+    ]
+  },
+  {
+    "id": 142,
+    "title": "@Log注解支持biz_id/biz_type(SpEL)",
+    "status": "done",
+    "priority": "p1",
+    "desc": "#128 日志模块：从参数/返回值提取业务ID和类型",
+    "date": null,
+    "tags": [
+      "后端"
+    ]
+  },
+  {
+    "id": 143,
+    "title": "【系统】字典管理优化(Redis缓存+分组+导入导出)",
+    "status": "done",
+    "priority": "p2",
+    "desc": "当前每次查数据库，改为Redis缓存，按模块分组，支持批量导入导出",
+    "date": "07-28",
+    "tags": [
+      "系统"
+    ]
+  },
+  {
+    "id": 144,
+    "title": "【系统】新建系统配置表(sys_config)",
+    "status": "done",
+    "priority": "p2",
+    "desc": "替代application-dev.yml硬编码，统一管理业务参数/邮箱/SMS等",
+    "date": "07-28",
+    "tags": [
+      "系统"
+    ]
+  },
+  {
+    "id": 145,
+    "title": "【系统】数据库表结构审计",
+    "status": "done",
+    "priority": "p1",
+    "desc": "分析所有表，清理未使用的表和字段，解决表冲突和设计过度问题",
+    "date": "07-29",
+    "tags": [
+      "系统",
+      "数据库"
+    ]
+  },
+  {
+    "id": 146,
+    "title": "【测试】API测试修复(6个失败接口)",
+    "status": "done",
+    "priority": "p1",
+    "desc": "API测试全部21个失败: 阶段一6个+阶段四~八6个+全覆盖6个(含film/page/turnover/cost/kanban/supplier/attachment)",
+    "date": "07-29",
+    "tags": [
+      "测试",
+      "API"
+    ]
+  },
+  {
+    "id": 147,
+    "title": "测试计划重写 v2.0",
+    "desc": "按真实薄膜开关业务流重构 tests/test-plan-table.md：新增询价管理(P1)+样品管理(P3)，14个Phase/77条用例，每表加代码状态字段，附录改动清单+3个端到端场景",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "测试",
+      "文档"
+    ]
+  },
+  {
+    "id": 148,
+    "title": "测试工作台同步更新 v2.0",
+    "desc": "docs/test/index.html 同步新版测试计划：14个Phase模块、77条用例、侧边栏代码状态标识(✅🆕⚠️)、用例卡片标需开发标记",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "测试",
+      "文档"
+    ]
+  },
+  {
+    "id": 149,
+    "title": "【P0】询价单模块",
+    "desc": "新模块：客户询价CRUD+文件上传+转报价。TC1-4",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "销售",
+      "新模块"
+    ]
+  },
+  {
+    "id": 150,
+    "title": "【P0】样品单独立状态机",
+    "desc": "新建SampleOrderStatus枚举：CREATED→PENDING_REVIEW→ENGINEERING→SAMPLE_READY→SAMPLE_SENT→CONFIRMED→TRANSFERRED→CLOSED。TC14-24",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "销售",
+      "样品"
+    ]
+  },
+  {
+    "id": 151,
+    "title": "【P0】样品单前端",
+    "desc": "样品单列表页/详情页/操作按钮，适配独立状态机。TC14-24",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "销售",
+      "样品",
+      "前端"
+    ]
+  },
+  {
+    "id": 152,
+    "title": "【P0】样品转量产服务",
+    "desc": "样品确认后→一键转标准订单，复制客户/产品/规格，追溯关联。TC24-25",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "销售",
+      "后端"
+    ]
+  },
+  {
+    "id": 153,
+    "title": "【P1】工程介入UI",
+    "desc": "样品单详情页加工程区（图纸上传/工艺参数/样品完成标记）。TC17-19",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "工程",
+      "样品",
+      "前端"
+    ]
+  },
+  {
+    "id": 154,
+    "title": "【P1】领料单",
+    "desc": "工单→生成领料单→仓库发料→库存扣减。TC41-42",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "生产",
+      "库存"
+    ]
+  },
+  {
+    "id": 155,
+    "title": "【P1】报价→样品单转换",
+    "desc": "报价确认后'转为样品单'按钮+后端逻辑。TC12",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "销售",
+      "报价",
+      "样品"
+    ]
+  },
+  {
+    "id": 156,
+    "title": "【P1】生产校验完善",
+    "desc": "提交生产时校验BOM/路线已配置且已审批。TC32",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "生产",
+      "校验"
+    ]
+  },
+  {
+    "id": 157,
+    "title": "【P2】工序首检/巡检",
+    "desc": "工序执行中可做首检/巡检，不合格触发暂停。TC45",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "生产",
+      "质检"
+    ]
+  },
+  {
+    "id": 158,
+    "title": "【P2】询价→报价联动",
+    "desc": "询价单一键跳转报价页，预填客户/需求信息。TC4-5",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "销售",
+      "联动"
+    ]
+  },
+  {
+    "id": 159,
+    "title": "【P2】样品迭代记录",
+    "desc": "数据库加字段+UI展示多轮修改历史（退回原因/时间/版本）。TC23",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-29",
+    "tags": [
+      "销售",
+      "样品"
+    ]
+  },
+  {
+    "id": 160,
+    "title": "单据PDF打印",
+    "desc": "报价单/销售订单/采购订单/生产工单/入库单/出库单/送货单 PDF 生成（exportPdf 空壳待实现）",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-29",
+    "tags": [
+      "打印",
+      "PDF"
+    ]
+  },
+  {
+    "id": 161,
+    "title": "标签打印",
+    "desc": "产品标签(编码/批次号/日期/数量) + 物料标签 + 箱标/托盘标，扫码追溯",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-29",
+    "tags": [
+      "打印",
+      "标签"
+    ]
+  },
+  {
+    "id": 162,
+    "title": "质检报告导出",
+    "desc": "PDF/Excel 格式，给客户看的质检报告",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-29",
+    "tags": [
+      "打印",
+      "质检"
+    ]
+  },
+  {
+    "id": 163,
+    "title": "【Bug】Transition 组件报错（询价单页）",
+    "desc": "select.vue:32 Component inside <Transition> renders non-element root node that cannot be animated. 触发页面：<SalesInquiry>",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-30",
+    "tags": [
+      "Bug",
+      "前端"
+    ]
+  },
+  {
+    "id": 164,
+    "title": "统一 traceId：OperLogAspect 自动扫描参数提取",
+    "desc": "不改245处@Log注解，改OperLogAspect一处：方法执行后自动扫描参数对象(bizId/bizType/traceId)和Result.data，不再依赖UUID兜底。已改完。",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-30",
+    "tags": [
+      "日志",
+      "后端"
+    ]
+  },
+  {
+    "id": 165,
+    "title": "询价转报价 traceId 链路打通",
+    "desc": "新建InquiryConvertVO，Service返回带traceId，Controller @Log 加traceId=#result.data.traceId。已改完。",
+    "priority": "P0",
+    "status": "done",
+    "date": "07-30",
+    "tags": [
+      "日志",
+      "销售"
+    ]
+  },
+  {
+    "id": 166,
+    "title": "业务类型字典对齐后端 BusinessType enum",
+    "desc": "前端businessTypeMap用的是RuoYi旧的code(0=其它...9=清空数据)，后端BusinessType code从1开始(INSERT=1...OTHER=9,RESET=10)，需要前端字典对齐。",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-30",
+    "tags": [
+      "日志",
+      "前端",
+      "Bug"
+    ]
+  },
+  {
+    "id": 167,
+    "title": "库存-采购联动：安全库存检查逻辑",
+    "desc": "出库/入库确认后检查 stock < safe_stock，自动写入 inventory_alert_log",
+    "priority": "P1",
+    "status": "pending",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 168,
+    "title": "库存-采购联动：安全库存事件触发",
+    "desc": "新建 StockAlertService.checkAndAlert()，fire stock.low/stock.over 事件",
+    "priority": "P1",
+    "status": "pending",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 169,
+    "title": "调拨单：补 create + getDetail",
+    "desc": "实现调拨单创建和详情查询（含明细行）",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 170,
+    "title": "调拨单：补 confirmOut + confirmIn",
+    "desc": "调出扣库存 + 调入加库存 + 写库存流水",
+    "priority": "P1",
+    "status": "done",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 171,
+    "title": "盘点单：补 create + getDetail",
+    "desc": "实现盘点单创建和详情查询",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 172,
+    "title": "盘点单：补 inputStocktakeData + calculateDiff",
+    "desc": "录入实盘数量 + 计算差异（实盘-系统库存）",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 173,
+    "title": "盘点单：补 processDiff（盈亏处理）",
+    "desc": "盘盈→入库单 / 盘亏→出库单",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 174,
+    "title": "采购-库存事件桥接完善",
+    "desc": "InventoryEventBridge：生产完工→入库、销售发货→出库、stock.low→采购建议",
+    "priority": "P2",
+    "status": "done",
+    "date": "07-31",
+    "tags": [
+      "库存",
+      "采购"
+    ]
+  },
+  {
+    "id": 175,
+    "title": "purchase_order.order_type 类型修复",
+    "desc": "实体映射 int→String，对齐 varchar(20) 数据库字段",
+    "priority": "P3",
+    "status": "done",
+    "date": "07-31",
+    "tags": [
+      "采购"
+    ]
+  },
+  {
+    "id": 176,
+    "title": "物料删除校验扩展：检查采购/生产/销售订单引用",
+    "desc": "deleteWithCheck() 目前只查 inventory_stock；扩展检查 purchase_order_item、production_order_material、销售订单明细，有引用则拒绝删除（对应代码中遗留 TODO）",
+    "priority": "P2",
+    "status": "pending",
+    "date": "07-31",
+    "tags": [
+      "库存"
+    ]
+  },
+  {
+    "id": 177,
+    "title": "jjx-kanban 对接：数据库字段扩展",
+    "desc": "sys_event_config 加 kanban_module(默认office) + priority(默认normal)；sys_task 加 kanban_module 字段",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-31",
+    "tags": [
+      "看板",
+      "数据库"
+    ]
+  },
+  {
+    "id": 178,
+    "title": "jjx-kanban 对接：后端任务路由",
+    "desc": "LocalEventPublisher 建任务改读配置（setPriority/setKanbanModule 不再写死 normal）；KanbanTaskController 新建 GET /kanban/board/{module}/tasks 列表接口（按 kanban_module/status/priority 过滤）",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-31",
+    "tags": [
+      "看板",
+      "后端"
+    ]
+  },
+  {
+    "id": 179,
+    "title": "jjx-kanban 对接：事件配置页加路由字段",
+    "desc": "eventConfig/index.ts 表单+表格加『看板模块』『优先级』两个下拉；初始配置：stock.low/stock.over→emergency/urgent，order/purchase审核→office/high，其余审批→office/normal",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-31",
+    "tags": [
+      "看板",
+      "配置页"
+    ]
+  },
+  {
+    "id": 180,
+    "title": "jjx-kanban 对接：前端看板接入",
+    "desc": "board-real.ts 成功码 code===0→200（根因，否则永远降级Mock）；office接 /kanban/board/office/tasks；emergency按优先级分组(紧急/高/普通/低)；board.ts 模板数组留扩展位(未来purchase/warehouse/product)",
+    "priority": "P1",
+    "status": "todo",
+    "date": "07-31",
+    "tags": [
+      "看板",
+      "前端"
+    ]
+  },
+  {
+    "id": 181,
+    "title": "jjx-kanban production 模块接通",
+    "desc": "production 读 production_order 工单表（ProductionKanbanController 已有），前端修好成功码即可用；卡片详情接 GET /production/order/{orderId}；拖拽暂只做状态流转(start/complete/cancel)",
+    "priority": "P2",
+    "status": "todo",
+    "date": "07-31",
+    "tags": [
+      "看板",
+      "生产"
+    ]
+  }
+]

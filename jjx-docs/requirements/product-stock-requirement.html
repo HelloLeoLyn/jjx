@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>产品(成品)库存需求定义</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f1f5f9;
+    color: #1e293b;
+    line-height: 1.7;
+    padding: 24px 16px 60px;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+  .header {
+    background: linear-gradient(135deg, #1e40af, #3b82f6);
+    color: #fff;
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  .header h1 { font-size: 22px; margin-bottom: 6px; }
+  .header .meta { font-size: 13px; opacity: 0.85; }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  h2 {
+    font-size: 17px;
+    color: #1e40af;
+    border-left: 4px solid #3b82f6;
+    padding-left: 10px;
+    margin-bottom: 12px;
+  }
+  h3 { font-size: 15px; color: #334155; margin: 14px 0 8px; }
+  p { margin-bottom: 8px; }
+  ul, ol { padding-left: 22px; margin-bottom: 8px; }
+  li { margin-bottom: 4px; }
+  .rule {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1e40af;
+    margin-bottom: 10px;
+  }
+  .flow {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    margin-bottom: 10px;
+  }
+  .tag {
+    display: inline-block;
+    background: #dbeafe;
+    color: #1e40af;
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 12px;
+    margin-right: 6px;
+  }
+  .tag-red { background: #fee2e2; color: #b91c1c; }
+  .tag-green { background: #dcfce7; color: #15803d; }
+  .warning {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; }
+  th { background: #f1f5f9; font-weight: 600; }
+  .back { display: inline-block; margin-bottom: 16px; color: #3b82f6; text-decoration: none; font-size: 14px; }
+  .back:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="/">← 返回文档中心</a>
+
+  <div class="header">
+    <h1>📦 产品(成品)库存需求定义</h1>
+    <div class="meta">2026-08-04 定 · 业务规则：HelloLeoLyn · 梳理补充：大黄 · 关联任务：DEV-576 / DEV-572</div>
+  </div>
+
+  <div class="card">
+    <h2>一、业务规则</h2>
+    <div class="rule">客户下产品订单 → 优先考虑库存：有库存先发库存，不够的部分再生产（先库存后生产，MTS/MTO 混合）</div>
+  </div>
+
+  <div class="card">
+    <h2>二、核心流程</h2>
+    <div class="flow">订单确认(CONFIRMED, 4→6)
+  └─ 按订单产品明细逐行检查成品可用库存
+      ├─ 库存充足 → 该行锁定库存，直接发货
+      ├─ 库存不足 → 拆成两部分：
+      │     ① 库存部分：锁定并直接发货
+      │     ② 缺货部分(订单量-库存量) → 进生产
+      └─ 无库存档案/新产品 → 视为 0 库存，全量生产</div>
+    <p><b>关键：</b>生产工单数量 = <span class="tag-green">缺货数量</span>（不是整单数量）</p>
+    <p>全库存满足 → 不生成生产工单，直接发货</p>
+  </div>
+
+  <div class="card">
+    <h2>三、库存处理规则</h2>
+    <ul>
+      <li><b>预留：</b>订单确认时锁定库存（reserved+），防止被其他订单抢走，先到先得</li>
+      <li><b>取消：</b>订单取消 → 释放预留库存</li>
+      <li><b>扣减：</b>发货出库确认时扣减库存，预留同步释放</li>
+      <li><b>补充：</b>生产完成 → 自动成品入库，补回库存</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>四、两层预警</h2>
+    <table>
+      <tr><th>层级</th><th>检查内容</th><th>输出</th><th>任务</th></tr>
+      <tr><td>第一层</td><td>成品库存够不够</td><td>决定生产数量（缺货量）</td><td>DEV-576 方案落地后</td></tr>
+      <tr><td>第二层</td><td>需生产部分的原材料够不够</td><td>order_shortage 缺料预警 → 触发采购</td><td>DEV-572（已登记）</td></tr>
+    </table>
+    <p>提示销售：哪些产品有现货、哪些要生产、原材料是否够</p>
+  </div>
+
+  <div class="card">
+    <h2>五、状态流转</h2>
+    <ul>
+      <li><span class="tag-green">全库存满足</span> 确认后跳过生产，直接发货</li>
+      <li><span class="tag">部分/全缺货</span> 确认 → 开始生产（缺货量）→ 生产完成入库 → 发货</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>六、边界</h2>
+    <ul>
+      <li>样品单：不查库存（打样流程）</li>
+      <li>多订单抢同一产品库存：按确认时间先到先得（预留机制）</li>
+      <li>库存不足：销售需告知客户交期（参考生产周期 lead_time）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>七、方案选型：成品库存怎么建（A vs B）</h2>
+    <p>现状：库存体系（inventory_stock + 入库/出库/盘点/转移全部单据）按 <b>material_id</b> 跑，产品表 product 与物料体系完全独立，无关联字段。</p>
+
+    <h3>方案 A：产品建物料档案（✅ 已选定 2026-08-04）</h3>
+    <ul>
+      <li>产品发布时自动在 inventory_material 建一条记录（material_type 新增 P=成品，产品编码即物料编码）</li>
+      <li>库存表/单据/扣减逻辑/预警/报表 <b>全部复用现有体系</b>，几乎零改动</li>
+      <li>✅ 改动小、体系统一、预警/报表/盘点全自动支持</li>
+      <li>⚠️ 产品↔物料双写同步（改名/停用需同步）；物料列表会被成品“污染”（选择器需按类型过滤）；物料字段（规格/供应商）对产品意义不大</li>
+      <li>工作量：<b>小</b>（发布联动 + 选择器过滤）</li>
+    </ul>
+
+    <h3>方案 B：库存表支持 product_id 双维度（❌ 未选）</h3>
+    <ul>
+      <li>inventory_stock + 4~5 张单据明细表加 product_id 列（与 material_id 二选一）</li>
+      <li>后端库存增减逻辑按维度分支；前端物料选择器支持选产品</li>
+      <li>✅ 语义清晰、产品和物料完全独立、无同步问题</li>
+      <li>⚠️ 改动面大：表结构 + 后端逻辑 + 前端选择器全部改造，现有代码大量按 material_id 写死</li>
+      <li>工作量：<b>大</b></li>
+    </ul>
+
+    <table>
+      <tr><th>对比项</th><th>方案A 产品建物料</th><th>方案B 库存双维度</th></tr>
+      <tr><td>改动范围</td><td>小（发布联动+过滤）</td><td>大（表+后端+前端全改）</td></tr>
+      <tr><td>数据一致性</td><td>需双写同步</td><td>天然一致</td></tr>
+      <tr><td>体系复用</td><td>全部复用</td><td>需扩展</td></tr>
+      <tr><td>灵活性</td><td>够用</td><td>更高</td></tr>
+      <tr><td>风险</td><td>低</td><td>中</td></tr>
+    </table>
+    <p>⚠️ 业务提醒：薄膜开关以按单生产（MTO）为主，成品库存价值有限，主要服务于标准品/常备品。方案A 成本低、随时可加，已定为首选。</p>
+  </div>
+
+  <div class="card">
+    <h2>八、决策拍板结果（2026-08-04）</h2>
+    <table>
+      <tr><th>决策点</th><th>结论</th></tr>
+      <tr><td>1. 方案选型</td><td><b>方案A：产品建物料档案</b>（material_type 新增 P=成品，产品编码即物料编码，库存体系全复用）</td></tr>
+      <tr><td>2. 订单明细行拆分展示</td><td><b>不用</b>：界面不拆两列展示（库存满足数/需生产数），内部仍按缺货量生成生产工单</td></tr>
+      <tr><td>3. 全库存满足订单流转</td><td><b>手动确认</b>：确认后仍需手动操作进入发货流程，不自动跳转</td></tr>
+      <tr><td>4. 生产完成入库触发点</td><td><b>成品入库单</b>：生产工单完成 → 自动生成成品入库单（走入库流程）</td></tr>
+      <tr><td>5. 预留机制</td><td><b>要做</b>：订单确认时预留库存（reserved+），取消释放，出库扣减同步释放</td></tr>
+    </table>
+  </div>
+
+  <div class="warning">
+    <b>📋 任务清单：</b>
+    DEV-576 需求分析与方案选型（high）→ DEV-572 原材料齐套检查（high，先做）→ 成品库存开发任务（576 完成后另行登记）
+  </div>
+</div>
+</body>
+</html>

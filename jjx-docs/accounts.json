@@ -1,0 +1,83 @@
+[
+  {
+    "id": 1785812146501,
+    "system": "ERP-本机访问",
+    "url": "http://localhost:3000/",
+    "username": "admin",
+    "password": "d5d3833a0e2c6e7940a64a0a:3f1e3a1f37e650322583df933787d0ee:faeb9bf0bf57",
+    "remark": "本地 Local",
+    "createTime": "2026-08-04 02:55:46"
+  },
+  {
+    "id": 1785912699371,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "sales01",
+    "password": "322cd9cecdee911efb8d3dba:a2813411a62ce9c897b925f28889045f:4c4af94219bf",
+    "remark": "销售员A(sales:ops)",
+    "createTime": "2026-08-05 06:51:39"
+  },
+  {
+    "id": 1785912699387,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "sales02",
+    "password": "58a92c1382e41d0bf530c420:b1c65933a3eb33c338b83a369ff1cbca:29b40e2bfa3c",
+    "remark": "销售员B(sales:ops)",
+    "createTime": "2026-08-05 06:51:39"
+  },
+  {
+    "id": 1785912699397,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "sales_mgr01",
+    "password": "129b776000e1e7bf8b7780e2:6d80179051da7021ea708a8650b33cca:c4f86f0421ca",
+    "remark": "销售主管(sales:all)",
+    "createTime": "2026-08-05 06:51:39"
+  },
+  {
+    "id": 1785912699407,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "reviewer01",
+    "password": "9b4dbd857a184572b8a31711:b631a51efc077b6486c9bbf2bd6ceae6:34a34460d097",
+    "remark": "审核员(sales:review)",
+    "createTime": "2026-08-05 06:51:39"
+  },
+  {
+    "id": 1785912699416,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "engineer01",
+    "password": "1ab6cb7dd00749887aa6c35a:1867db52fff68809ddb2d0056141b72f:be61473405de",
+    "remark": "工程(engineering:all)",
+    "createTime": "2026-08-05 06:51:39"
+  },
+  {
+    "id": 1785912699426,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "keeper01",
+    "password": "90e5ad8cf504a1218a5d4a5f:c61554b49b0975613d379d6d956fa3f3:843e121c7705",
+    "remark": "仓管(inventory:ops)",
+    "createTime": "2026-08-05 06:51:39"
+  },
+  {
+    "id": 1785912699435,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "buyer01",
+    "password": "2ed9642e0804fad53471aba8:3dc8ed538e0f3c2f786cf32ddbdebe63:6a691471ed22",
+    "remark": "采购员(purchase:ops)",
+    "createTime": "2026-08-05 06:51:39"
+  },
+  {
+    "id": 1785912699444,
+    "system": "JJX ERP",
+    "url": "http://localhost:3000",
+    "username": "producer01",
+    "password": "42071eea935df09e1c708fcc:f29afc727ca0307d6f92b009dc1f957f:b63164138bae",
+    "remark": "生产(production:ops)",
+    "createTime": "2026-08-05 06:51:39"
+  }
+]

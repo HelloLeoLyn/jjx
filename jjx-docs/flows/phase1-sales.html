@@ -93,66 +93,108 @@ h1 { text-align:center; font-size:20px; margin-bottom:4px; }
       <span class="c">→</span>
       <span class="node node-b" style="background:rgba(59,130,246,.2)">🔄 询价转报价</span>
       <span class="tag">convertToQuotation()</span>
+      <span class="node node-b node-sub" style="font-size:11px">自动带出产品/数量/技术要求明细（8-05，单价0待定价）</span>
+    </div>
+    <div class="h-row">
+      <span class="node node-b node-sub">状态流补全（8-05 DEV-589）: 草稿/待处理 →<strong>发送</strong>(sent) →<strong>确认</strong>(accepted) / <strong>拒绝</strong>(rejected)</span>
+      <span class="tag">send/accept/reject</span>
+      <span class="node node-b node-sub">发送/确认/拒绝接口已实现，前端列表行按钮操作</span>
+      <span class="c">→</span>
+      <span class="node node-b node-sub">过期定时（每天1:30/1:35）: 报价单 valid_until 过期→expired(4)，询价单 90天未处理→expired(6)</span>
     </div>
   </div>
 
   <!-- ===== Section B: 报价 ===== -->
   <div style="background:rgba(59,130,246,.04);border-radius:8px;padding:12px;margin-bottom:14px">
-    <div style="font-size:12px;color:#3b82f6;margin-bottom:8px;font-weight:500">B — 报价单 <span class="tag">SalesQuotation · 7状态</span></div>
+    <div style="font-size:12px;color:#3b82f6;margin-bottom:8px;font-weight:500">B — 报价单 <span class="tag">SalesQuotation · 状态 0-9（8-03更新）</span></div>
     <div class="h-row">
       <span class="node node-b">📋 创建报价单</span>
       <span class="c">→</span>
       <span class="node node-b node-sub">选客户/产品/价格/数量</span>
       <span class="c">→</span>
-      <span class="node node-b node-sub">币种/汇率/折扣</span>
-      <span class="c">→</span>
-      <span class="node node-b">💾 草稿(DRAFT)</span>
+      <span class="node node-b">💾 草稿(0)</span>
     </div>
     <div class="h-row"><span class="c">⬇</span></div>
     <div class="h-row">
-      <span class="node node-b">📤 提交审核</span>
+      <span class="node node-b">📤 提交审核（操作预览器）</span>
       <span class="c">→</span>
       <span class="dia" style="border-color:#3b82f6;color:#3b82f6;min-width:40px">通过？</span>
       <span class="b-label b-yes">通过 →</span>
-      <span class="node node-b">✅ 已审核(APPROVED)</span>
+      <span class="node node-b">✅ 已审核(6)</span>
       <span class="c">→</span>
-      <span class="node node-b node-sub">📤 发送给客户</span>
+      <span class="node node-b node-sub">📤 发送报价（仅已审核可发）</span>
       <span class="c">→</span>
-      <span class="node node-b node-sub">状态→SENT</span>
+      <span class="node node-b node-sub">已发送(1)</span>
+    </div>
+    <div class="b-row">
+      <span class="node node-b node-sub" style="font-size:11px">发送弹窗展示完整报价表单（单据信息+明细+金额汇总），支持打印/导出PDF/Excel后确认发送（8-05 DEV-637）</span>
     </div>
     <div class="b-row">
       <span class="b-label b-no">驳回 →</span>
-      <span class="node node-r node-sub">退回修改</span>
+      <span class="node node-r node-sub">已拒绝(3)</span>
+      <span class="c">→</span>
+      <span class="node node-b node-sub" style="font-size:11px">🔄 重新报价（3/4 → 复制新草稿）</span>
     </div>
     <div class="h-row">
-      <span class="node node-b">📤 直接发送(跳过审核)</span>
+      <span class="node node-b">🤝 客户确认(1→2)</span>
       <span class="c">→</span>
-      <span class="node node-b node-sub">draft→sent→accepted</span>
-    </div>
-    <div class="h-row">
-      <span class="node node-b">🤝 客户接受报价</span>
-      <span class="c">→</span>
-      <span class="node node-b" style="background:rgba(59,130,246,.2)">🔄 报价转订单</span>
+      <span class="node node-b" style="background:rgba(59,130,246,.2)">🔄 转订单(2→9)</span>
       <span class="tag">convertToOrder()</span>
-      <span class="c">→</span>
-      <span class="node node-b node-sub">调用 IOrderService.insertOrder()</span>
+      <span class="c">|</span>
+      <span class="node node-y" style="font-size:11px">🔄 转样品单（需已确认2）</span>
+      <span class="c">|</span>
+      <span class="node node-r node-sub" style="font-size:11px">客户拒绝(1→3)/过期(1→4)</span>
+    </div>
+    <div class="b-row">
+      <span class="b-label" style="color:#909399;font-size:11px">来源追溯（8-05）：</span>
+      <span class="node node-b node-sub" style="font-size:11px">报价单列表显示来源询价单号（可按询价单号搜索）；转订单双向关联（订单.quotationId ↔ 报价单.convertedOrderId）；转订单继承金额（税率/税额/折扣，final 一致，8-05）</span>
+    </div>
+    <div class="b-row">
+      <span class="b-label" style="color:#909399;font-size:11px">自动通知（8-05）：</span>
+      <span class="node node-b node-sub" style="font-size:11px">审核通过→通知销售可发送；客户确认→可转单；客户拒绝→可重新报价；询价转报价→通知补明细（sys_notification）</span>
+    </div>
+    <div class="b-row">
+      <span class="b-label" style="color:#909399;font-size:11px">闭环（8-03）：</span>
+      <span class="node node-b node-sub" style="font-size:11px">已完成(9) → 改单(8) → 提交审核（改单可重新流转）→ 待审核(5)</span>
+    </div>
+    <div class="b-row" style="margin-top:6px">
+      <span class="b-label" style="color:#e6a23c;font-size:11px">💡 操作预览器：</span>
+      <span class="node node-b node-sub" style="font-size:11px">提交审核/审核/发送/客户确认/拒绝/转订单/转样品单 均走预览器（状态跳转+表单+证据+事件预告）</span>
     </div>
   </div>
 
   <!-- ===== Section C: 样品单 ===== -->
   <div style="background:rgba(245,158,11,.04);border-radius:8px;padding:12px;margin-bottom:14px">
-    <div style="font-size:12px;color:#f59e0b;margin-bottom:8px;font-weight:500">C — 样品单独立流程 <span class="tag">SampleOrder · 10状态</span></div>
+    <div style="font-size:12px;color:#f59e0b;margin-bottom:8px;font-weight:500">C — 样品单流程 <span class="tag">SampleOrder · 10状态（8-03更新）</span></div>
     <div class="h-row" style="gap:3px">
       <span class="node node-y" style="font-size:11px">1 已创建</span><span class="c">→</span>
       <span class="node node-y" style="font-size:11px">2 待审核</span><span class="c">→</span>
       <span class="node node-y" style="font-size:11px">3 打样中</span><span class="c">→</span>
       <span class="node node-y" style="font-size:11px">4 待送样</span><span class="c">→</span>
       <span class="node node-y" style="font-size:11px">5 已送样</span><span class="c">→</span>
-      <span class="node node-y" style="font-size:11px">6 确认</span><span class="c">→</span>
+      <span class="node node-y" style="font-size:11px">6 已确认</span><span class="c">→</span>
       <span class="node node-y" style="font-size:11px">7 转量产</span><span class="c">|</span>
-      <span class="node node-y" style="font-size:11px">8 关闭</span>
+      <span class="node node-y" style="font-size:11px">10 作废</span>
     </div>
-    <div class="b-row"><span class="b-label b-no" style="margin-left:0">← 9 客户退回 → 回到3重新打样</span></div>
+    <div class="b-row">
+      <span class="b-label b-no" style="margin-left:0">← 9 客户退回 → 重新打样（打样平台）→ 回3</span>
+    </div>
+    <div class="b-row" style="margin-top:6px">
+      <span class="b-label" style="color:#e6a23c;font-size:11px">🔧 打样阶段（8-03 DEV-526）：</span>
+      <span class="node node-b node-sub" style="font-size:11px">样品单页「工程接单」预览器 → 接单后到「工程管理 → 打样平台」操作（工序/材料/工艺/完成）</span>
+    </div>
+    <div class="b-row" style="margin-top:4px">
+      <span class="b-label" style="color:#e6a23c;font-size:11px">🧱 材料规则：</span>
+      <span class="node node-b node-sub" style="font-size:11px">必须从物料档案选择（无则先建档）；样品完成仅打样平台可操作（单入口）</span>
+    </div>
+    <div class="b-row" style="margin-top:4px">
+      <span class="b-label" style="color:#e6a23c;font-size:11px">📦 资料转移（8-03 DEV-505）：</span>
+      <span class="node node-b node-sub" style="font-size:11px">已确认(6) → 资料转移（产品/BOM/路线建档，通知工程完善审核）→ 转量产（校验产品已发布）</span>
+    </div>
+    <div class="b-row" style="margin-top:4px">
+      <span class="b-label" style="color:#f56c6c;font-size:11px">🗑 作废（8-03 DEV-527）：</span>
+      <span class="node node-b node-sub" style="font-size:11px">事件提醒(销售/工程) + 派任务到接单人；打样平台不再显示</span>
+    </div>
   </div>
 
   <!-- ===== Section D: 订单 ===== -->
@@ -205,6 +247,7 @@ h1 { text-align:center; font-size:20px; margin-bottom:4px; }
       <span class="c">→</span>
       <span class="node node-b">✅ 已确认(CONFIRMED)</span>
       <span class="tag">第129条</span>
+      <span class="tag" style="background:#e6a23c">⚠️确认时自动BOM齐套检查(缺料预警) 8-04</span>
     </div>
     <div class="b-row">
       <span class="b-label b-no" style="margin-left:48px">过期 →</span>
@@ -230,7 +273,11 @@ h1 { text-align:center; font-size:20px; margin-bottom:4px; }
       <span class="node node-g">✅ 已完成(COMPLETED)</span>
       <span class="c" style="margin:0 10px">┃</span>
       <span class="node node-r">❌ 已取消(CANCELLED)</span>
-      <span class="tag">任意状态可取消</span>
+      <span class="tag">非终态可取消；已完成(9)/已取消(10)不可取消</span>
+    </div>
+    <div class="b-row">
+      <span class="b-label b-no" style="margin-left:48px">取消联动(8-04) →</span>
+      <span class="node node-r node-sub">生产中取消 → 关联生产工单联动取消(跳过已完成)；操作日志记录取消/跳过数量</span>
     </div>
   </div>
 
