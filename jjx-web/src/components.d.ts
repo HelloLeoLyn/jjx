@@ -7,6 +7,7 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    A4Canvas: typeof import('./components/A4Canvas/index.vue')['default']
     AttachmentPanel: typeof import('./components/AttachmentPanel/index.vue')['default']
     AttachmentUploadDialog: typeof import('./components/AttachmentUploadDialog/index.vue')['default']
     BizDetailPanel: typeof import('./components/BizFlowDetail/BizDetailPanel.vue')['default']
@@ -29,6 +30,7 @@ declare module 'vue' {
     ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElCol: typeof import('element-plus/es')['ElCol']
     ElCollapseTransition: typeof import('element-plus/es')['ElCollapseTransition']
+    ElColorPicker: typeof import('element-plus/es')['ElColorPicker']
     ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
     ElDescriptions: typeof import('element-plus/es')['ElDescriptions']
     ElDescriptionsItem: typeof import('element-plus/es')['ElDescriptionsItem']
