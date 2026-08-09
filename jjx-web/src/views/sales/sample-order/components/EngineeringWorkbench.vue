@@ -82,7 +82,15 @@
               <div v-for="(p, idx) in planList" :key="p.uid || p.processId" class="plan-card">
                 <div class="pc-head">
                   <span class="pc-num">{{ idx + 1 }}</span>
-                  <SvgIcon v-if="p.icon" :name="p.icon" :size="26" class="pc-ico" />
+                  <IconStepBadge
+                    v-if="p.icon"
+                    :icon="p.icon"
+                    :description="p.description"
+                    :size="26"
+                    class="pc-ico"
+                    @update-description="(v: string) => onUpdateDesc(p, v)"
+                    @jump="onJump"
+                  />
                   <span v-else class="pc-ico pc-emoji">📦</span>
                   <div class="pc-title">
                     <span class="pc-name">{{ p.processName }}</span>
@@ -299,7 +307,9 @@ import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import WorkProjectPicker from './WorkProjectPicker.vue'
+import { standardProcessApi } from '@/api/product/standardProcess'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/modules/user'
 
@@ -351,6 +361,7 @@ watch(selectedProcessIds, (ids) => {
           processType: src.processType,
           processCategory: src.processCategory,
           icon: src.icon,
+          description: src.description,
           status: 0,
           processNote: '',
           materials: null,
@@ -468,6 +479,24 @@ function removePlan(p: any) {
   if (p.stdProcessId) {
     selectedProcessIds.value = selectedProcessIds.value.filter((id) => id !== p.stdProcessId)
   }
+}
+
+// 图标下标数字：更新 description 中 <jump>N</jump> 并保存（2026-08-09）
+async function onUpdateDesc(p: any, desc: string) {
+  p.description = desc
+  if (!p.stdProcessId) return
+  try {
+    await standardProcessApi.update(p.stdProcessId, { description: desc } as any)
+    ElMessage.success('已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  }
+}
+
+// 跳转（现阶段空函数，后续接跳转逻辑）
+function onJump(step: number) {
+  // TODO: 跳转到对应步骤（如跳转到下线第 N 步）
+  console.log('[IconStepBadge] jump step =', step)
 }
 
 // 材料编辑展开/收起

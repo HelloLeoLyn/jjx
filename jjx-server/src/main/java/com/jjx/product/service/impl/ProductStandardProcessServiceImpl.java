@@ -98,19 +98,19 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
             }
         }
 
-        // 更新字段
-        existing.setProcessCode(process.getProcessCode());
-        existing.setProcessName(process.getProcessName());
-        existing.setProcessType(process.getProcessType());
-        existing.setProcessCategory(process.getProcessCategory());
-        existing.setStandardLaborHours(process.getStandardLaborHours());
-        existing.setStandardMachineHours(process.getStandardMachineHours());
-        existing.setProcessParamTemplate(process.getProcessParamTemplate());
-        existing.setSkillRequirement(process.getSkillRequirement());
-        existing.setEquipmentType(process.getEquipmentType());
-        existing.setQualityStandard(process.getQualityStandard());
-        existing.setDescription(process.getDescription());
-        existing.setDisplayOrder(process.getDisplayOrder());
+        // 更新字段（null 安全：只更新传入的非空字段，2026-08-09 支持只改 description）
+        if (process.getProcessCode() != null) existing.setProcessCode(process.getProcessCode());
+        if (process.getProcessName() != null) existing.setProcessName(process.getProcessName());
+        if (process.getProcessType() != null) existing.setProcessType(process.getProcessType());
+        if (process.getProcessCategory() != null) existing.setProcessCategory(process.getProcessCategory());
+        if (process.getStandardLaborHours() != null) existing.setStandardLaborHours(process.getStandardLaborHours());
+        if (process.getStandardMachineHours() != null) existing.setStandardMachineHours(process.getStandardMachineHours());
+        if (process.getProcessParamTemplate() != null) existing.setProcessParamTemplate(process.getProcessParamTemplate());
+        if (process.getSkillRequirement() != null) existing.setSkillRequirement(process.getSkillRequirement());
+        if (process.getEquipmentType() != null) existing.setEquipmentType(process.getEquipmentType());
+        if (process.getQualityStandard() != null) existing.setQualityStandard(process.getQualityStandard());
+        if (process.getDescription() != null) existing.setDescription(process.getDescription());
+        if (process.getDisplayOrder() != null) existing.setDisplayOrder(process.getDisplayOrder());
         existing.setUpdateTime(LocalDateTime.now());
 
         // JSON字段处理：空字符串转为null，避免MySQL JSON类型报错
