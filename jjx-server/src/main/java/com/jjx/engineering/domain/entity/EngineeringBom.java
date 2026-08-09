@@ -40,6 +40,21 @@ public class EngineeringBom {
      */
     private String bomVersion;
 
+    /**
+     * 版本号（V1.0/V2.0...，版本化改造新增）
+     */
+    private String version;
+
+    /**
+     * 来源打样单ID
+     */
+    private Long sourceSampleId;
+
+    /**
+     * 父版本BOM ID
+     */
+    private Long parentBomId;
+
 
     /**
      * 产品ID

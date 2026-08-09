@@ -901,6 +901,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         String transferNo = redisSequenceService.generateBusinessNumber("TF", "资料转移单号");
+        String transferredVersion = null; // 本次转移生成的版本号（回填打样单）
         java.util.List<String> details = new java.util.ArrayList<>();
         String productAction = "NONE", bomAction = "NONE", routingAction = "NONE";
         Long builtProductId = null, builtBomId = null, builtRoutingId = null;
@@ -979,23 +980,39 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 if (builtProductId == null) builtProductId = pid;
                 if (pid == null) continue;
 
-                // ===== ② BOM 建档：从工序单元材料聚合生成草稿 =====
+                // ===== ② BOM 建档：版本化（每次转移生成新版本，旧版本失效）=====
+                // 旧版本（当前生效）
                 com.jjx.engineering.domain.entity.EngineeringBom existBom = bomService.getOne(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
                                 .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, pid)
                                 .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, true)
                                 .last("LIMIT 1"));
-                if (existBom == null) {
-                    if (processes != null && !processes.isEmpty()) {
+                // 新版本号：该产品所有BOM版本(version/bom_version)最大整数部分+1
+                java.util.List<String> bomVersions = bomService.list(
+                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
+                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, pid))
+                        .stream()
+                        .map(b -> b.getVersion() != null ? b.getVersion() : b.getBomVersion())
+                        .collect(java.util.stream.Collectors.toList());
+                String newBomVersion = computeNextVersion(bomVersions);
+                if (processes != null && !processes.isEmpty()) {
+                    // 旧版本失效
+                    if (existBom != null) {
+                        existBom.setIsCurrent(false);
+                        bomService.updateById(existBom);
+                    }
                         com.jjx.engineering.domain.entity.EngineeringBom newBom = new com.jjx.engineering.domain.entity.EngineeringBom();
                         newBom.setBomCode("BOM-" + prod.getProductCode() + "-SAMPLE");
                         newBom.setBomName(prod.getProductName() + "（打样传承BOM）");
                         newBom.setProductId(pid);
-                        newBom.setBomVersion("V1");
+                        newBom.setBomVersion(newBomVersion);
+                        newBom.setVersion(newBomVersion);
                         newBom.setBomType("manufacturing");
                         newBom.setIsCurrent(true);
+                        newBom.setSourceSampleId(orderId);
+                        newBom.setParentBomId(existBom != null ? existBom.getBomId() : null);
                         newBom.setApproveStatus(1); // 草稿
-                        newBom.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]资料转移生成，请工程确认后批准");
+                        newBom.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]资料转移生成V" + newBomVersion + "，请工程确认后批准");
                         newBom.setCreateBy(SecurityUtils.getUsername());
                         bomService.save(newBom);
 
@@ -1051,31 +1068,51 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         builtBomId = newBom.getBomId();
                         bomAction = "CREATE";
                         details.add("BOM[" + newBom.getBomCode() + "]生成草稿(" + aggMap.size() + "条明细)");
+                        // 回填产品当前BOM版本号
+                        if (pid != null) {
+                            com.jjx.product.domain.entity.Product bomVerUpdate = new com.jjx.product.domain.entity.Product();
+                            bomVerUpdate.setProductId(pid);
+                            bomVerUpdate.setCurrentBomVersion(newBomVersion);
+                            productMapper.updateById(bomVerUpdate);
+                        }
+                        transferredVersion = newBomVersion;
                     } else {
                         bomAction = "SKIP_NO_PROCESS";
                         details.add("产品[" + prod.getProductCode() + "]无打样工序，未生成BOM");
                     }
-                } else {
-                    bomAction = "EXISTS";
-                    builtBomId = existBom.getBomId();
-                    details.add("产品[" + prod.getProductCode() + "]已有BOM[" + existBom.getBomCode() + "]");
-                }
 
-                // ===== ③ 工艺路线建档：从工序单元生成草稿 =====
+                // ===== ③ 工艺路线建档：版本化（每次转移生成新版本，旧版本失效）=====
+                // 旧版本（当前生效）
                 com.jjx.engineering.domain.entity.EngineeringRouting existRouting = routingService.getOne(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRouting>()
                                 .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getProductId, pid)
+                                .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getIsCurrent, 1)
                                 .last("LIMIT 1"));
-                if (existRouting == null) {
-                    if (processes != null && !processes.isEmpty()) {
+                // 新版本号：该产品所有Routing版本(version/routing_version)最大整数部分+1
+                java.util.List<String> routingVersions = routingService.list(
+                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRouting>()
+                                        .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getProductId, pid))
+                        .stream()
+                        .map(r -> r.getVersion() != null ? r.getVersion() : r.getRoutingVersion())
+                        .collect(java.util.stream.Collectors.toList());
+                String newRoutingVersion = computeNextVersion(routingVersions);
+                if (processes != null && !processes.isEmpty()) {
+                    // 旧版本失效
+                    if (existRouting != null) {
+                        existRouting.setIsCurrent(0);
+                        routingService.updateById(existRouting);
+                    }
                         com.jjx.engineering.domain.entity.EngineeringRouting newRouting = new com.jjx.engineering.domain.entity.EngineeringRouting();
                         newRouting.setRoutingCode("RTE-" + prod.getProductCode() + "-SAMPLE");
                         newRouting.setRoutingName(prod.getProductName() + "（打样传承工艺路线）");
                         newRouting.setProductId(pid);
                         newRouting.setProductCode(prod.getProductCode());
                         newRouting.setProductName(prod.getProductName());
-                        newRouting.setRoutingVersion("V1");
+                        newRouting.setRoutingVersion(newRoutingVersion);
+                        newRouting.setVersion(newRoutingVersion);
                         newRouting.setIsCurrent(1);
+                        newRouting.setSourceSampleId(orderId);
+                        newRouting.setParentRoutingId(existRouting != null ? existRouting.getRoutingId() : null);
                         newRouting.setApproveStatus(1); // 草稿
                         newRouting.setCreateBy(SecurityUtils.getUsername());
                         routingService.save(newRouting);
@@ -1083,6 +1120,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         int stepOrder = 1;
                         java.math.BigDecimal totalLabor = java.math.BigDecimal.ZERO;
                         java.math.BigDecimal totalMachine = java.math.BigDecimal.ZERO;
+                        // 组合工序分组：process_order 相同 → 共享 group_id
+                        java.util.Map<Integer, Long> orderGroupMap = new java.util.HashMap<>();
                         for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
                             // 方案A适配：优先用 std_process_id 精确关联作业项目，无则按名称匹配兑底（兼容旧数据/自定义工序）
                             com.jjx.product.domain.entity.ProductStandardProcess std = null;
@@ -1104,12 +1143,20 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     ? std.getStandardMachineHours() : laborHours;
                             totalLabor = totalLabor.add(laborHours);
                             totalMachine = totalMachine.add(machineHours);
+                            // 组合工序：同一 process_order 共享 group_id（独立工序为 null）
+                            Integer po = sp.getProcessOrder();
+                            Long groupId = null;
+                            String groupName = null;
+                            if (po != null && po > 0) {
+                                groupId = orderGroupMap.computeIfAbsent(po, k -> generateGroupId());
+                                groupName = processCategoryToGroupName(sp.getProcessCategory());
+                            }
                             routingItemMapper.insertItem(newRouting.getRoutingId(),
                                     stdProcessId != null ? stdProcessId : null,
                                     stepOrder++, laborHours, machineHours,
                                     sp.getProcessNote() != null ? sp.getProcessNote() : null,
                                     "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
-                                    category);
+                                    category, groupId, groupName);
                         }
                         newRouting.setTotalLaborHours(totalLabor);
                         newRouting.setTotalMachineHours(totalMachine);
@@ -1118,15 +1165,18 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         builtRoutingId = newRouting.getRoutingId();
                         routingAction = "CREATE";
                         details.add("工艺路线[" + newRouting.getRoutingCode() + "]生成草稿(" + processes.size() + "道工序)");
+                        // 回填产品当前Routing版本号
+                        if (pid != null) {
+                            com.jjx.product.domain.entity.Product routingVerUpdate = new com.jjx.product.domain.entity.Product();
+                            routingVerUpdate.setProductId(pid);
+                            routingVerUpdate.setCurrentRoutingVersion(newRoutingVersion);
+                            productMapper.updateById(routingVerUpdate);
+                        }
+                        transferredVersion = newRoutingVersion;
                     } else {
                         routingAction = "SKIP_NO_PROCESS";
                         details.add("产品[" + prod.getProductCode() + "]无工序记录，未生成工艺路线");
                     }
-                } else {
-                    routingAction = "EXISTS";
-                    builtRoutingId = existRouting.getRoutingId();
-                    details.add("产品[" + prod.getProductCode() + "]已有路线[" + existRouting.getRoutingCode() + "]");
-                }
             }
         }
 
@@ -1146,6 +1196,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         transfer.setCreateBy(SecurityUtils.getUsername());
         sampleTransferMapper.insert(transfer);
 
+        // 版本化回填：打样单记录最近转移版本号 + 时间
+        if (transferredVersion != null) {
+            com.jjx.sales.domain.entity.SalesOrder formalUpdate = new com.jjx.sales.domain.entity.SalesOrder();
+            formalUpdate.setOrderId(orderId);
+            formalUpdate.setFormalVersion(transferredVersion);
+            formalUpdate.setLastTransferTime(java.time.LocalDateTime.now());
+            orderMapper.updateById(formalUpdate);
+        }
+
         java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("transferNo", transferNo);
         result.put("transferId", transfer.getTransferId());
@@ -1159,6 +1218,49 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         log.info("样品单[{}] 资料转移完成[{}] 产品={} BOM={} 路线={}",
                 sampleOrder.getOrderNo(), transferNo, productAction, bomAction, routingAction);
         return result;
+    }
+
+    /**
+     * 计算下一个版本号（V1.0 → V2.0）：取现有版本号整数部分最大值+1
+     * 兼容 V1 / V1.0 / v2.0 格式
+     */
+    private String computeNextVersion(java.util.List<String> existingVersions) {
+        int maxMajor = 0;
+        if (existingVersions != null) {
+            for (String v : existingVersions) {
+                if (v == null || v.isEmpty()) continue;
+                try {
+                    // 提取 V 后的主版本号整数（V1.0 → 1，V10.2 → 10）
+                    String s = v.trim().toUpperCase();
+                    if (s.startsWith("V")) s = s.substring(1);
+                    int dot = s.indexOf('.');
+                    if (dot >= 0) s = s.substring(0, dot);
+                    maxMajor = Math.max(maxMajor, Integer.parseInt(s));
+                } catch (NumberFormatException ignored) { }
+            }
+        }
+        return "V" + (maxMajor + 1) + ".0";
+    }
+
+    /**
+     * 生成组合工序ID（时间戳+随机数，避免冲突，与工程路线保存逻辑一致）
+     */
+    private Long generateGroupId() {
+        return System.currentTimeMillis() * 1000 + (long) (Math.random() * 1000);
+    }
+
+    /**
+     * 打样工序卡片结构 → 组合名称（PANEL→面板组等），NULL/空返回 null
+     */
+    private String processCategoryToGroupName(String category) {
+        if (category == null || category.isEmpty()) return null;
+        switch (category) {
+            case "PANEL": return "面板组";
+            case "UP_LINE": return "上线组";
+            case "DOWN_LINE": return "下线组";
+            case "OTHER": return "其他组";
+            default: return category;
+        }
     }
 
     @Override

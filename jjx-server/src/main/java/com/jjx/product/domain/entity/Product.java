@@ -92,6 +92,16 @@ public class Product {
     private Long currentRouteId;
 
     /**
+     * 当前BOM版本号
+     */
+    private String currentBomVersion;
+
+    /**
+     * 当前Routing版本号
+     */
+    private String currentRoutingVersion;
+
+    /**
      * 创建者
      */
     @TableField(fill = FieldFill.INSERT)

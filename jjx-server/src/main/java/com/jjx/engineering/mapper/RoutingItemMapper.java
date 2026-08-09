@@ -13,9 +13,9 @@ import java.math.BigDecimal;
 public interface RoutingItemMapper {
 
     @Insert("INSERT INTO engineering_routing_item (routing_id, process_id, process_order, " +
-            "custom_labor_hours, custom_machine_hours, custom_process_params, description, process_category) " +
+            "custom_labor_hours, custom_machine_hours, custom_process_params, description, process_category, group_id, group_name) " +
             "VALUES (#{routingId}, #{processId}, #{processOrder}, #{laborHours}, #{machineHours}, " +
-            "#{processParams}, #{description}, #{processCategory})")
+            "#{processParams}, #{description}, #{processCategory}, #{groupId}, #{groupName})")
     int insertItem(@Param("routingId") Long routingId,
                    @Param("processId") Long processId,
                    @Param("processOrder") Integer processOrder,
@@ -23,5 +23,7 @@ public interface RoutingItemMapper {
                    @Param("machineHours") BigDecimal machineHours,
                    @Param("processParams") String processParams,
                    @Param("description") String description,
-                   @Param("processCategory") String processCategory);
+                   @Param("processCategory") String processCategory,
+                   @Param("groupId") Long groupId,
+                   @Param("groupName") String groupName);
 }

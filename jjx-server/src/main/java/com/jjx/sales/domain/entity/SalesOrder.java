@@ -297,6 +297,17 @@ public class SalesOrder extends BaseEntity {
     private String remark;
 
     /**
+     * 已转正式的版本号
+     */
+    private String formalVersion;
+
+    /**
+     * 最近一次资料转移时间
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime lastTransferTime;
+
+    /**
      * 删除标志 (0: 正常, 1: 删除)
      */
     @TableLogic
