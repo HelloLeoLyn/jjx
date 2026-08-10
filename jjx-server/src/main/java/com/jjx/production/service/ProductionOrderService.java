@@ -72,6 +72,12 @@ public interface ProductionOrderService {
     boolean completeOrder(Long orderId);
 
     /**
+     * 重试完工入库（056：入库失败打标后，解决根因→重试→成功→产品库存+→produced_quantity回写→标记清除）
+     * @return 新入库单ID
+     */
+    Long retryInbound(Long orderId);
+
+    /**
      * 取消生产工单
      */
     boolean cancelOrder(Long orderId);

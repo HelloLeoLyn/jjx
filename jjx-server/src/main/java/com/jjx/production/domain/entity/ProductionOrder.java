@@ -146,6 +146,14 @@ public class ProductionOrder{
     @Schema(description = "关联完工质检单ID")
     private Long qualityInspectionId;
 
+    /** 入库待处理标记：0正常 1入库失败待重试（056） */
+    @Schema(description = "入库待处理标记：0正常 1入库失败待重试")
+    private Integer inboundPendingFlag;
+
+    /** 入库失败原因（056） */
+    @Schema(description = "入库失败原因")
+    private String inboundPendingReason;
+
     @Schema(description = "人工成本")
     private BigDecimal laborCost;
 

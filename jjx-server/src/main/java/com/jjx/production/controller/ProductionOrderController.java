@@ -129,6 +129,14 @@ public class ProductionOrderController {
         return Result.success(success);
     }
 
+    @Operation(summary = "重试完工入库（056：入库失败打标后重试，成功清除标记）")
+    @PutMapping("/{orderId}/retry-inbound")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @SaCheckPermission("production:order:edit")
+    public Result<Long> retryInbound(@PathVariable Long orderId) {
+        return Result.success(productionOrderService.retryInbound(orderId));
+    }
+
     @Operation(summary = "取消生产工单")
     @PutMapping("/{orderId}/cancel")
     @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "9")

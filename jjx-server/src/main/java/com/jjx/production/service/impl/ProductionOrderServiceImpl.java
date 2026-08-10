@@ -300,6 +300,32 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long retryInbound(Long orderId) {
+        log.info("重试完工入库: {}", orderId);
+        ProductionOrder order = getById(orderId);
+        if (order == null) {
+            throw new BusinessException("生产工单不存在: " + orderId);
+        }
+        // 056定稿：重试→成功→产品库存+→produced_quantity回写→标记清除
+        Long inboundId = inventoryInboundService.createFromProduction(orderId);
+        if (inboundId == null) {
+            // 入库单已存在（幂等返回null）→ 视为已处理，清除标记
+            order.setInboundPendingFlag(0);
+            order.setInboundPendingReason(null);
+            updateById(order);
+            log.info("重试入库：入库单已存在（幂等），清除待处理标记 orderId={}", orderId);
+            return null;
+        }
+        // 成功：清除标记
+        order.setInboundPendingFlag(0);
+        order.setInboundPendingReason(null);
+        updateById(order);
+        log.info("重试完工入库成功: orderId={}, inboundId={}", orderId, inboundId);
+        return inboundId;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean completeOrder(Long orderId) {
         log.info("完成生产工单: {}", orderId);
 
@@ -350,9 +376,25 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             Long inboundId = inventoryInboundService.createFromProduction(orderId);
             if (inboundId != null) {
                 log.info("工单[{}] 完工自动生成成品入库单[{}]", order.getOrderNo(), inboundId);
+                // 056：入库成功 → 清除待处理标记
+                if (order.getInboundPendingFlag() != null && order.getInboundPendingFlag() == 1) {
+                    order.setInboundPendingFlag(0);
+                    order.setInboundPendingReason(null);
+                    updateById(order);
+                }
             }
         } catch (Exception e) {
-            log.warn("完工自动生成成品入库单失败（不影响主流程，可手动重试）: {}", e.getMessage());
+            // 056定稿：入库失败不静默——打【入库待处理】标记（标红），带失败原因，供工单页重试
+            log.warn("完工自动生成成品入库单失败（已打入库待处理标记，可重试）: {}", e.getMessage());
+            try {
+                ProductionOrder mark = new ProductionOrder();
+                mark.setOrderId(orderId);
+                mark.setInboundPendingFlag(1);
+                mark.setInboundPendingReason(e.getMessage() != null ? e.getMessage().substring(0, Math.min(e.getMessage().length(), 500)) : "未知原因");
+                productionOrderMapper.updateById(mark);
+            } catch (Exception e2) {
+                log.warn("打入库待处理标记失败: {}", e2.getMessage());
+            }
         }
 
         // 触发联动事件
