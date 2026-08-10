@@ -57,6 +57,16 @@ public class QuotationController extends BaseController {
     }
 
     /**
+     * 获取报价单明细（新增样品单预览用）
+     */
+    @Operation(summary = "获取报价单明细")
+    @SaCheckPermission("sales:quotation:view")
+    @GetMapping("/{quotationId}/items")
+    public Result<java.util.List<com.jjx.sales.domain.entity.SalesQuotationItem>> getItems(@PathVariable("quotationId") Long quotationId) {
+        return Result.success(quotationService.getItems(quotationId));
+    }
+
+    /**
      * 新增销售报价单
      */
     @Operation(summary = "新增销售报价单")

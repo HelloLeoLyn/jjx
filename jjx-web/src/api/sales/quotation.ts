@@ -88,6 +88,14 @@ export const quotationApi = {
     })
   },
 
+  // 获取报价单明细（新增样品单预览用）
+  getItems(quotationId: number): AxiosPromise<QuotationItem[]> {
+    return request({
+      url: `/sales/quotation/${quotationId}/items`,
+      method: 'get',
+    })
+  },
+
   // 获取报价单详细信息
   getInfo(quotationId: number): AxiosPromise<QuotationInfo> {
     return request({

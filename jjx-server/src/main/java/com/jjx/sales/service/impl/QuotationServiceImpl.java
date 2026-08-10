@@ -190,6 +190,14 @@ public class QuotationServiceImpl implements IQuotationService {
         quotation.setItems(items);
     }
 
+    @Override
+    public java.util.List<com.jjx.sales.domain.entity.SalesQuotationItem> getItems(Long quotationId) {
+        return quotationItemMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesQuotationItem>()
+                        .eq(com.jjx.sales.domain.entity.SalesQuotationItem::getQuotationId, quotationId)
+                        .orderByAsc(com.jjx.sales.domain.entity.SalesQuotationItem::getItemOrder));
+    }
+
     /**
      * 新增销售报价单
      */

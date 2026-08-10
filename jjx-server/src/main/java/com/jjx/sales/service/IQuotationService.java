@@ -30,6 +30,11 @@ public interface IQuotationService {
     SalesQuotation selectQuotationById(Long quotationId);
 
     /**
+     * 获取报价单明细（新增样品单预览用）
+     */
+    java.util.List<com.jjx.sales.domain.entity.SalesQuotationItem> getItems(Long quotationId);
+
+    /**
      * 新增销售报价单
      *
      * @param quotation 销售报价单

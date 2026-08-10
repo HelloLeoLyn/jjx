@@ -6,7 +6,14 @@ export const sampleOrderApi = {
   // 从报价单创建样品单
   createFromQuotation(
     quotationId: number,
-    data?: { sampleQty?: number; remark?: string }
+    data?: {
+      sampleQty?: number
+      remark?: string
+      deliveryDate?: string
+      contactPerson?: string
+      contactPhone?: string
+      techRequirement?: string
+    }
   ): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/create-from-quotation/${quotationId}`,

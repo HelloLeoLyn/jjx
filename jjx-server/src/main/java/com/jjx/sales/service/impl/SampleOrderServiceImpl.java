@@ -85,7 +85,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
-    public SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark) {
+    public SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark,
+                                          String deliveryDate, String contactPerson, String contactPhone, String techRequirement) {
         SalesQuotation quotation = quotationMapper.selectById(quotationId);
         if (quotation == null || quotation.getDeleted() == 1) {
             throw new BusinessException("报价单不存在");
@@ -110,8 +111,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setQuotationId(quotationId);
         order.setCustomerId(quotation.getCustomerId());
         order.setCustomerName(quotation.getCustomerName());
-        order.setContactPerson(quotation.getContactPerson());
-        order.setContactPhone(quotation.getContactPhone());
+        // 联系人/电话：创建时传入则覆盖报价单默认值
+        order.setContactPerson(contactPerson != null && !contactPerson.isEmpty()
+                ? contactPerson : quotation.getContactPerson());
+        order.setContactPhone(contactPhone != null && !contactPhone.isEmpty()
+                ? contactPhone : quotation.getContactPhone());
         order.setOrderDate(new Date());
         order.setOrderType(OrderTypeEnum.SAMPLE.getCode());
         order.setSampleStatus(SampleOrderStatusEnum.CREATED.getCode());
@@ -126,11 +130,23 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setTotalQuantity(0);
         order.setTotalAmount(quotation.getTotalAmount());
         order.setFinalAmount(quotation.getFinalAmount());
-        // 继承报价单链路追踪ID（同一业务链路）
-        order.setTraceId(quotation.getTraceId());
-        if (quotation.getValidUntil() != null) {
+        // 期望交样日期：创建时传入优先，否则继承报价单有效期
+        if (deliveryDate != null && !deliveryDate.isEmpty()) {
+            try {
+                order.setDeliveryDate(Date.from(java.time.LocalDate.parse(deliveryDate)
+                        .atStartOfDay(ZoneId.systemDefault()).toInstant()));
+            } catch (Exception e) {
+                log.warn("解析期望交样日期失败: {}", deliveryDate);
+            }
+        } else if (quotation.getValidUntil() != null) {
             order.setDeliveryDate(Date.from(quotation.getValidUntil().atStartOfDay(ZoneId.systemDefault()).toInstant()));
         }
+        // 技术要求（工程打样要求）写入工程备注，打样工作台/转量产可继承
+        if (techRequirement != null && !techRequirement.isEmpty()) {
+            order.setEngineeringNote(techRequirement);
+        }
+        // 继承报价单链路追踪ID（同一业务链路）
+        order.setTraceId(quotation.getTraceId());
 
         orderMapper.insert(order);
         log.info("从报价单[{}]创建样品单[{}] orderId={}", quotation.getQuotationNo(), orderNo, order.getOrderId());

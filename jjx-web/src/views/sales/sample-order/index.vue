@@ -143,12 +143,45 @@
     <el-dialog title="新增样品单" v-model="createVisible" width="600px" append-to-body @close="resetCreateForm">
       <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="120px">
         <el-form-item label="来源报价单" prop="quotationNo">
-          <el-select v-model="createForm.quotationId" placeholder="请选择已确认的报价单" filterable clearable style="width:100%">
+          <el-select v-model="createForm.quotationId" placeholder="请选择已确认的报价单" filterable clearable style="width:100%" @change="onQuotationChange">
             <el-option v-for="q in quotationOptions" :key="q.quotationId" :label="`${q.quotationNo} - ${q.customerName} (${q.finalAmount}元)`" :value="q.quotationId" />
           </el-select>
         </el-form-item>
         <el-form-item label="打样数量" prop="sampleQty">
           <el-input-number v-model="createForm.sampleQty" :min="1" :max="1000" style="width:100%" />
+        </el-form-item>
+        <!-- 产品明细预览（DEV：创建前可见将打样产品） -->
+        <el-form-item v-if="quotationItems.length > 0" label="产品明细">
+          <el-table :data="quotationItems" size="small" border max-height="180" style="width:100%">
+            <el-table-column label="产品编码" prop="productCode" width="120" />
+            <el-table-column label="产品名称" prop="productName" min-width="130" show-overflow-tooltip />
+            <el-table-column label="数量" prop="quantity" width="60" align="center" />
+            <el-table-column label="单价" prop="unitPrice" width="80" align="right" />
+            <el-table-column label="金额" prop="amount" width="90" align="right" />
+          </el-table>
+        </el-form-item>
+        <el-form-item label="期望交样日期">
+          <el-date-picker
+            v-model="createForm.deliveryDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="默认继承报价单交期"
+            style="width:100%"
+          />
+        </el-form-item>
+        <el-form-item label="联系人">
+          <el-input v-model="createForm.contactPerson" placeholder="默认带出报价单联系人" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="联系电话">
+          <el-input v-model="createForm.contactPhone" placeholder="默认带出报价单电话" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="技术要求">
+          <el-input
+            v-model="createForm.techRequirement"
+            type="textarea"
+            :rows="3"
+            placeholder="工程打样要求（材质/工艺/颜色/按键数/连接器等），将传承给打样工作台"
+          />
         </el-form-item>
         <el-form-item label="备注" prop="remark">
           <el-input v-model="createForm.remark" type="textarea" :rows="3" maxlength="500" show-word-limit />
@@ -390,6 +423,7 @@ import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
 import SampleTransferDialog from './components/SampleTransferDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { quotationApi } from '@/api/sales/quotation'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 import OperationResultDialog from '@/components/OperationResultDialog/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
@@ -734,7 +768,12 @@ const createForm = reactive({
   quotationId: undefined as number | undefined,
   sampleQty: 10,
   remark: '',
+  deliveryDate: '',
+  contactPerson: '',
+  contactPhone: '',
+  techRequirement: '',
 })
+const quotationItems = ref<any[]>([])
 const createRules = {
   quotationId: [{ required: true, message: '请选择报价单', trigger: 'change' }],
   sampleQty: [{ required: true, message: '请输入打样数量', trigger: 'blur' }],
@@ -782,7 +821,30 @@ function showCreateDialog() {
   createForm.quotationId = undefined
   createForm.sampleQty = 10
   createForm.remark = ''
+  createForm.deliveryDate = ''
+  createForm.contactPerson = ''
+  createForm.contactPhone = ''
+  createForm.techRequirement = ''
+  quotationItems.value = []
   loadQuotationOptions()
+}
+
+// 选择报价单：带出联系人/电话/交期 + 加载产品明细预览
+async function onQuotationChange(qid: number) {
+  quotationItems.value = []
+  const q = quotationOptions.value.find((x) => x.quotationId === qid)
+  if (q) {
+    createForm.contactPerson = q.contactPerson || ''
+    createForm.contactPhone = q.contactPhone || ''
+    createForm.deliveryDate = q.validUntil || ''
+  }
+  if (!qid) return
+  try {
+    const res: any = await quotationApi.getItems(qid)
+    quotationItems.value = (res as any)?.data || []
+  } catch {
+    quotationItems.value = []
+  }
 }
 function resetCreateForm() { createFormRef.value?.resetFields() }
 
@@ -792,9 +854,14 @@ async function submitCreate() {
   creating.value = true
   try {
     const res = await sampleOrderApi.createFromQuotation(createForm.quotationId!, {
-      sampleQty: createForm.sampleQty, remark: createForm.remark,
+      sampleQty: createForm.sampleQty,
+      remark: createForm.remark,
+      deliveryDate: createForm.deliveryDate || undefined,
+      contactPerson: createForm.contactPerson || undefined,
+      contactPhone: createForm.contactPhone || undefined,
+      techRequirement: createForm.techRequirement || undefined,
     })
-    ElMessage.success(`样品单创建成功: ${res.data.orderNo}`)
+    ElMessage.success(`样品单创建成功: ${res.data.orderNo}，可前往工程打样`)
     createVisible.value = false
     getList()
   } catch (e: any) { ElMessage.error(e.message || '创建失败') }

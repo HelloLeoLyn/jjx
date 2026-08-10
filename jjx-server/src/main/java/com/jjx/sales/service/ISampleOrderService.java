@@ -13,7 +13,8 @@ public interface ISampleOrderService {
     /**
      * 从报价单创建样品单
      */
-    SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark);
+    SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark,
+                                   String deliveryDate, String contactPerson, String contactPhone, String techRequirement);
 
     /**
      * 样品单提交审核

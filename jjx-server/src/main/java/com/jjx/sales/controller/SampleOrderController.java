@@ -36,8 +36,13 @@ public class SampleOrderController extends BaseController {
     public Result<SalesOrder> createFromQuotation(
             @PathVariable Long quotationId,
             @RequestParam(required = false) Integer sampleQty,
-            @RequestParam(required = false) String remark) {
-        return Result.success(sampleOrderService.createFromQuotation(quotationId, sampleQty, remark));
+            @RequestParam(required = false) String remark,
+            @RequestParam(required = false) String deliveryDate,
+            @RequestParam(required = false) String contactPerson,
+            @RequestParam(required = false) String contactPhone,
+            @RequestParam(required = false) String techRequirement) {
+        return Result.success(sampleOrderService.createFromQuotation(
+                quotationId, sampleQty, remark, deliveryDate, contactPerson, contactPhone, techRequirement));
     }
 
     @Operation(summary = "样品单详情（含明细）")
