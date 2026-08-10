@@ -347,6 +347,41 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         order.setActualEndTime(LocalDateTime.now());
         order.setCompletedBy(com.jjx.system.utils.SecurityUtils.getUsername()); // 053完工留痕：谁
 
+        // 059定稿：完工自动核算人工成本 = Σ(工序实际工时 × 标准工价)
+        try {
+            java.math.BigDecimal laborTotal = java.math.BigDecimal.ZERO;
+            java.util.List<ProductionOperationExecution> executions = productionOperationExecutionMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionOperationExecution>()
+                            .eq(ProductionOperationExecution::getOrderId, orderId));
+            for (ProductionOperationExecution exec : executions) {
+                if (exec.getActualLaborHours() == null || exec.getActualLaborHours().compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
+                // 取该工序标准工价（工艺路线工序）
+                java.math.BigDecimal wage = java.math.BigDecimal.ZERO;
+                if (exec.getProcessId() != null) {
+                    try {
+                        com.jjx.engineering.domain.entity.EngineeringRoutingItem routeItem =
+                                productRoutingItemMapper.selectOne(
+                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRoutingItem>()
+                                                .eq(com.jjx.engineering.domain.entity.EngineeringRoutingItem::getRoutingId, order.getRoutingId())
+                                                .eq(com.jjx.engineering.domain.entity.EngineeringRoutingItem::getProcessId, exec.getProcessId())
+                                                .last("LIMIT 1"));
+                        if (routeItem != null && routeItem.getStandardWage() != null) {
+                            wage = routeItem.getStandardWage();
+                        }
+                    } catch (Exception e) {
+                        log.warn("查询工序工价失败: processId={}", exec.getProcessId());
+                    }
+                }
+                laborTotal = laborTotal.add(exec.getActualLaborHours().multiply(wage));
+            }
+            if (laborTotal.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                order.setLaborCost(laborTotal);
+                log.info("工单{}完工自动核算人工成本: {}", orderId, laborTotal);
+            }
+        } catch (Exception e) {
+            log.warn("工单人工成本自动核算失败（可手工调整）: {}", e.getMessage());
+        }
+
         boolean success = updateById(order);
         if (!success) {
             throw new BusinessException("完成生产工单失败");

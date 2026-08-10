@@ -61,6 +61,9 @@ public class EngineeringRoutingItem {
      */
     private BigDecimal customMachineHours;
 
+    /** 标准工价（元/工时，059人工成本核算） */
+    private BigDecimal standardWage;
+
     /**
      * 定制工艺参数
      */
