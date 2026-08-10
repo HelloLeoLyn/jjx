@@ -645,6 +645,165 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
+    public java.util.List<java.util.Map<String, Object>> getPickRemaining(Long workOrderId) {
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        com.jjx.production.domain.entity.ProductionOrder prodOrder = productionOrderMapper.selectById(workOrderId);
+        if (prodOrder == null) {
+            return result;
+        }
+        // BOM 需求量
+        LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom> bomWrapper =
+                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, 1)
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getApproveStatus, 3)
+                        .orderByDesc(com.jjx.engineering.domain.entity.EngineeringBom::getCreateTime)
+                        .last("LIMIT 1");
+        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(bomWrapper);
+        if (bom == null) {
+            return result;
+        }
+        List<com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = productBomItemMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bom.getBomId()));
+        // 已领料量（该工单所有领料出库单明细合计）
+        java.util.Map<Long, BigDecimal> pickedMap = new java.util.HashMap<>();
+        try {
+            List<InventoryOutboundOrder> pickOrders = outboundOrderMapper.selectList(
+                    new LambdaQueryWrapper<InventoryOutboundOrder>()
+                            .eq(InventoryOutboundOrder::getSourceType, "work_order")
+                            .eq(InventoryOutboundOrder::getSourceId, workOrderId));
+            for (InventoryOutboundOrder po : pickOrders) {
+                List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(po.getOutboundId());
+                for (InventoryOutboundItem it : items) {
+                    if (it.getQuantity() != null) {
+                        pickedMap.merge(it.getMaterialId(), it.getQuantity(), BigDecimal::add);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询已领料量失败: {}", e.getMessage());
+        }
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
+            if (!"buy".equals(bomItem.getSourceType())) continue;
+            BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
+                    ? bomItem.getBaseQty() : BigDecimal.ONE;
+            BigDecimal demand = bomItem.getQuantity()
+                    .multiply(prodOrder.getPlannedQuantity())
+                    .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.ONE.add(
+                            bomItem.getLossRate() != null ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
+                    ))
+                    .setScale(0, java.math.RoundingMode.UP);
+            BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+            BigDecimal remaining = demand.subtract(picked);
+            if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
+            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("materialId", bomItem.getMaterialId());
+            row.put("materialCode", bomItem.getMaterialCode());
+            row.put("materialName", bomItem.getMaterialName());
+            row.put("demand", demand);
+            row.put("picked", picked);
+            row.put("remaining", remaining);
+            result.add(row);
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items) {
+        log.info("追加领料: workOrderId={}, items={}", workOrderId, items);
+        com.jjx.production.domain.entity.ProductionOrder prodOrder = productionOrderMapper.selectById(workOrderId);
+        if (prodOrder == null) {
+            throw new BusinessException("生产工单不存在: " + workOrderId);
+        }
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("本次领料明细不能为空");
+        }
+        // 剩余量校验：Σ本次领料 ≤ 剩余需求量（033定稿：可改小不可改大）
+        java.util.Map<Long, BigDecimal> remainingMap = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> rem : getPickRemaining(workOrderId)) {
+            remainingMap.put(((Number) rem.get("materialId")).longValue(), (BigDecimal) rem.get("remaining"));
+        }
+        java.util.List<java.util.Map<String, Object>> validItems = new java.util.ArrayList<>();
+        for (java.util.Map<String, Object> item : items) {
+            Long materialId = ((Number) item.get("materialId")).longValue();
+            BigDecimal qty = new BigDecimal(String.valueOf(item.get("quantity")));
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal remaining = remainingMap.getOrDefault(materialId, BigDecimal.ZERO);
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException("物料[" + item.get("materialCode") + "]剩余可领量为0，不能追加领料");
+            }
+            if (qty.compareTo(remaining) > 0) {
+                throw new BusinessException("物料[" + item.get("materialCode") + "]本次领料" + qty + "超过剩余可领量" + remaining);
+            }
+            validItems.add(item);
+        }
+        if (validItems.isEmpty()) {
+            throw new BusinessException("没有可领的物料明细");
+        }
+        // 出库单号 PICK-{工单号}-{序号}
+        long seq = outboundOrderMapper.selectCount(
+                new LambdaQueryWrapper<InventoryOutboundOrder>()
+                        .eq(InventoryOutboundOrder::getSourceType, "work_order")
+                        .eq(InventoryOutboundOrder::getSourceId, workOrderId)) + 1;
+        String outboundNo = "PICK-" + prodOrder.getOrderNo() + "-" + seq;
+        InventoryOutboundOrder order = new InventoryOutboundOrder();
+        order.setOutboundNo(outboundNo);
+        order.setOutboundType(OutboundTypeEnum.PRODUCTION.getCode());
+        order.setSourceType("work_order");
+        order.setSourceId(workOrderId);
+        order.setSourceNo(prodOrder.getOrderNo());
+        order.setTraceId(prodOrder.getTraceId());
+        order.setOutboundDate(LocalDate.now());
+        try {
+            InventoryWarehouse defaultWh = outboundWarehouseMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryWarehouse>()
+                            .eq(InventoryWarehouse::getStatus, 1)
+                            .orderByAsc(InventoryWarehouse::getWarehouseId)
+                            .last("LIMIT 1"));
+            if (defaultWh != null) {
+                order.setWarehouseId(defaultWh.getWarehouseId());
+            }
+        } catch (Exception e) {
+            log.warn("获取默认仓库失败: {}", e.getMessage());
+        }
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
+        outboundOrderMapper.insert(order);
+
+        int sort = 1;
+        BigDecimal totalQty = BigDecimal.ZERO;
+        for (java.util.Map<String, Object> item : validItems) {
+            Long materialId = ((Number) item.get("materialId")).longValue();
+            BigDecimal qty = new BigDecimal(String.valueOf(item.get("quantity")));
+            InventoryOutboundItem outItem = new InventoryOutboundItem();
+            outItem.setOutboundId(order.getOutboundId());
+            outItem.setMaterialId(materialId);
+            outItem.setMaterialCode((String) item.get("materialCode"));
+            outItem.setMaterialName((String) item.get("materialName"));
+            outItem.setQuantity(qty);
+            outItem.setSortOrder(sort++);
+            try {
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(materialId);
+                if (!fifoItems.isEmpty() && fifoItems.get(0).getLocationId() != null) {
+                    outItem.setLocationId(fifoItems.get(0).getLocationId());
+                }
+            } catch (Exception e) {
+                log.warn("追加领料推荐库位失败(跳过): materialId={}", materialId);
+            }
+            totalQty = totalQty.add(qty);
+            outboundItemMapper.insert(outItem);
+        }
+        order.setTotalQuantity(totalQty);
+        outboundOrderMapper.updateById(order);
+        prodOrder.setMaterialStatus(1);
+        productionOrderMapper.updateById(prodOrder);
+        log.info("追加领料单已生成(待发料): workOrderId={}, outboundId={}, no={}", workOrderId, order.getOutboundId(), outboundNo);
+        return order.getOutboundId();
+    }
+
+    @Override
     @Event(value = "inventory.outbound.created_from_sales", bizId = "#salesOrderId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public Long createFromSales(Long salesOrderId) {

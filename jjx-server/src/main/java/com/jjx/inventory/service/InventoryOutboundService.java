@@ -60,6 +60,20 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     Long createFromProduction(Long workOrderId);
 
     /**
+     * 追加领料（033定稿：多次领料，去幂等）
+     * 出库单号 PICK-{工单号}-{序号}；每次填本次领料数量，Σ累计领料 ≤ BOM需求量
+     * @param workOrderId 工单ID
+     * @param items 本次领料明细 [{materialId, materialCode, materialName, quantity}]
+     * @return 出库单ID
+     */
+    Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items);
+
+    /**
+     * 查询工单剩余可领料量（033：剩余需求量 = BOM需求量 - Σ已领料量）
+     */
+    java.util.List<java.util.Map<String, Object>> getPickRemaining(Long workOrderId);
+
+    /**
      * 销售出库（从销售订单创建）
      */
     Long createFromSales(Long salesOrderId);

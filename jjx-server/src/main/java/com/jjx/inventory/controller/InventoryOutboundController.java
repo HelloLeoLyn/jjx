@@ -114,6 +114,22 @@ public class InventoryOutboundController {
         return Result.success(outboundService.createFromProduction(workOrderId));
     }
 
+    @PostMapping("/create-production-pick/{workOrderId}")
+    @Operation(summary = "追加领料（033多次领料：Σ累计领料≤BOM需求量，剩余量校验）")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId")
+    @SaCheckPermission("inventory:outbound:add")
+    public Result<Long> createProductionPick(@PathVariable Long workOrderId,
+                                             @RequestBody java.util.List<java.util.Map<String, Object>> items) {
+        return Result.success(outboundService.createProductionPick(workOrderId, items));
+    }
+
+    @GetMapping("/pick-remaining/{workOrderId}")
+    @Operation(summary = "查询工单剩余可领料量（033：剩余=BOM需求量-Σ已领料）")
+    @SaCheckPermission("inventory:outbound:view")
+    public Result<java.util.List<java.util.Map<String, Object>>> getPickRemaining(@PathVariable Long workOrderId) {
+        return Result.success(outboundService.getPickRemaining(workOrderId));
+    }
+
     @PostMapping("/create-from-sales/{salesOrderId}")
     @Operation(summary = "从销售订单创建出库单")
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#salesOrderId")
