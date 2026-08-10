@@ -45,11 +45,11 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
     int refreshSummary(@Param("materialId") Long materialId);
 
     /**
-     * 查询低库存物料（低于安全库存）
+     * 查询低库存物料（低于安全库存）027/080定稿：用可用量(available_quantity=总量-预留)而非总量
      */
     @Select("SELECT s.*, m.safe_stock FROM inventory_stock s " +
             "JOIN inventory_material m ON s.material_id = m.material_id " +
-            "WHERE s.total_quantity < m.safe_stock AND m.safe_stock > 0")
+            "WHERE (s.total_quantity - IFNULL(s.total_reserved,0)) < m.safe_stock AND m.safe_stock > 0")
     List<InventoryStock> selectLowStock();
 
     /**
