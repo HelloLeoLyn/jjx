@@ -81,9 +81,9 @@ public class OrderController extends BaseController {
 
     /**
      * 复制订单（终态订单一键重新生成新草稿单）
+     * 日志：新单/原单各写一条（带各自 traceId），见 OrderServiceImpl.copyOrder
      */
     @Operation(summary = "复制订单（重新生成新草稿单）")
-    @Log(module = "销售订单管理", businessType = BusinessType.INSERT, bizType = "'order'", bizId = "#result.data")
     @SaCheckPermission("sales:order:add")
     @PostMapping("/{orderId}/copy")
     public Result<Long> copyOrder(@PathVariable Long orderId) {

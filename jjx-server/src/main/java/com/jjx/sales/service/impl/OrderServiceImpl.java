@@ -298,6 +298,30 @@ public class OrderServiceImpl implements IOrderService {
             orderProductService.batchAdd(dtos);
         }
 
+        // DEV：给新单写操作日志（带新单自身 traceId，供新单查看流水链路）
+        try {
+            SysOperLog newLog = new SysOperLog();
+            newLog.setModule("销售订单管理");
+            newLog.setBusinessType(1); // 新增
+            newLog.setOperUrl("/sales/orders/" + orderId + "/copy");
+            newLog.setBizType("order");
+            newLog.setBizId(String.valueOf(copy.getOrderId()));
+            newLog.setTraceId(copy.getTraceId());
+            newLog.setBizStatus(copy.getOrderStatus());
+            newLog.setStatus(1);
+            newLog.setOperParam("{\"action\":\"copy\",\"sourceOrderNo\":\"" + source.getOrderNo() + "\"}");
+            newLog.setCreateTime(LocalDateTime.now());
+            try {
+                newLog.setUserId(SecurityUtils.getUserId());
+                newLog.setUsername(SecurityUtils.getUsername());
+                newLog.setRealName(SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(newLog);
+        } catch (Exception e) {
+            log.warn("记录新单复制日志失败: {}", e.getMessage());
+        }
+
         // DEV：给原单写“被复制”操作日志（原单流水可追溯复制来源，双向可查）
         try {
             SysOperLog operLog = new SysOperLog();
