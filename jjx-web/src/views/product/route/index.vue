@@ -72,6 +72,14 @@
             </el-button>
             <el-button
               link
+              type="warning"
+              size="small"
+              @click="handleVersionCompare(scope.row)"
+            >
+              版本对比
+            </el-button>
+            <el-button
+              link
               type="primary"
               size="small"
               :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.SUBMIT)"
@@ -117,6 +125,13 @@
     <!-- 详情对话框 -->
     <RouteDetailDialog v-model="detailDialogVisible" :routing-id="currentRoutingId" />
 
+    <!-- 版本对比对话框（DEV-768） -->
+    <RouteVersionCompareDialog
+      v-model="versionCompareVisible"
+      :product-id="compareProductId"
+      :product-name="compareProductName"
+    />
+
     <!-- 复制版本对话框 -->
     <RouteCopyDialog
       v-model="copyDialogVisible"
@@ -151,6 +166,7 @@ import RouteSearch from './components/RouteSearch.vue'
 import RouteDetailDialog from './components/RouteDetailDialog.vue'
 import RouteCopyDialog from './components/RouteCopyDialog.vue'
 import RouteApproveDialog from './components/RouteApproveDialog.vue'
+import RouteVersionCompareDialog from './components/RouteVersionCompareDialog.vue'
 import { useRouter } from 'vue-router'
 import { RouteStatusEnum, ProductActions } from '@/enums/product'
 const router = useRouter()
@@ -290,6 +306,16 @@ const handleDelete = (row: EngineeringRoutingVO) => {
 const handleDetail = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   detailDialogVisible.value = true
+}
+
+// 版本对比（DEV-768）
+const versionCompareVisible = ref(false)
+const compareProductId = ref<number | null>(null)
+const compareProductName = ref('')
+function handleVersionCompare(row: EngineeringRoutingVO) {
+  compareProductId.value = row.productId ?? null
+  compareProductName.value = row.productName || ''
+  versionCompareVisible.value = true
 }
 
 // ==================== 复制版本 ====================
