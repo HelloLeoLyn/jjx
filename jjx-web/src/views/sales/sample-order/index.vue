@@ -355,12 +355,19 @@
       @success="getList"
       @go-transfer="onGoTransfer"
     />
+
+    <!-- 打样转标准 · 轻量版弹窗（默认入口） -->
+    <SampleTransferDialog
+      v-model="transferDialogVisible"
+      :order-id="transferRow?.orderId"
+      @success="onTransferSuccess"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onActivated } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
@@ -368,6 +375,7 @@ import request from '@/utils/request'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
+import SampleTransferDialog from './components/SampleTransferDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
@@ -378,6 +386,7 @@ import { getOperation } from '@/components/OperationPreviewDialog/registry'
 defineOptions({ name: 'SalesSampleOrder' })
 
 const router = useRouter()
+const route = useRoute()
 
 // ==================== 数据 ====================
 const loading = ref(false)
@@ -737,7 +746,7 @@ async function loadQuotationOptions() {
   try {
     const res = await request({
       url: '/sales/quotation/list', method: 'get',
-      params: { pageNum: 1, pageSize: 50, quotationStatus: 'accepted' },
+      params: { pageNum: 1, pageSize: 50, quotationStatus: 2 },
     })
     quotationOptions.value = res.data?.records || []
   } catch { quotationOptions.value = [] }
@@ -1033,9 +1042,20 @@ async function handleRejectSample(row: any) {
   openPreview('sample.rejectSample', row)
 }
 
-// 产品资料转移（DEV-505）：建档产品/BOM/工艺路线，状态初始化，通知工程完善（走操作预览器）
-async function handleTransfer(row: any) {
-  openPreview('sample.transfer', row)
+// 打样转标准·轻量版弹窗状态
+const transferDialogVisible = ref(false)
+const transferRow = ref<any>(null)
+
+// 产品资料转移（DEV-505 → 打样转标准轻量版弹窗）：建档产品/BOM/工艺路线
+function handleTransfer(row: any) {
+  if (!row?.orderId) return
+  transferRow.value = row
+  transferDialogVisible.value = true
+}
+
+// 轻量版弹窗确认成功 → 刷新列表
+function onTransferSuccess() {
+  getList()
 }
 
 async function handleConvert(row: any) {
@@ -1044,7 +1064,7 @@ async function handleConvert(row: any) {
   convertDialogVisible.value = true
 }
 
-// 校验界面里点「去资料转移」→ 关闭弹窗并触发资料转移预览器
+// 校验界面里点「去资料转移」→ 关闭弹窗并打开轻量版弹窗
 function onGoTransfer() {
   if (convertRow.value) {
     handleTransfer(convertRow.value)
@@ -1072,8 +1092,28 @@ onMounted(() => {
     description: '',
     terminal: false,
   }))
+  // 从对照版全屏页返回：带 transferDialog 参数自动打开轻量版弹窗
+  const dialogOrderId = route.query.transferDialog
+  if (dialogOrderId) {
+    const row = sampleList.value.find((r) => String(r.orderId) === String(dialogOrderId))
+    if (row) {
+      transferRow.value = row
+      transferDialogVisible.value = true
+    }
+  }
 })
-onActivated(() => getList())
+onActivated(() => {
+  getList()
+  // 从对照版全屏页返回（keep-alive 激活）：带 transferDialog 参数自动打开轻量版弹窗
+  const dialogOrderId = route.query.transferDialog
+  if (dialogOrderId) {
+    const row = sampleList.value.find((r) => String(r.orderId) === String(dialogOrderId))
+    if (row) {
+      transferRow.value = row
+      transferDialogVisible.value = true
+    }
+  }
+})
 </script>
 
 <style scoped lang="scss">

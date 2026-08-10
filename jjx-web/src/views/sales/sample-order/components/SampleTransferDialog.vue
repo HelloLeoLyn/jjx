@@ -1,0 +1,207 @@
+<template>
+  <el-dialog
+    v-model="visible"
+    :title="`打样转标准 · ${store.orderNo || ''}`"
+    width="860px"
+    append-to-body
+    destroy-on-close
+    :close-on-click-modal="false"
+    @open="onOpen"
+  >
+    <!-- 加载中 -->
+    <div v-loading="store.loading" style="min-height: 200px">
+      <template v-if="!store.loading && store.preview">
+        <!-- 未匹配提示 -->
+        <el-alert
+          v-if="!store.allMatched"
+          type="warning"
+          show-icon
+          :closable="false"
+          :title="`还有 ${store.unmatchedProcessCount} 道工序、${store.unmatchedMaterialCount} 项物料未选择标准项，请手动选择后再确认转移`"
+          style="margin-bottom: 12px"
+        />
+        <el-alert
+          v-else
+          type="success"
+          show-icon
+          :closable="false"
+          title="所有工序/物料均已匹配，可以确认转移"
+          style="margin-bottom: 12px"
+        />
+
+        <!-- 工序映射列表 -->
+        <div class="section-title">① 工序映射（{{ store.processMappings.length }} 道）</div>
+        <el-table :data="store.processMappings" size="small" border stripe max-height="260" style="margin-bottom: 16px">
+          <el-table-column label="打样工序" min-width="150">
+            <template #default="scope">
+              <span :class="{ 'unmatched-text': scope.row.stdProcessId == null }">
+                {{ scope.row.processName }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="顺序" width="60" align="center">
+            <template #default="scope">{{ scope.row.processOrder }}</template>
+          </el-table-column>
+          <el-table-column label="组合" width="90" align="center">
+            <template #default="scope">
+              <el-tag v-if="scope.row.groupName" size="small" type="info">{{ scope.row.groupName }}</el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="标准工序（可改选）" min-width="220">
+            <template #default="scope">
+              <el-select
+                v-model="scope.row.stdProcessId"
+                filterable
+                size="small"
+                style="width: 100%"
+                placeholder="请手动选择"
+                :class="{ 'unmatched-select': scope.row.stdProcessId == null }"
+                @change="(v: number) => onProcessChange(scope.$index, v)"
+              >
+                <el-option
+                  v-for="opt in store.standardProcesses"
+                  :key="opt.processId"
+                  :label="opt.processName"
+                  :value="opt.processId"
+                />
+              </el-select>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 物料映射列表 -->
+        <div class="section-title">② 物料映射（{{ store.materialMappings.length }} 项）</div>
+        <el-table :data="store.materialMappings" size="small" border stripe max-height="260">
+          <el-table-column label="来源工序" width="110">
+            <template #default="scope">{{ scope.row.sourceProcessName }}</template>
+          </el-table-column>
+          <el-table-column label="打样物料" min-width="150">
+            <template #default="scope">
+              <span :class="{ 'unmatched-text': scope.row.materialId == null }">
+                {{ scope.row.materialName }}
+              </span>
+              <div v-if="scope.row.spec" style="font-size: 11px; color: #909399">{{ scope.row.spec }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="用量" width="80" align="center">
+            <template #default="scope">{{ scope.row.qty }} {{ scope.row.unit }}</template>
+          </el-table-column>
+          <el-table-column label="标准物料（可改选）" min-width="220">
+            <template #default="scope">
+              <el-select
+                v-model="scope.row.materialId"
+                filterable
+                size="small"
+                style="width: 100%"
+                placeholder="请手动选择"
+                :class="{ 'unmatched-select': scope.row.materialId == null }"
+                @change="(v: number) => onMaterialChange(scope.row.rowKey, v)"
+              >
+                <el-option
+                  v-for="opt in store.standardMaterials"
+                  :key="opt.materialId"
+                  :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
+                  :value="opt.materialId"
+                />
+              </el-select>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+    </div>
+
+    <template #footer>
+      <el-button @click="visible = false">取消</el-button>
+      <el-button @click="goStandardEdit">进入标准编辑</el-button>
+      <el-button type="primary" :disabled="!store.allMatched" :loading="store.confirming" @click="onConfirm">
+        确认转移
+      </el-button>
+    </template>
+  </el-dialog>
+</template>
+
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useSampleTransferStore } from '@/store/modules/sampleTransfer'
+
+const props = defineProps<{
+  modelValue: boolean
+  orderId?: number | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+  (e: 'success'): void
+}>()
+
+const router = useRouter()
+const store = useSampleTransferStore()
+
+const visible = ref(props.modelValue)
+
+watch(
+  () => props.modelValue,
+  (v) => {
+    visible.value = v
+  }
+)
+
+watch(visible, (v) => {
+  emit('update:modelValue', v)
+})
+
+// 打开弹窗时加载预览数据
+async function onOpen() {
+  if (!props.orderId) return
+  if (store.orderId !== props.orderId || !store.preview) {
+    await store.loadPreview(props.orderId)
+  }
+}
+
+// 工序改选
+function onProcessChange(index: number, stdProcessId: number) {
+  store.replaceProcess(index, stdProcessId)
+}
+
+// 物料改选
+function onMaterialChange(rowKey: string, materialId: number) {
+  store.updateMaterialMapping(rowKey, materialId)
+}
+
+// 进入标准编辑（对照版全屏页，数据共享不丢失）
+function goStandardEdit() {
+  visible.value = false
+  router.push({ path: '/sample/transfer/edit', query: { orderId: store.orderId } })
+}
+
+// 确认转移
+async function onConfirm() {
+  const result = await store.confirmTransfer()
+  if (!result) return
+  ElMessage.success(
+    `转移成功：${result.transferNo}（${result.version || ''}，BOM ${result.bomId || '-'} / 路线 ${result.routingId || '-'}）`
+  )
+  visible.value = false
+  emit('success')
+}
+</script>
+
+<style scoped>
+.section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #303133;
+}
+
+.unmatched-text {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+:deep(.unmatched-select .el-select__wrapper) {
+  box-shadow: 0 0 0 1px #f56c6c inset;
+}
+</style>

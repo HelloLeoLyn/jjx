@@ -107,7 +107,7 @@
                       <el-tag
                         v-for="(it, ii) in pc.items" :key="ii" size="small"
                         :closable="pc.editing" :disable-transitions="false"
-                        @close="removeCardItem(pc, ii)"
+                        @close="removeCardItem(pc, Number(ii))"
                         style="margin-right:6px;margin-bottom:4px"
                       >
                         <SvgIcon v-if="it.icon" :name="it.icon" :size="14" style="vertical-align:-2px;margin-right:4px" />
@@ -214,7 +214,7 @@
               class="tl-item" :class="pc.status === 2 ? 'done' : pc.status === 1 ? 'doing' : ''"
             >
               <div class="t">
-                {{ pc.items.map(i => i.processName).join(' + ') || '未命名工序' }}
+                {{ pc.items.map((i: any) => i.processName).join(' + ') || '未命名工序' }}
                 <el-tag v-if="pc.status === 2" size="small" type="success">完成</el-tag>
                 <el-tag v-else-if="pc.status === 1" size="small" type="warning">进行中</el-tag>
                 <el-tag v-else size="small" type="info">待做</el-tag>

@@ -157,6 +157,17 @@ public interface ISampleOrderService {
     java.util.Map<String, Object> transferMaterials(Long orderId);
 
     /**
+     * 打样转标准-预览：读取打样数据（工序+物料JSON），自动匹配标准工序/物料，返回带匹配推荐的预览数据
+     */
+    com.jjx.sales.domain.vo.SampleTransferPreviewVO previewTransfer(Long orderId);
+
+    /**
+     * 打样转标准-确认转移：接收前端编辑后的标准数据（工序映射+物料映射），
+     * 生成新版本BOM/Routing，旧版本失效，回填打样单和产品表
+     */
+    java.util.Map<String, Object> confirmTransfer(com.jjx.sales.dto.transfer.SampleTransferConfirmDTO dto);
+
+    /**
      * 样品单列表（DEV-526 打样平台：支持按是否已接单筛选）
      */
     List<com.jjx.sales.domain.entity.SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor);
