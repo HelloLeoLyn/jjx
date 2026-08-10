@@ -79,6 +79,8 @@ export interface EngineeringBom {
   productCode: string
   productName: string
   bomVersion: string
+  /** 版本号（V1.0/V2.0，统一字段） */
+  version?: string
   approveStatus: number
   isCurrent: boolean
   effectiveDate: string
@@ -98,6 +100,8 @@ export interface EngineeringBomVO {
   productCode: string
   productName: string
   bomVersion: string
+  /** 版本号（V1.0/V2.0，统一字段） */
+  version?: string
   approveStatus: number
   isCurrent: boolean
   effectiveDate: string

@@ -31,6 +31,11 @@ public class EngineeringBomVO {
     /** 版本号 */
     private String bomVersion;
 
+    /**
+     * 版本号（V1.0/V2.0，版本化统一字段）
+     */
+    private String version;
+
     /** BOM类型 */
     private String bomType;
 

@@ -56,7 +56,7 @@ public interface EngineeringBomMapper extends BaseMapper<EngineeringBom> {
     @Select({
         "<script>",
         "SELECT ",
-        "   pb.bom_id, pb.bom_code, pb.product_id, pb.bom_version, ",
+        "   pb.bom_id, pb.bom_code, pb.product_id, pb.bom_version, pb.version, ",
         "   pb.bom_type, pb.is_current, pb.effective_date, pb.expiry_date, ",
         "   pb.create_time, pb.update_time, pb.approve_status, pb.remark, ",
         "   p.product_code, p.product_name ",
@@ -98,6 +98,7 @@ public interface EngineeringBomMapper extends BaseMapper<EngineeringBom> {
         @Result(property = "productCode", column = "product_code"),
         @Result(property = "productName", column = "product_name"),
         @Result(property = "bomVersion", column = "bom_version"),
+        @Result(property = "version", column = "version"),
         @Result(property = "bomType", column = "bom_type"),
         @Result(property = "isCurrent", column = "is_current"),
         @Result(property = "effectiveDate", column = "effective_date"),

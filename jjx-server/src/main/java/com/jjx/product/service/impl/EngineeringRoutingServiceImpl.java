@@ -51,6 +51,13 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         // 创建路线
         EngineeringRouting routing = new EngineeringRouting();
         BeanUtil.copyProperties(dto, routing);
+        // 2026-08-10 DEV-769：双字段同步，统一语义（version 为空时对齐 routingVersion）
+        if (routing.getVersion() == null || routing.getVersion().isEmpty()) {
+            routing.setVersion(routing.getRoutingVersion());
+        }
+        if (routing.getRoutingVersion() == null || routing.getRoutingVersion().isEmpty()) {
+            routing.setRoutingVersion(routing.getVersion());
+        }
         routing.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
         routing.setIsCurrent(0);
         routing.setProcessCount(0);
@@ -185,6 +192,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         BeanUtil.copyProperties(oldRouting, newRouting);
         newRouting.setRoutingId(null);
         newRouting.setRoutingVersion(newVersion);
+        newRouting.setVersion(newVersion); // 2026-08-10 DEV-769：双字段同步，统一语义
         newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
         newRouting.setIsCurrent(0);
         save(newRouting);

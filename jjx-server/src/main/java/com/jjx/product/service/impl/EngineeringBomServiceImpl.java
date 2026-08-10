@@ -144,6 +144,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 .map(b -> b.getVersion() != null ? b.getVersion() : b.getBomVersion())
                 .collect(java.util.stream.Collectors.toList());
         bom.setBomVersion(com.jjx.common.utils.VersionUtils.next(versions));
+        bom.setVersion(bom.getBomVersion()); // 2026-08-10 DEV-769：双字段同步，统一语义
     }
 
     /**
@@ -400,6 +401,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         cn.hutool.core.bean.BeanUtil.copyProperties(oldBom, newBom);
         newBom.setBomId(null);
         newBom.setBomVersion(newVersion);
+        newBom.setVersion(newVersion); // 2026-08-10 DEV-769：双字段同步，统一语义
         newBom.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
         newBom.setIsCurrent(false);
         productBomMapper.insert(newBom);
