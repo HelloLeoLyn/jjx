@@ -122,7 +122,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setSalesManagerId(quotation.getSalesPersonId());
         order.setSalesManagerName(quotation.getSalesPersonName());
         order.setRemark(remark);
-        order.setTotalQuantity(sampleQty != null ? sampleQty : 0);
+        // DEV-806：total_quantity 不再用打样数量 sampleQty，明细复制后按明细求和
+        order.setTotalQuantity(0);
         order.setTotalAmount(quotation.getTotalAmount());
         order.setFinalAmount(quotation.getFinalAmount());
         // 继承报价单链路追踪ID（同一业务链路）
@@ -136,6 +137,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         // 复制报价单明细到样品单（产品资料转移/转量产依赖明细，源头修复）
         copyQuotationItemsToOrder(quotationId, order.getOrderId());
+        // DEV-806：统一打样聚合口径——total_quantity 按明细求和
+        updateTotalQuantityByItems(order.getOrderId());
 
         // 报价单状态更新：已确认(2) → 已完成(9)（报价已转化为样品打样，不可重复转），并回写转换结果（DEV-594，与转订单对齐）
         try {
@@ -928,6 +931,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (prodList == null || prodList.isEmpty()) {
             if (sampleOrder.getQuotationId() != null) {
                 copyQuotationItemsToOrder(sampleOrder.getQuotationId(), orderId);
+                updateTotalQuantityByItems(orderId);
                 prodList = orderProductService.getListByOrderId(orderId);
             }
         }
@@ -1446,6 +1450,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (prodList == null || prodList.isEmpty()) {
             if (sampleOrder.getQuotationId() != null) {
                 copyQuotationItemsToOrder(sampleOrder.getQuotationId(), orderId);
+                updateTotalQuantityByItems(orderId);
                 prodList = orderProductService.getListByOrderId(orderId);
             }
         }
@@ -2068,7 +2073,16 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         standardOrder.setExchangeRate(sampleOrder.getExchangeRate());
         standardOrder.setSalesManagerId(sampleOrder.getSalesManagerId());
         standardOrder.setSalesManagerName(sampleOrder.getSalesManagerName());
-        standardOrder.setTotalQuantity(sampleOrder.getTotalQuantity());
+        // DEV-806：total_quantity 按样品单明细求和（不依赖样品单 total_quantity 字段，兼容存量脏数据）
+        int sumQty = 0;
+        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> sampleItems =
+                orderProductService.getListByOrderId(sampleOrder.getOrderId());
+        if (sampleItems != null) {
+            for (com.jjx.sales.domain.vo.SalesOrderProductVO it : sampleItems) {
+                sumQty += it.getQuantity() != null ? it.getQuantity() : 0;
+            }
+        }
+        standardOrder.setTotalQuantity(sumQty);
         standardOrder.setTotalAmount(sampleOrder.getTotalAmount());
         standardOrder.setFinalAmount(sampleOrder.getFinalAmount());
         // 打样汇总自动计算（总工时+材料成本），替代手填 sampleCost/sampleWorkHours
@@ -2239,6 +2253,28 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         orderProductService.batchAdd(dtos);
         log.info("报价单[{}]明细已复制到订单[{}] ({}条)", quotationId, targetOrderId, dtos.size());
+    }
+
+    /**
+     * DEV-806：统一打样聚合口径——total_quantity 按明细 quantity 求和刷新
+     */
+    private void updateTotalQuantityByItems(Long orderId) {
+        try {
+            java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> items =
+                    orderProductService.getListByOrderId(orderId);
+            int sum = 0;
+            if (items != null) {
+                for (com.jjx.sales.domain.vo.SalesOrderProductVO it : items) {
+                    sum += it.getQuantity() != null ? it.getQuantity() : 0;
+                }
+            }
+            SalesOrder upd = new SalesOrder();
+            upd.setOrderId(orderId);
+            upd.setTotalQuantity(sum);
+            orderMapper.updateById(upd);
+        } catch (Exception e) {
+            log.warn("刷新订单[{}] total_quantity 失败: {}", orderId, e.getMessage());
+        }
     }
 
     /**
