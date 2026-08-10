@@ -315,6 +315,8 @@ export interface StandardProcessOption {
   equipmentType: string
   qualityStandard: string
   description: string
+  /** 是否带下标：0-不带,1-带 */
+  hasIndex: number
   isEnabled: number
   displayOrder: number
   icon: string

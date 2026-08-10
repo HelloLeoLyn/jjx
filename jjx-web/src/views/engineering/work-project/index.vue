@@ -337,6 +337,7 @@ const handleSubmit = async () => {
       skillRequirement: '',
       equipmentType: '',
       qualityStandard: '',
+      hasIndex: 0,
       isEnabled: 1,
       displayOrder: 0,
     }

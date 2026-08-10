@@ -136,6 +136,18 @@ export interface EngineeringRoutingItemVO {
   isEnabledTagType: string
   displayOrder: number
   icon?: string
+
+  // ==================== 下标/依赖/可选（批次1新增） ====================
+  /** 下标数字（带下标工序的下标值） */
+  indexNumber?: number | null
+  /** 前置依赖标识（如 PANEL_4） */
+  precondition?: string | null
+  /** 前置依赖显示名 */
+  preconditionDisplay?: string | null
+  /** 可选工序：0-必做,1-可选 */
+  isOptional?: number
+  /** 标准工序是否带下标 */
+  hasIndex?: number
 }
 
 /**
@@ -155,6 +167,10 @@ export interface EngineeringRoutingItemDTO {
   customProcessParams?: string
   description?: string
   processCategory?: string
+  indexNumber?: number
+  precondition?: string
+  preconditionDisplay?: string
+  isOptional?: number
 }
 
 /**

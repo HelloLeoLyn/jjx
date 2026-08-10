@@ -1,7 +1,7 @@
 <template>
   <div class="icon-step-badge" @click="openInput">
     <SvgIcon :name="icon" :size="size" />
-    <!-- 下标数字（解析 description 中的 <jump>N</jump>） -->
+    <!-- 下标数字（index 模式：直接显示 indexNumber；description 模式：解析 <jump>N</jump>） -->
     <span v-if="stepNum !== null" class="step-badge" :class="{ 'is-zero': stepNum === 0 }" @click.stop="onJump">
       {{ stepNum }}
     </span>
@@ -26,7 +26,12 @@
         <el-button type="primary" size="small" :loading="saving" @click="confirm">确定</el-button>
       </div>
       <div style="font-size: 12px; color: #909399; margin-top: 4px">
-        输入数字将写入描述 <code>&lt;jump&gt;N&lt;/jump&gt;</code>，代表跳转到对应步骤
+        <template v-if="useIndexMode">
+          输入下标数字（如 4 显示为 ④），保存到工艺路线明细 index_number
+        </template>
+        <template v-else>
+          输入数字将写入描述 <code>&lt;jump&gt;N&lt;/jump&gt;</code>，代表跳转到对应步骤
+        </template>
       </div>
       <template #reference>
         <span style="display: none"></span>
@@ -40,10 +45,13 @@ import { ref, computed } from 'vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 
 /**
- * 作业项目图标 + 可编辑步骤下标（2026-08-09）
- * description 中存富文本标记 <jump>N</jump>：
- *  - 渲染时解析出下标数字显示在图标右下角
- *  - 点击图标弹输入框改数字 → 更新 description（有则替换，无则追加）→ emit update-description 由父组件保存
+ * 作业项目图标 + 可编辑步骤下标（2026-08-09 创建，2026-08-10 支持 index 模式）
+ *
+ * 两种模式：
+ *  - description 模式（默认）：description 中存富文本标记 <jump>N</jump>，
+ *    渲染时解析出下标数字显示在图标右下角；点击图标弹输入框改数字 → 更新 description
+ *  - index 模式（传 index prop）：直接显示 indexNumber 值，点击图标改数字 →
+ *    emit('update:index') 由父组件写入 routing_item.index_number
  *  - 点击下标数字 → emit jump（页面挂空函数，现阶段不实现跳转）
  */
 const props = defineProps<{
@@ -51,10 +59,13 @@ const props = defineProps<{
   /** 描述文本（可能含 <jump>N</jump> 标记） */
   description?: string
   size?: number
+  /** index 模式：显式下标数字（优先于 description 解析） */
+  index?: number | null
 }>()
 
 const emit = defineEmits<{
   (e: 'update-description', value: string): void
+  (e: 'update:index', value: number): void
   (e: 'jump', step: number): void
 }>()
 
@@ -64,8 +75,12 @@ const saving = ref(false)
 // el-popover manual 触发（类型兜底）
 const popTrigger = 'manual' as any
 
-// 解析 <jump>N</jump>
+// index 模式判定
+const useIndexMode = computed(() => props.index !== undefined && props.index !== null)
+
+// 解析下标：index 模式直接用 index；否则解析 <jump>N</jump>
 const stepNum = computed<number | null>(() => {
+  if (props.index !== undefined && props.index !== null) return Number(props.index)
   const m = (props.description || '').match(/<jump>(\d+)<\/jump>/)
   return m ? Number(m[1]) : null
 })
@@ -88,7 +103,11 @@ async function confirm() {
   if (draftNum.value === null) return
   saving.value = true
   try {
-    emit('update-description', buildDescription(draftNum.value))
+    if (useIndexMode.value) {
+      emit('update:index', draftNum.value)
+    } else {
+      emit('update-description', buildDescription(draftNum.value))
+    }
     inputVisible.value = false
   } finally {
     saving.value = false

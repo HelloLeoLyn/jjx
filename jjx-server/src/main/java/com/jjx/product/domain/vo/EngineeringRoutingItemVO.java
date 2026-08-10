@@ -54,4 +54,12 @@ public class EngineeringRoutingItemVO {
     private String isEnabledName;
     private Integer displayOrder;
     private String icon;
+
+    // ==================== 下标/依赖/可选（批次1新增） ====================
+    private Integer indexNumber;
+    private String precondition;
+    private String preconditionDisplay;
+    private Integer isOptional;
+    /** 标准工序是否带下标（平铺自 standard_process.has_index） */
+    private Integer hasIndex;
 }

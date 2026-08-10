@@ -77,6 +77,26 @@ public class EngineeringRoutingItem {
     private String processCategory;
 
     /**
+     * 下标数字（带下标工序的下标值，如4显示为④）
+     */
+    private Integer indexNumber;
+
+    /**
+     * 前置依赖标识（如 PANEL_4=面板④）
+     */
+    private String precondition;
+
+    /**
+     * 前置依赖显示名（如：面板④ 面板冲型）
+     */
+    private String preconditionDisplay;
+
+    /**
+     * 可选工序：0-必做,1-可选
+     */
+    private Integer isOptional;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

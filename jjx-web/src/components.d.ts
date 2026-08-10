@@ -86,6 +86,7 @@ declare module 'vue' {
     EnumSelect: typeof import('./components/EnumSelect.vue')['default']
     EventPanel: typeof import('./components/BizFlowDetail/EventPanel.vue')['default']
     IconSelector: typeof import('./components/IconSelector.vue')['default']
+    IconStepBadge: typeof import('./components/IconStepBadge/index.vue')['default']
     InternationalAddressEditor: typeof import('./components/InternationalAddressEditor.vue')['default']
     JJXIcon: typeof import('./components/JJXIcon/index.vue')['default']
     LocationImportDialog: typeof import('./components/inventory/LocationImportDialog.vue')['default']

@@ -75,6 +75,11 @@ public class ProductStandardProcessVO {
     private String icon;
 
     /**
+     * 是否带下标：0-不带,1-带
+     */
+    private Integer hasIndex;
+
+    /**
      * 是否启用：0-禁用,1-启用
      */
     private Integer isEnabled;

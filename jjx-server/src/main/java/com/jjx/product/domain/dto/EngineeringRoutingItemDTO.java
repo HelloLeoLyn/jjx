@@ -75,4 +75,24 @@ public class EngineeringRoutingItemDTO {
      * 工序类别（字典表 process_category）
      */
     private String processCategory;
+
+    /**
+     * 下标数字（带下标工序的下标值）
+     */
+    private Integer indexNumber;
+
+    /**
+     * 前置依赖标识（如 PANEL_4）
+     */
+    private String precondition;
+
+    /**
+     * 前置依赖显示名
+     */
+    private String preconditionDisplay;
+
+    /**
+     * 可选工序：0-必做,1-可选
+     */
+    private Integer isOptional;
 }

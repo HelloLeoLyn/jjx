@@ -163,6 +163,14 @@
         <el-table-column prop="standardLaborHours" label="人工工时" width="90" align="right" />
         <el-table-column prop="standardMachineHours" label="机器工时" width="90" align="right" />
 
+        <el-table-column prop="hasIndex" label="带下标" width="90" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.hasIndex === 1 ? 'warning' : 'info'" size="small">
+              {{ scope.row.hasIndex === 1 ? '带下标' : '不带' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="displayOrder" label="排序" width="60" align="center" />
         <el-table-column prop="isEnabled" label="启用状态" width="120" align="center">
           <template #default="scope">

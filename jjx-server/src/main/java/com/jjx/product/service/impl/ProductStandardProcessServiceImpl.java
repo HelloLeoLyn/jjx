@@ -56,6 +56,9 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         if (process.getIsEnabled() == null) {
             process.setIsEnabled(1);
         }
+        if (process.getHasIndex() == null) {
+            process.setHasIndex(0);
+        }
         if (process.getDisplayOrder() == null) {
             process.setDisplayOrder(0);
         }
@@ -111,6 +114,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         if (process.getQualityStandard() != null) existing.setQualityStandard(process.getQualityStandard());
         if (process.getDescription() != null) existing.setDescription(process.getDescription());
         if (process.getDisplayOrder() != null) existing.setDisplayOrder(process.getDisplayOrder());
+        if (process.getHasIndex() != null) existing.setHasIndex(process.getHasIndex());
         existing.setUpdateTime(LocalDateTime.now());
 
         // JSON字段处理：空字符串转为null，避免MySQL JSON类型报错
