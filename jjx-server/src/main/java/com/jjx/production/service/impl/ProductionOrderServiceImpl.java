@@ -1024,6 +1024,26 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (!"PLAN".equals(plan.getOrderType())) {
             throw new BusinessException("订单不是生产计划类型，无法转换: " + plan.getOrderNo());
         }
+        // 039⑤：仅已批准计划可转（approvalStatus=2 已审核）
+        if (plan.getApprovalStatus() == null || plan.getApprovalStatus() != 2) {
+            throw new BusinessException("仅已审批通过的生产计划可转为工单，当前审批状态: " + plan.getApprovalStatus());
+        }
+        // 039⑤：Σ子工单数量 ≤ 计划数量（防超量）
+        BigDecimal planQty = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+        BigDecimal sumQty = BigDecimal.ZERO;
+        for (ConvertPlanToWorkOrdersDTO.WorkOrderItem item : dto.getWorkOrders()) {
+            if (item.getPlannedQuantity() != null) {
+                sumQty = sumQty.add(item.getPlannedQuantity());
+            }
+        }
+        if (sumQty.compareTo(planQty) > 0) {
+            throw new BusinessException("子工单数量合计" + sumQty.stripTrailingZeros().toPlainString()
+                    + "超过计划数量" + planQty.stripTrailingZeros().toPlainString() + "，请调整");
+        }
+        // 039⑤：无BOM/工艺路线产品拦截
+        if (plan.getBomId() == null && plan.getRoutingId() == null) {
+            throw new BusinessException("计划无BOM/工艺路线，无法转为工单");
+        }
 
         List<Long> createdOrderIds = new ArrayList<>();
         int seq = 0;
