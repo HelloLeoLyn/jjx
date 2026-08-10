@@ -30,6 +30,16 @@ export interface ProductRouteFormData {
   productCode: string
   productName: string
   routingVersion: string
+  /** 版本号（V1.0/V2.0） */
+  version?: string
+  /** 父版本路线ID */
+  parentRoutingId?: number
+  /** 来源打样单ID */
+  sourceSampleId?: number
+  /** 保存时是否自动升版 */
+  bumpVersion?: boolean
+  /** 变更说明 */
+  changeNote?: string
   description?: string
   remark?: string
   items: EngineeringRoutingItemVO[]
@@ -47,6 +57,12 @@ export interface EngineeringRoutingVO {
   productCode: string
   productName: string
   routingVersion: string
+  /** 版本号（V1.0/V2.0） */
+  version?: string
+  /** 父版本路线ID */
+  parentRoutingId?: number
+  /** 来源打样单ID */
+  sourceSampleId?: number
   isCurrent: number
   isCurrentName: string
   approveStatus: number

@@ -40,6 +40,21 @@ public class EngineeringRoutingDTO {
     private String routingVersion;
 
     /**
+     * 版本号（V1.0/V2.0，版本化改造新增）
+     */
+    private String version;
+
+    /**
+     * 父版本路线ID（冗余，保存时忽略）
+     */
+    private Long parentRoutingId;
+
+    /**
+     * 来源打样单ID（冗余，保存时忽略）
+     */
+    private Long sourceSampleId;
+
+    /**
      * 路线说明
      */
     private String description;
@@ -53,4 +68,14 @@ public class EngineeringRoutingDTO {
      * 工序明细列表
      */
     private List<EngineeringRoutingItemDTO> items;
+
+    /**
+     * 保存时是否自动升版（true=内容变更，生成新版本，旧版本失效）
+     */
+    private Boolean bumpVersion;
+
+    /**
+     * 变更说明（自动升版时记录到新版本 remark）
+     */
+    private String changeNote;
 }

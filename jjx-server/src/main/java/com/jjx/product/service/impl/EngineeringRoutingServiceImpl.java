@@ -40,6 +40,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     private final EngineeringRoutingMapper routingMapper;
     private final EngineeringRoutingItemMapper routingDetailMapper;
     private final EngineeringRoutingConverter routingConverter;
+    private final com.jjx.product.mapper.ProductMapper productMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -81,6 +82,11 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_CANNOT_EDIT);
         }
 
+        // ===== 自动升版：内容有变更时生成新版本，旧版本失效 =====
+        if (Boolean.TRUE.equals(dto.getBumpVersion())) {
+            return saveAsNewVersion(routing, dto);
+        }
+
         BeanUtil.copyProperties(dto, routing);
         routing.setUpdateTime(LocalDateTime.now());
         updateById(routing);
@@ -94,6 +100,85 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
 
         log.info("更新工艺路线成功: {}", routing.getRoutingCode());
         return getRoutingItems(routing.getRoutingId());
+    }
+
+    /**
+     * 自动升版保存：旧版本失效（is_current=0），新建版本（版本号+1、is_current=1、parent指向旧版本），
+     * 明细写入新版本，同步 product.current_routing_version
+     */
+    private EngineeringRoutingVO saveAsNewVersion(EngineeringRouting oldRouting, EngineeringRoutingDTO dto) {
+        // 1. 计算新版本号：当前版本主号+1（V1.0 → V2.0）
+        List<String> versions = list(new LambdaQueryWrapper<EngineeringRouting>()
+                        .eq(EngineeringRouting::getProductId, oldRouting.getProductId()))
+                .stream()
+                .map(r -> r.getVersion() != null ? r.getVersion() : r.getRoutingVersion())
+                .collect(Collectors.toList());
+        String newVersion = computeNextRoutingVersion(versions);
+
+        // 2. 旧版本失效（该产品所有版本 is_current=0，再设新版本为当前）
+        routingMapper.setAllNotCurrent(oldRouting.getProductId());
+        oldRouting.setIsCurrent(0);
+        oldRouting.setUpdateTime(LocalDateTime.now());
+        updateById(oldRouting);
+
+        // 3. 新建版本（parent 指向旧版本）
+        EngineeringRouting newRouting = new EngineeringRouting();
+        BeanUtil.copyProperties(dto, newRouting);
+        newRouting.setRoutingId(null);
+        newRouting.setVersion(newVersion);
+        newRouting.setRoutingVersion(newVersion);
+        newRouting.setIsCurrent(1);
+        newRouting.setParentRoutingId(oldRouting.getRoutingId());
+        newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        newRouting.setProcessCount(0);
+        newRouting.setTotalLaborHours(BigDecimal.ZERO);
+        newRouting.setTotalMachineHours(BigDecimal.ZERO);
+        // 变更说明记录到 remark（自动生成 + 用户输入拼接）
+        String changeNote = dto.getChangeNote();
+        String oldVer = oldRouting.getVersion() != null ? oldRouting.getVersion() : oldRouting.getRoutingVersion();
+        String remark = newVersion + " 变更："
+                + (StringUtils.hasText(changeNote) ? changeNote : "工序内容调整")
+                + "（由 " + oldVer + " 升版）";
+        newRouting.setRemark(remark);
+        newRouting.setUpdateTime(LocalDateTime.now());
+        save(newRouting);
+
+        // 4. 明细写入新版本
+        if (dto.getItems() != null && !dto.getItems().isEmpty()) {
+            saveItems(newRouting.getRoutingId(), dto.getItems());
+            calculateHours(newRouting.getRoutingId());
+        }
+
+        // 5. 同步产品表 current_routing_version
+        com.jjx.product.domain.entity.Product product = productMapper.selectById(oldRouting.getProductId());
+        if (product != null) {
+            product.setCurrentRoutingVersion(newVersion);
+            productMapper.updateById(product);
+        }
+
+        log.info("工艺路线自动升版: {} V{} -> V{}（parent={}）",
+                oldRouting.getRoutingCode(), oldRouting.getRoutingVersion(), newVersion, oldRouting.getRoutingId());
+        return getRoutingItems(newRouting.getRoutingId());
+    }
+
+    /**
+     * 计算下一个版本号（V1.0 → V2.0，取所有版本主号最大值+1）
+     */
+    private String computeNextRoutingVersion(List<String> existingVersions) {
+        int maxMajor = 0;
+        if (existingVersions != null) {
+            for (String v : existingVersions) {
+                if (v == null || v.isEmpty()) continue;
+                try {
+                    String s = v.trim().toUpperCase();
+                    if (s.startsWith("V")) s = s.substring(1);
+                    int dot = s.indexOf('.');
+                    if (dot >= 0) s = s.substring(0, dot);
+                    maxMajor = Math.max(maxMajor, Integer.parseInt(s));
+                } catch (NumberFormatException ignored) { }
+            }
+        }
+        return "V" + (maxMajor + 1) + ".0";
     }
 
     @Override

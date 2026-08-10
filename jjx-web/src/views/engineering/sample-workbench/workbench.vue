@@ -7,9 +7,6 @@
         <span class="desc">Round {{ card.sampleRound || 1 }} · {{ card.orderNo || '' }}</span>
         <span style="float:right">
           <el-button size="small" icon="CopyDocument" @click="openHistoryCopy">📋 从历史打样复制</el-button>
-          <el-button size="small" :type="batchMode ? 'warning' : 'default'" icon="Grid" @click="toggleBatchMode">
-            {{ batchMode ? '退出批量编辑' : '批量编辑' }}
-          </el-button>
           <el-button link type="primary" style="margin-left:8px" @click="goBack">← 返回打样平台</el-button>
         </span>
       </template>
@@ -73,6 +70,9 @@
           <template #header>
             <span style="font-weight:600">② 打样工序计划</span>
             <span class="desc">在哪个标签编辑，卡片就属于哪个项目结构</span>
+            <el-button size="small" :type="batchMode ? 'warning' : 'default'" icon="Grid" @click="toggleBatchMode" style="float: right; margin-top: -2px">
+            {{ batchMode ? '退出批量编辑' : '批量编辑' }}
+          </el-button>
             <el-button
               type="success" size="small" :loading="savingPlan" @click="savePlan"
               style="float: right; margin-top: -2px"

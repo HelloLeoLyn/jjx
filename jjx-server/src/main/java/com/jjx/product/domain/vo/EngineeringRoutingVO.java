@@ -15,6 +15,12 @@ public class EngineeringRoutingVO {
     private String productCode;
     private String productName;
     private String routingVersion;
+    /** 版本号（V1.0/V2.0） */
+    private String version;
+    /** 父版本路线ID */
+    private Long parentRoutingId;
+    /** 来源打样单ID（打样转标准生成） */
+    private Long sourceSampleId;
     private Integer isCurrent;
     private String isCurrentName;
     private Integer approveStatus;
