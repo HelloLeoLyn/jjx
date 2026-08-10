@@ -437,7 +437,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             throw new BusinessException("无可用仓库，无法入库存");
         }
 
-        String batchNo = "PO-" + order.getOrderNo() + "-" + System.currentTimeMillis() % 100000;
+        // 029定稿：批次号统一规则——库存批次号=来源单据批次号（与入库单明细一致 PO-{orderNo}-{序号}）
+        Integer itemSeq = item.getItemOrder() != null ? item.getItemOrder() : 1;
+        String batchNo = "PO-" + order.getOrderNo() + "-" + itemSeq;
         // 查找现有同物料批次库存（同仓库同批次）
         com.jjx.inventory.domain.InventoryStockItem existing = stockItemMapper.selectOne(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryStockItem>()
