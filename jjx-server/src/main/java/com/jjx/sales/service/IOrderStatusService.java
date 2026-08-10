@@ -57,6 +57,11 @@ public interface IOrderStatusService {
     void completeOrder(Long orderId);
 
     /**
+     * 发货（025：IN_PRODUCTION→SHIPPED）
+     */
+    void shipOrder(Long orderId);
+
+    /**
      * 获取订单审核状态
      */
     ReviewStatusVO getReviewStatus(Long orderId);

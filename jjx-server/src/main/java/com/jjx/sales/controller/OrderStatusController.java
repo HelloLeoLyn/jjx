@@ -174,6 +174,20 @@ public class OrderStatusController {
     }
 
     /**
+     * 发货（025：生产中→已发货）
+     */
+    @Operation(summary = "发货（生产中→已发货，联动创建销售出库单并扣产品库存）")
+    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @SaCheckPermission("sales:order:edit")
+    @PutMapping("/{orderId}/status/ship")
+    public Result<Void> shipOrder(
+            @Parameter(description = "订单ID", required = true)
+            @PathVariable @NotNull Long orderId) {
+        orderStatusService.shipOrder(orderId);
+        return Result.success();
+    }
+
+    /**
      * 完成订单
      */
     @Operation(summary = "完成订单")

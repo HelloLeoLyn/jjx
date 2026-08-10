@@ -605,8 +605,38 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
 
 
+            /**
+     * 发货（025：IN_PRODUCTION→SHIPPED 触发入口）
+     * 触发 order.delivering 事件 → InventoryEventBridge 联动创建销售出库单并自动确认扣产品库存（021/073）
+     */
     @Override
-    @Event(value = "order.completed", bizId = "#orderId", bizType = "'order'")
+    @Transactional(rollbackFor = Exception.class)
+    @Event(value = "order.delivering", bizId = "#orderId", bizType = "'order'")
+    public void shipOrder(Long orderId) {
+        // 1. 查询订单
+        SalesOrder order = salesOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        // 2. 校验状态流转（仅生产中可发货）
+        OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
+        if (!currentStatus.canTransitionTo(OrderStatusEnum.SHIPPED)) {
+            throw new BusinessException("订单当前状态[" + currentStatus.getName() + "]不能发货，仅生产中订单可发货");
+        }
+        // 3. 更新状态
+        int result = salesOrderMapper.updateStatusWithCheck(
+                orderId, OrderStatusEnum.SHIPPED.getCode(), currentStatus.getCode()
+        );
+        if (result == 0) {
+            throw new BusinessException("订单状态已被修改，请刷新后重试");
+        }
+        // 4. 记录日志
+        String desc = getOperationDescription(currentStatus, OrderStatusEnum.SHIPPED);
+        saveOrderLog(order.getOrderNo(), "ship", desc, 1);
+        log.info("订单{}已发货，操作人：{}", orderId, SecurityUtils.getUsername());
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void completeOrder(Long orderId) {
         // 1. 查询订单
