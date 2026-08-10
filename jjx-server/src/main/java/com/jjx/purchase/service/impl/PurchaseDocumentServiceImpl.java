@@ -86,6 +86,35 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             throw new BusinessException("票据编号已存在");
         }
 
+        // 090定稿：发票轻量拦截——发票金额≤订单金额（防虚开），累计不超订单金额
+        if ("INVOICE".equals(dto.getDocumentType()) && dto.getOrderId() != null && dto.getDocumentAmount() != null) {
+            try {
+                com.jjx.purchase.domain.entity.PurchaseOrder po = purchaseOrderMapper.selectById(dto.getOrderId());
+                if (po != null && po.getTotalAmount() != null
+                        && dto.getDocumentAmount().compareTo(po.getTotalAmount()) > 0) {
+                    throw new BusinessException("发票金额" + dto.getDocumentAmount().stripTrailingZeros().toPlainString()
+                            + "超过订单金额" + po.getTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
+                }
+                // 累计发票金额校验（同订单已登记发票合计 + 本次 ≤ 订单金额）
+                java.math.BigDecimal sumInvoiced = documentMapper.selectList(
+                        new LambdaQueryWrapper<PurchaseDocument>()
+                                .eq(PurchaseDocument::getOrderId, dto.getOrderId())
+                                .eq(PurchaseDocument::getDocumentType, "INVOICE"))
+                        .stream()
+                        .map(d -> d.getDocumentAmount() != null ? d.getDocumentAmount() : java.math.BigDecimal.ZERO)
+                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                if (po != null && po.getTotalAmount() != null
+                        && sumInvoiced.add(dto.getDocumentAmount()).compareTo(po.getTotalAmount()) > 0) {
+                    throw new BusinessException("累计发票金额" + sumInvoiced.add(dto.getDocumentAmount()).stripTrailingZeros().toPlainString()
+                            + "超过订单金额" + po.getTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
+                }
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("发票金额校验失败(跳过): {}", e.getMessage());
+            }
+        }
+
         PurchaseDocument document = new PurchaseDocument();
         copyProperties(dto, document);
 
