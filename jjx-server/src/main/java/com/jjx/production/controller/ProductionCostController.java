@@ -13,6 +13,7 @@ import com.jjx.production.mapper.ProductionOrderMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ import java.math.RoundingMode;
 import java.util.*;
 
 @Tag(name = "成本核算")
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/production/cost")
@@ -29,6 +31,7 @@ public class ProductionCostController {
     private final ProductMapper productMapper;
     private final EngineeringBomMapper productBomMapper;
     private final EngineeringBomItemMapper productBomItemMapper;
+    private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
 
     @Operation(summary = "工单成本列表")
     @GetMapping("/list")
@@ -83,7 +86,20 @@ public class ProductionCostController {
                                     .eq(EngineeringBomItem::getBomId, bom.getBomId()));
                     for (EngineeringBomItem bi : bomItems) {
                         BigDecimal biQty = bi.getQuantity() != null ? bi.getQuantity() : BigDecimal.ZERO;
-                        bomCost = bomCost.add(biQty);
+                        // 032修复：BOM标准成本 = Σ(明细用量 × 物料标准单价)，原来只累加数量
+                        BigDecimal unitPrice = BigDecimal.ZERO;
+                        if (bi.getMaterialId() != null) {
+                            try {
+                                com.jjx.inventory.domain.InventoryMaterial mat =
+                                        inventoryMaterialMapper.selectById(bi.getMaterialId());
+                                if (mat != null && mat.getStandardPrice() != null) {
+                                    unitPrice = mat.getStandardPrice();
+                                }
+                            } catch (Exception e) {
+                                log.warn("查询物料标准单价失败: materialId={}", bi.getMaterialId());
+                            }
+                        }
+                        bomCost = bomCost.add(biQty.multiply(unitPrice));
                     }
                 }
             }
