@@ -1,5 +1,6 @@
 package com.jjx.sales.dto.transfer;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -10,6 +11,7 @@ import java.util.List;
  * 接收前端编辑后的标准数据（工序映射 + 物料映射），直接落库生成新版本 BOM/Routing
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SampleTransferConfirmDTO {
 
     /** 样品单ID */
@@ -25,6 +27,7 @@ public class SampleTransferConfirmDTO {
      * 工序映射项
      */
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true) // 前端会传 hasIndex/indexNumber/icon 等展示字段，忽略不报错
     public static class ProcessMapping {
         /** 打样工序记录ID（新增工序为 null） */
         private Long sampleProcessId;
@@ -52,6 +55,7 @@ public class SampleTransferConfirmDTO {
      * 物料映射项
      */
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class MaterialMapping {
         /** 前端行标识：sourceProcessId_index */
         private String rowKey;
