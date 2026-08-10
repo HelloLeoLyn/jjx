@@ -37,6 +37,12 @@ export interface EngineeringBomItem {
   specification: string
   unit: string
   quantity: number
+  /** 应用料（含损耗）= 用量×(1+损耗率/100) */
+  appliedQty?: number
+  /** 实际投料（板材/卷材按最低投料向上取整） */
+  actualIssueQty?: number
+  /** 物料类型（R=板材/卷材） */
+  materialType?: string
   lossRate: number
   remark?: string
   sortOrder: number

@@ -341,9 +341,15 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     const moduleQty = parseFloat(String(row[7] || '0').replace(/[^\d.]/g, '')) || 0
     const quantity = parseFloat(String(row[8] || '0').replace(/[^\d.]/g, '')) || 0
     const baseQty = parseFloat(String(row[9] || '1').replace(/[^\d.]/g, '')) || 1
+    // 应用料（第10列）：有值直读，无值留空由后端计算
+    const appliedRaw = String(row[10] ?? '').replace(/[^\d.]/g, '')
+    const appliedQty = appliedRaw ? parseFloat(appliedRaw) : undefined
     // 预计不良：Excel中为小数（如0.1表示10%），转为百分制显示（如10）
     const lossRate = (parseFloat(String(row[11] || '0').replace(/[^\d.]/g, '')) || 0) * 100
     const minIssueQty = parseFloat(String(row[12] || '0').replace(/[^\d.]/g, '')) || 0
+    // 实际投料（第13列）：有值直读，无值留空由后端计算
+    const actualRaw = String(row[13] ?? '').replace(/[^\d.]/g, '')
+    const actualIssueQty = actualRaw ? parseFloat(actualRaw) : undefined
 
     // 构建规格描述：第4/5/6列是什么就是什么，直接拼接
     const specification = col4 + col5 + col6
@@ -356,6 +362,8 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       specification: specification,
       unit: unit || 'PCS',
       quantity: quantity,
+      appliedQty: appliedQty,
+      actualIssueQty: actualIssueQty,
       lossRate: lossRate,
       baseQty: baseQty || 1,
       moduleQty: moduleQty || 1,

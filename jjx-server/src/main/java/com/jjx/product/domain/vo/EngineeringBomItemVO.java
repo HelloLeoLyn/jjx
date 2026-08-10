@@ -51,6 +51,21 @@ public class EngineeringBomItemVO {
     private BigDecimal quantity;
 
     /**
+     * 应用料（含损耗）= 用量×(1+损耗率/100)
+     */
+    private BigDecimal appliedQty;
+
+    /**
+     * 实际投料（板材/卷材且最低投料>0时按最低投料向上取整，否则=应用料）
+     */
+    private BigDecimal actualIssueQty;
+
+    /**
+     * 物料类型（R=板材/卷材，用于展示投料计算说明）
+     */
+    private String materialType;
+
+    /**
      * 损耗率(%)
      */
     private Integer lossRate;  // 改为 Integer，0-100

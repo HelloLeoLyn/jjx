@@ -58,6 +58,16 @@ public class EngineeringBomItem {
     private BigDecimal quantity;
 
     /**
+     * 应用料（含损耗）= 用量×(1+损耗率/100)
+     */
+    private BigDecimal appliedQty;
+
+    /**
+     * 实际投料（板材/卷材且最低投料>0时按最低投料向上取整，否则=应用料）
+     */
+    private BigDecimal actualIssueQty;
+
+    /**
      * 损耗率(%)
      */
     private Integer lossRate;  // 改为 Integer，0-100
@@ -145,6 +155,12 @@ public class EngineeringBomItem {
     private LocalDateTime updateTime;
 
     // ========== 以下为非数据库字段（用于业务计算） ==========
+
+    /**
+     * 物料类型（R=板材/卷材，查询时带出，前端展示投料计算说明）
+     */
+    @TableField(exist = false)
+    private String materialType;
 
     /**
      * 实际用量（非数据库字段，通过 quantity * (1 + lossRate/100) 计算）

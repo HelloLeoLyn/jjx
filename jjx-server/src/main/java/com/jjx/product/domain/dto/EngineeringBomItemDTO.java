@@ -39,6 +39,12 @@ public class EngineeringBomItemDTO {
     @Positive(message = "用量必须大于0")
     private BigDecimal quantity;
 
+    /** 应用料（含损耗，后端计算，Excel导入可直读） */
+    private BigDecimal appliedQty;
+
+    /** 实际投料（按最低投料向上取整，后端计算，Excel导入可直读） */
+    private BigDecimal actualIssueQty;
+
     /** 损耗率(%) */
     private Integer lossRate;
 
