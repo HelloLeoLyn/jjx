@@ -54,6 +54,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final SalesOrderProductMapper orderProductMapper;
     private final EngineeringBomMapper bomMapper;
     private final EngineeringBomItemMapper bomItemMapper;
+    private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
 
     @Override
     public IPage<AlertVO> page(AlertQueryDTO query) {
@@ -401,6 +402,21 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
         // 来源1：低库存物料（安全库存算法，DEV-664：用物料 max_stock，无则 safe_stock*2 兜底）
         // DEV-20260810-014：低库存同时落库 safe_stock 预警（去重），保证有记录可闭环跟踪
+        // DEV-815：在途采购量（已下采购订单未收货）——建议量扣除，避免重复建议
+        java.util.Map<Long, java.math.BigDecimal> inTransitMap = new java.util.HashMap<>();
+        try {
+            java.util.List<java.util.Map<String, Object>> transitRows = purchaseOrderItemMapper.selectInTransitByMaterial();
+            for (java.util.Map<String, Object> row : transitRows) {
+                Object mid = row.get("material_id");
+                Object qty = row.get("in_transit");
+                if (mid != null && qty != null) {
+                    inTransitMap.put(((Number) mid).longValue(), new BigDecimal(qty.toString()));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询在途采购量失败: {}", e.getMessage());
+        }
+
         List<InventoryStock> lowStock = stockMapper.selectLowStock();
         for (InventoryStock stock : lowStock) {
             // 查询物料最高库存参数
@@ -413,11 +429,14 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             } catch (Exception e) {
                 log.warn("查询物料最高库存失败: materialId={}, err={}", stock.getMaterialId(), e.getMessage());
             }
-            // 建议量 = max_stock - 当前库存；无 max_stock 时用 safe_stock*2 兜底
+            // 建议量 = max_stock - 当前库存 - 在途采购量；无 max_stock 时用 safe_stock*2 兜底
             BigDecimal target = maxStock != null ? maxStock
                     : (stock.getSafeStock() != null ? stock.getSafeStock().multiply(BigDecimal.valueOf(2)) : BigDecimal.valueOf(100));
             BigDecimal suggestQty = target.subtract(stock.getTotalQuantity() != null
                     ? stock.getTotalQuantity() : BigDecimal.ZERO);
+            // DEV-815：扣除在途采购量（已下采购订单未收货），已下单在途则不再重复建议
+            BigDecimal inTransit = inTransitMap.getOrDefault(stock.getMaterialId(), BigDecimal.ZERO);
+            suggestQty = suggestQty.subtract(inTransit);
             if (suggestQty.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             // 落库/去重更新 safe_stock 预警
