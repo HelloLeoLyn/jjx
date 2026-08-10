@@ -4,7 +4,14 @@
     <el-card class="wb-card" shadow="never">
       <template #header>
         <span style="font-weight:600">样品单信息</span>
-        <el-button link type="primary" style="float:right" @click="goBack">← 返回打样平台</el-button>
+        <span class="desc">Round {{ card.sampleRound || 1 }} · {{ card.orderNo || '' }}</span>
+        <span style="float:right">
+          <el-button size="small" icon="CopyDocument" @click="openHistoryCopy">📋 从历史打样复制</el-button>
+          <el-button size="small" :type="batchMode ? 'warning' : 'default'" icon="Grid" @click="toggleBatchMode">
+            {{ batchMode ? '退出批量编辑' : '批量编辑' }}
+          </el-button>
+          <el-button link type="primary" style="margin-left:8px" @click="goBack">← 返回打样平台</el-button>
+        </span>
       </template>
       <el-descriptions :column="3" border size="small">
         <el-descriptions-item label="单号">{{ card.orderNo || '-' }}</el-descriptions-item>
@@ -71,6 +78,21 @@
               style="float: right; margin-top: -2px"
             >💾 保存工序计划</el-button>
           </template>
+
+          <!-- 常用物料快捷区（批次3：历史高频物料） -->
+          <div v-if="frequentMaterials.length" class="freq-materials">
+            <span class="freq-label">⭐ 常用物料</span>
+            <el-tooltip
+              v-for="fm in frequentMaterials" :key="fm.materialId || fm.name"
+              :content="`点击添加到当前卡片材料（${fm.count}次）`" placement="top"
+            >
+              <el-tag
+                class="freq-tag" size="small" effect="plain"
+                @click="addFrequentMaterial(fm)"
+              >{{ fm.name }}{{ fm.spec ? ' ' + fm.spec : '' }}</el-tag>
+            </el-tooltip>
+            <span class="desc">基于历史打样统计，点击加入当前卡片</span>
+          </div>
           <el-tabs v-model="activePlanTab" type="border-card" style="min-height: 420px">
             <el-tab-pane v-for="tab in planTabs" :key="tab.value" :name="tab.value" :label="`${tab.label}（${cardsByTab(tab.value).length}）`">
               <div
@@ -81,14 +103,23 @@
                 <div
                   v-for="(pc, idx) in cardsByTab(tab.value)" :key="pc.uid"
                   class="plan-card"
-                  :class="{ 'drag-over': pc.draggingOver }"
+                  :class="{ 'drag-over': pc.draggingOver, 'batch-selected': batchSelected.has(pc.uid) }"
                   @dragover.prevent="onCardDragOver(pc)"
                   @dragleave="onCardDragLeave(pc)"
                   @drop.stop="onCardDrop($event, pc)"
                 >
                   <!-- 行1：序号 + 状态 + 操作 -->
                   <div class="pc-head">
+                    <el-checkbox
+                      v-if="batchMode"
+                      :model-value="batchSelected.has(pc.uid)"
+                      @change="(v: boolean | string | number) => toggleBatchSelect(pc, !!v)"
+                      class="batch-check"
+                    />
                     <span class="pc-num">{{ idx + 1 }}</span>
+                    <span class="save-state" :class="`save-${pc.saveState || 'synced'}`">
+                      {{ saveStateText(pc) }}
+                    </span>
                     <div class="pc-head-right">
                       <el-tag v-if="pc.status === 2" size="small" type="success">✓ 已完成</el-tag>
                       <el-tag v-else-if="pc.status === 1" size="small" type="warning">⏳ 进行中</el-tag>
@@ -201,6 +232,17 @@
               </div>
             </el-tab-pane>
           </el-tabs>
+
+          <!-- 批量操作栏（批量编辑模式下出现） -->
+          <div v-if="batchMode && batchSelected.size > 0" class="batch-bar">
+            <span class="batch-info">已选 <b>{{ batchSelected.size }}</b> 张卡片</span>
+            <span class="batch-label">统一设置工序类别：</span>
+            <el-select v-model="batchCategory" size="small" placeholder="选择类别" clearable style="width:120px" @change="applyBatchCategory">
+              <el-option v-for="c in categoryOptions" :key="c.itemValue" :label="c.label" :value="c.itemValue" />
+            </el-select>
+            <el-button size="small" type="primary" plain icon="Plus" @click="openBatchMaterial">批量添加材料</el-button>
+            <el-button size="small" type="danger" plain icon="Delete" @click="batchDelete">批量删除</el-button>
+          </div>
         </el-card>
       </div>
 
@@ -344,13 +386,61 @@
       @success="onMaterialCreated"
     />
 
+    <!-- 从历史打样复制弹窗 -->
+    <el-dialog v-model="historyCopyVisible" title="📋 从历史打样复制" width="640px" append-to-body>
+      <el-alert
+        type="info" :closable="false" show-icon
+        title="选择已转标准的样品单，复制其工序计划（工序/分组/材料）到当前打样单，追加到现有卡片后面"
+        style="margin-bottom:12px"
+      />
+      <el-table
+        v-loading="historyLoading" :data="historyOrders" size="small" border stripe
+        max-height="360" highlight-current-row
+        @current-change="(row: any) => (historySelected = row)"
+      >
+        <el-table-column prop="orderNo" label="样品单号" width="150" />
+        <el-table-column prop="customerName" label="客户" min-width="130" />
+        <el-table-column prop="sampleRound" label="轮次" width="70" align="center" />
+        <el-table-column prop="orderDate" label="日期" width="110" />
+      </el-table>
+      <template #footer>
+        <el-button @click="historyCopyVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!historySelected" :loading="historyCopying" @click="confirmHistoryCopy">
+          复制到当前
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量添加材料弹窗 -->
+    <el-dialog v-model="batchMaterialVisible" title="批量添加材料" width="460px" append-to-body>
+      <el-select
+        v-model="batchMaterialId"
+        filterable
+        remote
+        :remote-method="(q: string) => searchBatchMaterial(q)"
+        :loading="batchMaterialLoading"
+        placeholder="搜索物料档案"
+        style="width:100%"
+      >
+        <el-option
+          v-for="opt in batchMaterialOptions" :key="opt.materialId"
+          :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
+          :value="opt.materialId"
+        />
+      </el-select>
+      <div style="font-size:12px;color:#909399;margin-top:8px">将添加到 {{ batchSelected.size }} 张选中卡片的材料列表</div>
+      <template #footer>
+        <el-button @click="batchMaterialVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!batchMaterialId" @click="confirmBatchMaterial">添加</el-button>
+      </template>
+    </el-dialog>
 
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps } from 'element-plus'
 import request from '@/utils/request'
@@ -376,6 +466,239 @@ const form = reactive({ note: '' })
 
 // ===== 工序计划（方案A：卡片 = 一个工序单元，可挂多个作业项目）=====
 const planList = ref<any[]>([])
+
+// ===== 批次3：常用物料 / 保存状态 / 批量编辑 / 历史复制 =====
+
+// 常用物料快捷区（历史高频物料 Top10）
+const frequentMaterials = ref<any[]>([])
+
+// 保存状态：synced 已同步 / dirty 未同步 / saving 保存中 / error 失败
+function saveStateText(pc: any): string {
+  switch (pc.saveState) {
+    case 'dirty': return '⏳ 未同步'
+    case 'saving': return '🔄 保存中'
+    case 'error': return '❌ 保存失败'
+    default: return '✅ 已同步'
+  }
+}
+
+// 标记卡片已修改（未同步）
+function markDirty(pc: any) {
+  if (pc.saveState !== 'saving') pc.saveState = 'dirty'
+}
+
+// 批量编辑模式
+const batchMode = ref(false)
+const batchSelected = ref<Set<string>>(new Set())
+const batchCategory = ref<string | null>(null)
+function toggleBatchMode() {
+  batchMode.value = !batchMode.value
+  batchSelected.value = new Set()
+  batchCategory.value = null
+}
+function toggleBatchSelect(pc: any, v: boolean) {
+  const s = new Set(batchSelected.value)
+  if (v) s.add(pc.uid)
+  else s.delete(pc.uid)
+  batchSelected.value = s
+}
+function batchSelectedCards(): any[] {
+  return planList.value.filter((pc) => batchSelected.value.has(pc.uid))
+}
+// 统一设置工序类别
+function applyBatchCategory(cat: string | undefined) {
+  if (!cat) return
+  batchSelectedCards().forEach((pc) => {
+    pc.category = cat
+    pc.items.forEach((it: any) => (it.processCategory = cat))
+    markDirty(pc)
+  })
+  batchCategory.value = null
+}
+// 批量删除
+function batchDelete() {
+  const n = batchSelected.value.size
+  if (!n) return
+  ElMessageBox.confirm(`确定删除选中的 ${n} 张卡片？`, '批量删除', {
+    confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
+  }).then(() => {
+    planList.value = planList.value.filter((pc) => !batchSelected.value.has(pc.uid))
+    batchSelected.value = new Set()
+  }).catch(() => {})
+}
+// 批量添加材料
+const batchMaterialVisible = ref(false)
+const batchMaterialId = ref<number | null>(null)
+const batchMaterialOptions = ref<any[]>([])
+const batchMaterialLoading = ref(false)
+function openBatchMaterial() {
+  batchMaterialVisible.value = true
+  batchMaterialId.value = null
+  batchMaterialOptions.value = []
+  searchBatchMaterial('')
+}
+async function searchBatchMaterial(query: string) {
+  batchMaterialLoading.value = true
+  try {
+    const params: any = { pageNum: 1, pageSize: 20 }
+    if (query.trim()) params.materialName = query.trim()
+    const res: any = await materialApi.search(params)
+    batchMaterialOptions.value = res?.data?.records || res?.data || []
+  } catch {
+    batchMaterialOptions.value = []
+  } finally {
+    batchMaterialLoading.value = false
+  }
+}
+function confirmBatchMaterial() {
+  if (!batchMaterialId.value) return
+  const mat = batchMaterialOptions.value.find((o) => o.materialId === batchMaterialId.value)
+  if (!mat) return
+  batchSelectedCards().forEach((pc) => {
+    const mats = parseMaterials(pc.materials) || []
+    mats.push({
+      name: mat.materialName, spec: mat.specification || '', qty: 1,
+      unit: mat.unit || 'PCS', materialId: mat.materialId, materialCode: mat.materialCode || '',
+    })
+    pc.materials = JSON.stringify(mats)
+    // 编辑态同步到 materialRows
+    if (pc.editing) {
+      pc.materialRows.push({
+        name: mat.materialName, spec: mat.specification || '', qty: 1, unit: mat.unit || 'PCS',
+        materialId: mat.materialId, materialCode: mat.materialCode || '',
+        options: [], loading: false, uid: genUid(), pageNum: 1, total: 0, lastQuery: '',
+      })
+    }
+    markDirty(pc)
+  })
+  batchMaterialVisible.value = false
+  batchMaterialId.value = null
+  ElMessage.success('已批量添加材料')
+}
+
+// 从历史打样复制
+const historyCopyVisible = ref(false)
+const historyOrders = ref<any[]>([])
+const historyLoading = ref(false)
+const historySelected = ref<any>(null)
+const historyCopying = ref(false)
+async function openHistoryCopy() {
+  historyCopyVisible.value = true
+  historySelected.value = null
+  historyLoading.value = true
+  try {
+    const res: any = await sampleOrderApi.list({ sampleStatus: 7 }) // 已转标准
+    historyOrders.value = (res.data || []).filter((o: any) => o.orderId !== orderId.value)
+  } catch {
+    historyOrders.value = []
+  } finally {
+    historyLoading.value = false
+  }
+}
+async function confirmHistoryCopy() {
+  const src = historySelected.value
+  if (!src) return
+  historyCopying.value = true
+  try {
+    const res = await sampleOrderApi.listProcesses(src.orderId)
+    const list: any[] = (res.data || []).sort(
+      (a: any, b: any) => (a.processOrder || 999) - (b.processOrder || 999) || (a.processId || 0) - (b.processId || 0)
+    )
+    if (!list.length) {
+      ElMessage.warning('该样品单没有工序计划')
+      return
+    }
+    // 按 processOrder 分组为卡片，追加到当前 planList 后面（不覆盖）
+    const groups = new Map<number, any[]>()
+    for (const p of list) {
+      const k = p.processOrder || 999
+      if (!groups.has(k)) groups.set(k, [])
+      groups.get(k)!.push(p)
+    }
+    let added = 0
+    for (const [, rows] of groups) {
+      const first = rows[0]
+      const enriched = rows.map((r: any) => {
+        const src2 = allProcesses.value.find((x) => x.processId === r.stdProcessId)
+        return src2 ? { ...r, processType: src2.processType, processCategory: src2.processCategory, icon: src2.icon } : r
+      })
+      const pc = makeCard(enriched, {
+        processOrder: 0, // 追加，保存时重新编号
+        category: first.processCategory || '',
+        status: 0,
+        processNote: first.processNote || '',
+        materials: first.materials || null,
+      })
+      planList.value.push(pc)
+      added++
+    }
+    historyCopyVisible.value = false
+    ElMessage.success(`已复制 ${added} 张卡片（追加到现有卡片后，保存后生效）`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '复制失败')
+  } finally {
+    historyCopying.value = false
+  }
+}
+
+// 常用物料统计：优先产品线历史（同产品），不足则客户历史
+async function loadFrequentMaterials() {
+  if (!orderId.value) return
+  try {
+    const all: any[] = (await sampleOrderApi.list({})).data || []
+    const others = all.filter((o: any) => o.orderId !== orderId.value && o.sampleStatus === 7)
+    const customerId = card.value?.customerId
+    let candidates = others
+    // 产品线优先：先按客户筛（SalesOrder 无产品字段，客户维度最可靠），有足够数据用客户
+    if (customerId) {
+      const byCustomer = others.filter((o: any) => o.customerId === customerId)
+      if (byCustomer.length >= 1) candidates = byCustomer
+    }
+    const freq = new Map<string, any>()
+    for (const o of candidates.slice(0, 10)) {
+      try {
+        const procs = (await sampleOrderApi.listProcesses(o.orderId)).data || []
+        for (const p of procs) {
+          if (!p.materials) continue
+          const mats = parseMaterials(p.materials)
+          for (const m of mats) {
+            const key = m.materialId ? `id:${m.materialId}` : `name:${m.name}`
+            const cur = freq.get(key)
+            if (cur) cur.count++
+            else freq.set(key, { name: m.name, spec: m.spec, materialId: m.materialId, count: 1 })
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    frequentMaterials.value = Array.from(freq.values()).sort((a, b) => b.count - a.count).slice(0, 10)
+  } catch {
+    frequentMaterials.value = []
+  }
+}
+// 常用物料点击 → 加入当前编辑/激活卡片
+function addFrequentMaterial(fm: any) {
+  const tabCards = cardsByTab(activePlanTab.value)
+  const target = tabCards.find((c) => c.editing) || tabCards[tabCards.length - 1]
+  if (!target) {
+    ElMessage.warning('请先添加工序卡片')
+    return
+  }
+  const mats = parseMaterials(target.materials) || []
+  mats.push({
+    name: fm.name, spec: fm.spec || '', qty: 1, unit: 'PCS',
+    materialId: fm.materialId, materialCode: '',
+  })
+  target.materials = JSON.stringify(mats)
+  if (target.editing) {
+    target.materialRows.push({
+      name: fm.name, spec: fm.spec || '', qty: 1, unit: 'PCS',
+      materialId: fm.materialId, materialCode: '',
+      options: [], loading: false, uid: genUid(), pageNum: 1, total: 0, lastQuery: '',
+    })
+  }
+  markDirty(target)
+  ElMessage.success(`已添加 ${fm.name} 到「${target.items.map((i: any) => i.processName).join('+') || '未命名'}」`)
+}
 
 // 计划标签：面板/上线/下线/未分类（卡片属于哪个标签 = 它的项目结构）
 const planTabs = [
@@ -442,6 +765,8 @@ function makeCard(items: any[], extra: any = {}) {
     editing: false,
     advancing: false,
     savingCard: false,
+    // 批次3：保存状态（synced/dirty/saving/error）
+    saveState: extra.saveState || 'synced',
   }
 }
 
@@ -452,6 +777,8 @@ async function savePlan() {
     ElMessage.warning('工序计划为空，请先勾选作业项目')
     return
   }
+  // 保存状态：全部标记为保存中
+  planList.value.forEach((pc) => (pc.saveState = 'saving'))
   savingPlan.value = true
   try {
     const items: any[] = []
@@ -471,11 +798,13 @@ async function savePlan() {
       })
     })
     await sampleOrderApi.saveProcessPlan(orderId.value, { items })
+    planList.value.forEach((pc) => (pc.saveState = 'synced'))
     ElMessage.success(`工序计划已保存（${planList.value.length}道）`)
     await loadPlan()
     await refreshCard()
     await loadSummary()
   } catch (e: any) {
+    planList.value.forEach((pc) => (pc.saveState = 'error'))
     ElMessage.error(e?.message || '保存工序计划失败')
   } finally {
     savingPlan.value = false
@@ -513,6 +842,7 @@ function onCardPickerConfirm(items: any[]) {
     })
     existing.add(i.processId)
   }
+  markDirty(target)
 }
 
 // ===== 拖拽接收（左侧工序 → 右侧卡片组合）=====
@@ -533,6 +863,7 @@ function onPlanDrop(e: DragEvent) {
   const pc = makeCard([data], { category: activePlanTab.value === '' ? undefined : activePlanTab.value })
   planList.value.push(pc)
   startEdit(pc)
+  markDirty(pc)
   clearDragOver()
 }
 
@@ -550,6 +881,7 @@ function onCardDrop(e: DragEvent, pc: any) {
       icon: data.icon || '',
       processId: pc.processId ?? null,
     })
+    markDirty(pc)
   }
   if (!pc.editing) startEdit(pc)
 }
@@ -570,11 +902,17 @@ function clearDragOver() {
 function removeCardItem(pc: any, idx: number) {
   // 只移除作业项目，卡片保留（可再拖入）；删卡片走右下角删除按钮
   pc.items.splice(idx, 1)
+  markDirty(pc)
 }
 
 // 删除整张卡片（保存计划时生效）
 function removePlanCard(pc: any) {
   planList.value = planList.value.filter((x) => x !== pc)
+  if (batchSelected.value.has(pc.uid)) {
+    const s = new Set(batchSelected.value)
+    s.delete(pc.uid)
+    batchSelected.value = s
+  }
 }
 async function advancePlan(pc: any) {
   if (!orderId.value) return
@@ -599,6 +937,7 @@ async function advancePlan(pc: any) {
 // 保存卡片（整单保存，数据一致）
 async function saveCard(pc: any) {
   pc.savingCard = true
+  pc.saveState = 'saving'
   try {
     // 材料行 → JSON
     const validMats = (pc.materialRows || [])
@@ -614,8 +953,10 @@ async function saveCard(pc: any) {
     pc.materials = validMats.length ? JSON.stringify(validMats) : null
     pc.editing = false
     await savePlan()
+    pc.saveState = 'synced'
     ElMessage.success('已保存')
   } catch (e: any) {
+    pc.saveState = 'error'
     ElMessage.error(e?.message || '保存失败')
   } finally {
     pc.savingCard = false
@@ -819,13 +1160,28 @@ function goBack() {
   router.push('/engineering/sample-workbench')
 }
 
+// 有未同步卡片时离开拦截（onBeforeRouteLeave 内联实现，此处不留死代码）
+// 路由离开守卫（组合式 API）
+onBeforeRouteLeave(async () => {
+  const dirty = planList.value.some((pc) => pc.saveState === 'dirty' || pc.saveState === 'error')
+  if (!dirty) return true
+  try {
+    await ElMessageBox.confirm('有卡片尚未同步保存，确定离开吗？未保存的修改将丢失。', '未保存修改', {
+      confirmButtonText: '仍要离开', cancelButtonText: '留下继续编辑', type: 'warning',
+    })
+    return true
+  } catch {
+    return false
+  }
+})
+
 async function loadDetail() {
   if (!orderId.value) return
   try {
     const res = await sampleOrderApi.getInfo(orderId.value)
     card.value = res.data || {}
     form.note = card.value.engineeringNote || ''
-    await Promise.all([loadRounds(), loadPlan(), loadBom(), loadEngFiles(), loadSummary(), loadAllProcesses()])
+    await Promise.all([loadRounds(), loadPlan(), loadBom(), loadEngFiles(), loadSummary(), loadAllProcesses(), loadFrequentMaterials()])
   } catch (e: any) {
     ElMessage.error(e?.message || '加载样品单失败')
   }
@@ -1032,6 +1388,21 @@ async function refreshCard() {
   } catch { /* ignore */ }
 }
 
+// 卡片内容修改自动标记未同步（材料行/描述/作业项目等 v-model 直接绑定）
+// 用 deep watch 检测：editing 中的卡片内容变化 → dirty
+watch(
+  () => planList.value.map((pc: any) => JSON.stringify({
+    items: pc.items, materials: pc.editing ? pc.materialRows : pc.materials,
+    processNote: pc.processNote, category: pc.category,
+  })),
+  () => {
+    planList.value.forEach((pc: any) => {
+      if (pc.editing && pc.saveState === 'synced') markDirty(pc)
+    })
+  },
+  { deep: true }
+)
+
 // 加载（页面打开即载入）
 loadDetail()
 </script>
@@ -1116,6 +1487,81 @@ loadDetail()
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* 常用物料快捷区 */
+.freq-materials {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: #f8fbff;
+  border: 1px dashed #b3d8ff;
+  border-radius: 8px;
+}
+.freq-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e6a23c;
+  margin-right: 2px;
+}
+.freq-tag {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.freq-tag:hover {
+  border-color: #e6a23c;
+  color: #e6a23c;
+  background: #fdf6ec;
+}
+
+/* 保存状态标记 */
+.save-state {
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.save-synced {
+  color: #67c23a;
+}
+.save-dirty {
+  color: #909399;
+}
+.save-saving {
+  color: #409eff;
+}
+.save-error {
+  color: #f56c6c;
+}
+
+/* 批量编辑 */
+.batch-check {
+  margin-right: 2px;
+}
+.plan-card.batch-selected {
+  border-color: #e6a23c;
+  box-shadow: 0 0 0 2px rgba(230, 162, 60, 0.25);
+}
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 8px;
+}
+.batch-info {
+  font-size: 13px;
+  color: #b88230;
+}
+.batch-label {
+  font-size: 12px;
+  color: #606266;
 }
 
 /* 底部左右分栏 */
