@@ -12,6 +12,9 @@ import com.jjx.engineering.domain.entity.EngineeringRouting;
 import com.jjx.product.service.IEngineeringBomService;
 import com.jjx.product.service.IEngineeringRoutingService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.service.LogSaveService;
+import com.jjx.system.utils.SecurityUtils;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ProductValidationVO;
 import com.jjx.product.mapper.ProductMapper;
@@ -72,6 +75,7 @@ public class OrderServiceImpl implements IOrderService {
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final LogSaveService logSaveService;
 
     /**
      * 查询销售订单列表
@@ -292,6 +296,31 @@ public class OrderServiceImpl implements IOrderService {
                 dtos.add(dto);
             }
             orderProductService.batchAdd(dtos);
+        }
+
+        // DEV：给原单写“被复制”操作日志（原单流水可追溯复制来源，双向可查）
+        try {
+            SysOperLog operLog = new SysOperLog();
+            operLog.setModule("销售订单管理");
+            operLog.setBusinessType(2); // 修改
+            operLog.setOperUrl("/sales/orders/" + orderId + "/copy");
+            operLog.setBizType("order");
+            operLog.setBizId(String.valueOf(orderId));
+            operLog.setTraceId(source.getTraceId());
+            operLog.setBizStatus(source.getOrderStatus());
+            operLog.setStatus(1);
+            operLog.setOperParam("{\"action\":\"copy\",\"newOrderNo\":\"" + copy.getOrderNo()
+                    + "\",\"newOrderId\":" + copy.getOrderId() + "}");
+            operLog.setCreateTime(LocalDateTime.now());
+            try {
+                operLog.setUserId(SecurityUtils.getUserId());
+                operLog.setUsername(SecurityUtils.getUsername());
+                operLog.setRealName(SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(operLog);
+        } catch (Exception e) {
+            log.warn("记录原单复制日志失败: {}", e.getMessage());
         }
 
         log.info("订单[{}]复制成功，生成新订单[{}](orderId={})", source.getOrderNo(), copy.getOrderNo(), copy.getOrderId());
