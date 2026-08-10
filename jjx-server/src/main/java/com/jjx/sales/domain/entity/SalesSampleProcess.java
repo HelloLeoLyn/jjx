@@ -35,6 +35,16 @@ public class SalesSampleProcess {
     private Long stdProcessId;
 
     /**
+     * 是否带下标：0-不带,1-带（关联标准工序 has_index）
+     */
+    private Integer hasIndex;
+
+    /**
+     * 下标数字（带下标工序的下标值，如4=④）
+     */
+    private Integer indexNumber;
+
+    /**
      * 工序顺序
      */
     private Integer processOrder;

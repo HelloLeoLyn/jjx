@@ -622,6 +622,19 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 record.setRoundNo(roundNo);
                 record.setProcessName(item.getProcessName());
                 record.setStdProcessId(item.getStdProcessId());
+                // 下标（DEV-777）：index_number 前端直传；has_index 按 std_process_id 关联标准工序取
+                record.setIndexNumber(item.getIndexNumber());
+                if (item.getStdProcessId() != null) {
+                    try {
+                        com.jjx.product.domain.entity.ProductStandardProcess stdProc =
+                                standardProcessMapper.selectById(item.getStdProcessId());
+                        record.setHasIndex(stdProc != null && stdProc.getHasIndex() != null ? stdProc.getHasIndex() : 0);
+                    } catch (Exception ignored) {
+                        record.setHasIndex(0);
+                    }
+                } else {
+                    record.setHasIndex(0);
+                }
                 // 卡片组合：同一卡片多个作业项目传相同 processOrder（缺省按列表顺序）
                 record.setProcessOrder(item.getProcessOrder() != null && item.getProcessOrder() > 0
                         ? item.getProcessOrder() : order++);
@@ -1150,7 +1163,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     stepOrder++, laborHours, machineHours,
                                     sp.getProcessNote() != null ? sp.getProcessNote() : null,
                                     "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
-                                    category, groupId, groupName);
+                                    category, groupId, groupName,
+                                    sp.getIndexNumber()); // DEV-777：打样下标透传到工艺路线
                         }
                         newRouting.setTotalLaborHours(totalLabor);
                         newRouting.setTotalMachineHours(totalMachine);
@@ -1285,10 +1299,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     item.setMatchedStdProcessId(match.getProcessId());
                     item.setMatchedStdProcessName(match.getProcessName());
                     item.setMatched(true);
-                    // 下标：方案A——hasIndex 取匹配标准工序的 has_index；indexNumber 取打样工序顺序号
+                    // 下标：hasIndex 取匹配标准工序的 has_index；indexNumber 优先打样工序真实下标，无则回退顺序号
                     item.setHasIndex(match.getHasIndex() != null ? match.getHasIndex() : 0);
                     if (match.getHasIndex() != null && match.getHasIndex() == 1) {
-                        item.setIndexNumber(sp.getProcessOrder());
+                        item.setIndexNumber(sp.getIndexNumber() != null ? sp.getIndexNumber() : sp.getProcessOrder());
                     }
                 } else {
                     item.setMatched(false);
@@ -1605,7 +1619,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 pm.getProcessNote() != null ? pm.getProcessNote() : "打样传承: " + pm.getProcessName(),
                                 category,
                                 groupId,
-                                groupName);
+                                groupName,
+                                pm.getIndexNumber()); // DEV-777：对照版下标透传到工艺路线
                     }
                     newRouting.setTotalLaborHours(totalLabor);
                     newRouting.setTotalMachineHours(totalMachine);

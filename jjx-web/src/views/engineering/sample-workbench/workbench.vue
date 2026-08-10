@@ -141,8 +141,18 @@
                         @close="removeCardItem(pc, Number(ii))"
                         style="margin-right:6px;margin-bottom:4px"
                       >
-                        <SvgIcon v-if="it.icon" :name="it.icon" :size="14" style="vertical-align:-2px;margin-right:4px" />
-                        {{ it.processName }}
+                        <!-- DEV-777：带下标作业项目显示图标+红底数字 -->
+                        <IconStepBadge
+                          v-if="it.hasIndex === 1"
+                          :icon="it.icon || ''"
+                          :size="16"
+                          :index="it.indexNumber ?? null"
+                          @update:index="(n: number) => onUpdateIndex(pc, it, n)"
+                        />
+                        <template v-else>
+                          <SvgIcon v-if="it.icon" :name="it.icon" :size="14" style="vertical-align:-2px;margin-right:4px" />
+                          {{ it.processName }}
+                        </template>
                         <!-- <span v-if="it.processType" style="color:#909399;font-size:11px;margin-left:2px">{{ typeLabel(it.processType) }}</span> -->
                       </el-tag>
                       <span v-if="!pc.items.length" style="color:#c0c4cc;font-size:12px">未选择作业项目（点「＋ 添加作业项目」）</span>
@@ -381,6 +391,26 @@
       <WorkProjectPicker v-model="cardPickerIds" @confirm="onCardPickerConfirm" />
     </el-dialog>
 
+    <!-- 下标输入弹窗（DEV-777，仿工艺路线） -->
+    <el-dialog v-model="indexDialogVisible" title="输入下标数字" width="380px" append-to-body>
+      <div style="font-size:13px;color:#606266;margin-bottom:12px">
+        作业项目 <b>{{ indexDialogName }}</b> 带下标，请输入下标数字（正整数）：
+      </div>
+      <el-input-number
+        v-model="indexDialogValue"
+        :min="1"
+        :max="999"
+        :precision="0"
+        controls-position="right"
+        style="width:100%"
+        placeholder="如 4 显示为 ④"
+      />
+      <template #footer>
+        <el-button @click="indexDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!indexDialogValue" @click="confirmIndexDialog">确定</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 物料建档弹窗 -->
     <MaterialFormDialog
       v-model="materialCreateVisible"
@@ -458,6 +488,7 @@ import { materialApi } from '@/api/inventory/material'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
 import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/modules/user'
 
@@ -760,6 +791,9 @@ function makeCard(items: any[], extra: any = {}) {
       processCategory: i.processCategory || '',
       icon: i.icon || '',
       processId: i.processId ?? null,
+      // DEV-777：下标（hasIndex 来自标准工序，indexNumber 用户输入）
+      hasIndex: i.hasIndex ?? 0,
+      indexNumber: i.indexNumber ?? null,
     })),
     category: extra.category ?? '',
     draggingOver: false,
@@ -803,6 +837,7 @@ async function savePlan() {
           materials: pc.materials,
           processNote: pc.processNote,
           status: pc.status ?? 0,
+          indexNumber: it.indexNumber ?? undefined, // DEV-777：下标数字
         })
       })
     })
@@ -855,6 +890,52 @@ function onCardPickerConfirm(items: any[]) {
 }
 
 // ===== 拖拽接收（左侧工序 → 右侧卡片组合）=====
+// DEV-777：从标准工序库补 hasIndex（拖入的作业项目是否带下标）
+function enrichProcess(data: any) {
+  let hasIndex = 0
+  if (data.processId) {
+    const src = allProcesses.value.find((x: any) => x.processId === data.processId)
+    hasIndex = src?.hasIndex ?? 0
+  }
+  return { ...data, hasIndex }
+}
+
+// 下标输入弹窗（DEV-777，仿工艺路线）
+const indexDialogVisible = ref(false)
+const indexDialogValue = ref<number | null>(null)
+const indexDialogName = ref('')
+let pendingIndexItem: any = null
+
+function openIndexDialog(item: any) {
+  pendingIndexItem = item
+  indexDialogName.value = item.processName || ''
+  indexDialogValue.value = item.indexNumber ?? null
+  indexDialogVisible.value = true
+}
+
+function confirmIndexDialog() {
+  if (pendingIndexItem && indexDialogValue.value != null && indexDialogValue.value > 0) {
+    pendingIndexItem.indexNumber = Math.floor(indexDialogValue.value)
+    // 找到所属卡片标记未同步
+    planList.value.forEach((pc: any) => {
+      if (pc.items.includes(pendingIndexItem)) markDirty(pc)
+    })
+  }
+  indexDialogVisible.value = false
+  pendingIndexItem = null
+}
+
+// 带下标作业项目拖入后弹窗输数字
+function maybePromptIndex(item: any) {
+  if (item.hasIndex === 1) openIndexDialog(item)
+}
+
+// IconStepBadge 点击图标改下标数字
+function onUpdateIndex(pc: any, item: any, n: number) {
+  item.indexNumber = Math.floor(n)
+  markDirty(pc)
+}
+
 function parseDragData(e: DragEvent): any {
   try {
     const raw = e.dataTransfer?.getData('application/json')
@@ -868,12 +949,14 @@ function parseDragData(e: DragEvent): any {
 function onPlanDrop(e: DragEvent) {
   const data = parseDragData(e)
   if (!data) return
+  const enriched = enrichProcess(data)
   // 在哪个标签拖入，卡片就属于哪个项目结构（未分类标签=不设结构）
-  const pc = makeCard([data], { category: activePlanTab.value === '' ? undefined : activePlanTab.value })
+  const pc = makeCard([enriched], { category: activePlanTab.value === '' ? undefined : activePlanTab.value })
   planList.value.push(pc)
   startEdit(pc)
   markDirty(pc)
   clearDragOver()
+  maybePromptIndex(pc.items[0])
 }
 
 // 拖到卡片 → 追加组合（去重），并自动进入编辑状态
@@ -882,15 +965,19 @@ function onCardDrop(e: DragEvent, pc: any) {
   pc.draggingOver = false
   if (!data) return
   if (!pc.items.some((i: any) => i.stdProcessId === data.processId)) {
+    const enriched = enrichProcess(data)
     pc.items.push({
-      stdProcessId: data.processId,
-      processName: data.processName,
-      processType: data.processType || '',
-      processCategory: data.processCategory || '',
-      icon: data.icon || '',
+      stdProcessId: enriched.processId,
+      processName: enriched.processName,
+      processType: enriched.processType || '',
+      processCategory: enriched.processCategory || '',
+      icon: enriched.icon || '',
       processId: pc.processId ?? null,
+      hasIndex: enriched.hasIndex,
+      indexNumber: null,
     })
     markDirty(pc)
+    maybePromptIndex(pc.items[pc.items.length - 1])
   }
   if (!pc.editing) startEdit(pc)
 }
@@ -1343,7 +1430,7 @@ async function loadPlan() {
       const first = rows[0]
       const enriched = rows.map((r: any) => {
         const src = allProcesses.value.find((x) => x.processId === r.stdProcessId)
-        return src ? { ...r, processType: src.processType, processCategory: src.processCategory, icon: src.icon } : r
+        return src ? { ...r, processType: src.processType, processCategory: src.processCategory, icon: src.icon, hasIndex: src.hasIndex ?? 0 } : { ...r, hasIndex: r.hasIndex ?? 0 }
       })
       return makeCard(enriched, {
         uid: `db-${order}`,

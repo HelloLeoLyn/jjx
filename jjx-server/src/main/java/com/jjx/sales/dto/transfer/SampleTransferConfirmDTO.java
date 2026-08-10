@@ -49,6 +49,8 @@ public class SampleTransferConfirmDTO {
         private String processNote;
         /** 耗时（分钟） */
         private Integer durationMinutes;
+        /** 下标数字（DEV-777：打样下标透传到工艺路线） */
+        private Integer indexNumber;
     }
 
     /**

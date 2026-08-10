@@ -36,6 +36,11 @@ public class SampleProcessPlanDTO {
         private Long stdProcessId;
 
         /**
+         * 下标数字（带下标作业项目的下标值，如4=④）
+         */
+        private Integer indexNumber;
+
+        /**
          * 工序顺序（同一卡片多个作业项目传相同值，缺省按列表顺序）
          */
         private Integer processOrder;
