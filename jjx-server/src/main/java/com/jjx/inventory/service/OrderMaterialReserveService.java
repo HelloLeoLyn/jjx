@@ -20,6 +20,13 @@ public interface OrderMaterialReserveService {
     void extendReserve(Long orderId);
 
     /**
+     * 订单确认时转正式占用（036定稿）：
+     * 已有预占记录 → 清除到期时间（不再过期释放，占用持续到取消/完成）；
+     * 无预占记录 → 自动按 BOM 展开创建占用（status=0 无到期，防多订单合计超卖）
+     */
+    void confirmReserve(Long orderId);
+
+    /**
      * 释放预占（取消/完成/超时/手动）
      */
     void releaseByOrder(Long orderId, String reason);

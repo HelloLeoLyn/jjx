@@ -145,6 +145,46 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void confirmReserve(Long orderId) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            return;
+        }
+        List<OrderMaterialReserve> list = reserveMapper.selectActiveByOrder(orderId);
+        if (list != null && !list.isEmpty()) {
+            // 已有预占记录：清除到期时间，转正式占用（不再过期释放）
+            for (OrderMaterialReserve r : list) {
+                r.setExpireTime(null);
+                r.setReserveDays(0);
+                reserveMapper.updateById(r);
+            }
+            if (order.getMaterialReserveExpire() != null) {
+                order.setMaterialReserveExpire(null);
+                orderMapper.updateById(order);
+            }
+            log.info("订单{}确认：材料预占转正式占用（{}条，不再过期释放）", orderId, list.size());
+            return;
+        }
+        // 无预占记录：自动按 BOM 展开创建占用（status=0 无到期，防多订单合计超卖）
+        reserveForOrder(orderId, 0);
+        // 转正式占用：清除到期时间
+        List<OrderMaterialReserve> created = reserveMapper.selectActiveByOrder(orderId);
+        if (created != null) {
+            for (OrderMaterialReserve r : created) {
+                r.setExpireTime(null);
+                r.setReserveDays(0);
+                reserveMapper.updateById(r);
+            }
+        }
+        if (order.getMaterialReserveExpire() != null) {
+            order.setMaterialReserveExpire(null);
+            orderMapper.updateById(order);
+        }
+        log.info("订单{}确认：自动按BOM创建原料占用（防多订单合计超卖）", orderId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void releaseByOrder(Long orderId, String reason) {
         String operator = com.jjx.system.utils.SecurityUtils.getUsername();
         int rows = reserveMapper.releaseByOrder(orderId, reason != null ? reason : "手动释放", operator);

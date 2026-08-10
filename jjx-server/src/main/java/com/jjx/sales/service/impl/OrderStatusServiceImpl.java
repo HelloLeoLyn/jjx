@@ -419,6 +419,12 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         } catch (Exception e) {
             log.error("订单{}成品库存预留异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
         }
+        // 7.1 036定稿：订单确认时原料占用——预占转正式占用（无预占则自动按BOM占用，防多订单合计超卖）
+        try {
+            orderMaterialReserveService.confirmReserve(order.getOrderId());
+        } catch (Exception e) {
+            log.error("订单{}确认原料占用异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
+        }
     }
 
     @Override
