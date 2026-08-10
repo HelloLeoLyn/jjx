@@ -81,7 +81,7 @@ public class QuotationServiceImpl implements IQuotationService {
         com.baomidou.mybatisplus.core.metadata.IPage<SalesQuotation> result = quotationMapper.selectPage(page, wrapper);
         fillSourceInquiryNo(result.getRecords());
         fillConvertedOrder(result.getRecords());
-        return com.jjx.common.core.page.PageResult.build(result.getRecords(), result.getTotal());
+        return com.jjx.common.core.page.PageResult.of(result, result.getRecords());
     }
 
     /**
@@ -194,7 +194,7 @@ public class QuotationServiceImpl implements IQuotationService {
         wrapper.eq(SalesQuotation::getDeleted, 0);
 
         // 按创建时间倒序排序
-        wrapper.orderByDesc(SalesQuotation::getCreateTime);
+        wrapper.orderByDesc(SalesQuotation::getCreateTime).orderByDesc(SalesQuotation::getQuotationId);
 
         return wrapper;
     }

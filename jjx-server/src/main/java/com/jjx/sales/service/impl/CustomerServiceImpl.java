@@ -46,7 +46,7 @@ public class CustomerServiceImpl implements ICustomerService {
         LambdaQueryWrapper<SalesCustomer> queryWrapper = buildQueryWrapper(customer);
 
         // 按创建时间倒序排列
-        queryWrapper.orderByDesc(SalesCustomer::getCreateTime);
+        queryWrapper.orderByDesc(SalesCustomer::getCreateTime).orderByDesc(SalesCustomer::getCustomerId);
 
         List<SalesCustomer> salesCustomers = customerMapper.selectList(queryWrapper);
         return customerConverter.toVOList(salesCustomers);
@@ -59,7 +59,7 @@ public class CustomerServiceImpl implements ICustomerService {
         Page<SalesCustomer> page = new Page<>(queryDTO.getPageNum(), queryDTO.getPageSize());
         Page<SalesCustomer> result = customerMapper.selectPage(page, queryWrapper);
         List<CustomerVO> voList = customerConverter.toVOList(result.getRecords());
-        return PageResult.build(voList, result.getTotal());
+        return PageResult.of(result, voList);
     }
 
     /**
@@ -94,7 +94,7 @@ public class CustomerServiceImpl implements ICustomerService {
             queryWrapper.eq(SalesCustomer::getSalesManagerId, queryDTO.getSalesManagerId());
         }
 
-        queryWrapper.orderByDesc(SalesCustomer::getCreateTime);
+        queryWrapper.orderByDesc(SalesCustomer::getCreateTime).orderByDesc(SalesCustomer::getCustomerId);
         return queryWrapper;
     }
 

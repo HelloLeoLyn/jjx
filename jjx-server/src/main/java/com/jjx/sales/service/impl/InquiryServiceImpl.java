@@ -60,7 +60,7 @@ public class InquiryServiceImpl implements IInquiryService {
         LambdaQueryWrapper<SalesInquiry> wrapper = buildQueryWrapper(inquiry);
         Page<SalesInquiry> result = inquiryMapper.selectPage(page, wrapper);
         fillProductName(result.getRecords());
-        return PageResult.build(result.getRecords(), result.getTotal());
+        return PageResult.of(result, result.getRecords());
     }
 
     /**
@@ -102,7 +102,7 @@ public class InquiryServiceImpl implements IInquiryService {
         // 只查未删除
         wrapper.eq(SalesInquiry::getDeleted, 0);
         // 按创建时间倒序
-        wrapper.orderByDesc(SalesInquiry::getCreateTime);
+        wrapper.orderByDesc(SalesInquiry::getCreateTime).orderByDesc(SalesInquiry::getInquiryId);
 
         return wrapper;
     }

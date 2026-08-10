@@ -37,4 +37,17 @@ public class PageResult<T> implements Serializable {
     public static <T> PageResult<T> build() {
         return new PageResult<>();
     }
+
+    /**
+     * 完整分页构造（带 pageNum/pageSize/totalPages，修复分页信息缺失）
+     */
+    public static <T> PageResult<T> of(com.baomidou.mybatisplus.core.metadata.IPage<?> page, List<T> records) {
+        PageResult<T> r = new PageResult<>();
+        r.setRecords(records);
+        r.setTotal(page.getTotal());
+        r.setPageNum((int) page.getCurrent());
+        r.setPageSize((int) page.getSize());
+        r.setTotalPages((int) page.getPages());
+        return r;
+    }
 }

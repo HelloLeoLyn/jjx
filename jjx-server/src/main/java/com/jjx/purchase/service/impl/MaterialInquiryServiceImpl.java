@@ -71,7 +71,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
             queryWrapper.orderBy(true, "ASC".equals(orderDirection),
                 "inquiryDate".equals(queryDTO.getOrderByColumn()) ? MaterialInquiry::getInquiryDate : MaterialInquiry::getCreateTime);
         } else {
-            queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate);
+            queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate).orderByDesc(MaterialInquiry::getInquiryId);
         }
 
         // 分页查询
@@ -83,7 +83,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
             .map(MaterialInquiryServiceImpl::convertToVO)
             .collect(Collectors.toList());
 
-        return new PageResult<>(voList, result.getTotal());
+        return PageResult.of(result, voList);
     }
 
     @Override
@@ -329,7 +329,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
             queryWrapper.eq(MaterialInquiry::getInquiryStatus, queryDTO.getInquiryStatus());
         }
 
-        queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate);
+        queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate).orderByDesc(MaterialInquiry::getInquiryId);
 
         List<MaterialInquiry> entities = baseMapper.selectList(queryWrapper);
         return entities.stream()

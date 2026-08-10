@@ -64,7 +64,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         materialMapper.selectPage(page, wrapper);
         List<InventoryMaterial> records = page.getRecords();
         List<MaterialVO> voList = materialConverter.toVOList(records);
-        return PageResult.build(voList, page.getTotal());
+        return PageResult.of(page, voList);
     }
 
     private static @NonNull LambdaQueryWrapper<InventoryMaterial> buildQueryWrapper(MaterialQueryDTO queryDTO) {
@@ -87,7 +87,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (queryDTO.getStatus() != null && !queryDTO.getStatus().isEmpty()) {
             wrapper.eq(InventoryMaterial::getStatus, queryDTO.getStatus());
         }
-        wrapper.orderByDesc(InventoryMaterial::getCreateTime);
+        wrapper.orderByDesc(InventoryMaterial::getCreateTime).orderByDesc(InventoryMaterial::getMaterialId);
         return wrapper;
     }
 
@@ -248,7 +248,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
         List<MaterialVO> voList = materialConverter.toVOList(page.getRecords());
-        return PageResult.build(voList, page.getTotal());
+        return PageResult.of(page, voList);
     }
 
     @Override

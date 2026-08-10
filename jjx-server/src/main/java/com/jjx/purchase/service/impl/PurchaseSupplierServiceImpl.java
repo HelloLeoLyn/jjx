@@ -66,7 +66,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         }
 
         // 排序
-        wrapper.orderByDesc(PurchaseSupplier::getCreateTime);
+        wrapper.orderByDesc(PurchaseSupplier::getCreateTime).orderByDesc(PurchaseSupplier::getSupplierId);
 
         // DEV-696：分页（pageNum/pageSize 为空时退化为全量，兼容下拉框等数组调用方）
         int pageNum = queryVO.getPageNum() != null ? queryVO.getPageNum() : 1;
@@ -76,7 +76,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         com.baomidou.mybatisplus.core.metadata.IPage<PurchaseSupplier> pageResult = supplierMapper.selectPage(page, wrapper);
 
         List<PurchaseSupplierVO> voList = supplierConverter.toVOList(pageResult.getRecords());
-        return new com.jjx.common.core.page.PageResult<>(voList, pageResult.getTotal());
+        return com.jjx.common.core.page.PageResult.of(pageResult, voList);
     }
 
     @Override

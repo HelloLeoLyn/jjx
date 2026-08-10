@@ -93,7 +93,7 @@ public class OrderServiceImpl implements IOrderService {
         List<SalesOrderVO> voList = orderConverter.toVOList(orderPage.getRecords());
 
         // 返回分页结果
-        return PageResult.build(voList, orderPage.getTotal());
+        return PageResult.of(orderPage, voList);
     }
     /**
      * 列表查询（不分页）
@@ -1102,16 +1102,16 @@ public class OrderServiceImpl implements IOrderService {
         String orderByColumn = queryDTO.getOrderByColumn();
         String isAsc = queryDTO.getIsAsc();
 
-        // 如果排序字段为空，使用默认排序
+        // 如果排序字段为空，使用默认排序（createTime 降序 + 主键降序保证分页稳定）
         if (!StringUtils.hasText(orderByColumn)) {
-            wrapper.orderByDesc(SalesOrder::getCreateTime);
+            wrapper.orderByDesc(SalesOrder::getCreateTime).orderByDesc(SalesOrder::getOrderId);
             return;
         }
 
         // 白名单校验，防止 SQL 注入
         if (!ALLOWED_SORT_COLUMNS.contains(orderByColumn)) {
             // 非法排序字段，使用默认排序
-            wrapper.orderByDesc(SalesOrder::getCreateTime);
+            wrapper.orderByDesc(SalesOrder::getCreateTime).orderByDesc(SalesOrder::getOrderId);
             return;
         }
 
@@ -1164,9 +1164,9 @@ public class OrderServiceImpl implements IOrderService {
                 break;
             case "createTime":
                 if (isAscending) {
-                    wrapper.orderByAsc(SalesOrder::getCreateTime);
+                    wrapper.orderByAsc(SalesOrder::getCreateTime).orderByAsc(SalesOrder::getOrderId);
                 } else {
-                    wrapper.orderByDesc(SalesOrder::getCreateTime);
+                    wrapper.orderByDesc(SalesOrder::getCreateTime).orderByDesc(SalesOrder::getOrderId);
                 }
                 break;
             case "updateTime":
@@ -1177,8 +1177,8 @@ public class OrderServiceImpl implements IOrderService {
                 }
                 break;
             default:
-                // 默认按创建时间降序
-                wrapper.orderByDesc(SalesOrder::getCreateTime);
+                // 默认按创建时间降序（+主键稳定）
+                wrapper.orderByDesc(SalesOrder::getCreateTime).orderByDesc(SalesOrder::getOrderId);
                 break;
         }
     }

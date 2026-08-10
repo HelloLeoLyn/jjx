@@ -92,9 +92,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 case "outboundDate": wrapper.orderBy(true, isAsc, InventoryOutboundOrder::getOutboundDate); break;
                 case "createTime": wrapper.orderBy(true, isAsc, InventoryOutboundOrder::getCreateTime); break;
                 case "totalAmount": wrapper.orderBy(true, isAsc, InventoryOutboundOrder::getTotalAmount); break;
-                default: wrapper.orderByDesc(InventoryOutboundOrder::getCreateTime);
+                default: wrapper.orderByDesc(InventoryOutboundOrder::getCreateTime).orderByDesc(InventoryOutboundOrder::getOutboundId);
             }
-        } else wrapper.orderByDesc(InventoryOutboundOrder::getCreateTime);
+        } else wrapper.orderByDesc(InventoryOutboundOrder::getCreateTime).orderByDesc(InventoryOutboundOrder::getOutboundId);
 
         Page<InventoryOutboundOrder> orderPage = new Page<>(query.getCurrent(), query.getSize());
         IPage<InventoryOutboundOrder> orderResult = outboundOrderMapper.selectPage(orderPage, wrapper);

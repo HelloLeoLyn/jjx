@@ -53,7 +53,7 @@ public class InventoryWarehouseController extends BaseController {
         List<WarehouseVO> voList = convertToVOList(result.getRecords());
 
         // 返回分页数据
-        return Result.success(PageResult.build(voList, result.getTotal()));
+        return Result.success(PageResult.of(result, voList));
     }
 
     /**
@@ -278,7 +278,7 @@ public class InventoryWarehouseController extends BaseController {
         }
 
         // 排序
-        wrapper.orderByDesc(InventoryWarehouse::getCreateTime);
+        wrapper.orderByDesc(InventoryWarehouse::getCreateTime).orderByDesc(InventoryWarehouse::getWarehouseId);
 
         return wrapper;
     }

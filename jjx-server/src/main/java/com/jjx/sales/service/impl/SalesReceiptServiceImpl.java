@@ -17,8 +17,8 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
 
     @Override public PageResult<SalesReceipt> page(int pageNum, int pageSize) {
         Page<SalesReceipt> p = receiptMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<SalesReceipt>().orderByDesc(SalesReceipt::getCreateTime));
-        return PageResult.build(p.getRecords(), p.getTotal());
+                new LambdaQueryWrapper<SalesReceipt>().orderByDesc(SalesReceipt::getCreateTime).orderByDesc(SalesReceipt::getReceiptId));
+        return PageResult.of(p, p.getRecords());
     }
     @Override public SalesReceipt getById(Long id) { return receiptMapper.selectById(id); }
     @Override public Long create(SalesReceipt receipt) { receiptMapper.insert(receipt); return receipt.getReceiptId(); }

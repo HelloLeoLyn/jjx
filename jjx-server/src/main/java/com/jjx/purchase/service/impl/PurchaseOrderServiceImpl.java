@@ -63,12 +63,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
         LambdaQueryWrapper<PurchaseOrder> wrapper = buildQueryWrapper(queryDTO);
         // 排序
-        wrapper.orderByDesc(PurchaseOrder::getCreateTime);
+        wrapper.orderByDesc(PurchaseOrder::getCreateTime).orderByDesc(PurchaseOrder::getOrderId);
         Page<PurchaseOrder> page = new Page<>(queryDTO.getPageNum(),queryDTO.getPageSize());
         orderMapper.selectPage(page,wrapper);
         List<PurchaseOrderVO> voList = purchaseConverter.toVOList(page.getRecords());
 
-        return PageResult.build(voList,page.getTotal());
+        return PageResult.of(page,voList);
     }
 
     @Override
@@ -930,7 +930,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             wrapper.eq(PurchaseOrder::getPlanStatus, 0);
         }
 
-        wrapper.orderByDesc(PurchaseOrder::getCreateTime);
+        wrapper.orderByDesc(PurchaseOrder::getCreateTime).orderByDesc(PurchaseOrder::getOrderId);
         return wrapper;
     }
 

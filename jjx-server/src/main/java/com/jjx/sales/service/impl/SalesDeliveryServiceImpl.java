@@ -48,7 +48,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         if (dto.getDeliveryDateEnd() != null) {
             wrapper.le(SalesDelivery::getDeliveryDate, dto.getDeliveryDateEnd());
         }
-        wrapper.orderByDesc(SalesDelivery::getCreateTime);
+        wrapper.orderByDesc(SalesDelivery::getCreateTime).orderByDesc(SalesDelivery::getDeliveryId);
 
         Page<SalesDelivery> page = salesDeliveryMapper.selectPage(
                 new Page<>(dto.getPageNum(), dto.getPageSize()), wrapper);

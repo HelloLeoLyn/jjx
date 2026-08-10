@@ -28,7 +28,7 @@ public class ProductionTraceServiceImpl implements ProductionTraceService {
     @Override
     public PageResult<TraceVO> page(TraceQueryDTO query) {
         LambdaQueryWrapper<ProductionTraceLog> wrapper = buildQueryWrapper(query);
-        wrapper.orderByDesc(ProductionTraceLog::getCreateTime);
+        wrapper.orderByDesc(ProductionTraceLog::getCreateTime).orderByDesc(ProductionTraceLog::getTraceId);
 
         Page<ProductionTraceLog> page = new Page<>(query.getPageNum(), query.getPageSize());
         Page<ProductionTraceLog> result = traceLogMapper.selectPage(page, wrapper);
@@ -37,7 +37,7 @@ public class ProductionTraceServiceImpl implements ProductionTraceService {
             .map(this::toVO)
             .collect(Collectors.toList());
 
-        return PageResult.build(voList, result.getTotal());
+        return PageResult.of(result, voList);
     }
 
     @Override

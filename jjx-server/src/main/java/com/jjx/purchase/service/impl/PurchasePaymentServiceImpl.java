@@ -54,7 +54,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
                 wrapper.eq(PurchasePayment::getPaymentMethod, dto.getPaymentMethod());
             }
         }
-        wrapper.orderByDesc(PurchasePayment::getCreateTime);
+        wrapper.orderByDesc(PurchasePayment::getCreateTime).orderByDesc(PurchasePayment::getPaymentId);
         return paymentMapper.selectList(wrapper);
     }
 

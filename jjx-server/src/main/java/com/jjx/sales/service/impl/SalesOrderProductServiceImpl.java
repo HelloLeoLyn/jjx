@@ -50,7 +50,7 @@ public class SalesOrderProductServiceImpl extends ServiceImpl<SalesOrderProductM
 
         List<SalesOrderProductVO> voList = orderProductConverter.toVOList(entityPage.getRecords());
 
-        return PageResult.build(voList, entityPage.getTotal());
+        return PageResult.of(entityPage, voList);
     }
 
     @Override

@@ -18,8 +18,8 @@ public class SalesInvoiceServiceImpl extends ServiceImpl<SalesInvoiceMapper, Sal
 
     @Override public PageResult<SalesInvoice> page(int pageNum, int pageSize) {
         Page<SalesInvoice> p = invoiceMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<SalesInvoice>().orderByDesc(SalesInvoice::getCreateTime));
-        return PageResult.build(p.getRecords(), p.getTotal());
+                new LambdaQueryWrapper<SalesInvoice>().orderByDesc(SalesInvoice::getCreateTime).orderByDesc(SalesInvoice::getInvoiceId));
+        return PageResult.of(p, p.getRecords());
     }
     @Override public SalesInvoice getById(Long id) { return invoiceMapper.selectById(id); }
     @Override public Long create(SalesInvoice invoice) { invoiceMapper.insert(invoice); return invoice.getInvoiceId(); }

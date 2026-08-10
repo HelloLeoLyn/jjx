@@ -25,9 +25,9 @@ public class EngineeringBaseServiceImpl extends ServiceImpl<EngineeringBaseMappe
     public PageResult<EngineeringBase> pageQuery(int pageNum, int pageSize) {
         Page<EngineeringBase> page = baseMapper.selectPage(
                 new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<EngineeringBase>().orderByDesc(EngineeringBase::getCreateTime)
+                new LambdaQueryWrapper<EngineeringBase>().orderByDesc(EngineeringBase::getCreateTime).orderByDesc(EngineeringBase::getId)
         );
-        return PageResult.build(page.getRecords(), page.getTotal());
+        return PageResult.of(page, page.getRecords());
     }
 
     @Override

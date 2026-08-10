@@ -64,7 +64,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
                 wrapper.eq(PurchaseDocument::getDocumentStatus, dto.getDocumentStatus());
             }
         }
-        wrapper.orderByDesc(PurchaseDocument::getCreateTime);
+        wrapper.orderByDesc(PurchaseDocument::getCreateTime).orderByDesc(PurchaseDocument::getDocumentId);
         return documentMapper.selectList(wrapper);
     }
 

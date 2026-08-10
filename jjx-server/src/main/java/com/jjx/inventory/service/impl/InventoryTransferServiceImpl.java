@@ -93,7 +93,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                 wrapper.orderBy(true, isAsc, InventoryTransferOrder::getCreateTime);
             }
         } else {
-            wrapper.orderByDesc(InventoryTransferOrder::getCreateTime);
+            wrapper.orderByDesc(InventoryTransferOrder::getCreateTime).orderByDesc(InventoryTransferOrder::getTransferId);
         }
 
         Page<InventoryTransferOrder> orderPage = new Page<>(query.getCurrent(), query.getSize());
@@ -596,7 +596,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         if (endDate != null && !endDate.isEmpty()) {
             wrapper.le(InventoryTransferOrder::getCreateTime, endDate);
         }
-        wrapper.orderByDesc(InventoryTransferOrder::getCreateTime);
+        wrapper.orderByDesc(InventoryTransferOrder::getCreateTime).orderByDesc(InventoryTransferOrder::getTransferId);
 
         Page<InventoryTransferOrder> page = new Page<>(pageNum, pageSize);
         return transferOrderMapper.selectPage(page, wrapper);
