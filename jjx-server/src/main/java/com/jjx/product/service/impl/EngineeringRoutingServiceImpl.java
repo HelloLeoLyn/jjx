@@ -163,22 +163,10 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
 
     /**
      * 计算下一个版本号（V1.0 → V2.0，取所有版本主号最大值+1）
+     * 2026-08-10 DEV-765：统一走公共工具类
      */
     private String computeNextRoutingVersion(List<String> existingVersions) {
-        int maxMajor = 0;
-        if (existingVersions != null) {
-            for (String v : existingVersions) {
-                if (v == null || v.isEmpty()) continue;
-                try {
-                    String s = v.trim().toUpperCase();
-                    if (s.startsWith("V")) s = s.substring(1);
-                    int dot = s.indexOf('.');
-                    if (dot >= 0) s = s.substring(0, dot);
-                    maxMajor = Math.max(maxMajor, Integer.parseInt(s));
-                } catch (NumberFormatException ignored) { }
-            }
-        }
-        return "V" + (maxMajor + 1) + ".0";
+        return com.jjx.common.utils.VersionUtils.next(existingVersions);
     }
 
     @Override

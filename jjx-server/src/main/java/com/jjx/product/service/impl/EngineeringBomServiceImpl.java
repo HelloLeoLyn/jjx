@@ -136,26 +136,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             return;
         }
 
-        EngineeringBom latestBom = productBomMapper.selectLatestVersion(productId);
-        String version = getNextVersion(latestBom);
-        bom.setBomVersion(version);
-    }
-
-    /**
-     * 根据最新BOM获取下一个版本号
-     */
-    private String getNextVersion(EngineeringBom latestBom) {
-        if (latestBom == null || StringUtils.isBlank(latestBom.getBomVersion())) {
-            return "V1.0";
-        }
-
-        String latestVersion = latestBom.getBomVersion();
-        try {
-            int versionNum = Integer.parseInt(latestVersion.replace("V", "").replace(".0", ""));
-            return "V" + (versionNum + 1) + ".0";
-        } catch (NumberFormatException e) {
-            return "V1.0";
-        }
+        // 2026-08-10 DEV-765：查该产品所有版本号，统一走公共工具类（比原 selectLatestVersion+replace 更健壮）
+        java.util.List<String> versions = productBomMapper.selectList(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringBom>()
+                                .eq(EngineeringBom::getProductId, productId))
+                .stream()
+                .map(b -> b.getVersion() != null ? b.getVersion() : b.getBomVersion())
+                .collect(java.util.stream.Collectors.toList());
+        bom.setBomVersion(com.jjx.common.utils.VersionUtils.next(versions));
     }
 
     /**

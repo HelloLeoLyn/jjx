@@ -1724,21 +1724,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 兼容 V1 / V1.0 / v2.0 格式
      */
     private String computeNextVersion(java.util.List<String> existingVersions) {
-        int maxMajor = 0;
-        if (existingVersions != null) {
-            for (String v : existingVersions) {
-                if (v == null || v.isEmpty()) continue;
-                try {
-                    // 提取 V 后的主版本号整数（V1.0 → 1，V10.2 → 10）
-                    String s = v.trim().toUpperCase();
-                    if (s.startsWith("V")) s = s.substring(1);
-                    int dot = s.indexOf('.');
-                    if (dot >= 0) s = s.substring(0, dot);
-                    maxMajor = Math.max(maxMajor, Integer.parseInt(s));
-                } catch (NumberFormatException ignored) { }
-            }
-        }
-        return "V" + (maxMajor + 1) + ".0";
+        // 2026-08-10 DEV-765：统一走公共工具类
+        return com.jjx.common.utils.VersionUtils.next(existingVersions);
     }
 
     /**
