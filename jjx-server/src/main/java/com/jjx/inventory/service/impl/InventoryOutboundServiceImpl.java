@@ -824,14 +824,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new BusinessException("销售订单无产品明细，无法出库");
         }
 
-        // 3. 创建出库单
-        String outboundNo = "SHIP-" + salesOrder.getOrderNo();
-        LambdaQueryWrapper<InventoryOutboundOrder> existCheck = new LambdaQueryWrapper<InventoryOutboundOrder>()
-                .eq(InventoryOutboundOrder::getOutboundNo, outboundNo);
-        if (outboundOrderMapper.selectCount(existCheck) > 0) {
-            log.warn("销售订单{}的发货出库单已存在", salesOrderId);
-            return null;
-        }
+        // 3. 创建出库单（073分批：去掉 SHIP-{orderNo} 唯一限制，改为 SHIP-{orderNo}-{序号}，支持多张出库单累计不超订单量）
+        long shipSeq = outboundOrderMapper.selectCount(
+                new LambdaQueryWrapper<InventoryOutboundOrder>()
+                        .eq(InventoryOutboundOrder::getSourceType, "SALES")
+                        .eq(InventoryOutboundOrder::getSourceId, salesOrderId)) + 1;
+        String outboundNo = "SHIP-" + salesOrder.getOrderNo() + "-" + shipSeq;
 
         InventoryOutboundOrder order = new InventoryOutboundOrder();
         order.setOutboundNo(outboundNo);
@@ -845,6 +843,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         outboundOrderMapper.insert(order);
 
         // 4. 创建出库单明细（成品物料映射：产品→inventory_material.product_id）
+        // 073分批：本次发货量 = min(产品订单量 - Σ已发货量, 产品库存可用量)，不足提示
         int sort = 1;
         for (com.jjx.sales.domain.entity.SalesOrderProduct product : products) {
             InventoryOutboundItem outItem = new InventoryOutboundItem();
@@ -861,11 +860,48 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if (finishMat == null) {
                 throw new BusinessException("产品[" + product.getProductCode() + "]无成品物料档案，请先发布产品");
             }
+            // 已发货量（该订单所有销售出库单明细合计）
+            BigDecimal shipped = BigDecimal.ZERO;
+            try {
+                List<InventoryOutboundOrder> shipOrders = outboundOrderMapper.selectList(
+                        new LambdaQueryWrapper<InventoryOutboundOrder>()
+                                .eq(InventoryOutboundOrder::getSourceType, "SALES")
+                                .eq(InventoryOutboundOrder::getSourceId, salesOrderId));
+                for (InventoryOutboundOrder so : shipOrders) {
+                    List<InventoryOutboundItem> soItems = outboundItemMapper.selectByOutboundId(so.getOutboundId());
+                    for (InventoryOutboundItem si : soItems) {
+                        if (si.getMaterialId() != null && si.getMaterialId().equals(finishMat.getMaterialId()) && si.getQuantity() != null) {
+                            shipped = shipped.add(si.getQuantity());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("查询已发货量失败: {}", e.getMessage());
+            }
+            BigDecimal orderQty = BigDecimal.valueOf(product.getQuantity() == null ? 0 : product.getQuantity());
+            BigDecimal remaining = orderQty.subtract(shipped);
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                continue; // 该产品已发完，本单跳过
+            }
+            // 产品库存可用量（096产品维度）
+            BigDecimal productAvailable = BigDecimal.ZERO;
+            try {
+                com.jjx.inventory.domain.ProductStock ps = productStockService.getByProductId(product.getProductId());
+                if (ps != null && ps.getAvailableQuantity() != null) {
+                    productAvailable = ps.getAvailableQuantity();
+                }
+            } catch (Exception e) {
+                log.warn("查询产品库存失败(按0处理): productId={}", product.getProductId());
+            }
+            BigDecimal shipQty = remaining.min(productAvailable);
+            if (shipQty.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException("产品[" + product.getProductCode() + "]库存不足，无法发货（还需" + remaining.stripTrailingZeros().toPlainString() + "，可用" + productAvailable.stripTrailingZeros().toPlainString() + "）");
+            }
             outItem.setOutboundId(order.getOutboundId());
             outItem.setMaterialId(finishMat.getMaterialId());
             outItem.setMaterialCode(finishMat.getMaterialCode());
             outItem.setMaterialName(finishMat.getMaterialName());
-            outItem.setQuantity(BigDecimal.valueOf(product.getQuantity()));
+            outItem.setQuantity(shipQty);
             outItem.setUnitPrice(product.getUnitPrice());
             outItem.setSortOrder(sort++);
             // DEV-693：预填 FIFO 推荐库位（最早批次所在库位）

@@ -351,9 +351,18 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND.getMessage());
         }
 
-        // 更新收货数量
+        // 030/087超收校验：单次收货>0（防负数/零）且 累计收货≤明细订单数量（防超收）
+        if (receivedQuantity == null || receivedQuantity.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("收货数量必须大于0");
+        }
         BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
                 item.getReceivedQuantity().add(receivedQuantity) : receivedQuantity;
+        if (newReceivedQuantity.compareTo(item.getQuantity()) > 0) {
+            throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
+                    + "（订单数量" + item.getQuantity().stripTrailingZeros().toPlainString()
+                    + ", 已收" + (item.getReceivedQuantity() != null ? item.getReceivedQuantity().stripTrailingZeros().toPlainString() : "0")
+                    + ", 本次" + receivedQuantity.stripTrailingZeros().toPlainString() + "）");
+        }
         item.setReceivedQuantity(newReceivedQuantity);
 
         // 更新检验结果
