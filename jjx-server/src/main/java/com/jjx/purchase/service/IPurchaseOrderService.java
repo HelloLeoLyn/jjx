@@ -274,4 +274,10 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
      * 供计划工作台"从预警加载"
      */
     List<Map<String, Object>> getPlanSuggestions();
+
+    /**
+     * 092定稿：缺料预警/采购建议一键生成采购计划单（物料+数量+建议交期自动带）
+     * @return 新计划单ID
+     */
+    Long createPlanFromSuggestions();
 }

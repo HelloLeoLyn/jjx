@@ -240,6 +240,17 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
+     * 092：缺料预警一键生成采购计划单
+     */
+    @Operation(summary = "缺料预警一键生成采购计划单（092）")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
+    @SaCheckPermission("purchase:plan:add")
+    @PostMapping("/create-plan-from-suggestions")
+    public Result<Long> createPlanFromSuggestions() {
+        return Result.success(purchaseOrderService.createPlanFromSuggestions());
+    }
+
+    /**
      * 复制订单
      */
     @PostMapping("/copy/{orderId}")
