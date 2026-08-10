@@ -229,6 +229,8 @@
                   </div>
                 </div>
                 <div v-if="!cardsByTab(tab.value).length" class="plan-drop-hint">🖐 拖拽到这里</div>
+                <!-- 有卡片时底部保留新建卡片 drop 区（修复：已有卡片后拖入新建） -->
+                <div v-else class="plan-drop-hint plan-drop-hint-small">＋ 拖拽工序到这里新建卡片</div>
               </div>
             </el-tab-pane>
           </el-tabs>
@@ -1591,8 +1593,10 @@ loadDetail()
 /* 工序卡片（四行布局） */
 .plan-scroll {
   max-height: 560px;
+  min-height: 260px;
   overflow-y: auto;
   padding-right: 6px;
+  padding-bottom: 40px; /* 卡片下方保留空白 drop 区（DEV-768后修复：已有卡片时仍可拖入新建） */
   scrollbar-width: thin;
 }
 .plan-scroll::-webkit-scrollbar {
