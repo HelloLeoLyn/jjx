@@ -56,6 +56,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final com.jjx.production.mapper.ProductionQualityInspectionMapper qualityInspectionMapper;
     private final com.jjx.inventory.service.InventoryInboundService inventoryInboundService;
     private final com.jjx.inventory.service.InventoryOutboundService inventoryOutboundService;
+    private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
+    private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
+    private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -477,6 +480,35 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 skipped++;
                 log.info("销售订单{}取消联动：生产工单{}状态[{}]不可取消，跳过",
                         salesOrderId, order.getOrderId(), order.getOrderStatus());
+            }
+        }
+        // 095⑧定稿：全部工单已取消（无跳过）→ 订单 7生产中 自动回退 6已确认，释放成品预留+原料占用/预占
+        if (cancelled > 0 && skipped == 0) {
+            try {
+                com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(salesOrderId);
+                if (salesOrder != null && com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode()
+                        .equals(salesOrder.getOrderStatus())) {
+                    int updated = salesOrderMapper.updateStatusWithCheck(
+                            salesOrderId,
+                            com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode(),
+                            com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode());
+                    if (updated > 0) {
+                        log.info("全部工单已取消，订单{}自动回退：生产中(7)→已确认(6)", salesOrderId);
+                        // 释放成品预留 + 材料预占
+                        try {
+                            orderStockReserveService.releaseByOrder(salesOrderId);
+                        } catch (Exception e) {
+                            log.warn("订单回退释放成品预留失败: {}", e.getMessage());
+                        }
+                        try {
+                            orderMaterialReserveService.releaseByOrder(salesOrderId, "全部工单取消，订单回退释放材料预占");
+                        } catch (Exception e) {
+                            log.warn("订单回退释放材料预占失败: {}", e.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("订单回退联动失败（不影响工单取消）: {}", e.getMessage());
             }
         }
         return new int[]{cancelled, skipped};
