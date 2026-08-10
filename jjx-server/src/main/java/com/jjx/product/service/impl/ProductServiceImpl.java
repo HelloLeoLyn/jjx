@@ -318,13 +318,17 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         if(product==null){
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
-        if(!Objects.equals(ProductEnums.Status.DEVELOPING.getValue(), product.getProductStatus())){
+        Integer currentStatus = product.getProductStatus();
+        // 开发中(1)/已驳回(5)/取消(8) 均可提交审核（与前端列表枚举一致）
+        if(!Objects.equals(ProductEnums.Status.DEVELOPING.getValue(), currentStatus)
+                && !Objects.equals(ProductEnums.Status.REJECTED.getValue(), currentStatus)
+                && !Objects.equals(ProductEnums.Status.CANCELLED.getValue(), currentStatus)){
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_CANNOT_SUBMIT);
         }
         ProductUpdateDTO dto = new ProductUpdateDTO();
         dto.setProductId(productId);
         dto.setApproveRemark("");
-        dto.setCurrentStatus(ProductEnums.Status.DEVELOPING.getValue());
+        dto.setCurrentStatus(currentStatus);
         dto.setTargetStatus(ProductEnums.Status.PENDING.getValue());
         return updateStatus(dto);
     }

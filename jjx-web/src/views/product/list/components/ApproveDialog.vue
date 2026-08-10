@@ -92,9 +92,9 @@ const getProductStatusTagType = (status?: number) => {
   return ProductEnum.status.getTagProps(status ?? 0).type
 }
 
-// 计算属性：是否可以提交审核（草稿状态）
+// 计算属性：是否可以提交审核（与列表枚举一致：开发中/已驳回/取消 可提交）
 const canSubmit = computed(() => {
-  return productStatus.value === 1
+  return ProductEnum.status.canDo(productStatus.value ?? 0, ProductEnum.actions.SUBMIT)
 })
 
 // 计算属性：是否可以删除（草稿或已驳回状态）
@@ -124,8 +124,9 @@ const handleSubmit = async () => {
     await productApi.submitApprove(props.productId)
     ElMessage.success('提交成功')
 
-    // 刷新子组件
+    // 刷新子组件并关闭弹窗
     productDetailRef.value?.loadData()
+    visible.value = false
     emit('success')
   } catch (error) {
     if (error !== 'cancel') {

@@ -143,7 +143,7 @@
             <span>{{ parseTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="360" fixed="right">
+        <el-table-column label="操作" min-width="360" fixed="right">
           <template #default="{ row }">
             <div class="operation-buttons">
               <el-button link type="info" icon="Connection" @click="showTrace(row)">查看流水</el-button>

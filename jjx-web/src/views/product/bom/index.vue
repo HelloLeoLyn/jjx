@@ -98,7 +98,7 @@
     <el-card class="table-card" shadow="never">
       <el-table v-loading="loading" :data="bomList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="BOM编码" align="center" prop="bomCode" width="160">
+        <el-table-column label="BOM编码" align="center" prop="bomCode" min-width="160">
           <template #default="scope">
             <el-button link type="primary" @click="handleView(scope.row)">{{
               scope.row.bomCode

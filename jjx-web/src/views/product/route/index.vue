@@ -49,7 +49,7 @@
         </el-table-column>
         <el-table-column prop="createBy" label="创建人" width="100" />
         <el-table-column prop="createTime" label="创建时间" width="170" />
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" min-width="280" fixed="right">
           <template #default="scope">
             <el-button
               v-hasPermi="['engineering:routing:edit']"

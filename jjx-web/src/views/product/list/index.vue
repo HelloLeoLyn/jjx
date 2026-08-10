@@ -186,11 +186,28 @@
           label="操作"
           align="left"
           class-name="small-padding fixed-width"
-          width="280"
+          min-width="300"
           fixed="right"
         >
           <template #default="scope">
             <div class="action-buttons">
+              <!-- 已配置BOM/工艺路线时可更换 -->
+              <el-button
+                v-if="scope.row.bomCode"
+                link
+                type="primary"
+                size="small"
+                @click="handleConfigBom(scope.row)"
+                >更换BOM</el-button
+              >
+              <el-button
+                v-if="scope.row.routeCode"
+                link
+                type="primary"
+                size="small"
+                @click="handleConfigRoute(scope.row)"
+                >更换工艺路线</el-button
+              >
               <!-- 开发中：编辑、提交审核、删除 -->
               <template
                 v-if="ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.EDIT)"
@@ -287,7 +304,7 @@
     <BomDetail :bom-id="currentBomId" v-model="bomDetailDialogVisible" />
     <!-- 配置验证对话框组件 -->
     <ProductConfigValidateDialog v-model="validateOpen" :product-id="selectedProductId" />
-    <ApproveDialog v-model="approveOpen" :product-id="selectedProductId"></ApproveDialog>
+    <ApproveDialog v-model="approveOpen" :product-id="selectedProductId" @success="getList" />
     <!-- 配置BOM对话框 -->
     <BomConfigDialog v-model="bomConfigVisible" :product="bomConfigProduct" @success="getList" />
     <!-- 配置工艺路线对话框 -->
