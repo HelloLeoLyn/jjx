@@ -594,25 +594,91 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     ))
                     .setScale(0, java.math.RoundingMode.UP);
 
-            // 045：不足允许部分领料（按可用量领），剩余靠追加领料补；可用为0则跳过该物料
+            // 034/048定稿：首选料可用不足时，按 substitute_json 优先级尝试替代料（模数换算：替代需求量=原需求量×ratio）
             BigDecimal available = availableMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+            Long pickMaterialId = bomItem.getMaterialId();
+            String pickCode = bomItem.getMaterialCode();
+            String pickName = bomItem.getMaterialName();
+            String pickSpec = bomItem.getSpecification();
+            String pickUnit = bomItem.getUnit();
             BigDecimal qtyPick = qtyNeeded.min(available);
+            if (qtyPick.compareTo(qtyNeeded) < 0) {
+                // 首选料不足 → 尝试替代料（034：A料缺货用B料替代，按模数换算）
+                BigDecimal shortage = qtyNeeded.subtract(qtyPick);
+                try {
+                    if (bomItem.getSubstituteJson() != null && !bomItem.getSubstituteJson().isEmpty()
+                            && !"[]".equals(bomItem.getSubstituteJson())) {
+                        java.util.List<java.util.Map<String, Object>> subs =
+                                com.fasterxml.jackson.databind.ObjectMapper.class.cast(
+                                        new com.fasterxml.jackson.databind.ObjectMapper())
+                                        .readValue(bomItem.getSubstituteJson(),
+                                                new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+                        if (subs != null) {
+                            for (java.util.Map<String, Object> sub : subs) {
+                                Object subId = sub.get("materialId");
+                                if (subId == null) continue;
+                                Long subMaterialId = Long.valueOf(subId.toString());
+                                BigDecimal ratio = sub.get("ratio") != null
+                                        ? new BigDecimal(sub.get("ratio").toString()) : BigDecimal.ONE;
+                                BigDecimal subNeed = shortage.multiply(ratio).setScale(0, java.math.RoundingMode.UP);
+                                BigDecimal subAvail = BigDecimal.ZERO;
+                                try {
+                                    List<InventoryStockItem> subFifo = stockItemMapper.selectFIFOAvailable(subMaterialId);
+                                    for (InventoryStockItem si : subFifo) {
+                                        subAvail = subAvail.add(si.getQuantity().subtract(si.getReservedQuantity()));
+                                    }
+                                } catch (Exception e) {
+                                    log.warn("替代料库存查询失败: materialId={}", subMaterialId);
+                                }
+                                if (subAvail.compareTo(BigDecimal.ZERO) > 0) {
+                                    BigDecimal subPick = subNeed.min(subAvail);
+                                    com.jjx.inventory.domain.InventoryMaterial subMat = materialMapper.selectById(subMaterialId);
+                                    // 替代料明细（替换留痕：remark 标原物料）
+                                    InventoryOutboundItem subItem = new InventoryOutboundItem();
+                                    subItem.setOutboundId(order.getOutboundId());
+                                    subItem.setMaterialId(subMaterialId);
+                                    subItem.setMaterialCode(subMat != null ? subMat.getMaterialCode() : String.valueOf(subMaterialId));
+                                    subItem.setMaterialName(subMat != null ? subMat.getMaterialName() : (String) sub.get("materialName"));
+                                    subItem.setQuantity(subPick);
+                                    subItem.setSortOrder(sort++);
+                                    subItem.setRemark("替代料替换[" + pickCode + "]（模数" + ratio + "）");
+                                    try {
+                                        List<InventoryStockItem> subFifo2 = stockItemMapper.selectFIFOAvailable(subMaterialId);
+                                        if (!subFifo2.isEmpty() && subFifo2.get(0).getLocationId() != null) {
+                                            subItem.setLocationId(subFifo2.get(0).getLocationId());
+                                        }
+                                    } catch (Exception e) {
+                                        log.warn("替代料推荐库位失败: {}", e.getMessage());
+                                    }
+                                    outboundItemMapper.insert(subItem);
+                                    totalQty = totalQty.add(subPick);
+                                    log.info("034替代料替换：{}缺{}，用替代料{}领{}（模数{}）",
+                                            pickCode, shortage, subItem.getMaterialCode(), subPick, ratio);
+                                    break; // 替代成功即停
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("替代料解析/领料失败（不影响主料领料）: {}", e.getMessage());
+                }
+            }
+            // 首选料仍领可用部分（可为0：全部由替代料覆盖则跳过）
             if (qtyPick.compareTo(BigDecimal.ZERO) <= 0) {
-                log.warn("物料[{}]库存为0，本次领料跳过（可追加领料补）", bomItem.getMaterialCode());
                 continue;
             }
             if (qtyPick.compareTo(qtyNeeded) < 0) {
                 log.warn("物料[{}]库存不足（需{}可用{}），本次按可用量领{}，剩余可追加领料",
-                        bomItem.getMaterialCode(), qtyNeeded, available, qtyPick);
+                        pickCode, qtyNeeded, available, qtyPick);
             }
 
             InventoryOutboundItem outItem = new InventoryOutboundItem();
             outItem.setOutboundId(order.getOutboundId());
-            outItem.setMaterialId(bomItem.getMaterialId());
-            outItem.setMaterialCode(bomItem.getMaterialCode());
-            outItem.setMaterialName(bomItem.getMaterialName());
-            outItem.setSpecification(bomItem.getSpecification());
-            outItem.setUnit(bomItem.getUnit());
+            outItem.setMaterialId(pickMaterialId);
+            outItem.setMaterialCode(pickCode);
+            outItem.setMaterialName(pickName);
+            outItem.setSpecification(pickSpec);
+            outItem.setUnit(pickUnit);
             outItem.setQuantity(qtyPick);
             outItem.setSortOrder(sort++);
             // DEV-693：预填 FIFO 推荐库位（最早批次所在库位），供仓管按位拣货；确认时优先从该库位扣减
