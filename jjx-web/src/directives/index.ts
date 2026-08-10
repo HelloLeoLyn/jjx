@@ -7,13 +7,14 @@ const hasPermi = {
   mounted(el: HTMLElement, binding: any) {
     const { value } = binding
     const all_permission = '*:*:*'
+    const all_permission_short = '*' // 后端 superadmin 新版通配（2026-08-10）
 
     const userStore = useUserStore()
     const permissions = userStore.getPermissions
 
     if (value && value instanceof Array && value.length > 0) {
       const hasPermissions = permissions.some((permission: string) => {
-        return all_permission === permission || value.includes(permission)
+        return all_permission === permission || all_permission_short === permission || value.includes(permission)
       })
 
       if (!hasPermissions && el.parentNode) {

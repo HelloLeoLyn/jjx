@@ -41,19 +41,19 @@ export const useUserStore = defineStore('user', {
     // 判断是否有权限
     hasPermission: (state) => (permission: string) => {
       if (!permission) return true
-      if (state.permissions.includes('*:*:*')) return true
+      if (state.permissions.includes('*') || state.permissions.includes('*:*:*')) return true
       return state.permissions.includes(permission)
     },
 
     // 判断是否有任一权限
     hasAnyPermission: (state) => (permissions: string[]) => {
-      if (state.permissions.includes('*:*:*')) return true
+      if (state.permissions.includes('*') || state.permissions.includes('*:*:*')) return true
       return permissions.some((p) => state.permissions.includes(p))
     },
 
     // 判断是否有所有权限
     hasAllPermissions: (state) => (permissions: string[]) => {
-      if (state.permissions.includes('*:*:*')) return true
+      if (state.permissions.includes('*') || state.permissions.includes('*:*:*')) return true
       return permissions.every((p) => state.permissions.includes(p))
     },
   },

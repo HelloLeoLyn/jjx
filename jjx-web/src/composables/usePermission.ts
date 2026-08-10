@@ -7,9 +7,13 @@ export type Permission = string
 export function usePermission() {
   const userStore = useUserStore()
 
+  // 超级管理员通配：后端 superadmin 返回 ['*']（2026-08-10 起，兼容旧 '*:*:*'）
+  const isSuper = (permissions: string[]) =>
+    permissions.includes('*') || permissions.includes('*:*:*')
+
   const hasPermission = (permission: Permission): boolean => {
     const permissions = userStore.permissions
-    return permissions.includes(permission) || permissions.includes('*:*:*')
+    return isSuper(permissions) || permissions.includes(permission)
   }
 
   const hasAnyPermission = (permissions: Permission[]): boolean => {

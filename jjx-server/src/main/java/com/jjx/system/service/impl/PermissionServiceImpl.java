@@ -24,9 +24,10 @@ public class PermissionServiceImpl implements IPermissionService {
             return List.of();
         }
 
-        // 超级管理员（用户ID=1）返回通配权限，Sa-Token 通配匹配所有权限码
+        // 超级管理员（用户ID=1）返回通配权限 `*`：Sa-Token 通配匹配所有权限码（字符级），
+        // 注意不能用 `*:*:*`——它要求字符串含两个冒号，匹配不了 `product:edit` 这类两级权限码（2026-08-10 DEV-781 后续修复）
         if (userId != null && userId == 1L) {
-            return List.of("*:*:*");
+            return List.of("*");
         }
 
         // 获取用户的菜单权限

@@ -97,7 +97,7 @@ export const usePermissionStore = defineStore('permission', {
     filterRoutesByPermission(routes: AsyncRouteConfig[], permissions: string[]): AsyncRouteConfig[] {
       const hasPermission = (perms: string | undefined): boolean => {
         if (!perms) return true
-        if (permissions.includes('*:*:*')) return true
+        if (permissions.includes('*') || permissions.includes('*:*:*')) return true
         return permissions.includes(perms)
       }
 

@@ -48,7 +48,7 @@ async function initPermissionSystem(): Promise<void> {
         }
       }
       if (userStore.permissions.length === 0) {
-        userStore.setPermissions(['*:*:*'])
+        userStore.setPermissions(['*'])
       }
 
       // 3. 从后端拉取并生成动态路由

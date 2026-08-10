@@ -289,7 +289,7 @@ const dashboardData = reactive({
 // 权限未加载时默认显示（避免异步加载导致widget被移除）
 function hasPermi(permission: string): boolean {
   const perms = userStore.getPermissions
-  if (perms.length === 0 || perms.includes('*:*:*')) return true
+  if (perms.length === 0 || perms.includes('*') || perms.includes('*:*:*')) return true
   return perms.includes(permission)
 }
 
