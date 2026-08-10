@@ -684,14 +684,19 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         for (InventoryStock stock : lowStock) {
             // 查询物料最高库存参数
             BigDecimal maxStock = null;
+            BigDecimal reorderPoint = null;
             try {
                 com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(stock.getMaterialId());
                 if (mat != null && mat.getMaxStock() != null) {
                     maxStock = mat.getMaxStock();
                 }
+                if (mat != null && mat.getReorderPoint() != null && mat.getReorderPoint().compareTo(BigDecimal.ZERO) > 0) {
+                    reorderPoint = mat.getReorderPoint();
+                }
             } catch (Exception e) {
                 log.warn("查询物料最高库存失败: materialId={}, err={}", stock.getMaterialId(), e.getMessage());
             }
+            // 093定稿：触发源统一——库存≤再订货点→采购建议(提前补货)；低于安全库存→紧急预警(兜底)
             // 建议量 = max_stock - 当前库存 - 在途采购量；无 max_stock 时用 safe_stock*2 兜底
             BigDecimal target = maxStock != null ? maxStock
                     : (stock.getSafeStock() != null ? stock.getSafeStock().multiply(BigDecimal.valueOf(2)) : BigDecimal.valueOf(100));
@@ -702,6 +707,17 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             suggestQty = suggestQty.subtract(inTransit);
             if (suggestQty.compareTo(BigDecimal.ZERO) <= 0) continue;
 
+            // 再订货点触发（库存≤再订货点）即使未低于安全库存也建议补货（提前补货）
+            String reason = "低于安全库存，建议补货";
+            String priority = "normal";
+            BigDecimal available = stock.getTotalQuantity() != null ? stock.getTotalQuantity() : BigDecimal.ZERO;
+            if (stock.getTotalReserved() != null) {
+                available = available.subtract(stock.getTotalReserved());
+            }
+            if (reorderPoint != null && available.compareTo(reorderPoint) <= 0) {
+                reason = "库存≤再订货点(" + reorderPoint.stripTrailingZeros().toPlainString() + ")，提前补货";
+            }
+
             // 落库/去重更新 safe_stock 预警
             Long alertId = upsertLowStockAlert(stock, suggestQty);
 
@@ -711,8 +727,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     "materialName", stock.getMaterialName(),
                     "currentStock", stock.getTotalQuantity() != null ? stock.getTotalQuantity().doubleValue() : 0,
                     "suggestQuantity", suggestQty.doubleValue(),
-                    "reason", "低于安全库存，建议补货",
-                    "priority", "normal",
+                    "reason", reason,
+                    "priority", priority,
                     "sourceAlertId", alertId
             ));
         }
