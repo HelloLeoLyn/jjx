@@ -1074,6 +1074,7 @@ const engUploadFile: UploadProps['httpRequest'] = async (options) => {
   fd.append('file', options.file)
   fd.append('bizType', 'sample_order')
   fd.append('bizId', String(orderId))
+  fd.append('traceId', detailData.value?.traceId || '')
 
   try {
     const res: any = await request({

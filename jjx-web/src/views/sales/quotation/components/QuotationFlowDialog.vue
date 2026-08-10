@@ -213,7 +213,10 @@ const uploadHeaders = computed(() => {
 const uploadData = computed(() => ({
   bizType: 'quotation_flow',
   bizId: props.quotationId ?? 0,
+  traceId: quotationTraceId.value,
 }))
+
+const quotationTraceId = ref('')
 
 function openAction(action: FlowAction) {
   activeAction.value = action
@@ -221,6 +224,12 @@ function openAction(action: FlowAction) {
   actionFileList.value = []
   uploadedIds.length = 0
   actionDialogVisible.value = true
+  // 加载报价单 traceId（附件落库关联链路，修复链路追踪看不到审核附件）
+  if (props.quotationId) {
+    quotationApi.getInfo(props.quotationId).then((res: any) => {
+      quotationTraceId.value = (res as any)?.data?.traceId || ''
+    }).catch(() => { quotationTraceId.value = '' })
+  }
 }
 
 function onUploadSuccess(response: any) {
