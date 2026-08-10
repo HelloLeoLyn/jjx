@@ -316,6 +316,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 更新状态为已完成
         order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
         order.setActualEndTime(LocalDateTime.now());
+        order.setCompletedBy(com.jjx.system.utils.SecurityUtils.getUsername()); // 053完工留痕：谁
 
         boolean success = updateById(order);
         if (!success) {
@@ -333,6 +334,13 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             qcDto.setRemark("工单完工自动创建质检单");
             Long qcId = qualityInspectionService.create(qcDto);
             log.info("工单[{}] 完工自动创建质检单[{}]", order.getOrderNo(), qcId);
+            // 053完工留痕：关联质检单号
+            if (qcId != null) {
+                ProductionOrder updateOrder = new ProductionOrder();
+                updateOrder.setOrderId(orderId);
+                updateOrder.setQualityInspectionId(qcId);
+                productionOrderMapper.updateById(updateOrder);
+            }
         } catch (Exception e) {
             log.warn("完工自动创建质检单失败（不影响主流程）: {}", e.getMessage());
         }

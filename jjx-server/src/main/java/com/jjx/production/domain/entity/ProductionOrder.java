@@ -134,6 +134,18 @@ public class ProductionOrder{
     @Schema(description = "领料状态：0未领料/1待发料/2已领料")
     private Integer materialStatus;
 
+    /** 返工标记：0正常 1质检FAIL待返工（053） */
+    @Schema(description = "返工标记：0正常 1质检FAIL待返工")
+    private Integer reworkFlag;
+
+    /** 完工操作人（053留痕） */
+    @Schema(description = "完工操作人")
+    private String completedBy;
+
+    /** 关联完工质检单ID（053留痕） */
+    @Schema(description = "关联完工质检单ID")
+    private Long qualityInspectionId;
+
     @Schema(description = "人工成本")
     private BigDecimal laborCost;
 

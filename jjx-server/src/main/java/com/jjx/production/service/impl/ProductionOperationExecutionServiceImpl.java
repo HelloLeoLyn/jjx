@@ -317,6 +317,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("工序执行记录不存在: " + executionId);
         }
 
+        // 053⑤数量冻结：工单已完工后禁止再报工/改数量
+        try {
+            ProductionOrder prodOrder = productionOrderMapper.selectById(execution.getOrderId());
+            if (prodOrder != null && com.jjx.production.enums.OrderStatusEnum.COMPLETED.getCode()
+                    .equals(prodOrder.getOrderStatus())) {
+                throw new BusinessException("工单已完工，数量已冻结，禁止再报工/修改");
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("完工冻结校验异常(跳过): {}", e.getMessage());
+        }
+
         // 检查记录状态是否可以完成
         if (!canCompleteExecution(execution)) {
             throw new BusinessException("记录状态不允许完成");

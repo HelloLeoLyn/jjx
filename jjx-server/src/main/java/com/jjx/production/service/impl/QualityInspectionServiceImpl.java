@@ -33,6 +33,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
     private final ProductionQualityInspectionMapper inspectionMapper;
     private final ProductionQualityInspectionItemMapper itemMapper;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
 
     @Override
     public PageResult<QualityInspectionVO> page(QualityInspectionQueryDTO query) {
@@ -105,6 +106,39 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         entity.setFailQty(dto.getFailQty());
         entity.setDefectDesc(dto.getDefectDesc());
         inspectionMapper.updateById(entity);
+
+        // 053返工闭环：质检FAIL → 工单标记返工（可重新报工→重新质检→通过→完工）
+        if ("fail".equals(dto.getResult()) && entity.getOrderId() != null) {
+            try {
+                com.jjx.production.domain.entity.ProductionOrder prodOrder =
+                        productionOrderMapper.selectById(entity.getOrderId());
+                if (prodOrder != null && prodOrder.getOrderStatus() != null
+                        && prodOrder.getOrderStatus() == 8) { // 已完成可回退标记返工
+                    // 已完成状态保持，标记返工待处理
+                }
+                if (prodOrder != null) {
+                    prodOrder.setReworkFlag(1);
+                    productionOrderMapper.updateById(prodOrder);
+                    log.warn("质检FAIL联动：工单{}标记返工(rework_flag=1)", entity.getOrderId());
+                }
+            } catch (Exception e) {
+                log.warn("质检FAIL联动返工标记失败: {}", e.getMessage());
+            }
+        }
+        // 质检通过 → 清除返工标记
+        if ("pass".equals(dto.getResult()) && entity.getOrderId() != null) {
+            try {
+                com.jjx.production.domain.entity.ProductionOrder prodOrder =
+                        productionOrderMapper.selectById(entity.getOrderId());
+                if (prodOrder != null && prodOrder.getReworkFlag() != null && prodOrder.getReworkFlag() == 1) {
+                    prodOrder.setReworkFlag(0);
+                    productionOrderMapper.updateById(prodOrder);
+                    log.info("质检通过：工单{}返工标记清除", entity.getOrderId());
+                }
+            } catch (Exception e) {
+                log.warn("质检通过清除返工标记失败: {}", e.getMessage());
+            }
+        }
 
         // 更新检验项
         if (dto.getItems() != null) {
