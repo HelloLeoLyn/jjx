@@ -417,13 +417,14 @@ const handleCustomerChange = async (
 
 // 组合产品编码
 const composeProductCode = () => {
+  // 2026-08-10 DEV-772：客户简称不足3位不再卡死——按实际长度使用（1-3位），不强制补到3位
   const customerPart = customerShortNameDisplay.value.substring(0, 3)
   const serialPart = formData.codeSerialNo || ''
   const panelPart = `${codePanelType.value}${codePanelFeature.value}`
   const circuitPart = `${codeCircuitType.value}${codeCircuitFeature.value}`
 
   if (
-    customerPart.length === 3 &&
+    customerPart.length >= 1 &&
     serialPart.length === 3 &&
     panelPart.length === 2 &&
     circuitPart.length === 2
