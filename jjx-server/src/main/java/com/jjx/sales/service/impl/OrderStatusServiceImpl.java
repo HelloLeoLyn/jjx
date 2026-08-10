@@ -61,6 +61,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final EventPublisher eventPublisher;
     private final com.jjx.inventory.service.InventoryAlertService inventoryAlertService;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
+    private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     
     private void saveOrderLog(String orderNo, String desc, String remark, int status) {
         SysOperLog log = new SysOperLog();
@@ -351,6 +352,12 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             orderStockReserveService.releaseByOrder(orderId);
         } catch (Exception e) {
             log.error("订单{}释放成品库存预留异常（不影响取消主流程）: {}", orderId, e.getMessage());
+        }
+        // 7.1 094：订单取消 → 释放材料预占
+        try {
+            orderMaterialReserveService.releaseByOrder(orderId, "订单取消释放材料预占");
+        } catch (Exception e) {
+            log.error("订单{}释放材料预占异常（不影响取消主流程）: {}", orderId, e.getMessage());
         }
 
         log.info("订单{}已取消，操作人：{}，原因：{}", orderId, SecurityUtils.getUsername(), reason);

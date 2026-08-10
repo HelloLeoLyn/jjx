@@ -282,6 +282,28 @@ public class SalesOrder extends BaseEntity {
     private Integer producedQuantity;
 
     /**
+     * 材料预占标记：0未预占 1已预占（094）
+     */
+    private Integer materialReserveFlag;
+
+    /**
+     * 材料预占时间（094）
+     */
+    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private java.time.LocalDateTime materialReserveTime;
+
+    /**
+     * 材料预占人（094）
+     */
+    private String materialReserveBy;
+
+    /**
+     * 材料预占到期时间（094）
+     */
+    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private java.time.LocalDateTime materialReserveExpire;
+
+    /**
      * 销售负责人ID
      */
     private Long salesManagerId;

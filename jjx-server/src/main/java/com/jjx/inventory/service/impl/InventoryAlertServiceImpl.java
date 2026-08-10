@@ -52,6 +52,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final InventoryMaterialMapper materialMapper;
     private final InventoryStockItemMapper stockItemMapper;
     private final ProductStockMapper productStockMapper;
+    private final com.jjx.inventory.mapper.OrderMaterialReserveMapper orderMaterialReserveMapper;
     private final EventPublisher eventPublisher;
     private final OrderMapper orderMapper;
     private final SalesOrderProductMapper orderProductMapper;
@@ -204,6 +205,15 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             InventoryStock stock = stockMapper.selectByMaterialId(materialId);
             BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
                     ? stock.getAvailableQuantity() : BigDecimal.ZERO;
+            // 094：可用量口径 = 总量 - 预留 - 材料预占占用（所有在途订单预占都算）
+            try {
+                BigDecimal preReserve = orderMaterialReserveMapper.selectReserveByMaterial(materialId);
+                if (preReserve.compareTo(BigDecimal.ZERO) > 0) {
+                    available = available.subtract(preReserve);
+                }
+            } catch (Exception e) {
+                log.warn("扣除材料预占占用失败(跳过): materialId={}", materialId);
+            }
             BigDecimal inTransit = inTransitMap.getOrDefault(materialId, BigDecimal.ZERO);
             BigDecimal actualGap = demand.subtract(available).subtract(inTransit);
             if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
@@ -358,6 +368,15 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             InventoryStock stock = stockMapper.selectByMaterialId(materialId);
             BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
                     ? stock.getAvailableQuantity() : BigDecimal.ZERO;
+            // 094：可用量口径 = 总量 - 预留 - 材料预占占用（所有在途订单预占都算）
+            try {
+                BigDecimal preReserve = orderMaterialReserveMapper.selectReserveByMaterial(materialId);
+                if (preReserve.compareTo(BigDecimal.ZERO) > 0) {
+                    available = available.subtract(preReserve);
+                }
+            } catch (Exception e) {
+                log.warn("全局缺料-扣除材料预占占用失败(跳过): materialId={}", materialId);
+            }
             BigDecimal inTransit = inTransitMap.getOrDefault(materialId, BigDecimal.ZERO);
             BigDecimal actualGap = demand.subtract(available).subtract(inTransit);
             if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
