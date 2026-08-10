@@ -371,6 +371,44 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             log.warn("确认发料后更新工单领料状态失败: {}", e.getMessage());
         }
 
+        // 058定稿：工单材料成本自动核算——确认发料后，按本次领料金额（数量×批次实际单价）累加到工单 materialCost
+        try {
+            if ("work_order".equals(order.getSourceType()) && order.getSourceId() != null) {
+                com.jjx.production.domain.entity.ProductionOrder prodOrder =
+                        productionOrderMapper.selectById(order.getSourceId());
+                if (prodOrder != null) {
+                    java.math.BigDecimal pickCost = java.math.BigDecimal.ZERO;
+                    for (InventoryOutboundItem item : outItems) {
+                        if (item.getQuantity() == null) continue;
+                        // 取物料当前成本（标准单价），扣减时若批次带 unit_cost 则用批次价
+                        java.math.BigDecimal unitCost = item.getUnitPrice() != null
+                                ? item.getUnitPrice() : java.math.BigDecimal.ZERO;
+                        if (unitCost.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                            try {
+                                com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(item.getMaterialId());
+                                if (mat != null && mat.getStandardPrice() != null) {
+                                    unitCost = mat.getStandardPrice();
+                                }
+                            } catch (Exception ex) {
+                                log.warn("查询物料标准单价失败: {}", ex.getMessage());
+                            }
+                        }
+                        pickCost = pickCost.add(item.getQuantity().multiply(unitCost));
+                    }
+                    if (pickCost.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                        java.math.BigDecimal totalCost = prodOrder.getMaterialCost() != null
+                                ? prodOrder.getMaterialCost() : java.math.BigDecimal.ZERO;
+                        prodOrder.setMaterialCost(totalCost.add(pickCost));
+                        productionOrderMapper.updateById(prodOrder);
+                        log.info("工单{}材料成本累加{}（本次领料），累计{}",
+                                order.getSourceId(), pickCost, prodOrder.getMaterialCost());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("工单材料成本核算失败（不影响出库）: {}", e.getMessage());
+        }
+
         // 073定稿：销售发货出库确认后，回写订单 shipped_quantity（Σ发货量，不超订单量）
         try {
             if ("SALES".equals(order.getSourceType()) && order.getSourceId() != null) {
