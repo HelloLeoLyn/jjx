@@ -107,6 +107,19 @@ public class ProductionCostController {
             item.put("standardCost", product != null && product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO);
             item.put("costDiff", product != null && product.getCostPrice() != null && unitCost.compareTo(BigDecimal.ZERO) > 0
                     ? unitCost.subtract(product.getCostPrice()) : BigDecimal.ZERO);
+            // 061定稿：差异分级提示（≤5%正常绿 / 5%~15%关注黄 / >15%异常红）
+            String diffLevel = "normal";
+            if (product != null && product.getCostPrice() != null && product.getCostPrice().compareTo(BigDecimal.ZERO) > 0
+                    && unitCost.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal diffRatio = unitCost.subtract(product.getCostPrice())
+                        .divide(product.getCostPrice(), 4, RoundingMode.HALF_UP).abs();
+                if (diffRatio.compareTo(new BigDecimal("0.15")) > 0) {
+                    diffLevel = "abnormal";
+                } else if (diffRatio.compareTo(new BigDecimal("0.05")) > 0) {
+                    diffLevel = "warning";
+                }
+            }
+            item.put("diffLevel", diffLevel);
 
             item.put("orderStatus", order.getOrderStatus());
             item.put("planStartDate", order.getPlanStartDate());
