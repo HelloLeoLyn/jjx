@@ -17,6 +17,11 @@ public interface ISampleOrderService {
                                    String deliveryDate, String contactPerson, String contactPhone, String techRequirement);
 
     /**
+     * 新增样品单（直接选客户+产品明细，报价单为可选来源）
+     */
+    SalesOrder createSample(com.jjx.sales.domain.dto.SampleOrderCreateDTO dto);
+
+    /**
      * 样品单提交审核
      */
     SalesOrder submitReview(Long orderId);

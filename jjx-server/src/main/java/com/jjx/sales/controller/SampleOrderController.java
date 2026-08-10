@@ -11,6 +11,7 @@ import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +29,14 @@ public class SampleOrderController extends BaseController {
 
     private final ISampleOrderService sampleOrderService;
     private final com.jjx.sales.service.ISalesOrderProductService orderProductService;
+
+    @Operation(summary = "新增样品单（直接选客户+产品明细，报价单可选）")
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "1")
+    @SaCheckPermission("sales:sample:add")
+    @PostMapping
+    public Result<SalesOrder> create(@Valid @RequestBody com.jjx.sales.domain.dto.SampleOrderCreateDTO dto) {
+        return Result.success(sampleOrderService.createSample(dto));
+    }
 
     @Operation(summary = "从报价单创建样品单")
     @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "1")

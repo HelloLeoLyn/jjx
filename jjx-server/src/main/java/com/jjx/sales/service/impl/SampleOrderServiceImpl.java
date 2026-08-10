@@ -62,6 +62,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
     private final com.jjx.product.mapper.EngineeringFilmMapper engineeringFilmMapper;
     private final LogSaveService logSaveService;
+    private final com.jjx.sales.mapper.CustomerMapper customerMapper;
 
     // ============ 状态更新辅助 ============
 
@@ -167,6 +168,141 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             log.info("报价单[{}] 转样品后状态 → 已完成(9)，样品单ID={}", quotation.getQuotationNo(), order.getOrderId());
         } catch (Exception e) {
             log.warn("更新报价单状态失败: {}", e.getMessage());
+        }
+
+        return order;
+    }
+
+    @Override
+    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder createSample(com.jjx.sales.domain.dto.SampleOrderCreateDTO dto) {
+        if (dto == null || dto.getCustomerId() == null) {
+            throw new BusinessException("客户不能为空");
+        }
+        com.jjx.sales.domain.entity.SalesCustomer customer = customerMapper.selectById(dto.getCustomerId());
+        if (customer == null) {
+            throw new BusinessException("客户不存在");
+        }
+
+        // 可选来源报价单校验
+        SalesQuotation quotation = null;
+        if (dto.getQuotationId() != null) {
+            quotation = quotationMapper.selectById(dto.getQuotationId());
+            if (quotation == null || quotation.getDeleted() == 1) {
+                throw new BusinessException("报价单不存在");
+            }
+            if (quotation.getQuotationStatus() != null
+                    && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode()) {
+                throw new BusinessException("报价单已完成，不可重复转样品单");
+            }
+            if (quotation.getQuotationStatus() == null
+                    || quotation.getQuotationStatus() != com.jjx.sales.enums.QuotationStatus.ACCEPTED.getCode()) {
+                throw new BusinessException("只有客户已确认的报价单可以转为样品单");
+            }
+        }
+
+        // 生成样品单号
+        String orderNo = redisSequenceService.generateBusinessNumber("SP", "样品单号");
+
+        SalesOrder order = new SalesOrder();
+        order.setOrderNo(orderNo);
+        order.setQuotationId(dto.getQuotationId());
+        order.setCustomerId(customer.getCustomerId());
+        order.setCustomerName(customer.getCustomerName());
+        // 联系人/电话：前端传入 > 报价单 > 客户档案
+        order.setContactPerson(dto.getContactPerson() != null && !dto.getContactPerson().isEmpty()
+                ? dto.getContactPerson()
+                : (quotation != null && quotation.getContactPerson() != null ? quotation.getContactPerson() : customer.getContactPerson()));
+        order.setContactPhone(dto.getContactPhone() != null && !dto.getContactPhone().isEmpty()
+                ? dto.getContactPhone()
+                : (quotation != null && quotation.getContactPhone() != null ? quotation.getContactPhone() : customer.getContactPhone()));
+        order.setOrderDate(new Date());
+        order.setOrderType(OrderTypeEnum.SAMPLE.getCode());
+        order.setSampleStatus(SampleOrderStatusEnum.CREATED.getCode());
+        order.setSampleRound(1);
+        order.setCurrency(quotation != null ? quotation.getCurrency() : "CNY");
+        order.setExchangeRate(quotation != null ? quotation.getExchangeRate() : java.math.BigDecimal.ONE);
+        try {
+            order.setSalesManagerId(SecurityUtils.getUserId());
+            order.setSalesManagerName(SecurityUtils.getUsername());
+        } catch (Exception ignored) {
+        }
+        order.setRemark(dto.getRemark());
+        order.setTotalQuantity(0);
+        order.setTotalAmount(quotation != null ? quotation.getTotalAmount() : null);
+        order.setFinalAmount(quotation != null ? quotation.getFinalAmount() : null);
+        // 期望交样日期：前端传入 > 报价单有效期
+        if (dto.getDeliveryDate() != null && !dto.getDeliveryDate().isEmpty()) {
+            try {
+                order.setDeliveryDate(Date.from(java.time.LocalDate.parse(dto.getDeliveryDate())
+                        .atStartOfDay(ZoneId.systemDefault()).toInstant()));
+            } catch (Exception e) {
+                log.warn("解析期望交样日期失败: {}", dto.getDeliveryDate());
+            }
+        } else if (quotation != null && quotation.getValidUntil() != null) {
+            order.setDeliveryDate(Date.from(quotation.getValidUntil().atStartOfDay(ZoneId.systemDefault()).toInstant()));
+        }
+        // 技术要求写入工程备注（传承打样工作台/转量产）
+        if (dto.getTechRequirement() != null && !dto.getTechRequirement().isEmpty()) {
+            order.setEngineeringNote(dto.getTechRequirement());
+        }
+        // 链路：带报价单继承报价单 trace_id，否则新建独立链路
+        order.setTraceId(quotation != null && quotation.getTraceId() != null
+                ? quotation.getTraceId()
+                : java.util.UUID.randomUUID().toString().replace("-", ""));
+
+        orderMapper.insert(order);
+        log.info("新增样品单[{}] orderId={}，客户={}", orderNo, order.getOrderId(), customer.getCustomerName());
+
+        // 明细：前端传 items 优先；带报价单且无 items 时从报价单复制
+        java.util.List<com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item> items = dto.getItems();
+        if (items != null && !items.isEmpty()) {
+            java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> addList = new java.util.ArrayList<>();
+            for (com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item it : items) {
+                com.jjx.sales.domain.dto.SalesOrderProductDTO d = new com.jjx.sales.domain.dto.SalesOrderProductDTO();
+                d.setOrderId(order.getOrderId());
+                d.setProductId(it.getProductId());
+                d.setProductCode(it.getProductCode());
+                d.setProductName(it.getProductName());
+                d.setQuantity(it.getQuantity());
+                d.setUnit(it.getUnit() != null ? it.getUnit() : "PCS");
+                d.setUnitPrice(java.math.BigDecimal.ZERO);
+                d.setAmount(java.math.BigDecimal.ZERO);
+                addList.add(d);
+            }
+            orderProductService.batchAdd(addList);
+        } else if (quotation != null) {
+            copyQuotationItemsToOrder(quotation.getQuotationId(), order.getOrderId());
+        }
+        // DEV-806：total_quantity = 明细求和；sample_qty 同步
+        updateTotalQuantityByItems(order.getOrderId());
+        try {
+            int sum = 0;
+            for (com.jjx.sales.domain.vo.SalesOrderProductVO v : orderProductService.getListByOrderId(order.getOrderId())) {
+                sum += v.getQuantity() != null ? v.getQuantity() : 0;
+            }
+            SalesOrder u = new SalesOrder();
+            u.setOrderId(order.getOrderId());
+            u.setSampleQty(sum);
+            orderMapper.updateById(u);
+        } catch (Exception e) {
+            log.warn("同步 sample_qty 失败: {}", e.getMessage());
+        }
+
+        // 带报价单：状态已确认(2)→已完成(9) + 回写 convertedOrderId
+        if (quotation != null) {
+            try {
+                SalesQuotation update = new SalesQuotation();
+                update.setQuotationId(quotation.getQuotationId());
+                update.setQuotationStatus(com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode());
+                update.setConvertedOrderId(order.getOrderId());
+                update.setConvertTime(LocalDateTime.now());
+                quotationMapper.updateById(update);
+                log.info("报价单[{}] 转样品后状态 → 已完成(9)，样品单ID={}", quotation.getQuotationNo(), order.getOrderId());
+            } catch (Exception e) {
+                log.warn("更新报价单状态失败: {}", e.getMessage());
+            }
         }
 
         return order;

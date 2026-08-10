@@ -4,6 +4,30 @@ import type { AxiosPromise } from 'axios'
 // 样品单接口
 export const sampleOrderApi = {
   // 从报价单创建样品单
+  // 新增样品单（直接选客户+产品明细，报价单可选）
+  create(data: {
+    customerId: number
+    quotationId?: number
+    items?: Array<{
+      productId?: number
+      productCode?: string
+      productName?: string
+      quantity?: number
+      unit?: string
+    }>
+    deliveryDate?: string
+    contactPerson?: string
+    contactPhone?: string
+    techRequirement?: string
+    remark?: string
+  }): AxiosPromise<any> {
+    return request({
+      url: '/sales/sample-order',
+      method: 'post',
+      data,
+    })
+  },
+
   createFromQuotation(
     quotationId: number,
     data?: {
