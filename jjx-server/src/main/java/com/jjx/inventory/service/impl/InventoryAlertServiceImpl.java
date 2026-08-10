@@ -8,12 +8,14 @@ import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryAlertLog;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
+import com.jjx.inventory.domain.ProductStock;
 import com.jjx.inventory.dto.query.AlertQueryDTO;
 import com.jjx.inventory.dto.vo.AlertVO;
 import com.jjx.inventory.mapper.InventoryAlertLogMapper;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
+import com.jjx.inventory.mapper.ProductStockMapper;
 import com.jjx.inventory.service.InventoryAlertService;
 import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
@@ -49,6 +51,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final InventoryStockMapper stockMapper;
     private final InventoryMaterialMapper materialMapper;
     private final InventoryStockItemMapper stockItemMapper;
+    private final ProductStockMapper productStockMapper;
     private final EventPublisher eventPublisher;
     private final OrderMapper orderMapper;
     private final SalesOrderProductMapper orderProductMapper;
@@ -118,16 +121,40 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             return new java.util.ArrayList<>();
         }
 
-        // 4. 逐产品按 BOM 算料，汇总物料需求（需求 = Σ产品数量 × BOM用量 × (1+损耗率/100)）
+        // 4. 两步走（DEV-20260810-096）：先扣产品库存（产品维度），还需生产的量才 BOM 展开算物料需求
+        // 例：需求1000，产品库存200→需生产800→BOM展开→物料缺口
         Map<Long, BigDecimal> demandMap = new java.util.HashMap<>();
         Map<Long, String> codeMap = new java.util.HashMap<>();
         Map<Long, String> nameMap = new java.util.HashMap<>();
         int noBomCount = 0;
+        int stockCoveredCount = 0; // 产品现货直接覆盖的明细数
         for (SalesOrderProduct p : products) {
             if (p.getProductId() == null) {
                 log.info("订单{}明细产品ID为空，跳过", orderNo);
                 continue;
             }
+            BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
+
+            // 第一步：先扣产品库存（产品维度现货优先）
+            BigDecimal productAvailable = BigDecimal.ZERO;
+            try {
+                ProductStock ps = productStockMapper.selectByProductId(p.getProductId());
+                if (ps != null && ps.getAvailableQuantity() != null) {
+                    productAvailable = ps.getAvailableQuantity();
+                }
+            } catch (Exception e) {
+                log.warn("查询产品库存失败(按无现货处理): productId={}, err={}", p.getProductId(), e.getMessage());
+            }
+            BigDecimal needProduce = orderQty.subtract(productAvailable);
+            if (needProduce.compareTo(BigDecimal.ZERO) <= 0) {
+                // 产品现货足够覆盖订单需求，无需生产，不产生物料需求
+                stockCoveredCount++;
+                log.info("产品{}现货足够（可用{}≥需求{}），无需生产，跳过BOM展开",
+                        p.getProductCode(), productAvailable.stripTrailingZeros().toPlainString(), orderQty.stripTrailingZeros().toPlainString());
+                continue;
+            }
+
+            // 第二步：还需生产的量才 BOM 展开
             // 生效已审批 BOM
             EngineeringBom bom = bomMapper.selectOne(new LambdaQueryWrapper<EngineeringBom>()
                     .eq(EngineeringBom::getProductId, p.getProductId())
@@ -141,12 +168,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             List<EngineeringBomItem> items = bomItemMapper.selectList(
                     new LambdaQueryWrapper<EngineeringBomItem>()
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
-            BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
             for (EngineeringBomItem item : items) {
                 if (item.getMaterialId() == null) continue;
                 BigDecimal unitQty = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
                 BigDecimal loss = BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate());
-                BigDecimal need = orderQty.multiply(unitQty)
+                BigDecimal need = needProduce.multiply(unitQty)
                         .multiply(BigDecimal.ONE.add(loss.divide(BigDecimal.valueOf(100))));
                 demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
                 codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
@@ -229,7 +255,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 log.warn("订单缺料事件联动失败: {}", e.getMessage());
             }
         }
-        log.info("订单{}齐套检查完成：缺料{}条，在途已覆盖{}条，无BOM产品{}个", orderNo, shortageCount, coveredCount, noBomCount);
+        log.info("订单{}齐套检查完成：缺料{}条，在途已覆盖{}条，无BOM产品{}个，产品现货覆盖{}条", orderNo, shortageCount, coveredCount, noBomCount, stockCoveredCount);
         return detailList;
     }
 

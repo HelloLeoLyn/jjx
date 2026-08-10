@@ -31,6 +31,7 @@ import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.mapper.InventoryWarehouseMapper;
 import com.jjx.inventory.service.InventoryInboundService;
 import com.jjx.inventory.service.InventoryAlertService;
+import com.jjx.inventory.service.ProductStockService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,6 +69,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final EventPublisher eventPublisher;
     private final InventoryAlertService alertService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final ProductStockService productStockService;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -663,6 +665,19 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         inboundOrderMapper.updateById(order);
         approve(order.getInboundId(), null, null, "生产完工入库");
+
+        // DEV-20260810-096：完工入库=产品入库（产品维度独立记账，入 product_stock 表）
+        // 概念红线：完工入库入的是产品库存，不是物料不是材料；产品库存与物料库存各自独立记账
+        try {
+            BigDecimal productQty = inboundItem.getQuantity();
+            if (prodOrder.getProductId() != null && productQty != null) {
+                productStockService.increase(prodOrder.getProductId(), prodOrder.getProductCode(),
+                        prodOrder.getProductName(), productQty);
+                log.info("完工入库同步产品库存+: productId={}, qty={}", prodOrder.getProductId(), productQty);
+            }
+        } catch (Exception e) {
+            log.warn("完工入库同步产品库存失败（不影响入库主流程）: {}", e.getMessage());
+        }
 
         log.info("生产完工入库完成: workOrderId={}, inboundId={}", workOrderId, order.getInboundId());
         return order.getInboundId();

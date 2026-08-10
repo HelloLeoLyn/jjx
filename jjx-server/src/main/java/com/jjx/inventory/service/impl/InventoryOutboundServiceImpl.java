@@ -68,6 +68,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final com.jjx.inventory.service.ProductStockService productStockService;
 
     @Override
     public IPage<OutboundVO> page(OutboundQueryDTO query) {
@@ -305,6 +306,19 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 throw new BusinessException("物料[" + item.getMaterialCode() + "]库存不足，缺少: " + remaining);
             }
             stockMapper.refreshSummary(item.getMaterialId());
+            // DEV-20260810-096：销售出库=产品出库（产品维度独立记账）
+            // 产品库存与物料库存各自独立记账；仅销售出库同步扣产品库存（物料是成品F且有专用产品时）
+            if ("SALES".equals(order.getSourceType())) {
+                try {
+                    com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(item.getMaterialId());
+                    if (mat != null && mat.getProductId() != null) {
+                        productStockService.decrease(mat.getProductId(), item.getQuantity());
+                        log.info("销售出库同步产品库存-: productId={}, qty={}", mat.getProductId(), item.getQuantity());
+                    }
+                } catch (Exception e) {
+                    log.warn("销售出库同步产品库存失败（不影响出库主流程）: {}", e.getMessage());
+                }
+            }
             // 获取扣减前的库存汇总
             java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
             InventoryStock currentStock = stockMapper.selectByMaterialId(item.getMaterialId());
