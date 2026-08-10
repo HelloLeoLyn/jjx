@@ -1,7 +1,11 @@
 -- =====================================================
--- 清理测试数据脚本（v4）
+-- 清理测试数据脚本（v5）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+--
+-- v5 变更（2026-08-10）：
+--   1. 标准工序（engineering_standard_process）保留不清——基础档案，供打样/工艺路线复用
+--   2. 其余同 v4：基础档案（客户/物料/产品/BOM/路线）全清
 --
 -- v4 变更（2026-08-06）：
 --   1. 基础档案也全清：sales_customer（客户）、inventory_material（物料）+
@@ -80,7 +84,10 @@ TRUNCATE product_category;
 
 TRUNCATE product;
 
--- ==================== 3. 工程模块（v4 起全清） ====================
+-- 08-09 版本化改造前的数据备份表（无代码引用，历史脏数据）
+TRUNCATE product_backup_20260809;
+
+-- ==================== 3. 工程模块（v5 起标准工序保留，其余清） ====================
 TRUNCATE engineering_routing_item;
 
 TRUNCATE engineering_routing;
@@ -89,7 +96,13 @@ TRUNCATE engineering_bom_item;
 
 TRUNCATE engineering_bom;
 
-TRUNCATE engineering_standard_process;
+-- v5：标准工序保留不清（基础档案）
+-- TRUNCATE engineering_standard_process;
+
+-- 08-09 版本化改造前的数据备份表（无代码引用，历史脏数据）
+TRUNCATE engineering_bom_backup_20260809;
+
+TRUNCATE engineering_routing_backup_20260809;
 
 TRUNCATE engineering_film;
 
