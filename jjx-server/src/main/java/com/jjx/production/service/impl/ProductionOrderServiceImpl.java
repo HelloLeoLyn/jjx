@@ -1182,6 +1182,14 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             execution.setProcessId(item.getProcessId());
             execution.setProcessOrder(item.getProcessOrder());
 
+            // 049定稿：首道工序激活（EXECUTING），其余待执行（PENDING）
+            if (i == 0) {
+                execution.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.EXECUTING.getCode());
+                execution.setActualStartTime(java.time.LocalDateTime.now());
+            } else {
+                execution.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode());
+            }
+
             // 按工序分配时间
             if (planStartDate != null && planEndDate != null) {
                 LocalDate stepStart = planStartDate.plusDays(i * daysPerStep);
