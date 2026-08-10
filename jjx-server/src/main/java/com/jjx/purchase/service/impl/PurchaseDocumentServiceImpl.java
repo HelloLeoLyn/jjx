@@ -87,10 +87,15 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
         }
 
         // 090定稿：发票轻量拦截——发票金额≤订单金额（防虚开），累计不超订单金额
-        if ("INVOICE".equals(dto.getDocumentType()) && dto.getOrderId() != null && dto.getDocumentAmount() != null) {
+        // 注：PurchaseInvoiceController 强制 documentType="invoice"（小写），判断需忽略大小写
+        if (dto.getDocumentType() != null && dto.getDocumentType().equalsIgnoreCase("INVOICE")
+                && dto.getOrderId() != null && dto.getDocumentAmount() != null) {
             try {
                 com.jjx.purchase.domain.entity.PurchaseOrder po = purchaseOrderMapper.selectById(dto.getOrderId());
-                if (po != null && po.getOrderTotalAmount() != null
+                if (po == null) {
+                    throw new BusinessException("采购订单不存在，无法登记发票");
+                }
+                if (po.getOrderTotalAmount() != null
                         && dto.getDocumentAmount().compareTo(po.getOrderTotalAmount()) > 0) {
                     throw new BusinessException("发票金额" + dto.getDocumentAmount().stripTrailingZeros().toPlainString()
                             + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
@@ -99,11 +104,11 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
                 java.math.BigDecimal sumInvoiced = documentMapper.selectList(
                         new LambdaQueryWrapper<PurchaseDocument>()
                                 .eq(PurchaseDocument::getOrderId, dto.getOrderId())
-                                .eq(PurchaseDocument::getDocumentType, "INVOICE"))
+                                .eq(PurchaseDocument::getDocumentType, "invoice"))
                         .stream()
                         .map(d -> d.getDocumentAmount() != null ? d.getDocumentAmount() : java.math.BigDecimal.ZERO)
                         .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-                if (po != null && po.getOrderTotalAmount() != null
+                if (po.getOrderTotalAmount() != null
                         && sumInvoiced.add(dto.getDocumentAmount()).compareTo(po.getOrderTotalAmount()) > 0) {
                     throw new BusinessException("累计发票金额" + sumInvoiced.add(dto.getDocumentAmount()).stripTrailingZeros().toPlainString()
                             + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
