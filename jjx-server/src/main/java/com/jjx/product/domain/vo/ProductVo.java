@@ -2,6 +2,7 @@ package com.jjx.product.domain.vo;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -30,18 +31,18 @@ public class ProductVo {
 
     /** 规格参数（JSON字符串） */
     private String specJson;
-//
-//    /** 基础售价 */
-//    private Double basePrice;
-//
-//    /** 标准成本 */
-//    private Double costPrice;
-//
-//    /** 最小起订量 */
-//    private Integer minOrderQty;
-//
-//    /** 标准交期(天) */
-//    private Integer leadTime;
+
+    /** 基础售价 */
+    private BigDecimal basePrice;
+
+    /** 标准成本 */
+    private BigDecimal costPrice;
+
+    /** 最小起订量 */
+    private Integer minOrderQty;
+
+    /** 标准交期(天) */
+    private Integer leadTime;
 
     /** 产品状态 */
     private Integer productStatus;
