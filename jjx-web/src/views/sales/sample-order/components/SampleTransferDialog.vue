@@ -11,6 +11,15 @@
     <!-- 加载中 -->
     <div v-loading="store.loading" style="min-height: 200px">
       <template v-if="!store.loading && store.preview">
+        <!-- 重复转移提示（DEV-781 后续：方案A——记录已转，再转提醒） -->
+        <el-alert
+          v-if="transferredFlag"
+          type="warning"
+          show-icon
+          :closable="false"
+          title="该样品单已进行过资料转移，再次确认将生成新的 BOM/工艺路线版本（版本号+1），请确认是否必要"
+          style="margin-bottom: 12px"
+        />
         <!-- 未匹配提示 -->
         <el-alert
           v-if="!store.allMatched"
@@ -140,6 +149,28 @@ const emit = defineEmits<{
 const router = useRouter()
 const store = useSampleTransferStore()
 
+// DEV-781 后续：已转移订单标记（localStorage 持久化，方案A）
+const TRANSFER_FLAG_KEY = 'sample_transferred_orders'
+const transferredFlag = ref(false)
+
+function getTransferredIds(): number[] {
+  try {
+    const raw = localStorage.getItem(TRANSFER_FLAG_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+function markTransferred(orderId: number) {
+  const arr = getTransferredIds()
+  if (!arr.includes(orderId)) {
+    arr.push(orderId)
+    localStorage.setItem(TRANSFER_FLAG_KEY, JSON.stringify(arr))
+  }
+}
+
 const visible = ref(props.modelValue)
 
 watch(
@@ -156,6 +187,7 @@ watch(visible, (v) => {
 // 打开弹窗时加载预览数据
 async function onOpen() {
   if (!props.orderId) return
+  transferredFlag.value = getTransferredIds().includes(props.orderId)
   if (store.orderId !== props.orderId || !store.preview) {
     await store.loadPreview(props.orderId)
   }
@@ -181,6 +213,9 @@ function goStandardEdit() {
 async function onConfirm() {
   const result = await store.confirmTransfer()
   if (!result) return
+  // 记录已转移（方案A：重复转移提醒）
+  if (props.orderId) markTransferred(props.orderId)
+  transferredFlag.value = true
   ElMessage.success(
     `转移成功：${result.transferNo}（${result.version || ''}，BOM ${result.bomId || '-'} / 路线 ${result.routingId || '-'}）`
   )
