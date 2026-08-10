@@ -511,10 +511,15 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         }
 
         if (safe.compareTo(java.math.BigDecimal.ZERO) <= 0) return;
-        if (stock.getTotalQuantity() != null && stock.getTotalQuantity().compareTo(safe) >= 0) return;
+        // 064定稿：按可用量判断（total - reserved），禁止用总量
+        java.math.BigDecimal availableQty = stock.getTotalQuantity() == null ? java.math.BigDecimal.ZERO : stock.getTotalQuantity();
+        if (stock.getTotalReserved() != null) {
+            availableQty = availableQty.subtract(stock.getTotalReserved());
+        }
+        if (availableQty.compareTo(safe) >= 0) return;
 
         String msg = "物料[" + stock.getMaterialCode() + "] " + stock.getMaterialName()
-                + " 当前库存: " + stock.getTotalQuantity() + ", 安全库存: " + safe + ", 低于安全库存";
+                + " 当前可用: " + availableQty + ", 安全库存: " + safe + ", 低于安全库存";
         log.warn(msg);
 
         InventoryAlertLog alert = new InventoryAlertLog();
