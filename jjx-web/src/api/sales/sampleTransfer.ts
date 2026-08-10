@@ -11,6 +11,10 @@ export interface SampleProcessItem {
   processCategory: string | null
   processNote: string | null
   durationMinutes: number | null
+  /** 标准工序是否带下标（0/1） */
+  hasIndex: number | null
+  /** 下标数字（方案A：打样工序顺序号） */
+  indexNumber: number | null
   matchedStdProcessId: number | null
   matchedStdProcessName: string | null
   matched: boolean
@@ -40,6 +44,8 @@ export interface StandardProcessOption {
   processName: string
   processType: string | null
   processCategory: string | null
+  icon: string | null
+  hasIndex: number | null
 }
 
 /** 标准物料库选项 */
@@ -73,6 +79,12 @@ export interface ProcessMapping {
   processCategory: string | null
   processNote: string | null
   durationMinutes: number | null
+  /** 标准工序是否带下标（0/1） */
+  hasIndex: number | null
+  /** 下标数字 */
+  indexNumber: number | null
+  /** 图标（按匹配标准工序补充） */
+  icon?: string | null
 }
 
 /** 物料映射项（确认入参） */

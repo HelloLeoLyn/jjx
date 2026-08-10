@@ -6,6 +6,7 @@ import type {
   SampleTransferPreview,
   SampleProcessItem,
   SampleMaterialItem,
+  StandardProcessOption,
   ProcessMapping,
   MaterialMapping,
   SampleTransferConfirmResult,
@@ -127,6 +128,11 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
       // 初始化工序映射：同 process_order 的工序归为同一组合（临时负数 groupId）
       tempGroupIdCounter = 0
       const orderGroupMap = new Map<number, number>()
+      // 标准工序 id → 图标（下标展示用）
+      const stdIconMap = new Map<number, string>()
+      ;(data.standardProcesses || []).forEach((s: StandardProcessOption) => {
+        if (s.processId && s.icon) stdIconMap.set(s.processId, s.icon)
+      })
       processMappings.value = (data.sampleProcesses || []).map((sp: SampleProcessItem) => {
         let groupId: number | null = null
         let groupName: string | null = null
@@ -149,6 +155,11 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
           processCategory: sp.processCategory,
           processNote: sp.processNote,
           durationMinutes: sp.durationMinutes,
+          // 下标：透传预览返回（hasIndex + indexNumber）
+          hasIndex: sp.hasIndex ?? 0,
+          indexNumber: sp.indexNumber ?? null,
+          // 图标：优先从标准工序库取（带下标工序展示用）
+          icon: (sp.matchedStdProcessId != null ? stdIconMap.get(sp.matchedStdProcessId) : null) || null,
         }
       })
 
@@ -191,6 +202,10 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     if (std) {
       target.processName = std.processName
       target.processCategory = std.processCategory
+      target.icon = std.icon || null
+      target.hasIndex = std.hasIndex ?? 0
+      // 改选后带下标则补 indexNumber（沿用顺序号），否则清空
+      target.indexNumber = target.hasIndex === 1 ? target.processOrder : null
     }
   }
 
@@ -203,6 +218,10 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     if (std) {
       target.processName = std.processName
       target.processCategory = std.processCategory
+      target.icon = std.icon || null
+      target.hasIndex = std.hasIndex ?? 0
+      // 改选后带下标则补 indexNumber（沿用顺序号），否则清空
+      target.indexNumber = target.hasIndex === 1 ? target.processOrder : null
     }
   }
 
@@ -234,6 +253,9 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
       processCategory: std.processCategory,
       processNote: null,
       durationMinutes: null,
+      hasIndex: std.hasIndex ?? 0,
+      indexNumber: (std.hasIndex ?? 0) === 1 ? processMappings.value.length + 1 : null,
+      icon: std.icon || null,
     })
     reorderProcesses()
   }

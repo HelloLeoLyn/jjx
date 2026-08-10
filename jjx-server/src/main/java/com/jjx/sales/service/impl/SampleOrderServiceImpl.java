@@ -1290,6 +1290,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     item.setMatchedStdProcessId(match.getProcessId());
                     item.setMatchedStdProcessName(match.getProcessName());
                     item.setMatched(true);
+                    // 下标：方案A——hasIndex 取匹配标准工序的 has_index；indexNumber 取打样工序顺序号
+                    item.setHasIndex(match.getHasIndex() != null ? match.getHasIndex() : 0);
+                    if (match.getHasIndex() != null && match.getHasIndex() == 1) {
+                        item.setIndexNumber(sp.getProcessOrder());
+                    }
                 } else {
                     item.setMatched(false);
                 }
@@ -1362,6 +1367,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 opt.setProcessName(p.getProcessName());
                 opt.setProcessType(p.getProcessType());
                 opt.setProcessCategory(p.getProcessCategory());
+                opt.setIcon(p.getIcon());
+                opt.setHasIndex(p.getHasIndex() != null ? p.getHasIndex() : 0);
                 return opt;
             }).collect(java.util.stream.Collectors.toList()));
         }

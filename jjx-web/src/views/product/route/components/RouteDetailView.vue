@@ -62,13 +62,23 @@
               size="small"
               class="group-item-tag"
             >
-              <SvgIcon
-                v-if="item.icon"
-                :name="item.icon"
+              <!-- 有下标（hasIndex=1）：图标+红底数字（只读） -->
+              <IconStepBadge
+                v-if="item.hasIndex === 1"
+                :icon="item.icon || ''"
                 :size="14"
-                style="margin-right: 4px; vertical-align: middle"
+                :index="item.indexNumber ?? null"
               />
-              <span>{{ item.processName }}</span>
+              <!-- 无下标：原样图标+名称 -->
+              <template v-else>
+                <SvgIcon
+                  v-if="item.icon"
+                  :name="item.icon"
+                  :size="14"
+                  style="margin-right: 4px; vertical-align: middle"
+                />
+                <span>{{ item.processName }}</span>
+              </template>
             </el-tag>
           </div>
         </template>
@@ -102,6 +112,7 @@ import { ref, reactive } from 'vue'
 import { productRouteApi } from '@/api/product/routing'
 import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/product/routing'
 import { RouteStatusEnum, StepTypeEnum } from '@/enums/product'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
 
 const loading = ref(false)
 const detail = reactive<EngineeringRoutingVO>({

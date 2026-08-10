@@ -48,6 +48,10 @@ public class SampleTransferPreviewVO {
         private String processNote;
         /** 耗时（分钟） */
         private Integer durationMinutes;
+        /** 标准工序是否带下标（0/1，来自匹配的标准工序 has_index） */
+        private Integer hasIndex;
+        /** 下标数字（方案A：取打样工序顺序号 processOrder） */
+        private Integer indexNumber;
         /** 系统匹配推荐的标准工序ID（匹配不上为 null） */
         private Long matchedStdProcessId;
         /** 系统匹配推荐的标准工序名称 */
@@ -99,6 +103,10 @@ public class SampleTransferPreviewVO {
         private String processName;
         private String processType;
         private String processCategory;
+        /** 图标（标准工序 icon，下标展示用） */
+        private String icon;
+        /** 是否带下标（0/1） */
+        private Integer hasIndex;
     }
 
     /**

@@ -93,7 +93,15 @@
                   </div>
                 </div>
                 <div v-for="(item, ii) in group.items" :key="ii" class="process-row">
-                  <span class="row-label">{{ item.processName }}</span>
+                  <!-- 有下标（hasIndex=1）：图标+红底数字 -->
+                  <IconStepBadge
+                    v-if="item.hasIndex === 1"
+                    :icon="item.icon || ''"
+                    :size="18"
+                    :index="item.indexNumber ?? null"
+                  />
+                  <!-- 无下标：只显示工序名称 -->
+                  <span v-else class="row-label">{{ item.processName }}</span>
                   <el-select
                     v-model="item.stdProcessId"
                     filterable
@@ -290,6 +298,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useSampleTransferStore } from '@/store/modules/sampleTransfer'
 import type { ProcessMapping } from '@/api/sales/sampleTransfer'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
 
 defineOptions({ name: 'SampleTransferEdit' })
 

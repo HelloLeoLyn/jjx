@@ -96,45 +96,16 @@
                 @dragover.prevent="handleItemDragOver($event, scope.$index, Number(itemIndex))"
                 @drop="handleItemDrop($event, scope.$index, Number(itemIndex))"
               >
-                <!-- 图标 + 下标（has_index=1 的工序可编辑下标数字） -->
-                <span class="item-icon">
-                  <IconStepBadge
-                    v-if="item.icon && item.hasIndex === 1"
-                    :icon="item.icon"
-                    :size="18"
-                    :index="item.indexNumber ?? null"
-                    @update:index="(n: number) => onUpdateIndex(scope.row, item, n)"
-                  />
-                  <SvgIcon v-else-if="item.icon" :name="item.icon" :size="18" />
-                  <span v-else class="item-emoji">📦</span>
-                </span>
-                <span class="item-name">{{ item.processName }}</span>
-                <!-- 可选工序标记 -->
-                <el-checkbox
-                  v-model="item.isOptional"
-                  :true-value="1"
-                  :false-value="0"
-                  size="small"
-                  class="item-optional"
-                  @change="syncToParent"
-                >+√</el-checkbox>
-                <!-- 跨组依赖下拉 -->
-                <el-select
-                  v-model="item.precondition"
-                  size="small"
-                  placeholder="依赖"
-                  clearable
-                  filterable
-                  style="width: 180px"
-                  @change="(v: string) => onPreconditionChange(item, v)"
-                >
-                  <el-option
-                    v-for="opt in dependencyOptionsFor(item)"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value"
-                  />
-                </el-select>
+                <!-- 有下标（hasIndex=1）：IconStepBadge 显示图标+红底数字 -->
+                <IconStepBadge
+                  v-if="item.hasIndex === 1"
+                  :icon="item.icon || ''"
+                  :size="18"
+                  :index="item.indexNumber ?? null"
+                  @update:index="(n: number) => onUpdateIndex(scope.row, item, n)"
+                />
+                <!-- 无下标：只显示工序名称 -->
+                <span v-else class="item-name">{{ item.processName }}</span>
                 <el-icon class="item-close" @click="removeItemFromGroup(scope.$index, Number(itemIndex))">
                   <Close />
                 </el-icon>
@@ -256,7 +227,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Close } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
@@ -327,7 +298,10 @@ const openIndexDialog = (item: EngineeringRoutingItemVO) => {
 // 确认下标数字：写入 item.indexNumber
 const confirmIndexDialog = () => {
   if (pendingIndexItem && indexDialogValue.value != null && indexDialogValue.value > 0) {
-    pendingIndexItem.indexNumber = Math.floor(indexDialogValue.value)
+    // 注意：pendingIndexItem 是 push 前的原始对象引用，直接改属性不触发视图更新
+    // 用 reactive() 取回 Vue 包装的响应式代理再改（已 push 进 groups 的对象在 reactiveMap 有缓存）
+    const target = reactive(pendingIndexItem)
+    target.indexNumber = Math.floor(indexDialogValue.value)
     syncToParent()
   }
   indexDialogVisible.value = false
@@ -338,68 +312,6 @@ const confirmIndexDialog = () => {
 const onUpdateIndex = (group: RouteItemGroup, item: EngineeringRoutingItemVO, n: number) => {
   item.indexNumber = Math.floor(n)
   syncToParent()
-}
-
-// ==================== 跨组依赖（批次1） ====================
-
-// 圈号数字（1-10 → ①-⑩）
-const circledNumbers = ['⓪', '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
-const toCircled = (n: number): string => (n >= 0 && n <= 10 ? circledNumbers[n] : String(n))
-
-// 类别 → 组名（PANEL→面板）
-const categoryToGroupName = (category?: string): string => {
-  return ProcessCategoryEnum.getLabel(category || '') || category || '其他'
-}
-
-// 依赖标识：{类别}_{下标}（如 PANEL_4）
-const buildPreconditionKey = (item: EngineeringRoutingItemVO): string => {
-  return `${item.processCategory || 'OTHER'}_${item.indexNumber}`
-}
-
-// 依赖显示名：{组名}{圈号} {工序名}（如"面板④ 面板冲型"）
-const buildPreconditionDisplay = (item: EngineeringRoutingItemVO): string => {
-  return `${categoryToGroupName(item.processCategory)}${toCircled(item.indexNumber || 0)} ${item.processName}`
-}
-
-// 依赖选项：当前路由所有 has_index=1 且 index_number 非空的工序（不含自己）
-const dependencyOptionsFor = (current: EngineeringRoutingItemVO) => {
-  const opts: { value: string; label: string }[] = []
-  groups.value.forEach((g) => {
-    g.items.forEach((it) => {
-      if (it === current) return // 不含自己
-      if (it.hasIndex === 1 && it.indexNumber != null && it.indexNumber > 0) {
-        opts.push({ value: buildPreconditionKey(it), label: buildPreconditionDisplay(it) })
-      }
-    })
-  })
-  return opts
-}
-
-// 选择依赖：写 precondition + precondition_display
-const onPreconditionChange = (item: EngineeringRoutingItemVO, val: string | undefined) => {
-  if (!val) {
-    item.precondition = null
-    item.preconditionDisplay = null
-  } else {
-    const opt = dependencyOptionsFor(item).find((o) => o.value === val)
-    item.precondition = val
-    item.preconditionDisplay = opt?.label || val
-  }
-  syncToParent()
-}
-
-// 清除引用某工序的依赖（该工序被删除/下标变化时调用）
-const clearPreconditionsTo = (removed: EngineeringRoutingItemVO) => {
-  if (removed.hasIndex !== 1 || removed.indexNumber == null) return
-  const key = buildPreconditionKey(removed)
-  groups.value.forEach((g) => {
-    g.items.forEach((it) => {
-      if (it !== removed && it.precondition === key) {
-        it.precondition = null
-        it.preconditionDisplay = null
-      }
-    })
-  })
 }
 
 // 临时 groupId 计数器（用于生成唯一的临时负数ID）
@@ -645,12 +557,9 @@ const createItemVO = (process: StandardProcessOption): EngineeringRoutingItemVO 
     isEnabledTagType: process.isEnabled === 1 ? 'success' : 'info',
     displayOrder: process.displayOrder,
     icon: process.icon,
-    // 批次1：下标/依赖/可选
+    // 批次1：下标
     hasIndex: process.hasIndex || 0,
     indexNumber: null,
-    precondition: null,
-    preconditionDisplay: null,
-    isOptional: 0,
   }
 }
 
@@ -700,10 +609,6 @@ const addToGroupAtIndex = (
 
 // 从组合中移除工序
 const removeItemFromGroup = (groupIndex: number, itemIndex: number) => {
-  const removed = groups.value[groupIndex].items[itemIndex]
-  if (!removed) return
-  // 清除引用被删工序的依赖
-  clearPreconditionsTo(removed)
   groups.value[groupIndex].items.splice(itemIndex, 1)
   if (groups.value[groupIndex].items.length === 0) {
     // 如果组合为空，删除该组合
@@ -770,9 +675,6 @@ const moveGroupDown = (index: number) => {
 
 // 删除组合
 const removeGroup = (index: number) => {
-  const removedItems = groups.value[index]?.items || []
-  // 清除引用被删组合内工序的依赖
-  removedItems.forEach((it) => clearPreconditionsTo(it))
   groups.value.splice(index, 1)
   updateGroupOrder()
   syncToParent()
@@ -984,7 +886,7 @@ defineExpose({
   cursor: grabbing;
 }
 
-/* ==================== 批次1：工序行（图标+下标/可选/依赖） ==================== */
+/* ==================== 批次1：工序行（图标+下标） ==================== */
 .group-item-row {
   display: flex;
   align-items: center;
@@ -1027,12 +929,6 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.item-optional {
-  margin-right: 0;
-  flex-shrink: 0;
-  font-size: 12px;
 }
 
 .item-close {
