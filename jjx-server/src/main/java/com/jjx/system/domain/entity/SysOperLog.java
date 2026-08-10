@@ -26,6 +26,8 @@ public class SysOperLog {
     private String bizId;
     private String traceId;
     private Integer bizStatus;
+    /** 详情（JSON，如附件列表 {"attachments":[{id,fileName}]}） */
+    private String detail;
 
     private Long costTime;
     private Integer status;
