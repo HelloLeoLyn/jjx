@@ -29,6 +29,7 @@ import com.jjx.sales.domain.vo.SalesOrderProductVO;
 import com.jjx.sales.domain.vo.SalesOrderVO;
 import com.jjx.common.utils.pdf.PdfDocBuilder;
 import com.jjx.sales.enums.OrderStatus;
+import com.jjx.sales.enums.OrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.service.ICustomerService;
 import com.jjx.sales.service.IOrderService;
@@ -47,6 +48,7 @@ import java.math.BigDecimal;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -221,6 +223,79 @@ public class OrderServiceImpl implements IOrderService {
             count += deleteOrderById(orderId);
         }
         return count;
+    }
+
+    /**
+     * 复制订单：已取消/已完成等终态订单一键重新生成新草稿单
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long copyOrder(Long orderId) {
+        SalesOrder source = orderMapper.selectById(orderId);
+        if (source == null) {
+            throw new BusinessException(BusinessExceptionEnum.ORDER_NOT_FOUND);
+        }
+
+        SalesOrder copy = new SalesOrder();
+        copy.setOrderNo(generateOrderNo());
+        copy.setCustomerId(source.getCustomerId());
+        copy.setCustomerName(source.getCustomerName());
+        copy.setContactPerson(source.getContactPerson());
+        copy.setContactPhone(source.getContactPhone());
+        copy.setOrderDate(new Date());
+        copy.setDeliveryDate(source.getDeliveryDate());
+        copy.setOrderType(source.getOrderType());
+        copy.setCurrency(source.getCurrency());
+        copy.setExchangeRate(source.getExchangeRate());
+        copy.setPaymentTerms(source.getPaymentTerms());
+        copy.setDeliveryTerms(source.getDeliveryTerms());
+        copy.setDeliveryAddress(source.getDeliveryAddress());
+        copy.setTotalAmount(source.getTotalAmount());
+        copy.setTaxRate(source.getTaxRate());
+        copy.setTaxAmount(source.getTaxAmount());
+        copy.setDiscountRate(source.getDiscountRate());
+        copy.setDiscountAmount(source.getDiscountAmount());
+        copy.setFinalAmount(source.getFinalAmount());
+        copy.setTotalQuantity(source.getTotalQuantity());
+        copy.setIsUrgent(source.getIsUrgent());
+        copy.setUrgentReason(source.getUrgentReason());
+        copy.setSalesManagerId(source.getSalesManagerId());
+        copy.setSalesManagerName(source.getSalesManagerName());
+        // 新单草稿状态，独立链路追踪
+        copy.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+        copy.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
+        copy.setRemark("复制自订单[" + source.getOrderNo() + "]"
+                + (source.getRemark() != null ? "\n" + source.getRemark() : ""));
+        int insert = orderMapper.insert(copy);
+        if (insert <= 0) {
+            throw new BusinessException(BusinessExceptionEnum.DB_INSERT_FAILED);
+        }
+
+        // 复制产品明细
+        List<SalesOrderProductVO> items = orderProductService.getListByOrderId(orderId);
+        if (items != null && !items.isEmpty()) {
+            List<SalesOrderProductDTO> dtos = new ArrayList<>();
+            for (SalesOrderProductVO it : items) {
+                SalesOrderProductDTO dto = new SalesOrderProductDTO();
+                dto.setOrderId(copy.getOrderId());
+                dto.setProductId(it.getProductId());
+                dto.setProductCode(it.getProductCode());
+                dto.setProductName(it.getProductName());
+                dto.setQuantity(it.getQuantity());
+                dto.setUnit(it.getUnit());
+                dto.setUnitPrice(it.getUnitPrice());
+                dto.setAmount(it.getAmount());
+                dto.setSpecification(it.getSpecification());
+                dto.setCustomerMaterialNo(it.getCustomerMaterialNo());
+                dto.setLineRemark(it.getLineRemark());
+                dto.setRemark(it.getRemark());
+                dtos.add(dto);
+            }
+            orderProductService.batchAdd(dtos);
+        }
+
+        log.info("订单[{}]复制成功，生成新订单[{}](orderId={})", source.getOrderNo(), copy.getOrderNo(), copy.getOrderId());
+        return copy.getOrderId();
     }
 
     /**

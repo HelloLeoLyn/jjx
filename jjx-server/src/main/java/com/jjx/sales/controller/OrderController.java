@@ -80,6 +80,17 @@ public class OrderController extends BaseController {
     }
 
     /**
+     * 复制订单（终态订单一键重新生成新草稿单）
+     */
+    @Operation(summary = "复制订单（重新生成新草稿单）")
+    @Log(module = "销售订单管理", businessType = BusinessType.INSERT, bizType = "'order'", bizId = "#result.data")
+    @SaCheckPermission("sales:order:add")
+    @PostMapping("/{orderId}/copy")
+    public Result<Long> copyOrder(@PathVariable Long orderId) {
+        return Result.success(orderService.copyOrder(orderId));
+    }
+
+    /**
      * 修改销售订单
      */
     @Operation(summary = "修改销售订单")

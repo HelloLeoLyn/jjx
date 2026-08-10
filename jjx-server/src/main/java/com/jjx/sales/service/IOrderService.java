@@ -80,6 +80,14 @@ public interface IOrderService {
     String generateOrderNo();
 
     /**
+     * 复制订单（终态订单如已取消/已完成可一键生成新草稿单）
+     *
+     * @param orderId 源订单ID
+     * @return 新订单ID
+     */
+    Long copyOrder(Long orderId);
+
+    /**
      * 检查订单号是否存在
      *
      * @param orderNo 订单号

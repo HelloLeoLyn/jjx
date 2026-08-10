@@ -37,6 +37,11 @@ export const orderApi = {
     return request.post<R<number>>('/sales/orders', data)
   },
 
+  /** 复制订单（终态订单一键生成新草稿单） */
+  copyOrder(orderId: number) {
+    return request.post<R<number>>(`/sales/orders/${orderId}/copy`)
+  },
+
   /** 更新订单 */
   updateOrder(data: SalesOrderEditDTO) {
     return request.put<R<void>>(`/sales/orders/${data.orderId}`, data)

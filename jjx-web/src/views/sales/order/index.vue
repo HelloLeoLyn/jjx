@@ -226,6 +226,9 @@
               <!-- 已取消状态 (10) -->
               <template v-else-if="row.orderStatus === 10">
                 <el-button type="info" size="small" disabled> 订单已取消 </el-button>
+                <el-button type="primary" size="small" plain @click="handleCopyOrder(row)">
+                  复制
+                </el-button>
               </template>
 
               <!-- 取消订单按钮（已发货/已完成/已取消不显示） -->
@@ -689,6 +692,28 @@ const handleCancelOrder = async (row: any) => {
   } catch (error) {
     if (error !== 'cancel') {
       console.error('取消订单失败', error)
+    }
+  }
+}
+
+// 复制订单（已取消等终态订单一键重新生成新草稿单）
+const handleCopyOrder = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定复制订单【${row.orderNo}】生成一张新的草稿订单吗？`,
+      '复制订单',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+    )
+    const res: any = await orderApi.copyOrder(row.orderId)
+    if (res?.code === 200) {
+      ElMessage.success(`复制成功，新订单已生成（草稿）`)
+      getList()
+    } else {
+      ElMessage.error(res?.msg || '复制失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('复制订单失败', error)
     }
   }
 }
