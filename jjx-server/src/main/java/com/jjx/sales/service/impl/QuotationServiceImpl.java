@@ -59,6 +59,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final ProductMapper productMapper;
     private final com.jjx.product.service.IProductService productService;
     private final IOrderService orderService;
+    private final com.jjx.sales.mapper.OrderMapper orderMapper;
     private final ISysAttachmentService sysAttachmentService;
     private final RedisSequenceService redisSequenceService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
@@ -79,7 +80,41 @@ public class QuotationServiceImpl implements IQuotationService {
         LambdaQueryWrapper<SalesQuotation> wrapper = buildQueryWrapper(quotation);
         com.baomidou.mybatisplus.core.metadata.IPage<SalesQuotation> result = quotationMapper.selectPage(page, wrapper);
         fillSourceInquiryNo(result.getRecords());
+        fillConvertedOrder(result.getRecords());
         return com.jjx.common.core.page.PageResult.build(result.getRecords(), result.getTotal());
+    }
+
+    /**
+     * 填充转成单信息（DEV：报价单列表展示订单类型——样品单/销售订单/未转）
+     */
+    private void fillConvertedOrder(List<SalesQuotation> quotations) {
+        if (quotations == null || quotations.isEmpty()) {
+            return;
+        }
+        java.util.List<Long> orderIds = quotations.stream()
+                .map(SalesQuotation::getConvertedOrderId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+        if (orderIds.isEmpty()) {
+            return;
+        }
+        try {
+            java.util.Map<Long, com.jjx.sales.domain.entity.SalesOrder> map = orderMapper.selectBatchIds(orderIds).stream()
+                    .collect(java.util.stream.Collectors.toMap(com.jjx.sales.domain.entity.SalesOrder::getOrderId, o -> o, (a, b) -> a));
+            for (SalesQuotation q : quotations) {
+                if (q.getConvertedOrderId() == null) {
+                    continue;
+                }
+                com.jjx.sales.domain.entity.SalesOrder o = map.get(q.getConvertedOrderId());
+                if (o != null) {
+                    q.setConvertedOrderType(o.getOrderType());
+                    q.setConvertedOrderNo(o.getOrderNo());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("填充转成单信息失败: {}", e.getMessage());
+        }
     }
 
     /**

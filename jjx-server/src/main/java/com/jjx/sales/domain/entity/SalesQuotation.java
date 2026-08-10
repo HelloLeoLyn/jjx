@@ -187,6 +187,14 @@ public class SalesQuotation extends BaseEntity {
      */
     private LocalDateTime convertTime;
 
+    /** 转成单类型（非表字段：1销售订单/2样品单，空=未转单） */
+    @TableField(exist = false)
+    private Integer convertedOrderType;
+
+    /** 转成单号（非表字段） */
+    @TableField(exist = false)
+    private String convertedOrderNo;
+
     /** 报价单明细（非表字段，保存/查询时处理） */
     @TableField(exist = false)
     private List<SalesQuotationItem> items;

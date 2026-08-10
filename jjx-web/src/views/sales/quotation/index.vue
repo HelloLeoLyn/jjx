@@ -273,6 +273,22 @@
             </el-tag>
           </template>
         </el-table-column>
+        <!-- 订单类型（转成单：样品单/销售订单/未转） -->
+        <el-table-column label="订单类型" align="center" width="120">
+          <template #default="scope">
+            <el-tag
+              v-if="scope.row.convertedOrderType === 2"
+              type="warning"
+              size="small"
+            >样品单</el-tag>
+            <el-tag
+              v-else-if="scope.row.convertedOrderType === 1"
+              type="success"
+              size="small"
+            >销售订单</el-tag>
+            <span v-else style="color:#c0c4cc">未转单</span>
+          </template>
+        </el-table-column>
         <el-table-column label="币种" align="center" prop="currency" width="80" />
         <el-table-column label="总金额" align="center" prop="totalAmount" width="120">
           <template #default="scope">
