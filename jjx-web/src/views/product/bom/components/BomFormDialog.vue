@@ -114,10 +114,23 @@
 
     <template #footer>
       <div class="dialog-footer">
+        <el-button v-if="formData.items?.length" icon="Printer" @click="printPreviewVisible = true">打印预览</el-button>
         <el-button type="primary" :loading="submitting" @click="submitForm">确 定</el-button>
         <el-button @click="handleCancel">取 消</el-button>
       </div>
     </template>
+
+    <!-- BOM 作业指导书打印预览（57.webp 样式） -->
+    <BomPrintPreview
+      v-model="printPreviewVisible"
+      :items="formData.items"
+      :bom-code="formData.bomCode"
+      :bom-name="formData.bomName"
+      :bom-version="formData.bomVersion || formData.bomVersion"
+      :product-id="formData.productId"
+      :product-code="formData.productCode"
+      :product-name="formData.productName"
+    />
   </el-dialog>
 </template>
 
@@ -128,6 +141,7 @@ import type { FormInstance, FormRules, UploadFile, UploadInstance } from 'elemen
 import { FullScreen, UploadFilled } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
 import BomItemEditor from '@/components/BomItemEditor.vue'
+import BomPrintPreview from './BomPrintPreview.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import type { EngineeringBomFormData, EngineeringBomItem } from '@/types/product/bom'
 import type { ProductItem } from '@/types/product'
@@ -158,6 +172,8 @@ const visible = computed({
 
 // 响应式数据
 const submitting = ref(false)
+// BOM 打印预览弹窗
+const printPreviewVisible = ref(false)
 const activeTab = ref('basic')
 const bomFormRef = ref<FormInstance>()
 const bomItemEditorRef = ref()
