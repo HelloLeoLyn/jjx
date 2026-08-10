@@ -186,7 +186,7 @@ public class QuotationController extends BaseController {
      * 提交报价单审核
      */
     @Operation(summary = "提交报价单审核")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "5")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "5", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/submit-review/{quotationId}")
     public Result<Void> submitReview(@PathVariable Long quotationId,
@@ -198,7 +198,7 @@ public class QuotationController extends BaseController {
      * 审核报价单
      */
     @Operation(summary = "审核报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.APPROVE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "#approved ? 6 : 3")
+    @Log(module = "报价单管理", businessType = BusinessType.APPROVE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "#approved ? 6 : 3", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:approve")
     @PutMapping("/review/{quotationId}")
     public Result<Void> review(@PathVariable Long quotationId,
@@ -222,7 +222,7 @@ public class QuotationController extends BaseController {
      * 更新报价单状态
      */
     @Operation(summary = "更新报价单状态")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "#status")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "#status", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/status/{quotationId}")
     public Result<Void> changeStatus(@PathVariable Long quotationId,
@@ -242,7 +242,7 @@ public class QuotationController extends BaseController {
      * 客户确认报价（独立接口，触发 quotation.confirmed 事件）
      */
     @Operation(summary = "客户确认报价")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "2")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "2", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/confirm/{quotationId}")
     public Result<Void> confirm(@PathVariable Long quotationId,
@@ -254,7 +254,7 @@ public class QuotationController extends BaseController {
      * 客户拒绝报价（独立接口，触发 quotation.rejected 事件）
      */
     @Operation(summary = "客户拒绝报价")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "3")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "3", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/reject/{quotationId}")
     public Result<Void> reject(@PathVariable Long quotationId,

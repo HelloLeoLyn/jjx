@@ -40,7 +40,21 @@
           >
             {{ scope.row.operation }} <el-icon><Download /></el-icon>
           </el-link>
-          <span v-else>{{ formatBusinessType(scope.row.businessType) }}</span>
+          <span v-else>
+            <span>{{ formatBusinessType(scope.row.businessType) }}</span>
+            <div v-if="scope.row.attachments && scope.row.attachments.length" class="op-attachments">
+              <el-link
+                v-for="a in scope.row.attachments"
+                :key="a.id"
+                type="primary"
+                :href="downloadUrl(a.id)"
+                :underline="false"
+                target="_blank"
+                style="margin-right: 8px"
+                >📎 {{ a.fileName }}</el-link
+              >
+            </div>
+          </span>
         </template>
       </el-table-column>
       <el-table-column prop="operator" label="操作人" width="80" />
@@ -93,9 +107,18 @@ const flatOps = computed(() => {
   const list: any[] = []
   for (const node of nodes.value) {
     for (const op of (node.operations || [])) {
+      // 解析操作日志 detail 中的附件（审核提交的图片等），挂到操作行
+      let opAttachments: any[] = []
+      if (op.detail) {
+        try {
+          const d = JSON.parse(op.detail)
+          opAttachments = d.attachments || []
+        } catch { /* ignore */ }
+      }
       list.push({
         ...op,
         module: node.module,
+        attachments: opAttachments,
       })
     }
   }
@@ -221,4 +244,14 @@ async function loadTrace() {
 
 <style scoped>
 .trace-header { margin-bottom: 12px; }
+<style scoped>
+.op-attachments {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+}
+.op-attachments .el-link {
+  font-size: 12px;
+}
 </style>

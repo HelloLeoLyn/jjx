@@ -77,28 +77,29 @@ export const sampleOrderApi = {
   },
 
   // 提交审核
-  submitReview(orderId: number): AxiosPromise<any> {
+  submitReview(orderId: number, attachmentIds?: string): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/submit-review/${orderId}`,
       method: 'put',
+      params: { attachmentIds },
     })
   },
 
   // 审核通过
-  approve(orderId: number, remark?: string): AxiosPromise<any> {
+  approve(orderId: number, remark?: string, attachmentIds?: string): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/approve/${orderId}`,
       method: 'put',
-      params: { remark },
+      params: { remark, attachmentIds },
     })
   },
 
   // 审核驳回
-  rejectReview(orderId: number, remark?: string): AxiosPromise<any> {
+  rejectReview(orderId: number, remark?: string, attachmentIds?: string): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/reject-review/${orderId}`,
       method: 'put',
-      params: { remark },
+      params: { remark, attachmentIds },
     })
   },
 

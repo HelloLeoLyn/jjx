@@ -36,6 +36,7 @@ public class OperLogAspect {
     private final LogSaveService logSaveService;
     private final SpelExpressionParser spelParser = new SpelExpressionParser();
     private final com.jjx.sales.mapper.QuotationMapper quotationMapper;
+    private final com.jjx.system.mapper.SysAttachmentMapper attachmentMapper;
 
     @Around("@annotation(logAnnotation)")
     public Object around(ProceedingJoinPoint point, Log logAnnotation) throws Throwable {
@@ -136,6 +137,31 @@ public class OperLogAspect {
             } catch (Exception e) {
                 log.warn("bizStatus解析失败: {} ({})", logAnnotation.bizStatus(), e.getMessage());
                 operLog.setBizStatus(0);
+            }
+
+            // detail: 附件ID列表（如 "#attachmentIds"）→ 查附件表组装 JSON 写入 detail（链路附件挂操作行）
+            if (!logAnnotation.detail().isEmpty()) {
+                try {
+                    String detailVal = evaluateSpel(spelCtx, logAnnotation.detail());
+                    if (detailVal != null && !detailVal.trim().isEmpty()) {
+                        java.util.List<Long> ids = parseAttachmentIds(detailVal);
+                        if (!ids.isEmpty()) {
+                            java.util.List<com.jjx.system.domain.entity.SysAttachment> atts = attachmentMapper.selectBatchIds(ids);
+                            java.util.List<java.util.Map<String, Object>> attList = new java.util.ArrayList<>();
+                            for (com.jjx.system.domain.entity.SysAttachment a : atts) {
+                                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                                m.put("id", a.getId());
+                                m.put("fileName", a.getFileName());
+                                attList.add(m);
+                            }
+                            if (!attList.isEmpty()) {
+                                operLog.setDetail(JSONUtil.toJsonStr(java.util.Map.of("attachments", attList)));
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("detail解析失败: {}", e.getMessage());
+                }
             }
 
             if (result instanceof Result<?> resultObj) {
@@ -245,5 +271,25 @@ public class OperLogAspect {
             log.warn("SpEL解析失败: expression={}, error={}", expression, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 解析附件ID列表：支持 "1,2,3"、"[1,2,3]"、"1" 格式
+     */
+    private static java.util.List<Long> parseAttachmentIds(String raw) {
+        java.util.List<Long> ids = new java.util.ArrayList<>();
+        String cleaned = raw.replaceAll("[\\[\\]\\s\"]", "");
+        if (cleaned.isEmpty()) {
+            return ids;
+        }
+        for (String part : cleaned.split(",")) {
+            try {
+                if (!part.trim().isEmpty()) {
+                    ids.add(Long.parseLong(part.trim()));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return ids;
     }
 }

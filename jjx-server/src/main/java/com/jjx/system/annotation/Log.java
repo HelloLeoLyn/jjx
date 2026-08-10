@@ -39,4 +39,9 @@ public @interface Log {
      * 对应实体中的 *Status 字段值；支持 SpEL 表达式（如 "#approved ? 6 : 3"）
      */
     String bizStatus() default "0";
+
+    /**
+     * 详情 JSON（SpEL 表达式，如 "#attachmentIds"——附件ID列表，切面自动组装附件名写入 detail）
+     */
+    String detail() default "";
 }

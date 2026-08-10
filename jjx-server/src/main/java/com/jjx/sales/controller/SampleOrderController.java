@@ -87,28 +87,31 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品单提交审核")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "2")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "2", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:edit")
     @PutMapping("/submit-review/{orderId}")
-    public Result<SalesOrder> submitReview(@PathVariable Long orderId) {
+    public Result<SalesOrder> submitReview(@PathVariable Long orderId,
+                                           @RequestParam(required = false) String attachmentIds) {
         return Result.success(sampleOrderService.submitReview(orderId));
     }
 
     @Operation(summary = "样品单审核通过（进入工程打样）")
-    @Log(module = "样品单管理", businessType = BusinessType.APPROVE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3")
+    @Log(module = "样品单管理", businessType = BusinessType.APPROVE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:approve")
     @PutMapping("/approve/{orderId}")
     public Result<SalesOrder> approve(@PathVariable Long orderId,
-                                      @RequestParam(required = false) String remark) {
+                                      @RequestParam(required = false) String remark,
+                                      @RequestParam(required = false) String attachmentIds) {
         return Result.success(sampleOrderService.approveReview(orderId, remark));
     }
 
     @Operation(summary = "样品单审核驳回")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "9")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "9", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:approve")
     @PutMapping("/reject-review/{orderId}")
     public Result<SalesOrder> rejectReview(@PathVariable Long orderId,
-                                           @RequestParam(required = false) String remark) {
+                                           @RequestParam(required = false) String remark,
+                                           @RequestParam(required = false) String attachmentIds) {
         return Result.success(sampleOrderService.rejectReview(orderId, remark));
     }
 
@@ -149,7 +152,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "客户退回样品（多轮迭代）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "9")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "9", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:confirm")
     @PutMapping("/reject-sample/{orderId}")
     public Result<SalesOrder> rejectSample(@PathVariable Long orderId,
@@ -205,7 +208,7 @@ public class SampleOrderController extends BaseController {
      * 工程拒单
      */
     @Operation(summary = "工程拒单")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "2")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "2", detail = "#attachmentIds")
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/reject-engineering/{orderId}")
     public Result<SalesOrder> rejectEngineering(@PathVariable Long orderId,

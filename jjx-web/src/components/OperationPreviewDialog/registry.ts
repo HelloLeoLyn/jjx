@@ -194,7 +194,7 @@ export const sampleOperations: OperationDef[] = [
       docType: 'audit',
       nextSteps: ['审核员审核样品单', '审核通过后进入工程打样'],
     },
-    api: ({ bizId }) => sampleOrderApi.submitReview(bizId),
+    api: ({ bizId, attachmentIds }) => sampleOrderApi.submitReview(bizId, attachmentIds?.length ? attachmentIds.join(',') : undefined),
   },
   {
     key: 'sample.approve',
@@ -212,7 +212,7 @@ export const sampleOperations: OperationDef[] = [
       docType: 'audit',
       nextSteps: ['工程接单', '记录工序进度', '标记样品完成'],
     },
-    api: ({ bizId, values }) => sampleOrderApi.approve(bizId, values.remark || ''),
+    api: ({ bizId, values, attachmentIds }) => sampleOrderApi.approve(bizId, values.remark || '', attachmentIds?.length ? attachmentIds.join(',') : undefined),
   },
   {
     key: 'sample.rejectReview',
@@ -230,7 +230,7 @@ export const sampleOperations: OperationDef[] = [
       docType: 'audit',
       nextSteps: ['销售修改样品单', '重新提交审核'],
     },
-    api: ({ bizId, values }) => sampleOrderApi.rejectReview(bizId, values.remark),
+    api: ({ bizId, values, attachmentIds }) => sampleOrderApi.rejectReview(bizId, values.remark, attachmentIds?.length ? attachmentIds.join(',') : undefined),
   },
   {
     key: 'sample.markReady',
