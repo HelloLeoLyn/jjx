@@ -1061,11 +1061,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         builtBomId = newBom.getBomId();
                         bomAction = "CREATE";
                         details.add("BOM[" + newBom.getBomCode() + "]生成草稿(" + aggMap.size() + "条明细)");
-                        // 回填产品当前BOM版本号
+                        // 回填产品当前BOM版本号+指针（DEV-771：发布校验用 current_bom_id）
                         if (pid != null) {
                             com.jjx.product.domain.entity.Product bomVerUpdate = new com.jjx.product.domain.entity.Product();
                             bomVerUpdate.setProductId(pid);
                             bomVerUpdate.setCurrentBomVersion(newBomVersion);
+                            bomVerUpdate.setCurrentBomId(newBom.getBomId());
                             productMapper.updateById(bomVerUpdate);
                         }
                         transferredVersion = newBomVersion;
@@ -1163,6 +1164,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                             com.jjx.product.domain.entity.Product routingVerUpdate = new com.jjx.product.domain.entity.Product();
                             routingVerUpdate.setProductId(pid);
                             routingVerUpdate.setCurrentRoutingVersion(newRoutingVersion);
+                            routingVerUpdate.setCurrentRouteId(newRouting.getRoutingId());
                             productMapper.updateById(routingVerUpdate);
                         }
                         transferredVersion = newRoutingVersion;
@@ -1524,6 +1526,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         com.jjx.product.domain.entity.Product bomVerUpdate = new com.jjx.product.domain.entity.Product();
                         bomVerUpdate.setProductId(pid);
                         bomVerUpdate.setCurrentBomVersion(newBomVersion);
+                        bomVerUpdate.setCurrentBomId(newBom.getBomId());
                         productMapper.updateById(bomVerUpdate);
                     }
                     transferredVersion = newBomVersion;
@@ -1615,6 +1618,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         com.jjx.product.domain.entity.Product routingVerUpdate = new com.jjx.product.domain.entity.Product();
                         routingVerUpdate.setProductId(pid);
                         routingVerUpdate.setCurrentRoutingVersion(newRoutingVersion);
+                        routingVerUpdate.setCurrentRouteId(newRouting.getRoutingId());
                         productMapper.updateById(routingVerUpdate);
                     }
                     transferredVersion = newRoutingVersion;

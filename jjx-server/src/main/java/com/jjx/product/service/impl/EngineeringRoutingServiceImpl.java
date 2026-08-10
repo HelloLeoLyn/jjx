@@ -156,10 +156,11 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             calculateHours(newRouting.getRoutingId());
         }
 
-        // 5. 同步产品表 current_routing_version
+        // 5. 同步产品表 current_routing_version + 指针（DEV-771：发布校验用 current_route_id）
         com.jjx.product.domain.entity.Product product = productMapper.selectById(oldRouting.getProductId());
         if (product != null) {
             product.setCurrentRoutingVersion(newVersion);
+            product.setCurrentRouteId(newRouting.getRoutingId());
             productMapper.updateById(product);
         }
 

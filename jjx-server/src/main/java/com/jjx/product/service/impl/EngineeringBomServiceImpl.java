@@ -311,6 +311,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 将其他BOM设置为非默认
         setOtherBomNotCurrent(bom.getProductId(), bomId);
 
+        // DEV-771：同步产品 current_bom_id 指针（发布校验用）
+        if (bom.getProductId() != null) {
+            com.jjx.product.domain.entity.Product product = productMapper.selectById(bom.getProductId());
+            if (product != null) {
+                product.setCurrentBomId(bomId);
+                product.setCurrentBomVersion(bom.getVersion() != null ? bom.getVersion() : bom.getBomVersion());
+                productMapper.updateById(product);
+            }
+        }
+
         return true;
     }
 

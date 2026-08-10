@@ -161,18 +161,35 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         }
 
         // 2.5 校验：BOM和路线是否已配置且审批通过
-        if (product.getCurrentBomId() == null) {
-            throw new BusinessException(BusinessExceptionEnum.BOM_NOT_FOUND);
+        // DEV-771：current_bom_id 为空时回退用 is_current=1 的BOM（兼容历史数据/指针未同步场景）
+        Long bomId = product.getCurrentBomId();
+        EngineeringBom bom = null;
+        if (bomId != null) {
+            bom = bomService.getById(bomId);
         }
-        EngineeringBom bom = bomService.getById(product.getCurrentBomId());
+        if (bom == null) {
+            bom = bomService.getOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringBom>()
+                            .eq(EngineeringBom::getProductId, product.getProductId())
+                            .eq(EngineeringBom::getIsCurrent, true)
+                            .last("LIMIT 1"));
+        }
         if (bom == null || !ProductEnums.BomStatus.APPROVED.getValue().equals(bom.getApproveStatus())) {
             throw new BusinessException("当前BOM未审批通过，无法发布产品");
         }
 
-        if (product.getCurrentRouteId() == null) {
-            throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
+        Long routeId = product.getCurrentRouteId();
+        EngineeringRouting routing = null;
+        if (routeId != null) {
+            routing = routingService.getById(routeId);
         }
-        EngineeringRouting routing = routingService.getById(product.getCurrentRouteId());
+        if (routing == null) {
+            routing = routingService.getOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringRouting>()
+                            .eq(EngineeringRouting::getProductId, product.getProductId())
+                            .eq(EngineeringRouting::getIsCurrent, 1)
+                            .last("LIMIT 1"));
+        }
         if (routing == null || !ProductEnums.RouteStatus.APPROVED.getValue().equals(routing.getApproveStatus())) {
             throw new BusinessException("当前工艺路线未审批通过，无法发布产品");
         }
