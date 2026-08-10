@@ -183,6 +183,18 @@
               <el-descriptions-item label="备注" :span="2">{{ detailData.remark || '-' }}</el-descriptions-item>
             </el-descriptions>
 
+            <!-- 产品明细（DEV-781：报价转样品后详情展示） -->
+            <el-divider content-position="left">产品明细</el-divider>
+            <el-table v-if="detailProducts.length" :data="detailProducts" size="small" border stripe style="width:100%">
+              <el-table-column prop="productCode" label="产品编码" width="120" />
+              <el-table-column prop="productName" label="产品名称" min-width="140" />
+              <el-table-column prop="specification" label="规格/要求" min-width="140" />
+              <el-table-column prop="quantity" label="数量" width="80" align="center" />
+              <el-table-column prop="unit" label="单位" width="70" align="center" />
+              <el-table-column prop="unitPrice" label="单价" width="90" align="right" />
+            </el-table>
+            <div v-else style="color:#999;font-size:13px;padding:8px 0">暂无产品明细</div>
+
             <!-- 相关文档 -->
             <el-divider content-position="left">相关文档</el-divider>
             <AttachmentPanel
@@ -431,6 +443,18 @@ function openWorkbench(row: any) {
   router.push({ path: '/engineering-workbench/workbench', query: { orderId: row.orderId } })
 }
 const detailData = ref<any>(null)
+// 详情产品明细（DEV-781）
+const detailProducts = ref<any[]>([])
+
+// 加载样品单产品明细
+async function loadDetailProducts(orderId: number) {
+  try {
+    const res = await sampleOrderApi.getProducts(orderId)
+    detailProducts.value = res?.data || []
+  } catch {
+    detailProducts.value = []
+  }
+}
 
 // ==================== 工程区数据 ====================
 const engUploadRef = ref()
@@ -783,6 +807,7 @@ async function showDetail(row: any) {
   detailTab.value = 'basic'
   detailVisible.value = true
   loadRounds(row.orderId)
+  loadDetailProducts(row.orderId) // DEV-781：加载产品明细
 
   // 初始化工程表单
   engineeringForm.note = row.engineeringNote || ''
@@ -806,6 +831,7 @@ function onDetailOpen() {
       costForm.cost = res.data.sampleCost || 0
       costForm.workHours = res.data.sampleWorkHours || 0
       loadRounds(detailData.value.orderId)
+      loadDetailProducts(detailData.value.orderId) // DEV-781：加载产品明细
     }).catch(() => {})
   }
 }

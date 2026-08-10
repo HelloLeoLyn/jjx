@@ -37,6 +37,14 @@ export const sampleOrderApi = {
     })
   },
 
+  // 样品单产品明细（DEV-781：报价转样品后详情展示）
+  getProducts(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/products/${orderId}`,
+      method: 'get',
+    })
+  },
+
   // 提交审核
   submitReview(orderId: number): AxiosPromise<any> {
     return request({
