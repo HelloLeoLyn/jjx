@@ -317,7 +317,7 @@
       @success="handleValidationSuccess"
       @cancel="handleValidationCancel"
     />
-    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" :bizType="'order'" :bizId="currentBizId" />
   </div>
 
 </template>
@@ -781,8 +781,10 @@ onMounted(() => {
 // 链路追踪抽屉
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')
+const currentBizId = ref('')
 function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''
+  currentBizId.value = row.orderId ? String(row.orderId) : ''
   traceDrawerVisible.value = true
 }
 
