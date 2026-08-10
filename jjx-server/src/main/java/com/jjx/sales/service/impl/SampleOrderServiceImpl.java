@@ -17,6 +17,8 @@ import com.jjx.sales.mapper.SalesSampleBomMapper;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.service.LogSaveService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +61,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.engineering.mapper.RoutingItemMapper routingItemMapper;
     private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
     private final com.jjx.product.mapper.EngineeringFilmMapper engineeringFilmMapper;
+    private final LogSaveService logSaveService;
 
     // ============ 状态更新辅助 ============
 
@@ -2084,7 +2087,35 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 + (totalHours.compareTo(java.math.BigDecimal.ZERO) > 0
                     ? "\n【打样工时】" + totalHours + "小时" : ""));
 
+        // 继承样品单链路 traceId（转量产生成的订单可查看完整流水/链路追踪）
+        standardOrder.setTraceId(sampleOrder.getTraceId());
+
         orderMapper.insert(standardOrder);
+
+        // 订单首条操作日志（带 traceId，供销售订单“查看流水”链路追踪）
+        try {
+            SysOperLog operLog = new SysOperLog();
+            operLog.setModule("订单管理");
+            operLog.setBusinessType(2); // 修改/转换
+            operLog.setOperUrl("/sales/sample-order/convert-to-production/" + orderId);
+            operLog.setBizType("order");
+            operLog.setBizId(String.valueOf(standardOrder.getOrderId()));
+            operLog.setTraceId(sampleOrder.getTraceId());
+            operLog.setBizStatus(1); // 订单草稿
+            operLog.setStatus(1);
+            operLog.setOperParam("{\"orderNo\":\"" + standardOrder.getOrderNo()
+                    + "\",\"sourceSample\":\"" + sampleOrder.getOrderNo() + "\"}");
+            operLog.setCreateTime(LocalDateTime.now());
+            try {
+                operLog.setUserId(SecurityUtils.getUserId());
+                operLog.setUsername(SecurityUtils.getUsername());
+                operLog.setRealName(SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(operLog);
+        } catch (Exception e) {
+            log.warn("记录订单转量产操作日志失败: {}", e.getMessage());
+        }
 
         // 复制产品明细
         copyOrderProducts(sampleOrder.getOrderId(), standardOrder.getOrderId());

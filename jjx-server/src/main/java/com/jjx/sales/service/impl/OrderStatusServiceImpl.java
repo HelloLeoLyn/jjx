@@ -72,6 +72,17 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         log.setOperParam(remark);
         log.setStatus(status);
         log.setUsername(SecurityUtils.getUsername());
+        // 链路追踪：从订单记录取 trace_id（转量产生成的订单已继承样品单链路）
+        try {
+            com.jjx.sales.domain.entity.SalesOrder so = salesOrderMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesOrder>()
+                            .eq(com.jjx.sales.domain.entity.SalesOrder::getOrderNo, orderNo)
+                            .last("LIMIT 1"));
+            if (so != null && so.getTraceId() != null && !so.getTraceId().isEmpty()) {
+                log.setTraceId(so.getTraceId());
+            }
+        } catch (Exception ignored) {
+        }
         logSaveService.saveOperLog(log);
     }
     @Event("order.submitted")
