@@ -82,6 +82,18 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("采购订单不存在");
         }
 
+        // 091定稿：已取消(2)/已拒绝(5)的订单不能付款
+        Integer approvalStatus = order.getApprovalStatus();
+        if (approvalStatus != null && (approvalStatus == 2 || approvalStatus == 5)) {
+            throw new BusinessException("订单已取消/已拒绝，不能付款");
+        }
+        // 付款不拦收货（允许预付款/定金），但累计付款≤订单金额
+        if (dto.getPaymentAmount() != null && order.getTotalAmount() != null
+                && dto.getPaymentAmount().compareTo(order.getTotalAmount()) > 0) {
+            throw new BusinessException(PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS.getMessage()
+                    + "（订单金额" + order.getTotalAmount().stripTrailingZeros().toPlainString() + "）");
+        }
+
         PurchasePayment payment = new PurchasePayment();
         copyProperties(dto, payment);
 
