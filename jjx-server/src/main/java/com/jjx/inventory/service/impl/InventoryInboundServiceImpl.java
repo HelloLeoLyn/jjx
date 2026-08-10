@@ -70,6 +70,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryAlertService alertService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final ProductStockService productStockService;
+    private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -680,6 +681,22 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
         } catch (Exception e) {
             log.warn("完工入库同步产品库存失败（不影响入库主流程）: {}", e.getMessage());
+        }
+
+        // 057定稿：产品入库确认成功后回写订单 produced_quantity += 入库量（账实最准，不是完工就写）
+        try {
+            if (prodOrder.getSalesOrderId() != null) {
+                com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(prodOrder.getSalesOrderId());
+                if (salesOrder != null && inboundItem.getQuantity() != null) {
+                    int produced = salesOrder.getProducedQuantity() != null ? salesOrder.getProducedQuantity() : 0;
+                    salesOrder.setProducedQuantity(produced + inboundItem.getQuantity().intValue());
+                    salesOrderMapper.updateById(salesOrder);
+                    log.info("完工入库回写订单 produced_quantity: orderId={}, 本次+{}，累计={}",
+                            prodOrder.getSalesOrderId(), inboundItem.getQuantity().intValue(), salesOrder.getProducedQuantity());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("完工入库回写订单 produced_quantity 失败（不影响入库主流程）: {}", e.getMessage());
         }
 
         log.info("生产完工入库完成: workOrderId={}, inboundId={}", workOrderId, order.getInboundId());
