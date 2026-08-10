@@ -82,4 +82,32 @@ public enum OrderStatusEnum {
     public boolean isReviewable() {
         return this == PENDING_REVIEW || this == REVIEWING;
     }
+
+    /**
+     * 是否可客户确认（已审核状态可确认）
+     */
+    public boolean isConfirmable() {
+        return this == APPROVED;
+    }
+
+    /**
+     * 是否可取消（状态机中可流转到已取消的状态）
+     */
+    public boolean isCancellable() {
+        return TRANSITIONS.getOrDefault(this, Collections.emptySet()).contains(CANCELLED);
+    }
+
+    /**
+     * 是否为终态
+     */
+    public boolean isFinal() {
+        return this == COMPLETED || this == CANCELLED;
+    }
+
+    /**
+     * 是否为进行中状态（非草稿、非终态）
+     */
+    public boolean isInProgress() {
+        return this != DRAFT && !isFinal();
+    }
 }

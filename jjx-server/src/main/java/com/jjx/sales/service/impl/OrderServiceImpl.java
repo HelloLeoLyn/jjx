@@ -31,7 +31,6 @@ import com.jjx.sales.domain.vo.OrderReferValidationVO;
 import com.jjx.sales.domain.vo.SalesOrderProductVO;
 import com.jjx.sales.domain.vo.SalesOrderVO;
 import com.jjx.common.utils.pdf.PdfDocBuilder;
-import com.jjx.sales.enums.OrderStatus;
 import com.jjx.sales.enums.OrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.service.ICustomerService;
@@ -207,7 +206,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 检查订单状态，已确认或生产中的订单不能删除
-        if (order.getOrderStatus() >= 2) {
+        if (order.getOrderStatus() >= OrderStatusEnum.PENDING_REVIEW.getCode()) {
             throw new BusinessException("已确认或生产中的订单不能删除");
         }
 
@@ -400,12 +399,12 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有草稿状态的订单可以审核
-        if (order.getOrderStatus() != 1) {
+        if (order.getOrderStatus() != OrderStatusEnum.DRAFT.getCode()) {
             throw new BusinessException("只有草稿状态的订单可以审核");
         }
 
         // 更新审核信息
-        order.setOrderStatus(2); // 已确认状态
+        order.setOrderStatus(OrderStatusEnum.PENDING_REVIEW.getCode()); // 待审核
 
         return orderMapper.updateById(order);
     }
@@ -470,7 +469,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有草稿状态的订单可以提交审核
-        if (order.getOrderStatus() != 1) {
+        if (order.getOrderStatus() != OrderStatusEnum.DRAFT.getCode()) {
             throw new BusinessException("只有草稿状态的订单可以提交审核");
         }
 
@@ -478,7 +477,7 @@ public class OrderServiceImpl implements IOrderService {
         validateOrderForReview(order);
 
         // 更新状态为待审核（这里假设状态2是待审核）
-        return orderMapper.updateOrderStatus(orderId, OrderStatus.PENDING_REVIEW.getCode());
+        return orderMapper.updateOrderStatus(orderId, OrderStatusEnum.PENDING_REVIEW.getCode());
     }
 
     /**
@@ -493,12 +492,12 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有已审核的订单可以客户确认
-        if (order.getOrderStatus() != 2) {
+        if (order.getOrderStatus() != OrderStatusEnum.APPROVED.getCode()) {
             throw new BusinessException("只有已审核的订单可以客户确认");
         }
 
         // 更新状态为已确认
-        order.setOrderStatus(3);
+        order.setOrderStatus(OrderStatusEnum.CONFIRMED.getCode());
         // 这里可以添加确认人信息到备注中
         String newRemark = order.getRemark() + "\n客户确认人：" + confirmedBy + "，确认时间：" + LocalDateTime.now();
         order.setRemark(newRemark);
@@ -527,7 +526,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有已确认的订单可以创建产品实例
-        if (order.getOrderStatus() != 3) {
+        if (order.getOrderStatus() != OrderStatusEnum.CONFIRMED.getCode()) {
             throw new BusinessException("只有已确认的订单可以创建产品实例");
         }
 
@@ -598,7 +597,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 更新订单状态为生产中(4)
-        order.setOrderStatus(4);
+        order.setOrderStatus(OrderStatusEnum.IN_PRODUCTION.getCode());
         return orderMapper.updateById(order);
     }
 
@@ -828,11 +827,11 @@ public class OrderServiceImpl implements IOrderService {
         long totalCount = allOrders.size();
         stats.put("totalCount", totalCount);
         stats.put("totalAmount", allOrders.stream().filter(o -> o.getTotalAmount() != null).mapToDouble(o -> o.getTotalAmount().doubleValue()).sum());
-        stats.put("draftCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.DRAFT.getCode()).count());
-        stats.put("pendingCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.PENDING_REVIEW.getCode()).count());
-        stats.put("approvedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.APPROVED.getCode()).count());
-        stats.put("completedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.COMPLETED.getCode()).count());
-        stats.put("cancelledCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatus.CANCELLED.getCode()).count());
+        stats.put("draftCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.DRAFT.getCode()).count());
+        stats.put("pendingCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.PENDING_REVIEW.getCode()).count());
+        stats.put("approvedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.APPROVED.getCode()).count());
+        stats.put("completedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.COMPLETED.getCode()).count());
+        stats.put("cancelledCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.CANCELLED.getCode()).count());
         return stats;
     }
 
@@ -950,35 +949,19 @@ public class OrderServiceImpl implements IOrderService {
      * 验证状态转换是否合法
      */
     private static void validateStatusTransition(Integer currentStatus, Integer newStatus) {
-        // 状态转换规则：
-        // 1: 草稿 -> 2: 已确认
-        // 2: 已确认 -> 3: 生产中
-        // 3: 生产中 -> 4: 已发货
-        // 4: 已发货 -> 5: 已完成
-        // 任何状态 -> 6: 已取消
-
-        if (newStatus == 6) {
-            // 任何状态都可以取消
+        // 统一使用 OrderStatusEnum 状态机校验（DEV-024 两套枚举统一后）
+        OrderStatusEnum current = OrderStatusEnum.getByCodeSafe(currentStatus).orElse(null);
+        OrderStatusEnum target = OrderStatusEnum.getByCodeSafe(newStatus).orElse(null);
+        if (current == null || target == null) {
+            throw new BusinessException("无效的订单状态：当前=" + currentStatus + " 目标=" + newStatus);
+        }
+        // 任何状态都可以取消
+        if (target == OrderStatusEnum.CANCELLED) {
             return;
         }
-
-        if (currentStatus == 1 && newStatus == 2) {
-            return; // 草稿 -> 已确认
+        if (!current.canTransitionTo(target)) {
+            throw new BusinessException("状态转换不合法：从[" + current.getName() + "]转换到[" + target.getName() + "]");
         }
-
-        if (currentStatus == 2 && newStatus == 3) {
-            return; // 已确认 -> 生产中
-        }
-
-        if (currentStatus == 3 && newStatus == 4) {
-            return; // 生产中 -> 已发货
-        }
-
-        if (currentStatus == 4 && newStatus == 5) {
-            return; // 已发货 -> 已完成
-        }
-
-        throw new BusinessException("状态转换不合法：从状态" + currentStatus + "转换到状态" + newStatus);
     }
 
     /**

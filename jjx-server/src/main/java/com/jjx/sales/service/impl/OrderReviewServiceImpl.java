@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.sales.domain.entity.OrderReviewRecord;
 import com.jjx.sales.domain.entity.SalesOrder;
-import com.jjx.sales.enums.OrderStatus;
+import com.jjx.sales.enums.OrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.OrderReviewRecordMapper;
 import com.jjx.sales.service.IOrderReviewService;
@@ -50,7 +50,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         record.setReviewStage(1); // 提交审核阶段
         record.setStageName("提交审核");
         record.setPreviousStatus(order.getOrderStatus());
-        record.setCurrentStatus(OrderStatus.PENDING_REVIEW.getCode());
+        record.setCurrentStatus(OrderStatusEnum.PENDING_REVIEW.getCode());
         record.setReviewerId(submitterId);
         record.setReviewerName(submitterName);
         record.setReviewerRole("提交人");
@@ -67,7 +67,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         reviewRecordMapper.insert(record);
 
         // 更新订单状态
-        updateOrderStatus(orderId, OrderStatus.PENDING_REVIEW.getCode());
+        updateOrderStatus(orderId, OrderStatusEnum.PENDING_REVIEW.getCode());
 
         log.info("订单 {} 已提交审核，提交人：{}", orderId, submitterName);
         return record.getRecordId();
@@ -94,7 +94,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         record.setReviewStage(2); // 开始审核阶段
         record.setStageName("开始审核");
         record.setPreviousStatus(order.getOrderStatus());
-        record.setCurrentStatus(OrderStatus.REVIEWING.getCode());
+        record.setCurrentStatus(OrderStatusEnum.REVIEWING.getCode());
         record.setReviewerId(reviewerId);
         record.setReviewerName(reviewerName);
         record.setReviewerRole(reviewerRole);
@@ -104,7 +104,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         reviewRecordMapper.insert(record);
 
         // 更新订单状态
-        updateOrderStatus(orderId, OrderStatus.REVIEWING.getCode());
+        updateOrderStatus(orderId, OrderStatusEnum.REVIEWING.getCode());
 
         log.info("订单 {} 开始审核，审核人：{}", orderId, reviewerName);
         return record.getRecordId();
@@ -152,7 +152,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         record.setReviewStage(3); // 审核通过阶段
         record.setStageName("审核通过");
         record.setPreviousStatus(order.getOrderStatus());
-        record.setCurrentStatus(OrderStatus.APPROVED.getCode());
+        record.setCurrentStatus(OrderStatusEnum.APPROVED.getCode());
         record.setReviewerId(reviewerId);
         record.setReviewerName(reviewerName);
         record.setReviewerRole("审核人");
@@ -165,7 +165,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         reviewRecordMapper.insert(record);
 
         // 更新订单状态
-        updateOrderStatus(orderId, OrderStatus.APPROVED.getCode());
+        updateOrderStatus(orderId, OrderStatusEnum.APPROVED.getCode());
 
         log.info("订单 {} 审核通过，审核人：{}", orderId, reviewerName);
         return record.getRecordId();
@@ -213,7 +213,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         record.setReviewStage(4); // 审核驳回阶段
         record.setStageName("审核驳回");
         record.setPreviousStatus(order.getOrderStatus());
-        record.setCurrentStatus(OrderStatus.REJECTED.getCode());
+        record.setCurrentStatus(OrderStatusEnum.REJECTED.getCode());
         record.setReviewerId(reviewerId);
         record.setReviewerName(reviewerName);
         record.setReviewerRole("审核人");
@@ -227,7 +227,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         reviewRecordMapper.insert(record);
 
         // 更新订单状态
-        updateOrderStatus(orderId, OrderStatus.REJECTED.getCode());
+        updateOrderStatus(orderId, OrderStatusEnum.REJECTED.getCode());
 
         log.info("订单 {} 审核驳回，审核人：{}，原因：{}", orderId, reviewerName, rejectReason);
         return record.getRecordId();
@@ -273,7 +273,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         record.setReviewStage(5); // 退回修改阶段
         record.setStageName("退回修改");
         record.setPreviousStatus(order.getOrderStatus());
-        record.setCurrentStatus(OrderStatus.DRAFT.getCode());
+        record.setCurrentStatus(OrderStatusEnum.DRAFT.getCode());
         record.setReviewerId(reviewerId);
         record.setReviewerName(reviewerName);
         record.setReviewerRole("审核人");
@@ -287,7 +287,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         reviewRecordMapper.insert(record);
 
         // 更新订单状态
-        updateOrderStatus(orderId, OrderStatus.DRAFT.getCode());
+        updateOrderStatus(orderId, OrderStatusEnum.DRAFT.getCode());
 
         log.info("订单 {} 退回修改，审核人：{}，原因：{}", orderId, reviewerName, returnReason);
         return record.getRecordId();
@@ -361,7 +361,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         record.setReviewStage(7); // 客户确认阶段
         record.setStageName("客户确认");
         record.setPreviousStatus(order.getOrderStatus());
-        record.setCurrentStatus(OrderStatus.CONFIRMED.getCode());
+        record.setCurrentStatus(OrderStatusEnum.CONFIRMED.getCode());
         record.setReviewerId(customerId);
         record.setReviewerName(customerName);
         record.setReviewerRole("客户");
@@ -384,7 +384,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         orderMapper.updateById(confirmUpdate);
 
         // 更新订单状态
-        updateOrderStatus(orderId, OrderStatus.CONFIRMED.getCode());
+        updateOrderStatus(orderId, OrderStatusEnum.CONFIRMED.getCode());
 
         log.info("订单 {} 客户确认，客户：{}", orderId, customerName);
         return record.getRecordId();
@@ -400,7 +400,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         SalesOrder order = getOrderById(orderId);
 
         // 检查订单是否可取消
-        OrderStatus currentStatus = OrderStatus.getByCode(order.getOrderStatus());
+        OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
         if (!currentStatus.isCancellable()) {
             throw new BusinessException("订单当前状态不可取消");
         }
@@ -426,7 +426,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         record.setReviewStage(8); // 取消审核阶段
         record.setStageName("取消审核");
         record.setPreviousStatus(order.getOrderStatus());
-        record.setCurrentStatus(OrderStatus.CANCELLED.getCode());
+        record.setCurrentStatus(OrderStatusEnum.CANCELLED.getCode());
         record.setReviewerId(cancellerId);
         record.setReviewerName(cancellerName);
         record.setReviewerRole("取消人");
@@ -438,7 +438,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         reviewRecordMapper.insert(record);
 
         // 更新订单状态
-        updateOrderStatus(orderId, OrderStatus.CANCELLED.getCode());
+        updateOrderStatus(orderId, OrderStatusEnum.CANCELLED.getCode());
 
         log.info("订单 {} 审核取消，取消人：{}，原因：{}", orderId, cancellerName, cancelReason);
         return record.getRecordId();
@@ -542,7 +542,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
     public boolean canSubmitForReview(Long orderId) {
         try {
             SalesOrder order = getOrderById(orderId);
-            OrderStatus status = OrderStatus.getByCode(order.getOrderStatus());
+            OrderStatusEnum status = OrderStatusEnum.getByCode(order.getOrderStatus());
             return status.isSubmittable();
         } catch (Exception e) {
             log.error("检查订单是否可提交审核失败", e);
@@ -557,7 +557,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
     public boolean canReviewOrder(Long orderId, Long reviewerId) {
         try {
             SalesOrder order = getOrderById(orderId);
-            OrderStatus status = OrderStatus.getByCode(order.getOrderStatus());
+            OrderStatusEnum status = OrderStatusEnum.getByCode(order.getOrderStatus());
 
             if (!status.isReviewable()) {
                 return false;
@@ -579,7 +579,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
     public boolean canConfirmByCustomer(Long orderId, Long customerId) {
         try {
             SalesOrder order = getOrderById(orderId);
-            OrderStatus status = OrderStatus.getByCode(order.getOrderStatus());
+            OrderStatusEnum status = OrderStatusEnum.getByCode(order.getOrderStatus());
 
             if (!status.isConfirmable()) {
                 return false;
@@ -761,7 +761,7 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
     @Override
     public Object getReviewPermissions(Long orderId, Long userId) {
         SalesOrder order = getOrderById(orderId);
-        OrderStatus status = OrderStatus.getByCode(order.getOrderStatus());
+        OrderStatusEnum status = OrderStatusEnum.getByCode(order.getOrderStatus());
 
         Map<String, Boolean> permissions = new HashMap<>();
         permissions.put("canSubmit", status.isSubmittable());

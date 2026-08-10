@@ -88,12 +88,18 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
     @Override
     public void checkOrderShortage(Long orderId) {
+        // 兼容调用（发送确认/客户确认自动触发）：忽略明细
+        checkOrderShortageWithDetail(orderId);
+    }
+
+    @Override
+    public java.util.List<java.util.Map<String, Object>> checkOrderShortageWithDetail(Long orderId) {
         log.info("订单齐套检查开始: orderId={}", orderId);
         // 1. 查订单（拿订单号）
         SalesOrder order = orderMapper.selectById(orderId);
         if (order == null) {
             log.warn("订单不存在，跳过齐套检查: {}", orderId);
-            return;
+            return new java.util.ArrayList<>();
         }
         String orderNo = order.getOrderNo();
 
@@ -109,7 +115,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                         .eq(SalesOrderProduct::getOrderId, orderId));
         if (products == null || products.isEmpty()) {
             log.info("订单{}无明细，跳过齐套检查", orderNo);
-            return;
+            return new java.util.ArrayList<>();
         }
 
         // 4. 逐产品按 BOM 算料，汇总物料需求（需求 = Σ产品数量 × BOM用量 × (1+损耗率/100)）
@@ -148,19 +154,44 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             }
         }
 
-        // 5. 对比可用库存，缺口生成预警
+        // 5. 对比可用库存，缺口生成预警（DEV：扣除在途采购量，口径与采购建议一致）
+        java.util.Map<Long, java.math.BigDecimal> inTransitMap = new java.util.HashMap<>();
+        try {
+            java.util.List<java.util.Map<String, Object>> transitRows = purchaseOrderItemMapper.selectInTransitByMaterial();
+            for (java.util.Map<String, Object> row : transitRows) {
+                Object mid = row.get("material_id");
+                Object qty = row.get("in_transit");
+                if (mid != null && qty != null) {
+                    inTransitMap.put(((Number) mid).longValue(), new BigDecimal(qty.toString()));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询在途采购量失败: {}", e.getMessage());
+        }
+        java.util.List<java.util.Map<String, Object>> detailList = new java.util.ArrayList<>();
         int shortageCount = 0;
+        int coveredCount = 0;
         for (Map.Entry<Long, BigDecimal> entry : demandMap.entrySet()) {
             Long materialId = entry.getKey();
             BigDecimal demand = entry.getValue();
             InventoryStock stock = stockMapper.selectByMaterialId(materialId);
             BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
                     ? stock.getAvailableQuantity() : BigDecimal.ZERO;
-            BigDecimal gap = demand.subtract(available);
-            if (gap.compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal inTransit = inTransitMap.getOrDefault(materialId, BigDecimal.ZERO);
+            BigDecimal actualGap = demand.subtract(available).subtract(inTransit);
+            if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
+                // 在途已覆盖：不再预警（销售可见在途覆盖情况，避免重复采购）
+                if (demand.subtract(available).compareTo(BigDecimal.ZERO) > 0) {
+                    coveredCount++;
+                }
+                continue;
+            }
 
             String msg = "订单[" + orderNo + "]缺料：物料[" + codeMap.get(materialId) + "] "
-                    + nameMap.get(materialId) + " 需求" + demand + " 可用" + available + " 缺口" + gap;
+                    + nameMap.get(materialId) + " 需求" + demand.stripTrailingZeros().toPlainString()
+                    + " 可用" + available.stripTrailingZeros().toPlainString()
+                    + (inTransit.compareTo(BigDecimal.ZERO) > 0 ? " 在途" + inTransit.stripTrailingZeros().toPlainString() : "")
+                    + " 实际缺口" + actualGap.stripTrailingZeros().toPlainString();
             InventoryAlertLog alert = new InventoryAlertLog();
             alert.setAlertType("order_shortage");
             alert.setAlertLevel("warning");
@@ -169,11 +200,21 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setMaterialCode(codeMap.get(materialId));
             alert.setMaterialName(nameMap.get(materialId));
             alert.setCurrentStock(available);
-            alert.setSuggestion("建议补货 " + gap);
+            alert.setSuggestion("建议补货 " + actualGap.stripTrailingZeros().toPlainString());
             alert.setAlertMessage(msg);
             alert.setAlertTime(LocalDateTime.now());
             alertLogMapper.insert(alert);
             shortageCount++;
+
+            java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("materialId", materialId);
+            item.put("materialCode", codeMap.get(materialId));
+            item.put("materialName", nameMap.get(materialId));
+            item.put("demand", demand);
+            item.put("available", available);
+            item.put("inTransit", inTransit);
+            item.put("actualGap", actualGap);
+            detailList.add(item);
         }
         // 缺料联动（DEV-573 8-04）：触发 stock.shortage 事件通知采购/计划角色（配置表 target_role 控制）
         if (shortageCount > 0) {
@@ -188,7 +229,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 log.warn("订单缺料事件联动失败: {}", e.getMessage());
             }
         }
-        log.info("订单{}齐套检查完成：缺料{}条，无BOM产品{}个", orderNo, shortageCount, noBomCount);
+        log.info("订单{}齐套检查完成：缺料{}条，在途已覆盖{}条，无BOM产品{}个", orderNo, shortageCount, coveredCount, noBomCount);
+        return detailList;
     }
 
     @Override
