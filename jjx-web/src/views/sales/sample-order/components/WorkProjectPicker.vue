@@ -11,45 +11,35 @@
       />
     </div>
 
-    <!-- 第一步：项目结构（多选筛选，仅用于归类浏览，不限制选工序） -->
-    <div class="picker-step-label"><b>1</b> 项目结构（可多选，不选=全部）</div>
-    <div class="picker-structs">
-      <div
+    <!-- 项目结构 Tab（工序列表在 tab 内容区内，默认面板） -->
+    <el-tabs v-model="activeStructTab" type="border-card" size="small" class="struct-tabs">
+      <el-tab-pane
         v-for="s in categoryOptions"
         :key="s.itemValue"
-        class="struct-btn"
-        :class="{ active: activeStruct === s.itemValue }"
-        @click="setStruct(s.itemValue)"
+        :label="`${s.label}（${groupCount(s.itemValue)}）`"
+        :name="s.itemValue"
       >
-        <span class="struct-name">{{ s.label }}</span>
-        <span class="struct-count">{{ groupCount(s.itemValue) }}</span>
-      </div>
-    </div>
-
-    <!-- 第二步：工序多选 -->
-    <div class="picker-step-label"><b>2</b> 勾选作业项目（可多选）</div>
-    <div class="picker-grid">
-      <div
-        v-for="p in filteredProcesses"
-        :key="p.processId"
-        class="proc-item"
-        :class="{ selected: isSelected(p.processId) }"
-        draggable="true"
-        @click="toggle(p)"
-        @dragstart="onDragStart($event, p)"
-        title="拖拽到右侧工序卡片"
-      >
-        <SvgIcon v-if="p.icon" :name="p.icon" :size="26" />
-        <span v-else class="proc-emoji">📦</span>
-        <span class="proc-name">{{ p.processName }}</span>
-        <span class="proc-type">{{ typeLabel(p.processType) }}</span>
-      </div>
-      <el-empty
-        v-if="!filteredProcesses.length"
-        description="该结构下暂无作业项目"
-        :image-size="60"
-      />
-    </div>
+        <div class="picker-grid">
+          <template v-for="p in processes" :key="p.processId">
+            <div
+              v-if="p.processCategory === s.itemValue && (!searchKey || (p.processName || '').includes(searchKey))"
+              class="proc-item"
+              :class="{ selected: isSelected(p.processId) }"
+              draggable="true"
+              @click="toggle(p)"
+              @dragstart="onDragStart($event, p)"
+              title="拖拽到右侧工序卡片"
+            >
+              <SvgIcon v-if="p.icon" :name="p.icon" :size="26" />
+              <span v-else class="proc-emoji">📦</span>
+              <span class="proc-name">{{ p.processName }}</span>
+              <span class="proc-type">{{ typeLabel(p.processType) }}</span>
+            </div>
+          </template>
+          <el-empty v-if="!groupCount(s.itemValue)" description="该结构下暂无作业项目" :image-size="60" />
+        </div>
+      </el-tab-pane>
+    </el-tabs>
 
     <!-- 底部 -->
     <div class="picker-footer">
@@ -60,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { useDict } from '@/composables/useDict'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
@@ -79,7 +69,18 @@ const emit = defineEmits<{
 const { options: categoryOptions } = useDict('process_category')
 const { options: typeOptions } = useDict('process_type')
 
-const activeStruct = ref('')
+const activeStructTab = ref('')
+
+// 默认选中第一个结构（面板）；字典加载后设置
+watch(
+  () => categoryOptions.value,
+  (opts) => {
+    if (!activeStructTab.value && opts && opts.length) {
+      activeStructTab.value = opts[0].itemValue
+    }
+  },
+  { immediate: true }
+)
 const searchKey = ref('')
 const processes = ref<StandardProcessItem[]>([])
 const loading = ref(false)
@@ -88,22 +89,11 @@ function typeLabel(value: string): string {
   return typeOptions.value.find((i) => i.itemValue === value)?.label || value || ''
 }
 
-// 结构单选：点击选中，再点取消（不选=全部）
-function setStruct(value: string) {
-  activeStruct.value = activeStruct.value === value ? '' : value
-}
+// Tab 切换即筛选（不再需要 setStruct 点击切换）
 
 function groupCount(struct: string): number {
   return processes.value.filter((p) => p.processCategory === struct).length
 }
-
-const filteredProcesses = computed(() => {
-  return processes.value.filter((p) => {
-    if (activeStruct.value && p.processCategory !== activeStruct.value) return false
-    if (searchKey.value && !(p.processName || '').includes(searchKey.value)) return false
-    return true
-  })
-})
 
 // 已选作业项目详情（确认时带回给父组件）
 const selectedItems = computed(() =>
@@ -298,6 +288,26 @@ onMounted(loadProcesses)
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* 项目结构 Tab（2026-08-10 按钮网格改 Tab） */
+.struct-tabs {
+  margin-bottom: 12px;
+}
+
+.struct-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.struct-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+}
+
+.struct-tabs :deep(.el-tabs__item) {
+  padding: 0 10px;
+  height: 32px;
+  line-height: 32px;
+  font-size: 12px;
 }
 
 .picker-count {
