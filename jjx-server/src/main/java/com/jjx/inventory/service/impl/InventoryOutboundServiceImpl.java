@@ -564,22 +564,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 5. 创建出库单明细
         int sort = 1;
         BigDecimal totalQty = BigDecimal.ZERO;
-        // DEV-651：生成领料单前先做库存预检，不足则抛异常（由 startOrder 捕获记录，避免"工单已开工但领料失败"无人知晓）
-        List<String> shortageMsgs = new java.util.ArrayList<>();
+        // 045定稿：领料预检按本次领料数量查可用量，不足允许部分领料开工（不再全量拦截）
+        // 首领单按可用量部分领，剩余靠追加领料(033 createProductionPick)补
+        java.util.Map<Long, BigDecimal> availableMap = new java.util.HashMap<>();
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
-
-            BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
-                    ? bomItem.getBaseQty() : BigDecimal.ONE;
-            BigDecimal qtyNeeded = bomItem.getQuantity()
-                    .multiply(prodOrder.getPlannedQuantity())
-                    .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.ONE.add(
-                            bomItem.getLossRate() != null ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
-                    ))
-                    .setScale(0, java.math.RoundingMode.UP);
-
-            // 库存预检：按 FIFO 可用量（批次数量-预留）汇总对比
             BigDecimal available = BigDecimal.ZERO;
             try {
                 List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(bomItem.getMaterialId());
@@ -589,14 +578,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             } catch (Exception e) {
                 log.warn("领料预检查询库存失败: materialId={}, err={}", bomItem.getMaterialId(), e.getMessage());
             }
-            if (available.compareTo(qtyNeeded) < 0) {
-                shortageMsgs.add("物料[" + bomItem.getMaterialCode() + "]需" + qtyNeeded + ", 可用" + available);
-            }
-        }
-        if (!shortageMsgs.isEmpty()) {
-            String msg = "库存不足，无法生成领料单: " + String.join("; ", shortageMsgs);
-            log.error("生产工单{}领料预检失败: {}", workOrderId, msg);
-            throw new BusinessException(msg);
+            availableMap.put(bomItem.getMaterialId(), available);
         }
 
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
@@ -612,6 +594,18 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     ))
                     .setScale(0, java.math.RoundingMode.UP);
 
+            // 045：不足允许部分领料（按可用量领），剩余靠追加领料补；可用为0则跳过该物料
+            BigDecimal available = availableMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+            BigDecimal qtyPick = qtyNeeded.min(available);
+            if (qtyPick.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("物料[{}]库存为0，本次领料跳过（可追加领料补）", bomItem.getMaterialCode());
+                continue;
+            }
+            if (qtyPick.compareTo(qtyNeeded) < 0) {
+                log.warn("物料[{}]库存不足（需{}可用{}），本次按可用量领{}，剩余可追加领料",
+                        bomItem.getMaterialCode(), qtyNeeded, available, qtyPick);
+            }
+
             InventoryOutboundItem outItem = new InventoryOutboundItem();
             outItem.setOutboundId(order.getOutboundId());
             outItem.setMaterialId(bomItem.getMaterialId());
@@ -619,7 +613,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             outItem.setMaterialName(bomItem.getMaterialName());
             outItem.setSpecification(bomItem.getSpecification());
             outItem.setUnit(bomItem.getUnit());
-            outItem.setQuantity(qtyNeeded);
+            outItem.setQuantity(qtyPick);
             outItem.setSortOrder(sort++);
             // DEV-693：预填 FIFO 推荐库位（最早批次所在库位），供仓管按位拣货；确认时优先从该库位扣减
             try {
@@ -630,7 +624,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             } catch (Exception e) {
                 log.warn("领料单推荐库位失败(跳过): materialId={}, err={}", bomItem.getMaterialId(), e.getMessage());
             }
-            totalQty = totalQty.add(qtyNeeded);
+            totalQty = totalQty.add(qtyPick);
             outboundItemMapper.insert(outItem);
         }
 
