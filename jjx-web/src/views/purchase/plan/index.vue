@@ -35,7 +35,7 @@
 
     <!-- 计划行表格 -->
     <el-card class="table-card" shadow="never">
-      <el-table :data="planRows" border style="width: 100%">
+      <el-table :data="planRows" border style="width: 100%" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="50" align="center" />
         <el-table-column label="物料编码" prop="materialCode" width="130" />
         <el-table-column label="物料名称" prop="materialName" min-width="160" show-overflow-tooltip />
@@ -129,6 +129,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
 import { getPlanSuggestions, confirmPlan, addOrder } from '@/api/purchase/order'
+import { alertApi } from '@/api/inventory/alert'
 import { listSupplier } from '@/api/purchase/supplier'
 import { materialApi } from '@/api/inventory/material'
 import type { InventoryMaterial } from '@/types/inventory/material'
@@ -158,8 +159,13 @@ const showConfirmDialog = ref(false)
 const confirmSupplierId = ref<number | null>(null)
 const confirming = ref(false)
 
-const selectedRows = computed(() => planRows.value)
-const selectedTotalQty = computed(() => planRows.value.reduce((s, r) => s + (r.quantity || 0), 0))
+const selectedRows = ref<PlanRow[]>([])
+const selectedTotalQty = computed(() => selectedRows.value.reduce((s, r) => s + (r.quantity || 0), 0))
+
+// 勾选变化（DEV：确认计划按勾选行生成订单）
+const handleSelectionChange = (rows: PlanRow[]) => {
+  selectedRows.value = rows
+}
 
 // 从预警/建议加载
 const loadSuggestions = async () => {
@@ -254,10 +260,14 @@ const clearPlan = () => {
     .catch(() => {})
 }
 
-// 确认计划
+// 确认计划（按勾选行生成采购订单）
 const handleConfirmPlan = () => {
   if (planRows.value.length === 0) {
     ElMessage.warning('计划列表为空')
+    return
+  }
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选要确认的物料')
     return
   }
   loadSuppliers()
@@ -281,42 +291,49 @@ const doConfirmPlan = async () => {
   const supplier = suppliers.value.find((s) => s.supplierId === confirmSupplierId.value)
   confirming.value = true
   try {
-    let created = 0
-    // 按物料逐行生成采购订单（简化：一行一单，避免复杂的按供应商分组合并）
-    for (const row of planRows.value) {
-      const orderNo = `PO-${Date.now()}-${created}`
-      await addOrder({
-        orderNo,
-        supplierId: Number(supplier.supplierId),
-        supplierName: supplier.supplierName,
-        orderDate: new Date().toISOString().slice(0, 10),
-        expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-        currency: 'CNY',
-        orderType: '0',
-        urgentFlag: row.priority === 'urgent',
-        approvalStatus: '1',
-        receiptStatus: '0',
-        paymentStatus: '0',
-        orderAmount: 0,
-        orderTax: 0,
-        orderTotalAmount: 0,
-        items: [
-          {
-            materialId: Number(row.materialId),
-            materialCode: row.materialCode,
-            materialName: row.materialName,
-            unit: row.unit || 'PCS',
-            quantity: row.quantity,
-            unitPrice: 0,
-            amount: 0,
-          },
-        ],
-        saveAsPlan: false,
-      } as any)
-      created++
+    const toConfirm = selectedRows.value
+    // 勾选物料合并为一张采购订单（同一供应商）
+    const orderNo = `PO-${Date.now()}`
+    await addOrder({
+      orderNo,
+      supplierId: Number(supplier.supplierId),
+      supplierName: supplier.supplierName,
+      orderDate: new Date().toISOString().slice(0, 10),
+      expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+      currency: 'CNY',
+      orderType: '0',
+      urgentFlag: toConfirm.some((r) => r.priority === 'urgent'),
+      approvalStatus: '1',
+      receiptStatus: '0',
+      paymentStatus: '0',
+      orderAmount: 0,
+      orderTax: 0,
+      orderTotalAmount: 0,
+      items: toConfirm.map((row) => ({
+        materialId: Number(row.materialId),
+        materialCode: row.materialCode,
+        materialName: row.materialName,
+        unit: row.unit || 'PCS',
+        quantity: row.quantity,
+        unitPrice: 0,
+        amount: 0,
+      })),
+      saveAsPlan: false,
+    } as any)
+    ElMessage.success(`已生成采购订单（${toConfirm.length} 个物料）`)
+    // 预警闭环：把勾选行对应的预警标记已处理（关联采购订单号）
+    const alertIds = toConfirm.map((r) => r.sourceAlertId).filter((id): id is number => !!id)
+    if (alertIds.length > 0) {
+      try {
+        await alertApi.batchProcess(alertIds, orderNo, '采购计划确认')
+      } catch (e) {
+        console.warn('回写预警状态失败', e)
+      }
     }
-    ElMessage.success(`已生成 ${created} 张采购订单`)
-    planRows.value = []
+    // 仅移除已确认的勾选行，未勾选保留
+    const confirmedCodes = new Set(toConfirm.map((r) => r.materialCode))
+    planRows.value = planRows.value.filter((r) => !confirmedCodes.has(r.materialCode))
+    selectedRows.value = []
     showConfirmDialog.value = false
   } catch (e: any) {
     ElMessage.error(e?.message || '生成采购订单失败')

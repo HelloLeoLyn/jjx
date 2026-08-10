@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.utils.SecurityUtils;
 
 /**
  * 库存预警服务实现类
@@ -399,6 +400,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         List<Map<String, Object>> suggestions = new ArrayList<>();
 
         // 来源1：低库存物料（安全库存算法，DEV-664：用物料 max_stock，无则 safe_stock*2 兜底）
+        // DEV-20260810-014：低库存同时落库 safe_stock 预警（去重），保证有记录可闭环跟踪
         List<InventoryStock> lowStock = stockMapper.selectLowStock();
         for (InventoryStock stock : lowStock) {
             // 查询物料最高库存参数
@@ -418,13 +420,18 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     ? stock.getTotalQuantity() : BigDecimal.ZERO);
             if (suggestQty.compareTo(BigDecimal.ZERO) <= 0) continue;
 
+            // 落库/去重更新 safe_stock 预警
+            Long alertId = upsertLowStockAlert(stock, suggestQty);
+
             suggestions.add(Map.of(
+                    "materialId", stock.getMaterialId(),
                     "materialCode", stock.getMaterialCode(),
                     "materialName", stock.getMaterialName(),
                     "currentStock", stock.getTotalQuantity() != null ? stock.getTotalQuantity().doubleValue() : 0,
                     "suggestQuantity", suggestQty.doubleValue(),
                     "reason", "低于安全库存，建议补货",
-                    "priority", "normal"
+                    "priority", "normal",
+                    "sourceAlertId", alertId
             ));
         }
 
@@ -444,6 +451,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             if (gap.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             suggestions.add(Map.of(
+                    "materialId", alert.getMaterialId(),
                     "materialCode", alert.getMaterialCode(),
                     "materialName", alert.getMaterialName(),
                     "currentStock", alert.getCurrentStock() != null ? alert.getCurrentStock().doubleValue() : 0,
@@ -457,6 +465,88 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         log.info("生成采购建议完成，共 {} 条（低库存{} + 订单缺料{}）", suggestions.size(),
                 lowStock.size(), shortageAlerts.size());
         return suggestions;
+    }
+
+    /**
+     * DEV-20260810-014：低库存预警落库（同物料未处理预警存在则更新，不重复插）
+     *
+     * @return 预警ID（新建或已存在）
+     */
+    private Long upsertLowStockAlert(InventoryStock stock, BigDecimal suggestQty) {
+        try {
+            InventoryAlertLog exist = alertLogMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryAlertLog>()
+                            .eq(InventoryAlertLog::getAlertType, "safe_stock")
+                            .eq(InventoryAlertLog::getMaterialId, stock.getMaterialId())
+                            .eq(InventoryAlertLog::getStatus, 0)
+                            .last("LIMIT 1"));
+            String msg = "物料[" + stock.getMaterialCode() + "] " + stock.getMaterialName()
+                    + " 当前库存: " + stock.getTotalQuantity() + ", 低于安全库存，建议补货 " + suggestQty.stripTrailingZeros().toPlainString();
+            if (exist != null) {
+                exist.setCurrentStock(stock.getTotalQuantity());
+                exist.setSafeStock(stock.getSafeStock());
+                exist.setSuggestion("建议补货 " + suggestQty.stripTrailingZeros().toPlainString());
+                exist.setAlertMessage(msg);
+                exist.setAlertTime(java.time.LocalDateTime.now());
+                alertLogMapper.updateById(exist);
+                return exist.getAlertId();
+            }
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType("safe_stock");
+            alert.setAlertLevel("warning");
+            alert.setMaterialId(stock.getMaterialId());
+            alert.setMaterialCode(stock.getMaterialCode());
+            alert.setMaterialName(stock.getMaterialName());
+            alert.setCurrentStock(stock.getTotalQuantity());
+            alert.setSafeStock(stock.getSafeStock());
+            alert.setSuggestion("建议补货 " + suggestQty.stripTrailingZeros().toPlainString());
+            alert.setAlertMessage(msg);
+            alert.setAlertTime(java.time.LocalDateTime.now());
+            alertLogMapper.insert(alert);
+            return alert.getAlertId();
+        } catch (Exception e) {
+            log.warn("低库存预警落库失败: materialId={}, err={}", stock.getMaterialId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * DEV-20260810-014：批量处理预警（采购计划确认后回写：状态→已处理 + 处理人 + 关联采购订单号）
+     */
+    @Override
+    public boolean batchProcessAlert(java.util.List<Long> alertIds, String relatedOrderNo, String remark) {
+        if (alertIds == null || alertIds.isEmpty()) {
+            return true;
+        }
+        String user;
+        try {
+            user = SecurityUtils.getUsername();
+        } catch (Exception e) {
+            user = "system";
+        }
+        int processed = 0;
+        for (Long alertId : alertIds) {
+            try {
+                InventoryAlertLog alert = alertLogMapper.selectById(alertId);
+                if (alert == null || java.util.Objects.equals(alert.getStatus(), 2)) {
+                    continue;
+                }
+                alert.setStatus(2);
+                alert.setProcessedBy(user);
+                alert.setProcessedTime(java.time.LocalDateTime.now());
+                String r = remark != null ? remark : "";
+                if (relatedOrderNo != null && !relatedOrderNo.isEmpty()) {
+                    r = (r.isEmpty() ? "" : r + "；") + "生成采购订单 " + relatedOrderNo;
+                }
+                alert.setProcessRemark(r);
+                alertLogMapper.updateById(alert);
+                processed++;
+            } catch (Exception e) {
+                log.warn("处理预警失败: alertId={}, err={}", alertId, e.getMessage());
+            }
+        }
+        log.info("批量处理预警完成：{} 条（关联订单 {}）", processed, relatedOrderNo);
+        return true;
     }
 
     @Override

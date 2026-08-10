@@ -35,6 +35,11 @@ export const alertApi = {
     return request.post('/inventory/alert/batch-mark-read', alertIds)
   },
 
+  // 批量处理预警（采购计划确认后回写，关联采购订单号）
+  batchProcess(alertIds: number[], relatedOrderNo: string, remark?: string) {
+    return request.post('/inventory/alert/batch-process', { alertIds, relatedOrderNo, remark })
+  },
+
   // 处理预警
   process(alertId: number, processedBy: string, remark?: string) {
     return request.post(`/inventory/alert/process/${alertId}`, null, {

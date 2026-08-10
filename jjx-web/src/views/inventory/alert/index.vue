@@ -179,7 +179,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" min-width="170" fixed="right">
           <template #default="{ row }">
             <el-button v-if="row.status === 0" v-hasPermi="['inventory:alert:edit']" link type="primary" @click="handleMarkRead(row)"
               >标记已读</el-button

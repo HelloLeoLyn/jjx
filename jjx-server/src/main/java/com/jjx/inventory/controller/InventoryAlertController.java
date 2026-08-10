@@ -120,6 +120,14 @@ public class InventoryAlertController {
         return Result.success(alertService.processAlert(alertId, processedBy, remark));
     }
 
+    @PostMapping("/batch-process")
+    @Operation(summary = "批量处理预警（采购计划确认后回写，关联采购订单号）")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#dto.alertIds[0]")
+    @SaCheckPermission("inventory:alert:edit")
+    public Result<Boolean> batchProcessAlert(@RequestBody com.jjx.inventory.domain.dto.AlertBatchProcessDTO dto) {
+        return Result.success(alertService.batchProcessAlert(dto.getAlertIds(), dto.getRelatedOrderNo(), dto.getRemark()));
+    }
+
     @GetMapping("/purchase-suggestions")
     @Operation(summary = "生成采购建议")
     @SaCheckPermission("inventory:alert:view")

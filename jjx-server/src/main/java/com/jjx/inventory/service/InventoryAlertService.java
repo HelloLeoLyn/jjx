@@ -77,6 +77,11 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     boolean processAlert(Long alertId, String processedBy, String remark);
 
     /**
+     * 批量处理预警（采购计划确认后回写：状态→已处理 + 处理人 + 关联采购订单号）
+     */
+    boolean batchProcessAlert(List<Long> alertIds, String relatedOrderNo, String remark);
+
+    /**
      * 生成采购建议（基于安全库存）
      */
     List<Map<String, Object>> generatePurchaseSuggestions();
