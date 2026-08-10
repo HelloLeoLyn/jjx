@@ -41,6 +41,16 @@ public class Product {
     private Long categoryId;
 
     /**
+     * 客户ID（2026-08-10 产品关联客户）
+     */
+    private Long customerId;
+
+    /**
+     * 客户名称（冗余，列表/详情直接显示）
+     */
+    private String customerName;
+
+    /**
      * 来源标记（inquiry/quotation 建档草稿，草稿清理用）
      */
     private String fromSource;

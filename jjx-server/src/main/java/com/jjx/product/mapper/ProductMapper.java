@@ -38,6 +38,8 @@ public interface ProductMapper extends BaseMapper<Product> {
             sql.append("p.product_name, ");
             sql.append("p.category_id, ");
             sql.append("pc.category_name, ");
+            sql.append("p.customer_id, ");
+            sql.append("p.customer_name, ");
             sql.append("p.product_type, ");
             sql.append("p.product_status, ");
             sql.append("p.current_bom_id, ");

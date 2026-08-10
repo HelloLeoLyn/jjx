@@ -31,6 +31,9 @@ export interface ProductFormData {
   categoryId?: number
   categoryName?: string
   categoryCode?: string
+  // 客户关联（2026-08-10）
+  customerId?: number
+  customerName?: string
   specification?: string
   unit?: string
   weight?: number

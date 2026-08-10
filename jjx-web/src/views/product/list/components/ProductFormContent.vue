@@ -386,14 +386,18 @@ const handleCustomerChange = async (
 ) => {
   if (!value || !customer) {
     formData.codeSerialNo = ''
+    formData.customerId = undefined
+    formData.customerName = ''
     selectedCustomer.value = null
     composeProductCode()
     return
   }
 
-  // 保存选中的客户对象
+  // 保存选中的客户对象（2026-08-10：同时写入 customerId/customerName 落库关联）
   selectedCustomer.value = customer
   selectedCustomerShortName.value = customer.customerShortName || ''
+  formData.customerId = customer.customerId
+  formData.customerName = customer.customerName
 
   // 生成流水号（调用后端API）
   try {
@@ -480,6 +484,11 @@ const loadProductDetail = async () => {
   const res = await productApi.info(props.productId)
   const data = res.data
   Object.assign(formData, data)
+
+  // 2026-08-10：编辑回显客户（CustomerSelector 用 codeCustomerId 显示，自动加载客户名）
+  if (data.customerId) {
+    formData.codeCustomerId = data.customerId
+  }
 
   // 2026-08-10：从产品编码反解编码构成要素（面板/线路/流水号），编码=简称(1-3)+流水(3)+面板结构(1)+面板特征(1)+线路类型(1)+线路特征(1)
   parseCodeElements(data.productCode)

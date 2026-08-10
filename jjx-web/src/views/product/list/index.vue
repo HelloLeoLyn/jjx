@@ -133,6 +133,12 @@
           </template>
         </el-table-column>
 
+        <el-table-column label="客户" align="center" prop="customerName" min-width="130" show-overflow-tooltip>
+          <template #default="scope">
+            <span v-if="scope.row.customerName">{{ scope.row.customerName }}</span>
+            <span v-else style="color:#c0c4cc">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="产品状态" prop="productStatus" width="100">
           <template #default="scope">
             <el-tag :type="ProductEnum.status.getTagProps(scope.row.productStatus).type">

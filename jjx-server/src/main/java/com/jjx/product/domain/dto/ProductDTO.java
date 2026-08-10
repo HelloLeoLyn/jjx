@@ -27,6 +27,12 @@ public class ProductDTO {
     /** 分类编码 */
     private String categoryCode;
 
+    /** 客户ID（2026-08-10 产品关联客户） */
+    private Long customerId;
+
+    /** 客户名称（冗余） */
+    private String customerName;
+
     /** 产品类型 */
     private String productType;
 
