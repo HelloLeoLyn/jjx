@@ -80,11 +80,19 @@ public class InventoryAlertController {
     }
 
     @PostMapping("/check-order-shortage/{orderId}")
-    @Operation(summary = "订单齐套检查（按BOM算料缺料预警，手动重新检查）")
+    @Operation(summary = "订单齐套检查（按BOM算料缺料预警，返回缺料明细含在途/实际缺口）")
     @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#orderId")
     @SaCheckPermission("inventory:alert:edit")
-    public Result<Void> checkOrderShortage(@PathVariable Long orderId) {
-        alertService.checkOrderShortage(orderId);
+    public Result<java.util.List<java.util.Map<String, Object>>> checkOrderShortage(@PathVariable Long orderId) {
+        return Result.success(alertService.checkOrderShortageWithDetail(orderId));
+    }
+
+    @PostMapping("/check-global-shortage")
+    @Operation(summary = "全局汇总缺料检查（082：在途订单BOM汇总→物料缺口预警，手动触发）")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'")
+    @SaCheckPermission("inventory:alert:edit")
+    public Result<Void> checkGlobalShortage() {
+        alertService.checkGlobalShortage();
         return Result.success();
     }
 

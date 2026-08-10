@@ -31,6 +31,18 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     void checkOrderShortage(Long orderId);
 
     /**
+     * 订单齐套检查（扣在途采购量），返回缺料明细（含在途/实际缺口）
+     */
+    java.util.List<java.util.Map<String, Object>> checkOrderShortageWithDetail(Long orderId);
+
+    /**
+     * 全局汇总缺料检查（082定稿：订单缺料预警主逻辑，非单订单）
+     * 在途订单(状态4已审核/6已确认/7生产中)按BOM展开物料需求→汇总→对比可用量+在途采购→缺口生成物料维度预警
+     * 两步走（035/096）：产品维度先扣产品库存→还需生产→BOM展开→物料缺口
+     */
+    void checkGlobalShortage();
+
+    /**
      * 查询订单未处理缺料预警数（DEV-583 前端弹窗用）
      */
     long countUnprocessedOrderShortage(Long orderId);

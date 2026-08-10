@@ -399,6 +399,12 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         } catch (Exception e) {
             log.error("订单{}齐套检查异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
         }
+        // 7. 082定稿：订单确认时同步触发全局汇总缺料检查（物料维度 demand_shortage 预警，防忘预占的兜底）
+        try {
+            inventoryAlertService.checkGlobalShortage();
+        } catch (Exception e) {
+            log.error("订单{}确认后全局缺料检查异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
+        }
 
         // 7. 成品库存预留（DEV-578 8-04）：确认时检查成品可用库存，库存部分预留，缺货部分进生产
         try {

@@ -261,6 +261,141 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     }
 
     @Override
+    public void checkGlobalShortage() {
+        log.info("全局汇总缺料检查开始（082定稿：订单缺料预警主逻辑）");
+        // 1. 在途订单：已审核(4)/已确认(6)/生产中(7)
+        List<SalesOrder> orders = orderMapper.selectList(
+                new LambdaQueryWrapper<SalesOrder>()
+                        .in(SalesOrder::getOrderStatus, 4, 6, 7));
+        if (orders == null || orders.isEmpty()) {
+            log.info("无在途订单，跳过全局缺料检查");
+            return;
+        }
+
+        // 2. 幂等：清掉旧的未处理物料维度缺料预警（demand_shortage）
+        alertLogMapper.delete(new LambdaQueryWrapper<InventoryAlertLog>()
+                .eq(InventoryAlertLog::getAlertType, "demand_shortage")
+                .eq(InventoryAlertLog::getStatus, 0));
+
+        // 3. 两步走汇总：产品维度先扣产品库存→还需生产→BOM展开→物料需求汇总
+        Map<Long, BigDecimal> demandMap = new java.util.HashMap<>();
+        Map<Long, String> codeMap = new java.util.HashMap<>();
+        Map<Long, String> nameMap = new java.util.HashMap<>();
+        int noBomCount = 0;
+        for (SalesOrder order : orders) {
+            List<SalesOrderProduct> products = orderProductMapper.selectList(
+                    new LambdaQueryWrapper<SalesOrderProduct>()
+                            .eq(SalesOrderProduct::getOrderId, order.getOrderId()));
+            if (products == null || products.isEmpty()) {
+                continue;
+            }
+            for (SalesOrderProduct p : products) {
+                if (p.getProductId() == null) {
+                    continue;
+                }
+                // 第一步：先扣产品库存（产品维度现货优先）
+                BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
+                BigDecimal productAvailable = BigDecimal.ZERO;
+                try {
+                    ProductStock ps = productStockMapper.selectByProductId(p.getProductId());
+                    if (ps != null && ps.getAvailableQuantity() != null) {
+                        productAvailable = ps.getAvailableQuantity();
+                    }
+                } catch (Exception e) {
+                    log.warn("全局缺料-查询产品库存失败(按0处理): productId={}", p.getProductId());
+                }
+                BigDecimal needProduce = orderQty.subtract(productAvailable);
+                if (needProduce.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue; // 现货足够，无需生产
+                }
+                // 第二步：还需生产量 BOM 展开
+                EngineeringBom bom = bomMapper.selectOne(new LambdaQueryWrapper<EngineeringBom>()
+                        .eq(EngineeringBom::getProductId, p.getProductId())
+                        .eq(EngineeringBom::getIsCurrent, true)
+                        .eq(EngineeringBom::getApproveStatus, 3));
+                if (bom == null) {
+                    noBomCount++;
+                    continue;
+                }
+                List<EngineeringBomItem> items = bomItemMapper.selectList(
+                        new LambdaQueryWrapper<EngineeringBomItem>()
+                                .eq(EngineeringBomItem::getBomId, bom.getBomId()));
+                for (EngineeringBomItem item : items) {
+                    if (item.getMaterialId() == null) continue;
+                    BigDecimal unitQty = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
+                    BigDecimal loss = BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate());
+                    BigDecimal need = needProduce.multiply(unitQty)
+                            .multiply(BigDecimal.ONE.add(loss.divide(BigDecimal.valueOf(100))));
+                    demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
+                    codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
+                    nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
+                }
+            }
+        }
+        if (demandMap.isEmpty()) {
+            log.info("全局缺料检查：无物料缺口（全部现货覆盖或无BOM）");
+            return;
+        }
+
+        // 4. 对比可用库存+在途采购，缺口生成物料维度预警
+        java.util.Map<Long, java.math.BigDecimal> inTransitMap = new java.util.HashMap<>();
+        try {
+            java.util.List<java.util.Map<String, Object>> transitRows = purchaseOrderItemMapper.selectInTransitByMaterial();
+            for (java.util.Map<String, Object> row : transitRows) {
+                Object mid = row.get("material_id");
+                Object qty = row.get("in_transit");
+                if (mid != null && qty != null) {
+                    inTransitMap.put(((Number) mid).longValue(), new BigDecimal(qty.toString()));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("全局缺料-查询在途采购量失败: {}", e.getMessage());
+        }
+        int shortageCount = 0;
+        for (Map.Entry<Long, BigDecimal> entry : demandMap.entrySet()) {
+            Long materialId = entry.getKey();
+            BigDecimal demand = entry.getValue();
+            InventoryStock stock = stockMapper.selectByMaterialId(materialId);
+            BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
+                    ? stock.getAvailableQuantity() : BigDecimal.ZERO;
+            BigDecimal inTransit = inTransitMap.getOrDefault(materialId, BigDecimal.ZERO);
+            BigDecimal actualGap = demand.subtract(available).subtract(inTransit);
+            if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
+                continue; // 可用+在途已覆盖
+            }
+            String msg = "全局缺料：物料[" + codeMap.get(materialId) + "] " + nameMap.get(materialId)
+                    + " 总需求" + demand.stripTrailingZeros().toPlainString()
+                    + " 可用" + available.stripTrailingZeros().toPlainString()
+                    + (inTransit.compareTo(BigDecimal.ZERO) > 0 ? " 在途" + inTransit.stripTrailingZeros().toPlainString() : "")
+                    + " 实际缺口" + actualGap.stripTrailingZeros().toPlainString();
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType("demand_shortage");
+            alert.setAlertLevel("warning");
+            alert.setMaterialId(materialId);
+            alert.setMaterialCode(codeMap.get(materialId));
+            alert.setMaterialName(nameMap.get(materialId));
+            alert.setCurrentStock(available);
+            alert.setSuggestion("建议补货 " + actualGap.stripTrailingZeros().toPlainString());
+            alert.setAlertMessage(msg);
+            alert.setAlertTime(LocalDateTime.now());
+            alertLogMapper.insert(alert);
+            shortageCount++;
+        }
+        // 缺料联动通知采购/计划
+        if (shortageCount > 0) {
+            try {
+                eventPublisher.fire("stock.shortage", java.util.Map.of(
+                        "shortageCount", String.valueOf(shortageCount),
+                        "noBomCount", String.valueOf(noBomCount),
+                        "bizType", "global"));
+            } catch (Exception e) {
+                log.warn("全局缺料事件联动失败: {}", e.getMessage());
+            }
+        }
+        log.info("全局汇总缺料检查完成：物料缺口{}条，无BOM产品{}个", shortageCount, noBomCount);
+    }
+
+    @Override
     public long countUnprocessedOrderShortage(Long orderId) {
         SalesOrder order = orderMapper.selectById(orderId);
         if (order == null) {
