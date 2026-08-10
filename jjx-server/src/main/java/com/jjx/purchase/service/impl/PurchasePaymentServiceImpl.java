@@ -8,6 +8,7 @@ import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchasePayment;
 import com.jjx.purchase.domain.enums.PaymentStatusEnum;
+import com.jjx.purchase.domain.enums.PurchaseExceptionEnum;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.mapper.PurchasePaymentMapper;
 import com.jjx.purchase.service.IPurchasePaymentService;
@@ -88,10 +89,10 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("订单已取消/已拒绝，不能付款");
         }
         // 付款不拦收货（允许预付款/定金），但累计付款≤订单金额
-        if (dto.getPaymentAmount() != null && order.getTotalAmount() != null
-                && dto.getPaymentAmount().compareTo(order.getTotalAmount()) > 0) {
+        if (dto.getPaymentAmount() != null && order.getOrderTotalAmount() != null
+                && dto.getPaymentAmount().compareTo(order.getOrderTotalAmount()) > 0) {
             throw new BusinessException(PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS.getMessage()
-                    + "（订单金额" + order.getTotalAmount().stripTrailingZeros().toPlainString() + "）");
+                    + "（订单金额" + order.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "）");
         }
 
         PurchasePayment payment = new PurchasePayment();

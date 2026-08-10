@@ -90,10 +90,10 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
         if ("INVOICE".equals(dto.getDocumentType()) && dto.getOrderId() != null && dto.getDocumentAmount() != null) {
             try {
                 com.jjx.purchase.domain.entity.PurchaseOrder po = purchaseOrderMapper.selectById(dto.getOrderId());
-                if (po != null && po.getTotalAmount() != null
-                        && dto.getDocumentAmount().compareTo(po.getTotalAmount()) > 0) {
+                if (po != null && po.getOrderTotalAmount() != null
+                        && dto.getDocumentAmount().compareTo(po.getOrderTotalAmount()) > 0) {
                     throw new BusinessException("发票金额" + dto.getDocumentAmount().stripTrailingZeros().toPlainString()
-                            + "超过订单金额" + po.getTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
+                            + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
                 }
                 // 累计发票金额校验（同订单已登记发票合计 + 本次 ≤ 订单金额）
                 java.math.BigDecimal sumInvoiced = documentMapper.selectList(
@@ -103,10 +103,10 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
                         .stream()
                         .map(d -> d.getDocumentAmount() != null ? d.getDocumentAmount() : java.math.BigDecimal.ZERO)
                         .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-                if (po != null && po.getTotalAmount() != null
-                        && sumInvoiced.add(dto.getDocumentAmount()).compareTo(po.getTotalAmount()) > 0) {
+                if (po != null && po.getOrderTotalAmount() != null
+                        && sumInvoiced.add(dto.getDocumentAmount()).compareTo(po.getOrderTotalAmount()) > 0) {
                     throw new BusinessException("累计发票金额" + sumInvoiced.add(dto.getDocumentAmount()).stripTrailingZeros().toPlainString()
-                            + "超过订单金额" + po.getTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
+                            + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
                 }
             } catch (BusinessException e) {
                 throw e;
