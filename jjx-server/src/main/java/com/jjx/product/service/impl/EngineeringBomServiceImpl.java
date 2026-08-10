@@ -229,12 +229,34 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 删除旧的BOM明细
         productBomItemMapper.deleteByBomId(dto.getBomId());
 
-        // 保存新的BOM明细
+        // 保存新的BOM明细（父子关系：旧itemId → 新itemId 映射转换）
         if (ObjectUtils.isNotEmpty(dto.getItems())) {
+            java.util.Map<Long, Long> idMap = new java.util.HashMap<>();
             for (EngineeringBomItemDTO itemDTO : dto.getItems()) {
+                Long oldId = itemDTO.getItemId();
                 EngineeringBomItem item = toBomItemEntity(itemDTO);
+                item.setItemId(null);
                 item.setBomId(dto.getBomId());
                 productBomItemMapper.insert(item);
+                if (oldId != null) {
+                    idMap.put(oldId, item.getItemId());
+                }
+            }
+            // 第二遍：修正 parentMaterialId（旧ID → 新ID）
+            java.util.List<EngineeringBomItem> saved = productBomItemMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringBomItem>()
+                            .eq(EngineeringBomItem::getBomId, dto.getBomId()));
+            boolean needUpdate = false;
+            for (EngineeringBomItem it : saved) {
+                if (it.getParentMaterialId() != null && idMap.containsKey(it.getParentMaterialId())) {
+                    it.setParentMaterialId(idMap.get(it.getParentMaterialId()));
+                    needUpdate = true;
+                }
+            }
+            if (needUpdate) {
+                for (EngineeringBomItem it : saved) {
+                    productBomItemMapper.updateById(it);
+                }
             }
         }
 
@@ -484,6 +506,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
         EngineeringBomItem item = new EngineeringBomItem();
         item.setItemId(dto.getItemId());
+        item.setParentMaterialId(dto.getParentMaterialId());
         item.setMaterialId(dto.getMaterialId());
         item.setMaterialCode(dto.getMaterialCode());
         item.setMaterialName(dto.getMaterialName());

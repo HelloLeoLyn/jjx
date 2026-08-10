@@ -18,6 +18,9 @@ public class EngineeringBomItemDTO {
     /** 明细ID（编辑时必填，新增时不填） */
     private Long itemId;
 
+    /** 父节点明细ID（NULL=根节点，树形结构） */
+    private Long parentMaterialId;
+
     /** 物料ID */
     @NotNull(message = "物料不能为空")
     private Long materialId;

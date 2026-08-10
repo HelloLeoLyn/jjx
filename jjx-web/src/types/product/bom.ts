@@ -31,6 +31,10 @@ export interface EngineeringBomFormData {
 export interface EngineeringBomItem {
   itemId?: number
   bomId?: number
+  /** 父节点明细ID（NULL=根节点，树形结构） */
+  parentMaterialId?: number | null
+  /** 子节点（树形表格用） */
+  children?: EngineeringBomItem[]
   materialId: number
   materialCode: string
   materialName: string

@@ -28,6 +28,11 @@ public class EngineeringBomItem {
     private Long bomId;
 
     /**
+     * 父节点明细ID（指向本表item_id，NULL=根节点，树形结构）
+     */
+    private Long parentMaterialId;
+
+    /**
      * 物料ID（关联库存模块）
      */
     private Long materialId;
