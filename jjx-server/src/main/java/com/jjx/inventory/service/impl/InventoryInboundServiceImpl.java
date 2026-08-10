@@ -655,8 +655,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundItem.setMaterialId(materialId);
         inboundItem.setMaterialCode(materialCode);
         inboundItem.setMaterialName(materialName);
-        inboundItem.setQuantity(prodOrder.getCompletedQuantity() != null
-                ? prodOrder.getCompletedQuantity() : prodOrder.getPlannedQuantity());
+        // 068定稿：入库产品数量=最后一道工序/完工检验合格数（052口径 finishedQuantity，非工序汇总 completedQuantity）
+        BigDecimal inboundQty = (prodOrder.getFinishedQuantity() != null && prodOrder.getFinishedQuantity().compareTo(BigDecimal.ZERO) > 0)
+                ? prodOrder.getFinishedQuantity()
+                : (prodOrder.getCompletedQuantity() != null ? prodOrder.getCompletedQuantity() : prodOrder.getPlannedQuantity());
+        inboundItem.setQuantity(inboundQty);
         inboundItem.setBatchNo("BATCH-" + prodOrder.getOrderNo());
         inboundItem.setSortOrder(1);
         inboundItemMapper.insert(inboundItem);

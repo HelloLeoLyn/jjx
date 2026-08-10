@@ -506,8 +506,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     // ============ 私有方法 ============
 
     /**
-     * 更新生产工单的完成数量
-     * 汇总所有已完成工序的合格数量，更新到工单的 completedQuantity
+     * 更新生产工单的完成数量（052口径修正）
+     * completedQuantity = 各工序合格汇总（仅作进度展示，避免中间环节虚高）
+     * finishedQuantity = 成品完工数量（最后一道工序/完工检验合格数，用于完工判断/入库/订单回写）
      */
     private void updateOrderCompletedQuantity(Long orderId) {
         // 查询该工单下所有已完成工序的合格数量总和
@@ -520,15 +521,26 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                 .map(e -> e.getQualifiedQuantity() != null ? e.getQualifiedQuantity() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // 成品完工数量 = 最后一道工序（process_order 最大）的合格数
+        BigDecimal finishedQty = BigDecimal.ZERO;
+        ProductionOperationExecution lastOp = completedExecutions.stream()
+                .filter(e -> e.getProcessOrder() != null)
+                .max(java.util.Comparator.comparingInt(e -> e.getProcessOrder() == null ? 0 : e.getProcessOrder()))
+                .orElse(null);
+        if (lastOp != null && lastOp.getQualifiedQuantity() != null) {
+            finishedQty = lastOp.getQualifiedQuantity();
+        }
+
         // 更新工单的完成数量
         ProductionOrder order = productionOrderMapper.selectById(orderId);
         if (order != null) {
             order.setCompletedQuantity(totalQualified);
+            order.setFinishedQuantity(finishedQty);
             if (order.getPlannedQuantity() != null) {
                 order.setRemainingQuantity(order.getPlannedQuantity().subtract(totalQualified));
             }
             productionOrderMapper.updateById(order);
-            log.info("更新工单 {} 的完成数量为: {}", orderId, totalQualified);
+            log.info("更新工单 {} 完成数量: 工序汇总={}, 成品完工={}", orderId, totalQualified, finishedQty);
         }
     }
 

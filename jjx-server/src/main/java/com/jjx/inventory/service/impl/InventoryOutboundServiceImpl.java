@@ -371,6 +371,31 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             log.warn("确认发料后更新工单领料状态失败: {}", e.getMessage());
         }
 
+        // 073定稿：销售发货出库确认后，回写订单 shipped_quantity（Σ发货量，不超订单量）
+        try {
+            if ("SALES".equals(order.getSourceType()) && order.getSourceId() != null) {
+                com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(order.getSourceId());
+                if (salesOrder != null) {
+                    java.math.BigDecimal shipped = java.math.BigDecimal.ZERO;
+                    for (InventoryOutboundItem item : outItems) {
+                        if (item.getQuantity() != null) {
+                            shipped = shipped.add(item.getQuantity());
+                        }
+                    }
+                    int shippedInt = shipped.intValue();
+                    if (salesOrder.getShippedQuantity() == null) {
+                        salesOrder.setShippedQuantity(0);
+                    }
+                    salesOrder.setShippedQuantity(salesOrder.getShippedQuantity() + shippedInt);
+                    salesOrderMapper.updateById(salesOrder);
+                    log.info("销售出库确认回写订单 shipped_quantity: orderId={}, 本次+{}，累计={}",
+                            order.getSourceId(), shippedInt, salesOrder.getShippedQuantity());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("销售出库回写订单 shipped_quantity 失败（不影响出库）: {}", e.getMessage());
+        }
+
         return updated;
     }
 
@@ -700,6 +725,16 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.updateById(order);
         approve(order.getOutboundId(), null, null, "销售发货出库");
+
+        // 021/073定稿：销售发货出库必须扣库存——approve 后立即 confirm（confirm=审批+完成 单路径，库存扣减在 confirm）
+        // 原实现只 approve 不 confirm → 库存永远不扣（最严重 bug）
+        try {
+            confirm(order.getOutboundId(), null, "销售发货出库");
+            log.info("销售发货出库已自动确认并扣库存: outboundId={}", order.getOutboundId());
+        } catch (Exception e) {
+            log.error("销售发货出库自动确认失败（需人工处理）: outboundId={}, err={}", order.getOutboundId(), e.getMessage());
+            throw new BusinessException("销售发货出库确认失败：" + e.getMessage());
+        }
 
         log.info("销售发货出库完成: salesOrderId={}, outboundId={}", salesOrderId, order.getOutboundId());
         return order.getOutboundId();

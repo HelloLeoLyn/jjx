@@ -53,6 +53,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final EngineeringRoutingItemMapper productRoutingItemMapper;
     private final EventPublisher eventPublisher;
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
+    private final com.jjx.production.mapper.ProductionQualityInspectionMapper qualityInspectionMapper;
     private final com.jjx.inventory.service.InventoryInboundService inventoryInboundService;
     private final com.jjx.inventory.service.InventoryOutboundService inventoryOutboundService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
@@ -307,9 +308,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("生产工单不存在: " + orderId);
         }
 
-        // 检查工单状态是否可以完成
+        // 检查工单状态是否可以完成（053完工质检门：状态/工序/质检/数量四条件）
         if (!canCompleteOrder(order)) {
-            throw new BusinessException("工单状态不允许完成");
+            throw new BusinessException("完工校验不通过：工单需为进行中、全部工序已完成、FQC质检通过且成品完工数量>0（最后一道工序合格数）");
         }
 
         // 更新状态为已完成
@@ -376,6 +377,20 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 检查工单状态是否可以取消
         if (!canCancelOrder(order)) {
             throw new BusinessException("工单状态不允许取消");
+        }
+
+        // 095：取消工单部分完工入库（产品维度，入 product_stock 表）
+        // 已完工合格品（最后一道工序合格数 finishedQuantity>0）→ 自动部分完工入库，产品库存+
+        try {
+            BigDecimal finishedQty = order.getFinishedQuantity() != null ? order.getFinishedQuantity() : BigDecimal.ZERO;
+            if (finishedQty.compareTo(BigDecimal.ZERO) > 0) {
+                Long inboundId = inventoryInboundService.createFromProduction(orderId);
+                if (inboundId != null) {
+                    log.info("取消工单{}自动部分完工入库[{}]（产品入库，数量={}）", orderId, inboundId, finishedQty);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("取消工单部分完工入库失败（不影响取消主流程，可手动重试）: {}", e.getMessage());
         }
 
         // 更新状态为已取消
@@ -727,11 +742,54 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     }
 
     /**
-     * 检查工单是否可以完成
+     * 完工质检门（053定稿）：工单完工必须过质检门
+     * ① 工单状态=进行中
+     * ② 全部工序已完成（执行状态=COMPLETED/SKIPPED）
+     * ③ FQC质检通过（存在 result=pass 的完工质检）
+     * ④ 成品完工数量达标（finishedQuantity>0，以最后工序合格数为准，052口径）
+     * 任一不满足拒绝完工；调用方拿失败原因提示用户
      */
-    private static boolean canCompleteOrder(ProductionOrder order) {
-        // 只有进行中状态的工单可以完成
-        return OrderStatusEnum.IN_PROGRESS.getCode().equals(order.getOrderStatus());
+    private boolean canCompleteOrder(ProductionOrder order) {
+        // ① 状态=进行中
+        if (!OrderStatusEnum.IN_PROGRESS.getCode().equals(order.getOrderStatus())) {
+            log.warn("完工质检门[1/4]失败：工单{}状态不是进行中", order.getOrderId());
+            return false;
+        }
+        // ② 全部工序已完成
+        try {
+            Long pendingCount = productionOperationExecutionMapper.selectCount(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionOperationExecution>()
+                            .eq(com.jjx.production.domain.entity.ProductionOperationExecution::getOrderId, order.getOrderId())
+                            .notIn(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionStatus,
+                                    com.jjx.production.enums.ExecutionStatusEnum.COMPLETED.getCode(),
+                                    com.jjx.production.enums.ExecutionStatusEnum.SKIPPED.getCode()));
+            if (pendingCount != null && pendingCount > 0) {
+                log.warn("完工质检门[2/4]失败：工单{}还有{}道工序未完成", order.getOrderId(), pendingCount);
+                return false;
+            }
+        } catch (Exception e) {
+            log.warn("完工质检门[2/4]查询工序失败(不阻断，按通过处理): {}", e.getMessage());
+        }
+        // ③ FQC质检通过（允许无工序/无质检数据时按通过处理，兼容旧数据）
+        try {
+            Long fqcPass = qualityInspectionMapper.selectCount(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionQualityInspection>()
+                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getOrderId, order.getOrderId())
+                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, "FQC")
+                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getResult, "pass"));
+            if (fqcPass == null || fqcPass <= 0) {
+                log.warn("完工质检门[3/4]失败：工单{}无FQC质检通过记录", order.getOrderId());
+                return false;
+            }
+        } catch (Exception e) {
+            log.warn("完工质检门[3/4]查询质检失败(不阻断，按通过处理): {}", e.getMessage());
+        }
+        // ④ 成品完工数量达标（finishedQuantity>0）
+        if (order.getFinishedQuantity() == null || order.getFinishedQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            log.warn("完工质检门[4/4]失败：工单{}成品完工数量为0", order.getOrderId());
+            return false;
+        }
+        return true;
     }
 
     /**

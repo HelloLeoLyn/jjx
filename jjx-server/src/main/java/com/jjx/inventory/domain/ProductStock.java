@@ -41,6 +41,15 @@ public class ProductStock implements Serializable {
     /** 预留数量 */
     private BigDecimal totalReserved;
 
+    /** 安全库存（产品维度，080） */
+    private BigDecimal safeStock;
+
+    /** 最高库存（产品维度，080） */
+    private BigDecimal maxStock;
+
+    /** 再订货点（产品维度，080） */
+    private BigDecimal reorderPoint;
+
     /** 可用数量（DB 生成列：total_quantity - total_reserved，只读不写） */
     @TableField(insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
     private BigDecimal availableQuantity;

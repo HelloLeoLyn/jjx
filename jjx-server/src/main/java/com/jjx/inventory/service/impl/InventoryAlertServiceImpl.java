@@ -83,6 +83,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     public void executeAlertCheck() {
         log.info("开始执行库存预警检查");
         checkSafeStockAlert();
+        checkProductSafeStockAlert();
         checkMaxStockAlert();
         checkExpiryAlert();
         checkObsoleteAlert();
@@ -269,6 +270,41 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 .eq(InventoryAlertLog::getAlertType, "order_shortage")
                 .eq(InventoryAlertLog::getOrderNo, order.getOrderNo())
                 .eq(InventoryAlertLog::getStatus, 0));
+    }
+
+    /**
+     * 产品安全库存预警检查（080：产品也加安全库存预警，口径=可用量<安全库存）
+     */
+    public void checkProductSafeStockAlert() {
+        try {
+            List<ProductStock> all = productStockMapper.selectList(new LambdaQueryWrapper<ProductStock>()
+                    .gt(ProductStock::getSafeStock, BigDecimal.ZERO));
+            int lowCount = 0;
+            for (ProductStock ps : all) {
+                BigDecimal available = (ps.getAvailableQuantity() != null) ? ps.getAvailableQuantity()
+                        : ps.getTotalQuantity().subtract(ps.getTotalReserved() == null ? BigDecimal.ZERO : ps.getTotalReserved());
+                if (available.compareTo(ps.getSafeStock()) < 0) {
+                    String msg = "产品[" + ps.getProductCode() + "] " + ps.getProductName()
+                            + " 可用库存: " + available.stripTrailingZeros().toPlainString() + ", 低于安全库存 " + ps.getSafeStock().stripTrailingZeros().toPlainString();
+                    log.warn(msg);
+                    InventoryAlertLog alert = new InventoryAlertLog();
+                    alert.setAlertType("safe_stock");
+                    alert.setAlertLevel("warning");
+                    alert.setMaterialId(ps.getProductId());
+                    alert.setMaterialCode(ps.getProductCode());
+                    alert.setMaterialName(ps.getProductName());
+                    alert.setCurrentStock(available);
+                    alert.setSafeStock(ps.getSafeStock());
+                    alert.setAlertMessage(msg);
+                    alert.setAlertTime(java.time.LocalDateTime.now());
+                    alertLogMapper.insert(alert);
+                    lowCount++;
+                }
+            }
+            log.info("产品安全库存预警检查完成，发现 {} 条", lowCount);
+        } catch (Exception e) {
+            log.warn("产品安全库存预警检查失败: {}", e.getMessage());
+        }
     }
 
     @Override

@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
+import com.jjx.inventory.domain.ProductStock;
 import com.jjx.inventory.domain.SalesOrderStockReserve;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
+import com.jjx.inventory.mapper.ProductStockMapper;
 import com.jjx.inventory.mapper.SalesOrderStockReserveMapper;
 import com.jjx.inventory.service.OrderStockReserveService;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -26,12 +28,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 销售订单成品库存预留服务实现（DEV-578）
+ * 销售订单成品库存预留服务实现（DEV-578 / 040）
  *
  * 逻辑：
  * 1. 订单确认(4→6)时检查成品可用库存 available_quantity
  * 2. 库存充足→预留全部；不足→预留库存部分，缺货量(订单量-预留量)进生产
- * 3. 预留按 FIFO 批次占用 reserved_quantity，释放/扣减同步
+ * 3. 预留走【产品库存表 product_stock】（040定稿：成品预留→产品预留，非物料库存）
+ *    available = total_quantity - total_reserved
  */
 @Slf4j
 @Service
@@ -42,6 +45,7 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
     private final InventoryMaterialMapper materialMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryStockItemMapper stockItemMapper;
+    private final ProductStockMapper productStockMapper;
     private final OrderMapper orderMapper;
     private final SalesOrderProductMapper orderProductMapper;
 
@@ -78,48 +82,44 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
                 log.info("订单{}明细产品ID为空，跳过", order.getOrderNo());
                 continue;
             }
-            // 找成品物料档案（product_id 映射，material_type=F）
-            InventoryMaterial material = materialMapper.selectOne(
-                    new LambdaQueryWrapper<InventoryMaterial>()
-                            .eq(InventoryMaterial::getProductId, p.getProductId())
-                            .eq(InventoryMaterial::getMaterialType, "F")
-                            .last("LIMIT 1"));
-            if (material == null) {
-                // 无库存档案/新产品 → 视为0库存全量生产
-                shortageMap.put(p.getProductId(), BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity()));
-                log.info("产品{}无成品物料档案，按0库存全量生产", p.getProductId());
-                continue;
-            }
-
-            // 可用库存 = 总量 - 预留（available_quantity 为生成列，实体未映射，手动算）
-            InventoryStock stock = stockMapper.selectByMaterialId(material.getMaterialId());
-            BigDecimal total = (stock != null && stock.getTotalQuantity() != null)
-                    ? stock.getTotalQuantity() : BigDecimal.ZERO;
-            BigDecimal reserved = (stock != null && stock.getTotalReserved() != null)
-                    ? stock.getTotalReserved() : BigDecimal.ZERO;
+            // 040定稿：预留走【产品库存表 product_stock】（产品维度），不再走物料F维度
+            // 可用库存 = 总库存 - 预留（available_quantity 生成列）
+            ProductStock pStock = productStockMapper.selectByProductId(p.getProductId());
+            BigDecimal total = (pStock != null && pStock.getTotalQuantity() != null)
+                    ? pStock.getTotalQuantity() : BigDecimal.ZERO;
+            BigDecimal reserved = (pStock != null && pStock.getTotalReserved() != null)
+                    ? pStock.getTotalReserved() : BigDecimal.ZERO;
             BigDecimal available = total.subtract(reserved);
             BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
             BigDecimal reserveQty = orderQty.min(available);
             if (reserveQty.compareTo(BigDecimal.ZERO) > 0) {
-                reserveStock(material.getMaterialId(), reserveQty);
-                // 记录预留
-                SalesOrderStockReserve r = new SalesOrderStockReserve();
-                r.setOrderId(orderId);
-                r.setOrderNo(order.getOrderNo());
-                r.setProductId(p.getProductId());
-                r.setMaterialId(material.getMaterialId());
-                r.setMaterialCode(material.getMaterialCode());
-                r.setMaterialName(material.getMaterialName());
-                r.setReserveQuantity(reserveQty);
-                r.setStatus(0);
-                reserveMapper.insert(r);
+                // 产品库存预留（无记录先初始化，保证可预留）
+                if (pStock == null) {
+                    productStockMapper.increaseStock(p.getProductId(), p.getProductCode(), p.getProductName(), BigDecimal.ZERO);
+                }
+                int rows = productStockMapper.addReserved(p.getProductId(), reserveQty);
+                if (rows == 0) {
+                    log.warn("产品{}预留失败（可用不足），按0预留处理", p.getProductId());
+                } else {
+                    // 记录预留（保留原表做订单维度追溯）
+                    SalesOrderStockReserve r = new SalesOrderStockReserve();
+                    r.setOrderId(orderId);
+                    r.setOrderNo(order.getOrderNo());
+                    r.setProductId(p.getProductId());
+                    r.setMaterialId(p.getProductId()); // 产品维度：material_id 字段暂存产品ID（兼容旧结构）
+                    r.setMaterialCode(p.getProductCode());
+                    r.setMaterialName(p.getProductName());
+                    r.setReserveQuantity(reserveQty);
+                    r.setStatus(0);
+                    reserveMapper.insert(r);
+                }
             }
             BigDecimal shortage = orderQty.subtract(reserveQty);
             if (shortage.compareTo(BigDecimal.ZERO) > 0) {
                 shortageMap.put(p.getProductId(), shortage);
             }
         }
-        log.info("订单{}成品库存预留完成，缺货产品数: {}", order.getOrderNo(), shortageMap.size());
+        log.info("订单{}成品库存预留完成（产品维度），缺货产品数: {}", order.getOrderNo(), shortageMap.size());
         return shortageMap;
     }
 
@@ -134,11 +134,12 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             return;
         }
         for (SalesOrderStockReserve r : reserves) {
-            releaseStock(r.getMaterialId(), r.getReserveQuantity());
+            // 040：产品维度释放（material_id 暂存产品ID）
+            productStockMapper.releaseReserved(r.getMaterialId(), r.getReserveQuantity());
             r.setStatus(1);
             reserveMapper.updateById(r);
         }
-        log.info("订单{}释放成品预留{}条", orderId, reserves.size());
+        log.info("订单{}释放成品预留{}条（产品维度）", orderId, reserves.size());
     }
 
     @Override
@@ -147,6 +148,8 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
         if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
+        // 040：出库联动释放产品预留（materialId 在产品维度=产品ID）
+        productStockMapper.releaseReserved(materialId, quantity);
         List<SalesOrderStockReserve> reserves = reserveMapper.selectList(
                 new LambdaQueryWrapper<SalesOrderStockReserve>()
                         .eq(SalesOrderStockReserve::getOrderId, orderId)
@@ -161,7 +164,6 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             BigDecimal reservedQty = r.getReserveQuantity() == null ? BigDecimal.ZERO : r.getReserveQuantity();
             if (reservedQty.compareTo(BigDecimal.ZERO) <= 0) continue;
             BigDecimal release = remaining.min(reservedQty);
-            releaseStock(r.getMaterialId(), release);
             BigDecimal left = reservedQty.subtract(release);
             if (left.compareTo(BigDecimal.ZERO) <= 0) {
                 r.setStatus(1);
@@ -171,7 +173,7 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             reserveMapper.updateById(r);
             remaining = remaining.subtract(release);
         }
-        log.info("订单{}出库联动释放物料{}预留{}（剩余待释放{}）", orderId, materialId, quantity.subtract(remaining), remaining);
+        log.info("订单{}出库联动释放产品{}预留{}（剩余待释放{}）", orderId, materialId, quantity.subtract(remaining), remaining);
     }
 
     @Override
@@ -208,41 +210,5 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             }
         }
         return shortage;
-    }
-
-    /**
-     * 按 FIFO 批次占用预留
-     */
-    private void reserveStock(Long materialId, BigDecimal qty) {
-        List<InventoryStockItem> items = stockItemMapper.selectFIFOAvailable(materialId);
-        BigDecimal remaining = qty;
-        for (InventoryStockItem item : items) {
-            if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
-            BigDecimal free = item.getQuantity().subtract(item.getReservedQuantity());
-            if (free.compareTo(BigDecimal.ZERO) <= 0) continue;
-            BigDecimal take = remaining.min(free);
-            stockItemMapper.addReserved(item.getItemId(), take);
-            remaining = remaining.subtract(take);
-        }
-        stockMapper.refreshSummary(materialId);
-    }
-
-    /**
-     * 释放预留（从最新批次开始释放）
-     */
-    private void releaseStock(Long materialId, BigDecimal qty) {
-        List<InventoryStockItem> items = stockItemMapper.selectActiveByMaterialId(materialId);
-        BigDecimal remaining = qty;
-        // 倒序：后预留的先释放
-        for (int i = items.size() - 1; i >= 0; i--) {
-            InventoryStockItem item = items.get(i);
-            if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
-            BigDecimal reserved = item.getReservedQuantity() == null ? BigDecimal.ZERO : item.getReservedQuantity();
-            if (reserved.compareTo(BigDecimal.ZERO) <= 0) continue;
-            BigDecimal release = remaining.min(reserved);
-            stockItemMapper.releaseReserved(item.getItemId(), release);
-            remaining = remaining.subtract(release);
-        }
-        stockMapper.refreshSummary(materialId);
     }
 }

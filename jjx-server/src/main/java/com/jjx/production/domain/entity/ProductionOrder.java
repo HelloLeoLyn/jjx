@@ -74,8 +74,12 @@ public class ProductionOrder{
     @Schema(description = "计划数量")
     private BigDecimal plannedQuantity;
 
-    @Schema(description = "已完成数量")
+    @Schema(description = "已完成数量(工序合格汇总，仅作进度展示)")
     private BigDecimal completedQuantity;
+
+    /** 成品完工数量（最后一道工序/完工检验合格数，052口径，用于完工判断/入库/订单回写） */
+    @Schema(description = "成品完工数量(最后一道工序合格数)")
+    private BigDecimal finishedQuantity;
 
     @Schema(description = "剩余数量")
     private BigDecimal remainingQuantity;

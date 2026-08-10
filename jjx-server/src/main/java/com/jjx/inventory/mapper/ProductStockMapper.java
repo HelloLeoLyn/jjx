@@ -39,4 +39,21 @@ public interface ProductStockMapper extends BaseMapper<ProductStock> {
             "AND (total_quantity - total_reserved) >= #{qty}")
     int decreaseStock(@Param("productId") Long productId,
                       @Param("qty") java.math.BigDecimal qty);
+
+    /**
+     * 产品库存预留（040：成品预留→产品预留，预留走产品库存表 total_reserved）
+     */
+    @Update("UPDATE product_stock SET total_reserved = total_reserved + #{qty} " +
+            "WHERE product_id = #{productId} " +
+            "AND (total_quantity - total_reserved) >= #{qty}")
+    int addReserved(@Param("productId") Long productId,
+                    @Param("qty") java.math.BigDecimal qty);
+
+    /**
+     * 释放产品预留（total_reserved 减回去）
+     */
+    @Update("UPDATE product_stock SET total_reserved = GREATEST(0, total_reserved - #{qty}) " +
+            "WHERE product_id = #{productId}")
+    int releaseReserved(@Param("productId") Long productId,
+                        @Param("qty") java.math.BigDecimal qty);
 }
