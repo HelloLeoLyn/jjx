@@ -15,7 +15,7 @@ public enum OrderStatusEnum {
     PENDING_REVIEW(2, "待审核", "已提交审核，等待审核人审核", false, false),
     REVIEWING(3, "审核中", "审核人正在审核", false, false),
     APPROVED(4, "已审核", "审核通过", false, false),
-    REJECTED(5, "已驳回", "审核未通过", true, true),
+    REJECTED(5, "已驳回", "审核未通过", true, false),
     CONFIRMED(6, "已确认", "客户已确认订单", false, false),
     IN_PRODUCTION(7, "生产中", "订单已进入生产流程", false, false),
     SHIPPED(8, "已发货", "产品已发货", false, false),
