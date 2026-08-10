@@ -288,8 +288,8 @@
           </el-table>
           <div v-else style="color:#999;font-size:13px">暂无材料（在工序中添加材料后自动汇总）</div>
           <div class="transfer-zone">
-            <el-button type="success" size="small" @click="handleTransfer" :loading="transfering">📦 一键转正式工艺路线</el-button>
-            <div class="desc">打样确认后，把本轮工序计划+材料建档为产品/BOM/工艺路线</div>
+            <el-button type="success" size="small" @click="handleTransfer">📦 资料转移（建档产品/BOM/工艺路线）</el-button>
+            <div class="desc">打样确认后，把本轮工序计划+材料建档为产品/BOM/工艺路线（可预览匹配/人工调整）</div>
           </div>
         </el-card>
       </div>
@@ -386,6 +386,13 @@
       @success="onMaterialCreated"
     />
 
+    <!-- 打样转标准·轻量版弹窗（DEV-764：资料转移统一入口） -->
+    <SampleTransferDialog
+      v-model="transferDialogVisible"
+      :order-id="orderId"
+      @success="onTransferSuccess"
+    />
+
     <!-- 从历史打样复制弹窗 -->
     <el-dialog v-model="historyCopyVisible" title="📋 从历史打样复制" width="640px" append-to-body>
       <el-alert
@@ -448,6 +455,7 @@ import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
+import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/modules/user'
 
@@ -461,7 +469,6 @@ const orderId = computed(() => Number(route.query.orderId))
 
 const saving = ref(false)
 const savingPlan = ref(false)
-const transfering = ref(false)
 const form = reactive({ note: '' })
 
 // ===== 工序计划（方案A：卡片 = 一个工序单元，可挂多个作业项目）=====
@@ -1239,25 +1246,19 @@ async function saveNote() {
   }
 }
 
-// 资料转移（一键转量产建档）
-async function handleTransfer() {
+// 资料转移（DEV-764：改为打开轻量版弹窗，复用样品单列表同一组件/store）
+function handleTransfer() {
   if (!orderId.value) return
-  try {
-    await ElMessageBox.confirm('确认执行资料转移？将按本轮工序计划建档产品/BOM/工艺路线（仅已确认或已转量产状态可转移）', '资料转移', {
-      confirmButtonText: '确认转移', cancelButtonText: '取消', type: 'warning',
-    })
-    transfering.value = true
-    const res: any = await sampleOrderApi.transfer(orderId.value)
-    const d = res.data || {}
-    ElMessage.success(`转移成功：${d.transferNo || ''}`)
-    if (d.detail?.length) {
-      ElMessageBox.alert((d.detail || []).join('\n'), '转移明细', { confirmButtonText: '知道了' })
-    }
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '转移失败')
-  } finally {
-    transfering.value = false
-  }
+  transferDialogVisible.value = true
+}
+
+// 打样转标准·轻量版弹窗
+const transferDialogVisible = ref(false)
+function onTransferSuccess() {
+  transferDialogVisible.value = false
+  ElMessage.success('资料转移完成')
+  // 刷新当前数据（BOM/路线已建档，刷新汇总）
+  loadSummary()
 }
 
 // 图纸

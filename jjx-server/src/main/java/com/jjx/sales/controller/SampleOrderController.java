@@ -308,6 +308,7 @@ public class SampleOrderController extends BaseController {
      * 查询打样轮次快照列表
      */
     @Operation(summary = "产品资料转移（DEV-505：建档产品/BOM/工艺路线，状态初始化，事件通知+派任务）")
+    @Deprecated // 2026-08-10 DEV-764：资料转移统一入口已改为 /sample/transfer/*（轻量版弹窗+对照版），此接口保留兼容，二期移除
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "6")
     @SaCheckPermission("sales:sample:convert")
     @PostMapping("/transfer/{orderId}")

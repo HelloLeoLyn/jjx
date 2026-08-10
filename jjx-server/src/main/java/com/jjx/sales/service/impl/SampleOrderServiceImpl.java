@@ -916,8 +916,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
         // DEV-500 联动：聚合源用最新轮次工序（避免旧轮次试错工序混入量产BOM/路线）
-        // 方案A适配：计划模式取已完成工序（status=2）按 process_order 排序；
-        // 旧数据无状态标记（全为0）时退回全量，保证历史打样记录转移不丢
+        // 2026-08-10 DEV-766：聚合口径统一为「最新轮次全量工序」（与 previewTransfer/confirmTransfer 一致），
+        // 不再过滤状态（旧逻辑：有已完成工序则只取已完成）——由用户在对照版/轻量版弹窗中自行删减
         java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> allProcesses =
                 sampleProcessMapper.selectByOrderId(orderId);
         java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes = allProcesses;
@@ -930,20 +930,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 processes = allProcesses.stream()
                         .filter(p -> latestRound.equals(p.getRoundNo()))
                         .collect(java.util.stream.Collectors.toList());
-                long doneCount = processes.stream()
-                        .filter(p -> p.getStatus() != null && p.getStatus() == 2).count();
-                if (doneCount > 0) {
-                    processes = processes.stream()
-                            .filter(p -> p.getStatus() != null && p.getStatus() == 2)
-                            .collect(java.util.stream.Collectors.toList());
-                }
                 // 按工序顺序排序（计划模式），无顺序的旧数据按记录ID排尾部
                 processes.sort(java.util.Comparator.comparing(
                                 (com.jjx.sales.domain.entity.SalesSampleProcess p) ->
                                         p.getProcessOrder() != null && p.getProcessOrder() > 0 ? p.getProcessOrder() : 999999)
                         .thenComparing(p -> p.getProcessId() != null ? p.getProcessId() : 0L));
-                log.info("样品单[{}] 资料转移聚合源：最新轮次Round{} (已完成{}道，全量{}条)",
-                        orderId, latestRound, processes.size(), allProcesses.size());
+                log.info("样品单[{}] 资料转移聚合源：最新轮次Round{} (全量{}条)",
+                        orderId, latestRound, processes.size());
             }
         }
 
