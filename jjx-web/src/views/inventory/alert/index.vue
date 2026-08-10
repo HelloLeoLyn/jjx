@@ -179,6 +179,27 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="处理人" width="90" align="center">
+          <template #default="{ row }">
+            <span>{{ row.processedBy || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="处理时间" width="150" align="center">
+          <template #default="{ row }">
+            <span>{{ row.processedTime || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="关联采购订单" width="140" align="center">
+          <template #default="{ row }">
+            <el-link
+              v-if="extractPurchaseOrderNo(row.processRemark)"
+              type="primary"
+              :underline="false"
+              @click="goPurchaseOrders"
+            >{{ extractPurchaseOrderNo(row.processRemark) }}</el-link>
+            <span v-else style="color:#c0c4cc">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" min-width="170" fixed="right">
           <template #default="{ row }">
             <el-button v-if="row.status === 0" v-hasPermi="['inventory:alert:edit']" link type="primary" @click="handleMarkRead(row)"
@@ -186,6 +207,9 @@
             >
             <el-button v-if="row.status === 0" v-hasPermi="['inventory:alert:edit']" link type="success" @click="handleProcess(row)"
               >处理</el-button
+            >
+            <el-button v-if="row.status === 0" link type="warning" @click="goPurchasePlan"
+              >去采购计划</el-button
             >
             <el-button link type="info" @click="handleViewDetail(row)">详情</el-button>
           </template>
@@ -215,6 +239,26 @@ import { formatNumber } from '@/utils/format'
 import { alertApi } from '@/api/inventory/alert'
 import { AlertEnum } from '@/enums/inventory/AlertEnum'
 import { useUserStore } from '@/store/modules/user'
+import { useRouter } from 'vue-router'
+
+// 解析处理备注里的关联采购订单号（如"生成采购订单 PO-xxx"）
+function extractPurchaseOrderNo(remark: string | null | undefined): string {
+  if (!remark) return ''
+  const m = String(remark).match(/生成采购订单\s*([A-Za-z0-9\-]+)/)
+  return m ? m[1] : ''
+}
+
+const router = useRouter()
+
+// 去采购计划（未处理预警的处置入口）
+function goPurchasePlan() {
+  router.push('/purchase/plan')
+}
+
+// 去采购订单列表（查看关联订单）
+function goPurchaseOrders() {
+  router.push('/purchase/order')
+}
 
 // 查询参数
 const queryParams = reactive({
