@@ -41,15 +41,17 @@
         <div class="gantt-header-right" ref="timelineRef">
           <div class="gantt-timeline-row">
             <div
-              v-for="day in timelineDays"
+              v-for="(day, idx) in timelineDays"
               :key="day.date"
               class="gantt-day-header"
               :class="{ 'gantt-weekend': day.isWeekend, 'gantt-today': day.isToday }"
               :style="{ width: dayWidth + 'px' }"
             >
-              <div class="gantt-day-month">{{ day.month }}</div>
-              <div class="gantt-day-date">{{ day.date }}</div>
-              <div class="gantt-day-weekday">{{ day.weekday }}</div>
+              <!-- 2026-08-11 两行标签：上=年，下=月-日；按缩放级别间隔显示防密集；今天强制显示 -->
+              <template v-if="idx % dayLabelStep === 0 || day.isToday">
+                <div class="gantt-day-year">{{ day.date.slice(0, 4) }}</div>
+                <div class="gantt-day-md">{{ day.date.slice(5) }}</div>
+              </template>
             </div>
           </div>
         </div>
@@ -72,7 +74,7 @@
           >
             <!-- 左侧标签 -->
             <div class="gantt-label">
-              <div class="gantt-label-title" :title="order.orderNo" @click="$emit('view', order)">
+              <div class="gantt-label-title" :title="order.orderNo" @dblclick="$emit('view', order)">
                 <span class="gantt-label-badge" :class="'badge-' + (order.orderType === 'PLAN' ? 'plan' : 'work')">
                   {{ order.orderType === 'PLAN' ? '计划' : '工单' }}
                 </span>
@@ -104,17 +106,23 @@
                 :style="{ left: todayOffset + 'px' }"
               ></div>
 
-              <!-- 甘特条 -->
+              <!-- 甘特条（2026-08-11 支持拖拽排期） -->
               <div
                 v-if="order.barLeft !== undefined"
                 class="gantt-bar"
-                :class="'gantt-bar-' + (order.orderType === 'PLAN' ? 'plan' : 'work')"
+                :class="[
+                  'gantt-bar-' + (order.orderType === 'PLAN' ? 'plan' : 'work'),
+                  { 'gantt-bar-overdue': order.isOverdue },
+                  { 'gantt-bar-dragging': dragState && dragState.orderId === order.orderId },
+                  { 'gantt-bar-disabled': !canDrag(order) },
+                ]"
                 :style="{
                   left: (order.barLeft != null ? order.barLeft : 0) + 'px',
                   width: Math.max(order.barWidth != null ? order.barWidth : 0, 4) + 'px',
                 }"
-                :title="order.orderNo + ': ' + order.planStartDate + ' ~ ' + order.planEndDate"
-                @click="$emit('view', order)"
+                :title="(canDrag(order) ? '拖动调整排期，双击查看详情：' : '双击查看详情：') + order.orderNo + ': ' + order.planStartDate + ' ~ ' + order.planEndDate"
+                @dblclick="$emit('view', order)"
+                @mousedown="startDrag(order, $event)"
               >
                 <span class="gantt-bar-text" v-if="(order.barWidth != null ? order.barWidth : 0) > 60">
                   {{ order.productName || order.orderNo }}
@@ -148,8 +156,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { getProductionOrderList } from '@/api/production/order'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { getProductionOrderList, updateGanttData } from '@/api/production/order'
+import { OrderType } from '@/types/production/order'
 
 interface GanttOrder {
   orderId: number
@@ -201,6 +211,17 @@ const bodyRef = ref<HTMLElement>()
 const headerRef = ref<HTMLElement>()
 const scrollRef = ref<HTMLElement>()
 const timelineRef = ref<HTMLElement>()
+
+// ===== 拖拽排期状态（2026-08-11）=====
+interface DragState {
+  orderId: number
+  startClientX: number
+  startLeft: number
+  startDate: string
+  durationDays: number
+  dragged: boolean
+}
+const dragState = ref<DragState | null>(null)
 
 // 视图日期范围（默认前后30天）
 const today = new Date()
@@ -348,6 +369,17 @@ function zoomOut() {
   if (zoomLevel.value > 0) zoomLevel.value--
 }
 
+/**
+ * 日期标签显示间隔（2026-08-11：防止时间轴过密）
+ * 按缩放级别：52px/天→每天；44px→隔天；36px→每3天；28px→每周
+ */
+const dayLabelStep = computed(() => {
+  if (zoomLevel.value >= 3) return 1
+  if (zoomLevel.value === 2) return 2
+  if (zoomLevel.value === 1) return 3
+  return 7
+})
+
 /** 跳到今天 */
 function scrollToToday() {
   const now = new Date()
@@ -356,6 +388,98 @@ function scrollToToday() {
     formatDate(new Date(now.getTime() + 15 * 86400000)),
   ]
 }
+
+// ===== 拖拽排期（2026-08-11）=====
+
+/** 是否可拖拽：未完工、未取消、有计划日期 */
+function canDrag(order: GanttOrder): boolean {
+  if (!order.planStartDate || !order.planEndDate) return false
+  // orderStatus: 8=已完工, 9=已取消（参考状态机）
+  if (order.orderStatus === 8 || order.orderStatus === 9) return false
+  return true
+}
+
+/** 像素 → 日期字符串（视图起始为锚点） */
+function pixelToDate(px: number): string {
+  const start = parseDate(viewRange.value[0])
+  if (!start) return ''
+  const days = Math.round(px / dayWidth.value)
+  return formatDate(new Date(start.getTime() + days * 86400000))
+}
+
+/** 开始拖拽 */
+function startDrag(order: GanttOrder, e: MouseEvent) {
+  if (!canDrag(order) || order.barLeft === undefined) return
+  e.preventDefault()
+  dragState.value = {
+    orderId: order.orderId,
+    startClientX: e.clientX,
+    startLeft: order.barLeft,
+    startDate: order.planStartDate,
+    durationDays: Math.max(1, Math.round((order.barWidth ?? dayWidth.value) / dayWidth.value)),
+    dragged: false,
+  }
+  window.addEventListener('mousemove', onDragMove)
+  window.addEventListener('mouseup', onDragEnd)
+}
+
+/** 拖拽移动 */
+function onDragMove(e: MouseEvent) {
+  const ds = dragState.value
+  if (!ds) return
+  const dx = e.clientX - ds.startClientX
+  if (!ds.dragged && Math.abs(dx) < 4) return // 防误触：小于4px视为点击
+  ds.dragged = true
+
+  const order = orders.value.find((o) => o.orderId === ds.orderId)
+  if (!order) return
+
+  const days = Math.round(dx / dayWidth.value)
+  const newLeft = ds.startLeft + days * dayWidth.value
+  const maxLeft = timelinePixels.value - (ds.durationDays * dayWidth.value)
+  const clamped = Math.max(0, Math.min(newLeft, maxLeft))
+
+  order.barLeft = clamped
+  order.planStartDate = pixelToDate(clamped)
+  order.planEndDate = pixelToDate(clamped + ds.durationDays * dayWidth.value - dayWidth.value)
+}
+
+/** 拖拽结束 → 保存 */
+async function onDragEnd() {
+  window.removeEventListener('mousemove', onDragMove)
+  window.removeEventListener('mouseup', onDragEnd)
+  const ds = dragState.value
+  dragState.value = null
+  if (!ds || !ds.dragged) return // 没拖动就忽略（恢复点击行为）
+
+  const order = orders.value.find((o) => o.orderId === ds.orderId)
+  if (!order) return
+  if (order.planStartDate === ds.startDate) {
+    loadData() // 位置没变，刷新还原
+    return
+  }
+
+  try {
+    await updateGanttData({
+      orderId: String(order.orderId),
+      orderType: order.orderType === 'PLAN' ? OrderType.PLAN : OrderType.WORK_ORDER,
+      planStartDate: order.planStartDate,
+      planEndDate: order.planEndDate,
+      remark: '甘特图拖拽调整排期',
+    })
+    ElMessage.success(`${order.orderNo} 排期已更新: ${order.planStartDate} ~ ${order.planEndDate}`)
+    loadData()
+  } catch (err: any) {
+    console.error('更新排期失败:', err)
+    ElMessage.error(err?.message || '更新排期失败')
+    loadData() // 失败回滚刷新
+  }
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onDragMove)
+  window.removeEventListener('mouseup', onDragEnd)
+})
 
 watch(() => [props.startDate, props.endDate, props.orderType], () => loadData())
 
@@ -433,6 +557,9 @@ onMounted(() => loadData())
 .gantt-day-month { font-size: 10px; color: #64748b; }
 .gantt-day-date { font-size: 13px; font-weight: 700; color: #e2e8f0; }
 .gantt-day-weekday { font-size: 10px; color: #64748b; }
+/* 2026-08-11 两行日期标签：上=年，下=月-日 */
+.gantt-day-year { font-size: 10px; color: #94a3b8; line-height: 14px; }
+.gantt-day-md { font-size: 12px; font-weight: 700; color: #e2e8f0; line-height: 16px; }
 
 .gantt-scroll {
   overflow-x: auto;
@@ -551,6 +678,20 @@ onMounted(() => loadData())
   transition: opacity .15s;
   min-width: 4px;
 }
+/* 2026-08-11 可拖拽：抓取光标 + 拖动高亮 */
+.gantt-bar:not(.gantt-bar-disabled) {
+  cursor: grab;
+}
+.gantt-bar-dragging {
+  cursor: grabbing !important;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.6);
+  opacity: .9;
+  z-index: 20;
+}
+.gantt-bar-disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
 .gantt-bar:hover { opacity: .85; }
 .gantt-bar-plan {
   background: linear-gradient(135deg, #2563eb, #3b82f6);
@@ -559,6 +700,14 @@ onMounted(() => loadData())
 .gantt-bar-work {
   background: linear-gradient(135deg, #059669, #10b981);
   border: 1px solid #34d399;
+}
+/* 2026-08-11 超期：整条变红，覆盖原色 */
+.gantt-bar-overdue {
+  background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+  border-color: #f87171 !important;
+}
+.gantt-bar-overdue .gantt-bar-text {
+  color: #fff;
 }
 .gantt-bar-text {
   font-size: 11px;

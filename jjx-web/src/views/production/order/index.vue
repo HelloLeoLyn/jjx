@@ -181,6 +181,16 @@
 
     <!-- 查看流水（DEV-569） -->
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
+    <!-- 生产随工单详情抽屉（2026-08-11） -->
+    <el-drawer
+      v-model="workCardVisible"
+      title="生产随工单"
+      size="860px"
+      destroy-on-close
+    >
+      <ProductionWorkCard v-if="workCardOrderId" :order-id="workCardOrderId" />
+    </el-drawer>
   </div>
 </template>
 
@@ -201,6 +211,7 @@ import OrderStatusDialog from './components/OrderStatusDialog.vue'
 import OrderDeleteDialog from './components/OrderDeleteDialog.vue'
 import GanttChart from './components/GanttChart.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import ProductionWorkCard from './components/ProductionWorkCard.vue'
 import type {
   ProductionOrderVO,
   ProductionOrderQuery,
@@ -215,9 +226,13 @@ import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
 import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus, convertPlanToWorkOrders } from '@/api/production/order'
 import { download } from '@/utils/format'
+import { useRoute } from 'vue-router'
 
-// 视图状态
-const activeView = ref<'plan' | 'work_order' | 'all' | 'gantt'>('all')
+// 视图状态：排程管理菜单(/production/schedule)默认进甘特图，生产订单菜单默认全部视图（2026-08-11）
+const route = useRoute()
+const activeView = ref<'plan' | 'work_order' | 'all' | 'gantt'>(
+  route.path.includes('schedule') ? 'gantt' : 'all'
+)
 
 // 搜索表单
 const searchForm = reactive<ProductionOrderQuery>({
@@ -536,8 +551,9 @@ const handleSelectionChange = (selection: ProductionOrderVO[]) => {
 }
 
 const handleViewOrder = (order: any) => {
-  // 跳转到详情页或打开详情对话框
-  ElMessage.info(`查看订单 ${order.orderNo}`)
+  // 打开生产随工单详情抽屉（2026-08-11 方案A：工单头+工序明细+领料+质检+签字区）
+  workCardOrderId.value = order.orderId
+  workCardVisible.value = true
 }
 
 const handleEditOrder = (order: any) => {
@@ -713,6 +729,10 @@ const handleViewHistory = (order: any) => {
 // 查看流水（DEV-569）
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')
+
+// 生产随工单详情抽屉（2026-08-11）
+const workCardVisible = ref(false)
+const workCardOrderId = ref<string | number>('')
 const handleTrace = (order: any) => {
   currentTraceId.value = order.traceId || ''
   traceDrawerVisible.value = true
