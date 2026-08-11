@@ -202,11 +202,7 @@
             >重新报价</el-button
           >
         </el-col>
-        <el-col :span="1.5">
-          <el-button type="info" plain icon="CopyDocument" :disabled="single" @click="handleCopy"
-            >复制报价</el-button
-          >
-        </el-col>
+
         <el-col :span="1.5">
           <el-button
             type="warning"
@@ -308,6 +304,11 @@
           min-width="250"
         >
           <template #default="scope">
+             <el-tooltip content="复制报价" placement="top">
+          <el-button link type="primary" plain icon="CopyDocument"  @click="handleCopy(scope.row)"
+            ></el-button
+          >
+        </el-tooltip>
             <el-tooltip content="修改" placement="top" v-if="[1, 2, 3, 4, 9].indexOf(scope.row.quotationStatus) === -1">
               <el-button
                 link
@@ -878,14 +879,13 @@
       </template>
     </el-dialog>
 
-    <!-- 组合弹窗：业务流水 + 链路追踪（DEV-方案A） -->
-    <QuotationTraceDialog
+    <!-- 组合弹窗：业务流水 + 链路追踪（2026-08-11 统一用 TraceTimeline） -->
+    <TraceTimeline
       v-model="traceDialogVisible"
-      :quotation-id="traceQuotationId"
-      :quotation-no="traceQuotationNo"
-      :current-status="traceCurrentStatus"
       :trace-id="currentTraceId"
-      @success="getList"
+      :biz-id="traceQuotationId ? String(traceQuotationId) : ''"
+      biz-type="quotation"
+      :flow-api="(bizId: any) => quotationApi.getFlowRecords(Number(bizId))"
     />
 
     <!-- 附件管理弹窗 -->
@@ -924,7 +924,8 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
-import QuotationTraceDialog from './components/QuotationTraceDialog.vue'
+import OrderFormDialog from './components/OrderFormDialog.vue'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
@@ -1809,16 +1810,12 @@ async function locateQuotation(quotationId: number) {
 function gotoInquiry(row: any) {
   window.open('/sales/inquiry', '_blank')
 }
-// 组合弹窗：业务流水 + 链路追踪（DEV-方案A）
+// 组合弹窗：业务流水 + 链路追踪（2026-08-11 统一用 TraceTimeline）
 const traceDialogVisible = ref(false)
 const currentTraceId = ref('')
 const traceQuotationId = ref<number | null>(null)
-const traceQuotationNo = ref('')
-const traceCurrentStatus = ref<number | null>(null)
 function showTrace(row: any) {
   traceQuotationId.value = row.quotationId ?? null
-  traceQuotationNo.value = row.quotationNo || ''
-  traceCurrentStatus.value = row.quotationStatus ?? null
   currentTraceId.value = row.traceId || ''
   traceDialogVisible.value = true
 }

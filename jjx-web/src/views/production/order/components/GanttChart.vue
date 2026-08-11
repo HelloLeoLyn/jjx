@@ -58,7 +58,13 @@
       </div>
 
       <!-- 滚动区域 -->
-      <div class="gantt-scroll" @scroll="syncScroll" ref="scrollRef">
+      <div
+        class="gantt-scroll"
+        :class="{ 'gantt-panning': panState }"
+        @scroll="syncScroll"
+        @mousedown="startPan"
+        ref="scrollRef"
+      >
         <div class="gantt-rows" :style="{ minWidth: timelineWidth + 'px' }">
           <!-- 空状态 -->
           <div v-if="orders.length === 0" class="gantt-empty">
@@ -223,6 +229,16 @@ interface DragState {
 }
 const dragState = ref<DragState | null>(null)
 
+// ===== 画布平移状态（2026-08-11 抓手拖动查看） =====
+interface PanState {
+  startClientX: number
+  startClientY: number
+  startScrollLeft: number
+  startScrollTop: number
+  moved: boolean
+}
+const panState = ref<PanState | null>(null)
+
 // 视图日期范围（默认前后30天）
 const today = new Date()
 const viewRange = ref<string[]>([
@@ -361,6 +377,52 @@ function syncScroll(e: Event) {
   }
 }
 
+// ===== 画布平移（2026-08-11 抓手拖动查看，类似地图拖拽） =====
+
+/** 是否命中可拖拽甘特条（跳过平移，交给排期拖拽） */
+function isOnGanttBar(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el && !!el.closest && !!el.closest('.gantt-bar')
+}
+
+/** 开始抓手平移（左键 + 非甘特条区域） */
+function startPan(e: MouseEvent) {
+  if (e.button !== 0) return // 仅左键
+  if (isOnGanttBar(e.target)) return // 甘特条交给排期拖拽
+  const scroller = scrollRef.value
+  if (!scroller) return
+  panState.value = {
+    startClientX: e.clientX,
+    startClientY: e.clientY,
+    startScrollLeft: scroller.scrollLeft,
+    startScrollTop: scroller.scrollTop,
+    moved: false,
+  }
+  window.addEventListener('mousemove', onPanMove)
+  window.addEventListener('mouseup', onPanEnd)
+}
+
+/** 平移移动：同步滚动位置（左右+上下） */
+function onPanMove(e: MouseEvent) {
+  const ps = panState.value
+  if (!ps) return
+  const dx = e.clientX - ps.startClientX
+  const dy = e.clientY - ps.startClientY
+  if (!ps.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return // 防误触
+  ps.moved = true
+  const scroller = scrollRef.value
+  if (!scroller) return
+  scroller.scrollLeft = ps.startScrollLeft - dx
+  scroller.scrollTop = ps.startScrollTop - dy
+}
+
+/** 平移结束 */
+function onPanEnd() {
+  window.removeEventListener('mousemove', onPanMove)
+  window.removeEventListener('mouseup', onPanEnd)
+  panState.value = null
+}
+
 /** 缩放 */
 function zoomIn() {
   if (zoomLevel.value < 3) zoomLevel.value++
@@ -411,6 +473,7 @@ function pixelToDate(px: number): string {
 function startDrag(order: GanttOrder, e: MouseEvent) {
   if (!canDrag(order) || order.barLeft === undefined) return
   e.preventDefault()
+  e.stopPropagation() // 2026-08-11：阻止冒泡到画布平移
   dragState.value = {
     orderId: order.orderId,
     startClientX: e.clientX,
@@ -479,6 +542,8 @@ async function onDragEnd() {
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onDragMove)
   window.removeEventListener('mouseup', onDragEnd)
+  window.removeEventListener('mousemove', onPanMove)
+  window.removeEventListener('mouseup', onPanEnd)
 })
 
 watch(() => [props.startDate, props.endDate, props.orderType], () => loadData())
@@ -565,6 +630,12 @@ onMounted(() => loadData())
   overflow-x: auto;
   overflow-y: auto;
   max-height: calc(100vh - 350px);
+  cursor: grab; /* 2026-08-11 抓手平移 */
+}
+.gantt-scroll.gantt-panning {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .gantt-scroll::-webkit-scrollbar { height: 8px; width: 6px; }
 .gantt-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
