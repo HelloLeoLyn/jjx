@@ -75,6 +75,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         // 转换为实体
         ProductionOrder order = productionOrderConverter.toEntity(createDTO);
+        // 2026-08-11 规范化：orderType 统一大写（PLAN/WORK_ORDER），避免与前端小写混存
+        if (order.getOrderType() != null) {
+            order.setOrderType(order.getOrderType().toUpperCase());
+        }
         // 链路追踪（DEV-568）：无上游 traceId 则生成 UUID
         if (order.getTraceId() == null || order.getTraceId().isEmpty()) {
             order.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
@@ -268,6 +272,23 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             inventoryOutboundService.createFromProduction(orderId);
         } catch (Exception e) {
             log.error("生产领料自动出库失败（不影响开工主流程）: {}", e.getMessage());
+        }
+
+        // 状态联动（2026-08-11）：工单启动 → 销售订单 已确认(6)→生产中(7)
+        try {
+            if (order.getSalesOrderId() != null) {
+                com.jjx.sales.domain.entity.SalesOrder so = salesOrderMapper.selectById(order.getSalesOrderId());
+                if (so != null && com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode().equals(so.getOrderStatus())) {
+                    int up = salesOrderMapper.updateStatusWithCheck(order.getSalesOrderId(),
+                            com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode(),
+                            com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode());
+                    if (up > 0) {
+                        log.info("工单{}启动，销售订单{} 已确认(6)→生产中(7)", orderId, order.getSalesOrderNo());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("工单启动回写销售订单状态失败: {}", e.getMessage());
         }
 
         log.info("生产工单启动成功, ID: {}", orderId);
@@ -785,7 +806,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (queryDTO.getOrderStatus() != null) {
             wrapper.eq(ProductionOrder::getOrderStatus, queryDTO.getOrderStatus());
         }
-        if (queryDTO.getOrderType() != null) {
+        // 2026-08-11 修复：orderType=all 表示"全部"，不得作为过滤值（否则全部视图永远查不到数据）
+        if (StringUtils.isNotBlank(queryDTO.getOrderType()) && !"all".equalsIgnoreCase(queryDTO.getOrderType())) {
             wrapper.eq(ProductionOrder::getOrderType, queryDTO.getOrderType());
         }
 
@@ -1059,9 +1081,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (!"PLAN".equals(plan.getOrderType())) {
             throw new BusinessException("订单不是生产计划类型，无法转换: " + plan.getOrderNo());
         }
-        // 039⑤：仅已批准计划可转（approvalStatus=2 已审核）
-        if (plan.getApprovalStatus() == null || plan.getApprovalStatus() != 2) {
-            throw new BusinessException("仅已审批通过的生产计划可转为工单，当前审批状态: " + plan.getApprovalStatus());
+        // 039⑤：仅已批准计划可转（2026-08-11 统一：审批动作只维护 orderStatus，2=已批准）
+        if (plan.getOrderStatus() == null || plan.getOrderStatus() != 2) {
+            throw new BusinessException("仅已审批通过的生产计划可转为工单，当前状态: " + (plan.getOrderStatus() == null ? "未知" : plan.getOrderStatus()));
         }
         // 039⑤：Σ子工单数量 ≤ 计划数量（防超量）
         BigDecimal planQty = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
@@ -1106,7 +1128,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             workOrder.setRemainingQuantity(item.getPlannedQuantity());
             workOrder.setPlanStartDate(item.getPlanStartDate());
             workOrder.setPlanEndDate(item.getPlanEndDate());
-            workOrder.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+            workOrder.setOrderStatus(OrderStatusEnum.PLANNED.getCode()); // 2026-08-11：计划转工单=排期确定，直接已计划，可启动
             workOrder.setPriority(item.getPriority() != null ? item.getPriority() : "MEDIUM");
             workOrder.setDepartmentId(plan.getDepartmentId());
             workOrder.setDepartmentName(plan.getDepartmentName());
@@ -1125,8 +1147,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             log.info("工单已生成: {} (计划: {})", workOrderNo, plan.getOrderNo());
         }
 
-        // 更新计划状态为"已转工单"
-        plan.setOrderStatus(OrderStatusEnum.PLANNED.getCode());
+        // 更新计划状态为"已转工单"（2026-08-11：CLOSED=已关闭，避免与工单的"已计划"混淆）
+        plan.setOrderStatus(OrderStatusEnum.CLOSED.getCode());
         updateById(plan);
 
         return createdOrderIds;

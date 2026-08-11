@@ -294,7 +294,9 @@ async function loadData() {
     }
 
     const res = await getProductionOrderList(params as any)
-    let items = res?.data?.records || []
+    // 2026-08-11 修复：list 接口返回数组（无 records 字段），直接取数组，否则甘特图永远空
+    const data = res?.data
+    let items = Array.isArray(data) ? data : data?.records || []
     if (!Array.isArray(items)) items = []
 
     const todayStr = formatDate(new Date())

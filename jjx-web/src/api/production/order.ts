@@ -61,12 +61,12 @@ export function deleteProductionOrder(orderId: string, orderType?: OrderType) {
   })
 }
 
-// 更新订单状态
+// 更新订单状态（后端为 @RequestParam query 参数，2026-08-11 修复：原放 body 导致 orderId 缺失）
 export function updateOrderStatus(data: OrderStatusUpdateDTO) {
   return request({
     url: '/production/order/status',
     method: 'put',
-    data,
+    params: data,
   })
 }
 

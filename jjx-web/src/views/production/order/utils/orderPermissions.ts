@@ -9,7 +9,7 @@ export function canConvertToWorkOrder(order: {
   parentOrderId?: string
 }): boolean {
   return (
-    order.orderType === 'plan' &&
+    String(order.orderType || '').toLowerCase() === 'plan' &&
     order.orderStatus === 2 &&
     (!order.parentOrderId || order.parentOrderId === '')
   )
@@ -19,14 +19,14 @@ export function canConvertToWorkOrder(order: {
  * 判断工单是否可以开始执行
  */
 export function canStart(order: { orderType: OrderType; orderStatus: OrderStatus }): boolean {
-  return order.orderType === 'work_order' && order.orderStatus === 4
+  return String(order.orderType || '').toLowerCase() === 'work_order' && order.orderStatus === 4
 }
 
 /**
  * 判断工单是否可以完成
  */
 export function canComplete(order: { orderType: OrderType; orderStatus: OrderStatus }): boolean {
-  return order.orderType === 'work_order' && order.orderStatus === 6
+  return String(order.orderType || '').toLowerCase() === 'work_order' && order.orderStatus === 6
 }
 
 /**
@@ -54,7 +54,7 @@ export function canDelete(order: { orderStatus: OrderStatus }): boolean {
  * 判断订单是否可以审批
  */
 export function canApprove(order: { orderType: OrderType; orderStatus: OrderStatus }): boolean {
-  return order.orderType === 'plan' && order.orderStatus === 1
+  return String(order.orderType || '').toLowerCase() === 'plan' && order.orderStatus === 1
 }
 
 /**

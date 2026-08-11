@@ -41,9 +41,13 @@ export const orderStatusApi = {
       context: context || '',
     }),
 
-  // 开始生产
+  // 开始生产（快捷模式：直接转工单）
   startProduction: (orderId: number) =>
     request.put(`/sales/orders/${orderId}/status/start-production`),
+
+  // 生成生产计划（标准模式：SO→PLAN→审批→转工单）
+  generatePlan: (orderId: number) =>
+    request.put(`/sales/orders/${orderId}/status/generate-plan`),
 
   // 完成订单
   completeOrder: (orderId: number) => request.put(`/sales/orders/${orderId}/status/complete`),

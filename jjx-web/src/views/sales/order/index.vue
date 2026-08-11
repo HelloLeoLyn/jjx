@@ -187,10 +187,13 @@
 
               <!-- 已确认状态 (6) -->
               <template v-else-if="row.orderStatus === 6">
-                <el-button type="primary" size="small" @click="handleStartProduction(row)">
-                  开始生产
+                <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
+                  生成生产计划
                 </el-button>
-                <el-button type="warning" size="small" @click="handleRecheckShortage(row)">
+                <el-button type="warning" size="small" @click="handleStartProduction(row)">
+                  直接转工单
+                </el-button>
+                <el-button type="info" size="small" plain @click="handleRecheckShortage(row)">
                   齐套检查
                 </el-button>
                 <el-tooltip
@@ -327,7 +330,7 @@ defineOptions({
   name: 'SalesOrder',
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -623,13 +626,46 @@ const openConfirmAttachment = (row: any) => {
 // 订单齐套检查（手动重新检查，DEV-572 8-04）
 const handleRecheckShortage = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定要对订单【${row.orderNo}】重新执行齐套检查（按BOM算料，缺口生成预警）吗？`, '齐套检查', {
+    await ElMessageBox.confirm(`确定要对订单【${row.orderNo}】重新执行齐套检查（按BOM算料，缺口扣除在途采购量）吗？`, '齐套检查', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
     })
-    await alertApi.checkOrderShortage(row.orderId)
-    ElMessage.success('齐套检查完成，缺料预警已更新（可在库存预警查看）')
+    const res: any = await alertApi.checkOrderShortage(row.orderId)
+    const items: any[] = res?.data || []
+    if (items.length === 0) {
+      ElMessage.success('齐套检查完成：无缺料（含在途已覆盖），未生成缺料预警')
+      return
+    }
+    // 弹窗展示缺料明细（含在途采购量，销售可见采购在途情况）
+    const thStyle = 'padding:6px 8px;border:1px solid #ebeef5;background:#f5f7fa;text-align:left'
+    const tdStyle = 'padding:6px 8px;border:1px solid #ebeef5'
+    const fmt = (v: any) => (v === null || v === undefined ? '-' : String(v))
+    ElMessageBox.alert(
+      h('div', null, [
+        h('p', { style: 'margin-bottom:10px;color:#f56c6c;font-weight:600' }, `发现 ${items.length} 种物料缺料（已扣除在途采购量），缺料预警已生成：`),
+        h('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' }, [
+          h('tr', null, [
+            h('th', { style: thStyle }, '物料'),
+            h('th', { style: thStyle }, '需求'),
+            h('th', { style: thStyle }, '可用'),
+            h('th', { style: thStyle }, '在途'),
+            h('th', { style: thStyle }, '实际缺口'),
+          ]),
+          ...items.map((it) =>
+            h('tr', null, [
+              h('td', { style: tdStyle }, `${it.materialCode} ${it.materialName}`),
+              h('td', { style: tdStyle }, fmt(it.demand)),
+              h('td', { style: tdStyle }, fmt(it.available)),
+              h('td', { style: tdStyle }, Number(it.inTransit) > 0 ? fmt(it.inTransit) : '-'),
+              h('td', { style: tdStyle, color: '#f56c6c', fontWeight: 600 }, fmt(it.actualGap)),
+            ])
+          ),
+        ]),
+      ]),
+      '齐套检查缺料明细',
+      { confirmButtonText: '知道了', type: 'warning' }
+    )
   } catch (error) {
     if (error !== 'cancel') {
       console.error('齐套检查失败', error)
@@ -637,20 +673,38 @@ const handleRecheckShortage = async (row: any) => {
   }
 }
 
-// 开始生产
-const handleStartProduction = async (row: any) => {
+// 生成生产计划（标准模式：SO→PLAN→审批→转工单）
+const handleGeneratePlan = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定要开始生产订单【${row.orderNo}】吗？`, '开始生产', {
+    await ElMessageBox.confirm(`确定为订单【${row.orderNo}】生成生产计划吗？\n生成后需在【生产管理→生产订单→计划视图】审批，再转工单。`, '生成生产计划', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'info',
     })
-    await orderStatusApi.startProduction(row.orderId)
-    ElMessage.success('开始生产成功')
+    await orderStatusApi.generatePlan(row.orderId)
+    ElMessage.success('生产计划已生成，请到生产订单-计划视图审批')
     getList()
   } catch (error) {
     if (error !== 'cancel') {
-      console.error('开始生产失败', error)
+      console.error('生成生产计划失败', error)
+    }
+  }
+}
+
+// 直接转工单（快捷模式：SO→WO，跳过计划审批）
+const handleStartProduction = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确定要直接为订单【${row.orderNo}】转工单吗？\n快捷模式：跳过计划审批，工单直接进入"已计划"状态。`, '直接转工单', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await orderStatusApi.startProduction(row.orderId)
+    ElMessage.success('工单已生成（已计划），可到生产订单-工单视图启动')
+    getList()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('直接转工单失败', error)
     }
   }
 }

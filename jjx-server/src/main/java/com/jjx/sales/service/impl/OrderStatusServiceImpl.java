@@ -552,6 +552,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             }
             // 调用生产模块创建生产工单
             Long productionOrderId = productionOrderService.createOrder(createDTO);
+            // 快捷模式（2026-08-11）：直接转工单，工单置"已计划(4)"可直接启动
+            productionOrderService.updateOrderStatus(productionOrderId, 4, "快捷模式：销售订单直接转工单");
             createdCount++;
             log.info("为销售订单{}创建生产工单{}，产品：{}，数量：{}",
                     orderId, productionOrderId, product.getProductName(), planQty);
@@ -597,6 +599,127 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         log.info("订单{}开始生产，操作人：{}，创建生产工单数：{}",
                 orderId, SecurityUtils.getUsername(), products.size());
+    }
+
+    /**
+     * 校验订单产品 BOM/工艺路线（生产计划/直接转工单共用，2026-08-11 抽取）
+     */
+    private void checkBomAndRouting(List<SalesOrderProduct> products) {
+        for (SalesOrderProduct product : products) {
+            if (product.getProductId() == null) {
+                log.warn("订单产品{}无productId（样品单），跳过BOM检查", product.getProductCode());
+                continue;
+            }
+            long bomCount = productBomMapper.selectCount(
+                    new LambdaQueryWrapper<EngineeringBom>()
+                            .eq(EngineeringBom::getProductId, product.getProductId())
+                            .eq(EngineeringBom::getIsCurrent, 1)
+                            .eq(EngineeringBom::getApproveStatus, 3)
+            );
+            if (bomCount == 0) {
+                long draftBomCount = productBomMapper.selectCount(
+                        new LambdaQueryWrapper<EngineeringBom>()
+                                .eq(EngineeringBom::getProductId, product.getProductId())
+                                .eq(EngineeringBom::getIsCurrent, 1)
+                );
+                if (draftBomCount > 0) {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 当前BOM尚未审批通过，请先完成BOM审批");
+                } else {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前生效的BOM，请先配置并审批BOM");
+                }
+            }
+            long routeCount = productRoutingMapper.selectCount(
+                    new LambdaQueryWrapper<EngineeringRouting>()
+                            .eq(EngineeringRouting::getProductId, product.getProductId())
+                            .eq(EngineeringRouting::getIsCurrent, 1)
+                            .eq(EngineeringRouting::getApproveStatus, 3)
+            );
+            if (routeCount == 0) {
+                long draftRouteCount = productRoutingMapper.selectCount(
+                        new LambdaQueryWrapper<EngineeringRouting>()
+                                .eq(EngineeringRouting::getProductId, product.getProductId())
+                                .eq(EngineeringRouting::getIsCurrent, 1)
+                );
+                if (draftRouteCount > 0) {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 当前工艺路线尚未审批通过，请先完成路线审批");
+                } else {
+                    throw new BusinessException("产品[" + product.getProductCode() + "] " + product.getProductName() + " 没有当前工艺路线，请先配置并审批工艺路线");
+                }
+            }
+        }
+    }
+
+    /**
+     * 生成生产计划（2026-08-11 业务定稿：SO→PLAN→审批→转工单 三层模型）
+     * 每个产品生成一张 PLAN（数量=订单需求全量），自动进入待审批，SO 保持已确认(6)，
+     * 待工单启动时才置生产中(7)
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void createProductionPlan(Long orderId) {
+        SalesOrder order = salesOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
+        if (currentStatus != OrderStatusEnum.CONFIRMED) {
+            throw new BusinessException("只有已确认的订单才能生成生产计划，当前状态：" + currentStatus.getName());
+        }
+        if (!orderProductService.isExists(orderId)) {
+            throw new BusinessException("订单产品不存在，无法生成生产计划");
+        }
+        List<SalesOrderProduct> products = salesOrderProductMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalesOrderProduct>()
+                        .eq(SalesOrderProduct::getOrderId, orderId)
+        );
+        // BOM/路线前置校验
+        checkBomAndRouting(products);
+
+        int createdCount = 0;
+        for (SalesOrderProduct product : products) {
+            if (product.getProductId() == null) {
+                log.warn("订单{}产品{}无productId（样品单），跳过生成计划", orderId, product.getProductCode());
+                continue;
+            }
+            ProductionOrderCreateDTO createDTO = new ProductionOrderCreateDTO();
+            createDTO.setOrderType("PLAN");
+            createDTO.setSalesOrderId(orderId);
+            createDTO.setSalesOrderNo(order.getOrderNo());
+            createDTO.setProductId(product.getProductId());
+            createDTO.setProductCode(product.getProductCode());
+            createDTO.setProductName(product.getProductName());
+            createDTO.setProductSpec("");
+            createDTO.setProductUnit(product.getUnit());
+            createDTO.setPlannedQuantity(BigDecimal.valueOf(product.getQuantity() == null ? 0 : product.getQuantity()));
+            createDTO.setPlanStartDate(LocalDate.now());
+            if (order.getDeliveryDate() != null) {
+                createDTO.setPlanEndDate(order.getDeliveryDate().toInstant()
+                        .atZone(ZoneId.systemDefault()).toLocalDate());
+            } else {
+                createDTO.setPlanEndDate(LocalDate.now().plusDays(7));
+            }
+            createDTO.setPriority(order.getIsUrgent() != null && order.getIsUrgent() == 1 ? "HIGH" : "MEDIUM");
+            createDTO.setRemark("由销售订单[" + order.getOrderNo() + "]生成生产计划");
+            createDTO.setOrderNo(redisSequenceService.generateBusinessNumber("PL", "YYMMDD"));
+            createDTO.setTraceId(order.getTraceId());
+            Product productInfo = productMapper.selectById(product.getProductId());
+            if (productInfo != null) {
+                createDTO.setBomId(productInfo.getCurrentBomId());
+                createDTO.setRoutingId(productInfo.getCurrentRouteId());
+            }
+            Long planId = productionOrderService.createOrder(createDTO);
+            // 自动提交审批：计划员在计划视图审批通过后转工单
+            productionOrderService.updateOrderStatus(planId, 1, "销售订单生成计划，自动提交审批");
+            createdCount++;
+            log.info("为销售订单{}生成生产计划{}，产品：{}，数量：{}",
+                    orderId, planId, product.getProductName(), createDTO.getPlannedQuantity());
+        }
+        if (createdCount == 0) {
+            throw new BusinessException("订单无可生成计划的产品（均无productId）");
+        }
+        String desc = "生成生产计划 " + createdCount + " 张，待计划审批";
+        saveOrderLog(order.getOrderNo(), "generate_plan", desc, 1);
+        log.info("订单{}生成生产计划完成：{}张，SO状态保持已确认，待工单启动置生产中", orderId, createdCount);
     }
 
     @Override

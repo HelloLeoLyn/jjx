@@ -49,6 +49,11 @@ public interface IOrderStatusService {
      * 开始生产 - 创建生产工单并更新销售订单状态
      */
     void startProduction(Long orderId);
+
+    /**
+     * 生成生产计划（标准模式：SO→PLAN→审批→转工单）
+     */
+    void createProductionPlan(Long orderId);
     void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark);
 
     /**

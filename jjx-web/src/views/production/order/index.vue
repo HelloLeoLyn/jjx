@@ -86,6 +86,88 @@
       @close="handleStatusClose"
     />
 
+    <!-- 计划转工单（可拆分）弹窗 -->
+    <el-dialog
+      v-model="convertDialogVisible"
+      title="计划转工单（可拆分）"
+      width="780px"
+      append-to-body
+      destroy-on-close
+    >
+      <template v-if="convertPlan">
+        <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+          计划 {{ convertPlan.orderNo }}｜产品 {{ convertPlan.productName }}｜计划数量
+          {{ convertPlan.plannedQuantity }}——可拆成多张工单，合计不得超过计划数量
+        </el-alert>
+        <el-table :data="convertRows" border size="small">
+          <el-table-column label="数量" width="150">
+            <template #default="{ row }">
+              <el-input-number
+                v-model="row.plannedQuantity"
+                :min="0"
+                :precision="0"
+                :controls="false"
+                style="width: 110px"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="计划开始" width="170">
+            <template #default="{ row }">
+              <el-date-picker
+                v-model="row.planStartDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                style="width: 140px"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="计划结束" width="170">
+            <template #default="{ row }">
+              <el-date-picker
+                v-model="row.planEndDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                style="width: 140px"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="优先级" width="110">
+            <template #default="{ row }">
+              <el-select v-model="row.priority" size="small">
+                <el-option label="高" value="high" />
+                <el-option label="中" value="medium" />
+                <el-option label="低" value="low" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="70" align="center">
+            <template #default="{ $index }">
+              <el-button link type="danger" @click="convertRows.splice($index, 1)">删</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div
+          style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center"
+        >
+          <span :style="{ color: convertTotalQty > Number(convertPlan.plannedQuantity) ? '#f56c6c' : '#303133' }">
+            合计：{{ convertTotalQty }} / {{ convertPlan.plannedQuantity }}
+          </span>
+          <el-button size="small" @click="addConvertRow">＋ 添加拆分</el-button>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="convertDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="converting"
+          :disabled="convertTotalQty <= 0 || convertTotalQty > Number(convertPlan?.plannedQuantity)"
+          @click="submitConvert"
+        >
+          转工单
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 删除确认对话框 -->
     <OrderDeleteDialog
       v-model:visible="deleteDialogVisible"
@@ -463,50 +545,74 @@ const handleEditOrder = (order: any) => {
   formDialogVisible.value = true
 }
 
+// 计划转工单（可拆分弹窗，2026-08-11）
+const convertDialogVisible = ref(false)
+const convertPlan = ref<any>(null)
+const convertRows = ref<any[]>([])
+const converting = ref(false)
+const convertTotalQty = computed(() =>
+  convertRows.value.reduce((s, r) => s + (Number(r.plannedQuantity) || 0), 0),
+)
+
 const handleConvertOrder = (order: any) => {
-  ElMessageBox.confirm(`确定要将计划 ${order.orderNo} 转为工单吗？`, '转为工单确认', {
-    confirmButtonText: '确认',
-    cancelButtonText: '取消',
-    type: 'warning',
-  }).then(async () => {
-    try {
-      // DEV-682：接真实接口——计划转工单
-      const today = new Date()
-      const fmt = (d: Date) => d.toISOString().slice(0, 10)
-      const startDate = order.planStartDate ? String(order.planStartDate).slice(0, 10) : fmt(today)
-      const endDate = order.planEndDate
+  convertPlan.value = order
+  const today = new Date()
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  convertRows.value = [
+    {
+      productId: String(order.productId),
+      productCode: order.productCode || '',
+      productName: order.productName || '',
+      plannedQuantity: Number(order.plannedQuantity),
+      planStartDate: order.planStartDate ? String(order.planStartDate).slice(0, 10) : fmt(today),
+      planEndDate: order.planEndDate
         ? String(order.planEndDate).slice(0, 10)
-        : fmt(new Date(today.getTime() + 7 * 24 * 3600 * 1000))
+        : fmt(new Date(today.getTime() + 7 * 24 * 3600 * 1000)),
+      priority: order.priority ? String(order.priority).toLowerCase() : 'medium',
+      remark: '',
+    },
+  ]
+  convertDialogVisible.value = true
+}
 
-      const dto = {
-        planId: String(order.orderId),
-        workOrders: [
-          {
-            productId: String(order.productId),
-            productCode: order.productCode || '',
-            productName: order.productName || '',
-            plannedQuantity: Number(order.plannedQuantity),
-            planStartDate: startDate,
-            planEndDate: endDate,
-            priority: (order.priority ? String(order.priority).toLowerCase() : 'medium') as any,
-            remark: '',
-          },
-        ],
-        batchConvert: false,
-      }
+// 添加拆分行
+const addConvertRow = () => {
+  const base = convertRows.value[0] || {}
+  convertRows.value.push({ ...base, plannedQuantity: 0, remark: '' })
+}
 
-      const res: any = await convertPlanToWorkOrders(dto)
-      if (res.code === 200 || res.code === 0) {
-        ElMessage.success('转为工单成功')
-        refreshData()
-      } else {
-        ElMessage.error(res.msg || '转为工单失败')
-      }
-    } catch (error: any) {
-      console.error('转为工单失败:', error)
-      ElMessage.error(error?.msg || '转为工单失败')
+// 提交转工单
+const submitConvert = async () => {
+  converting.value = true
+  try {
+    const dto = {
+      planId: String(convertPlan.value.orderId),
+      workOrders: convertRows.value.map((r) => ({
+        productId: r.productId,
+        productCode: r.productCode,
+        productName: r.productName,
+        plannedQuantity: Number(r.plannedQuantity),
+        planStartDate: r.planStartDate,
+        planEndDate: r.planEndDate,
+        priority: r.priority,
+        remark: r.remark || '',
+      })),
+      batchConvert: convertRows.value.length > 1,
     }
-  })
+    const res: any = await convertPlanToWorkOrders(dto)
+    if (res.code === 200 || res.code === 0) {
+      ElMessage.success('转为工单成功')
+      convertDialogVisible.value = false
+      refreshData()
+    } else {
+      ElMessage.error(res.msg || '转为工单失败')
+    }
+  } catch (error: any) {
+    console.error('转为工单失败:', error)
+    ElMessage.error(error?.msg || '转为工单失败')
+  } finally {
+    converting.value = false
+  }
 }
 
 const handleStartOrder = (order: any) => {
