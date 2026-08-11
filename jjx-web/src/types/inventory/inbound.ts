@@ -10,7 +10,11 @@ export interface InboundQueryParams {
   supplierName?: string
   materialCode?: string
   materialName?: string
+  sourceType?: string
+  sourceNo?: string
   status?: string
+  orderStatus?: string
+  approveStatus?: string
   createTimeStart?: string
   createTimeEnd?: string
   inboundTimeStart?: string

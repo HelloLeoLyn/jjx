@@ -386,26 +386,21 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 检查订单整体收货状态
         updateOrderReceiptStatus(orderId);
 
-        // 采购到货→库存增加（DEV-471）：检验PASS才入良品库存
-        if ("PASS".equalsIgnoreCase(inspectionResult) || StringUtils.isEmpty(inspectionResult)) {
-            try {
-                increaseStockFromReceipt(order, item, receivedQuantity);
-            } catch (Exception e) {
-                log.error("采购到货加库存失败: {}", e.getMessage());
-                throw new BusinessException("到货登记成功但加库存失败: " + e.getMessage());
-            }
-        } else {
-            log.info("采购到货[{}] 检验{} 不入良品库存", order.getOrderNo(), inspectionResult);
-        }
-
-        // 采购收货自动生成入库单（DEV-624）：幂等，明细=已收数量，不加库存（已由上面增加）
-        try {
-            inboundService.createInboundRecordFromPurchase(orderId);
-        } catch (Exception e) {
-            log.error("采购收货自动生成入库单失败（不影响收货主流程）: {}", e.getMessage());
-        }
+        // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
+        // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
+        inboundService.createInboundRecordFromPurchase(orderId);
 
         return result;
+    }
+
+    /**
+     * 是否增加良品库存（单条/批量收货共用）：
+     * 未检验(空)、PASS、合格 → 入库；不合格/FAIL、部分合格 → 不入
+     */
+    private boolean shouldIncreaseStock(String inspectionResult) {
+        return StringUtils.isEmpty(inspectionResult)
+                || "PASS".equalsIgnoreCase(inspectionResult)
+                || "合格".equals(inspectionResult);
     }
 
     /**
@@ -1086,6 +1081,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Transactional(rollbackFor = Exception.class)
     @Event(value = "purchase.received", bizId = "#dto.orderId", bizType = "'purchase'")
     public int batchReceiveOrderItems(PurchaseOrderReceiveDTO dto) {
+        // 订单ID兜底校验（orderId 由接口路径注入，此处防御 null）
+        if (dto == null || dto.getOrderId() == null) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ID_REQUIRED.getMessage());
+        }
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
         if (order == null) {
@@ -1134,12 +1133,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 更新订单整体收货状态
         updateOrderReceiptStatus(dto.getOrderId());
 
-        // 采购收货自动生成入库单（DEV-624）：幂等，明细=已收数量，不加库存（已由收货流程维护）
-        try {
-            inboundService.createInboundRecordFromPurchase(dto.getOrderId());
-        } catch (Exception e) {
-            log.error("采购收货自动生成入库单失败（不影响收货主流程）: {}", e.getMessage());
-        }
+        // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
+        // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
+        inboundService.createInboundRecordFromPurchase(dto.getOrderId());
 
         return totalCount;
     }

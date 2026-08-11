@@ -61,6 +61,10 @@ export default defineConfig(({ command, mode }) => {
           target: 'http://localhost:8080',
           changeOrigin: true,
         },
+        '/uploads': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+        },
       },
     },
     css: {

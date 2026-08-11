@@ -39,16 +39,18 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-select
-            v-model="queryParams.status"
+            v-model="queryParams.orderStatus"
             placeholder="请选择"
             clearable
             style="width: 120px"
           >
-            <el-option label="待提交" :value="0" />
+            <el-option label="草稿" :value="0" />
             <el-option label="待审批" :value="1" />
-            <el-option label="已审批" :value="2" />
+            <el-option label="已批准" :value="2" />
+            <el-option label="已驳回" :value="3" />
             <el-option label="已入库" :value="7" />
             <el-option label="已取消" :value="9" />
+            <el-option label="已完成" :value="10" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -103,9 +105,11 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="入库单号" prop="inboundNo" width="150" />
+        <el-table-column label="入库单号" prop="inboundNo" min-width="150" />
         <el-table-column label="入库类型" width="100" align="center">
-          <template #default="{ row }"> </template>
+          <template #default="{ row }">
+            {{ row.inboundTypeName || inboundTypeText(row.inboundType) }}
+          </template>
         </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
         <el-table-column label="供应商" prop="supplierName" width="150" show-overflow-tooltip />
@@ -114,18 +118,16 @@
             {{ formatNumber(row.totalQuantity) }}
           </template>
         </el-table-column>
-        <el-table-column label="总金额" prop="totalAmount" width="120" align="right">
-          <template #default="{ row }"> ¥ {{ formatCurrency(row.totalAmount) }} </template>
-        </el-table-column>
         <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }"> </template>
-        </el-table-column>
-        <el-table-column label="审核状态" prop="approveStatus" width="100" align="center">
-          <template #default="{ row }"> </template>
+          <template #default="{ row }">
+            <el-tag :type="getStatusTag(row.status)" size="small">{{
+              row.statusName || inboundStatusText(row.status)
+            }}</el-tag>
+          </template>
         </el-table-column>
         <el-table-column label="创建人" prop="createBy" width="100" />
-        <el-table-column label="创建时间" prop="createTime" width="150" align="center" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="创建时间" prop="createTime" width="180" align="center" />
+        <el-table-column label="操作" min-width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
@@ -140,13 +142,6 @@
               type="success"
               @click="handleApprove(row)"
               >审批</el-button
-            >
-            <el-button
-              v-if="row.status === 1 || row.status === 2"
-              link
-              type="warning"
-              @click="handleConfirm(row)"
-              >确认入库</el-button
             >
             <el-button
               v-if="row.status === 0 || row.status === 1"
@@ -174,76 +169,21 @@
     <!-- 查看流水（DEV-569） -->
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
-    <!-- 入库单详情对话框 -->
-    <el-dialog :title="dialogTitle" v-model="detailDialogVisible" width="900px" append-to-body>
-      <div v-if="currentInbound">
-        <!-- 基本信息 -->
-        <el-descriptions :column="3" border>
-          <el-descriptions-item label="入库单号">{{
-            currentInbound.inboundNo
-          }}</el-descriptions-item>
-          <el-descriptions-item label="入库类型">{{
-            currentInbound.inboundTypeName
-          }}</el-descriptions-item>
-          <el-descriptions-item label="仓库">{{
-            currentInbound.warehouseName
-          }}</el-descriptions-item>
-          <el-descriptions-item label="供应商">{{
-            currentInbound.supplierName || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="总数量">{{
-            formatNumber(currentInbound.totalQuantity)
-          }}</el-descriptions-item>
-          <el-descriptions-item label="总金额"
-            >¥ {{ formatCurrency(currentInbound.totalAmount) }}</el-descriptions-item
-          >
-          <el-descriptions-item label="状态">
-            <el-tag :type="getStatusTag(currentInbound.status)" size="small">
-              {{ currentInbound.statusName }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ currentInbound.createBy }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{
-            currentInbound.createTime
-          }}</el-descriptions-item>
-          <el-descriptions-item label="备注" :span="3">{{
-            currentInbound.remark || '-'
-          }}</el-descriptions-item>
-        </el-descriptions>
-
-        <!-- 明细表格 -->
-        <el-divider content-position="left">入库明细</el-divider>
-        <el-table :data="currentInbound.items" border style="width: 100%">
-          <el-table-column label="物料编码" prop="materialCode" width="120" />
-          <el-table-column label="物料名称" prop="materialName" width="150" show-overflow-tooltip />
-          <el-table-column
-            label="规格型号"
-            prop="specification"
-            width="120"
-            show-overflow-tooltip
-          />
-          <el-table-column label="单位" prop="unit" width="80" align="center" />
-          <el-table-column label="批次号" prop="batchNo" width="120" />
-          <el-table-column label="数量" prop="quantity" width="100" align="right">
-            <template #default="{ row }">
-              {{ formatNumber(row.quantity) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="单价" prop="unitPrice" width="100" align="right">
-            <template #default="{ row }"> ¥ {{ formatCurrency(row.unitPrice) }} </template>
-          </el-table-column>
-          <el-table-column label="金额" prop="amount" width="120" align="right">
-            <template #default="{ row }"> ¥ {{ formatCurrency(row.amount) }} </template>
-          </el-table-column>
-          <el-table-column label="库位" prop="locationCode" width="100" />
-          <el-table-column label="生产日期" prop="productionDate" width="110" align="center" />
-          <el-table-column label="到期日期" prop="expiryDate" width="110" align="center" />
-        </el-table>
-      </div>
+    <!-- 入库单详情对话框（公共组件） -->
+    <el-dialog :title="dialogTitle" v-model="detailDialogVisible" width="1000px" append-to-body destroy-on-close>
+      <InboundDetail v-if="detailDialogVisible && detailInboundId" :inbound-id="detailInboundId" />
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 审核弹窗（公共详情 + 审核操作） -->
+    <InboundApproveDialog
+      v-model:visible="approveDialogVisible"
+      :inbound-id="approveInboundId"
+      :inbound-no="approveInboundNo"
+      @success="getList"
+    />
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -269,8 +209,10 @@ import { Plus, Edit, Delete, Download, Refresh } from '@element-plus/icons-vue'
 import { inboundApi } from '@/api/inventory/inbound'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
-import { formatCurrency, formatNumber, download } from '@/utils/format'
+import { formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import InboundDetail from './components/InboundDetail.vue'
+import InboundApproveDialog from './components/InboundApproveDialog.vue'
 import type { InboundQueryParams, InboundVO } from '@/types/inventory/inbound'
 
 const router = useRouter()
@@ -282,7 +224,7 @@ const queryParams = reactive<InboundQueryParams>({
   inboundNo: '',
   inboundType: '',
   warehouseId: '',
-  status: '',
+  orderStatus: '',
 })
 
 // 响应式数据
@@ -293,8 +235,13 @@ const ids = ref<string[]>([])
 const single = ref(true)
 const multiple = ref(true)
 const detailDialogVisible = ref(false)
-const currentInbound = ref<InboundVO | null>(null)
+const detailInboundId = ref<number | null>(null)
 const dialogTitle = ref('')
+
+// 审核弹窗状态
+const approveDialogVisible = ref(false)
+const approveInboundId = ref<number | undefined>(undefined)
+const approveInboundNo = ref('')
 
 // 获取入库单列表
 const getList = async () => {
@@ -323,7 +270,7 @@ const handleReset = () => {
   queryParams.inboundNo = ''
   queryParams.inboundType = ''
   queryParams.warehouseId = ''
-  queryParams.status = ''
+  queryParams.orderStatus = ''
   getList()
 }
 
@@ -336,14 +283,14 @@ const handleSelectionChange = (selection: InboundVO[]) => {
 
 // 新建入库单
 const handleCreate = () => {
-  router.push('/inventory/inbound/create')
+  router.push('/inventory/io/inbound/create')
 }
 
 // 编辑入库单
 const handleEdit = (row?: InboundVO) => {
   const inboundId = row ? row.inboundId : ids.value[0]
   if (inboundId) {
-    router.push(`/inventory/inbound/edit/${inboundId}`)
+    router.push(`/inventory/io/inbound/edit/${inboundId}`)
   }
 }
 
@@ -393,8 +340,11 @@ function handlePrint(row: InboundVO) {
   window.open(`/print/inbound/${row.inboundId}`, '_blank')
 }
 // 查看详情
+// 查看详情（公共组件弹窗）
 const handleView = (row: InboundVO) => {
-  router.push(`/inventory/inbound/detail/${row.inboundId}`)
+  dialogTitle.value = '入库单详情'
+  detailInboundId.value = Number(row.inboundId)
+  detailDialogVisible.value = true
 }
 
 // 提交审批
@@ -403,7 +353,38 @@ const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
-const inboundStatusTextMap: Record<number, string> = { 0: '草稿', 1: '待审批', 2: '已审批', 3: '已入库' }
+const inboundStatusTextMap: Record<number, string> = {
+  0: '草稿',
+  1: '待审批',
+  2: '已批准',
+  3: '已驳回',
+  4: '处理中',
+  5: '已确认',
+  6: '已出库',
+  7: '已入库',
+  8: '已关闭',
+  9: '已取消',
+  10: '已完成',
+  11: '已处理',
+  12: '调拨中',
+}
+const inboundStatusText = (status?: number) =>
+  status === undefined || status === null ? '-' : inboundStatusTextMap[status] || String(status)
+const inboundTypeText = (type?: string) => {
+  const map: Record<string, string> = {
+    purchase: '采购入库',
+    production: '生产入库',
+    return: '退货入库',
+    transfer: '调拨入库',
+    other: '其他入库',
+    PURCHASE: '采购入库',
+    PRODUCTION_FINISH: '生产入库',
+    RETURN: '退货入库',
+    TRANSFER: '调拨入库',
+    OTHER: '其他入库',
+  }
+  return (type && map[type]) || type || '-'
+}
 function openPreview(opKey: string, row: InboundVO) {
   if (!row?.inboundId) return
   const op = getOperation(opKey)
@@ -416,11 +397,12 @@ function openPreview(opKey: string, row: InboundVO) {
 
 const handleSubmit = async (row: InboundVO) => openPreview('inbound.submit', row)
 
-// 审批通过
-const handleApprove = async (row: InboundVO) => openPreview('inbound.approve', row)
-
-// 确认入库
-const handleConfirm = async (row: InboundVO) => openPreview('inbound.confirm', row)
+// 审批（打开审核弹窗：公共详情 + 通过/驳回）
+const handleApprove = async (row: InboundVO) => {
+  approveInboundId.value = Number(row.inboundId)
+  approveInboundNo.value = row.inboundNo || ''
+  approveDialogVisible.value = true
+}
 
 // 取消入库单
 const handleCancel = async (row: InboundVO) => openPreview('inbound.cancel', row)
@@ -435,16 +417,23 @@ function showTrace(row: InboundVO) {
 }
 
 // 获取状态标签样式
-const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
+const getStatusTag = (status?: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
   const statusMap: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
     0: 'info',    // draft
     1: 'warning', // pending
     2: 'success', // approved
+    3: 'danger',  // rejected
     4: 'warning', // processing
+    5: 'success', // confirmed
+    6: 'success', // out_confirm
     7: 'success', // in_confirm
+    8: 'info',    // closed
     9: 'danger',  // cancelled
+    10: 'success', // completed
+    11: 'success', // processed
+    12: 'warning', // in_progress
   }
-  return statusMap[status]
+  return status === undefined || status === null ? undefined : statusMap[status]
 }
 
 onMounted(() => {

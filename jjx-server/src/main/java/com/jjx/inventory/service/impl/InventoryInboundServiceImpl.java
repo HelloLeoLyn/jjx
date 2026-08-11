@@ -43,8 +43,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import com.jjx.system.annotation.Event;
 
 /**
@@ -269,16 +271,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())
-                && !OrderStatusEnum.APPROVED.getCode().equals(order.getOrderStatus())) {
-            log.error("入库单状态不正确，无法确认: inboundId={}, status={}", inboundId, order.getOrderStatus());
+        // 2026-08-11 业务定稿：审核不能跳过——只有“已批准”才能确认入库，待审批必须先走审批
+        if (!OrderStatusEnum.APPROVED.getCode().equals(order.getOrderStatus())) {
+            log.error("入库单状态不正确，无法确认（需先审批通过）: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
-        // DEV-651：库存操作统一发生在 confirm（confirm=审批+完成 单路径）
-        // 原实现：先置 APPROVED 再调 approve()，而 approve() 要求 PENDING，必然失败——库存根本没加
-        // 现在：直接内联执行加库存，approve 只做状态流转不动库存
-        addStock(order, operatorId, operatorName, "直接确认入库");
+        // 库存操作统一发生在 confirm：加库存+流水+置完成
+        addStock(order, operatorId, operatorName, "确认入库");
         order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
         // 安全库存检查
         try {
@@ -353,9 +353,18 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // DEV-651：审批只做状态流转，库存增加统一由 confirm 执行（confirm=审批+完成 单路径）
-        // 原实现在这里加库存，导致：①confirm 先置 APPROVED 再调本方法时因状态校验失败而库存不加；②双路径重复维护
-        order.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+        // 2026-08-11 业务定稿：审批通过 = 确认入库（一步到位）——直接加库存+流水+置完成，不再需要单独的"确认入库"环节
+        addStock(order, approverId, approverName, "审批通过入库");
+        order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
+        // 安全库存检查
+        try {
+            List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+            for (InventoryInboundItem item : items) {
+                alertService.checkSafeStockAlert(item.getMaterialId());
+            }
+        } catch (Exception e) {
+            log.warn("安全库存检查失败: {}", e.getMessage());
+        }
         return inboundOrderMapper.updateById(order) > 0;
     }
 
@@ -494,10 +503,18 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setWarehouseId(1L); // 默认仓库
         order.setInboundDate(LocalDate.now());
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+        // 供应商/创建人从采购单带过来，避免列表页数据空白
+        order.setSupplierId(po.getSupplierId());
+        order.setSupplierName(po.getSupplierName());
+        try {
+            order.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
+        } catch (Exception ignore) { }
         inboundOrderMapper.insert(order);
 
         // 5. 创建入库单明细
         int sort = 1;
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalAmt = BigDecimal.ZERO;
         for (PurchaseOrderItem item : items) {
             if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
 
@@ -515,13 +532,22 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItem.setQuantity(receiveQty);
             inboundItem.setUnitPrice(item.getUnitPrice());
             inboundItem.setAmount(item.getAmount());
-            inboundItem.setBatchNo("PO-" + po.getOrderNo() + "-" + sort);
+            inboundItem.setBatchNo(order.getInboundNo() + "-" + sort); // 批次号=入库单号-行序号（2026-08-11 修复：原 PO-单号-行序号 在多凭证时重复，凭证↔批次断链）
             inboundItem.setSortOrder(sort++);
             inboundItemMapper.insert(inboundItem);
+            totalQty = totalQty.add(receiveQty);
+            if (item.getAmount() != null) {
+                totalAmt = totalAmt.add(item.getAmount());
+            }
 
             // 更新采购订单已收数量
             purchaseOrderItemMapper.updateReceivedQuantity(item.getItemId(), receiveQty);
         }
+
+        // 主表汇总字段补全
+        order.setTotalQuantity(totalQty);
+        order.setTotalAmount(totalAmt);
+        inboundOrderMapper.updateById(order);
 
         // 6. 提交审批并自动审批
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
@@ -542,50 +568,110 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             log.warn("采购订单不存在，跳过自动入库: {}", purchaseOrderId);
             return null;
         }
-        // 幂等：PO-单号已存在则返回已有ID
-        String inboundNo = "PO-" + po.getOrderNo();
-        InventoryInboundOrder exist = inboundOrderMapper.selectOne(new LambdaQueryWrapper<InventoryInboundOrder>()
-                .eq(InventoryInboundOrder::getInboundNo, inboundNo).last("LIMIT 1"));
-        if (exist != null) {
-            log.info("采购订单{}入库单已存在 inboundId={}，跳过", purchaseOrderId, exist.getInboundId());
-            return exist.getInboundId();
+        // 查该订单已有入库单：待确认的（未完成）会持续更新；已完成的按物料累计已入数量
+        String baseInboundNo = "PO-" + po.getOrderNo();
+        List<InventoryInboundOrder> existingList = inboundOrderMapper.selectList(
+                new LambdaQueryWrapper<InventoryInboundOrder>().likeRight(InventoryInboundOrder::getInboundNo, baseInboundNo));
+        InventoryInboundOrder pendingOrder = existingList.stream()
+                .filter(o -> !OrderStatusEnum.COMPLETED.getCode().equals(o.getOrderStatus()))
+                .findFirst().orElse(null);
+        // 已完成入库单已入数量（按物料聚合，支持分批收货：已确认入过库的部分不再重复入）
+        Map<Long, BigDecimal> alreadyInByMaterial = new HashMap<>();
+        for (InventoryInboundOrder done : existingList) {
+            if (!OrderStatusEnum.COMPLETED.getCode().equals(done.getOrderStatus())) continue;
+            List<InventoryInboundItem> doneItems = inboundItemMapper.selectByInboundId(done.getInboundId());
+            for (InventoryInboundItem di : doneItems) {
+                if (di.getMaterialId() == null || di.getQuantity() == null) continue;
+                alreadyInByMaterial.merge(di.getMaterialId(), di.getQuantity(), BigDecimal::add);
+            }
         }
+
         List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectItemsByOrderId(purchaseOrderId);
         if (items.isEmpty()) {
             log.warn("采购订单无明细，跳过自动入库: {}", purchaseOrderId);
             return null;
         }
-        // 创建入库单（状态直接完成，库存由收货流程已加，不重复加）
-        InventoryInboundOrder order = new InventoryInboundOrder();
-        order.setInboundNo(inboundNo);
-        order.setInboundType("PURCHASE");
-        order.setSourceType("PURCHASE");
-        order.setSourceId(purchaseOrderId);
-        order.setSourceNo(po.getOrderNo());
-        order.setTraceId(po.getTraceId());
-        order.setWarehouseId(1L);
-        order.setInboundDate(LocalDate.now());
-        order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
-        order.setRemark("采购收货自动入库（DEV-624）");
-        inboundOrderMapper.insert(order);
-        // 明细=已收数量
-        int sort = 1;
+
+        // 计算各明细未入库数量（本次已收 - 已完成已入）
+        List<PurchaseOrderItem> toInItems = new ArrayList<>();
+        List<BigDecimal> toInQtys = new ArrayList<>();
         for (PurchaseOrderItem item : items) {
             if (item.getReceivedQuantity() == null || item.getReceivedQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal alreadyIn = alreadyInByMaterial.getOrDefault(item.getMaterialId(), BigDecimal.ZERO);
+            BigDecimal toIn = item.getReceivedQuantity().subtract(alreadyIn);
+            if (toIn.compareTo(BigDecimal.ZERO) <= 0) continue;
+            toInItems.add(item);
+            toInQtys.add(toIn);
+        }
+        if (toInItems.isEmpty()) {
+            log.info("采购订单{} 无待入库数量，跳过: {}", purchaseOrderId, baseInboundNo);
+            return pendingOrder != null ? pendingOrder.getInboundId() : null;
+        }
+
+        // 已有待确认入库单：删除旧明细重建；否则新建（状态=已批准，待仓库确认入库后才加库存）
+        // 新建时单号加序号（PO-xxx-2、-3…），避免与已确认的历史入库单唯一键冲突
+        final InventoryInboundOrder order;
+        if (pendingOrder != null) {
+            order = pendingOrder;
+            List<InventoryInboundItem> oldItems = inboundItemMapper.selectByInboundId(order.getInboundId());
+            for (InventoryInboundItem old : oldItems) {
+                inboundItemMapper.deleteById(old.getItemId());
+            }
+            log.info("采购订单{} 更新待确认入库单 {} 明细", purchaseOrderId, order.getInboundNo());
+        } else {
+            String inboundNo = existingList.isEmpty() ? baseInboundNo : baseInboundNo + "-" + (existingList.size() + 1);
+            order = new InventoryInboundOrder();
+            order.setInboundNo(inboundNo);
+            order.setInboundType("PURCHASE");
+            order.setSourceType("PURCHASE");
+            order.setSourceId(purchaseOrderId);
+            order.setSourceNo(po.getOrderNo());
+            order.setTraceId(po.getTraceId());
+            order.setWarehouseId(1L);
+            order.setInboundDate(LocalDate.now());
+            order.setOrderStatus(OrderStatusEnum.PENDING.getCode()); // 待审批：收货后需仓库审批→确认入库才加库存（2026-08-11 业务定稿：收货≠入库）
+            order.setRemark("采购收货自动入库（DEV-624）");
+            // 供应商/创建人从采购单带过来，避免列表页数据空白
+            order.setSupplierId(po.getSupplierId());
+            order.setSupplierName(po.getSupplierName());
+            try {
+                order.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
+            } catch (Exception ignore) { }
+            inboundOrderMapper.insert(order);
+        }
+
+        // 重建明细=未入库数量
+        int sort = 1;
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalAmt = BigDecimal.ZERO;
+        for (int i = 0; i < toInItems.size(); i++) {
+            PurchaseOrderItem item = toInItems.get(i);
+            BigDecimal toIn = toInQtys.get(i);
             InventoryInboundItem inboundItem = new InventoryInboundItem();
             inboundItem.setInboundId(order.getInboundId());
             inboundItem.setMaterialId(item.getMaterialId());
             inboundItem.setMaterialCode(item.getMaterialCode());
             inboundItem.setMaterialName(item.getMaterialName());
-            inboundItem.setQuantity(item.getReceivedQuantity());
+            inboundItem.setQuantity(toIn);
             inboundItem.setUnitPrice(item.getUnitPrice());
-            inboundItem.setAmount(item.getAmount() == null ? null : item.getAmount().multiply(item.getReceivedQuantity().divide(item.getQuantity(), 4, java.math.RoundingMode.HALF_UP)));
-            inboundItem.setBatchNo("PO-" + po.getOrderNo() + "-" + sort);
+            BigDecimal itemAmt = (item.getAmount() == null || item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) == 0)
+                    ? null
+                    : item.getAmount().multiply(toIn.divide(item.getQuantity(), 4, java.math.RoundingMode.HALF_UP));
+            inboundItem.setAmount(itemAmt);
+            inboundItem.setBatchNo(order.getInboundNo() + "-" + sort); // 批次号=入库单号-行序号（2026-08-11 修复：原 PO-单号-行序号 在多凭证时重复，凭证↔批次断链）
             inboundItem.setSortOrder(sort++);
             inboundItemMapper.insert(inboundItem);
+            totalQty = totalQty.add(toIn);
+            if (itemAmt != null) {
+                totalAmt = totalAmt.add(itemAmt);
+            }
         }
+        // 主表汇总字段补全（列表页/详情页展示用）
+        order.setTotalQuantity(totalQty);
+        order.setTotalAmount(totalAmt);
+        inboundOrderMapper.updateById(order);
         try { eventPublisher.fire("purchase.arrived", Map.of("sourceNo", order.getSourceNo(), "inboundId", String.valueOf(order.getInboundId()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
-        log.info("采购收货自动入库单生成: purchaseOrderId={}, inboundId={}", purchaseOrderId, order.getInboundId());
+        log.info("采购收货自动入库单生成/更新: purchaseOrderId={}, inboundId={}, qty={}", purchaseOrderId, order.getInboundId(), totalQty);
         return order.getInboundId();
     }
 
@@ -788,7 +874,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return Map.of("code", 404, "message", "入库单不存在");
     }
 
-    private static List<InboundVO> convertToVOList(List<InventoryInboundOrder> orders) {
+    private List<InboundVO> convertToVOList(List<InventoryInboundOrder> orders) {
         List<InboundVO> result = new ArrayList<>();
         for (InventoryInboundOrder order : orders) {
             result.add(convertToVO(order));
@@ -796,14 +882,43 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return result;
     }
 
-    private static InboundVO convertToVO(InventoryInboundOrder order) {
+    private InboundVO convertToVO(InventoryInboundOrder order) {
         if (order == null) {
             return null;
         }
 
         InboundVO vo = new InboundVO();
         BeanUtils.copyProperties(order, vo);
+        // 状态码/名称（前端展示用，与实体 Integer 字段对齐）
+        vo.setStatus(order.getOrderStatus());
+        vo.setStatusName(com.jjx.inventory.enums.OrderStatusEnum.getByCode(order.getOrderStatus()) != null
+                ? com.jjx.inventory.enums.OrderStatusEnum.getByCode(order.getOrderStatus()).getLabel() : null);
+        // 入库类型名称
+        vo.setInboundTypeName(inboundTypeName(order.getInboundType()));
+        // 仓库名称
+        if (order.getWarehouseId() != null) {
+            try {
+                InventoryWarehouse wh = warehouseMapper.selectById(order.getWarehouseId());
+                if (wh != null) {
+                    vo.setWarehouseName(wh.getWarehouseName());
+                }
+            } catch (Exception ignore) { }
+        }
+        // 审核状态名称（approve_status 为未维护的死字段，2026-08-11 起不再使用，统一以 order_status 为准）
         return vo;
+    }
+
+    /** 入库类型显示名 */
+    private static String inboundTypeName(String inboundType) {
+        if (inboundType == null) return null;
+        return switch (inboundType) {
+            case "PURCHASE" -> "采购入库";
+            case "PRODUCTION_FINISH" -> "生产入库";
+            case "RETURN" -> "退货入库";
+            case "TRANSFER" -> "调拨入库";
+            case "OTHER" -> "其他入库";
+            default -> inboundType;
+        };
     }
 
     private static List<InboundItemVO> convertToItemVOList(List<InventoryInboundItem> items) {
