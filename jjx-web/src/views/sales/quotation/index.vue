@@ -879,13 +879,12 @@
       </template>
     </el-dialog>
 
-    <!-- 组合弹窗：业务流水 + 链路追踪（2026-08-11 统一用 TraceTimeline） -->
+    <!-- 查看流水（2026-08-11 统一用 TraceTimeline） -->
     <TraceTimeline
       v-model="traceDialogVisible"
       :trace-id="currentTraceId"
       :biz-id="traceQuotationId ? String(traceQuotationId) : ''"
       biz-type="quotation"
-      :flow-api="(bizId: any) => quotationApi.getFlowRecords(Number(bizId))"
     />
 
     <!-- 附件管理弹窗 -->

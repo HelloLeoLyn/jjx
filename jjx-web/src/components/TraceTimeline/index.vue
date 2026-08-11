@@ -1,121 +1,72 @@
 <template>
   <el-drawer
     v-model="visible"
-    :title="title"
+    title="🔗 链路追踪"
     size="820px"
-    @open="handleOpen"
+    @open="loadTrace"
     @close="handleClose"
   >
-    <!-- 统一 Tabs：有业务流水时显示两个 Tab，无则只显示链路追踪（隐藏 Tab 头） -->
-    <el-tabs v-model="activeTab" :class="{ 'trace-single-tab': !flowApi }">
-      <el-tab-pane v-if="flowApi" label="业务流水" name="flow">
-        <div class="tab-hint">单据状态流转记录：谁操作、状态变化、意见与附件</div>
-        <div v-loading="flowLoading" class="tab-body">
-          <template v-if="flowList.length">
-            <el-timeline>
-              <el-timeline-item
-                v-for="(flow, idx) in flowList"
-                :key="flow.flowId"
-                :timestamp="formatTime(flow.createTime)"
-                :type="timelineType(flow, idx)"
-                :hollow="idx !== 0"
-              >
-                <div class="flow-item">
-                  <div class="flow-title">
-                    <span class="action-name">{{ flow.actionName }}</span>
-                    <span class="status-change" v-if="flow.fromStatus !== null && flow.fromStatus !== flow.toStatus">
-                      {{ statusText(flow.fromStatus) }} → {{ statusText(flow.toStatus) }}
-                    </span>
-                  </div>
-                  <div class="flow-meta">操作人：{{ flow.operatorName || '-' }}</div>
-                  <div class="flow-remark" v-if="flow.remark">
-                    <span class="remark-label">意见/说明：</span>{{ flow.remark }}
-                  </div>
-                  <div class="op-attachments" v-if="getAttachments(flow).length">
-                    <el-link
-                      v-for="att in getAttachments(flow)"
-                      :key="att.id"
-                      type="primary"
-                      :href="downloadUrl(att.id)"
-                      target="_blank"
-                      style="margin-right: 8px"
-                    >
-                      📎 {{ att.fileName }}
-                    </el-link>
-                  </div>
-                </div>
-              </el-timeline-item>
-            </el-timeline>
-          </template>
-          <el-empty v-else description="暂无流转记录" :image-size="60" />
-        </div>
-      </el-tab-pane>
-      <el-tab-pane label="链路追踪" name="trace">
-        <div class="tab-hint">系统操作链路（traceId 关联的各模块操作日志）</div>
+    <!-- 链路上方信息 -->
+    <div v-if="traceId" class="trace-header">
+      <el-tag type="primary" effect="dark">traceId: {{ traceId }}</el-tag>
+    </div>
 
-        <!-- 链路上方信息 -->
-        <div v-if="traceId" class="trace-header">
-          <el-tag type="primary" effect="dark">traceId: {{ traceId }}</el-tag>
-        </div>
+    <!-- 加载中 -->
+    <div v-if="loading" style="text-align:center;padding:60px">
+      <el-icon class="is-loading" :size="28"><Loading /></el-icon>
+      <div style="margin-top:10px;color:var(--el-text-color-secondary)">加载中...</div>
+    </div>
 
-        <!-- 加载中 -->
-        <div v-if="loading" style="text-align:center;padding:40px">
-          <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-          <div style="margin-top:8px;color:var(--el-text-color-secondary);font-size:13px">加载中...</div>
-        </div>
+    <!-- 空结果 -->
+    <el-empty v-else-if="flatOps.length === 0" description="暂无操作日志" />
 
-        <!-- 空结果 -->
-        <el-empty v-else-if="flatOps.length === 0" description="暂无操作日志" />
-
-        <!-- 平铺表格 -->
-        <el-table v-else :data="flatOps" size="small" stripe border>
-          <el-table-column prop="time" label="时间" width="160" />
-          <el-table-column label="状态" width="110">
-            <template #default="scope">
-              {{ formatBizStatus(scope.row.bizStatus, scope.row.bizType) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="module" label="模块" width="120" />
-          <el-table-column label="操作" min-width="180">
-            <template #default="scope">
+    <!-- 平铺表格 -->
+    <el-table v-else :data="flatOps" size="small" stripe border>
+      <el-table-column prop="time" label="时间" width="160" />
+      <el-table-column label="状态" width="110">
+        <template #default="scope">
+          {{ formatBizStatus(scope.row.bizStatus, scope.row.bizType) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="module" label="模块" width="120" />
+      <el-table-column label="操作" min-width="180">
+        <template #default="scope">
+          <el-link
+            v-if="scope.row.__att"
+            type="primary"
+            :href="downloadUrl(scope.row.attId)"
+            :underline="false"
+            target="_blank"
+          >
+            {{ scope.row.operation }} <el-icon><Download /></el-icon>
+          </el-link>
+          <span v-else>
+            <span>{{ formatBusinessType(scope.row.businessType) }}</span>
+            <div v-if="scope.row.attachments && scope.row.attachments.length" class="op-attachments">
               <el-link
-                v-if="scope.row.__att"
+                v-for="a in scope.row.attachments"
+                :key="a.id"
                 type="primary"
-                :href="downloadUrl(scope.row.attId)"
+                :href="downloadUrl(a.id)"
                 :underline="false"
                 target="_blank"
+                style="margin-right: 8px"
+                >📎 {{ a.fileName }}</el-link
               >
-                {{ scope.row.operation }} <el-icon><Download /></el-icon>
-              </el-link>
-              <span v-else>
-                <span>{{ formatBusinessType(scope.row.businessType) }}</span>
-                <div v-if="scope.row.attachments && scope.row.attachments.length" class="op-attachments">
-                  <el-link
-                    v-for="a in scope.row.attachments"
-                    :key="a.id"
-                    type="primary"
-                    :href="downloadUrl(a.id)"
-                    :underline="false"
-                    target="_blank"
-                    style="margin-right: 8px"
-                    >📎 {{ a.fileName }}</el-link
-                  >
-                </div>
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="operator" label="操作人" width="80" />
-          <el-table-column label="结果" width="80" align="center">
-            <template #default="scope">
-              <el-tag v-if="scope.row.__att" size="small" type="warning">📎 附件</el-tag>
-              <el-tag v-else :type="scope.row.status === 1 ? 'success' : 'danger'" size="small">
-                {{ scope.row.status === 1 ? '成功' : '失败' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-    </el-tabs>
+            </div>
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="operator" label="操作人" width="80" />
+      <el-table-column label="结果" width="80" align="center">
+        <template #default="scope">
+          <el-tag v-if="scope.row.__att" size="small" type="warning">📎 附件</el-tag>
+          <el-tag v-else :type="scope.row.status === 1 ? 'success' : 'danger'" size="small">
+            {{ scope.row.status === 1 ? '成功' : '失败' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+    </el-table>
   </el-drawer>
 </template>
 
@@ -131,8 +82,6 @@ const props = defineProps<{
   bizId?: string
   module?: string
   modelValue: boolean
-  /** 业务流水加载函数（传入后显示“业务流水”Tab，2026-08-11 统一组件） */
-  flowApi?: (bizId: number | string) => Promise<any>
 }>()
 
 const emit = defineEmits<{
@@ -145,84 +94,15 @@ const nodes = ref<any[]>([])
 /** 链路附件（DEV-735）：按 traceId 或 bizType+bizId 拉取，融入时间线 */
 const attachments = ref<any[]>([])
 
-// ===== 业务流水（可选，2026-08-11 从 QuotationTraceDialog 合并） =====
-const activeTab = ref<'flow' | 'trace'>('flow')
-const flowList = ref<any[]>([])
-const flowLoading = ref(false)
-const attachmentsMap = ref<Record<number, any[]>>({})
-
-const title = computed(() => (props.flowApi ? `查看流水 - ${props.bizId || ''}` : '🔗 链路追踪'))
-
 watch(() => props.modelValue, (v) => { visible.value = v })
 watch(() => props.traceId, () => { if (props.modelValue) loadTrace() })
 watch(() => props.bizId, () => { if (props.modelValue) loadTrace() })
-
-function handleOpen() {
-  loadTrace()
-  if (props.flowApi) {
-    activeTab.value = 'flow'
-    loadFlow()
-  }
-}
 
 function handleClose() {
   emit('update:modelValue', false)
 }
 
-// ===== 业务流水 =====
-async function loadFlow() {
-  if (!props.flowApi || !props.bizId) return
-  flowLoading.value = true
-  try {
-    const res: any = await props.flowApi(String(props.bizId))
-    flowList.value = res?.data || []
-    await loadFlowAttachments()
-  } catch {
-    flowList.value = []
-  } finally {
-    flowLoading.value = false
-  }
-}
-
-async function loadFlowAttachments() {
-  if (!props.bizId) return
-  attachmentsMap.value = {}
-  try {
-    const res: any = await attachmentApi.list('quotation_flow', Number(props.bizId))
-    const atts: any[] = res?.data || []
-    const map: Record<number, any[]> = {}
-    for (const att of atts) {
-      const flowId = Number(att.bizId)
-      if (!map[flowId]) map[flowId] = []
-      map[flowId].push(att)
-    }
-    attachmentsMap.value = map
-  } catch {
-    attachmentsMap.value = {}
-  }
-}
-
-function getAttachments(flow: any): any[] {
-  return attachmentsMap.value[flow.flowId] || []
-}
-
-function timelineType(flow: any, idx: number): 'primary' | 'success' | 'warning' | 'danger' | 'info' {
-  if (flow.actionCode === 'REJECT' || flow.actionCode === 'CUSTOMER_REJECT') return 'danger'
-  if (flow.actionCode === 'APPROVE' || flow.actionCode === 'SUBMIT_REVIEW') return 'primary'
-  if (idx === 0) return 'success'
-  return 'info'
-}
-
-const statusMap: Record<number, string> = {
-  0: '草稿', 1: '已发送', 2: '已确认', 3: '已拒绝', 4: '已过期', 5: '待审核', 6: '已审核', 8: '改单', 9: '已完成',
-}
-
-function statusText(status: number | null | undefined): string {
-  return statusMap[status ?? -1] ?? '-'
-}
-
-// ===== 链路追踪 =====
-/** 所有模块操作日志平铺列表（附件作为特殊行融入，DEV-735） */
+// 把所有模块的操作日志平铺成一个列表，按时间排序（附件作为特殊行融入，DEV-735）
 const flatOps = computed(() => {
   const list: any[] = []
   for (const node of nodes.value) {
@@ -364,52 +244,6 @@ async function loadTrace() {
 
 <style scoped>
 .trace-header { margin-bottom: 12px; }
-
-/* 2026-08-11 业务流水 Tab 样式（从 QuotationTraceDialog 合并） */
-.tab-hint {
-  color: #909399;
-  font-size: 12px;
-  margin-bottom: 12px;
-}
-.tab-body {
-  min-height: 200px;
-  max-height: 480px;
-  overflow-y: auto;
-}
-.flow-item {
-  padding: 4px 0;
-}
-.flow-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.action-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #303133;
-}
-.status-change {
-  font-size: 12px;
-  color: #909399;
-}
-.flow-meta {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 2px;
-}
-.flow-remark {
-  font-size: 13px;
-  color: #606266;
-  margin-top: 4px;
-  background: #f5f7fa;
-  padding: 6px 10px;
-  border-radius: 4px;
-}
-/* 无业务流水时隐藏 Tab 头，保持旧观感 */
-.trace-single-tab :deep(.el-tabs__header) {
-  display: none;
-}
 <style scoped>
 .op-attachments {
   margin-top: 4px;
