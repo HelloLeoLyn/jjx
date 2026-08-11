@@ -173,9 +173,10 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   // 客户选择变化时，自动填充联系人、联系电话、收货地址
-  const customerChanged = (customerId: number) => {
-    const selectedCustomer = customerOptions.value.find(
-      (customer) => customer.customerId === customerId
+  // 客户选择变化时，自动填充联系人、联系电话、收货地址（2026-08-11 修复：直接用组件回传的 customer 对象，不再依赖空的 customerOptions 反查）
+  const customerChanged = (customerId: number, customer?: any) => {
+    const selectedCustomer = customer || customerOptions.value.find(
+      (c: any) => c.customerId === customerId
     )
     if (selectedCustomer) {
       form.customerName = selectedCustomer.customerName

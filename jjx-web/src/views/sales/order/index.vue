@@ -269,22 +269,6 @@
       />
     </el-card>
 
-    <!-- 新增订单对话框 -->
-    <OrderAdd
-      v-model="addOpen"
-      title="新增订单"
-      @success="handleAddSuccess"
-      @cancel="handleAddCancel"
-    />
-
-    <!-- 修改订单对话框 -->
-    <OrderEdit
-      v-model="editOpen"
-      :order-id="editOrderId"
-      title="修改订单"
-      @success="handleEditSuccess"
-      @cancel="handleEditCancel"
-    />
 
     <!-- 审核对话框 -->
     <ReviewDialog
@@ -333,13 +317,13 @@ defineOptions({
 import { ref, reactive, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
+
+const router = useRouter()
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
 import { alertApi } from '@/api/inventory/alert'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
-import OrderAdd from './components/OrderAdd.vue'
-import OrderEdit from './components/OrderEdit.vue'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
 import OrderSendConfirmDialog from './components/OrderSendConfirmDialog.vue'
@@ -347,7 +331,6 @@ import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vu
 import ValidationDialog from './components/ValidationDialog.vue'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
 import { SalesOrderStatusEnum, PaymentStatusEnum, ProdStatusEnum } from '@/enums/sales/OrderEnum'
-import router from '@/router'
 
 // 查询参数
 const queryParams = reactive<SalesOrderQueryDTO>({
@@ -371,9 +354,6 @@ const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)
 const detailOpen = ref(false)
-const addOpen = ref(false)
-const editOpen = ref(false)
-const editOrderId = ref<number | undefined>(undefined)
 const dateRange = ref<string[]>([])
 
 // 审核相关
@@ -456,7 +436,6 @@ const handleSortChange = (column: any) => {
 // 新增订单
 const handleAdd = () => {
   router.push('/sales/order/add')
-  // addOpen.value = true
 }
 
 // 修改订单
@@ -781,32 +760,6 @@ const handleView = (row: any) => {
 // 审核成功回调
 const handleReviewSuccess = () => {
   getList()
-}
-
-// 新增订单成功
-const handleAddSuccess = () => {
-  addOpen.value = false
-  getList()
-  ElMessage.success('新增订单成功')
-}
-
-// 新增订单取消
-const handleAddCancel = () => {
-  addOpen.value = false
-}
-
-// 修改订单成功
-const handleEditSuccess = () => {
-  editOpen.value = false
-  editOrderId.value = undefined
-  getList()
-  ElMessage.success('修改订单成功')
-}
-
-// 修改订单取消
-const handleEditCancel = () => {
-  editOpen.value = false
-  editOrderId.value = undefined
 }
 
 // 验证成功回调

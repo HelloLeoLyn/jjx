@@ -569,4 +569,8 @@ export interface OrderReferValidationVO {
   customerVO?: CustomerVO
   items: ProductValidationVO[]
   canSubmit?: boolean
+  /** 错误数（2026-08-11 后端校验汇总） */
+  errorCount?: number
+  warningCount?: number
+  infoCount?: number
 }

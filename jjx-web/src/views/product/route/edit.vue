@@ -236,6 +236,12 @@ const loadRouteDetail = async () => {
       customProcessParams: item.customProcessParams || '',
       description: item.description || '',
       processCategory: item.processCategory || '',
+      // 2026-08-11 修复：补齐显示字段（否则编辑页图标/文字/下标全丢）
+      processName: item.processName || '',
+      processCode: item.processCode || '',
+      icon: item.icon || '',
+      hasIndex: item.hasIndex ?? 0,
+      indexNumber: item.indexNumber ?? null,
     }))
 
     Object.assign(formData, {

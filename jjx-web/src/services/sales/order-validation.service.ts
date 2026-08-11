@@ -34,10 +34,19 @@ export class OrderValidationService {
       // 验证订单基本信息
       const orderInfo = await orderApi.getOrderValidationInfo(request.orderId)
 
-      // 汇总验证结果
+      // 汇总验证结果（2026-08-11 修复：不再强制 canSubmit=true，以后端实际校验结果为准）
       const validationResult = orderInfo.data
       if (validationResult) {
-        validationResult.canSubmit = true
+        const items = validationResult.items || []
+        const hasError = items.some(
+          (it: any) => it.status === 'error' || it.status === 'INVALID' || it.valid === false
+        )
+        validationResult.canSubmit = !hasError
+        if (validationResult.errorCount === undefined) {
+          validationResult.errorCount = items.filter(
+            (it: any) => it.status === 'error' || it.status === 'INVALID' || it.valid === false
+          ).length
+        }
       }
       return validationResult
     } catch (error) {

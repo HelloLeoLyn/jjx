@@ -847,6 +847,41 @@ public class OrderServiceImpl implements IOrderService {
 
         List<ProductValidationVO> items = orderProductService.validation(orderId);
         vo.setItems(items);
+
+        // 2026-08-11 增强：汇总校验结果（产品/BOM/工艺路线完整性）
+        int errorCount = 0;
+        int warningCount = 0;
+        if (items != null) {
+            for (ProductValidationVO item : items) {
+                // 产品未发布 → 错误
+                if (item.getProductStatus() == null
+                        || !com.jjx.product.enums.ProductEnums.Status.RELEASED.getValue().equals(item.getProductStatus())) {
+                    errorCount++;
+                    continue;
+                }
+                // BOM 缺失或未审核 → 错误
+                if (item.getBomId() == null || item.getBomStatus() == null
+                        || item.getBomStatus() != com.jjx.common.enums.ApproveStatusEnum.APPROVED.getCode()) {
+                    errorCount++;
+                    continue;
+                }
+                // 工艺路线缺失或未审核 → 错误
+                if (item.getRoutingId() == null || item.getRoutingStatus() == null
+                        || item.getRoutingStatus() != com.jjx.common.enums.ApproveStatusEnum.APPROVED.getCode()) {
+                    errorCount++;
+                    continue;
+                }
+                // 非当前版本 BOM/工艺路线 → 警告
+                if (Boolean.FALSE.equals(item.getIsBomCurrentVersion())
+                        || Boolean.FALSE.equals(item.getIsRoutingCurrentVersion())) {
+                    warningCount++;
+                }
+            }
+        }
+        vo.setErrorCount(errorCount);
+        vo.setWarningCount(warningCount);
+        vo.setInfoCount(items == null ? 0 : items.size());
+        vo.setCanSubmit(errorCount == 0);
         return vo;
     }
 

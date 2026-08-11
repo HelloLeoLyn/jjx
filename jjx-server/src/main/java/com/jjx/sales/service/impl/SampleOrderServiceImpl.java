@@ -1288,6 +1288,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         java.math.BigDecimal totalMachine = java.math.BigDecimal.ZERO;
                         // 组合工序分组：process_order 相同 → 共享 group_id
                         java.util.Map<Integer, Long> orderGroupMap = new java.util.HashMap<>();
+                        // 组合顺序号（2026-08-11：修复转移后编辑页组合排序）
+                        java.util.Map<Integer, Integer> orderGroupSeqMap = new java.util.HashMap<>();
                         for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
                             // 方案A适配：优先用 std_process_id 精确关联作业项目，无则按名称匹配兑底（兼容旧数据/自定义工序）
                             com.jjx.product.domain.entity.ProductStandardProcess std = null;
@@ -1313,16 +1315,19 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                             Integer po = sp.getProcessOrder();
                             Long groupId = null;
                             String groupName = null;
+                            Integer groupOrder = null;
                             if (po != null && po > 0) {
                                 groupId = orderGroupMap.computeIfAbsent(po, k -> generateGroupId());
                                 groupName = processCategoryToGroupName(sp.getProcessCategory());
+                                // 组合顺序号：按组合首次出现顺序 1,2,3...（2026-08-11 修复编辑页排序）
+                                groupOrder = orderGroupSeqMap.computeIfAbsent(po, k -> orderGroupSeqMap.size() + 1);
                             }
                             routingItemMapper.insertItem(newRouting.getRoutingId(),
                                     stdProcessId != null ? stdProcessId : null,
                                     stepOrder++, laborHours, machineHours,
                                     sp.getProcessNote() != null ? sp.getProcessNote() : null,
                                     "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
-                                    category, groupId, groupName,
+                                    category, groupId, groupName, groupOrder,
                                     sp.getIndexNumber()); // DEV-777：打样下标透传到工艺路线
                         }
                         newRouting.setTotalLaborHours(totalLabor);
@@ -1748,6 +1753,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     java.math.BigDecimal totalMachine = java.math.BigDecimal.ZERO;
                     // 组合工序：前端临时负数 groupId → 真实 groupId（同组合共享）
                     java.util.Map<Long, Long> tempToRealGroupId = new java.util.HashMap<>();
+                    // 组合顺序号（2026-08-11：修复转移后编辑页组合排序）
+                    java.util.Map<Long, Integer> tempGroupSeqMap = new java.util.HashMap<>();
                     for (com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping pm : processMappings) {
                         if (pm.getStdProcessId() == null) continue;
                         com.jjx.product.domain.entity.ProductStandardProcess std = standardProcessMapper.selectById(pm.getStdProcessId());
@@ -1765,10 +1772,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         // 组合工序：同一组合共享真实 groupId
                         Long groupId = null;
                         String groupName = null;
+                        Integer groupOrder = null;
                         if (pm.getGroupId() != null) {
                             groupId = tempToRealGroupId.computeIfAbsent(pm.getGroupId(), k -> generateGroupId());
                             groupName = pm.getGroupName() != null ? pm.getGroupName()
                                     : processCategoryToGroupName(category);
+                            groupOrder = tempGroupSeqMap.computeIfAbsent(pm.getGroupId(), k -> tempGroupSeqMap.size() + 1);
                         }
                         routingItemMapper.insertItem(newRouting.getRoutingId(),
                                 stdProcessId,
@@ -1780,6 +1789,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 category,
                                 groupId,
                                 groupName,
+                                groupOrder,
                                 pm.getIndexNumber()); // DEV-777：对照版下标透传到工艺路线
                     }
                     newRouting.setTotalLaborHours(totalLabor);

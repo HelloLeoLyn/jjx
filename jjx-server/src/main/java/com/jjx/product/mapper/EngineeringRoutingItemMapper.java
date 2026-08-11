@@ -19,7 +19,7 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
     List<EngineeringRoutingItem> selectByRoutingId(@Param("routingId") Long routingId);
 
     @Select("SELECT " +
-            "i.detail_id, i.routing_id, i.process_order, " +
+            "i.detail_id AS item_id, i.routing_id, i.process_order, " +
             "i.custom_labor_hours, i.custom_machine_hours, " +
             "i.custom_process_params, i.description, " +
             "i.create_time, i.update_time, " +

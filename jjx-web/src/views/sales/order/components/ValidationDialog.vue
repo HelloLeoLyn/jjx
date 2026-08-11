@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     :title="title"
-    width="80%"
+    width="1200"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     :show-close="false"
@@ -26,18 +26,25 @@
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">是否有效</div>
-            <div class="stat-value"></div>
+            <div class="stat-value">
+              <el-tag v-if="validationResult.canSubmit" type="success">有效</el-tag>
+              <el-tag v-else type="danger">无效</el-tag>
+            </div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">是否可以提交</div>
-            <div class="stat-value"></div>
+            <div class="stat-value">
+              <el-tag v-if="validationResult.canSubmit" type="success">可以</el-tag>
+              <el-tag v-else type="danger">不可以</el-tag>
+            </div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">验证耗时</div>
+            <div class="stat-value">{{ validationDuration }}ms</div>
           </div>
         </el-col>
       </el-row>
@@ -46,24 +53,25 @@
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">错误</div>
-            <div class="stat-value"></div>
+            <div class="stat-value stat-error">{{ validationResult.errorCount ?? 0 }}</div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">警告</div>
-            <div class="stat-value"></div>
+            <div class="stat-value stat-warning">{{ validationResult.warningCount ?? 0 }}</div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">提示</div>
-            <div class="stat-value"></div>
+            <div class="stat-value">{{ validationResult.infoCount ?? 0 }}</div>
           </div>
         </el-col>
         <el-col :span="6">
           <div class="stat-item">
             <div class="stat-label">验证时间</div>
+            <div class="stat-value">{{ formatTime(validationTime) }}</div>
           </div>
         </el-col>
       </el-row>
@@ -71,7 +79,7 @@
     <el-card shadow="never">
       <el-table :data="validationResult?.items" border>
         <el-table-column prop="productCode" label="产品编码" width="120" />
-        <el-table-column prop="productName" label="产品名称" />
+        <el-table-column prop="productName" label="产品名称" width="200" />
         <el-table-column prop="productStatus" label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="ProductEnum.status.getTagProps(row.productStatus)?.type">
@@ -79,11 +87,11 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="bomCode" label="BOM" width="100" />
-        <el-table-column prop="isBomCurrentVersion" label="是否生效BOM版本" width="180" />
-        <el-table-column prop="bomVersion" label="BOM版本" width="100" />
-        <el-table-column prop="routingCode" label="工艺路线" width="120" />
-        <el-table-column prop="isRoutingCurrentVersion" label="是否生效工艺路线版本" width="180" />
+        <el-table-column prop="bomCode" label="BOM" width="200" />
+        <!-- <el-table-column prop="isBomCurrentVersion" label="是否生效BOM版本" width="180" /> -->
+        <el-table-column prop="bomVersion" label="BOM版本" width="120" />
+        <el-table-column prop="routingCode" label="工艺路线" width="280" />
+        <!-- <el-table-column prop="isRoutingCurrentVersion" label="是否生效工艺路线版本" width="180" /> -->
         <el-table-column prop="routingVersion" label="工艺路线版本" width="120" />
       </el-table>
     </el-card>
@@ -104,6 +112,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { OrderValidationService } from '@/services/sales/order-validation.service'
+import { orderStatusApi } from '@/api/sales/orderStatus'
 import type { OrderReferValidationVO } from '@/types/sales/order'
 import { ProductEnum } from '@/enums'
 const props = defineProps<{
@@ -130,6 +139,8 @@ const submitting = ref(false)
 const error = ref<string | null>(null)
 const validationResult = ref<OrderReferValidationVO | null>(null)
 const activeTab = ref('errors')
+const validationDuration = ref(0)
+const validationTime = ref('')
 
 // 获取验证服务实例
 const validationService = OrderValidationService.getInstance()
@@ -149,8 +160,8 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
-    // TODO: 调用提交审核API
-    // await orderStatusApi.submitOrderReview(props.orderId)
+    // 2026-08-11 修复：接入真实提交审核 API（原为 TODO 占位）
+    await orderStatusApi.submitOrderReview(props.orderId)
     ElMessage.success('订单提交审核成功')
     visible.value = false
     emit('success')
@@ -167,6 +178,7 @@ const performValidation = async () => {
   loading.value = true
   error.value = null
   validationResult.value = null
+  const start = Date.now()
   try {
     const validationRequest = {
       orderId: props.orderId,
@@ -182,6 +194,8 @@ const performValidation = async () => {
     }
 
     validationResult.value = await validationService.validateOrderForReview(validationRequest)
+    validationDuration.value = Date.now() - start
+    validationTime.value = new Date().toISOString()
     console.log(validationResult)
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -189,6 +203,11 @@ const performValidation = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const formatTime = (t: string) => {
+  if (!t) return '-'
+  return t.replace('T', ' ').slice(0, 19)
 }
 
 // 监听对话框显示状态
@@ -263,6 +282,16 @@ watch(
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.stat-error {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+.stat-warning {
+  color: #e6a23c;
+  font-weight: 600;
 }
 
 .mt-4 {

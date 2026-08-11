@@ -1,11 +1,11 @@
 <!-- components/OrderDetailDrawer.vue -->
 <template>
-  <el-drawer
+  <el-dialog
     v-model="drawerVisible"
     :title="`订单详情 - ${orderDetail?.orderNo || ''}`"
-    size="60%"
-    direction="rtl"
+    width="70%"
     :close-on-click-modal="false"
+    destroy-on-close
     @close="handleClose"
   >
     <div v-loading="loading" class="order-detail">
@@ -295,7 +295,11 @@
         <el-empty description="未找到订单信息" />
       </template>
     </div>
-  </el-drawer>
+
+    <template #footer>
+      <el-button type="primary" @click="drawerVisible = false">关 闭</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">

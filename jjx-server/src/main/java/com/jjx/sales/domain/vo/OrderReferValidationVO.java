@@ -11,4 +11,16 @@ public class OrderReferValidationVO {
     private String orderNo;
     private CustomerVO customerVO;
     private List<ProductValidationVO> items;
+
+    /** 是否可以提交审核（2026-08-11 新增） */
+    private Boolean canSubmit;
+
+    /** 错误数 */
+    private Integer errorCount;
+
+    /** 警告数 */
+    private Integer warningCount;
+
+    /** 提示数 */
+    private Integer infoCount;
 }
