@@ -28,6 +28,12 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
                           String category, String version);
 
     /**
+     * 上传附件（含类别/版本/备注，产品文件库 + 类型标签用）
+     */
+    Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId,
+                          String category, String version, String remark);
+
+    /**
      * 批量上传附件
      */
     List<Long> batchUploadAttachments(List<MultipartFile> files, String bizType, Long bizId);
@@ -64,6 +70,11 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
      * 按链路追踪ID查询所有关联附件（含来源单据的文档）
      */
     List<SysAttachment> getAttachmentsByTraceId(String traceId);
+
+    /**
+     * 按链路追踪ID获取附件增强版（含来源单据类型名+单号，2026-08-11）
+     */
+    List<com.jjx.system.domain.vo.AttachmentSourceVO> getAttachmentSourcesByTraceId(String traceId);
 
     /**
      * 删除附件（软删除：进回收站，保留物理文件，DEV-737）

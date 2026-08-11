@@ -36,6 +36,8 @@ const props = withDefaults(defineProps<{
   traceId?: string
   category?: string
   version?: string
+  /** 附件类型标签（图纸/单据/凭证…，存 remark 字段，2026-08-11） */
+  remark?: string
   maxSizeMB?: number
   multiple?: boolean
   buttonText?: string
@@ -47,6 +49,7 @@ const props = withDefaults(defineProps<{
   traceId: '',
   category: '',
   version: '',
+  remark: '',
   maxSizeMB: 10,
   multiple: true,
   buttonText: '上传附件',
@@ -89,6 +92,7 @@ async function doUpload(options: UploadRequestOptions) {
     if (props.traceId) formData.append('traceId', props.traceId)
     if (props.category) formData.append('category', props.category)
     if (props.version) formData.append('version', props.version)
+    if (props.remark) formData.append('remark', props.remark)
     try {
       const res: any = await request({
         url: '/system/attachment/upload',
@@ -134,6 +138,7 @@ async function flushPending(bizId: number, traceId?: string) {
     if (tid) formData.append('traceId', tid)
     if (props.category) formData.append('category', props.category)
     if (props.version) formData.append('version', props.version)
+    if (props.remark) formData.append('remark', props.remark)
     try {
       const res: any = await request({
         url: '/system/attachment/upload',

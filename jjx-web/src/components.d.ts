@@ -115,6 +115,7 @@ declare module 'vue' {
     SupplierSelector: typeof import('./components/Selector/SupplierSelector.vue')['default']
     SvgIcon: typeof import('./components/SvgIcon/index.vue')['default']
     Toolbar: typeof import('./components/common-ui/Toolbar.vue')['default']
+    TraceAttachmentPanel: typeof import('./components/TraceAttachmentPanel/index.vue')['default']
     TraceTimeline: typeof import('./components/TraceTimeline/index.vue')['default']
     UniversalIcon: typeof import('./components/UniversalIcon.vue')['default']
     WarehouseSelector: typeof import('./components/Selector/WarehouseSelector.vue')['default']

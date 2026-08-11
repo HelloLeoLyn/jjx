@@ -41,17 +41,25 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
 
     private final SysAttachmentMapper attachmentMapper;
     private final ProductMapper productMapper;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId) {
-        return uploadAttachment(file, bizType, bizId, traceId, null, null);
+        return uploadAttachment(file, bizType, bizId, traceId, null, null, null);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId,
                                  String category, String version) {
+        return uploadAttachment(file, bizType, bizId, traceId, category, version, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long uploadAttachment(MultipartFile file, String bizType, Long bizId, String traceId,
+                                 String category, String version, String remark) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("上传文件不能为空");
         }
@@ -85,6 +93,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setTraceId(traceId);
         attachment.setCategory(category);
         attachment.setVersion(version);
+        attachment.setRemark(remark);
         attachment.setFileName(originalName != null ? originalName : "unknown");
         attachment.setFilePath(relativePath);
         attachment.setFileSize(file.getSize());
@@ -120,6 +129,77 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
                 .eq(SysAttachment::getTraceId, traceId)
                 .orderByAsc(SysAttachment::getCreateTime);
         return list(wrapper);
+    }
+
+    @Override
+    public List<com.jjx.system.domain.vo.AttachmentSourceVO> getAttachmentSourcesByTraceId(String traceId) {
+        List<com.jjx.system.domain.vo.AttachmentSourceVO> result = new ArrayList<>();
+        if (traceId == null || traceId.isEmpty()) return result;
+
+        List<SysAttachment> attachments = getAttachmentsByTraceId(traceId);
+        for (SysAttachment att : attachments) {
+            com.jjx.system.domain.vo.AttachmentSourceVO vo = new com.jjx.system.domain.vo.AttachmentSourceVO();
+            vo.setId(att.getId());
+            vo.setBizType(att.getBizType());
+            vo.setBizId(att.getBizId());
+            vo.setRemark(att.getRemark());
+            vo.setCategory(att.getCategory());
+            vo.setFileName(att.getFileName());
+            vo.setFileSize(att.getFileSize());
+            vo.setFileType(att.getFileType());
+            vo.setCreateBy(att.getCreateBy());
+            vo.setCreateTime(att.getCreateTime());
+            vo.setTraceId(att.getTraceId());
+
+            // 来源单据类型名 + 单号反查
+            vo.setBizTypeName(resolveBizTypeName(att.getBizType()));
+            vo.setSourceNo(resolveSourceNo(att.getBizType(), att.getBizId()));
+            result.add(vo);
+        }
+        return result;
+    }
+
+    /** 业务类型 → 中文名 + 对应主表单号字段 */
+    private String resolveBizTypeName(String bizType) {
+        if (bizType == null) return "附件";
+        switch (bizType) {
+            case "quotation": return "报价单";
+            case "inquiry": return "询价单";
+            case "order":
+            case "sales_order": return "销售订单";
+            case "sample":
+            case "sample_order": return "样品单";
+            case "purchase": return "采购订单";
+            case "production": return "生产工单";
+            case "product": return "产品文件";
+            default: return bizType;
+        }
+    }
+
+    /** 反查来源单号：按业务类型查对应主表的单号字段 */
+    private String resolveSourceNo(String bizType, Long bizId) {
+        if (bizType == null || bizId == null) return null;
+        String table;
+        String col;
+        switch (bizType) {
+            case "quotation": table = "sales_quotation"; col = "quotation_no"; break;
+            case "inquiry": table = "sales_inquiry"; col = "inquiry_no"; break;
+            case "order":
+            case "sales_order": table = "sales_order"; col = "order_no"; break;
+            case "sample":
+            case "sample_order": table = "sales_order"; col = "order_no"; break;
+            case "purchase": table = "purchase_order"; col = "purchase_no"; break;
+            case "production": table = "production_order"; col = "order_no"; break;
+            case "product": table = "product"; col = "product_code"; break;
+            default: return null;
+        }
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT " + col + " FROM " + table + " WHERE id = ?", String.class, bizId);
+        } catch (Exception e) {
+            log.warn("反查来源单号失败: bizType={}, bizId={}, err={}", bizType, bizId, e.getMessage());
+            return null;
+        }
     }
 
     @Override

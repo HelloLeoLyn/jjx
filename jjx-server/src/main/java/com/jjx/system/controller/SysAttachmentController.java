@@ -39,8 +39,9 @@ public class SysAttachmentController {
                                @RequestParam("bizId") Long bizId,
                                @RequestParam(required = false) String traceId,
                                @RequestParam(required = false) String category,
-                               @RequestParam(required = false) String version) {
-        Long id = attachmentService.uploadAttachment(file, bizType, bizId, traceId, category, version);
+                               @RequestParam(required = false) String version,
+                               @RequestParam(required = false) String remark) {
+        Long id = attachmentService.uploadAttachment(file, bizType, bizId, traceId, category, version, remark);
         return Result.success(id);
     }
 
@@ -64,8 +65,8 @@ public class SysAttachmentController {
 
     @Operation(summary = "按链路追踪ID获取附件（含来源单据文档）")
     @GetMapping("/by-trace/{traceId}")
-    public Result<List<SysAttachment>> listByTrace(@PathVariable String traceId) {
-        return Result.success(attachmentService.getAttachmentsByTraceId(traceId));
+    public Result<List<com.jjx.system.domain.vo.AttachmentSourceVO>> listByTrace(@PathVariable String traceId) {
+        return Result.success(attachmentService.getAttachmentSourcesByTraceId(traceId));
     }
 
     @Operation(summary = "上传产品工程文件（产品文件库，DEV-734）")
