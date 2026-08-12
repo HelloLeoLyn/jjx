@@ -101,7 +101,6 @@
           <template #default="scope">
             <template v-if="scope.row.sampleStatus === 6">
               <el-button v-hasPermi="['sales:sample:convert']" type="warning" link size="small" @click="handleTransfer(scope.row)">资料转移</el-button>
-              <el-button type="primary" link size="small" @click="openWorkbench(scope.row)">进入打样</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 7">
               <el-tag size="small" type="success">已转量产</el-tag>
