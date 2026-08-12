@@ -10,8 +10,11 @@
 
     <!-- A4 画布 -->
     <A4Canvas :padding-mm="12" :scale="0.82" v-if="info">
-      <!-- 标题 -->
-      <div class="doc-title">生 产 随 工 单</div>
+      <!-- 标题 + 工单二维码（扫码枪扫工单号定位，2026-08-12 DEV-001） -->
+      <div class="doc-title-row">
+        <div class="doc-title">生 产 随 工 单</div>
+        <img v-if="qrDataUrl" :src="qrDataUrl" class="doc-qrcode" alt="工单二维码" title="扫码定位工单" />
+      </div>
 
       <!-- 工单头信息 -->
       <div class="doc-info">
@@ -172,6 +175,7 @@ import { productRouteApi } from '@/api/product/routing'
 import { outboundApi } from '@/api/inventory/outbound'
 import { qualityApi } from '@/api/production/quality'
 import A4Canvas from '@/components/A4Canvas/index.vue'
+import QRCode from 'qrcode'
 
 const props = defineProps<{
   orderId: string | number
@@ -183,6 +187,7 @@ const executions = ref<any[]>([])
 const routeItems = ref<any[]>([])
 const outbounds = ref<any[]>([])
 const qualities = ref<any[]>([])
+const qrDataUrl = ref('')
 
 /** 工艺路线文本 */
 const routingText = computed(() => {
@@ -361,7 +366,20 @@ function handlePrint() {
   window.print()
 }
 
-onMounted(loadData)
+/** 生成工单二维码（内容=工单号，扫码枪识别后定位工单） */
+async function genQr() {
+  if (!info.value?.orderNo) return
+  try {
+    qrDataUrl.value = await QRCode.toDataURL(info.value.orderNo, { width: 96, margin: 1 })
+  } catch {
+    qrDataUrl.value = ''
+  }
+}
+
+onMounted(async () => {
+  await loadData()
+  await genQr()
+})
 </script>
 
 <style scoped>
@@ -382,6 +400,24 @@ onMounted(loadData)
 .toolbar-tip {
   font-size: 14px;
   color: #606266;
+}
+
+/* 单据标题行（标题居中 + 二维码右上角，DEV-001） */
+.doc-title-row {
+  position: relative;
+  padding-right: 96px; /* 给右侧二维码留位，避免遮挡标题 */
+}
+
+/* 工单二维码（扫码枪扫工单号定位） */
+.doc-qrcode {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 72px;
+  height: 72px;
+  border: 1px solid #dcdfe6;
+  padding: 3px;
+  background: #fff;
 }
 
 /* 单据标题 */
