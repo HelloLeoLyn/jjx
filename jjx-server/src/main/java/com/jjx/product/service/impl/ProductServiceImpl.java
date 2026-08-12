@@ -42,6 +42,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
     private final ProductMapper productMapper;
     private final ProductCodeGenerator productCodeGenerator;
+    private final com.jjx.product.service.ProductCodeService productCodeService;
     private final ProductConverter productConverter;
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
@@ -397,7 +398,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     @Override
     public String generateSerialNo(Long customerId) {
         // 编码格式：客户简称(1-3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)
-        // 2026-08-10 DEV-772：客户简称不足3位不再卡死——按客户简称过滤，流水号用正则提取（兼容简称1-3位）
+        // 2026-08-12：流水号逻辑统一走 ProductCodeService（兼容简称1-3位，正则提取）
         String shortName = null;
         if (customerId != null) {
             try {
@@ -407,33 +408,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                 }
             } catch (Exception ignored) { }
         }
-
-        LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
-        if (shortName != null && !shortName.isEmpty()) {
-            wrapper.likeRight(Product::getProductCode, shortName); // 按客户简称前缀匹配
-        } else {
-            wrapper.likeRight(Product::getProductCode, "___"); // 兜底：前3位任意
-        }
-        wrapper.orderByDesc(Product::getProductCode);
-        wrapper.last("LIMIT 1");
-
-        Product lastProduct = productMapper.selectOne(wrapper);
-        if (lastProduct != null && lastProduct.getProductCode() != null) {
-            try {
-                // 正则提取第一段3位连续数字作为流水号（兼容客户简称1-3位，不硬编码位置）
-                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d{3}").matcher(lastProduct.getProductCode());
-                if (m.find()) {
-                    int nextSerial = Integer.parseInt(m.group()) + 1;
-                    if (nextSerial > 999) {
-                        nextSerial = 1;
-                    }
-                    return String.format("%03d", nextSerial);
-                }
-            } catch (NumberFormatException e) {
-                return "001";
-            }
-        }
-        return "001";
+        return productCodeService.nextSerial(shortName);
     }
 
     @Override

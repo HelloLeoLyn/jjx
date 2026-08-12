@@ -66,7 +66,7 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple || !canDelete" @click="handleDelete"
+          <el-button type="danger" plain icon="Delete" :disabled="multiple || !canDelete" @click="handleDelete()"
             >删除</el-button
           >
         </el-col>
@@ -184,7 +184,7 @@
     <el-dialog
       :title="dialogTitle"
       v-model="dialogVisible"
-      width="800px"
+      width="1200px"
       append-to-body
       @close="handleClose"
     >
@@ -285,77 +285,17 @@
               </el-select>
             </el-form-item>
 
-            <!-- 样品：编码构成要素直接展示（客户简称+流水号+面板结构+线路结构） -->
+            <!-- 样品：编码构成要素（公共组件 2026-08-12，统一校验/拼接/输出可配置） -->
             <template v-if="form.inquiryType === 2">
-              <el-row :gutter="16">
-                <el-col :span="12">
-                  <el-form-item label="客户简称">
-                    <el-input v-model="shortNameDisplay" readonly placeholder="选择客户后自动带出" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="流水号">
-                    <el-input v-model="codeSerialNo" maxlength="3" placeholder="3位，点生成编码自动取号可改" />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="16">
-                <el-col :span="12">
-                  <el-form-item label="面板结构" required>
-                    <el-select v-model="codePanelType" placeholder="面板类型" style="width: 100%" @change="composeCode">
-                      <el-option label="有面板有线路" value="M" />
-                      <el-option label="仅有线路" value="S" />
-                      <el-option label="仅有面板" value="P" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="面板特征" required>
-                    <el-select v-model="codePanelFeature" placeholder="面板特征" style="width: 100%" @change="composeCode">
-                      <el-option label="面板有凹凸" value="E" />
-                      <el-option label="面板有窗口" value="W" />
-                      <el-option label="有窗口也有凹凸" value="H" />
-                      <el-option label="无" value="O" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="16">
-                <el-col :span="12">
-                  <el-form-item label="线路类型" required>
-                    <el-select v-model="codeCircuitType" placeholder="线路类型" style="width: 100%" @change="composeCode">
-                      <el-option label="无(印银平key)" value="O" />
-                      <el-option label="有金属弹片" value="M" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="线路特征" required>
-                    <el-select v-model="codeCircuitFeature" placeholder="线路特征" style="width: 100%" @change="composeCode">
-                      <el-option label="无" value="O" />
-                      <el-option label="有发光二极体" value="L" />
-                      <el-option label="有连接器" value="C" />
-                      <el-option label="有连接器及发光二极体" value="H" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <div class="form-tip" style="margin-bottom: 12px">
-                编码格式：客户简称(1~3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)，如 JST001MEOL
-              </div>
-            </template>
-
-            <!-- 产品描述 -->
-            <el-form-item label="产品描述" prop="productDescription">
-              <el-input
-                v-model="form.productDescription"
-                type="textarea"
-                :rows="3"
-                :placeholder="form.inquiryType === 1 ? '选择产品后自动带出，可修改' : '详细描述产品规格/功能要求'"
-                maxlength="2000"
-                show-word-limit
+              <ProductCodeGenerator
+                ref="codeGenRef"
+                :customer-short="shortNameDisplay"
+                v-model:state="codeState"
+                :emit-params="true"
+                v-model:params="codeParams"
+                @change="onCodeChange"
               />
-            </el-form-item>
+            </template>
 
             <!-- 产品编码（标准品选产品回填/样品生成器生成，均可改） -->
             <el-form-item label="产品编码">
@@ -364,11 +304,6 @@
                 placeholder="标准品选产品自动带出；样品选编码要素自动生成，可手动修改"
                 maxlength="50"
               >
-                <template #append>
-                  <el-button v-if="form.inquiryType === 2" @click="generateCode" :loading="generatingSerial">
-                    <el-icon><Refresh /></el-icon> 生成编码
-                  </el-button>
-                </template>
               </el-input>
             </el-form-item>
 
@@ -381,6 +316,18 @@
                 @input="nameEdited = true"
               />
             </el-form-item>
+            <!-- 产品描述 -->
+            <el-form-item label="产品描述" prop="productDescription">
+              <el-input
+                v-model="form.productDescription"
+                type="textarea"
+                :rows="3"
+                :placeholder="form.inquiryType === 1 ? '选择产品后自动带出，可修改' : '详细描述产品规格/功能要求'"
+                maxlength="2000"
+                show-word-limit
+              />
+            </el-form-item>
+
           </el-col>
         </el-row>
         <el-row :gutter="20">
@@ -543,14 +490,12 @@ import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
 import type { FormInstance } from 'element-plus'
-import request from '@/utils/request'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
 import { listProduct, getProductInfo } from '@/api/product'
 import { parseSpecJson } from '@/utils/specJsonHelper'
 import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'
-import type { CustomerSearchVO } from '@/types/sales/customer'
 
 defineOptions({
   name: 'SalesInquiry',
@@ -783,71 +728,43 @@ function customerChanged(val: number) {
     // 编码生成器：带出客户简称并自动取号（样品询价）
     form.customerShortName = (customer as any).customerShortName || ''
     if (form.inquiryType === 2) {
-      generateCode()
+      codeGenRef.value?.generate()
     }
   }
 }
 
-// ==================== 编码生成器（参考产品新增面板线路） ====================
-const codeSerialNo = ref('')
-const codePanelType = ref('')
-const codePanelFeature = ref('')
-const codeCircuitType = ref('')
-const codeCircuitFeature = ref('')
+// ==================== 编码生成器（公共组件 useProductCode，2026-08-12） ====================
+import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
+import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
+const codeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
+const codeState = ref<ProductCodeState>({ serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' })
+const codeParams = ref<ProductCodeResult | null>(null)
 const nameEdited = ref(false)
-const generatingSerial = ref(false)
 
 const shortNameDisplay = computed(() => {
   const s = form.customerShortName || ''
   return s.substring(0, 3)
 })
 
-// 类型切换：标准品/样品切换时清掉编码生成状态（保留已填编码？切换时清空避免串数据）
+// 编码生成回调：填产品编码/名称（nameEdited=产品名手动改过则不覆盖）
+function onCodeChange(data: string | ProductCodeResult) {
+  const code = typeof data === 'string' ? data : data.productCode
+  form.productCode = code
+  if (!nameEdited.value) {
+    form.productName = code
+  }
+}
+
+// 类型切换：标准品/样品切换时清掉编码生成状态（切换时清空避免串数据）
 function onTypeChange() {
-  codeSerialNo.value = ''
-  codePanelType.value = ''
-  codePanelFeature.value = ''
-  codeCircuitType.value = ''
-  codeCircuitFeature.value = ''
+  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
   form.productCode = ''
   nameEdited.value = false
   if (form.inquiryType === 1) {
     form.productName = ''
   } else {
     form.productName = ''
-    if (form.customerShortName) generateCode()
-  }
-}
-
-// 自动取号 + 拼接编码
-async function generateCode() {
-  if (!form.customerShortName) {
-    ElMessage.warning('请先选择客户（用于客户简称）')
-    return
-  }
-  generatingSerial.value = true
-  try {
-    const res: any = await inquiryApi.nextSerial(shortNameDisplay.value)
-    codeSerialNo.value = (res as any)?.data || '001'
-  } catch {
-    codeSerialNo.value = '001'
-  } finally {
-    generatingSerial.value = false
-    composeCode()
-  }
-}
-
-// 拼接：客户简称(1~3位) + 流水号3 + 面板结构2 + 线路结构2（2026-08-12 对齐 DEV-772：1~3位简称放行）
-function composeCode() {
-  const customerPart = shortNameDisplay.value
-  const serialPart = codeSerialNo.value || ''
-  const panelPart = `${codePanelType.value}${codePanelFeature.value}`
-  const circuitPart = `${codeCircuitType.value}${codeCircuitFeature.value}`
-  if (customerPart.length >= 1 && customerPart.length <= 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
-    form.productCode = `${customerPart}${serialPart}${panelPart}${circuitPart}`
-    if (!nameEdited.value) {
-      form.productName = form.productCode
-    }
+    if (form.customerShortName) codeGenRef.value?.generate()
   }
 }
 
@@ -890,11 +807,13 @@ async function onProductSelect(val: number) {
     const code = product.productCode || ''
     if (code.length >= 10) {
       form.customerShortName = code.substring(0, 3)
-      codeSerialNo.value = code.substring(3, 6)
-      codePanelType.value = code.substring(6, 7)
-      codePanelFeature.value = code.substring(7, 8)
-      codeCircuitType.value = code.substring(8, 9)
-      codeCircuitFeature.value = code.substring(9, 10)
+      codeState.value = {
+        serialNo: code.substring(3, 6),
+        panelType: code.substring(6, 7),
+        panelFeature: code.substring(7, 8),
+        circuitType: code.substring(8, 9),
+        circuitFeature: code.substring(9, 10),
+      }
     }
   }
   try {
@@ -955,11 +874,13 @@ function handleUpdate(row?: any) {
     const code = form.productCode || ''
     if (code.length >= 10 && form.inquiryType === 2) {
       form.customerShortName = code.substring(0, 3)
-      codeSerialNo.value = code.substring(3, 6)
-      codePanelType.value = code.substring(6, 7)
-      codePanelFeature.value = code.substring(7, 8)
-      codeCircuitType.value = code.substring(8, 9)
-      codeCircuitFeature.value = code.substring(9, 10)
+      codeState.value = {
+        serialNo: code.substring(3, 6),
+        panelType: code.substring(6, 7),
+        panelFeature: code.substring(7, 8),
+        circuitType: code.substring(8, 9),
+        circuitFeature: code.substring(9, 10),
+      }
       nameEdited.value = form.productName !== code
     }
   })
@@ -1089,11 +1010,8 @@ function resetForm() {
     salesPersonName: '',
   })
   // 重置编码生成器
-  codeSerialNo.value = ''
-  codePanelType.value = ''
-  codePanelFeature.value = ''
-  codeCircuitType.value = ''
-  codeCircuitFeature.value = ''
+  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  codeParams.value = null
   nameEdited.value = false
 }
 

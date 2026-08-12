@@ -513,73 +513,16 @@
           </el-col>
         </el-row>
 
-        <!-- 编码生成器（样品报价：面板线路自动拼编码，自动填入明细，布局同询价） -->
+        <!-- 编码生成器（样品报价：公共组件 2026-08-12，生成编码自动填入明细） -->
         <template v-if="form.quotationType === 2">
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="客户简称">
-                <el-input v-model="qShortName" readonly placeholder="选择客户后自动获取" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="流水号">
-                <el-input v-model="qSerialNo" maxlength="3" placeholder="3位，生成时自动取号可改" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="面板结构" required>
-                <el-select v-model="qPanelType" placeholder="面板类型" style="width: 100%">
-                  <el-option label="有面板有线路" value="M" />
-                  <el-option label="仅有线路" value="S" />
-                  <el-option label="仅有面板" value="P" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="面板特征" required>
-                <el-select v-model="qPanelFeature" placeholder="面板特征" style="width: 100%">
-                  <el-option label="面板有凹凸" value="E" />
-                  <el-option label="面板有窗口" value="W" />
-                  <el-option label="有窗口也有凹凸" value="H" />
-                  <el-option label="无" value="O" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="线路类型" required>
-                <el-select v-model="qCircuitType" placeholder="线路类型" style="width: 100%">
-                  <el-option label="无(印银平key)" value="O" />
-                  <el-option label="有金属弹片" value="M" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="线路特征" required>
-                <el-select v-model="qCircuitFeature" placeholder="线路特征" style="width: 100%">
-                  <el-option label="无" value="O" />
-                  <el-option label="有发光二极体" value="L" />
-                  <el-option label="有连接器" value="C" />
-                  <el-option label="有连接器及发光二极体" value="H" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="16">
-            <el-col :span="24">
-              <el-form-item label-width="0">
-                <el-button type="primary" @click="qGenerateCode" :loading="qGenerating">
-                  <el-icon><Refresh /></el-icon> 生成编码并填入明细
-                </el-button>
-                <span class="qcode-tip" style="margin-left: 8px; font-size: 12px; color: #909399">
-                  编码格式：客户简称(3位)+流水号(3位)+面板结构(2位)+线路结构(2位)，如 JST001MEOL；名称默认与编码一致，均可手动修改
-                </span>
-              </el-form-item>
-            </el-col>
-          </el-row>
+          <ProductCodeGenerator
+            ref="qCodeGenRef"
+            :customer-short="qShortName"
+            v-model:state="qCodeState"
+            :emit-params="true"
+            v-model:params="qCodeParams"
+            @change="onQCodeChange"
+          />
         </template>
 
         <el-row>
@@ -934,7 +877,6 @@ import { useUserStore } from '@/store/modules/user'
 import type { FormInstance, FormRules } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
 import { customerApi } from '@/api/sales/customer'
-import { inquiryApi } from '@/api/sales/inquiry'
 import { listProduct } from '@/api/product'
 import { roleApi } from '@/api/system/role'
 import { QuotationStatusEnum } from '@/enums/sales'
@@ -1429,12 +1371,25 @@ const searchProduct = async (query: string, row: any) => {
 // 处理产品选择变化
 // ===== 编码生成器（样品报价：面板线路自动拼编码，自动填入唯一明细行，2026-08-08） =====
 const qShortName = ref('')
-const qSerialNo = ref('')
-const qPanelType = ref('')
-const qPanelFeature = ref('')
-const qCircuitType = ref('')
-const qCircuitFeature = ref('')
-const qGenerating = ref(false)
+// 编码生成器（公共组件 2026-08-12）
+import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
+import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
+const qCodeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
+const qCodeState = ref<ProductCodeState>({ serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' })
+const qCodeParams = ref<ProductCodeResult | null>(null)
+
+// 编码生成回调：自动填入唯一明细行（样品类型单行明细）
+function onQCodeChange(data: string | ProductCodeResult) {
+  const code = typeof data === 'string' ? data : data.productCode
+  const row = form.items[0]
+  if (!row) {
+    ElMessage.warning('请先添加明细')
+    return
+  }
+  row.productCode = code
+  row.productName = code
+  ElMessage.success('编码与名称已填入明细')
+}
 
 async function qLoadShortName() {
   if (!form.customerId) return
@@ -1505,47 +1460,6 @@ watch(() => form.quotationType, (v) => {
     }
   }
 })
-
-async function qGenerateCode() {
-  if (!form.customerId) {
-    ElMessage.warning('请先选择客户（用于客户简称）')
-    return
-  }
-  if (!qShortName.value) {
-    await qLoadShortName()
-  }
-  // 2026-08-12 同步 DEV-772：客户简称 1-3 位都放行，按实际长度拼码
-  if (qShortName.value.length < 1 || qShortName.value.length > 3) {
-    ElMessage.warning('客户简称需为1-3位，无法生成编码')
-    return
-  }
-  qGenerating.value = true
-  try {
-    const res: any = await inquiryApi.nextSerial(qShortName.value)
-    qSerialNo.value = (res as any)?.data || '001'
-  } catch {
-    qSerialNo.value = '001'
-  } finally {
-    qGenerating.value = false
-  }
-  const customerPart = qShortName.value
-  const serialPart = qSerialNo.value || ''
-  const panelPart = `${qPanelType.value}${qPanelFeature.value}`
-  const circuitPart = `${qCircuitType.value}${qCircuitFeature.value}`
-  if (customerPart.length >= 1 && customerPart.length <= 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
-    // 自动填入唯一明细行（样品类型单行明细）
-    const row = form.items[0]
-    if (!row) {
-      ElMessage.warning('请先添加明细')
-      return
-    }
-    row.productCode = `${customerPart}${serialPart}${panelPart}${circuitPart}`
-    row.productName = row.productCode
-    ElMessage.success('编码与名称已填入明细')
-  } else {
-    ElMessage.warning('请完整选择面板结构/特征、线路类型/特征')
-  }
-}
 
 const handleProductChange = (item: any) => {
   // 根据选择的产品编码自动填充产品名称和产品ID

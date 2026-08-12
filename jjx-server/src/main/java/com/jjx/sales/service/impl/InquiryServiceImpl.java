@@ -50,6 +50,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final RedisSequenceService redisSequenceService;
     private final ProductMapper productMapper;
     private final com.jjx.product.service.IProductService productService;
+    private final com.jjx.product.service.ProductCodeService productCodeService;
 
     /**
      * 分页查询询价单列表
@@ -140,30 +141,8 @@ public class InquiryServiceImpl implements IInquiryService {
      */
     @Override
     public String nextProductSerial(String customerShort) {
-        if (customerShort == null || customerShort.isBlank()) {
-            return "001";
-        }
-        String prefix = customerShort.trim().substring(0, Math.min(3, customerShort.trim().length()));
-        try {
-            java.util.List<com.jjx.product.domain.entity.Product> list = productMapper.selectList(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.Product>()
-                            .likeRight(com.jjx.product.domain.entity.Product::getProductCode, prefix)
-                            .last("LIMIT 500"));
-            int maxSerial = 0;
-            for (com.jjx.product.domain.entity.Product p : list) {
-                String code = p.getProductCode();
-                if (code != null && code.length() >= 6) {
-                    String s = code.substring(3, 6);
-                    if (s.matches("\\d{3}")) {
-                        maxSerial = Math.max(maxSerial, Integer.parseInt(s));
-                    }
-                }
-            }
-            return String.format("%03d", maxSerial + 1);
-        } catch (Exception e) {
-            log.warn("取下一个产品流水号失败: {}", e.getMessage());
-            return "001";
-        }
+        // 2026-08-12：流水号逻辑统一走 ProductCodeService（兼容简称1-3位）
+        return productCodeService.nextSerial(customerShort);
     }
 
     @Override

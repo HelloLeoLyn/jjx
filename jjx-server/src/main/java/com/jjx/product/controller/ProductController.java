@@ -11,6 +11,7 @@ import com.jjx.product.domain.query.ProductQuery;
 import com.jjx.product.domain.vo.ProductFullVO;
 import com.jjx.product.domain.vo.ProductVo;
 import com.jjx.product.service.IProductService;
+import com.jjx.product.service.ProductCodeService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ import java.util.List;
 public class ProductController extends BaseController {
 
     private final IProductService productService;
+    private final ProductCodeService productCodeService;
 
     /**
      * 获取产品总数
@@ -234,5 +236,14 @@ public class ProductController extends BaseController {
     @GetMapping("/serial-no/{customerId}")
     public Result<String> generateSerialNo(@PathVariable Long customerId) {
         return Result.success(productService.generateSerialNo(customerId));
+    }
+
+    /**
+     * 统一流水号接口（2026-08-12）：按客户简称取下一个流水号（兼容1-3位简称）
+     * 报价/询价/产品表单统一走这里
+     */
+    @GetMapping("/code/next-serial")
+    public Result<String> nextSerial(@RequestParam String customerShort) {
+        return Result.success(productCodeService.nextSerial(customerShort));
     }
 }
