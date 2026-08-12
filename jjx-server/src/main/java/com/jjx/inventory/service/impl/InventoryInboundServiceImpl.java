@@ -692,8 +692,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (!com.jjx.production.enums.OrderStatusEnum.COMPLETED.getCode().equals(prodOrder.getOrderStatus())) {
             String statusName = "状态码" + prodOrder.getOrderStatus();
             try {
-                var pe = com.jjx.production.enums.OrderStatusEnum.getByCodeSafe(prodOrder.getOrderStatus());
-                if (pe.isPresent()) statusName = pe.get().getName();
+                var pe = com.jjx.production.enums.OrderStatusEnum.getByCode(prodOrder.getOrderStatus());
+                statusName = pe.getName();
             } catch (Exception ignored) {}
             throw new BusinessException("工单未完工，不能生成完工入库单（当前状态：" + statusName + "）");
         }

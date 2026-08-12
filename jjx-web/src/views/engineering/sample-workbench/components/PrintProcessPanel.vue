@@ -51,7 +51,7 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="110" align="center">
+            <el-table-column label="状态" width="110" align="left">
               <template #default="{ row }">
                 <el-tag :type="row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'info'" size="small">
                   {{ row.status === 2 ? '✓ 已完成' : row.status === 1 ? '⏳ 进行中' : '待做' }}
@@ -62,9 +62,15 @@
                 >{{ row.status === 1 ? '完成' : '开始' }}</el-button>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="130" align="center">
+            <el-table-column label="操作" min-width="200" align="center">
               <template #default="{ row }">
                 <template v-if="!isEmptyRow(row)">
+                  <el-button
+                    v-if="row.saveState === 'dirty'"
+                    size="small" link type="primary" :loading="savingPlan"
+                    @click="handleRowSave(row)"
+                  >保存</el-button>
+                  <el-button v-else size="small" link disabled>✓ 已存</el-button>
                   <el-button size="small" link icon="Top" :disabled="isFirst(row)" @click="movePrintRow(row, -1)">上移</el-button>
                   <el-button size="small" link icon="Bottom" :disabled="isLast(row)" @click="movePrintRow(row, 1)">下移</el-button>
                   <el-button size="small" link type="danger" icon="Delete" @click="removePrintRow(row)">删</el-button>
@@ -148,20 +154,56 @@ function isEmptyRow(r: any) {
     && !(r.screenNo || '').trim()
 }
 
-// 自动空行（2026-08-12）：当前 tab 表格末尾始终保留一行空行，编辑完（填了印刷名称）自动补下一行空行
+// 行级保存（2026-08-12）：编辑不再自动补行，点“保存”才提交并触发新行/材料/执行时间线
+
+// 结构变化（加载/删除/保存重建）→ 确保当前 tab 末尾有一行空行；输入内容变化不触发
+const uidSnapshot = ref('')
 watch(
-  () => activeTab.value + '|' + props.printList.map((r) =>
-    `${r.uid}:${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}`
-  ).join(','),
-  () => {
-    const rows = filtered(activeTab.value)
-    const last = rows[rows.length - 1]
-    if (!last || !isEmptyRow(last)) {
-      props.addPrintRow(activeTab.value)
-    }
+  () => props.printList.map((r) => String(r.uid)).join('|'),
+  (uids) => {
+    if (uids === uidSnapshot.value) return
+    uidSnapshot.value = uids
+    ensureEmptyRow()
   },
   { immediate: true },
 )
+
+// 切换子结构 tab → 目标 tab 也保证空行
+watch(activeTab, () => ensureEmptyRow())
+
+function ensureEmptyRow() {
+  const rows = filtered(activeTab.value)
+  const last = rows[rows.length - 1]
+  if (!last || !isEmptyRow(last)) {
+    props.addPrintRow(activeTab.value)
+  }
+}
+
+// 行内容变化 → 标记 dirty（非空行，编辑后显示“保存”按钮）
+watch(
+  () => props.printList.map((r) =>
+    `${r.uid}:${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
+  ).join('|'),
+  () => {
+    props.printList.forEach((r) => {
+      if (isEmptyRow(r)) return
+      if (r.saveState === 'saving') return
+      r.saveState = 'dirty'
+    })
+  },
+)
+
+// 行保存：提交整单（父组件 savePlan 内含 loadPlan+loadBom），成功后自动补空行/刷新时间线
+async function handleRowSave(row: any) {
+  if (props.savingPlan) return
+  row.saveState = 'saving'
+  try {
+    await props.savePlan()
+  } catch (e: any) {
+    row.saveState = 'dirty'
+    ElMessage.error(e?.message || '保存失败')
+  }
+}
 function isFirst(row: any) {
   const arr = filtered(activeTab.value)
   return arr.indexOf(row) <= 0

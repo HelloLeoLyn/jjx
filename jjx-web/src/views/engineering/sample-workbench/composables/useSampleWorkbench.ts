@@ -163,7 +163,8 @@ export function useSampleWorkbench() {
     historySelected.value = null
     historyLoading.value = true
     try {
-      const res: any = await sampleOrderApi.list({ sampleStatus: 7 }) // 已转标准
+      // 2026-08-12 DEV-988：不再限已转量产(7)——查全部样品单（排除当前单），有工序即可复制
+      const res: any = await sampleOrderApi.list({})
       historyOrders.value = (res.data || []).filter((o: any) => o.orderId !== orderId.value)
     } catch {
       historyOrders.value = []
@@ -184,9 +185,12 @@ export function useSampleWorkbench() {
         ElMessage.warning('该样品单没有工序计划')
         return
       }
+      // 2026-08-12 DEV-988：拆分印刷(PRINT)与冲型组装(ASSEMBLY)——印刷行追加到印刷表格
+      const printRows = list.filter((p: any) => p.majorCategory === 'PRINT')
+      const assemblyRows = list.filter((p: any) => p.majorCategory !== 'PRINT')
       // 按 processOrder 分组为卡片，追加到当前 planList 后面（不覆盖）
       const groups = new Map<number, any[]>()
-      for (const p of list) {
+      for (const p of assemblyRows) {
         const k = p.processOrder || 999
         if (!groups.has(k)) groups.set(k, [])
         groups.get(k)!.push(p)
@@ -208,8 +212,16 @@ export function useSampleWorkbench() {
         planList.value.push(pc)
         added++
       }
+      // 印刷行追加到 printList（参数色号/油墨/网框随行）
+      let addedPrint = 0
+      for (const r of printRows) {
+        printList.value.push(makePrintRow(r, printList.value.length + 1))
+        addedPrint++
+      }
       historyCopyVisible.value = false
-      ElMessage.success(`已复制 ${added} 张卡片（追加到现有卡片后，保存后生效）`)
+      ElMessage.success(
+        `已复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（追加到现有后，保存后生效）`
+      )
     } catch (e: any) {
       ElMessage.error(e?.message || '复制失败')
     } finally {
