@@ -379,10 +379,11 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单不是已审核状态（" + currentStatus.getName() + "），无法发送客户确认");
         }
 
-        // 3. 重新发送：清空上次确认记录（不改订单状态）
+        // 3. 重新发送：清空上次确认记录，记录本次发送时间（2026-08-12 发送标识）
         order.setConfirmBy(null);
         order.setConfirmMethod(null);
         order.setConfirmTime(null);
+        order.setConfirmSentTime(java.time.LocalDateTime.now());
         salesOrderMapper.updateById(order);
 
         // 4. 记录日志

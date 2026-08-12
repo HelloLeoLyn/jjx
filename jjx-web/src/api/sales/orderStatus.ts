@@ -49,6 +49,9 @@ export const orderStatusApi = {
   generatePlan: (orderId: number) =>
     request.put(`/sales/orders/${orderId}/status/generate-plan`),
 
+  // 发货（7→8，触发 order.delivering 自动创建销售出库单扣库存，2026-08-12）
+  shipOrder: (orderId: number) => request.put(`/sales/orders/${orderId}/status/ship`),
+
   // 完成订单
   completeOrder: (orderId: number) => request.put(`/sales/orders/${orderId}/status/complete`),
 

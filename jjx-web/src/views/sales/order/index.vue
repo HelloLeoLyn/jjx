@@ -164,11 +164,11 @@
               <!-- 审核中状态 (3) -->
               <template v-else-if="row.orderStatus === 3">
                 <el-button type="primary" size="small" @click="handleApprove(row)">
-                  开始审核
+                  审核通过
                 </el-button>
-                <!-- <el-button type="danger" size="small" @click="handleReject(row)">
+                <el-button type="danger" size="small" @click="handleReject(row)">
                   审核驳回
-                </el-button> -->
+                </el-button>
               </template>
 
               <!-- 已审核状态 (4) -->
@@ -176,6 +176,10 @@
                 <el-button type="primary" size="small" @click="handleSendToCustomer(row)">
                   发送确认
                 </el-button>
+                <el-button v-if="row.confirmSentTime" type="success" size="small" @click="handleCustomerConfirm(row)">
+                  客户确认
+                </el-button>
+                <el-tag v-if="row.confirmSentTime" type="warning" size="small" style="margin-left:4px">已发送待确认</el-tag>
               </template>
 
               <!-- 已驳回状态 (5) -->
@@ -211,7 +215,10 @@
 
               <!-- 生产中状态 (7) -->
               <template v-else-if="row.orderStatus === 7">
-                <el-button type="warning" size="small" disabled> 生产中 </el-button>
+                <el-tag type="info" size="small">生产中</el-tag>
+                <el-button type="warning" size="small" @click="handleShip(row)">
+                  发货
+                </el-button>
               </template>
 
               <!-- 已发货状态 (8) -->
@@ -556,6 +563,13 @@ const handleApprove = (row: any) => {
   reviewDialogVisible.value = true
 }
 
+// 审核驳回（2026-08-12 DEV-013：3→5，复用审核弹窗）
+const handleReject = (row: any) => {
+  currentOrderId.value = row.orderId
+  currentAction.value = 'reject'
+  reviewDialogVisible.value = true
+}
+
 // 重新提交审核
 const handleResubmit = async (row: any) => {
   try {
@@ -580,6 +594,43 @@ const sendConfirmOrder = ref<any>(null)
 const handleSendToCustomer = async (row: any) => {
   sendConfirmOrder.value = row
   sendConfirmVisible.value = true
+}
+
+// 客户确认（2026-08-12 DEV-011：4→6，发送确认后的确认动作）
+const handleCustomerConfirm = async (row: any) => {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `确认订单【${row.orderNo}】已获客户确认，请输入确认人：`,
+      '客户确认',
+      {
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        inputPlaceholder: '客户方确认人',
+        inputValidator: (v: string) => (v && v.trim() ? true : '请输入确认人'),
+      },
+    )
+    await orderStatusApi.confirmOrder(row.orderId, value.trim())
+    ElMessage.success('客户确认成功，订单已进入已确认状态')
+    getList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '客户确认失败')
+  }
+}
+
+// 发货（2026-08-12 DEV-012：7→8，自动创建销售出库单并扣产品库存）
+const handleShip = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认对订单【${row.orderNo}】发货？将自动创建销售出库单并扣减产品库存。`,
+      '发货确认',
+      { confirmButtonText: '确认发货', cancelButtonText: '取消', type: 'warning' },
+    )
+    await orderStatusApi.shipOrder(row.orderId)
+    ElMessage.success('发货成功，订单已进入已发货状态')
+    getList()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '发货失败')
+  }
 }
 
 // 导出确认书 PDF（DEV-343/314）

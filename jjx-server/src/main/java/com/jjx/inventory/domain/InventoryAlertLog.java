@@ -31,6 +31,9 @@ public class InventoryAlertLog extends BaseEntity {
     /** 关联订单号（订单缺料预警用） */
     private String orderNo;
 
+    /** 涉及订单数（全局缺料维度，2026-08-12） */
+    private Integer involvedOrders;
+
     /** 预警级别：info提示/warning警告/urgent紧急 */
     private String alertLevel;
 

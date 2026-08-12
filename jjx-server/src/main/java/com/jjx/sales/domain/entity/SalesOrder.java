@@ -160,6 +160,10 @@ public class SalesOrder extends BaseEntity {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime confirmTime;
 
+    /** 发送客户确认时间（2026-08-12：区分未发送/已发送待确认） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime confirmSentTime;
+
     /**
      * 客户方确认人
      */

@@ -155,9 +155,10 @@
         </el-table-column>
         <el-table-column label="物料编码" prop="materialCode" width="120" />
         <el-table-column label="物料名称" prop="materialName" width="150" show-overflow-tooltip />
-        <el-table-column label="关联订单" prop="orderNo" width="140" align="center">
+        <el-table-column label="关联订单" width="150" align="center">
           <template #default="{ row }">
             <span v-if="row.orderNo">{{ row.orderNo }}</span>
+            <span v-else-if="row.involvedOrders" style="color:#e6a23c">涉及 {{ row.involvedOrders }} 个订单</span>
             <span v-else style="color:#c0c4cc">-</span>
           </template>
         </el-table-column>

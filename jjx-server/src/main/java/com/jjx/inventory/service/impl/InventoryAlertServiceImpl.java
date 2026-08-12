@@ -291,6 +291,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         Map<Long, BigDecimal> demandMap = new java.util.HashMap<>();
         Map<Long, String> codeMap = new java.util.HashMap<>();
         Map<Long, String> nameMap = new java.util.HashMap<>();
+        // 2026-08-12：物料 → 涉及订单集合（全局缺料合并用）
+        Map<Long, java.util.Set<Long>> orderSetMap = new java.util.HashMap<>();
         int noBomCount = 0;
         for (SalesOrder order : orders) {
             List<SalesOrderProduct> products = orderProductMapper.selectList(
@@ -339,6 +341,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
                     codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
                     nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
+                    orderSetMap.computeIfAbsent(item.getMaterialId(), k -> new java.util.HashSet<>()).add(order.getOrderId());
                 }
             }
         }
@@ -387,6 +390,29 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     + " 可用" + available.stripTrailingZeros().toPlainString()
                     + (inTransit.compareTo(BigDecimal.ZERO) > 0 ? " 在途" + inTransit.stripTrailingZeros().toPlainString() : "")
                     + " 实际缺口" + actualGap.stripTrailingZeros().toPlainString();
+            int involvedCount = orderSetMap.getOrDefault(materialId, java.util.Collections.emptySet()).size();
+            // 2026-08-12：同物料已有未处理订单缺料 → 全局信息合并进订单行，不再重复生成全局行
+            List<InventoryAlertLog> existOrderAlerts = alertLogMapper.selectList(
+                    new LambdaQueryWrapper<InventoryAlertLog>()
+                            .eq(InventoryAlertLog::getAlertType, "order_shortage")
+                            .eq(InventoryAlertLog::getMaterialId, materialId)
+                            .eq(InventoryAlertLog::getStatus, 0)
+                            .orderByDesc(InventoryAlertLog::getAlertTime)
+                            .last("LIMIT 1"));
+            if (existOrderAlerts != null && !existOrderAlerts.isEmpty()) {
+                InventoryAlertLog target = existOrderAlerts.get(0);
+                String mergedMsg = (target.getAlertMessage() == null ? "" : target.getAlertMessage())
+                        + "；全局合计缺口" + actualGap.stripTrailingZeros().toPlainString()
+                        + (involvedCount > 0 ? "，涉及" + involvedCount + "个订单" : "");
+                InventoryAlertLog upd = new InventoryAlertLog();
+                upd.setAlertId(target.getAlertId());
+                upd.setAlertMessage(mergedMsg);
+                upd.setInvolvedOrders(involvedCount > 0 ? involvedCount : null);
+                upd.setSuggestion("建议补货 " + actualGap.stripTrailingZeros().toPlainString());
+                alertLogMapper.updateById(upd);
+                shortageCount++;
+                continue;
+            }
             InventoryAlertLog alert = new InventoryAlertLog();
             alert.setAlertType("demand_shortage");
             alert.setAlertLevel("warning");
@@ -394,6 +420,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setMaterialCode(codeMap.get(materialId));
             alert.setMaterialName(nameMap.get(materialId));
             alert.setCurrentStock(available);
+            alert.setInvolvedOrders(involvedCount > 0 ? involvedCount : null);
             alert.setSuggestion("建议补货 " + actualGap.stripTrailingZeros().toPlainString());
             alert.setAlertMessage(msg);
             alert.setAlertTime(LocalDateTime.now());
