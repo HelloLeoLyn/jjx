@@ -687,6 +687,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             throw new BusinessException("生产工单不存在: " + workOrderId);
         }
 
+        // DEV-936（2026-08-12）：工单未完工禁止生成完工入库单（与 DEV-053 完工质检门一致），
+        // 否则 finishedQuantity=0 导致入库数量记 0、库存不入账
+        if (!com.jjx.production.enums.OrderStatusEnum.COMPLETED.getCode().equals(prodOrder.getOrderStatus())) {
+            String statusName = "状态码" + prodOrder.getOrderStatus();
+            try {
+                var pe = com.jjx.production.enums.OrderStatusEnum.getByCodeSafe(prodOrder.getOrderStatus());
+                if (pe.isPresent()) statusName = pe.get().getName();
+            } catch (Exception ignored) {}
+            throw new BusinessException("工单未完工，不能生成完工入库单（当前状态：" + statusName + "）");
+        }
+
         // 2. 创建入库单
         String inboundNo = "FINISH-" + prodOrder.getOrderNo();
         LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()

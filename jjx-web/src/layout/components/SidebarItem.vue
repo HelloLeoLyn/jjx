@@ -54,21 +54,18 @@ const props = defineProps({
 
 const router = useRouter()
 
-const commonElementIcons = [
-  'HomeFilled', 'Setting', 'User', 'UserFilled', 'Menu', 'OfficeBuilding',
-  'Goods', 'List', 'Folder', 'Document', 'SetUp', 'Box', 'Picture',
-  'ShoppingCart', 'PriceTag', 'Location', 'ShoppingBag', 'Money', 'Files',
-  'Dashboard', 'Route', 'Play', 'Check', 'Lock', 'Search', 'BellFilled',
-  'CirclePlusFilled', 'RemoveFilled', 'Switch', 'Plus', 'Edit', 'Tickets',
-  'FolderOpened', 'Sort', 'Calendar', 'CreditCard', 'Van', 'Notebook',
-  'DocumentAdd', 'Timer', 'DataAnalysis', 'Connection', 'RefreshRight',
-  'RefreshLeft', 'Bell', 'Star', 'TrendCharts',
-]
+// 2026-08-12：isSvgIcon 改为基于实际 SVG 文件判断（替代硬编码白名单）
+// 图标渲染优先级：svg 目录有同名文件 → SVG 雪碧图；否则 → Element Plus 图标（main.ts 全量注册）
+const svgIconFiles = import.meta.glob('@/icons/svg/*.svg')
+const jjxIconFiles = import.meta.glob('@/icons/jjx/*.svg')
 
-// 判断是否是 SVG 图标（不在常见 Element Plus 图标列表中的就是 SVG）
+// 判断 icon 名是否为本地 SVG 图标（svg 或 jjx 目录有同名文件）
 const isSvgIcon = computed(() => {
   if (!props.item.icon) return false
-  return !commonElementIcons.includes(props.item.icon)
+  return (
+    svgIconFiles[`/src/icons/svg/${props.item.icon}.svg`] !== undefined ||
+    jjxIconFiles[`/src/icons/jjx/${props.item.icon}.svg`] !== undefined
+  )
 })
 
 const hasChildren = computed(() => {

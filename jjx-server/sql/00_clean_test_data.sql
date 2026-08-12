@@ -7,6 +7,10 @@
 --   1. 标准工序（engineering_standard_process）保留不清——基础档案，供打样/工艺路线复用
 --   2. 其余同 v4：基础档案（客户/物料/产品/BOM/路线）全清
 --
+-- v6 变更（2026-08-12）：
+--   1. 新增派工模块清理：production_dispatch_log / production_dispatch（先子后主）
+--   2. 工装模具档案 production_tooling 保留不清（用户明确要求）
+--
 -- v4 变更（2026-08-06）：
 --   1. 基础档案也全清：sales_customer（客户）、inventory_material（物料）+
 --      分类 + inventory_warehouse（仓库）、product（产品）、
@@ -135,6 +139,11 @@ TRUNCATE production_trace_log;
 TRUNCATE production_order;
 
 TRUNCATE production_equipment;
+
+-- 08-12 派工模块（先子表后主表；工装模具档案 production_tooling 保留不清）
+TRUNCATE production_dispatch_log;
+
+TRUNCATE production_dispatch;
 
 -- ==================== 6. 库存模块（v4 起物料/仓库也清） ====================
 TRUNCATE inventory_alert_log;

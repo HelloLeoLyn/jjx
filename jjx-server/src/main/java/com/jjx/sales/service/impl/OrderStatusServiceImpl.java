@@ -65,7 +65,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     
     private void saveOrderLog(String orderNo, String desc, String remark, int status) {
         SysOperLog log = new SysOperLog();
-        log.setBizType("ORDER");
+        log.setBizType("order");
         log.setBizId(orderNo);
         log.setModule("sales_order");
         log.setBusinessType(0);
@@ -373,31 +373,20 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单不存在");
         }
 
-        // 2. 检查是否可取消
+        // 2. 检查是否可发送（DEV-935 2026-08-12：仅已审核可发送，状态保持已审核，由 confirm 完成确认 4→6）
         OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
-        if (!currentStatus.canTransitionTo(OrderStatusEnum.CONFIRMED)) {
-            throw new BusinessException("订单不是"+currentStatus.getName()+"，无法发送客户确认");
+        if (currentStatus != OrderStatusEnum.APPROVED) {
+            throw new BusinessException("订单不是已审核状态（" + currentStatus.getName() + "），无法发送客户确认");
         }
 
-        // 3. 更新状态
-        final OrderStatusEnum targetStatus = OrderStatusEnum.CONFIRMED;
-        order.setOrderStatus(targetStatus.getCode());
-        // 重新发送确认：清空上次确认记录
+        // 3. 重新发送：清空上次确认记录（不改订单状态）
         order.setConfirmBy(null);
         order.setConfirmMethod(null);
         order.setConfirmTime(null);
+        salesOrderMapper.updateById(order);
 
-        // 4. 保存
-        int result = salesOrderMapper.updateStatusWithCheck(
-                order.getOrderId(), targetStatus.getCode(), currentStatus.getCode()
-        );
-        if (result == 0) {
-            throw new BusinessException("订单状态已被修改，请刷新后重试");
-        }
-
-        // 5. 记录日志
-        String desc = getOperationDescription(currentStatus,targetStatus);
-        saveOrderLog(order.getOrderNo(), "cancel", desc, 1);
+        // 4. 记录日志
+        saveOrderLog(order.getOrderNo(), "send", "发送客户确认", 1);
         log.info("订单{}已发送客户确认，操作人：{}，原因：{}", order.getOrderId(), SecurityUtils.getUsername(), "");
 
         // 6. 订单齐套检查（DEV-572 8-04）：按 BOM 算料，缺口生成 order_shortage 预警

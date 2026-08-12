@@ -214,4 +214,3 @@ onMounted(() => {
 .trace-item-type { font-size: 12px; color: #909399; }
 .trace-item-body { font-size: 13px; color: #606266; display: flex; gap: 16px; flex-wrap: wrap; }
 </style>
-</template>

@@ -444,11 +444,12 @@ public class InquiryServiceImpl implements IInquiryService {
             item.setConnectorType(truncate(inquiry.getConnectorRequirements(), 50));
         }
 
-        // 数量与金额（单价待销售定价，默认0）
+        // 数量与金额（DEV-937 2026-08-12：询价单有预估单价则继承，金额=单价×数量；否则单价待销售定价，默认0）
         item.setQuantity(inquiry.getExpectedQuantity() != null ? inquiry.getExpectedQuantity() : 1);
         item.setUnit("PCS");
-        item.setUnitPrice(BigDecimal.ZERO);
-        item.setAmount(BigDecimal.ZERO);
+        java.math.BigDecimal unitPrice = inquiry.getUnitPrice() != null ? inquiry.getUnitPrice() : java.math.BigDecimal.ZERO;
+        item.setUnitPrice(unitPrice);
+        item.setAmount(unitPrice.multiply(java.math.BigDecimal.valueOf(item.getQuantity())));
         item.setItemOrder(1);
 
         // 长文本要求拼接进自定义要求（500字符内）

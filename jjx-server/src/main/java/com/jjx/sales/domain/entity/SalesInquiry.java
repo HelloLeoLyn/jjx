@@ -53,6 +53,9 @@ public class SalesInquiry extends BaseEntity {
     /** 预估数量 */
     private Integer expectedQuantity;
 
+    /** 预估单价（转报价继承，可空；DEV-937 2026-08-12） */
+    private java.math.BigDecimal unitPrice;
+
     /** 产品描述/规格要求 */
     private String productDescription;
 

@@ -24,6 +24,8 @@ export interface InquiryBase {
   contactPhone?: string
   inquiryDate: string
   expectedQuantity?: number
+  /** 预估单价（转报价继承，DEV-937） */
+  unitPrice?: number
   productId?: number
   productCode?: string
   productName?: string

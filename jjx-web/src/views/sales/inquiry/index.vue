@@ -241,6 +241,17 @@
               />
             </el-form-item>
           </el-col>
+          <el-col :span="12">
+            <el-form-item label="预估单价" prop="unitPrice">
+              <el-input-number
+                v-model="form.unitPrice"
+                :min="0"
+                :precision="2"
+                placeholder="转报价继承，可留空"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
         </el-row>
 
         <el-divider content-position="left">产品信息</el-divider>
@@ -330,7 +341,7 @@
                 </el-col>
               </el-row>
               <div class="form-tip" style="margin-bottom: 12px">
-                编码格式：客户简称(3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)，如 JST001MEOL
+                编码格式：客户简称(1~3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)，如 JST001MEOL
               </div>
             </template>
 
@@ -436,7 +447,7 @@
       </template>
     </el-dialog>
 
-    
+
     <!-- 查看详情对话框 -->
     <el-dialog title="询价单详情" v-model="detailVisible" width="700px" append-to-body>
       <template v-if="detailData">
@@ -601,6 +612,7 @@ const form = reactive({
   contactPhone: '',
   inquiryDate: '',
   expectedQuantity: undefined as number | undefined,
+  unitPrice: undefined as number | undefined,
   productId: undefined as number | undefined,
   productCode: '',
   productName: '',
@@ -825,13 +837,13 @@ async function generateCode() {
   }
 }
 
-// 拼接：客户简称3 + 流水号3 + 面板结构2 + 线路结构2
+// 拼接：客户简称(1~3位) + 流水号3 + 面板结构2 + 线路结构2（2026-08-12 对齐 DEV-772：1~3位简称放行）
 function composeCode() {
   const customerPart = shortNameDisplay.value
   const serialPart = codeSerialNo.value || ''
   const panelPart = `${codePanelType.value}${codePanelFeature.value}`
   const circuitPart = `${codeCircuitType.value}${codeCircuitFeature.value}`
-  if (customerPart.length === 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
+  if (customerPart.length >= 1 && customerPart.length <= 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
     form.productCode = `${customerPart}${serialPart}${panelPart}${circuitPart}`
     if (!nameEdited.value) {
       form.productName = form.productCode
@@ -926,6 +938,7 @@ function handleUpdate(row?: any) {
       contactPhone: data.contactPhone,
       inquiryDate: data.inquiryDate,
       expectedQuantity: data.expectedQuantity,
+      unitPrice: data.unitPrice,
       productId: data.productId,
       productCode: data.productCode || '',
       productName: data.productName || '',
@@ -1062,6 +1075,7 @@ function resetForm() {
     contactPhone: '',
     inquiryDate: '',
     expectedQuantity: undefined,
+    unitPrice: undefined,
     productId: undefined,
     productCode: '',
     productName: '',

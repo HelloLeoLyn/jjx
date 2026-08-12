@@ -1514,8 +1514,9 @@ async function qGenerateCode() {
   if (!qShortName.value) {
     await qLoadShortName()
   }
-  if (qShortName.value.length !== 3) {
-    ElMessage.warning('客户简称不足3位，无法生成编码')
+  // 2026-08-12 同步 DEV-772：客户简称 1-3 位都放行，按实际长度拼码
+  if (qShortName.value.length < 1 || qShortName.value.length > 3) {
+    ElMessage.warning('客户简称需为1-3位，无法生成编码')
     return
   }
   qGenerating.value = true
@@ -1531,7 +1532,7 @@ async function qGenerateCode() {
   const serialPart = qSerialNo.value || ''
   const panelPart = `${qPanelType.value}${qPanelFeature.value}`
   const circuitPart = `${qCircuitType.value}${qCircuitFeature.value}`
-  if (customerPart.length === 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
+  if (customerPart.length >= 1 && customerPart.length <= 3 && serialPart.length === 3 && panelPart.length === 2 && circuitPart.length === 2) {
     // 自动填入唯一明细行（样品类型单行明细）
     const row = form.items[0]
     if (!row) {
