@@ -1237,6 +1237,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             ProductionOperationExecution execution = new ProductionOperationExecution();
             execution.setOrderId(orderId);
             execution.setProcessId(item.getProcessId());
+            // 2026-08-12：印刷等自定义工序透传 大类/名称/计划参数（生产侧接入）
+            execution.setMajorCategory(item.getMajorCategory() != null ? item.getMajorCategory() : "ASSEMBLY");
+            execution.setProcessName(item.getProcessName());
+            execution.setCustomProcessParams(item.getCustomProcessParams());
             execution.setProcessOrder(item.getProcessOrder());
 
             // 049定稿：首道工序激活（EXECUTING），其余待执行（PENDING）

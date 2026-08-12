@@ -73,7 +73,7 @@
                 :size="18"
                 :index="scope.row.indexNumber ?? null"
               />
-              <!-- 无下标：图标+名称 -->
+              <!-- 无下标：图标+名称（印刷工序带标识，2026-08-12） -->
               <template v-else>
                 <SvgIcon
                   v-if="scope.row.icon"
@@ -81,9 +81,16 @@
                   :size="18"
                   style="margin-right: 6px; vertical-align: middle"
                 />
+                <el-tag v-if="scope.row.majorCategory === 'PRINT'" size="small" type="warning" effect="plain" style="margin-right: 4px">印刷</el-tag>
                 <span class="process-name">{{ scope.row.processName }}</span>
               </template>
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="工艺参数" min-width="160">
+          <template #default="scope">
+            <span v-if="printParamsText(scope.row)" style="color: #e6a23c; font-size: 12px">🖨️ {{ printParamsText(scope.row) }}</span>
+            <span v-else style="color: #c0c4cc">-</span>
           </template>
         </el-table-column>
         <el-table-column label="工序顺序" prop="processOrder" width="80" align="center" />
@@ -624,6 +631,22 @@ function getStatusTagType(
   return (['primary', 'success', 'warning', 'info', 'danger'] as const).includes(type as any)
     ? (type as any)
     : undefined
+}
+
+/** 印刷参数友好文本（2026-08-12）：计划参数 customProcessParams / 实际参数 actualProcessParams */
+function printParamsText(row: any): string {
+  const json = row?.customProcessParams || row?.actualProcessParams
+  if (!json) return ''
+  try {
+    const o = typeof json === 'string' ? JSON.parse(json) : json
+    const parts: string[] = []
+    if (o.colorNo) parts.push(`色号:${o.colorNo}`)
+    if (o.inkNo) parts.push(`油墨:${o.inkNo}`)
+    if (o.screenNo) parts.push(`网框:${o.screenNo}`)
+    return parts.join(' ')
+  } catch {
+    return ''
+  }
 }
 
 onMounted(() => {

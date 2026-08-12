@@ -31,6 +31,15 @@ public class ProductionOperationExecution {
     @Schema(description = "标准工序ID")
     private Long processId;
 
+    @Schema(description = "大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）")
+    private String majorCategory;
+
+    @Schema(description = "工序名称冗余（印刷等自定义工序，2026-08-12）")
+    private String processName;
+
+    @Schema(description = "计划工艺参数JSON（从工艺路线带入，2026-08-12）")
+    private String customProcessParams;
+
     @Schema(description = "工序顺序")
     private Integer processOrder;
 

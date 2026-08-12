@@ -209,7 +209,7 @@ const processList = computed(() => {
       .map((e) => ({
         processOrder: e.processOrder,
         processName: e.processName || e.processCode || '-',
-        processParams: parseParams(e.actualProcessParams) || e.processName || '',
+        processParams: parseParams(e.actualProcessParams) || e.customProcessParams || e.processName || '',
         statusText: e.executionStatusDesc || '',
         qualifiedQuantity: e.qualifiedQuantity,
       }))

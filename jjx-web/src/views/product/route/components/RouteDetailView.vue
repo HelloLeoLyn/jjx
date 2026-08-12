@@ -92,6 +92,12 @@
           <span v-else>-</span>
         </template>
       </el-table-column>
+      <el-table-column label="工艺参数" min-width="180">
+        <template #default="scope">
+          <span v-if="printParamsText(scope.row.items)" style="color: #e6a23c">🖨️ {{ printParamsText(scope.row.items) }}</span>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
       <el-table-column label="总人工工时" width="120" align="right">
         <template #default="scope">{{ scope.row.totalLaborHours }}</template>
       </el-table-column>
@@ -114,6 +120,24 @@ import { productRouteApi } from '@/api/product/routing'
 import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/product/routing'
 import { RouteStatusEnum, StepTypeEnum } from '@/enums/product'
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
+
+/** 印刷参数友好文本（2026-08-12）：组内任一行有参数即展示 */
+function printParamsText(items?: any[]): string {
+  if (!items?.length) return ''
+  const parts: string[] = []
+  for (const it of items) {
+    if (!it.customProcessParams) continue
+    try {
+      const o = JSON.parse(it.customProcessParams)
+      if (o.colorNo) parts.push(`色号:${o.colorNo}`)
+      if (o.inkNo) parts.push(`油墨:${o.inkNo}`)
+      if (o.screenNo) parts.push(`网框:${o.screenNo}`)
+    } catch {
+      /* ignore */
+    }
+  }
+  return parts.join(' ')
+}
 
 const loading = ref(false)
 const detail = reactive<EngineeringRoutingVO>({

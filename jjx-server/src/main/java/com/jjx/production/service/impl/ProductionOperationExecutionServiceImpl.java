@@ -758,6 +758,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         vo.setExecutionId(execution.getExecutionId());
         vo.setOrderId(execution.getOrderId());
         vo.setProcessId(execution.getProcessId());
+        // 2026-08-12：印刷等自定义工序透传（名称/大类/计划参数）
+        vo.setMajorCategory(execution.getMajorCategory());
+        vo.setProcessName(execution.getProcessName());
+        vo.setCustomProcessParams(execution.getCustomProcessParams());
         vo.setProcessOrder(execution.getProcessOrder());
         vo.setExecutionStatus(execution.getExecutionStatus());
         vo.setPlannedStartTime(execution.getPlannedStartTime());

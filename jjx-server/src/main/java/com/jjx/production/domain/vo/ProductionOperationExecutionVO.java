@@ -26,11 +26,17 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "标准工序ID")
     private Long processId;
 
-    @Schema(description = "工序编码")
-    private String processCode;
+    @Schema(description = "大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）")
+    private String majorCategory;
 
     @Schema(description = "工序名称")
     private String processName;
+
+    @Schema(description = "计划工艺参数JSON（2026-08-12）")
+    private String customProcessParams;
+
+    @Schema(description = "工序编码")
+    private String processCode;
 
     @Schema(description = "工序图标（2026-08-11 展示用）")
     private String icon;
