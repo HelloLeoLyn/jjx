@@ -21,5 +21,11 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
         return PageResult.of(p, p.getRecords());
     }
     @Override public SalesReceipt getById(Long id) { return receiptMapper.selectById(id); }
-    @Override public Long create(SalesReceipt receipt) { receiptMapper.insert(receipt); return receipt.getReceiptId(); }
+    @Override public Long create(SalesReceipt receipt) {
+        // DEV-934修复：actual_amount NOT NULL 无默认值，前端未传时兜底 = receiptAmount
+        if (receipt.getActualAmount() == null) {
+            receipt.setActualAmount(receipt.getReceiptAmount());
+        }
+        receiptMapper.insert(receipt); return receipt.getReceiptId();
+    }
 }

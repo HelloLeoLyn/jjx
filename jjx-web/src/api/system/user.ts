@@ -16,6 +16,11 @@ export const userApi = {
     return request.get<R<PageResult<SysUser>>>('/system/user/list', { params })
   },
 
+  // 获取销售负责人列表（2026-08-11 按 role_key 前缀 sales 匹配）
+  salesPersons() {
+    return request.get<R<SysUser[]>>('/system/user/sales-persons')
+  },
+
   // 获取用户详情
   getInfo(userId: number) {
     return request.get<R<SysUser>>(`/system/user/${userId}`)

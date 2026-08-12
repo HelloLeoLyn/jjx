@@ -22,7 +22,11 @@ public class SalesInvoice {
     private BigDecimal invoiceAmount;
     private BigDecimal taxAmount;
     private BigDecimal totalAmount;
+    // DEV-933修复：表无 currency 列，标注不参与持久化（避免插入/查询报 Unknown column）
+    @TableField(exist = false)
     private String currency;
+    // DEV-933修复：表列名是 invoice_status，实体字段 status 需显式映射
+    @TableField("invoice_status")
     private Integer status;
     private String remark;
     private LocalDateTime createTime;

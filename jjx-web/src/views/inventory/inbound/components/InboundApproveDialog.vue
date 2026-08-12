@@ -39,6 +39,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
+import { useUserStore } from '@/store/modules/user'
 import InboundDetail from './InboundDetail.vue'
 
 const props = defineProps<{
@@ -54,6 +55,7 @@ const emit = defineEmits<{
 
 const remark = ref('')
 const submitting = ref(false)
+const userStore = useUserStore()
 
 watch(
   () => props.visible,
@@ -67,8 +69,8 @@ const handleApprove = async () => {
   try {
     const res = await inboundApi.approve({
       inboundId: String(props.inboundId),
-      approverId: '',
-      approverName: '',
+      approverId: String(userStore.userId ?? 1),
+      approverName: (userStore.nickName || userStore.userName || 'admin') as string,
       remark: remark.value || undefined,
     })
     if (res.data) {
@@ -90,9 +92,9 @@ const handleReject = async () => {
   try {
     const res = await inboundApi.reject({
       inboundId: String(props.inboundId),
-      approverId: '',
-      approverName: '',
-      remark: remark.value || undefined,
+      approverId: String(userStore.userId ?? 1),
+      approverName: (userStore.nickName || userStore.userName || 'admin') as string,
+      remark: remark.value || '',
     })
     if (res.data) {
       ElMessage.success('已驳回')

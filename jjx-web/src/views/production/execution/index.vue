@@ -62,8 +62,30 @@
       </div>
 
       <el-table v-loading="loading" :data="executionList" row-key="executionId">
-        <el-table-column label="工单编号" prop="orderNo" width="150" align="center" />
-        <el-table-column label="工序名称" prop="processName" width="120" />
+        <el-table-column label="工单编号" prop="orderNo" width="190" align="center" />
+        <el-table-column label="工序" width="140">
+          <template #default="scope">
+            <div class="process-cell">
+              <!-- 有下标：图标+红底数字（仿工艺路线详情） -->
+              <IconStepBadge
+                v-if="scope.row.hasIndex === 1"
+                :icon="scope.row.icon || ''"
+                :size="18"
+                :index="scope.row.indexNumber ?? null"
+              />
+              <!-- 无下标：图标+名称 -->
+              <template v-else>
+                <SvgIcon
+                  v-if="scope.row.icon"
+                  :name="scope.row.icon"
+                  :size="18"
+                  style="margin-right: 6px; vertical-align: middle"
+                />
+                <span class="process-name">{{ scope.row.processName }}</span>
+              </template>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="工序顺序" prop="processOrder" width="80" align="center" />
         <el-table-column label="投入数量" prop="inputQuantity" width="100" align="center" />
         <el-table-column label="产出数量" prop="outputQuantity" width="100" align="center" />
@@ -86,7 +108,7 @@
             {{ parseTime(scope.row.actualEndTime) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" align="center" fixed="right">
+        <el-table-column label="操作" min-width="380" align="center" fixed="right">
           <template #default="scope">
             <el-button
               type="success"
@@ -235,11 +257,19 @@
     <!-- 生产记录对话框 -->
     <el-dialog title="生产记录" v-model="recordOpen" width="800px" append-to-body>
       <el-form ref="recordFormRef" :model="recordForm" label-width="120px">
+        <el-form-item label="投入数量" prop="inputQuantity">
+          <el-input-number
+            v-model="recordForm.inputQuantity"
+            :min="0"
+            style="width: 100%"
+            placeholder="请输入投入数量"
+          />
+        </el-form-item>
         <el-form-item label="产出数量" prop="outputQuantity">
           <el-input-number
             v-model="recordForm.outputQuantity"
             :min="0"
-            :max="recordForm.inputQuantity"
+            :max="recordForm.inputQuantity || 999999"
             style="width: 100%"
             placeholder="请输入产出数量"
           />
@@ -248,7 +278,7 @@
           <el-input-number
             v-model="recordForm.qualifiedQuantity"
             :min="0"
-            :max="recordForm.outputQuantity"
+            :max="recordForm.outputQuantity || 999999"
             style="width: 100%"
             placeholder="请输入合格数量"
           />
@@ -320,6 +350,8 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UserFilled, List } from '@element-plus/icons-vue'
+import SvgIcon from '@/components/SvgIcon/index.vue'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import { ExecutionStatusEnum } from '@/enums/production'
 import type {
@@ -422,8 +454,10 @@ const getList = async () => {
   }
   try {
     const res = await operationExecutionApi.list(queryParams)
-    executionList.value = res.data?.records || []
-    total.value = res.data?.total || 0
+    // 2026-08-11 修复：后端 /list 返回裸数组（非分页结构），兼容两种
+    const data = res.data as any
+    executionList.value = Array.isArray(data) ? data : data?.records || []
+    total.value = Array.isArray(data) ? data.length : data?.total || 0
   } catch (error) {
     console.error('获取工序执行列表失败:', error)
   } finally {
@@ -508,6 +542,10 @@ const handleComplete = (row: OperationExecutionVO) => {
   recordForm.defectiveReason = row.defectiveReason || ''
   recordForm.actualProcessParams = row.actualProcessParams || ''
   recordForm.inputQuantity = row.inputQuantity || 0
+  // 2026-08-11 修复：投入数量为 0 时给出默认值，避免产出/合格被 max=0 锁死
+  if (recordForm.inputQuantity <= 0) {
+    recordForm.inputQuantity = 50
+  }
   recordForm.currentExecutionId = row.executionId!
   recordOpen.value = true
 }
@@ -597,6 +635,17 @@ onMounted(() => {
 .app-container {
   padding: 20px;
 }
+
+/* 2026-08-11 工序图标展示（仿工艺路线详情） */
+.process-cell {
+  display: flex;
+  align-items: center;
+}
+.process-name {
+  font-size: 13px;
+  color: #303133;
+}
+
 .search-card {
   margin-bottom: 20px;
 }

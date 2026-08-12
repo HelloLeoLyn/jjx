@@ -252,4 +252,12 @@ public interface ISysUserService extends IService<SysUser> {
 
     SysUser registerByPhone(String phone, Long tenantId);
 
+    /**
+     * 按角色标识前缀查询用户列表（2026-08-11 销售负责人等下拉用，不依赖角色ID）
+     *
+     * @param roleKeyPrefix 角色标识前缀，如 "sales"
+     * @return 用户列表
+     */
+    java.util.List<SysUser> selectUsersByRoleKeyPrefix(String roleKeyPrefix);
+
 }

@@ -385,5 +385,12 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         return null;
     }
 
+    @Override
+    public java.util.List<SysUser> selectUsersByRoleKeyPrefix(String roleKeyPrefix) {
+        if (roleKeyPrefix == null || roleKeyPrefix.trim().isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        return userMapper.selectUsersByRoleKeyPrefix(roleKeyPrefix.trim());
+    }
 
 }

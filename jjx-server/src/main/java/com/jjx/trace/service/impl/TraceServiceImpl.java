@@ -44,7 +44,7 @@ public class TraceServiceImpl implements TraceService {
             node.put("startTime", first.getCreateTime());
             node.put("endTime", last.getCreateTime());
             node.put("totalOps", moduleLogs.size());
-            node.put("status", moduleLogs.stream().allMatch(l -> l.getStatus() == 0) ? "success" : "partial");
+            node.put("status", moduleLogs.stream().allMatch(l -> l.getStatus() != null && l.getStatus() == 1) ? "success" : "partial");
 
             List<Map<String, Object>> ops = moduleLogs.stream().map(l -> {
                 Map<String, Object> op = new LinkedHashMap<>();

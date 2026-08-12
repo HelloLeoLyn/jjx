@@ -17,6 +17,8 @@ public class SalesReceipt {
     private Integer receiptType;
     private Integer paymentMethod;
     private BigDecimal receiptAmount;
+    // DEV-934修复：实体补 actualAmount（表列 actual_amount NOT NULL 无默认值，前端不传时服务端默认=receiptAmount）
+    private BigDecimal actualAmount;
     private String currency;
     private Integer status;
     private String remark;

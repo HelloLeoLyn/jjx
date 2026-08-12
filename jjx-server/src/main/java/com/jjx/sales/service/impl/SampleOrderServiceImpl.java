@@ -780,6 +780,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 record.setRoundNo(roundNo);
                 record.setProcessName(item.getProcessName());
                 record.setStdProcessId(item.getStdProcessId());
+                // 一级大类（dev-20260811-009）：缺省按标准工序归属 ASSEMBLY，印刷工序传 PRINT
+                record.setMajorCategory(item.getMajorCategory() != null ? item.getMajorCategory() : "ASSEMBLY");
+                // 定制工艺参数 JSON（dev-20260811-009）：印刷 {printName,colorNo,inkNo,screenNo}
+                record.setCustomProcessParams(item.getCustomProcessParams());
                 // 下标（DEV-777）：index_number 前端直传；has_index 按 std_process_id 关联标准工序取
                 record.setIndexNumber(item.getIndexNumber());
                 if (item.getStdProcessId() != null) {
@@ -1322,10 +1326,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 // 组合顺序号：按组合首次出现顺序 1,2,3...（2026-08-11 修复编辑页排序）
                                 groupOrder = orderGroupSeqMap.computeIfAbsent(po, k -> orderGroupSeqMap.size() + 1);
                             }
+                            // 定制工艺参数 JSON 直通（dev-20260811-009）：印刷工序优先传 custom_process_params，否则文本兑底
+                            String processParams = (sp.getCustomProcessParams() != null && !sp.getCustomProcessParams().isEmpty())
+                                    ? sp.getCustomProcessParams()
+                                    : sp.getProcessNote();
                             routingItemMapper.insertItem(newRouting.getRoutingId(),
                                     stdProcessId != null ? stdProcessId : null,
                                     stepOrder++, laborHours, machineHours,
-                                    sp.getProcessNote() != null ? sp.getProcessNote() : null,
+                                    processParams,
                                     "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
                                     category, groupId, groupName, groupOrder,
                                     sp.getIndexNumber()); // DEV-777：打样下标透传到工艺路线

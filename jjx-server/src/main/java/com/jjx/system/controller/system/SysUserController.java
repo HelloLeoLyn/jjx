@@ -44,6 +44,15 @@ public class SysUserController extends BaseController {
     }
 
     /**
+     * 获取销售负责人列表（2026-08-11 按 role_key 前缀 sales 匹配，不依赖角色ID）
+     */
+    @GetMapping("/sales-persons")
+    @SaCheckPermission("sales:order:view")
+    public Result<List<SysUser>> salesPersons() {
+        return Result.success(userService.selectUsersByRoleKeyPrefix("sales"));
+    }
+
+    /**
      * 根据用户编号获取详细信息
      */
     @GetMapping(value = "/{userId}")

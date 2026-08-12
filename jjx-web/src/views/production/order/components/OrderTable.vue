@@ -10,7 +10,7 @@
     >
       <el-table-column type="selection" width="55" />
 
-      <el-table-column prop="orderNo" label="订单编号" width="150" sortable="custom">
+      <el-table-column prop="orderNo" label="订单编号" min-width="250" sortable="custom">
         <template #default="{ row }">
           <div class="order-no-cell">
             <el-tag

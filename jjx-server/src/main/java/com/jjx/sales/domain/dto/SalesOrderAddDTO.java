@@ -26,9 +26,11 @@ public class SalesOrderAddDTO {
     @Schema(description = "客户ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
     private Long customerId;
 
-    @NotNull(message = "订单编号不能为空")
-    @Schema(description = "订单编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "SO260526015")
+    @Schema(description = "链路追踪ID（可选，2026-08-11 修正：原误标必填）")
     private String traceId;
+
+    @NotBlank(message = "订单编号不能为空")
+    @Schema(description = "订单编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "SO260526015")
     private String orderNo;
 
     @NotBlank(message = "客户名称不能为空")

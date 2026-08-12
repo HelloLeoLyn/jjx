@@ -4,9 +4,8 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { debounce } from 'lodash-es'
 import { orderApi } from '@/api/sales/order'
 import { customerApi } from '@/api/sales/customer'
-import { roleApi } from '@/api/system/role'
+import { userApi } from '@/api/system/user'
 import type { CustomerSearchVO } from '@/types/sales/customer'
-import type { SysUserVO, RoleUserQueryDTO } from '@/types/system'
 import type { OrderFormData, OrderItem, UseOrderFormOptions } from '@/types/sales/order'
 import { formatCurrency } from '@/utils/format'
 import { productApi } from '@/api/product'
@@ -42,22 +41,17 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   // 缓存有效期（5分钟）
   const CACHE_EXPIRY_TIME = 5 * 60 * 1000
 
-  // 订单类型选项
-  const orderTypeOptions = ref([
-    { value: 1, label: '标准订单' },
-    { value: 2, label: '样品订单' },
-  ])
-
+  // 订单类型固定标准单（2026-08-11 简化：销售订单不再支持样品单，样品单走独立模块）
   // 销售负责人选项
   const salesPersonOptions = ref<Array<{ userId: number; nickName: string; userName: string }>>([])
 
   // 加载销售负责人列表（角色ID=4）
   const loadSalesPersons = async () => {
     try {
-      // TODO: 后端需要提供一个接口，直接返回销售负责人的列表，目前只能通过角色查询用户来实现
-      const res = await roleApi.allocatedList({ roleId: 7, pageNum: 1, pageSize: 999 })
-      if (res.code === 200 && res.data?.records) {
-        salesPersonOptions.value = res.data.records.map((user: SysUserVO) => ({
+      // 2026-08-11 改为后端专用接口：按 role_key 前缀 sales 匹配（不依赖角色ID，角色重建不失效）
+      const res = await userApi.salesPersons()
+      if (res.code === 200 && res.data) {
+        salesPersonOptions.value = res.data.map((user: any) => ({
           userId: user.userId,
           nickName: user.nickName || '',
           userName: user.userName,
@@ -110,7 +104,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     creditLimit: 0,
     orderDate: '',
     deliveryDate: '',
-    orderType: undefined,
+    orderType: 1,
     currency: 'CNY',
     exchangeRate: 1.0,
     paymentTerms: 'prepaid',
@@ -138,7 +132,6 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
     orderDate: [{ required: true, message: '请选择订单日期', trigger: 'change' }],
     deliveryDate: [{ required: true, message: '请选择交货日期', trigger: 'change' }],
-    orderType: [{ required: true, message: '请选择订单类型', trigger: 'change' }],
     salesPersonId: [{ required: true, message: '请选择销售负责人', trigger: 'change' }],
     currency: [{ required: true, message: '请选择币种', trigger: 'change' }],
     paymentTerms: [{ required: true, message: '请选择付款条件', trigger: 'change' }],
@@ -302,24 +295,17 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     }
   })
 
-  // 处理产品选择变化
-  const handleProductChange = (item: OrderItem) => {
-    console.log(item)
-
-    // 根据选择的产品编码自动填充产品名称
-    const selectedProduct = productOptions.value.find(
-      (product) => product.productCode === item.productCode
-    )
-    console.log(selectedProduct)
-
-    if (selectedProduct) {
-      item.productName = selectedProduct.productName
+  // 处理产品选择变化（2026-08-11：改用 ProductSelector 回传的产品对象，不再依赖共享数组反查）
+  const handleProductChange = (item: OrderItem, val?: any, product?: any) => {
+    if (product && product.productId) {
+      // 标准单：从 ProductSelector 回传的完整产品对象填充
+      item.productCode = product.productCode
+      item.productName = product.productName
       item.unit = 'PCS' // 默认单位
-      item.specification = '标准规格' // 默认规格
-      item.productId = selectedProduct.productId
+      item.specification = product.specification || '标准规格'
+      item.productId = product.productId
     } else if (item.productCode) {
-      // 没有匹配的产品（样品单或自定义编码）
-      // 保持用户输入的产品名和编码不变
+      // 未匹配到产品：保留输入，兜底处理
       if (!item.productName) {
         item.productName = item.productCode
       }
@@ -394,7 +380,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       creditLimit: 0,
       orderDate: '',
       deliveryDate: '',
-      orderType: undefined,
+      orderType: 1,
       currency: 'CNY',
       exchangeRate: 1.0,
       paymentTerms: 'prepaid',
@@ -437,6 +423,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       const orderResponse = await orderApi.getOrder(orderId)
       if (orderResponse.code === 200 && orderResponse.data) {
         Object.assign(form, orderResponse.data)
+        // 订单类型固定标准单（2026-08-11）
+        form.orderType = 1
         // 2. 将后端字段映射为表单字段
         form.salesPersonId = orderResponse.data.salesManagerId
         form.salesPersonName = orderResponse.data.salesManagerName
@@ -581,7 +569,6 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     currencyOptions,
     paymentTermsOptions,
     shippingMethodOptions,
-    orderTypeOptions,
     salesPersonOptions,
     form,
     rules,

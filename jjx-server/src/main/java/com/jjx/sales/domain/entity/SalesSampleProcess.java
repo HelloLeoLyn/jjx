@@ -26,6 +26,11 @@ public class SalesSampleProcess {
     /** 打样轮次 */
     private Integer roundNo;
 
+    /**
+     * 一级大类：ASSEMBLY冲型组装/PRINT印刷（dev-20260811-009）
+     */
+    private String majorCategory;
+
     /** 工序名称 */
     private String processName;
 
@@ -64,6 +69,11 @@ public class SalesSampleProcess {
 
     /** 工艺说明(怎么做的) */
     private String processNote;
+
+    /**
+     * 定制工艺参数(JSON, 印刷: {printName,colorNo,inkNo,screenNo})（dev-20260811-009）
+     */
+    private String customProcessParams;
 
     /** 操作人 */
     private String operator;

@@ -28,8 +28,11 @@
         </div>
       </div>
 
-      <!-- 单据标题 -->
-      <div class="doc-title">{{ isPlan ? '生 产 计 划' : '生 产 工 单' }}</div>
+      <!-- 单据标题 + 工单二维码（扫码枪扫工单号定位，DEV-001） -->
+      <div class="doc-title-row">
+        <div class="doc-title">{{ isPlan ? '生 产 计 划' : '生 产 工 单' }}</div>
+        <img v-if="qrDataUrl" :src="qrDataUrl" class="doc-qrcode" alt="工单二维码" title="扫码定位工单" />
+      </div>
 
       <!-- 信息区 -->
       <div class="doc-info">
@@ -101,12 +104,14 @@ import { ElMessage } from 'element-plus'
 import { getProductionOrderDetail } from '@/api/production/order'
 import { sysConfigApi } from '@/api/system/sysConfig'
 import A4Canvas from '@/components/A4Canvas/index.vue'
+import QRCode from 'qrcode'
 
 const route = useRoute()
 const router = useRouter()
 
 const info = ref<any>(null)
 const loading = ref(false)
+const qrDataUrl = ref('')
 
 // 计划类型（orderType=PLAN 时显示"生产计划"标题）
 const isPlan = computed(() => info.value?.orderType === 'PLAN')
@@ -183,8 +188,19 @@ function handlePrint() {
   window.print()
 }
 
+/** 生成工单二维码（内容=工单号，扫码枪识别后定位工单） */
+async function genQr() {
+  if (!info.value?.orderNo) return
+  try {
+    qrDataUrl.value = await QRCode.toDataURL(info.value.orderNo, { width: 96, margin: 1 })
+  } catch {
+    qrDataUrl.value = ''
+  }
+}
+
 onMounted(async () => {
   await Promise.all([loadData(), loadCompanyConfig()])
+  await genQr()
 })
 </script>
 
@@ -258,6 +274,24 @@ onMounted(async () => {
   justify-content: center;
   flex-wrap: wrap;
   gap: 4px 16px;
+}
+
+/* 单据标题行（标题居中 + 二维码右上角，DEV-001） */
+.doc-title-row {
+  position: relative;
+  padding-right: 96px; /* 给右侧二维码留位，避免遮挡标题 */
+}
+
+/* 工单二维码（扫码枪扫工单号定位） */
+.doc-qrcode {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 72px;
+  height: 72px;
+  border: 1px solid #dcdfe6;
+  padding: 3px;
+  background: #fff;
 }
 
 .doc-title {

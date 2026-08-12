@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -530,7 +531,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     @Override
     @Event(value = "inventory.outbound.created_from_production", bizId = "#workOrderId", bizType = "'inventory'")
-    @Transactional(rollbackFor = Exception.class)
+    // REQUIRES_NEW（2026-08-11）：自动领料独立事务，失败只回滚自身，不污染工单开工主事务
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public Long createFromProduction(Long workOrderId) {
         log.info("从生产工单创建出库单: workOrderId={}", workOrderId);
 
@@ -937,6 +939,19 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceNo(salesOrder.getOrderNo());
         order.setTraceId(salesOrder.getTraceId()); // 链路追踪（DEV-568）：销售订单→发货出库单继承
         order.setOutboundDate(LocalDate.now());
+        // DEV-932修复：销售发货出库单必须带仓库，参考 createFromProduction 取默认启用仓库（warehouse_id NOT NULL 无默认值）
+        try {
+            InventoryWarehouse defaultWh = outboundWarehouseMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryWarehouse>()
+                            .eq(InventoryWarehouse::getStatus, 1)
+                            .orderByAsc(InventoryWarehouse::getWarehouseId)
+                            .last("LIMIT 1"));
+            if (defaultWh != null) {
+                order.setWarehouseId(defaultWh.getWarehouseId());
+            }
+        } catch (Exception e) {
+            log.warn("获取默认仓库失败: {}", e.getMessage());
+        }
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         outboundOrderMapper.insert(order);
 

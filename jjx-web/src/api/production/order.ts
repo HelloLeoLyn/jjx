@@ -182,7 +182,7 @@ export function startExecution(
 ) {
   return request({
     url: `/production/order/${orderId}/start`,
-    method: 'post',
+    method: 'put',
     data,
   })
 }
@@ -199,7 +199,7 @@ export function completeExecution(
 ) {
   return request({
     url: `/production/order/${orderId}/complete`,
-    method: 'post',
+    method: 'put',
     data,
   })
 }
@@ -208,7 +208,7 @@ export function completeExecution(
 export function pauseExecution(orderId: string, remark?: string) {
   return request({
     url: `/production/order/${orderId}/pause`,
-    method: 'post',
+    method: 'put',
     data: { remark },
   })
 }

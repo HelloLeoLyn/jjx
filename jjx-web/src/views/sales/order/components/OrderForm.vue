@@ -66,18 +66,6 @@
 
     <el-row :gutter="20">
       <el-col :span="12">
-        <el-form-item label="订单类型" prop="orderType">
-          <el-select v-model="form.orderType" placeholder="请选择订单类型" style="width: 100%">
-            <el-option
-              v-for="dict in orderTypeOptions"
-              :key="dict.value"
-              :label="dict.label"
-              :value="dict.value"
-            />
-          </el-select>
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
         <el-form-item label="销售负责人" prop="salesPersonId">
           <el-select
             v-model="form.salesPersonId"
@@ -95,8 +83,6 @@
           </el-select>
         </el-form-item>
       </el-col>
-    </el-row>
-    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="币种" prop="currency">
           <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%" @change="handleCurrencyChange">
@@ -109,6 +95,9 @@
           </el-select>
         </el-form-item>
       </el-col>
+    </el-row>
+
+    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="汇率" prop="exchangeRate">
           <el-input-number
@@ -122,9 +111,6 @@
           <span v-if="exchangeRateHint" class="rate-hint">{{ exchangeRateHint }}</span>
         </el-form-item>
       </el-col>
-    </el-row>
-
-    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="付款条件" prop="paymentTerms">
           <el-select v-model="form.paymentTerms" placeholder="请选择付款条件" style="width: 100%">
@@ -137,6 +123,9 @@
           </el-select>
         </el-form-item>
       </el-col>
+    </el-row>
+
+    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="运输方式" prop="shippingMethod">
           <el-select v-model="form.shippingMethod" placeholder="请选择运输方式" style="width: 100%">
@@ -165,36 +154,16 @@
     >
     <el-table :data="form.items" style="width: 100%; margin-bottom: 20px" border>
       <el-table-column label="序号" type="index" width="60" align="center" />
-      <el-table-column label="产品编码" prop="productCode" min-width="140">
+      <el-table-column label="产品编码" prop="productCode" min-width="200">
         <template #default="scope">
-          <!-- 标准单：下拉选产品 -->
-          <el-select
-            v-if="form.orderType === 1"
-            v-model="scope.row.productCode"
-            placeholder="请选择产品"
-            filterable
-            remote
-            :remote-method="(query) => searchProduct(query, scope.row)"
-            :loading="productLoading"
-            style="width: 100%"
-            @change="handleProductChange(scope.row)"
+          <!-- 标准单：ProductSelector 远程搜索选产品 -->
+          <ProductSelector
+            :model-value="scope.row.productCode"
+            value-type="productCode"
+            placeholder="搜索产品编码/名称"
+            :min-keyword-length="1"
             class="borderless-input"
-          >
-            <el-option
-              v-for="item in productOptions"
-              :key="item.productCode"
-              :label="item.productCode"
-              :value="item.productCode"
-              >{{ item.productCode }} - {{ item.productName }}</el-option
-            >
-          </el-select>
-          <!-- 样品单：手动输入 -->
-          <el-input
-            v-else
-            v-model="scope.row.productCode"
-            placeholder="手工输入产品编码"
-            @blur="handleProductChange(scope.row)"
-            class="borderless-input"
+            @change="(val: any, product: any) => handleProductChange(scope.row, val, product)"
           />
         </template>
       </el-table-column>
@@ -202,8 +171,8 @@
         <template #default="scope">
           <el-input
             v-model="scope.row.productName"
-            :placeholder="form.orderType === 2 ? '样品名称' : '产品名称'"
-            :readonly="form.orderType === 1"
+            placeholder="产品名称"
+            readonly
             class="borderless-input"
           />
         </template>
@@ -424,6 +393,7 @@ import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
+import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import type { CustomerFormData } from '@/types/sales/customer'
 
 interface Props {
@@ -516,14 +486,11 @@ const handleCustomerSuccess = (data: CustomerFormData) => {
 const {
   orderFormRef,
   customerLoading,
-  productLoading,
   submitting,
   customerOptions,
-  productOptions,
   currencyOptions,
   paymentTermsOptions,
   shippingMethodOptions,
-  orderTypeOptions,
   salesPersonOptions,
   form,
   rules,
@@ -531,7 +498,6 @@ const {
   customerChanged,
   loadSalesPersons,
   salesPersonChanged,
-  searchProduct,
   handleProductChange,
   calculateItemAmount,
   calculateTotalAmount,

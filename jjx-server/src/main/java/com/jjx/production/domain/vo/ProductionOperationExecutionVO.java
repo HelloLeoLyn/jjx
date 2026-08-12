@@ -32,6 +32,15 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "工序名称")
     private String processName;
 
+    @Schema(description = "工序图标（2026-08-11 展示用）")
+    private String icon;
+
+    @Schema(description = "是否有下标（2026-08-11 展示用）")
+    private Integer hasIndex;
+
+    @Schema(description = "下标数字（2026-08-11 展示用）")
+    private Integer indexNumber;
+
     @Schema(description = "工序顺序")
     private Integer processOrder;
 

@@ -51,6 +51,16 @@ public class SampleProcessPlanDTO {
         private String processCategory;
 
         /**
+         * 一级大类：ASSEMBLY冲型组装/PRINT印刷（dev-20260811-009）
+         */
+        private String majorCategory;
+
+        /**
+         * 定制工艺参数(JSON, 印刷: {printName,colorNo,inkNo,screenNo})（dev-20260811-009）
+         */
+        private String customProcessParams;
+
+        /**
          * 工序名称（作业项目名或自定义工序名）
          */
         private String processName;
