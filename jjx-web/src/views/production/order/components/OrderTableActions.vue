@@ -54,9 +54,13 @@
               <el-icon><CopyDocument /></el-icon>
               复制订单
             </el-dropdown-item>
-            <el-dropdown-item command="pick-material" v-if="order.orderStatus === 2">
+            <el-dropdown-item command="pick-material" v-if="[2, 6].includes(order.orderStatus)">
               <el-icon><Box /></el-icon>
               生成领料单
+            </el-dropdown-item>
+            <el-dropdown-item command="dispatch" v-if="[2, 4, 5, 6].includes(order.orderStatus)">
+              <el-icon><UserFilled /></el-icon>
+              派工
             </el-dropdown-item>
             <el-dropdown-item command="export">
               <el-icon><Download /></el-icon>
@@ -98,7 +102,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold } from '@element-plus/icons-vue'
+import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, UserFilled } from '@element-plus/icons-vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'

@@ -128,6 +128,18 @@ public class ProductionOrder{
     @Schema(description = "生产部门名称")
     private String departmentName;
 
+    @Schema(description = "负责班组(部门ID)")
+    private Long dispatchTeamId;
+
+    @Schema(description = "负责班组名称")
+    private String dispatchTeamName;
+
+    @Schema(description = "工单负责人(用户ID)")
+    private Long dispatchLeaderId;
+
+    @Schema(description = "工单负责人姓名")
+    private String dispatchLeaderName;
+
     @Schema(description = "材料成本")
     private BigDecimal materialCost;
 

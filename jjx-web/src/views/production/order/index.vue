@@ -226,10 +226,11 @@ import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
 import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus, convertPlanToWorkOrders } from '@/api/production/order'
 import { download } from '@/utils/format'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 // 视图状态：排程管理菜单(/production/schedule)默认进甘特图，生产订单菜单默认全部视图（2026-08-11）
 const route = useRoute()
+const router = useRouter()
 const activeView = ref<'plan' | 'work_order' | 'all' | 'gantt'>(
   route.path.includes('schedule') ? 'gantt' : 'all'
 )
@@ -369,6 +370,19 @@ const refreshData = () => {
   }
   loadStats()
 }
+
+// 扫码定位（2026-08-12 DEV-979）：route.query.orderNo → 填入搜索并查询
+watch(
+  () => route.query.orderNo as string | undefined,
+  (no) => {
+    if (no && activeView.value !== 'gantt') {
+      searchForm.orderNo = no
+      searchForm.pageNum = 1
+      loadData(activeView.value === 'all' ? 'all' : activeView.value)
+    }
+  },
+  { immediate: true },
+)
 
 
 // 导出功能
@@ -683,6 +697,9 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
       break
     case 'pick-material':
       handlePickMaterial(order)
+      break
+    case 'dispatch':
+      router.push({ path: '/production/dispatch', query: { orderNo: order.orderNo } })
       break
     default:
       ElMessage.warning('暂不支持该操作')

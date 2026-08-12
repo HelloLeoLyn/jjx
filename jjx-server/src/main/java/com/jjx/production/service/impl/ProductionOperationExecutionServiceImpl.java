@@ -37,6 +37,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final ProductionOrderMapper productionOrderMapper;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final com.jjx.production.service.DispatchService dispatchService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -160,9 +162,74 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         wrapper.orderByDesc(ProductionOperationExecution::getCreateTime);
 
         List<ProductionOperationExecution> executions = list(wrapper);
-        return executions.stream()
+        List<ProductionOperationExecutionVO> vos = executions.stream()
                 .map(ProductionOperationExecutionServiceImpl::convertToVO)
                 .collect(Collectors.toList());
+
+        // 2026-08-11 修复：补全工单号/工序编码/工序名（convertToVO 只拷自身字段）
+        enrichExecutionVOs(vos);
+        return vos;
+    }
+
+    /** 批量补全工单号、工序编码/名称 */
+    private void enrichExecutionVOs(List<ProductionOperationExecutionVO> vos) {
+        if (vos == null || vos.isEmpty()) return;
+        try {
+            // 工单号
+            java.util.Set<Long> orderIds = vos.stream()
+                    .map(ProductionOperationExecutionVO::getOrderId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (!orderIds.isEmpty()) {
+                String orderIdStr = orderIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+                java.util.Map<Long, String> orderNoMap = new java.util.HashMap<>();
+                try {
+                    jdbcTemplate.query("SELECT order_id, order_no FROM production_order WHERE order_id IN (" + orderIdStr + ")",
+                            rs -> {
+                                orderNoMap.put(rs.getLong("order_id"), rs.getString("order_no"));
+                            });
+                } catch (Exception e) {
+                    log.warn("查询工单号失败: {}", e.getMessage());
+                }
+                for (ProductionOperationExecutionVO vo : vos) {
+                    if (vo.getOrderId() != null) vo.setOrderNo(orderNoMap.get(vo.getOrderId()));
+                }
+            }
+            // 工序编码/名称
+            java.util.Set<Long> processIds = vos.stream()
+                    .map(ProductionOperationExecutionVO::getProcessId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (!processIds.isEmpty()) {
+                String pidStr = processIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+                java.util.Map<Long, String[]> processMap = new java.util.HashMap<>();
+                try {
+                    jdbcTemplate.query("SELECT process_id, process_code, process_name, icon, has_index FROM engineering_standard_process WHERE process_id IN (" + pidStr + ")",
+                            rs -> {
+                                processMap.put(rs.getLong("process_id"),
+                                        new String[]{rs.getString("process_code"), rs.getString("process_name"),
+                                                rs.getString("icon"), String.valueOf(rs.getInt("has_index"))});
+                            });
+                } catch (Exception e) {
+                    log.warn("查询工序信息失败: {}", e.getMessage());
+                }
+                for (ProductionOperationExecutionVO vo : vos) {
+                    if (vo.getProcessId() != null) {
+                        String[] info = processMap.get(vo.getProcessId());
+                        if (info != null) {
+                            vo.setProcessCode(info[0]);
+                            vo.setProcessName(info[1]);
+                            vo.setIcon(info[2]);
+                            try {
+                                vo.setHasIndex(Integer.valueOf(info[3]));
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("补全工序执行展示信息失败: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -214,6 +281,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         log.info("工序执行开始成功, ID: {}", executionId);
+        // 派工联动（2026-08-12）：执行开始 → 派工单同步为执行中
+        try {
+            dispatchService.syncByExecution(executionId, 2);
+        } catch (Exception e) {
+            log.warn("派工单联动开始失败: {}", e.getMessage());
+        }
         return true;
     }
 
@@ -361,6 +434,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         updateOrderCompletedQuantity(execution.getOrderId());
 
         log.info("工序执行完成成功, ID: {}", executionId);
+        // 派工联动（2026-08-12）：执行完成 → 派工单同步为已完成
+        try {
+            dispatchService.syncByExecution(executionId, 4);
+        } catch (Exception e) {
+            log.warn("派工单联动完成失败: {}", e.getMessage());
+        }
         return true;
     }
 
@@ -569,7 +648,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (queryDTO.getProcessId() != null) {
             wrapper.eq(ProductionOperationExecution::getProcessId, queryDTO.getProcessId());
         }
-        if (queryDTO.getExecutionStatus() != null) {
+        if (queryDTO.getExecutionStatus() != null && !queryDTO.getExecutionStatus().isEmpty()) {
             wrapper.eq(ProductionOperationExecution::getExecutionStatus, queryDTO.getExecutionStatus());
         }
         if (queryDTO.getEquipmentId() != null) {
@@ -581,8 +660,20 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (queryDTO.getOperatorId() != null) {
             wrapper.eq(ProductionOperationExecution::getOperatorId, queryDTO.getOperatorId());
         }
-        if (queryDTO.getOperatorName() != null) {
-            wrapper.like(ProductionOperationExecution::getOperatorName, queryDTO.getOperatorName());
+        if (queryDTO.getOperatorName() != null && !queryDTO.getOperatorName().isEmpty()) {
+            if ("当前用户".equals(queryDTO.getOperatorName())) {
+                // 2026-08-11 修复：前端"我的任务"传"当前用户"魔数，解析为当前登录用户名
+                try {
+                    String currentUser = com.jjx.system.utils.SecurityUtils.getUsername();
+                    if (currentUser != null) {
+                        wrapper.eq(ProductionOperationExecution::getOperatorName, currentUser);
+                    }
+                } catch (Exception e) {
+                    log.warn("解析当前用户失败(不按操作员过滤): {}", e.getMessage());
+                }
+            } else {
+                wrapper.like(ProductionOperationExecution::getOperatorName, queryDTO.getOperatorName());
+            }
         }
         if (queryDTO.getPlanStartTimeFrom() != null) {
             wrapper.ge(ProductionOperationExecution::getPlannedStartTime, queryDTO.getPlanStartTimeFrom().atStartOfDay());
