@@ -55,9 +55,9 @@
         </el-table-column>
         <el-table-column label="状态" width="110" align="center">
           <template #default="scope">
-            <el-tag v-if="scope.row.sampleStatus === 10" type="danger" size="small">已作废</el-tag>
-            <el-tag v-else-if="scope.row.engineeringAcceptor" type="success" size="small">打样中（已接单）</el-tag>
-            <el-tag v-else type="warning" size="small">待接单</el-tag>
+            <el-tag :type="sampleStatusTag(scope.row.sampleStatus)" size="small">
+              {{ sampleStatusText(scope.row.sampleStatus) }}
+            </el-tag>
           </template>
         </el-table-column>
         <!-- 进度可视化 -->
@@ -97,17 +97,33 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" align="center" fixed="right">
+        <el-table-column label="操作" width="150" align="center" fixed="right">
           <template #default="scope">
-            <el-button type="primary" link size="small" @click="openWorkbench(scope.row)">
-              {{ scope.row.engineeringAcceptor ? '进入打样' : '接单打样' }}
-            </el-button>
+            <template v-if="scope.row.sampleStatus === 6">
+              <el-button v-hasPermi="['sales:sample:convert']" type="warning" link size="small" @click="handleTransfer(scope.row)">资料转移</el-button>
+              <el-button type="primary" link size="small" @click="openWorkbench(scope.row)">进入打样</el-button>
+            </template>
+            <template v-else-if="scope.row.sampleStatus === 7">
+              <el-tag size="small" type="success">已转量产</el-tag>
+            </template>
+            <template v-else>
+              <el-button type="primary" link size="small" @click="openWorkbench(scope.row)">
+                {{ scope.row.engineeringAcceptor ? '进入打样' : '接单打样' }}
+              </el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
     <!-- 工程打样工作台（独立路由页，标签页打开） -->
+
+    <!-- 资料转移 · 轻量版弹窗（2026-08-12：打样成功后在此操作） -->
+    <SampleTransferDialog
+      v-model="transferDialogVisible"
+      :order-id="transferRow?.orderId"
+      @success="onTransferSuccess"
+    />
   </div>
 </template>
 
@@ -117,10 +133,43 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
 
 const router = useRouter()
 
 defineOptions({ name: 'SampleWorkbench' })
+
+// 样品单状态展示（2026-08-12：打样成功/已确认单在打样平台可见，可资料转移）
+const SAMPLE_STATUS_MAP: Record<number, { label: string; tag: string }> = {
+  1: { label: '待接单', tag: 'warning' },
+  2: { label: '待审核', tag: 'warning' },
+  3: { label: '打样中', tag: 'primary' },
+  4: { label: '待送样', tag: 'primary' },
+  5: { label: '已送样', tag: 'warning' },
+  6: { label: '打样成功', tag: 'success' },
+  7: { label: '已转量产', tag: 'success' },
+  8: { label: '已关闭', tag: 'info' },
+  9: { label: '客户退回', tag: 'danger' },
+  10: { label: '已作废', tag: 'danger' },
+}
+function sampleStatusText(status: number | undefined | null): string {
+  return SAMPLE_STATUS_MAP[status ?? 0]?.label || '未知'
+}
+function sampleStatusTag(status: number | undefined | null): any {
+  return SAMPLE_STATUS_MAP[status ?? 0]?.tag || 'info'
+}
+
+// 资料转移（轻量版弹窗，2026-08-12 入口移至打样平台）
+const transferDialogVisible = ref(false)
+const transferRow = ref<any>(null)
+function handleTransfer(row: any) {
+  if (!row?.orderId) return
+  transferRow.value = row
+  transferDialogVisible.value = true
+}
+function onTransferSuccess() {
+  getList()
+}
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
@@ -148,7 +197,8 @@ function openWorkbench(row: any) {
 async function getList() {
   loading.value = true
   try {
-    const params: any = { sampleStatus: 3 }
+    // 2026-08-12：查全部状态（含打样成功/已确认，供资料转移入口），分组筛选保留
+    const params: any = {}
     if (queryParams.group === 'pending') params.hasAcceptor = false
     else if (queryParams.group === 'accepted') params.hasAcceptor = true
     const res = await sampleOrderApi.list(params)

@@ -46,18 +46,23 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
 
   // ==================== getters ====================
 
-  /** 是否所有工序/物料都已选择标准项（全部匹配才可确认转移） */
+  /** 是否所有工序/物料都已选择标准项（全部匹配才可确认转移；2026-08-12：带自定义参数的印刷工序豁免） */
   const allMatched = computed(() => {
     return (
       processMappings.value.length > 0 &&
-      processMappings.value.every((p) => p.stdProcessId != null) &&
+      processMappings.value.every((p) => p.stdProcessId != null || hasCustomParams(p)) &&
       materialMappings.value.every((m) => m.materialId != null)
     )
   })
 
-  /** 未匹配的工序数量（标红提示用） */
+  /** 是否带自定义参数（印刷工序：可不选标准工序，参数原样转入工艺路线） */
+  function hasCustomParams(p: { customProcessParams?: string | null }): boolean {
+    return !!(p.customProcessParams && p.customProcessParams.trim())
+  }
+
+  /** 未匹配的工序数量（标红提示用，印刷工序豁免） */
   const unmatchedProcessCount = computed(
-    () => processMappings.value.filter((p) => p.stdProcessId == null).length
+    () => processMappings.value.filter((p) => p.stdProcessId == null && !hasCustomParams(p)).length
   )
 
   /** 未匹配的物料数量（标红提示用） */
@@ -154,6 +159,7 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
           groupName,
           processCategory: sp.processCategory,
           processNote: sp.processNote,
+          customProcessParams: sp.customProcessParams, // 印刷工序参数透传（2026-08-12）
           durationMinutes: sp.durationMinutes,
           // 下标：透传预览返回（hasIndex + indexNumber）
           hasIndex: sp.hasIndex ?? 0,
@@ -252,6 +258,7 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
       groupName: null,
       processCategory: std.processCategory,
       processNote: null,
+      customProcessParams: null,
       durationMinutes: null,
       hasIndex: std.hasIndex ?? 0,
       indexNumber: (std.hasIndex ?? 0) === 1 ? processMappings.value.length + 1 : null,

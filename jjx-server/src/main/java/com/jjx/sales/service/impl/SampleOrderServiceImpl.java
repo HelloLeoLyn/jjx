@@ -1458,6 +1458,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 item.setProcessOrder(sp.getProcessOrder());
                 item.setProcessCategory(sp.getProcessCategory());
                 item.setProcessNote(sp.getProcessNote());
+                item.setCustomProcessParams(sp.getCustomProcessParams());
                 item.setDurationMinutes(sp.getDurationMinutes());
                 // 匹配推荐：优先用打样已关联的标准工序，其次按名称模糊匹配
                 com.jjx.product.domain.entity.ProductStandardProcess match = null;
@@ -1596,9 +1597,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (processMappings == null || processMappings.isEmpty()) {
             throw new BusinessException("工序映射不能为空");
         }
-        // 必填校验：工序必须选择标准工序
+        // 必填校验：工序必须选择标准工序（2026-08-12 豁免：带自定义参数的印刷工序可不选，原样转入路线）
         for (com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping pm : processMappings) {
-            if (pm.getStdProcessId() == null) {
+            boolean hasCustomParams = pm.getCustomProcessParams() != null && !pm.getCustomProcessParams().isBlank();
+            if (pm.getStdProcessId() == null && !hasCustomParams) {
                 throw new BusinessException("存在未选择标准工序的工序：" + pm.getProcessName());
             }
         }
@@ -1764,8 +1766,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     // 组合顺序号（2026-08-11：修复转移后编辑页组合排序）
                     java.util.Map<Long, Integer> tempGroupSeqMap = new java.util.HashMap<>();
                     for (com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping pm : processMappings) {
-                        if (pm.getStdProcessId() == null) continue;
-                        com.jjx.product.domain.entity.ProductStandardProcess std = standardProcessMapper.selectById(pm.getStdProcessId());
+                        // 2026-08-12：印刷工序（无标准工序但有自定义参数）也写入路线，参数原样保留
+                        boolean hasCustomParams = pm.getCustomProcessParams() != null && !pm.getCustomProcessParams().isBlank();
+                        if (pm.getStdProcessId() == null && !hasCustomParams) continue;
+                        com.jjx.product.domain.entity.ProductStandardProcess std = pm.getStdProcessId() != null
+                                ? standardProcessMapper.selectById(pm.getStdProcessId()) : null;
                         Long stdProcessId = std != null ? std.getProcessId() : pm.getStdProcessId();
                         String category = pm.getProcessCategory() != null && !pm.getProcessCategory().isEmpty()
                                 ? pm.getProcessCategory()
@@ -1792,7 +1797,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 stepOrder++,
                                 laborHours,
                                 machineHours,
-                                null,
+                                // 2026-08-12：透传印刷自定义参数（色号/油墨/网框）到工艺路线
+                                hasCustomParams ? pm.getCustomProcessParams() : null,
                                 pm.getProcessNote() != null ? pm.getProcessNote() : "打样传承: " + pm.getProcessName(),
                                 category,
                                 groupId,

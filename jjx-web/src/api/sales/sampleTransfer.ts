@@ -10,6 +10,8 @@ export interface SampleProcessItem {
   processOrder: number | null
   processCategory: string | null
   processNote: string | null
+  /** 定制工艺参数 JSON（印刷工序：{printName,colorNo,inkNo,screenNo}，2026-08-12） */
+  customProcessParams: string | null
   durationMinutes: number | null
   /** 标准工序是否带下标（0/1） */
   hasIndex: number | null
@@ -78,6 +80,8 @@ export interface ProcessMapping {
   groupName: string | null
   processCategory: string | null
   processNote: string | null
+  /** 定制工艺参数 JSON（印刷工序透传，2026-08-12） */
+  customProcessParams: string | null
   durationMinutes: number | null
   /** 标准工序是否带下标（0/1） */
   hasIndex: number | null

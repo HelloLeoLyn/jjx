@@ -46,6 +46,8 @@ public class SampleTransferPreviewVO {
         private String processCategory;
         /** 工艺说明 */
         private String processNote;
+        /** 定制工艺参数 JSON（2026-08-12 印刷工序透传：{printName,colorNo,inkNo,screenNo}） */
+        private String customProcessParams;
         /** 耗时（分钟） */
         private Integer durationMinutes;
         /** 标准工序是否带下标（0/1，来自匹配的标准工序 has_index） */

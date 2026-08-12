@@ -47,6 +47,8 @@ public class SampleTransferConfirmDTO {
         private String processCategory;
         /** 工艺说明 */
         private String processNote;
+        /** 定制工艺参数 JSON（2026-08-12 印刷工序透传：{printName,colorNo,inkNo,screenNo}） */
+        private String customProcessParams;
         /** 耗时（分钟） */
         private Integer durationMinutes;
         /** 下标数字（DEV-777：打样下标透传到工艺路线） */

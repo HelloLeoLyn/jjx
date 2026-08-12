@@ -38,7 +38,11 @@
             <div v-for="(sp, i) in store.preview.sampleProcesses" :key="sp.processId" class="sample-item">
               <span class="idx">{{ i + 1 }}</span>
               <div class="sample-item-main">
-                <div>{{ sp.processName }}</div>
+                <div>
+                  {{ sp.processName }}
+                  <el-tag v-if="sp.customProcessParams" size="small" type="warning" style="margin-left: 6px">印刷</el-tag>
+                </div>
+                <div v-if="printParamsText(sp.customProcessParams)" class="sub print-params">🖨️ {{ printParamsText(sp.customProcessParams) }}</div>
                 <div v-if="sp.processNote" class="sub">{{ sp.processNote }}</div>
               </div>
               <el-tag v-if="sp.processCategory" size="small" type="info">{{ categoryText(sp.processCategory) }}</el-tag>
@@ -100,15 +104,18 @@
                     :size="18"
                     :index="item.indexNumber ?? null"
                   />
-                  <!-- 无下标：只显示工序名称 -->
-                  <span v-else class="row-label">{{ item.processName }}</span>
+                  <!-- 无下标：只显示工序名称（印刷工序带标识） -->
+                  <span v-else class="row-label">
+                    {{ item.processName }}
+                    <el-tag v-if="item.customProcessParams" size="small" type="warning" style="margin-left: 4px">印刷</el-tag>
+                  </span>
                   <el-select
                     v-model="item.stdProcessId"
                     filterable
                     size="small"
                     style="width: 100%"
-                    placeholder="请手动选择"
-                    :class="{ 'unmatched-select': item.stdProcessId == null }"
+                    :placeholder="item.customProcessParams ? '可不选（自定义工序）' : '请手动选择'"
+                    :class="{ 'unmatched-select': item.stdProcessId == null && !item.customProcessParams }"
                     @change="(v: number) => onStdProcessChange(group, item, v)"
                   >
                     <el-option
@@ -258,6 +265,12 @@
             <el-table-column label="工艺说明" min-width="150">
               <template #default="scope">{{ scope.row.processNote || '-' }}</template>
             </el-table-column>
+            <el-table-column label="参数" min-width="130">
+              <template #default="scope">
+                <span v-if="scope.row.customProcessParams" style="color: #e6a23c">🖨️ {{ printParamsText(scope.row.customProcessParams) }}</span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
             <el-table-column label="工时(h)" width="80" align="right">
               <template #default="scope">{{ (scope.row.durationMinutes ?? 0) / 60 }}</template>
             </el-table-column>
@@ -326,6 +339,23 @@ function categoryText(category: string): string {
     OTHER: '其他',
   }
   return map[category] || category
+}
+
+// 印刷参数解析：customProcessParams JSON → 可读文本（2026-08-12）
+function parsePrintParams(json?: string | null): Record<string, string> | null {
+  if (!json || !json.trim()) return null
+  try {
+    const o = JSON.parse(json)
+    if (o && typeof o === 'object' && (o.printName || o.colorNo || o.inkNo || o.screenNo)) return o
+    return null
+  } catch {
+    return null
+  }
+}
+function printParamsText(json?: string | null): string {
+  const p = parsePrintParams(json)
+  if (!p) return ''
+  return [p.colorNo ? `色号:${p.colorNo}` : '', p.inkNo ? `油墨:${p.inkNo}` : '', p.screenNo ? `网框:${p.screenNo}` : ''].filter(Boolean).join(' ')
 }
 
 // 返回轻量版（数据保留在 store，弹窗打开不重新加载）

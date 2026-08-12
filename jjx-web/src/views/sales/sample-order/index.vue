@@ -120,7 +120,6 @@
             </template>
             <template v-else-if="scope.row.sampleStatus === 6">
               <el-button v-hasPermi="['sales:sample:convert']" link type="primary" size="small" @click="handleConvert(scope.row)">转量产</el-button>
-              <el-button v-hasPermi="['sales:sample:convert']" link type="warning" size="small" @click="handleTransfer(scope.row)">资料转移</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 7">
               <el-tag size="small" type="success">已转量产</el-tag>
@@ -444,14 +443,6 @@
       :order-id="convertRow?.orderId"
       :order-no="convertRow?.orderNo"
       @success="getList"
-      @go-transfer="onGoTransfer"
-    />
-
-    <!-- 打样转标准 · 轻量版弹窗（默认入口） -->
-    <SampleTransferDialog
-      v-model="transferDialogVisible"
-      :order-id="transferRow?.orderId"
-      @success="onTransferSuccess"
     />
   </div>
 </template>
@@ -466,7 +457,6 @@ import request from '@/utils/request'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
-import SampleTransferDialog from './components/SampleTransferDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { quotationApi } from '@/api/sales/quotation'
@@ -1270,33 +1260,12 @@ async function handleRejectSample(row: any) {
   openPreview('sample.rejectSample', row)
 }
 
-// 打样转标准·轻量版弹窗状态
-const transferDialogVisible = ref(false)
-const transferRow = ref<any>(null)
-
-// 产品资料转移（DEV-505 → 打样转标准轻量版弹窗）：建档产品/BOM/工艺路线
-function handleTransfer(row: any) {
-  if (!row?.orderId) return
-  transferRow.value = row
-  transferDialogVisible.value = true
-}
-
-// 轻量版弹窗确认成功 → 刷新列表
-function onTransferSuccess() {
-  getList()
-}
+// 产品资料转移入口已移至打样平台（2026-08-12），样品单管理仅保留转量产
 
 async function handleConvert(row: any) {
   // 转量产：就绪检查（产品/BOM/工艺路线/菲林清单）
   convertRow.value = row
   convertDialogVisible.value = true
-}
-
-// 校验界面里点「去资料转移」→ 关闭弹窗并打开轻量版弹窗
-function onGoTransfer() {
-  if (convertRow.value) {
-    handleTransfer(convertRow.value)
-  }
 }
 
 // 查看流水
@@ -1320,27 +1289,9 @@ onMounted(() => {
     description: '',
     terminal: false,
   }))
-  // 从对照版全屏页返回：带 transferDialog 参数自动打开轻量版弹窗
-  const dialogOrderId = route.query.transferDialog
-  if (dialogOrderId) {
-    const row = sampleList.value.find((r) => String(r.orderId) === String(dialogOrderId))
-    if (row) {
-      transferRow.value = row
-      transferDialogVisible.value = true
-    }
-  }
 })
 onActivated(() => {
   getList()
-  // 从对照版全屏页返回（keep-alive 激活）：带 transferDialog 参数自动打开轻量版弹窗
-  const dialogOrderId = route.query.transferDialog
-  if (dialogOrderId) {
-    const row = sampleList.value.find((r) => String(r.orderId) === String(dialogOrderId))
-    if (row) {
-      transferRow.value = row
-      transferDialogVisible.value = true
-    }
-  }
 })
 </script>
 
