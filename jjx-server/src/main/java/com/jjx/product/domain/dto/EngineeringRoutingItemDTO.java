@@ -47,6 +47,11 @@ public class EngineeringRoutingItemDTO {
     private Long processId;
 
     /**
+     * 大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）
+     */
+    private String majorCategory;
+
+    /**
      * 工序顺序
      */
     private Integer processOrder;

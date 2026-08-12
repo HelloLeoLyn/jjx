@@ -133,6 +133,17 @@ const loading = ref(false)
 const submitLoading = ref(false)
 const routeItemEditorRef = ref<InstanceType<typeof RouteItemIconEditor>>()
 
+/** 印刷行名称兑底：从 customProcessParams JSON 解析 printName（2026-08-12） */
+function printNameFromParams(json?: string): string {
+  if (!json) return ''
+  try {
+    const o = JSON.parse(json)
+    return o.printName || ''
+  } catch {
+    return ''
+  }
+}
+
 const standardProcesses = ref<StandardProcessOption[]>([])
 
 // 表单数据
@@ -236,8 +247,10 @@ const loadRouteDetail = async () => {
       customProcessParams: item.customProcessParams || '',
       description: item.description || '',
       processCategory: item.processCategory || '',
+      majorCategory: item.majorCategory || 'ASSEMBLY',
+      // 2026-08-12：印刷行名称兜底（customProcessParams.printName）
+      processName: item.processName || (item.majorCategory === 'PRINT' ? printNameFromParams(item.customProcessParams) : '') || '',
       // 2026-08-11 修复：补齐显示字段（否则编辑页图标/文字/下标全丢）
-      processName: item.processName || '',
       processCode: item.processCode || '',
       icon: item.icon || '',
       hasIndex: item.hasIndex ?? 0,

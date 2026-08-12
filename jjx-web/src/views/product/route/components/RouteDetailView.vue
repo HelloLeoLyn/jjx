@@ -69,7 +69,7 @@
                 :size="14"
                 :index="item.indexNumber ?? null"
               />
-              <!-- 无下标：原样图标+名称 -->
+              <!-- 无下标：原样图标+名称（印刷工序带标识，2026-08-12） -->
               <template v-else>
                 <SvgIcon
                   v-if="item.icon"
@@ -77,6 +77,7 @@
                   :size="14"
                   style="margin-right: 4px; vertical-align: middle"
                 />
+                <el-tag v-if="item.majorCategory === 'PRINT'" size="small" type="warning" effect="plain" style="margin-right: 4px">印刷</el-tag>
                 <span>{{ item.processName }}</span>
               </template>
             </el-tag>

@@ -38,6 +38,8 @@ public class EngineeringRoutingItemVO {
 
     // ==================== 标准工序字段（直接平铺） ====================
     private Long processId;
+    /** 大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12） */
+    private String majorCategory;
     private String processCode;
     private String processName;
     private String processType;

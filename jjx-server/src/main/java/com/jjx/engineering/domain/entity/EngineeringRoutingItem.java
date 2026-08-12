@@ -80,6 +80,11 @@ public class EngineeringRoutingItem {
     private String processCategory;
 
     /**
+     * 大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）
+     */
+    private String majorCategory;
+
+    /**
      * 下标数字（带下标工序的下标值，如4显示为④）
      */
     private Integer indexNumber;

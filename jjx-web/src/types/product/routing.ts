@@ -127,9 +127,12 @@ export interface EngineeringRoutingItemVO {
   updateTime: string
 
   // 组合字段
-  groupId?: number
-  groupOrder?: number
-  groupName?: string
+  groupId?: number | null
+  groupOrder?: number | null
+  groupName?: string | null
+
+  // 大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）
+  majorCategory?: string
 
   // 标准工序字段（平铺）
   processId: number

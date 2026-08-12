@@ -38,46 +38,56 @@
           style="margin-bottom: 12px"
         />
 
-        <!-- 工序映射列表 -->
+        <!-- 工序映射列表（2026-08-12：按子结构 Tabs 分，与打样/路线一致） -->
         <div class="section-title">① 工序映射（{{ store.processMappings.length }} 道）</div>
-        <el-table :data="store.processMappings" size="small" border stripe max-height="260" style="margin-bottom: 16px">
-          <el-table-column label="打样工序" min-width="150">
-            <template #default="scope">
-              <span :class="{ 'unmatched-text': scope.row.stdProcessId == null }">
-                {{ scope.row.processName }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="顺序" width="60" align="center">
-            <template #default="scope">{{ scope.row.processOrder }}</template>
-          </el-table-column>
-          <el-table-column label="组合" width="90" align="center">
-            <template #default="scope">
-              <el-tag v-if="scope.row.groupName" size="small" type="info">{{ scope.row.groupName }}</el-tag>
-              <span v-else>-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="标准工序（可改选）" min-width="220">
-            <template #default="scope">
-              <el-select
-                v-model="scope.row.stdProcessId"
-                filterable
-                size="small"
-                style="width: 100%"
-                placeholder="请手动选择"
-                :class="{ 'unmatched-select': scope.row.stdProcessId == null }"
-                @change="(v: number) => onProcessChange(scope.$index, v)"
-              >
-                <el-option
-                  v-for="opt in store.standardProcesses"
-                  :key="opt.processId"
-                  :label="opt.processName"
-                  :value="opt.processId"
-                />
-              </el-select>
-            </template>
-          </el-table-column>
-        </el-table>
+        <el-tabs v-model="processTab" type="border-card" style="margin-bottom: 16px">
+          <el-tab-pane
+            v-for="tab in PROCESS_TABS"
+            :key="tab.value"
+            :name="tab.value"
+            :label="`${tab.label}（${filteredProcessMappings(tab.value).length}）`"
+          >
+            <el-table :data="filteredProcessMappings(tab.value)" size="small" border stripe max-height="240">
+              <el-table-column label="打样工序" min-width="150">
+                <template #default="scope">
+                  <span :class="{ 'unmatched-text': scope.row.stdProcessId == null }">
+                    <el-tag v-if="scope.row.customProcessParams" size="small" type="warning" effect="plain" style="margin-right: 4px">印刷</el-tag>
+                    {{ scope.row.processName }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column label="顺序" width="60" align="center">
+                <template #default="scope">{{ scope.row.processOrder }}</template>
+              </el-table-column>
+              <el-table-column label="组合" width="90" align="center">
+                <template #default="scope">
+                  <el-tag v-if="scope.row.groupName" size="small" type="info">{{ scope.row.groupName }}</el-tag>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="标准工序（可改选）" min-width="220">
+                <template #default="scope">
+                  <el-select
+                    v-model="scope.row.stdProcessId"
+                    filterable
+                    size="small"
+                    style="width: 100%"
+                    :placeholder="scope.row.customProcessParams ? '可不选（自定义工序）' : '请手动选择'"
+                    :class="{ 'unmatched-select': scope.row.stdProcessId == null && !scope.row.customProcessParams }"
+                    @change="(v: number) => onProcessChange(scope.$index, v)"
+                  >
+                    <el-option
+                      v-for="opt in store.standardProcesses"
+                      :key="opt.processId"
+                      :label="opt.processName"
+                      :value="opt.processId"
+                    />
+                  </el-select>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
 
         <!-- 物料映射列表 -->
         <div class="section-title">② 物料映射（{{ store.materialMappings.length }} 项）</div>
@@ -148,6 +158,23 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const store = useSampleTransferStore()
+
+// 工序映射子结构 Tabs（2026-08-12：与打样/路线一致，印刷工序按结构归属）
+const PROCESS_TABS = [
+  { value: 'PANEL', label: '面板' },
+  { value: 'UP_LINE', label: '上线' },
+  { value: 'DOWN_LINE', label: '下线' },
+  { value: '', label: '未分类' },
+]
+const processTab = ref('PANEL')
+function filteredProcessMappings(value: string) {
+  // 2026-08-12：OTHER 归一显示到未分类（旧转移数据类别可能是 OTHER）
+  return store.processMappings.filter((p) => {
+    const cat = p.processCategory || ''
+    if (value === '') return cat === '' || cat === 'OTHER'
+    return cat === value
+  })
+}
 
 // DEV-781 后续：已转移订单标记（localStorage 持久化，方案A）
 const TRANSFER_FLAG_KEY = 'sample_transferred_orders'

@@ -1307,7 +1307,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                                 .last("LIMIT 1"));
                             }
                             Long stdProcessId = std != null ? std.getProcessId() : null;
-                            String category = std != null && std.getProcessCategory() != null ? std.getProcessCategory() : "OTHER";
+                            // 2026-08-12：类别优先标准工序，无则保留打样子结构（PANEL/UP_LINE/DOWN_LINE），再兑底 OTHER
+                            String category = std != null && std.getProcessCategory() != null
+                                    ? std.getProcessCategory()
+                                    : (sp.getProcessCategory() != null && !sp.getProcessCategory().isEmpty()
+                                        ? sp.getProcessCategory() : "OTHER");
                             java.math.BigDecimal laborHours = sp.getDurationMinutes() != null
                                     ? java.math.BigDecimal.valueOf(sp.getDurationMinutes()).divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP)
                                     : (std != null && std.getStandardLaborHours() != null ? std.getStandardLaborHours() : java.math.BigDecimal.ZERO);
@@ -1332,6 +1336,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     : sp.getProcessNote();
                             routingItemMapper.insertItem(newRouting.getRoutingId(),
                                     stdProcessId != null ? stdProcessId : null,
+                                    // 2026-08-12：大类透传（PRINT印刷/ASSEMBLY组装）
+                                    sp.getMajorCategory() != null ? sp.getMajorCategory() : "ASSEMBLY",
+                                    sp.getProcessName(),
                                     stepOrder++, laborHours, machineHours,
                                     processParams,
                                     "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
@@ -1794,6 +1801,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         }
                         routingItemMapper.insertItem(newRouting.getRoutingId(),
                                 stdProcessId,
+                                // 2026-08-12：大类透传（印刷工序=PRINT，其余组装）
+                                hasCustomParams ? "PRINT" : "ASSEMBLY",
+                                pm.getProcessName(),
                                 stepOrder++,
                                 laborHours,
                                 machineHours,

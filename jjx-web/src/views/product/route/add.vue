@@ -183,6 +183,7 @@ const handleSubmit = async () => {
       customProcessParams: item.customProcessParams,
       description: item.description,
       processCategory: item.processCategory,
+      majorCategory: item.majorCategory,
     }))
 
     submitLoading.value = true
