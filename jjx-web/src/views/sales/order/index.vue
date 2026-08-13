@@ -176,9 +176,9 @@
                 <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
                   生成生产计划
                 </el-button>
-                <!-- 补确认书（2026-08-13 B方案：去掉确认环节，随时可补发确认书PDF给客户） -->
+                <!-- 打印确认书（2026-08-13：直接打开打印预览，不下载） -->
                 <el-button type="info" size="small" plain @click="handleExportConfirmPdf(row)">
-                  补确认书
+                  打印确认书
                 </el-button>
               </template>
 
@@ -189,14 +189,8 @@
                 </el-button>
               </template>
 
-              <!-- 已确认状态 (6) -->
+              <!-- 已确认状态 (6)：计划已生成，只保留齐套检查/打印确认书/确认凭证（2026-08-13） -->
               <template v-else-if="row.orderStatus === 6">
-                <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
-                  生成生产计划
-                </el-button>
-                <el-button type="warning" size="small" @click="handleStartProduction(row)">
-                  直接转工单
-                </el-button>
                 <el-button type="info" size="small" plain @click="handleRecheckShortage(row)">
                   齐套检查
                 </el-button>
@@ -205,7 +199,7 @@
                   placement="top"
                 >
                   <el-button type="success" size="small" plain @click="handleExportConfirmPdf(row)">
-                    确认书
+                    打印确认书
                   </el-button>
                 </el-tooltip>
                 <el-button type="info" size="small" plain @click="openConfirmAttachment(row)">
@@ -641,13 +635,20 @@ const handleShip = async (row: any) => {
   }
 }
 
-// 导出确认书 PDF（DEV-343/314）
+// 打印确认书（2026-08-13：打开新窗口预览 PDF 直接打印，不再下载文件；弹窗被拦截则降级下载）
 const handleExportConfirmPdf = async (row: any) => {
   try {
     const res: any = await orderApi.exportConfirmationPdf(row.orderId)
-    download(res, `确认书_${row.orderNo}.pdf`)
+    const blob = res instanceof Blob ? res : new Blob([res], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const win = window.open(url, '_blank')
+    if (!win) {
+      download(blob, `确认书_${row.orderNo}.pdf`)
+    } else {
+      win.focus()
+    }
   } catch {
-    ElMessage.error('确认书导出失败')
+    ElMessage.error('确认书生成失败')
   }
 }
 
@@ -717,24 +718,6 @@ const generatePlanOrder = ref<any>()
 const handleGeneratePlan = (row: any) => {
   generatePlanOrder.value = row
   generatePlanVisible.value = true
-}
-
-// 直接转工单（快捷模式：SO→WO，跳过计划审批）
-const handleStartProduction = async (row: any) => {
-  try {
-    await ElMessageBox.confirm(`确定要直接为订单【${row.orderNo}】转工单吗？\n快捷模式：跳过计划审批，工单直接进入"已计划"状态。`, '直接转工单', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await orderStatusApi.startProduction(row.orderId)
-    ElMessage.success('工单已生成（已计划），可到生产订单-工单视图启动')
-    getList()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('直接转工单失败', error)
-    }
-  }
 }
 
 // 完成订单

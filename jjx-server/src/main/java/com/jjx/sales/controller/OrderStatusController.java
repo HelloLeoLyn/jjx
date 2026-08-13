@@ -160,20 +160,6 @@ public class OrderStatusController {
     }
 
     /**
-     * 开始生产（快捷模式：SO 直接转工单）
-     */
-    @Operation(summary = "开始生产（快捷模式：直接转工单）")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
-    @SaCheckPermission("sales:order:edit")
-    @PutMapping("/{orderId}/status/start-production")
-    public Result<Void> startProduction(
-            @Parameter(description = "订单ID", required = true)
-            @PathVariable @NotNull Long orderId) {
-        orderStatusService.startProduction(orderId);
-        return Result.success();
-    }
-
-    /**
      * 生成生产计划（标准模式：SO→PLAN，审批后转工单）
      */
     @Operation(summary = "生成生产计划（标准模式：SO→PLAN→审批→转工单）")
