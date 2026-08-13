@@ -10,12 +10,16 @@ export interface DispatchQuery {
 }
 
 export interface DispatchVO {
-  dispatchId: number
+  dispatchId?: number
   orderId: number
   orderNo?: string
   executionId: number
   processName?: string
   processOrder?: number
+  majorCategory?: string
+  executionStatus?: number
+  dispatchStatus?: number
+  plannedQuantity?: number
   teamId?: number
   teamName?: string
   equipmentId?: number
@@ -24,7 +28,7 @@ export interface DispatchVO {
   assignedBy?: number
   assignedByName?: string
   assignTime?: string
-  status: number
+  status?: number
   statusLabel?: string
   rejectReason?: string
   reDispatchCount?: number
@@ -67,6 +71,14 @@ export function getDispatchPage(params: DispatchQuery) {
 export function getDispatchByOrder(orderId: number) {
   return request({
     url: `/production/dispatch/order/${orderId}`,
+    method: 'get',
+  })
+}
+
+// 工单待派工序（未派工/已退回，批量派工计数用）
+export function getPendingDispatches(orderId: number) {
+  return request({
+    url: `/production/dispatch/order/${orderId}/pending`,
     method: 'get',
   })
 }

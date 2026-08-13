@@ -36,10 +36,16 @@
       <el-table v-loading="loading" :data="list" style="width: 100%">
         <el-table-column type="index" label="#" width="50" />
         <el-table-column prop="orderNo" label="工单编号" width="140" show-overflow-tooltip />
-        <el-table-column label="工序" min-width="140">
+        <el-table-column label="数量" width="80" align="right">
+          <template #default="{ row }">
+            <span>{{ fmtQty(row.plannedQuantity) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="工序" min-width="160">
           <template #default="{ row }">
             <div>
-              <div>{{ row.processName || '-' }}</div>
+              <el-tag v-if="row.majorCategory === 'PRINT'" size="small" type="warning" effect="plain" style="margin-right: 4px">印刷</el-tag>
+              <span>{{ row.processName || '-' }}</span>
               <div v-if="row.processOrder" style="font-size: 12px; color: #909399">序 {{ row.processOrder }}</div>
             </div>
           </template>
@@ -65,8 +71,8 @@
         <el-table-column prop="assignedByName" label="派工主管" width="100" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag size="small" :type="statusTag(row.status)">
-              {{ row.statusLabel || STATUS_LABELS[row.status] || row.status }}
+            <el-tag size="small" :type="statusTag(row.dispatchStatus)">
+              {{ statusLabel(row) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -83,12 +89,14 @@
         </el-table-column>
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.status === 0 || row.status === 4" link type="primary" @click="openAssign(row)">指派</el-button>
-            <el-button v-else link type="primary" @click="openAssign(row)">改派</el-button>
-            <el-button v-if="row.status === 1" link type="success" @click="handleStart(row)">开始</el-button>
-            <el-button v-if="row.status === 2" link type="success" @click="handleComplete(row)">完成</el-button>
-            <el-button v-if="row.status === 1 || row.status === 2" link type="danger" @click="openReject(row)">退回</el-button>
-            <el-button link @click="openLogs(row)">流水</el-button>
+            <el-button v-if="!row.dispatchId" link type="primary" @click="openAssign(row)">指派</el-button>
+            <template v-else>
+              <el-button link type="primary" @click="openAssign(row)">改派</el-button>
+              <el-button v-if="row.dispatchStatus === 1" link type="success" @click="handleStart(row)">开始</el-button>
+              <el-button v-if="row.dispatchStatus === 2" link type="success" @click="handleComplete(row)">完成</el-button>
+              <el-button v-if="row.dispatchStatus === 1 || row.dispatchStatus === 2" link type="danger" @click="openReject(row)">退回</el-button>
+              <el-button link @click="openLogs(row)">流水</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -274,7 +282,7 @@ import {
   startDispatch,
   completeDispatch,
   getDispatchLogs,
-  getDispatchByOrder,
+  getPendingDispatches,
   type DispatchQuery,
   type DispatchVO,
   type DispatchLog,
@@ -306,8 +314,20 @@ const equipmentList = ref<any[]>([])
 const userOptions = ref<any[]>([])
 const userLoading = ref(false)
 
-function statusTag(status: number): any {
-  return { 0: 'info', 1: 'primary', 2: 'warning', 3: 'success', 4: 'danger' }[status] || 'info'
+function statusTag(status?: number): any {
+  return { 0: 'info', 1: 'primary', 2: 'warning', 3: 'success', 4: 'danger' }[status ?? 0] || 'info'
+}
+
+function statusLabel(row: DispatchVO): string {
+  const st = row.dispatchStatus ?? 0
+  return row.statusLabel || STATUS_LABELS[st] || String(st)
+}
+
+function fmtQty(v?: number | string | null): string {
+  if (v === null || v === undefined || v === '') return '-'
+  const n = Number(v)
+  if (Number.isNaN(n)) return String(v)
+  return Number.isInteger(n) ? String(n) : String(n)
 }
 
 function parseOperators(json?: string): { userId: number; userName: string }[] {
@@ -453,9 +473,9 @@ async function openBatchDialog() {
 
 async function onBatchOrderChange(orderId: number) {
   try {
-    const res: any = await getDispatchByOrder(orderId)
+    const res: any = await getPendingDispatches(orderId)
     const rows: DispatchVO[] = res?.data || []
-    batchPendingCount.value = rows.filter((r) => r.status === 0 || r.status === 4).length
+    batchPendingCount.value = rows.length
   } catch {
     batchPendingCount.value = 0
   }
@@ -501,7 +521,7 @@ async function handleReject() {
   }
   assigning.value = true
   try {
-    await rejectDispatch(rejectTarget.value!.dispatchId, rejectReason.value.trim())
+    await rejectDispatch(rejectTarget.value!.dispatchId!, rejectReason.value.trim())
     ElMessage.success('已退回，可重新指派')
     rejectVisible.value = false
     loadList()
@@ -516,7 +536,7 @@ async function handleReject() {
 async function handleStart(row: DispatchVO) {
   await ElMessageBox.confirm(`确定开始「${row.processName}」吗？`, '开始工序', { type: 'info' }).catch(() => Promise.reject())
   try {
-    await startDispatch(row.dispatchId)
+    await startDispatch(row.dispatchId!)
     ElMessage.success('已开始')
     loadList()
   } catch (e: any) {
@@ -527,7 +547,7 @@ async function handleStart(row: DispatchVO) {
 async function handleComplete(row: DispatchVO) {
   await ElMessageBox.confirm(`确定完成「${row.processName}」吗？`, '完成工序', { type: 'info' }).catch(() => Promise.reject())
   try {
-    await completeDispatch(row.dispatchId)
+    await completeDispatch(row.dispatchId!)
     ElMessage.success('已完成')
     loadList()
   } catch (e: any) {
@@ -547,7 +567,7 @@ async function openLogs(row: DispatchVO) {
   logList.value = []
   logsVisible.value = true
   try {
-    const res: any = await getDispatchLogs(row.dispatchId)
+    const res: any = await getDispatchLogs(row.dispatchId!)
     logList.value = res?.data || []
   } catch {
     logList.value = []

@@ -53,13 +53,128 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
 
     @Override
     public PageResult<DispatchVO> page(DispatchQueryDTO query) {
-        LambdaQueryWrapper<ProductionDispatch> w = buildWrapper(query);
-        w.orderByDesc(ProductionDispatch::getCreateTime);
-        Page<ProductionDispatch> p = new Page<>(query.getPageNum(), query.getPageSize());
-        dispatchMapper.selectPage(p, w);
-        List<DispatchVO> vos = new ArrayList<>();
-        for (ProductionDispatch e : p.getRecords()) vos.add(DispatchVO.fromEntity(e));
+        // 2026-08-13：派工工作台——按工单工序展示（execution LEFT JOIN dispatch），未派工工序直接可见可指派
+        List<Object> args = new ArrayList<>();
+        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        if (query != null) {
+            if (StringUtils.isNotBlank(query.getOrderNo())) {
+                where.append(" AND o.order_no LIKE ?");
+                args.add("%" + query.getOrderNo() + "%");
+            }
+            if (query.getTeamId() != null) {
+                where.append(" AND d.team_id = ?");
+                args.add(query.getTeamId());
+            }
+            if (query.getStatus() != null) {
+                int st = query.getStatus();
+                if (st == 0) {
+                    // 待派工：未生成派工单（或派工单仍为待派工态）
+                    where.append(" AND (d.dispatch_id IS NULL OR d.status = 0)");
+                } else {
+                    where.append(" AND d.status = ?");
+                    args.add(st);
+                }
+            }
+            if (StringUtils.isNotBlank(query.getKeyword())) {
+                where.append(" AND (e.process_name LIKE ? OR COALESCE(sp.process_name,'') LIKE ? OR e.major_category LIKE ?)");
+                String kw = "%" + query.getKeyword() + "%";
+                args.add(kw);
+                args.add(kw);
+                args.add(kw);
+            }
+        }
+        String base = " FROM production_operation_execution e"
+                + " LEFT JOIN production_order o ON o.order_id = e.order_id"
+                + " LEFT JOIN engineering_standard_process sp ON sp.process_id = e.process_id"
+                + " LEFT JOIN production_dispatch d ON d.execution_id = e.execution_id";
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) " + base + where, Long.class, args.toArray());
+        int pageNum = query == null ? 1 : query.getPageNum();
+        int pageSize = query == null ? 10 : query.getPageSize();
+        String sql = "SELECT e.execution_id, e.order_id, o.order_no,"
+                + " COALESCE(e.process_name, sp.process_name, e.major_category) AS process_name,"
+                + " e.major_category, e.process_order, e.execution_status, o.planned_quantity,"
+                + " d.dispatch_id, d.team_id, d.team_name, d.equipment_id, d.equipment_name, d.operators,"
+                + " d.status AS dispatch_status, d.assigned_by, d.assigned_by_name, d.assign_time,"
+                + " d.re_dispatch_count, d.reject_reason, d.remark, d.create_by, d.create_time"
+                + base + where
+                + " ORDER BY e.order_id ASC, e.process_order ASC"
+                + " LIMIT ? OFFSET ?";
+        args.add(pageSize);
+        args.add((long) (pageNum - 1) * pageSize);
+        List<DispatchVO> vos = jdbcTemplate.query(sql, (rs, i) -> {
+            DispatchVO vo = new DispatchVO();
+            vo.setExecutionId(rs.getLong("execution_id"));
+            vo.setOrderId(rs.getLong("order_id"));
+            vo.setOrderNo(rs.getString("order_no"));
+            vo.setProcessName(rs.getString("process_name"));
+            vo.setMajorCategory(rs.getString("major_category"));
+            vo.setProcessOrder(rs.getInt("process_order"));
+            vo.setExecutionStatus(rs.getInt("execution_status"));
+            vo.setPlannedQuantity(rs.getBigDecimal("planned_quantity"));
+            long did = rs.getLong("dispatch_id");
+            if (!rs.wasNull()) {
+                vo.setDispatchId(did);
+                vo.setTeamId(getNullableLong(rs, "team_id"));
+                vo.setTeamName(rs.getString("team_name"));
+                vo.setEquipmentId(getNullableLong(rs, "equipment_id"));
+                vo.setEquipmentName(rs.getString("equipment_name"));
+                vo.setOperators(rs.getString("operators"));
+                vo.setAssignedBy(getNullableLong(rs, "assigned_by"));
+                vo.setAssignedByName(rs.getString("assigned_by_name"));
+                vo.setAssignTime(rs.getTimestamp("assign_time") == null ? null : rs.getTimestamp("assign_time").toLocalDateTime());
+                vo.setReDispatchCount(rs.getInt("re_dispatch_count"));
+                vo.setRejectReason(rs.getString("reject_reason"));
+                vo.setRemark(rs.getString("remark"));
+                vo.setCreateBy(rs.getString("create_by"));
+                vo.setCreateTime(rs.getTimestamp("create_time") == null ? null : rs.getTimestamp("create_time").toLocalDateTime());
+                int st = rs.getInt("dispatch_status");
+                vo.setDispatchStatus(st);
+                vo.setStatusLabel(DispatchStatusEnum.labelOf(st));
+            } else {
+                vo.setDispatchStatus(0);
+                vo.setStatusLabel(DispatchStatusEnum.labelOf(0));
+            }
+            return vo;
+        }, args.toArray());
+        Page<DispatchVO> p = new Page<>(pageNum, pageSize);
+        p.setTotal(total == null ? 0 : total);
         return PageResult.of(p, vos);
+    }
+
+    private Long getNullableLong(java.sql.ResultSet rs, String col) throws java.sql.SQLException {
+        long v = rs.getLong(col);
+        return rs.wasNull() ? null : v;
+    }
+
+    @Override
+    public List<DispatchVO> listPending(Long orderId) {
+        if (orderId == null) return new ArrayList<>();
+        List<DispatchVO> vos = jdbcTemplate.query(
+                "SELECT e.execution_id, e.order_id, o.order_no,"
+                        + " COALESCE(e.process_name, sp.process_name, e.major_category) AS process_name,"
+                        + " e.major_category, e.process_order, e.execution_status, o.planned_quantity,"
+                        + " d.status AS dispatch_status"
+                        + " FROM production_operation_execution e"
+                        + " LEFT JOIN production_order o ON o.order_id = e.order_id"
+                        + " LEFT JOIN engineering_standard_process sp ON sp.process_id = e.process_id"
+                        + " LEFT JOIN production_dispatch d ON d.execution_id = e.execution_id"
+                        + " WHERE e.order_id = ? AND (d.dispatch_id IS NULL OR d.status IN (0,4))"
+                        + " ORDER BY e.process_order ASC",
+                (rs, i) -> {
+                    DispatchVO vo = new DispatchVO();
+                    vo.setExecutionId(rs.getLong("execution_id"));
+                    vo.setOrderId(rs.getLong("order_id"));
+                    vo.setOrderNo(rs.getString("order_no"));
+                    vo.setProcessName(rs.getString("process_name"));
+                    vo.setMajorCategory(rs.getString("major_category"));
+                    vo.setProcessOrder(rs.getInt("process_order"));
+                    vo.setExecutionStatus(rs.getInt("execution_status"));
+                    vo.setPlannedQuantity(rs.getBigDecimal("planned_quantity"));
+                    vo.setDispatchStatus(0);
+                    vo.setStatusLabel(DispatchStatusEnum.labelOf(0));
+                    return vo;
+                }, orderId);
+        return vos;
     }
 
     @Override
@@ -86,19 +201,6 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         w.eq(ProductionDispatchLog::getDispatchId, dispatchId);
         w.orderByAsc(ProductionDispatchLog::getCreateTime);
         return dispatchLogMapper.selectList(w);
-    }
-
-    private LambdaQueryWrapper<ProductionDispatch> buildWrapper(DispatchQueryDTO q) {
-        LambdaQueryWrapper<ProductionDispatch> w = Wrappers.lambdaQuery();
-        if (q == null) return w;
-        if (StringUtils.isNotBlank(q.getOrderNo())) w.like(ProductionDispatch::getOrderNo, q.getOrderNo());
-        if (q.getTeamId() != null) w.eq(ProductionDispatch::getTeamId, q.getTeamId());
-        if (q.getStatus() != null) w.eq(ProductionDispatch::getStatus, q.getStatus());
-        if (StringUtils.isNotBlank(q.getKeyword())) {
-            w.and(x -> x.like(ProductionDispatch::getProcessName, q.getKeyword())
-                    .or().like(ProductionDispatch::getEquipmentName, q.getKeyword()));
-        }
-        return w;
     }
 
     // ==================== 指派/改派/批量 ====================

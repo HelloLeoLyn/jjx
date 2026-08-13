@@ -44,6 +44,13 @@ public class DispatchController extends BaseController {
         return Result.success(dispatchService.listByOrder(orderId));
     }
 
+    @Operation(summary = "工单待派工序（未派工/已退回）")
+    @SaCheckPermission("production:dispatch:list")
+    @GetMapping("/order/{orderId}/pending")
+    public Result<List<DispatchVO>> pending(@PathVariable Long orderId) {
+        return Result.success(dispatchService.listPending(orderId));
+    }
+
     @Operation(summary = "派工单详情")
     @SaCheckPermission("production:dispatch:list")
     @GetMapping("/{id}")

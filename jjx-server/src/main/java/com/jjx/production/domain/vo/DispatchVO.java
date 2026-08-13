@@ -19,6 +19,18 @@ public class DispatchVO {
     private String processName;
     private Integer processOrder;
 
+    /** 工序大类（ASSEMBLY冲型组装/PRINT印刷，工作台视图） */
+    private String majorCategory;
+
+    /** 工序执行状态（production_operation_execution.execution_status，工作台视图） */
+    private Integer executionStatus;
+
+    /** 工单计划数量（工作台视图） */
+    private java.math.BigDecimal plannedQuantity;
+
+    /** 派工状态（工作台视图：无派工单=0 待派工；有派工单=派工单状态 0-4） */
+    private Integer dispatchStatus;
+
     private Long teamId;
     private String teamName;
     private Long equipmentId;

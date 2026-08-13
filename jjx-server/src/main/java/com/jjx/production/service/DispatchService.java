@@ -16,6 +16,11 @@ public interface DispatchService {
     /** 分页查询派工单 */
     PageResult<DispatchVO> page(DispatchQueryDTO query);
 
+    /**
+     * 工单待派工序（未派工/已退回），批量派工弹窗计数用
+     */
+    List<DispatchVO> listPending(Long orderId);
+
     /** 工单全部派工单（按工序顺序） */
     List<DispatchVO> listByOrder(Long orderId);
 
