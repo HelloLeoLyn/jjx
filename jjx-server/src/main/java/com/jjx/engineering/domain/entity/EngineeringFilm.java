@@ -114,7 +114,7 @@ public class EngineeringFilm {
     private String processCode;
     
     /**
-     * 审核状态：1-草稿,2-待审核,3-已通过,4-已驳回
+     * 审核状态: 1草稿,2待审批,3已批准,4已驳回
      */
     private Integer approveStatus;
     

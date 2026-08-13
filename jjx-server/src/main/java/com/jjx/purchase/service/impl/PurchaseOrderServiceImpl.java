@@ -1317,7 +1317,25 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         order.setPlanStatus(0);
         order.setSupplierId(supplierId);
         order.setSupplierName(supplierName);
-        return orderMapper.updateById(order) > 0 ? 1 : 0;
+        int updated = orderMapper.updateById(order) > 0 ? 1 : 0;
+
+        // DEV-997：计划转正式后，按明细物料回写未处理预警（batchProcessAlert 接线）
+        try {
+            java.util.List<Long> materialIds = items.stream()
+                    .map(PurchaseOrderItem::getMaterialId)
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .collect(java.util.stream.Collectors.toList());
+            if (!materialIds.isEmpty()) {
+                java.util.List<Long> alertIds = alertService.getUnprocessedAlertIdsByMaterials(materialIds);
+                if (!alertIds.isEmpty()) {
+                    alertService.batchProcessAlert(alertIds, order.getOrderNo(), "采购计划确认转正式，关联采购单");
+                }
+            }
+        } catch (Exception e) {
+            log.warn("采购计划确认回写预警失败(不影响转正式): {}", e.getMessage());
+        }
+        return updated;
     }
 
     @Override
@@ -1358,6 +1376,60 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             orderItemMapper.insert(item);
         }
         log.info("缺料预警一键生成采购计划单: planId={}, 明细{}条", plan.getOrderId(), sort - 1);
+        return plan.getOrderId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createPlanFromAlerts(java.util.List<Long> alertIds) {
+        // DEV-996：预警页选中/单条预警一键转采购——按选中预警生成计划单（物料+缺口数量自动带），生成后自动回写预警
+        if (alertIds == null || alertIds.isEmpty()) {
+            throw new BusinessException("请先选择要转采购的预警");
+        }
+        java.util.List<Map<String, Object>> suggestions = alertService.generatePurchaseSuggestions();
+        if (suggestions == null || suggestions.isEmpty()) {
+            throw new BusinessException("当前无采购建议，无需生成计划单");
+        }
+        // 按选中预警ID过滤建议（建议带 sourceAlertId=预警ID）
+        java.util.Set<Long> idSet = new java.util.HashSet<>(alertIds);
+        java.util.List<Map<String, Object>> filtered = suggestions.stream()
+                .filter(s -> s.get("sourceAlertId") != null
+                        && idSet.contains(((Number) s.get("sourceAlertId")).longValue()))
+                .collect(java.util.stream.Collectors.toList());
+        if (filtered.isEmpty()) {
+            throw new BusinessException("所选预警无对应采购建议，无法生成计划单（可能已处理或库存已补足）");
+        }
+        // 建计划单（复用 092 逻辑）
+        PurchaseOrder plan = new PurchaseOrder();
+        plan.setOrderNo(generateOrderNo());
+        plan.setOrderType("plan");
+        plan.setPlanStatus(1); // 计划单待确认
+        plan.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
+        plan.setReceiptStatus(0);
+        plan.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
+        orderMapper.insert(plan);
+        int sort = 1;
+        for (Map<String, Object> s : filtered) {
+            Object mid = s.get("materialId");
+            Object qty = s.get("suggestQuantity");
+            if (mid == null || qty == null) continue;
+            PurchaseOrderItem item = new PurchaseOrderItem();
+            item.setOrderId(plan.getOrderId());
+            item.setMaterialId(((Number) mid).longValue());
+            item.setMaterialCode((String) s.get("materialCode"));
+            item.setMaterialName((String) s.get("materialName"));
+            item.setQuantity(new BigDecimal(qty.toString()));
+            item.setReceiptStatus(0);
+            item.setItemOrder(sort++);
+            orderItemMapper.insert(item);
+        }
+        // 自动回写预警：状态→2 + 关联采购单号（复用 batchProcessAlert）
+        try {
+            alertService.batchProcessAlert(alertIds, plan.getOrderNo(), "预警一键转采购生成采购计划单");
+        } catch (Exception e) {
+            log.warn("转采购后回写预警失败: {}", e.getMessage());
+        }
+        log.info("选中预警一键生成采购计划单: planId={}, 明细{}条, alertIds={}", plan.getOrderId(), sort - 1, alertIds);
         return plan.getOrderId();
     }
 }

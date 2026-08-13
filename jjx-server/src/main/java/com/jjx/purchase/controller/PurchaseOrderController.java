@@ -251,6 +251,17 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
+     * DEV-996：预警页选中/单条预警一键转采购（生成采购计划单 + 自动回写预警）
+     */
+    @Operation(summary = "选中预警一键生成采购计划单（DEV-996）")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
+    @SaCheckPermission("purchase:plan:add")
+    @PostMapping("/create-plan-from-alerts")
+    public Result<Long> createPlanFromAlerts(@RequestBody java.util.List<Long> alertIds) {
+        return Result.success(purchaseOrderService.createPlanFromAlerts(alertIds));
+    }
+
+    /**
      * 复制订单
      */
     @PostMapping("/copy/{orderId}")

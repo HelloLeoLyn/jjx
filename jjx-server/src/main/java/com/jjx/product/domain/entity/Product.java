@@ -87,7 +87,7 @@ public class Product {
     private Integer leadTime;
 
     /**
-     * 状态：developing开发中/released已发布/obsolete停产
+     * 产品状态: 1开发中,2待审核,3审核中,4已通过,5已驳回,6已发布,7停产,8取消
      */
     private Integer productStatus;
 

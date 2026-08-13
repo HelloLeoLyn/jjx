@@ -8,9 +8,9 @@ export const orderStatusApi = {
     return request.put<R<void>>(`/sales/orders/${orderId}/status/submissions`)
   },
 
-  /** 审核通过 */
-  approveOrder(orderId: number, remark: string) {
-    return request.put<R<void>>(`/sales/orders/${orderId}/status/approval`, { orderId, remark })
+  /** 审核通过（2026-08-12：附带上传的确认书等附件ID，选填） */
+  approveOrder(orderId: number, remark: string, attachments?: string) {
+    return request.put<R<void>>(`/sales/orders/${orderId}/status/approval`, { orderId, remark, attachments })
   },
 
   /** 审核驳回 */
@@ -18,10 +18,10 @@ export const orderStatusApi = {
     return request.put<R<void>>(`/sales/orders/${orderId}/status/rejection`, { orderId, remark })
   },
 
-  /** 客户确认 */
-  confirmOrder(orderId: number, confirmPerson: string) {
-    return request.put<R<void>>(`/sales/orders/${orderId}/status/confirm`, null, {
-      params: { confirmPerson },
+  /** 客户确认（2026-08-13 修正 URL：/confirm 不带 status） */
+  confirmOrder(orderId: number, confirmedBy: string, confirmMethod?: string, remark?: string) {
+    return request.put<R<void>>(`/sales/orders/${orderId}/confirm`, null, {
+      params: { confirmedBy, confirmMethod, remark },
     })
   },
 

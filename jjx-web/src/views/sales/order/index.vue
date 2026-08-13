@@ -173,13 +173,13 @@
 
               <!-- 已审核状态 (4) -->
               <template v-else-if="row.orderStatus === 4">
-                <el-button type="primary" size="small" @click="handleSendToCustomer(row)">
-                  发送确认
+                <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
+                  生成生产计划
                 </el-button>
-                <el-button v-if="row.confirmSentTime" type="success" size="small" @click="handleCustomerConfirm(row)">
-                  客户确认
+                <!-- 补确认书（2026-08-13 B方案：去掉确认环节，随时可补发确认书PDF给客户） -->
+                <el-button type="info" size="small" plain @click="handleExportConfirmPdf(row)">
+                  补确认书
                 </el-button>
-                <el-tag v-if="row.confirmSentTime" type="warning" size="small" style="margin-left:4px">已发送待确认</el-tag>
               </template>
 
               <!-- 已驳回状态 (5) -->

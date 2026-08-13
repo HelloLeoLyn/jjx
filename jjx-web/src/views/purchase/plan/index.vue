@@ -126,6 +126,7 @@ defineOptions({
 })
 
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
 import { getPlanSuggestions, confirmPlan, addOrder } from '@/api/purchase/order'
@@ -344,7 +345,46 @@ const doConfirmPlan = async () => {
 
 onMounted(() => {
   loadSuggestions()
+  // DEV-998：从预警页跳转带参（materialId/alertId）→ 预填物料，溯源预警来源
+  const route = useRoute()
+  const qMaterialId = route.query.materialId
+  const qAlertId = route.query.alertId
+  if (qMaterialId) {
+    prefetchMaterial(Number(qMaterialId), qAlertId ? Number(qAlertId) : undefined)
+  }
 })
+
+// 按物料ID查详情并加入计划（DEV-998：预警溯源预填）
+async function prefetchMaterial(materialId: number, alertId?: number) {
+  try {
+    const res: any = await materialApi.getInfo(String(materialId))
+    const mat = res?.data
+    if (!mat) {
+      ElMessage.warning('未找到物料，请手动添加')
+      return
+    }
+    const exist = planRows.value.find((r) => r.materialCode === mat.materialCode)
+    if (exist) {
+      ElMessage.info('物料已在计划中')
+      return
+    }
+    planRows.value.push({
+      materialId: mat.materialId,
+      materialCode: mat.materialCode,
+      materialName: mat.materialName,
+      unit: mat.unit,
+      currentStock: 0,
+      suggestQuantity: 0,
+      quantity: 1,
+      reason: alertId ? `来自预警#${alertId}` : '预警跳转预填',
+      priority: 'normal',
+      sourceAlertId: alertId,
+    })
+    ElMessage.success(`已预填物料：${mat.materialName}`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '预填物料失败')
+  }
+}
 
 // 导出当前计划为 Excel（DEV-720）
 const handleExport = () => {

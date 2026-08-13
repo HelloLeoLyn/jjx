@@ -109,6 +109,11 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     boolean existsUnprocessed(String alertType, Long materialId);
 
     /**
+     * 按物料列表查询未处理预警ID（status 0新增/1已读，DEV-997）
+     */
+    java.util.List<Long> getUnprocessedAlertIdsByMaterials(java.util.List<Long> materialIds);
+
+    /**
      * 分页查询预警列表（旧方法，兼容性）
      */
     IPage<InventoryAlertLog> pageQuery(Map<String, Object> params);

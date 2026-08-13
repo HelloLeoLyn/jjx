@@ -18,4 +18,7 @@ public class ReviewDTO {
     @Size(max = 500, message = "审核备注不能超过500个字符")
     @Schema(description = "审核备注")
     private String remark;
+
+    @Schema(description = "附件ID列表（逗号分隔，选填——审核通过时上传确认书等资料）")
+    private String attachments;
 }

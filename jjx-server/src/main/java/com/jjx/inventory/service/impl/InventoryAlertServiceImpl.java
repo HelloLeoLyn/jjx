@@ -896,6 +896,19 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     }
 
     @Override
+    public java.util.List<Long> getUnprocessedAlertIdsByMaterials(java.util.List<Long> materialIds) {
+        if (materialIds == null || materialIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        java.util.List<InventoryAlertLog> alerts = alertLogMapper.selectList(
+                new LambdaQueryWrapper<InventoryAlertLog>()
+                        .in(InventoryAlertLog::getMaterialId, materialIds)
+                        .in(InventoryAlertLog::getStatus, 0, 1) // 未处理/已读都可回写，已处理(2)跳过
+        );
+        return alerts.stream().map(InventoryAlertLog::getAlertId).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
     public IPage<InventoryAlertLog> pageQuery(Map<String, Object> params) {
         String alertType = (String) params.get("alertType");
         String alertLevel = (String) params.get("alertLevel");

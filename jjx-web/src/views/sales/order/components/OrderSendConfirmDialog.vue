@@ -16,6 +16,12 @@
         <el-descriptions-item label="订单金额">{{ fmt(order.finalAmount) }}</el-descriptions-item>
       </el-descriptions>
 
+      <!-- 确认人（2026-08-13 内部ERP：发送即确认，需确认人） -->
+      <div class="field-block">
+        <div class="field-label">确认人<span style="color:#f56c6c">*</span></div>
+        <el-input v-model="confirmPerson" placeholder="客户方确认人（必填）" :maxlength="50" />
+      </div>
+
       <!-- 备注 -->
       <div class="field-block">
         <div class="field-label">发送备注</div>
@@ -75,7 +81,7 @@
 
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
-      <el-button type="primary" :loading="sending" @click="handleSend">发送确认</el-button>
+      <el-button type="primary" :loading="sending" @click="handleSend">确认订单</el-button>
     </template>
   </el-dialog>
 </template>
@@ -109,6 +115,7 @@ const dialogVisible = computed({
 
 const sending = ref(false)
 const context = ref('')
+const confirmPerson = ref('')
 
 // ===== 凭证上传（2026-08-11 内嵌，替代嵌套弹窗 AttachmentUploadDialog） =====
 const attachments = ref<any[]>([])
@@ -194,13 +201,24 @@ const fmt = (v?: number | string | null): string => {
   return Number.isNaN(n) ? String(v) : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// 发送客户确认（凭证可后续在"确认凭证"入口补充）
+// 发送客户确认 = 一步确认（2026-08-13 内部ERP定案：发送即确认，4→6 一步到位）
+// 先 sendToCustomer（齐套/预留/占用/全局缺料/发送时间联动）→ 再 confirmOrder（状态 4→6 + 确认记录）
 const handleSend = async () => {
   if (!props.order?.orderId) return
+  if (!confirmPerson.value.trim()) {
+    ElMessage.warning('请输入确认人')
+    return
+  }
   sending.value = true
   try {
     await orderStatusApi.sendToCustomer(props.order.orderId, context.value || undefined)
-    ElMessage.success('发送成功，等待客户确认')
+    await orderStatusApi.confirmOrder(
+      props.order.orderId,
+      confirmPerson.value.trim(),
+      '发送确认',
+      context.value || undefined,
+    )
+    ElMessage.success('确认成功，订单已进入已确认状态')
     dialogVisible.value = false
     emit('success')
     // DEV-583：确认后检查缺料，有则弹窗提示（不阻断）

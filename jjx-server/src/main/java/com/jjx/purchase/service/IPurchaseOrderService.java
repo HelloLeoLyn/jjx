@@ -280,4 +280,11 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
      * @return 新计划单ID
      */
     Long createPlanFromSuggestions();
+
+    /**
+     * DEV-996：按选中的预警一键生成采购计划单（物料+缺口数量自动带），生成后自动回写预警（batchProcessAlert）
+     * @param alertIds 选中的预警ID列表
+     * @return 新计划单ID
+     */
+    Long createPlanFromAlerts(java.util.List<Long> alertIds);
 }

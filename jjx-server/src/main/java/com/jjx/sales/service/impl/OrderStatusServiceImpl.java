@@ -207,6 +207,33 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         // 6. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
         saveOrderLog(order.getOrderNo(), "approve", desc, 1);
+
+        // 7. 审核通过联动（原客户确认环节的步骤前移到审核通过，2026-08-12 去掉客户确认后）
+        // 齐套检查（DEV-572）：按 BOM 算料，缺口生成 order_shortage 预警
+        try {
+            inventoryAlertService.checkOrderShortage(order.getOrderId());
+        } catch (Exception e) {
+            log.error("订单{}审核通过后齐套检查异常（不影响主流程）: {}", order.getOrderId(), e.getMessage());
+        }
+        // 全局汇总缺料检查（物料维度 demand_shortage 预警）
+        try {
+            inventoryAlertService.checkGlobalShortage();
+        } catch (Exception e) {
+            log.error("订单{}审核通过后全局缺料检查异常（不影响主流程）: {}", order.getOrderId(), e.getMessage());
+        }
+        // 成品库存预留（DEV-578）：库存部分预留，缺货部分进生产
+        try {
+            orderStockReserveService.reserveForOrder(order.getOrderId());
+        } catch (Exception e) {
+            log.error("订单{}审核通过后成品库存预留异常（不影响主流程）: {}", order.getOrderId(), e.getMessage());
+        }
+        // 原料占用（036定稿）：预占转正式占用，防多订单合计超卖
+        try {
+            orderMaterialReserveService.confirmReserve(order.getOrderId());
+        } catch (Exception e) {
+            log.error("订单{}审核通过后原料占用异常（不影响主流程）: {}", order.getOrderId(), e.getMessage());
+        }
+
         log.info("订单{}审核通过，审核人：{}", reviewDTO.getOrderId(), SecurityUtils.getUsername());
     }
 
@@ -652,8 +679,9 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单不存在");
         }
         OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
-        if (currentStatus != OrderStatusEnum.CONFIRMED) {
-            throw new BusinessException("只有已确认的订单才能生成生产计划，当前状态：" + currentStatus.getName());
+        // 2026-08-12：去掉客户确认环节，审核通过(4)后直接可生成生产计划
+        if (currentStatus != OrderStatusEnum.APPROVED) {
+            throw new BusinessException("只有已审核的订单才能生成生产计划，当前状态：" + currentStatus.getName());
         }
         if (!orderProductService.isExists(orderId)) {
             throw new BusinessException("订单产品不存在，无法生成生产计划");

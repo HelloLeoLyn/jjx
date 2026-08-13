@@ -63,7 +63,7 @@ public class EngineeringBom {
 
 
     /**
-     * 审核状态
+     * 审核状态: 1草稿,2待审批,3已批准,4已驳回
      */
     private Integer approveStatus;
 

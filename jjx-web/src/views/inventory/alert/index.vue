@@ -123,6 +123,17 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
+          <el-button
+            type="warning"
+            v-hasPermi="['purchase:plan:add']"
+            :disabled="selectedAlerts.length === 0"
+            :loading="toPurchaseLoading"
+            @click="handleBatchToPurchase"
+          >
+            <el-icon><ShoppingCart /></el-icon>转采购
+          </el-button>
+        </el-col>
+        <el-col :span="1.5">
           <el-button @click="handleExport">
             <el-icon><Download /></el-icon>导出
           </el-button>
@@ -203,14 +214,24 @@
         </el-table-column>
         <el-table-column label="操作" min-width="170" fixed="right">
           <template #default="{ row }">
+            <!-- DEV-995：标记已读后(status=1)仍可继续处理/转采购，已处理(2)才是终态 -->
             <el-button v-if="row.status === 0" v-hasPermi="['inventory:alert:edit']" link type="primary" @click="handleMarkRead(row)"
               >标记已读</el-button
             >
-            <el-button v-if="row.status === 0" v-hasPermi="['inventory:alert:edit']" link type="success" @click="handleProcess(row)"
+            <el-button v-if="row.status === 0 || row.status === 1" v-hasPermi="['inventory:alert:edit']" link type="success" @click="handleProcess(row)"
               >处理</el-button
             >
-            <el-button v-if="row.status === 0" link type="warning" @click="goPurchasePlan"
+            <el-button v-if="row.status === 0 || row.status === 1" link type="warning" @click="goPurchasePlan(row)"
               >去采购计划</el-button
+            >
+            <el-button
+              v-if="row.status === 0 || row.status === 1"
+              v-hasPermi="['purchase:plan:add']"
+              link
+              type="success"
+              :loading="row._toPurchaseLoading"
+              @click="handleToPurchase(row)"
+              >转采购</el-button
             >
             <el-button link type="info" @click="handleViewDetail(row)">详情</el-button>
           </template>
@@ -235,7 +256,7 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, Bell, InfoFilled, Clock, Refresh, Check, Download } from '@element-plus/icons-vue'
+import { Warning, Bell, InfoFilled, Clock, Refresh, Check, Download, ShoppingCart } from '@element-plus/icons-vue'
 import { formatNumber } from '@/utils/format'
 import { alertApi } from '@/api/inventory/alert'
 import { AlertEnum } from '@/enums/inventory/AlertEnum'
@@ -251,9 +272,13 @@ function extractPurchaseOrderNo(remark: string | null | undefined): string {
 
 const router = useRouter()
 
-// 去采购计划（未处理预警的处置入口）
-function goPurchasePlan() {
-  router.push('/purchase/plan')
+// 去采购计划（未处理预警的处置入口，DEV-998：携带物料/预警溯源参数）
+function goPurchasePlan(row: any) {
+  const query: Record<string, string> = {}
+  if (row?.materialId) query.materialId = String(row.materialId)
+  if (row?.alertId) query.alertId = String(row.alertId)
+  if (row?.materialCode) query.materialCode = row.materialCode
+  router.push({ path: '/purchase/plan', query })
 }
 
 // 去采购订单列表（查看关联订单）
@@ -370,6 +395,52 @@ const handleBatchMarkRead = () => {
       getStats()
     })
     .catch(() => {})
+}
+
+// 转采购 loading（批量）
+const toPurchaseLoading = ref(false)
+
+// 单条预警转采购（DEV-996：一键生成采购计划单 + 自动回写预警）
+const handleToPurchase = async (row: any) => {
+  try {
+    row._toPurchaseLoading = true
+    const res: any = await alertApi.createPlanFromAlerts([row.alertId])
+    if (res?.code === 200) {
+      ElMessage.success(`已生成采购计划单（计划单ID ${res.data}），预警已处理`)
+      getList()
+      getStats()
+    } else {
+      ElMessage.error(res?.msg || '转采购失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '转采购失败')
+  } finally {
+    row._toPurchaseLoading = false
+  }
+}
+
+// 批量转采购（选中多条预警）
+const handleBatchToPurchase = async () => {
+  if (selectedAlerts.value.length === 0) {
+    ElMessage.warning('请先选择要转采购的预警')
+    return
+  }
+  try {
+    toPurchaseLoading.value = true
+    const ids = selectedAlerts.value.map((i: any) => i.alertId)
+    const res: any = await alertApi.createPlanFromAlerts(ids)
+    if (res?.code === 200) {
+      ElMessage.success(`已生成采购计划单（计划单ID ${res.data}），${ids.length} 条预警已处理`)
+      getList()
+      getStats()
+    } else {
+      ElMessage.error(res?.msg || '转采购失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '转采购失败')
+  } finally {
+    toPurchaseLoading.value = false
+  }
 }
 
 // 导出（预留：接后端导出接口）
