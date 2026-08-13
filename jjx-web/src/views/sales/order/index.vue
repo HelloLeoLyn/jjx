@@ -295,6 +295,13 @@
       @success="getList"
     />
 
+    <!-- 生成生产计划弹窗（2026-08-13：生成计划=确认动作，可上传确认书） -->
+    <GeneratePlanDialog
+      v-model:visible="generatePlanVisible"
+      :order="generatePlanOrder"
+      @success="getList"
+    />
+
     <!-- 确认凭证附件弹窗 -->
     <AttachmentUploadDialog
       v-model="confirmAttachmentVisible"
@@ -334,6 +341,7 @@ import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
 import OrderSendConfirmDialog from './components/OrderSendConfirmDialog.vue'
+import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import ValidationDialog from './components/ValidationDialog.vue'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
@@ -703,22 +711,12 @@ const handleRecheckShortage = async (row: any) => {
   }
 }
 
-// 生成生产计划（标准模式：SO→PLAN→审批→转工单）
-const handleGeneratePlan = async (row: any) => {
-  try {
-    await ElMessageBox.confirm(`确定为订单【${row.orderNo}】生成生产计划吗？\n生成后需在【生产管理→生产订单→计划视图】审批，再转工单。`, '生成生产计划', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'info',
-    })
-    await orderStatusApi.generatePlan(row.orderId)
-    ElMessage.success('生产计划已生成，请到生产订单-计划视图审批')
-    getList()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('生成生产计划失败', error)
-    }
-  }
+// 生成生产计划（2026-08-13：改为弹窗，可上传确认书，生成后订单进入已确认）
+const generatePlanVisible = ref(false)
+const generatePlanOrder = ref<any>()
+const handleGeneratePlan = (row: any) => {
+  generatePlanOrder.value = row
+  generatePlanVisible.value = true
 }
 
 // 直接转工单（快捷模式：SO→WO，跳过计划审批）

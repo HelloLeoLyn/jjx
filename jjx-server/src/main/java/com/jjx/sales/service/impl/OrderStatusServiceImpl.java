@@ -667,9 +667,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     }
 
     /**
-     * 生成生产计划（2026-08-11 业务定稿：SO→PLAN→审批→转工单 三层模型）
-     * 每个产品生成一张 PLAN（数量=订单需求全量），自动进入待审批，SO 保持已确认(6)，
-     * 待工单启动时才置生产中(7)
+     * 生成生产计划（2026-08-13：生成计划=确认动作，SO 已审核(4)→已确认(6)，写确认人/方式/时间）
+     * 每个产品生成一张 PLAN（数量=订单需求全量），自动进入待审批，待工单启动时才置生产中(7)
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -679,9 +678,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单不存在");
         }
         OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
-        // 2026-08-12：去掉客户确认环节，审核通过(4)后直接可生成生产计划
-        if (currentStatus != OrderStatusEnum.APPROVED) {
-            throw new BusinessException("只有已审核的订单才能生成生产计划，当前状态：" + currentStatus.getName());
+        // 2026-08-13：已审核(4)生成计划即确认；已确认(6)兼容历史订单补生成
+        if (currentStatus != OrderStatusEnum.APPROVED && currentStatus != OrderStatusEnum.CONFIRMED) {
+            throw new BusinessException("只有已审核/已确认的订单才能生成生产计划，当前状态：" + currentStatus.getName());
+        }
+        // 防重复生成：同一订单已有未关闭的 PLAN 则拦截
+        if (productionOrderService.countActivePlanBySalesOrderId(orderId) > 0) {
+            throw new BusinessException("该订单已生成过生产计划，请勿重复生成（可在计划视图查看/转工单）");
         }
         if (!orderProductService.isExists(orderId)) {
             throw new BusinessException("订单产品不存在，无法生成生产计划");
@@ -737,7 +740,25 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
         String desc = "生成生产计划 " + createdCount + " 张，待计划审批";
         saveOrderLog(order.getOrderNo(), "generate_plan", desc, 1);
-        log.info("订单{}生成生产计划完成：{}张，SO状态保持已确认，待工单启动置生产中", orderId, createdCount);
+
+        // 2026-08-13：生成计划=确认动作，SO 已审核(4)→已确认(6)，写确认人/方式/时间（已确认的历史订单跳过）
+        if (OrderStatusEnum.APPROVED.equals(currentStatus)) {
+            int up = salesOrderMapper.updateStatusWithCheck(
+                    orderId, OrderStatusEnum.CONFIRMED.getCode(), OrderStatusEnum.APPROVED.getCode());
+            if (up > 0) {
+                SalesOrder confirmUpdate = new SalesOrder();
+                confirmUpdate.setOrderId(orderId);
+                confirmUpdate.setConfirmBy(SecurityUtils.getUsername());
+                confirmUpdate.setConfirmMethod("生成生产计划");
+                confirmUpdate.setConfirmTime(LocalDateTime.now());
+                salesOrderMapper.updateById(confirmUpdate);
+                saveOrderLog(order.getOrderNo(), "confirm",
+                        "生成生产计划即确认，确认人:" + SecurityUtils.getUsername(), 1);
+                log.info("订单{}生成生产计划后确认：已审核(4)→已确认(6)，确认人：{}",
+                        orderId, SecurityUtils.getUsername());
+            }
+        }
+        log.info("订单{}生成生产计划完成：{}张，SO已确认(6)，待工单启动置生产中(7)", orderId, createdCount);
     }
 
     @Override

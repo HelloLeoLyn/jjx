@@ -274,16 +274,17 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             log.error("生产领料自动出库失败（不影响开工主流程）: {}", e.getMessage());
         }
 
-        // 状态联动（2026-08-11）：工单启动 → 销售订单 已确认(6)→生产中(7)
+        // 状态联动（2026-08-13：B方案去掉确认环节，SO 已审核(4)或已确认(6，历史订单) → 生产中(7)）
         try {
             if (order.getSalesOrderId() != null) {
                 com.jjx.sales.domain.entity.SalesOrder so = salesOrderMapper.selectById(order.getSalesOrderId());
-                if (so != null && com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode().equals(so.getOrderStatus())) {
+                if (so != null && (com.jjx.sales.enums.OrderStatusEnum.APPROVED.getCode().equals(so.getOrderStatus())
+                        || com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode().equals(so.getOrderStatus()))) {
                     int up = salesOrderMapper.updateStatusWithCheck(order.getSalesOrderId(),
                             com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode(),
-                            com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode());
+                            so.getOrderStatus());
                     if (up > 0) {
-                        log.info("工单{}启动，销售订单{} 已确认(6)→生产中(7)", orderId, order.getSalesOrderNo());
+                        log.info("工单{}启动，销售订单{} 已审核/已确认(4/6)→生产中(7)", orderId, order.getSalesOrderNo());
                     }
                 }
             }
@@ -515,6 +516,18 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     }
 
     @Override
+    public long countActivePlanBySalesOrderId(Long salesOrderId) {
+        return productionOrderMapper.selectCount(
+                new LambdaQueryWrapper<ProductionOrder>()
+                        .eq(ProductionOrder::getSalesOrderId, salesOrderId)
+                        .eq(ProductionOrder::getOrderType, "PLAN")
+                        .notIn(ProductionOrder::getOrderStatus,
+                                OrderStatusEnum.CLOSED.getCode(),
+                                OrderStatusEnum.CANCELLED.getCode(),
+                                OrderStatusEnum.COMPLETED.getCode()));
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public int[] cancelBySalesOrderId(Long salesOrderId) {
         List<ProductionOrder> orders = productionOrderMapper.selectList(
@@ -538,7 +551,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                         salesOrderId, order.getOrderId(), order.getOrderStatus());
             }
         }
-        // 095⑧定稿：全部工单已取消（无跳过）→ 订单 7生产中 自动回退 6已确认，释放成品预留+原料占用/预占
+        // 095⑧定稿：全部工单已取消（无跳过）→ 订单 7生产中 自动回退 4已审核（2026-08-13 B方案：回退到已审核，可重新生成生产计划），释放成品预留+原料占用/预占
         if (cancelled > 0 && skipped == 0) {
             try {
                 com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(salesOrderId);
@@ -546,10 +559,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                         .equals(salesOrder.getOrderStatus())) {
                     int updated = salesOrderMapper.updateStatusWithCheck(
                             salesOrderId,
-                            com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode(),
+                            com.jjx.sales.enums.OrderStatusEnum.APPROVED.getCode(),
                             com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode());
                     if (updated > 0) {
-                        log.info("全部工单已取消，订单{}自动回退：生产中(7)→已确认(6)", salesOrderId);
+                        log.info("全部工单已取消，订单{}自动回退：生产中(7)→已审核(4)", salesOrderId);
                         // 释放成品预留 + 材料预占
                         try {
                             orderStockReserveService.releaseByOrder(salesOrderId);

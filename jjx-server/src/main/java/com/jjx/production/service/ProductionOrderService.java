@@ -91,6 +91,11 @@ public interface ProductionOrderService {
     int[] cancelBySalesOrderId(Long salesOrderId);
 
     /**
+     * 查询销售订单下未关闭/未取消/未完成的 PLAN 数量（生成生产计划防重复）
+     */
+    long countActivePlanBySalesOrderId(Long salesOrderId);
+
+    /**
      * 关闭生产工单
      */
     boolean closeOrder(Long orderId);
