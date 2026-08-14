@@ -112,6 +112,17 @@ public class OperLogAspect {
                 }
             }
 
+            // DEV-1023：血缘反查——BOM/工艺路线/库存单据通过 source 字段继承所属订单 traceId
+            if ((traceId == null || traceId.isEmpty()) && bizId != null && !bizId.isEmpty()) {
+                try {
+                    String inherited = logSaveService.findTraceIdBySource(bizType, bizId);
+                    if (inherited != null && !inherited.isEmpty()) {
+                        traceId = inherited;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
             // traceId 终极回退：报价单业务，直接查 sales_quotation.trace_id
             if ((traceId == null || traceId.isEmpty()) && "quotation".equals(bizType) && bizId != null && !bizId.isEmpty()) {
                 try {

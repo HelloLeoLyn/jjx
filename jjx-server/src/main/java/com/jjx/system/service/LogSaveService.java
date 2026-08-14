@@ -21,6 +21,12 @@ public class LogSaveService {
     private final SysOperLogMapper operLogMapper;
     private final SysLoginLogMapper loginLogMapper;
     private final SysErrorLogMapper errorLogMapper;
+    // DEV-1023：血缘反查 traceId 用（BOM/工艺路线/库存单据 → 所属订单）
+    private final com.jjx.product.mapper.EngineeringBomMapper engineeringBomMapper;
+    private final com.jjx.product.mapper.EngineeringRoutingMapper engineeringRoutingMapper;
+    private final com.jjx.inventory.mapper.InventoryInboundOrderMapper inboundOrderMapper;
+    private final com.jjx.inventory.mapper.InventoryOutboundOrderMapper outboundOrderMapper;
+    private final com.jjx.sales.mapper.OrderMapper orderMapper;
 
     @Async("logExecutor")
     public void saveOperLog(SysOperLog operLog) {
@@ -59,6 +65,36 @@ public class LogSaveService {
             return log != null ? log.getTraceId() : null;
         } catch (Exception e) {
             log.error("查询历史traceId失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 血缘反查 traceId（DEV-1023）：BOM/工艺路线/库存单据等子单据通过 source 字段
+     * 反查所属订单的 traceId，使打样/转标准/库存等环节操作并入订单统一流水链路
+     */
+    public String findTraceIdBySource(String bizType, String bizId) {
+        try {
+            Long id = Long.valueOf(bizId);
+            Long orderId = null;
+            if ("bom".equals(bizType)) {
+                com.jjx.engineering.domain.entity.EngineeringBom bom = engineeringBomMapper.selectById(id);
+                if (bom != null) orderId = bom.getSourceSampleId();
+            } else if ("routing".equals(bizType)) {
+                com.jjx.engineering.domain.entity.EngineeringRouting routing = engineeringRoutingMapper.selectById(id);
+                if (routing != null) orderId = routing.getSourceSampleId();
+            } else if ("inbound".equals(bizType)) {
+                com.jjx.inventory.domain.InventoryInboundOrder inbound = inboundOrderMapper.selectById(id);
+                if (inbound != null && inbound.getSourceId() != null) orderId = inbound.getSourceId();
+            } else if ("outbound".equals(bizType)) {
+                com.jjx.inventory.domain.InventoryOutboundOrder outbound = outboundOrderMapper.selectById(id);
+                if (outbound != null && outbound.getSourceId() != null) orderId = outbound.getSourceId();
+            }
+            if (orderId == null) return null;
+            com.jjx.sales.domain.entity.SalesOrder order = orderMapper.selectById(orderId);
+            return order != null ? order.getTraceId() : null;
+        } catch (Exception e) {
+            log.debug("血缘反查traceId失败: {}", e.getMessage());
             return null;
         }
     }

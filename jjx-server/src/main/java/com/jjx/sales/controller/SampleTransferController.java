@@ -6,6 +6,8 @@ import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.vo.SampleTransferPreviewVO;
 import com.jjx.sales.dto.transfer.SampleTransferConfirmDTO;
 import com.jjx.sales.service.ISampleOrderService;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,8 @@ public class SampleTransferController extends BaseController {
      * 接收前端编辑后的标准数据（工序映射+物料映射），生成新版本 BOM/Routing，旧版本失效，回填打样单和产品表
      */
     @Operation(summary = "打样转标准-确认转移（接收前端编辑后的标准数据落库）")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'",
+            bizId = "#dto.orderId", bizStatus = "7", detail = "#result.data.transferNo")
     @SaCheckPermission(value = {"sales:sample:convert", "engineering:sample:workbench"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
     @PostMapping("/confirm")
     public Result<java.util.Map<String, Object>> confirm(@RequestBody SampleTransferConfirmDTO dto) {
