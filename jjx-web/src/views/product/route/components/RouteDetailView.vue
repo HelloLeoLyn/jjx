@@ -118,8 +118,13 @@
 import { ref, reactive } from 'vue'
 import { productRouteApi } from '@/api/product/routing'
 import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/product/routing'
-import { RouteStatusEnum, StepTypeEnum } from '@/enums/product'
+import { RouteStatusEnum } from '@/enums/product'
+import { getDictLabel } from '@/utils/dict'
+import { useDict } from '@/composables/useDict'
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
+
+/** 工序类别字典（process_category：PANEL/UP_LINE/DOWN_LINE/OTHER） */
+const { options: categoryOptions } = useDict('process_category')
 
 /** 印刷参数友好文本（2026-08-12）：组内任一行有参数即展示 */
 function printParamsText(items?: any[]): string {
@@ -207,7 +212,7 @@ const buildGroups = (items: EngineeringRoutingItemVO[]) => {
       0
     ),
     remark: items[0]?.description || '',
-    processCategoryName: StepTypeEnum.getLabel(Number(items[0]?.processCategory) || 0) || '',
+    processCategoryName: getDictLabel(categoryOptions.value, items[0]?.processCategory) || '',
   }))
 }
 
