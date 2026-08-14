@@ -145,6 +145,9 @@
           >
         </el-col>
         <el-col :span="1.5">
+          <el-button type="warning" plain icon="CopyDocument" :disabled="single" @click="handleCopy()">复制报价</el-button>
+        </el-col>
+        <el-col :span="1.5">
           <el-button
             type="primary"
             plain
@@ -304,11 +307,6 @@
           min-width="250"
         >
           <template #default="scope">
-             <el-tooltip content="复制报价" placement="top">
-          <el-button link type="primary" plain icon="CopyDocument"  @click="handleCopy(scope.row)"
-            ></el-button
-          >
-        </el-tooltip>
             <el-tooltip content="修改" placement="top" v-if="[1, 2, 3, 4, 9].indexOf(scope.row.quotationStatus) === -1">
               <el-button
                 link

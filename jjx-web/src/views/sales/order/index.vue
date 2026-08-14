@@ -78,6 +78,7 @@
         </el-col>
         <el-col :span="1.5">
           <el-button type="success" plain icon="DocumentCopy" @click="handleExportExcel">导出Excel</el-button>
+          <el-button type="warning" plain icon="CopyDocument" :disabled="!single" @click="handleCopySelected">复制</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -230,9 +231,6 @@
               <!-- 已取消状态 (10) -->
               <template v-else-if="row.orderStatus === 10">
                 <el-button type="info" size="small" disabled> 订单已取消 </el-button>
-                <el-button type="primary" size="small" plain @click="handleCopyOrder(row)">
-                  复制
-                </el-button>
               </template>
 
               <!-- 取消订单按钮（已发货/已完成/已取消不显示） -->
@@ -359,6 +357,7 @@ const queryParams = reactive<SalesOrderQueryDTO>({
 // 响应式数据
 const loading = ref(false)
 const ids = ref<number[]>([])
+const selectedRow = ref<any>(null)
 const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)
@@ -426,6 +425,7 @@ const resetQuery = () => {
 // 多选框选中数据
 const handleSelectionChange = (selection: any[]) => {
   ids.value = selection.map((item) => item.orderId)
+  selectedRow.value = selection.length === 1 ? selection[0] : null
   single.value = selection.length !== 1
   multiple.value = !selection.length
 }
@@ -759,6 +759,11 @@ const handleCancelOrder = async (row: any) => {
       console.error('取消订单失败', error)
     }
   }
+}
+
+const handleCopySelected = () => {
+  if (!selectedRow.value) return
+  handleCopyOrder(selectedRow.value)
 }
 
 // 复制订单（已取消等终态订单一键重新生成新草稿单）

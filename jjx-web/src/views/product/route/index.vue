@@ -7,12 +7,14 @@
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
         <el-button v-hasPermi="['engineering:routing:add']" type="primary" icon="Plus" @click="handleAdd">新增工艺路线</el-button>
+        <el-button type="warning" plain icon="CopyDocument" :disabled="!single" @click="handleCopySelected">复制版本</el-button>
       </div>
     </el-card>
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
-      <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%">
+      <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="50" align="center" />
         <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="routingCode" label="路线编码" width="140">
           <template #default="scope">
@@ -60,15 +62,6 @@
               @click="handleEdit(scope.row)"
             >
               编辑
-            </el-button>
-            <el-button
-              link
-              type="primary"
-              size="small"
-              :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.EDIT)"
-              @click="handleCopy(scope.row)"
-            >
-              复制版本
             </el-button>
             <el-button
               link
@@ -188,6 +181,16 @@ const queryParams = reactive<ProductRouteQueryParams>({
 const tableData = ref<EngineeringRoutingVO[]>([])
 const total = ref(0)
 const loading = ref(false)
+const single = ref(true)
+const selectedRoute = ref<EngineeringRoutingVO | null>(null)
+const handleSelectionChange = (selection: EngineeringRoutingVO[]) => {
+  selectedRoute.value = selection.length === 1 ? selection[0] : null
+  single.value = selection.length !== 1
+}
+const handleCopySelected = () => {
+  if (!selectedRoute.value) return
+  handleCopy(selectedRoute.value)
+}
 
 // ==================== 产品选项 ====================
 interface ProductOption {

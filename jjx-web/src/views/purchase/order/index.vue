@@ -225,15 +225,6 @@
             <el-tooltip content="打印" placement="top">
               <el-button link type="info" icon="Printer" @click="handlePrint(scope.row)">打印</el-button>
             </el-tooltip>
-            <!-- 复制按钮（始终显示） -->
-            <el-tooltip content="复制" placement="top">
-              <el-button
-                link
-                type="info"
-                icon="CopyDocument"
-                @click="() => handleCopy(scope.row)"
-              ></el-button>
-            </el-tooltip>
             <!-- 修改按钮（草稿和已拒绝可修改） -->
             <el-tooltip
               v-if="isOrderEditable(scope.row.approvalStatus)"

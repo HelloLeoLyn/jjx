@@ -91,6 +91,9 @@
             >审核</el-button
           >
         </el-col>
+        <el-col :span="1.5">
+          <el-button type="success" plain icon="CopyDocument" :disabled="single" @click="handleCopySelected">复制BOM</el-button>
+        </el-col>
       </el-row>
     </el-card>
 
@@ -157,14 +160,6 @@
               ></el-button>
             </el-tooltip>
 
-            <el-tooltip content="复制BOM" placement="top">
-              <el-button
-                link
-                type="success"
-                icon="CopyDocument"
-                @click="handleCopyBom(scope.row)"
-              ></el-button>
-            </el-tooltip>
             <el-tooltip
               content="提交审核"
               placement="top"
@@ -253,6 +248,7 @@ const total = ref(0)
 const open = ref(false)
 const bomDetailOpen = ref(false)
 const bomApproveOpen = ref(false)
+const selectedBom = ref<EngineeringBom | null>(null)
 const selectedBomId = ref<number | undefined>(undefined)
 const selectedBomForApprove = ref<number | undefined>(undefined)
 
@@ -309,6 +305,7 @@ const resetQuery = () => {
 // 多选框选中数据
 const handleSelectionChange = (selection: EngineeringBom[]) => {
   ids.value = selection.map((item) => item.bomId)
+  selectedBom.value = selection.length === 1 ? selection[0] : null
   single.value = selection.length !== 1
   multiple.value = !selection.length
   // 勾选中有不可删除状态（已批准/审核中等）则禁用批量删除（2026-08-08）
@@ -408,6 +405,11 @@ const handleSubmitApprove = async (row: EngineeringBom) => {
 const handleView = (row: EngineeringBom) => {
   selectedBomId.value = row.bomId
   bomDetailOpen.value = true
+}
+
+const handleCopySelected = () => {
+  if (!selectedBom.value) return
+  handleCopyBom(selectedBom.value)
 }
 
 // 复制BOM为新版本（DEV-619：真接口，版本号递增+明细复制，替代原“清ID重建”假复制）
