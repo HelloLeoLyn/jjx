@@ -159,7 +159,7 @@ import { userApi } from '@/api/system/user'
 import { deptApi } from '@/api/system/dept'
 import type { SysUser, SysDept, SysUserDTO, SecurityUser } from '@/types/system'
 import * as uiConfig from './index'
-import { parseTime } from '@/utils/format'
+import { parseTime, download } from '@/utils/format'
 import { assignExisting } from '@/utils/object'
 import { formRules, resetPwdRules, formDataPassword, resetPwdNewPassword } from './user.rules'
 import AssignRoleDialog from './components/AssignRoleDialog.vue'
@@ -375,7 +375,9 @@ const handleBatchDelete = async () => {
 }
 
 const handleExport = () => {
-  ElMessage.info('导出功能待实现')
+  userApi.exportUsers(queryParams).then((response: any) => {
+    download(response, `用户列表_${parseTime(new Date(), '{y}{m}{d}')}.xlsx`)
+  })
 }
 
 const handleSubmit = async () => {

@@ -51,6 +51,20 @@ public class DispatchController extends BaseController {
         return Result.success(dispatchService.listPending(orderId));
     }
 
+    @Operation(summary = "某人的手下（负责部门+下级部门成员，转派候选）")
+    @SaCheckPermission("production:dispatch:list")
+    @GetMapping("/underlings/{userId}")
+    public Result<List<com.jjx.system.domain.vo.SysUserVO>> underlings(@PathVariable Long userId) {
+        return Result.success(dispatchService.underlings(userId));
+    }
+
+    @Operation(summary = "责任班组可选执行人（该班组+上级部门成员，向上递归）")
+    @SaCheckPermission("production:dispatch:list")
+    @GetMapping("/team-persons/{teamId}")
+    public Result<List<com.jjx.system.domain.vo.SysUserVO>> teamPersons(@PathVariable Long teamId) {
+        return Result.success(dispatchService.teamPersons(teamId));
+    }
+
     @Operation(summary = "派工单详情")
     @SaCheckPermission("production:dispatch:list")
     @GetMapping("/{id}")

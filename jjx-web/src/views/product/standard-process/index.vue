@@ -77,58 +77,6 @@
       </div>
     </el-card>
 
-    <!-- 导入对话框（2026-08-08，照物料导入模式） -->
-    <el-dialog title="导入标准工序" v-model="importDialogVisible" width="500px" append-to-body>
-      <el-upload
-        ref="uploadRef"
-        :auto-upload="false"
-        :limit="1"
-        :on-change="handleFileChange"
-        :on-exceed="handleExceed"
-        accept=".xlsx,.xls"
-        drag
-      >
-        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
-        <template #tip>
-          <div class="el-upload__tip">
-            <p>仅支持 .xlsx / .xls 格式的Excel文件</p>
-            <p>表头需包含：工序编码、工序名称、工序类型、工序类别等</p>
-            <el-button link type="primary" @click="handleDownloadTemplate">
-              下载导入模板
-            </el-button>
-          </div>
-        </template>
-      </el-upload>
-      <template #footer>
-        <el-button @click="handleImportCancel">取消</el-button>
-        <el-button type="primary" :loading="importLoading" @click="handleImport">
-          开始导入
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 导入结果弹窗（失败明细可下载） -->
-    <el-dialog title="导入结果" v-model="importResultVisible" width="640px" append-to-body>
-      <template v-if="importResult">
-        <el-alert
-          :title="`导入完成：成功 ${importResult.successCount} 条，跳过重复 ${importResult.skipCount} 条，失败 ${importResult.failCount} 条`"
-          :type="importResult.failCount > 0 ? 'warning' : 'success'"
-          show-icon
-          :closable="false"
-          style="margin-bottom: 12px"
-        />
-        <el-table v-if="importResult.failDetails?.length > 0" :data="importResult.failDetails" border max-height="360" size="small" style="width: 100%">
-          <el-table-column label="行号" prop="rowIndex" width="80" align="center" />
-          <el-table-column label="工序" prop="materialName" min-width="160" show-overflow-tooltip />
-          <el-table-column label="失败原因" prop="reason" min-width="220" show-overflow-tooltip />
-        </el-table>
-      </template>
-      <template #footer>
-        <el-button type="primary" plain @click="handleDownloadFail">下载失败明细</el-button>
-        <el-button type="primary" @click="importResultVisible = false; handleImportCancel()">完成</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
@@ -213,7 +161,18 @@
         />
       </div>
     </el-card>
+    <!-- 通用导入弹窗（2026-08-13，含结果/失败明细） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入标准工序"
+      :import-api="standardProcessApi.importProcesses"
+      :template-api="standardProcessApi.importTemplate"
+      template-name="标准工序导入模板.xlsx"
+      @success="loadData"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -227,6 +186,7 @@ import { useRouter } from 'vue-router'
 import { UploadFilled } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
 import { standardProcessApi } from '@/api/product/standardProcess'
+import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { useDict } from '@/composables/useDict'
 import type {
   StandardProcessQueryParams,
@@ -374,117 +334,9 @@ onMounted(() => {
   loadData()
 })
 
-// ==================== 导入（2026-08-08，照物料导入模式） ====================
+// 导入（2026-08-13 通用 ExcelImportDialog 组件）
 const importDialogVisible = ref(false)
-const importResultVisible = ref(false)
-const importResult = ref<any>(null)
-const importLoading = ref(false)
-const uploadRef = ref<any>()
-const importFile = ref<File | null>(null)
-
 function openImportDialog() {
   importDialogVisible.value = true
 }
 
-const handleFileChange = (file: any) => {
-  importFile.value = file.raw
-}
-
-const handleExceed = (files: File[]) => {
-  uploadRef.value?.clearFiles()
-  uploadRef.value?.handleStart(files[0])
-}
-
-const handleImportCancel = () => {
-  importDialogVisible.value = false
-  importFile.value = null
-  uploadRef.value?.clearFiles()
-}
-
-const handleImport = async () => {
-  if (!importFile.value) {
-    ElMessage.warning('请先选择要导入的文件')
-    return
-  }
-  importLoading.value = true
-  try {
-    const res: any = await standardProcessApi.importProcesses(importFile.value)
-    const data = res.data as any
-    importResult.value = data
-    importResultVisible.value = true
-    if (!data?.failDetails?.length) {
-      ElMessage.success(`导入完成：成功 ${data?.successCount ?? 0} 条，跳过 ${data?.skipCount ?? 0} 条`)
-    }
-    loadData()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '导入失败')
-  } finally {
-    importLoading.value = false
-    importDialogVisible.value = false
-    importFile.value = null
-    uploadRef.value?.clearFiles()
-  }
-}
-
-// 下载模板
-const handleDownloadTemplate = async () => {
-  try {
-    const res: any = await standardProcessApi.importTemplate()
-    // request 拦截器对 blob 直接返回 Blob 本身（照物料页写法）
-    const blob = new Blob([res as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = '标准工序导入模板.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch {
-    ElMessage.error('模板下载失败')
-  }
-}
-
-// 下载失败明细
-const handleDownloadFail = () => {
-  const details = importResult.value?.failDetails || []
-  if (details.length === 0) return
-  const wb = XLSX.utils.book_new()
-  const rows = details.map((d: any) => ({
-    行号: d.rowIndex,
-    工序: d.materialName,
-    失败原因: d.reason,
-  }))
-  const ws = XLSX.utils.json_to_sheet(rows)
-  XLSX.utils.book_append_sheet(wb, ws, '失败明细')
-  XLSX.writeFile(wb, `标准工序导入失败明细_${new Date().toISOString().slice(0, 10)}.xlsx`)
-}
-</script>
-
-<style scoped>
-.standard-process-container {
-  padding: 20px;
-}
-
-.search-card {
-  margin-bottom: 20px;
-}
-
-.operation-card {
-  margin-bottom: 20px;
-}
-
-.table-card {
-  margin-bottom: 20px;
-}
-
-.operation-bar {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-}
-
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-}
-</style>

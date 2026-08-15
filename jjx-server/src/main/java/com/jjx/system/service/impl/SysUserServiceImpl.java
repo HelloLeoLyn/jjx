@@ -59,6 +59,13 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     }
 
     @Override
+    public java.util.List<SysUser> selectAllUserList(SysUser user) {
+        LambdaQueryWrapper<SysUser> queryWrapper = buildQueryWrapper(user);
+        queryWrapper.orderByAsc(SysUser::getUserId);
+        return userMapper.selectList(queryWrapper);
+    }
+
+    @Override
     public PageResult<SysUser> selectAllocatedList(SysUser user, Integer pageNum, Integer pageSize) {
         return selectUserList(user, pageNum, pageSize);
     }

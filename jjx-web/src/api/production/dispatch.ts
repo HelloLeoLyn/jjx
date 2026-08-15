@@ -54,6 +54,9 @@ export interface DispatchAssignPayload {
   teamId?: number
   equipmentId?: number
   operatorIds?: number[]
+  level?: number
+  chainComplete?: boolean
+  transferFrom?: number
   remark?: string
   batch?: boolean
 }
@@ -79,6 +82,22 @@ export function getDispatchByOrder(orderId: number) {
 export function getPendingDispatches(orderId: number) {
   return request({
     url: `/production/dispatch/order/${orderId}/pending`,
+    method: 'get',
+  })
+}
+
+// 某人的手下（其负责部门+下级部门成员，转派候选）
+export function getUnderlings(userId: number) {
+  return request({
+    url: `/production/dispatch/underlings/${userId}`,
+    method: 'get',
+  })
+}
+
+// 责任班组可选执行人（该班组+上级部门成员，向上递归）
+export function getTeamPersons(teamId: number) {
+  return request({
+    url: `/production/dispatch/team-persons/${teamId}`,
     method: 'get',
   })
 }

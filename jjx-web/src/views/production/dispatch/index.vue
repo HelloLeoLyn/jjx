@@ -62,10 +62,18 @@
             <span v-else style="color: #c0c4cc">不限</span>
           </template>
         </el-table-column>
-        <el-table-column label="执行人" width="150">
+        <el-table-column label="执行人链" min-width="170">
           <template #default="{ row }">
-            <el-tag v-for="(o, i) in parseOperators(row.operators)" :key="i" size="small" style="margin-right: 4px">{{ o.userName }}</el-tag>
-            <span v-if="!parseOperators(row.operators).length" style="color: #c0c4cc">未指定</span>
+            <OperatorChain
+              :operators="row.operators"
+              :process-name="row.processName"
+              :order-no="row.orderNo"
+              :team-name="row.teamName"
+              :equipment-name="row.equipmentName"
+              :dispatch-id="row.dispatchId"
+              first-only
+              @logs="openLogsById"
+            />
           </template>
         </el-table-column>
         <el-table-column prop="assignedByName" label="派工主管" width="100" />
@@ -87,14 +95,15 @@
             <span v-else style="color: #c0c4cc">0</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
             <el-button v-if="!row.dispatchId" link type="primary" @click="openAssign(row)">指派</el-button>
             <template v-else>
+              <el-button v-if="row.dispatchStatus === 1 || row.dispatchStatus === 2" link type="warning" @click="openTransfer(row)">转派</el-button>
               <el-button link type="primary" @click="openAssign(row)">改派</el-button>
-              <el-button v-if="row.dispatchStatus === 1" link type="success" @click="handleStart(row)">开始</el-button>
-              <el-button v-if="row.dispatchStatus === 2" link type="success" @click="handleComplete(row)">完成</el-button>
-              <el-button v-if="row.dispatchStatus === 1 || row.dispatchStatus === 2" link type="danger" @click="openReject(row)">退回</el-button>
+              <el-button v-if="row.dispatchStatus === 2" link type="success" @click="handleStart(row)">开始</el-button>
+              <el-button v-if="row.dispatchStatus === 3" link type="success" @click="handleComplete(row)">完成</el-button>
+              <el-button v-if="row.dispatchStatus === 1 || row.dispatchStatus === 2 || row.dispatchStatus === 3" link type="danger" @click="openReject(row)">退回</el-button>
               <el-button link @click="openLogs(row)">流水</el-button>
             </template>
           </template>
@@ -114,22 +123,34 @@
       </div>
     </el-card>
 
-    <!-- 指派/改派弹窗 -->
-    <el-dialog v-model="assignVisible" :title="assignForm.dispatchId ? '改派工序' : '指派工序'" width="560px" append-to-body>
+    <!-- 指派/改派弹窗（2026-08-13：第一个被选的人=第1级执行人，无级别下拉；多级靠转派） -->
+    <el-dialog v-model="assignVisible" :title="assignForm.dispatchId ? '改派工序（更换第1级负责人）' : '指派工序'" width="560px" append-to-body>
       <el-form label-width="90px">
         <el-form-item label="工序">
           <span>{{ assignForm.processName || '-' }}（{{ assignForm.orderNo || '-' }}）</span>
+        </el-form-item>
+        <!-- 当前执行人链（追加时展示已有链） -->
+        <el-form-item v-if="assignForm.dispatchId && assignForm.existingChain.length" label="当前链">
+          <OperatorChain
+            :operators="chainJson(assignForm.existingChain)"
+            :clickable="false"
+          />
         </el-form-item>
         <el-form-item label="责任班组">
           <el-tree-select
             v-model="assignForm.teamId"
             :data="deptTree"
             :props="deptProps"
-            placeholder="选择班组（可空）"
+            placeholder="选择班组（仅末级部门）"
             clearable
             check-strictly
+            :disabled="!!assignForm.dispatchId"
             style="width: 100%"
+            @change="onAssignTeamChange"
           />
+          <div v-if="assignForm.dispatchId" style="font-size: 12px; color: #909399; line-height: 1.6">
+            责任班组仅首次指派可修改，转派/改派保持原班组
+          </div>
         </el-form-item>
         <el-form-item label="设备">
           <el-select v-model="assignForm.equipmentId" placeholder="选择设备（可空=不限）" clearable filterable style="width: 100%">
@@ -142,34 +163,42 @@
           </el-select>
         </el-form-item>
         <el-form-item label="执行人">
-          <el-select
-            v-model="assignForm.operatorIds"
-            placeholder="选择执行人（可多选，可空）"
-            multiple
-            filterable
-            remote
-            :remote-method="searchUsers"
-            :loading="userLoading"
-            style="width: 100%"
+          <el-button
+            :disabled="!assignForm.teamId"
+            type="primary"
+            plain
+            @click="openOperatorPicker('assign')"
           >
-            <el-option
-              v-for="u in userOptions"
-              :key="u.userId"
-              :label="u.nickName || u.userName"
-              :value="u.userId"
-            />
-          </el-select>
+            {{ (assignForm.operatorIds || []).length ? `已选 ${(assignForm.operatorIds || []).length} 人，点击修改` : '选择执行人' }}
+          </el-button>
+          <div v-if="assignPickerNames.length" class="op-selected">
+            <el-tag v-for="(n, i) in assignPickerNames" :key="i" size="small" style="margin-right: 4px">{{ n }}</el-tag>
+          </div>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="assignForm.remark" type="textarea" :rows="2" />
         </el-form-item>
-        <div style="color: #909399; font-size: 12px">班组/设备/执行人至少指定一项；改派会记录变更流水</div>
+        <el-form-item label="链完整性">
+          <el-switch v-model="assignForm.chainComplete" active-text="执行人链已完整（可开工）" inactive-text="还有下级执行人待追加" />
+        </el-form-item>
+        <div style="color: #909399; font-size: 12px">
+          第一个被选的人=第1级执行人（部门主管/负责人）；若他手下有人，可在列表点【转派】把任务派给他的手下（第2级），以此类推，最后一级为实际干活人。班组/设备/执行人至少指定一项。
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="assignVisible = false">取消</el-button>
         <el-button type="primary" :loading="assigning" @click="handleAssign">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 执行人树形选择弹窗（2026-08-13） -->
+    <OperatorPicker
+      :visible="pickerVisible"
+      @update:visible="pickerVisible = $event"
+      :users="userOptions"
+      :model-value="pickerIds"
+      @confirm="onPickerConfirm"
+    />
 
     <!-- 批量派工弹窗 -->
     <el-dialog v-model="batchVisible" title="批量派工（整单工序）" width="560px" append-to-body>
@@ -192,7 +221,8 @@
             v-model="batchForm.teamId"
             :data="deptTree"
             :props="deptProps"
-            placeholder="选择班组（可空）"
+            placeholder="选择班组（仅末级部门）"
+            @change="onBatchTeamChange"
             clearable
             check-strictly
             style="width: 100%"
@@ -209,29 +239,72 @@
           </el-select>
         </el-form-item>
         <el-form-item label="执行人">
-          <el-select
-            v-model="batchForm.operatorIds"
-            placeholder="选择执行人（可多选，可空）"
-            multiple
-            filterable
-            remote
-            :remote-method="searchUsers"
-            :loading="userLoading"
-            style="width: 100%"
+          <el-button
+            :disabled="!batchForm.teamId"
+            type="primary"
+            plain
+            @click="openOperatorPicker('batch')"
           >
-            <el-option
-              v-for="u in userOptions"
-              :key="u.userId"
-              :label="u.nickName || u.userName"
-              :value="u.userId"
-            />
-          </el-select>
+            {{ (batchForm.operatorIds || []).length ? `已选 ${(batchForm.operatorIds || []).length} 人，点击修改` : '选择执行人' }}
+          </el-button>
+          <div v-if="batchPickerNames.length" class="op-selected">
+            <el-tag v-for="(n, i) in batchPickerNames" :key="i" size="small" style="margin-right: 4px">{{ n }}</el-tag>
+          </div>
         </el-form-item>
         <div style="color: #909399; font-size: 12px">将批量应用到该工单所有未派工/已退回的工序；班组/设备/执行人至少指定一项</div>
       </el-form>
       <template #footer>
         <el-button @click="batchVisible = false">取消</el-button>
         <el-button type="primary" :loading="assigning" @click="handleBatchAssign">批量派工</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 转派弹窗（2026-08-13：由链上执行人转派给其手下，追加下一级） -->
+    <el-dialog v-model="transferVisible" title="转派给下属" width="520px" append-to-body>
+      <el-form label-width="100px">
+        <el-form-item label="工序">
+          <span>{{ transferForm.processName || '-' }}（{{ transferForm.orderNo || '-' }}）</span>
+        </el-form-item>
+        <el-form-item label="当前链">
+          <OperatorChain
+            :operators="chainJson(transferForm.existingChain)"
+            :clickable="false"
+          />
+        </el-form-item>
+        <el-form-item label="由谁转派">
+          <el-select v-model="transferForm.fromUserId" placeholder="选择转派人（链上执行人）" style="width: 100%" @change="onTransferFromChange">
+            <el-option
+              v-for="o in transferForm.existingChain"
+              :key="o.userId"
+              :label="`第${o.level ?? 1}级 ${o.userName}`"
+              :value="o.userId"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="转派给（手下）">
+          <el-select
+            v-model="transferForm.toUserIds"
+            :placeholder="transferFromName ? `${transferFromName} 的手下：其负责部门及下级部门成员` : '请先选择转派人'"
+            multiple
+            filterable
+            :loading="transferLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in transferOptions"
+              :key="u.userId"
+              :label="u.nickName || u.userName"
+              :value="u.userId"
+            />
+          </el-select>
+        </el-form-item>
+        <div style="color: #909399; font-size: 12px">
+          转派后该执行人成为第{{ transferNextLevel }}级（实际干活人），原第{{ transferFromLevel }}级保留在链上负责；转派对象只能是其负责部门及下级部门的成员。
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferVisible = false">取消</el-button>
+        <el-button type="warning" :loading="transferring" @click="handleTransfer">转派</el-button>
       </template>
     </el-dialog>
 
@@ -271,7 +344,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import {
@@ -283,17 +356,20 @@ import {
   completeDispatch,
   getDispatchLogs,
   getPendingDispatches,
+  getUnderlings,
+  getTeamPersons,
   type DispatchQuery,
   type DispatchVO,
   type DispatchLog,
   type DispatchAssignPayload,
 } from '@/api/production/dispatch'
 import { deptApi } from '@/api/system/dept'
-import { userApi } from '@/api/system/user'
 import { getEquipmentList } from '@/api/production/equipment'
 import { getProductionOrderList } from '@/api/production/order'
+import OperatorChain from '@/components/OperatorChain/index.vue'
+import OperatorPicker from '@/components/OperatorPicker/index.vue'
 
-const STATUS_LABELS: Record<number, string> = { 0: '待派工', 1: '已派工', 2: '执行中', 3: '已完成', 4: '已退回' }
+const STATUS_LABELS: Record<number, string> = { 0: '待派工', 1: '已派班组', 2: '已派工', 3: '执行中', 4: '已完成', 5: '已退回' }
 const STATUS_ITEMS = Object.entries(STATUS_LABELS).map(([v, label]) => ({ value: Number(v), label }))
 const ACTION_LABELS: Record<string, string> = {
   ASSIGN: '指派',
@@ -315,12 +391,13 @@ const userOptions = ref<any[]>([])
 const userLoading = ref(false)
 
 function statusTag(status?: number): any {
-  return { 0: 'info', 1: 'primary', 2: 'warning', 3: 'success', 4: 'danger' }[status ?? 0] || 'info'
+  return { 0: 'info', 1: 'primary', 2: 'success', 3: 'warning', 4: 'success', 5: 'danger' }[status ?? 0] || 'info'
 }
 
 function statusLabel(row: DispatchVO): string {
   const st = row.dispatchStatus ?? 0
-  return row.statusLabel || STATUS_LABELS[st] || String(st)
+  // 前端枚举优先（后端未重启时旧 label 可能错位），后端 label 兜底
+  return STATUS_LABELS[st] || row.statusLabel || String(st)
 }
 
 function fmtQty(v?: number | string | null): string {
@@ -330,13 +407,52 @@ function fmtQty(v?: number | string | null): string {
   return Number.isInteger(n) ? String(n) : String(n)
 }
 
-function parseOperators(json?: string): { userId: number; userName: string }[] {
+function parseOperators(json?: string): { userId: number; userName: string; level?: number }[] {
   if (!json) return []
   try {
-    return JSON.parse(json)
+    const arr = JSON.parse(json)
+    return (arr as any[]).sort((a, b) => (a.level ?? 1) - (b.level ?? 1))
   } catch {
     return []
   }
+}
+
+// 责任班组=末级部门（叶子）：父部门（中心/车间）过滤掉（2026-08-13）
+function filterLeafNodes(nodes: any[]): any[] {
+  const result: any[] = []
+  for (const n of nodes || []) {
+    if (n.children && n.children.length) {
+      result.push(...filterLeafNodes(n.children))
+    } else {
+      result.push({ ...n, children: undefined })
+    }
+  }
+  return result
+}
+
+// 递归找部门节点
+function findDept(nodes: any[], id: number): any | null {
+  for (const n of nodes || []) {
+    if (n.id === id) return n
+    const found = findDept(n.children || [], id)
+    if (found) return found
+  }
+  return null
+}
+
+// 责任班组只取生产中心子树叶子（排除办公室/研发/市场等非生产部门，2026-08-13）
+function productionTeamNodes(nodes: any[]): any[] {
+  const center = findDept(nodes, 5)
+  return center ? filterLeafNodes([center]) : filterLeafNodes(nodes)
+}
+function chainMaxLevel(row: DispatchVO): number {
+  const ops = parseOperators(row.operators)
+  return ops.length ? Math.max(...ops.map((o) => o.level ?? 1)) : 0
+}
+
+// 数组转 JSON 字符串（弹窗当前链传给组件）
+function chainJson(ops: { userId: number; userName: string; level?: number }[]): string {
+  return JSON.stringify(ops)
 }
 
 async function loadList() {
@@ -371,7 +487,7 @@ const handleReset = () => {
 async function loadBaseData() {
   try {
     const res: any = await deptApi.treeselect({} as any)
-    deptTree.value = res?.data || []
+    deptTree.value = productionTeamNodes(res?.data || [])
   } catch {
     deptTree.value = []
   }
@@ -383,24 +499,46 @@ async function loadBaseData() {
   }
 }
 
-async function searchUsers(keyword: string) {
-  userLoading.value = true
-  try {
-    const params: any = { pageNum: 1, pageSize: 50 }
-    if (keyword?.trim()) params.userName = keyword.trim()
-    const res: any = await userApi.list(params)
-    userOptions.value = res?.data?.records || res?.data || []
-  } catch {
-    userOptions.value = []
-  } finally {
-    userLoading.value = false
+// ===== 执行人树形选择（2026-08-13：按部门分组勾选，方便多人） =====
+const pickerVisible = ref(false)
+const pickerMode = ref<'assign' | 'batch'>('assign')
+const pickerIds = ref<number[]>([])
+
+const assignPickerNames = computed(() => {
+  const ids = assignForm.operatorIds || []
+  return userOptions.value.filter((u) => ids.includes(u.userId)).map((u) => u.nickName || u.userName)
+})
+const batchPickerNames = computed(() => {
+  const ids = batchForm.operatorIds || []
+  return userOptions.value.filter((u) => ids.includes(u.userId)).map((u) => u.nickName || u.userName)
+})
+
+function openOperatorPicker(mode: 'assign' | 'batch') {
+  pickerMode.value = mode
+  pickerIds.value = mode === 'assign' ? [...(assignForm.operatorIds || [])] : [...(batchForm.operatorIds || [])]
+  pickerVisible.value = true
+}
+
+function onPickerConfirm(ids: number[]) {
+  if (pickerMode.value === 'assign') {
+    assignForm.operatorIds = ids
+  } else {
+    batchForm.operatorIds = ids
   }
 }
 
 // ===== 指派/改派 =====
 const assignVisible = ref(false)
 const assigning = ref(false)
-const assignForm = reactive<DispatchAssignPayload & { processName?: string; orderNo?: string }>({
+const assignForm = reactive<
+  DispatchAssignPayload & {
+    processName?: string
+    orderNo?: string
+    level: number
+    chainComplete: boolean
+    existingChain: { userId: number; userName: string; level?: number }[]
+  }
+>({
   dispatchId: undefined,
   orderId: undefined,
   executionId: undefined,
@@ -408,22 +546,55 @@ const assignForm = reactive<DispatchAssignPayload & { processName?: string; orde
   equipmentId: undefined,
   operatorIds: [],
   remark: '',
+  level: 1,
+  chainComplete: true,
+  existingChain: [],
 })
 
 function openAssign(row: DispatchVO) {
+  const chain = parseOperators(row.operators)
   Object.assign(assignForm, {
     dispatchId: row.dispatchId,
     orderId: row.orderId,
     executionId: row.executionId,
     teamId: row.teamId,
     equipmentId: row.equipmentId,
-    operatorIds: parseOperators(row.operators).map((o) => o.userId),
-    remark: row.remark || '',
+    operatorIds: [],
+    remark: '',
     processName: row.processName,
     orderNo: row.orderNo,
+    // 新建=第1级；改派=固定第1级（换负责人，链上其余级别保留）
+    level: 1,
+    chainComplete: !row.dispatchId,
+    existingChain: chain,
   })
   assignVisible.value = true
-  if (!userOptions.value.length) searchUsers('')
+  // 执行人按责任班组带出（改派班组锁定；新建未选班组时执行人禁用）
+  if (row.teamId) {
+    loadOperatorsByTeam(row.teamId)
+  } else {
+    userOptions.value = []
+  }
+}
+
+// 选责任班组 → 执行人限定为责任班组成员（2026-08-13）
+async function onAssignTeamChange(teamId?: number) {
+  assignForm.operatorIds = []
+  if (teamId) {
+    loadOperatorsByTeam(teamId)
+  }
+}
+
+async function loadOperatorsByTeam(teamId: number) {
+  userLoading.value = true
+  try {
+    const res: any = await getTeamPersons(teamId)
+    userOptions.value = res?.data || []
+  } catch {
+    userOptions.value = []
+  } finally {
+    userLoading.value = false
+  }
 }
 
 async function handleAssign() {
@@ -433,8 +604,10 @@ async function handleAssign() {
   }
   assigning.value = true
   try {
-    await assignDispatch({ ...assignForm } as DispatchAssignPayload)
-    ElMessage.success(assignForm.dispatchId ? '改派成功' : '指派成功')
+    // 剔除展示字段（processName/orderNo/existingChain 仅弹窗展示用，2026-08-13）
+    const { processName, orderNo, existingChain, ...payload } = assignForm
+    await assignDispatch(payload as DispatchAssignPayload)
+    ElMessage.success(assignForm.dispatchId ? (assignForm.level > 1 ? '已追加执行人' : '改派成功') : '指派成功')
     assignVisible.value = false
     loadList()
   } catch (e: any) {
@@ -468,7 +641,6 @@ async function openBatchDialog() {
       orderOptions.value = []
     }
   }
-  if (!userOptions.value.length) searchUsers('')
 }
 
 async function onBatchOrderChange(orderId: number) {
@@ -478,6 +650,22 @@ async function onBatchOrderChange(orderId: number) {
     batchPendingCount.value = rows.length
   } catch {
     batchPendingCount.value = 0
+  }
+}
+
+// 批量弹窗：选班组 → 执行人限定班组+上级部门（2026-08-13）
+async function onBatchTeamChange(teamId?: number) {
+  batchForm.operatorIds = []
+  if (teamId) {
+    userLoading.value = true
+    try {
+      const res: any = await getTeamPersons(teamId)
+      userOptions.value = res?.data || []
+    } catch {
+      userOptions.value = []
+    } finally {
+      userLoading.value = false
+    }
   }
 }
 
@@ -500,6 +688,100 @@ async function handleBatchAssign() {
     ElMessage.error(e?.message || '批量派工失败')
   } finally {
     assigning.value = false
+  }
+}
+
+// ===== 转派（2026-08-13：由链上执行人转派给其手下，追加下一级） =====
+const transferVisible = ref(false)
+const transferring = ref(false)
+const transferLoading = ref(false)
+const transferOptions = ref<any[]>([])
+const transferForm = reactive<{
+  dispatchId?: number
+  orderId?: number
+  processName?: string
+  orderNo?: string
+  existingChain: { userId: number; userName: string; level?: number }[]
+  fromUserId?: number
+  toUserIds: number[]
+}>({
+  dispatchId: undefined,
+  orderId: undefined,
+  processName: '',
+  orderNo: '',
+  existingChain: [],
+  fromUserId: undefined,
+  toUserIds: [],
+})
+
+const transferFromLevel = computed(() => {
+  const o = transferForm.existingChain.find((x) => x.userId === transferForm.fromUserId)
+  return o?.level ?? 1
+})
+const transferNextLevel = computed(() => Math.min(transferFromLevel.value + 1, 3))
+const transferFromName = computed(() => {
+  const o = transferForm.existingChain.find((x) => x.userId === transferForm.fromUserId)
+  return o?.userName || ''
+})
+
+function openTransfer(row: DispatchVO) {
+  const chain = parseOperators(row.operators)
+  Object.assign(transferForm, {
+    dispatchId: row.dispatchId,
+    orderId: row.orderId,
+    processName: row.processName,
+    orderNo: row.orderNo,
+    existingChain: chain,
+    fromUserId: chain.length ? chain[chain.length - 1].userId : undefined,
+    toUserIds: [],
+  })
+  transferOptions.value = []
+  transferVisible.value = true
+  if (transferForm.fromUserId) onTransferFromChange(transferForm.fromUserId)
+}
+
+async function onTransferFromChange(userId: number) {
+  transferForm.toUserIds = []
+  transferOptions.value = []
+  if (!userId) return
+  transferLoading.value = true
+  try {
+    const res: any = await getUnderlings(userId)
+    // 排除已在链上的人
+    const chainIds = new Set(transferForm.existingChain.map((o) => o.userId))
+    transferOptions.value = (res?.data || []).filter((u: any) => !chainIds.has(u.userId))
+  } catch {
+    transferOptions.value = []
+  } finally {
+    transferLoading.value = false
+  }
+}
+
+async function handleTransfer() {
+  if (!transferForm.dispatchId || !transferForm.fromUserId) {
+    ElMessage.warning('请选择转派人')
+    return
+  }
+  if (!transferForm.toUserIds.length) {
+    ElMessage.warning('请选择转派给谁（其手下）')
+    return
+  }
+  transferring.value = true
+  try {
+    await assignDispatch({
+      dispatchId: transferForm.dispatchId,
+      operatorIds: transferForm.toUserIds,
+      transferFrom: transferForm.fromUserId,
+      level: transferNextLevel.value,
+      chainComplete: true,
+    })
+    ElMessage.success(`已转派为第${transferNextLevel.value}级执行人`)
+    transferVisible.value = false
+    loadList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '转派失败')
+  } finally {
+    transferring.value = false
   }
 }
 
@@ -564,10 +846,14 @@ function logType(action: string): any {
 }
 
 async function openLogs(row: DispatchVO) {
+  await openLogsById(row.dispatchId!)
+}
+
+async function openLogsById(dispatchId: number) {
   logList.value = []
   logsVisible.value = true
   try {
-    const res: any = await getDispatchLogs(row.dispatchId!)
+    const res: any = await getDispatchLogs(dispatchId)
     logList.value = res?.data || []
   } catch {
     logList.value = []
@@ -614,5 +900,9 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+.op-selected {
+  margin-top: 6px;
+  line-height: 1.8;
 }
 </style>

@@ -30,7 +30,8 @@ export const toolbarOptions: ToolbarOptions[] = [
     label: '导出',
     type: 'warning',
     icon: 'Download',
-    permission: 'system:user:export',
+    // DEV-1014：sys_menu 无 system:user:export 权限点，与列表同用 view 权限（登录可见即可导出）
+    permission: 'system:user:view',
   },
 ]
 

@@ -7,6 +7,7 @@ import com.jjx.production.domain.entity.ProductionDispatchLog;
 import com.jjx.production.domain.vo.DispatchVO;
 
 import java.util.List;
+import com.jjx.system.domain.vo.SysUserVO;
 
 /**
  * 生产派工 Service
@@ -20,6 +21,16 @@ public interface DispatchService {
      * 工单待派工序（未派工/已退回），批量派工弹窗计数用
      */
     List<DispatchVO> listPending(Long orderId);
+
+    /**
+     * 某人的手下（其负责部门 + 所有下级部门成员，排除自己）——转派候选
+     */
+    List<SysUserVO> underlings(Long userId);
+
+    /**
+     * 责任班组可选执行人（该班组 + 所有上级部门成员，向上递归）
+     */
+    List<SysUserVO> teamPersons(Long teamId);
 
     /** 工单全部派工单（按工序顺序） */
     List<DispatchVO> listByOrder(Long orderId);

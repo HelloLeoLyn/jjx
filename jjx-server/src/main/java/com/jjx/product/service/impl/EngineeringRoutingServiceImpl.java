@@ -242,7 +242,8 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
 
-        if (routing.getApproveStatus() != ApproveStatusEnum.DRAFT.getCode()) {
+        if (routing.getApproveStatus() != ApproveStatusEnum.DRAFT.getCode()
+                && routing.getApproveStatus() != ApproveStatusEnum.REJECTED.getCode()) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_ALREADY_APPROVED);
         }
 

@@ -20,6 +20,8 @@ import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.DispatchService;
 import com.jjx.system.domain.entity.SysDept;
 import com.jjx.system.domain.entity.SysUser;
+import com.jjx.system.domain.vo.SysUserVO;
+import com.jjx.system.utils.SecurityUtils;
 import com.jjx.system.mapper.SysDeptMapper;
 import com.jjx.system.mapper.SysUserMapper;
 import lombok.RequiredArgsConstructor;
@@ -208,9 +210,9 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DispatchVO assign(DispatchAssignDTO dto, String operatorName, Long operatorId) {
-        // 改派：dispatchId 存在
+        // 已有派工单 → 追加/替换执行人级别（多级链）或改派
         if (dto.getDispatchId() != null) {
-            return reassign(dto, operatorName, operatorId);
+            return appendLevel(dto, operatorName, operatorId);
         }
         if (dto.getExecutionId() == null) throw new BusinessException("缺少工序执行ID");
         if (dto.getOrderId() == null) throw new BusinessException("缺少工单ID");
@@ -219,29 +221,39 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         ProductionOperationExecution exec = executionMapper.selectById(dto.getExecutionId());
         if (exec == null) throw new BusinessException("工序执行记录不存在");
 
-        // 幂等：该工序已有派工单且非待派工/已退回 → 走改派
+        // 幂等：该工序已有派工单 → 走追加/改派
         ProductionDispatch exist = dispatchMapper.selectOne(Wrappers.<ProductionDispatch>lambdaQuery()
                 .eq(ProductionDispatch::getExecutionId, dto.getExecutionId()).last("LIMIT 1"));
         if (exist != null) {
             dto.setDispatchId(exist.getDispatchId());
-            return reassign(dto, operatorName, operatorId);
+            return appendLevel(dto, operatorName, operatorId);
         }
 
+        // 新建：班组 + 第1级执行人（链可后续追加）
         ProductionDispatch d = new ProductionDispatch();
-        fillAssignFields(d, dto, operatorName, operatorId);
+        fillTeamAndEquipment(d, dto);
+        int lv = dto.getLevel() == null ? 1 : dto.getLevel();
+        d.setOperators(buildOperatorsJson(dto.getOperatorIds(), lv));
+        d.setAssignedBy(operatorId);
+        d.setAssignedByName(operatorName);
+        d.setAssignTime(LocalDateTime.now());
+        d.setRemark(dto.getRemark());
         d.setOrderId(dto.getOrderId());
         d.setExecutionId(dto.getExecutionId());
         d.setProcessName(processNameOf(exec.getProcessId()));
         d.setProcessOrder(exec.getProcessOrder());
         d.setOrderNo(orderNoOf(dto.getOrderId()));
-        d.setStatus(DispatchStatusEnum.ASSIGNED.getCode());
+        // 链完整=已派工可开工；否则停在已派班组等下级追加
+        d.setStatus(Boolean.TRUE.equals(dto.getChainComplete())
+                ? DispatchStatusEnum.ASSIGNED.getCode()
+                : DispatchStatusEnum.TEAM_ASSIGNED.getCode());
         d.setReDispatchCount(0);
         d.setCreateBy(operatorName);
         dispatchMapper.insert(d);
 
         addLog(d.getDispatchId(), dto.getOrderId(), "ASSIGN",
-                buildAssignContent(null, d, operatorName), operatorName, operatorId);
-        log.info("派工成功: dispatchId={}, executionId={}, 主管={}", d.getDispatchId(), dto.getExecutionId(), operatorName);
+                "指派：" + describe(d) + "，第" + lv + "级执行人，主管：" + operatorName, operatorName, operatorId);
+        log.info("派工成功: dispatchId={}, executionId={}, 主管={}, 链级别={}", d.getDispatchId(), dto.getExecutionId(), operatorName, lv);
         return DispatchVO.fromEntity(d);
     }
 
@@ -274,6 +286,8 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
             item.setTeamId(dto.getTeamId());
             item.setEquipmentId(dto.getEquipmentId());
             item.setOperatorIds(dto.getOperatorIds());
+            item.setLevel(1);
+            item.setChainComplete(true);
             item.setRemark(dto.getRemark());
             item.setDispatchId(exist == null ? null : exist.getDispatchId());
             assign(item, operatorName, operatorId);
@@ -282,31 +296,165 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         return count;
     }
 
-    /** 改派：已派工/执行中/已退回 → 重新指派 */
-    private DispatchVO reassign(DispatchAssignDTO dto, String operatorName, Long operatorId) {
-        validateAssign(dto);
+    /** 追加/替换执行人链某级别（多级派工：班组长接单填下一级；也可改班组/设备） */
+    private DispatchVO appendLevel(DispatchAssignDTO dto, String operatorName, Long operatorId) {
         ProductionDispatch d = dispatchMapper.selectById(dto.getDispatchId());
         if (d == null) throw new BusinessException("派工单不存在");
+        if (DispatchStatusEnum.COMPLETED.getCode().equals(d.getStatus())) {
+            throw new BusinessException("已完成派工单不可改派");
+        }
+        int lv = dto.getLevel() == null ? 1 : dto.getLevel();
+        if (lv < 1 || lv > 3) throw new BusinessException("执行人级别仅支持 1-3 级");
 
-        // 记录旧值用于流水
-        ProductionDispatch old = new ProductionDispatch();
-        old.setTeamName(d.getTeamName());
-        old.setEquipmentName(d.getEquipmentName());
-        old.setOperators(d.getOperators());
+        String oldDesc = describe(d);
+        // 转派校验：转派人必须是链上已有执行人，新人必须在转派人手下（负责部门+下级部门）
+        if (dto.getTransferFrom() != null) {
+            int fromLevel = levelOfUser(d.getOperators(), dto.getTransferFrom());
+            if (fromLevel == 0) {
+                throw new BusinessException("转派人必须是当前执行人链上的执行人");
+            }
+            if (lv != fromLevel + 1) {
+                throw new BusinessException("转派后级别应为第" + (fromLevel + 1) + "级（转派人第" + fromLevel + "级的下一级）");
+            }
+            List<Long> underlings = underlingUserIds(dto.getTransferFrom());
+            if (dto.getOperatorIds() != null) {
+                for (Long uid : dto.getOperatorIds()) {
+                    if (!underlings.contains(uid)) {
+                        throw new BusinessException("被转派人必须是转派人手下（其负责部门及下级部门成员）");
+                    }
+                }
+            }
+        }
 
-        fillAssignFields(d, dto, operatorName, operatorId);
-        d.setStatus(DispatchStatusEnum.ASSIGNED.getCode());
+        // 责任班组仅首次指派可指定，转派/改派不更新（2026-08-13，避免与转派"手下按部门算"矛盾）
+        if (dto.getEquipmentId() != null) {
+            String eqName = equipmentNameOf(dto.getEquipmentId());
+            if (eqName == null) throw new BusinessException("设备不存在");
+            d.setEquipmentId(dto.getEquipmentId());
+            d.setEquipmentName(eqName);
+        }
+        // 合并执行人链：该级别替换或追加
+        if (dto.getOperatorIds() != null && !dto.getOperatorIds().isEmpty()) {
+            d.setOperators(mergeChain(d.getOperators(), dto.getOperatorIds(), lv));
+        }
+        d.setAssignedBy(operatorId);
+        d.setAssignedByName(operatorName);
+        d.setAssignTime(LocalDateTime.now());
         d.setRejectReason(null);
+        if (dto.getRemark() != null) d.setRemark(dto.getRemark());
+        // 链完整 → 已派工可开工；否则停在已派班组等下级追加
+        d.setStatus(Boolean.TRUE.equals(dto.getChainComplete())
+                ? DispatchStatusEnum.ASSIGNED.getCode()
+                : DispatchStatusEnum.TEAM_ASSIGNED.getCode());
         d.setReDispatchCount((d.getReDispatchCount() == null ? 0 : d.getReDispatchCount()) + 1);
         d.setUpdateBy(operatorName);
         dispatchMapper.updateById(d);
 
-        addLog(d.getDispatchId(), d.getOrderId(), "REASSIGN",
-                buildAssignContent(old, d, operatorName), operatorName, operatorId);
+        String newDesc = describe(d);
+        String content = oldDesc.equals(newDesc)
+                ? "第" + lv + "级执行人更新（内容不变），主管：" + operatorName
+                : "第" + lv + "级执行人：" + describeLevel(d, lv) + "，" + oldDesc + " → " + newDesc;
+        addLog(d.getDispatchId(), d.getOrderId(), "REASSIGN", content, operatorName, operatorId);
         return DispatchVO.fromEntity(d);
     }
 
-    private void fillAssignFields(ProductionDispatch d, DispatchAssignDTO dto, String operatorName, Long operatorId) {
+    /** 链上某执行人的级别（不在链上返回 0） */
+    private int levelOfUser(String operatorsJson, Long userId) {
+        if (operatorsJson == null || userId == null) return 0;
+        try {
+            var arr = new com.fasterxml.jackson.databind.ObjectMapper().readTree(operatorsJson);
+            for (var n : arr) {
+                if (n.path("userId").asLong() == userId) return n.path("level").asInt(1);
+            }
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    /** 责任班组可选执行人：班组内成员，且必须是当前操作人有权指派的（其管辖范围=负责部门+下级部门成员）；超管不过滤 */
+    @Override
+    public List<SysUserVO> teamPersons(Long teamId) {
+        if (teamId == null) return new ArrayList<>();
+        List<SysUserVO> teamMembers = new ArrayList<>();
+        try {
+            jdbcTemplate.query(
+                    "SELECT u.user_id, u.user_name, u.nick_name, u.dept_id, d.dept_name"
+                            + " FROM sys_user u LEFT JOIN sys_dept d ON d.dept_id = u.dept_id"
+                            + " WHERE u.dept_id = ? AND u.status = 0 AND u.del_flag = '0'"
+                            + " ORDER BY u.user_id",
+                    rs -> {
+                        SysUserVO vo = new SysUserVO();
+                        vo.setUserId(rs.getLong("user_id"));
+                        vo.setUserName(rs.getString("user_name"));
+                        vo.setNickName(rs.getString("nick_name"));
+                        vo.setDeptId(rs.getLong("dept_id"));
+                        teamMembers.add(vo);
+                    }, teamId);
+        } catch (Exception e) {
+            log.warn("查询责任班组执行人失败 teamId={}: {}", teamId, e.getMessage());
+            return new ArrayList<>();
+        }
+        // 权限过滤：执行人必须在自己管辖范围（负责部门+下级部门成员），超管全量
+        if (!SecurityUtils.hasPermission("*:*:*")) {
+            Long me = SecurityUtils.getUserId();
+            List<Long> canAssign = underlingUserIds(me);
+            teamMembers.removeIf(m -> !canAssign.contains(m.getUserId()));
+        }
+        return teamMembers;
+    }
+
+    /** 转派校验用：某人手下的 userId 集合（其负责部门 + 所有下级部门成员，排除自己） */
+    private List<Long> underlingUserIds(Long userId) {
+        List<Long> ids = new ArrayList<>();
+        for (SysUserVO vo : underlings(userId)) ids.add(vo.getUserId());
+        return ids;
+    }
+
+    /** 某人的手下（其负责部门 + 所有下级部门成员，排除自己）——精简 VO 防 password 泄露 */
+    @Override
+    public List<SysUserVO> underlings(Long userId) {
+        if (userId == null) return new ArrayList<>();
+        SysUser u = sysUserMapper.selectById(userId);
+        if (u == null) return new ArrayList<>();
+        List<SysUserVO> result = new ArrayList<>();
+        try {
+            jdbcTemplate.query(
+                    "WITH RECURSIVE dept_tree AS ("
+                            + "  SELECT dept_id FROM sys_dept WHERE leader = ? AND del_flag = '0'"
+                            + "  UNION ALL"
+                            + "  SELECT d.dept_id FROM sys_dept d JOIN dept_tree t ON d.parent_id = t.dept_id WHERE d.del_flag = '0'"
+                            + ") SELECT u.user_id, u.user_name, u.nick_name, u.dept_id, d.dept_name"
+                            + " FROM sys_user u LEFT JOIN sys_dept d ON d.dept_id = u.dept_id"
+                            + " WHERE u.dept_id IN (SELECT dept_id FROM dept_tree)"
+                            + " AND u.status = 0 AND u.del_flag = '0' AND u.user_id != ?"
+                            + " ORDER BY u.dept_id, u.user_id",
+                    rs -> {
+                        SysUserVO vo = new SysUserVO();
+                        vo.setUserId(rs.getLong("user_id"));
+                        vo.setUserName(rs.getString("user_name"));
+                        vo.setNickName(rs.getString("nick_name"));
+                        vo.setDeptId(rs.getLong("dept_id"));
+                        result.add(vo);
+                    }, u.getUserName(), userId);
+        } catch (Exception e) {
+            log.warn("查询手下失败 userId={}: {}", userId, e.getMessage());
+        }
+        return result;
+    }
+
+    private String describeLevel(ProductionDispatch d, int level) {
+        try {
+            var arr = new com.fasterxml.jackson.databind.ObjectMapper().readTree(d.getOperators());
+            List<String> names = new ArrayList<>();
+            arr.forEach(n -> {
+                if (n.path("level").asInt(0) == level) names.add(n.path("userName").asText(""));
+            });
+            return names.isEmpty() ? "-" : String.join("、", names);
+        } catch (Exception e) {
+            return "-";
+        }
+    }
+
+    private void fillTeamAndEquipment(ProductionDispatch d, DispatchAssignDTO dto) {
         if (dto.getTeamId() != null) {
             SysDept dept = sysDeptMapper.selectById(dto.getTeamId());
             if (dept == null) throw new BusinessException("班组不存在");
@@ -314,17 +462,42 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
             d.setTeamName(dept.getDeptName());
         }
         if (dto.getEquipmentId() != null) {
-            // 设备名查库
             String eqName = equipmentNameOf(dto.getEquipmentId());
             if (eqName == null) throw new BusinessException("设备不存在");
             d.setEquipmentId(dto.getEquipmentId());
             d.setEquipmentName(eqName);
         }
-        d.setOperators(buildOperatorsJson(dto.getOperatorIds()));
-        d.setAssignedBy(operatorId);
-        d.setAssignedByName(operatorName);
-        d.setAssignTime(LocalDateTime.now());
-        d.setRemark(dto.getRemark() != null ? dto.getRemark() : d.getRemark());
+    }
+
+    /** 执行人链合并：指定级别替换或追加，其余级别保留；level 按 1/2/3 排序 */
+    private String mergeChain(String oldJson, List<Long> operatorIds, int level) {
+        com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+        java.util.Map<Integer, List<Long>> levelMap = new java.util.TreeMap<>();
+        try {
+            if (oldJson != null && !oldJson.isBlank()) {
+                var arr = om.readTree(oldJson);
+                arr.forEach(n -> {
+                    int lv = n.path("level").asInt(1);
+                    levelMap.computeIfAbsent(lv, k -> new ArrayList<>()).add(n.path("userId").asLong());
+                });
+            }
+        } catch (Exception ignored) {}
+        levelMap.put(level, operatorIds);
+
+        StringBuilder sb = new StringBuilder("[");
+        for (var entry : levelMap.entrySet()) {
+            for (Long uid : entry.getValue()) {
+                SysUser u = sysUserMapper.selectById(uid);
+                if (u == null) continue;
+                String name = u.getNickName() != null && !u.getNickName().isBlank() ? u.getNickName() : u.getUserName();
+                if (sb.length() > 1) sb.append(",");
+                sb.append("{\"userId\":").append(u.getUserId()).append(",\"userName\":\"").append(name)
+                        .append("\",\"level\":").append(entry.getKey()).append("}");
+            }
+        }
+        if (sb.length() == 1) return null;
+        sb.append("]");
+        return sb.toString();
     }
 
     private void validateAssign(DispatchAssignDTO dto) {
@@ -485,7 +658,7 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
     }
 
     /** 执行人 ID 列表 → JSON [{userId,userName}] */
-    private String buildOperatorsJson(List<Long> operatorIds) {
+    private String buildOperatorsJson(List<Long> operatorIds, int level) {
         if (operatorIds == null || operatorIds.isEmpty()) return null;
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < operatorIds.size(); i++) {
@@ -493,7 +666,8 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
             if (u == null) continue;
             String name = u.getNickName() != null && !u.getNickName().isBlank() ? u.getNickName() : u.getUserName();
             if (sb.length() > 1) sb.append(",");
-            sb.append("{\"userId\":").append(u.getUserId()).append(",\"userName\":\"").append(name).append("\"}");
+            sb.append("{\"userId\":").append(u.getUserId()).append(",\"userName\":\"").append(name)
+                    .append("\",\"level\":").append(level).append("}");
         }
         if (sb.length() == 1) return null;
         sb.append("]");

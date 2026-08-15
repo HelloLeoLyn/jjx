@@ -449,8 +449,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     public boolean submitApprove(Long bomId) {
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) throw new BusinessException("BOM不存在");
-        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.DRAFT.getValue())) {
-            throw new BusinessException("只有草稿状态的BOM才能提交审批");
+        Integer current = bom.getApproveStatus();
+        // 草稿(1)与已驳回(4)均可提交审批（驳回后修改重新提交）
+        if (!Objects.equals(current, ProductEnums.BomStatus.DRAFT.getValue())
+                && !Objects.equals(current, ProductEnums.BomStatus.REJECT.getValue())) {
+            throw new BusinessException("只有草稿或已驳回状态的BOM才能提交审批");
         }
         LambdaQueryWrapper<EngineeringBomItem> checkItems = new LambdaQueryWrapper<>();
         checkItems.eq(EngineeringBomItem::getBomId, bomId);
@@ -460,7 +463,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 用 updateStatus 改为 PENDING
         UpdateBomStatusDTO dto = new UpdateBomStatusDTO();
         dto.setBomId(bomId);
-        dto.setCurrent(ProductEnums.BomStatus.DRAFT.getValue());
+        dto.setCurrent(current);
         dto.setTarget(ProductEnums.BomStatus.REVIEWING.getValue());
         return updateStatus(dto);
     }

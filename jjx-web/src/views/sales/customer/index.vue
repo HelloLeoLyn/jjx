@@ -47,14 +47,6 @@
     </el-card>
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
-      <!-- 导入文件隐藏输入（DEV-662） -->
-      <input
-        ref="importFileInput"
-        type="file"
-        accept=".xlsx,.xls"
-        style="display: none"
-        @change="handleImportFileChange"
-      />
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
@@ -73,7 +65,7 @@
           <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" @click="handleImport">导入</el-button>
+          <el-button type="info" plain icon="Upload" @click="importDialogVisible = true">导入</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button type="success" plain icon="Check" :disabled="multiple" @click="handleApprove"
@@ -263,7 +255,18 @@
       @success="getList"
     />
 
+    <!-- 通用导入弹窗（2026-08-13） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入客户"
+      :import-api="importCustomerFile"
+      :template-api="customerApi.downloadCustomerTemplate"
+      template-name="客户导入模板.xlsx"
+      @success="getList"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -274,6 +277,7 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { customerApi } from '@/api/sales/customer'
+import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { parseTime, download } from '@/utils/format'
@@ -484,78 +488,12 @@ const handleExport = () => {
     .catch(() => {})
 }
 
-// 导入按钮操作（DEV-662：选择Excel上传，支持模板下载）
-const importFileInput = ref<HTMLInputElement | null>(null)
-
-// 下载导入模板
-const handleDownloadTemplate = () => {
-  customerApi
-    .downloadCustomerTemplate()
-    .then((response: any) => {
-      download(response, '客户导入模板.xlsx')
-    })
-    .catch(() => {
-      ElMessage.error('模板下载失败')
-    })
-}
-
-const handleImport = () => {
-  ElMessageBox.confirm(
-    '请选择要导入的Excel文件（.xlsx/.xls），或先下载模板按格式填写。',
-    '导入客户',
-    {
-      confirmButtonText: '选择文件',
-      cancelButtonText: '取消',
-      type: 'info',
-      // 自定义内容：提供模板下载入口（DEV-662）
-      dangerouslyUseHTMLString: true,
-      message: `
-        <div style="text-align:left;line-height:1.8">
-          <div>请选择要导入的 Excel 文件（支持 .xlsx / .xls）</div>
-          <div style="margin-top:6px">
-            <span>没有模板？</span>
-            <a href="javascript:void(0)" id="customer-template-link" style="color:#409eff">点击下载导入模板</a>
-          </div>
-        </div>`,
-    },
-  )
-    .then(() => {
-      importFileInput.value?.click()
-    })
-    .catch(() => {})
-
-  // 弹框渲染后给模板链接绑定下载事件（DOM 挂载时机：微任务后）
-  setTimeout(() => {
-    document.getElementById('customer-template-link')?.addEventListener('click', handleDownloadTemplate)
-  }, 100)
-}
-
-// 文件选择后上传
-const handleImportFileChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = '' // 允许重复选择同一文件
-  if (!file) return
-
-  const fileName = file.name.toLowerCase()
-  if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
-    ElMessage.warning('文件格式错误，仅支持 .xlsx 或 .xls')
-    return
-  }
-
-  const loading = ElLoading.service({ text: '导入中...', lock: true })
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await customerApi.importCustomers(formData)
-    ElMessage.success(res.data || '导入完成')
-    getList()
-  } catch (e: any) {
-    // DEV-669：多行错误延长展示时间，便于阅读（ElMessage 支持 \n 换行）
-    ElMessage.error({ message: e?.message || '导入失败', duration: 8000 })
-  } finally {
-    loading.close()
-  }
+// 导入（2026-08-13 通用 ExcelImportDialog 组件）
+const importDialogVisible = ref(false)
+const importCustomerFile = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return customerApi.importCustomers(formData)
 }
 
 // 批量审核按钮操作

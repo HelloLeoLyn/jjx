@@ -78,10 +78,7 @@
           <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" @click="handleImport">导入</el-button>
-        </el-col>
-        <el-col :span="1.5">
-          <el-button plain icon="Download" @click="handleDownloadTemplate">下载模板</el-button>
+          <el-button type="info" plain icon="Upload" @click="importDialogVisible = true">导入</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button type="success" plain icon="Star" :disabled="single" @click="handleEvaluation"
@@ -429,7 +426,18 @@
         </div>
       </template>
     </el-dialog>
+    <!-- 通用导入弹窗（2026-08-13） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入供应商"
+      :import-api="importSupplierFile"
+      :template-api="importTemplate"
+      template-name="供应商导入模板.xlsx"
+      @success="getList"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -734,40 +742,12 @@ const handleExport = () => {
     .catch(() => {})
 }
 
-// 导入按钮操作
-const handleImport = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.xlsx,.xls'
-  input.onchange = async (event: Event) => {
-    const target = event.target as HTMLInputElement
-    const file = target.files?.[0]
-    if (!file) return
-
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      await importSuppliers(formData)
-      ElMessage.success('导入成功')
-      getList()
-    } catch (error) {
-      console.error('导入失败:', error)
-      ElMessage.error('导入失败')
-    }
-  }
-  input.click()
-}
-
-// 下载导入模板
-const handleDownloadTemplate = async () => {
-  try {
-    const res = await importTemplate()
-    download(res, '供应商导入模板.xlsx')
-  } catch (error) {
-    console.error('下载模板失败:', error)
-    ElMessage.error('下载模板失败')
-  }
+// 导入（2026-08-13 通用 ExcelImportDialog 组件）
+const importDialogVisible = ref(false)
+const importSupplierFile = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return importSuppliers(formData)
 }
 
 // 评估按钮操作

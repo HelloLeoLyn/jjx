@@ -2,6 +2,7 @@ import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps } from 'element-plus'
+import { debounce } from 'lodash-es'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
@@ -729,8 +730,7 @@ export function useSampleWorkbench() {
   }
 
   // 远程搜索物料档案（分页）
-  async function searchMaterials(query: string, m: any, pageNum = 1, append = false) {
-    m.loading = true
+  async function searchMaterials(query: string, m: any, pageNum = 1, append = false) {    m.loading = true
     m.lastQuery = (query || '').trim()
     try {
       const params: any = { pageNum, pageSize: 20 }
@@ -755,6 +755,21 @@ export function useSampleWorkbench() {
     } finally {
       m.loading = false
     }
+  }
+
+  // DEV-1020：材料搜索防抖（每行材料选择器独立 300ms，避免 remote-method 输入即请求）
+  const materialSearchDebouncers = new Map<string, ReturnType<typeof debounce>>()
+  function debouncedSearchMaterials(query: string, m: any, pageNum = 1, append = false) {
+    const key = m?.uid || m?.materialId || 'material'
+    let fn = materialSearchDebouncers.get(key)
+    if (!fn) {
+      fn = debounce((q: string, row: any, p: number, ap: boolean) => {
+        materialSearchDebouncers.delete(key)
+        searchMaterials(q, row, p, ap)
+      }, 300)
+      materialSearchDebouncers.set(key, fn)
+    }
+    fn(query, m, pageNum, append)
   }
 
   // 下拉滚动加载下一页
@@ -1174,7 +1189,7 @@ export function useSampleWorkbench() {
     openIndexDialog, confirmIndexDialog, maybePromptIndex, onUpdateIndex,
     parseDragData, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, clearDragOver,
     removeCardItem, removePlanCard, advancePlan, saveCard,
-    addMaterialRow, startEdit, searchMaterials, onSelectVisibleChange, loadMoreMaterials,
+    addMaterialRow, startEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange, loadMoreMaterials,
     onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate, onMaterialCreated,
     parseMaterials, doneCount, summary, loadSummary,
     roundList, activeRound, isCurrentRound, activeRoundData, activeRoundProcesses, activeRoundBom,

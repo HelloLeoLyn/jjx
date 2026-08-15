@@ -7,6 +7,11 @@
 --   1. 标准工序（engineering_standard_process）保留不清——基础档案，供打样/工艺路线复用
 --   2. 其余同 v4：基础档案（客户/物料/产品/BOM/路线）全清
 --
+-- v7 变更（2026-08-13）：
+--   1. 基础档案保留范围扩大：sales_customer（客户）、inventory_material（物料）+
+--      inventory_material_category（物料分类）、purchase_supplier（供应商）不再清理
+--   2. 其余同 v6
+--
 -- v6 变更（2026-08-12）：
 --   1. 新增派工模块清理：production_dispatch_log / production_dispatch（先子后主）
 --   2. 工装模具档案 production_tooling 保留不清（用户明确要求）
@@ -66,7 +71,8 @@ TRUNCATE sales_order_stock_reserve;
 
 TRUNCATE sales_inquiry;
 
-TRUNCATE sales_customer;
+-- v7：客户保留不清（基础档案）
+-- TRUNCATE sales_customer;
 
 -- 样品单子表（sales_order 已清，子表独立）
 TRUNCATE sales_sample_bom;
@@ -106,7 +112,7 @@ TRUNCATE engineering_bom;
 -- 08-09 版本化改造前的数据备份表（无代码引用，历史脏数据）
 TRUNCATE engineering_bom_backup_20260809;
 
-TRUNCATE engineering_routing_backup_20260809;
+-- TRUNCATE engineering_routing_backup_20260809; -- 表已不存在（2026-08-13 清理时发现）
 
 TRUNCATE engineering_film;
 
@@ -123,7 +129,8 @@ TRUNCATE purchase_order_item;
 
 TRUNCATE purchase_order;
 
-TRUNCATE purchase_supplier;
+-- v7：供应商保留不清（基础档案）
+-- TRUNCATE purchase_supplier;
 
 -- ==================== 5. 生产模块 ====================
 TRUNCATE production_quality_inspection_item;
@@ -172,9 +179,9 @@ TRUNCATE inventory_stock;
 
 TRUNCATE inventory_storage_location;
 
-TRUNCATE inventory_material_category;
-
-TRUNCATE inventory_material;
+-- v7：物料及分类保留不清（基础档案）
+-- TRUNCATE inventory_material_category;
+-- TRUNCATE inventory_material;
 
 TRUNCATE inventory_warehouse;
 

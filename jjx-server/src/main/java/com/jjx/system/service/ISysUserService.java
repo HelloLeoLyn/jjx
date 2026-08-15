@@ -35,6 +35,14 @@ public interface ISysUserService extends IService<SysUser> {
     PageResult<SysUserVO> selectUserVOList(SysUser user, Integer pageNum, Integer pageSize);
 
     /**
+     * 按条件查询全部用户（不分页，导出用）
+     *
+     * @param user 查询条件
+     * @return 用户列表
+     */
+    java.util.List<SysUser> selectAllUserList(SysUser user);
+
+    /**
      * 根据条件分页查询已分配用户角色列表
      *
      * @param user 用户信息

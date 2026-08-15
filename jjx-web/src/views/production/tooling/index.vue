@@ -5,15 +5,8 @@
       <h1 class="page-title">工装模具档案</h1>
       <div class="page-actions">
         <el-button type="primary" icon="Plus" @click="handleCreate">新增</el-button>
-        <el-button icon="Upload" @click="handleImport">导入</el-button>
+        <el-button icon="Upload" @click="importDialogVisible = true">导入</el-button>
         <el-button icon="Download" @click="handleExport">导出</el-button>
-        <input
-          ref="importFileInput"
-          type="file"
-          accept=".xlsx,.xls"
-          style="display: none"
-          @change="handleFileChange"
-        />
       </div>
     </div>
 
@@ -126,7 +119,18 @@
       :photo-id="currentPhotoId"
       @submit="handleSubmit"
     />
+    <!-- 通用导入弹窗（2026-08-13） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入工装模具"
+      :import-api="importToolingFile"
+      :template-api="downloadToolingTemplate"
+      template-name="工装模具导入模板.xlsx"
+      @success="loadList"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -266,64 +270,9 @@ async function handleDelete(row: ToolingVO) {
   }
 }
 
-// ===== 导入导出 =====
-const importFileInput = ref<HTMLInputElement | null>(null)
-
-const handleImport = () => {
-  ElMessageBox.confirm(
-    '请选择要导入的Excel文件（.xlsx/.xls），或先下载模板按格式填写。',
-    '导入工装模具',
-    {
-      confirmButtonText: '选择文件',
-      cancelButtonText: '取消',
-      type: 'info',
-      dangerouslyUseHTMLString: true,
-      message: `
-        <div style="text-align:left;line-height:1.8">
-          <div>请选择要导入的 Excel 文件（支持 .xlsx / .xls）</div>
-          <div style="margin-top:6px">
-            <span>没有模板？</span>
-            <a href="javascript:void(0)" id="tooling-template-link" style="color:#409eff">点击下载导入模板</a>
-          </div>
-        </div>`,
-    },
-  )
-    .then(() => {
-      importFileInput.value?.click()
-    })
-    .catch(() => {})
-
-  setTimeout(() => {
-    document.getElementById('tooling-template-link')?.addEventListener('click', handleDownloadTemplate)
-  }, 100)
-}
-
-const handleDownloadTemplate = () => {
-  downloadToolingTemplate()
-    .then((response: any) => {
-      download(response, '工装模具导入模板.xlsx')
-    })
-    .catch(() => {
-      ElMessage.error('模板下载失败')
-    })
-}
-
-const handleFileChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  try {
-    const loading = ElLoading.service({ text: '导入中...', lock: true })
-    const res: any = await importTooling(file)
-    loading.close()
-    ElMessage.success(res?.data || '导入完成')
-    loadList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '导入失败')
-  } finally {
-    input.value = ''
-  }
-}
+// ===== 导入（2026-08-13 通用 ExcelImportDialog 组件） =====
+const importDialogVisible = ref(false)
+const importToolingFile = (file: File) => importTooling(file)
 
 const handleExport = () => {
   ElMessageBox.confirm('是否确认导出当前筛选条件下的工装模具数据？', '导出确认', {

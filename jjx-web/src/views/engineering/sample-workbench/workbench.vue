@@ -63,7 +63,7 @@
         :batch-delete="batchDelete"
         :apply-batch-category="applyBatchCategory"
         :on-update-index="onUpdateIndex"
-        :search-materials="searchMaterials"
+        :search-materials="debouncedSearchMaterials"
         :on-material-selected="onMaterialSelected"
         :on-select-visible-change="onSelectVisibleChange"
         :open-material-create="openMaterialCreate"
@@ -342,7 +342,7 @@ const {
   openIndexDialog, confirmIndexDialog, maybePromptIndex, onUpdateIndex,
   parseDragData, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, clearDragOver,
   removeCardItem, removePlanCard, advancePlan, saveCard,
-  addMaterialRow, startEdit, searchMaterials, onSelectVisibleChange, loadMoreMaterials,
+  addMaterialRow, startEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange, loadMoreMaterials,
   onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate, onMaterialCreated,
   parseMaterials, doneCount, summary, loadSummary,
   roundList, activeRound, isCurrentRound, activeRoundData, activeRoundProcesses, activeRoundBom,
