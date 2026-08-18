@@ -751,7 +751,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             outboundItemMapper.insert(outItem);
         }
 
-        // 6. 汇总并更新工单领料状态（待发料）
+        // 6. 2026-08-18：明细为空（所有物料可用量 0，库存不足）→ 不建空壳单，回滚并明确提示
+        if (sort == 1) {
+            throw new BusinessException("库存不足，无法自动领料（请先入库或到生产领料页手工领料）");
+        }
+
+        // 7. 汇总并更新工单领料状态（待发料）
         order.setTotalQuantity(totalQty);
         outboundOrderMapper.updateById(order);
         prodOrder.setMaterialStatus(1);

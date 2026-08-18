@@ -8,27 +8,27 @@
 
       <!-- 编辑按钮 -->
       <el-tooltip content="编辑订单" placement="top" v-if="order.canEdit">
-        <el-button type="primary" size="small" icon="Edit" circle @click="handleEdit" />
+        <el-button type="primary" size="small" icon="Edit" v-hasPermi="['production:order:edit']" circle @click="handleEdit" />
       </el-tooltip>
 
       <!-- 转为工单按钮 -->
       <el-tooltip content="转为工单" placement="top" v-if="order.canConvertToWorkOrder">
-        <el-button type="success" size="small" icon="RefreshRight" circle @click="handleConvert" />
+        <el-button type="success" size="small" icon="RefreshRight" v-hasPermi="['production:order:edit']" circle @click="handleConvert" />
       </el-tooltip>
 
       <!-- 开始执行按钮 -->
       <el-tooltip content="开始执行" placement="top" v-if="order.canStart">
-        <el-button type="warning" size="small" icon="VideoPlay" circle @click="handleStart" />
+        <el-button type="warning" size="small" icon="VideoPlay" v-hasPermi="['production:operation-execution:edit']" circle @click="handleStart" />
       </el-tooltip>
 
       <!-- 完成按钮 -->
       <el-tooltip content="完成工单" placement="top" v-if="order.canComplete">
-        <el-button type="success" size="small" icon="CircleCheck" circle @click="handleComplete" />
+        <el-button type="success" size="small" icon="CircleCheck" v-hasPermi="['production:operation-execution:edit']" circle @click="handleComplete" />
       </el-tooltip>
 
       <!-- 取消按钮 -->
       <el-tooltip content="取消订单" placement="top" v-if="order.canCancel">
-        <el-button type="danger" size="small" icon="CircleClose" circle @click="handleCancel" />
+        <el-button type="danger" size="small" icon="CircleClose" v-hasPermi="['production:order:edit']" circle @click="handleCancel" />
       </el-tooltip>
 
       <!-- 更多操作 -->
@@ -38,31 +38,37 @@
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="submit-review" v-if="order.orderStatus === 0">
+            <el-dropdown-item command="submit-review" v-if="order.orderStatus === 0" v-hasPermi="['production:order:edit']">
               <el-icon><Promotion /></el-icon>
               提交审核
             </el-dropdown-item>
-            <el-dropdown-item command="approve" v-if="order.orderStatus === 1">
+            <el-dropdown-item command="approve" v-if="order.orderStatus === 1" v-hasPermi="['production:order:edit']">
               <el-icon><Check /></el-icon>
               审核通过
             </el-dropdown-item>
-            <el-dropdown-item command="reject" v-if="order.orderStatus === 1">
+            <el-dropdown-item command="reject" v-if="order.orderStatus === 1" v-hasPermi="['production:order:edit']">
               <el-icon><CloseBold /></el-icon>
               审核驳回
             </el-dropdown-item>
-            <el-dropdown-item command="copy">
+            <el-dropdown-item command="copy" v-hasPermi="['production:order:add']">
               <el-icon><CopyDocument /></el-icon>
               复制订单
             </el-dropdown-item>
-            <el-dropdown-item command="pick-material" v-if="[2, 6].includes(order.orderStatus)">
+            <!-- 2026-08-18：领料状态感知——已生成待确认时禁用，已领料后入口移随工单卡片（追加领料） -->
+            <el-dropdown-item
+              command="pick-material"
+              v-if="[2, 6].includes(order.orderStatus) && order.materialStatus !== 2"
+              :disabled="order.materialStatus === 1"
+              v-hasPermi="['production:order:edit']"
+            >
               <el-icon><Box /></el-icon>
-              生成领料单
+              {{ order.materialStatus === 1 ? '已生成领料单（待确认发料）' : '生成领料单' }}
             </el-dropdown-item>
-            <el-dropdown-item command="dispatch" v-if="[2, 4, 5, 6].includes(order.orderStatus)">
+            <el-dropdown-item command="dispatch" v-if="[2, 4, 5, 6].includes(order.orderStatus)" v-hasPermi="['production:dispatch:assign']">
               <el-icon><UserFilled /></el-icon>
               派工
             </el-dropdown-item>
-            <el-dropdown-item command="export">
+            <el-dropdown-item command="export" v-hasPermi="['production:order:export']">
               <el-icon><Download /></el-icon>
               导出订单
             </el-dropdown-item>
@@ -78,7 +84,7 @@
               <el-icon><Connection /></el-icon>
               查看流水
             </el-dropdown-item>
-            <el-dropdown-item divided command="delete" v-if="canDelete">
+            <el-dropdown-item divided command="delete" v-if="canDelete" v-hasPermi="['production:order:delete']">
               <el-icon><Delete /></el-icon>
               删除订单
             </el-dropdown-item>

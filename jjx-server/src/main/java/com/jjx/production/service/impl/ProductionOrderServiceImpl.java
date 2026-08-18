@@ -1129,6 +1129,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             workOrder.setOrderNo(workOrderNo);
             workOrder.setOrderType("WORK_ORDER");
             workOrder.setParentOrderId(plan.getOrderId());
+            // 2026-08-18：继承计划 traceId（原缺失导致工单/领料单链路断）
+            workOrder.setTraceId(plan.getTraceId());
             workOrder.setSalesOrderId(plan.getSalesOrderId());
             workOrder.setSalesOrderNo(plan.getSalesOrderNo());
             workOrder.setProductId(item.getProductId());

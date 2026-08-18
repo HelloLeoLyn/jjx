@@ -76,35 +76,82 @@
         </tbody>
       </table>
 
-      <!-- 领料明细 -->
-      <div class="section-title">二、领料明细</div>
+      <!-- 领料明细（2026-08-18：加需求/已领/剩余列 + 追加领料入口） -->
+      <div class="section-title pick-title">
+        <span>二、领料明细</span>
+        <el-button
+          v-if="canPick"
+          type="primary"
+          size="small"
+          v-hasPermi="['inventory:outbound:add']"
+          @click="openPickDialog"
+          >追加领料</el-button
+        >
+      </div>
       <table class="doc-table">
         <thead>
           <tr>
             <th style="width: 40px">序号</th>
             <th>物料编码</th>
             <th>物料名称</th>
-            <th style="width: 80px">数量</th>
-            <th style="width: 60px">单位</th>
-            <th style="width: 110px">批次</th>
-            <th style="width: 90px">库位</th>
+            <th style="width: 70px">需求</th>
+            <th style="width: 70px">已领</th>
+            <th style="width: 70px">剩余</th>
+            <th style="width: 55px">单位</th>
+            <th style="width: 100px">批次</th>
+            <th style="width: 85px">库位</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(m, i) in materialList" :key="i">
+          <tr v-for="(m, i) in pickRows" :key="i">
             <td class="center">{{ i + 1 }}</td>
             <td>{{ m.materialCode || '-' }}</td>
             <td>{{ m.materialName || '-' }}</td>
-            <td class="center">{{ fmtNum(m.quantity) }}</td>
+            <td class="center">{{ fmtNum(m.demand) }}</td>
+            <td class="center">{{ fmtNum(m.picked) }}</td>
+            <td class="center">{{ fmtNum(m.remaining) }}</td>
             <td class="center">{{ m.unit || '-' }}</td>
             <td class="center">{{ m.batchNo || '-' }}</td>
             <td class="center">{{ m.locationCode || m.locationName || '-' }}</td>
           </tr>
-          <tr v-if="materialList.length === 0">
-            <td colspan="7" class="center empty">暂无领料记录</td>
+          <tr v-if="pickRows.length === 0">
+            <td colspan="9" class="center empty">暂无领料记录</td>
           </tr>
         </tbody>
       </table>
+
+      <!-- 追加领料弹窗 -->
+      <el-dialog v-model="pickDialogVisible" title="追加领料" width="720px" append-to-body>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="按剩余可领量补领（累计领料不超过 BOM 需求量）"
+          style="margin-bottom: 12px"
+        />
+        <el-table :data="pickRows.filter((r) => Number(r.remaining) > 0)" border size="small" max-height="360">
+          <el-table-column type="selection" width="42" />
+          <el-table-column prop="materialCode" label="物料编码" width="140" />
+          <el-table-column prop="materialName" label="物料名称" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="remaining" label="剩余可领" width="90" align="right" />
+          <el-table-column label="追加数量" width="130" align="center">
+            <template #default="{ row }">
+              <el-input-number
+                v-model="row.pickQty"
+                :min="0"
+                :max="Number(row.remaining)"
+                size="small"
+                controls-position="right"
+                style="width: 110px"
+              />
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #footer>
+          <el-button @click="pickDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="pickSubmitting" @click="submitPick">确认追加</el-button>
+        </template>
+      </el-dialog>
 
       <!-- 质检结果 -->
       <div class="section-title">三、质检记录</div>
@@ -229,7 +276,7 @@ const processList = computed(() => {
   return []
 })
 
-/** 领料明细：合并所有 PICK 出库单明细 */
+/** 领料明细：合并所有 PICK 出库单明细（批次/库位取最后一条） */
 const materialList = computed(() => {
   const rows: any[] = []
   for (const ob of outbounds.value) {
@@ -248,6 +295,70 @@ const materialList = computed(() => {
   }
   return rows
 })
+
+/** 2026-08-18：领料汇总视图 = 剩余可领量(需求/已领/剩余) + 已领明细批次/库位 */
+const remainingRows = ref<any[]>([])
+const pickRows = computed(() => {
+  const batchMap = new Map<string, any>()
+  for (const m of materialList.value) {
+    batchMap.set(m.materialCode, m) // 批次/库位取最后一次领料
+  }
+  return remainingRows.value.map((r: any) => ({
+    ...r,
+    batchNo: batchMap.get(r.materialCode)?.batchNo || '-',
+    locationCode: batchMap.get(r.materialCode)?.locationCode,
+    locationName: batchMap.get(r.materialCode)?.locationName,
+  }))
+})
+
+// 追加领料（2026-08-18 P1-1：补上前端缺失的追加领料入口）
+const pickDialogVisible = ref(false)
+const pickSubmitting = ref(false)
+const canPick = ref(false)
+
+async function loadPickRemaining() {
+  try {
+    const { materialPickApi } = await import('@/api/inventory/materialPick')
+    const res: any = await materialPickApi.getPickRemaining(Number(props.orderId))
+    const list: any[] = res?.data || []
+    remainingRows.value = list.map((r) => ({ ...r, pickQty: Number(r.remaining) > 0 ? Number(r.remaining) : 0 }))
+    canPick.value = list.some((r) => Number(r.remaining) > 0)
+  } catch {
+    remainingRows.value = []
+    canPick.value = false
+  }
+}
+
+function openPickDialog() {
+  pickDialogVisible.value = true
+}
+
+async function submitPick() {
+  const items = pickRows.value
+    .filter((r) => Number(r.pickQty) > 0)
+    .map((r) => ({
+      materialId: r.materialId,
+      materialCode: r.materialCode,
+      materialName: r.materialName,
+      quantity: r.pickQty,
+    }))
+  if (items.length === 0) {
+    ElMessage.warning('请选择要追加领料的物料并填写数量')
+    return
+  }
+  pickSubmitting.value = true
+  try {
+    const { materialPickApi } = await import('@/api/inventory/materialPick')
+    await materialPickApi.createProductionPick(Number(props.orderId), items)
+    ElMessage.success(`追加领料成功，生成领料单（${items.length} 个物料）`)
+    pickDialogVisible.value = false
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '追加领料失败')
+  } finally {
+    pickSubmitting.value = false
+  }
+}
 
 const qualityList = computed(() => qualities.value || [])
 
@@ -346,6 +457,9 @@ async function loadData() {
     } catch {
       outbounds.value = []
     }
+
+    // 4.1 剩余可领量（2026-08-18：需求/已领/剩余 + 追加领料入口）
+    await loadPickRemaining()
 
     // 5. 质检记录
     try {
@@ -482,6 +596,11 @@ onMounted(async () => {
 }
 
 /* 区块标题 */
+.pick-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 .section-title {
   font-size: 12px;
   font-weight: 700;
