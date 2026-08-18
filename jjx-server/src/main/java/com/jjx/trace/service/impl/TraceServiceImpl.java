@@ -57,6 +57,9 @@ public class TraceServiceImpl implements TraceService {
                 op.put("bizType", l.getBizType());
                 op.put("bizStatus", l.getBizStatus());
                 op.put("businessType", l.getBusinessType());
+                // 2026-08-18：透出 detail（变更JSON）/operParam（摘要），前端展示修改内容
+                op.put("detail", l.getDetail());
+                op.put("operParam", l.getOperParam());
                 return op;
             }).collect(Collectors.toList());
             node.put("operations", ops);

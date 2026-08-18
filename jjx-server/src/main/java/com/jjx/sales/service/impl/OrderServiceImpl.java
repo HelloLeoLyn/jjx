@@ -174,6 +174,13 @@ public class OrderServiceImpl implements IOrderService {
 
         SalesOrder entity = orderConverter.toEntity(dto);
 
+        // 2026-08-18 L3：修改前抓旧明细（用于字段级变更对比）
+        java.util.List<SalesOrderProductVO> oldItemVOs = null;
+        try {
+            oldItemVOs = orderProductService.getListByOrderId(dto.getOrderId());
+        } catch (Exception ignored) {
+        }
+
         int insert = orderMapper.updateById(entity);
         orderProductService.deleteByOrderId(dto.getOrderId());
         if(insert>0){
@@ -181,9 +188,123 @@ public class OrderServiceImpl implements IOrderService {
             validateOrderItems(dto.getItems(), dto.getOrderType());
             ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
-            return orderProductService.batchAdd(dto.getItems());
+            boolean ok = orderProductService.batchAdd(dto.getItems());
+            // 2026-08-18 L3：字段级变更对比日志（谁/何时/改了什么）
+            saveOrderUpdateChangeLog(existingOrder, oldItemVOs, dto);
+            return ok;
         }
         throw new BusinessException(BusinessExceptionEnum.DB_UPDATE_FAILED);
+    }
+
+    /**
+     * 2026-08-18 L3：销售订单编辑的字段级变更对比，写入操作日志（detail=变更JSON，operParam=摘要文本）
+     */
+    private void saveOrderUpdateChangeLog(SalesOrder oldOrder, java.util.List<SalesOrderProductVO> oldItems,
+                                          SalesOrderEditDTO dto) {
+        try {
+            java.util.List<String> changes = new java.util.ArrayList<>();
+            diffMainFields(changes, oldOrder, dto);
+            diffItemFields(changes, oldItems, dto.getItems());
+            String summary = changes.isEmpty() ? "无字段变更" : String.join("；", changes);
+
+            SysOperLog operLog = new SysOperLog();
+            operLog.setModule("sales_order");
+            operLog.setBusinessType(2); // 修改
+            operLog.setOperUrl("order.update");
+            operLog.setBizType("order");
+            operLog.setBizId(String.valueOf(dto.getOrderId()));
+            operLog.setTraceId(oldOrder.getTraceId());
+            operLog.setBizStatus(oldOrder.getOrderStatus()); // 编辑不改变订单状态
+            operLog.setOperParam(summary);
+            operLog.setDetail(cn.hutool.json.JSONUtil.toJsonStr(java.util.Map.of("changes", changes)));
+            operLog.setStatus(1);
+            operLog.setCreateTime(LocalDateTime.now());
+            try {
+                operLog.setUsername(SecurityUtils.getUsername());
+                operLog.setUserId(SecurityUtils.getUserId());
+                operLog.setRealName(SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(operLog);
+            log.info("订单{}修改已记录变更日志: {}", dto.getOrderId(), summary);
+        } catch (Exception e) {
+            log.warn("记录订单修改变更日志失败: {}", e.getMessage());
+        }
+    }
+
+    /** 主表字段对比（白名单，排除 createTime 等系统字段） */
+    private void diffMainFields(java.util.List<String> changes, SalesOrder oldOrder, SalesOrderEditDTO dto) {
+        diff(changes, "客户", oldOrder.getCustomerName(), dto.getCustomerName());
+        diff(changes, "联系人", oldOrder.getContactPerson(), dto.getContactPerson());
+        diff(changes, "联系电话", oldOrder.getContactPhone(), dto.getContactPhone());
+        diff(changes, "下单日期", fmtDate(oldOrder.getOrderDate()), fmtDate(dto.getOrderDate()));
+        diff(changes, "交货日期", fmtDate(oldOrder.getDeliveryDate()), fmtDate(dto.getDeliveryDate()));
+        diff(changes, "订单类型", oldOrder.getOrderType(), dto.getOrderType());
+        diff(changes, "加急", oldOrder.getIsUrgent(), dto.getIsUrgent());
+        diff(changes, "币种", oldOrder.getCurrency(), dto.getCurrency());
+        diff(changes, "汇率", oldOrder.getExchangeRate(), dto.getExchangeRate());
+        diff(changes, "付款条款", oldOrder.getPaymentTerms(), dto.getPaymentTerms());
+        diff(changes, "交货条款", oldOrder.getDeliveryTerms(), dto.getDeliveryTerms());
+        diff(changes, "交货地址", oldOrder.getDeliveryAddress(), dto.getDeliveryAddress());
+        diff(changes, "总金额", oldOrder.getTotalAmount(), dto.getTotalAmount());
+        diff(changes, "税率", oldOrder.getTaxRate(), dto.getTaxRate());
+        diff(changes, "折扣率", oldOrder.getDiscountRate(), dto.getDiscountRate());
+        diff(changes, "总数量", oldOrder.getTotalQuantity(), dto.getTotalQuantity());
+        diff(changes, "销售员", oldOrder.getSalesManagerName(), dto.getSalesManagerName());
+        diff(changes, "备注", oldOrder.getRemark(), dto.getRemark());
+    }
+
+    private void diff(java.util.List<String> changes, String label, Object oldVal, Object newVal) {
+        if (!java.util.Objects.equals(oldVal, newVal)) {
+            changes.add(label + ":" + fmt(oldVal) + "→" + fmt(newVal));
+        }
+    }
+
+    private String fmt(Object v) {
+        return v == null ? "空" : String.valueOf(v);
+    }
+
+    private String fmtDate(java.util.Date d) {
+        if (d == null) return "空";
+        try {
+            return new java.text.SimpleDateFormat("yyyy-MM-dd").format(d);
+        } catch (Exception e) {
+            return String.valueOf(d);
+        }
+    }
+
+    /** 明细对比（旧明细 vs 新明细：按 productId 匹配 新增/删除/修改数量单价） */
+    private void diffItemFields(java.util.List<String> changes, java.util.List<SalesOrderProductVO> oldItems,
+                                java.util.List<SalesOrderProductDTO> newItems) {
+        if (oldItems == null) return;
+        java.util.Map<Long, SalesOrderProductVO> oldMap = new java.util.HashMap<>();
+        for (SalesOrderProductVO it : oldItems) {
+            if (it.getProductId() != null) oldMap.put(it.getProductId(), it);
+        }
+        java.util.Set<Long> newIds = new java.util.HashSet<>();
+        for (SalesOrderProductDTO ni : newItems) {
+            if (ni.getProductId() == null) continue;
+            newIds.add(ni.getProductId());
+            String label = (ni.getProductCode() != null ? ni.getProductCode() : "")
+                    + (ni.getProductName() != null ? " " + ni.getProductName() : "");
+            SalesOrderProductVO oi = oldMap.get(ni.getProductId());
+            if (oi == null) {
+                changes.add("新增明细:" + label + " 数量" + ni.getQuantity());
+            } else {
+                if (!java.util.Objects.equals(oi.getQuantity(), ni.getQuantity())) {
+                    changes.add("明细" + label + " 数量:" + oi.getQuantity() + "→" + ni.getQuantity());
+                }
+                if (!java.util.Objects.equals(oi.getUnitPrice(), ni.getUnitPrice())) {
+                    changes.add("明细" + label + " 单价:" + oi.getUnitPrice() + "→" + ni.getUnitPrice());
+                }
+            }
+        }
+        for (SalesOrderProductVO oi : oldItems) {
+            if (oi.getProductId() != null && !newIds.contains(oi.getProductId())) {
+                changes.add("删除明细:" + (oi.getProductCode() != null ? oi.getProductCode() + " " : "")
+                        + (oi.getProductName() != null ? oi.getProductName() : ""));
+            }
+        }
     }
 
     /**

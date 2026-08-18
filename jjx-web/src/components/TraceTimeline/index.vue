@@ -42,6 +42,15 @@
           </el-link>
           <span v-else>
             <span>{{ formatBusinessType(scope.row.businessType) }}</span>
+            <div v-if="scope.row.operation && scope.row.operation !== '-'">
+              <div class="op-action">{{ scope.row.operation }}</div>
+              <!-- 2026-08-18：字段级变更明细 -->
+              <div v-if="scope.row.opChanges && scope.row.opChanges.length" class="op-changes">
+                <div v-for="(c, i) in scope.row.opChanges" :key="i" class="op-change-item">
+                  {{ c }}
+                </div>
+              </div>
+            </div>
             <div v-if="scope.row.attachments && scope.row.attachments.length" class="op-attachments">
               <el-link
                 v-for="a in scope.row.attachments"
@@ -102,6 +111,32 @@ function handleClose() {
   emit('update:modelValue', false)
 }
 
+// sales_order 模块事件码 → 中文（saveOrderLog 写的 order.xxx，非 URL）
+const ORDER_ACTION_MAP: Record<string, string> = {
+  'order.submit_review': '提交审核',
+  'order.start_review': '开始审核',
+  'order.approve': '审核通过',
+  'order.reject': '审核驳回',
+  'order.resubmit': '重新提交审核',
+  'order.cancel': '取消订单',
+  'order.cancel_work_order': '取消工单',
+  'order.send': '发送客户确认',
+  'order.generate_plan': '生成生产计划',
+  'order.confirm': '客户确认',
+  'order.ship': '发货',
+  'order.complete': '完成订单',
+  'order.update': '修改订单',
+}
+
+// 操作列可读化：sales_order 事件码转中文；其余直接显示 URL（2026-08-18 修字段名不匹配）
+function formatOperation(action: string | null | undefined, module: string): string {
+  if (!action) return '-'
+  if (module === 'sales_order' && action.startsWith('order.')) {
+    return ORDER_ACTION_MAP[action] || action.replace('order.', '')
+  }
+  return action
+}
+
 // 把所有模块的操作日志平铺成一个列表，按时间排序（附件作为特殊行融入，DEV-735）
 const flatOps = computed(() => {
   const list: any[] = []
@@ -117,6 +152,9 @@ const flatOps = computed(() => {
       }
       list.push({
         ...op,
+        operation: formatOperation(op.action, node.module),
+        // 2026-08-18：变更明细（detail.changes）挂到行上展示
+        opChanges: parseChanges(op.detail),
         module: node.module,
         attachments: opAttachments,
       })
@@ -140,6 +178,17 @@ const flatOps = computed(() => {
   list.sort((a, b) => (a.time || '').localeCompare(b.time || ''))
   return list
 })
+
+// 解析 detail 中的变更清单（2026-08-18：{"changes":["交货日期:xxx→xxx", ...]}）
+function parseChanges(detail: string | null | undefined): string[] {
+  if (!detail) return []
+  try {
+    const d = JSON.parse(detail)
+    return Array.isArray(d?.changes) ? d.changes : []
+  } catch {
+    return []
+  }
+}
 
 function formatTime(t: string | null | undefined): string {
   if (!t) return ''
@@ -245,6 +294,22 @@ async function loadTrace() {
 <style scoped>
 .trace-header { margin-bottom: 12px; }
 <style scoped>
+.op-action {
+  font-size: 12px;
+  color: var(--el-text-color-primary);
+  margin-top: 2px;
+}
+.op-changes {
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.op-change-item {
+  font-size: 12px;
+  color: var(--el-color-warning-dark-2);
+  line-height: 1.5;
+}
 .op-attachments {
   margin-top: 4px;
   display: flex;
