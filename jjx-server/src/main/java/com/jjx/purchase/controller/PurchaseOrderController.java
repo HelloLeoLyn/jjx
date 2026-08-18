@@ -68,6 +68,16 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
+     * 查询物料在途采购量（2026-08-18 P1-B：采购计划工作台手动添加物料时防重复下单用，含草稿单）
+     */
+    @Operation(summary = "查询物料在途采购量")
+    @SaCheckPermission("purchase:plan:view")
+    @GetMapping("/in-transit")
+    public Result<Map<Long, BigDecimal>> inTransit(@RequestParam List<Long> materialIds) {
+        return Result.success(purchaseOrderService.getInTransitByMaterials(materialIds));
+    }
+
+    /**
      * 新增采购订单
      */
     @PostMapping
@@ -216,9 +226,12 @@ public class PurchaseOrderController extends BaseController {
     // ==================== DEV-664 采购计划 ====================
 
     /**
-     * 确认计划单转正式采购单
+     * 确认计划单转正式采购单（计划单体系已弃用，2026-08-18：前端无入口，待后续清理或重构）
+     *
+     * @deprecated 计划单体系（plan_status=1）已弃用
      */
-    @Operation(summary = "确认计划单转正式采购单")
+    @Deprecated
+    @Operation(summary = "确认计划单转正式采购单（已弃用）")
     @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:plan:confirm")
     @PutMapping("/{orderId}/confirm-plan")
@@ -240,9 +253,12 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
-     * 092：缺料预警一键生成采购计划单
+     * 092：缺料预警一键生成采购计划单（已弃用，2026-08-18：前端无调用）
+     *
+     * @deprecated 计划单体系已弃用
      */
-    @Operation(summary = "缺料预警一键生成采购计划单（092）")
+    @Deprecated
+    @Operation(summary = "缺料预警一键生成采购计划单（已弃用）")
     @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
     @SaCheckPermission("purchase:plan:add")
     @PostMapping("/create-plan-from-suggestions")
@@ -252,8 +268,12 @@ public class PurchaseOrderController extends BaseController {
 
     /**
      * DEV-996：预警页选中/单条预警一键转采购（生成采购计划单 + 自动回写预警）
+     * 已弃用（2026-08-18）：预警页转采购入口已移除，采购侧统一走采购计划工作台
+     *
+     * @deprecated 计划单体系已弃用
      */
-    @Operation(summary = "选中预警一键生成采购计划单（DEV-996）")
+    @Deprecated
+    @Operation(summary = "选中预警一键生成采购计划单（已弃用）")
     @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
     @SaCheckPermission("purchase:plan:add")
     @PostMapping("/create-plan-from-alerts")

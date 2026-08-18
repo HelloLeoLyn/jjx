@@ -107,6 +107,28 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return voPage;
     }
 
+/**
+     * 2026-08-18：获取默认启用仓库，查不到时抛明确业务异常（原静默跳过导致 warehouse_id 为 NULL）
+     */
+    private InventoryWarehouse getDefaultWarehouseOrThrow() {
+        try {
+            InventoryWarehouse wh = outboundWarehouseMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryWarehouse>()
+                            .eq(InventoryWarehouse::getStatus, 1)
+                            .orderByAsc(InventoryWarehouse::getWarehouseId)
+                            .last("LIMIT 1"));
+            if (wh == null) {
+                throw new BusinessException("未配置启用状态的仓库，请先在【库存→仓库管理】中启用仓库");
+            }
+            return wh;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("获取默认仓库失败: {}", e.getMessage());
+            throw new BusinessException("获取默认仓库失败，请检查仓库配置");
+        }
+    }
+
     @Override
     public OutboundVO getDetail(Long outboundId) {
         InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
@@ -125,6 +147,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Event(value = "inventory.outbound.created", bizId = "#params", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
+    
     public Long create(Map<String, Object> params) {
         log.info("创建出库单: {}", params);
         InventoryOutboundOrder order = new InventoryOutboundOrder();
@@ -133,7 +156,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceType((String) params.get("sourceType"));
         if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
         order.setSourceNo((String) params.get("sourceNo"));
-        if (params.get("warehouseId") != null) order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
+        // 2026-08-18：手动出库 warehouseId 必填（原不校验 → NULL → SQL 裸错）
+        if (params.get("warehouseId") == null) {
+            throw new BusinessException("请选择出库仓库");
+        }
+        order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.insert(order);
 
@@ -586,18 +613,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setTraceId(prodOrder.getTraceId()); // 链路追踪（DEV-568）：工单→领料出库单继承
         order.setOutboundDate(LocalDate.now());
         // 默认取第一个启用仓库（工单无仓库字段）
-        try {
-            InventoryWarehouse defaultWh = outboundWarehouseMapper.selectOne(
-                    new LambdaQueryWrapper<InventoryWarehouse>()
-                            .eq(InventoryWarehouse::getStatus, 1)
-                            .orderByAsc(InventoryWarehouse::getWarehouseId)
-                            .last("LIMIT 1"));
-            if (defaultWh != null) {
-                order.setWarehouseId(defaultWh.getWarehouseId());
-            }
-        } catch (Exception e) {
-            log.warn("获取默认仓库失败: {}", e.getMessage());
-        }
+        // 2026-08-18：查不到启用仓库时明确报错（原静默跳过导致 warehouse_id NULL → SQL 裸错）
+        order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.insert(order);
 
@@ -857,18 +874,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setSourceNo(prodOrder.getOrderNo());
         order.setTraceId(prodOrder.getTraceId());
         order.setOutboundDate(LocalDate.now());
-        try {
-            InventoryWarehouse defaultWh = outboundWarehouseMapper.selectOne(
-                    new LambdaQueryWrapper<InventoryWarehouse>()
-                            .eq(InventoryWarehouse::getStatus, 1)
-                            .orderByAsc(InventoryWarehouse::getWarehouseId)
-                            .last("LIMIT 1"));
-            if (defaultWh != null) {
-                order.setWarehouseId(defaultWh.getWarehouseId());
-            }
-        } catch (Exception e) {
-            log.warn("获取默认仓库失败: {}", e.getMessage());
-        }
+        // 2026-08-18：查不到启用仓库时明确报错（原静默跳过导致 warehouse_id NULL → SQL 裸错）
+        order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
         order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
         outboundOrderMapper.insert(order);
 
@@ -940,18 +947,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setTraceId(salesOrder.getTraceId()); // 链路追踪（DEV-568）：销售订单→发货出库单继承
         order.setOutboundDate(LocalDate.now());
         // DEV-932修复：销售发货出库单必须带仓库，参考 createFromProduction 取默认启用仓库（warehouse_id NOT NULL 无默认值）
-        try {
-            InventoryWarehouse defaultWh = outboundWarehouseMapper.selectOne(
-                    new LambdaQueryWrapper<InventoryWarehouse>()
-                            .eq(InventoryWarehouse::getStatus, 1)
-                            .orderByAsc(InventoryWarehouse::getWarehouseId)
-                            .last("LIMIT 1"));
-            if (defaultWh != null) {
-                order.setWarehouseId(defaultWh.getWarehouseId());
-            }
-        } catch (Exception e) {
-            log.warn("获取默认仓库失败: {}", e.getMessage());
-        }
+        // 2026-08-18：查不到启用仓库时明确报错（原静默跳过导致 warehouse_id NULL → SQL 裸错）
+        order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         outboundOrderMapper.insert(order);
 

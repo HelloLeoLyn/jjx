@@ -12,6 +12,11 @@
 --      inventory_material_category（物料分类）、purchase_supplier（供应商）不再清理
 --   2. 其余同 v6
 --
+-- v8 变更（2026-08-18）：
+--   1. inventory_warehouse（仓库）改为保留——基础档案（与物料/客户/供应商同级），
+--      此前清理后发货/领料创建出库单时查不到默认仓库，warehouse_id NOT NULL 报 SQL 裸错
+--   2. 其余同 v7
+--
 -- v6 变更（2026-08-12）：
 --   1. 新增派工模块清理：production_dispatch_log / production_dispatch（先子后主）
 --   2. 工装模具档案 production_tooling 保留不清（用户明确要求）
@@ -179,11 +184,15 @@ TRUNCATE inventory_stock;
 
 TRUNCATE inventory_storage_location;
 
+-- v8：仓库保留不清（基础档案，出库单创建依赖默认仓库）
+-- TRUNCATE inventory_warehouse;
+
 -- v7：物料及分类保留不清（基础档案）
 -- TRUNCATE inventory_material_category;
 -- TRUNCATE inventory_material;
 
-TRUNCATE inventory_warehouse;
+-- v8：仓库保留不清（基础档案，出库单创建依赖默认仓库）
+-- TRUNCATE inventory_warehouse;
 
 -- ==================== 7. 门户相关 ====================
 TRUNCATE portal_product_display;

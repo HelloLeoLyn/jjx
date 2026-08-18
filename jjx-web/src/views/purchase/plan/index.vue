@@ -57,7 +57,7 @@
         </el-table-column>
         <el-table-column label="操作" width="80" align="center">
           <template #default="{ $index }">
-            <el-button link type="danger" @click="removeRow($index)">删除</el-button>
+            <el-button link type="danger" @click="removeRow($index)">移除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -129,7 +129,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
-import { getPlanSuggestions, confirmPlan, addOrder } from '@/api/purchase/order'
+import { getPlanSuggestions, confirmPlan, addOrder, inTransit as orderInTransit } from '@/api/purchase/order'
 import { alertApi } from '@/api/inventory/alert'
 import { listSupplier } from '@/api/purchase/supplier'
 import { materialApi } from '@/api/inventory/material'
@@ -219,14 +219,24 @@ const searchMaterials = async (keyword: string) => {
   }
 }
 
-// 加入计划
-const confirmAddMaterial = () => {
+// 加入计划（2026-08-18：添加前查在途，已有未完成采购单则警告防重复下单）
+const confirmAddMaterial = async () => {
   if (!addMaterialId.value) {
     ElMessage.warning('请选择物料')
     return
   }
   const mat = materialOptions.value.find((m) => m.materialId === addMaterialId.value)
   if (!mat) return
+  // 在途检查
+  try {
+    const res: any = await orderInTransit([mat.materialId])
+    const inTransit = res?.data?.[mat.materialId]
+    if (inTransit && Number(inTransit) > 0) {
+      ElMessage.warning(`该物料已有未完成采购单（在途 ${inTransit}），请确认是否需要重复采购`)
+    }
+  } catch {
+    /* 在途查询失败不阻断 */
+  }
   const exist = planRows.value.find((r) => r.materialCode === mat.materialCode)
   if (exist) {
     exist.quantity += addQuantity.value
@@ -250,7 +260,17 @@ const confirmAddMaterial = () => {
 }
 
 const removeRow = (index: number) => {
-  planRows.value.splice(index, 1)
+  const row = planRows.value[index]
+  // 2026-08-18：移除仅作用于列表行，预警仍保留（下次加载会回来），提示避免误解
+  if (row?.sourceAlertId) {
+    ElMessageBox.confirm('该行来自预警，移除后预警仍保留在待办中，下次加载会再次出现。确定移除吗？', '提示', { type: 'warning' })
+      .then(() => {
+        planRows.value.splice(index, 1)
+      })
+      .catch(() => {})
+  } else {
+    planRows.value.splice(index, 1)
+  }
 }
 
 const clearPlan = () => {
@@ -321,15 +341,16 @@ const doConfirmPlan = async () => {
       })),
       saveAsPlan: false,
     } as any)
-    ElMessage.success(`已生成采购订单（${toConfirm.length} 个物料）`)
-    // 预警闭环：把勾选行对应的预警标记已处理（关联采购订单号）
+    ElMessage.success(`已生成采购订单（${toConfirm.length} 个物料），请到「采购订单」列表提交审批`)
+    // 预警闭环：勾选行来源预警 + 勾选物料全部未处理预警 一并回写（2026-08-18 P0-A/P1-A：按物料回写，修手动行/低库存复燃）
     const alertIds = toConfirm.map((r) => r.sourceAlertId).filter((id): id is number => !!id)
-    if (alertIds.length > 0) {
-      try {
-        await alertApi.batchProcess(alertIds, orderNo, '采购计划确认')
-      } catch (e) {
-        console.warn('回写预警状态失败', e)
-      }
+    const materialIds = toConfirm.map((r) => r.materialId).filter((id): id is number => !!id)
+    try {
+      await alertApi.batchProcess({ alertIds, materialIds, relatedOrderNo: orderNo, remark: '采购计划确认' })
+    } catch (e) {
+      // 2026-08-18：回写失败不再静默，明确提示（采购单已生成，预警需人工处理）
+      console.warn('回写预警状态失败', e)
+      ElMessage.warning('采购单已生成，但预警状态回写失败，请到库存预警页手动处理')
     }
     // 仅移除已确认的勾选行，未勾选保留
     const confirmedCodes = new Set(toConfirm.map((r) => r.materialCode))

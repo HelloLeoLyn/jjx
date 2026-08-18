@@ -363,6 +363,17 @@ export function getPlanSuggestions() {
 }
 
 /**
+ * 查询物料在途采购量（2026-08-18 P1-B：含草稿单，防重复下单）
+ */
+export function inTransit(materialIds: number[]) {
+  return request({
+    url: '/purchase/order/in-transit',
+    method: 'get',
+    params: { materialIds: materialIds.join(',') },
+  })
+}
+
+/**
  * 确认计划单转正式采购单
  */
 export function confirmPlan(orderId: string, supplierId: string, supplierName: string) {

@@ -1293,6 +1293,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     // ==================== DEV-664 采购计划 ====================
 
+    /**
+     * 计划单转正式（计划单体系已弃用，2026-08-18：前端无确认入口，待后续清理或重构）
+     *
+     * @deprecated 计划单体系（plan_status=1）已弃用
+     */
+    @Deprecated
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int confirmPlan(Long orderId, Long supplierId, String supplierName) {
@@ -1329,7 +1335,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             if (!materialIds.isEmpty()) {
                 java.util.List<Long> alertIds = alertService.getUnprocessedAlertIdsByMaterials(materialIds);
                 if (!alertIds.isEmpty()) {
-                    alertService.batchProcessAlert(alertIds, order.getOrderNo(), "采购计划确认转正式，关联采购单");
+                    alertService.batchProcessAlert(alertIds, null, order.getOrderNo(), "采购计划确认转正式，关联采购单");
                 }
             }
         } catch (Exception e) {
@@ -1342,6 +1348,37 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public List<Map<String, Object>> getPlanSuggestions() {
         // 复用库存预警的采购建议（安全库存 + 订单缺料），算法已按 max_stock 优化
         return alertService.generatePurchaseSuggestions();
+    }
+
+    /**
+     * 一键从建议生成计划单（计划单体系已弃用，2026-08-18：前端无调用）
+     *
+     * @deprecated 计划单体系已弃用
+     */
+    @Deprecated
+    @Override
+    public java.util.Map<Long, BigDecimal> getInTransitByMaterials(java.util.List<Long> materialIds) {
+        // 2026-08-18 P1-B：含草稿(1)/待审批(3)/已批准(4)未收货单，防手动添加物料重复下单
+        java.util.Map<Long, BigDecimal> result = new java.util.HashMap<>();
+        if (materialIds == null || materialIds.isEmpty()) {
+            return result;
+        }
+        try {
+            java.util.Set<Long> want = new java.util.HashSet<>(materialIds);
+            java.util.List<java.util.Map<String, Object>> rows = orderItemMapper.selectInTransitByMaterial();
+            for (java.util.Map<String, Object> row : rows) {
+                Object mid = row.get("material_id");
+                Object qty = row.get("in_transit");
+                if (mid == null || qty == null) continue;
+                Long materialId = ((Number) mid).longValue();
+                if (want.contains(materialId)) {
+                    result.put(materialId, new BigDecimal(qty.toString()));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询物料在途采购量失败: {}", e.getMessage());
+        }
+        return result;
     }
 
     @Override
@@ -1379,6 +1416,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         return plan.getOrderId();
     }
 
+    /**
+     * 从选中预警生成计划单（计划单体系已弃用，2026-08-18：预警页转采购入口已移除）
+     *
+     * @deprecated 计划单体系已弃用
+     */
+    @Deprecated
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPlanFromAlerts(java.util.List<Long> alertIds) {
@@ -1425,7 +1468,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
         // 自动回写预警：状态→2 + 关联采购单号（复用 batchProcessAlert）
         try {
-            alertService.batchProcessAlert(alertIds, plan.getOrderNo(), "预警一键转采购生成采购计划单");
+            alertService.batchProcessAlert(alertIds, null, plan.getOrderNo(), "预警一键转采购生成采购计划单");
         } catch (Exception e) {
             log.warn("转采购后回写预警失败: {}", e.getMessage());
         }

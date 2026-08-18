@@ -116,7 +116,7 @@ public interface PurchaseOrderItemMapper extends BaseMapper<PurchaseOrderItem> {
     @Select("SELECT i.material_id AS material_id, SUM(i.quantity - IFNULL(i.received_quantity, 0)) AS in_transit " +
             "FROM purchase_order_item i INNER JOIN purchase_order o ON o.order_id = i.order_id " +
             "WHERE o.receipt_status = 0 " +
-            "AND o.approval_status IN (3, 4) " + // 023/089：只在途统计 待审批(3)/已批准(4)，排除草稿(1)/已取消(2)/已拒绝(5)
+            "AND o.approval_status IN (1, 3, 4) " + // 023/089：在途统计 草稿(1)/待审批(3)/已批准(4)；2026-08-18 纳入草稿，防刚下单仍反复建议；排除已取消(2)/已拒绝(5)
             "GROUP BY i.material_id")
     java.util.List<java.util.Map<String, Object>> selectInTransitByMaterial();
 
