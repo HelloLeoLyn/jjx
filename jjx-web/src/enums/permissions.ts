@@ -196,6 +196,8 @@ export const Permissions = {
   SALES_ORDER_EXPORT: 'sales:order:export',
   /** 销售订单 - 审核 */
   SALES_ORDER_REVIEW: 'sales:order:review',
+  /** 销售订单 - 提交审核（2026-08-18：与审核动作拆分） */
+  SALES_ORDER_SUBMIT: 'sales:order:submit',
   /** 销售订单 - 状态变更 */
   SALES_ORDER_STATUS: 'sales:order:status',
 

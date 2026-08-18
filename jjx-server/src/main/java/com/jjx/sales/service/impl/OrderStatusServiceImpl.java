@@ -79,8 +79,12 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesOrder>()
                             .eq(com.jjx.sales.domain.entity.SalesOrder::getOrderNo, orderNo)
                             .last("LIMIT 1"));
-            if (so != null && so.getTraceId() != null && !so.getTraceId().isEmpty()) {
-                log.setTraceId(so.getTraceId());
+            if (so != null) {
+                if (so.getTraceId() != null && !so.getTraceId().isEmpty()) {
+                    log.setTraceId(so.getTraceId());
+                }
+                // 2026-08-18：补 biz_status = 订单当前状态（所有调用点均在状态更新后，此前为 NULL/0）
+                log.setBizStatus(so.getOrderStatus());
             }
         } catch (Exception ignored) {
         }
@@ -152,16 +156,11 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("只有待审核状态的订单才能开始审核，当前状态：" + currentStatus.getName());
         }
 
-        // 3. 检查审核权限
-        if (!SecurityUtils.hasPermission("order:status:review")) {
-            throw new BusinessException("无审核权限");
-        }
-
-        // 4. 更新状态
+        // 3. 更新状态（接口层已校验 sales:order:review，2026-08-18 移除幽灵权限码 order:status:review）
         final OrderStatusEnum targetStatus = OrderStatusEnum.REVIEWING;
         order.setOrderStatus(targetStatus.getCode());
 
-        // 5. 保存
+        // 4. 保存
         int result = salesOrderMapper.updateStatusWithCheck(
             orderId, targetStatus.getCode(), currentStatus.getCode()
         );
@@ -169,7 +168,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
 
-        // 6. 记录日志
+        // 5. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
         saveOrderLog(order.getOrderNo(), "start_review", desc, 1);
         log.info("订单{}开始审核，审核人：{}", orderId, SecurityUtils.getUsername());

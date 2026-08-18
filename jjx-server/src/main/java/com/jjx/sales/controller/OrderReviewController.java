@@ -35,7 +35,7 @@ public class OrderReviewController extends BaseController {
     @PostMapping("/submit/{orderId}")
     @Operation(summary = "提交订单审核")
     @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
-    @SaCheckPermission("sales:order:review")
+    @SaCheckPermission("sales:order:submit")
     public Result<Long> submitOrderForReview(@PathVariable Long orderId,
                                              @RequestParam Long submitterId,
                                              @RequestParam String submitterName,
@@ -260,7 +260,7 @@ public class OrderReviewController extends BaseController {
     @PostMapping("/batch/submit")
     @Operation(summary = "批量提交审核")
     @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
-    @SaCheckPermission("sales:order:review")
+    @SaCheckPermission("sales:order:submit")
     public Result<Object> batchSubmitForReview(@RequestParam List<Long> orderIds,
                                                @RequestParam Long submitterId,
                                                @RequestParam String submitterName) {
