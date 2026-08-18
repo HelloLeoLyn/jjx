@@ -58,6 +58,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.service.InventoryInboundService inboundService;
     private final com.jjx.inventory.service.InventoryAlertService alertService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final com.jjx.system.service.LogSaveService logSaveService;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -166,7 +167,39 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 保存订单明细
         saveOrderItems(order.getOrderId(), orderDTO.getItems());
 
+        // 2026-08-18：写创建日志（带 traceId）——采购单链路出现"创建"节点，
+        // 后续审批/收货 @Log 可回退继承 traceId（原源头缺失致采购单流水全空）
+        savePurchaseCreateLog(order);
+
         return result;
+    }
+
+    /**
+     * 2026-08-18：采购订单创建日志（带 traceId，仿销售订单 saveOrderCreateLog）
+     */
+    private void savePurchaseCreateLog(PurchaseOrder order) {
+        try {
+            com.jjx.system.domain.entity.SysOperLog log = new com.jjx.system.domain.entity.SysOperLog();
+            log.setModule("purchase_order");
+            log.setBusinessType(1); // 新增
+            log.setOperUrl("order.create");
+            log.setBizType("purchase_order");
+            log.setBizId(String.valueOf(order.getOrderId()));
+            log.setTraceId(order.getTraceId());
+            log.setBizStatus(order.getApprovalStatus());
+            log.setOperParam("创建采购订单 " + order.getOrderNo() + "（" + order.getSupplierName() + "）");
+            log.setStatus(1);
+            log.setCreateTime(java.time.LocalDateTime.now());
+            try {
+                log.setUsername(com.jjx.system.utils.SecurityUtils.getUsername());
+                log.setUserId(com.jjx.system.utils.SecurityUtils.getUserId());
+                log.setRealName(com.jjx.system.utils.SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(log);
+        } catch (Exception e) {
+            log.warn("记录采购订单创建日志失败: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -1109,6 +1142,16 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             // 更新收货数量
             BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
                     item.getReceivedQuantity().add(itemDTO.getReceivedQuantity()) : itemDTO.getReceivedQuantity();
+            // 2026-08-18：超收校验（对齐 receiveOrderItem，此前批量接口漏校验）
+            if (itemDTO.getReceivedQuantity() == null || itemDTO.getReceivedQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException("收货数量必须大于0");
+            }
+            if (newReceivedQuantity.compareTo(item.getQuantity()) > 0) {
+                throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
+                        + "（订单数量" + item.getQuantity().stripTrailingZeros().toPlainString()
+                        + ", 已收" + (item.getReceivedQuantity() != null ? item.getReceivedQuantity().stripTrailingZeros().toPlainString() : "0")
+                        + ", 本次" + itemDTO.getReceivedQuantity().stripTrailingZeros().toPlainString() + "）");
+            }
             item.setReceivedQuantity(newReceivedQuantity);
 
             // 更新检验结果

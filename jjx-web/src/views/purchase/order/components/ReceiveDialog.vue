@@ -93,7 +93,7 @@
 import { ref, reactive, nextTick, watch, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { PurchaseEnum } from '@/enums/purchase'
-import { receiveOrderItem, getOrderItems } from '@/api/purchase/order'
+import { receiveOrderItem, batchReceiveOrderItems, getOrderItems } from '@/api/purchase/order'
 import { formatCurrency } from '@/utils/format'
 
 const props = defineProps<{
@@ -190,24 +190,27 @@ const handleSubmit = async () => {
 
   loading.value = true
   try {
-    // 提交每个明细项的收货
-    for (const item of form.items) {
-      if (item.currentReceiveQuantity > 0) {
-        await receiveOrderItem(
-          form.orderId!,
-          item.itemId || item.id,
-          item.currentReceiveQuantity,
-          item.inspectionResult,
-          item.inspectionRemark
-        )
-      }
+    // 2026-08-18：改为批量提交（一次收货=一张入库单批次，可区分每次收货；单条循环会生成多张单行入库单）
+    const items = form.items
+      .filter((item) => item.currentReceiveQuantity > 0)
+      .map((item) => ({
+        itemId: item.itemId || item.id,
+        receivedQuantity: item.currentReceiveQuantity,
+        inspectionResult: item.inspectionResult,
+        inspectionRemark: item.inspectionRemark,
+      }))
+    if (items.length === 0) {
+      ElMessage.warning('请至少输入一个收货数量')
+      return
     }
+    await batchReceiveOrderItems(form.orderId!, { items })
 
     ElMessage.success('收货成功')
     emit('success')
     handleClose()
-  } catch (error) {
+  } catch (error: any) {
     console.error('收货失败:', error)
+    ElMessage.error(error?.message || '收货失败')
   } finally {
     loading.value = false
   }

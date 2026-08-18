@@ -112,21 +112,20 @@
         <!-- 入库凭证（当前 / 历史） -->
         <el-divider content-position="left">入库凭证</el-divider>
 
-        <!-- 当前凭证（未完成：待审批/草稿/已驳回等） -->
-        <div v-if="currentInbound" class="voucher-block">
+        <!-- 入库凭证（当前 / 历史）2026-08-18：多次收货每张入库单独立展示，可区分每次收货 -->
+        <el-divider content-position="left">入库凭证</el-divider>
+
+        <!-- 待确认凭证（未完成：待审批/草稿/已驳回等，可能多张=多次收货） -->
+        <div v-for="ib in currentInbounds" :key="ib.inboundId" class="voucher-block">
           <div class="voucher-header">
-            <el-tag type="warning" size="small">当前凭证</el-tag>
-            <span class="voucher-no">{{ currentInbound.inboundNo }}</span>
-            <el-tag :type="getStatusTag(currentInbound.status)" size="small">{{
-              currentInbound.statusName || inboundStatusText(currentInbound.status)
-            }}</el-tag>
-            <span class="voucher-qty">数量：{{ formatNumber(currentInbound.totalQuantity) }}</span>
-            <el-button link type="primary" @click="viewVoucher(currentInbound)">查看详情</el-button>
-            <span v-if="currentInbound.status === 1" class="voucher-tip"
-              >待仓库在【入库管理】审批</span
-            >
+            <el-tag type="warning" size="small">待确认凭证</el-tag>
+            <span class="voucher-no">{{ ib.inboundNo }}</span>
+            <el-tag :type="getStatusTag(ib.status)" size="small">{{ ib.statusName || inboundStatusText(ib.status) }}</el-tag>
+            <span class="voucher-qty">数量：{{ formatNumber(ib.totalQuantity) }}</span>
+            <el-button link type="primary" @click="viewVoucher(ib)">查看详情</el-button>
+            <span v-if="ib.status === 1" class="voucher-tip">待仓库在【入库管理】审批</span>
           </div>
-          <el-table :data="currentInbound.items || []" size="small" border style="width: 100%">
+          <el-table :data="ib.items || []" size="small" border style="width: 100%">
             <el-table-column label="物料编码" prop="materialCode" width="130" />
             <el-table-column label="物料名称" prop="materialName" min-width="140" show-overflow-tooltip />
             <el-table-column label="批次号" prop="batchNo" width="170" />
@@ -136,7 +135,7 @@
             <el-table-column label="到期日期" prop="expiryDate" width="110" align="center" />
           </el-table>
         </div>
-        <el-empty v-else-if="orderDetail.receiptStatus > 0" description="暂无当前凭证（已全部入库或未生成）" :image-size="50" />
+        <el-empty v-else-if="!currentInbounds.length && orderDetail.receiptStatus > 0" description="暂无待确认凭证（已全部入库或未生成）" :image-size="50" />
 
         <!-- 历史凭证（已完成） -->
         <div v-if="historyInbounds.length" class="voucher-block">
@@ -214,7 +213,7 @@ const totalAmount = computed(() => {
 
 // ===== 入库凭证（当前/历史） =====
 const inboundList = ref<InboundVO[]>([])
-const currentInbound = computed(() => inboundList.value.find((i) => i.status !== 10) || null)
+const currentInbounds = computed(() => inboundList.value.filter((i) => i.status !== 10))
 const historyInbounds = computed(() => inboundList.value.filter((i) => i.status === 10))
 const voucherDialogVisible = ref(false)
 const voucherId = ref<number | null>(null)
