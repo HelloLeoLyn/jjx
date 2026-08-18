@@ -11,7 +11,8 @@ export const alertApi = {
         size: params.pageSize ?? 10,
         alertType: params.alertType || undefined,
         alertLevel: params.alertLevel || undefined,
-        status: params.processed === 'false' ? '0' : params.processed === 'true' ? '2' : undefined,
+        // 2026-08-18：状态筛选 0未处理/1已上报/2已处理/3已解除，空=全部
+        status: params.status === '' || params.status === undefined || params.status === null ? undefined : params.status,
       },
     })
   },
@@ -36,21 +37,14 @@ export const alertApi = {
     return request.post('/inventory/alert/batch-mark-read', alertIds)
   },
 
-  // 批量处理预警（采购计划确认后回写，关联采购订单号）
-  batchProcess(alertIds: number[], relatedOrderNo: string, remark?: string) {
-    return request.post('/inventory/alert/batch-process', { alertIds, relatedOrderNo, remark })
-  },
-
-  // 选中预警一键转采购：生成采购计划单 + 自动回写预警（DEV-996）
-  createPlanFromAlerts(alertIds: number[]) {
-    return request.post<R<number>>('/purchase/order/create-plan-from-alerts', alertIds)
-  },
-
-  // 处理预警
-  process(alertId: number, processedBy: string, remark?: string) {
-    return request.post(`/inventory/alert/process/${alertId}`, null, {
-      params: { processedBy, remark: remark || undefined },
-    })
+// 批量处理预警（采购计划确认后回写，关联采购订单号；materialIds 为按物料回写，2026-08-18）
+  batchProcess(data: {
+    alertIds: number[]
+    materialIds?: number[]
+    relatedOrderNo: string
+    remark?: string
+  }) {
+    return request.post('/inventory/alert/batch-process', data)
   },
 
   // 订单齐套检查（按BOM算料缺料预警，手动重新检查）

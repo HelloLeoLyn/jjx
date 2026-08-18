@@ -71,8 +71,15 @@ public class InventoryAlertLog extends BaseEntity {
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime alertTime;
 
-    /** 处理状态：new新预警/read已读/processed已处理/ignored已忽略 */
+    /** 处理状态：0未处理 1已上报 2已处理 3已解除（2026-08-18 职责链） */
     private Integer status;
+
+    /** 上报人（2026-08-18：仓库标记已上报留痕） */
+    private String reportedBy;
+
+    /** 上报时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime reportedTime;
 
     /** 处理人 */
     private String processedBy;

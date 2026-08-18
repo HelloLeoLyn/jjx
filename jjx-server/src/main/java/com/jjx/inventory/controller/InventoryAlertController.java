@@ -131,9 +131,10 @@ public class InventoryAlertController {
     @PostMapping("/batch-process")
     @Operation(summary = "批量处理预警（采购计划确认后回写，关联采购订单号）")
     @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#dto.alertIds[0]")
-    @SaCheckPermission("inventory:alert:edit")
+    // 2026-08-18：调用方为采购计划工作台（采购角色），权限从 inventory:alert:edit 改为 purchase:order:add
+    @SaCheckPermission("purchase:order:add")
     public Result<Boolean> batchProcessAlert(@RequestBody com.jjx.inventory.domain.dto.AlertBatchProcessDTO dto) {
-        return Result.success(alertService.batchProcessAlert(dto.getAlertIds(), dto.getRelatedOrderNo(), dto.getRemark()));
+        return Result.success(alertService.batchProcessAlert(dto.getAlertIds(), dto.getMaterialIds(), dto.getRelatedOrderNo(), dto.getRemark()));
     }
 
     @GetMapping("/purchase-suggestions")

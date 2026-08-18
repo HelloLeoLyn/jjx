@@ -45,6 +45,12 @@ public class AlertVO {
 
     private Integer status;
     private String statusName;
+    /** 上报人（2026-08-18 职责链：仓库标记已上报留痕） */
+    private String reportedBy;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime reportedTime;
+
     private String processedBy;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
