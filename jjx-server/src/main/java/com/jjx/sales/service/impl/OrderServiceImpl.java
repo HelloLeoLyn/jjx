@@ -147,9 +147,40 @@ public class OrderServiceImpl implements IOrderService {
             ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
             orderProductService.batchAdd(dto.getItems());
+            // 2026-08-18 task 1047：写创建日志（带新单 traceId）——链路出现"创建"节点，
+            // 且后续编辑/删除的 @Log 可回退继承 traceId，草稿期操作全部进链路
+            saveOrderCreateLog(entity);
             return entity.getOrderId();
         }
         throw new BusinessException(BusinessExceptionEnum.DB_INSERT_FAILED);
+    }
+
+    /**
+     * 2026-08-18 task 1047：订单创建日志（带 traceId，仿 copyOrder 写法）
+     */
+    private void saveOrderCreateLog(SalesOrder order) {
+        try {
+            SysOperLog log = new SysOperLog();
+            log.setModule("sales_order");
+            log.setBusinessType(1); // 新增
+            log.setOperUrl("order.create");
+            log.setBizType("order");
+            log.setBizId(String.valueOf(order.getOrderId()));
+            log.setTraceId(order.getTraceId());
+            log.setBizStatus(order.getOrderStatus());
+            log.setOperParam("创建销售订单 " + order.getOrderNo() + "（" + order.getCustomerName() + "）");
+            log.setStatus(1);
+            log.setCreateTime(LocalDateTime.now());
+            try {
+                log.setUsername(SecurityUtils.getUsername());
+                log.setUserId(SecurityUtils.getUserId());
+                log.setRealName(SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(log);
+        } catch (Exception e) {
+            log.warn("记录订单创建日志失败: {}", e.getMessage());
+        }
     }
 
     /**

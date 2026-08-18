@@ -69,9 +69,9 @@ public class OrderController extends BaseController {
     }
     /**
      * 新增销售订单
+     * 日志：手动写 order.create（带 traceId，见 OrderServiceImpl.saveOrderCreateLog）——不用 @Log 避免双写
      */
     @Operation(summary = "新增销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.INSERT, bizType = "'order'", bizId = "#result.data")
     @SaCheckPermission("sales:order:add")
     @PostMapping
     public Result<Long> addOrder(@Validated(ValidationGroups.Add.class) @RequestBody SalesOrderAddDTO dto) {
@@ -92,9 +92,9 @@ public class OrderController extends BaseController {
 
     /**
      * 修改销售订单
+     * 日志：手动写 order.update（带字段级变更明细，见 OrderServiceImpl.saveOrderUpdateChangeLog）——不用 @Log 避免双写
      */
     @Operation(summary = "修改销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}")
     public Result<Void> updateOrder(@PathVariable Long orderId, @Validated(ValidationGroups.Update.class) @RequestBody SalesOrderEditDTO dto) {

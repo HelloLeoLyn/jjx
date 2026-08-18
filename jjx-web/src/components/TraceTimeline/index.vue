@@ -126,6 +126,7 @@ const ORDER_ACTION_MAP: Record<string, string> = {
   'order.ship': '发货',
   'order.complete': '完成订单',
   'order.update': '修改订单',
+  'order.create': '创建订单',
 }
 
 // 操作列可读化：sales_order 事件码转中文；其余直接显示 URL（2026-08-18 修字段名不匹配）
