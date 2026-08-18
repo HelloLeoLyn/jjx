@@ -89,10 +89,22 @@
             >
               审批
             </el-button>
+            <!-- 2026-08-18：审批通过后需手动设为当前版本（生成计划/领料依赖 is_current=1） -->
+            <el-button
+              v-if="scope.row.approveStatus === 3 && scope.row.isCurrent !== 1"
+              v-hasPermi="['engineering:routing:edit']"
+              link
+              type="success"
+              size="small"
+              @click="handleSetCurrentRoute(scope.row)"
+            >
+              设为默认
+            </el-button>
             <el-button
               link
               type="danger"
               size="small"
+              v-hasPermi="['engineering:routing:delete']"
               :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.DELETE)"
               @click="handleDelete(scope.row)"
             >
@@ -354,6 +366,19 @@ const handleSubmitApprove = async (row: EngineeringRoutingVO) => {
 const handleApprove = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   approveDialogVisible.value = true
+}
+
+// 设为当前版本（2026-08-18：审批通过后需手动设为当前生效，生成计划/领料依赖）
+const handleSetCurrentRoute = (row: EngineeringRoutingVO) => {
+  ElMessageBox.confirm(`将工艺路线【${row.routingCode}】设为当前版本？（同产品其它路线将取消当前标记）`, '设为默认', {
+    type: 'warning',
+  })
+    .then(async () => {
+      await productRouteApi.setCurrentProductRoute(row.routingId)
+      ElMessage.success('已设为当前版本')
+      loadData()
+    })
+    .catch(() => {})
 }
 
 const handleApprovePass = async (remark?: string) => {

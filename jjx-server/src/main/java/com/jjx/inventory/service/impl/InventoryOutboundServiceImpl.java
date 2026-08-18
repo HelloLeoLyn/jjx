@@ -384,14 +384,28 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
         boolean updated = outboundOrderMapper.updateById(order) > 0;
 
-        // 生产领料单确认发料后，同步更新工单领料状态为已领料(2)
+        // 生产领料单确认发料后，同步更新工单领料状态（2026-08-18 多次领料修正：
+        // 还有未完成发料的领料单 → 保持领料中(1)；全部确认发料 → 已领料(2)，不再确认一张就置 2）
         try {
             if ("work_order".equals(order.getSourceType()) && order.getSourceId() != null) {
                 com.jjx.production.domain.entity.ProductionOrder prodOrder =
                         productionOrderMapper.selectById(order.getSourceId());
                 if (prodOrder != null && prodOrder.getMaterialStatus() != null
                         && prodOrder.getMaterialStatus() < 2) {
-                    prodOrder.setMaterialStatus(2);
+                    Long remaining = outboundOrderMapper.selectCount(
+                            new LambdaQueryWrapper<InventoryOutboundOrder>()
+                                    .eq(InventoryOutboundOrder::getSourceType, "work_order")
+                                    .eq(InventoryOutboundOrder::getSourceId, order.getSourceId())
+                                    .in(InventoryOutboundOrder::getOrderStatus,
+                                            OrderStatusEnum.PENDING.getCode(),
+                                            OrderStatusEnum.APPROVED.getCode(),
+                                            OrderStatusEnum.CONFIRMED.getCode()));
+                    if (remaining != null && remaining > 0) {
+                        prodOrder.setMaterialStatus(1); // 仍有待发料领料单：领料中
+                        log.info("工单{}仍有{}张领料单待发料，状态保持领料中", order.getSourceId(), remaining);
+                    } else {
+                        prodOrder.setMaterialStatus(2); // 全部发完：已领料
+                    }
                     productionOrderMapper.updateById(prodOrder);
                 }
             }
@@ -561,6 +575,138 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     // REQUIRES_NEW（2026-08-11）：自动领料独立事务，失败只回滚自身，不污染工单开工主事务
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public Long createFromProduction(Long workOrderId) {
+        return createFromProduction(workOrderId, null);
+    }
+
+    /**
+     * 2026-08-18：领料预览（BOM展开+可用量+替代料），供生成前确认弹窗展示
+     *
+     * @return 领料方案行：主料行 + 替代料行
+     */
+    @Override
+    public java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId) {
+        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+        // 1. 查工单
+        com.jjx.production.domain.entity.ProductionOrder prodOrder = productionOrderMapper.selectById(workOrderId);
+        if (prodOrder == null) {
+            throw new BusinessException("生产工单不存在: " + workOrderId);
+        }
+        // 2. 查生效BOM
+        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(
+                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, 1)
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getApproveStatus, 3)
+                        .orderByDesc(com.jjx.engineering.domain.entity.EngineeringBom::getCreateTime)
+                        .last("LIMIT 1"));
+        if (bom == null) {
+            throw new BusinessException("工单产品[" + prodOrder.getProductCode() + "]无已审批的当前BOM，无法领料");
+        }
+        // 3. 查BOM明细
+        List<com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = productBomItemMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                        .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bom.getBomId()));
+        if (bomItems.isEmpty()) {
+            throw new BusinessException("BOM[" + bom.getBomCode() + "]无明细，无法领料");
+        }
+        // 4. 可用量预计算
+        java.util.Map<Long, BigDecimal> availableMap = new java.util.HashMap<>();
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
+            if (!"buy".equals(bomItem.getSourceType())) continue;
+            BigDecimal available = BigDecimal.ZERO;
+            try {
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(bomItem.getMaterialId());
+                for (InventoryStockItem si : fifoItems) {
+                    available = available.add(si.getQuantity().subtract(si.getReservedQuantity()));
+                }
+            } catch (Exception e) {
+                log.warn("领料预检查询库存失败: materialId={}, err={}", bomItem.getMaterialId(), e.getMessage());
+            }
+            availableMap.put(bomItem.getMaterialId(), available);
+        }
+        // 5. 逐物料生成预览行（主料 + 替代料）
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
+            if (!"buy".equals(bomItem.getSourceType())) continue;
+            BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
+                    ? bomItem.getBaseQty() : BigDecimal.ONE;
+            BigDecimal qtyNeeded = bomItem.getQuantity()
+                    .multiply(prodOrder.getPlannedQuantity())
+                    .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.ONE.add(bomItem.getLossRate() != null
+                            ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
+                            : BigDecimal.ZERO))
+                    .setScale(0, java.math.RoundingMode.UP);
+            BigDecimal available = availableMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+            BigDecimal qtyPick = qtyNeeded.min(available);
+            boolean insufficient = qtyPick.compareTo(qtyNeeded) < 0;
+            // 主料行
+            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("materialId", bomItem.getMaterialId());
+            row.put("materialCode", bomItem.getMaterialCode());
+            row.put("materialName", bomItem.getMaterialName());
+            row.put("specification", bomItem.getSpecification() != null ? bomItem.getSpecification() : "");
+            row.put("unit", bomItem.getUnit() != null ? bomItem.getUnit() : "PCS");
+            row.put("qtyNeeded", qtyNeeded);
+            row.put("available", available);
+            row.put("qtyPick", qtyPick);
+            row.put("substitute", false);
+            row.put("substituteOf", "");
+            row.put("insufficient", insufficient);
+            rows.add(row);
+            // 首选不足 → 替代料行
+            if (insufficient && bomItem.getSubstituteJson() != null && !bomItem.getSubstituteJson().isEmpty()
+                    && !"[]".equals(bomItem.getSubstituteJson())) {
+                try {
+                    java.util.List<java.util.Map<String, Object>> subs = new com.fasterxml.jackson.databind.ObjectMapper()
+                            .readValue(bomItem.getSubstituteJson(),
+                                    new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+                    BigDecimal shortage = qtyNeeded.subtract(qtyPick);
+                    for (java.util.Map<String, Object> sub : subs) {
+                        Object subId = sub.get("materialId");
+                        if (subId == null) continue;
+                        Long subMaterialId = Long.valueOf(subId.toString());
+                        BigDecimal ratio = sub.get("ratio") != null ? new BigDecimal(sub.get("ratio").toString()) : BigDecimal.ONE;
+                        BigDecimal subNeed = shortage.multiply(ratio).setScale(0, java.math.RoundingMode.UP);
+                        BigDecimal subAvail = BigDecimal.ZERO;
+                        try {
+                            List<InventoryStockItem> subFifo = stockItemMapper.selectFIFOAvailable(subMaterialId);
+                            for (InventoryStockItem si : subFifo) {
+                                subAvail = subAvail.add(si.getQuantity().subtract(si.getReservedQuantity()));
+                            }
+                        } catch (Exception e) {
+                            log.warn("替代料库存查询失败: materialId={}", subMaterialId);
+                        }
+                        if (subAvail.compareTo(BigDecimal.ZERO) > 0) {
+                            com.jjx.inventory.domain.InventoryMaterial subMat = materialMapper.selectById(subMaterialId);
+                            java.util.Map<String, Object> subRow = new java.util.LinkedHashMap<>();
+                            subRow.put("materialId", subMaterialId);
+                            subRow.put("materialCode", subMat != null ? subMat.getMaterialCode() : String.valueOf(subMaterialId));
+                            subRow.put("materialName", subMat != null ? subMat.getMaterialName() : (sub.get("materialName") != null ? sub.get("materialName") : ""));
+                            subRow.put("specification", subMat != null && subMat.getSpecification() != null ? subMat.getSpecification() : "");
+                            subRow.put("unit", subMat != null && subMat.getUnit() != null ? subMat.getUnit() : "PCS");
+                            subRow.put("qtyNeeded", subNeed);
+                            subRow.put("available", subAvail);
+                            subRow.put("qtyPick", subNeed.min(subAvail));
+                            subRow.put("substitute", true);
+                            subRow.put("substituteOf", bomItem.getMaterialCode());
+                            subRow.put("insufficient", subNeed.compareTo(subAvail) > 0);
+                            rows.add(subRow);
+                            break; // 只取第一个可用替代料
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("替代料预览解析失败: {}", e.getMessage());
+                }
+            }
+        }
+        return rows;
+    }
+
+    /**
+     * 2026-08-18：支持领料预览调整（adjustedItems：materialId→quantity，仅可少领，替代料自动按新短缺补）
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems) {
         log.info("从生产工单创建出库单: workOrderId={}", workOrderId);
 
         // 1. 查询生产工单
@@ -659,6 +805,17 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             String pickSpec = bomItem.getSpecification();
             String pickUnit = bomItem.getUnit();
             BigDecimal qtyPick = qtyNeeded.min(available);
+            // 2026-08-18：预览调整（仅可少领：0 ≤ 调整 ≤ min(需求,可用)），替代料按新短缺自动补
+            if (adjustedItems != null) {
+                for (java.util.Map<String, Object> adj : adjustedItems) {
+                    if (adj.get("materialId") == null || adj.get("quantity") == null) continue;
+                    if (bomItem.getMaterialId().longValue() == ((Number) adj.get("materialId")).longValue()) {
+                        BigDecimal adjQty = new BigDecimal(String.valueOf(adj.get("quantity")));
+                        qtyPick = adjQty.min(qtyPick).max(BigDecimal.ZERO);
+                        break;
+                    }
+                }
+            }
             if (qtyPick.compareTo(qtyNeeded) < 0) {
                 // 首选料不足 → 尝试替代料（034：A料缺货用B料替代，按模数换算）
                 BigDecimal shortage = qtyNeeded.subtract(qtyPick);

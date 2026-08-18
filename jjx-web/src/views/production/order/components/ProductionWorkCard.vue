@@ -120,6 +120,63 @@
         </tbody>
       </table>
 
+      <!-- 2026-08-18：每次领料（每张领料单）独立分组，明细可追溯 -->
+      <div v-for="ob in outbounds" :key="ob.outboundId" class="pick-group">
+        <div class="pick-group-head">
+          <span class="pick-group-no">{{ ob.outboundNo }}</span>
+          <el-tag :type="ob.statusName === '已完成' ? 'success' : 'warning'" size="small">{{ ob.statusName || '-' }}</el-tag>
+          <span class="pick-group-time">{{ ob.createTime || '' }}</span>
+          <el-button link type="primary" size="small" @click="viewPickDetail(ob)">详情</el-button>
+        </div>
+        <table class="doc-table pick-group-table">
+          <thead>
+            <tr>
+              <th style="width: 40px">序号</th>
+              <th>物料编码</th>
+              <th>物料名称</th>
+              <th style="width: 70px">数量</th>
+              <th style="width: 55px">单位</th>
+              <th style="width: 130px">批次</th>
+              <th style="width: 85px">库位</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(it, j) in ob.items || []" :key="j">
+              <td class="center">{{ Number(j) + 1 }}</td>
+              <td>{{ it.materialCode || '-' }}</td>
+              <td>{{ it.materialName || '-' }}</td>
+              <td class="center">{{ fmtNum(it.quantity) }}</td>
+              <td class="center">{{ it.unit || '-' }}</td>
+              <td class="center">{{ it.batchNo || '-' }}</td>
+              <td class="center">{{ it.locationCode || it.locationName || '-' }}</td>
+            </tr>
+            <tr v-if="!(ob.items || []).length">
+              <td colspan="7" class="center empty">无明细</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 某次领料单详情抽屉（2026-08-18） -->
+      <el-drawer v-model="pickDetailVisible" :title="`领料单详情 - ${pickDetailNo}`" size="640px">
+        <template v-if="pickDetail">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="单号">{{ pickDetail.outboundNo }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{ pickDetail.statusName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="来源工单">{{ pickDetail.sourceNo || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ pickDetail.createTime || '-' }}</el-descriptions-item>
+          </el-descriptions>
+          <el-table :data="pickDetail.items || []" size="small" border style="margin-top: 12px">
+            <el-table-column label="物料编码" prop="materialCode" width="130" />
+            <el-table-column label="物料名称" prop="materialName" min-width="140" />
+            <el-table-column label="数量" prop="quantity" width="80" align="right" />
+            <el-table-column label="单位" prop="unit" width="60" align="center" />
+            <el-table-column label="批次" prop="batchNo" width="140" />
+            <el-table-column label="库位" prop="locationName" width="90" />
+          </el-table>
+        </template>
+      </el-drawer>
+
       <!-- 追加领料弹窗 -->
       <el-dialog v-model="pickDialogVisible" title="追加领料" width="720px" append-to-body>
         <el-alert
@@ -333,6 +390,17 @@ function openPickDialog() {
   pickDialogVisible.value = true
 }
 
+// 2026-08-18：查看某次领料单详情（弹出库单详情抽屉）
+const pickDetailVisible = ref(false)
+const pickDetailNo = ref('')
+const pickDetail = ref<any>(null)
+
+async function viewPickDetail(ob: any) {
+  pickDetailNo.value = ob.outboundNo || ''
+  pickDetail.value = ob
+  pickDetailVisible.value = true
+}
+
 async function submitPick() {
   const items = pickRows.value
     .filter((r) => Number(r.pickQty) > 0)
@@ -454,6 +522,20 @@ async function loadData() {
       })
       const list: any[] = obRes?.data?.records || obRes?.data || []
       outbounds.value = list.filter((o) => String(o.sourceId) === String(orderId))
+      // 2026-08-18：逐单补明细（列表不带 items）——随工单按每次领料分组展示
+      await Promise.all(
+        outbounds.value.map(async (ob: any) => {
+          try {
+            const d: any = await outboundApi.getById(String(ob.outboundId))
+            if (d?.data) {
+              ob.items = d.data.items || []
+              ob.statusName = d.data.statusName || ob.statusName
+            }
+          } catch {
+            /* 单张失败不影响其它 */
+          }
+        }),
+      )
     } catch {
       outbounds.value = []
     }
@@ -596,6 +678,35 @@ onMounted(async () => {
 }
 
 /* 区块标题 */
+.pick-group {
+  margin-top: 8px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.pick-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #f5f7fa;
+  font-size: 12px;
+}
+.pick-group-no {
+  font-weight: 700;
+  color: #2b5aa7;
+}
+.pick-group-time {
+  color: #909399;
+}
+.pick-group-table {
+  border: none;
+}
+.pick-group-table th,
+.pick-group-table td {
+  border-left: none;
+  border-right: none;
+}
 .pick-title {
   display: flex;
   align-items: center;

@@ -191,6 +191,18 @@
     >
       <ProductionWorkCard v-if="workCardOrderId" :order-id="workCardOrderId" />
     </el-drawer>
+
+    <!-- 2026-08-18：领料预览确认弹窗（A4打印样式） -->
+    <PickPreviewDialog
+      v-model="pickPreviewVisible"
+      v-if="pickPreviewOrder"
+      :work-order-id="pickPreviewOrder.orderId"
+      :order-no="pickPreviewOrder.orderNo"
+      :product-code="pickPreviewOrder.productCode"
+      :product-name="pickPreviewOrder.productName"
+      :planned-quantity="pickPreviewOrder.plannedQuantity"
+      @success="handlePickCreated"
+    />
   </div>
 </template>
 
@@ -212,6 +224,7 @@ import OrderDeleteDialog from './components/OrderDeleteDialog.vue'
 import GanttChart from './components/GanttChart.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import ProductionWorkCard from './components/ProductionWorkCard.vue'
+import PickPreviewDialog from './components/PickPreviewDialog.vue'
 import type {
   ProductionOrderVO,
   ProductionOrderQuery,
@@ -706,34 +719,27 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
   }
 }
 
-// 生成领料单（调用库存出库单 create-from-production）
+// 生成领料单（2026-08-18：先预览确认——A4打印样式弹窗展示BOM展开/可用量/替代料，可调实领数量）
+const pickPreviewVisible = ref(false)
+const pickPreviewOrder = ref<any>(null)
+
 async function handlePickMaterial(order: any) {
-  try {
-    await ElMessageBox.confirm(
-      `按 BOM 为工单 [${order.orderNo}] 生成领料单？将扣减物料库存。`,
-      '生成领料单',
-      { confirmButtonText: '生成', cancelButtonText: '取消', type: 'warning' },
-    )
-    const { materialPickApi } = await import('@/api/inventory/materialPick')
-    const res = await materialPickApi.createFromProduction(order.orderId)
-    if (res.data) {
-      // 2026-08-18：生成后引导去确认发料（跨模块流程衔接）
-      ElMessageBox.confirm(`领料单已生成（出库单 ${res.data}），是否前往【出库管理→生产领料】确认发料？`, '生成领料单', {
-        confirmButtonText: '去确认发料',
-        cancelButtonText: '稍后',
-        type: 'success',
-      })
-        .then(() => {
-          router.push('/inventory/outbound/pick')
-        })
-        .catch(() => {})
-      loadData()
-    } else {
-      ElMessage.info('未生成领料单：工单产品可能无已审批BOM、该工单已存在领料单，或当前无可用库存')
-    }
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '生成领料单失败')
-  }
+  pickPreviewOrder.value = order
+  pickPreviewVisible.value = true
+}
+
+// 预览确认生成成功 → 引导去确认发料
+function handlePickCreated() {
+  loadData()
+  ElMessageBox.confirm('领料单已生成，是否前往【出库管理→生产领料】确认发料？', '生成领料单', {
+    confirmButtonText: '去确认发料',
+    cancelButtonText: '稍后',
+    type: 'success',
+  })
+    .then(() => {
+      router.push({ path: '/inventory/outbound', query: { outboundType: 'production' } })
+    })
+    .catch(() => {})
 }
 
 const handleCopyOrder = (order: any) => {

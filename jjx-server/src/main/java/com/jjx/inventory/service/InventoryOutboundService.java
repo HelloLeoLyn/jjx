@@ -60,6 +60,16 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     Long createFromProduction(Long workOrderId);
 
     /**
+     * 2026-08-18：领料预览调整版（adjustedItems 可选，仅可少领）
+     */
+    Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems);
+
+    /**
+     * 2026-08-18：领料预览（BOM展开+可用量+替代料）
+     */
+    java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId);
+
+    /**
      * 追加领料（033定稿：多次领料，去幂等）
      * 出库单号 PICK-{工单号}-{序号}；每次填本次领料数量，Σ累计领料 ≤ BOM需求量
      * @param workOrderId 工单ID

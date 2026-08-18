@@ -56,7 +56,7 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['engineering:bom:add']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
@@ -65,6 +65,7 @@
             icon="Edit"
             :disabled="single"
             @click="() => handleUpdate()"
+            v-hasPermi="['engineering:bom:edit']"
             >修改</el-button
           >
         </el-col>
@@ -75,6 +76,7 @@
             icon="Delete"
             :disabled="multiple || !canDeleteSelected"
             @click="() => handleDelete()"
+            v-hasPermi="['engineering:bom:delete']"
             >删除</el-button
           >
         </el-col>
@@ -88,11 +90,12 @@
             icon="Check"
             :disabled="single"
             @click="() => handleApprove()"
+            v-hasPermi="['engineering:bom:approve']"
             >审核</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="CopyDocument" :disabled="single" @click="handleCopySelected">复制BOM</el-button>
+          <el-button type="success" plain icon="CopyDocument" v-hasPermi="['engineering:bom:add']" :disabled="single" @click="handleCopySelected">复制BOM</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -147,6 +150,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['engineering:bom:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -156,6 +160,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['engineering:bom:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -169,6 +174,7 @@
                 link
                 type="warning"
                 icon="Promotion"
+                v-hasPermi="['engineering:bom:add']"
                 @click="handleSubmitApprove(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -181,7 +187,22 @@
                 link
                 type="warning"
                 icon="View"
+                v-hasPermi="['engineering:bom:approve']"
                 @click="handleApprove(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <!-- 2026-08-18：审批通过后需手动设为当前生效（生成计划/领料依赖 is_current=1） -->
+            <el-tooltip
+              content="设为默认"
+              placement="top"
+              v-if="scope.row.approveStatus === 3 && scope.row.isCurrent !== 1"
+            >
+              <el-button
+                link
+                type="success"
+                icon="Star"
+                v-hasPermi="['engineering:bom:edit']"
+                @click="handleSetDefaultBom(scope.row)"
               ></el-button>
             </el-tooltip>
           </template>
@@ -381,6 +402,19 @@ const handleApprove = (row?: EngineeringBom) => {
 
   selectedBomForApprove.value = bomId
   bomApproveOpen.value = true
+}
+
+// 设为默认BOM（2026-08-18：审批通过后需手动设为当前生效，生成计划/领料依赖）
+const handleSetDefaultBom = (row: EngineeringBom) => {
+  ElMessageBox.confirm(`将 BOM【${row.bomCode}】设为当前生效版本？（同产品其它BOM将取消当前标记）`, '设为默认', {
+    type: 'warning',
+  })
+    .then(async () => {
+      await productBomApi.setCurrentEngineeringBom(row.bomId)
+      ElMessage.success('已设为当前生效BOM')
+      getList()
+    })
+    .catch(() => {})
 }
 
 // 提交BOM审核（草稿→审核中）

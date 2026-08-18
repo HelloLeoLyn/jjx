@@ -1,13 +1,13 @@
 <template>
   <div class="outbound-list">
-    <!-- 页面标题（DEV-659：领料模式/出库模式区分） -->
+    <!-- 页面标题（2026-08-18：统一出库管理视图，含生产领料单，按类型筛选/标签区分） -->
     <div class="page-title" style="font-size:16px;font-weight:600;margin-bottom:12px">
-      {{ isPickMode ? '生产领料' : '出库管理' }}
+      出库管理
     </div>
     <!-- 搜索栏 -->
     <el-card class="search-card">
       <el-form :model="queryParams" :inline="true">
-        <el-form-item :label="isPickMode ? '领料单号' : '出库单号'">
+        <el-form-item label="出库单号">
           <el-input
             v-model="queryParams.outboundNo"
             placeholder="请输入出库单号"
@@ -15,7 +15,7 @@
             @keyup.enter="handleQuery"
           />
         </el-form-item>
-        <el-form-item label="出库类型" v-if="!isPickMode">
+        <el-form-item label="出库类型">
           <el-select
             v-model="queryParams.outboundType"
             placeholder="请选择"
@@ -65,7 +65,7 @@
     <!-- 操作栏 -->
     <el-card class="operation-card">
       <el-row :gutter="10">
-        <el-col :span="1.5" v-if="!isPickMode">
+        <el-col :span="1.5">
           <el-button type="primary" @click="handleCreate">
             <el-icon><Plus /></el-icon>新建出库单
           </el-button>
@@ -92,8 +92,8 @@
     <el-card class="table-card">
       <el-table v-loading="loading" :data="outboundList" border style="width: 100%" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="50" align="center" />
-        <el-table-column :label="isPickMode ? '领料单号' : '出库单号'" prop="outboundNo" min-width="150" />
-        <el-table-column label="出库类型" width="100" align="center" v-if="!isPickMode">
+        <el-table-column label="出库单号" prop="outboundNo" min-width="150" />
+        <el-table-column label="出库类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getOutboundTypeTag(row.outboundType)" size="small">
               {{ row.outboundTypeName }}
@@ -101,9 +101,12 @@
           </template>
         </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
-        <!-- DEV-659：领料模式显示工单号，出库模式显示客户 -->
-        <el-table-column v-if="isPickMode" label="来源工单" prop="sourceNo" width="150" show-overflow-tooltip />
-        <el-table-column v-else label="客户" prop="customerName" width="150" show-overflow-tooltip />
+        <!-- 2026-08-18：统一视图——生产领料显示来源工单，其他显示客户 -->
+        <el-table-column label="来源" width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.outboundType === 'production' ? (row.sourceNo || '-') : (row.customerName || '-') }}
+          </template>
+        </el-table-column>
         <el-table-column label="总数量" prop="totalQuantity" width="100" align="right">
           <template #default="{ row }">
             {{ formatNumber(row.totalQuantity) }}
@@ -126,13 +129,14 @@
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
-            <el-button v-if="row.status === 0" link type="primary" @click="handleEdit(row)"
+            <el-button v-if="row.status === 0" link type="primary" v-hasPermi="['inventory:outbound:edit']" @click="handleEdit(row)"
               >编辑</el-button
             >
             <el-button
               v-if="row.status === 1 || row.status === 2"
               link
               type="warning"
+              v-hasPermi="['inventory:outbound:approve']"
               @click="handleConfirm(row)"
               >{{ row.outboundType === 'production' ? '确认发料' : '确认出库' }}</el-button
             >
@@ -228,7 +232,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Refresh } from '@element-plus/icons-vue'
 import { outboundApi } from '@/api/inventory/outbound'
@@ -250,12 +254,8 @@ function showTrace(row: OutboundVO) {
 }
 
 const router = useRouter()
-const route = useRoute()
 
-// DEV-659：领料单/出库单视图分离——同一组件两种模式
-// 路由 path 含 pick 即为领料模式（菜单「生产领料」path=pick）
-const isPickMode = computed(() => route.path.includes('pick'))
-
+// 2026-08-18：统一出库管理视图（含生产领料单，按出库类型筛选/标签区分）
 // 查询参数
 const queryParams = reactive<OutboundQueryParams>({
   current: 1,
@@ -264,9 +264,6 @@ const queryParams = reactive<OutboundQueryParams>({
   outboundType: '',
   warehouseId: '',
   status: '',
-  // DEV-659：领料模式只查 work_order 来源；出库模式排除 work_order
-  sourceType: isPickMode.value ? 'work_order' : '',
-  sourceTypeNe: isPickMode.value ? '' : 'work_order',
 })
 
 // 响应式数据
@@ -302,8 +299,6 @@ const handleReset = () => {
   queryParams.outboundType = ''
   queryParams.warehouseId = ''
   queryParams.status = ''
-  queryParams.sourceType = isPickMode.value ? 'work_order' : ''
-  queryParams.sourceTypeNe = isPickMode.value ? '' : 'work_order'
   getList()
 }
 

@@ -3,11 +3,20 @@ import type { AxiosPromise } from 'axios'
 
 // 领料单（生产出库）
 export const materialPickApi = {
-  // 从生产工单创建领料单
-  createFromProduction(workOrderId: number): AxiosPromise<number> {
+  // 从生产工单创建领料单（2026-08-18：支持预览调整明细，仅可少领）
+  createFromProduction(workOrderId: number, adjustedItems?: any[]): AxiosPromise<number> {
     return request({
       url: `/inventory/outbound/create-from-production/${workOrderId}`,
       method: 'post',
+      data: adjustedItems || [],
+    })
+  },
+
+  // 领料预览（2026-08-18：BOM展开+可用量+替代料，生成前确认）
+  pickPreview(workOrderId: number): AxiosPromise<any[]> {
+    return request({
+      url: `/inventory/outbound/pick-preview/${workOrderId}`,
+      method: 'get',
     })
   },
 

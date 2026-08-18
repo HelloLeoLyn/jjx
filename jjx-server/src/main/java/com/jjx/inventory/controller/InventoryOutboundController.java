@@ -110,8 +110,16 @@ public class InventoryOutboundController {
     @Operation(summary = "从生产工单创建出库单")
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId")
     @SaCheckPermission("inventory:outbound:add")
-    public Result<Long> createFromProduction(@PathVariable Long workOrderId) {
-        return Result.success(outboundService.createFromProduction(workOrderId));
+    public Result<Long> createFromProduction(@PathVariable Long workOrderId,
+                                             @RequestBody(required = false) java.util.List<java.util.Map<String, Object>> adjustedItems) {
+        return Result.success(outboundService.createFromProduction(workOrderId, adjustedItems));
+    }
+
+    @GetMapping("/pick-preview/{workOrderId}")
+    @Operation(summary = "生产领料预览（BOM展开+可用量+替代料，8-18）")
+    @SaCheckPermission("inventory:outbound:view")
+    public Result<java.util.List<java.util.Map<String, Object>>> pickPreview(@PathVariable Long workOrderId) {
+        return Result.success(outboundService.previewPick(workOrderId));
     }
 
     @PostMapping("/create-production-pick/{workOrderId}")

@@ -26,9 +26,21 @@
         <el-button type="success" size="small" icon="CircleCheck" v-hasPermi="['production:operation-execution:edit']" circle @click="handleComplete" />
       </el-tooltip>
 
-      <!-- 取消按钮 -->
-      <el-tooltip content="取消订单" placement="top" v-if="order.canCancel">
-        <el-button type="danger" size="small" icon="CircleClose" v-hasPermi="['production:order:edit']" circle @click="handleCancel" />
+      <!-- 生成领料单（2026-08-18：从下拉菜单提为行内按钮，高频操作） -->
+      <el-tooltip
+        :content="order.materialStatus === 1 ? '已生成领料单（待确认发料）' : '生成领料单'"
+        placement="top"
+        v-if="[2, 6].includes(order.orderStatus) && order.materialStatus !== 2"
+      >
+        <el-button
+          type="warning"
+          size="small"
+          icon="Box"
+          :disabled="order.materialStatus === 1"
+          v-hasPermi="['production:order:edit']"
+          circle
+          @click="handlePickMaterial"
+        />
       </el-tooltip>
 
       <!-- 更多操作 -->
@@ -38,37 +50,31 @@
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="submit-review" v-if="order.orderStatus === 0" v-hasPermi="['production:order:edit']">
+            <el-dropdown-item command="submit-review" v-if="order.orderStatus === 0 && hasPermi(['production:order:edit'])">
               <el-icon><Promotion /></el-icon>
               提交审核
             </el-dropdown-item>
-            <el-dropdown-item command="approve" v-if="order.orderStatus === 1" v-hasPermi="['production:order:edit']">
+            <el-dropdown-item command="approve" v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])">
               <el-icon><Check /></el-icon>
               审核通过
             </el-dropdown-item>
-            <el-dropdown-item command="reject" v-if="order.orderStatus === 1" v-hasPermi="['production:order:edit']">
+            <el-dropdown-item command="reject" v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])">
               <el-icon><CloseBold /></el-icon>
               审核驳回
             </el-dropdown-item>
-            <el-dropdown-item command="copy" v-hasPermi="['production:order:add']">
+            <el-dropdown-item command="copy" v-if="hasPermi(['production:order:add'])">
               <el-icon><CopyDocument /></el-icon>
               复制订单
             </el-dropdown-item>
-            <!-- 2026-08-18：领料状态感知——已生成待确认时禁用，已领料后入口移随工单卡片（追加领料） -->
-            <el-dropdown-item
-              command="pick-material"
-              v-if="[2, 6].includes(order.orderStatus) && order.materialStatus !== 2"
-              :disabled="order.materialStatus === 1"
-              v-hasPermi="['production:order:edit']"
-            >
-              <el-icon><Box /></el-icon>
-              {{ order.materialStatus === 1 ? '已生成领料单（待确认发料）' : '生成领料单' }}
+            <el-dropdown-item command="cancel" v-if="order.canCancel && hasPermi(['production:order:edit'])">
+              <el-icon><CircleClose /></el-icon>
+              取消订单
             </el-dropdown-item>
-            <el-dropdown-item command="dispatch" v-if="[2, 4, 5, 6].includes(order.orderStatus)" v-hasPermi="['production:dispatch:assign']">
+            <el-dropdown-item command="dispatch" v-if="[2, 4, 5, 6].includes(order.orderStatus) && hasPermi(['production:dispatch:assign'])">
               <el-icon><UserFilled /></el-icon>
               派工
             </el-dropdown-item>
-            <el-dropdown-item command="export" v-hasPermi="['production:order:export']">
+            <el-dropdown-item command="export" v-if="hasPermi(['production:order:export'])">
               <el-icon><Download /></el-icon>
               导出订单
             </el-dropdown-item>
@@ -107,6 +113,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { hasPermi } from '@/directives'
 import { ElMessage } from 'element-plus'
 import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, UserFilled } from '@element-plus/icons-vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
@@ -188,6 +195,11 @@ const handleCancel = () => {
   openPreview('production.cancel')
 }
 
+// 2026-08-18：生成领料单提为行内按钮（原下拉菜单）
+const handlePickMaterial = () => {
+  emit('more-action', 'pick-material')
+}
+
 const handleDelete = () => {
   emit('delete')
 }
@@ -203,6 +215,9 @@ const handleMoreActionCommand = (command: string) => {
     handleDelete()
   } else if (command === 'trace') {
     emit('trace', props.order)
+  } else if (command === 'cancel') {
+    // 2026-08-18：取消订单从行内移入下拉菜单
+    openPreview('production.cancel')
   } else {
     emit('more-action', command)
   }

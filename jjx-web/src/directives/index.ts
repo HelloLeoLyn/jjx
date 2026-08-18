@@ -2,22 +2,13 @@
 import type { App } from 'vue'
 import { useUserStore } from '@/store/modules/user'
 
-// 权限指令
-const hasPermi = {
+// 权限指令（仅用于普通元素；组件根节点非元素时指令不生效，改用 hasPermi() 函数 + v-if）
+const hasPermiDirective = {
   mounted(el: HTMLElement, binding: any) {
     const { value } = binding
-    const all_permission = '*:*:*'
-    const all_permission_short = '*' // 后端 superadmin 新版通配（2026-08-10）
-
-    const userStore = useUserStore()
-    const permissions = userStore.getPermissions
 
     if (value && value instanceof Array && value.length > 0) {
-      const hasPermissions = permissions.some((permission: string) => {
-        return all_permission === permission || all_permission_short === permission || value.includes(permission)
-      })
-
-      if (!hasPermissions && el.parentNode) {
+      if (!hasPermi(value) && el.parentNode) {
         el.parentNode.removeChild(el)
       }
     } else {
@@ -32,20 +23,12 @@ const hasPermi = {
 }
 
 // 角色权限指令
-const hasRole = {
+const hasRoleDirective = {
   mounted(el: HTMLElement, binding: any) {
     const { value } = binding
-    const super_admin = 'admin'
-
-    const userStore = useUserStore()
-    const roles = userStore.getRoles
 
     if (value && value instanceof Array && value.length > 0) {
-      const hasRole = roles.some((role: string) => {
-        return super_admin === role || value.includes(role)
-      })
-
-      if (!hasRole && el.parentNode) {
+      if (!hasRole(value) && el.parentNode) {
         el.parentNode.removeChild(el)
       }
     } else {
@@ -57,10 +40,28 @@ const hasRole = {
   },
 }
 
-// 注册指令
-export function setupDirectives(app: App) {
-  app.directive('hasPermi', hasPermi)
-  app.directive('hasRole', hasRole)
+// 2026-08-18：权限判断函数（供 v-if 使用）——v-hasPermi 指令不能用于组件根节点
+// （如 el-dropdown-item 根节点非元素，指令不生效并报 Vue 警告，权限控制会失效）
+export function hasPermi(perms: string | string[]): boolean {
+  const userStore = useUserStore()
+  const permissions = userStore.getPermissions
+  if (!perms) return false
+  const list = Array.isArray(perms) ? perms : [perms]
+  if (list.length === 0) return false
+  return permissions.some((p: string) => p === '*:*:*' || p === '*' || list.includes(p))
 }
 
-export { hasPermi, hasRole }
+export function hasRole(roles: string | string[]): boolean {
+  const userStore = useUserStore()
+  const roleList = userStore.getRoles
+  if (!roles) return false
+  const list = Array.isArray(roles) ? roles : [roles]
+  if (list.length === 0) return false
+  return roleList.some((r: string) => r === 'admin' || list.includes(r))
+}
+
+// 注册指令
+export function setupDirectives(app: App) {
+  app.directive('hasPermi', hasPermiDirective)
+  app.directive('hasRole', hasRoleDirective)
+}

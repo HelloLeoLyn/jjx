@@ -568,17 +568,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             log.warn("采购订单不存在，跳过自动入库: {}", purchaseOrderId);
             return null;
         }
-        // 查该订单已有入库单：待确认的（未完成）会持续更新；已完成的按物料累计已入数量
+        // 2026-08-18：每次收货生成独立入库单（批次），不再删除重建——
+        // 采购单详情「入库凭证」按时间线区分每次收货（第1次收500、第2次收500各自一张单）
         String baseInboundNo = "PO-" + po.getOrderNo();
         List<InventoryInboundOrder> existingList = inboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryInboundOrder>().likeRight(InventoryInboundOrder::getInboundNo, baseInboundNo));
-        InventoryInboundOrder pendingOrder = existingList.stream()
-                .filter(o -> !OrderStatusEnum.COMPLETED.getCode().equals(o.getOrderStatus()))
-                .findFirst().orElse(null);
-        // 已完成入库单已入数量（按物料聚合，支持分批收货：已确认入过库的部分不再重复入）
+        // 已生成入库单明细量（含待确认——待确认单也占用了收货量，防下一张重复入；驳回/删除后自动重新计入）
         Map<Long, BigDecimal> alreadyInByMaterial = new HashMap<>();
         for (InventoryInboundOrder done : existingList) {
-            if (!OrderStatusEnum.COMPLETED.getCode().equals(done.getOrderStatus())) continue;
             List<InventoryInboundItem> doneItems = inboundItemMapper.selectByInboundId(done.getInboundId());
             for (InventoryInboundItem di : doneItems) {
                 if (di.getMaterialId() == null || di.getQuantity() == null) continue;
@@ -605,40 +602,31 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         if (toInItems.isEmpty()) {
             log.info("采购订单{} 无待入库数量，跳过: {}", purchaseOrderId, baseInboundNo);
-            return pendingOrder != null ? pendingOrder.getInboundId() : null;
+            return null;
         }
 
-        // 已有待确认入库单：删除旧明细重建；否则新建（状态=已批准，待仓库确认入库后才加库存）
-        // 新建时单号加序号（PO-xxx-2、-3…），避免与已确认的历史入库单唯一键冲突
+        // 每次收货新建一张入库单（序号递增 PO-xxx、PO-xxx-2、PO-xxx-3…）；状态=待审批，仓库确认后才加库存（2026-08-11 业务定稿：收货≠入库）
         final InventoryInboundOrder order;
-        if (pendingOrder != null) {
-            order = pendingOrder;
-            List<InventoryInboundItem> oldItems = inboundItemMapper.selectByInboundId(order.getInboundId());
-            for (InventoryInboundItem old : oldItems) {
-                inboundItemMapper.deleteById(old.getItemId());
-            }
-            log.info("采购订单{} 更新待确认入库单 {} 明细", purchaseOrderId, order.getInboundNo());
-        } else {
-            String inboundNo = existingList.isEmpty() ? baseInboundNo : baseInboundNo + "-" + (existingList.size() + 1);
-            order = new InventoryInboundOrder();
-            order.setInboundNo(inboundNo);
-            order.setInboundType("PURCHASE");
-            order.setSourceType("PURCHASE");
-            order.setSourceId(purchaseOrderId);
-            order.setSourceNo(po.getOrderNo());
-            order.setTraceId(po.getTraceId());
-            order.setWarehouseId(1L);
-            order.setInboundDate(LocalDate.now());
-            order.setOrderStatus(OrderStatusEnum.PENDING.getCode()); // 待审批：收货后需仓库审批→确认入库才加库存（2026-08-11 业务定稿：收货≠入库）
-            order.setRemark("采购收货自动入库（DEV-624）");
-            // 供应商/创建人从采购单带过来，避免列表页数据空白
-            order.setSupplierId(po.getSupplierId());
-            order.setSupplierName(po.getSupplierName());
-            try {
-                order.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
-            } catch (Exception ignore) { }
-            inboundOrderMapper.insert(order);
-        }
+        String inboundNo = existingList.isEmpty() ? baseInboundNo : baseInboundNo + "-" + (existingList.size() + 1);
+        order = new InventoryInboundOrder();
+        order.setInboundNo(inboundNo);
+        order.setInboundType("PURCHASE");
+        order.setSourceType("PURCHASE");
+        order.setSourceId(purchaseOrderId);
+        order.setSourceNo(po.getOrderNo());
+        order.setTraceId(po.getTraceId());
+        order.setWarehouseId(1L);
+        order.setInboundDate(LocalDate.now());
+        order.setOrderStatus(OrderStatusEnum.PENDING.getCode()); // 待审批：收货后需仓库审批→确认入库才加库存（2026-08-11 业务定稿：收货≠入库）
+        order.setRemark("采购收货自动入库（DEV-624）批次" + existingList.size());
+        // 供应商/创建人从采购单带过来，避免列表页数据空白
+        order.setSupplierId(po.getSupplierId());
+        order.setSupplierName(po.getSupplierName());
+        try {
+            order.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
+        } catch (Exception ignore) { }
+        inboundOrderMapper.insert(order);
+        log.info("采购订单{} 新建收货入库单 {}", purchaseOrderId, inboundNo);
 
         // 重建明细=未入库数量
         int sort = 1;
