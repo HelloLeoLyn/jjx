@@ -24,8 +24,11 @@ export interface OperationExecutionVO {
   orderId?: number
   orderNo?: string
   processId?: number
+  majorCategory?: string
+  processName?: string
+  customProcessParams?: string
   processOrder?: number
-  executionStatus?: string
+  executionStatus?: number
   executionStatusDesc?: string
   plannedStartTime?: string
   plannedEndTime?: string
@@ -47,6 +50,15 @@ export interface OperationExecutionVO {
   actualMachineHours?: number
   createTime?: string
   updateTime?: string
+
+  // P2-D：P1 DispatchNode currentAssignee projection
+  currentAssigneeId?: number
+  currentAssigneeName?: string
+  currentOrgName?: string
+  currentNodeId?: number
+  dispatchId?: number
+  assigneeSource?: string
+  canReport?: boolean
 
   // 计算字段
   hasStarted?: boolean
