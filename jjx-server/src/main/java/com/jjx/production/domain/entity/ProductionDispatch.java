@@ -42,6 +42,11 @@ public class ProductionDispatch {
     /** 设备名称 */
     private String equipmentName;
     /** 执行人(JSON数组 [{userId,userName}]) */
+    /**
+     * Legacy responsibility-chain representation.
+     * P1 Node (production_dispatch_node) is the new source of truth.
+     * Read fallback only until migration cutover. Do not use in new business rules.
+     */
     private String operators;
 
     /** 派工主管(用户ID) */

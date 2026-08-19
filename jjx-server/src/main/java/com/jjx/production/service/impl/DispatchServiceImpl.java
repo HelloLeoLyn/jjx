@@ -7,17 +7,25 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.DispatchAssignDTO;
+import com.jjx.production.domain.dto.DispatchAssignV1DTO;
 import com.jjx.production.domain.dto.DispatchQueryDTO;
 import com.jjx.production.domain.entity.ProductionDispatch;
 import com.jjx.production.domain.entity.ProductionDispatchLog;
+import com.jjx.production.domain.entity.ProductionDispatchNode;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.vo.DispatchNodeComparisonVO;
+import com.jjx.production.domain.vo.DispatchNodeVO;
 import com.jjx.production.domain.vo.DispatchVO;
+import com.jjx.production.enums.DispatchNodeStatusEnum;
 import com.jjx.production.enums.DispatchStatusEnum;
 import com.jjx.production.mapper.ProductionDispatchLogMapper;
 import com.jjx.production.mapper.ProductionDispatchMapper;
+import com.jjx.production.mapper.ProductionDispatchNodeMapper;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
+import com.jjx.production.service.DispatchActionService;
 import com.jjx.production.service.DispatchService;
+import com.jjx.production.service.DispatchNodeReadService;
 import com.jjx.system.domain.entity.SysDept;
 import com.jjx.system.domain.entity.SysUser;
 import com.jjx.system.domain.vo.SysUserVO;
@@ -33,7 +41,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import com.jjx.common.tree.TreeUtils;
+import com.jjx.system.domain.vo.DeptVO;
 
 /**
  * 生产派工 Service 实现
@@ -44,12 +60,15 @@ import java.util.List;
 public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, ProductionDispatch> implements DispatchService {
 
     private final ProductionDispatchMapper dispatchMapper;
+    private final ProductionDispatchNodeMapper nodeMapper;
     private final ProductionDispatchLogMapper dispatchLogMapper;
     private final ProductionOperationExecutionMapper executionMapper;
     private final ProductionOrderMapper orderMapper;
     private final SysDeptMapper sysDeptMapper;
     private final SysUserMapper sysUserMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final DispatchNodeReadService nodeReadService;
+    private final DispatchActionService dispatchActionService;
 
     // ==================== 查询 ====================
 
@@ -84,6 +103,24 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
                 args.add(kw);
                 args.add(kw);
             }
+        }
+        // P1-E cutover：scope=mine 只读 ACTIVE Node（不再 operators LIKE）
+        boolean scopeMine = query != null && "mine".equalsIgnoreCase(query.getScope());
+        if (scopeMine) {
+            Long me = SecurityUtils.getUserId();
+            where.append(" AND d.dispatch_id IS NOT NULL"
+                    + " AND EXISTS (SELECT 1 FROM production_dispatch_node n WHERE n.dispatch_id = d.dispatch_id"
+                    + "     AND n.node_status = 'ACTIVE' AND n.assignee_id = ?)");
+            args.add(me);
+        }
+        // P1-E cutover 数据权限：超管/有派工指派权限（可初始派工）看全量；其他人只看与自己相关的。
+        // 相关 = 我指派的 OR 我是 Node 责任链参与者（只读 Node，不再 operators LIKE）
+        if (!SecurityUtils.hasPermission("*:*:*") && !SecurityUtils.hasPermission("production:dispatch:assign")) {
+            Long me = SecurityUtils.getUserId();
+            where.append(" AND (d.assigned_by = ?"
+                    + " OR EXISTS (SELECT 1 FROM production_dispatch_node n WHERE n.dispatch_id = d.dispatch_id AND n.assignee_id = ?))");
+            args.add(me);
+            args.add(me);
         }
         String base = " FROM production_operation_execution e"
                 + " LEFT JOIN production_order o ON o.order_id = e.order_id"
@@ -140,7 +177,63 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         }, args.toArray());
         Page<DispatchVO> p = new Page<>(pageNum, pageSize);
         p.setTotal(total == null ? 0 : total);
+        // P1-B：Node-first current assignee projection（分页仅带当前责任人，不带完整责任链，控制 payload）
+        for (DispatchVO vo : vos) {
+            if (vo.getDispatchId() != null) {
+                fillCurrentAssignee(vo);
+            }
+        }
         return PageResult.of(p, vos);
+    }
+
+    /**
+     * P1-B：填充 currentAssignee projection（Node-first + legacy fallback）
+     * 分页/列表只带当前责任人投影；完整责任链通过 /nodes 接口获取。
+     */
+    private void fillCurrentAssignee(DispatchVO vo) {
+        com.jjx.production.domain.vo.DispatchNodeVO cur =
+                nodeReadService.getCurrentActiveNode(vo.getDispatchId());
+        boolean hasActive = cur != null;
+        if (!hasActive) {
+            vo.setAssigneeSource("NONE");
+        } else {
+            vo.setCurrentNodeId(cur.getNodeId());
+            vo.setCurrentAssigneeId(cur.getAssigneeId());
+            vo.setCurrentAssigneeName(cur.getAssigneeName());
+            vo.setCurrentOrgId(cur.getOrgId());
+            vo.setCurrentOrgName(cur.getOrgName());
+            vo.setAssigneeSource(cur.getSource());
+        }
+        // P1-D：allowedActions（与后端 ActionService 权限一致；前端按钮显隐用，非安全边界）
+        vo.setAllowedActions(buildAllowedActions(vo, cur));
+    }
+
+    /**
+     * P1-D：当前用户对某派工单的动作能力投影（与 DispatchActionServiceImpl 权限规则一致）
+     * ASSIGN：无 ACTIVE 且有初始派工权（超管/assign 权限）
+     * DELEGATE：有 ACTIVE 且是 ACTIVE assignee 本人/超管/有 assign 权限（管理员代操作）
+     * REASSIGN：有 ACTIVE 且是 ACTIVE assignee 本人/超管/有 assign 权限
+     * RETURN：有 ACTIVE 且 parentNodeId!=null 且是 ACTIVE assignee 本人/超管
+     */
+    private java.util.List<String> buildAllowedActions(DispatchVO vo, com.jjx.production.domain.vo.DispatchNodeVO cur) {
+        java.util.List<String> actions = new java.util.ArrayList<>();
+        boolean isSuper = SecurityUtils.hasPermission("*:*:*");
+        boolean hasAssignPerm = SecurityUtils.hasPermission("production:dispatch:assign");
+        Long me = SecurityUtils.getUserId();
+
+        if (cur == null) {
+            if (isSuper || hasAssignPerm) actions.add("ASSIGN");
+            return actions;
+        }
+        boolean isAssignee = me != null && me.equals(cur.getAssigneeId());
+        if (isSuper || hasAssignPerm || isAssignee) {
+            actions.add("DELEGATE");
+            actions.add("REASSIGN");
+        }
+        if (cur.getParentNodeId() != null && (isSuper || isAssignee)) {
+            actions.add("RETURN");
+        }
+        return actions;
     }
 
     private Long getNullableLong(java.sql.ResultSet rs, String col) throws java.sql.SQLException {
@@ -194,7 +287,10 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
     public DispatchVO getById(Long id) {
         ProductionDispatch e = dispatchMapper.selectById(id);
         if (e == null) throw new BusinessException("派工单不存在");
-        return DispatchVO.fromEntity(e);
+        DispatchVO vo = DispatchVO.fromEntity(e);
+        // P1-B：Node-first current assignee projection
+        fillCurrentAssignee(vo);
+        return vo;
     }
 
     @Override
@@ -207,54 +303,53 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
 
     // ==================== 指派/改派/批量 ====================
 
+    /**
+     * P1-D 正式 ASSIGN V1：直接委托 ActionService（无 level/transferFrom 语义）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DispatchVO assignV1(DispatchAssignV1DTO dto, String operatorName, Long operatorId) {
+        return dispatchActionService.assign(dto.getExecutionId(), dto.getOrderId(),
+                dto.getTargetUserId(), dto.getEquipmentId(), dto.getRemark(),
+                operatorName, operatorId);
+    }
+
+    /**
+     * P1-C legacy adapter：旧前端 /assign 入口映射到 Node 化动作。
+     * 情况1：无 dispatchId → 新 ASSIGN（建 root Node）
+     * 情况2：有 dispatchId + transferFrom → 旧转派语义 → DELEGATE（transferFrom 下派给其手下）
+     * 情况3：有 dispatchId 无 transferFrom → 旧改派语义（level=1 换第1级）→ REASSIGN（同级换人）
+     * 新的核心 Action Service 不接收 level；level 只在 adapter 中用于理解旧客户端意图。
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public DispatchVO assign(DispatchAssignDTO dto, String operatorName, Long operatorId) {
-        // 已有派工单 → 追加/替换执行人级别（多级链）或改派
-        if (dto.getDispatchId() != null) {
-            return appendLevel(dto, operatorName, operatorId);
+        // 无 dispatchId → 初始派工（新建 dispatch 容器 + root Node）
+        if (dto.getDispatchId() == null) {
+            if (dto.getExecutionId() == null) throw new BusinessException("缺少工序执行ID");
+            if (dto.getOrderId() == null) throw new BusinessException("缺少工单ID");
+            if (dto.getOperatorIds() == null || dto.getOperatorIds().isEmpty()) {
+                throw new BusinessException("请指定执行人");
+            }
+            return dispatchActionService.assign(dto.getExecutionId(), dto.getOrderId(),
+                    dto.getOperatorIds().get(0), dto.getEquipmentId(), dto.getRemark(),
+                    operatorName, operatorId);
         }
-        if (dto.getExecutionId() == null) throw new BusinessException("缺少工序执行ID");
-        if (dto.getOrderId() == null) throw new BusinessException("缺少工单ID");
-        validateAssign(dto);
-
-        ProductionOperationExecution exec = executionMapper.selectById(dto.getExecutionId());
-        if (exec == null) throw new BusinessException("工序执行记录不存在");
-
-        // 幂等：该工序已有派工单 → 走追加/改派
-        ProductionDispatch exist = dispatchMapper.selectOne(Wrappers.<ProductionDispatch>lambdaQuery()
-                .eq(ProductionDispatch::getExecutionId, dto.getExecutionId()).last("LIMIT 1"));
-        if (exist != null) {
-            dto.setDispatchId(exist.getDispatchId());
-            return appendLevel(dto, operatorName, operatorId);
+        // 已有 dispatch：adapter 按旧语义映射
+        ProductionDispatch d = dispatchMapper.selectById(dto.getDispatchId());
+        if (d == null) throw new BusinessException("派工单不存在");
+        if (dto.getOperatorIds() == null || dto.getOperatorIds().isEmpty()) {
+            throw new BusinessException("请指定执行人");
         }
-
-        // 新建：班组 + 第1级执行人（链可后续追加）
-        ProductionDispatch d = new ProductionDispatch();
-        fillTeamAndEquipment(d, dto);
-        int lv = dto.getLevel() == null ? 1 : dto.getLevel();
-        d.setOperators(buildOperatorsJson(dto.getOperatorIds(), lv));
-        d.setAssignedBy(operatorId);
-        d.setAssignedByName(operatorName);
-        d.setAssignTime(LocalDateTime.now());
-        d.setRemark(dto.getRemark());
-        d.setOrderId(dto.getOrderId());
-        d.setExecutionId(dto.getExecutionId());
-        d.setProcessName(processNameOf(exec.getProcessId()));
-        d.setProcessOrder(exec.getProcessOrder());
-        d.setOrderNo(orderNoOf(dto.getOrderId()));
-        // 链完整=已派工可开工；否则停在已派班组等下级追加
-        d.setStatus(Boolean.TRUE.equals(dto.getChainComplete())
-                ? DispatchStatusEnum.ASSIGNED.getCode()
-                : DispatchStatusEnum.TEAM_ASSIGNED.getCode());
-        d.setReDispatchCount(0);
-        d.setCreateBy(operatorName);
-        dispatchMapper.insert(d);
-
-        addLog(d.getDispatchId(), dto.getOrderId(), "ASSIGN",
-                "指派：" + describe(d) + "，第" + lv + "级执行人，主管：" + operatorName, operatorName, operatorId);
-        log.info("派工成功: dispatchId={}, executionId={}, 主管={}, 链级别={}", d.getDispatchId(), dto.getExecutionId(), operatorName, lv);
-        return DispatchVO.fromEntity(d);
+        Long target = dto.getOperatorIds().get(0);
+        // 旧转派语义：transferFrom 在链上，把任务下派给其手下 → DELEGATE
+        if (dto.getTransferFrom() != null) {
+            return dispatchActionService.delegate(d.getDispatchId(), target, dto.getRemark(),
+                    operatorName, operatorId);
+        }
+        // 旧改派语义：无 transferFrom（前端 openAssign 改派固定 level=1 换第1级）→ REASSIGN 同级换人
+        return dispatchActionService.reassign(d.getDispatchId(), target, dto.getRemark(),
+                operatorName, operatorId);
     }
 
     @Override
@@ -280,17 +375,14 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
                     || DispatchStatusEnum.COMPLETED.getCode().equals(exist.getStatus()))) {
                 continue;
             }
-            DispatchAssignDTO item = new DispatchAssignDTO();
-            item.setOrderId(dto.getOrderId());
-            item.setExecutionId(exec.getExecutionId());
-            item.setTeamId(dto.getTeamId());
-            item.setEquipmentId(dto.getEquipmentId());
-            item.setOperatorIds(dto.getOperatorIds());
-            item.setLevel(1);
-            item.setChainComplete(true);
-            item.setRemark(dto.getRemark());
-            item.setDispatchId(exist == null ? null : exist.getDispatchId());
-            assign(item, operatorName, operatorId);
+            // P1-E cutover：batch-assign 必须走 Node 化 ASSIGN（禁止制造 legacy-only dispatch）
+            // 直接委托 ActionService（跳过 legacy adapter 的 level 语义）
+            if (dto.getOperatorIds() == null || dto.getOperatorIds().isEmpty()) {
+                throw new BusinessException("批量派工请指定责任人");
+            }
+            dispatchActionService.assign(exec.getExecutionId(), dto.getOrderId(),
+                    dto.getOperatorIds().get(0), dto.getEquipmentId(), dto.getRemark(),
+                    operatorName, operatorId);
             count++;
         }
         return count;
@@ -370,36 +462,104 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         return 0;
     }
 
-    /** 责任班组可选执行人：班组内成员，且必须是当前操作人有权指派的（其管辖范围=负责部门+下级部门成员）；超管不过滤 */
+    /** 责任班组可选执行人：该部门及全部下级部门成员，且必须是当前操作人有权指派的（其管辖范围=负责部门+下级部门成员）；超管不过滤 */
     @Override
     public List<SysUserVO> teamPersons(Long teamId) {
         if (teamId == null) return new ArrayList<>();
         List<SysUserVO> teamMembers = new ArrayList<>();
         try {
             jdbcTemplate.query(
-                    "SELECT u.user_id, u.user_name, u.nick_name, u.dept_id, d.dept_name"
+                    "WITH RECURSIVE dept_tree AS ("
+                            + "  SELECT dept_id FROM sys_dept WHERE dept_id = ? AND del_flag = '0'"
+                            + "  UNION ALL"
+                            + "  SELECT d.dept_id FROM sys_dept d JOIN dept_tree t ON d.parent_id = t.dept_id WHERE d.del_flag = '0'"
+                            + ") SELECT u.user_id, u.user_name, u.nick_name, u.dept_id, d.dept_name"
                             + " FROM sys_user u LEFT JOIN sys_dept d ON d.dept_id = u.dept_id"
-                            + " WHERE u.dept_id = ? AND u.status = 0 AND u.del_flag = '0'"
-                            + " ORDER BY u.user_id",
+                            + " WHERE u.dept_id IN (SELECT dept_id FROM dept_tree)"
+                            + " AND u.status = 0 AND u.del_flag = '0'"
+                            + " ORDER BY u.dept_id, u.user_id",
                     rs -> {
                         SysUserVO vo = new SysUserVO();
                         vo.setUserId(rs.getLong("user_id"));
                         vo.setUserName(rs.getString("user_name"));
                         vo.setNickName(rs.getString("nick_name"));
                         vo.setDeptId(rs.getLong("dept_id"));
+                        vo.setDeptName(rs.getString("dept_name"));
                         teamMembers.add(vo);
                     }, teamId);
         } catch (Exception e) {
             log.warn("查询责任班组执行人失败 teamId={}: {}", teamId, e.getMessage());
             return new ArrayList<>();
         }
-        // 权限过滤：执行人必须在自己管辖范围（负责部门+下级部门成员），超管全量
+        // 权限过滤：执行人必须在自己管辖范围（负责部门+下级部门成员），派工人自己也可选；超管全量
         if (!SecurityUtils.hasPermission("*:*:*")) {
             Long me = SecurityUtils.getUserId();
             List<Long> canAssign = underlingUserIds(me);
-            teamMembers.removeIf(m -> !canAssign.contains(m.getUserId()));
+            // 2026-08-19：允许派工人自己作为执行人（自己 + 手下）
+            teamMembers.removeIf(m -> !m.getUserId().equals(me) && !canAssign.contains(m.getUserId()));
         }
         return teamMembers;
+    }
+
+    /** 当前用户可管辖部门树：负责部门 + 全部下级（超管全量）；不保留祖先链，返回的节点全部可选 */
+    @Override
+    public List<DeptVO> myDeptTree() {
+        List<SysDept> all = sysDeptMapper.selectList(Wrappers.<SysDept>lambdaQuery()
+                .eq(SysDept::getDelFlag, "0")
+                .orderByAsc(SysDept::getOrderNum)
+                .orderByAsc(SysDept::getId));
+        if (all.isEmpty()) return new ArrayList<>();
+        Map<Long, SysDept> byId = all.stream()
+                .collect(Collectors.toMap(SysDept::getId, d -> d, (a, b) -> a));
+        Set<Long> keep = new HashSet<>();
+        if (SecurityUtils.hasPermission("*:*:*")) {
+            // 超管：全部部门，公司根节点（parent=0）不返回
+            for (SysDept d : all) {
+                if (d.getParentId() != null && d.getParentId() == 0L) continue;
+                keep.add(d.getId());
+            }
+        } else {
+            SysUser me = sysUserMapper.selectById(SecurityUtils.getUserId());
+            String leader = me == null ? null : me.getUserName();
+            if (StringUtils.isBlank(leader)) return new ArrayList<>();
+            // 管辖根：自己当 leader 的部门（可多个），管辖根 + 全部子孙
+            List<SysDept> roots = all.stream()
+                    .filter(d -> leader.equals(d.getLeader()))
+                    .collect(Collectors.toList());
+            if (roots.isEmpty()) return new ArrayList<>();
+            for (SysDept root : roots) {
+                collectDescendants(root, byId, keep);
+                keep.add(root.getId());
+            }
+        }
+        if (keep.isEmpty()) return new ArrayList<>();
+        List<DeptVO> vos = new ArrayList<>();
+        for (SysDept d : all) {
+            if (!keep.contains(d.getId())) continue;
+            DeptVO vo = new DeptVO();
+            vo.setId(d.getId());
+            vo.setParentId(d.getParentId());
+            vo.setDeptName(d.getDeptName());
+            vo.setOrderNum(d.getOrderNum());
+            vo.setLeader(d.getLeader());
+            vo.setStatus(d.getStatus());
+            // 父节点不在树中 → 提升为顶层（否则 TreeUtils 会丢弃该节点）
+            if (vo.getParentId() != null && !keep.contains(vo.getParentId())) {
+                vo.setParentId(null);
+            }
+            vos.add(vo);
+        }
+        return TreeUtils.build(vos, 0L);
+    }
+
+    /** 收集某部门全部子孙部门 ID（递归） */
+    private void collectDescendants(SysDept parent, Map<Long, SysDept> byId, Set<Long> keep) {
+        for (SysDept d : byId.values()) {
+            if (Objects.equals(d.getParentId(), parent.getId()) && !keep.contains(d.getId())) {
+                keep.add(d.getId());
+                collectDescendants(d, byId, keep);
+            }
+        }
     }
 
     /** 转派校验用：某人手下的 userId 集合（其负责部门 + 所有下级部门成员，排除自己） */
@@ -407,6 +567,53 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         List<Long> ids = new ArrayList<>();
         for (SysUserVO vo : underlings(userId)) ids.add(vo.getUserId());
         return ids;
+    }
+
+    // ==================== 派工资格（2026-08-19「逐级下放」模型） ====================
+
+    /** 当前用户可派工？（P0-04：初始派工权 = 超管或拥有派工指派权限 production:dispatch:assign；被派工过的人也可继续派工） */
+    @Override
+    public boolean canAssign(Long userId) {
+        if (SecurityUtils.hasPermission("*:*:*")) return true;
+        if (SecurityUtils.hasPermission("production:dispatch:assign")) return true;
+        return isDispatched(userId);
+    }
+
+    /** 执行人候选：自己 + 手下（负责部门+下级部门成员），按部门树前端组织 */
+    @Override
+    public List<SysUserVO> myPersons() {
+        Long me = SecurityUtils.getUserId();
+        SysUser u = sysUserMapper.selectById(me);
+        if (u == null) return new ArrayList<>();
+        List<SysUserVO> result = underlings(me);
+        SysUserVO self = new SysUserVO();
+        self.setUserId(u.getUserId());
+        self.setUserName(u.getUserName());
+        self.setNickName(u.getNickName());
+        self.setDeptId(u.getDeptId());
+        if (u.getDeptId() != null) {
+            SysDept d = sysDeptMapper.selectById(u.getDeptId());
+            if (d != null) self.setDeptName(d.getDeptName());
+        }
+        result.add(0, self);
+        return result;
+    }
+
+    /** 派工资格校验：assign/批量/转派入口统一调用（P0-04：基于权限，不再依赖固定部门ID） */
+    private void checkDispatchRight(Long operatorId) {
+        if (SecurityUtils.hasPermission("*:*:*")) return;
+        if (SecurityUtils.hasPermission("production:dispatch:assign")) return;
+        if (!isDispatched(operatorId)) {
+            throw new BusinessException("无派工权限：需被派工后（进入执行人链）才能派工");
+        }
+    }
+
+    /**
+     * 是否被派工过：用户是否曾作为责任主体参与过任意 dispatch（Node-first + legacy fallback）
+     * P1-B：委托 DispatchNodeReadService（Node EXISTS；无 Node 的 dispatch 才 legacy LIKE，避免双源）
+     */
+    private boolean isDispatched(Long userId) {
+        return nodeReadService.hasUserParticipated(userId);
     }
 
     /** 某人的手下（其负责部门 + 所有下级部门成员，排除自己）——精简 VO 防 password 泄露 */
@@ -433,6 +640,7 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
                         vo.setUserName(rs.getString("user_name"));
                         vo.setNickName(rs.getString("nick_name"));
                         vo.setDeptId(rs.getLong("dept_id"));
+                        vo.setDeptName(rs.getString("dept_name"));
                         result.add(vo);
                     }, u.getUserName(), userId);
         } catch (Exception e) {
@@ -460,6 +668,16 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
             if (dept == null) throw new BusinessException("班组不存在");
             d.setTeamId(dto.getTeamId());
             d.setTeamName(dept.getDeptName());
+        } else if (dto.getOperatorIds() != null && !dto.getOperatorIds().isEmpty()) {
+            // 2026-08-19：不选班组时，班组=第1级执行人所属部门（自动推导，砍掉独立班组选择）
+            SysUser u = sysUserMapper.selectById(dto.getOperatorIds().get(0));
+            if (u != null && u.getDeptId() != null) {
+                SysDept dept = sysDeptMapper.selectById(u.getDeptId());
+                if (dept != null) {
+                    d.setTeamId(dept.getId());
+                    d.setTeamName(dept.getDeptName());
+                }
+            }
         }
         if (dto.getEquipmentId() != null) {
             String eqName = equipmentNameOf(dto.getEquipmentId());
@@ -501,9 +719,10 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
     }
 
     private void validateAssign(DispatchAssignDTO dto) {
-        if (dto.getTeamId() == null && dto.getEquipmentId() == null
+        // 2026-08-19：砍掉责任班组独立选择（班组=执行人所属部门自动推导），仅需设备/执行人之一
+        if (dto.getEquipmentId() == null
                 && (dto.getOperatorIds() == null || dto.getOperatorIds().isEmpty())) {
-            throw new BusinessException("请至少指定班组/设备/执行人中的一项");
+            throw new BusinessException("请至少指定设备/执行人中的一项");
         }
     }
 
@@ -556,6 +775,20 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         d.setStatus(DispatchStatusEnum.COMPLETED.getCode());
         d.setUpdateBy(operatorName);
         dispatchMapper.updateById(d);
+        // P1-C：完成时最小 Node 同步——若存在 ACTIVE Node，条件关闭为 COMPLETED（legacy-only 保持旧行为）
+        ProductionDispatchNode activeNode = nodeMapper.selectOne(Wrappers.<ProductionDispatchNode>lambdaQuery()
+                .eq(ProductionDispatchNode::getDispatchId, dispatchId)
+                .eq(ProductionDispatchNode::getNodeStatus, DispatchNodeStatusEnum.ACTIVE.getCode())
+                .last("LIMIT 1"));
+        if (activeNode != null) {
+            ProductionDispatchNode upd = new ProductionDispatchNode();
+            upd.setNodeId(activeNode.getNodeId());
+            upd.setNodeStatus(DispatchNodeStatusEnum.COMPLETED.getCode());
+            upd.setClosedAt(LocalDateTime.now());
+            nodeMapper.update(upd, Wrappers.<ProductionDispatchNode>lambdaUpdate()
+                    .eq(ProductionDispatchNode::getNodeId, activeNode.getNodeId())
+                    .eq(ProductionDispatchNode::getNodeStatus, DispatchNodeStatusEnum.ACTIVE.getCode()));
+        }
         syncExecutionStatus(d.getExecutionId(), 4);
         addLog(dispatchId, d.getOrderId(), "COMPLETE", "工序执行完成", operatorName, operatorId);
     }
@@ -600,8 +833,7 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateOrderTeam(Long orderId, Long teamId, Long leaderId, String operatorName) {
-        com.jjx.production.domain.entity.ProductionOrder order = orderMapper.selectById(orderId);
+    public void updateOrderTeam(Long orderId, Long teamId, Long leaderId, String operatorName) {        com.jjx.production.domain.entity.ProductionOrder order = orderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("工单不存在");
         com.jjx.production.domain.entity.ProductionOrder upd = new com.jjx.production.domain.entity.ProductionOrder();
         upd.setOrderId(orderId);
@@ -619,6 +851,53 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         }
         orderMapper.updateById(upd);
         log.info("工单责任更新: orderId={}, teamId={}, leaderId={}, 操作人={}", orderId, teamId, leaderId, operatorName);
+    }
+
+    // ==================== P1-B 只读：Node-first responsibility chain ====================
+
+    @Override
+    public List<DispatchNodeVO> nodes(Long dispatchId) {
+        // 校验派工单存在
+        if (dispatchMapper.selectById(dispatchId) == null) {
+            throw new BusinessException("派工单不存在");
+        }
+        return nodeReadService.getResponsibilityChain(dispatchId);
+    }
+
+    @Override
+    public DispatchNodeVO currentNode(Long dispatchId) {
+        if (dispatchMapper.selectById(dispatchId) == null) {
+            throw new BusinessException("派工单不存在");
+        }
+        return nodeReadService.getCurrentActiveNode(dispatchId);
+    }
+
+    @Override
+    public DispatchNodeComparisonVO compareNodeAndLegacy(Long dispatchId) {
+        return nodeReadService.compareNodeAndLegacy(dispatchId);
+    }
+
+    // ==================== P1-C 动作（委托 DispatchActionService） ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DispatchVO delegate(Long dispatchId, Long targetUserId, String remark,
+                               String operatorName, Long operatorId) {
+        return dispatchActionService.delegate(dispatchId, targetUserId, remark, operatorName, operatorId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DispatchVO reassign(Long dispatchId, Long targetUserId, String reason,
+                               String operatorName, Long operatorId) {
+        return dispatchActionService.reassign(dispatchId, targetUserId, reason, operatorName, operatorId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public DispatchVO returnTask(Long dispatchId, String reason,
+                                 String operatorName, Long operatorId) {
+        return dispatchActionService.returnTask(dispatchId, reason, operatorName, operatorId);
     }
 
     // ==================== 辅助 ====================

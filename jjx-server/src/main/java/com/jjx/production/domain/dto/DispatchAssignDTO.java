@@ -7,10 +7,12 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 派工/改派入参
+ * 派工/改派入参（Legacy compatibility DTO. Do not use from Dispatch V1 frontend.）
+ * P1-D 正式前端使用 DispatchAssignV1DTO / DispatchDelegateDTO / DispatchReassignDTO / DispatchReturnDTO。
+ * level/transferFrom 仅用于理解旧客户端意图（P1-C legacy adapter）。
  */
 @Data
-@Schema(description = "派工入参")
+@Schema(description = "派工入参（Legacy）")
 public class DispatchAssignDTO {
 
     @Schema(description = "派工单ID（改派时必填，指派新工序时为空）")

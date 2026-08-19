@@ -35,7 +35,11 @@ public class DispatchVO {
     private String teamName;
     private Long equipmentId;
     private String equipmentName;
-    /** 执行人 JSON 原样返回，前端解析 */
+    /**
+     * 执行人 JSON 原样返回，前端解析（兼容保留）
+     * Legacy responsibility-chain representation. P1 Node is the new source of truth.
+     * Read fallback only until migration cutover. Do not use in new business rules.
+     */
     private String operators;
 
     private Long assignedBy;
@@ -46,6 +50,24 @@ public class DispatchVO {
     private String rejectReason;
     private Integer reDispatchCount;
     private String remark;
+
+    // ============ P1-B Node-first current assignee projection ============
+    /** 当前责任节点ID（Node 存在=ACTIVE 节点；legacy fallback=null） */
+    private Long currentNodeId;
+    /** 当前责任人ID（Node-first；legacy fallback=末位 operator） */
+    private Long currentAssigneeId;
+    /** 当前责任人姓名 */
+    private String currentAssigneeName;
+    /** 当前责任人所属组织ID（Node org 快照） */
+    private Long currentOrgId;
+    /** 当前责任人所属组织名称 */
+    private String currentOrgName;
+    /** 数据来源：NODE / LEGACY（内部调试；前端可不展示） */
+    private String assigneeSource;
+
+    // ============ P1-D：当前用户对该派工单的动作能力 ============
+    /** 当前用户可执行动作列表：ASSIGN/DELEGATE/REASSIGN/RETURN（前端按钮显隐用；真正权限由后端 ActionService 校验） */
+    private java.util.List<String> allowedActions;
 
     private String createBy;
     private LocalDateTime createTime;

@@ -22,4 +22,7 @@ public class DispatchQueryDTO extends PageQuery {
 
     /** 工序关键字（模糊） */
     private String keyword;
+
+    /** P1-B：数据范围。ALL=默认（超管/有权限全量，否则我指派的+我参与过）；MINE=我的当前任务（ACTIVE assignee=我）；空=ALL */
+    private String scope;
 }
