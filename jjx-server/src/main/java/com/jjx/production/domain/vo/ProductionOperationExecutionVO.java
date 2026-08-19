@@ -187,4 +187,20 @@ public class ProductionOperationExecutionVO {
 
     @Schema(description = "设备利用率(%)")
     private BigDecimal equipmentUtilization;
+
+    // ============ P2-D：P1 DispatchNode currentAssignee projection ============
+    @Schema(description = "当前责任人ID（P1 ACTIVE DispatchNode）")
+    private Long currentAssigneeId;
+    @Schema(description = "当前责任人姓名")
+    private String currentAssigneeName;
+    @Schema(description = "当前责任人所属组织")
+    private String currentOrgName;
+    @Schema(description = "当前责任节点ID")
+    private Long currentNodeId;
+    @Schema(description = "派工单ID（有=已派工；无=待派工）")
+    private Long dispatchId;
+    @Schema(description = "数据来源：NODE/LEGACY/NONE")
+    private String assigneeSource;
+    @Schema(description = "当前用户是否可报工（有 add 权限且是 ACTIVE assignee；前端按钮显隐）")
+    private Boolean canReport;
 }

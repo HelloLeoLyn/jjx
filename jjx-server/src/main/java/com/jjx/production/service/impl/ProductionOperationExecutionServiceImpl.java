@@ -2,6 +2,7 @@ package com.jjx.production.service.impl;
 
 import com.jjx.production.enums.ExecutionStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.result.Result;
@@ -9,6 +10,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.ProductionOperationExecutionCreateDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionQueryDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionUpdateDTO;
+import com.jjx.production.domain.entity.ProductionDispatch;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
@@ -39,6 +41,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final ProductionOrderMapper productionOrderMapper;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final com.jjx.production.service.DispatchService dispatchService;
+    private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
+    private final com.jjx.production.service.DispatchNodeReadService dispatchNodeReadService;
+    private final com.jjx.production.mapper.ProductionDispatchMapper dispatchMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -158,6 +163,13 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     public List<ProductionOperationExecutionVO> queryExecutionList(ProductionOperationExecutionQueryDTO queryDTO) {
         log.debug("查询工序执行列表: {}", queryDTO);
 
+        // P2-D：scope=mine → 我的当前任务（对应 dispatch 存在 ACTIVE Node 且 assignee=当前用户）
+        // 后端过滤（不前端加载全部再过滤）；与旧 operatorName='当前用户' 语义不同（旧=execution.operator_name）
+        Long mineUserId = null;
+        if (queryDTO != null && "mine".equalsIgnoreCase(queryDTO.getScope())) {
+            mineUserId = com.jjx.system.utils.SecurityUtils.getUserId();
+        }
+
         LambdaQueryWrapper<ProductionOperationExecution> wrapper = buildQueryWrapper(queryDTO);
         wrapper.orderByDesc(ProductionOperationExecution::getCreateTime);
 
@@ -168,7 +180,55 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 2026-08-11 修复：补全工单号/工序编码/工序名（convertToVO 只拷自身字段）
         enrichExecutionVOs(vos);
+        // P2-D：填充 currentAssignee projection（P1 ACTIVE DispatchNode）+ canReport + scope=mine 过滤
+        fillCurrentAssigneeProjection(vos);
+        if (mineUserId != null) {
+            final Long meId = mineUserId;
+            vos.removeIf(vo -> !Boolean.TRUE.equals(vo.getCanReport()) && !meId.equals(vo.getCurrentAssigneeId()));
+        }
         return vos;
+    }
+
+    /**
+     * P2-D：按 execution 填充 P1 currentAssignee projection
+     * execution → dispatch(execution_id 1:1) → ACTIVE node → assignee/org 快照
+     * 无 dispatch / 无 ACTIVE node → currentAssignee 为空（前端显示待派工，不显示报工）
+     */
+    private void fillCurrentAssigneeProjection(List<ProductionOperationExecutionVO> vos) {
+        if (vos == null || vos.isEmpty()) return;
+        Long me = com.jjx.system.utils.SecurityUtils.getUserId();
+        boolean hasReportPerm = com.jjx.system.utils.SecurityUtils.hasPermission("production:work-report:add");
+        for (ProductionOperationExecutionVO vo : vos) {
+            try {
+                ProductionDispatch dispatch = dispatchMapper.selectOne(
+                        Wrappers.<ProductionDispatch>lambdaQuery()
+                                .eq(ProductionDispatch::getExecutionId, vo.getExecutionId())
+                                .last("LIMIT 1"));
+                if (dispatch == null) {
+                    vo.setAssigneeSource("NONE");
+                    vo.setCanReport(false);
+                    continue;
+                }
+                vo.setDispatchId(dispatch.getDispatchId());
+                com.jjx.production.domain.vo.DispatchNodeVO cur =
+                        dispatchNodeReadService.getCurrentActiveNode(dispatch.getDispatchId());
+                if (cur == null) {
+                    vo.setAssigneeSource("NONE");
+                    vo.setCanReport(false);
+                    continue;
+                }
+                vo.setCurrentNodeId(cur.getNodeId());
+                vo.setCurrentAssigneeId(cur.getAssigneeId());
+                vo.setCurrentAssigneeName(cur.getAssigneeName());
+                vo.setCurrentOrgName(cur.getOrgName());
+                vo.setAssigneeSource(cur.getSource());
+                // canReport：有 add 权限 且 是 ACTIVE assignee（P2 V1 不允许代报）
+                vo.setCanReport(hasReportPerm && me != null && me.equals(cur.getAssigneeId()));
+            } catch (Exception e) {
+                log.warn("填充 currentAssignee 投影失败 executionId={}: {}", vo.getExecutionId(), e.getMessage());
+                vo.setCanReport(false);
+            }
+        }
     }
 
     /** 批量补全工单号、工序编码/名称 */
@@ -408,22 +468,17 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("记录状态不允许完成");
         }
 
+        // P2-C 完工 gate：至少存在 1 条 SUBMITTED WorkReport 才能完成（报工≠完成，但完成必须有生产事实）
+        if (!workReportProjectionService.hasAnySubmitted(executionId)) {
+            throw new BusinessException("当前工序尚无有效报工记录，不能完成");
+        }
+
         // 更新状态为已完成
         execution.setExecutionStatus(ExecutionStatusEnum.COMPLETED.getCode());
         execution.setActualEndTime(LocalDateTime.now());
 
-        // 如果没有设置产出数量，默认使用投入数量
-        if (execution.getOutputQuantity() == null || execution.getOutputQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-            execution.setOutputQuantity(execution.getInputQuantity());
-        }
-        // 如果没有设置合格数量，默认使用产出数量
-        if (execution.getQualifiedQuantity() == null) {
-            execution.setQualifiedQuantity(execution.getOutputQuantity());
-        }
-        // 如果没有设置不良数量，默认为0
-        if (execution.getDefectiveQuantity() == null) {
-            execution.setDefectiveQuantity(BigDecimal.ZERO);
-        }
+        // P2-C：不再自动补全生产数量（output/qualified/defective 由 WorkReport projection 决定，禁止把计划当实际）
+        // 数量字段保持 WorkReport SUM 值，不在此伪造
 
         boolean success = updateById(execution);
         if (!success) {
@@ -850,26 +905,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      * 从UpdateDTO更新实体
      */
     private static void updateEntityFromUpdateDTO(ProductionOperationExecution execution, ProductionOperationExecutionUpdateDTO updateDTO) {
+        if (updateDTO.getActualLaborHours() != null
+                || updateDTO.getActualMachineHours() != null
+                || updateDTO.getActualCompletedQuantity() != null
+                || updateDTO.getActualQualifiedQuantity() != null
+                || updateDTO.getActualDefectiveQuantity() != null) {
+            // P2-C：生产数量与工时已切换为 WorkReport 事实，普通 Execution Update 不再直接维护（防双重累计）
+            throw new BusinessException("生产数量/工时已切换为报工记录，请使用报工功能维护");
+        }
         if (updateDTO.getActualStartTime() != null) {
             execution.setActualStartTime(updateDTO.getActualStartTime());
         }
         if (updateDTO.getActualEndTime() != null) {
             execution.setActualEndTime(updateDTO.getActualEndTime());
-        }
-        if (updateDTO.getActualLaborHours() != null) {
-            execution.setActualLaborHours(updateDTO.getActualLaborHours());
-        }
-        if (updateDTO.getActualMachineHours() != null) {
-            execution.setActualMachineHours(updateDTO.getActualMachineHours());
-        }
-        if (updateDTO.getActualCompletedQuantity() != null) {
-            execution.setOutputQuantity(updateDTO.getActualCompletedQuantity());
-        }
-        if (updateDTO.getActualQualifiedQuantity() != null) {
-            execution.setQualifiedQuantity(updateDTO.getActualQualifiedQuantity());
-        }
-        if (updateDTO.getActualDefectiveQuantity() != null) {
-            execution.setDefectiveQuantity(updateDTO.getActualDefectiveQuantity());
         }
         if (updateDTO.getOperatorId() != null) {
             execution.setOperatorId(updateDTO.getOperatorId());
