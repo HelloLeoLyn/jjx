@@ -889,9 +889,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (updateDTO.getExecutionStatus() != null) {
             execution.setExecutionStatus(updateDTO.getExecutionStatus());
         }
-        if (updateDTO.getRemark() != null) {
-            execution.setDefectiveReason(updateDTO.getRemark());
+        if (updateDTO.getDefectiveReason() != null) {
+            execution.setDefectiveReason(updateDTO.getDefectiveReason());
         }
+        // P0-03：DTO.remark 不再写入 defective_reason（原错误映射）；execution 实体无 remark 字段，remark 不持久化
 
         execution.setUpdateTime(LocalDateTime.now());
     }

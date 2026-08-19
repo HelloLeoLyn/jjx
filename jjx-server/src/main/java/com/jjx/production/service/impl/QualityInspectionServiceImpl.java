@@ -10,6 +10,8 @@ import com.jjx.production.domain.entity.ProductionQualityInspection;
 import com.jjx.production.domain.entity.ProductionQualityInspectionItem;
 import com.jjx.production.domain.vo.QualityInspectionVO;
 import com.jjx.production.domain.vo.InspectionItemVO;
+import com.jjx.production.enums.QualityInspectionResultEnum;
+import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.mapper.ProductionQualityInspectionMapper;
 import com.jjx.production.mapper.ProductionQualityInspectionItemMapper;
 import com.jjx.production.service.QualityInspectionService;
@@ -77,7 +79,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         entity.setMaterialId(dto.getMaterialId());
         entity.setProductId(dto.getProductId());
         entity.setInspector(dto.getInspector());
-        entity.setResult("pending");
+        entity.setResult(QualityInspectionResultEnum.PENDING.getCode());
         entity.setRemark(dto.getRemark());
         inspectionMapper.insert(entity);
 
@@ -88,7 +90,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
                 ei.setCheckItem(item.getCheckItem());
                 ei.setStandard(item.getStandard());
                 ei.setActualValue(item.getActualValue());
-                ei.setResult("pending");
+                ei.setResult(QualityInspectionResultEnum.PENDING.getCode());
                 itemMapper.insert(ei);
             }
         }
@@ -108,7 +110,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         inspectionMapper.updateById(entity);
 
         // 053返工闭环：质检FAIL → 工单标记返工（可重新报工→重新质检→通过→完工）
-        if ("fail".equals(dto.getResult()) && entity.getOrderId() != null) {
+        if (QualityInspectionResultEnum.FAIL.getCode().equals(dto.getResult()) && entity.getOrderId() != null) {
             try {
                 com.jjx.production.domain.entity.ProductionOrder prodOrder =
                         productionOrderMapper.selectById(entity.getOrderId());
@@ -126,7 +128,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
             }
         }
         // 质检通过 → 清除返工标记
-        if ("pass".equals(dto.getResult()) && entity.getOrderId() != null) {
+        if (QualityInspectionResultEnum.PASS.getCode().equals(dto.getResult()) && entity.getOrderId() != null) {
             try {
                 com.jjx.production.domain.entity.ProductionOrder prodOrder =
                         productionOrderMapper.selectById(entity.getOrderId());
@@ -195,17 +197,13 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
     }
 
     private String getTypeName(String t) {
-        if ("IQC".equals(t)) return "来料检验";
-        if ("IPQC".equals(t)) return "过程检验";
-        if ("OQC".equals(t)) return "成品检验";
-        return t;
+        // P0-01：质检类型统一走枚举；未知历史值原样返回（兼容旧数据）
+        return QualityInspectionTypeEnum.labelOf(t);
     }
 
     private String getResultName(String r) {
-        if ("pass".equals(r)) return "合格";
-        if ("fail".equals(r)) return "不合格";
-        if ("pending".equals(r)) return "待检";
-        return r;
+        // P0-01：质检结果统一走枚举；未知历史值原样返回（兼容旧数据）
+        return QualityInspectionResultEnum.labelOf(r);
     }
 
     @Override
@@ -213,9 +211,9 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         Map<String, Object> stats = new HashMap<>();
         List<ProductionQualityInspection> all = inspectionMapper.selectList(Wrappers.emptyWrapper());
         stats.put("totalCount", (long) all.size());
-        long passCount = all.stream().filter(q -> "pass".equals(q.getResult())).count();
-        long failCount = all.stream().filter(q -> "fail".equals(q.getResult())).count();
-        long pendingCount = all.stream().filter(q -> q.getResult() == null || "pending".equals(q.getResult())).count();
+        long passCount = all.stream().filter(q -> QualityInspectionResultEnum.PASS.getCode().equals(q.getResult())).count();
+        long failCount = all.stream().filter(q -> QualityInspectionResultEnum.FAIL.getCode().equals(q.getResult())).count();
+        long pendingCount = all.stream().filter(q -> q.getResult() == null || QualityInspectionResultEnum.PENDING.getCode().equals(q.getResult())).count();
         stats.put("passCount", passCount);
         stats.put("failCount", failCount);
         stats.put("pendingCount", pendingCount);

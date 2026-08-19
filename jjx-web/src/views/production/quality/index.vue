@@ -229,8 +229,11 @@ const defectTypes = ref<DefectType[]>([])
 // 方法
 const getInspectionTypeTag = (type: string) => {
   const map: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
+    来料检验: 'warning', // IQC
+    过程检验: 'warning', // IPQC
+    完工检验: 'warning', // FQC（P0-01 补齐）
+    出货检验: 'info', // OQC
     首件检验: 'success',
-    过程检验: 'warning',
     成品检验: 'info',
     特殊检验: 'danger',
   }

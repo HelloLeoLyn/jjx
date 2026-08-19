@@ -156,6 +156,8 @@ export interface OperationExecutionUpdateDTO {
   exceptionHandlerName?: string
   exceptionHandleTime?: string
   exceptionHandleResult?: string
+  /** 不良原因（P0-03：正确映射 defective_reason，不再借道 remark） */
+  defectiveReason?: string
   remark?: string
 }
 

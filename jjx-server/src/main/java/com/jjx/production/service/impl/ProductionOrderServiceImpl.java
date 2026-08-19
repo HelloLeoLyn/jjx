@@ -23,6 +23,8 @@ import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.vo.OrderStatisticsVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.enums.OrderStatusEnum;
+import com.jjx.production.enums.QualityInspectionResultEnum;
+import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.ProductionOrderService;
 import com.jjx.system.annotation.Event;
@@ -413,7 +415,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         try {
             com.jjx.production.domain.dto.QualityInspectionCreateDTO qcDto =
                     new com.jjx.production.domain.dto.QualityInspectionCreateDTO();
-            qcDto.setInspectionType("FQC"); // 完工质检
+            qcDto.setInspectionType(QualityInspectionTypeEnum.FQC.getCode()); // 完工质检
             qcDto.setOrderId(orderId);
             qcDto.setProductId(order.getProductId());
             qcDto.setInspector(com.jjx.system.utils.SecurityUtils.getUsername());
@@ -927,8 +929,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             Long fqcPass = qualityInspectionMapper.selectCount(
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionQualityInspection>()
                             .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getOrderId, order.getOrderId())
-                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, "FQC")
-                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getResult, "pass"));
+                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
+                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getResult, QualityInspectionResultEnum.PASS.getCode()));
             if (fqcPass == null || fqcPass <= 0) {
                 log.warn("完工质检门[3/4]失败：工单{}无FQC质检通过记录", order.getOrderId());
                 return false;
@@ -1194,8 +1196,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 如果完成了，记录实际完成时间
         if (OrderStatusEnum.COMPLETED.getCode().equals(newStatus)) {
             order.setActualEndTime(LocalDateTime.now());
-            order.setCompletedQuantity(order.getPlannedQuantity());
-            order.setRemainingQuantity(BigDecimal.ZERO);
+            // P0-02：移除强填 completed_quantity=planned_quantity / remaining_quantity=0
+            // 原因：completed_quantity 是工序合格汇总（展示口径），finished_quantity 才是成品完工数量（052口径，完工/入库/回写唯一依据）
+            // 手动改状态不应制造错误生产数量；数量由工序执行完成（updateOrderCompletedQuantity）或 completeOrder 维护
         }
 
         return updateById(order);
