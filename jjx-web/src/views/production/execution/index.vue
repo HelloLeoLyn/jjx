@@ -121,6 +121,7 @@
               type="success"
               link
               icon="PlayCircle"
+              v-hasPermi="['production:operation-execution:edit']"
               @click="handleStart(scope.row)"
               v-if="scope.row.executionStatus === 0"
               >开始</el-button
@@ -129,6 +130,7 @@
               type="warning"
               link
               icon="Pause"
+              v-hasPermi="['production:operation-execution:edit']"
               @click="handlePause(scope.row)"
               v-if="scope.row.executionStatus === 2"
               >暂停</el-button
@@ -137,6 +139,7 @@
               type="primary"
               link
               icon="Check"
+              v-hasPermi="['production:operation-execution:edit']"
               @click="handleComplete(scope.row)"
               v-if="scope.row.executionStatus === 2"
               >完成</el-button
@@ -144,13 +147,14 @@
             <el-button type="primary" link icon="View" @click="handleView(scope.row)"
               >详情</el-button
             >
-            <el-button type="info" link icon="Document" @click="handleRecord(scope.row)"
+            <el-button type="info" link icon="Document" v-hasPermi="['production:operation-record:add']" @click="handleRecord(scope.row)"
               >记录</el-button
             >
             <el-button
               type="warning"
               link
               icon="WarningFilled"
+              v-hasPermi="['production:quality:view']"
               @click="handleQualityCheck(scope.row)"
               v-if="scope.row.executionStatus === 2 || scope.row.executionStatus === 4"
               >质检</el-button
@@ -602,7 +606,7 @@ const submitRecord = async () => {
       actualDefectiveQuantity: recordForm.defectiveQuantity,
       actualLaborHours: recordForm.actualLaborHours,
       actualMachineHours: recordForm.actualMachineHours,
-      remark: recordForm.defectiveReason,
+      defectiveReason: recordForm.defectiveReason,
     })
     ElMessage.success('生产记录已保存')
     recordOpen.value = false

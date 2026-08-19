@@ -1,53 +1,38 @@
 <template>
   <span class="op-chain" :class="{ clickable }" @click="clickable && open()">
-    <!-- 紧凑模式：名字 + 箭头，末级加粗绿色 -->
-    <template v-if="chain.length">
-      <!-- 只显示第一级负责人（列表列用，其余级别弹窗内看） -->
-      <template v-if="firstOnly">
-        <span class="op-name op-last">{{ chain[0].userName }}</span>
-        <el-tooltip v-if="chain.length > 1" :content="`共 ${chain.length} 级执行人（第2级起），点击查看完整链`" placement="top">
-          <span class="op-level">＋{{ chain.length - 1 }}级</span>
-        </el-tooltip>
-      </template>
-      <template v-else>
-        <template v-for="(o, i) in chain" :key="i">
-          <span v-if="i > 0" class="op-arrow"> ＞ </span>
-          <span class="op-name" :class="{ 'op-last': i === chain.length - 1 }">{{ o.userName }}</span>
-        </template>
-        <el-tooltip v-if="chain.length > 1" :content="`共 ${chain.length} 级执行人，点击查看完整链`" placement="top">
-          <span class="op-level">({{ chain.length }}级)</span>
-        </el-tooltip>
-      </template>
+    <!-- P1-D 简洁列表模式：当前责任人 + 责任历史入口 -->
+    <template v-if="displayNodes.length">
+      <span class="op-name" :class="{ 'op-last': true }">{{ primaryName }}</span>
+      <el-tooltip :content="`查看责任历史（共 ${nodeCount} 个责任实例）`" placement="top">
+        <span class="op-level">{{ nodeCount > 1 ? `＋${nodeCount - 1}` : '' }}历史</span>
+      </el-tooltip>
     </template>
-    <span v-else class="op-empty">未指定</span>
+    <span v-else class="op-empty">未派工</span>
   </span>
 
-  <!-- 弹窗模式：完整链 -->
-  <el-dialog v-model="visible" :title="`执行人链 - ${processName || ''}`" width="480px" append-to-body>
+  <!-- 责任历史弹窗（Node Timeline；legacy fallback 时展示兼容 DTO） -->
+  <el-dialog v-model="visible" :title="`责任链 - ${processName || ''}`" width="480px" append-to-body>
     <div v-if="orderNo || teamName || equipmentName" class="op-ctx">
       <el-descriptions :column="2" border size="small">
         <el-descriptions-item v-if="orderNo" label="工单">{{ orderNo }}</el-descriptions-item>
         <el-descriptions-item v-if="teamName" label="班组">
           <el-tag size="small" type="primary" effect="plain">{{ teamName }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item v-if="equipmentName" label="设备">{{ equipmentName }}</el-descriptions-item>
-        <el-descriptions-item v-else label="设备">不限</el-descriptions-item>
+        <el-descriptions-item label="设备">{{ equipmentName || '不限' }}</el-descriptions-item>
       </el-descriptions>
     </div>
 
-    <div v-if="chain.length" class="op-full">
-      <div v-for="(o, i) in chain" :key="i" class="op-node">
-        <div class="op-card" :class="{ 'op-card-last': i === chain.length - 1 }">
-          <el-tag size="small" :type="i === chain.length - 1 ? 'success' : 'info'" effect="plain" class="op-level-tag">
-            第{{ o.level ?? i + 1 }}级
-          </el-tag>
-          <span class="op-user">{{ o.userName }}</span>
-          <span v-if="i === chain.length - 1" class="op-star">★ 实际干活（报工挂此级）</span>
+    <div v-if="displayNodes.length" class="op-full">
+      <div v-for="(n, i) in displayNodes" :key="n.nodeId || `${n.assigneeId}-${n.assignedAt}-${i}`" class="op-node">
+        <div class="op-card" :class="{ 'op-card-last': n.nodeStatus === 'ACTIVE' }">
+          <span class="op-user">{{ n.assigneeName }}</span>
+          <el-tag v-if="n.orgName" size="small" type="info" effect="plain" style="margin-left: 6px">{{ n.orgName }}</el-tag>
+          <el-tag size="small" :type="statusTag(n.nodeStatus)" effect="plain" style="margin-left: auto">{{ statusLabel(n.nodeStatus) }}</el-tag>
         </div>
-        <div v-if="i < chain.length - 1" class="op-link">↓</div>
+        <div v-if="i < displayNodes.length - 1" class="op-link">↓</div>
       </div>
     </div>
-    <el-empty v-else description="未指定执行人" :image-size="60" />
+    <el-empty v-else description="未派工" :image-size="60" />
 
     <template #footer>
       <el-button v-if="dispatchId" type="primary" plain @click="goLogs">查看流水</el-button>
@@ -59,43 +44,80 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 
-interface OpItem {
-  userId: number
-  userName: string
-  level?: number
+/** Node 责任实例（来自 /nodes API；Node-first，legacy fallback 时后端返回兼容 DTO） */
+interface NodeItem {
+  nodeId?: number
+  assigneeId?: number
+  assigneeName?: string
+  orgName?: string
+  nodeStatus?: string
+  assignedAt?: string
+  closedAt?: string
+  assignedByName?: string
+  remark?: string
 }
 
 const props = withDefaults(
   defineProps<{
-    /** 执行人链 JSON 字符串 */
+    /** P1-D 优先：Node 责任历史（后端 /nodes 已兼容 legacy-only → Node-like DTO） */
+    nodes?: NodeItem[] | null
+    /** Legacy fallback：operators JSON（仅当 nodes 为空时使用） */
     operators?: string | null
-    /** 上下文（弹窗内展示） */
     processName?: string
     orderNo?: string
     teamName?: string
     equipmentName?: string
-    /** 派工单 ID（有则弹窗底部显示"查看流水"） */
     dispatchId?: number | null
-    /** 是否可点击展开弹窗 */
     clickable?: boolean
-    /** 只显示第一级负责人（列表列用；完整链在弹窗内看） */
-    firstOnly?: boolean
   }>(),
-  { clickable: true, firstOnly: false },
+  { clickable: true },
 )
 
 const emit = defineEmits<{ (e: 'logs', dispatchId: number): void }>()
 
 const visible = ref(false)
 
-const chain = computed<OpItem[]>(() => {
-  if (!props.operators) return []
+const NODE_LABELS: Record<string, string> = {
+  ACTIVE: '当前负责', DELEGATED: '已下派', REASSIGNED: '已改派',
+  RETURNED: '已退回', COMPLETED: '已完成', CANCELLED: '已取消',
+}
+
+function statusLabel(s?: string): string {
+  return NODE_LABELS[s || ''] || s || '-'
+}
+
+function statusTag(s?: string): any {
+  return { ACTIVE: 'success', DELEGATED: 'primary', REASSIGNED: 'warning', RETURNED: 'danger', COMPLETED: 'info', CANCELLED: 'info' }[s || ''] || 'info'
+}
+
+/** legacy operators 解析（仅 fallback） */
+function parseOperators(json?: string | null): NodeItem[] {
+  if (!json) return []
   try {
-    const arr = JSON.parse(props.operators) as OpItem[]
-    return arr.sort((a, b) => (a.level ?? 1) - (b.level ?? 1))
+    const arr = JSON.parse(json) as any[]
+    return arr.map((o, i) => ({
+      assigneeId: o.userId,
+      assigneeName: o.userName,
+      nodeStatus: i === arr.length - 1 ? 'ACTIVE' : 'DELEGATED',
+    }))
   } catch {
     return []
   }
+}
+
+const displayNodes = computed<NodeItem[]>(() => {
+  if (props.nodes && props.nodes.length) return props.nodes
+  return parseOperators(props.operators)
+})
+
+const nodeCount = computed(() => displayNodes.value.length)
+
+/** 当前责任人：末位 ACTIVE 节点（Node-first；后端保证 ACTIVE 在末位或唯一） */
+const primaryName = computed(() => {
+  const nodes = displayNodes.value
+  if (!nodes.length) return '未派工'
+  const active = nodes.find((n) => n.nodeStatus === 'ACTIVE') || nodes[nodes.length - 1]
+  return active?.assigneeName || '未派工'
 })
 
 const open = () => {
@@ -126,10 +148,6 @@ const goLogs = () => {
 .op-name.op-last {
   font-weight: 600;
   color: #67c23a;
-}
-.op-arrow {
-  color: #c0c4cc;
-  font-size: 12px;
 }
 .op-level {
   font-size: 11px;
@@ -169,11 +187,6 @@ const goLogs = () => {
 .op-user {
   font-size: 13px;
   font-weight: 500;
-}
-.op-star {
-  margin-left: auto;
-  font-size: 12px;
-  color: #67c23a;
 }
 .op-link {
   color: #c0c4cc;
