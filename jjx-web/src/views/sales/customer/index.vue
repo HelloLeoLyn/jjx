@@ -49,26 +49,26 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['sales:customer:add']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
+          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:customer:edit']" :disabled="single" @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
+          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:customer:delete']" :disabled="multiple" @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:customer:export']" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" @click="importDialogVisible = true">导入</el-button>
+          <el-button type="info" plain icon="Upload" v-hasPermi="['sales:customer:import']" @click="importDialogVisible = true">导入</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Check" :disabled="multiple" @click="handleApprove"
+          <el-button type="success" plain icon="Check" v-hasPermi="['sales:customer:edit']" :disabled="multiple" @click="handleApprove"
             >批量审核</el-button
           >
         </el-col>
@@ -144,6 +144,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['sales:customer:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -152,6 +153,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['sales:customer:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>

@@ -4,6 +4,7 @@ import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.dto.EquipmentQueryDTO;
 import com.jjx.production.domain.entity.ProductionEquipment;
 import com.jjx.production.service.EquipmentService;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -36,12 +37,14 @@ public class EquipmentController {
 
     @Operation(summary = "新增设备")
     @PostMapping
+    @SaCheckPermission("production:equipment:add")
     public Result<Long> create(@RequestBody ProductionEquipment entity) {
         return Result.success(equipmentService.create(entity));
     }
 
     @Operation(summary = "修改设备")
     @PutMapping
+    @SaCheckPermission("production:equipment:edit")
     public Result<Void> update(@RequestBody ProductionEquipment entity) {
         equipmentService.update(entity);
         return Result.success();
@@ -49,6 +52,7 @@ public class EquipmentController {
 
     @Operation(summary = "删除设备")
     @DeleteMapping("/{id}")
+    @SaCheckPermission("production:equipment:delete")
     public Result<Void> delete(@PathVariable Long id) {
         equipmentService.delete(id);
         return Result.success();

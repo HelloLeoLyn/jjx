@@ -52,13 +52,15 @@ interface PickerUser {
 const props = withDefaults(
   defineProps<{
     visible: boolean
-    /** 可选执行人（平铺用户列表，按 deptId 分组展示） */
+    /** 可选执行人（平铺用户列表，按 deptId 挂到部门树） */
     users: PickerUser[]
     /** 已选 userId 列表 */
     modelValue: number[]
+    /** 部门树（可选）：按真实层级组织部门节点；不传则平铺分组 */
+    deptTree?: any[]
     title?: string
   }>(),
-  { title: '选择执行人' },
+  { title: '选择执行人', deptTree: () => [] },
 )
 
 const emit = defineEmits<{
@@ -70,20 +72,38 @@ const emit = defineEmits<{
 const treeRef = ref<any>()
 const keyword = ref('')
 
-// 按部门分组构建树（部门节点 d{deptId}，用户叶子=userId）
+// 按部门树层级组织：部门节点按管辖树结构，用户挂到所属部门下（2026-08-19：修复部门平铺成平级的怪树）
 const treeData = computed(() => {
-  const map = new Map<number, { id: string; label: string; children: any[] }>()
+  // 用户按 deptId 分组
+  const byDept = new Map<number, any[]>()
   for (const u of props.users || []) {
     const deptId = u.deptId ?? 0
-    if (!map.has(deptId)) {
-      map.set(deptId, { id: `d${deptId}`, label: u.deptName || `部门${deptId}`, children: [] })
-    }
-    map.get(deptId)!.children.push({
+    if (!byDept.has(deptId)) byDept.set(deptId, [])
+    byDept.get(deptId)!.push({
       id: u.userId,
       label: u.nickName || u.userName || `用户${u.userId}`,
     })
   }
-  return [...map.values()]
+  const build = (nodes: any[]): any[] => {
+    const out: any[] = []
+    for (const n of nodes || []) {
+      const deptId = n.id
+      const node: any = { id: `d${deptId}`, label: n.deptName || `部门${deptId}`, children: [] }
+      if (byDept.has(deptId)) node.children.push(...byDept.get(deptId)!)
+      node.children.push(...build(n.children || []))
+      // 没人也没下级 → 不显示空部门
+      if (node.children.length) out.push(node)
+    }
+    return out
+  }
+  const tree = build(props.deptTree || [])
+  if (tree.length) return tree
+  // 兜底：无部门树时按 deptId 平铺分组
+  return [...byDept].map(([deptId, users]) => ({
+    id: `d${deptId}`,
+    label: `部门${deptId}`,
+    children: users,
+  }))
 })
 
 const selectedNames = computed(() => {

@@ -82,7 +82,7 @@
         <el-table-column label="操作" width="240" align="center" fixed="right">
           <template #default="scope">
             <el-button link type="primary" icon="Edit" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)">删除</el-button>
+            <el-button link type="danger" icon="Delete" v-hasPermi="['engineering:standardProcess:edit']" @click="handleDelete(scope.row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

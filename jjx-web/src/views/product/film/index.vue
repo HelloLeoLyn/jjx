@@ -33,7 +33,7 @@
     <!-- 列表 -->
     <el-card shadow="never" class="table-card">
       <div class="toolbar">
-        <el-button type="primary" :icon="Plus" :disabled="!queryProductId" @click="handleAdd">
+        <el-button type="primary" :icon="Plus" v-hasPermi="['engineering:film:edit']" :disabled="!queryProductId" @click="handleAdd">
           新增菲林
         </el-button>
         <span v-if="!queryProductId" class="toolbar-tip">请先选择产品</span>
@@ -72,18 +72,18 @@
         </el-table-column>
         <el-table-column label="操作" width="280" fixed="right" align="center">
           <template #default="scope">
-            <el-button link type="primary" size="small" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button link type="success" size="small" @click="handleNewVersion(scope.row)">新版本</el-button>
+            <el-button link type="primary" size="small" v-hasPermi="['engineering:film:edit']" @click="handleEdit(scope.row)">编辑</el-button>
+            <el-button link type="success" size="small" v-hasPermi="['engineering:film:edit']" @click="handleNewVersion(scope.row)">新版本</el-button>
             <template v-if="scope.row.approveStatus === 1 || scope.row.approveStatus === undefined || scope.row.approveStatus === null">
-              <el-button link type="warning" size="small" @click="handleSubmit(scope.row)">提交审批</el-button>
+              <el-button link type="warning" size="small" v-hasPermi="['engineering:film:submit']" @click="handleSubmit(scope.row)">提交审批</el-button>
             </template>
             <template v-else-if="scope.row.approveStatus === 2">
-              <el-button link type="success" size="small" @click="handleApprove(scope.row)">通过</el-button>
-              <el-button link type="danger" size="small" @click="handleReject(scope.row)">驳回</el-button>
+              <el-button link type="success" size="small" v-hasPermi="['engineering:film:approve']" @click="handleApprove(scope.row)">通过</el-button>
+              <el-button link type="danger" size="small" v-hasPermi="['engineering:film:reject']" @click="handleReject(scope.row)">驳回</el-button>
             </template>
-            <el-button v-if="scope.row.approveStatus === 3" link type="primary" size="small" @click="handleSetCurrent(scope.row)">设当前</el-button>
-            <el-button v-if="scope.row.approveStatus === 3 && !scope.row.isReleased" link type="success" size="small" @click="handleRelease(scope.row)">下发生产</el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(scope.row)">删除</el-button>
+            <el-button v-if="scope.row.approveStatus === 3" link type="primary" size="small" v-hasPermi="['engineering:film:edit']" @click="handleSetCurrent(scope.row)">设当前</el-button>
+            <el-button v-if="scope.row.approveStatus === 3 && !scope.row.isReleased" link type="success" size="small" v-hasPermi="['engineering:film:release']" @click="handleRelease(scope.row)">下发生产</el-button>
+            <el-button link type="danger" size="small" v-hasPermi="['engineering:film:delete']" @click="handleDelete(scope.row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

@@ -7,6 +7,7 @@ import com.jjx.product.domain.dto.EngineeringRoutingQueryDTO;
 import com.jjx.product.domain.vo.EngineeringRoutingVO;
 import com.jjx.product.service.IEngineeringRoutingService;
 import com.jjx.product.service.EngineeringRoutingValidator;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -50,6 +51,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "创建工艺路线")
     @PostMapping
+    @SaCheckPermission("engineering:routing:add")
     public Result<EngineeringRoutingVO> create(@Valid @RequestBody EngineeringRoutingDTO dto) {
         EngineeringRoutingVO vo = routingService.createRouting(dto);
         return Result.success(vo);
@@ -57,6 +59,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "更新工艺路线")
     @PutMapping("/{routingId}")
+    @SaCheckPermission("engineering:routing:edit")
     public Result<EngineeringRoutingVO> update(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId,
@@ -68,6 +71,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "删除工艺路线")
     @DeleteMapping("/{routingId}")
+    @SaCheckPermission("engineering:routing:delete")
     public Result<Void> delete(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId) {
@@ -79,6 +83,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "复制为新版本")
     @PostMapping("/{routingId}/copy")
+    @SaCheckPermission("engineering:routing:add")
     public Result<EngineeringRoutingVO> copyAsNewVersion(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId,
@@ -90,6 +95,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "设置当前版本")
     @PutMapping("/{routingId}/set-current")
+    @SaCheckPermission("engineering:routing:edit")
     public Result<Void> setCurrentVersion(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId) {
@@ -132,6 +138,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "提交审批")
     @PostMapping("/{routingId}/submit")
+    @SaCheckPermission("engineering:routing:edit")
     public Result<Void> submitApprove(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId) {
@@ -141,6 +148,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "审批通过")
     @PutMapping("/{routingId}/approve")
+    @SaCheckPermission("engineering:routing:approve")
     public Result<Void> approve(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId,
@@ -152,6 +160,7 @@ public class EngineeringRoutingController {
 
     @Operation(summary = "审批驳回")
     @PutMapping("/{routingId}/reject")
+    @SaCheckPermission("engineering:routing:reject")
     public Result<Void> reject(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId,

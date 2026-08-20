@@ -11,6 +11,9 @@ public class SysUserVO {
     /** 部门ID */
     private Long deptId;
 
+    /** 部门名称（2026-08-19：原缺失导致前端只能显示“部门{id}”） */
+    private String deptName;
+
     /** 用户账号 */
     private String userName;
 

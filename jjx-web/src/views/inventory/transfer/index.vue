@@ -87,8 +87,8 @@
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
             <el-button v-if="row.orderStatus === 0" link type="primary" @click="handleSubmitApprove(row)">提交审批</el-button>
             <el-button v-if="row.approveStatus === 1 && row.orderStatus === 1" link type="success" @click="handleApprove(row)">审批</el-button>
-            <el-button v-if="row.orderStatus === 2" link type="warning" @click="handleConfirmOut(row)">确认调出</el-button>
-            <el-button v-if="row.orderStatus === 6" link type="success" @click="handleConfirmIn(row)">确认调入</el-button>
+            <el-button v-if="row.orderStatus === 2" link type="warning" v-hasPermi="['inventory:transfer:approve']" @click="handleConfirmOut(row)">确认调出</el-button>
+            <el-button v-if="row.orderStatus === 6" link type="success" v-hasPermi="['inventory:transfer:approve']" @click="handleConfirmIn(row)">确认调入</el-button>
             <el-button v-if="row.orderStatus === 0 || row.orderStatus === 1" link type="danger" @click="handleCancel(row)">取消</el-button>
           </template>
         </el-table-column>

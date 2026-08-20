@@ -161,7 +161,7 @@ public class OrderServiceImpl implements IOrderService {
     private void saveOrderCreateLog(SalesOrder order) {
         try {
             SysOperLog log = new SysOperLog();
-            log.setModule("sales_order");
+            log.setModule("销售订单");
             log.setBusinessType(1); // 新增
             log.setOperUrl("order.create");
             log.setBizType("order");
@@ -239,7 +239,7 @@ public class OrderServiceImpl implements IOrderService {
             String summary = changes.isEmpty() ? "无字段变更" : String.join("；", changes);
 
             SysOperLog operLog = new SysOperLog();
-            operLog.setModule("sales_order");
+            operLog.setModule("销售订单");
             operLog.setBusinessType(2); // 修改
             operLog.setOperUrl("order.update");
             operLog.setBizType("order");

@@ -4,9 +4,9 @@
     <div class="page-header">
       <h1 class="page-title">工装模具档案</h1>
       <div class="page-actions">
-        <el-button type="primary" icon="Plus" @click="handleCreate">新增</el-button>
-        <el-button icon="Upload" @click="importDialogVisible = true">导入</el-button>
-        <el-button icon="Download" @click="handleExport">导出</el-button>
+        <el-button type="primary" icon="Plus" v-hasPermi="['production:tooling:add']" @click="handleCreate">新增</el-button>
+        <el-button icon="Upload" v-hasPermi="['production:tooling:import']" @click="importDialogVisible = true">导入</el-button>
+        <el-button icon="Download" v-hasPermi="['production:tooling:export']" @click="handleExport">导出</el-button>
       </div>
     </div>
 
@@ -94,7 +94,7 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="danger" v-hasPermi="['production:tooling:remove']" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

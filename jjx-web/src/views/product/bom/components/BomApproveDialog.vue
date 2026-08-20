@@ -115,7 +115,7 @@
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="handleClose">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit"> 提交审核 </el-button>
+        <el-button type="primary" v-hasPermi="['engineering:bom:approve']" :loading="submitting" @click="handleSubmit"> 提交审核 </el-button>
       </span>
     </template>
   </el-dialog>

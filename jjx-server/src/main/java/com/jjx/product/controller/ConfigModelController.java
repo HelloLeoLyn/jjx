@@ -4,6 +4,7 @@ import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.entity.ConfigModel;
 import com.jjx.product.domain.entity.ConfigOption;
 import com.jjx.product.service.IConfigModelService;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class ConfigModelController {
 
     @Operation(summary = "创建配置模型")
     @PostMapping
+    @SaCheckPermission("engineering:edit")
     public Result<Long> create(@RequestBody Map<String, Object> body) {
         ConfigModel model = toModel(body);
         List<ConfigOption> options = toOptions(body);
@@ -43,6 +45,7 @@ public class ConfigModelController {
 
     @Operation(summary = "更新配置模型")
     @PutMapping
+    @SaCheckPermission("engineering:edit")
     public Result<Void> update(@RequestBody Map<String, Object> body) {
         ConfigModel model = toModel(body);
         List<ConfigOption> options = toOptions(body);
@@ -52,6 +55,7 @@ public class ConfigModelController {
 
     @Operation(summary = "删除配置模型")
     @DeleteMapping("/{modelId}")
+    @SaCheckPermission("engineering:delete")
     public Result<Void> delete(@PathVariable Long modelId) {
         configService.deleteModel(modelId);
         return Result.success();
@@ -59,6 +63,7 @@ public class ConfigModelController {
 
     @Operation(summary = "设置默认模型")
     @PutMapping("/{modelId}/default")
+    @SaCheckPermission("engineering:edit")
     public Result<Void> setDefault(@PathVariable Long modelId) {
         configService.setDefault(modelId);
         return Result.success();
@@ -66,6 +71,7 @@ public class ConfigModelController {
 
     @Operation(summary = "启用/停用")
     @PutMapping("/{modelId}/status/{status}")
+    @SaCheckPermission("engineering:edit")
     public Result<Void> changeStatus(@PathVariable Long modelId, @PathVariable Integer status) {
         configService.changeStatus(modelId, status);
         return Result.success();

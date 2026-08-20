@@ -4,8 +4,8 @@
     <div class="page-header">
       <h1 class="page-title">设备管理</h1>
       <div class="page-actions">
-        <el-button type="primary" icon="Plus" @click="handleCreate">新增设备</el-button>
-        <el-button icon="Tools" @click="handleMaintenance">维护计划</el-button>
+        <el-button type="primary" icon="Plus" v-hasPermi="['production:equipment:add']" @click="handleCreate">新增设备</el-button>
+        <el-button icon="Tools" v-hasPermi="['production:equipment:edit']" @click="handleMaintenance">维护计划</el-button>
       </div>
     </div>
 
@@ -129,8 +129,8 @@
           <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
               <el-button link size="small" @click="viewEquipmentDetail(row)"> 详情 </el-button>
-              <el-button link size="small" @click="editEquipment(row)"> 编辑 </el-button>
-              <el-button link size="small" type="danger" @click="removeEquipment(row)"> 删除 </el-button>
+              <el-button link size="small" v-hasPermi="['production:equipment:edit']" @click="editEquipment(row)"> 编辑 </el-button>
+              <el-button link size="small" type="danger" v-hasPermi="['production:equipment:delete']" @click="removeEquipment(row)"> 删除 </el-button>
             </template>
           </el-table-column>
         </el-table>

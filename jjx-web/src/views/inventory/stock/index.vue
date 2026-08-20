@@ -92,7 +92,7 @@
         </el-col>
         <el-col :span="1.5">
           <el-dropdown trigger="click" @command="handleImportMode">
-            <el-button type="success">
+            <el-button type="success" v-hasPermi="['inventory:stock:import']">
               <el-icon><Upload /></el-icon>导入<el-icon><ArrowDown /></el-icon>
             </el-button>
             <template #dropdown>

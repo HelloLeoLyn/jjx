@@ -56,13 +56,14 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['product:instance:edit']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
             type="success"
             plain
             icon="Edit"
+            v-hasPermi="['product:instance:edit']"
             :disabled="single"
             @click="() => handleUpdate()"
             >修改</el-button
@@ -73,6 +74,7 @@
             type="danger"
             plain
             icon="Delete"
+            v-hasPermi="['product:instance:delete']"
             :disabled="multiple"
             @click="() => handleDelete()"
             >删除</el-button
@@ -86,6 +88,7 @@
             type="info"
             plain
             icon="Check"
+            v-hasPermi="['product:instance:edit']"
             :disabled="single"
             @click="() => handleActivate()"
             >激活</el-button
@@ -96,6 +99,7 @@
             type="warning"
             plain
             icon="Close"
+            v-hasPermi="['product:instance:edit']"
             :disabled="single"
             @click="() => handleDeactivate()"
             >停用</el-button
@@ -151,6 +155,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['product:instance:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -159,6 +164,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['product:instance:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>

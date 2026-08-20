@@ -69,12 +69,12 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button :disabled="single" @click="() => handleEdit()">
+          <el-button :disabled="single" v-hasPermi="['inventory:inbound:edit']" @click="() => handleEdit()">
             <el-icon><Edit /></el-icon>编辑
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button :disabled="multiple" type="danger" @click="() => handleDelete()">
+          <el-button :disabled="multiple" type="danger" v-hasPermi="['inventory:inbound:edit']" @click="() => handleDelete()">
             <el-icon><Delete /></el-icon>删除
           </el-button>
         </el-col>
@@ -132,14 +132,15 @@
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
-            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="row.status === 0" link type="primary" @click="handleSubmit(row)"
+            <el-button link type="primary" v-hasPermi="['inventory:inbound:edit']" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="row.status === 0" link type="primary" v-hasPermi="['inventory:inbound:edit']" @click="handleSubmit(row)"
               >提交</el-button
             >
             <el-button
               v-if="row.status === 1"
               link
               type="success"
+              v-hasPermi="['inventory:inbound:approve']"
               @click="handleApprove(row)"
               >审批</el-button
             >
@@ -147,6 +148,7 @@
               v-if="row.status === 0 || row.status === 1"
               link
               type="danger"
+              v-hasPermi="['inventory:inbound:edit']"
               @click="handleCancel(row)"
               >取消</el-button
             >

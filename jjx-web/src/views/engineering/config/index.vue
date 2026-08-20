@@ -32,10 +32,10 @@
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
             <el-button v-if="row.isDefault !== 1" link type="warning" size="small" @click="handleSetDefault(row)">设默认</el-button>
-            <el-button link :type="row.status === 1 ? 'info' : 'success'" size="small" @click="handleToggleStatus(row)">
+            <el-button link :type="row.status === 1 ? 'info' : 'success'" size="small" v-hasPermi="['engineering:edit']" @click="handleToggleStatus(row)">
               {{ row.status === 1 ? '停用' : '启用' }}
             </el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="danger" size="small" v-hasPermi="['engineering:delete']" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

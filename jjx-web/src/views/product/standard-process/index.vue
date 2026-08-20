@@ -72,8 +72,8 @@
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
-        <el-button type="primary" icon="Plus" @click="handleAdd">新增标准工序</el-button>
-        <el-button type="success" plain icon="Upload" @click="openImportDialog">导入</el-button>
+        <el-button type="primary" icon="Plus" v-hasPermi="['engineering:standardProcess:add']" @click="handleAdd">新增标准工序</el-button>
+        <el-button type="success" plain icon="Upload" v-hasPermi="['engineering:standardProcess:add']" @click="openImportDialog">导入</el-button>
       </div>
     </el-card>
 
@@ -131,18 +131,19 @@
         <el-table-column prop="createTime" label="创建时间" width="170" />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
-            <el-button link type="primary" size="small" @click="handleEdit(scope.row)">
+            <el-button link type="primary" size="small" v-hasPermi="['engineering:standardProcess:edit']" @click="handleEdit(scope.row)">
               编辑
             </el-button>
             <el-button
               link
               :type="scope.row.isEnabled === 1 ? 'warning' : 'success'"
               size="small"
+              v-hasPermi="['engineering:standardProcess:edit']"
               @click="handleToggleEnabled(scope.row)"
             >
               {{ scope.row.isEnabled === 1 ? '禁用' : '启用' }}
             </el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(scope.row)">
+            <el-button link type="danger" size="small" v-hasPermi="['engineering:standardProcess:edit']" @click="handleDelete(scope.row)">
               删除
             </el-button>
           </template>
@@ -183,8 +184,7 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { UploadFilled } from '@element-plus/icons-vue'
-import * as XLSX from 'xlsx'
+
 import { standardProcessApi } from '@/api/product/standardProcess'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { useDict } from '@/composables/useDict'
@@ -192,7 +192,6 @@ import type {
   StandardProcessQueryParams,
   StandardProcessItem,
 } from '@/types/product/standardProcess'
-import type { PageResult } from '@/types'
 
 const router = useRouter()
 
@@ -340,3 +339,4 @@ function openImportDialog() {
   importDialogVisible.value = true
 }
 
+</script>

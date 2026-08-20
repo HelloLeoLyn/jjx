@@ -62,6 +62,7 @@ public class ProductStandardProcessController {
 
     @Operation(summary = "创建标准工序")
     @PostMapping
+    @SaCheckPermission("engineering:standardProcess:add")
     public Result<ProductStandardProcessVO> create(@Valid @RequestBody ProductStandardProcess process) {
         ProductStandardProcessVO vo = processService.createProcess(process);
         return Result.success(vo);
@@ -69,6 +70,7 @@ public class ProductStandardProcessController {
 
     @Operation(summary = "更新标准工序")
     @PutMapping("/{processId}")
+    @SaCheckPermission("engineering:standardProcess:edit")
     public Result<ProductStandardProcessVO> update(
             @Parameter(description = "工序ID", required = true)
             @PathVariable @NotNull Long processId,
@@ -80,6 +82,7 @@ public class ProductStandardProcessController {
 
     @Operation(summary = "删除标准工序")
     @DeleteMapping("/{processId}")
+    @SaCheckPermission("engineering:standardProcess:edit")
     public Result<Void> delete(
             @Parameter(description = "工序ID", required = true)
             @PathVariable @NotNull Long processId) {
@@ -91,6 +94,7 @@ public class ProductStandardProcessController {
 
     @Operation(summary = "启用工序")
     @PutMapping("/{processId}/enable")
+    @SaCheckPermission("engineering:standardProcess:edit")
     public Result<Void> enable(
             @Parameter(description = "工序ID", required = true)
             @PathVariable @NotNull Long processId) {
@@ -100,6 +104,7 @@ public class ProductStandardProcessController {
 
     @Operation(summary = "禁用工序")
     @PutMapping("/{processId}/disable")
+    @SaCheckPermission("engineering:standardProcess:edit")
     public Result<Void> disable(
             @Parameter(description = "工序ID", required = true)
             @PathVariable @NotNull Long processId) {

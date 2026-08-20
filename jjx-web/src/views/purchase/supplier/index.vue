@@ -65,20 +65,20 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
+          <el-button type="success" plain icon="Edit" v-hasPermi="['purchase:supplier:edit']" :disabled="single" @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
+          <el-button type="danger" plain icon="Delete" v-hasPermi="['purchase:supplier:delete']" :disabled="multiple" @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['purchase:supplier:export']" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" @click="importDialogVisible = true">导入</el-button>
+          <el-button type="info" plain icon="Upload" v-hasPermi="['purchase:supplier:import']" @click="importDialogVisible = true">导入</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button type="success" plain icon="Star" :disabled="single" @click="handleEvaluation"
@@ -147,6 +147,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['purchase:supplier:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -155,6 +156,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['purchase:supplier:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>

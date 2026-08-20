@@ -200,6 +200,7 @@
                 type="primary"
                 link
                 icon="Edit"
+                v-hasPermi="['production:operation-execution:edit']"
                 @click="handleAssign(scope.row)"
                 >分配</el-button
               >
@@ -211,6 +212,7 @@
                 type="success"
                 link
                 icon="Play"
+                v-hasPermi="['production:operation-execution:edit']"
                 @click="handleStart(scope.row)"
                 >开始</el-button
               >
@@ -219,13 +221,14 @@
                 type="warning"
                 link
                 icon="Check"
+                v-hasPermi="['production:operation-execution:edit']"
                 @click="handleComplete(scope.row)"
                 >完成</el-button
               >
               <el-button type="info" link icon="View" @click="handleView(scope.row)"
                 >详情</el-button
               >
-              <el-button type="danger" link icon="Delete" @click="handleDelete(scope.row)"
+              <el-button type="danger" link icon="Delete" v-hasPermi="['production:operation-record:delete']" @click="handleDelete(scope.row)"
                 >删除</el-button
               >
             </template>

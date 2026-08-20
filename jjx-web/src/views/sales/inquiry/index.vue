@@ -61,17 +61,17 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
+          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:inquiry:edit']" :disabled="single" @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple || !canDelete" @click="handleDelete()"
+          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:inquiry:delete']" :disabled="multiple || !canDelete" @click="handleDelete()"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:inquiry:export']" @click="handleExport">导出</el-button>
         </el-col>
       </el-row>
     </el-card>
@@ -132,6 +132,7 @@
               link
               type="primary"
               icon="Edit"
+              v-hasPermi="['sales:inquiry:edit']"
               @click="handleUpdate(scope.row)"
               :disabled="scope.row.inquiryStatus === 3"
               >编辑</el-button
@@ -145,15 +146,16 @@
               link
               type="warning"
               icon="Promotion"
+              v-hasPermi="['sales:inquiry:edit']"
               @click="handleSend(scope.row)"
               >发送</el-button
             >
             <!-- 客户确认/拒绝（已发送） -->
             <template v-if="scope.row.inquiryStatus === 2">
-              <el-button link type="success" icon="CircleCheck" @click="handleAccept(scope.row)"
+              <el-button link type="success" icon="CircleCheck" v-hasPermi="['sales:inquiry:edit']" @click="handleAccept(scope.row)"
                 >确认</el-button
               >
-              <el-button link type="danger" icon="CircleClose" @click="handleReject(scope.row)"
+              <el-button link type="danger" icon="CircleClose" v-hasPermi="['sales:inquiry:edit']" @click="handleReject(scope.row)"
                 >拒绝</el-button
               >
             </template>
@@ -163,7 +165,7 @@
               >
             </template>
             <template v-else>
-              <el-button link type="primary" icon="Right" @click="handleConvert(scope.row)"
+              <el-button link type="primary" icon="Right" v-hasPermi="['sales:inquiry:convert']" @click="handleConvert(scope.row)"
                 >转报价</el-button
               >
             </template>

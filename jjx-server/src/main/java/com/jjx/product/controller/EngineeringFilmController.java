@@ -4,6 +4,7 @@ import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.EngineeringFilmDTO;
 import com.jjx.product.domain.vo.EngineeringFilmVO;
 import com.jjx.product.service.IEngineeringFilmService;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,6 +46,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "创建菲林")
     @PostMapping
+    @SaCheckPermission("engineering:film:edit")
     public Result<EngineeringFilmVO> create(
             @Valid @RequestPart("dto") EngineeringFilmDTO dto,
             @RequestPart(value = "file", required = false) MultipartFile file) {
@@ -54,6 +56,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "更新菲林")
     @PutMapping("/{filmId}")
+    @SaCheckPermission("engineering:film:edit")
     public Result<EngineeringFilmVO> update(
             @PathVariable @NotNull Long filmId,
             @Valid @RequestPart("dto") EngineeringFilmDTO dto,
@@ -65,6 +68,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "删除菲林")
     @DeleteMapping("/{filmId}")
+    @SaCheckPermission("engineering:film:delete")
     public Result<Void> delete(
             @Parameter(description = "菲林ID", required = true)
             @PathVariable @NotNull Long filmId) {
@@ -74,6 +78,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "提交审批")
     @PostMapping("/{filmId}/submit")
+    @SaCheckPermission("engineering:film:submit")
     public Result<Void> submitApprove(
             @Parameter(description = "菲林ID", required = true)
             @PathVariable @NotNull Long filmId) {
@@ -83,6 +88,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "审批通过")
     @PutMapping("/{filmId}/approve")
+    @SaCheckPermission("engineering:film:approve")
     public Result<Void> approve(
             @Parameter(description = "菲林ID", required = true)
             @PathVariable @NotNull Long filmId,
@@ -93,6 +99,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "审批驳回")
     @PutMapping("/{filmId}/reject")
+    @SaCheckPermission("engineering:film:reject")
     public Result<Void> reject(
             @Parameter(description = "菲林ID", required = true)
             @PathVariable @NotNull Long filmId,
@@ -103,6 +110,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "创建新版本")
     @PostMapping("/{filmId}/new-version")
+    @SaCheckPermission("engineering:film:edit")
     public Result<EngineeringFilmVO> createNewVersion(
             @PathVariable @NotNull Long filmId,
             @RequestParam String newVersion,
@@ -114,6 +122,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "设为当前版本")
     @PutMapping("/{filmId}/set-current")
+    @SaCheckPermission("engineering:film:edit")
     public Result<Void> setCurrentVersion(
             @Parameter(description = "菲林ID", required = true)
             @PathVariable @NotNull Long filmId) {
@@ -123,6 +132,7 @@ public class EngineeringFilmController {
 
     @Operation(summary = "下发生产")
     @PutMapping("/{filmId}/release")
+    @SaCheckPermission("engineering:film:release")
     public Result<Void> releaseToProduction(
             @Parameter(description = "菲林ID", required = true)
             @PathVariable @NotNull Long filmId) {

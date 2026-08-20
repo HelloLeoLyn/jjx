@@ -19,6 +19,7 @@
             type="success"
             plain
             icon="Edit"
+            v-hasPermi="['inventory:category:edit']"
             :disabled="single"
             @click="() => handleUpdate()"
             >修改</el-button
@@ -29,6 +30,7 @@
             type="danger"
             plain
             icon="Delete"
+            v-hasPermi="['inventory:category:remove']"
             :disabled="multiple"
             @click="() => handleDelete()"
             >删除</el-button
@@ -74,6 +76,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['inventory:category:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -82,6 +85,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['inventory:category:remove']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>

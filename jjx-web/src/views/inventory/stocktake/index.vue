@@ -98,7 +98,7 @@
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
             <el-button v-if="row.orderStatus === 0" link type="success" @click="handleStart(row)">开始盘点</el-button>
             <el-button v-if="row.orderStatus === 4" link type="primary" @click="handleInput(row)">录入实盘</el-button>
-            <el-button v-if="row.orderStatus === 4" link type="success" @click="handleConfirmResult(row)">确认结果</el-button>
+            <el-button v-if="row.orderStatus === 4" link type="success" v-hasPermi="['inventory:stocktake:approve']" @click="handleConfirmResult(row)">确认结果</el-button>
             <el-button v-if="row.orderStatus === 5" link type="warning" @click="handleProcessDiff(row)">处理差异</el-button>
             <el-button v-if="row.orderStatus === 11" link type="info" @click="handleClose(row)">关闭</el-button>
           </template>

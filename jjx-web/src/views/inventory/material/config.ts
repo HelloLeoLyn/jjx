@@ -39,21 +39,21 @@ export const toolbarOptions: ToolbarOptions[] = [
     label: '新增物料',
     type: 'primary',
     icon: 'Plus',
-    // permission: 'inventory:material:add',
+    permission: 'inventory:material:add',
   },
   {
     key: 'import',
     label: '导入',
     type: 'success',
     icon: 'Upload',
-    // permission: 'inventory:material:add',
+    permission: 'inventory:material:add',
   },
   {
     key: 'export',
     label: '导出',
     type: 'warning',
     icon: 'Download',
-    // permission: 'inventory:material:export',
+    // permission: 'inventory:material:export', // 后端无导出接口/权限点，暂不启用
   },
 ]
 // 表格列配置

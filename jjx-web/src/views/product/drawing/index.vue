@@ -65,6 +65,7 @@
             icon="Edit"
             :disabled="single"
             @click="() => handleUpdate()"
+            v-hasPermi="['engineering:edit']"
             >修改</el-button
           >
         </el-col>
@@ -75,6 +76,7 @@
             icon="Delete"
             :disabled="multiple"
             @click="() => handleDelete()"
+            v-hasPermi="['engineering:delete']"
             >删除</el-button
           >
         </el-col>
@@ -148,6 +150,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['engineering:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -156,6 +159,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['engineering:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>

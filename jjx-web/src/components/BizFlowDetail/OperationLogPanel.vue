@@ -26,9 +26,8 @@
             </span>
           </div>
           <div class="op-action">{{ formatBusinessType(log.businessType) }}</div>
-          <div class="op-meta" v-if="log.operator || log.operUrl">
+          <div class="op-meta" v-if="log.operator">
             <span v-if="log.operator">操作人：{{ log.operator }}</span>
-            <span v-if="log.operUrl" class="op-url">{{ log.operUrl }}</span>
           </div>
           <div class="op-remark" v-if="log.detail">{{ log.detail }}</div>
           <div class="op-error" v-if="log.errorMsg">{{ log.errorMsg }}</div>

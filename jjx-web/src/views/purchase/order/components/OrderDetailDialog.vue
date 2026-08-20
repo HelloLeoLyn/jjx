@@ -135,7 +135,7 @@
             <el-table-column label="到期日期" prop="expiryDate" width="110" align="center" />
           </el-table>
         </div>
-        <el-empty v-else-if="!currentInbounds.length && orderDetail.receiptStatus > 0" description="暂无待确认凭证（已全部入库或未生成）" :image-size="50" />
+        <el-empty v-if="!currentInbounds.length && orderDetail.receiptStatus > 0" description="暂无待确认凭证（已全部入库或未生成）" :image-size="50" />
 
         <!-- 历史凭证（已完成） -->
         <div v-if="historyInbounds.length" class="voucher-block">

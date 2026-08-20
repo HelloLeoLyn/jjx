@@ -32,29 +32,31 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['purchase:order:add']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
             type="success"
             plain
             icon="Edit"
+            v-hasPermi="['purchase:order:edit']"
             :disabled="!single || !selectedOrderEditable"
             @click="() => handleUpdate()"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['purchase:order:export']" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Document" :disabled="!single" @click="handleExportPdf">导出PDF</el-button>
+          <el-button type="info" plain icon="Document" v-hasPermi="['purchase:order:export']" :disabled="!single" @click="handleExportPdf">导出PDF</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
             type="info"
             plain
             icon="Send"
+            v-hasPermi="['purchase:order:edit']"
             :disabled="!multiple || !selectedOrderSubmittable"
             @click="handleSubmitReview"
             >提交审批</el-button
@@ -65,6 +67,7 @@
             type="success"
             plain
             icon="Check"
+            v-hasPermi="['purchase:order:approve']"
             :disabled="!single || !selectedOrderApprovable"
             @click="() => handleApprove()"
             >审批</el-button
@@ -75,6 +78,7 @@
             type="primary"
             plain
             icon="Location"
+            v-hasPermi="['purchase:receipt:add']"
             :disabled="!single || !selectedOrderReceivable"
             @click="() => handleReceive()"
             >收货</el-button
@@ -85,6 +89,7 @@
             type="warning"
             plain
             icon="Money"
+            v-hasPermi="['purchase:payment:add']"
             :disabled="!single || !selectedOrderPayable"
             @click="() => handlePayment()"
             >付款</el-button
@@ -95,6 +100,7 @@
             type="info"
             plain
             icon="CopyDocument"
+            v-hasPermi="['purchase:order:add']"
             :disabled="!single"
             @click="() => handleCopy()"
             >复制</el-button
@@ -235,6 +241,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['purchase:order:edit']"
                 @click="() => handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -248,6 +255,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['purchase:order:edit']"
                 @click="() => openPreview('purchase.cancel', scope.row)"
               ></el-button>
             </el-tooltip>
@@ -261,6 +269,7 @@
                 link
                 type="warning"
                 icon="Check"
+                v-hasPermi="['purchase:order:approve']"
                 @click="() => openPreview('purchase.approve', scope.row)"
               ></el-button>
             </el-tooltip>
@@ -274,6 +283,7 @@
                 link
                 type="danger"
                 icon="CloseBold"
+                v-hasPermi="['purchase:order:approve']"
                 @click="() => openPreview('purchase.reject', scope.row)"
               ></el-button>
             </el-tooltip>
@@ -287,6 +297,7 @@
                 link
                 type="primary"
                 icon="Promotion"
+                v-hasPermi="['purchase:order:edit']"
                 @click="() => openPreview('purchase.submitReview', scope.row)"
               ></el-button>
             </el-tooltip>
@@ -300,6 +311,7 @@
                 link
                 type="success"
                 icon="Location"
+                v-hasPermi="['purchase:receipt:add']"
                 @click="() => handleReceive(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -313,6 +325,7 @@
                 link
                 type="primary"
                 icon="Money"
+                v-hasPermi="['purchase:payment:add']"
                 @click="() => handlePayment(scope.row)"
               ></el-button>
             </el-tooltip>

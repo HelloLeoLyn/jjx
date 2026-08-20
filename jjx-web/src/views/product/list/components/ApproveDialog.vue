@@ -31,7 +31,7 @@
     <div class="dialog-footer-actions">
       <div class="footer-right">
         <el-button @click="visible = false">关闭</el-button>
-        <el-button type="primary" @click="handleSubmit" v-if="canSubmit">
+        <el-button type="primary" v-hasPermi="['product:status:submit']" @click="handleSubmit" v-if="canSubmit">
           <el-icon><Promotion /></el-icon>提交审核
         </el-button>
       </div>

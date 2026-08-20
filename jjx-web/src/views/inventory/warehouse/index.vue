@@ -61,9 +61,9 @@
         <el-table-column label="创建时间" prop="createTime" width="160" />
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <el-button link type="primary" v-hasPermi="['inventory:warehouse:edit']" @click="handleEdit(row)">编辑</el-button>
             <el-button link type="primary" @click="handleLocation(row)">库位</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="danger" v-hasPermi="['inventory:warehouse:delete']" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

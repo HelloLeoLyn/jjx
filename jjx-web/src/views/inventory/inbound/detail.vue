@@ -12,12 +12,13 @@
             <el-button v-if="inboundData.status === 0" type="primary" @click="handleEdit">
               编辑
             </el-button>
-            <el-button v-if="inboundData.status === 0" type="success" @click="handleSubmit">
+            <el-button v-if="inboundData.status === 0" type="success" v-hasPermi="['inventory:inbound:edit']" @click="handleSubmit">
               提交审批
             </el-button>
             <el-button
               v-if="inboundData.status === 1"
               type="success"
+              v-hasPermi="['inventory:inbound:approve']"
               @click="handleApprove"
             >
               审批通过
@@ -25,6 +26,7 @@
             <el-button
               v-if="inboundData.status === 2"
               type="warning"
+              v-hasPermi="['inventory:inbound:approve']"
               @click="handleConfirm"
             >
               确认入库
@@ -32,6 +34,7 @@
             <el-button
               v-if="inboundData.status === 0 || inboundData.status === 1"
               type="danger"
+              v-hasPermi="['inventory:inbound:edit']"
               @click="handleCancel"
             >
               取消

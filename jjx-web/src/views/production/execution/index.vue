@@ -25,7 +25,7 @@
     <!-- 主表 -->
     <el-card class="list-card" shadow="never">
       <el-table v-loading="loading" :data="executionList" style="width: 100%">
-        <el-table-column prop="orderNo" label="工单编号" width="130" show-overflow-tooltip />
+        <el-table-column prop="orderNo" label="工单编号" width="180" show-overflow-tooltip />
         <el-table-column label="工序" min-width="130">
           <template #default="{ row }">
             <span>{{ row.processName || '-' }}</span>
