@@ -495,6 +495,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("取消生产工单失败");
         }
 
+        // V1 验收：取消工单释放计划占用（幂等：仅首次从非 CANCELLED → CANCELLED 时释放）
+        releasePlanQuotaOnCancel(order);
+
         log.info("生产工单取消成功, ID: {}", orderId);
         return true;
     }
@@ -527,6 +530,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             if (canCancelOrder(order)) {
                 order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
                 updateById(order);
+                // V1 验收：取消工单释放计划占用（幂等）
+                releasePlanQuotaOnCancel(order);
                 cancelled++;
                 log.info("销售订单{}取消联动：生产工单{}已取消", salesOrderId, order.getOrderId());
             } else {
@@ -949,6 +954,56 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     }
 
     /**
+     * V1 验收：取消工单释放计划占用（只处理真正 CANCELLED 的生产工单）
+     * <p>
+     * 规则：
+     * - 仅 WORK_ORDER 且有父计划（parentOrderId）时处理
+     * - 回补父计划 remaining_quantity（可下达数量）+= 工单计划数量
+     * - 幂等：仅当工单当前状态为 CANCELLED 且父计划非空时才回补；
+     *   重复 cancel 同一工单（状态已 CANCELLED）不二次释放（调用方保证只在首次转换时调用，此处再兜底判断）
+     * - 并发：回补上限 = planned_quantity（不允许超过原计划数量）
+     * - 不复活旧工单/旧 Execution；不删除任何历史事实
+     */
+    private void releasePlanQuotaOnCancel(ProductionOrder cancelledWorkOrder) {
+        if (cancelledWorkOrder == null
+                || !"WORK_ORDER".equals(cancelledWorkOrder.getOrderType())
+                || cancelledWorkOrder.getParentOrderId() == null) {
+            return;
+        }
+        // 兜底幂等：只有真正 CANCELLED 状态才释放
+        if (!OrderStatusEnum.CANCELLED.getCode().equals(cancelledWorkOrder.getOrderStatus())) {
+            return;
+        }
+        BigDecimal qty = cancelledWorkOrder.getPlannedQuantity();
+        if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        try {
+            ProductionOrder plan = getById(cancelledWorkOrder.getParentOrderId());
+            if (plan == null || !"PLAN".equals(plan.getOrderType())) {
+                return;
+            }
+            BigDecimal planned = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+            BigDecimal currentRemaining = plan.getRemainingQuantity() != null ? plan.getRemainingQuantity() : planned;
+            // 回补上限 = 原计划数量（并发安全：不允许超过）
+            BigDecimal restored = currentRemaining.add(qty);
+            if (restored.compareTo(planned) > 0) {
+                restored = planned;
+            }
+            plan.setRemainingQuantity(restored);
+            // 计划恢复可下达 → 状态回退到已批准（可再次转工单）
+            plan.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+            updateById(plan);
+            log.info("取消工单{}释放计划占用：计划{} 可下达数量 {} -> {}",
+                    cancelledWorkOrder.getOrderId(), plan.getOrderNo(),
+                    currentRemaining.stripTrailingZeros().toPlainString(),
+                    restored.stripTrailingZeros().toPlainString());
+        } catch (Exception e) {
+            log.warn("取消工单释放计划占用失败（不影响取消主流程）: {}", e.getMessage());
+        }
+    }
+
+    /**
      * 检查工单是否可以关闭
      */
     private static boolean canCloseOrder(ProductionOrder order) {
@@ -1087,17 +1142,24 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (plan.getOrderStatus() == null || plan.getOrderStatus() != 2) {
             throw new BusinessException("仅已审批通过的生产计划可转为工单，当前状态: " + (plan.getOrderStatus() == null ? "未知" : plan.getOrderStatus()));
         }
-        // 039⑤：Σ子工单数量 ≤ 计划数量（防超量）
-        BigDecimal planQty = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+        // V1 验收：可下达数量 = 计划 remaining_quantity（动态，初始=planned_quantity，转出扣减/取消回补）
+        // 不再用 planned_quantity 静态全量校验（旧逻辑转完置 CLOSED，无法取消后重新转）
+        BigDecimal availableQty = plan.getRemainingQuantity() != null ? plan.getRemainingQuantity() : plan.getPlannedQuantity();
+        if (availableQty == null) {
+            availableQty = BigDecimal.ZERO;
+        }
         BigDecimal sumQty = BigDecimal.ZERO;
         for (ConvertPlanToWorkOrdersDTO.WorkOrderItem item : dto.getWorkOrders()) {
             if (item.getPlannedQuantity() != null) {
                 sumQty = sumQty.add(item.getPlannedQuantity());
             }
         }
-        if (sumQty.compareTo(planQty) > 0) {
+        if (sumQty.compareTo(availableQty) > 0) {
             throw new BusinessException("子工单数量合计" + sumQty.stripTrailingZeros().toPlainString()
-                    + "超过计划数量" + planQty.stripTrailingZeros().toPlainString() + "，请调整");
+                    + "超过计划剩余可下达数量" + availableQty.stripTrailingZeros().toPlainString() + "，请调整");
+        }
+        if (sumQty.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("转工单数量必须大于 0");
         }
         // 039⑤：无BOM/工艺路线产品拦截
         if (plan.getBomId() == null && plan.getRoutingId() == null) {
@@ -1105,13 +1167,11 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         List<Long> createdOrderIds = new ArrayList<>();
-        int seq = 0;
 
         for (ConvertPlanToWorkOrdersDTO.WorkOrderItem item : dto.getWorkOrders()) {
-            seq++;
 
-            // 生成工单编号
-            String workOrderNo = generateWorkOrderNo(plan, seq);
+            // 生成工单编号（V1 修复：基于该计划历史所有子工单最大后缀+1，不复用已取消/完成/关闭的编号）
+            String workOrderNo = generateWorkOrderNo(plan);
 
             // 创建工单
             ProductionOrder workOrder = new ProductionOrder();
@@ -1146,13 +1206,20 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
             // 生成工序执行记录（基于工艺路线）
             generateOperationExecutions(workOrder.getOrderId(), plan.getRoutingId(),
-                    item.getPlanStartDate(), item.getPlanEndDate());
+                    workOrder.getPlannedQuantity(), item.getPlanStartDate(), item.getPlanEndDate());
 
             log.info("工单已生成: {} (计划: {})", workOrderNo, plan.getOrderNo());
         }
 
-        // 更新计划状态为"已转工单"（2026-08-11：CLOSED=已关闭，避免与工单的"已计划"混淆）
-        plan.setOrderStatus(OrderStatusEnum.CLOSED.getCode());
+        // V1 验收：转出成功 → 扣减计划剩余可下达数量（不再置 CLOSED，保留计划可再次转工单）
+        BigDecimal newRemaining = availableQty.subtract(sumQty);
+        plan.setRemainingQuantity(newRemaining);
+        // 计划数量扣减后为 0 时置 CLOSED（语义：已全部下达），取消回补时自动恢复可转
+        if (newRemaining.compareTo(BigDecimal.ZERO) <= 0) {
+            plan.setOrderStatus(OrderStatusEnum.CLOSED.getCode());
+        } else {
+            plan.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+        }
         updateById(plan);
 
         return createdOrderIds;
@@ -1177,6 +1244,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 状态流转校验
         validateStatusTransition(order.getOrderStatus(), newStatus);
 
+        Integer oldStatus = order.getOrderStatus();
         order.setOrderStatus(newStatus);
         if (remark != null) {
             order.setRemark(remark);
@@ -1188,7 +1256,13 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
         // V1 Release Fix：COMPLETED 分支已不可达（上面拦截），完成时间由 completeOrder 维护
 
-        return updateById(order);
+        boolean updated = updateById(order);
+        // V1 验收：通过通用状态更新取消工单 → 释放计划占用（幂等：仅首次从非 CANCELLED → CANCELLED）
+        if (updated && OrderStatusEnum.CANCELLED.getCode().equals(newStatus)
+                && !OrderStatusEnum.CANCELLED.getCode().equals(oldStatus)) {
+            releasePlanQuotaOnCancel(order);
+        }
+        return updated;
     }
 
     @Override
@@ -1204,15 +1278,44 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     /**
      * 生成工单编号: WO-{计划编号}-{序号}
      */
-    private String generateWorkOrderNo(ProductionOrder plan, int seq) {
+    /**
+     * 生成工单编号: WO-{计划编号}-{序号}
+     * <p>
+     * V1 修复：序号 = 该计划历史所有子工单最大后缀 + 1（不依赖本次转单 seq，
+     * 已取消/完成/关闭的历史编号一律不复用；不用 COUNT+1）。
+     * 示例：已有 -01/-02 → -03；已有 -01/-02/-05 → -06；无历史 → -01。
+     */
+    private String generateWorkOrderNo(ProductionOrder plan) {
         String planNo = plan.getOrderNo();
-        return "WO-" + planNo + "-" + String.format("%02d", seq);
+        String prefix = "WO-" + planNo + "-";
+        // 查该计划全部子工单编号，取最大后缀
+        List<ProductionOrder> children = productionOrderMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ProductionOrder>()
+                        .select("order_no")
+                        .eq("parent_order_id", plan.getOrderId()));
+        int maxSuffix = 0;
+        if (children != null) {
+            for (ProductionOrder child : children) {
+                String no = child.getOrderNo();
+                if (no != null && no.startsWith(prefix)) {
+                    try {
+                        int suffix = Integer.parseInt(no.substring(prefix.length()));
+                        if (suffix > maxSuffix) {
+                            maxSuffix = suffix;
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // 非数字后缀忽略
+                    }
+                }
+            }
+        }
+        return prefix + String.format("%02d", maxSuffix + 1);
     }
 
     /**
      * 根据工艺路线生成工序执行记录
      */
-    private void generateOperationExecutions(Long orderId, Long routingId,
+    private void generateOperationExecutions(Long orderId, Long routingId, java.math.BigDecimal orderPlannedQuantity,
                                               LocalDate planStartDate, LocalDate planEndDate) {
         if (routingId == null) {
             log.warn("工单 {} 未指定工艺路线，跳过工序生成", orderId);
@@ -1263,6 +1366,14 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                         planEndDate : planStartDate.plusDays((i + 1) * daysPerStep - 1);
                 execution.setPlannedStartTime(stepStart.atStartOfDay());
                 execution.setPlannedEndTime(stepEnd.atTime(23, 59, 59));
+            }
+
+            // V1 Bug#1 修复：工序计划数量默认继承订单计划数量（当前无工序级独立数量模型）
+            // input_quantity 即“工序计划数量”语义（前端“计划数量”列直接显示）
+            if (orderPlannedQuantity != null) {
+                execution.setInputQuantity(orderPlannedQuantity);
+            } else {
+                execution.setInputQuantity(java.math.BigDecimal.ZERO);
             }
 
             execution.setActualLaborHours(BigDecimal.ZERO);

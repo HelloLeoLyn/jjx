@@ -182,6 +182,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 2026-08-11 修复：补全工单号/工序编码/工序名（convertToVO 只拷自身字段）
         enrichExecutionVOs(vos);
+        // V1 Fix Pack FIX-2：排除 CANCELLED 工单的工序（历史保留，不进入生产操作任务）
+        vos.removeIf(vo -> Boolean.TRUE.equals(isOrderCancelled(vo.getOrderId())));
         // P2-D：填充 currentAssignee projection（P1 ACTIVE DispatchNode）+ canReport + scope=mine 过滤
         fillCurrentAssigneeProjection(vos);
         if (mineUserId != null) {
@@ -234,6 +236,28 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     }
 
     /** 批量补全工单号、工序编码/名称 */
+    /**
+     * V1 Fix Pack FIX-2：判断订单是否 CANCELLED（批量查询缓存，避免 N+1）
+     * 历史 CANCELLED 工单的 Execution 保留数据库记录，但默认不进入生产操作任务范围
+     */
+    private java.util.Map<Long, Boolean> orderCancelledCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Boolean isOrderCancelled(Long orderId) {
+        if (orderId == null) return false;
+        return orderCancelledCache.computeIfAbsent(orderId, id -> {
+            try {
+                Integer cnt = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM production_order WHERE order_id = ? AND order_status = "
+                                + com.jjx.production.enums.OrderStatusEnum.CANCELLED.getCode(),
+                        Integer.class, id);
+                return cnt != null && cnt > 0;
+            } catch (Exception e) {
+                log.warn("查询工单取消状态失败 orderId={}: {}", id, e.getMessage());
+                return false;
+            }
+        });
+    }
+
     private void enrichExecutionVOs(List<ProductionOperationExecutionVO> vos) {
         if (vos == null || vos.isEmpty()) return;
         try {
@@ -313,6 +337,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         List<ProductionOperationExecutionVO> voList = executionPage.getRecords().stream()
                 .map(ProductionOperationExecutionServiceImpl::convertToVO)
                 .collect(Collectors.toList());
+        // V1 Fix Pack FIX-4：分页列表同样补全工序名/工单号（原缺失导致 processName 显示"-"）
+        enrichExecutionVOs(voList);
+        // V1 Fix Pack FIX-2：排除 CANCELLED 工单的工序（历史保留，不进入生产操作任务）
+        voList.removeIf(vo -> Boolean.TRUE.equals(isOrderCancelled(vo.getOrderId())));
         voPage.setRecords(voList);
 
         return voPage;

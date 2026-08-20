@@ -30,7 +30,7 @@
     <el-card class="list-card" shadow="never">
       <el-table v-loading="loading" :data="list" style="width: 100%">
         <el-table-column type="index" label="#" width="50" />
-        <el-table-column prop="orderNo" label="工单编号" width="130" show-overflow-tooltip />
+        <el-table-column prop="orderNo" label="工单编号" width="180" show-overflow-tooltip />
         <el-table-column label="数量" width="70" align="right">
           <template #default="{ row }">
             <span>{{ fmtQty(row.plannedQuantity) }}</span>
@@ -614,8 +614,9 @@ async function openBatchDialog() {
   loadMyPersons()
   if (!orderOptions.value.length) {
     try {
-      const res: any = await getProductionOrderList({ pageNum: 1, pageSize: 200, orderType: 'all' } as any)
-      orderOptions.value = res?.data?.records || res?.data || []
+      // V1 Fix Pack FIX-5：批量派工候选仅有效生产工单（WORK_ORDER 且非 CANCELLED），PLAN 不进入
+      const res: any = await getProductionOrderList({ pageNum: 1, pageSize: 200, orderType: 'WORK_ORDER' } as any)
+      orderOptions.value = (res?.data?.records || res?.data || []).filter((o: any) => o.orderStatus !== 9)
     } catch { orderOptions.value = [] }
   }
 }

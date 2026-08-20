@@ -98,7 +98,7 @@
       <template v-if="convertPlan">
         <el-alert type="info" :closable="false" style="margin-bottom: 12px">
           计划 {{ convertPlan.orderNo }}｜产品 {{ convertPlan.productName }}｜计划数量
-          {{ convertPlan.plannedQuantity }}——可拆成多张工单，合计不得超过计划数量
+          {{ convertPlan.plannedQuantity }}｜剩余可下达 {{ convertRemaining }}——本次拆分合计不得超过剩余可下达
         </el-alert>
         <el-table :data="convertRows" border size="small">
           <el-table-column label="数量" width="150">
@@ -150,8 +150,8 @@
         <div
           style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center"
         >
-          <span :style="{ color: convertTotalQty > Number(convertPlan.plannedQuantity) ? '#f56c6c' : '#303133' }">
-            合计：{{ convertTotalQty }} / {{ convertPlan.plannedQuantity }}
+          <span :style="{ color: convertTotalQty > convertRemaining ? '#f56c6c' : '#303133' }">
+            合计：{{ convertTotalQty }} / 剩余可下达 {{ convertRemaining }}
           </span>
           <el-button size="small" @click="addConvertRow">＋ 添加拆分</el-button>
         </div>
@@ -161,7 +161,7 @@
         <el-button
           type="primary"
           :loading="converting"
-          :disabled="convertTotalQty <= 0 || convertTotalQty > Number(convertPlan?.plannedQuantity)"
+          :disabled="convertTotalQty <= 0 || convertTotalQty > convertRemaining"
           @click="submitConvert"
         >
           转工单
@@ -613,16 +613,26 @@ const convertTotalQty = computed(() =>
   convertRows.value.reduce((s, r) => s + (Number(r.plannedQuantity) || 0), 0),
 )
 
+// V1 Fix Pack FIX-3：剩余可下达数量（计划 remaining_quantity；兼容旧数据无字段时回落 planned）
+const convertRemaining = computed(() => {
+  const v = convertPlan.value?.remainingQuantity
+  if (v != null && Number(v) >= 0) return Number(v)
+  return Number(convertPlan.value?.plannedQuantity || 0)
+})
+
 const handleConvertOrder = (order: any) => {
   convertPlan.value = order
   const today = new Date()
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  const remaining = order.remainingQuantity != null && Number(order.remainingQuantity) >= 0
+    ? Number(order.remainingQuantity)
+    : Number(order.plannedQuantity || 0)
   convertRows.value = [
     {
       productId: String(order.productId),
       productCode: order.productCode || '',
       productName: order.productName || '',
-      plannedQuantity: Number(order.plannedQuantity),
+      plannedQuantity: Math.min(Number(order.plannedQuantity || 0), remaining),
       planStartDate: order.planStartDate ? String(order.planStartDate).slice(0, 10) : fmt(today),
       planEndDate: order.planEndDate
         ? String(order.planEndDate).slice(0, 10)

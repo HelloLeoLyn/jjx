@@ -18,6 +18,7 @@ import com.jjx.production.domain.vo.DispatchNodeVO;
 import com.jjx.production.domain.vo.DispatchVO;
 import com.jjx.production.enums.DispatchNodeStatusEnum;
 import com.jjx.production.enums.DispatchStatusEnum;
+import com.jjx.production.enums.OrderStatusEnum;
 import com.jjx.production.mapper.ProductionDispatchLogMapper;
 import com.jjx.production.mapper.ProductionDispatchMapper;
 import com.jjx.production.mapper.ProductionDispatchNodeMapper;
@@ -126,6 +127,9 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
                 + " LEFT JOIN production_order o ON o.order_id = e.order_id"
                 + " LEFT JOIN engineering_standard_process sp ON sp.process_id = e.process_id"
                 + " LEFT JOIN production_dispatch d ON d.execution_id = e.execution_id";
+        // V1 Fix Pack FIX-2：生产操作范围统一 = WORK_ORDER 且非 CANCELLED（PLAN 不进入派工工作台）
+        where.append(" AND o.order_type = 'WORK_ORDER'");
+        where.append(" AND o.order_status <> " + OrderStatusEnum.CANCELLED.getCode());
         Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) " + base + where, Long.class, args.toArray());
         int pageNum = query == null ? 1 : query.getPageNum();
         int pageSize = query == null ? 10 : query.getPageSize();
@@ -177,11 +181,10 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
         }, args.toArray());
         Page<DispatchVO> p = new Page<>(pageNum, pageSize);
         p.setTotal(total == null ? 0 : total);
-        // P1-B：Node-first current assignee projection（分页仅带当前责任人，不带完整责任链，控制 payload）
+        // V1 Fix Pack FIX-1：对所有 VO 计算 currentAssignee/allowedActions（含无 dispatch 的待派工序，
+        // 使其在有权时获得 ASSIGN 能力，前端据此显示“初始派工”）；安全边界仍由 ActionService 校验
         for (DispatchVO vo : vos) {
-            if (vo.getDispatchId() != null) {
-                fillCurrentAssignee(vo);
-            }
+            fillCurrentAssignee(vo);
         }
         return PageResult.of(p, vos);
     }
@@ -254,6 +257,7 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
                         + " LEFT JOIN engineering_standard_process sp ON sp.process_id = e.process_id"
                         + " LEFT JOIN production_dispatch d ON d.execution_id = e.execution_id"
                         + " WHERE e.order_id = ? AND (d.dispatch_id IS NULL OR d.status IN (0,4))"
+                        + " AND o.order_type = 'WORK_ORDER' AND o.order_status <> " + OrderStatusEnum.CANCELLED.getCode()
                         + " ORDER BY e.process_order ASC",
                 (rs, i) -> {
                     DispatchVO vo = new DispatchVO();
