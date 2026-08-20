@@ -245,7 +245,7 @@ import { OrderType, OrderStatus } from '@/types/production/order'
 import { useProductionOrder } from './composables/useProductionOrder'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
-import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus, convertPlanToWorkOrders } from '@/api/production/order'
+import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus, convertPlanToWorkOrders, completeExecution } from '@/api/production/order'
 import { download } from '@/utils/format'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -536,18 +536,26 @@ const handleBatchComplete = async () => {
   )
 
   if (confirm) {
-    try {
-      await batchUpdateOrderStatus({
-        orderIds: selectedRows.value.map((row) => row.orderId),
-        orderStatus: OrderStatus.COMPLETED,
-        remark: '批量完成',
-      })
-      ElMessage.success('批量完成成功')
-      selectedRows.value = []
-      refreshData()
-    } catch (error) {
-      console.error('批量完成失败:', error)
-      ElMessage.error('批量完成失败')
+    // V1 Release Fix：批量完成逐单调用正式 completeOrder（后端 FQC/工序/数量 gate），不再走通用状态更新
+    let okCount = 0
+    let failCount = 0
+    const failMsgs: string[] = []
+    for (const row of selectedRows.value) {
+      try {
+        await completeExecution(String(row.orderId), { completedQuantity: 0 })
+        okCount++
+      } catch (e: any) {
+        failCount++
+        const msg = e?.msg || e?.message || '完成失败'
+        failMsgs.push(`${row.orderNo || row.orderId}: ${msg}`)
+      }
+    }
+    selectedRows.value = []
+    refreshData()
+    if (okCount > 0) ElMessage.success(`批量完成成功 ${okCount} 个`)
+    if (failCount > 0) {
+      ElMessage.error(`批量完成失败 ${failCount} 个（多为完工校验未通过）`)
+      console.warn('批量完成失败明细:', failMsgs)
     }
   }
 }
@@ -671,9 +679,26 @@ const handleStartOrder = (order: any) => {
   statusDialogVisible.value = true
 }
 
-const handleCompleteOrder = (order: any) => {
-  currentOrder.value = order
-  statusDialogVisible.value = true
+const handleCompleteOrder = async (order: any) => {
+  // V1 Release Fix：订单正式完成必须走 completeOrder（后端 FQC/工序/数量 gate），不走通用状态更新
+  const confirm = await ElMessageBox.confirm(`确定要完成工单 ${order.orderNo} 吗？`, '完成工单确认', {
+    confirmButtonText: '确认完成',
+    cancelButtonText: '取消',
+    type: 'warning',
+  }).catch(() => null)
+  if (!confirm) return
+  try {
+    await completeExecution(String(order.orderId), { completedQuantity: 0 })
+    ElMessage.success('工单已完成')
+    refreshData()
+  } catch (e: any) {
+    const msg = e?.msg || e?.message || '完成工单失败'
+    if (msg.includes('FQC') || msg.includes('质检') || msg.includes('完工检验') || msg.includes('校验不通过')) {
+      ElMessage.error('完工校验未通过，订单暂不能完成：' + msg)
+    } else {
+      ElMessage.error(msg)
+    }
+  }
 }
 
 const handleCancelOrder = (order: any) => {
@@ -819,13 +844,26 @@ const handleFormClose = () => {
 // 状态更新
 const handleStatusSubmit = async (data: OrderStatusUpdateDTO) => {
   try {
+    // V1 Release Fix：目标为 COMPLETED 时必须走正式 completeOrder（FQC/工序/数量 gate）
+    if (data.orderStatus === OrderStatus.COMPLETED) {
+      await completeExecution(String(data.orderId), { completedQuantity: 0 })
+      ElMessage.success('工单已完成')
+      statusDialogVisible.value = false
+      refreshData()
+      return
+    }
     await updateOrderStatus(data)
     ElMessage.success('更新状态成功')
     statusDialogVisible.value = false
     refreshData()
-  } catch (error) {
+  } catch (error: any) {
     console.error('更新状态失败:', error)
-    ElMessage.error('更新状态失败')
+    const msg = error?.msg || error?.message || '更新状态失败'
+    if (msg.includes('FQC') || msg.includes('质检') || msg.includes('完工检验') || msg.includes('校验不通过') || msg.includes('完成操作')) {
+      ElMessage.error('完工校验未通过，订单暂不能完成：' + msg)
+    } else {
+      ElMessage.error(msg)
+    }
   }
 }
 

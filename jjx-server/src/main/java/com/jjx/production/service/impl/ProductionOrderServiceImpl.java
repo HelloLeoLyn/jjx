@@ -1163,6 +1163,12 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     public boolean updateOrderStatus(Long orderId, Integer newStatus, String remark) {
         log.info("更新订单状态: orderId={}, newStatus={}", orderId, newStatus);
 
+        // V1 Release Fix：禁止通过通用状态修改直接进入 COMPLETED（防绕过 FQC gate）
+        // 订单正式完成只能走 completeOrder（含工序完成/FQC PASS/完工数量/入库链完整业务 gate）
+        if (OrderStatusEnum.COMPLETED.getCode().equals(newStatus)) {
+            throw new BusinessException("请使用生产订单完成操作完成工单（完工需通过工序完成/完工质检/数量校验）");
+        }
+
         ProductionOrder order = getById(orderId);
         if (order == null) {
             throw new BusinessException("订单不存在: " + orderId);
@@ -1180,13 +1186,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (OrderStatusEnum.IN_PROGRESS.getCode().equals(newStatus) && order.getActualStartTime() == null) {
             order.setActualStartTime(LocalDateTime.now());
         }
-        // 如果完成了，记录实际完成时间
-        if (OrderStatusEnum.COMPLETED.getCode().equals(newStatus)) {
-            order.setActualEndTime(LocalDateTime.now());
-            // P0-02：移除强填 completed_quantity=planned_quantity / remaining_quantity=0
-            // 原因：completed_quantity 是工序合格汇总（展示口径），finished_quantity 才是成品完工数量（052口径，完工/入库/回写唯一依据）
-            // 手动改状态不应制造错误生产数量；数量由工序执行完成（updateOrderCompletedQuantity）或 completeOrder 维护
-        }
+        // V1 Release Fix：COMPLETED 分支已不可达（上面拦截），完成时间由 completeOrder 维护
 
         return updateById(order);
     }

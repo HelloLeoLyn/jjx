@@ -41,6 +41,7 @@
       <el-button
         type="danger"
         icon="Delete"
+        v-hasPermi="['production:order:delete']"
         @click="handleBatchDelete"
         :disabled="selectedRows.length === 0"
         :loading="deleting"
