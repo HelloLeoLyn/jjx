@@ -36,6 +36,10 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
     private final ProductionQualityInspectionItemMapper itemMapper;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
+    /** P3-B：关联一致性校验用 */
+    private final com.jjx.production.mapper.ProductionWorkReportMapper workReportMapper;
+    /** P3-D：展示字段（工序名）用 */
+    private final com.jjx.production.mapper.ProductionOperationExecutionMapper executionMapper;
 
     @Override
     public PageResult<QualityInspectionVO> page(QualityInspectionQueryDTO query) {
@@ -46,6 +50,11 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
             wrapper.eq(ProductionQualityInspection::getInspectionType, query.getInspectionType());
         if (query.getOrderId() != null)
             wrapper.eq(ProductionQualityInspection::getOrderId, query.getOrderId());
+        // P3-B：按工序/报工过滤
+        if (query.getExecutionId() != null)
+            wrapper.eq(ProductionQualityInspection::getExecutionId, query.getExecutionId());
+        if (query.getWorkReportId() != null)
+            wrapper.eq(ProductionQualityInspection::getWorkReportId, query.getWorkReportId());
         if (StringUtils.isNotBlank(query.getResult()))
             wrapper.eq(ProductionQualityInspection::getResult, query.getResult());
         wrapper.orderByDesc(ProductionQualityInspection::getCreateTime);
@@ -72,10 +81,20 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
     @Override
     @Transactional
     public Long create(QualityInspectionCreateDTO dto) {
+        // P3-C：workReportId 非空 → 后端反查 WorkReport 校验关联一致性（不信任客户端组合 ID）
+        if (dto.getWorkReportId() != null) {
+            boolean linkOk = checkWorkReportLink(dto.getWorkReportId(), dto.getExecutionId(), dto.getOrderId());
+            if (!linkOk) {
+                throw new BusinessException("报工与工序/订单关联不一致，无法创建质检");
+            }
+        }
         ProductionQualityInspection entity = new ProductionQualityInspection();
-        entity.setInspectionNo("QCI" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss")));
+        entity.setInspectionNo(generateInspectionNo());
         entity.setInspectionType(dto.getInspectionType());
         entity.setOrderId(dto.getOrderId());
+        // P3-B：写入工序/报工关联（可空）
+        entity.setExecutionId(dto.getExecutionId());
+        entity.setWorkReportId(dto.getWorkReportId());
         entity.setMaterialId(dto.getMaterialId());
         entity.setProductId(dto.getProductId());
         entity.setInspector(dto.getInspector());
@@ -97,50 +116,35 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         return entity.getInspectionId();
     }
 
+    /**
+     * P3-C：唯一检验单号生成（毫秒时间戳 + 3 位随机，避免秒级并发冲突）。
+     */
+    private String generateInspectionNo() {
+        return "QCI" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
+                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000));
+    }
+
+    /**
+     * LEGACY（P3-B 标记）：通用覆盖式更新质检结果/数量。
+     * P3-C 收口：已判定(pass/fail)不可修改质量事实；PENDING 只允许修改非判定字段。
+     */
     @Override
     @Transactional
     public void update(QualityInspectionUpdateDTO dto) {
         ProductionQualityInspection entity = inspectionMapper.selectById(dto.getInspectionId());
         if (entity == null) throw new BusinessException("检验单不存在");
-        entity.setResult(dto.getResult());
+
+        // P3-C 不可变守卫：已判定(PASS/FAIL) 禁止修改 result/数量/executionId/workReportId/orderId
+        if (QualityInspectionResultEnum.PASS.getCode().equals(entity.getResult())
+                || QualityInspectionResultEnum.FAIL.getCode().equals(entity.getResult())) {
+            throw new BusinessException("质检结果已确定，不可修改；复检请新建质检单");
+        }
+        // PENDING：只允许修改数量/缺陷/备注等非判定字段；result 不接受直接判定（判定走 QualityActionService.judge）
         entity.setTotalQty(dto.getTotalQty());
         entity.setPassQty(dto.getPassQty());
         entity.setFailQty(dto.getFailQty());
         entity.setDefectDesc(dto.getDefectDesc());
         inspectionMapper.updateById(entity);
-
-        // 053返工闭环：质检FAIL → 工单标记返工（可重新报工→重新质检→通过→完工）
-        if (QualityInspectionResultEnum.FAIL.getCode().equals(dto.getResult()) && entity.getOrderId() != null) {
-            try {
-                com.jjx.production.domain.entity.ProductionOrder prodOrder =
-                        productionOrderMapper.selectById(entity.getOrderId());
-                if (prodOrder != null && prodOrder.getOrderStatus() != null
-                        && prodOrder.getOrderStatus() == 8) { // 已完成可回退标记返工
-                    // 已完成状态保持，标记返工待处理
-                }
-                if (prodOrder != null) {
-                    prodOrder.setReworkFlag(1);
-                    productionOrderMapper.updateById(prodOrder);
-                    log.warn("质检FAIL联动：工单{}标记返工(rework_flag=1)", entity.getOrderId());
-                }
-            } catch (Exception e) {
-                log.warn("质检FAIL联动返工标记失败: {}", e.getMessage());
-            }
-        }
-        // 质检通过 → 清除返工标记
-        if (QualityInspectionResultEnum.PASS.getCode().equals(dto.getResult()) && entity.getOrderId() != null) {
-            try {
-                com.jjx.production.domain.entity.ProductionOrder prodOrder =
-                        productionOrderMapper.selectById(entity.getOrderId());
-                if (prodOrder != null && prodOrder.getReworkFlag() != null && prodOrder.getReworkFlag() == 1) {
-                    prodOrder.setReworkFlag(0);
-                    productionOrderMapper.updateById(prodOrder);
-                    log.info("质检通过：工单{}返工标记清除", entity.getOrderId());
-                }
-            } catch (Exception e) {
-                log.warn("质检通过清除返工标记失败: {}", e.getMessage());
-            }
-        }
 
         // 更新检验项
         if (dto.getItems() != null) {
@@ -165,6 +169,79 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
             .eq(ProductionQualityInspectionItem::getInspectionId, id));
     }
 
+    // ============ P3-B 读取能力（供 P3-C FQC/IPQC 联动） ============
+
+    @Override
+    public List<QualityInspectionVO> listByOrderId(Long orderId) {
+        if (orderId == null) return java.util.Collections.emptyList();
+        return inspectionMapper.selectList(Wrappers.<ProductionQualityInspection>lambdaQuery()
+                        .eq(ProductionQualityInspection::getOrderId, orderId)
+                        .orderByDesc(ProductionQualityInspection::getCreateTime))
+                .stream().map(this::toVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<QualityInspectionVO> listByExecutionId(Long executionId) {
+        if (executionId == null) return java.util.Collections.emptyList();
+        return inspectionMapper.selectList(Wrappers.<ProductionQualityInspection>lambdaQuery()
+                        .eq(ProductionQualityInspection::getExecutionId, executionId)
+                        .orderByDesc(ProductionQualityInspection::getCreateTime))
+                .stream().map(this::toVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<QualityInspectionVO> listByWorkReportId(Long workReportId) {
+        if (workReportId == null) return java.util.Collections.emptyList();
+        return inspectionMapper.selectList(Wrappers.<ProductionQualityInspection>lambdaQuery()
+                        .eq(ProductionQualityInspection::getWorkReportId, workReportId)
+                        .orderByDesc(ProductionQualityInspection::getCreateTime))
+                .stream().map(this::toVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<QualityInspectionVO> listFqcHistory(Long executionId) {
+        if (executionId == null) return java.util.Collections.emptyList();
+        return inspectionMapper.selectList(Wrappers.<ProductionQualityInspection>lambdaQuery()
+                        .eq(ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
+                        .eq(ProductionQualityInspection::getExecutionId, executionId)
+                        .orderByDesc(ProductionQualityInspection::getCreateTime))
+                .stream().map(this::toVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean hasPendingFqc(Long executionId) {
+        if (executionId == null) return false;
+        Long cnt = inspectionMapper.selectCount(Wrappers.<ProductionQualityInspection>lambdaQuery()
+                .eq(ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
+                .eq(ProductionQualityInspection::getExecutionId, executionId)
+                .eq(ProductionQualityInspection::getResult, QualityInspectionResultEnum.PENDING.getCode()));
+        return cnt != null && cnt > 0;
+    }
+
+    @Override
+    public boolean hasPassFqc(Long executionId) {
+        if (executionId == null) return false;
+        Long cnt = inspectionMapper.selectCount(Wrappers.<ProductionQualityInspection>lambdaQuery()
+                .eq(ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
+                .eq(ProductionQualityInspection::getExecutionId, executionId)
+                .eq(ProductionQualityInspection::getResult, QualityInspectionResultEnum.PASS.getCode()));
+        return cnt != null && cnt > 0;
+    }
+
+    /**
+     * P3-B 关联一致性校验：workReportId 非空时校验
+     *   workReport.executionId == 传入 executionId
+     *   workReport.orderId == 传入 orderId
+     * 任一为空/查不到/不一致 → false（由调用方决定是否阻断）。
+     */
+    @Override
+    public boolean checkWorkReportLink(Long workReportId, Long executionId, Long orderId) {
+        if (workReportId == null || executionId == null || orderId == null) return false;
+        com.jjx.production.domain.entity.ProductionWorkReport wr = workReportMapper.selectById(workReportId);
+        if (wr == null) return false;
+        return executionId.equals(wr.getExecutionId()) && orderId.equals(wr.getOrderId());
+    }
+
     private QualityInspectionVO toVO(ProductionQualityInspection e) {
         QualityInspectionVO vo = new QualityInspectionVO();
         vo.setInspectionId(e.getInspectionId());
@@ -172,6 +249,11 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         vo.setInspectionType(e.getInspectionType());
         vo.setInspectionTypeName(getTypeName(e.getInspectionType()));
         vo.setOrderId(e.getOrderId());
+        // P3-B：工序/报工关联映射
+        vo.setExecutionId(e.getExecutionId());
+        vo.setWorkReportId(e.getWorkReportId());
+        // P3-D：展示字段填充（orderNo/productName/processName）
+        fillDisplayFields(vo);
         vo.setInspector(e.getInspector());
         vo.setInspectTime(e.getInspectTime());
         vo.setResult(e.getResult());
@@ -183,6 +265,37 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         vo.setRemark(e.getRemark());
         vo.setCreateTime(e.getCreateTime());
         return vo;
+    }
+
+    /**
+     * P3-D：填充展示字段（orderNo/productName/processName）
+     * 仅用于列表/详情展示，不影响质量事实；查不到时保持 null（前端显示 -）。
+     */
+    private void fillDisplayFields(QualityInspectionVO vo) {
+        if (vo.getOrderId() != null) {
+            try {
+                com.jjx.production.domain.entity.ProductionOrder o = productionOrderMapper.selectById(vo.getOrderId());
+                if (o != null) {
+                    vo.setOrderNo(o.getOrderNo());
+                    if (vo.getProductName() == null && o.getProductName() != null) {
+                        vo.setProductName(o.getProductName());
+                    }
+                }
+            } catch (Exception ex) {
+                log.debug("填充订单展示字段失败 orderId={}: {}", vo.getOrderId(), ex.getMessage());
+            }
+        }
+        if (vo.getExecutionId() != null) {
+            try {
+                com.jjx.production.domain.entity.ProductionOperationExecution ex =
+                        executionMapper.selectById(vo.getExecutionId());
+                if (ex != null && ex.getProcessName() != null) {
+                    vo.setProcessName(ex.getProcessName());
+                }
+            } catch (Exception ex) {
+                log.debug("填充工序展示字段失败 executionId={}: {}", vo.getExecutionId(), ex.getMessage());
+            }
+        }
     }
 
     private InspectionItemVO toItemVO(ProductionQualityInspectionItem e) {
@@ -217,11 +330,16 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         stats.put("passCount", passCount);
         stats.put("failCount", failCount);
         stats.put("pendingCount", pendingCount);
-        double totalQty = all.stream().filter(q -> q.getTotalQty() != null).mapToInt(q -> q.getTotalQty()).sum();
-        double passQty = all.stream().filter(q -> q.getPassQty() != null).mapToInt(q -> q.getPassQty()).sum();
+        java.math.BigDecimal totalQty = all.stream().filter(q -> q.getTotalQty() != null)
+                .map(ProductionQualityInspection::getTotalQty)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        java.math.BigDecimal passQty = all.stream().filter(q -> q.getPassQty() != null)
+                .map(ProductionQualityInspection::getPassQty)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
         stats.put("totalQty", totalQty);
         stats.put("passQty", passQty);
-        stats.put("passRate", totalQty > 0 ? Math.round(passQty / totalQty * 1000.0) / 10.0 : 100.0);
+        stats.put("passRate", totalQty.compareTo(java.math.BigDecimal.ZERO) > 0
+                ? Math.round(passQty.doubleValue() / totalQty.doubleValue() * 1000.0) / 10.0 : 100.0);
         return stats;
     }
 
@@ -241,9 +359,9 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         info.put("检验时间", vo.getInspectTime() == null ? "" : vo.getInspectTime().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
         info.put("检验结果", vo.getResultName() == null ? (vo.getResult() == null ? "-" : vo.getResult()) : vo.getResultName());
         info.put("总数/合格/不合格",
-                df.format(vo.getTotalQty() == null ? 0 : vo.getTotalQty()) + " / "
-                        + df.format(vo.getPassQty() == null ? 0 : vo.getPassQty()) + " / "
-                        + df.format(vo.getFailQty() == null ? 0 : vo.getFailQty()));
+                df.format(vo.getTotalQty() == null ? java.math.BigDecimal.ZERO : vo.getTotalQty()) + " / "
+                        + df.format(vo.getPassQty() == null ? java.math.BigDecimal.ZERO : vo.getPassQty()) + " / "
+                        + df.format(vo.getFailQty() == null ? java.math.BigDecimal.ZERO : vo.getFailQty()));
 
         java.util.List<String[]> rows = new java.util.ArrayList<>();
         if (vo.getItems() != null) {
@@ -264,8 +382,8 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
                 .title("质  检  报  告")
                 .info(info)
                 .items(new String[]{"序号", "检验项目", "标准要求", "实测值", "结果", "备注"}, rows)
-                .amounts(new String[][]{{"合格率", (vo.getTotalQty() != null && vo.getTotalQty() > 0 && vo.getPassQty() != null)
-                        ? Math.round(vo.getPassQty() * 1000.0 / vo.getTotalQty()) / 10.0 + "%" : "-"}})
+                .amounts(new String[][]{{"合格率", (vo.getTotalQty() != null && vo.getTotalQty().compareTo(java.math.BigDecimal.ZERO) > 0 && vo.getPassQty() != null)
+                        ? Math.round(vo.getPassQty().doubleValue() * 1000.0 / vo.getTotalQty().doubleValue()) / 10.0 + "%" : "-"}})
                 .remark(vo.getDefectDesc() == null ? vo.getRemark()
                         : (vo.getRemark() == null ? "缺陷说明：" + vo.getDefectDesc() : "缺陷说明：" + vo.getDefectDesc() + "；" + vo.getRemark()))
                 .signatures("检验员：" + (vo.getInspector() == null ? "" : vo.getInspector()),

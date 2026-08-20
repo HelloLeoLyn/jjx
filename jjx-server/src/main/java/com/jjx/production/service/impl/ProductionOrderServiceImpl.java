@@ -411,27 +411,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("完成生产工单失败");
         }
 
-        // 完工自动创建质检单（DEV-473：TC-56 联动）
-        try {
-            com.jjx.production.domain.dto.QualityInspectionCreateDTO qcDto =
-                    new com.jjx.production.domain.dto.QualityInspectionCreateDTO();
-            qcDto.setInspectionType(QualityInspectionTypeEnum.FQC.getCode()); // 完工质检
-            qcDto.setOrderId(orderId);
-            qcDto.setProductId(order.getProductId());
-            qcDto.setInspector(com.jjx.system.utils.SecurityUtils.getUsername());
-            qcDto.setRemark("工单完工自动创建质检单");
-            Long qcId = qualityInspectionService.create(qcDto);
-            log.info("工单[{}] 完工自动创建质检单[{}]", order.getOrderNo(), qcId);
-            // 053完工留痕：关联质检单号
-            if (qcId != null) {
-                ProductionOrder updateOrder = new ProductionOrder();
-                updateOrder.setOrderId(orderId);
-                updateOrder.setQualityInspectionId(qcId);
-                productionOrderMapper.updateById(updateOrder);
-            }
-        } catch (Exception e) {
-            log.warn("完工自动创建质检单失败（不影响主流程）: {}", e.getMessage());
-        }
+        // P3-C：移除“完工后自动创建 FQC”块（P3-A 死锁源）
+        // FQC 创建职责已移到最后有效 Execution 完成时（completeExecution → createFqcForExecution）
+        // Order complete 只校验“最新 FQC PASS”存在（canCompleteOrder ③），不再创建质检单
 
         // 完工自动生成成品入库单（DEV-579：拍板4 生产完成→自动生成成品入库单，走入库流程）
         try {
@@ -924,15 +906,20 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         } catch (Exception e) {
             log.warn("完工质检门[2/4]查询工序失败(不阻断，按通过处理): {}", e.getMessage());
         }
-        // ③ FQC质检通过（允许无工序/无质检数据时按通过处理，兼容旧数据）
+        // ③ FQC质检通过（P3-C 重构：取最新一张 FQC，result 必须为 pass；消除 P3-A 死锁时序）
+        //    死锁源已移除：completeOrder 不再创建 FQC，FQC 由最后 Execution 完成时自动创建（P3-C）
         try {
-            Long fqcPass = qualityInspectionMapper.selectCount(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionQualityInspection>()
-                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getOrderId, order.getOrderId())
-                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
-                            .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getResult, QualityInspectionResultEnum.PASS.getCode()));
-            if (fqcPass == null || fqcPass <= 0) {
-                log.warn("完工质检门[3/4]失败：工单{}无FQC质检通过记录", order.getOrderId());
+            com.jjx.production.domain.entity.ProductionQualityInspection latestFqc =
+                    qualityInspectionMapper.selectOne(
+                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionQualityInspection>()
+                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getOrderId, order.getOrderId())
+                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
+                                    .orderByDesc(com.jjx.production.domain.entity.ProductionQualityInspection::getCreateTime)
+                                    .orderByDesc(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionId)
+                                    .last("LIMIT 1"));
+            if (latestFqc == null || !QualityInspectionResultEnum.PASS.getCode().equals(latestFqc.getResult())) {
+                log.warn("完工质检门[3/4]失败：工单{}无最新FQC PASS记录（最新FQC={}）",
+                        order.getOrderId(), latestFqc == null ? "无" : latestFqc.getResult());
                 return false;
             }
         } catch (Exception e) {

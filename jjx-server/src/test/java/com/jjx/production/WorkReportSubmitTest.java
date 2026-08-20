@@ -56,7 +56,8 @@ class WorkReportSubmitTest {
         ctor.setAccessible(true);
         service = (WorkReportActionServiceImpl) ctor.newInstance(workReportMapper, executionMapper,
                 dispatchMapper, nodeMapper, mock(com.jjx.system.mapper.SysUserMapper.class),
-                projectionService, readService, null);
+                projectionService, readService, null,
+                mock(com.jjx.production.service.QualityInspectionService.class));
     }
 
     private ProductionOperationExecution exec(int status) {

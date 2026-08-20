@@ -44,6 +44,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
     private final com.jjx.production.service.DispatchNodeReadService dispatchNodeReadService;
     private final com.jjx.production.mapper.ProductionDispatchMapper dispatchMapper;
+    /** P3-C：FQC 自动创建 / 质检联动 */
+    private final com.jjx.production.service.QualityActionService qualityActionService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -494,6 +496,27 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             dispatchService.syncByExecution(executionId, 4);
         } catch (Exception e) {
             log.warn("派工单联动完成失败: {}", e.getMessage());
+        }
+
+        // P3-C：最后有效 Execution 完成后自动创建 PENDING FQC（幂等：已有 PENDING 不重复创建）
+        // 判断“最后有效工序”：同 order 下不存在 process_order 更大且未完成(非 COMPLETED/SKIPPED) 的工序
+        try {
+            Long laterPending = productionOperationExecutionMapper.selectCount(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionOperationExecution>()
+                            .eq(ProductionOperationExecution::getOrderId, execution.getOrderId())
+                            .gt(ProductionOperationExecution::getProcessOrder,
+                                    execution.getProcessOrder() == null ? 0 : execution.getProcessOrder())
+                            .notIn(ProductionOperationExecution::getExecutionStatus,
+                                    ExecutionStatusEnum.COMPLETED.getCode(),
+                                    ExecutionStatusEnum.SKIPPED.getCode()));
+            if (laterPending == null || laterPending == 0) {
+                Long fqcId = qualityActionService.createFqcForExecution(executionId);
+                if (fqcId != null) {
+                    log.info("最后工序 execution={} 完成，自动创建 PENDING FQC={}", executionId, fqcId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("P3-C 自动创建 FQC 失败（不影响工序完成）: {}", e.getMessage());
         }
         return true;
     }

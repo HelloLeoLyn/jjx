@@ -54,6 +54,8 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final WorkReportProjectionService projectionService;
     private final WorkReportReadService readService;
     private final JdbcTemplate jdbcTemplate;
+    /** P3-C：WorkReport 撤销质检联动（PASS/FAIL 禁撤；PENDING 联动逻辑删除） */
+    private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
 
     // ==================== SUBMIT ====================
 
@@ -189,6 +191,21 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         ProductionOperationExecution exec = executionMapper.selectById(r.getExecutionId());
         if (exec != null && ExecutionStatusEnum.COMPLETED.getCode().equals(exec.getExecutionStatus())) {
             throw new BusinessException("工序已完成，不允许撤销报工");
+        }
+
+        // P3-C：质检关联 gate——已关联 PASS/FAIL 质检的报工禁止撤销；仅 PENDING 质检时联动处理
+        java.util.List<com.jjx.production.domain.vo.QualityInspectionVO> related =
+                qualityInspectionService.listByWorkReportId(reportId);
+        boolean hasFinalized = related.stream().anyMatch(q ->
+                com.jjx.production.enums.QualityInspectionResultEnum.PASS.getCode().equals(q.getResult())
+                        || com.jjx.production.enums.QualityInspectionResultEnum.FAIL.getCode().equals(q.getResult()));
+        if (hasFinalized) {
+            throw new BusinessException("该报工已关联质检判定结果（PASS/FAIL），不允许撤销；如需更正请走质检复检");
+        }
+        // 仅 PENDING 质检：允许撤销报工，但同步逻辑删除这些 PENDING 质检（历史可追踪，不留指向已撤销事实的有效质检单）
+        for (com.jjx.production.domain.vo.QualityInspectionVO q : related) {
+            qualityInspectionService.delete(q.getInspectionId());
+            log.info("报工撤销联动：逻辑删除 PENDING 质检 {}", q.getInspectionId());
         }
 
         // 权限：work-report:cancel 权限点 + 业务关系（本人或超管）

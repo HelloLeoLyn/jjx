@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.*;
 public class QualityInspectionController {
 
     private final QualityInspectionService qualityService;
+    /** P3-C：正式质量动作（判定/复检） */
+    private final com.jjx.production.service.QualityActionService qualityActionService;
 
     @Operation(summary = "分页查询")
     @GetMapping("/page")
@@ -51,6 +53,25 @@ public class QualityInspectionController {
     public Result<Void> delete(@PathVariable Long id) {
         qualityService.delete(id);
         return Result.success();
+    }
+
+    @Operation(summary = "判定 PASS/FAIL（正式质量动作，P3-C；已判定不可修改）")
+    @PostMapping("/{id}/judge")
+    public Result<com.jjx.production.domain.vo.QualityInspectionVO> judge(@PathVariable Long id,
+                                                                          @RequestBody com.jjx.production.domain.dto.QualityJudgeDTO dto) {
+        return Result.success(qualityActionService.judge(id, dto));
+    }
+
+    @Operation(summary = "复检（新建一条 PENDING 质检，P3-C；不覆盖历史）")
+    @PostMapping("/{id}/reinspect")
+    public Result<Long> reinspect(@PathVariable Long id) {
+        return Result.success(qualityActionService.reinspect(id));
+    }
+
+    @Operation(summary = "创建质检（IPQC 可带 workReportId，P3-C；后端反查校验一致性）")
+    @PostMapping("/inspection")
+    public Result<Long> createInspection(@RequestBody QualityInspectionCreateDTO dto) {
+        return Result.success(qualityActionService.createInspection(dto));
     }
 
     @Operation(summary = "质量检验统计")

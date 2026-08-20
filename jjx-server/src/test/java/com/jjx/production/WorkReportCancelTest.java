@@ -50,7 +50,8 @@ class WorkReportCancelTest {
         ctor.setAccessible(true);
         service = (WorkReportActionServiceImpl) ctor.newInstance(workReportMapper, executionMapper,
                 mock(ProductionDispatchMapper.class), mock(ProductionDispatchNodeMapper.class),
-                mock(com.jjx.system.mapper.SysUserMapper.class), projectionService, readService, null);
+                mock(com.jjx.system.mapper.SysUserMapper.class), projectionService, readService, null,
+                mock(com.jjx.production.service.QualityInspectionService.class));
     }
 
     private ProductionWorkReport submittedReport() {
