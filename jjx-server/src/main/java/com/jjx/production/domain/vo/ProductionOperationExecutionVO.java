@@ -203,4 +203,18 @@ public class ProductionOperationExecutionVO {
     private String assigneeSource;
     @Schema(description = "当前用户是否可报工（有 add 权限且是 ACTIVE assignee；前端按钮显隐）")
     private Boolean canReport;
+
+    // ============ WP-D：Assignment 视角（执行人“我的份额”） ============
+    @Schema(description = "该 Execution 是否存在 Assignment（true=新链路；false=Legacy 无 Assignment）")
+    private Boolean hasAssignment;
+    @Schema(description = "当前用户的作业分配ID（无=当前用户无分配）")
+    private Long myAssignmentId;
+    @Schema(description = "我的原始分配数量")
+    private java.math.BigDecimal myAssignedQuantity;
+    @Schema(description = "我的累计已报数量")
+    private java.math.BigDecimal myReportedQuantity;
+    @Schema(description = "我的剩余可报数量")
+    private java.math.BigDecimal myRemainingQuantity;
+    @Schema(description = "我的分配状态：ACTIVE/COMPLETED/CANCELLED")
+    private String myAssignmentStatus;
 }

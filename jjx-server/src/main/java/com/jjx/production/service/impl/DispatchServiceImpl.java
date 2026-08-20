@@ -212,16 +212,34 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
     }
 
     /**
-     * P1-D：当前用户对某派工单的动作能力投影（与 DispatchActionServiceImpl 权限规则一致）
-     * ASSIGN：无 ACTIVE 且有初始派工权（超管/assign 权限）
-     * DELEGATE：有 ACTIVE 且是 ACTIVE assignee 本人/超管/有 assign 权限（管理员代操作）
-     * REASSIGN：有 ACTIVE 且是 ACTIVE assignee 本人/超管/有 assign 权限
-     * RETURN：有 ACTIVE 且 parentNodeId!=null 且是 ACTIVE assignee 本人/超管
+     * WP-C：当前用户对某派工单的动作能力投影（与 DispatchActionServiceImpl 权限规则一致）
+     * 规则：
+     *   ASSIGN      无 ACTIVE 且有初始派工权（超管/assign）
+     *   DELEGATE    有 ACTIVE 且是 ACTIVE assignee 本人 / 超管 / 有 delegate 权限
+     *   REASSIGN    有 ACTIVE 且超管 / 有 reassign 权限（当前责任人本人禁止自改派，不产出）
+     *   RETURN      有 ACTIVE 且 parentNodeId!=null 且 ACTIVE assignee 本人 / 超管 / 有 return 权限
+     *   ASSIGN_WORK 有 ACTIVE 且 ACTIVE assignee 本人 / 超管 / 有 assignment:add 权限（分配作业入口）
+     * 冻结：Execution 已完成/已取消 → 只允许查看（不产出任何写动作）
+     * 可见 ≠ 可操作：单纯能看派工页不产出写动作。
      */
     private java.util.List<String> buildAllowedActions(DispatchVO vo, com.jjx.production.domain.vo.DispatchNodeVO cur) {
         java.util.List<String> actions = new java.util.ArrayList<>();
+        // 冻结：execution 已完成/已取消（或 dispatch 已完成）→ 责任链冻结
+        if (vo.getExecutionStatus() != null
+                && (com.jjx.production.enums.ExecutionStatusEnum.COMPLETED.getCode().equals(vo.getExecutionStatus())
+                || com.jjx.production.enums.ExecutionStatusEnum.CANCELLED.getCode().equals(vo.getExecutionStatus()))) {
+            return actions; // 空：仅查看责任链/流水
+        }
+        if (vo.getDispatchStatus() != null
+                && com.jjx.production.enums.DispatchStatusEnum.COMPLETED.getCode().equals(vo.getDispatchStatus())) {
+            return actions;
+        }
         boolean isSuper = SecurityUtils.hasPermission("*:*:*");
         boolean hasAssignPerm = SecurityUtils.hasPermission("production:dispatch:assign");
+        boolean hasDelegatePerm = SecurityUtils.hasPermission("production:dispatch:delegate");
+        boolean hasReassignPerm = SecurityUtils.hasPermission("production:dispatch:reassign");
+        boolean hasReturnPerm = SecurityUtils.hasPermission("production:dispatch:return");
+        boolean hasAssignmentPerm = SecurityUtils.hasPermission("production:assignment:add");
         Long me = SecurityUtils.getUserId();
 
         if (cur == null) {
@@ -229,12 +247,21 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
             return actions;
         }
         boolean isAssignee = me != null && me.equals(cur.getAssigneeId());
-        if (isSuper || hasAssignPerm || isAssignee) {
+        // DELEGATE：本人 / 超管 / delegate 权限
+        if (isSuper || hasDelegatePerm || isAssignee) {
             actions.add("DELEGATE");
+        }
+        // REASSIGN：超管 / reassign 权限（本人禁止）
+        if (isSuper || hasReassignPerm) {
             actions.add("REASSIGN");
         }
-        if (cur.getParentNodeId() != null && (isSuper || isAssignee)) {
+        // RETURN：有上级节点 且（本人 / 超管 / return 权限）
+        if (cur.getParentNodeId() != null && (isSuper || hasReturnPerm || isAssignee)) {
             actions.add("RETURN");
+        }
+        // ASSIGN_WORK：分配作业入口（仅当前 ACTIVE 责任人本人 + assignment:add；超管放行）
+        if (isSuper || (hasAssignmentPerm && isAssignee)) {
+            actions.add("ASSIGN_WORK");
         }
         return actions;
     }

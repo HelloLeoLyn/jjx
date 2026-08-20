@@ -23,6 +23,9 @@ import com.jjx.system.mapper.SysUserMapper;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,11 +90,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
                 .last("LIMIT 1"));
         if (activeNode == null) throw new BusinessException("当前无进行中的责任节点，无法报工");
 
-        // 4. 业务关系：当前用户必须是 ACTIVE Node assignee（P2 V1 不允许代报；超管也不默认放行）
-        if (operatorId == null || !operatorId.equals(activeNode.getAssigneeId())) {
-            throw new BusinessException("只有当前责任人（" + activeNode.getAssigneeName() + "）可以报工");
-        }
-
+        // 4. WP-B：Assignment-aware 报工权限（在步骤 5 数量解析后统一判断）
         // 5. 数量校验
         BigDecimal qualified = dto.getQualifiedQuantity() == null ? BigDecimal.ZERO : dto.getQualifiedQuantity();
         BigDecimal defective = dto.getDefectiveQuantity() == null ? BigDecimal.ZERO : dto.getDefectiveQuantity();
@@ -106,6 +105,60 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         if (defective.compareTo(BigDecimal.ZERO) > 0
                 && (dto.getDefectReason() == null || dto.getDefectReason().isBlank())) {
             throw new BusinessException("存在不良数量时，不良原因必填");
+        }
+
+        // 4b. WP-B：Assignment-aware 报工权限与数量校验（依赖 qualified/defective 已解析）
+        //     若 Execution 存在 Assignment → 必须绑定当前用户的有效 Assignment，累计不超有效份额
+        //     若 Execution 完全无 Assignment → Legacy Compatibility：保留 ACTIVE Node assignee 直接报工
+        Long assignmentIdToWrite;
+        List<com.jjx.production.domain.entity.ProductionExecutionAssignment> activeAssignments =
+                jdbcTemplate.query(
+                        "SELECT assignment_id, assignee_id, assigned_quantity, released_quantity "
+                                + "FROM production_execution_assignment "
+                                + "WHERE execution_id = ? AND assignment_status = 'ACTIVE'",
+                        (rs, i) -> {
+                            com.jjx.production.domain.entity.ProductionExecutionAssignment a =
+                                    new com.jjx.production.domain.entity.ProductionExecutionAssignment();
+                            a.setAssignmentId(rs.getLong("assignment_id"));
+                            a.setAssigneeId(rs.getLong("assignee_id"));
+                            a.setAssignedQuantity(rs.getBigDecimal("assigned_quantity"));
+                            a.setReleasedQuantity(rs.getBigDecimal("released_quantity"));
+                            return a;
+                        }, dto.getExecutionId());
+        boolean hasAssignment = activeAssignments != null && !activeAssignments.isEmpty();
+        if (hasAssignment) {
+            // 新链路：必须找到当前用户的有效 Assignment
+            com.jjx.production.domain.entity.ProductionExecutionAssignment mine = null;
+            for (com.jjx.production.domain.entity.ProductionExecutionAssignment a : activeAssignments) {
+                if (operatorId != null && operatorId.equals(a.getAssigneeId())) {
+                    mine = a;
+                    break;
+                }
+            }
+            if (mine == null) {
+                throw new BusinessException("当前用户没有该工序的有效作业分配，无法报工（责任人需先分配作业给自己）");
+            }
+            // 数量校验：累计有效 output + 本次 <= effective（assigned - released）
+            BigDecimal effective = mine.getAssignedQuantity()
+                    .subtract(mine.getReleasedQuantity() != null ? mine.getReleasedQuantity() : BigDecimal.ZERO);
+            BigDecimal reported = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(qualified_quantity + defective_quantity),0) FROM production_work_report "
+                            + "WHERE assignment_id = ? AND report_status = 'SUBMITTED'",
+                    BigDecimal.class, mine.getAssignmentId());
+            if (reported == null) reported = BigDecimal.ZERO;
+            BigDecimal after = reported.add(qualified).add(defective);
+            if (after.compareTo(effective) > 0) {
+                throw new BusinessException("报工数量超过分配有效数量（分配 " + effective.stripTrailingZeros().toPlainString()
+                        + "，已报 " + reported.stripTrailingZeros().toPlainString()
+                        + "，本次 " + qualified.add(defective).stripTrailingZeros().toPlainString() + "）");
+            }
+            assignmentIdToWrite = mine.getAssignmentId();
+        } else {
+            // Legacy Compatibility：Execution 完全无 Assignment → 旧规则（ACTIVE Node assignee 本人报工）
+            if (operatorId == null || !operatorId.equals(activeNode.getAssigneeId())) {
+                throw new BusinessException("只有当前责任人（" + activeNode.getAssigneeName() + "）可以报工");
+            }
+            assignmentIdToWrite = null;
         }
 
         // 6. 工时校验
@@ -152,6 +205,8 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         r.setExecutionId(exec.getExecutionId());
         r.setDispatchId(dispatch.getDispatchId());
         r.setDispatchNodeId(activeNode.getNodeId());
+        // WP-B：Assignment 链路报工写入 assignment_id（无 Assignment 的 legacy 报工为 null）
+        r.setAssignmentId(assignmentIdToWrite);
         r.setReporterId(operatorId);
         r.setReporterName(operatorName);
         r.setEquipmentId(equipmentId);

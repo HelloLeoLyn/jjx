@@ -60,6 +60,14 @@ export interface OperationExecutionVO {
   assigneeSource?: string
   canReport?: boolean
 
+  // WP-D：Assignment 视角（执行人“我的份额”）
+  hasAssignment?: boolean
+  myAssignmentId?: number
+  myAssignedQuantity?: number
+  myReportedQuantity?: number
+  myRemainingQuantity?: number
+  myAssignmentStatus?: string
+
   // 计算字段
   hasStarted?: boolean
   hasEnded?: boolean

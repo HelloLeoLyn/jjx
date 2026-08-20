@@ -4,7 +4,7 @@
     <div class="page-header">
       <h1 class="page-title">派工管理</h1>
       <div class="page-actions">
-        <el-button v-if="canAssign" type="primary" icon="Grid" @click="openBatchDialog">批量派工</el-button>
+        <!-- WP-C：批量派工入口移除（旧 legacy，职责收口到行内初始派工/分配作业） -->
       </div>
     </div>
 
@@ -69,17 +69,16 @@
         <el-table-column label="指派时间" width="140">
           <template #default="{ row }">{{ row.assignTime ? row.assignTime.replace('T', ' ').slice(0, 16) : '-' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
-            <!-- P1-D：按 allowedActions（后端投影）渲染按钮；无 dispatchId 且有权限 → 初始派工 -->
+            <!-- WP-C：按 allowedActions（后端投影）渲染；无 dispatchId 且有权限 → 初始派工 -->
             <el-button v-if="!row.dispatchId && hasAction(row, 'ASSIGN')" link type="primary" @click="openAssign(row)">初始派工</el-button>
             <template v-else-if="row.dispatchId">
-              <el-button v-if="hasAction(row, 'DELEGATE')" link type="primary" @click="openDelegate(row)">继续派工</el-button>
+              <el-button v-if="hasAction(row, 'DELEGATE')" link type="primary" @click="openDelegate(row)">下派</el-button>
               <el-button v-if="hasAction(row, 'REASSIGN')" link type="warning" @click="openReassign(row)">改派</el-button>
               <el-button v-if="hasAction(row, 'RETURN')" link type="danger" @click="openReturn(row)">退回上级</el-button>
-              <el-button v-if="row.dispatchStatus === 2" link type="success" @click="handleStart(row)">开始</el-button>
-              <el-button v-if="row.dispatchStatus === 3" link type="success" @click="handleComplete(row)">完成</el-button>
-              <el-button v-if="canAssign && [1, 2, 3].includes(row.dispatchStatus)" link type="danger" @click="openReject(row)">拒绝派工</el-button>
+              <!-- WP-C：分配作业入口（仅当前责任人 + assignment 权限；真正多人+数量 Drawer 在 WP-D） -->
+              <el-button v-if="hasAction(row, 'ASSIGN_WORK')" link type="success" @click="openAssignWork(row)">分配作业</el-button>
               <el-button link @click="openDetail(row)">责任链</el-button>
             </template>
             <el-button v-else link @click="openLogs(row)">流水</el-button>
@@ -119,7 +118,7 @@
         <el-form-item label="备注">
           <el-input v-model="assignForm.remark" type="textarea" :rows="2" />
         </el-form-item>
-        <div style="color: #909399; font-size: 12px">初始派工 = 确定该工序的第一责任人；后续可继续派工/改派/退回。</div>
+        <div style="color: #909399; font-size: 12px">初始派工 = 确定该工序的第一责任人；后续可下派/改派/退回。</div>
       </el-form>
       <template #footer>
         <el-button @click="assignVisible = false">取消</el-button>
@@ -128,7 +127,7 @@
     </el-dialog>
 
     <!-- ============ P1-D 继续派工（DELEGATE） ============ -->
-    <el-dialog v-model="delegateVisible" title="继续派工（交给下一责任人）" width="520px" append-to-body>
+    <el-dialog v-model="delegateVisible" title="下派（交给下一责任人）" width="520px" append-to-body>
       <el-form label-width="90px">
         <el-form-item label="工序">
           <span>{{ actionForm.processName || '-' }}（{{ actionForm.orderNo || '-' }}）</span>
@@ -144,7 +143,7 @@
         <el-form-item label="备注">
           <el-input v-model="delegateForm.remark" type="textarea" :rows="2" />
         </el-form-item>
-        <div style="color: #909399; font-size: 12px">继续派工 = 当前责任人把任务交给下一责任人（系统自动记录责任来源）。</div>
+        <div style="color: #909399; font-size: 12px">下派 = 当前责任人把任务交给下一责任人（系统自动记录责任来源）。</div>
       </el-form>
       <template #footer>
         <el-button @click="delegateVisible = false">取消</el-button>
@@ -318,6 +317,108 @@
       </el-timeline>
       <el-empty v-else description="暂无流水记录" />
     </el-dialog>
+
+    <!-- ============ WP-D 分配作业 Drawer ============ -->
+    <el-drawer v-model="assignWorkVisible" title="分配作业" size="680px" append-to-body>
+      <template v-if="assignWorkRow">
+        <!-- 顶部上下文 -->
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="工单">{{ assignWorkRow.orderNo }}</el-descriptions-item>
+          <el-descriptions-item label="工序">{{ assignWorkRow.processName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="工序计划数量">{{ fmtQty(assignWorkView?.plannedQuantity) }}</el-descriptions-item>
+          <el-descriptions-item label="当前责任人">
+            <span class="cur-assignee">{{ assignWorkRow.currentAssigneeName || '-' }}</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 数量摘要 -->
+        <div class="aw-summary">
+          <div class="aw-sum-item"><span>计划数量</span><b>{{ fmtQty(assignWorkView?.plannedQuantity) }}</b></div>
+          <div class="aw-sum-item"><span>已分配</span><b>{{ fmtQty(assignWorkView?.assignedQuantity) }}</b></div>
+          <div class="aw-sum-item"><span>已报工</span><b>{{ fmtQty(assignWorkView?.reportedQuantity) }}</b></div>
+          <div class="aw-sum-item"><span>待分配</span><b class="aw-warn">{{ fmtQty(assignWorkView?.unassignedQuantity) }}</b></div>
+        </div>
+
+        <!-- 新增分配：人员 + 数量（明细行即最终选择，删除行=移除执行人） -->
+        <div class="aw-section">
+          <div class="aw-section-title">新增分配（人员 + 分配数量）</div>
+          <div v-if="assignWorkItems.length" class="aw-item-row" v-for="(it, idx) in assignWorkItems" :key="it.assigneeId">
+            <el-tag closable size="large" @close="removeAssignWorkItem(idx)">{{ assignWorkName(it.assigneeId) }}</el-tag>
+            <el-input-number v-model="it.quantity" :min="0" :max="Number(assignWorkView?.unassignedQuantity || 0)" :precision="0" :controls="true" style="width: 160px" placeholder="分配数量" />
+          </div>
+          <div class="aw-add-row">
+            <el-button type="primary" plain icon="Plus" @click="openOperatorPicker('assignment')">添加执行人</el-button>
+            <span class="aw-tip">可多选；同一次分配中同一人不可重复</span>
+          </div>
+        </div>
+
+        <!-- 底部实时合计 -->
+        <div class="aw-total">
+          <span>本次分配合计：<b>{{ awBatchSum }}</b></span>
+          <span>当前已分配：<b>{{ fmtQty(assignWorkView?.assignedQuantity) }}</b></span>
+          <span>分配后待分配：<b class="aw-warn">{{ awAfterUnassigned }}</b></span>
+        </div>
+
+        <!-- 已有 Assignment 列表 -->
+        <div class="aw-section">
+          <div class="aw-section-title">已有分配</div>
+          <el-table v-loading="awLoading" :data="assignWorkView?.assignments || []" size="small">
+            <el-table-column prop="assigneeName" label="执行人" width="100" show-overflow-tooltip />
+            <el-table-column label="原始分配" width="85" align="right">
+              <template #default="{ row }">{{ fmtQty(row.assignedQuantity) }}</template>
+            </el-table-column>
+            <el-table-column label="已报" width="70" align="right">
+              <template #default="{ row }">{{ fmtQty(row.reportedQuantity) }}</template>
+            </el-table-column>
+            <el-table-column label="已释放" width="70" align="right">
+              <template #default="{ row }">{{ fmtQty(row.releasedQuantity) }}</template>
+            </el-table-column>
+            <el-table-column label="剩余" width="70" align="right">
+              <template #default="{ row }">{{ fmtQty(row.remainingQuantity) }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="95">
+              <template #default="{ row }">
+                <el-tag size="small" :type="awStatusTag(row.derivedStatus)">{{ row.derivedStatusLabel || row.derivedStatus }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="assignedByName" label="分配人" width="85" show-overflow-tooltip />
+            <el-table-column label="分配时间" width="120">
+              <template #default="{ row }">{{ fmtTime(row.assignedAt) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-button v-if="row.derivedStatus === 'ACTIVE' && Number(row.remainingQuantity) > 0" link type="warning" @click="openRelease(row)">释放剩余</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!(assignWorkView?.assignments || []).length" description="暂无分配（可在上方新增）" :image-size="50" />
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="assignWorkVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="awSubmitting" :disabled="!assignWorkItems.length" @click="handleAssignWorkSubmit">保存分配</el-button>
+      </template>
+    </el-drawer>
+
+    <!-- 释放剩余弹窗 -->
+    <el-dialog v-model="releaseVisible" title="释放剩余数量" width="440px" append-to-body>
+      <el-form label-width="90px">
+        <el-form-item label="执行人">{{ releaseTarget?.assigneeName }}</el-form-item>
+        <el-form-item label="原始分配">{{ fmtQty(releaseTarget?.assignedQuantity) }}</el-form-item>
+        <el-form-item label="已报工">{{ fmtQty(releaseTarget?.reportedQuantity) }}</el-form-item>
+        <el-form-item label="剩余释放">
+          <b style="color: #e6a23c">{{ fmtQty(releaseTarget?.remainingQuantity) }}</b>
+        </el-form-item>
+        <el-form-item label="释放原因" required>
+          <el-input v-model="releaseReason" type="textarea" :rows="3" placeholder="必填：说明为什么释放剩余数量" />
+        </el-form-item>
+        <div style="color: #909399; font-size: 12px">释放后剩余数量回到未分配池，可立即分配给其他人；历史分配行保留（显示已释放）。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="releaseVisible = false">取消</el-button>
+        <el-button type="warning" :loading="awSubmitting" @click="handleRelease">确认释放</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -352,6 +453,13 @@ import {
 } from '@/api/production/dispatch'
 import { getEquipmentList } from '@/api/production/equipment'
 import { getProductionOrderList } from '@/api/production/order'
+import {
+  createAssignment,
+  releaseAssignment,
+  getAssignmentByExecution,
+  type AssignmentViewVO,
+  type AssignmentLineVO,
+} from '@/api/production/assignment'
 import OperatorPicker from '@/components/OperatorPicker/index.vue'
 
 // ============ 常量映射（NodeStatus != DispatchStatus，独立 mapper） ============
@@ -436,24 +544,41 @@ async function loadBaseData() {
 
 // ============ 执行人选择（复用 OperatorPicker；文案 = 选择责任人/派给人员） ============
 const pickerVisible = ref(false)
-const pickerMode = ref<'assign' | 'delegate' | 'reassign' | 'batch'>('assign')
+const pickerMode = ref<'assign' | 'delegate' | 'reassign' | 'batch' | 'assignment'>('assign')
 const pickerIds = ref<number[]>([])
 
-function openOperatorPicker(mode: 'assign' | 'delegate' | 'reassign' | 'batch') {
+function openOperatorPicker(mode: 'assign' | 'delegate' | 'reassign' | 'batch' | 'assignment') {
   pickerMode.value = mode
   if (mode === 'assign') pickerIds.value = assignForm.targetUserId ? [assignForm.targetUserId] : []
   else if (mode === 'delegate') pickerIds.value = delegateForm.targetUserId ? [delegateForm.targetUserId] : []
   else if (mode === 'reassign') pickerIds.value = reassignForm.targetUserId ? [reassignForm.targetUserId] : []
+  else if (mode === 'assignment') pickerIds.value = []
   else pickerIds.value = [...(batchForm.operatorIds || [])]
   pickerVisible.value = true
 }
 
 function onPickerConfirm(ids: number[]) {
-  const first = ids[0]
-  if (pickerMode.value === 'assign') assignForm.targetUserId = first
-  else if (pickerMode.value === 'delegate') delegateForm.targetUserId = first
-  else if (pickerMode.value === 'reassign') reassignForm.targetUserId = first
-  else batchForm.operatorIds = ids
+  // WP-C：责任链动作（指派/下派/改派）必须单选——多选直接拒绝并提示，不再静默取第一人
+  if (pickerMode.value === 'assign' || pickerMode.value === 'delegate' || pickerMode.value === 'reassign') {
+    if (ids.length > 1) {
+      ElMessage.warning('责任链动作只能选择一名责任人；多人+数量请使用「分配作业」')
+      return
+    }
+    const first = ids[0]
+    if (pickerMode.value === 'assign') assignForm.targetUserId = first
+    else if (pickerMode.value === 'delegate') delegateForm.targetUserId = first
+    else reassignForm.targetUserId = first
+  } else if (pickerMode.value === 'assignment') {
+    // WP-D：分配作业可多人；选完直接加入明细行（去重，明细行即最终选择结果）
+    ids.forEach((uid) => {
+      if (!assignWorkItems.value.some((it) => it.assigneeId === uid)) {
+        assignWorkItems.value.push({ assigneeId: uid, quantity: 0 })
+      }
+    })
+    if (assignWorkItems.value.length) ElMessage.success(`已添加 ${assignWorkItems.value.length} 名执行人，请填写分配数量`)
+  } else {
+    batchForm.operatorIds = ids
+  }
 }
 
 function selectedAssigneeName(mode: 'assign' | 'delegate' | 'reassign'): string {
@@ -504,7 +629,7 @@ async function handleAssign() {
 // ============ 动作通用上下文 ============
 const actionForm = reactive<{ dispatchId?: number; processName?: string; orderNo?: string; currentAssigneeName?: string }>({})
 
-// ============ 继续派工（DELEGATE） ============
+// ============ 下派（DELEGATE） ============
 const delegateVisible = ref(false)
 const delegateForm = reactive<DispatchDelegatePayload>({ targetUserId: 0, remark: '' })
 
@@ -515,12 +640,123 @@ function openDelegate(row: DispatchVO) {
   loadMyPersons()
 }
 
+// ============ WP-D 分配作业 Drawer ============
+const assignWorkVisible = ref(false)
+const assignWorkRow = ref<DispatchVO | null>(null)
+const assignWorkView = ref<AssignmentViewVO | null>(null)
+const assignWorkItems = ref<{ assigneeId: number; quantity: number }[]>([])
+const awLoading = ref(false)
+const awSubmitting = ref(false)
+
+function assignWorkName(userId: number): string {
+  const u = userOptions.value.find((x) => x.userId === userId)
+  return u ? (u.nickName || u.userName) : `用户${userId}`
+}
+
+function removeAssignWorkItem(idx: number) {
+  assignWorkItems.value.splice(idx, 1)
+}
+
+const awBatchSum = computed(() => {
+  return assignWorkItems.value.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0)
+})
+const awAfterUnassigned = computed(() => {
+  const un = Number(assignWorkView.value?.unassignedQuantity || 0)
+  const after = un - awBatchSum.value
+  return after < 0 ? 0 : after
+})
+
+function awStatusTag(status?: string): any {
+  return { ACTIVE: 'success', COMPLETED: 'info', CANCELLED: 'danger' }[status || ''] || 'info'
+}
+
+async function openAssignWork(row: DispatchVO) {
+  assignWorkRow.value = row
+  assignWorkView.value = null
+  assignWorkItems.value = []
+  assignWorkVisible.value = true
+  loadMyPersons()
+  await loadAssignWorkView(row.executionId)
+}
+
+async function loadAssignWorkView(executionId: number) {
+  if (!executionId) return
+  awLoading.value = true
+  try {
+    const res: any = await getAssignmentByExecution(executionId)
+    assignWorkView.value = res?.data || null
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载分配视图失败')
+    assignWorkView.value = null
+  } finally {
+    awLoading.value = false
+  }
+}
+
+async function handleAssignWorkSubmit() {
+  const view = assignWorkView.value
+  if (!assignWorkRow.value || !view) return
+  const unassigned = Number(view.unassignedQuantity || 0)
+  for (const it of assignWorkItems.value) {
+    if (!it.assigneeId) { ElMessage.warning('执行人不能为空'); return }
+    if (!it.quantity || Number(it.quantity) <= 0) {
+      ElMessage.warning(`请为 ${assignWorkName(it.assigneeId)} 填写大于 0 的分配数量`); return
+    }
+  }
+  if (awBatchSum.value > unassigned) {
+    ElMessage.warning(`本次分配合计 ${awBatchSum.value} 超过剩余可分配 ${unassigned}，请调整`); return
+  }
+  awSubmitting.value = true
+  try {
+    await createAssignment({
+      executionId: assignWorkRow.value.executionId,
+      assignments: assignWorkItems.value.map((it) => ({ assigneeId: it.assigneeId, quantity: Number(it.quantity) })),
+    })
+    ElMessage.success('分配成功')
+    assignWorkItems.value = []
+    await loadAssignWorkView(assignWorkRow.value.executionId)
+    loadList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '分配失败')
+  } finally {
+    awSubmitting.value = false
+  }
+}
+
+// 释放剩余
+const releaseVisible = ref(false)
+const releaseTarget = ref<AssignmentLineVO | null>(null)
+const releaseReason = ref('')
+
+function openRelease(row: AssignmentLineVO) {
+  releaseTarget.value = row
+  releaseReason.value = ''
+  releaseVisible.value = true
+}
+
+async function handleRelease() {
+  if (!releaseTarget.value || !assignWorkRow.value) return
+  if (!releaseReason.value.trim()) { ElMessage.warning('释放原因必填'); return }
+  awSubmitting.value = true
+  try {
+    await releaseAssignment(releaseTarget.value.assignmentId, { reason: releaseReason.value.trim() })
+    ElMessage.success('已释放，剩余数量回到未分配池')
+    releaseVisible.value = false
+    await loadAssignWorkView(assignWorkRow.value.executionId)
+    loadList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '释放失败')
+  } finally {
+    awSubmitting.value = false
+  }
+}
+
 async function handleDelegate() {
   if (!delegateForm.targetUserId) { ElMessage.warning('请选择责任人'); return }
   submitting.value = true
   try {
     await delegateDispatch(actionForm.dispatchId!, { targetUserId: delegateForm.targetUserId, remark: delegateForm.remark })
-    ElMessage.success('已继续派工')
+    ElMessage.success('已下派')
     delegateVisible.value = false
     loadList()
   } catch (e: any) {
@@ -734,4 +970,16 @@ onMounted(() => {
 .cur-title { font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 8px; }
 .cur-card { border: 1px solid #b3e19d; background: #f0f9eb; border-radius: 6px; padding: 8px 12px; }
 .detail-actions { margin-top: 16px; }
+.aw-summary { display: flex; gap: 12px; margin: 14px 0; }
+.aw-sum-item { flex: 1; border: 1px solid #ebeef5; border-radius: 6px; padding: 8px 10px; text-align: center; background: #fafafa; }
+.aw-sum-item span { display: block; font-size: 12px; color: #909399; }
+.aw-sum-item b { font-size: 16px; }
+.aw-warn { color: #e6a23c; }
+.aw-section { margin-top: 18px; }
+.aw-section-title { font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 10px; }
+.aw-item-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.aw-add-row { display: flex; align-items: center; gap: 10px; }
+.aw-tip { font-size: 12px; color: #909399; }
+.aw-total { display: flex; gap: 18px; margin: 14px 0; padding: 10px 12px; background: #f0f9eb; border: 1px solid #b3e19d; border-radius: 6px; font-size: 13px; color: #606266; }
+.aw-total b { color: #303133; }
 </style>

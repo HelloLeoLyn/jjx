@@ -42,6 +42,9 @@ public class ProductionWorkReport {
     /** 报工时责任节点ID（责任锚点） */
     private Long dispatchNodeId;
 
+    /** WP-B：关联作业分配ID（新链路必填，历史 NULL） */
+    private Long assignmentId;
+
     /** 报工提交人ID（P2-C 默认须=ACTIVE assignee，库不强制） */
     private Long reporterId;
 

@@ -21,11 +21,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -54,9 +57,14 @@ class WorkReportSubmitTest {
         readService = mock(WorkReportReadService.class);
         var ctor = WorkReportActionServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
+        var jdbcTemplate = mock(JdbcTemplate.class);
+        // WP-B：无 Assignment（legacy 路径）→ jdbcTemplate 的 assignment 查询返回空
+        when(jdbcTemplate.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any()))
+                .thenReturn(new java.util.ArrayList<>());
+        when(jdbcTemplate.queryForObject(anyString(), eq(BigDecimal.class), any())).thenReturn(BigDecimal.ZERO);
         service = (WorkReportActionServiceImpl) ctor.newInstance(workReportMapper, executionMapper,
                 dispatchMapper, nodeMapper, mock(com.jjx.system.mapper.SysUserMapper.class),
-                projectionService, readService, null,
+                projectionService, readService, jdbcTemplate,
                 mock(com.jjx.production.service.QualityInspectionService.class));
     }
 

@@ -11,6 +11,7 @@ import com.jjx.production.domain.vo.DispatchVO;
 import com.jjx.production.enums.DispatchLogActionEnum;
 import com.jjx.production.enums.DispatchNodeStatusEnum;
 import com.jjx.production.enums.DispatchStatusEnum;
+import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.mapper.ProductionDispatchLogMapper;
 import com.jjx.production.mapper.ProductionDispatchMapper;
 import com.jjx.production.mapper.ProductionDispatchNodeMapper;
@@ -148,10 +149,11 @@ public class DispatchActionServiceImpl implements DispatchActionService {
     public DispatchVO delegate(Long dispatchId, Long targetUserId, String remark,
                                String operatorName, Long operatorId) {
         ProductionDispatch d = lockAndGet(dispatchId);
+        checkExecutionNotFrozen(d);
         adoptLegacyIfNeeded(dispatchId);
 
         ProductionDispatchNode active = requireActive(dispatchId);
-        // 权限：当前 ACTIVE assignee 本人 / 超管 / 有 assign 权限者（代操作）
+        // 权限：当前 ACTIVE assignee 本人 / 超管 / 有 delegate 权限者（代操作）
         checkNodeOperatorRight(active, operatorId);
 
         SysUser target = sysUserMapper.selectById(targetUserId);
@@ -192,10 +194,11 @@ public class DispatchActionServiceImpl implements DispatchActionService {
     public DispatchVO reassign(Long dispatchId, Long targetUserId, String reason,
                                String operatorName, Long operatorId) {
         ProductionDispatch d = lockAndGet(dispatchId);
+        checkExecutionNotFrozen(d);
         adoptLegacyIfNeeded(dispatchId);
 
         ProductionDispatchNode active = requireActive(dispatchId);
-        // 权限：超管 / 有 assign 权限者 / 当前 ACTIVE assignee 本人（旧业务允许自行改派，保留）
+        // 权限：超管 / 有 reassign 权限者（当前责任人本人禁止自改派）
         checkReassignRight(active, operatorId);
 
         SysUser target = sysUserMapper.selectById(targetUserId);
@@ -236,10 +239,11 @@ public class DispatchActionServiceImpl implements DispatchActionService {
     public DispatchVO returnTask(Long dispatchId, String reason,
                                  String operatorName, Long operatorId) {
         ProductionDispatch d = lockAndGet(dispatchId);
+        checkExecutionNotFrozen(d);
         adoptLegacyIfNeeded(dispatchId);
 
         ProductionDispatchNode active = requireActive(dispatchId);
-        // 权限：当前 ACTIVE assignee 本人 / 超管（代操作）
+        // 权限：当前 ACTIVE assignee 本人 / 超管 / 有 return 权限者（代操作）
         checkReturnRight(active, operatorId);
 
         // 已是第一责任层（root）→ 拒绝（整单退回走旧 reject 兼容）
@@ -302,6 +306,22 @@ public class DispatchActionServiceImpl implements DispatchActionService {
         if (d == null) throw new BusinessException("派工单不存在");
         lockDispatch(dispatchId);
         return d;
+    }
+
+    /** WP-C：责任链冻结——Execution 已完成/已取消时禁止任何责任动作 */
+    private void checkExecutionNotFrozen(ProductionDispatch d) {
+        try {
+            ProductionOperationExecution exec = executionMapper.selectById(d.getExecutionId());
+            if (exec == null) return;
+            if (ExecutionStatusEnum.COMPLETED.getCode().equals(exec.getExecutionStatus())
+                    || ExecutionStatusEnum.CANCELLED.getCode().equals(exec.getExecutionStatus())) {
+                throw new BusinessException("工序已完成/取消，责任链冻结，仅可查看");
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("责任链冻结校验异常(跳过): {}", e.getMessage());
+        }
     }
 
     private void lockDispatch(Long dispatchId) {
@@ -477,22 +497,28 @@ public class DispatchActionServiceImpl implements DispatchActionService {
 
     private void checkNodeOperatorRight(ProductionDispatchNode active, Long operatorId) {
         if (SecurityUtils.hasPermission("*:*:*")) return;
-        if (SecurityUtils.hasPermission("production:dispatch:assign")) return; // 管理员代操作
+        // WP-C：下派 = 当前 ACTIVE 责任人本人；有 delegate 权限者可代操作（不再因 assign 权限放行普通用户）
+        if (SecurityUtils.hasPermission("production:dispatch:delegate")) return;
         if (operatorId != null && operatorId.equals(active.getAssigneeId())) return; // ACTIVE 本人
-        throw new BusinessException("只有当前责任人本人或管理员可以继续派工");
+        throw new BusinessException("只有当前责任人本人或拥有下派权限的管理员可以下派");
     }
 
     private void checkReassignRight(ProductionDispatchNode active, Long operatorId) {
         if (SecurityUtils.hasPermission("*:*:*")) return;
-        if (SecurityUtils.hasPermission("production:dispatch:assign")) return;
-        if (operatorId != null && operatorId.equals(active.getAssigneeId())) return; // 旧业务允许自行改派
-        throw new BusinessException("无改派权限");
+        // WP-C：改派 = 上层调度者/超管；当前责任人本人禁止自改派（防绕过 RETURN）
+        if (SecurityUtils.hasPermission("production:dispatch:reassign")) return;
+        if (operatorId != null && operatorId.equals(active.getAssigneeId())) {
+            throw new BusinessException("当前责任人本人不能改派自己，如需交接请使用下派或退回");
+        }
+        throw new BusinessException("无改派权限（需生产调度/改派权限）");
     }
 
     private void checkReturnRight(ProductionDispatchNode active, Long operatorId) {
         if (SecurityUtils.hasPermission("*:*:*")) return;
+        // WP-C：退回 = 当前 ACTIVE 责任人本人；有 return 权限者可代操作
+        if (SecurityUtils.hasPermission("production:dispatch:return")) return;
         if (operatorId != null && operatorId.equals(active.getAssigneeId())) return; // ACTIVE 本人可退回
-        throw new BusinessException("只有当前责任人本人或管理员可以退回");
+        throw new BusinessException("只有当前责任人本人或拥有退回权限的管理员可以退回");
     }
 
     /** DELEGATE 目标范围：沿用现有组织规则（目标须在当前责任人手下；保留兼容，不重构候选算法） */
