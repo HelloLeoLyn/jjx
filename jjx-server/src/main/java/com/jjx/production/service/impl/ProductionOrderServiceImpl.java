@@ -185,7 +185,12 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("生产工单不存在: " + orderId);
         }
 
-        return productionOrderConverter.toVO(order);
+        ProductionOrderVO vo = productionOrderConverter.toVO(order);
+        // WP-E-BUG-01：计划剩余可下达 = 动态计算（计划数量 - 有效子工单）
+        if (order != null && "PLAN".equals(order.getOrderType())) {
+            vo.setRemainingQuantity(planRemainingQuota(order));
+        }
+        return vo;
     }
 
     @Override
@@ -200,7 +205,11 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("生产工单不存在: " + orderCode);
         }
 
-        return productionOrderConverter.toVO(order);
+        ProductionOrderVO vo = productionOrderConverter.toVO(order);
+        if (order != null && "PLAN".equals(order.getOrderType())) {
+            vo.setRemainingQuantity(planRemainingQuota(order));
+        }
+        return vo;
     }
 
     @Override
@@ -211,7 +220,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         wrapper.orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -239,6 +250,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 转换为VO分页
         Page<ProductionOrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         List<ProductionOrderVO> voList = productionOrderConverter.toVOList(orderPage.getRecords());
+        fillPlanRemainingQuota(voList);
         voPage.setRecords(voList);
 
         return voPage;
@@ -615,7 +627,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 .orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -627,7 +641,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 .orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -730,7 +746,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         wrapper.orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -1142,10 +1160,13 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (plan.getOrderStatus() == null || plan.getOrderStatus() != 2) {
             throw new BusinessException("仅已审批通过的生产计划可转为工单，当前状态: " + (plan.getOrderStatus() == null ? "未知" : plan.getOrderStatus()));
         }
-        // V1 验收：可下达数量 = 计划 remaining_quantity（动态，初始=planned_quantity，转出扣减/取消回补）
-        // 不再用 planned_quantity 静态全量校验（旧逻辑转完置 CLOSED，无法取消后重新转）
-        BigDecimal availableQty = plan.getRemainingQuantity() != null ? plan.getRemainingQuantity() : plan.getPlannedQuantity();
-        if (availableQty == null) {
+        // WP-E-BUG-01：可下达数量 = 计划数量 - 已成功下达的有效子工单数量（动态计算，不信任持久化 remaining_quantity）
+        // 有效子工单 = WORK_ORDER 且非 CANCELLED（取消的工单不占额度，释放后重新可下达）
+        // 持久化 remaining_quantity 仅作为历史兼容回退（脏数据不再影响判定）
+        BigDecimal plannedQty = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+        BigDecimal issuedQty = sumEffectiveWorkOrderQuantity(plan.getOrderId());
+        BigDecimal availableQty = plannedQty.subtract(issuedQty);
+        if (availableQty.compareTo(BigDecimal.ZERO) < 0) {
             availableQty = BigDecimal.ZERO;
         }
         BigDecimal sumQty = BigDecimal.ZERO;
@@ -1273,6 +1294,58 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             updateOrderStatus(orderId, newStatus, remark);
         }
         return true;
+    }
+
+    /**
+     * WP-E-BUG-01：汇总计划下已成功下达的有效子工单数量
+     * 有效 = WORK_ORDER 且非 CANCELLED（含 PLANNED/进行中/已完成等）；取消工单不占额度
+     */
+    private BigDecimal sumEffectiveWorkOrderQuantity(Long planId) {
+        if (planId == null) return BigDecimal.ZERO;
+        try {
+            List<ProductionOrder> children = productionOrderMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ProductionOrder>()
+                            .select("planned_quantity")
+                            .eq("parent_order_id", planId)
+                            .ne("order_status", OrderStatusEnum.CANCELLED.getCode()));
+            BigDecimal sum = BigDecimal.ZERO;
+            if (children != null) {
+                for (ProductionOrder c : children) {
+                    if (c.getPlannedQuantity() != null) {
+                        sum = sum.add(c.getPlannedQuantity());
+                    }
+                }
+            }
+            return sum;
+        } catch (Exception e) {
+            log.warn("汇总计划子工单数量失败 planId={}: {}", planId, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * WP-E-BUG-01：计划剩余可下达数量（动态）＝ 计划数量 - 已下达有效子工单数量
+     * 供查询 VO 展示；与 convertPlanToWorkOrders 判定口径一致
+     */
+    private BigDecimal planRemainingQuota(ProductionOrder plan) {
+        if (plan == null) return BigDecimal.ZERO;
+        BigDecimal planned = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+        BigDecimal issued = sumEffectiveWorkOrderQuantity(plan.getOrderId());
+        BigDecimal remaining = planned.subtract(issued);
+        return remaining.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remaining;
+    }
+
+    /** WP-E-BUG-01：批量填充 PLAN 行剩余可下达（动态口径） */
+    private void fillPlanRemainingQuota(List<ProductionOrderVO> vos) {
+        if (vos == null) return;
+        for (ProductionOrderVO vo : vos) {
+            if ("PLAN".equals(vo.getOrderType())) {
+                ProductionOrder plan = getById(vo.getOrderId());
+                if (plan != null) {
+                    vo.setRemainingQuantity(planRemainingQuota(plan));
+                }
+            }
+        }
     }
 
     /**

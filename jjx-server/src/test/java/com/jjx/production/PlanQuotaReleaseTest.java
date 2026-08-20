@@ -37,6 +37,8 @@ class PlanQuotaReleaseTest {
 
     /** 计划行（模拟 DB 状态，updateById 时同步） */
     private ProductionOrder planRow;
+    /** 子工单表（selectList 模拟；转出后追加，供动态剩余计算） */
+    private final List<ProductionOrder> childrenRows = new ArrayList<>();
 
     @BeforeEach
     void setUp() throws Exception {
@@ -142,6 +144,16 @@ class PlanQuotaReleaseTest {
         com.jjx.engineering.domain.entity.EngineeringRoutingItem r3 = new com.jjx.engineering.domain.entity.EngineeringRoutingItem();
         r3.setProcessId(3L); r3.setProcessName("组装"); r3.setProcessOrder(3);
         when(routingItemMapper.selectList(any())).thenReturn(Arrays.asList(r1, r2, r3));
+        // 子工单查询（generateWorkOrderNo / sumEffectiveWorkOrderQuantity）——模拟 CANCELLED 过滤
+        when(orderMapper.selectList(any())).thenAnswer(inv -> {
+            Object w = inv.getArgument(0);
+            if (w instanceof com.baomidou.mybatisplus.core.conditions.query.QueryWrapper) {
+                return childrenRows.stream()
+                        .filter(child -> !OrderStatusEnum.CANCELLED.getCode().equals(child.getOrderStatus()))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+            return new ArrayList<>(childrenRows);
+        });
 
         // 1. 转 550
         List<Long> ids1 = service.convertPlanToWorkOrders(dto(1L, Arrays.asList(
@@ -149,11 +161,17 @@ class PlanQuotaReleaseTest {
         assertEquals(1, ids1.size());
         assertEquals(0, new BigDecimal("450").compareTo(planRow.getRemainingQuantity()), "转 550 后剩余应 450");
         assertEquals(OrderStatusEnum.APPROVED.getCode(), planRow.getOrderStatus(), "还有剩余可下达，计划保持已批准");
+        // 模拟子工单入库（动态剩余计算依赖）——实例稍后由 wo550[0] 接管
+        ProductionOrder wo550Row = workOrder(2L, "WO-PL2608200001-01", 1L, new BigDecimal("550"),
+                OrderStatusEnum.PLANNED.getCode());
+        childrenRows.add(wo550Row);
 
         // 2. 转 450
         service.convertPlanToWorkOrders(dto(1L, Arrays.asList(
                 item(1L, new BigDecimal("450"), "P001", "产品A"))));
         assertEquals(0, new BigDecimal("0").compareTo(planRow.getRemainingQuantity()), "再转 450 后剩余应 0");
+        childrenRows.add(workOrder(3L, "WO-PL2608200001-02", 1L, new BigDecimal("450"),
+                OrderStatusEnum.PLANNED.getCode()));
         assertEquals(OrderStatusEnum.CLOSED.getCode(), planRow.getOrderStatus(), "全部下达后计划 CLOSED");
 
         // 3. 超量拦截
@@ -164,6 +182,9 @@ class PlanQuotaReleaseTest {
         ProductionOrder[] wo550 = { workOrder(2L, "WO-PL2608200001-01", 1L, new BigDecimal("550"),
                 OrderStatusEnum.IN_PROGRESS.getCode()) };
         when(orderMapper.selectById(2L)).thenAnswer(inv -> wo550[0]);
+        // 同步 childrenRows 引用（动态剩余计算能看到 CANCELLED 状态）
+        childrenRows.clear();
+        childrenRows.add(wo550[0]);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);
             if (o instanceof ProductionOrder po && po.getOrderId() != null && po.getOrderId() == 2L) {
