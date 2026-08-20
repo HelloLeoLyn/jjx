@@ -6,6 +6,11 @@
         <el-button type="primary" size="small" icon="View" circle @click="handleView" />
       </el-tooltip>
 
+      <!-- 生产履历（P4-C：只读时间线） -->
+      <el-tooltip content="生产履历" placement="top">
+        <el-button type="primary" size="small" icon="Tickets" v-hasPermi="['production:order:view']" circle @click="handleProductionTrace" />
+      </el-tooltip>
+
       <!-- 编辑按钮 -->
       <el-tooltip content="编辑订单" placement="top" v-if="order.canEdit">
         <el-button type="primary" size="small" icon="Edit" v-hasPermi="['production:order:edit']" circle @click="handleEdit" />
@@ -115,7 +120,7 @@
 import { computed, ref } from 'vue'
 import { hasPermi } from '@/directives'
 import { ElMessage } from 'element-plus'
-import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, UserFilled } from '@element-plus/icons-vue'
+import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, UserFilled, Tickets } from '@element-plus/icons-vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'
@@ -136,6 +141,7 @@ const emit = defineEmits<{
   delete: []
   'more-action': [command: string]
   trace: [order: any]
+  'production-trace': [order: any]
   refresh: []
 }>()
 
@@ -173,6 +179,11 @@ function handlePreviewSuccess() {
 // 方法
 const handleView = () => {
   emit('view')
+}
+
+// P4-C：生产履历（只读时间线）
+const handleProductionTrace = () => {
+  emit('production-trace', props.order)
 }
 
 const handleEdit = () => {

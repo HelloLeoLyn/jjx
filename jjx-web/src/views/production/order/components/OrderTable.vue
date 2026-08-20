@@ -104,6 +104,7 @@
             @delete="() => handleDelete(row)"
             @more-action="(command: string) => handleMoreAction(row, command)"
             @trace="(o: ProductionOrderVO) => emit('trace', o)"
+            @production-trace="(o: ProductionOrderVO) => emit('production-trace', o)"
             @refresh="emit('refresh')"
           />
         </template>
@@ -169,6 +170,7 @@ const emit = defineEmits<{
   delete: [order: ProductionOrderVO]
   'more-action': [order: ProductionOrderVO, command: string]
   trace: [order: ProductionOrderVO]
+  'production-trace': [order: ProductionOrderVO]
   refresh: []
 }>()
 

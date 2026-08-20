@@ -57,6 +57,7 @@
       @delete="handleDeleteOrder"
       @more-action="handleMoreAction"
       @trace="handleTrace"
+      @production-trace="handleProductionTrace"
       @refresh="refreshData"
     />
 
@@ -182,6 +183,12 @@
     <!-- 查看流水（DEV-569） -->
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
+    <!-- P4-C：生产履历（只读时间线） -->
+    <ProductionTraceDrawer
+      v-model:visible="prodTraceVisible"
+      :order-id="prodTraceOrderId"
+    />
+
     <!-- 生产随工单详情抽屉（2026-08-11） -->
     <el-drawer
       v-model="workCardVisible"
@@ -223,6 +230,7 @@ import OrderStatusDialog from './components/OrderStatusDialog.vue'
 import OrderDeleteDialog from './components/OrderDeleteDialog.vue'
 import GanttChart from './components/GanttChart.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import ProductionTraceDrawer from './components/ProductionTraceDrawer.vue'
 import ProductionWorkCard from './components/ProductionWorkCard.vue'
 import PickPreviewDialog from './components/PickPreviewDialog.vue'
 import type {
@@ -761,6 +769,14 @@ const handleViewHistory = (order: any) => {
 // 查看流水（DEV-569）
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')
+
+// P4-C：生产履历（只读时间线）
+const prodTraceVisible = ref(false)
+const prodTraceOrderId = ref<number | null>(null)
+const handleProductionTrace = (order: any) => {
+  prodTraceOrderId.value = order?.orderId ?? null
+  prodTraceVisible.value = true
+}
 
 // 生产随工单详情抽屉（2026-08-11）
 const workCardVisible = ref(false)

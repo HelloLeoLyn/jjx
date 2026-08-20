@@ -43,3 +43,74 @@ export const traceApi = {
     return request.get<R<TraceVO[]>>(`/production/trace/backward/${traceCode}`)
   },
 }
+
+// ==================== P4-B：生产履历（只读） ====================
+
+/** P4-B：Trace 事件类型常量（与后端 TraceEventType 一致） */
+export const TraceEventType = {
+  ORDER_CREATED: 'ORDER_CREATED',
+  ORDER_STARTED: 'ORDER_STARTED',
+  ORDER_COMPLETED: 'ORDER_COMPLETED',
+  EXECUTION_STARTED: 'EXECUTION_STARTED',
+  EXECUTION_COMPLETED: 'EXECUTION_COMPLETED',
+  DISPATCH_ASSIGNED: 'DISPATCH_ASSIGNED',
+  DISPATCH_DELEGATED: 'DISPATCH_DELEGATED',
+  DISPATCH_REASSIGNED: 'DISPATCH_REASSIGNED',
+  DISPATCH_RETURNED: 'DISPATCH_RETURNED',
+  DISPATCH_REJECTED: 'DISPATCH_REJECTED',
+  DISPATCH_COMPLETED: 'DISPATCH_COMPLETED',
+  WORK_REPORT_SUBMITTED: 'WORK_REPORT_SUBMITTED',
+  WORK_REPORT_CANCELLED: 'WORK_REPORT_CANCELLED',
+  QUALITY_CREATED: 'QUALITY_CREATED',
+  QUALITY_PASSED: 'QUALITY_PASSED',
+  QUALITY_FAILED: 'QUALITY_FAILED',
+} as const
+
+export type TraceEventTypeValue = (typeof TraceEventType)[keyof typeof TraceEventType]
+
+/** P4-B：事件类别（分类筛选用） */
+export type TraceCategory = 'ORDER' | 'EXECUTION' | 'DISPATCH' | 'WORK_REPORT' | 'QUALITY'
+
+/** P4-B：时间线事件 */
+export interface TraceEventVO {
+  eventType: string
+  eventTime: string
+  orderId: number
+  executionId?: number | null
+  dispatchId?: number | null
+  dispatchNodeId?: number | null
+  workReportId?: number | null
+  qualityInspectionId?: number | null
+  actorId?: number | null
+  actorName?: string | null
+  title: string
+  description?: string | null
+  status?: string | null
+  sourceType: string
+  sourceId: number
+}
+
+/** P4-B：订单履历（订单头 + 事件） */
+export interface OrderTraceVO {
+  orderHeader: {
+    orderId: number
+    orderNo: string
+    productCode?: string
+    productName?: string
+    productSpec?: string
+    productUnit?: string
+    plannedQuantity?: number
+    orderStatus?: number
+    orderStatusDesc?: string
+    actualStartTime?: string
+    actualEndTime?: string
+  } | null
+  events: TraceEventVO[]
+}
+
+export const productionTraceApi = {
+  /** 生产订单履历（唯一聚合入口） */
+  getOrderTrace(orderId: number, params?: { category?: TraceCategory | string; executionId?: number }) {
+    return request.get<R<OrderTraceVO>>(`/production/trace/order/${orderId}`, { params })
+  },
+}
