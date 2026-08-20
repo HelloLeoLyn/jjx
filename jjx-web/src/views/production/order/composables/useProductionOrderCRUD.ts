@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import type { ProductionOrderVO, OrderType } from '@/types/production/order'
+import { completeExecution } from '@/api/production/order'
 import { checkBatchOperationPermission } from '../utils/orderPermissions'
 
 /**
@@ -106,7 +107,7 @@ export function useProductionOrderCRUD(orderData: {
   }
 
   /**
-   * 处理完成工单
+   * 处理完成工单（P3-D：接真实 API，FQC gate 失败时明确提示）
    */
   const handleComplete = (order: ProductionOrderVO) => {
     if (!order.canComplete) {
@@ -119,9 +120,20 @@ export function useProductionOrderCRUD(orderData: {
       cancelButtonText: '取消',
       type: 'warning',
     })
-      .then(() => {
-        // 调用API完成
-        ElMessage.success('完成功能开发中...')
+      .then(async () => {
+        try {
+          await completeExecution(String(order.orderId), { completedQuantity: 0 })
+          ElMessage.success('工单已完成')
+          orderData.loadData()
+        } catch (e: any) {
+          const msg = e?.msg || e?.message || '完成工单失败'
+          // P3-D：FQC gate 未通过时给出明确业务提示
+          if (msg.includes('FQC') || msg.includes('质检') || msg.includes('完工检验')) {
+            ElMessage.error('完工检验尚未通过，订单暂不能完成：' + msg)
+          } else {
+            ElMessage.error(msg)
+          }
+        }
       })
       .catch(() => {
         // 用户取消

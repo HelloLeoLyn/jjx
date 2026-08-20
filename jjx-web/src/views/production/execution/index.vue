@@ -71,7 +71,8 @@
             <el-button v-if="row.executionStatus === 2 && row.canReport" type="primary" link icon="EditPen" @click="openReport(row)">报工</el-button>
             <el-button v-if="row.executionStatus === 2" type="primary" link icon="View" @click="handleView(row)">详情</el-button>
             <el-button v-if="[2, 3].includes(row.executionStatus)" type="success" link icon="Check" v-hasPermi="['production:operation-execution:edit']" @click="handleComplete(row)">完成</el-button>
-            <el-button v-if="[2, 4].includes(row.executionStatus)" type="warning" link icon="WarningFilled" v-hasPermi="['production:quality:view']" @click="handleQualityCheck(row)">质检</el-button>
+            <el-button v-if="[2, 4].includes(row.executionStatus)" type="warning" link icon="WarningFilled" v-hasPermi="['production:quality:view']" @click="handleQualityCheck(row)">首检/巡检</el-button>
+            <el-button v-if="row.executionId" type="info" link icon="List" v-hasPermi="['production:quality:view']" @click="goQualityRecords(row)">质检记录</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -293,6 +294,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import { getEquipmentList } from '@/api/production/equipment'
@@ -388,7 +390,7 @@ const handleComplete = async (row: OperationExecutionVO) => {
   } catch { return }
   try {
     await operationExecutionApi.complete(row.executionId!)
-    ElMessage.success('已完成')
+    ElMessage.success('工序已完成；若为最后工序将自动生成完工检验，等待质检')
     getList()
   } catch (e: any) {
     ElMessage.error(e?.message || '操作失败')
@@ -517,6 +519,15 @@ const handleCancelReport = async () => {
   } catch (e: any) {
     ElMessage.error(e?.message || '撤销失败')
   } finally { cancelling.value = false }
+}
+
+// P3-D：跳转质检管理页并按当前工序过滤（FQC/IPQC 记录）
+const goQualityRecords = (row: OperationExecutionVO) => {
+  const query: Record<string, string> = {}
+  if (row.executionId) query.executionId = String(row.executionId)
+  if (row.orderId) query.orderId = String(row.orderId)
+  const router = useRouter()
+  router.push({ path: '/production/quality', query })
 }
 
 // ============ 质检（保留现状） ============
