@@ -54,6 +54,12 @@ export interface OperationExecutionVO {
   /** 当前用户可继续分配的节点ID（本人持有且可分配>0） */
   myAssignableNodeId?: number
   myAssignableQuantity?: number
+  /** 我的任务：当前用户在该工序持有的有效 TaskNode.taskQuantity 合计（无节点为 0） */
+  myTaskQuantity?: number
+  /** 已分给下级：当前用户节点直接有效子节点 effective 合计（无节点为 0） */
+  myChildOccupied?: number
+  /** 我自己剩余：当前用户节点 selfRemaining = effective - childOccupied - selfReported（无节点为 0） */
+  myOwnHeld?: number
   defectiveReason?: string
   actualProcessParams?: string
   qualityCheckResult?: string

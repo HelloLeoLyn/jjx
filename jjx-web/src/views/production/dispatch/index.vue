@@ -22,11 +22,29 @@
     <el-card class="list-card" shadow="never">
       <el-table v-loading="loading" :data="executionList" style="width: 100%">
         <el-table-column prop="orderNo" label="工单号" width="180" show-overflow-tooltip />
-        <el-table-column label="工序" min-width="140">
+        <el-table-column label="工序名称" min-width="140">
           <template #default="{ row }">
             <span>{{ row.processName || '-' }}</span>
             <div v-if="row.processOrder" style="font-size: 12px; color: #909399">序 {{ row.processOrder }}</div>
           </template>
+        </el-table-column>
+        <el-table-column label="工序总量" width="90" align="right">
+          <template #default="{ row }">{{ fmt(row.inputQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="已完成" width="90" align="right">
+          <template #default="{ row }">{{ fmt(row.outputQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="待完成" width="90" align="right">
+          <template #default="{ row }">{{ fmt(row.remainingQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="我的任务" width="90" align="right">
+          <template #default="{ row }">{{ fmt(row.myTaskQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="已分给下级" width="100" align="right">
+          <template #default="{ row }">{{ fmt(row.myChildOccupied) }}</template>
+        </el-table-column>
+        <el-table-column label="我自己剩余" width="100" align="right">
+          <template #default="{ row }">{{ fmt(row.myOwnHeld) }}</template>
         </el-table-column>
         <el-table-column label="任务链" min-width="180">
           <template #default="{ row }">
@@ -35,15 +53,6 @@
               <span v-else style="color: #c0c4cc">未分配</span>
             </el-link>
           </template>
-        </el-table-column>
-        <el-table-column label="任务数量" width="90" align="right">
-          <template #default="{ row }">{{ fmt(row.inputQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="已完成" width="90" align="right">
-          <template #default="{ row }">{{ fmt(row.outputQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="待完成" width="90" align="right">
-          <template #default="{ row }">{{ fmt(row.remainingQuantity) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">

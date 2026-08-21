@@ -56,6 +56,7 @@ public class QualityInspectionController {
     }
 
     @Operation(summary = "判定 PASS/FAIL（正式质量动作，P3-C；已判定不可修改）")
+    @SaCheckPermission("production:quality:judge")
     @PostMapping("/{id}/judge")
     public Result<com.jjx.production.domain.vo.QualityInspectionVO> judge(@PathVariable Long id,
                                                                           @RequestBody com.jjx.production.domain.dto.QualityJudgeDTO dto) {
@@ -63,6 +64,7 @@ public class QualityInspectionController {
     }
 
     @Operation(summary = "复检（新建一条 PENDING 质检，P3-C；不覆盖历史）")
+    @SaCheckPermission("production:quality:judge")
     @PostMapping("/{id}/reinspect")
     public Result<Long> reinspect(@PathVariable Long id) {
         return Result.success(qualityActionService.reinspect(id));

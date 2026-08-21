@@ -125,6 +125,15 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "当前用户可继续分配数量（本人持有节点，availableToAssign）（P3 派工管理）")
     private BigDecimal myAssignableQuantity;
 
+    @Schema(description = "我的任务：当前用户在该工序持有的有效 TaskNode.taskQuantity 合计（无节点为 0）（派工列表投影）")
+    private BigDecimal myTaskQuantity;
+
+    @Schema(description = "已分给下级：当前用户节点的直接有效子节点 effective 合计（无节点为 0）（派工列表投影）")
+    private BigDecimal myChildOccupied;
+
+    @Schema(description = "我自己剩余：当前用户节点 selfRemaining = effective - childOccupied - selfReported（下限0，无节点为 0）（派工列表投影）")
+    private BigDecimal myOwnHeld;
+
     @Schema(description = "不良原因")
     private String defectiveReason;
 

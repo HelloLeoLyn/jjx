@@ -137,8 +137,8 @@
           </el-table-column>
           <el-table-column label="操作" width="170" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="row.result === 'pending'" link type="primary" size="small" @click="openJudge(row)">判定</el-button>
-              <el-button v-if="row.result === 'pass' || row.result === 'fail'" link type="warning" size="small" @click="openReinspect(row)">复检</el-button>
+              <el-button v-if="row.result === 'pending'" v-hasPermi="['production:quality:judge']" link type="primary" size="small" @click="openJudge(row)">判定</el-button>
+              <el-button v-if="row.result === 'pass' || row.result === 'fail'" v-hasPermi="['production:quality:judge']" link type="warning" size="small" @click="openReinspect(row)">复检</el-button>
               <el-button link type="info" size="small" @click="openDetail(row)">详情</el-button>
             </template>
           </el-table-column>

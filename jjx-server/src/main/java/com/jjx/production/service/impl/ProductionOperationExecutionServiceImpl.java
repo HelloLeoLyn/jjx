@@ -284,7 +284,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                                         rs.getLong("task_node_id"),
                                         rs.getObject("parent_node_id"),
                                         rs.getObject("assignee_id"),
-                                        rs.getString("assignee_name")});
+                                        rs.getString("assignee_name"),
+                                        rs.getLong("execution_id"),
+                                        rs.getBigDecimal("task_quantity"),
+                                        rs.getBigDecimal("recalled_quantity")});
                     });
         } catch (Exception e) {
             log.warn("查询任务树链路失败: {}", e.getMessage());
@@ -350,19 +353,22 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             if (nodeRows == null || nodeRows.isEmpty()) {
                 vo.setMyAssignableNodeId(null);
                 vo.setMyAssignableQuantity(null);
+                vo.setMyTaskQuantity(BigDecimal.ZERO);
+                vo.setMyChildOccupied(BigDecimal.ZERO);
+                vo.setMyOwnHeld(BigDecimal.ZERO);
                 continue;
             }
             java.util.Map<Long, BigDecimal> childOcc = new java.util.HashMap<>();
             for (Object[] n : nodeRows) {
                 BigDecimal eff = nvl2((BigDecimal) n[5]).subtract(nvl2((BigDecimal) n[6]));
-                if (n[2] != null) {
-                    childOcc.merge(((Number) n[2]).longValue(), eff, BigDecimal::add);
+                if (n[1] != null) {
+                    childOcc.merge(((Number) n[1]).longValue(), eff, BigDecimal::add);
                 }
             }
             Long targetNodeId = null;
             BigDecimal targetAvail = null;
             for (Object[] n : nodeRows) {
-                if (currentUserId == null || n[3] == null || !currentUserId.equals(((Number) n[3]).longValue())) {
+                if (currentUserId == null || n[2] == null || !currentUserId.equals(((Number) n[2]).longValue())) {
                     continue;
                 }
                 BigDecimal effective = nvl2((BigDecimal) n[5]).subtract(nvl2((BigDecimal) n[6]));
@@ -376,6 +382,29 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             }
             vo.setMyAssignableNodeId(targetNodeId);
             vo.setMyAssignableQuantity(targetAvail);
+            // 派工列表投影：我的任务/已分给下级/我自己剩余（仅统计当前用户持有的真实人员节点，系统根 assigneeId=NULL 天然排除）
+            BigDecimal myTaskQty = BigDecimal.ZERO;
+            BigDecimal myChildOcc = BigDecimal.ZERO;
+            BigDecimal myOwnHeld = BigDecimal.ZERO;
+            for (Object[] n : nodeRows) {
+                if (currentUserId == null || n[2] == null || !currentUserId.equals(((Number) n[2]).longValue())) {
+                    continue;
+                }
+                Long nodeId = ((Number) n[0]).longValue();
+                BigDecimal taskQty = nvl2((BigDecimal) n[5]);
+                BigDecimal childOccOfNode = childOcc.getOrDefault(nodeId, BigDecimal.ZERO);
+                BigDecimal selfReported = reportedByNode.getOrDefault(nodeId, BigDecimal.ZERO);
+                myTaskQty = myTaskQty.add(taskQty);
+                myChildOcc = myChildOcc.add(childOccOfNode);
+                BigDecimal remain = taskQty.subtract(nvl2((BigDecimal) n[6]))
+                        .subtract(childOccOfNode).subtract(selfReported);
+                if (remain.compareTo(BigDecimal.ZERO) > 0) {
+                    myOwnHeld = myOwnHeld.add(remain);
+                }
+            }
+            vo.setMyTaskQuantity(myTaskQty);
+            vo.setMyChildOccupied(myChildOcc);
+            vo.setMyOwnHeld(myOwnHeld);
         }
     }
     private static BigDecimal nvl2(BigDecimal v) {
