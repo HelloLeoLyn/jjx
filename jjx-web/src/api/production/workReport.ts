@@ -31,6 +31,8 @@ export interface WorkReportVO {
 
 export interface WorkReportSubmitPayload {
   executionId: number
+  /** P3：报工必须绑定 TaskNode（当前用户 = 节点持有人；本次数量 <= selfRemaining） */
+  taskNodeId: number
   qualifiedQuantity: number
   defectiveQuantity: number
   laborHours?: number

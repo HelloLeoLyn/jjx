@@ -43,6 +43,17 @@ export interface OperationExecutionVO {
   outputQuantity?: number
   qualifiedQuantity?: number
   defectiveQuantity?: number
+  /** 待完成 = 任务数量 - 已完成（下限0） */
+  remainingQuantity?: number
+  /** 是否已建立任务树根节点 */
+  hasTaskRoot?: boolean
+  taskRootAssigneeId?: number
+  taskRootAssigneeName?: string
+  taskNodeCount?: number
+  taskChainText?: string
+  /** 当前用户可继续分配的节点ID（本人持有且可分配>0） */
+  myAssignableNodeId?: number
+  myAssignableQuantity?: number
   defectiveReason?: string
   actualProcessParams?: string
   qualityCheckResult?: string

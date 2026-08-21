@@ -56,6 +56,7 @@ public class WorkReportReadServiceImpl implements WorkReportReadService {
         vo.setOrderId(e.getOrderId());
         vo.setOrderNo(e.getOrderNo());
         vo.setExecutionId(e.getExecutionId());
+        vo.setTaskNodeId(e.getTaskNodeId());
         vo.setReporterId(e.getReporterId());
         vo.setReporterName(e.getReporterName());
         vo.setEquipmentId(e.getEquipmentId());

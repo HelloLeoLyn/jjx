@@ -18,6 +18,8 @@ public class WorkReportVO {
 
     private Long executionId;
 
+    private Long taskNodeId;
+
     private Long reporterId;
     private String reporterName;
 

@@ -5,12 +5,14 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.WorkReportCancelDTO;
 import com.jjx.production.domain.dto.WorkReportSubmitDTO;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.entity.ProductionTaskNode;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.WorkReportVO;
 import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
+import com.jjx.production.service.TaskNodeService;
 import com.jjx.production.service.WorkReportActionService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.WorkReportReadService;
@@ -46,6 +48,8 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final WorkReportProjectionService projectionService;
     private final WorkReportReadService readService;
     private final JdbcTemplate jdbcTemplate;
+    /** P2：报工绑定 TaskNode——新报工必须属于某任务节点且由节点持有人提交（数量受 selfRemaining 约束） */
+    private final TaskNodeService taskNodeService;
     /** P3-C：WorkReport 撤销质检联动（PASS/FAIL 禁撤；PENDING 联动逻辑删除） */
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
 
@@ -69,6 +73,15 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         if (!allowed) {
             throw new BusinessException("当前工序状态不允许报工（仅执行中/已暂停可报工）");
         }
+        // 2.5 TaskNode 绑定：新报工必须绑定任务节点；当前用户 = taskNode.assigneeId
+        if (dto.getTaskNodeId() == null) throw new BusinessException("报工必须绑定任务节点");
+        ProductionTaskNode taskNode = taskNodeService.getNode(dto.getTaskNodeId());
+        if (!dto.getExecutionId().equals(taskNode.getExecutionId())) {
+            throw new BusinessException("任务节点不属于该工序执行记录");
+        }
+        if (operatorId == null || !operatorId.equals(taskNode.getAssigneeId())) {
+            throw new BusinessException("只有任务节点持有人本人可以报工");
+        }
         // 3. 数量校验
         BigDecimal qualified = dto.getQualifiedQuantity() == null ? BigDecimal.ZERO : dto.getQualifiedQuantity();
         BigDecimal defective = dto.getDefectiveQuantity() == null ? BigDecimal.ZERO : dto.getDefectiveQuantity();
@@ -77,6 +90,12 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         }
         if (qualified.add(defective).compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("本次报工合格与不良数量之和必须大于 0");
+        }
+        // 3.5 本次数量 <= 节点 selfRemaining（selfReported 从 WorkReport 动态汇总，撤销后自动恢复）
+        BigDecimal selfRemaining = taskNodeService.remaining(taskNode.getTaskNodeId());
+        if (qualified.add(defective).compareTo(selfRemaining) > 0) {
+            throw new BusinessException("报工数量 " + strip(qualified.add(defective))
+                    + " 超过节点剩余可报数量 " + strip(selfRemaining));
         }
         // 超计划：允许（不校验 <= planned）
         // defective>0 → defectReason 必填（推荐规则）
@@ -119,6 +138,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         r.setOrderId(exec.getOrderId());
         r.setOrderNo(orderNoOf(exec.getOrderId()));
         r.setExecutionId(exec.getExecutionId());
+        r.setTaskNodeId(taskNode.getTaskNodeId());
         r.setReporterId(operatorId);
         r.setReporterName(operatorName);
         r.setEquipmentId(equipmentId);
@@ -236,5 +256,9 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             log.warn("查询工单编号失败 orderId={}: {}", orderId, e.getMessage());
             return null;
         }
+    }
+
+    private String strip(BigDecimal v) {
+        return v == null ? "0" : v.stripTrailingZeros().toPlainString();
     }
 }

@@ -3,11 +3,13 @@ package com.jjx.production;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.WorkReportSubmitDTO;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.entity.ProductionTaskNode;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
+import com.jjx.production.service.TaskNodeService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.WorkReportReadService;
 import com.jjx.production.service.impl.WorkReportActionServiceImpl;
@@ -38,6 +40,7 @@ class WorkReportSubmitTest {
     private ProductionOperationExecutionMapper executionMapper;
     private WorkReportProjectionService projectionService;
     private WorkReportReadService readService;
+    private TaskNodeService taskNodeService;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -45,6 +48,16 @@ class WorkReportSubmitTest {
         executionMapper = mock(ProductionOperationExecutionMapper.class);
         projectionService = mock(WorkReportProjectionService.class);
         readService = mock(WorkReportReadService.class);
+        taskNodeService = mock(TaskNodeService.class);
+        // P2：默认 TaskNode 绑定——节点 1000 属于 execution 3、持有人 104，容量充足
+        when(taskNodeService.getNode(any())).thenAnswer(inv -> {
+            ProductionTaskNode n = new ProductionTaskNode();
+            n.setTaskNodeId(1000L);
+            n.setExecutionId(3L);
+            n.setAssigneeId(104L);
+            return n;
+        });
+        when(taskNodeService.remaining(any())).thenReturn(new BigDecimal("1000000"));
         var ctor = WorkReportActionServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
         var jdbcTemplate = mock(JdbcTemplate.class);
@@ -52,7 +65,7 @@ class WorkReportSubmitTest {
         when(jdbcTemplate.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any()))
                 .thenReturn(new java.util.ArrayList<>());
         service = (WorkReportActionServiceImpl) ctor.newInstance(workReportMapper, executionMapper,
-                projectionService, readService, jdbcTemplate,
+                projectionService, readService, jdbcTemplate, taskNodeService,
                 mock(com.jjx.production.service.QualityInspectionService.class));
     }
 
@@ -69,6 +82,7 @@ class WorkReportSubmitTest {
     private WorkReportSubmitDTO dto() {
         WorkReportSubmitDTO d = new WorkReportSubmitDTO();
         d.setExecutionId(3L);
+        d.setTaskNodeId(1000L);
         d.setQualifiedQuantity(new BigDecimal("950"));
         d.setDefectiveQuantity(new BigDecimal("50"));
         d.setLaborHours(new BigDecimal("2.5"));
@@ -100,6 +114,7 @@ class WorkReportSubmitTest {
         verify(workReportMapper).insert(cap.capture());
         ProductionWorkReport r = cap.getValue();
         assertEquals(3L, r.getExecutionId());
+        assertEquals(1000L, r.getTaskNodeId());
         assertEquals(104L, r.getReporterId());
         assertEquals("印刷一组工人", r.getReporterName());
         assertEquals(new BigDecimal("950"), r.getQualifiedQuantity());

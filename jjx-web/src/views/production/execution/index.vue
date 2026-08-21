@@ -3,10 +3,15 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <h1 class="page-title">工序执行</h1>
+      <el-radio-group v-model="viewMode" size="small">
+        <el-radio-button value="all">全部任务</el-radio-button>
+        <el-radio-button value="mine">我的当前任务</el-radio-button>
+        <el-radio-button value="done">我已完成</el-radio-button>
+      </el-radio-group>
     </div>
 
-    <!-- 筛选区 -->
-    <el-card class="filter-card" shadow="never">
+    <!-- 筛选区（仅全部任务） -->
+    <el-card v-show="viewMode === 'all'" class="filter-card" shadow="never">
       <div class="filter-bar">
         <el-input v-model="queryParams.orderNo" placeholder="工单编号" clearable style="width: 150px" @keyup.enter="handleQuery" @clear="handleQuery" />
         <el-input v-model="queryParams.processName" placeholder="工序" clearable style="width: 120px" @keyup.enter="handleQuery" @clear="handleQuery" />
@@ -18,8 +23,8 @@
       </div>
     </el-card>
 
-    <!-- 主表 -->
-    <el-card class="list-card" shadow="never">
+    <!-- 主表：全部任务（一行一道 Execution） -->
+    <el-card v-show="viewMode === 'all'" class="list-card" shadow="never">
       <el-table v-loading="loading" :data="executionList" style="width: 100%">
         <el-table-column prop="orderNo" label="工单编号" width="180" show-overflow-tooltip />
         <el-table-column label="工序" min-width="130">
@@ -56,8 +61,7 @@
           <template #default="{ row }">
             <el-button v-if="row.executionStatus === 0" type="success" link icon="PlayCircle" v-hasPermi="['production:operation-execution:edit']" @click="handleStart(row)">开始</el-button>
             <el-button v-if="row.executionStatus === 2" type="warning" link icon="Pause" v-hasPermi="['production:operation-execution:edit']" @click="handlePause(row)">暂停</el-button>
-            <!-- 报工：仅 EXECUTING；需 production:work-report:add 权限 -->
-            <el-button v-if="row.executionStatus === 2" v-hasPermi="['production:work-report:add']" type="primary" link icon="EditPen" @click="openReport(row)">报工</el-button>
+            <!-- 报工入口在「我的当前任务」视图（TaskNode 模式，必须绑定任务节点） -->
             <el-button v-if="row.executionStatus === 2" type="primary" link icon="View" @click="handleView(row)">详情</el-button>
             <el-button v-if="[2, 3].includes(row.executionStatus)" type="success" link icon="Check" v-hasPermi="['production:operation-execution:edit']" @click="handleComplete(row)">完成</el-button>
             <el-button v-if="[2, 4].includes(row.executionStatus)" type="warning" link icon="WarningFilled" v-hasPermi="['production:quality:view']" @click="handleQualityCheck(row)">首检/巡检</el-button>
@@ -78,67 +82,70 @@
       </div>
     </el-card>
 
-    <!-- ============ P2-D 报工 Drawer ============ -->
-    <el-drawer v-model="reportVisible" title="生产报工" size="520px" append-to-body>
-      <template v-if="reportRow">
-        <!-- 只读生产上下文 -->
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="工单">{{ reportRow.orderNo }}</el-descriptions-item>
-          <el-descriptions-item label="工序">{{ reportRow.processName }}（序 {{ reportRow.processOrder }}）</el-descriptions-item>
-          <el-descriptions-item label="默认设备">{{ reportRow.equipmentName || '不限' }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ statusLabel(reportRow.executionStatus) }}</el-descriptions-item>
-        </el-descriptions>
+    <!-- ============ 我的任务（TaskNode 语义；三个视图切换） ============ -->
+    <el-card v-show="viewMode !== 'all'" class="list-card" shadow="never">
+      <div class="my-task-title">
+        {{ viewMode === 'mine' ? '我的当前任务' : '我已完成' }}
+        <span class="my-task-sub">当前用户持有的 TaskNode；数量全部动态汇总（WorkReport 投影）</span>
+      </div>
+      <el-table v-loading="myTasksLoading" :data="myTaskList" style="width: 100%">
+        <el-table-column label="工单" min-width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.orderNo || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="工序" min-width="130">
+          <template #default="{ row }">
+            <span>{{ row.processName || '-' }}</span>
+            <div v-if="row.processOrder" style="font-size: 12px; color: #909399">序 {{ row.processOrder }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="我的任务" width="90" align="right">
+          <template #default="{ row }">{{ fmtQty(row.taskQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="我已完成" width="90" align="right">
+          <template #default="{ row }">{{ fmtQty(row.selfReported) }}</template>
+        </el-table-column>
+        <el-table-column label="已分下级" width="90" align="right">
+          <template #default="{ row }">{{ fmtQty(row.childOccupied) }}</template>
+        </el-table-column>
+        <el-table-column label="自己剩余" width="90" align="right">
+          <template #default="{ row }">{{ fmtQty(row.selfRemaining) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" :type="taskStatusTag(row.status)">{{ row.statusLabel || row.status || '-' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="viewMode === 'mine'" label="操作" min-width="160" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="Number(row.selfRemaining || 0) > 0" type="primary" link icon="EditPen" @click="openNodeReport(row)">报工</el-button>
+            <el-button
+              v-if="Number(row.availableToAssign || 0) > 0 && hasPermi('production:task:assign')"
+              type="primary"
+              link
+              icon="Share"
+              @click="openNodeAssign(row)"
+            >分配任务</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!myTasksLoading && !myTaskList.length" :description="viewMode === 'mine' ? '暂无我的当前任务' : '暂无已完成任务'" :image-size="50" />
+    </el-card>
 
-        <!-- 生产进度（只读投影） -->
-        <div class="progress-section">
-          <div class="progress-title">生产进度（由报工记录自动汇总）</div>
-          <el-descriptions :column="4" size="small">
-            <el-descriptions-item label="计划">{{ fmtQty(reportRow.inputQuantity) }}</el-descriptions-item>
-            <el-descriptions-item label="累计合格">{{ fmtQty(reportRow.qualifiedQuantity) }}</el-descriptions-item>
-            <el-descriptions-item label="累计不良">{{ fmtQty(reportRow.defectiveQuantity) }}</el-descriptions-item>
-            <el-descriptions-item label="累计产出">{{ fmtQty(reportRow.outputQuantity) }}</el-descriptions-item>
-          </el-descriptions>
-        </div>
+    <!-- ============ P3 报工 Drawer（TaskNode 模式：上限 = selfRemaining） ============ -->
+    <TaskNodeReportDrawer
+      v-model:visible="reportVisible"
+      :node="reportNode"
+      @changed="handleMyTaskChanged"
+    />
 
-        <!-- 本次报工表单 -->
-        <el-form ref="reportFormRef" :model="reportForm" label-width="100px" style="margin-top: 12px">
-          <el-form-item label="合格数量" required>
-            <el-input-number v-model="reportForm.qualifiedQuantity" :min="0" :precision="4" style="width: 100%" placeholder="本次合格数量" />
-          </el-form-item>
-          <el-form-item label="不良数量" required>
-            <el-input-number v-model="reportForm.defectiveQuantity" :min="0" :precision="4" style="width: 100%" placeholder="本次不良数量" />
-          </el-form-item>
-          <el-form-item v-if="reportForm.defectiveQuantity > 0" label="不良原因" required>
-            <el-input v-model="reportForm.defectReason" type="textarea" :rows="2" placeholder="存在不良时必填" />
-          </el-form-item>
-          <el-form-item label="人工工时(h)">
-            <el-input-number v-model="reportForm.laborHours" :min="0" :step="0.1" :precision="2" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="机器工时(h)">
-            <el-input-number v-model="reportForm.machineHours" :min="0" :step="0.1" :precision="2" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="开始时间">
-            <el-date-picker v-model="reportForm.workStartTime" type="datetime" placeholder="可空" style="width: 100%" value-format="YYYY-MM-DDTHH:mm:ss" />
-          </el-form-item>
-          <el-form-item label="结束时间">
-            <el-date-picker v-model="reportForm.workEndTime" type="datetime" placeholder="可空" style="width: 100%" value-format="YYYY-MM-DDTHH:mm:ss" />
-          </el-form-item>
-          <el-form-item label="本次设备">
-            <el-select v-model="reportForm.equipmentId" placeholder="本次实际使用设备（空=默认设备）" clearable filterable style="width: 100%">
-              <el-option v-for="eq in equipmentOptions" :key="eq.equipmentId" :label="`${eq.equipmentName}（${eq.equipmentNo}）`" :value="eq.equipmentId" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="备注">
-            <el-input v-model="reportForm.remark" type="textarea" :rows="2" />
-          </el-form-item>
-          <div style="color: #909399; font-size: 12px">每次报工为一条不可覆盖的生产事实；报错后可在报工历史中撤销并重新报工。超计划报工允许，确认后提交。</div>
-        </el-form>
-      </template>
-      <template #footer>
-        <el-button @click="reportVisible = false">取消</el-button>
-        <el-button type="primary" :loading="reporting" @click="handleSubmitReport">确认报工</el-button>
-      </template>
-    </el-drawer>
+    <!-- ============ P3 分配任务弹窗（我的节点） ============ -->
+    <AssignTaskDialog
+      v-model:visible="assignVisible"
+      :execution-id="assignExecutionId"
+      :parent-node-id="assignParentNodeId"
+      :title="assignTitle"
+      @changed="handleMyTaskChanged"
+    />
 
     <!-- ============ 详情 Drawer（Tabs） ============ -->
     <el-drawer v-model="detailOpen" title="工序执行详情" size="560px" append-to-body>
@@ -274,19 +281,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { operationExecutionApi } from '@/api/production/operationExecution'
-import { getEquipmentList } from '@/api/production/equipment'
-import {
-  submitWorkReport,
-  cancelWorkReport,
-  getWorkReportsByExecution,
-  type WorkReportVO,
-  type WorkReportSubmitPayload,
-} from '@/api/production/workReport'
+import { cancelWorkReport, getWorkReportsByExecution, type WorkReportVO } from '@/api/production/workReport'
+import { taskNodeApi } from '@/api/production/taskNode'
+import { hasPermi } from '@/directives'
+import TaskNodeReportDrawer from './components/TaskNodeReportDrawer.vue'
+import AssignTaskDialog from '../dispatch/components/AssignTaskDialog.vue'
 import type { OperationExecutionVO, OperationExecutionQuery } from '@/types/production/operationExecution'
+import type { MyTaskNodeVO } from '@/types/production/taskNode'
 
 defineOptions({ name: 'ProductionExecutionList' })
 
@@ -375,65 +380,62 @@ const handleComplete = async (row: OperationExecutionVO) => {
   }
 }
 
-// ============ 报工 Drawer ============
-const reportVisible = ref(false)
-const reporting = ref(false)
-const reportRow = ref<OperationExecutionVO | null>(null)
-const reportFormRef = ref()
-const equipmentOptions = ref<any[]>([])
-const reportForm = reactive<WorkReportSubmitPayload>({
-  executionId: 0, qualifiedQuantity: 0, defectiveQuantity: 0,
-  laborHours: 0, machineHours: 0, workStartTime: undefined, workEndTime: undefined,
-  equipmentId: undefined, defectReason: '', remark: '',
-})
+// ============ 我的任务（TaskNode 语义；三视图：全部任务/我的当前任务/我已完成） ============
+const viewMode = ref<'all' | 'mine' | 'done'>('all')
+const myTasksLoading = ref(false)
+const myTasks = ref<MyTaskNodeVO[]>([])
 
-const openReport = async (row: OperationExecutionVO) => {
-  reportRow.value = row
-  Object.assign(reportForm, {
-    executionId: row.executionId, qualifiedQuantity: 0, defectiveQuantity: 0,
-    laborHours: 0, machineHours: 0, workStartTime: undefined, workEndTime: undefined,
-    equipmentId: row.equipmentId || undefined, defectReason: '', remark: '',
-  })
-  reportVisible.value = true
-  if (!equipmentOptions.value.length) {
-    try { const res: any = await getEquipmentList({}); equipmentOptions.value = res?.data || [] } catch { equipmentOptions.value = [] }
+const myCurrentTasks = computed(() => myTasks.value.filter((t) => Number(t.selfRemaining || 0) > 0))
+const myDoneTasks = computed(() => myTasks.value.filter((t) => {
+  const remain = Number(t.selfRemaining || 0)
+  return remain <= 0 && t.status !== 'CANCELLED'
+}))
+const myTaskList = computed(() => (viewMode.value === 'mine' ? myCurrentTasks.value : myDoneTasks.value))
+
+function taskStatusTag(status?: string): any {
+  return { ACTIVE: 'success', COMPLETED: 'info', CANCELLED: 'danger' }[status || ''] || 'info'
+}
+
+const loadMyTasks = async () => {
+  myTasksLoading.value = true
+  try {
+    const res: any = await taskNodeApi.my()
+    myTasks.value = res?.data || []
+  } catch {
+    myTasks.value = []
+  } finally {
+    myTasksLoading.value = false
   }
 }
 
-const handleSubmitReport = async () => {
-  if (!reportForm.executionId) return
-  const q = Number(reportForm.qualifiedQuantity || 0)
-  const d = Number(reportForm.defectiveQuantity || 0)
-  if (q < 0 || d < 0) { ElMessage.warning('数量不能为负数'); return }
-  if (q + d <= 0) { ElMessage.warning('本次报工合格与不良数量之和必须大于 0'); return }
-  if (d > 0 && !reportForm.defectReason?.trim()) { ElMessage.warning('存在不良数量时，不良原因必填'); return }
-  if (reportForm.workStartTime && !reportForm.workEndTime || !reportForm.workStartTime && reportForm.workEndTime) {
-    ElMessage.warning('生产开始/结束时间需同时填写'); return
-  }
-  if (reportForm.workStartTime && reportForm.workEndTime && reportForm.workEndTime < reportForm.workStartTime) {
-    ElMessage.warning('结束时间不能早于开始时间'); return
-  }
-  // 超计划确认（后端允许；按 Execution 计划提示）
-  const planned = Number(reportRow.value?.inputQuantity || 0)
-  const curQ = Number(reportRow.value?.qualifiedQuantity || 0)
-  const curD = Number(reportRow.value?.defectiveQuantity || 0)
-  if (planned > 0 && curQ + curD + q + d > planned) {
-    try {
-      await ElMessageBox.confirm(`本次报工后累计产出将超过计划数量 ${planned}，是否继续？`, '超计划提示', { type: 'warning' })
-    } catch { return }
-  }
-  reporting.value = true
-  try {
-    await submitWorkReport({ ...reportForm })
-    ElMessage.success('报工成功')
-    reportVisible.value = false
-    getList()
-    if (detailOpen.value && detailTab.value === 'reports') loadReports()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '报工失败')
-  } finally {
-    reporting.value = false
-  }
+watch(viewMode, (v) => {
+  if (v !== 'all') loadMyTasks()
+})
+
+// 报工（TaskNode 模式）：提交必须携带 taskNodeId；个人上限 = selfRemaining，不再用 Execution 计划数量
+const reportVisible = ref(false)
+const reportNode = ref<MyTaskNodeVO | null>(null)
+const openNodeReport = (row: MyTaskNodeVO) => {
+  reportNode.value = row
+  reportVisible.value = true
+}
+
+// 分配任务（我的节点：自己持有且可继续分配剩余；权限 production:task:assign）
+const assignVisible = ref(false)
+const assignExecutionId = ref(0)
+const assignParentNodeId = ref(0)
+const assignTitle = ref('分配任务')
+const openNodeAssign = (row: MyTaskNodeVO) => {
+  assignExecutionId.value = row.executionId
+  assignParentNodeId.value = row.taskNodeId
+  assignTitle.value = `${row.orderNo || ''} ${row.processName || ''} · 分配任务`
+  assignVisible.value = true
+}
+
+// 报工/分配/收回后：刷新我的任务 + 全部任务投影
+const handleMyTaskChanged = () => {
+  loadMyTasks()
+  getList()
 }
 
 // ============ 详情 Drawer ============
@@ -551,6 +553,6 @@ onMounted(() => {
 .filter-card { margin-bottom: 16px; }
 .filter-bar { display: flex; gap: 10px; align-items: center; padding-bottom: 8px; flex-wrap: wrap; }
 .pagination-wrap { margin-top: 16px; display: flex; justify-content: flex-end; }
-.progress-section { margin-top: 14px; }
-.progress-title { font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 8px; }
+.my-task-title { font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 10px; }
+.my-task-sub { font-size: 12px; font-weight: 400; color: #909399; margin-left: 8px; }
 </style>

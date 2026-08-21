@@ -20,6 +20,10 @@ public class WorkReportSubmitDTO {
     @Schema(description = "工序执行记录ID")
     private Long executionId;
 
+    @NotNull(message = "任务节点ID必填")
+    @Schema(description = "任务树节点ID（P2 起报工必须绑定 TaskNode，且当前用户须为该节点持有人）")
+    private Long taskNodeId;
+
     @Schema(description = "本次合格数量（>=0，与不良之和>0）")
     private BigDecimal qualifiedQuantity;
 

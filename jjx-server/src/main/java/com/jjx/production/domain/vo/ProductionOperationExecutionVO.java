@@ -101,6 +101,30 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "不良数量")
     private BigDecimal defectiveQuantity;
 
+    @Schema(description = "待完成数量（= 任务数量 - 已完成，下限0；P3 任务分配用）")
+    private BigDecimal remainingQuantity;
+
+    @Schema(description = "是否已建立任务树根节点（P3 派工管理）")
+    private Boolean hasTaskRoot;
+
+    @Schema(description = "任务树根节点持有人ID（P3 派工管理）")
+    private Long taskRootAssigneeId;
+
+    @Schema(description = "任务树根节点持有人姓名（P3 派工管理）")
+    private String taskRootAssigneeName;
+
+    @Schema(description = "任务树节点总数（含根；0=未建立）（P3 派工管理）")
+    private Integer taskNodeCount;
+
+    @Schema(description = "任务链摘要（未分配 / 根节点持有人 → 后续节点摘要）（P3 派工管理）")
+    private String taskChainText;
+
+    @Schema(description = "当前用户可继续分配的任务节点ID（本人持有且可分配>0；无 root 时为 null）（P3 派工管理）")
+    private Long myAssignableNodeId;
+
+    @Schema(description = "当前用户可继续分配数量（本人持有节点，availableToAssign）（P3 派工管理）")
+    private BigDecimal myAssignableQuantity;
+
     @Schema(description = "不良原因")
     private String defectiveReason;
 

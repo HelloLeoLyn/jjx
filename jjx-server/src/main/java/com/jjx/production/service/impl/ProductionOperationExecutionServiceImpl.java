@@ -254,9 +254,132 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                     }
                 }
             }
+            // P3：任务树链路摘要（root/任务链文本）——批量查询，避免 N+1
+            java.util.Set<Long> execIds = vos.stream()
+                    .map(ProductionOperationExecutionVO::getExecutionId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (!execIds.isEmpty()) {
+                enrichTaskNodeChain(vos, execIds);
+            }
         } catch (Exception e) {
+
+
             log.warn("补全工序执行展示信息失败: {}", e.getMessage());
         }
+    }
+
+
+    /** P3：批量补全任务树链路摘要（root assignee + 后续节点摘要；无 root 显示未分配） */
+    private void enrichTaskNodeChain(List<ProductionOperationExecutionVO> vos, java.util.Set<Long> execIds) {
+        String execIdStr = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        java.util.Map<Long, java.util.List<Object[]>> nodesByExec = new java.util.HashMap<>();
+        try {
+            jdbcTemplate.query("SELECT execution_id, task_node_id, parent_node_id, assignee_id, assignee_name, task_quantity, recalled_quantity"
+                            + " FROM production_task_node WHERE execution_id IN (" + execIdStr + ") ORDER BY task_node_id",
+                    rs -> {
+                        Long eid = rs.getLong("execution_id");
+                        nodesByExec.computeIfAbsent(eid, k -> new java.util.ArrayList<>())
+                                .add(new Object[]{
+                                        rs.getLong("task_node_id"),
+                                        rs.getObject("parent_node_id"),
+                                        rs.getObject("assignee_id"),
+                                        rs.getString("assignee_name")});
+                    });
+        } catch (Exception e) {
+            log.warn("查询任务树链路失败: {}", e.getMessage());
+            return;
+        }
+        for (ProductionOperationExecutionVO vo : vos) {
+            java.util.List<Object[]> nodes = nodesByExec.get(vo.getExecutionId());
+            if (nodes == null || nodes.isEmpty()) {
+                vo.setHasTaskRoot(false);
+                vo.setTaskNodeCount(0);
+                vo.setTaskChainText("未分配");
+                continue;
+            }
+            Object[] root = null;
+            java.util.List<String> firstLevelNames = new java.util.ArrayList<>();
+            for (Object[] n : nodes) {
+                if (n[1] == null) {
+                    root = n;
+                } else if (root != null && ((Number) n[1]).longValue() == ((Number) root[0]).longValue()) {
+                    firstLevelNames.add(n[3] == null ? "节点" + n[2] : String.valueOf(n[3]));
+                }
+            }
+            vo.setTaskNodeCount(nodes.size());
+            if (root == null) {
+                vo.setHasTaskRoot(false);
+                vo.setTaskChainText("未分配");
+                continue;
+            }
+            vo.setHasTaskRoot(true);
+            vo.setTaskRootAssigneeId(root[2] == null ? null : ((Number) root[2]).longValue());
+            vo.setTaskRootAssigneeName(root[3] == null ? null : String.valueOf(root[3]));
+            StringBuilder chain = new StringBuilder();
+            if (root[3] != null) chain.append(root[3]);
+            if (!firstLevelNames.isEmpty()) {
+                String joined = firstLevelNames.size() > 3
+                        ? String.join("、", firstLevelNames.subList(0, 3)) + " 等" + firstLevelNames.size() + "人"
+                        : String.join("、", firstLevelNames);
+                chain.append(" → ").append(joined);
+            }
+            vo.setTaskChainText(chain.toString());
+        }
+        // P3：当前用户可继续分配的节点投影（我的节点且 availableToAssign > 0；无 root 时为 null）
+        java.util.Map<Long, BigDecimal> reportedByNode = new java.util.HashMap<>();
+        if (!execIds.isEmpty()) {
+            String eids = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            try {
+                jdbcTemplate.query("SELECT task_node_id, COALESCE(SUM(qualified_quantity + defective_quantity),0) AS total"
+                                + " FROM production_work_report WHERE execution_id IN (" + eids + ")"
+                                + " AND report_status='SUBMITTED' GROUP BY task_node_id",
+                        (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                                reportedByNode.put(rs.getLong("task_node_id"), rs.getBigDecimal("total")));
+            } catch (Exception e) {
+                log.warn("查询任务节点报工汇总失败: {}", e.getMessage());
+            }
+        }
+        Long currentUserId = null;
+        try {
+            currentUserId = com.jjx.system.utils.SecurityUtils.getUserId();
+        } catch (Exception ignored) {
+        }
+        for (ProductionOperationExecutionVO vo : vos) {
+            java.util.List<Object[]> nodeRows = nodesByExec.get(vo.getExecutionId());
+            if (nodeRows == null || nodeRows.isEmpty()) {
+                vo.setMyAssignableNodeId(null);
+                vo.setMyAssignableQuantity(null);
+                continue;
+            }
+            java.util.Map<Long, BigDecimal> childOcc = new java.util.HashMap<>();
+            for (Object[] n : nodeRows) {
+                BigDecimal eff = nvl2((BigDecimal) n[5]).subtract(nvl2((BigDecimal) n[6]));
+                if (n[2] != null) {
+                    childOcc.merge(((Number) n[2]).longValue(), eff, BigDecimal::add);
+                }
+            }
+            Long targetNodeId = null;
+            BigDecimal targetAvail = null;
+            for (Object[] n : nodeRows) {
+                if (currentUserId == null || n[3] == null || !currentUserId.equals(((Number) n[3]).longValue())) {
+                    continue;
+                }
+                BigDecimal effective = nvl2((BigDecimal) n[5]).subtract(nvl2((BigDecimal) n[6]));
+                BigDecimal selfReported = reportedByNode.getOrDefault(((Number) n[0]).longValue(), BigDecimal.ZERO);
+                BigDecimal avail = effective.subtract(childOcc.getOrDefault(((Number) n[0]).longValue(), BigDecimal.ZERO)).subtract(selfReported);
+                if (avail.compareTo(BigDecimal.ZERO) > 0) {
+                    targetNodeId = ((Number) n[0]).longValue();
+                    targetAvail = avail;
+                    break;
+                }
+            }
+            vo.setMyAssignableNodeId(targetNodeId);
+            vo.setMyAssignableQuantity(targetAvail);
+        }
+    }
+    private static BigDecimal nvl2(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     @Override
@@ -812,6 +935,13 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         vo.setOutputQuantity(execution.getOutputQuantity());
         vo.setQualifiedQuantity(execution.getQualifiedQuantity());
         vo.setDefectiveQuantity(execution.getDefectiveQuantity());
+
+        // 待完成 = 任务数量 - 已完成（WorkReport 有效产出），下限 0
+        BigDecimal inQty = execution.getInputQuantity();
+        BigDecimal outQty = execution.getOutputQuantity();
+        vo.setRemainingQuantity(inQty == null ? BigDecimal.ZERO
+                : inQty.subtract(outQty == null ? BigDecimal.ZERO : outQty).max(BigDecimal.ZERO));
+
         vo.setDefectiveReason(execution.getDefectiveReason());
         vo.setActualProcessParams(execution.getActualProcessParams());
         vo.setQualityCheckResult(execution.getQualityCheckResult());
