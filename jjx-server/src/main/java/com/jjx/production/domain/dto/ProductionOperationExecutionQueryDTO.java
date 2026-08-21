@@ -86,7 +86,4 @@ public class ProductionOperationExecutionQueryDTO {
 
     @Schema(description = "排序方向", example = "asc")
     private String orderDirection = "asc";
-
-    @Schema(description = "P2-D：数据范围。mine=我的当前任务（对应 dispatch 存在 ACTIVE Node 且 assignee=当前用户）；空=全部")
-    private String scope;
 }

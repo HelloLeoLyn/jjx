@@ -8,11 +8,6 @@
     <!-- 筛选区 -->
     <el-card class="filter-card" shadow="never">
       <div class="filter-bar">
-        <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-          <el-tab-pane label="全部任务" name="all" />
-          <el-tab-pane label="我的当前任务" name="mine" />
-          <el-tab-pane label="我已完成" name="done" />
-        </el-tabs>
         <el-input v-model="queryParams.orderNo" placeholder="工单编号" clearable style="width: 150px" @keyup.enter="handleQuery" @clear="handleQuery" />
         <el-input v-model="queryParams.processName" placeholder="工序" clearable style="width: 120px" @keyup.enter="handleQuery" @clear="handleQuery" />
         <el-select v-model="queryParams.executionStatus" placeholder="状态" clearable style="width: 120px" @change="handleQuery">
@@ -33,13 +28,6 @@
             <div v-if="row.processOrder" style="font-size: 12px; color: #909399">序 {{ row.processOrder }}</div>
           </template>
         </el-table-column>
-        <!-- P2-D：当前责任人（P1 ACTIVE DispatchNode projection，不用 operatorName） -->
-        <el-table-column label="当前责任人" min-width="120">
-          <template #default="{ row }">
-            <span v-if="row.currentAssigneeName" class="cur-assignee">{{ row.currentAssigneeName }}</span>
-            <el-tag v-else size="small" type="info" effect="plain">待派工</el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="设备" width="110" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.equipmentName">{{ row.equipmentName }}</span>
@@ -49,28 +37,7 @@
         <el-table-column label="计划数量" width="90" align="right">
           <template #default="{ row }">{{ fmtQty(row.inputQuantity) }}</template>
         </el-table-column>
-        <!-- WP-D：执行人视角——我的分配/已报/剩余（仅当我是 Assignment 执行人时显示） -->
-        <el-table-column v-if="activeTab === 'mine' || activeTab === 'done'" label="我的分配" width="90" align="right">
-          <template #default="{ row }">
-            <span v-if="row.myAssignedQuantity != null">{{ fmtQty(row.myAssignedQuantity) }}</span>
-            <span v-else style="color: #c0c4cc">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="activeTab === 'mine' || activeTab === 'done'" label="我的已报" width="90" align="right">
-          <template #default="{ row }">
-            <span v-if="row.myReportedQuantity != null">{{ fmtQty(row.myReportedQuantity) }}</span>
-            <span v-else style="color: #c0c4cc">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="activeTab === 'mine' || activeTab === 'done'" label="我的剩余" width="90" align="right">
-          <template #default="{ row }">
-            <span v-if="row.myRemainingQuantity != null" :class="{ 'my-remaining-zero': Number(row.myRemainingQuantity) === 0 }">
-              {{ fmtQty(row.myRemainingQuantity) }}
-            </span>
-            <span v-else style="color: #c0c4cc">-</span>
-          </template>
-        </el-table-column>
-        <!-- P2-D：累计投影（WorkReport projection，后端提供） -->
+        <!-- 累计投影（WorkReport projection，后端提供） -->
         <el-table-column label="累计合格" width="90" align="right">
           <template #default="{ row }">{{ fmtQty(row.qualifiedQuantity) }}</template>
         </el-table-column>
@@ -89,8 +56,8 @@
           <template #default="{ row }">
             <el-button v-if="row.executionStatus === 0" type="success" link icon="PlayCircle" v-hasPermi="['production:operation-execution:edit']" @click="handleStart(row)">开始</el-button>
             <el-button v-if="row.executionStatus === 2" type="warning" link icon="Pause" v-hasPermi="['production:operation-execution:edit']" @click="handlePause(row)">暂停</el-button>
-            <!-- P2-D 报工：仅 EXECUTING 且 canReport（ACTIVE assignee + add 权限） -->
-            <el-button v-if="row.executionStatus === 2 && row.canReport" type="primary" link icon="EditPen" @click="openReport(row)">报工</el-button>
+            <!-- 报工：仅 EXECUTING；需 production:work-report:add 权限 -->
+            <el-button v-if="row.executionStatus === 2" v-hasPermi="['production:work-report:add']" type="primary" link icon="EditPen" @click="openReport(row)">报工</el-button>
             <el-button v-if="row.executionStatus === 2" type="primary" link icon="View" @click="handleView(row)">详情</el-button>
             <el-button v-if="[2, 3].includes(row.executionStatus)" type="success" link icon="Check" v-hasPermi="['production:operation-execution:edit']" @click="handleComplete(row)">完成</el-button>
             <el-button v-if="[2, 4].includes(row.executionStatus)" type="warning" link icon="WarningFilled" v-hasPermi="['production:quality:view']" @click="handleQualityCheck(row)">首检/巡检</el-button>
@@ -118,10 +85,6 @@
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="工单">{{ reportRow.orderNo }}</el-descriptions-item>
           <el-descriptions-item label="工序">{{ reportRow.processName }}（序 {{ reportRow.processOrder }}）</el-descriptions-item>
-          <el-descriptions-item label="当前责任人">
-            <span class="cur-assignee">{{ reportRow.currentAssigneeName }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="责任组织">{{ reportRow.currentOrgName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="默认设备">{{ reportRow.equipmentName || '不限' }}</el-descriptions-item>
           <el-descriptions-item label="状态">{{ statusLabel(reportRow.executionStatus) }}</el-descriptions-item>
         </el-descriptions>
@@ -135,19 +98,6 @@
             <el-descriptions-item label="累计不良">{{ fmtQty(reportRow.defectiveQuantity) }}</el-descriptions-item>
             <el-descriptions-item label="累计产出">{{ fmtQty(reportRow.outputQuantity) }}</el-descriptions-item>
           </el-descriptions>
-        </div>
-
-        <!-- WP-D：Assignment 模式——我的份额（我的分配/已报/剩余可报；本次 q+d 不得超过剩余） -->
-        <div v-if="reportRow.myAssignmentId != null" class="progress-section" style="border: 1px solid #b3e19d; background: #f0f9eb; border-radius: 6px; padding: 8px 12px;">
-          <div class="progress-title">我的作业分配</div>
-          <el-descriptions :column="3" size="small">
-            <el-descriptions-item label="我的分配">{{ fmtQty(reportRow.myAssignedQuantity) }}</el-descriptions-item>
-            <el-descriptions-item label="我的累计已报">{{ fmtQty(reportRow.myReportedQuantity) }}</el-descriptions-item>
-            <el-descriptions-item label="我的剩余可报">
-              <b :class="{ 'my-remaining-zero': Number(reportRow.myRemainingQuantity) === 0 }">{{ fmtQty(reportRow.myRemainingQuantity) }}</b>
-            </el-descriptions-item>
-          </el-descriptions>
-          <div style="color: #909399; font-size: 12px; margin-top: 4px">本次合格+不良不得超过我的剩余可报数量。</div>
         </div>
 
         <!-- 本次报工表单 -->
@@ -199,10 +149,6 @@
             <el-descriptions-item label="工单">{{ detailForm.orderNo }}</el-descriptions-item>
             <el-descriptions-item label="工序">{{ detailForm.processName }}（序 {{ detailForm.processOrder }}）</el-descriptions-item>
             <el-descriptions-item label="状态">{{ statusLabel(detailForm.executionStatus) }}</el-descriptions-item>
-            <el-descriptions-item label="当前责任人">
-              <span v-if="detailForm.currentAssigneeName" class="cur-assignee">{{ detailForm.currentAssigneeName }}</span>
-              <span v-else style="color: #c0c4cc">待派工</span>
-            </el-descriptions-item>
             <el-descriptions-item label="设备">{{ detailForm.equipmentName || '不限' }}</el-descriptions-item>
             <el-descriptions-item label="操作员（旧）">{{ detailForm.operatorName || '-' }}</el-descriptions-item>
             <el-descriptions-item label="计划数量">{{ fmtQty(detailForm.inputQuantity) }}</el-descriptions-item>
@@ -368,16 +314,14 @@ function fmtTime(t?: string | null): string {
 const loading = ref(false)
 const executionList = ref<OperationExecutionVO[]>([])
 const total = ref(0)
-const activeTab = ref('mine')
-const queryParams = reactive<OperationExecutionQuery & { scope?: string }>({
+const queryParams = reactive<OperationExecutionQuery>({
   orderNo: '', processName: '', executionStatus: '', operatorName: '',
-  pageNum: 1, pageSize: 10, scope: '',
+  pageNum: 1, pageSize: 10,
 })
 
 const getList = async () => {
   loading.value = true
   try {
-    queryParams.scope = activeTab.value === 'mine' ? 'mine' : activeTab.value === 'done' ? 'done' : ''
     const res: any = await operationExecutionApi.list(queryParams)
     const data = res?.data
     executionList.value = Array.isArray(data) ? data : data?.records || []
@@ -388,7 +332,6 @@ const getList = async () => {
     loading.value = false
   }
 }
-const handleTabChange = () => { queryParams.pageNum = 1; getList() }
 const handleQuery = () => { queryParams.pageNum = 1; getList() }
 const handleReset = () => {
   Object.assign(queryParams, { orderNo: '', processName: '', executionStatus: '', pageNum: 1 })
@@ -405,32 +348,8 @@ const handlePause = async (row: OperationExecutionVO) => {
   catch (e: any) { ElMessage.error(e?.message || '操作失败') }
 }
 
-// WP-D 完成提示：Assignment gate 前置反馈（待分配/剩余未完成）+ 0 报工 / 低于计划 / 超计划 warning（后端 gate 为准）
+// 完成提示：0 报工 / 低于计划 / 超计划 warning（后端 gate 为准）
 const handleComplete = async (row: OperationExecutionVO) => {
-  // WP-D：先检查 Assignment 视图——还有待分配数量 或 有人剩余>0 → 提前提示，不能完成
-  let gateMsg = ''
-  if (row.executionId) {
-    try {
-      const { getAssignmentByExecution } = await import('@/api/production/assignment')
-      const res: any = await getAssignmentByExecution(row.executionId)
-      const view = res?.data
-      if (view) {
-        const unassigned = Number(view.unassignedQuantity || 0)
-        const activeLines = (view.assignments || []).filter((l: any) =>
-          l.derivedStatus === 'ACTIVE' && Number(l.remainingQuantity) > 0)
-        if (unassigned > 0 || activeLines.length) {
-          const lines = activeLines.map((l: any) => `${l.assigneeName}剩余：${l.remainingQuantity}`).join('；')
-          gateMsg = `当前工序尚有未完成作业，不能完成。`
-          if (unassigned > 0) gateMsg += `\n待分配：${unassigned}`
-          if (lines) gateMsg += `\n${lines}`
-        }
-      }
-    } catch { /* 查询失败不阻塞，后端 gate 兜底 */ }
-  }
-  if (gateMsg) {
-    ElMessage.warning(gateMsg)
-    return
-  }
   const qualified = Number(row.qualifiedQuantity || 0)
   const defective = Number(row.defectiveQuantity || 0)
   const planned = Number(row.inputQuantity || 0)
@@ -494,19 +413,11 @@ const handleSubmitReport = async () => {
   if (reportForm.workStartTime && reportForm.workEndTime && reportForm.workEndTime < reportForm.workStartTime) {
     ElMessage.warning('结束时间不能早于开始时间'); return
   }
-  // WP-D：Assignment 模式——本次合格+不良不得超过我的剩余可报数量（前端提前拦截，后端仍为安全边界）
-  const myRemaining = Number(reportRow.value?.myRemainingQuantity)
-  if (reportRow.value?.myAssignmentId != null && !isNaN(myRemaining) && myRemaining >= 0) {
-    if (q + d > myRemaining) {
-      ElMessage.warning(`本次报工 ${q + d} 超过我的剩余可报 ${myRemaining}，请调整`)
-      return
-    }
-  }
-  // 超计划确认（后端允许；Legacy 无 Assignment 时仍按 Execution 计划提示）
+  // 超计划确认（后端允许；按 Execution 计划提示）
   const planned = Number(reportRow.value?.inputQuantity || 0)
   const curQ = Number(reportRow.value?.qualifiedQuantity || 0)
   const curD = Number(reportRow.value?.defectiveQuantity || 0)
-  if (reportRow.value?.myAssignmentId == null && planned > 0 && curQ + curD + q + d > planned) {
+  if (planned > 0 && curQ + curD + q + d > planned) {
     try {
       await ElMessageBox.confirm(`本次报工后累计产出将超过计划数量 ${planned}，是否继续？`, '超计划提示', { type: 'warning' })
     } catch { return }
@@ -640,8 +551,6 @@ onMounted(() => {
 .filter-card { margin-bottom: 16px; }
 .filter-bar { display: flex; gap: 10px; align-items: center; padding-bottom: 8px; flex-wrap: wrap; }
 .pagination-wrap { margin-top: 16px; display: flex; justify-content: flex-end; }
-.cur-assignee { font-weight: 500; color: #303133; }
-.my-remaining-zero { color: #c0c4cc; }
 .progress-section { margin-top: 14px; }
 .progress-title { font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 8px; }
 </style>

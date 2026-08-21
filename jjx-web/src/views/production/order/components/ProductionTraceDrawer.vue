@@ -46,7 +46,6 @@
           <el-radio-group v-model="category" size="small" @change="handleFilterChange">
             <el-radio-button value="">全部</el-radio-button>
             <el-radio-button value="EXECUTION">生产执行</el-radio-button>
-            <el-radio-button value="DISPATCH">责任流转</el-radio-button>
             <el-radio-button value="WORK_REPORT">报工</el-radio-button>
             <el-radio-button value="QUALITY">质量</el-radio-button>
           </el-radio-group>
@@ -119,19 +118,13 @@ const trace = ref<OrderTraceVO | null>(null)
 const category = ref('')
 const executionId = ref<number | undefined>(undefined)
 
-/** 16 个 eventType → 中文（与后端 TraceEventType 一一对应，前端不新增类型） */
+/** 12 个 eventType → 中文（与后端 TraceEventType 一一对应，前端不新增类型） */
 const EVENT_LABEL: Record<string, string> = {
   [TraceEventType.ORDER_CREATED]: '订单创建',
   [TraceEventType.ORDER_STARTED]: '订单开始',
   [TraceEventType.ORDER_COMPLETED]: '订单完成',
   [TraceEventType.EXECUTION_STARTED]: '工序开始',
   [TraceEventType.EXECUTION_COMPLETED]: '工序完成',
-  [TraceEventType.DISPATCH_ASSIGNED]: '初始派工',
-  [TraceEventType.DISPATCH_DELEGATED]: '继续派工',
-  [TraceEventType.DISPATCH_REASSIGNED]: '改派',
-  [TraceEventType.DISPATCH_RETURNED]: '退回上级',
-  [TraceEventType.DISPATCH_REJECTED]: '派工拒绝/整单退回',
-  [TraceEventType.DISPATCH_COMPLETED]: '派工完成',
   [TraceEventType.WORK_REPORT_SUBMITTED]: '生产报工',
   [TraceEventType.WORK_REPORT_CANCELLED]: '撤销报工',
   [TraceEventType.QUALITY_CREATED]: '创建质检',
@@ -143,7 +136,6 @@ const EVENT_LABEL: Record<string, string> = {
 const CATEGORY_LABEL: Record<string, string> = {
   ORDER: '订单',
   EXECUTION: '生产执行',
-  DISPATCH: '责任流转',
   WORK_REPORT: '报工',
   QUALITY: '质量',
 }
@@ -153,18 +145,14 @@ function eventTagType(eventType: string): 'info' | 'primary' | 'success' | 'warn
   switch (eventType) {
     case TraceEventType.ORDER_COMPLETED:
     case TraceEventType.EXECUTION_COMPLETED:
-    case TraceEventType.DISPATCH_COMPLETED:
     case TraceEventType.QUALITY_PASSED:
       return 'success'
     case TraceEventType.QUALITY_FAILED:
     case TraceEventType.WORK_REPORT_CANCELLED:
-    case TraceEventType.DISPATCH_REJECTED:
       return 'danger'
     case TraceEventType.ORDER_CREATED:
     case TraceEventType.QUALITY_CREATED:
       return 'info'
-    case TraceEventType.DISPATCH_RETURNED:
-      return 'warning'
     default:
       return 'primary'
   }

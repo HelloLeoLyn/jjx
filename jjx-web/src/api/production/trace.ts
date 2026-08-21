@@ -53,12 +53,6 @@ export const TraceEventType = {
   ORDER_COMPLETED: 'ORDER_COMPLETED',
   EXECUTION_STARTED: 'EXECUTION_STARTED',
   EXECUTION_COMPLETED: 'EXECUTION_COMPLETED',
-  DISPATCH_ASSIGNED: 'DISPATCH_ASSIGNED',
-  DISPATCH_DELEGATED: 'DISPATCH_DELEGATED',
-  DISPATCH_REASSIGNED: 'DISPATCH_REASSIGNED',
-  DISPATCH_RETURNED: 'DISPATCH_RETURNED',
-  DISPATCH_REJECTED: 'DISPATCH_REJECTED',
-  DISPATCH_COMPLETED: 'DISPATCH_COMPLETED',
   WORK_REPORT_SUBMITTED: 'WORK_REPORT_SUBMITTED',
   WORK_REPORT_CANCELLED: 'WORK_REPORT_CANCELLED',
   QUALITY_CREATED: 'QUALITY_CREATED',
@@ -69,7 +63,7 @@ export const TraceEventType = {
 export type TraceEventTypeValue = (typeof TraceEventType)[keyof typeof TraceEventType]
 
 /** P4-B：事件类别（分类筛选用） */
-export type TraceCategory = 'ORDER' | 'EXECUTION' | 'DISPATCH' | 'WORK_REPORT' | 'QUALITY'
+export type TraceCategory = 'ORDER' | 'EXECUTION' | 'WORK_REPORT' | 'QUALITY'
 
 /** P4-B：时间线事件 */
 export interface TraceEventVO {
@@ -77,8 +71,6 @@ export interface TraceEventVO {
   eventTime: string
   orderId: number
   executionId?: number | null
-  dispatchId?: number | null
-  dispatchNodeId?: number | null
   workReportId?: number | null
   qualityInspectionId?: number | null
   actorId?: number | null

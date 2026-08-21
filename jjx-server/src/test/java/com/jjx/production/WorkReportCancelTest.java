@@ -7,8 +7,6 @@ import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
-import com.jjx.production.mapper.ProductionDispatchMapper;
-import com.jjx.production.mapper.ProductionDispatchNodeMapper;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.WorkReportProjectionService;
@@ -49,8 +47,7 @@ class WorkReportCancelTest {
         var ctor = WorkReportActionServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
         service = (WorkReportActionServiceImpl) ctor.newInstance(workReportMapper, executionMapper,
-                mock(ProductionDispatchMapper.class), mock(ProductionDispatchNodeMapper.class),
-                mock(com.jjx.system.mapper.SysUserMapper.class), projectionService, readService, null,
+                projectionService, readService, null,
                 mock(com.jjx.production.service.QualityInspectionService.class));
     }
 

@@ -10,7 +10,7 @@ import com.jjx.production.domain.vo.WorkReportVO;
  */
 public interface WorkReportActionService {
 
-    /** SUBMIT：创建一次不可覆盖的报工事实（内部解析 dispatch/node/reporter 锚点；成功后重算 execution projection） */
+    /** SUBMIT：创建一次不可覆盖的报工事实（内部解析 execution/reporter 锚点；成功后重算 execution projection） */
     WorkReportVO submit(WorkReportSubmitDTO dto, String operatorName, Long operatorId);
 
     /** CANCEL：SUBMITTED → CANCELLED（条件更新防并发；成功后重算 projection；已 CANCELLED 幂等） */

@@ -33,8 +33,6 @@ class ProductionWorkReportMapperTest {
         r.setOrderId(2L);
         r.setOrderNo("SO-001");
         r.setExecutionId(3L);
-        r.setDispatchId(4L);
-        r.setDispatchNodeId(5L);
         r.setReporterId(104L);
         r.setReporterName("印刷一组工人");
         r.setQualifiedQuantity(new BigDecimal("950.0000"));
@@ -53,7 +51,6 @@ class ProductionWorkReportMapperTest {
         assertEquals(1, mapper.insert(r));
         // 核心事实字段语义
         assertEquals(3L, r.getExecutionId());
-        assertEquals(5L, r.getDispatchNodeId());
         assertEquals(104L, r.getReporterId());
         assertEquals(new BigDecimal("950.0000"), r.getQualifiedQuantity());
         assertEquals(WorkReportStatusEnum.SUBMITTED.getCode(), r.getReportStatus());
@@ -69,13 +66,6 @@ class ProductionWorkReportMapperTest {
     }
 
     @Test
-    void queryByDispatchNodeId() {
-        mapper.selectList(Wrappers.<ProductionWorkReport>lambdaQuery()
-                .eq(ProductionWorkReport::getDispatchNodeId, 5L));
-        verify(mapper).selectList(any());
-    }
-
-    @Test
     void entityHasNoReportNoOrInputOutputFields() throws Exception {
         // 正式决策：无 report_no / input_quantity / output_quantity / org 快照
         for (var f : ProductionWorkReport.class.getDeclaredFields()) {
@@ -87,8 +77,6 @@ class ProductionWorkReportMapperTest {
                     || f.getName().contains("orgPath"), "不应有 org 快照");
         }
         // 必须有的字段
-        assertTrue(hasField("dispatchId"));
-        assertTrue(hasField("dispatchNodeId"));
         assertTrue(hasField("cancelReason"));
         assertTrue(hasField("cancelledAt"));
     }

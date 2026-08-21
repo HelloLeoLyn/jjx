@@ -754,9 +754,6 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
     case 'pick-material':
       handlePickMaterial(order)
       break
-    case 'dispatch':
-      router.push({ path: '/production/dispatch', query: { orderNo: order.orderNo } })
-      break
     default:
       ElMessage.warning('暂不支持该操作')
   }

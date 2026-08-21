@@ -51,23 +51,6 @@ export interface OperationExecutionVO {
   createTime?: string
   updateTime?: string
 
-  // P2-D：P1 DispatchNode currentAssignee projection
-  currentAssigneeId?: number
-  currentAssigneeName?: string
-  currentOrgName?: string
-  currentNodeId?: number
-  dispatchId?: number
-  assigneeSource?: string
-  canReport?: boolean
-
-  // WP-D：Assignment 视角（执行人“我的份额”）
-  hasAssignment?: boolean
-  myAssignmentId?: number
-  myAssignedQuantity?: number
-  myReportedQuantity?: number
-  myRemainingQuantity?: number
-  myAssignmentStatus?: string
-
   // 计算字段
   hasStarted?: boolean
   hasEnded?: boolean

@@ -1,6 +1,5 @@
 package com.jjx.production;
 
-import com.jjx.production.domain.entity.ProductionDispatchLog;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.OrderTraceVO;
@@ -9,7 +8,6 @@ import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.domain.vo.QualityInspectionVO;
 import com.jjx.production.domain.vo.TraceEventVO;
 import com.jjx.production.enums.TraceEventType;
-import com.jjx.production.mapper.ProductionDispatchLogMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionOperationExecutionService;
@@ -33,11 +31,11 @@ import static org.mockito.Mockito.*;
 
 /**
  * P4-B 测试：TraceQueryService 只读聚合
- * - 完整 order trace 聚合（Order/Execution/DispatchLog/WorkReport/Quality）
+ * - 完整 order trace 聚合（Order/Execution/WorkReport/Quality）
  * - 事件时间排序稳定 + 相同时间 sourceRank 排序
- * - 空 WorkReport/Quality 正常；无 Dispatch 正常
+ * - 空 WorkReport/Quality 正常
  * - 历史 execution processName 缺失时降级 "工序 {processOrder}"
- * - WorkReport SUBMITTED/CANCELLED；Quality CREATED/PASS/FAIL；DispatchLog 动作映射
+ * - WorkReport SUBMITTED/CANCELLED；Quality CREATED/PASS/FAIL
  * - 只读：不产生任何业务数据修改
  */
 class TraceQueryServiceTest {
@@ -46,7 +44,6 @@ class TraceQueryServiceTest {
     private ProductionOrderService orderService;
     private ProductionOrderMapper orderMapper;
     private ProductionOperationExecutionService executionService;
-    private ProductionDispatchLogMapper dispatchLogMapper;
     private ProductionWorkReportMapper workReportMapper;
     private QualityInspectionService qualityInspectionService;
 
@@ -55,14 +52,13 @@ class TraceQueryServiceTest {
         orderService = mock(ProductionOrderService.class);
         orderMapper = mock(ProductionOrderMapper.class);
         executionService = mock(ProductionOperationExecutionService.class);
-        dispatchLogMapper = mock(ProductionDispatchLogMapper.class);
         workReportMapper = mock(ProductionWorkReportMapper.class);
         qualityInspectionService = mock(QualityInspectionService.class);
 
         var ctor = TraceQueryServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
         service = (TraceQueryServiceImpl) ctor.newInstance(
-                orderService, orderMapper, executionService, dispatchLogMapper, workReportMapper, qualityInspectionService);
+                orderService, orderMapper, executionService, workReportMapper, qualityInspectionService);
     }
 
     private ProductionOrderVO order(Long id, String no) {
@@ -105,28 +101,12 @@ class TraceQueryServiceTest {
         return e;
     }
 
-    private ProductionDispatchLog log(Long logId, Long dispatchId, String action, String content,
-                                      LocalDateTime time, String operator) {
-        ProductionDispatchLog l = new ProductionDispatchLog();
-        l.setLogId(logId);
-        l.setDispatchId(dispatchId);
-        l.setOrderId(1L);
-        l.setAction(action);
-        l.setContent(content);
-        l.setCreateTime(time);
-        l.setOperatorName(operator);
-        l.setOperatorId(94L);
-        return l;
-    }
-
     private ProductionWorkReport report(Long reportId, LocalDateTime reportTime, LocalDateTime cancelledAt,
                                         String status, String reporter) {
         ProductionWorkReport r = new ProductionWorkReport();
         r.setReportId(reportId);
         r.setOrderId(1L);
         r.setExecutionId(3L);
-        r.setDispatchId(1L);
-        r.setDispatchNodeId(20L);
         r.setReporterName(reporter);
         r.setReporterId(96L);
         r.setQualifiedQuantity(BigDecimal.valueOf(100));
@@ -171,10 +151,6 @@ class TraceQueryServiceTest {
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 5), LocalDateTime.of(2026, 8, 19, 11, 0)),
                 exec(2L, 2, "冲型", LocalDateTime.of(2026, 8, 19, 11, 10), LocalDateTime.of(2026, 8, 19, 12, 0))));
 
-        when(dispatchLogMapper.selectList(any())).thenReturn(Arrays.asList(
-                log(1L, 1L, "ASSIGN", "指派：班组=印刷车间", LocalDateTime.of(2026, 8, 19, 10, 2), "prod_manager"),
-                log(2L, 1L, "REASSIGN", "改派为冲型车间主任", LocalDateTime.of(2026, 8, 19, 10, 3), "prod_manager")));
-
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
                 report(1L, LocalDateTime.of(2026, 8, 19, 11, 0), null, "SUBMITTED", "张三")));
 
@@ -186,8 +162,8 @@ class TraceQueryServiceTest {
         assertNotNull(trace.getOrderHeader());
         assertEquals(1L, trace.getOrderHeader().getOrderId());
         List<TraceEventVO> events = trace.getEvents();
-        // ORDER: CREATED + STARTED + COMPLETED = 3; EXECUTION: 2x2 = 4; DISPATCH: 2; WORK_REPORT: 1; QUALITY: 2 (CREATED+PASS)
-        assertEquals(3 + 4 + 2 + 1 + 2, events.size());
+        // ORDER: CREATED + STARTED + COMPLETED = 3; EXECUTION: 2x2 = 4; WORK_REPORT: 1; QUALITY: 2 (CREATED+PASS)
+        assertEquals(3 + 4 + 1 + 2, events.size());
 
         // 时间升序验证
         for (int i = 1; i < events.size(); i++) {
@@ -209,8 +185,6 @@ class TraceQueryServiceTest {
         // 所有事件时间完全相同 10:00
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(Arrays.asList(
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 0), null)));
-        when(dispatchLogMapper.selectList(any())).thenReturn(Arrays.asList(
-                log(1L, 1L, "ASSIGN", "指派", LocalDateTime.of(2026, 8, 19, 10, 0), "prod_manager")));
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
                 report(1L, LocalDateTime.of(2026, 8, 19, 10, 0), null, "SUBMITTED", "张三")));
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(Arrays.asList(
@@ -219,12 +193,11 @@ class TraceQueryServiceTest {
         OrderTraceVO trace = service.getOrderTrace(1L);
         List<String> types = trace.getEvents().stream().map(TraceEventVO::getEventType).toList();
 
-        // ORDER(1) < EXECUTION(2) < DISPATCH(3) < WORK_REPORT(4) < QUALITY(5)
+        // ORDER(1) < EXECUTION(2) < WORK_REPORT(3) < QUALITY(4)
         assertEquals(TraceEventType.ORDER_CREATED, types.get(0));
         assertEquals(TraceEventType.EXECUTION_STARTED, types.get(1));
-        assertEquals(TraceEventType.DISPATCH_ASSIGNED, types.get(2));
-        assertEquals(TraceEventType.WORK_REPORT_SUBMITTED, types.get(3));
-        assertEquals(TraceEventType.QUALITY_CREATED, types.get(4));
+        assertEquals(TraceEventType.WORK_REPORT_SUBMITTED, types.get(2));
+        assertEquals(TraceEventType.QUALITY_CREATED, types.get(3));
     }
 
     // ==================== 3. 空 WorkReport / Quality 正常 ====================
@@ -236,7 +209,6 @@ class TraceQueryServiceTest {
         mockOrder(1L, "WO-001", entity);
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(Arrays.asList(
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 5), null)));
-        when(dispatchLogMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
 
@@ -245,13 +217,12 @@ class TraceQueryServiceTest {
         assertEquals(3, trace.getEvents().size());
     }
 
-    // ==================== 4. 无 Dispatch 正常 ====================
+    // ==================== 4. 空来源正常 ====================
 
     @Test
-    void noDispatch_ok() {
+    void emptySources_ok() {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
-        when(dispatchLogMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
 
@@ -267,7 +238,6 @@ class TraceQueryServiceTest {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(Arrays.asList(
                 exec(3L, 2, null, LocalDateTime.of(2026, 8, 19, 10, 0), LocalDateTime.of(2026, 8, 19, 11, 0))));
-        when(dispatchLogMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
 
@@ -283,7 +253,6 @@ class TraceQueryServiceTest {
     void workReportSubmittedAndCancelled_bothEmitted() {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
-        when(dispatchLogMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
                 report(1L, LocalDateTime.of(2026, 8, 19, 11, 0), LocalDateTime.of(2026, 8, 19, 11, 30), "CANCELLED", "张三")));
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
@@ -303,7 +272,6 @@ class TraceQueryServiceTest {
     void qualityCreatedPassFail_emitted() {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
-        when(dispatchLogMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(Arrays.asList(
                 quality(1L, "pass", LocalDateTime.of(2026, 8, 19, 13, 0), LocalDateTime.of(2026, 8, 19, 13, 5), "质检员"),
@@ -321,36 +289,6 @@ class TraceQueryServiceTest {
         assertEquals("pending", failCreated.getStatus());
     }
 
-    // ==================== 8. DispatchLog 动作映射 ====================
-
-    @Test
-    void dispatchLogActionMapping() {
-        mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
-        when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
-        LocalDateTime t = LocalDateTime.of(2026, 8, 19, 10, 0);
-        when(dispatchLogMapper.selectList(any())).thenReturn(Arrays.asList(
-                log(1L, 1L, "ASSIGN", "指派", t, "a"),
-                log(2L, 1L, "DELEGATE", "下派", t, "a"),
-                log(3L, 1L, "REASSIGN", "改派", t, "a"),
-                log(4L, 1L, "RETURN", "退回", t, "a"),
-                log(5L, 1L, "REJECT", "整单退回", t, "a"),
-                log(6L, 1L, "COMPLETE", "完成", t, "a"),
-                log(7L, 1L, "START", "开始", t, "a")));
-        when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
-
-        OrderTraceVO trace = service.getOrderTrace(1L);
-        List<String> types = trace.getEvents().stream().map(TraceEventVO::getEventType).toList();
-        // START 无对应 eventType，跳过；其余 6 个按 sourceId 稳定排序
-        assertEquals(TraceEventType.DISPATCH_ASSIGNED, types.get(1));
-        assertEquals(TraceEventType.DISPATCH_DELEGATED, types.get(2));
-        assertEquals(TraceEventType.DISPATCH_REASSIGNED, types.get(3));
-        assertEquals(TraceEventType.DISPATCH_RETURNED, types.get(4));
-        assertEquals(TraceEventType.DISPATCH_REJECTED, types.get(5));
-        assertEquals(TraceEventType.DISPATCH_COMPLETED, types.get(6));
-        assertFalse(types.contains("DISPATCH_STARTED"));
-    }
-
     // ==================== 9. category / executionId 过滤 ====================
 
     @Test
@@ -361,7 +299,6 @@ class TraceQueryServiceTest {
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(Arrays.asList(
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 5), null),
                 exec(2L, 2, "冲型", LocalDateTime.of(2026, 8, 19, 11, 0), null)));
-        when(dispatchLogMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
 
@@ -382,16 +319,12 @@ class TraceQueryServiceTest {
     void traceIsReadOnly_noWrites() {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
-        when(dispatchLogMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
 
         service.getOrderTrace(1L);
 
         // 只读验证：任何 insert/update/delete 均未被调用（BaseMapper 新签名兼容）
-        verify(dispatchLogMapper, never()).insert(any(ProductionDispatchLog.class));
-        verify(dispatchLogMapper, never()).update(any(ProductionDispatchLog.class), any());
-        verify(dispatchLogMapper, never()).delete(any());
         verify(workReportMapper, never()).insert(any(ProductionWorkReport.class));
         verify(workReportMapper, never()).update(any(ProductionWorkReport.class), any());
         verify(workReportMapper, never()).delete(any());
@@ -401,7 +334,6 @@ class TraceQueryServiceTest {
         // 确认只调用读方法
         verify(orderService).getOrderById(1L);
         verify(executionService).getExecutionsByOrderId(1L);
-        verify(dispatchLogMapper).selectList(any());
         verify(workReportMapper).selectList(any());
         verify(qualityInspectionService).listByOrderId(1L);
     }

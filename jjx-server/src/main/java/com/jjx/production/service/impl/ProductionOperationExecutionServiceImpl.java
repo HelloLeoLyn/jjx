@@ -10,7 +10,6 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.ProductionOperationExecutionCreateDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionQueryDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionUpdateDTO;
-import com.jjx.production.domain.entity.ProductionDispatch;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
@@ -40,15 +39,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final ProductionOrderMapper productionOrderMapper;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
-    private final com.jjx.production.service.DispatchService dispatchService;
     private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
-    private final com.jjx.production.service.DispatchNodeReadService dispatchNodeReadService;
-    private final com.jjx.production.mapper.ProductionDispatchMapper dispatchMapper;
     /** P3-C：FQC 自动创建 / 质检联动 */
     private final com.jjx.production.service.QualityActionService qualityActionService;
-    /** WP-D：Assignment 视角（我的份额/hasAssignment） */
-    private final com.jjx.production.mapper.ProductionExecutionAssignmentMapper assignmentMapper;
-    private final com.jjx.production.mapper.ProductionWorkReportMapper workReportMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -168,19 +161,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     public List<ProductionOperationExecutionVO> queryExecutionList(ProductionOperationExecutionQueryDTO queryDTO) {
         log.debug("查询工序执行列表: {}", queryDTO);
 
-        // WP-D：scope=mine → 我的当前任务（责任人 = ACTIVE Node assignee；执行人 = ACTIVE Assignment 且剩余>0）
-        //      scope=done → 我已完成（执行人：我的 Assignment 已完成/已释放；责任人：参与过且 Execution 已完成）
-        Long mineUserId = null;
-        boolean doneScope = false;
-        if (queryDTO != null) {
-            if ("mine".equalsIgnoreCase(queryDTO.getScope())) {
-                mineUserId = com.jjx.system.utils.SecurityUtils.getUserId();
-            } else if ("done".equalsIgnoreCase(queryDTO.getScope())) {
-                mineUserId = com.jjx.system.utils.SecurityUtils.getUserId();
-                doneScope = true;
-            }
-        }
-
         LambdaQueryWrapper<ProductionOperationExecution> wrapper = buildQueryWrapper(queryDTO);
         wrapper.orderByDesc(ProductionOperationExecution::getCreateTime);
 
@@ -193,198 +173,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         enrichExecutionVOs(vos);
         // V1 Fix Pack FIX-2：排除 CANCELLED 工单的工序（历史保留，不进入生产操作任务）
         vos.removeIf(vo -> Boolean.TRUE.equals(isOrderCancelled(vo.getOrderId())));
-        // P2-D/WP-D：填充 currentAssignee projection + Assignment 视角（hasAssignment/myXXX/canReport）
-        fillCurrentAssigneeProjection(vos);
-        if (mineUserId != null) {
-            final Long meId = mineUserId;
-            if (doneScope) {
-                // 我已完成：执行人视角（我的 Assignment 剩余==0 或已释放）+ 责任人视角（曾参与且 Execution 已完成）
-                java.util.Set<Long> myExecIds = myInvolvedExecutionIds(meId);
-                vos.removeIf(vo -> {
-                    if (!myExecIds.contains(vo.getExecutionId())) return true;
-                    // Execution 已完成：参与即算（责任人/执行人都覆盖）
-                    if (com.jjx.production.enums.ExecutionStatusEnum.COMPLETED.getCode()
-                            .equals(vo.getExecutionStatus())) {
-                        return false;
-                    }
-                    // Execution 未完成：仅执行人视角，且我的剩余已归零（完成/已释放）
-                    return !(vo.getMyAssignmentId() != null
-                            && vo.getMyRemainingQuantity() != null
-                            && vo.getMyRemainingQuantity().compareTo(BigDecimal.ZERO) <= 0);
-                });
-            } else {
-                // 我的当前任务：责任人（ACTIVE Node assignee + 未完成）∪ 执行人（ACTIVE Assignment 剩余>0）
-                vos.removeIf(vo -> {
-                    // 已完成/已取消不出现在“我的当前任务”
-                    if (com.jjx.production.enums.ExecutionStatusEnum.COMPLETED.getCode().equals(vo.getExecutionStatus())
-                            || com.jjx.production.enums.ExecutionStatusEnum.CANCELLED.getCode().equals(vo.getExecutionStatus())) {
-                        return true;
-                    }
-                    boolean isCurrentAssignee = meId.equals(vo.getCurrentAssigneeId());
-                    boolean isActiveExecutor = vo.getMyAssignmentId() != null
-                            && vo.getMyRemainingQuantity() != null
-                            && vo.getMyRemainingQuantity().compareTo(BigDecimal.ZERO) > 0;
-                    return !isCurrentAssignee && !isActiveExecutor;
-                });
-            }
-        }
         return vos;
-    }
-
-    /**
-     * P2-D/WP-D：按 execution 填充 currentAssignee projection + Assignment 视角
-     * execution → dispatch(execution_id 1:1) → ACTIVE node → assignee/org 快照
-     * Assignment 视角：hasAssignment（存在非 CANCELLED 分配）+ 当前用户的“我的份额”
-     * canReport：
-     *   - 有 Assignment → 仅当前用户有 ACTIVE Assignment 且剩余>0（执行人报工；责任人无分配不能报）
-     *   - 无 Assignment → Legacy：有 work-report:add 权限且是 ACTIVE assignee 本人
-     */
-    private void fillCurrentAssigneeProjection(List<ProductionOperationExecutionVO> vos) {
-        if (vos == null || vos.isEmpty()) return;
-        Long me = com.jjx.system.utils.SecurityUtils.getUserId();
-        boolean hasReportPerm = com.jjx.system.utils.SecurityUtils.hasPermission("production:work-report:add");
-        // 批量取这些 execution 的 Assignment（避免 N+1）
-        java.util.Map<Long, List<com.jjx.production.domain.entity.ProductionExecutionAssignment>> execAssignments =
-                loadAssignmentsByExecutionIds(vos.stream()
-                        .map(ProductionOperationExecutionVO::getExecutionId)
-                        .filter(java.util.Objects::nonNull)
-                        .collect(Collectors.toList()));
-        for (ProductionOperationExecutionVO vo : vos) {
-            try {
-                List<com.jjx.production.domain.entity.ProductionExecutionAssignment> rows =
-                        execAssignments.getOrDefault(vo.getExecutionId(), java.util.Collections.emptyList());
-                // hasAssignment：存在非 CANCELLED 分配
-                boolean hasAssignment = rows.stream().anyMatch(a -> !com.jjx.production.enums.AssignmentStatusEnum.CANCELLED
-                        .getCode().equals(a.getAssignmentStatus()));
-                vo.setHasAssignment(hasAssignment);
-                // 我的份额（非 CANCELLED 分配；唯一约束下最多一个，防御取第一个）
-                com.jjx.production.domain.entity.ProductionExecutionAssignment mine = rows.stream()
-                        .filter(a -> !com.jjx.production.enums.AssignmentStatusEnum.CANCELLED
-                                .getCode().equals(a.getAssignmentStatus()))
-                        .filter(a -> me != null && me.equals(a.getAssigneeId()))
-                        .findFirst().orElse(null);
-                if (mine != null) {
-                    BigDecimal assigned = mine.getAssignedQuantity() != null ? mine.getAssignedQuantity() : BigDecimal.ZERO;
-                    BigDecimal released = mine.getReleasedQuantity() != null ? mine.getReleasedQuantity() : BigDecimal.ZERO;
-                    BigDecimal reported = reportedByAssignment(mine.getAssignmentId());
-                    BigDecimal remaining = assigned.subtract(released).subtract(reported);
-                    if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
-                    vo.setMyAssignmentId(mine.getAssignmentId());
-                    vo.setMyAssignedQuantity(assigned);
-                    vo.setMyReportedQuantity(reported);
-                    vo.setMyRemainingQuantity(remaining);
-                    vo.setMyAssignmentStatus(remaining.compareTo(BigDecimal.ZERO) <= 0
-                            ? com.jjx.production.enums.AssignmentStatusEnum.COMPLETED.getCode()
-                            : com.jjx.production.enums.AssignmentStatusEnum.ACTIVE.getCode());
-                } else {
-                    vo.setMyAssignmentId(null);
-                    vo.setMyAssignedQuantity(null);
-                    vo.setMyReportedQuantity(null);
-                    vo.setMyRemainingQuantity(null);
-                    vo.setMyAssignmentStatus(null);
-                }
-
-                ProductionDispatch dispatch = dispatchMapper.selectOne(
-                        Wrappers.<ProductionDispatch>lambdaQuery()
-                                .eq(ProductionDispatch::getExecutionId, vo.getExecutionId())
-                                .last("LIMIT 1"));
-                if (dispatch == null) {
-                    vo.setAssigneeSource("NONE");
-                    vo.setCanReport(false);
-                    continue;
-                }
-                vo.setDispatchId(dispatch.getDispatchId());
-                com.jjx.production.domain.vo.DispatchNodeVO cur =
-                        dispatchNodeReadService.getCurrentActiveNode(dispatch.getDispatchId());
-                if (cur == null) {
-                    vo.setAssigneeSource("NONE");
-                    vo.setCanReport(false);
-                    continue;
-                }
-                vo.setCurrentNodeId(cur.getNodeId());
-                vo.setCurrentAssigneeId(cur.getAssigneeId());
-                vo.setCurrentAssigneeName(cur.getAssigneeName());
-                vo.setCurrentOrgName(cur.getOrgName());
-                vo.setAssigneeSource(cur.getSource());
-                // canReport：Assignment 链路 → 执行人（我的 ACTIVE 分配剩余>0）；Legacy → ACTIVE assignee + 权限
-                if (hasAssignment) {
-                    vo.setCanReport(vo.getMyAssignmentId() != null
-                            && vo.getMyRemainingQuantity() != null
-                            && vo.getMyRemainingQuantity().compareTo(BigDecimal.ZERO) > 0);
-                } else {
-                    vo.setCanReport(hasReportPerm && me != null && me.equals(cur.getAssigneeId()));
-                }
-            } catch (Exception e) {
-                log.warn("填充 currentAssignee 投影失败 executionId={}: {}", vo.getExecutionId(), e.getMessage());
-                vo.setCanReport(false);
-            }
-        }
-    }
-
-    /** 批量加载 executionId → 其 Assignment 列表 */
-    private java.util.Map<Long, List<com.jjx.production.domain.entity.ProductionExecutionAssignment>>
-    loadAssignmentsByExecutionIds(List<Long> executionIds) {
-        java.util.Map<Long, List<com.jjx.production.domain.entity.ProductionExecutionAssignment>> map = new java.util.HashMap<>();
-        if (executionIds == null || executionIds.isEmpty()) return map;
-        try {
-            List<com.jjx.production.domain.entity.ProductionExecutionAssignment> rows = assignmentMapper.selectList(
-                    Wrappers.<com.jjx.production.domain.entity.ProductionExecutionAssignment>lambdaQuery()
-                            .in(com.jjx.production.domain.entity.ProductionExecutionAssignment::getExecutionId, executionIds)
-                            .orderByAsc(com.jjx.production.domain.entity.ProductionExecutionAssignment::getAssignmentId));
-            for (com.jjx.production.domain.entity.ProductionExecutionAssignment r : rows) {
-                map.computeIfAbsent(r.getExecutionId(), k -> new java.util.ArrayList<>()).add(r);
-            }
-        } catch (Exception e) {
-            log.warn("批量加载 Assignment 失败: {}", e.getMessage());
-        }
-        return map;
-    }
-
-    /** 某 Assignment 的有效 SUBMITTED 报工汇总（qualified+defective） */
-    private BigDecimal reportedByAssignment(Long assignmentId) {
-        if (assignmentId == null) return BigDecimal.ZERO;
-        try {
-            List<com.jjx.production.domain.entity.ProductionWorkReport> reports = workReportMapper.selectList(
-                    Wrappers.<com.jjx.production.domain.entity.ProductionWorkReport>lambdaQuery()
-                            .eq(com.jjx.production.domain.entity.ProductionWorkReport::getAssignmentId, assignmentId)
-                            .eq(com.jjx.production.domain.entity.ProductionWorkReport::getReportStatus,
-                                    com.jjx.production.enums.WorkReportStatusEnum.SUBMITTED.getCode()));
-            BigDecimal sum = BigDecimal.ZERO;
-            for (com.jjx.production.domain.entity.ProductionWorkReport r : reports) {
-                BigDecimal q = r.getQualifiedQuantity() != null ? r.getQualifiedQuantity() : BigDecimal.ZERO;
-                BigDecimal d = r.getDefectiveQuantity() != null ? r.getDefectiveQuantity() : BigDecimal.ZERO;
-                sum = sum.add(q).add(d);
-            }
-            return sum;
-        } catch (Exception e) {
-            log.warn("汇总 Assignment 报工失败 assignmentId={}: {}", assignmentId, e.getMessage());
-            return BigDecimal.ZERO;
-        }
-    }
-
-    /** WP-D：当前用户参与过的 Execution ID 集合（Assignment assignee 或 DispatchNode assignee） */
-    private java.util.Set<Long> myInvolvedExecutionIds(Long userId) {
-        java.util.Set<Long> ids = new java.util.HashSet<>();
-        if (userId == null) return ids;
-        try {
-            // 1. Assignment assignee=我
-            List<com.jjx.production.domain.entity.ProductionExecutionAssignment> myAssigns = assignmentMapper.selectList(
-                    Wrappers.<com.jjx.production.domain.entity.ProductionExecutionAssignment>lambdaQuery()
-                            .eq(com.jjx.production.domain.entity.ProductionExecutionAssignment::getAssigneeId, userId));
-            for (com.jjx.production.domain.entity.ProductionExecutionAssignment a : myAssigns) {
-                if (a.getExecutionId() != null) ids.add(a.getExecutionId());
-            }
-            // 2. DispatchNode assignee=我（经 dispatch → execution）
-            List<Long> nodeExecIds = jdbcTemplate.query(
-                    "SELECT d.execution_id FROM production_dispatch_node n "
-                            + "JOIN production_dispatch d ON d.dispatch_id = n.dispatch_id "
-                            + "WHERE n.assignee_id = ? AND d.execution_id IS NOT NULL",
-                    (rs, i) -> rs.getLong("execution_id"), userId);
-            ids.addAll(nodeExecIds);
-        } catch (Exception e) {
-            log.warn("查询我的参与 Execution 失败 userId={}: {}", userId, e.getMessage());
-        }
-        return ids;
     }
 
     /** 批量补全工单号、工序编码/名称 */
@@ -513,21 +302,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("记录状态不允许开始");
         }
 
-        // WP-E2E-BUG-01：未派工/无当前责任人不能开始（转工单已不再自动激活首道）
-        ProductionDispatch dispatch = dispatchMapper.selectOne(
-                Wrappers.<ProductionDispatch>lambdaQuery()
-                        .eq(ProductionDispatch::getExecutionId, executionId));
-        if (dispatch == null
-                || com.jjx.production.enums.DispatchStatusEnum.PENDING.getCode().equals(dispatch.getStatus())
-                || com.jjx.production.enums.DispatchStatusEnum.REJECTED.getCode().equals(dispatch.getStatus())) {
-            throw new BusinessException("工序未派工，无法开始");
-        }
-        com.jjx.production.domain.vo.DispatchNodeVO activeNode =
-                dispatchNodeReadService.getCurrentActiveNode(dispatch.getDispatchId());
-        if (activeNode == null) {
-            throw new BusinessException("工序无当前责任人，无法开始");
-        }
-
         // 更新状态为进行中
         execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
         execution.setActualStartTime(LocalDateTime.now());
@@ -538,12 +312,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         log.info("工序执行开始成功, ID: {}", executionId);
-        // 派工联动（2026-08-12）：执行开始 → 派工单同步为执行中
-        try {
-            dispatchService.syncByExecution(executionId, 2);
-        } catch (Exception e) {
-            log.warn("派工单联动开始失败: {}", e.getMessage());
-        }
         return true;
     }
 
@@ -670,47 +438,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("当前工序尚无有效报工记录，不能完成");
         }
 
-        // WP-B：Assignment-aware 完工 gate（不破坏无 Assignment 的历史柔性流程）
-        // 存在 Assignment 时：
-        //   ① 不允许存在 remaining > 0 的有效 Assignment
-        //   ② unassigned > 0 → 明确业务错误（“低于计划/短缺完工”是后续独立业务动作，不混入普通完成）
-        // 无 Assignment 的历史 Execution → 保持现有 V1 gate（柔性）
-        try {
-            Long activeCnt = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM production_execution_assignment WHERE execution_id = ? AND assignment_status = 'ACTIVE'",
-                    Long.class, executionId);
-            if (activeCnt != null && activeCnt > 0) {
-                // ① 存在剩余 > 0 的有效 Assignment → 拒绝
-                Long remainingCnt = jdbcTemplate.queryForObject(
-                        "SELECT COUNT(*) FROM production_execution_assignment a WHERE a.execution_id = ? "
-                                + "AND a.assignment_status = 'ACTIVE' "
-                                + "AND (a.assigned_quantity - a.released_quantity) > "
-                                + "COALESCE((SELECT SUM(qualified_quantity + defective_quantity) FROM production_work_report w "
-                                + "         WHERE w.assignment_id = a.assignment_id AND w.report_status = 'SUBMITTED'),0)",
-                        Long.class, executionId);
-                if (remainingCnt != null && remainingCnt > 0) {
-                    throw new BusinessException("存在未完成的作业分配（剩余数量 > 0），不能完成工序；请先完成或释放剩余");
-                }
-                // ② unassigned > 0 → 拒绝（计划未全部分配）
-                BigDecimal planned = execution.getInputQuantity() != null ? execution.getInputQuantity() : BigDecimal.ZERO;
-                BigDecimal assignedSum = jdbcTemplate.queryForObject(
-                        "SELECT COALESCE(SUM(assigned_quantity - released_quantity),0) FROM production_execution_assignment "
-                                + "WHERE execution_id = ? AND assignment_status <> 'CANCELLED'",
-                        BigDecimal.class, executionId);
-                if (assignedSum == null) assignedSum = BigDecimal.ZERO;
-                if (assignedSum.compareTo(planned) < 0) {
-                    throw new BusinessException("工序计划数量未全部分配（已分配 "
-                            + assignedSum.stripTrailingZeros().toPlainString()
-                            + " / 计划 " + planned.stripTrailingZeros().toPlainString()
-                            + "），不能完成工序");
-                }
-            }
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.warn("Assignment 完工校验异常(跳过): {}", e.getMessage());
-        }
-
         // 更新状态为已完成
         execution.setExecutionStatus(ExecutionStatusEnum.COMPLETED.getCode());
         execution.setActualEndTime(LocalDateTime.now());
@@ -727,12 +454,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         updateOrderCompletedQuantity(execution.getOrderId());
 
         log.info("工序执行完成成功, ID: {}", executionId);
-        // 派工联动（2026-08-12）：执行完成 → 派工单同步为已完成
-        try {
-            dispatchService.syncByExecution(executionId, 4);
-        } catch (Exception e) {
-            log.warn("派工单联动完成失败: {}", e.getMessage());
-        }
 
         // P3-C：最后有效 Execution 完成后自动创建 PENDING FQC（幂等：已有 PENDING 不重复创建）
         // 判断“最后有效工序”：同 order 下不存在 process_order 更大且未完成(非 COMPLETED/SKIPPED) 的工序

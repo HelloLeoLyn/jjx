@@ -17,8 +17,6 @@ public class WorkReportVO {
     private String orderNo;
 
     private Long executionId;
-    private Long dispatchId;
-    private Long dispatchNodeId;
 
     private Long reporterId;
     private String reporterName;

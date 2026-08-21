@@ -26,11 +26,6 @@ export const userApi = {
     return request.get<R<SysUser[]>>('/system/user/sales-persons')
   },
 
-  // 按角色 key 前缀查用户（2026-08-13 派工执行人按岗位带出）
-  rolePersons(roleKeyPrefix: string) {
-    return request.get<R<SysUser[]>>('/system/user/role-persons', { params: { roleKeyPrefix } })
-  },
-
   // 获取用户详情
   getInfo(userId: number) {
     return request.get<R<SysUser>>(`/system/user/${userId}`)

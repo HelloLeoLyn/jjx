@@ -20,14 +20,6 @@ public final class TraceEventType {
     public static final String EXECUTION_STARTED = "EXECUTION_STARTED";
     public static final String EXECUTION_COMPLETED = "EXECUTION_COMPLETED";
 
-    // ============ 责任流转（来自 production_dispatch_log） ============
-    public static final String DISPATCH_ASSIGNED = "DISPATCH_ASSIGNED";
-    public static final String DISPATCH_DELEGATED = "DISPATCH_DELEGATED";
-    public static final String DISPATCH_REASSIGNED = "DISPATCH_REASSIGNED";
-    public static final String DISPATCH_RETURNED = "DISPATCH_RETURNED";
-    public static final String DISPATCH_REJECTED = "DISPATCH_REJECTED";
-    public static final String DISPATCH_COMPLETED = "DISPATCH_COMPLETED";
-
     // ============ 报工 ============
     public static final String WORK_REPORT_SUBMITTED = "WORK_REPORT_SUBMITTED";
     public static final String WORK_REPORT_CANCELLED = "WORK_REPORT_CANCELLED";

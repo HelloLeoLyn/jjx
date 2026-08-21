@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 /**
  * P4-B：生产履历时间线事件（只读投影，非事实表）
  * <p>
- * Trace = 现有事实（Order/Execution/Dispatch/WorkReport/Quality）的统一只读投影。
+ * Trace = 现有事实（Order/Execution/WorkReport/Quality）的统一只读投影。
  * 事件由 TraceQueryService 从真实业务表推导，不落库、不修改任何业务状态。
  */
 @Data
@@ -27,12 +27,6 @@ public class TraceEventVO {
     /** 关联工序执行（可空） */
     private Long executionId;
 
-    /** 关联派工单（可空） */
-    private Long dispatchId;
-
-    /** 关联责任节点（可空；dispatch_log 无 node 关联时为 null） */
-    private Long dispatchNodeId;
-
     /** 关联报工（可空） */
     private Long workReportId;
 
@@ -48,13 +42,13 @@ public class TraceEventVO {
     /** 短标题（如"工序完成"） */
     private String title;
 
-    /** 详情（数量/质量结果/派工内容等展示信息） */
+    /** 详情（数量/质量结果/报工内容等展示信息） */
     private String description;
 
     /** 事件后状态（如 COMPLETED/pass/SUBMITTED） */
     private String status;
 
-    /** 来源类型：ORDER/EXECUTION/DISPATCH/WORK_REPORT/QUALITY */
+    /** 来源类型：ORDER/EXECUTION/WORK_REPORT/QUALITY */
     private String sourceType;
 
     /** 来源主键（orderId/executionId/logId/reportId/inspectionId） */

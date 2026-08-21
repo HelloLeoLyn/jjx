@@ -188,33 +188,4 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "设备利用率(%)")
     private BigDecimal equipmentUtilization;
 
-    // ============ P2-D：P1 DispatchNode currentAssignee projection ============
-    @Schema(description = "当前责任人ID（P1 ACTIVE DispatchNode）")
-    private Long currentAssigneeId;
-    @Schema(description = "当前责任人姓名")
-    private String currentAssigneeName;
-    @Schema(description = "当前责任人所属组织")
-    private String currentOrgName;
-    @Schema(description = "当前责任节点ID")
-    private Long currentNodeId;
-    @Schema(description = "派工单ID（有=已派工；无=待派工）")
-    private Long dispatchId;
-    @Schema(description = "数据来源：NODE/LEGACY/NONE")
-    private String assigneeSource;
-    @Schema(description = "当前用户是否可报工（有 add 权限且是 ACTIVE assignee；前端按钮显隐）")
-    private Boolean canReport;
-
-    // ============ WP-D：Assignment 视角（执行人“我的份额”） ============
-    @Schema(description = "该 Execution 是否存在 Assignment（true=新链路；false=Legacy 无 Assignment）")
-    private Boolean hasAssignment;
-    @Schema(description = "当前用户的作业分配ID（无=当前用户无分配）")
-    private Long myAssignmentId;
-    @Schema(description = "我的原始分配数量")
-    private java.math.BigDecimal myAssignedQuantity;
-    @Schema(description = "我的累计已报数量")
-    private java.math.BigDecimal myReportedQuantity;
-    @Schema(description = "我的剩余可报数量")
-    private java.math.BigDecimal myRemainingQuantity;
-    @Schema(description = "我的分配状态：ACTIVE/COMPLETED/CANCELLED")
-    private String myAssignmentStatus;
 }

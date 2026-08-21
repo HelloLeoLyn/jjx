@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 /**
  * 生产报工提交入参（P2-C）
- * 客户端不提交：orderId/orderNo/dispatchId/dispatchNodeId/reporterId/reporterName/equipmentName/reportStatus/reportTime
+ * 客户端不提交：orderId/orderNo/reporterId/reporterName/equipmentName/reportStatus/reportTime
  * ——全部由后端根据上下文生成或解析。
  */
 @Data

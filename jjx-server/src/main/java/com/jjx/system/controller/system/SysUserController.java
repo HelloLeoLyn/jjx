@@ -126,15 +126,6 @@ public class SysUserController extends BaseController {
     }
 
     /**
-     * 按角色 key 前缀查用户（2026-08-13 派工执行人按岗位角色带出：mgr/leader/worker）
-     */
-    @GetMapping("/role-persons")
-    @SaCheckPermission("production:dispatch:list")
-    public Result<List<SysUser>> rolePersons(@RequestParam String roleKeyPrefix) {
-        return Result.success(userService.selectUsersByRoleKeyPrefix(roleKeyPrefix));
-    }
-
-    /**
      * 根据用户编号获取详细信息
      */
     @GetMapping(value = "/{userId}")

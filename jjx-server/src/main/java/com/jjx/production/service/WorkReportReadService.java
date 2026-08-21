@@ -19,6 +19,4 @@ public interface WorkReportReadService {
     /** 按 executionId 查询已提交报工（后续 projection 汇总用） */
     List<WorkReportVO> listSubmittedByExecutionId(Long executionId);
 
-    /** 按 dispatchNodeId 查询报工（责任节点追溯） */
-    List<WorkReportVO> listByDispatchNodeId(Long dispatchNodeId);
 }

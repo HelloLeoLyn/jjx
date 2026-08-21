@@ -1,16 +1,11 @@
 package com.jjx.production;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.WorkReportSubmitDTO;
-import com.jjx.production.domain.entity.ProductionDispatch;
-import com.jjx.production.domain.entity.ProductionDispatchNode;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
-import com.jjx.production.mapper.ProductionDispatchMapper;
-import com.jjx.production.mapper.ProductionDispatchNodeMapper;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.WorkReportProjectionService;
@@ -28,22 +23,19 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
  * P2-C 回归测试：SUBMIT 报工核心规则
- * - ACTIVE assignee 提交成功，保存 execution/dispatch/node/reporter 锚点
- * - 非 ACTIVE 不可报；无 add 权限不可报
- * - 数量校验（负数/0+0/超计划/不良缺原因）
+ * - 有 add 权限提交成功，保存 execution/reporter 锚点
+ * - 无 add 权限不可报
+ * - 数量校验（负数/0+0/超计划允许/不良缺原因）
  */
 class WorkReportSubmitTest {
 
     private WorkReportActionServiceImpl service;
     private ProductionWorkReportMapper workReportMapper;
     private ProductionOperationExecutionMapper executionMapper;
-    private ProductionDispatchMapper dispatchMapper;
-    private ProductionDispatchNodeMapper nodeMapper;
     private WorkReportProjectionService projectionService;
     private WorkReportReadService readService;
 
@@ -51,19 +43,15 @@ class WorkReportSubmitTest {
     void setUp() throws Exception {
         workReportMapper = mock(ProductionWorkReportMapper.class);
         executionMapper = mock(ProductionOperationExecutionMapper.class);
-        dispatchMapper = mock(ProductionDispatchMapper.class);
-        nodeMapper = mock(ProductionDispatchNodeMapper.class);
         projectionService = mock(WorkReportProjectionService.class);
         readService = mock(WorkReportReadService.class);
         var ctor = WorkReportActionServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
         var jdbcTemplate = mock(JdbcTemplate.class);
-        // WP-B：无 Assignment（legacy 路径）→ jdbcTemplate 的 assignment 查询返回空
+        // orderNoOf 等辅助查询返回空
         when(jdbcTemplate.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any()))
                 .thenReturn(new java.util.ArrayList<>());
-        when(jdbcTemplate.queryForObject(anyString(), eq(BigDecimal.class), any())).thenReturn(BigDecimal.ZERO);
         service = (WorkReportActionServiceImpl) ctor.newInstance(workReportMapper, executionMapper,
-                dispatchMapper, nodeMapper, mock(com.jjx.system.mapper.SysUserMapper.class),
                 projectionService, readService, jdbcTemplate,
                 mock(com.jjx.production.service.QualityInspectionService.class));
     }
@@ -78,23 +66,6 @@ class WorkReportSubmitTest {
         return e;
     }
 
-    private ProductionDispatch dispatch() {
-        ProductionDispatch d = new ProductionDispatch();
-        d.setDispatchId(4L);
-        d.setExecutionId(3L);
-        return d;
-    }
-
-    private ProductionDispatchNode activeNode() {
-        ProductionDispatchNode n = new ProductionDispatchNode();
-        n.setNodeId(5L);
-        n.setDispatchId(4L);
-        n.setAssigneeId(104L);
-        n.setAssigneeName("印刷一组工人");
-        n.setNodeStatus("ACTIVE");
-        return n;
-    }
-
     private WorkReportSubmitDTO dto() {
         WorkReportSubmitDTO d = new WorkReportSubmitDTO();
         d.setExecutionId(3L);
@@ -107,10 +78,8 @@ class WorkReportSubmitTest {
     }
 
     @Test
-    void activeAssigneeSubmitSuccessSavesAnchors() {
+    void submitSuccessSavesCoreFactAnchors() {
         when(executionMapper.selectById(3L)).thenReturn(exec(ExecutionStatusEnum.EXECUTING.getCode()));
-        when(dispatchMapper.selectOne(any())).thenReturn(dispatch());
-        when(nodeMapper.selectOne(any())).thenReturn(activeNode());
         when(workReportMapper.insert(any(ProductionWorkReport.class))).thenAnswer(inv -> {
             ((ProductionWorkReport) inv.getArgument(0)).setReportId(10L);
             return 1;
@@ -126,13 +95,11 @@ class WorkReportSubmitTest {
             assertEquals(10L, result.getReportId());
         }
 
-        // 锚点保存：execution/dispatch/node/reporter
+        // 锚点保存：execution/reporter/数量/状态
         var cap = ArgumentCaptor.forClass(ProductionWorkReport.class);
         verify(workReportMapper).insert(cap.capture());
         ProductionWorkReport r = cap.getValue();
         assertEquals(3L, r.getExecutionId());
-        assertEquals(4L, r.getDispatchId());
-        assertEquals(5L, r.getDispatchNodeId());
         assertEquals(104L, r.getReporterId());
         assertEquals("印刷一组工人", r.getReporterName());
         assertEquals(new BigDecimal("950"), r.getQualifiedQuantity());
@@ -146,22 +113,6 @@ class WorkReportSubmitTest {
     }
 
     @Test
-    void nonActiveAssigneeCannotSubmit() {
-        when(executionMapper.selectById(3L)).thenReturn(exec(ExecutionStatusEnum.EXECUTING.getCode()));
-        when(dispatchMapper.selectOne(any())).thenReturn(dispatch());
-        when(nodeMapper.selectOne(any())).thenReturn(activeNode());
-
-        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
-            mocked.when(() -> SecurityUtils.hasPermission("production:work-report:add")).thenReturn(true);
-            mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
-            BusinessException ex = assertThrows(BusinessException.class,
-                    () -> service.submit(dto(), "路人", 99L));
-            assertTrue(ex.getMessage().contains("当前责任人"));
-        }
-        verify(workReportMapper, never()).insert(any(ProductionWorkReport.class));
-    }
-
-    @Test
     void noAddPermissionCannotSubmit() {
         when(executionMapper.selectById(3L)).thenReturn(exec(ExecutionStatusEnum.EXECUTING.getCode()));
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
@@ -169,6 +120,7 @@ class WorkReportSubmitTest {
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
             assertThrows(BusinessException.class, () -> service.submit(dto(), "印刷一组工人", 104L));
         }
+        verify(workReportMapper, never()).insert(any(ProductionWorkReport.class));
     }
 
     @Test
@@ -195,8 +147,6 @@ class WorkReportSubmitTest {
     void quantityValidation() {
         // 负数拒绝
         when(executionMapper.selectById(3L)).thenReturn(exec(ExecutionStatusEnum.EXECUTING.getCode()));
-        when(dispatchMapper.selectOne(any())).thenReturn(dispatch());
-        when(nodeMapper.selectOne(any())).thenReturn(activeNode());
         WorkReportSubmitDTO neg = dto();
         neg.setQualifiedQuantity(new BigDecimal("-1"));
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
@@ -222,7 +172,8 @@ class WorkReportSubmitTest {
             ((ProductionWorkReport) inv.getArgument(0)).setReportId(11L);
             return 1;
         });
-        when(readService.getById(any())).thenReturn(new com.jjx.production.domain.vo.WorkReportVO());        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+        when(readService.getById(any())).thenReturn(new com.jjx.production.domain.vo.WorkReportVO());
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(() -> SecurityUtils.hasPermission("production:work-report:add")).thenReturn(true);
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
             assertDoesNotThrow(() -> service.submit(over, "印刷一组工人", 104L));
@@ -232,8 +183,6 @@ class WorkReportSubmitTest {
     @Test
     void defectiveRequiresReason() {
         when(executionMapper.selectById(3L)).thenReturn(exec(ExecutionStatusEnum.EXECUTING.getCode()));
-        when(dispatchMapper.selectOne(any())).thenReturn(dispatch());
-        when(nodeMapper.selectOne(any())).thenReturn(activeNode());
         WorkReportSubmitDTO noReason = dto();
         noReason.setDefectReason(null);
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {

@@ -50,23 +50,12 @@ public class WorkReportReadServiceImpl implements WorkReportReadService {
                 .stream().map(this::toVO).collect(Collectors.toList());
     }
 
-    @Override
-    public List<WorkReportVO> listByDispatchNodeId(Long dispatchNodeId) {
-        return workReportMapper.selectList(Wrappers.<ProductionWorkReport>lambdaQuery()
-                        .eq(ProductionWorkReport::getDispatchNodeId, dispatchNodeId)
-                        .orderByDesc(ProductionWorkReport::getReportTime)
-                        .orderByDesc(ProductionWorkReport::getReportId))
-                .stream().map(this::toVO).collect(Collectors.toList());
-    }
-
     private WorkReportVO toVO(ProductionWorkReport e) {
         WorkReportVO vo = new WorkReportVO();
         vo.setReportId(e.getReportId());
         vo.setOrderId(e.getOrderId());
         vo.setOrderNo(e.getOrderNo());
         vo.setExecutionId(e.getExecutionId());
-        vo.setDispatchId(e.getDispatchId());
-        vo.setDispatchNodeId(e.getDispatchNodeId());
         vo.setReporterId(e.getReporterId());
         vo.setReporterName(e.getReporterName());
         vo.setEquipmentId(e.getEquipmentId());

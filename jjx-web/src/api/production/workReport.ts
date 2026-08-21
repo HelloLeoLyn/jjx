@@ -9,8 +9,6 @@ export interface WorkReportVO {
   orderId?: number
   orderNo?: string
   executionId: number
-  dispatchId?: number
-  dispatchNodeId?: number
   reporterId?: number
   reporterName?: string
   equipmentId?: number

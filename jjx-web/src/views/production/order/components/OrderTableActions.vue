@@ -75,10 +75,6 @@
               <el-icon><CircleClose /></el-icon>
               取消订单
             </el-dropdown-item>
-            <el-dropdown-item command="dispatch" v-if="[2, 4, 5, 6].includes(order.orderStatus) && hasPermi(['production:dispatch:assign'])">
-              <el-icon><UserFilled /></el-icon>
-              派工
-            </el-dropdown-item>
             <el-dropdown-item command="export" v-if="hasPermi(['production:order:export'])">
               <el-icon><Download /></el-icon>
               导出订单
@@ -120,7 +116,7 @@
 import { computed, ref } from 'vue'
 import { hasPermi } from '@/directives'
 import { ElMessage } from 'element-plus'
-import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, UserFilled, Tickets } from '@element-plus/icons-vue'
+import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, Tickets } from '@element-plus/icons-vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'

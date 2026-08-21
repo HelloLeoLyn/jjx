@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 /**
  * 生产报工 Mapper
- * P2-B 仅提供基础查询能力（BaseMapper + Wrapper 足够：按 executionId/reportStatus/dispatchNodeId/reporterId/reportId），
+ * P2-B 仅提供基础查询能力（BaseMapper + Wrapper 足够：按 executionId/reportStatus/reporterId/reportId），
  * 不提前写大量 XML。SUBMIT/CANCEL 动作属 P2-C。
  */
 @Mapper

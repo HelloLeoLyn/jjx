@@ -2,7 +2,6 @@ package com.jjx.production.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
-import com.jjx.production.domain.entity.ProductionDispatchLog;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.OrderTraceVO;
@@ -10,9 +9,7 @@ import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.domain.vo.QualityInspectionVO;
 import com.jjx.production.domain.vo.TraceEventVO;
-import com.jjx.production.enums.DispatchLogActionEnum;
 import com.jjx.production.enums.TraceEventType;
-import com.jjx.production.mapper.ProductionDispatchLogMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionOperationExecutionService;
@@ -32,11 +29,11 @@ import java.util.stream.Collectors;
 /**
  * P4-B：生产履历只读查询实现
  * <p>
- * 只读投影：从真实业务表（Order/Execution/DispatchLog/WorkReport/QualityInspection）查询，
+ * 只读投影：从真实业务表（Order/Execution/WorkReport/QualityInspection）查询，
  * 转换成统一 TraceEventVO，按业务时间排序形成 Timeline。
  * 不新增 Trace 事实表；不修改任何业务状态；禁止用 updateTime 推断事件。
  * <p>
- * sourceRank（同时间稳定排序权重）：ORDER=1 < EXECUTION=2 < DISPATCH=3 < WORK_REPORT=4 < QUALITY=5
+ * sourceRank（同时间稳定排序权重）：ORDER=1 < EXECUTION=2 < WORK_REPORT=3 < QUALITY=4
  */
 @Slf4j
 @Service
@@ -46,7 +43,6 @@ public class TraceQueryServiceImpl implements TraceQueryService {
     private final ProductionOrderService orderService;
     private final ProductionOrderMapper orderMapper;
     private final ProductionOperationExecutionService executionService;
-    private final ProductionDispatchLogMapper dispatchLogMapper;
     private final ProductionWorkReportMapper workReportMapper;
     private final QualityInspectionService qualityInspectionService;
 
@@ -69,7 +65,6 @@ public class TraceQueryServiceImpl implements TraceQueryService {
         List<TraceEventVO> events = new ArrayList<>();
         events.addAll(buildOrderEvents(order));
         events.addAll(buildExecutionEvents(orderId));
-        events.addAll(buildDispatchEvents(orderId));
         events.addAll(buildWorkReportEvents(orderId));
         events.addAll(buildQualityEvents(orderId));
 
@@ -176,49 +171,6 @@ public class TraceQueryServiceImpl implements TraceQueryService {
         return "工序 " + (e.getProcessOrder() == null ? e.getExecutionId() : e.getProcessOrder());
     }
 
-    // ==================== DISPATCH（责任流转，来自 dispatch_log） ====================
-
-    private List<TraceEventVO> buildDispatchEvents(Long orderId) {
-        List<TraceEventVO> list = new ArrayList<>();
-        List<ProductionDispatchLog> logs = dispatchLogMapper.selectList(
-                Wrappers.<ProductionDispatchLog>lambdaQuery()
-                        .eq(ProductionDispatchLog::getOrderId, orderId)
-                        .orderByAsc(ProductionDispatchLog::getCreateTime)
-                        .orderByAsc(ProductionDispatchLog::getLogId));
-        for (ProductionDispatchLog log : logs) {
-            String eventType = mapDispatchAction(log.getAction());
-            if (eventType == null) {
-                continue; // START 等无对应 eventType，跳过（不伪造）
-            }
-            TraceEventVO ev = base(orderId, eventType, "DISPATCH");
-            ev.setEventTime(log.getCreateTime()); // dispatch_log 无独立业务时间，createTime 即事件时间
-            ev.setDispatchId(log.getDispatchId());
-            ev.setDispatchNodeId(null); // log 无 node 关联
-            ev.setActorId(log.getOperatorId());
-            ev.setActorName(log.getOperatorName());
-            ev.setTitle(DispatchLogActionEnum.labelOf(log.getAction()));
-            ev.setDescription(log.getContent());
-            ev.setStatus(log.getAction());
-            ev.setSourceId(log.getLogId());
-            list.add(ev);
-        }
-        return list;
-    }
-
-    /** dispatch_log action → TraceEventType 映射；无对应事件返回 null（跳过） */
-    private String mapDispatchAction(String action) {
-        if (action == null) return null;
-        switch (action) {
-            case "ASSIGN": return TraceEventType.DISPATCH_ASSIGNED;
-            case "DELEGATE": return TraceEventType.DISPATCH_DELEGATED;
-            case "REASSIGN": return TraceEventType.DISPATCH_REASSIGNED;
-            case "RETURN": return TraceEventType.DISPATCH_RETURNED;
-            case "REJECT": return TraceEventType.DISPATCH_REJECTED;
-            case "COMPLETE": return TraceEventType.DISPATCH_COMPLETED;
-            default: return null; // START 等无 eventType
-        }
-    }
-
     // ==================== WORK REPORT ====================
 
     private List<TraceEventVO> buildWorkReportEvents(Long orderId) {
@@ -233,8 +185,6 @@ public class TraceQueryServiceImpl implements TraceQueryService {
             TraceEventVO submitted = base(orderId, TraceEventType.WORK_REPORT_SUBMITTED, "WORK_REPORT");
             submitted.setEventTime(r.getReportTime());
             submitted.setExecutionId(r.getExecutionId());
-            submitted.setDispatchId(r.getDispatchId());
-            submitted.setDispatchNodeId(r.getDispatchNodeId());
             submitted.setWorkReportId(r.getReportId());
             submitted.setActorId(r.getReporterId());
             submitted.setActorName(r.getReporterName());
@@ -249,8 +199,6 @@ public class TraceQueryServiceImpl implements TraceQueryService {
                 TraceEventVO cancelled = base(orderId, TraceEventType.WORK_REPORT_CANCELLED, "WORK_REPORT");
                 cancelled.setEventTime(r.getCancelledAt());
                 cancelled.setExecutionId(r.getExecutionId());
-                cancelled.setDispatchId(r.getDispatchId());
-                cancelled.setDispatchNodeId(r.getDispatchNodeId());
                 cancelled.setWorkReportId(r.getReportId());
                 cancelled.setActorId(r.getCancelledBy());
                 cancelled.setActorName(r.getCancelledByName());
@@ -326,15 +274,14 @@ public class TraceQueryServiceImpl implements TraceQueryService {
         return ev;
     }
 
-    /** sourceRank：ORDER=1 < EXECUTION=2 < DISPATCH=3 < WORK_REPORT=4 < QUALITY=5 */
+    /** sourceRank：ORDER=1 < EXECUTION=2 < WORK_REPORT=3 < QUALITY=4 */
     private int sourceRank(String sourceType) {
         if (sourceType == null) return 99;
         switch (sourceType) {
             case "ORDER": return 1;
             case "EXECUTION": return 2;
-            case "DISPATCH": return 3;
-            case "WORK_REPORT": return 4;
-            case "QUALITY": return 5;
+            case "WORK_REPORT": return 3;
+            case "QUALITY": return 4;
             default: return 99;
         }
     }

@@ -13,10 +13,10 @@ import java.time.LocalDateTime;
 /**
  * 生产报工（一次不可覆盖的生产数量/工时事实）
  * 对应表：production_work_report
- * 关系：ProductionOperationExecution 1:N ProductionWorkReport；ProductionDispatchNode 1:N ProductionWorkReport
+ * 关系：ProductionOperationExecution 1:N ProductionWorkReport
  * <p>
  * 领域规则（P2-C 起强制）：
- * - 已提交报工的生产事实字段（executionId/dispatchNodeId/reporter/数量/工时/设备/时间区间）禁止修改
+ * - 已提交报工的生产事实字段（executionId/reporter/数量/工时/设备/时间区间）禁止修改
  * - 更正 = 原报工 CANCELLED + 新增正确报工；CANCELLED 原事实字段保留，禁止物理删除
  * - 未来正式写动作仅 SUBMIT / CANCEL（本实体技术上可 update，但领域层不暴露通用修改 API）
  */
@@ -36,16 +36,7 @@ public class ProductionWorkReport {
     /** 工序执行记录ID（生产事实主体） */
     private Long executionId;
 
-    /** 派工单ID（冗余；ActionService 须校验 = node.dispatchId） */
-    private Long dispatchId;
-
-    /** 报工时责任节点ID（责任锚点） */
-    private Long dispatchNodeId;
-
-    /** WP-B：关联作业分配ID（新链路必填，历史 NULL） */
-    private Long assignmentId;
-
-    /** 报工提交人ID（P2-C 默认须=ACTIVE assignee，库不强制） */
+    /** 报工提交人ID */
     private Long reporterId;
 
     /** 报工提交人姓名快照 */

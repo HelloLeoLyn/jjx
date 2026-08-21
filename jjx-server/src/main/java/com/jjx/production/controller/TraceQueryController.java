@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
  * P4-B：生产履历查询（Trace Read Model，只读）
  * <p>
  * 统一订单履历主入口：GET /production/trace/order/{orderId}
- * 支持可选过滤：category（ORDER/EXECUTION/DISPATCH/WORK_REPORT/QUALITY）、executionId
+ * 支持可选过滤：category（ORDER/EXECUTION/WORK_REPORT/QUALITY）、executionId
  * 不提供 execution/report/quality 独立 trace 端点（V1 统一订单履历）。
  */
 @Slf4j
