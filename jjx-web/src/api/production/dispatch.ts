@@ -41,6 +41,9 @@ export interface DispatchVO {
   currentOrgId?: number
   currentOrgName?: string
   assigneeSource?: string
+  // UI-01/02：责任链列投影
+  firstAssigneeName?: string
+  chainNodeCount?: number
   allowedActions?: string[]
 }
 
@@ -262,22 +265,6 @@ export function rejectDispatch(dispatchId: number, reason: string) {
     url: `/production/dispatch/${dispatchId}/reject`,
     method: 'post',
     data: { reason },
-  })
-}
-
-// 开始
-export function startDispatch(dispatchId: number) {
-  return request({
-    url: `/production/dispatch/${dispatchId}/start`,
-    method: 'post',
-  })
-}
-
-// 完成
-export function completeDispatch(dispatchId: number) {
-  return request({
-    url: `/production/dispatch/${dispatchId}/complete`,
-    method: 'post',
   })
 }
 

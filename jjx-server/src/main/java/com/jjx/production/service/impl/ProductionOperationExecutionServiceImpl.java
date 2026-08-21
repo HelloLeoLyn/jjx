@@ -513,6 +513,21 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("记录状态不允许开始");
         }
 
+        // WP-E2E-BUG-01：未派工/无当前责任人不能开始（转工单已不再自动激活首道）
+        ProductionDispatch dispatch = dispatchMapper.selectOne(
+                Wrappers.<ProductionDispatch>lambdaQuery()
+                        .eq(ProductionDispatch::getExecutionId, executionId));
+        if (dispatch == null
+                || com.jjx.production.enums.DispatchStatusEnum.PENDING.getCode().equals(dispatch.getStatus())
+                || com.jjx.production.enums.DispatchStatusEnum.REJECTED.getCode().equals(dispatch.getStatus())) {
+            throw new BusinessException("工序未派工，无法开始");
+        }
+        com.jjx.production.domain.vo.DispatchNodeVO activeNode =
+                dispatchNodeReadService.getCurrentActiveNode(dispatch.getDispatchId());
+        if (activeNode == null) {
+            throw new BusinessException("工序无当前责任人，无法开始");
+        }
+
         // 更新状态为进行中
         execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
         execution.setActualStartTime(LocalDateTime.now());

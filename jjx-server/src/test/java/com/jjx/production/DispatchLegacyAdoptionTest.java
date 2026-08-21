@@ -157,6 +157,8 @@ class DispatchLegacyAdoptionTest {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(SecurityUtils::getUserId).thenReturn(104L); // 工人本人下派
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
+            // WP-C 收口后：下派 = 当前 ACTIVE 责任人本人 + delegate 权限
+            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:delegate")).thenReturn(true);
             service.delegate(20L, 106L, null, "工人", 104L);
         }
 

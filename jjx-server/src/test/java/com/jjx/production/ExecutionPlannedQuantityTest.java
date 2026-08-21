@@ -45,7 +45,8 @@ class ExecutionPlannedQuantityTest {
         var stockReserveService = mock(com.jjx.inventory.service.OrderStockReserveService.class);
         var materialReserveService = mock(com.jjx.inventory.service.OrderMaterialReserveService.class);
         var salesOrderMapper = mock(com.jjx.sales.mapper.OrderMapper.class);
-        var pdfConfigLoader = mock(com.jjx.common.utils.pdf.PdfConfigLoader.class);
+        // PdfConfigLoader 类层次无法被 Mockito 内联 mock（Java 25 环境），且本测试不触达，传 null
+        com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader = null;
         var eventPublisher = mock(com.jjx.event.EventPublisher.class);
 
         Constructor<?> ctor = ProductionOrderServiceImpl.class.getDeclaredConstructors()[0];
@@ -95,9 +96,11 @@ class ExecutionPlannedQuantityTest {
                     "工序计划数量应继承订单计划数量 450，实际: " + e.getInputQuantity());
             assertEquals(3L, e.getOrderId());
         }
-        // 首道工序激活 EXECUTING，其余 PENDING
-        assertEquals(com.jjx.production.enums.ExecutionStatusEnum.EXECUTING.getCode(), all.get(0).getExecutionStatus());
-        assertEquals(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode(), all.get(1).getExecutionStatus());
+        // WP-E2E-BUG-01（DEV-1081）：转工单生成的所有工序一律 PENDING，不得自动激活首道
+        for (ProductionOperationExecution e : all) {
+            assertEquals(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode(), e.getExecutionStatus());
+            assertNull(e.getActualStartTime(), "转工单阶段不得有实际开始时间");
+        }
     }
 
     @Test
@@ -124,7 +127,7 @@ class ExecutionPlannedQuantityTest {
         var ctor = cls.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
         var projection = ctor.newInstance(
-                mock(org.springframework.jdbc.core.JdbcTemplate.class),
+                null, // JdbcTemplate 类层次无法内联 mock（Java 25 环境），本用例仅构造验证，不触达
                 mock(com.jjx.production.mapper.ProductionOperationExecutionMapper.class),
                 mock(com.jjx.production.mapper.ProductionWorkReportMapper.class));
         // 构造成功即可；inputQuantity 不被覆盖的行为由现有 WorkReportProjectionTest 保证

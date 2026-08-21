@@ -58,33 +58,34 @@ class DispatchActionRightTest {
         }
     }
 
-    // 1. delegate：本人可下派
+    // 1. delegate：本人 + delegate 权限 → 放行（读法 A 双条件）
     @Test
-    void delegate_assigneeSelf_ok() throws Exception {
+    void delegate_assigneeWithPerm_ok() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
-            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:delegate")).thenReturn(false);
+            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:delegate")).thenReturn(true);
             assertDoesNotThrow(() -> invoke("checkNodeOperatorRight", active(1L), 1L));
         }
     }
 
-    // 2. delegate：有 delegate 权限者可代操作
+    // 2. delegate：本人但无 delegate 权限（如操作工当责任节点）→ 拒绝
     @Test
-    void delegate_withPerm_ok() throws Exception {
-        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
-            mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
-            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:delegate")).thenReturn(true);
-            assertDoesNotThrow(() -> invoke("checkNodeOperatorRight", active(1L), 99L));
-        }
-    }
-
-    // 3. delegate：非本人 + 无 delegate 权限（即使有 assign 权限）→ 拒绝（WP-C 关键：assign 不再放行）
-    @Test
-    void delegate_assignPermNoLongerPasses() throws Exception {
+    void delegate_assigneeWithoutPerm_rejected() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
             mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:delegate")).thenReturn(false);
-            // 注意：不再 mock assign 权限放行；即使有 assign 也走下面拒绝分支
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> invoke("checkNodeOperatorRight", active(1L), 1L));
+            assertTrue(ex.getMessage().contains("下派"), ex.getMessage());
+        }
+    }
+
+    // 3. delegate：非本人 + 有 delegate 权限 → 拒绝（BUG-02C：权限只是附加条件，不能仅凭权限代操作）
+    @Test
+    void delegate_notAssigneeEvenWithPerm_rejected() throws Exception {
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
+            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:delegate")).thenReturn(true);
             BusinessException ex = assertThrows(BusinessException.class,
                     () -> invoke("checkNodeOperatorRight", active(1L), 99L));
             assertTrue(ex.getMessage().contains("下派"), ex.getMessage());
@@ -113,22 +114,34 @@ class DispatchActionRightTest {
         }
     }
 
-    // 6. return：本人可退回
+    // 6. return：本人 + return 权限 → 放行（读法 A 双条件）
     @Test
-    void return_assigneeSelf_ok() throws Exception {
+    void return_assigneeWithPerm_ok() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
-            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:return")).thenReturn(false);
+            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:return")).thenReturn(true);
             assertDoesNotThrow(() -> invoke("checkReturnRight", active(1L), 1L));
         }
     }
 
-    // 7. return：非本人 + 无 return 权限 → 拒绝
+    // 7. return：本人但无 return 权限 → 拒绝
     @Test
-    void return_notAssignee_rejected() throws Exception {
+    void return_assigneeWithoutPerm_rejected() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
             mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:return")).thenReturn(false);
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> invoke("checkReturnRight", active(1L), 1L));
+            assertTrue(ex.getMessage().contains("退回"), ex.getMessage());
+        }
+    }
+
+    // 8. return：非本人 + 有 return 权限 → 拒绝（不能仅凭权限代退回）
+    @Test
+    void return_notAssigneeEvenWithPerm_rejected() throws Exception {
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
+            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:return")).thenReturn(true);
             BusinessException ex = assertThrows(BusinessException.class,
                     () -> invoke("checkReturnRight", active(1L), 99L));
             assertTrue(ex.getMessage().contains("退回"), ex.getMessage());

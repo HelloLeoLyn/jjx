@@ -1424,13 +1424,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             execution.setCustomProcessParams(item.getCustomProcessParams());
             execution.setProcessOrder(item.getProcessOrder());
 
-            // 049定稿：首道工序激活（EXECUTING），其余待执行（PENDING）
-            if (i == 0) {
-                execution.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.EXECUTING.getCode());
-                execution.setActualStartTime(java.time.LocalDateTime.now());
-            } else {
-                execution.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode());
-            }
+            // WP-E2E-BUG-01 修复：转工单生成的所有 Execution 一律 PENDING/待执行
+            // 转工单不得自动启动首道工序；只有正式"开始"动作（startExecution，且已派工/有当前责任人）才能进入 EXECUTING
+            execution.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode());
 
             // 按工序分配时间
             if (planStartDate != null && planEndDate != null) {

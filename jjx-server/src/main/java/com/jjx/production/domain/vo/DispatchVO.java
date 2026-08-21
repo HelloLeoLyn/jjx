@@ -65,6 +65,12 @@ public class DispatchVO {
     /** 数据来源：NODE / LEGACY（内部调试；前端可不展示） */
     private String assigneeSource;
 
+    // ============ UI-01/02：责任链列投影（列表“第一责任人 +N”） ============
+    /** 第一责任人（责任链根节点/最早责任人）姓名；null=未派工 */
+    private String firstAssigneeName;
+    /** 责任链节点总数（含第一责任人；0=未派工；1=仅根节点） */
+    private Integer chainNodeCount;
+
     // ============ P1-D：当前用户对该派工单的动作能力 ============
     /** 当前用户可执行动作列表：ASSIGN/DELEGATE/REASSIGN/RETURN（前端按钮显隐用；真正权限由后端 ActionService 校验） */
     private java.util.List<String> allowedActions;

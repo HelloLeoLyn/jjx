@@ -497,10 +497,12 @@ public class DispatchActionServiceImpl implements DispatchActionService {
 
     private void checkNodeOperatorRight(ProductionDispatchNode active, Long operatorId) {
         if (SecurityUtils.hasPermission("*:*:*")) return;
-        // WP-C：下派 = 当前 ACTIVE 责任人本人；有 delegate 权限者可代操作（不再因 assign 权限放行普通用户）
-        if (SecurityUtils.hasPermission("production:dispatch:delegate")) return;
-        if (operatorId != null && operatorId.equals(active.getAssigneeId())) return; // ACTIVE 本人
-        throw new BusinessException("只有当前责任人本人或拥有下派权限的管理员可以下派");
+        // WP-E-BUG-02C：下派 = 当前 ACTIVE 责任人本人 且 有 delegate 权限（双条件，权限只是附加条件）
+        // 车间主任/组长可下派（他们通常就是责任节点）；操作工即使当上责任节点也无 delegate 权限 → 需上级来下派
+        boolean isAssignee = operatorId != null && operatorId.equals(active.getAssigneeId());
+        if (!isAssignee || !SecurityUtils.hasPermission("production:dispatch:delegate")) {
+            throw new BusinessException("只有当前责任人本人（且拥有下派权限）可以下派");
+        }
     }
 
     private void checkReassignRight(ProductionDispatchNode active, Long operatorId) {
@@ -515,10 +517,11 @@ public class DispatchActionServiceImpl implements DispatchActionService {
 
     private void checkReturnRight(ProductionDispatchNode active, Long operatorId) {
         if (SecurityUtils.hasPermission("*:*:*")) return;
-        // WP-C：退回 = 当前 ACTIVE 责任人本人；有 return 权限者可代操作
-        if (SecurityUtils.hasPermission("production:dispatch:return")) return;
-        if (operatorId != null && operatorId.equals(active.getAssigneeId())) return; // ACTIVE 本人可退回
-        throw new BusinessException("只有当前责任人本人或拥有退回权限的管理员可以退回");
+        // WP-E-BUG-02C：退回 = 当前 ACTIVE 责任人本人 且 有 return 权限（双条件）；是否有上级节点由调用方校验
+        boolean isAssignee = operatorId != null && operatorId.equals(active.getAssigneeId());
+        if (!isAssignee || !SecurityUtils.hasPermission("production:dispatch:return")) {
+            throw new BusinessException("只有当前责任人本人（且拥有退回权限）可以退回");
+        }
     }
 
     /** DELEGATE 目标范围：沿用现有组织规则（目标须在当前责任人手下；保留兼容，不重构候选算法） */

@@ -194,6 +194,20 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
      * 分页/列表只带当前责任人投影；完整责任链通过 /nodes 接口获取。
      */
     private void fillCurrentAssignee(DispatchVO vo) {
+        // UI-01/02：第一责任人 + 责任链节点数（列表"第一责任人 +N"列）
+        try {
+            java.util.List<com.jjx.production.domain.vo.DispatchNodeVO> chain =
+                    nodeReadService.getResponsibilityChain(vo.getDispatchId());
+            if (chain != null && !chain.isEmpty()) {
+                vo.setFirstAssigneeName(chain.get(0).getAssigneeName());
+                vo.setChainNodeCount(chain.size());
+            } else {
+                vo.setFirstAssigneeName(null);
+                vo.setChainNodeCount(0);
+            }
+        } catch (Exception e) {
+            log.warn("填充责任链列投影失败 dispatchId={}: {}", vo.getDispatchId(), e.getMessage());
+        }
         com.jjx.production.domain.vo.DispatchNodeVO cur =
                 nodeReadService.getCurrentActiveNode(vo.getDispatchId());
         boolean hasActive = cur != null;
@@ -247,16 +261,16 @@ public class DispatchServiceImpl extends ServiceImpl<ProductionDispatchMapper, P
             return actions;
         }
         boolean isAssignee = me != null && me.equals(cur.getAssigneeId());
-        // DELEGATE：本人 / 超管 / delegate 权限
-        if (isSuper || hasDelegatePerm || isAssignee) {
+        // WP-E-BUG-02C：DELEGATE = 当前责任人本人 且 有 delegate 权限（权限是附加条件；超管放行）
+        if (isSuper || (isAssignee && hasDelegatePerm)) {
             actions.add("DELEGATE");
         }
-        // REASSIGN：超管 / reassign 权限（本人禁止）
+        // REASSIGN：超管 / reassign 权限（本人禁止；车间主任等无 reassign 权限后自然不产出）
         if (isSuper || hasReassignPerm) {
             actions.add("REASSIGN");
         }
-        // RETURN：有上级节点 且（本人 / 超管 / return 权限）
-        if (cur.getParentNodeId() != null && (isSuper || hasReturnPerm || isAssignee)) {
+        // WP-E-BUG-02C：RETURN = 有上级节点 且 当前责任人本人 且 有 return 权限（超管放行）
+        if (cur.getParentNodeId() != null && (isSuper || (isAssignee && hasReturnPerm))) {
             actions.add("RETURN");
         }
         // ASSIGN_WORK：分配作业入口（仅当前 ACTIVE 责任人本人 + assignment:add；超管放行）

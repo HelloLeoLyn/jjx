@@ -100,6 +100,8 @@ class DispatchReturnActionTest {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(SecurityUtils::getUserId).thenReturn(104L); // 张三本人退回
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
+            // WP-C 收口后：退回 = 当前 ACTIVE 责任人本人 + return 权限
+            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:return")).thenReturn(true);
             service.returnTask(10L, "干不了", "张三", 104L);
         }
 
@@ -139,6 +141,8 @@ class DispatchReturnActionTest {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(SecurityUtils::getUserId).thenReturn(96L);
             mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
+            // WP-C 收口后：root 用例需先通过“本人+return 权限”校验，才能验证 root 无上级不可退
+            mocked.when(() -> SecurityUtils.hasPermission("production:dispatch:return")).thenReturn(true);
             BusinessException ex = assertThrows(BusinessException.class,
                     () -> service.returnTask(10L, "退", "车间主任", 96L));
             assertTrue(ex.getMessage().contains("最上级"));

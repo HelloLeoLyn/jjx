@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visibleModel"
     :title="`新建${templateName}卡片`"
-    width="480px"
+    width="880px"
     @close="onClose"
   >
     <el-form :model="form" label-width="80px" size="small">
@@ -64,11 +64,7 @@
 
       <el-form-item label="负责人">
         <el-select v-model="form.assignee" style="width: 100%">
-          <el-option label="张三" value="张三" />
-          <el-option label="李四" value="李四" />
-          <el-option label="王五" value="王五" />
-          <el-option label="赵六" value="赵六" />
-          <el-option label="陈七" value="陈七" />
+          
         </el-select>
       </el-form-item>
 
@@ -86,7 +82,7 @@
       </el-form-item>
 
       <el-form-item label="备注">
-        <el-input v-model="form.remark" type="textarea" :rows="2" />
+        <el-input v-model="form.remark" type="textarea" :rows="5" />
       </el-form-item>
 
       <el-form-item label="截图">

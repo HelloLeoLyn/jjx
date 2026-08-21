@@ -51,13 +51,16 @@
             <span v-else style="color: #c0c4cc">不限</span>
           </template>
         </el-table-column>
-        <!-- P1-D：当前责任人（来自 Node projection，不 parse operators） -->
-        <el-table-column label="当前责任人" min-width="130">
+        <!-- UI-01/02：责任链列（第一责任人 +N，点击打开责任链 Drawer；当前负责人在 Drawer 内完整展示） -->
+        <el-table-column label="责任链" min-width="150">
           <template #default="{ row }">
-            <span v-if="row.currentAssigneeName" class="cur-assignee">
-              {{ row.currentAssigneeName }}
-              <el-tag v-if="row.currentOrgName" size="small" type="info" effect="plain" style="margin-left: 4px">{{ row.currentOrgName }}</el-tag>
-            </span>
+            <template v-if="row.dispatchId">
+              <el-link type="primary" :underline="false" @click="openDetail(row)">
+                <span class="cur-assignee">{{ row.firstAssigneeName || row.currentAssigneeName || '未派工' }}</span>
+                <el-tag v-if="Number(row.chainNodeCount || 0) > 1" size="small" type="info" effect="plain" style="margin-left: 4px">+{{ Number(row.chainNodeCount) - 1 }}</el-tag>
+              </el-link>
+              <div v-if="row.currentAssigneeName && row.currentAssigneeName !== row.firstAssigneeName" style="font-size: 12px; color: #909399">当前：{{ row.currentAssigneeName }}</div>
+            </template>
             <span v-else style="color: #c0c4cc">未派工</span>
           </template>
         </el-table-column>
@@ -77,9 +80,8 @@
               <el-button v-if="hasAction(row, 'DELEGATE')" link type="primary" @click="openDelegate(row)">下派</el-button>
               <el-button v-if="hasAction(row, 'REASSIGN')" link type="warning" @click="openReassign(row)">改派</el-button>
               <el-button v-if="hasAction(row, 'RETURN')" link type="danger" @click="openReturn(row)">退回上级</el-button>
-              <!-- WP-C：分配作业入口（仅当前责任人 + assignment 权限；真正多人+数量 Drawer 在 WP-D） -->
+              <!-- WP-C：分配作业入口（仅当前责任人 + assignment 权限；多人+数量 Drawer） -->
               <el-button v-if="hasAction(row, 'ASSIGN_WORK')" link type="success" @click="openAssignWork(row)">分配作业</el-button>
-              <el-button link @click="openDetail(row)">责任链</el-button>
             </template>
             <el-button v-else link @click="openLogs(row)">流水</el-button>
           </template>
@@ -424,7 +426,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
 import {
   getDispatchPage,
@@ -433,8 +435,6 @@ import {
   reassignDispatch,
   returnDispatch,
   rejectDispatch,
-  startDispatch,
-  completeDispatch,
   getDispatchLogs,
   getDispatchNodes,
   getDispatchCurrentNode,
@@ -906,29 +906,6 @@ async function handleReject() {
   } catch (e: any) {
     ElMessage.error(e?.message || '退回失败')
   } finally { submitting.value = false }
-}
-
-// ============ 开始/完成（保留现状） ============
-async function handleStart(row: DispatchVO) {
-  await ElMessageBox.confirm(`确定开始「${row.processName}」吗？`, '开始工序', { type: 'info' }).catch(() => Promise.reject())
-  try {
-    await startDispatch(row.dispatchId!)
-    ElMessage.success('已开始')
-    loadList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
-  }
-}
-
-async function handleComplete(row: DispatchVO) {
-  await ElMessageBox.confirm(`确定完成「${row.processName}」吗？`, '完成工序', { type: 'info' }).catch(() => Promise.reject())
-  try {
-    await completeDispatch(row.dispatchId!)
-    ElMessage.success('已完成')
-    loadList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
-  }
 }
 
 // ============ 流水 ============

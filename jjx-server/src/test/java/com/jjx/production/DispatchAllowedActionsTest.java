@@ -109,7 +109,7 @@ class DispatchAllowedActionsTest {
         }
     }
 
-    // 3. 当前责任人 + delegate 权限 → DELEGATE
+    // 3. 当前责任人 + delegate 权限 → DELEGATE（读法 A 双条件）
     @Test
     void assigneeWithDelegatePerm_delegate() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
@@ -118,12 +118,20 @@ class DispatchAllowedActionsTest {
         }
     }
 
-    // 4. 非当前责任人即使有普通功能权限 → 无 DELEGATE
+    // 4. 非当前责任人即使有 delegate 权限 → 无 DELEGATE（BUG-02C：权限只是附加条件）
     @Test
     void notAssignee_noDelegateEvenWithPerm() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
-            // 有 list 权限（隐含：无 delegate/assign 权限）但非 ACTIVE assignee
-            perms(mocked, false, false, false, false, false, 99L);
+            perms(mocked, false, true, false, false, false, 99L);
+            assertFalse(actions(vo(2, 2), activeNode(1L, null)).contains("DELEGATE"));
+        }
+    }
+
+    // 4b. 本人但无 delegate 权限（操作工当责任节点）→ 无 DELEGATE
+    @Test
+    void assigneeWithoutDelegatePerm_noDelegate() throws Exception {
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            perms(mocked, false, false, false, false, false, 1L);
             assertFalse(actions(vo(2, 2), activeNode(1L, null)).contains("DELEGATE"));
         }
     }
@@ -158,18 +166,27 @@ class DispatchAllowedActionsTest {
 
     // 8. 有 parent + 当前责任人 → RETURN
     @Test
-    void withParent_assignee_return() throws Exception {
+    void withParent_assigneeWithReturnPerm_return() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
-            perms(mocked, false, false, false, false, false, 1L);
+            perms(mocked, false, false, false, true, false, 1L);
             assertTrue(actions(vo(2, 2), activeNode(1L, 5L)).contains("RETURN"));
         }
     }
 
-    // 9. 非当前责任人 → 无 RETURN（即使有 return 权限？——规则：return 权限可代操作，此场景测"无权限非本人"）
+    // 8b. 有 parent + 本人但无 return 权限 → 无 RETURN
+    @Test
+    void withParent_assigneeNoReturnPerm_noReturn() throws Exception {
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            perms(mocked, false, false, false, false, false, 1L);
+            assertFalse(actions(vo(2, 2), activeNode(1L, 5L)).contains("RETURN"));
+        }
+    }
+
+    // 9. 非当前责任人即使有 return 权限 → 无 RETURN（BUG-02C）
     @Test
     void notAssignee_noReturn() throws Exception {
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
-            perms(mocked, false, false, false, false, false, 99L);
+            perms(mocked, false, false, false, true, false, 99L);
             assertFalse(actions(vo(2, 2), activeNode(1L, 5L)).contains("RETURN"));
         }
     }
