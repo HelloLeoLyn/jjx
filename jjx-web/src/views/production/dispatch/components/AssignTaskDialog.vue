@@ -161,7 +161,10 @@ const isAdminOrTaskAdmin = () => hasPermi('*:*:*') || hasPermi('production:task:
 
 const isParentHolder = computed(() => {
   const p = parentNode.value
-  return !!p && (isAdminOrTaskAdmin() || me.value === p.assigneeId)
+  if (!p) return false
+  // 系统根（assigneeId 为空）无持有人：首次分配放行（后端 assign 权限点/数量校验兜底）
+  if (p.assigneeId == null) return true
+  return isAdminOrTaskAdmin() || me.value === p.assigneeId
 })
 
 const canSubmit = computed(() => {

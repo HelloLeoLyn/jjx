@@ -270,7 +270,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     }
 
 
-    /** P3：批量补全任务树链路摘要（root assignee + 后续节点摘要；无 root 显示未分配） */
+    /** P3：批量补全任务树链路摘要（root 为无人员系统根，不进入任务链；无 root 或系统根无真实人员子节点显示未分配） */
     private void enrichTaskNodeChain(List<ProductionOperationExecutionVO> vos, java.util.Set<Long> execIds) {
         String execIdStr = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
         java.util.Map<Long, java.util.List<Object[]>> nodesByExec = new java.util.HashMap<>();
@@ -316,15 +316,15 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             vo.setHasTaskRoot(true);
             vo.setTaskRootAssigneeId(root[2] == null ? null : ((Number) root[2]).longValue());
             vo.setTaskRootAssigneeName(root[3] == null ? null : String.valueOf(root[3]));
-            StringBuilder chain = new StringBuilder();
-            if (root[3] != null) chain.append(root[3]);
-            if (!firstLevelNames.isEmpty()) {
+            // 系统根不进入任务链：仅展示真实人员一级子节点；无真实人员子节点 → 未分配
+            if (firstLevelNames.isEmpty()) {
+                vo.setTaskChainText("未分配");
+            } else {
                 String joined = firstLevelNames.size() > 3
                         ? String.join("、", firstLevelNames.subList(0, 3)) + " 等" + firstLevelNames.size() + "人"
                         : String.join("、", firstLevelNames);
-                chain.append(" → ").append(joined);
+                vo.setTaskChainText(joined);
             }
-            vo.setTaskChainText(chain.toString());
         }
         // P3：当前用户可继续分配的节点投影（我的节点且 availableToAssign > 0；无 root 时为 null）
         java.util.Map<Long, BigDecimal> reportedByNode = new java.util.HashMap<>();

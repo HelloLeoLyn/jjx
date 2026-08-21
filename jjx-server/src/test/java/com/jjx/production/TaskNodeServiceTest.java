@@ -144,6 +144,8 @@ class TaskNodeServiceTest {
         }
         assertNotNull(root.getTaskNodeId());
         assertNull(root.getParentNodeId(), "根节点 parentNodeId 应为 null");
+        assertNull(root.getAssigneeId(), "系统根不绑定业务人员，assigneeId 应为 null");
+        assertNull(root.getAssigneeName(), "系统根不绑定业务人员，assigneeName 应为 null");
         assertEquals(500L, root.getExecutionId());
         assertEquals(new BigDecimal("1000"), root.getTaskQuantity());
         assertEquals(BigDecimal.ZERO, root.getRecalledQuantity());
@@ -232,21 +234,48 @@ class TaskNodeServiceTest {
         assertEquals(new BigDecimal("900"), service.availableToAssign(root.getTaskNodeId()));
     }
 
-    // ==================== 6. 非当前节点持有人不能分配 ====================
+    // ==================== 6. 系统根首次分配放行；真实节点非持有人不能分配 ====================
+
+    @Test
+    void systemRoot_firstAssignmentAllowed() {
+        root1000(); // 系统根：assigneeId = null
+        // 非管理员（无 task:admin）用户 99 也可对系统根执行首次分配
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(SecurityUtils::getUserId).thenReturn(99L);
+            mocked.when(SecurityUtils::getUsername).thenReturn("u99");
+            mocked.when(() -> SecurityUtils.hasPermission(anyString())).thenReturn(false);
+            List<ProductionTaskNode> created =
+                    service.assignChildren(root.getTaskNodeId(), assignItems(101L, new BigDecimal("100")));
+            assertEquals(1, created.size());
+            assertEquals(101L, created.get(0).getAssigneeId().longValue());
+            assertEquals(root.getTaskNodeId(), created.get(0).getParentNodeId());
+            children.addAll(created);
+        }
+        assertEquals(new BigDecimal("900"), service.availableToAssign(root.getTaskNodeId()));
+    }
 
     @Test
     void nonHolderCannotAssign() {
-        root1000(); // root.assigneeId = 1
+        root1000(); // 系统根
+        // 先把任务分给真实持有人 1（root 下的子节点）
+        List<ProductionTaskNode> first = assign(1L, new BigDecimal("500"));
+        children.addAll(first);
+        Long holderNodeId = first.get(0).getTaskNodeId();
+        // selectOne 前两次调用已被 ensureRoot（null）/首次分配（root）消费；真实节点场景按 ID 返回该子节点
+        when(taskNodeMapper.selectOne(any())).thenAnswer(inv -> children.stream()
+                .filter(c -> c.getTaskNodeId().equals(holderNodeId)).findFirst().orElse(root));
+        // 非持有人 99 对真实人员节点分配 → 拒绝
         try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
             mocked.when(SecurityUtils::getUserId).thenReturn(99L); // 非持有人
             mocked.when(SecurityUtils::getUsername).thenReturn("u99");
             mocked.when(() -> SecurityUtils.hasPermission(anyString())).thenReturn(false);
             BusinessException ex = assertThrows(BusinessException.class,
-                    () -> service.assignChildren(root.getTaskNodeId(), assignItems(101L, new BigDecimal("100"))));
+                    () -> service.assignChildren(holderNodeId, assignItems(102L, new BigDecimal("100"))));
             assertTrue(ex.getMessage().contains("持有人"), ex.getMessage());
         }
-        // 仅 ensureRoot 创建了根节点，非持有人分配未创建任何子节点
-        verify(taskNodeMapper, times(1)).insert(any(ProductionTaskNode.class));
+        // 仅系统根 + 首次分配子节点被创建，非持有人分配未创建任何新子节点
+        assertEquals(1, children.size());
+        verify(taskNodeMapper, times(2)).insert(any(ProductionTaskNode.class));
     }
 
     // ==================== 7. 同一父节点多人创建正确（含树结构） ====================

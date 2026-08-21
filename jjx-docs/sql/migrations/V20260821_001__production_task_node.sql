@@ -3,7 +3,8 @@
 -- 定位：统一 TaskNode 模型，替代旧 DispatchNode + Assignment 双模型（旧模型代码已删除）
 -- 架构：ProductionOperationExecution 1:N ProductionTaskNode（每道工序一棵任务树）
 -- 核心语义：
---  - 根节点（parent_node_id = NULL）代表该工序全部任务数量（root.task_quantity = execution 计划数量）
+--  - 根节点（parent_node_id = NULL）为无人员系统根，代表该工序全部任务数量（root.task_quantity = execution 计划数量）；
+--    root 不进入任务链/我的任务/报工；无真实人员子节点时页面显示"未分配"；assignee_id 仅根节点可为 NULL
 --  - 所有节点语义一致，不区分"责任节点/作业节点"；持有人可自己执行报工，也可部分分配下级
 --  - 分配任务 = 创建子节点；子节点数量总和不能超过父节点当前可分配数量
 --  - 数量公式：effective = task_quantity - recalled_quantity
@@ -25,7 +26,7 @@ CREATE TABLE `production_task_node` (
   `task_node_id`       BIGINT        NOT NULL AUTO_INCREMENT COMMENT '任务节点ID',
   `execution_id`       BIGINT        NOT NULL COMMENT '工序执行记录ID(任务树归属)',
   `parent_node_id`     BIGINT        NULL COMMENT '父节点ID(NULL=根节点，代表工序全部任务数量)',
-  `assignee_id`        BIGINT        NOT NULL COMMENT '节点持有人(执行人)用户ID',
+  `assignee_id`        BIGINT        NULL COMMENT '节点持有人(执行人)用户ID(NULL=系统根节点，无业务人员；仅根节点可为NULL)',
   `assignee_name`      VARCHAR(64)   NULL COMMENT '节点持有人姓名快照',
   `task_quantity`      DECIMAL(18,4) NOT NULL COMMENT '节点任务数量',
   `recalled_quantity`  DECIMAL(18,4) NOT NULL DEFAULT 0 COMMENT '已收回数量(已分配子节点但收回，P2 支持)',

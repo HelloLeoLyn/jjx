@@ -16,8 +16,8 @@
       <!-- 任务树（后端 TaskNode 投影，整棵可看；操作仅限自己的节点） -->
       <div class="tree-title">任务树</div>
       <el-table
-        v-if="tree"
-        :data="[tree]"
+        v-if="displayTree.length"
+        :data="displayTree"
         row-key="taskNodeId"
         :tree-props="{ children: 'children' }"
         default-expand-all
@@ -61,7 +61,7 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-else-if="!loading" description="暂无任务树" :image-size="50" />
+      <el-empty v-else-if="!loading" description="未分配" :image-size="50" />
     </div>
 
     <!-- 分配任务弹窗（自己的节点） -->
@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AssignTaskDialog from './AssignTaskDialog.vue'
 import { taskNodeApi } from '@/api/production/taskNode'
@@ -100,6 +100,18 @@ const userStore = useUserStore()
 
 const loading = ref(false)
 const tree = ref<TaskNodeVO | null>(null)
+
+/**
+ * 系统根（assigneeId 为空）不展示为任务行：
+ * - 有真实人员子节点 → 直接展示一级子节点（含其子树）
+ * - 无子节点 → 空数组 → 显示"未分配"
+ * 历史人员根（脏数据）仍按原样展示。
+ */
+const displayTree = computed<TaskNodeVO[]>(() => {
+  if (!tree.value) return []
+  if (!tree.value.assigneeId && (tree.value.children || []).length) return tree.value.children || []
+  return [tree.value]
+})
 const assignVisible = ref(false)
 const assignNodeId = ref(0)
 const assignTitle = ref('分配任务')

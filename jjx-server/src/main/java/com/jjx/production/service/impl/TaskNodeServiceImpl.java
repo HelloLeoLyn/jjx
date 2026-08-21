@@ -88,13 +88,11 @@ public class TaskNodeServiceImpl implements TaskNodeService {
         ProductionTaskNode root = new ProductionTaskNode();
         root.setExecutionId(executionId);
         root.setParentNodeId(null);
-        if (exec.getOperatorId() != null) {
-            root.setAssigneeId(exec.getOperatorId());
-            root.setAssigneeName(exec.getOperatorName());
-        } else {
-            root.setAssigneeId(SecurityUtils.getUserId());
-            root.setAssigneeName(SecurityUtils.getUsername());
-        }
+        // 系统根：不绑定任何业务人员（assigneeId/Name 恒为 NULL）
+        // - 不进入任务链、我的任务、报工（myTaskNodes 按 assigneeId 查询、报工要求 operatorId=assigneeId，天然排除）
+        // - 无真实人员子节点时页面投影为"未分配"
+        root.setAssigneeId(null);
+        root.setAssigneeName(null);
         root.setTaskQuantity(exec.getInputQuantity() != null ? exec.getInputQuantity() : BigDecimal.ZERO);
         root.setRecalledQuantity(BigDecimal.ZERO);
         root.setCreateBy(SecurityUtils.getUsername());
@@ -179,7 +177,10 @@ public class TaskNodeServiceImpl implements TaskNodeService {
         if (parent == null) throw new BusinessException("任务节点不存在: " + parentNodeId);
 
         // 权限：当前用户是节点持有人 或 超管/task:admin（production:task:assign 由 Controller 注解兜底）
-        if (!isAdminOrTaskAdmin() && !SecurityUtils.getUserId().equals(parent.getAssigneeId())) {
+        // 系统根（assigneeId=NULL）无持有人，放行首次分配；真实人员节点的分配仍要求节点持有人
+        if (!isAdminOrTaskAdmin()
+                && parent.getAssigneeId() != null
+                && !SecurityUtils.getUserId().equals(parent.getAssigneeId())) {
             throw new BusinessException("只有当前任务节点持有人可以分配任务");
         }
 

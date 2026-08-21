@@ -153,11 +153,12 @@ const handleReset = () => {
 
 // ============ 分配任务按钮规则（消费后端 TaskNode/Execution 投影） ============
 /**
- * 无 root：有 production:task:dispatch → 显示（点击先建立 root，再进入分配弹窗）
- * 有 root：后端投影 myAssignableNodeId（本人持有且 availableToAssign>0）+ production:task:assign → 显示
+ * 首次分配（无任务树，或系统根尚无真实人员子节点 taskNodeCount<=1）：
+ *   需要 production:task:dispatch（点击先建立/复用系统根，再进入分配弹窗）
+ * 已有人员子节点：后端投影 myAssignableNodeId（本人持有且 availableToAssign>0）+ production:task:assign
  */
 const canDispatch = (row: OperationExecutionVO) => {
-  if (!row.hasTaskRoot) return hasPermi('production:task:dispatch')
+  if (!row.hasTaskRoot || (row.taskNodeCount ?? 0) <= 1) return hasPermi('production:task:dispatch')
   return !!row.myAssignableNodeId && hasPermi('production:task:assign')
 }
 
@@ -169,8 +170,8 @@ const assignTitle = ref('分配任务')
 
 const handleAssign = async (row: OperationExecutionVO) => {
   if (!row.executionId) return
-  // 无 root：先通过任务树 API 建立根节点（root.taskQuantity = 计划数量）
-  if (!row.hasTaskRoot) {
+  // 首次分配（无 root 或系统根尚无真实人员子节点）：通过任务树 API 建立/复用系统根（root.taskQuantity = 计划数量）
+  if (!row.hasTaskRoot || (row.taskNodeCount ?? 0) <= 1) {
     try {
       const res: any = await taskNodeApi.getTree(row.executionId)
       const root = res?.data
@@ -179,10 +180,10 @@ const handleAssign = async (row: OperationExecutionVO) => {
         return
       }
       row.hasTaskRoot = true
-      row.taskRootAssigneeId = root.assigneeId
-      row.taskRootAssigneeName = root.assigneeName
+      row.taskRootAssigneeId = root.assigneeId ?? null
+      row.taskRootAssigneeName = root.assigneeName ?? null
       row.taskNodeCount = 1
-      row.taskChainText = root.assigneeName || ''
+      row.taskChainText = root.assigneeName || '未分配'
       assignParentNodeId.value = root.taskNodeId
     } catch (e: any) {
       ElMessage.error(e?.message || '建立任务树失败')
