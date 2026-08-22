@@ -42,8 +42,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
     /** P3-C：FQC 自动创建 / 质检联动 */
     private final com.jjx.production.service.QualityActionService qualityActionService;
-    /** TT-FINAL-03：Execution Complete 的 Task Tree 闭环 Gate */
-    private final com.jjx.production.service.TaskNodeService taskNodeService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -158,7 +156,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         ProductionOperationExecutionVO vo = convertToVO(execution);
         vo.setViewScope(com.jjx.system.utils.SecurityUtils.isGlobalProductionScope() ? "GLOBAL" : "PERSONAL");
-        // 补全工单号/工序名/任务树链路与当前用户数量投影（派工管理树形列表操作后局部刷新用）
+        // 补全工单号/工序名与 Execution 父行 Root 汇总投影（派工管理树形列表操作后局部刷新用；个人节点由 children/detail 提供）
         enrichExecutionVOs(java.util.List.of(vo));
         return vo;
     }
@@ -289,13 +287,14 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                     }
                 }
             }
-            // P3：任务树链路摘要（root/任务链文本）——批量查询，避免 N+1
+            // Execution 父行 Root 汇总投影（rootAssignedQuantity/rootRemainingQuantity/hasChildren/hasTaskRoot）
+            // ——查看者无关，只批量查一层任务节点，避免 N+1；个人 TaskNode 投影由 children/detail 提供
             java.util.Set<Long> execIds = vos.stream()
                     .map(ProductionOperationExecutionVO::getExecutionId)
                     .filter(java.util.Objects::nonNull)
                     .collect(Collectors.toSet());
             if (!execIds.isEmpty()) {
-                enrichTaskNodeChain(vos, execIds);
+                enrichRootSummary(vos, execIds);
             }
         } catch (Exception e) {
 
@@ -305,12 +304,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     }
 
 
-    /** P3：批量补全任务树链路摘要（root 为无人员系统根，不进入任务链；无 root 或系统根无真实人员子节点显示未分配） */
-    private void enrichTaskNodeChain(List<ProductionOperationExecutionVO> vos, java.util.Set<Long> execIds) {
+    /**
+     * Execution 父行 Root 汇总投影（查看者无关，不返回任何个人 TaskNode 投影；纯浏览不建根）：
+     *  - hasTaskRoot：系统 Root 是否存在
+     *  - hasChildren：GLOBAL=Root 已有第一层真实人员子节点（可展开）；PERSONAL=本人持有节点（行存在即可展开）
+     *  - rootAssignedQuantity = Σ Root 直接第一层真实人员节点 effective
+     *  - rootRemainingQuantity = Root effective - rootAssignedQuantity（Root 不存在时 = inputQuantity，下限 0）
+     * 个人节点数量（myTask/myChildOccupied/myOwnHeld 等）不再由 /page 计算，改由 TaskNode children/detail 提供。
+     */
+    private void enrichRootSummary(List<ProductionOperationExecutionVO> vos, java.util.Set<Long> execIds) {
         String execIdStr = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
         java.util.Map<Long, java.util.List<Object[]>> nodesByExec = new java.util.HashMap<>();
         try {
-            jdbcTemplate.query("SELECT execution_id, task_node_id, parent_node_id, assignee_id, assignee_name, task_quantity, recalled_quantity"
+            jdbcTemplate.query("SELECT execution_id, task_node_id, parent_node_id, task_quantity, recalled_quantity"
                             + " FROM production_task_node WHERE execution_id IN (" + execIdStr + ") ORDER BY task_node_id",
                     rs -> {
                         Long eid = rs.getLong("execution_id");
@@ -318,140 +324,53 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                                 .add(new Object[]{
                                         rs.getLong("task_node_id"),
                                         rs.getObject("parent_node_id"),
-                                        rs.getObject("assignee_id"),
-                                        rs.getString("assignee_name"),
-                                        rs.getLong("execution_id"),
                                         rs.getBigDecimal("task_quantity"),
                                         rs.getBigDecimal("recalled_quantity")});
                     });
         } catch (Exception e) {
-            log.warn("查询任务树链路失败: {}", e.getMessage());
+            log.warn("查询任务树 Root 汇总失败: {}", e.getMessage());
             return;
         }
         for (ProductionOperationExecutionVO vo : vos) {
             java.util.List<Object[]> nodes = nodesByExec.get(vo.getExecutionId());
+            vo.setRootAssignedQuantity(BigDecimal.ZERO);
             if (nodes == null || nodes.isEmpty()) {
                 vo.setHasTaskRoot(false);
-                vo.setTaskNodeCount(0);
-                vo.setTaskChainText("未分配");
+                vo.setHasChildren(false);
+                vo.setRootRemainingQuantity(nvl2(vo.getInputQuantity()));
                 continue;
             }
             Object[] root = null;
-            java.util.List<String> firstLevelNames = new java.util.ArrayList<>();
-            BigDecimal rootChildOcc = BigDecimal.ZERO;
             for (Object[] n : nodes) {
                 if (n[1] == null) {
                     root = n;
-                } else if (root != null && ((Number) n[1]).longValue() == ((Number) root[0]).longValue()) {
-                    firstLevelNames.add(n[3] == null ? "节点" + n[2] : String.valueOf(n[3]));
-                    // 系统 Root 已下发给第一层真实人员 TaskNode 的 effective 合计（Execution 父行“已下发”，查看者无关）
-                    rootChildOcc = rootChildOcc.add(nvl2((BigDecimal) n[5]).subtract(nvl2((BigDecimal) n[6])));
-                }
-            }
-            vo.setTaskNodeCount(nodes.size());
-            if (root == null) {
-                vo.setHasTaskRoot(false);
-                vo.setTaskChainText("未分配");
-                vo.setRootChildOccupied(BigDecimal.ZERO);
-                vo.setRootAvailableToAssign(BigDecimal.ZERO);
-                continue;
-            }
-            vo.setHasTaskRoot(true);
-            vo.setTaskRootAssigneeId(root[2] == null ? null : ((Number) root[2]).longValue());
-            vo.setTaskRootAssigneeName(root[3] == null ? null : String.valueOf(root[3]));
-            // Root 汇总（查看者无关）：已下发 = Σ 第一层 effective；当前剩余 = Root effective − 已下发（Root 无报工，selfReported=0）
-            vo.setRootChildOccupied(rootChildOcc);
-            vo.setRootAvailableToAssign(floorZero(nvl2((BigDecimal) root[5])
-                    .subtract(nvl2((BigDecimal) root[6]))
-                    .subtract(rootChildOcc)));
-            // 系统根不进入任务链：仅展示真实人员一级子节点；无真实人员子节点 → 未分配
-            if (firstLevelNames.isEmpty()) {
-                vo.setTaskChainText("未分配");
-            } else {
-                String joined = firstLevelNames.size() > 3
-                        ? String.join("、", firstLevelNames.subList(0, 3)) + " 等" + firstLevelNames.size() + "人"
-                        : String.join("、", firstLevelNames);
-                vo.setTaskChainText(joined);
-            }
-        }
-        // P3：当前用户可继续分配的节点投影（我的节点且 availableToAssign > 0；无 root 时为 null）
-        java.util.Map<Long, BigDecimal> reportedByNode = new java.util.HashMap<>();
-        if (!execIds.isEmpty()) {
-            String eids = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-            try {
-                jdbcTemplate.query("SELECT task_node_id, COALESCE(SUM(qualified_quantity + defective_quantity),0) AS total"
-                                + " FROM production_work_report WHERE execution_id IN (" + eids + ")"
-                                + " AND report_status='SUBMITTED' GROUP BY task_node_id",
-                        (org.springframework.jdbc.core.RowCallbackHandler) rs ->
-                                reportedByNode.put(rs.getLong("task_node_id"), rs.getBigDecimal("total")));
-            } catch (Exception e) {
-                log.warn("查询任务节点报工汇总失败: {}", e.getMessage());
-            }
-        }
-        Long currentUserId = null;
-        try {
-            currentUserId = com.jjx.system.utils.SecurityUtils.getUserId();
-        } catch (Exception ignored) {
-        }
-        for (ProductionOperationExecutionVO vo : vos) {
-            java.util.List<Object[]> nodeRows = nodesByExec.get(vo.getExecutionId());
-            if (nodeRows == null || nodeRows.isEmpty()) {
-                vo.setMyAssignableNodeId(null);
-                vo.setMyAssignableQuantity(null);
-                vo.setMyTaskQuantity(BigDecimal.ZERO);
-                vo.setMyChildOccupied(BigDecimal.ZERO);
-                vo.setMyOwnHeld(BigDecimal.ZERO);
-                continue;
-            }
-            java.util.Map<Long, BigDecimal> childOcc = new java.util.HashMap<>();
-            for (Object[] n : nodeRows) {
-                BigDecimal eff = nvl2((BigDecimal) n[5]).subtract(nvl2((BigDecimal) n[6]));
-                if (n[1] != null) {
-                    childOcc.merge(((Number) n[1]).longValue(), eff, BigDecimal::add);
-                }
-            }
-            Long targetNodeId = null;
-            BigDecimal targetAvail = null;
-            for (Object[] n : nodeRows) {
-                if (currentUserId == null || n[2] == null || !currentUserId.equals(((Number) n[2]).longValue())) {
-                    continue;
-                }
-                BigDecimal effective = nvl2((BigDecimal) n[5]).subtract(nvl2((BigDecimal) n[6]));
-                BigDecimal selfReported = reportedByNode.getOrDefault(((Number) n[0]).longValue(), BigDecimal.ZERO);
-                BigDecimal avail = effective.subtract(childOcc.getOrDefault(((Number) n[0]).longValue(), BigDecimal.ZERO)).subtract(selfReported);
-                if (avail.compareTo(BigDecimal.ZERO) > 0) {
-                    targetNodeId = ((Number) n[0]).longValue();
-                    targetAvail = avail;
                     break;
                 }
             }
-            vo.setMyAssignableNodeId(targetNodeId);
-            vo.setMyAssignableQuantity(targetAvail);
-            // 派工列表投影：我的任务/已分给下级/我自己剩余（仅统计当前用户持有的真实人员节点，系统根 assigneeId=NULL 天然排除）
-            BigDecimal myTaskQty = BigDecimal.ZERO;
-            BigDecimal myChildOcc = BigDecimal.ZERO;
-            BigDecimal myOwnHeld = BigDecimal.ZERO;
-            for (Object[] n : nodeRows) {
-                if (currentUserId == null || n[2] == null || !currentUserId.equals(((Number) n[2]).longValue())) {
-                    continue;
-                }
-                Long nodeId = ((Number) n[0]).longValue();
-                BigDecimal taskQty = nvl2((BigDecimal) n[5]);
-                BigDecimal childOccOfNode = childOcc.getOrDefault(nodeId, BigDecimal.ZERO);
-                BigDecimal selfReported = reportedByNode.getOrDefault(nodeId, BigDecimal.ZERO);
-                myTaskQty = myTaskQty.add(taskQty);
-                myChildOcc = myChildOcc.add(childOccOfNode);
-                BigDecimal remain = taskQty.subtract(nvl2((BigDecimal) n[6]))
-                        .subtract(childOccOfNode).subtract(selfReported);
-                if (remain.compareTo(BigDecimal.ZERO) > 0) {
-                    myOwnHeld = myOwnHeld.add(remain);
+            if (root == null) {
+                vo.setHasTaskRoot(false);
+                vo.setHasChildren(false);
+                vo.setRootRemainingQuantity(nvl2(vo.getInputQuantity()));
+                continue;
+            }
+            vo.setHasTaskRoot(true);
+            BigDecimal rootEffective = nvl2((BigDecimal) root[2]).subtract(nvl2((BigDecimal) root[3]));
+            Long rootId = ((Number) root[0]).longValue();
+            BigDecimal firstLevel = BigDecimal.ZERO;
+            boolean hasFirstLevel = false;
+            for (Object[] n : nodes) {
+                if (n[1] != null && ((Number) n[1]).longValue() == rootId) {
+                    hasFirstLevel = true;
+                    firstLevel = firstLevel.add(nvl2((BigDecimal) n[2]).subtract(nvl2((BigDecimal) n[3])));
                 }
             }
-            vo.setMyTaskQuantity(myTaskQty);
-            vo.setMyChildOccupied(myChildOcc);
-            vo.setMyOwnHeld(myOwnHeld);
+            vo.setRootAssignedQuantity(firstLevel);
+            vo.setRootRemainingQuantity(floorZero(rootEffective.subtract(firstLevel)));
+            // 展开箭头：GLOBAL 按第一层真实人员节点；PERSONAL 本人持有节点（行存在即必可展开）
+            vo.setHasChildren("PERSONAL".equals(vo.getViewScope()) || hasFirstLevel);
         }
     }
+
     private static BigDecimal nvl2(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }
@@ -613,79 +532,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean completeExecution(Long executionId) {
-        log.info("完成工序执行: {}", executionId);
-
-        ProductionOperationExecution execution = getById(executionId);
-        if (execution == null) {
-            throw new BusinessException("工序执行记录不存在: " + executionId);
-        }
-
-        // 053⑤数量冻结：工单已完工后禁止再报工/改数量
-        try {
-            ProductionOrder prodOrder = productionOrderMapper.selectById(execution.getOrderId());
-            if (prodOrder != null && com.jjx.production.enums.OrderStatusEnum.COMPLETED.getCode()
-                    .equals(prodOrder.getOrderStatus())) {
-                throw new BusinessException("工单已完工，数量已冻结，禁止再报工/修改");
-            }
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.warn("完工冻结校验异常(跳过): {}", e.getMessage());
-        }
-
-        // 检查记录状态是否可以完成
-        if (!canCompleteExecution(execution)) {
-            throw new BusinessException("记录状态不允许完成");
-        }
-
-        // P2-C 完工 gate：至少存在 1 条 SUBMITTED WorkReport 才能完成（报工≠完成，但完成必须有生产事实）
-        if (!workReportProjectionService.hasAnySubmitted(executionId)) {
-            throw new BusinessException("当前工序尚无有效报工记录，不能完成");
-        }
-        // TT-FINAL-03：Task Tree 闭环 Gate —— 仍存在未完成/未合法释放的有效任务时禁止普通完成
-        // 依据动态数量事实（effective/childOccupied/selfReported），不新增 completedQuantity 第二事实源
-        if (!taskNodeService.isExecutionTreeClosed(executionId)) {
-            throw new BusinessException("任务树未闭环（仍有未完成/未释放的任务），不能完成");
-        }
-
-        // 更新状态为已完成
-        execution.setExecutionStatus(ExecutionStatusEnum.COMPLETED.getCode());
-        execution.setActualEndTime(LocalDateTime.now());
-
-        // P2-C：不再自动补全生产数量（output/qualified/defective 由 WorkReport projection 决定，禁止把计划当实际）
-        // 数量字段保持 WorkReport SUM 值，不在此伪造
-
-        boolean success = updateById(execution);
-        if (!success) {
-            throw new BusinessException("完成工序执行失败");
-        }
-
-        // 更新生产工单的完成数量
-        updateOrderCompletedQuantity(execution.getOrderId());
-
-        log.info("工序执行完成成功, ID: {}", executionId);
-
-        // P3-C：最后有效 Execution 完成后自动创建 PENDING FQC（幂等：已有 PENDING 不重复创建）
-        // 判断“最后有效工序”：同 order 下不存在 process_order 更大且未完成(非 COMPLETED/SKIPPED) 的工序
-        try {
-            Long laterPending = productionOperationExecutionMapper.selectCount(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionOperationExecution>()
-                            .eq(ProductionOperationExecution::getOrderId, execution.getOrderId())
-                            .gt(ProductionOperationExecution::getProcessOrder,
-                                    execution.getProcessOrder() == null ? 0 : execution.getProcessOrder())
-                            .notIn(ProductionOperationExecution::getExecutionStatus,
-                                    ExecutionStatusEnum.COMPLETED.getCode(),
-                                    ExecutionStatusEnum.SKIPPED.getCode()));
-            if (laterPending == null || laterPending == 0) {
-                Long fqcId = qualityActionService.createFqcForExecution(executionId);
-                if (fqcId != null) {
-                    log.info("最后工序 execution={} 完成，自动创建 PENDING FQC={}", executionId, fqcId);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("P3-C 自动创建 FQC 失败（不影响工序完成）: {}", e.getMessage());
-        }
-        return true;
+        // TODO
+        return false;
     }
 
     @Override

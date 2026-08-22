@@ -47,23 +47,12 @@ export interface OperationExecutionVO {
   remainingQuantity?: number
   /** 是否已建立任务树根节点 */
   hasTaskRoot?: boolean
-  taskRootAssigneeId?: number
-  taskRootAssigneeName?: string
-  taskNodeCount?: number
-  taskChainText?: string
-  /** 当前用户可继续分配的节点ID（本人持有且可分配>0） */
-  myAssignableNodeId?: number
-  myAssignableQuantity?: number
-  /** 我的任务：当前用户在该工序持有的有效 TaskNode.taskQuantity 合计（无节点为 0） */
-  myTaskQuantity?: number
-  /** 已分给下级：当前用户节点直接有效子节点 effective 合计（无节点为 0） */
-  myChildOccupied?: number
-  /** 我自己剩余：当前用户节点 selfRemaining = effective - childOccupied - selfReported（无节点为 0） */
-  myOwnHeld?: number
-  /** 系统 Root 已分配给第一层真实人员 TaskNode 的有效数量合计（Execution 父行“已下发”，查看者无关） */
-  rootChildOccupied?: number
-  /** 系统 Root 当前可继续分配数量 = Root effective - 第一层 effective（Execution 父行“当前剩余”，查看者无关） */
-  rootAvailableToAssign?: number
+  /** 是否有可展开的任务树子节点（GLOBAL=Root 已下发给第一层真实人员；PERSONAL=本人持有节点） */
+  hasChildren?: boolean
+  /** 已下发：系统 Root 直接第一层真实人员 TaskNode 的 effective 合计（Execution 父行，查看者无关） */
+  rootAssignedQuantity?: number
+  /** 当前剩余：Root effective - rootAssignedQuantity（Root 不存在时 = inputQuantity；Execution 父行，查看者无关） */
+  rootRemainingQuantity?: number
   /** 查询视角：GLOBAL=全局（可查看全部Execution）/ PERSONAL=个人（仅本人持有TaskNode的Execution） */
   viewScope?: 'GLOBAL' | 'PERSONAL'
   defectiveReason?: string

@@ -5,14 +5,12 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.WorkReportCancelDTO;
 import com.jjx.production.domain.dto.WorkReportSubmitDTO;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
-import com.jjx.production.domain.entity.ProductionTaskNode;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.WorkReportVO;
 import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
-import com.jjx.production.service.TaskNodeService;
 import com.jjx.production.service.WorkReportActionService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.WorkReportReadService;
@@ -48,121 +46,18 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final WorkReportProjectionService projectionService;
     private final WorkReportReadService readService;
     private final JdbcTemplate jdbcTemplate;
-    /** P2：报工绑定 TaskNode——新报工必须属于某任务节点且由节点持有人提交（数量受 selfRemaining 约束） */
-    private final TaskNodeService taskNodeService;
+
     /** P3-C：WorkReport 撤销质检联动（PASS/FAIL 禁撤；PENDING 联动逻辑删除） */
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
 
     // ==================== SUBMIT ====================
 
+    
     @Override
     @Transactional(rollbackFor = Exception.class)
     public WorkReportVO submit(WorkReportSubmitDTO dto, String operatorName, Long operatorId) {
-        // 1. 权限：work-report:add（独立于 execution edit）
-        if (!SecurityUtils.hasPermission("*:*:*") && !SecurityUtils.hasPermission("production:work-report:add")) {
-            throw new BusinessException("无报工权限");
-        }
-        if (dto.getExecutionId() == null) throw new BusinessException("缺少工序执行ID");
-
-        // 2. execution 存在 + 状态
-        ProductionOperationExecution exec = executionMapper.selectById(dto.getExecutionId());
-        if (exec == null) throw new BusinessException("工序执行记录不存在");
-        Integer st = exec.getExecutionStatus();
-        boolean allowed = ExecutionStatusEnum.EXECUTING.getCode().equals(st)
-                || ExecutionStatusEnum.PAUSED.getCode().equals(st);
-        if (!allowed) {
-            throw new BusinessException("当前工序状态不允许报工（仅执行中/已暂停可报工）");
-        }
-        // 2.5 TaskNode 绑定：新报工必须绑定任务节点；当前用户 = taskNode.assigneeId
-        // TT-FINAL-04：先对节点行加锁（FOR UPDATE），串行化同一节点的并发报工/分配/收回/退回，
-        // 保证后续 selfRemaining 读取与 WorkReport insert 在事务内一致，避免并发超限
-        if (dto.getTaskNodeId() == null) throw new BusinessException("报工必须绑定任务节点");
-        ProductionTaskNode taskNode = taskNodeService.lockNode(dto.getTaskNodeId());
-        if (!dto.getExecutionId().equals(taskNode.getExecutionId())) {
-            throw new BusinessException("任务节点不属于该工序执行记录");
-        }
-        if (operatorId == null || !operatorId.equals(taskNode.getAssigneeId())) {
-            throw new BusinessException("只有任务节点持有人本人可以报工");
-        }
-        // 3. 数量校验
-        BigDecimal qualified = dto.getQualifiedQuantity() == null ? BigDecimal.ZERO : dto.getQualifiedQuantity();
-        BigDecimal defective = dto.getDefectiveQuantity() == null ? BigDecimal.ZERO : dto.getDefectiveQuantity();
-        if (qualified.compareTo(BigDecimal.ZERO) < 0 || defective.compareTo(BigDecimal.ZERO) < 0) {
-            throw new BusinessException("数量不能为负数");
-        }
-        if (qualified.add(defective).compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("本次报工合格与不良数量之和必须大于 0");
-        }
-        // 3.5 本次数量 <= 节点 selfRemaining（selfReported 从 WorkReport 动态汇总，撤销后自动恢复）
-        BigDecimal selfRemaining = taskNodeService.remaining(taskNode.getTaskNodeId());
-        if (qualified.add(defective).compareTo(selfRemaining) > 0) {
-            throw new BusinessException("报工数量 " + strip(qualified.add(defective))
-                    + " 超过节点剩余可报数量 " + strip(selfRemaining));
-        }
-        // 超计划：允许（不校验 <= planned）
-        // defective>0 → defectReason 必填（推荐规则）
-        if (defective.compareTo(BigDecimal.ZERO) > 0
-                && (dto.getDefectReason() == null || dto.getDefectReason().isBlank())) {
-            throw new BusinessException("存在不良数量时，不良原因必填");
-        }
-
-        // 4. 工时校验
-        BigDecimal labor = dto.getLaborHours() == null ? BigDecimal.ZERO : dto.getLaborHours();
-        BigDecimal machine = dto.getMachineHours() == null ? BigDecimal.ZERO : dto.getMachineHours();
-        if (labor.compareTo(BigDecimal.ZERO) < 0 || machine.compareTo(BigDecimal.ZERO) < 0) {
-            throw new BusinessException("工时不能为负数");
-        }
-
-        // 5. 时间区间：要么都不传，要么同时传且 end>=start
-        if (dto.getWorkStartTime() != null && dto.getWorkEndTime() == null
-                || dto.getWorkStartTime() == null && dto.getWorkEndTime() != null) {
-            throw new BusinessException("生产开始/结束时间需同时填写");
-        }
-        if (dto.getWorkStartTime() != null && dto.getWorkEndTime() != null
-                && dto.getWorkEndTime().isBefore(dto.getWorkStartTime())) {
-            throw new BusinessException("生产结束时间不能早于开始时间");
-        }
-
-        // 6. 设备解析：客户端传 → 验证存在并保存本次实际设备；不传 → 默认 execution 设备
-        Long equipmentId = dto.getEquipmentId() != null ? dto.getEquipmentId() : exec.getEquipmentId();
-        String equipmentName = null;
-        if (equipmentId != null) {
-            if (dto.getEquipmentId() != null) {
-                equipmentName = equipmentNameOf(equipmentId);
-                if (equipmentName == null) throw new BusinessException("设备不存在");
-            } else {
-                equipmentName = exec.getEquipmentName(); // 默认用 execution 快照名
-            }
-        }
-
-        // 7. 创建 WorkReport（客户端不能决定 status/reportTime）
-        ProductionWorkReport r = new ProductionWorkReport();
-        r.setOrderId(exec.getOrderId());
-        r.setOrderNo(orderNoOf(exec.getOrderId()));
-        r.setExecutionId(exec.getExecutionId());
-        r.setTaskNodeId(taskNode.getTaskNodeId());
-        r.setReporterId(operatorId);
-        r.setReporterName(operatorName);
-        r.setEquipmentId(equipmentId);
-        r.setEquipmentName(equipmentName);
-        r.setQualifiedQuantity(qualified);
-        r.setDefectiveQuantity(defective);
-        r.setLaborHours(labor);
-        r.setMachineHours(machine);
-        r.setWorkStartTime(dto.getWorkStartTime());
-        r.setWorkEndTime(dto.getWorkEndTime());
-        r.setReportTime(LocalDateTime.now());
-        r.setDefectReason(dto.getDefectReason());
-        r.setRemark(dto.getRemark());
-        r.setReportStatus(WorkReportStatusEnum.SUBMITTED.getCode());
-        r.setCreateBy(operatorName);
-        workReportMapper.insert(r);
-
-        // 8. 重算 execution projection（同一事务）
-        projectionService.recalculate(exec.getExecutionId());
-        log.info("报工成功 reportId={}, executionId={}, 合格={} 不良={}, 报工人={}",
-                r.getReportId(), exec.getExecutionId(), qualified, defective, operatorName);
-        return readService.getById(r.getReportId());
+        // TODO
+        return null;
     }
 
     // ==================== CANCEL ====================

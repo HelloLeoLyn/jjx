@@ -36,7 +36,7 @@ public class ProductionWorkReport {
     /** 工序执行记录ID（生产事实主体） */
     private Long executionId;
 
-    /** 任务树节点ID（P2 起新报工必须绑定 TaskNode；旧 dispatch_node_id 历史保留，不再写入） */
+    /** 任务树节点ID（Task Tree 报工锚点；P2 起新报工必须绑定 TaskNode） */
     private Long taskNodeId;
 
     /** 报工提交人ID */

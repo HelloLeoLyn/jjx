@@ -107,38 +107,14 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "是否已建立任务树根节点（P3 派工管理）")
     private Boolean hasTaskRoot;
 
-    @Schema(description = "任务树根节点持有人ID（P3 派工管理）")
-    private Long taskRootAssigneeId;
+    @Schema(description = "是否有可展开的任务树子节点（GLOBAL=Root 已下发给第一层真实人员；PERSONAL=本人持有节点；纯浏览不建根）")
+    private Boolean hasChildren;
 
-    @Schema(description = "任务树根节点持有人姓名（P3 派工管理）")
-    private String taskRootAssigneeName;
+    @Schema(description = "已下发：系统 Root 直接第一层真实人员 TaskNode 的 effective 合计（Execution 父行，查看者无关）")
+    private BigDecimal rootAssignedQuantity;
 
-    @Schema(description = "任务树节点总数（含根；0=未建立）（P3 派工管理）")
-    private Integer taskNodeCount;
-
-    @Schema(description = "任务链摘要（未分配 / 根节点持有人 → 后续节点摘要）（P3 派工管理）")
-    private String taskChainText;
-
-    @Schema(description = "当前用户可继续分配的任务节点ID（本人持有且可分配>0；无 root 时为 null）（P3 派工管理）")
-    private Long myAssignableNodeId;
-
-    @Schema(description = "当前用户可继续分配数量（本人持有节点，availableToAssign）（P3 派工管理）")
-    private BigDecimal myAssignableQuantity;
-
-    @Schema(description = "我的任务：当前用户在该工序持有的有效 TaskNode.taskQuantity 合计（无节点为 0）（派工列表投影）")
-    private BigDecimal myTaskQuantity;
-
-    @Schema(description = "已分给下级：当前用户节点的直接有效子节点 effective 合计（无节点为 0）（派工列表投影）")
-    private BigDecimal myChildOccupied;
-
-    @Schema(description = "我自己剩余：当前用户节点 selfRemaining = effective - childOccupied - selfReported（下限0，无节点为 0）（派工列表投影）")
-    private BigDecimal myOwnHeld;
-
-    @Schema(description = "系统 Root 已分配给第一层真实人员 TaskNode 的有效数量合计（Execution 父行“已下发”，查看者无关）")
-    private BigDecimal rootChildOccupied;
-
-    @Schema(description = "系统 Root 当前可继续分配数量 = Root effective - 第一层 effective（Execution 父行“当前剩余”，查看者无关）")
-    private BigDecimal rootAvailableToAssign;
+    @Schema(description = "当前剩余：系统 Root 当前可继续分配数量 = Root effective - rootAssignedQuantity（Root 不存在时 = inputQuantity；Execution 父行，查看者无关）")
+    private BigDecimal rootRemainingQuantity;
 
     @Schema(description = "查询视角：GLOBAL=全局（可查看全部Execution）/ PERSONAL=个人（仅本人持有TaskNode的Execution）")
     private String viewScope;
