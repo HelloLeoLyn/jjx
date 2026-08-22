@@ -10,6 +10,8 @@ export interface TaskNodeVO {
   parentNodeId?: number | null
   assigneeId?: number
   assigneeName?: string
+  /** 上级节点持有人姓名（任务来源展示；普通用户子树视图下上级节点不在树内） */
+  parentAssigneeName?: string
   taskQuantity?: number
   recalledQuantity?: number
   /** 本人有效报工量（SUBMITTED WorkReport 动态汇总） */
@@ -21,6 +23,8 @@ export interface TaskNodeVO {
   /** selfRemaining：effective - childOccupied - selfReported */
   remainingQuantity?: number
   availableToAssign?: number
+  /** 是否有直接子节点（懒加载：决定展开箭头；由后端投影） */
+  hasChildren?: boolean
   children?: TaskNodeVO[]
 }
 
@@ -31,6 +35,7 @@ export interface MyTaskNodeVO {
   parentNodeId?: number | null
   assigneeId?: number
   assigneeName?: string
+  parentAssigneeName?: string
   taskQuantity?: number
   recalledQuantity?: number
   selfReported?: number
@@ -61,4 +66,15 @@ export interface TaskCandidateVO {
 export interface TaskAssignItem {
   userId: number
   quantity: number
+}
+
+// 任务树操作流水事件（TT-FINAL-06：按 executionId 聚合）
+export interface TaskTreeEventVO {
+  time?: string
+  action?: 'ASSIGN' | 'RECALL' | 'RETURN' | 'WORK_REPORT' | 'WORK_REPORT_CANCEL' | string
+  actionLabel?: string
+  operatorName?: string
+  targetName?: string
+  quantity?: number
+  remark?: string
 }

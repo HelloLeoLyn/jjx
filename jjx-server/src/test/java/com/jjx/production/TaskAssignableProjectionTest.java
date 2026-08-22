@@ -4,6 +4,7 @@ import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.QualityActionService;
+import com.jjx.production.service.TaskNodeService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.impl.ProductionOperationExecutionServiceImpl;
 import com.jjx.system.utils.SecurityUtils;
@@ -55,7 +56,8 @@ class TaskAssignableProjectionTest {
                 mock(ProductionOrderMapper.class),
                 jdbcTemplate,
                 mock(WorkReportProjectionService.class),
-                mock(QualityActionService.class));
+                mock(QualityActionService.class),
+                mock(TaskNodeService.class));
         nodeRows = new ArrayList<>();
         workReportRows = new ArrayList<>();
 

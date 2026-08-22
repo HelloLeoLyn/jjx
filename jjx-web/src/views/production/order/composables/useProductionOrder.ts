@@ -106,7 +106,15 @@ export function useProductionOrder() {
             actualTimeRange: formatDateRange(order.actualStartDate, order.actualEndDate),
             progress: calculateProgress(order.completedQuantity, order.plannedQuantity),
             progressLabel: `${order.completedQuantity}/${order.plannedQuantity}`,
-            remainingQuantity: order.plannedQuantity - order.completedQuantity,
+            // 计划(PLAN)行：剩余可下达必须用后端动态 remainingQuantity（计划-有效已转工单），
+            // 禁止用 planned-completed 覆盖（PLAN 的 completed 恒为 0，会把已转工单额度错显示回全量）。
+            // 工单(WORK_ORDER)行：剩余 = 计划-完成（后端 persisted remaining 不随报工更新）。
+            remainingQuantity:
+              normalized.orderType === 'plan'
+                ? order.remainingQuantity != null && Number(order.remainingQuantity) >= 0
+                  ? Number(order.remainingQuantity)
+                  : Number(order.plannedQuantity || 0)
+                : order.plannedQuantity - order.completedQuantity,
             // 权限控制字段（用 normalized：小写 orderType 判断才生效）
             canConvertToWorkOrder: canConvertToWorkOrder(normalized),
             canStart: canStart(normalized),

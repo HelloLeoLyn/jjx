@@ -307,13 +307,18 @@ class TaskNodeServiceTest {
             all.addAll(children);
             return all;
         });
-        TaskNodeVO tree = service.getTaskTree(500L);
-        assertEquals(root.getTaskNodeId(), tree.getTaskNodeId());
-        assertEquals(3, tree.getChildren().size());
-        assertEquals(new BigDecimal("0"), tree.getRemainingQuantity());
-        assertEquals(3, tree.getChildren().stream()
-                .map(TaskNodeVO::getAssigneeId).distinct().count());
-        // selfReported：P1 未接入 WorkReport，恒为 0（完成量后续从 WorkReport 动态汇总，不落 TaskNode）
-        assertEquals(BigDecimal.ZERO, tree.getSelfReported());
+        // 查询视角：全局用户（超级管理员）查看完整树；树返回系统根（前端隐藏系统根为人员）
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(SecurityUtils::getUserId).thenReturn(1L);
+            mocked.when(SecurityUtils::isGlobalProductionScope).thenReturn(true);
+            TaskNodeVO tree = service.getTaskTree(500L);
+            assertEquals(root.getTaskNodeId(), tree.getTaskNodeId());
+            assertEquals(3, tree.getChildren().size());
+            assertEquals(new BigDecimal("0"), tree.getRemainingQuantity());
+            assertEquals(3, tree.getChildren().stream()
+                    .map(TaskNodeVO::getAssigneeId).distinct().count());
+            // selfReported：P1 未接入 WorkReport，恒为 0（完成量后续从 WorkReport 动态汇总，不落 TaskNode）
+            assertEquals(BigDecimal.ZERO, tree.getSelfReported());
+        }
     }
 }

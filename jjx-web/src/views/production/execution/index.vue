@@ -4,7 +4,7 @@
     <div class="page-header">
       <h1 class="page-title">工序执行</h1>
       <el-radio-group v-model="viewMode" size="small">
-        <el-radio-button value="all">全部任务</el-radio-button>
+        <el-radio-button value="all">{{ viewScope === 'PERSONAL' ? '我的工序任务' : '全部任务' }}</el-radio-button>
         <el-radio-button value="mine">我的当前任务</el-radio-button>
         <el-radio-button value="done">我已完成</el-radio-button>
       </el-radio-group>
@@ -86,7 +86,7 @@
     <el-card v-show="viewMode !== 'all'" class="list-card" shadow="never">
       <div class="my-task-title">
         {{ viewMode === 'mine' ? '我的当前任务' : '我已完成' }}
-        <span class="my-task-sub">当前用户持有的 TaskNode；数量全部动态汇总（WorkReport 投影）</span>
+        <span class="my-task-sub">本人持有的任务；数量全部按报工记录动态汇总</span>
       </div>
       <el-table v-loading="myTasksLoading" :data="myTaskList" style="width: 100%">
         <el-table-column label="工单" min-width="170" show-overflow-tooltip>
@@ -319,6 +319,8 @@ function fmtTime(t?: string | null): string {
 const loading = ref(false)
 const executionList = ref<OperationExecutionVO[]>([])
 const total = ref(0)
+/** 查询视角（后端按角色判定）：GLOBAL=全部工序；PERSONAL=仅本人持有 TaskNode 的工序（普通用户不能通过本页绕过数据范围） */
+const viewScope = ref<'GLOBAL' | 'PERSONAL'>('GLOBAL')
 const queryParams = reactive<OperationExecutionQuery>({
   orderNo: '', processName: '', executionStatus: '', operatorName: '',
   pageNum: 1, pageSize: 10,
@@ -331,6 +333,7 @@ const getList = async () => {
     const data = res?.data
     executionList.value = Array.isArray(data) ? data : data?.records || []
     total.value = Array.isArray(data) ? data.length : data?.total || 0
+    viewScope.value = (executionList.value[0]?.viewScope as 'GLOBAL' | 'PERSONAL' | undefined) || 'GLOBAL'
   } catch {
     executionList.value = []
   } finally {
@@ -386,10 +389,9 @@ const myTasksLoading = ref(false)
 const myTasks = ref<MyTaskNodeVO[]>([])
 
 const myCurrentTasks = computed(() => myTasks.value.filter((t) => Number(t.selfRemaining || 0) > 0))
-const myDoneTasks = computed(() => myTasks.value.filter((t) => {
-  const remain = Number(t.selfRemaining || 0)
-  return remain <= 0 && t.status !== 'CANCELLED'
-}))
+// TT-FINAL-05 H：'我已完成' 必须使用真实闭环语义（后端 status=COMPLETED 表示本人节点子树全部闭环）；
+// selfRemaining=0（例如全部下分给下级）不等于本人完成，不能再归入已完成视图
+const myDoneTasks = computed(() => myTasks.value.filter((t) => t.status === 'COMPLETED'))
 const myTaskList = computed(() => (viewMode.value === 'mine' ? myCurrentTasks.value : myDoneTasks.value))
 
 function taskStatusTag(status?: string): any {

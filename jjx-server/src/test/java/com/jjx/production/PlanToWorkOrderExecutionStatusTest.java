@@ -12,6 +12,7 @@ import com.jjx.product.mapper.EngineeringRoutingItemMapper;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.QualityActionService;
+import com.jjx.production.service.TaskNodeService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.impl.ProductionOperationExecutionServiceImpl;
 import com.jjx.production.service.impl.ProductionOrderServiceImpl;
@@ -76,16 +77,17 @@ class PlanToWorkOrderExecutionStatusTest {
         // 反射构造不触发 Spring 注入，补设 ServiceImpl.baseMapper（getById/save/updateById 依赖）
         ReflectionTestUtils.setField(orderService, "baseMapper", orderMapper);
 
-        // 执行服务：5 依赖（execMapper/orderMapper/jdbcTemplate/workReportProjectionService/qualityActionService）
+        // 执行服务：6 依赖（execMapper/orderMapper/jdbcTemplate/workReportProjectionService/qualityActionService/taskNodeService）
         ProductionOrderMapper oMapper = mock(ProductionOrderMapper.class);
         JdbcTemplate jdbcTemplate = null; // startExecution 路径不触达 jdbcTemplate，且其类层次无法内联 mock
         WorkReportProjectionService projectionService = mock(WorkReportProjectionService.class);
         QualityActionService qualityActionService = mock(QualityActionService.class);
+        TaskNodeService taskNodeService = mock(TaskNodeService.class);
 
         var ctor2 = ProductionOperationExecutionServiceImpl.class.getDeclaredConstructors()[0];
         ctor2.setAccessible(true);
         execService = (ProductionOperationExecutionServiceImpl) ctor2.newInstance(
-                execMapper, oMapper, jdbcTemplate, projectionService, qualityActionService);
+                execMapper, oMapper, jdbcTemplate, projectionService, qualityActionService, taskNodeService);
         ReflectionTestUtils.setField(execService, "baseMapper", execMapper);
     }
 

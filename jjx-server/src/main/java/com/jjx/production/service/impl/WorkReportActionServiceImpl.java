@@ -74,8 +74,10 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             throw new BusinessException("当前工序状态不允许报工（仅执行中/已暂停可报工）");
         }
         // 2.5 TaskNode 绑定：新报工必须绑定任务节点；当前用户 = taskNode.assigneeId
+        // TT-FINAL-04：先对节点行加锁（FOR UPDATE），串行化同一节点的并发报工/分配/收回/退回，
+        // 保证后续 selfRemaining 读取与 WorkReport insert 在事务内一致，避免并发超限
         if (dto.getTaskNodeId() == null) throw new BusinessException("报工必须绑定任务节点");
-        ProductionTaskNode taskNode = taskNodeService.getNode(dto.getTaskNodeId());
+        ProductionTaskNode taskNode = taskNodeService.lockNode(dto.getTaskNodeId());
         if (!dto.getExecutionId().equals(taskNode.getExecutionId())) {
             throw new BusinessException("任务节点不属于该工序执行记录");
         }

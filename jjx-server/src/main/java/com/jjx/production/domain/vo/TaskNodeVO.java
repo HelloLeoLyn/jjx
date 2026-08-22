@@ -21,6 +21,8 @@ public class TaskNodeVO {
     private Long parentNodeId;
     private Long assigneeId;
     private String assigneeName;
+    /** 上级节点持有人姓名（任务来源展示；普通用户子树视图下上级不在树内，用于节点详情保留来源） */
+    private String parentAssigneeName;
     private BigDecimal taskQuantity;
     private BigDecimal recalledQuantity;
     private BigDecimal selfReported;
@@ -30,6 +32,8 @@ public class TaskNodeVO {
     private String statusLabel;
     private BigDecimal remainingQuantity;
     private BigDecimal availableToAssign;
+    /** 是否有直接子节点（懒加载：决定展开箭头；由后端投影，不落库） */
+    private Boolean hasChildren;
     private List<TaskNodeVO> children = new ArrayList<>();
 
     public static TaskNodeVO from(com.jjx.production.domain.entity.ProductionTaskNode n) {

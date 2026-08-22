@@ -18,6 +18,8 @@ public class MyTaskNodeVO {
     private Long parentNodeId;
     private Long assigneeId;
     private String assigneeName;
+    @Schema(description = "上级节点持有人姓名（任务来源展示）")
+    private String parentAssigneeName;
     private BigDecimal taskQuantity;
     private BigDecimal recalledQuantity;
     private BigDecimal selfReported;

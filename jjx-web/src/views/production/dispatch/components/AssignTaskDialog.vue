@@ -13,9 +13,9 @@
       <el-descriptions :column="3" border size="small">
         <el-descriptions-item label="任务节点">{{ parentNode?.assigneeName || '未分配' }}</el-descriptions-item>
         <el-descriptions-item label="任务数量">{{ fmt(parentNode?.taskQuantity) }}</el-descriptions-item>
-        <el-descriptions-item label="自己已完成">{{ fmt(parentNode?.selfReported) }}</el-descriptions-item>
+        <el-descriptions-item label="已完成">{{ fmt(parentNode?.selfReported) }}</el-descriptions-item>
         <el-descriptions-item label="已分给下级">{{ fmt(parentNode?.childOccupied) }}</el-descriptions-item>
-        <el-descriptions-item label="自己当前持有">{{ fmt(ownHeld) }}</el-descriptions-item>
+        <el-descriptions-item label="我自己剩余">{{ fmt(ownHeld) }}</el-descriptions-item>
         <el-descriptions-item label="当前可分配">
           <span :style="{ color: Number(parentNode?.availableToAssign || 0) > 0 ? '#409eff' : '#909399' }">
             {{ fmt(parentNode?.availableToAssign) }}
@@ -27,7 +27,7 @@
       <div class="section-title">当前分配</div>
       <el-table :data="children" size="small" max-height="240">
         <el-table-column label="人员" min-width="110">
-          <template #default="{ row }">{{ row.assigneeName || `用户${row.assigneeId}` }}</template>
+          <template #default="{ row }">{{ row.assigneeName || '未知人员' }}</template>
         </el-table-column>
         <el-table-column label="任务数量" width="90" align="right">
           <template #default="{ row }">{{ fmt(row.taskQuantity) }}</template>
@@ -35,12 +35,13 @@
         <el-table-column label="已完成" width="90" align="right">
           <template #default="{ row }">{{ fmt(row.selfReported) }}</template>
         </el-table-column>
-        <el-table-column label="剩余" width="90" align="right">
+        <el-table-column label="剩余未完成" width="100" align="right">
           <template #default="{ row }">{{ fmt(row.remainingQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        <el-table-column label="操作" width="110" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="canRecall(row)" link type="warning" size="small" @click="handleRecall(row)">收回</el-button>
+            <el-button link type="primary" size="small" @click="openDetail(row)">查看</el-button>
+            <el-button v-if="canRecall(row)" link type="warning" size="small" @click="openRecall(row)">收回</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -73,6 +74,9 @@
         本次合计：<b>{{ fmt(draftTotal) }}</b> / 当前可分配 {{ fmt(parentNode?.availableToAssign) }}
         <span v-if="draftTotal > Number(parentNode?.availableToAssign || 0)" style="color: #f56c6c">超出可分配数量</span>
       </div>
+      <div class="after-total">
+        分配后我自己剩余：<b :style="{ color: afterOwnHeld > 0 ? '#67c23a' : '#909399' }">{{ fmt(afterOwnHeld) }}</b>
+      </div>
     </div>
 
     <template #footer>
@@ -84,18 +88,37 @@
     <OperatorPicker
       v-model:visible="pickerVisible"
       :users="candidates"
+      :dept-tree="deptTree"
       :model-value="[]"
       title="选择分配人员"
       @confirm="onPick"
+    />
+
+    <!-- 节点详情（当前分配“查看”） -->
+    <NodeDetailDialog
+      v-model:visible="detailVisible"
+      :node="detailNode"
+      :execution="{ orderNo: props.orderNo, processName: props.processName }"
+      :root="tree"
+    />
+
+    <!-- 独立收回弹窗（TT-FINAL-05：可收回范围/数量/备注） -->
+    <RecallDialog
+      v-model:visible="recallVisible"
+      :child="recallTarget"
+      @confirm="onRecallConfirm"
     />
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import OperatorPicker from '@/components/OperatorPicker/index.vue'
+import NodeDetailDialog from './NodeDetailDialog.vue'
+import RecallDialog from './RecallDialog.vue'
 import { taskNodeApi } from '@/api/production/taskNode'
+import { deptApi } from '@/api/system/dept'
 import { hasPermi } from '@/directives'
 import { useUserStore } from '@/store/modules/user'
 import type { TaskNodeVO, TaskCandidateVO } from '@/types/production/taskNode'
@@ -107,6 +130,9 @@ const props = defineProps<{
   parentNodeId: number
   /** 弹窗标题（如：印刷 · SO-001 分配任务） */
   title?: string
+  /** 工单号/工序名（节点详情展示用，可选） */
+  orderNo?: string
+  processName?: string
 }>()
 
 const emit = defineEmits<{
@@ -121,6 +147,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const tree = ref<TaskNodeVO | null>(null)
 const candidates = ref<TaskCandidateVO[]>([])
+/** 真实组织树（sys_dept treeselect）：部门节点名称必须是真实 deptName（TT-FINAL-02） */
+const deptTree = ref<any[]>([])
 const pickerVisible = ref(false)
 
 interface DraftRow {
@@ -130,6 +158,12 @@ interface DraftRow {
   quantity: number
 }
 const drafts = ref<DraftRow[]>([])
+
+// TT-FINAL-05：节点详情 / 独立收回弹窗
+const detailVisible = ref(false)
+const detailNode = ref<TaskNodeVO | null>(null)
+const recallVisible = ref(false)
+const recallTarget = ref<TaskNodeVO | null>(null)
 
 const dialogTitle = computed(() => props.title || '分配任务')
 
@@ -154,6 +188,8 @@ const ownHeld = computed(() => {
 })
 
 const draftTotal = computed(() => drafts.value.reduce((s, d) => s + num(d.quantity), 0))
+/** 分配后我自己剩余 = 自己当前持有 - 本次分配合计（下限 0） */
+const afterOwnHeld = computed(() => Math.max(0, ownHeld.value - draftTotal.value))
 
 const canAdd = computed(() => hasPermi('production:task:assign') && draftTotal.value < num(parentNode.value?.availableToAssign))
 
@@ -200,6 +236,14 @@ async function load() {
       candidates.value = []
     }
   }
+  if (!deptTree.value.length) {
+    try {
+      const res: any = await deptApi.treeselect({})
+      deptTree.value = res?.data || []
+    } catch {
+      deptTree.value = []
+    }
+  }
 }
 
 watch(
@@ -218,32 +262,41 @@ const onPick = (ids: number[]) => {
     if (existing.has(id)) continue
     const c = candidates.value.find((x) => x.userId === id)
     if (c) {
-      drafts.value.push({ userId: c.userId, name: c.nickName || c.userName || `用户${c.userId}`, deptName: c.deptName, quantity: 0 })
+      drafts.value.push({ userId: c.userId, name: c.nickName || c.userName || '未知人员', deptName: c.deptName, quantity: 0 })
       existing.add(id)
     }
   }
 }
 
-const handleRecall = async (child: TaskNodeVO) => {
+const openDetail = (child: TaskNodeVO) => {
+  detailNode.value = child
+  detailVisible.value = true
+}
+
+const openRecall = (child: TaskNodeVO) => {
+  if (num(child.remainingQuantity) <= 0) return
+  recallTarget.value = child
+  recallVisible.value = true
+}
+
+const onRecallConfirm = async (payload: { quantity: number; remark: string }) => {
+  const child = recallTarget.value
+  if (!child) return
   const maxQty = num(child.remainingQuantity)
-  if (maxQty <= 0) return
+  const qty = payload.quantity
+  if (qty <= 0 || qty > maxQty) {
+    ElMessage.warning(`收回数量必须在 0 < x <= ${fmt(maxQty)} 之间`)
+    recallVisible.value = false
+    return
+  }
   try {
-    const { value } = await ElMessageBox.prompt(
-      `收回「${child.assigneeName || child.assigneeId}」的任务，可收回数量 ${fmt(maxQty)}`,
-      '收回任务',
-      { inputPattern: /^\d+(\.\d+)?$/, inputErrorMessage: '请输入数字' },
-    )
-    const qty = Number(value)
-    if (qty <= 0 || qty > maxQty) {
-      ElMessage.warning(`收回数量必须在 0 < x <= ${fmt(maxQty)} 之间`)
-      return
-    }
-    await taskNodeApi.recall(child.taskNodeId, qty)
+    await taskNodeApi.recall(child.taskNodeId, qty, payload.remark)
     ElMessage.success('已收回')
+    recallVisible.value = false
+    // 收回后容量立即恢复，刷新弹窗可马上重新分配
     await load()
     emit('changed')
   } catch (e: any) {
-    if (e === 'cancel' || e?.toString().includes('cancel')) return
     ElMessage.error(e?.message || '收回失败')
   }
 }
@@ -299,6 +352,11 @@ function fmt(v?: number | null): string {
 }
 .draft-total {
   margin-top: 10px;
+  font-size: 13px;
+  color: #606266;
+}
+.after-total {
+  margin-top: 4px;
   font-size: 13px;
   color: #606266;
 }

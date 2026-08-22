@@ -20,6 +20,14 @@ export const operationExecutionApi = {
     )
   },
 
+  /** 分页查询工序执行列表（派工管理树形主列表第一层，服务端分页） */
+  page(params: OperationExecutionQuery) {
+    return request.get<R<PageResult<OperationExecutionVO>>>(
+      '/production/operation-execution/page',
+      { params }
+    )
+  },
+
   /**
    * 查询工序执行列表（全量）
    */

@@ -17,6 +17,7 @@ import com.jjx.system.utils.SecurityUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -50,13 +51,9 @@ class WorkReportSubmitTest {
         readService = mock(WorkReportReadService.class);
         taskNodeService = mock(TaskNodeService.class);
         // P2：默认 TaskNode 绑定——节点 1000 属于 execution 3、持有人 104，容量充足
-        when(taskNodeService.getNode(any())).thenAnswer(inv -> {
-            ProductionTaskNode n = new ProductionTaskNode();
-            n.setTaskNodeId(1000L);
-            n.setExecutionId(3L);
-            n.setAssigneeId(104L);
-            return n;
-        });
+        // TT-FINAL-04：submit 走 lockNode（FOR UPDATE）后读取 remaining
+        when(taskNodeService.getNode(any())).thenAnswer(inv -> node104());
+        when(taskNodeService.lockNode(any())).thenAnswer(inv -> node104());
         when(taskNodeService.remaining(any())).thenReturn(new BigDecimal("1000000"));
         var ctor = WorkReportActionServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
@@ -67,6 +64,14 @@ class WorkReportSubmitTest {
         service = (WorkReportActionServiceImpl) ctor.newInstance(workReportMapper, executionMapper,
                 projectionService, readService, jdbcTemplate, taskNodeService,
                 mock(com.jjx.production.service.QualityInspectionService.class));
+    }
+
+    private ProductionTaskNode node104() {
+        ProductionTaskNode n = new ProductionTaskNode();
+        n.setTaskNodeId(1000L);
+        n.setExecutionId(3L);
+        n.setAssigneeId(104L);
+        return n;
     }
 
     private ProductionOperationExecution exec(int status) {
@@ -125,6 +130,28 @@ class WorkReportSubmitTest {
         assertEquals(WorkReportStatusEnum.SUBMITTED.getCode(), r.getReportStatus());
         // projection 重算调用
         verify(projectionService).recalculate(3L);
+    }
+
+    @Test
+    void submitAcquiresNodeLockBeforeRemainingRead() {
+        // TT-FINAL-04：submit 必须先在节点行上加锁（FOR UPDATE），再读取 selfRemaining 做容量校验，
+        // 保证与 assign/recall/return 锁顺序一致，杜绝并发读取旧 selfRemaining 导致超限。
+        when(executionMapper.selectById(3L)).thenReturn(exec(ExecutionStatusEnum.EXECUTING.getCode()));
+        when(workReportMapper.insert(any(ProductionWorkReport.class))).thenAnswer(inv -> {
+            ((ProductionWorkReport) inv.getArgument(0)).setReportId(10L);
+            return 1;
+        });
+        var vo = new com.jjx.production.domain.vo.WorkReportVO();
+        vo.setReportId(10L);
+        when(readService.getById(10L)).thenReturn(vo);
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(() -> SecurityUtils.hasPermission("production:work-report:add")).thenReturn(true);
+            mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
+            service.submit(dto(), "印刷一组工人", 104L);
+        }
+        InOrder inOrder = inOrder(taskNodeService);
+        inOrder.verify(taskNodeService).lockNode(1000L);
+        inOrder.verify(taskNodeService).remaining(1000L);
     }
 
     @Test

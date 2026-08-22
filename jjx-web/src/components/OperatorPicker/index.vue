@@ -73,22 +73,32 @@ const treeRef = ref<any>()
 const keyword = ref('')
 
 // 按部门树层级组织：部门节点按管辖树结构，用户挂到所属部门下（2026-08-19：修复部门平铺成平级的怪树）
+// 2026-08-21（TT-FINAL-02）：所有部门节点标签必须来自真实 sys_dept.dept_name；
+// 禁止使用 deptId 拼接伪部门名称（部门{id}）；无部门人员归入「未设置部门」。
 const treeData = computed(() => {
   // 用户按 deptId 分组
   const byDept = new Map<number, any[]>()
+  const byDeptName = new Map<string, any[]>()
+  const noDeptUsers: any[] = []
   for (const u of props.users || []) {
     const deptId = u.deptId ?? 0
-    if (!byDept.has(deptId)) byDept.set(deptId, [])
-    byDept.get(deptId)!.push({
-      id: u.userId,
-      label: u.nickName || u.userName || `用户${u.userId}`,
-    })
+    const leaf = { id: u.userId, label: u.nickName || u.userName || '未知人员' }
+    if (u.deptId != null) {
+      if (!byDept.has(deptId)) byDept.set(deptId, [])
+      byDept.get(deptId)!.push(leaf)
+      if (u.deptName) {
+        if (!byDeptName.has(u.deptName)) byDeptName.set(u.deptName, [])
+        byDeptName.get(u.deptName)!.push(leaf)
+      }
+    } else {
+      noDeptUsers.push(leaf)
+    }
   }
   const build = (nodes: any[]): any[] => {
     const out: any[] = []
     for (const n of nodes || []) {
       const deptId = n.id
-      const node: any = { id: `d${deptId}`, label: n.deptName || `部门${deptId}`, children: [] }
+      const node: any = { id: `d${deptId}`, label: n.deptName || n.label || '未设置部门', children: [] }
       if (byDept.has(deptId)) node.children.push(...byDept.get(deptId)!)
       node.children.push(...build(n.children || []))
       // 没人也没下级 → 不显示空部门
@@ -97,13 +107,31 @@ const treeData = computed(() => {
     return out
   }
   const tree = build(props.deptTree || [])
-  if (tree.length) return tree
-  // 兜底：无部门树时按 deptId 平铺分组
-  return [...byDept].map(([deptId, users]) => ({
-    id: `d${deptId}`,
-    label: `部门${deptId}`,
-    children: users,
-  }))
+  // 部门树未覆盖的人员（部门已删除/不在树内）→ 归入「未设置部门」，绝不显示 部门{id}
+  const covered = new Set<number>()
+  const collectIds = (nodes: any[]) => {
+    for (const n of nodes || []) {
+      if (n.id != null) covered.add(Number(n.id))
+      collectIds(n.children || [])
+    }
+  }
+  collectIds(props.deptTree || [])
+  for (const [deptId, users] of byDept) {
+    if (!covered.has(Number(deptId))) {
+      noDeptUsers.push(...users)
+    }
+  }
+  if (tree.length) {
+    if (noDeptUsers.length) tree.push({ id: 'd-none', label: '未设置部门', children: noDeptUsers })
+    return tree
+  }
+  // 兜底：无部门树时按真实 deptName 分组（绝不使用 deptId 拼接名称）
+  const flat: any[] = []
+  for (const [name, users] of byDeptName) {
+    flat.push({ id: `n-${name}`, label: name, children: users })
+  }
+  if (noDeptUsers.length) flat.push({ id: 'd-none', label: '未设置部门', children: noDeptUsers })
+  return flat
 })
 
 const selectedNames = computed(() => {

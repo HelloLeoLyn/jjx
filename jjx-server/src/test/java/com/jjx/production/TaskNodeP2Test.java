@@ -244,6 +244,32 @@ class TaskNodeP2Test {
         assertEquals(new BigDecimal("200"), taskNodeService.remaining(1L));
     }
 
+    // ==================== 3.0 TT-FINAL-04：顺序报工不超限（锁后 remaining 实时可见） ====================
+
+    @Test
+    void sequentialSubmitsCannotExceedSelfRemaining() {
+        node(1L, null, 1L, new BigDecimal("100"));
+        submitWork(1L, 1L, new BigDecimal("60"), BigDecimal.ZERO);
+        assertEquals(new BigDecimal("40"), taskNodeService.remaining(1L));
+        // 第二次报工 50 > 剩余 40 → 拒绝；报工与报工不能共同消耗同一份容量
+        WorkReportSubmitDTO dto = new WorkReportSubmitDTO();
+        dto.setExecutionId(500L);
+        dto.setTaskNodeId(1L);
+        dto.setQualifiedQuantity(new BigDecimal("50"));
+        dto.setDefectiveQuantity(BigDecimal.ZERO);
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(() -> SecurityUtils.hasPermission("*:*:*")).thenReturn(false);
+            mocked.when(() -> SecurityUtils.hasPermission("production:work-report:add")).thenReturn(true);
+            BusinessException ex = assertThrows(BusinessException.class,
+                    () -> reportService.submit(dto, "操作员1", 1L));
+            assertTrue(ex.getMessage().contains("超过节点剩余可报数量"), ex.getMessage());
+        }
+        // 仍只有一条报工，容量守恒
+        assertEquals(1, reports.stream().filter(r ->
+                com.jjx.production.enums.WorkReportStatusEnum.SUBMITTED.getCode().equals(r.getReportStatus())).count());
+        assertEquals(new BigDecimal("40"), taskNodeService.remaining(1L));
+    }
+
     // ==================== 3. 报工超过 selfRemaining 拒绝 ====================
 
     @Test

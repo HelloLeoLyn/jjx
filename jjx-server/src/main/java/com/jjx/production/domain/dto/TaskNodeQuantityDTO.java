@@ -17,4 +17,7 @@ public class TaskNodeQuantityDTO {
     @NotNull(message = "数量必填")
     @Schema(description = "收回/退回数量（必须大于 0）")
     private BigDecimal quantity;
+
+    @Schema(description = "备注（选填，进入任务流水）")
+    private String remark;
 }

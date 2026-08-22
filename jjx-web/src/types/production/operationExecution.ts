@@ -60,6 +60,12 @@ export interface OperationExecutionVO {
   myChildOccupied?: number
   /** 我自己剩余：当前用户节点 selfRemaining = effective - childOccupied - selfReported（无节点为 0） */
   myOwnHeld?: number
+  /** 系统 Root 已分配给第一层真实人员 TaskNode 的有效数量合计（Execution 父行“已下发”，查看者无关） */
+  rootChildOccupied?: number
+  /** 系统 Root 当前可继续分配数量 = Root effective - 第一层 effective（Execution 父行“当前剩余”，查看者无关） */
+  rootAvailableToAssign?: number
+  /** 查询视角：GLOBAL=全局（可查看全部Execution）/ PERSONAL=个人（仅本人持有TaskNode的Execution） */
+  viewScope?: 'GLOBAL' | 'PERSONAL'
   defectiveReason?: string
   actualProcessParams?: string
   qualityCheckResult?: string

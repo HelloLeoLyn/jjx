@@ -9,7 +9,10 @@ import com.jjx.production.domain.entity.ProductionTaskNode;
 import com.jjx.production.domain.vo.MyTaskNodeVO;
 import com.jjx.production.domain.vo.TaskCandidateVO;
 import com.jjx.production.domain.vo.TaskNodeVO;
+import com.jjx.production.domain.vo.TaskTreeEventVO;
 import com.jjx.production.service.TaskNodeService;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -42,8 +46,32 @@ public class TaskNodeController extends BaseController {
         return Result.success(taskNodeService.getTaskTree(executionId));
     }
 
+    @Operation(summary = "任务树懒加载：当前视角第一层任务节点（parentNodeId 为空）或指定节点的直接子节点；纯浏览不建根")
+    @SaCheckPermission("production:task:view")
+    @GetMapping("/execution/{executionId}/children")
+    public Result<List<TaskNodeVO>> children(@PathVariable Long executionId,
+                                             @RequestParam(required = false) Long parentNodeId) {
+        return Result.success(taskNodeService.listChildren(executionId, parentNodeId));
+    }
+
+    @Operation(summary = "任务节点详情（单节点数量投影；视图范围校验；不加载子树）")
+    @SaCheckPermission("production:task:view")
+    @GetMapping("/detail/{taskNodeId}")
+    public Result<TaskNodeVO> detail(@PathVariable Long taskNodeId) {
+        return Result.success(taskNodeService.getNodeDetail(taskNodeId));
+    }
+
+    @Operation(summary = "任务树完整操作流水（分配/收回/退回/报工/撤销报工，按 executionId 聚合，时间升序）")
+    @SaCheckPermission("production:task:view")
+    @GetMapping("/execution/{executionId}/events")
+    public Result<List<TaskTreeEventVO>> events(@PathVariable Long executionId) {
+        return Result.success(taskNodeService.executionEvents(executionId));
+    }
+
     @Operation(summary = "分配任务给下级（创建子任务节点；一次可多人，合计不得超过父节点可分配数量）")
     @SaCheckPermission("production:task:assign")
+    @Log(module = "生产任务", businessType = BusinessType.INSERT, bizType = "'production_task'",
+            bizId = "#result.data[0].executionId")
     @PostMapping("/{parentNodeId}/assign")
     public Result<List<ProductionTaskNode>> assign(@PathVariable Long parentNodeId,
                                                    @Valid @RequestBody List<TaskAssignItemDTO> items) {
@@ -52,6 +80,8 @@ public class TaskNodeController extends BaseController {
 
     @Operation(summary = "收回直接子节点部分剩余任务（P2：仅父节点持有人可收回；已完成/已下分数量不可收回）")
     @SaCheckPermission("production:task:recall")
+    @Log(module = "生产任务", businessType = BusinessType.UPDATE, bizType = "'production_task'",
+            bizId = "#result.data.executionId")
     @PostMapping("/{childNodeId}/recall")
     public Result<ProductionTaskNode> recall(@PathVariable Long childNodeId,
                                              @Valid @RequestBody TaskNodeQuantityDTO dto) {
@@ -60,6 +90,8 @@ public class TaskNodeController extends BaseController {
 
     @Operation(summary = "退回部分剩余任务给父节点（P2：仅节点本人可退回；root 不允许退回）")
     @SaCheckPermission("production:task:return")
+    @Log(module = "生产任务", businessType = BusinessType.UPDATE, bizType = "'production_task'",
+            bizId = "#result.data.executionId")
     @PostMapping("/{nodeId}/return")
     public Result<ProductionTaskNode> returnNode(@PathVariable Long nodeId,
                                                  @Valid @RequestBody TaskNodeQuantityDTO dto) {
