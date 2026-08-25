@@ -44,16 +44,6 @@
           <el-radio value="1">停用</el-radio>
         </el-radio-group>
       </el-form-item>
-      <el-form-item label="备注">
-        <el-input
-          v-model="formData.remark"
-          type="textarea"
-          placeholder="请输入内容"
-          :rows="3"
-          maxlength="500"
-          show-word-limit
-        />
-      </el-form-item>
     </el-form>
     <template #footer>
       <div class="dialog-footer">
@@ -84,7 +74,6 @@ interface Props {
     phone: string
     email: string
     status: string
-    remark: string
   }
   deptOptions: SysDept[]
 }
