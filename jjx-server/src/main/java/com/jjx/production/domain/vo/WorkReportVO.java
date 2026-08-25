@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 生产报工 VO（P2-B：Execution 页面报工历史展示用）
+ * 生产报工 VO（P3：报工事实 + 审批事实；Execution 页面报工历史 / 我的报工 / 待我审批共用）
  */
 @Data
 public class WorkReportVO {
@@ -18,7 +18,7 @@ public class WorkReportVO {
 
     private Long executionId;
 
-    private Long taskNodeId;
+    private Long taskId;
 
     private Long reporterId;
     private String reporterName;
@@ -41,6 +41,11 @@ public class WorkReportVO {
 
     private String reportStatus;
     private String reportStatusLabel;
+
+    private Long reviewerId;
+    private String reviewerName;
+    private LocalDateTime reviewTime;
+    private String reviewRemark;
 
     private String cancelledByName;
     private LocalDateTime cancelledAt;

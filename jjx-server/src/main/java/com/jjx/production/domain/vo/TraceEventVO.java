@@ -45,7 +45,7 @@ public class TraceEventVO {
     /** 详情（数量/质量结果/报工内容等展示信息） */
     private String description;
 
-    /** 事件后状态（如 COMPLETED/pass/SUBMITTED） */
+    /** 事件后状态（如 COMPLETED/pass/PENDING） */
     private String status;
 
     /** 来源类型：ORDER/EXECUTION/WORK_REPORT/QUALITY */

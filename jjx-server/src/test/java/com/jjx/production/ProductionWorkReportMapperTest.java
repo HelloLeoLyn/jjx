@@ -40,7 +40,7 @@ class ProductionWorkReportMapperTest {
         r.setLaborHours(new BigDecimal("2.50"));
         r.setMachineHours(new BigDecimal("2.00"));
         r.setReportTime(LocalDateTime.now());
-        r.setReportStatus(WorkReportStatusEnum.SUBMITTED.getCode());
+        r.setReportStatus(WorkReportStatusEnum.PENDING.getCode());
         return r;
     }
 
@@ -53,7 +53,7 @@ class ProductionWorkReportMapperTest {
         assertEquals(3L, r.getExecutionId());
         assertEquals(104L, r.getReporterId());
         assertEquals(new BigDecimal("950.0000"), r.getQualifiedQuantity());
-        assertEquals(WorkReportStatusEnum.SUBMITTED.getCode(), r.getReportStatus());
+        assertEquals(WorkReportStatusEnum.PENDING.getCode(), r.getReportStatus());
         verify(mapper).insert(r);
     }
 
@@ -61,7 +61,7 @@ class ProductionWorkReportMapperTest {
     void queryByExecutionIdAndStatus() {
         mapper.selectList(Wrappers.<ProductionWorkReport>lambdaQuery()
                 .eq(ProductionWorkReport::getExecutionId, 3L)
-                .eq(ProductionWorkReport::getReportStatus, WorkReportStatusEnum.SUBMITTED.getCode()));
+                .eq(ProductionWorkReport::getReportStatus, WorkReportStatusEnum.PENDING.getCode()));
         verify(mapper).selectList(any());
     }
 

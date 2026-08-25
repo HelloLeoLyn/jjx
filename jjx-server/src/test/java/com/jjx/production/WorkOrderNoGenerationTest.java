@@ -51,7 +51,8 @@ class WorkOrderNoGenerationTest {
                 qualityInspectionService,
                 mock(com.jjx.production.mapper.ProductionQualityInspectionMapper.class),
                 inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader);
+                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader,
+                mock(com.jjx.production.service.ProductionTaskService.class));
 
         genMethod = ProductionOrderServiceImpl.class.getDeclaredMethod("generateWorkOrderNo", ProductionOrder.class);
         genMethod.setAccessible(true);

@@ -64,7 +64,8 @@ class PlanQuotaDynamicTest {
                 orderMapper, converter, executionMapper, this.routingItemMapper, eventPublisher,
                 qualityInspectionService, qualityInspectionMapper(),
                 inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader);
+                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader,
+                mock(com.jjx.production.service.ProductionTaskService.class));
 
         java.lang.reflect.Field bm = null;
         Class<?> c = service.getClass();

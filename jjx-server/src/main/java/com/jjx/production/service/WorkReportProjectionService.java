@@ -5,8 +5,9 @@ import com.jjx.production.domain.entity.ProductionOperationExecution;
 import java.math.BigDecimal;
 
 /**
- * WorkReport Projection 服务（P2-C）
- * Execution 数量/工时字段 = WorkReport Projection（SUM SUBMITTED），用户不再直接维护。
+ * WorkReport Projection 服务（P3）
+ * Execution 数量/工时字段 = WorkReport Projection（SUM APPROVED），用户不再直接维护。
+ * 只有 APPROVED 报工才是有效完成事实；PENDING/REJECTED/CANCELLED 均不计入。
  */
 public interface WorkReportProjectionService {
 
@@ -14,6 +15,7 @@ public interface WorkReportProjectionService {
      * 事务内重算 execution projection：
      * qualified = SUM(qualified) / defective = SUM(defective)
      * output = SUM(qualified+defective) / labor = SUM(labor) / machine = SUM(machine)
+     * 仅统计 report_status = 'APPROVED'。
      */
     void recalculate(Long executionId);
 
@@ -23,9 +25,9 @@ public interface WorkReportProjectionService {
      */
     String compareProjection(Long executionId);
 
-    /** 已提交报工数量聚合（供诊断/展示） */
-    BigDecimal[] sumSubmitted(Long executionId);
+    /** APPROVED 报工数量聚合（供诊断/展示） */
+    BigDecimal[] sumApproved(Long executionId);
 
-    /** 最近一次已提交报工（供完成 gate 判断） */
-    boolean hasAnySubmitted(Long executionId);
+    /** 是否存在 APPROVED 报工（供完成 gate 判断） */
+    boolean hasAnyApproved(Long executionId);
 }

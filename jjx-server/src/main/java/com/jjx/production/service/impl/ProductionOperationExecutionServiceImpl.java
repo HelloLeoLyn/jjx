@@ -42,6 +42,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
     /** P3-C：FQC 自动创建 / 质检联动 */
     private final com.jjx.production.service.QualityActionService qualityActionService;
+    /** P1：工序产生时同步创建 First ProductionTask（统一任务责任树） */
+    private final com.jjx.production.service.ProductionTaskService productionTaskService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -60,6 +62,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (!success) {
             throw new BusinessException("创建工序执行记录失败");
         }
+
+        // P1：同一事务内创建 First ProductionTask（真实第一层任务，非 System Root）
+        productionTaskService.createFirstTask(execution.getExecutionId(), execution.getInputQuantity());
 
         log.info("工序执行记录创建成功, ID: {}", execution.getExecutionId());
         return execution.getExecutionId();
@@ -155,8 +160,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         ProductionOperationExecutionVO vo = convertToVO(execution);
-        vo.setViewScope(com.jjx.system.utils.SecurityUtils.isGlobalProductionScope() ? "GLOBAL" : "PERSONAL");
-        // 补全工单号/工序名与 Execution 父行 Root 汇总投影（派工管理树形列表操作后局部刷新用；个人节点由 children/detail 提供）
+        // 补全工单号/工序名（P1：不再包含任何 Root/TaskNode 派工投影）
         enrichExecutionVOs(java.util.List.of(vo));
         return vo;
     }
@@ -167,46 +171,17 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         LambdaQueryWrapper<ProductionOperationExecution> wrapper = buildQueryWrapper(queryDTO);
         wrapper.orderByDesc(ProductionOperationExecution::getCreateTime);
-        String viewScope = applyQueryScope(wrapper);
 
         List<ProductionOperationExecution> executions = list(wrapper);
         List<ProductionOperationExecutionVO> vos = executions.stream()
                 .map(ProductionOperationExecutionServiceImpl::convertToVO)
                 .collect(Collectors.toList());
-        for (ProductionOperationExecutionVO vo : vos) {
-            vo.setViewScope(viewScope);
-        }
 
         // 2026-08-11 修复：补全工单号/工序编码/工序名（convertToVO 只拷自身字段）
         enrichExecutionVOs(vos);
         // V1 Fix Pack FIX-2：排除 CANCELLED 工单的工序（历史保留，不进入生产操作任务）
         vos.removeIf(vo -> Boolean.TRUE.equals(isOrderCancelled(vo.getOrderId())));
         return vos;
-    }
-
-    /**
-     * 查询数据范围（查询视角，与动作权限解耦）：
-     * 全局角色（超级管理员 / production:all）→ 全部 Execution；
-     * 普通生产角色 → 仅返回本人持有 TaskNode 的 Execution（EXISTS production_task_node.assignee_id = 当前用户）。
-     * 返回该次查询的视角标识（GLOBAL / PERSONAL）。
-     */
-    private String applyQueryScope(LambdaQueryWrapper<ProductionOperationExecution> wrapper) {
-        if (com.jjx.system.utils.SecurityUtils.isGlobalProductionScope()) {
-            return "GLOBAL";
-        }
-        Long currentUserId;
-        try {
-            currentUserId = com.jjx.system.utils.SecurityUtils.getUserId();
-        } catch (Exception e) {
-            return "GLOBAL";
-        }
-        if (currentUserId == null) {
-            return "GLOBAL";
-        }
-        wrapper.apply("EXISTS (SELECT 1 FROM production_task_node t"
-                + " WHERE t.execution_id = production_operation_execution.execution_id"
-                + " AND t.assignee_id = {0})", currentUserId);
-        return "PERSONAL";
     }
 
     /** 批量补全工单号、工序编码/名称 */
@@ -287,96 +262,11 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                     }
                 }
             }
-            // Execution 父行 Root 汇总投影（rootAssignedQuantity/rootRemainingQuantity/hasChildren/hasTaskRoot）
-            // ——查看者无关，只批量查一层任务节点，避免 N+1；个人 TaskNode 投影由 children/detail 提供
-            java.util.Set<Long> execIds = vos.stream()
-                    .map(ProductionOperationExecutionVO::getExecutionId)
-                    .filter(java.util.Objects::nonNull)
-                    .collect(Collectors.toSet());
-            if (!execIds.isEmpty()) {
-                enrichRootSummary(vos, execIds);
-            }
         } catch (Exception e) {
 
 
             log.warn("补全工序执行展示信息失败: {}", e.getMessage());
         }
-    }
-
-
-    /**
-     * Execution 父行 Root 汇总投影（查看者无关，不返回任何个人 TaskNode 投影；纯浏览不建根）：
-     *  - hasTaskRoot：系统 Root 是否存在
-     *  - hasChildren：GLOBAL=Root 已有第一层真实人员子节点（可展开）；PERSONAL=本人持有节点（行存在即可展开）
-     *  - rootAssignedQuantity = Σ Root 直接第一层真实人员节点 effective
-     *  - rootRemainingQuantity = Root effective - rootAssignedQuantity（Root 不存在时 = inputQuantity，下限 0）
-     * 个人节点数量（myTask/myChildOccupied/myOwnHeld 等）不再由 /page 计算，改由 TaskNode children/detail 提供。
-     */
-    private void enrichRootSummary(List<ProductionOperationExecutionVO> vos, java.util.Set<Long> execIds) {
-        String execIdStr = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-        java.util.Map<Long, java.util.List<Object[]>> nodesByExec = new java.util.HashMap<>();
-        try {
-            jdbcTemplate.query("SELECT execution_id, task_node_id, parent_node_id, task_quantity, recalled_quantity"
-                            + " FROM production_task_node WHERE execution_id IN (" + execIdStr + ") ORDER BY task_node_id",
-                    rs -> {
-                        Long eid = rs.getLong("execution_id");
-                        nodesByExec.computeIfAbsent(eid, k -> new java.util.ArrayList<>())
-                                .add(new Object[]{
-                                        rs.getLong("task_node_id"),
-                                        rs.getObject("parent_node_id"),
-                                        rs.getBigDecimal("task_quantity"),
-                                        rs.getBigDecimal("recalled_quantity")});
-                    });
-        } catch (Exception e) {
-            log.warn("查询任务树 Root 汇总失败: {}", e.getMessage());
-            return;
-        }
-        for (ProductionOperationExecutionVO vo : vos) {
-            java.util.List<Object[]> nodes = nodesByExec.get(vo.getExecutionId());
-            vo.setRootAssignedQuantity(BigDecimal.ZERO);
-            if (nodes == null || nodes.isEmpty()) {
-                vo.setHasTaskRoot(false);
-                vo.setHasChildren(false);
-                vo.setRootRemainingQuantity(nvl2(vo.getInputQuantity()));
-                continue;
-            }
-            Object[] root = null;
-            for (Object[] n : nodes) {
-                if (n[1] == null) {
-                    root = n;
-                    break;
-                }
-            }
-            if (root == null) {
-                vo.setHasTaskRoot(false);
-                vo.setHasChildren(false);
-                vo.setRootRemainingQuantity(nvl2(vo.getInputQuantity()));
-                continue;
-            }
-            vo.setHasTaskRoot(true);
-            BigDecimal rootEffective = nvl2((BigDecimal) root[2]).subtract(nvl2((BigDecimal) root[3]));
-            Long rootId = ((Number) root[0]).longValue();
-            BigDecimal firstLevel = BigDecimal.ZERO;
-            boolean hasFirstLevel = false;
-            for (Object[] n : nodes) {
-                if (n[1] != null && ((Number) n[1]).longValue() == rootId) {
-                    hasFirstLevel = true;
-                    firstLevel = firstLevel.add(nvl2((BigDecimal) n[2]).subtract(nvl2((BigDecimal) n[3])));
-                }
-            }
-            vo.setRootAssignedQuantity(firstLevel);
-            vo.setRootRemainingQuantity(floorZero(rootEffective.subtract(firstLevel)));
-            // 展开箭头：GLOBAL 按第一层真实人员节点；PERSONAL 本人持有节点（行存在即必可展开）
-            vo.setHasChildren("PERSONAL".equals(vo.getViewScope()) || hasFirstLevel);
-        }
-    }
-
-    private static BigDecimal nvl2(BigDecimal v) {
-        return v == null ? BigDecimal.ZERO : v;
-    }
-
-    private static BigDecimal floorZero(BigDecimal v) {
-        return v == null || v.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : v;
     }
 
     @Override
@@ -385,7 +275,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 构建查询条件
         LambdaQueryWrapper<ProductionOperationExecution> wrapper = buildQueryWrapper(queryDTO);
-        String viewScope = applyQueryScope(wrapper);
 
         // 设置排序
         wrapper.orderByDesc(ProductionOperationExecution::getCreateTime);
@@ -399,9 +288,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         List<ProductionOperationExecutionVO> voList = executionPage.getRecords().stream()
                 .map(ProductionOperationExecutionServiceImpl::convertToVO)
                 .collect(Collectors.toList());
-        for (ProductionOperationExecutionVO vo : voList) {
-            vo.setViewScope(viewScope);
-        }
         // V1 Fix Pack FIX-4：分页列表同样补全工序名/工单号（原缺失导致 processName 显示"-"）
         enrichExecutionVOs(voList);
         // V1 Fix Pack FIX-2：排除 CANCELLED 工单的工序（历史保留，不进入生产操作任务）
@@ -611,6 +497,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                 ProductionOperationExecution execution = convertCreateDTOToEntity(dto);
                 execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
                 save(execution);
+
+                // P1：同一事务内创建 First ProductionTask（导入路径与单条创建保持一致）
+                productionTaskService.createFirstTask(execution.getExecutionId(), execution.getInputQuantity());
 
                 successCount++;
             } catch (Exception e) {
@@ -933,6 +822,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         execution.setOrderId(createDTO.getOrderId());
         execution.setProcessId(createDTO.getProcessId());
+        // P1 Final Cleanup：透传 DTO 工序名称（此前丢失导致 Execution/任务树 processName 为空）
+        execution.setProcessName(createDTO.getProcessName());
         execution.setProcessOrder(createDTO.getProcessOrder());
         execution.setPlannedStartTime(createDTO.getPlanStartTime());
         execution.setPlannedEndTime(createDTO.getPlanEndTime());

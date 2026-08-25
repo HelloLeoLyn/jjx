@@ -1,7 +1,13 @@
 -- =====================================================
--- 清理测试数据脚本（v5）
+-- 清理测试数据脚本（v9）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+--
+-- v9 变更（2026-08-25）：
+--   1. 适配统一生产任务模型，新增 production_work_report、
+--      production_task_event、production_task 清理（先引用表，后任务主表）
+--   2. 旧派工表 production_dispatch / production_dispatch_log 已下线并移除
+--   3. 补充库存业务表 order_material_reserve / product_stock 清理
 --
 -- v5 变更（2026-08-10）：
 --   1. 标准工序（engineering_standard_process）保留不清——基础档案，供打样/工艺路线复用
@@ -142,6 +148,13 @@ TRUNCATE production_quality_inspection_item;
 
 TRUNCATE production_quality_inspection;
 
+-- 报工和任务流水均引用统一生产任务，必须先于 production_task 清理
+TRUNCATE production_work_report;
+
+TRUNCATE production_task_event;
+
+TRUNCATE production_task;
+
 TRUNCATE production_operation_record;
 
 TRUNCATE production_operation_execution;
@@ -152,13 +165,14 @@ TRUNCATE production_order;
 
 TRUNCATE production_equipment;
 
--- 08-12 派工模块（先子表后主表；工装模具档案 production_tooling 保留不清）
-TRUNCATE production_dispatch_log;
-
-TRUNCATE production_dispatch;
+-- 工装模具档案 production_tooling 保留不清
 
 -- ==================== 6. 库存模块（v4 起物料/仓库也清） ====================
 TRUNCATE inventory_alert_log;
+
+TRUNCATE order_material_reserve;
+
+TRUNCATE product_stock;
 
 TRUNCATE inventory_transaction;
 

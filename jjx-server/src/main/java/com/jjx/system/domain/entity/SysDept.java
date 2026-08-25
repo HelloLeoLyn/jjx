@@ -43,6 +43,9 @@ public class SysDept extends BaseEntity {
     /** 负责人 */
     private String leader;
 
+    /** 部门负责人用户ID（候选责任树：负责人→该部门全部后代部门人员=下属） */
+    private Long leaderUserId;
+
     /** 联系电话 */
     private String phone;
 

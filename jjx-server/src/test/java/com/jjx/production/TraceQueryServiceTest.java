@@ -35,7 +35,7 @@ import static org.mockito.Mockito.*;
  * - 事件时间排序稳定 + 相同时间 sourceRank 排序
  * - 空 WorkReport/Quality 正常
  * - 历史 execution processName 缺失时降级 "工序 {processOrder}"
- * - WorkReport SUBMITTED/CANCELLED；Quality CREATED/PASS/FAIL
+ * - WorkReport PENDING/CANCELLED；Quality CREATED/PASS/FAIL
  * - 只读：不产生任何业务数据修改
  */
 class TraceQueryServiceTest {
@@ -152,7 +152,7 @@ class TraceQueryServiceTest {
                 exec(2L, 2, "冲型", LocalDateTime.of(2026, 8, 19, 11, 10), LocalDateTime.of(2026, 8, 19, 12, 0))));
 
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
-                report(1L, LocalDateTime.of(2026, 8, 19, 11, 0), null, "SUBMITTED", "张三")));
+                report(1L, LocalDateTime.of(2026, 8, 19, 11, 0), null, "PENDING", "张三")));
 
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(Arrays.asList(
                 quality(1L, "pass", LocalDateTime.of(2026, 8, 19, 13, 0), LocalDateTime.of(2026, 8, 19, 13, 5), "质检员")));
@@ -186,7 +186,7 @@ class TraceQueryServiceTest {
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(Arrays.asList(
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 0), null)));
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
-                report(1L, LocalDateTime.of(2026, 8, 19, 10, 0), null, "SUBMITTED", "张三")));
+                report(1L, LocalDateTime.of(2026, 8, 19, 10, 0), null, "PENDING", "张三")));
         when(qualityInspectionService.listByOrderId(1L)).thenReturn(Arrays.asList(
                 quality(1L, "pending", LocalDateTime.of(2026, 8, 19, 10, 0), null, "质检员")));
 
@@ -196,7 +196,7 @@ class TraceQueryServiceTest {
         // ORDER(1) < EXECUTION(2) < WORK_REPORT(3) < QUALITY(4)
         assertEquals(TraceEventType.ORDER_CREATED, types.get(0));
         assertEquals(TraceEventType.EXECUTION_STARTED, types.get(1));
-        assertEquals(TraceEventType.WORK_REPORT_SUBMITTED, types.get(2));
+        assertEquals(TraceEventType.WORK_REPORT_PENDING, types.get(2));
         assertEquals(TraceEventType.QUALITY_CREATED, types.get(3));
     }
 
@@ -247,7 +247,7 @@ class TraceQueryServiceTest {
         assertTrue(started.getTitle().contains("工序 2"), "应降级为 工序 {processOrder}: " + started.getTitle());
     }
 
-    // ==================== 6. WorkReport SUBMITTED/CANCELLED ====================
+    // ==================== 6. WorkReport PENDING/CANCELLED ====================
 
     @Test
     void workReportSubmittedAndCancelled_bothEmitted() {
@@ -260,7 +260,7 @@ class TraceQueryServiceTest {
         OrderTraceVO trace = service.getOrderTrace(1L);
         List<TraceEventVO> events = trace.getEvents();
         assertEquals(3, events.size());
-        assertEquals(TraceEventType.WORK_REPORT_SUBMITTED, events.get(1).getEventType());
+        assertEquals(TraceEventType.WORK_REPORT_PENDING, events.get(1).getEventType());
         assertEquals(TraceEventType.WORK_REPORT_CANCELLED, events.get(2).getEventType());
         assertEquals("张三", events.get(1).getActorName());
         assertEquals("主任", events.get(2).getActorName());

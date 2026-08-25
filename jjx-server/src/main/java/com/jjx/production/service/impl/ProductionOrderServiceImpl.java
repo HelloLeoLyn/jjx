@@ -62,6 +62,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final com.jjx.production.service.ProductionTaskService productionTaskService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -1449,6 +1450,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             execution.setActualMachineHours(BigDecimal.ZERO);
 
             productionOperationExecutionMapper.insert(execution);
+
+            // 统一生产任务模型：计划转工单生成 Execution 时，同事务初始化唯一 First Task。
+            // createFirstTask 由 uk_exec_first 保证重复调用幂等。
+            productionTaskService.createFirstTask(execution.getExecutionId(), execution.getInputQuantity());
         }
 
         log.info("已为工单 {} 生成 {} 个工序执行记录", orderId, routingItems.size());

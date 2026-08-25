@@ -125,7 +125,7 @@ const EVENT_LABEL: Record<string, string> = {
   [TraceEventType.ORDER_COMPLETED]: '订单完成',
   [TraceEventType.EXECUTION_STARTED]: '工序开始',
   [TraceEventType.EXECUTION_COMPLETED]: '工序完成',
-  [TraceEventType.WORK_REPORT_SUBMITTED]: '生产报工',
+  [TraceEventType.WORK_REPORT_PENDING]: '生产报工',
   [TraceEventType.WORK_REPORT_CANCELLED]: '撤销报工',
   [TraceEventType.QUALITY_CREATED]: '创建质检',
   [TraceEventType.QUALITY_PASSED]: '质检通过',
@@ -168,7 +168,7 @@ function eventCategoryLabel(ev: TraceEventVO): string {
 
 function statusClass(status: string): string {
   const up = (status || '').toUpperCase()
-  if (['PASS', 'COMPLETED', 'SUBMITTED', 'SUCCESS'].includes(up)) return 'st-success'
+  if (['PASS', 'COMPLETED', 'APPROVED', 'SUCCESS'].includes(up)) return 'st-success'
   if (['FAIL', 'FAILED', 'CANCELLED', 'REJECT', 'REJECTED'].includes(up)) return 'st-danger'
   return 'st-normal'
 }
@@ -180,7 +180,7 @@ function statusLabel(ev: TraceEventVO): string {
   if (up === 'FAIL' || up === 'FAILED') return '不通过'
   if (up === 'COMPLETED') return '已完成'
   if (up === 'CANCELLED') return '已撤销'
-  if (up === 'SUBMITTED') return '已提交'
+  if (up === 'PENDING') return '待审批'
   if (up === 'REJECT' || up === 'REJECTED') return '已退回'
   if (up === 'PENDING') return '待检'
   if (up === 'DRAFT') return '草稿'

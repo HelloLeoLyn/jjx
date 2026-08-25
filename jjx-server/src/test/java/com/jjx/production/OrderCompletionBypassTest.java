@@ -57,7 +57,8 @@ class OrderCompletionBypassTest {
         service = (ProductionOrderServiceImpl) ctor.newInstance(
                 orderMapper, converter, executionMapper, routingItemMapper, eventPublisher,
                 qualityInspectionService, qualityInspectionMapper, inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader);
+                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader,
+                mock(com.jjx.production.service.ProductionTaskService.class));
 
         // ServiceImpl 的 getById/updateById 走 baseMapper 字段（protected，反射注入 mock）
         java.lang.reflect.Field bm = null;

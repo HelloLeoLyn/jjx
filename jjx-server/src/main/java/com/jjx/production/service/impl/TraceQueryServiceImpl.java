@@ -181,8 +181,8 @@ public class TraceQueryServiceImpl implements TraceQueryService {
                         .orderByAsc(ProductionWorkReport::getReportTime)
                         .orderByAsc(ProductionWorkReport::getReportId));
         for (ProductionWorkReport r : reports) {
-            // SUBMITTED：reportTime 即提交业务时间
-            TraceEventVO submitted = base(orderId, TraceEventType.WORK_REPORT_SUBMITTED, "WORK_REPORT");
+            // 报工提交（P3：PENDING 提交事件；状态展示真实 reportStatus）
+            TraceEventVO submitted = base(orderId, TraceEventType.WORK_REPORT_PENDING, "WORK_REPORT");
             submitted.setEventTime(r.getReportTime());
             submitted.setExecutionId(r.getExecutionId());
             submitted.setWorkReportId(r.getReportId());
@@ -190,7 +190,7 @@ public class TraceQueryServiceImpl implements TraceQueryService {
             submitted.setActorName(r.getReporterName());
             submitted.setTitle("报工提交");
             submitted.setDescription("合格 " + nvl(r.getQualifiedQuantity()) + " / 不良 " + nvl(r.getDefectiveQuantity()));
-            submitted.setStatus("SUBMITTED");
+            submitted.setStatus(r.getReportStatus());
             submitted.setSourceId(r.getReportId());
             list.add(submitted);
 

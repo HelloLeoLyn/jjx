@@ -16,8 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 
 /**
- * WorkReport Projection 服务实现（P2-C）
- * 使用数据库 SUM（利用 idx_execution_status），不在 Java 拉全量再 stream sum。
+ * WorkReport Projection 服务实现（P3）
+ * 使用数据库 SUM（利用 idx_execution_status），只统计 APPROVED（有效完成事实）。
+ * PENDING/REJECTED/CANCELLED 均不计入 execution output。
  */
 @Slf4j
 @Service
@@ -28,7 +29,7 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
             "SELECT COALESCE(SUM(qualified_quantity),0), COALESCE(SUM(defective_quantity),0),"
                     + " COALESCE(SUM(qualified_quantity + defective_quantity),0),"
                     + " COALESCE(SUM(labor_hours),0), COALESCE(SUM(machine_hours),0)"
-                    + " FROM production_work_report WHERE execution_id=? AND report_status='SUBMITTED'";
+                    + " FROM production_work_report WHERE execution_id=? AND report_status='APPROVED'";
 
     private final JdbcTemplate jdbcTemplate;
     private final ProductionOperationExecutionMapper executionMapper;
@@ -37,12 +38,12 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void recalculate(Long executionId) {
-        BigDecimal[] sums = sumSubmitted(executionId);
+        BigDecimal[] sums = sumApproved(executionId);
         ProductionOperationExecution exec = executionMapper.selectById(executionId);
         if (exec == null) throw new BusinessException("工序执行记录不存在: " + executionId);
         ProductionOperationExecution upd = new ProductionOperationExecution();
         upd.setExecutionId(executionId);
-        upd.setOutputQuantity(sums[2]);       // qualified + defective
+        upd.setOutputQuantity(sums[2]);       // qualified + defective（仅 APPROVED）
         upd.setQualifiedQuantity(sums[0]);
         upd.setDefectiveQuantity(sums[1]);
         upd.setActualLaborHours(sums[3]);
@@ -53,7 +54,7 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
     }
 
     @Override
-    public BigDecimal[] sumSubmitted(Long executionId) {
+    public BigDecimal[] sumApproved(Long executionId) {
         try {
             return jdbcTemplate.queryForObject(SUM_SQL, (rs, i) -> new BigDecimal[]{
                     rs.getBigDecimal(1), rs.getBigDecimal(2), rs.getBigDecimal(3),
@@ -77,7 +78,7 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
                     || isNonZero(exec.getDefectiveQuantity());
             return legacy ? "NO_REPORT_LEGACY" : "EMPTY";
         }
-        BigDecimal[] sums = sumSubmitted(executionId);
+        BigDecimal[] sums = sumApproved(executionId);
         boolean match = eq(sums[0], exec.getQualifiedQuantity())
                 && eq(sums[1], exec.getDefectiveQuantity())
                 && eq(sums[2], exec.getOutputQuantity());
@@ -85,11 +86,11 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
     }
 
     @Override
-    public boolean hasAnySubmitted(Long executionId) {
+    public boolean hasAnyApproved(Long executionId) {
         Long cnt = workReportMapper.selectCount(Wrappers.<com.jjx.production.domain.entity.ProductionWorkReport>lambdaQuery()
                 .eq(com.jjx.production.domain.entity.ProductionWorkReport::getExecutionId, executionId)
                 .eq(com.jjx.production.domain.entity.ProductionWorkReport::getReportStatus,
-                        WorkReportStatusEnum.SUBMITTED.getCode()));
+                        WorkReportStatusEnum.APPROVED.getCode()));
         return cnt != null && cnt > 0;
     }
 

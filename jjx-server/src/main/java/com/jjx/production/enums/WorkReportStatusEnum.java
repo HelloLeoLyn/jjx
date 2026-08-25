@@ -3,15 +3,21 @@ package com.jjx.production.enums;
 import lombok.Getter;
 
 /**
- * 生产报工状态枚举（P2：报工事实状态）
- * SUBMITTED：已提交（计入汇总，不可编辑）
- * CANCELLED：已撤销（不计入汇总，原事实字段保留，禁止物理删除）
- * 不做 DRAFT/APPROVED/REJECTED（当前业务无报工审批流程，P3 Quality 接入后再评估）。
+ * 生产报工状态枚举（P3：WorkReport + Approval 正式状态机）
+ * PENDING：已提交，等待审批（占用 Task 可报工额度，不计 completed）
+ * APPROVED：审批通过（正式有效完成事实，计入 completedQuantity）
+ * REJECTED：审批驳回（不形成有效完成，释放原占用，历史保留）
+ * CANCELLED：已撤销（不形成有效完成，释放原占用，历史保留）
+ * <p>
+ * P3 删除旧 SUBMITTED；禁止把 SUBMITTED 当作 completed。
+ * 历史事实不可覆盖：更正 = CANCELLED/REJECTED + 新建正确报工；禁止物理删除。
  */
 @Getter
 public enum WorkReportStatusEnum {
 
-    SUBMITTED("SUBMITTED", "已提交"),
+    PENDING("PENDING", "待审批"),
+    APPROVED("APPROVED", "已通过"),
+    REJECTED("REJECTED", "已驳回"),
     CANCELLED("CANCELLED", "已撤销");
 
     private final String code;

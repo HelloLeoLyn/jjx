@@ -45,16 +45,6 @@ export interface OperationExecutionVO {
   defectiveQuantity?: number
   /** 待完成 = 任务数量 - 已完成（下限0） */
   remainingQuantity?: number
-  /** 是否已建立任务树根节点 */
-  hasTaskRoot?: boolean
-  /** 是否有可展开的任务树子节点（GLOBAL=Root 已下发给第一层真实人员；PERSONAL=本人持有节点） */
-  hasChildren?: boolean
-  /** 已下发：系统 Root 直接第一层真实人员 TaskNode 的 effective 合计（Execution 父行，查看者无关） */
-  rootAssignedQuantity?: number
-  /** 当前剩余：Root effective - rootAssignedQuantity（Root 不存在时 = inputQuantity；Execution 父行，查看者无关） */
-  rootRemainingQuantity?: number
-  /** 查询视角：GLOBAL=全局（可查看全部Execution）/ PERSONAL=个人（仅本人持有TaskNode的Execution） */
-  viewScope?: 'GLOBAL' | 'PERSONAL'
   defectiveReason?: string
   actualProcessParams?: string
   qualityCheckResult?: string

@@ -21,7 +21,7 @@ public final class TraceEventType {
     public static final String EXECUTION_COMPLETED = "EXECUTION_COMPLETED";
 
     // ============ 报工 ============
-    public static final String WORK_REPORT_SUBMITTED = "WORK_REPORT_SUBMITTED";
+    public static final String WORK_REPORT_PENDING = "WORK_REPORT_PENDING";
     public static final String WORK_REPORT_CANCELLED = "WORK_REPORT_CANCELLED";
 
     // ============ 质量 ============

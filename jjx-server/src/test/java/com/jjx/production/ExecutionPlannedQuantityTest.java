@@ -29,6 +29,7 @@ class ExecutionPlannedQuantityTest {
     private ProductionOrderServiceImpl service;
     private ProductionOperationExecutionMapper executionMapper;
     private com.jjx.product.mapper.EngineeringRoutingItemMapper routingItemMapper;
+    private com.jjx.production.service.ProductionTaskService productionTaskService;
 
     private Method genMethod;
 
@@ -48,13 +49,15 @@ class ExecutionPlannedQuantityTest {
         // PdfConfigLoader 类层次无法被 Mockito 内联 mock（Java 25 环境），且本测试不触达，传 null
         com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader = null;
         var eventPublisher = mock(com.jjx.event.EventPublisher.class);
+        productionTaskService = mock(com.jjx.production.service.ProductionTaskService.class);
 
         Constructor<?> ctor = ProductionOrderServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
         service = (ProductionOrderServiceImpl) ctor.newInstance(
                 orderMapper, converter, executionMapper, routingItemMapper, eventPublisher,
                 qualityInspectionService, qualityInspectionMapper, inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader);
+                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader,
+                productionTaskService);
 
         genMethod = ProductionOrderServiceImpl.class.getDeclaredMethod(
                 "generateOperationExecutions",
@@ -87,6 +90,7 @@ class ExecutionPlannedQuantityTest {
         ArgumentCaptor<ProductionOperationExecution> captor =
                 ArgumentCaptor.forClass(ProductionOperationExecution.class);
         verify(executionMapper, times(3)).insert(captor.capture());
+        verify(productionTaskService, times(3)).createFirstTask(any(), eq(new BigDecimal("450")));
 
         List<ProductionOperationExecution> all = captor.getAllValues();
         assertEquals(3, all.size());
@@ -114,6 +118,7 @@ class ExecutionPlannedQuantityTest {
         ArgumentCaptor<ProductionOperationExecution> captor =
                 ArgumentCaptor.forClass(ProductionOperationExecution.class);
         verify(executionMapper, times(1)).insert(captor.capture());
+        verify(productionTaskService).createFirstTask(any(), eq(BigDecimal.ZERO));
         assertNotNull(captor.getValue().getInputQuantity());
         assertEquals(0, BigDecimal.ZERO.compareTo(captor.getValue().getInputQuantity()));
     }

@@ -101,23 +101,8 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "不良数量")
     private BigDecimal defectiveQuantity;
 
-    @Schema(description = "待完成数量（= 任务数量 - 已完成，下限0；P3 任务分配用）")
+    @Schema(description = "待完成数量（= 任务数量 - 已完成，下限0）")
     private BigDecimal remainingQuantity;
-
-    @Schema(description = "是否已建立任务树根节点（P3 派工管理）")
-    private Boolean hasTaskRoot;
-
-    @Schema(description = "是否有可展开的任务树子节点（GLOBAL=Root 已下发给第一层真实人员；PERSONAL=本人持有节点；纯浏览不建根）")
-    private Boolean hasChildren;
-
-    @Schema(description = "已下发：系统 Root 直接第一层真实人员 TaskNode 的 effective 合计（Execution 父行，查看者无关）")
-    private BigDecimal rootAssignedQuantity;
-
-    @Schema(description = "当前剩余：系统 Root 当前可继续分配数量 = Root effective - rootAssignedQuantity（Root 不存在时 = inputQuantity；Execution 父行，查看者无关）")
-    private BigDecimal rootRemainingQuantity;
-
-    @Schema(description = "查询视角：GLOBAL=全局（可查看全部Execution）/ PERSONAL=个人（仅本人持有TaskNode的Execution）")
-    private String viewScope;
 
     @Schema(description = "不良原因")
     private String defectiveReason;

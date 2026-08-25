@@ -61,7 +61,8 @@ class PlanQuotaReleaseTest {
                 orderMapper, converter, executionMapper, this.routingItemMapper, eventPublisher,
                 qualityInspectionService, qualityInspectionMapper(),
                 inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader);
+                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader,
+                mock(com.jjx.production.service.ProductionTaskService.class));
 
         // 注入 ServiceImpl baseMapper
         java.lang.reflect.Field bm = null;
