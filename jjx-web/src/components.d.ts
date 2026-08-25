@@ -124,6 +124,7 @@ declare module 'vue' {
     TraceAttachmentPanel: typeof import('./components/TraceAttachmentPanel/index.vue')['default']
     TraceTimeline: typeof import('./components/TraceTimeline/index.vue')['default']
     UniversalIcon: typeof import('./components/UniversalIcon.vue')['default']
+    UserSelect: typeof import('./components/system/UserSelect.vue')['default']
     WarehouseSelector: typeof import('./components/Selector/WarehouseSelector.vue')['default']
   }
   export interface ComponentCustomProperties {

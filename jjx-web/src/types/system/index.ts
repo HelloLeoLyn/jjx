@@ -338,6 +338,7 @@ export interface SysDept {
   deptName?: string
   orderNum?: number
   leader?: string
+  leaderUserId?: number // DEV-1106：负责人关联用户ID
   phone?: string
   email?: string
   status?: string
