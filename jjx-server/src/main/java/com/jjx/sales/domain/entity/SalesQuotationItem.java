@@ -52,6 +52,18 @@ public class SalesQuotationItem {
     /** 线路类型 */
     private String circuitType;
 
+    /** 编码流水号（DEV-1108：样品报价编码生成器结构参数落库） */
+    private String serialNo;
+
+    /** 面板结构类型（DEV-1108） */
+    private String panelType;
+
+    /** 面板特征（DEV-1108） */
+    private String panelFeature;
+
+    /** 线路特征（DEV-1108） */
+    private String circuitFeature;
+
     /** 连接器类型 */
     private String connectorType;
 

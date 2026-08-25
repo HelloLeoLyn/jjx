@@ -1125,6 +1125,18 @@ const handleUpdate = (row?: any) => {
         ...customerOptions.value.filter((c) => c.customerId !== current.customerId),
       ]
     }
+    // DEV-1108：样品报价（type=2）回填编码生成器结构参数（面板/线路/流水号）
+    if (response.data?.quotationType === 2 && response.data?.items?.length) {
+      const it = response.data.items[0]
+      qCodeState.value = {
+        serialNo: it.serialNo || '',
+        panelType: it.panelType || '',
+        panelFeature: it.panelFeature || '',
+        circuitType: it.circuitType || '',
+        circuitFeature: it.circuitFeature || '',
+      }
+      qCodeParams.value = null
+    }
     open.value = true
     title.value = `修改报价单【${response.data?.quotationNo || ''}】`
   })
@@ -1376,14 +1388,11 @@ const qCodeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
 const qCodeState = ref<ProductCodeState>({ serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' })
 const qCodeParams = ref<ProductCodeResult | null>(null)
 
-// 编码生成回调：自动填入唯一明细行（样品类型单行明细）
+// 编码生成回调：自动填入唯一明细行（样品类型单行明细）；空编码（重置/未完成）不处理不弹提示
 function onQCodeChange(data: string | ProductCodeResult) {
   const code = typeof data === 'string' ? data : data.productCode
   const row = form.items[0]
-  if (!row) {
-    ElMessage.warning('请先添加明细')
-    return
-  }
+  if (!row || !code) return
   row.productCode = code
   row.productName = code
   ElMessage.success('编码与名称已填入明细')
@@ -1613,6 +1622,9 @@ const resetForm = () => {
     remark: '',
     items: [],
   })
+  // DEV-1108：重置编码生成器状态，避免新增/切换时残留上次的结构参数
+  qCodeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  qCodeParams.value = null
 }
 
 // 提交表单
@@ -1641,6 +1653,18 @@ const submitForm = () => {
           ElMessage.warning('单价不能为负数')
           return
         }
+      }
+
+      // DEV-1108：样品报价（type=2）把编码生成器结构参数写入明细行一起保存
+      if (form.quotationType === 2 && qCodeParams.value && form.items.length) {
+        const p = qCodeParams.value
+        Object.assign(form.items[0], {
+          serialNo: p.serialNo,
+          panelType: p.panelType,
+          panelFeature: p.panelFeature,
+          circuitType: p.circuitType,
+          circuitFeature: p.circuitFeature,
+        })
       }
 
       if (form.quotationId !== undefined) {
