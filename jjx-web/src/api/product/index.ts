@@ -14,8 +14,8 @@ import type { PageResult, R } from '@/types'
 /**
  * 搜索产品
  */
-export function searchProduct(keyword: string) {
-  return request.get('/product/search', { params: { keyword } })
+export function searchProduct(keyword: string, customerId?: number) {
+  return request.get('/product/search', { params: { keyword, customerId } })
 }
 
 /**

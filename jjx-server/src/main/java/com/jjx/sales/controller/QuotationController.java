@@ -6,6 +6,7 @@ import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.entity.SalesQuotation;
+import com.jjx.sales.domain.vo.SalesQuotationEditVO;
 import com.jjx.sales.service.IQuotationService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
@@ -81,11 +82,13 @@ public class QuotationController extends BaseController {
      * 修改销售报价单
      */
     @Operation(summary = "修改销售报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = "0")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'",
+        bizId = "#quotation.quotationId", bizStatus = "#result.data.bizStatus",
+        traceId = "#result.data.traceId", detail = "#result.data.detailMessage")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping
-    public Result<Void> edit(@Validated @RequestBody SalesQuotation quotation) {
-        return toAjax(quotationService.updateQuotation(quotation));
+    public Result<SalesQuotationEditVO> edit(@Validated @RequestBody SalesQuotation quotation) {
+        return Result.success(quotationService.updateQuotation(quotation));
     }
 
     /**

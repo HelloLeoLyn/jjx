@@ -62,9 +62,9 @@ public interface IProductService extends IService<Product> {
     List<Product> getProductsByCategory(Long categoryId);
 
     /**
-     * 搜索产品
+     * 搜索产品（DEV-1121：支持按专属客户过滤，customerId 可空）
      */
-    List<Product> searchProducts(String keyword);
+    List<Product> searchProducts(String keyword, Long customerId);
 
     /**
      * 新增产品

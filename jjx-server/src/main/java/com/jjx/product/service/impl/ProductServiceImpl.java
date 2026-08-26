@@ -78,6 +78,11 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             wrapper.eq(Product::getCategoryId, query.getCategoryId());
         }
 
+        // DEV-1121：专属客户过滤（定制产品都有固定客户）
+        if (query.getCustomerId() != null) {
+            wrapper.eq(Product::getCustomerId, query.getCustomerId());
+        }
+
         // 产品状态查询
         if (StringUtils.isNotBlank(query.getProductStatus())) {
             wrapper.eq(Product::getProductStatus, query.getProductStatus());
@@ -251,12 +256,17 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     }
 
     @Override
-    public List<Product> searchProducts(String keyword) {
+    public List<Product> searchProducts(String keyword, Long customerId) {
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+        // DEV-1121：专属客户过滤（定制产品都有固定客户）
+        if (customerId != null) {
+            wrapper.eq(Product::getCustomerId, customerId);
+        }
         if (StringUtils.isNotBlank(keyword)) {
-            wrapper.like(Product::getProductCode, keyword)
-                   .or()
-                   .like(Product::getProductName, keyword);
+            // 修正 OR 分组：keyword 条件整体与 customerId/状态 AND 连接
+            wrapper.and(w -> w.like(Product::getProductCode, keyword)
+                    .or()
+                    .like(Product::getProductName, keyword));
         }
         wrapper.eq(Product::getProductStatus,ProductEnums.Status.RELEASED.getValue()); // 只查询已发布的产品
         wrapper.orderByDesc(Product::getCreateTime);

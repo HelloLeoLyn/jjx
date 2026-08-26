@@ -18,6 +18,8 @@ import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
+import com.jjx.sales.domain.vo.SalesQuotationEditVO;
+import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
 import com.jjx.framework.common.RedisSequenceService;
 import org.apache.poi.ss.usermodel.Row;
@@ -43,6 +45,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * 销售报价单服务实现类
@@ -63,6 +67,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final ISysAttachmentService sysAttachmentService;
     private final RedisSequenceService redisSequenceService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final OperLogChangeRecorder changeRecorder;
 
     /**
      * 查询销售报价单列表
@@ -331,7 +336,7 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int updateQuotation(SalesQuotation quotation) {
+    public SalesQuotationEditVO updateQuotation(SalesQuotation quotation) {
         // 检查报价单是否存在
         SalesQuotation existingQuotation = selectQuotationById(quotation.getQuotationId());
         if (existingQuotation == null) {
@@ -351,14 +356,106 @@ public class QuotationServiceImpl implements IQuotationService {
         // DEV-1116：更新未携带明细时跳过"先删后插"，避免误删明细且表头不重算
         if (quotation.getItems() == null || quotation.getItems().isEmpty()) {
             log.info("报价单[{}]更新未携带明细，跳过明细重写", quotation.getQuotationId());
-            return rows;
+        } else {
+            // 先删后插，更新报价单明细
+            quotationItemMapper.delete(new LambdaQueryWrapper<SalesQuotationItem>()
+                    .eq(SalesQuotationItem::getQuotationId, quotation.getQuotationId()));
+            saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
+                    quotation.getTaxRate(), quotation.getDiscountAmount());
         }
-        // 先删后插，更新报价单明细
-        quotationItemMapper.delete(new LambdaQueryWrapper<SalesQuotationItem>()
-                .eq(SalesQuotationItem::getQuotationId, quotation.getQuotationId()));
-        saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
-                quotation.getTaxRate(), quotation.getDiscountAmount());
-        return rows;
+
+        SalesQuotation updatedQuotation = selectQuotationById(quotation.getQuotationId());
+        List<String> changes = buildQuotationChanges(existingQuotation, updatedQuotation);
+        SalesQuotationEditVO result = new SalesQuotationEditVO();
+        result.setRows(rows);
+        result.setDetailMessage(changeRecorder.toDetailJson(changes));
+        result.setBizStatus(updatedQuotation.getQuotationStatus());
+        result.setTraceId(updatedQuotation.getTraceId());
+        return result;
+    }
+
+    List<String> buildQuotationChanges(SalesQuotation oldQuotation, SalesQuotation newQuotation) {
+        List<String> changes = new ArrayList<>();
+        changeRecorder.diff(changes, "报价类型", oldQuotation.getQuotationType(), newQuotation.getQuotationType());
+        changeRecorder.diff(changes, "客户", oldQuotation.getCustomerName(), newQuotation.getCustomerName());
+        changeRecorder.diff(changes, "联系人", oldQuotation.getContactPerson(), newQuotation.getContactPerson());
+        changeRecorder.diff(changes, "联系电话", oldQuotation.getContactPhone(), newQuotation.getContactPhone());
+        changeRecorder.diff(changes, "报价日期",
+            changeRecorder.fmtDate(oldQuotation.getQuotationDate()),
+            changeRecorder.fmtDate(newQuotation.getQuotationDate()));
+        changeRecorder.diff(changes, "有效期",
+            changeRecorder.fmtDate(oldQuotation.getValidUntil()),
+            changeRecorder.fmtDate(newQuotation.getValidUntil()));
+        changeRecorder.diff(changes, "币种", oldQuotation.getCurrency(), newQuotation.getCurrency());
+        changeRecorder.diffDecimal(changes, "汇率", oldQuotation.getExchangeRate(), newQuotation.getExchangeRate());
+        changeRecorder.diffDecimal(changes, "税率", oldQuotation.getTaxRate(), newQuotation.getTaxRate());
+        changeRecorder.diffDecimal(changes, "折扣金额", oldQuotation.getDiscountAmount(), newQuotation.getDiscountAmount());
+        changeRecorder.diff(changes, "备注", oldQuotation.getRemark(), newQuotation.getRemark());
+        changeRecorder.diff(changes, "销售负责人", oldQuotation.getSalesPersonName(), newQuotation.getSalesPersonName());
+        diffQuotationItems(changes, oldQuotation.getItems(), newQuotation.getItems());
+        return changes;
+    }
+
+    private void diffQuotationItems(List<String> changes, List<SalesQuotationItem> oldItems,
+                                    List<SalesQuotationItem> newItems) {
+        Map<String, SalesQuotationItem> oldMap = indexQuotationItems(oldItems);
+        Map<String, SalesQuotationItem> newMap = indexQuotationItems(newItems);
+        Set<String> keys = new LinkedHashSet<>();
+        keys.addAll(oldMap.keySet());
+        keys.addAll(newMap.keySet());
+        for (String key : keys) {
+            SalesQuotationItem oldItem = oldMap.get(key);
+            SalesQuotationItem newItem = newMap.get(key);
+            if (oldItem == null) {
+                changes.add("新增明细[" + itemLabel(newItem) + "]");
+                continue;
+            }
+            if (newItem == null) {
+                changes.add("删除明细[" + itemLabel(oldItem) + "]");
+                continue;
+            }
+            String prefix = "明细[" + itemLabel(newItem) + "]";
+            changeRecorder.diff(changes, prefix + "产品名称", oldItem.getProductName(), newItem.getProductName());
+            changeRecorder.diff(changes, prefix + "数量", oldItem.getQuantity(), newItem.getQuantity());
+            changeRecorder.diffDecimal(changes, prefix + "单价", oldItem.getUnitPrice(), newItem.getUnitPrice());
+            changeRecorder.diff(changes, prefix + "单位", oldItem.getUnit(), newItem.getUnit());
+            changeRecorder.diff(changes, prefix + "交期天数", oldItem.getDeliveryDays(), newItem.getDeliveryDays());
+            changeRecorder.diff(changes, prefix + "预计交期",
+                changeRecorder.fmtDate(oldItem.getEstimatedDeliveryDate()),
+                changeRecorder.fmtDate(newItem.getEstimatedDeliveryDate()));
+            changeRecorder.diff(changes, prefix + "自定义要求", oldItem.getCustomRequirements(), newItem.getCustomRequirements());
+            changeRecorder.diff(changes, prefix + "Logo要求", oldItem.getLogoRequirement(), newItem.getLogoRequirement());
+            changeRecorder.diff(changes, prefix + "认证要求", oldItem.getCertificationRequirement(), newItem.getCertificationRequirement());
+            changeRecorder.diff(changes, prefix + "按键数", oldItem.getKeyCount(), newItem.getKeyCount());
+            changeRecorder.diffDecimal(changes, prefix + "宽度", oldItem.getWidth(), newItem.getWidth());
+            changeRecorder.diffDecimal(changes, prefix + "高度", oldItem.getHeight(), newItem.getHeight());
+            changeRecorder.diffDecimal(changes, prefix + "厚度", oldItem.getThickness(), newItem.getThickness());
+            changeRecorder.diff(changes, prefix + "材料", oldItem.getMaterialType(), newItem.getMaterialType());
+            changeRecorder.diff(changes, prefix + "颜色", oldItem.getColor(), newItem.getColor());
+            changeRecorder.diff(changes, prefix + "线路类型", oldItem.getCircuitType(), newItem.getCircuitType());
+            changeRecorder.diff(changes, prefix + "连接器", oldItem.getConnectorType(), newItem.getConnectorType());
+        }
+    }
+
+    private Map<String, SalesQuotationItem> indexQuotationItems(List<SalesQuotationItem> items) {
+        Map<String, SalesQuotationItem> indexed = new LinkedHashMap<>();
+        Map<String, Integer> occurrences = new HashMap<>();
+        if (items == null) {
+            return indexed;
+        }
+        for (SalesQuotationItem item : items) {
+            String productCode = item.getProductCode() == null ? "" : item.getProductCode();
+            int occurrence = occurrences.merge(productCode, 1, Integer::sum);
+            indexed.put(productCode + "#" + occurrence, item);
+        }
+        return indexed;
+    }
+
+    private String itemLabel(SalesQuotationItem item) {
+        if (item.getProductCode() != null && !item.getProductCode().isBlank()) {
+            return item.getProductCode();
+        }
+        return item.getProductName() == null ? "未命名产品" : item.getProductName();
     }
 
     /**

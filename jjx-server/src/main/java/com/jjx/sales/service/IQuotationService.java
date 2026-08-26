@@ -2,6 +2,7 @@ package com.jjx.sales.service;
 
 import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesQuotation;
+import com.jjx.sales.domain.vo.SalesQuotationEditVO;
 
 import java.util.List;
 
@@ -48,7 +49,7 @@ public interface IQuotationService {
      * @param quotation 销售报价单
      * @return 结果
      */
-    int updateQuotation(SalesQuotation quotation);
+    SalesQuotationEditVO updateQuotation(SalesQuotation quotation);
 
     /**
      * 删除销售报价单

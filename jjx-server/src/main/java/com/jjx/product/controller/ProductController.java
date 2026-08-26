@@ -208,8 +208,8 @@ public class ProductController extends BaseController {
      * 搜索产品
      */
     @GetMapping("/search")
-    public Result<List<Product>> search(String keyword) {
-        List<Product> products = productService.searchProducts(keyword);
+    public Result<List<Product>> search(String keyword, Long customerId) {
+        List<Product> products = productService.searchProducts(keyword, customerId);
         return Result.success(products);
     }
 

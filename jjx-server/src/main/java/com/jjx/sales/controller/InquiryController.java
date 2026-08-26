@@ -107,7 +107,6 @@ public class InquiryController extends BaseController {
      * 询价转报价
      */
     @Operation(summary = "询价转报价")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).CONVERTED", traceId = "#result.data.traceId")
     @SaCheckPermission("sales:inquiry:convert")
     @PostMapping("/convert/{inquiryId}")
     public Result<InquiryToQuotationVO> convert(@PathVariable Long inquiryId) {

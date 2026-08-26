@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -34,6 +36,20 @@ public class LogSaveService {
             operLogMapper.insert(operLog);
         } catch (Exception e) {
             log.error("保存操作日志失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 业务事务提交后，在独立事务中按列表顺序原子写入多条操作日志。
+     * 不使用异步执行器，以保证同一批次的自增 ID 顺序。
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public void saveOperLogsInOrder(List<SysOperLog> operLogs) {
+        if (operLogs == null || operLogs.isEmpty()) {
+            return;
+        }
+        for (SysOperLog operLog : operLogs) {
+            operLogMapper.insert(operLog);
         }
     }
 

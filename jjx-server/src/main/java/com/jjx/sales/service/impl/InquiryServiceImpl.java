@@ -22,6 +22,9 @@ import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.sales.service.IInquiryService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.service.LogSaveService;
 import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
 
@@ -30,6 +33,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -59,6 +64,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final com.jjx.product.service.ProductCodeService productCodeService;
     private final IQuotationService quotationService;
     private final OperLogChangeRecorder changeRecorder;
+    private final LogSaveService logSaveService;
 
     /**
      * 分页查询询价单列表
@@ -169,6 +175,10 @@ public class InquiryServiceImpl implements IInquiryService {
         if (inquiry.getInquiryType() == null) {
             inquiry.setInquiryType(1); // 默认标准品
         }
+        // DEV-1121：标准品询价必须选择产品（定制产品，需关联客户专属产品）
+        if (java.lang.Integer.valueOf(1).equals(inquiry.getInquiryType()) && inquiry.getProductId() == null) {
+            throw new BusinessException("标准品询价必须选择产品");
+        }
         if (inquiry.getInquiryDate() == null) {
             inquiry.setInquiryDate(LocalDate.now());
         }
@@ -214,6 +224,11 @@ public class InquiryServiceImpl implements IInquiryService {
             throw new BusinessException("已转换的询价单不能修改");
         }
 
+        // DEV-1121：标准品询价必须选择产品（定制产品，需关联客户专属产品）
+        if (java.lang.Integer.valueOf(1).equals(dto.getInquiryType()) && dto.getProductId() == null) {
+            throw new BusinessException("标准品询价必须选择产品");
+        }
+
         // 样品询价：修改时若编码变化且无产品关联，重新建档（2026-08-08）
         if (java.lang.Integer.valueOf(2).equals(dto.getInquiryType())
                 && StringUtils.hasText(dto.getProductCode())
@@ -230,7 +245,7 @@ public class InquiryServiceImpl implements IInquiryService {
         if (rows > 0) {
             List<String> changes = new ArrayList<>();
             diffMainFields(changes, oldInquiry, dto);
-            String detailString = JSONUtil.toJsonStr(Map.of("changes", changes));
+            String detailString = changeRecorder.toDetailJson(changes);
             vo.setDetailMessage(detailString);
         }
         vo.setRows(rows);
@@ -479,6 +494,8 @@ public class InquiryServiceImpl implements IInquiryService {
         inquiry.setConvertTime(LocalDateTime.now());
         inquiryMapper.updateById(inquiry);
 
+        registerConversionOperLogsAfterCommit(inquiry, quotation);
+
         log.info("询价单[{}]成功转换为报价单[{}]", inquiry.getInquiryNo(), quotation.getQuotationNo());
 
         InquiryToQuotationVO vo = new InquiryToQuotationVO();
@@ -486,6 +503,77 @@ public class InquiryServiceImpl implements IInquiryService {
         vo.setInquiryNo(inquiry.getInquiryNo());
         vo.setTraceId(inquiry.getTraceId());
         return vo;
+    }
+
+    /** 事务提交后按“询价转换→报价新增”顺序写入同一 trace 的两条日志。 */
+    private void registerConversionOperLogsAfterCommit(SalesInquiry inquiry, SalesQuotation quotation) {
+        List<SysOperLog> operLogs = buildConversionOperLogs(inquiry, quotation);
+        Runnable saveAction = () -> {
+            try {
+                logSaveService.saveOperLogsInOrder(operLogs);
+            } catch (Exception e) {
+                log.error("询价转报价操作日志保存失败: inquiryId={}, quotationId={}, err={}",
+                    inquiry.getInquiryId(), quotation.getQuotationId(), e.getMessage());
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    saveAction.run();
+                }
+            });
+        } else {
+            saveAction.run();
+        }
+    }
+
+    List<SysOperLog> buildConversionOperLogs(SalesInquiry inquiry, SalesQuotation quotation) {
+        LocalDateTime auditTime = LocalDateTime.now();
+        SysOperLog inquiryLog = buildConversionOperLog(
+            "询价单管理", BusinessType.UPDATE, "inquiry", inquiry.getInquiryId(),
+            inquiry.getTraceId(), InquiryStatus.CONVERTED.getCode(), auditTime,
+            "询价单[" + inquiry.getInquiryNo() + "]转为报价单[" + quotation.getQuotationNo() + "]",
+            JSONUtil.toJsonStr(Map.of(
+                "action", "CONVERT_TO_QUOTATION",
+                "quotationId", quotation.getQuotationId(),
+                "quotationNo", quotation.getQuotationNo())));
+
+        SysOperLog quotationLog = buildConversionOperLog(
+            "报价单管理", BusinessType.INSERT, "quotation", quotation.getQuotationId(),
+            inquiry.getTraceId(), QuotationStatus.DRAFT.getCode(), auditTime,
+            "由询价单[" + inquiry.getInquiryNo() + "]创建报价单[" + quotation.getQuotationNo() + "]",
+            JSONUtil.toJsonStr(Map.of(
+                "action", "CREATE_FROM_INQUIRY",
+                "sourceInquiryId", inquiry.getInquiryId(),
+                "sourceInquiryNo", inquiry.getInquiryNo())));
+        return List.of(inquiryLog, quotationLog);
+    }
+
+    private SysOperLog buildConversionOperLog(String module, BusinessType businessType,
+                                              String bizType, Long bizId, String traceId,
+                                              Integer bizStatus, LocalDateTime createTime,
+                                              String operParam, String detail) {
+        SysOperLog operLog = new SysOperLog();
+        operLog.setModule(module);
+        operLog.setBusinessType(businessType.getCode());
+        operLog.setOperUrl("/sales/inquiry/convert");
+        operLog.setOperParam(operParam);
+        operLog.setBizType(bizType);
+        operLog.setBizId(String.valueOf(bizId));
+        operLog.setTraceId(traceId);
+        operLog.setBizStatus(bizStatus);
+        operLog.setDetail(detail);
+        operLog.setStatus(1);
+        operLog.setCreateTime(createTime);
+        try {
+            operLog.setUserId(SecurityUtils.getUserId());
+            operLog.setUsername(SecurityUtils.getUsername());
+            operLog.setRealName(SecurityUtils.getRealName());
+            operLog.setTenantId(SecurityUtils.getTenantId());
+        } catch (Exception ignored) {
+        }
+        return operLog;
     }
 
     /**

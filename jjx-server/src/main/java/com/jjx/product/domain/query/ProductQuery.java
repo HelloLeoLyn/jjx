@@ -34,4 +34,9 @@ public class ProductQuery extends PageQuery {
      * 结束日期
      */
     private String endDate;
+
+    /**
+     * 客户ID（专属客户过滤：定制产品都有固定客户，DEV-1121）
+     */
+    private Long customerId;
 }

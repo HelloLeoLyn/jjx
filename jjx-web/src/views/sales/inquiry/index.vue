@@ -266,25 +266,16 @@
               </el-radio-group>
             </el-form-item>
 
-            <!-- 标准品：选择产品，自动回填描述/编码/名称 -->
+            <!-- 标准品：选择产品（DEV-1121：必填 + 只能选该客户的产品，用公共组件 ProductPicker） -->
             <el-form-item v-if="form.inquiryType === 1" label="选择产品" prop="productId">
-              <el-select
+              <ProductPicker
                 v-model="form.productId"
-                filterable
-                remote
-                :remote-method="searchProducts"
-                :loading="productLoading"
-                placeholder="请输入产品名称/编码搜索"
-                style="width: 100%"
+                value-type="productId"
+                :customer-id="form.customerId"
+                :disabled="!form.customerId"
+                placeholder="请先选择客户，再搜索该客户的产品"
                 @change="onProductSelect"
-              >
-                <el-option
-                  v-for="p in productOptions"
-                  :key="p.productId"
-                  :label="`${p.productName}（${p.productCode}）`"
-                  :value="p.productId"
-                />
-              </el-select>
+              />
             </el-form-item>
 
             <!-- 样品：编码构成要素（公共组件 2026-08-12，统一校验/拼接/输出可配置） -->
@@ -432,12 +423,13 @@ import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import InquiryDetailDialog from './components/InquiryDetailDialog.vue'
 import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
+import ProductPicker from '@/components/Selector/ProductPicker.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
-import { listProduct, getProductInfo } from '@/api/product'
+import { getProductInfo } from '@/api/product'
 import { parseSpecJson } from '@/utils/specJsonHelper'
 import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'
@@ -479,7 +471,6 @@ const customerLoading = ref(false)
 
 // 产品选项（标准品选择用）
 const productOptions = ref<ProductItem[]>([])
-const productLoading = ref(false)
 
 const statusOptions = ref<Array<{ value: string; label: string }>>([])
 
@@ -530,6 +521,19 @@ function gotoQuotation(row: any) {
 const rules: Record<string, any> = {
   customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
   inquiryDate: [{ required: true, message: '请选择询价日期', trigger: 'change' }],
+  // DEV-1121：标准品必须选择产品（定制产品，按客户过滤）
+  productId: [
+    {
+      validator: (_rule: any, value: any, callback: any) => {
+        if (form.inquiryType === 1 && !value) {
+          callback(new Error('标准品必须选择产品'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change',
+    },
+  ],
 }
 
 // 详情数据（已迁移到 InquiryDetailDialog 共享组件内自管理）
@@ -677,6 +681,15 @@ function customerChanged(val: number) {
       codeGenRef.value?.generate()
     }
   }
+  // DEV-1121：客户变更后清空已选产品并重新校验（产品按客户过滤，只能选该客户的产品）
+  if (form.inquiryType === 1 && form.productId) {
+    form.productId = undefined
+    form.productCode = ''
+    form.productName = ''
+    form.productDescription = ''
+    nameEdited.value = false
+    formRef.value?.validateField('productId').catch(() => {})
+  }
 }
 
 // ==================== 编码生成器（公共组件 useProductCode，2026-08-12） ====================
@@ -714,36 +727,13 @@ function onTypeChange() {
   }
 }
 
-// 加载产品列表（标准品选择用，首次加载一批）
-async function loadProducts() {
-  productLoading.value = true
-  try {
-    const res = await listProduct({ pageNum: 1, pageSize: 50 } as any)
-    productOptions.value = (res?.data as any)?.records || res?.data || []
-  } catch {
-    productOptions.value = []
-  } finally {
-    productLoading.value = false
-  }
-}
+// 加载产品列表（DEV-1121：已改用公共组件 ProductPicker 按客户加载，此函数废弃）
 
-// 产品远程搜索（DEV-590）
-async function searchProducts(query: string) {
-  if (!query || query.length < 1) return
-  productLoading.value = true
-  try {
-    const res = await listProduct({ pageNum: 1, pageSize: 50, productName: query } as any)
-    productOptions.value = (res?.data as any)?.records || res?.data || []
-  } catch {
-    productOptions.value = []
-  } finally {
-    productLoading.value = false
+// 选择产品：带出描述 + 按规格参数回填技术要求（DEV-590；DEV-1121：product 由公共组件 change 事件回传）
+async function onProductSelect(val: number, product?: any) {
+  if (!product) {
+    product = productOptions.value.find((p: any) => p.productId === val)
   }
-}
-
-// 选择产品：带出描述 + 按规格参数回填技术要求（DEV-590）
-async function onProductSelect(val: number) {
-  const product = productOptions.value.find((p: any) => p.productId === val)
   if (product) {
     form.productDescription = `${product.productName}（${product.productCode}）`
     // 标准品：编码/名称带出产品档案（可改），并反解编码构成要素供查看/修改
@@ -1011,7 +1001,6 @@ function handleClose() {
 onMounted(() => {
   getList()
   initCustomerOptions()
-  loadProducts()
   // 加载状态选项
   inquiryApi
     .getStatusOptions()

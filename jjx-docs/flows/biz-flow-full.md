@@ -836,6 +836,8 @@ dev（开发任务：dev-YYYYMMDD-NNN 编码，sys_task kanban_module='dev'）
 | 异常日志 | `src/views/log/exception/index.vue` | sys_error_log：异常堆栈 |
 
 > 操作日志即"流水"数据源：`@Log` 注解切面写入（OperLogAspect），按 traceId 组织链路（TraceTimeline）。`detail` 支持通用文本/JSON；引用 `#attachmentIds` 时由切面组装附件详情。
+> 询价转报价在业务事务提交后由 `LogSaveService` 有序写入两条同 traceId 日志：先询价单 UPDATE，后报价单 INSERT，保证报价新增为最新记录。
+> 询价单和报价单的整单编辑由 Service 基于数据库新旧快照生成表头/明细字段变更 JSON，由 `@Log.detail` 统一落入操作日志。
 
 ## 6.6 通知中心
 

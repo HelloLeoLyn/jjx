@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +77,20 @@ public class OperLogChangeRecorder {
         if (!Objects.equals(oldValue, newValue)) {
             changes.add(label + ":" + fmt(oldValue) + "→" + fmt(newValue));
         }
+    }
+
+    /** 按数值而非 BigDecimal scale 比较，避免 10.0 与 10.00 被误记为修改。 */
+    public void diffDecimal(List<String> changes, String label, BigDecimal oldValue, BigDecimal newValue) {
+        boolean equal = oldValue == null ? newValue == null
+            : newValue != null && oldValue.compareTo(newValue) == 0;
+        if (!equal) {
+            changes.add(label + ":" + fmt(oldValue) + "→" + fmt(newValue));
+        }
+    }
+
+    /** 统一生成 @Log.detail 使用的字段变更 JSON。 */
+    public String toDetailJson(List<String> changes) {
+        return JSONUtil.toJsonStr(Map.of("changes", changes == null ? List.of() : changes));
     }
 
     public String fmt(Object value) {

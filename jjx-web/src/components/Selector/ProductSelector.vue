@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { ProductItem } from '@/types/product'
 import { productApi } from '@/api/product'
@@ -40,6 +40,8 @@ interface Props {
   minKeywordLength?: number
   autoSelectFirst?: boolean
   options?: ProductItem[]
+  /** DEV-1121：专属客户过滤（可选，不传时全库搜索，行为不变） */
+  customerId?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -53,6 +55,7 @@ const props = withDefaults(defineProps<Props>(), {
   minKeywordLength: 2,
   autoSelectFirst: false,
   options: () => [],
+  customerId: undefined,
 })
 
 const emit = defineEmits<{
@@ -136,7 +139,7 @@ const handleRemoteSearch = (query: string) => {
   debounceTimer = setTimeout(async () => {
     loading.value = true
     try {
-      const res = await productApi.search(query)
+      const res = await productApi.search(query, props.customerId)
       if (res.code === 200 && res.data) {
         remoteOptions.value = res.data
         emit('search', query)
@@ -163,6 +166,14 @@ const handleClear = () => {
 const handleChange = (val: number) => {
   // 可在此处添加额外逻辑
 }
+
+// DEV-1121：客户切换时清空远程搜索缓存
+watch(
+  () => props.customerId,
+  () => {
+    remoteOptions.value = []
+  },
+)
 
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer)

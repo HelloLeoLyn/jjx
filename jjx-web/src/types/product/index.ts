@@ -22,6 +22,8 @@ export interface ProductQueryParams extends PageQuery {
   productStatus?: string
   startDate?: string
   endDate?: string
+  /** DEV-1121：专属客户过滤（定制产品都有固定客户） */
+  customerId?: number
 }
 
 export interface ProductFormData {

@@ -56,6 +56,8 @@ interface Props {
   preload?: boolean
   debounceDelay?: number
   minKeywordLength?: number
+  /** DEV-1121：专属客户过滤（可选，不传时全库搜索，行为不变） */
+  customerId?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -68,6 +70,7 @@ const props = withDefaults(defineProps<Props>(), {
   preload: true,
   debounceDelay: 300,
   minKeywordLength: 1,
+  customerId: undefined,
 })
 
 const emit = defineEmits<{
@@ -121,7 +124,7 @@ async function preloadAll() {
   preloaded = true
   loading.value = true
   try {
-    const res = await productApi.search('')
+    const res = await productApi.search('', props.customerId)
     if (res.code === 200 && res.data) {
       options.value = res.data
     }
@@ -152,7 +155,7 @@ const handleRemoteSearch = (query: string) => {
   debounceTimer = setTimeout(async () => {
     loading.value = true
     try {
-      const res = await productApi.search(query)
+      const res = await productApi.search(query, props.customerId)
       if (res.code === 200 && res.data) {
         options.value = res.data
       }
@@ -201,6 +204,15 @@ watch(
       })
   },
   { immediate: true }
+)
+
+// DEV-1121：客户切换时清空缓存，下拉按新客户重新加载
+watch(
+  () => props.customerId,
+  () => {
+    options.value = []
+    preloaded = false
+  },
 )
 
 onBeforeUnmount(() => {
