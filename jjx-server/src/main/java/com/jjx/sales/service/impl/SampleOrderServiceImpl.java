@@ -121,6 +121,19 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setOrderType(OrderTypeEnum.SAMPLE.getCode());
         order.setSampleStatus(SampleOrderStatusEnum.CREATED.getCode());
         order.setSampleRound(1);
+        // DEV-1111：打样数量前端传入优先；未传时按报价单明细数量求和默认（与 total_quantity 口径一致），无明细兜底 1
+        if (sampleQty == null) {
+            java.util.List<com.jjx.sales.domain.entity.SalesQuotationItem> qItems = quotationItemMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesQuotationItem>()
+                            .eq(com.jjx.sales.domain.entity.SalesQuotationItem::getQuotationId, quotationId));
+            int sum = 0;
+            if (qItems != null) {
+                for (com.jjx.sales.domain.entity.SalesQuotationItem it : qItems) {
+                    sum += it.getQuantity() != null ? it.getQuantity() : 0;
+                }
+            }
+            sampleQty = sum > 0 ? sum : 1;
+        }
         order.setSampleQty(sampleQty);
         order.setCurrency(quotation.getCurrency());
         order.setExchangeRate(quotation.getExchangeRate());

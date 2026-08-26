@@ -172,7 +172,8 @@ export const quotationOperations: OperationDef[] = [
     bizType: 'quotation',
     name: '转为样品单',
     fromStatus: [0, 1, 2, 3, 4, 6],
-    fields: [{ key: 'sampleQty', label: '打样数量', type: 'number', required: true, defaultValue: 10 }],
+    // DEV-1111：默认值由报价单页动态注入（按报价单明细数量求和），此处不再写死
+    fields: [{ key: 'sampleQty', label: '打样数量', type: 'number', required: true }],
     api: ({ bizId, values }) => sampleOrderApi.createFromQuotation(bizId, { sampleQty: Number(values.sampleQty) }),
   },
 ]

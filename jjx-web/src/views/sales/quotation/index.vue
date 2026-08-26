@@ -1188,11 +1188,27 @@ const previewBizNo = ref('')
 const quotationStatusTextMap = Object.fromEntries(
   QuotationStatusEnum.items.map((i: any) => [i.value, i.label]),
 )
-function openPreview(opKey: string, row?: any) {
+async function openPreview(opKey: string, row?: any) {
   const quotationId = row?.quotationId || ids.value[0]
   if (!quotationId) return
-  const op = getOperation(opKey)
+  let op = getOperation(opKey)
   if (!op) return
+  // DEV-1111：转为样品单时，打样数量默认取报价单明细数量求和（与 DEV-806 total_quantity 口径一致）
+  if (opKey === 'quotation.toSample') {
+    try {
+      const res: any = await quotationApi.getItems(quotationId)
+      const items: any[] = res?.data || []
+      const total = items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0)
+      op = {
+        ...op,
+        fields: (op.fields || []).map((f: any) =>
+          f.key === 'sampleQty' ? { ...f, defaultValue: total > 0 ? total : 1 } : f,
+        ),
+      }
+    } catch (e) {
+      console.error('加载报价单明细失败，打样数量使用默认值', e)
+    }
+  }
   previewOperation.value = op
   previewBizId.value = quotationId
   previewBizNo.value = row?.quotationNo || selectedQuotation.value?.quotationNo || ''
