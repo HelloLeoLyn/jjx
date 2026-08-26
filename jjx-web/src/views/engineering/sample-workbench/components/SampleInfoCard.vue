@@ -42,6 +42,29 @@
       <span style="margin-left:12px;color:#909399;font-size:12px">接单后开始记录打样过程</span>
     </div>
 
+    <!-- 来源单据（工作台第一步优化：询价单/报价单展示 + 查看入口，弹窗查看不离开工作台） -->
+    <div class="source-docs">
+      <div class="source-docs-label">来源单据</div>
+      <div class="source-docs-row">
+        <span class="source-docs-item">
+          <span class="source-docs-key">询价单</span>
+          <template v-if="card.inquiryNo">
+            {{ card.inquiryNo }}
+            <el-button link type="primary" size="small" @click="$emit('viewInquiry')">查看</el-button>
+          </template>
+          <span v-else>-</span>
+        </span>
+        <span class="source-docs-item">
+          <span class="source-docs-key">报价单</span>
+          <template v-if="card.quotationNo">
+            {{ card.quotationNo }}
+            <el-button link type="primary" size="small" @click="$emit('viewQuotation')">查看</el-button>
+          </template>
+          <span v-else>-</span>
+        </span>
+      </div>
+    </div>
+
     <!-- 图纸 / 工艺文件（2026-08-11 挪到样品信息卡：图纸=样品单级资料） -->
     <div class="eng-files">
       <div class="eng-files-label">📐 图纸 / 工艺文件</div>
@@ -93,6 +116,8 @@ const emit = defineEmits<{
   (e: 'reject'): void
   (e: 'upload', options: any): void
   (e: 'remove', file: any): void
+  (e: 'viewInquiry'): void
+  (e: 'viewQuotation'): void
 }>()
 
 const beforeUpload: UploadProps['beforeUpload'] = (file) => {
@@ -161,6 +186,31 @@ defineExpose({ beforeUpload })
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px dashed #e4e7ed;
+}
+
+/* 来源单据（工作台第一步：辅助上下文，紧凑行式，不喧宾夺主） */
+.source-docs {
+  margin-top: 12px;
+  border-top: 1px dashed #e4e7ed;
+  padding-top: 10px;
+}
+.source-docs-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 6px;
+}
+.source-docs-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #606266;
+}
+.source-docs-key {
+  color: #909399;
+  margin-right: 6px;
 }
 
 /* 图纸区（挪到样品信息卡） */

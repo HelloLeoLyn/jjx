@@ -1,6 +1,7 @@
 package com.jjx.sales.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -332,6 +333,24 @@ public class SalesOrder extends BaseEntity {
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastTransferTime;
+
+    /**
+     * 来源报价单号（非表字段，查询时按 quotation_id 关联填充，工作台来源单据展示）
+     */
+    @TableField(exist = false)
+    private String quotationNo;
+
+    /**
+     * 来源询价单ID（非表字段，查询时按 quotation_id → 询价单关联填充，来源单据查看入口用）
+     */
+    @TableField(exist = false)
+    private Long inquiryId;
+
+    /**
+     * 来源询价单号（非表字段，查询时按 quotation_id → 询价单关联填充）
+     */
+    @TableField(exist = false)
+    private String inquiryNo;
 
     /**
      * 删除标志 (0: 正常, 1: 删除)

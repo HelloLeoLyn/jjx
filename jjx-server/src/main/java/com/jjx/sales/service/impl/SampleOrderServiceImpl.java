@@ -44,6 +44,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final OrderMapper orderMapper;
     private final QuotationMapper quotationMapper;
     private final com.jjx.sales.mapper.SalesQuotationItemMapper quotationItemMapper;
+    private final com.jjx.sales.mapper.SalesInquiryMapper inquiryMapper;
     private final com.jjx.product.mapper.ProductMapper productMapper;
     private final com.jjx.sales.mapper.SalesSampleTransferMapper sampleTransferMapper;
     private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
@@ -2660,7 +2661,36 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (order == null || order.getDeleted() == 1) {
             throw new BusinessException("样品单不存在或已被删除");
         }
+        // 工作台来源单据（最小补充）：按 quotation_id 关联报价单/询价单，仅返回单号与ID，不塞整对象
+        fillSourceDocNos(order);
         return order;
+    }
+
+    /**
+     * 补充来源单据信息（报价单号/询价单号/询价单ID），用于工程打样工作台"来源单据"展示与查看入口
+     * 链路：样品单.quotation_id → 报价单 → 询价单.converted_quotation_id
+     */
+    private void fillSourceDocNos(SalesOrder order) {
+        try {
+            if (order.getQuotationId() == null) {
+                return;
+            }
+            com.jjx.sales.domain.entity.SalesQuotation quotation = quotationMapper.selectById(order.getQuotationId());
+            if (quotation == null) {
+                return;
+            }
+            order.setQuotationNo(quotation.getQuotationNo());
+            com.jjx.sales.domain.entity.SalesInquiry inquiry = inquiryMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesInquiry>()
+                            .eq(com.jjx.sales.domain.entity.SalesInquiry::getConvertedQuotationId, order.getQuotationId())
+                            .last("LIMIT 1"));
+            if (inquiry != null) {
+                order.setInquiryId(inquiry.getInquiryId());
+                order.setInquiryNo(inquiry.getInquiryNo());
+            }
+        } catch (Exception e) {
+            log.warn("补充样品单来源单据信息失败: {}", e.getMessage());
+        }
     }
 
     @Override

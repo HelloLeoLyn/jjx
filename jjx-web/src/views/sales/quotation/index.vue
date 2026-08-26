@@ -724,101 +724,13 @@
       </template>
     </el-dialog>
 
-    <!-- 报价单详情对话框 -->
-    <el-dialog title="报价单详情" v-model="detailOpen" width="1200px" append-to-body>
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="报价单号">{{ detail.quotationNo }}</el-descriptions-item>
-        <el-descriptions-item label="客户名称">{{ detail.customerName }}</el-descriptions-item>
-        <el-descriptions-item label="报价日期">
-          {{ parseTime(detail.quotationDate, 'yyyy-MM-dd') }}
-        </el-descriptions-item>
-        <el-descriptions-item label="有效期至">
-          <span v-if="detail.validUntil">{{ parseTime(detail.validUntil, 'yyyy-MM-dd') }}</span>
-          <span v-else>-</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="报价状态">
-          <el-tag :type="getStatusTagType(detail.quotationStatus)">
-            {{ getStatusLabel(detail.quotationStatus) }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="币种">
-          {{ detail.currency || 'CNY' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="汇率">
-          {{ detail.exchangeRate || '1.0000' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="小计金额">
-          {{ formatCurrency(detail.subtotalAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="税率"> {{ detail.taxRate || 0 }}% </el-descriptions-item>
-        <el-descriptions-item label="税额">
-          {{ formatCurrency(detail.taxAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="折扣金额">
-          {{ formatCurrency(detail.discountAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="总金额">
-          {{ formatCurrency(detail.totalAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="最终金额">
-          {{ formatCurrency(detail.finalAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="销售员">
-          {{ detail.salesPersonName || '-' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">
-          {{ detail.remark || '-' }}
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <!-- 报价明细表格 -->
-      <el-divider content-position="left">报价明细</el-divider>
-      <el-table :data="detail.items" border style="width: 100%">
-        <el-table-column label="序号" type="index" width="60" align="center" />
-        <el-table-column label="产品编码" prop="productCode" width="120" />
-        <el-table-column label="产品名称" prop="productName" width="180" />
-        <el-table-column label="数量" prop="quantity" width="80" align="right" />
-        <el-table-column label="单价" prop="unitPrice" width="100" align="right">
-          <template #default="scope">
-            {{ formatCurrency(scope.row.unitPrice) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="金额" prop="amount" width="120" align="right">
-          <template #default="scope">
-            {{ formatCurrency(scope.row.amount) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="单位" prop="unit" width="80" />
-        <el-table-column label="交期(天)" prop="deliveryDays" width="100" />
-        <el-table-column label="定制要求" prop="customRequirements" />
-      </el-table>
-
-      <!-- 相关文档 -->
-      <el-divider content-position="left">相关文档</el-divider>
-      <AttachmentPanel
-        v-if="detail.quotationId"
-        biz-type="quotation"
-        :biz-id="detail.quotationId"
-        :trace-id="detail.traceId"
-      />
-
-      <!-- DEV-706：提交审核模式 → 底部确认提交 -->
-      <template #footer>
-        <div v-if="detailMode === 'submitReview'" class="detail-footer">
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            title="请核对报价单内容（客户/明细/金额）后确认提交，提交后将进入待审核状态"
-            style="margin-bottom: 12px"
-          />
-          <el-button @click="detailOpen = false">取消</el-button>
-          <el-button type="primary" :loading="submitReviewLoading" @click="handleConfirmSubmitReview">
-            确认提交审核
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- 报价单详情（共享组件：报价单列表页 + 工程打样工作台"来源单据"查看共用一套） -->
+    <QuotationDetailDialog
+      v-model="quotationDetailVisible"
+      :quotation-id="quotationDetailId"
+      :mode="quotationDetailMode"
+      @submitted="getList"
+    />
 
     <!-- 查看流水（2026-08-11 统一用 TraceTimeline） -->
     <TraceTimeline
@@ -866,6 +778,7 @@ import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
+import QuotationDetailDialog from './components/QuotationDetailDialog.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
@@ -927,39 +840,6 @@ const form = reactive({
   }>,
 })
 
-// 详情数据
-const detail = reactive({
-  traceId: undefined as string | undefined,
-  quotationId: undefined as number | undefined,
-  quotationNo: '',
-  customerId: undefined as number | undefined,
-  customerName: '',
-  quotationDate: '',
-  validUntil: '',
-  currency: 'CNY',
-  exchangeRate: 1.0,
-  subtotalAmount: 0,
-  taxRate: 0,
-  taxAmount: 0,
-  totalAmount: 0,
-  discountAmount: 0,
-  finalAmount: 0,
-  quotationStatus: 0,
-  salesPersonId: undefined as number | undefined,
-  salesPersonName: '',
-  remark: '',
-  items: [] as Array<{
-    productCode: string
-    productName: string
-    quantity: number
-    unitPrice: number
-    amount: number
-    unit: string
-    deliveryDays?: number
-    customRequirements?: string
-  }>,
-})
-
 // 响应式数据
 const loading = ref(false)
 const tableRef = ref<any>()
@@ -972,10 +852,11 @@ const selectedQuotation = ref<any>(null)
 const total = ref(0)
 const title = ref('')
 const open = ref(false)
-const detailOpen = ref(false)
-// 详情对话框模式：''=查看 / 'submitReview'=提交审核（底部显示确认提交）
-const detailMode = ref<'view' | 'submitReview'>('view')
-const submitReviewLoading = ref(false)
+// 报价单详情弹窗（共享组件，工作台来源单据查看同用）
+const quotationDetailVisible = ref(false)
+const quotationDetailId = ref<number>()
+// 详情对话框模式：'view'=查看 / 'submitReview'=提交审核（底部显示确认提交）
+const quotationDetailMode = ref<'view' | 'submitReview'>('view')
 const dateRange = ref<string[]>([])
 const customerLoading = ref(false)
 const customerOptions = ref<Array<{ customerId: number; customerName: string }>>([])
@@ -1222,38 +1103,9 @@ const handleConvertToSample = async (row?: any) => openPreview('quotation.toSamp
 const handleSubmitReview = async (row?: any) => {
   const quotationId = (row?.quotationId as number) ?? (row as any)?.quotationId
   if (!quotationId) return
-  try {
-    const response: any = await quotationApi.getInfo(quotationId)
-    Object.assign(detail, response.data)
-    detailMode.value = 'submitReview'
-    detailOpen.value = true
-  } catch (e) {
-    console.error('加载报价详情失败:', e)
-    ElMessage.error('加载报价详情失败')
-  }
-}
-
-// 确认提交审核
-const handleConfirmSubmitReview = async () => {
-  const quotationId = detail.quotationId as number
-  if (!quotationId) return
-  submitReviewLoading.value = true
-  try {
-    const res: any = await quotationApi.submitReview(quotationId)
-    if (res.code === 200 || res.code === 0) {
-      ElMessage.success('提交审核成功')
-      detailOpen.value = false
-      detailMode.value = 'view'
-      getList()
-    } else {
-      ElMessage.error(res.msg || '提交审核失败')
-    }
-  } catch (e: any) {
-    console.error('提交审核失败:', e)
-    ElMessage.error(e?.msg || e?.message || '提交审核失败')
-  } finally {
-    submitReviewLoading.value = false
-  }
+  quotationDetailId.value = quotationId
+  quotationDetailMode.value = 'submitReview'
+  quotationDetailVisible.value = true
 }
 
 // 审核（通过/驳回）
@@ -1325,12 +1177,9 @@ const handleReQuote = async (row?: any) => {
 
 // 查看详情按钮操作
 const handleView = (row: any) => {
-  const quotationId = row.quotationId as number
-  quotationApi.getInfo(quotationId).then((response: any) => {
-    Object.assign(detail, response.data)
-    detailMode.value = 'view'
-    detailOpen.value = true
-  })
+  quotationDetailId.value = row.quotationId as number
+  quotationDetailMode.value = 'view'
+  quotationDetailVisible.value = true
 }
 
 // 搜索客户
@@ -1749,11 +1598,9 @@ async function locateQuotation(quotationId: number) {
     tableRef.value?.setCurrentRow(found)
     ElMessage.success(`已定位到报价单 ${found.quotationNo}`)
   } else {
-    quotationApi.getInfo(quotationId).then((response: any) => {
-      Object.assign(detail, response.data)
-      detailMode.value = 'view'
-      detailOpen.value = true
-    })
+    quotationDetailId.value = quotationId
+    quotationDetailMode.value = 'view'
+    quotationDetailVisible.value = true
   }
 }
 

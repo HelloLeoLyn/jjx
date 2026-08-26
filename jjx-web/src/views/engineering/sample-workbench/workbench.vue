@@ -12,6 +12,8 @@
       @back="goBack"
       @accept="handleAccept"
       @reject="handleReject"
+      @view-inquiry="openInquiryDetail"
+      @view-quotation="openQuotationDetail"
       @upload="engUploadFile"
       @remove="engRemoveFile"
     />
@@ -191,6 +193,10 @@
       </div>
     </template>
 
+    <!-- 来源单据查看弹窗（复用询价/报价单列表页同一套详情组件，不新建第二套，不离开工作台） -->
+    <QuotationDetailDialog v-model="quotationDetailVisible" :quotation-id="quotationDetailId" />
+    <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
+
     <!-- 卡片作业项目追加选择器（多选，任意结构） -->
     <el-dialog v-model="cardPickerVisible" title="＋ 添加作业项目（可多选）" width="620px" append-to-body>
       <WorkProjectPicker v-model="cardPickerIds" @confirm="onCardPickerConfirm" />
@@ -290,11 +296,14 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useSampleWorkbench } from './composables/useSampleWorkbench'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
 import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
 import SampleInfoCard from './components/SampleInfoCard.vue'
+import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationDetailDialog.vue'
+import InquiryDetailDialog from '@/views/sales/inquiry/components/InquiryDetailDialog.vue'
 import PlanBoard from './components/PlanBoard.vue'
 import ExecutionTimeline from './components/ExecutionTimeline.vue'
 import BomPanel from './components/BomPanel.vue'
@@ -353,6 +362,20 @@ const {
   engBeforeUpload, engUploadFile, engRemoveFile, loadEngFiles, handleMarkReady,
   loadPlan, loadBom, refreshCard,
 } = useSampleWorkbench()
+
+// 来源单据查看（工作台第一步：复用询价/报价详情共享组件，弹窗查看不离开工作台）
+const quotationDetailVisible = ref(false)
+const quotationDetailId = ref<number>()
+const inquiryDetailVisible = ref(false)
+const inquiryDetailId = ref<number>()
+function openQuotationDetail() {
+  quotationDetailId.value = card.value?.quotationId
+  quotationDetailVisible.value = true
+}
+function openInquiryDetail() {
+  inquiryDetailId.value = card.value?.inquiryId
+  inquiryDetailVisible.value = true
+}
 
 // 加载（页面打开即载入）
 loadDetail()

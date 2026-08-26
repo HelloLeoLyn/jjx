@@ -397,69 +397,11 @@
     </el-dialog>
 
 
-    <!-- 查看详情对话框 -->
-    <el-dialog title="询价单详情" v-model="detailVisible" width="700px" append-to-body>
-      <template v-if="detailData">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="询价单号" :span="2">{{
-            detailData.inquiryNo
-          }}</el-descriptions-item>
-          <el-descriptions-item label="类型">
-            <el-tag v-if="detailData.inquiryType === 2" type="warning" size="small">样品</el-tag>
-            <el-tag v-else type="primary" size="small">标准</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="产品编码">{{ detailData.productCode || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="产品名称">{{
-            detailData.productName || (detailData.productId ? '产品#' + detailData.productId : '-')
-          }}</el-descriptions-item>
-          <el-descriptions-item label="客户名称">{{
-            detailData.customerName
-          }}</el-descriptions-item>
-          <el-descriptions-item label="联系人">{{
-            detailData.contactPerson || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="联系电话">{{
-            detailData.contactPhone || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="询价日期">{{ detailData.inquiryDate }}</el-descriptions-item>
-          <el-descriptions-item label="预估数量">{{
-            detailData.expectedQuantity || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="产品描述" :span="2">{{
-            detailData.productDescription || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="特殊要求" :span="2">{{
-            detailData.specialRequirements || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="需求图纸">
-            <el-tag v-if="detailData.hasDrawing" type="success" size="small">有图纸</el-tag>
-            <el-tag v-else type="info" size="small">无图纸</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="询价状态">
-            <el-tag :type="statusTagType(detailData.inquiryStatus)" size="small">
-              {{ statusLabel(detailData.inquiryStatus) }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="销售负责人" :span="2">{{
-            detailData.salesPersonName || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="备注" :span="2">{{
-            detailData.remark || '-'
-          }}</el-descriptions-item>
-        </el-descriptions>
-      </template>
-      <el-divider content-position="left">相关文档</el-divider>
-      <AttachmentPanel
-        v-if="detailData?.inquiryId"
-        biz-type="inquiry"
-        :biz-id="detailData.inquiryId"
-      />
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="detailVisible = false">关 闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- 询价单详情（共享组件：询价单列表页 + 工程打样工作台"来源单据"查看共用一套） -->
+    <InquiryDetailDialog
+      v-model="inquiryDetailVisible"
+      :inquiry-id="inquiryDetailId"
+    />
     <!-- 操作状态流转弹窗（审核/转报价） -->
     <BizFlowDetail
       v-model="opDialogVisible"
@@ -487,6 +429,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import InquiryDetailDialog from './components/InquiryDetailDialog.vue'
 import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
@@ -516,7 +459,9 @@ const submitting = ref(false)
 const inquiryList = ref<any[]>([])
 const total = ref(0)
 const dialogVisible = ref(false)
-const detailVisible = ref(false)
+// 询价单详情弹窗（共享组件，工作台来源单据查看同用）
+const inquiryDetailVisible = ref(false)
+const inquiryDetailId = ref<number>()
 
 const dialogTitle = ref('')
 const single = ref(true)
@@ -587,8 +532,7 @@ const rules: Record<string, any> = {
   inquiryDate: [{ required: true, message: '请选择询价日期', trigger: 'change' }],
 }
 
-// 详情数据
-const detailData = ref<any>(null)
+// 详情数据（已迁移到 InquiryDetailDialog 共享组件内自管理）
 
 // ==================== 操作状态流转弹窗 ====================
 const opDialogVisible = ref(false)
@@ -890,8 +834,8 @@ function handleUpdate(row?: any) {
 
 // 查看
 function handleDetail(row: any) {
-  detailData.value = row
-  detailVisible.value = true
+  inquiryDetailId.value = row.inquiryId as number
+  inquiryDetailVisible.value = true
 }
 
 // 转报价
