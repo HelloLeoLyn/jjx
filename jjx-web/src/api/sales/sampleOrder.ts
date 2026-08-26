@@ -46,6 +46,14 @@ export const sampleOrderApi = {
     })
   },
 
+  // 复制样品单（DEV-1114：仅已完成/已取消终态单，一键生成新草稿单）
+  copy(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/copy/${orderId}`,
+      method: 'post',
+    })
+  },
+
   // 样品单列表
   list(params?: {
     customerId?: number

@@ -186,6 +186,156 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return order;
     }
 
+    /**
+     * 复制样品单（DEV-1114）：仅已完成/已取消终态单（已转量产7/已关闭8/已取消10）可复制，
+     * 一键生成新草稿单（CREATED），复制明细，双向写操作日志（对齐 copyOrder）
+     */
+    @Override
+    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder copySampleOrder(Long orderId) {
+        SalesOrder source = orderMapper.selectById(orderId);
+        if (source == null) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (!OrderTypeEnum.SAMPLE.getCode().equals(source.getOrderType())) {
+            throw new BusinessException("该单据不是样品单，不可复制");
+        }
+        if (source.getSampleStatus() == null
+                || !java.util.Set.of(
+                SampleOrderStatusEnum.TRANSFERRED.getCode(),
+                SampleOrderStatusEnum.CLOSED.getCode(),
+                SampleOrderStatusEnum.CANCELLED.getCode()).contains(source.getSampleStatus())) {
+            throw new BusinessException("仅已完成或已取消的样品单可复制");
+        }
+
+        // 生成新样品单号
+        String orderNo = redisSequenceService.generateBusinessNumber("SP", "样品单号");
+
+        SalesOrder copy = new SalesOrder();
+        copy.setOrderNo(orderNo);
+        copy.setQuotationId(null);
+        copy.setCustomerId(source.getCustomerId());
+        copy.setCustomerName(source.getCustomerName());
+        copy.setContactPerson(source.getContactPerson());
+        copy.setContactPhone(source.getContactPhone());
+        copy.setOrderDate(new Date());
+        copy.setDeliveryDate(source.getDeliveryDate());
+        copy.setOrderType(OrderTypeEnum.SAMPLE.getCode());
+        copy.setSampleStatus(SampleOrderStatusEnum.CREATED.getCode());
+        copy.setSampleRound(1);
+        copy.setSampleQty(0);
+        // 技术要求（工程打样要求）继承原单，新单可继续传承
+        copy.setEngineeringNote(source.getEngineeringNote());
+        copy.setCurrency(source.getCurrency());
+        copy.setExchangeRate(source.getExchangeRate());
+        // 销售负责人：复制人（当前登录用户），与 createSample 一致
+        try {
+            copy.setSalesManagerId(SecurityUtils.getUserId());
+            copy.setSalesManagerName(SecurityUtils.getUsername());
+        } catch (Exception ignored) {
+        }
+        copy.setRemark("复制自样品单[" + source.getOrderNo() + "]"
+                + (source.getRemark() != null ? "\n" + source.getRemark() : ""));
+        copy.setTotalQuantity(0);
+        copy.setTotalAmount(source.getTotalAmount());
+        copy.setFinalAmount(source.getFinalAmount());
+        // 独立链路追踪（不复用原单链路）
+        copy.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
+
+        orderMapper.insert(copy);
+        log.info("复制样品单[{}]生成新样品单[{}] orderId={}", source.getOrderNo(), orderNo, copy.getOrderId());
+
+        // 复制产品明细（全字段）
+        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> items =
+                orderProductService.getListByOrderId(orderId);
+        if (items != null && !items.isEmpty()) {
+            java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> dtos = new java.util.ArrayList<>();
+            for (com.jjx.sales.domain.vo.SalesOrderProductVO it : items) {
+                com.jjx.sales.domain.dto.SalesOrderProductDTO dto = new com.jjx.sales.domain.dto.SalesOrderProductDTO();
+                dto.setOrderId(copy.getOrderId());
+                dto.setProductId(it.getProductId());
+                dto.setProductCode(it.getProductCode());
+                dto.setProductName(it.getProductName());
+                dto.setQuantity(it.getQuantity());
+                dto.setUnit(it.getUnit());
+                dto.setUnitPrice(it.getUnitPrice());
+                dto.setAmount(it.getAmount());
+                dto.setSpecification(it.getSpecification());
+                dto.setCustomerMaterialNo(it.getCustomerMaterialNo());
+                dto.setLineRemark(it.getLineRemark());
+                dto.setRemark(it.getRemark());
+                dtos.add(dto);
+            }
+            orderProductService.batchAdd(dtos);
+        }
+
+        // DEV-806 口径：total_quantity 按明细求和，sample_qty 同步
+        updateTotalQuantityByItems(copy.getOrderId());
+        try {
+            int sum = 0;
+            for (com.jjx.sales.domain.vo.SalesOrderProductVO v : orderProductService.getListByOrderId(copy.getOrderId())) {
+                sum += v.getQuantity() != null ? v.getQuantity() : 0;
+            }
+            SalesOrder u = new SalesOrder();
+            u.setOrderId(copy.getOrderId());
+            u.setSampleQty(sum);
+            orderMapper.updateById(u);
+        } catch (Exception e) {
+            log.warn("同步 sample_qty 失败: {}", e.getMessage());
+        }
+
+        // 双向操作日志：新单一条（带新单 traceId）+ 原单一条（带原单 traceId），双向可查
+        try {
+            SysOperLog newLog = new SysOperLog();
+            newLog.setModule("样品单管理");
+            newLog.setBusinessType(1); // 新增
+            newLog.setOperUrl("/sales/sample-order/copy/" + orderId);
+            newLog.setBizType("sample");
+            newLog.setBizId(String.valueOf(copy.getOrderId()));
+            newLog.setTraceId(copy.getTraceId());
+            newLog.setBizStatus(copy.getSampleStatus());
+            newLog.setStatus(1);
+            newLog.setOperParam("{\"action\":\"copy\",\"sourceOrderNo\":\"" + source.getOrderNo() + "\"}");
+            newLog.setCreateTime(LocalDateTime.now());
+            try {
+                newLog.setUserId(SecurityUtils.getUserId());
+                newLog.setUsername(SecurityUtils.getUsername());
+                newLog.setRealName(SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(newLog);
+        } catch (Exception e) {
+            log.warn("记录新单复制日志失败: {}", e.getMessage());
+        }
+        try {
+            SysOperLog operLog = new SysOperLog();
+            operLog.setModule("样品单管理");
+            operLog.setBusinessType(2); // 修改
+            operLog.setOperUrl("/sales/sample-order/copy/" + orderId);
+            operLog.setBizType("sample");
+            operLog.setBizId(String.valueOf(orderId));
+            operLog.setTraceId(source.getTraceId());
+            operLog.setBizStatus(source.getSampleStatus());
+            operLog.setStatus(1);
+            operLog.setOperParam("{\"action\":\"copy\",\"newOrderNo\":\"" + copy.getOrderNo()
+                    + "\",\"newOrderId\":" + copy.getOrderId() + "}");
+            operLog.setCreateTime(LocalDateTime.now());
+            try {
+                operLog.setUserId(SecurityUtils.getUserId());
+                operLog.setUsername(SecurityUtils.getUsername());
+                operLog.setRealName(SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(operLog);
+        } catch (Exception e) {
+            log.warn("记录原单复制日志失败: {}", e.getMessage());
+        }
+
+        log.info("样品单[{}]复制成功，生成新样品单[{}](orderId={})", source.getOrderNo(), copy.getOrderNo(), copy.getOrderId());
+        return copy;
+    }
+
     @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)

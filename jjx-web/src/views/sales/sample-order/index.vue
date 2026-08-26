@@ -73,6 +73,16 @@
             <!-- 查看流水 -->
             <el-button link type="info" size="small" @click="showTrace(scope.row)">查看流水</el-button>
 
+            <!-- 复制（DEV-1114）：仅终态单（已转量产7/已关闭8/已取消10）可复制，一键生成新草稿单 -->
+            <el-button
+              v-hasPermi="['sales:sample:add']"
+              v-if="[7, 8, 10].includes(scope.row.sampleStatus)"
+              link
+              type="warning"
+              size="small"
+              @click="handleCopySample(scope.row)"
+            >复制</el-button>
+
             <!-- 工程接单（预览器）：接单后到工程管理-打样平台操作 -->
             <el-button
               v-hasPermi="['sales:sample:engineering']"
@@ -1220,6 +1230,28 @@ async function handleCancel(row: any) {
     getList()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '作废失败')
+  }
+}
+
+// 复制样品单（DEV-1114：仅已完成/已取消终态单，一键生成新草稿单）
+async function handleCopySample(row: any) {
+  const orderId = row?.orderId
+  if (!orderId) return
+  try {
+    await ElMessageBox.confirm(
+      `确定复制样品单【${row.orderNo}】生成一张新的样品单吗？`,
+      '复制样品单',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' },
+    )
+    const res: any = await sampleOrderApi.copy(orderId)
+    if (res?.code === 200) {
+      ElMessage.success('复制成功，新样品单已生成')
+      getList()
+    } else {
+      ElMessage.error(res?.msg || '复制失败')
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '复制失败')
   }
 }
 

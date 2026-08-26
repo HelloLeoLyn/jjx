@@ -54,6 +54,14 @@ public class SampleOrderController extends BaseController {
                 quotationId, sampleQty, remark, deliveryDate, contactPerson, contactPhone, techRequirement));
     }
 
+    @Operation(summary = "复制样品单（仅已完成/已取消终态单，一键生成新草稿单）")
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "1")
+    @SaCheckPermission("sales:sample:add")
+    @PostMapping("/copy/{orderId}")
+    public Result<SalesOrder> copy(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.copySampleOrder(orderId));
+    }
+
     @Operation(summary = "样品单详情（含明细）")
     @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/{orderId}")
