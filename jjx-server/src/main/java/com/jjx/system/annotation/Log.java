@@ -40,8 +40,6 @@ public @interface Log {
      */
     String bizStatus() default "0";
 
-    /**
-     * 详情 JSON（SpEL 表达式，如 "#attachmentIds"——附件ID列表，切面自动组装附件名写入 detail）
-     */
+    /** 详情文本或 JSON 的 SpEL 表达式，求值结果原样写入 detail。 */
     String detail() default "";
 }

@@ -19,6 +19,7 @@ export function useTaskTree(getRows: () => TreeRow[]) {
 
   function updateFields(row: TreeRow, fresh: TaskTreeRow): void {
     row.taskId = fresh.taskId
+    row.taskNo = fresh.taskNo
     row.parentTaskId = fresh.parentTaskId
     row.executionId = fresh.executionId
     row.orderNo = fresh.orderNo

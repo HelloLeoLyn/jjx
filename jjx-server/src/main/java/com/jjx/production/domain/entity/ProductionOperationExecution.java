@@ -43,6 +43,9 @@ public class ProductionOperationExecution {
     @Schema(description = "工序顺序")
     private Integer processOrder;
 
+    @Schema(description = "当前工序ProductionTask流水")
+    private Long taskSeq;
+
     @Schema(description = "计划开始时间")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime plannedStartTime;

@@ -8,11 +8,15 @@ import com.jjx.production.domain.dto.TaskCompleteDTO;
 import com.jjx.production.domain.dto.TaskRecallDTO;
 import com.jjx.production.domain.dto.TaskReturnDTO;
 import com.jjx.production.domain.dto.TaskTreeQueryDTO;
+import com.jjx.production.domain.dto.MyProductionExecutionQueryDTO;
 import com.jjx.production.domain.vo.TaskCandidateVO;
 import com.jjx.production.domain.vo.TaskCompletionDetailVO;
 import com.jjx.production.domain.vo.TaskEventVO;
 import com.jjx.production.domain.vo.TaskTreeRowVO;
+import com.jjx.production.domain.vo.MyProductionExecutionVO;
+import com.jjx.production.domain.vo.ChildProcessingDetailVO;
 import com.jjx.production.service.ProductionTaskService;
+import com.jjx.system.utils.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -27,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 生产任务控制器（统一任务责任树；P1 Foundation + P2 Task Flow）
@@ -54,11 +59,39 @@ public class ProductionTaskController {
         return Result.success(productionTaskService.pageAccessibleTasks(queryDTO));
     }
 
+    @Operation(summary = "我的生产任务（本人有效Task起查，按execution聚合）")
+    @GetMapping("/my-executions")
+    @SaCheckPermission("production:task:view")
+    public Result<Page<MyProductionExecutionVO>> myExecutions(MyProductionExecutionQueryDTO queryDTO) {
+        return Result.success(productionTaskService.pageMyProductionExecutions(queryDTO));
+    }
+
+    @Operation(summary = "我的生产任务直接Child处理明细")
+    @GetMapping("/my-executions/{executionId}/children")
+    @SaCheckPermission("production:task:view")
+    public Result<ChildProcessingDetailVO> myChildProcessingDetail(@PathVariable Long executionId) {
+        return Result.success(productionTaskService.getMyChildProcessingDetail(executionId));
+    }
+
+    @Operation(summary = "当前用户是否拥有全部工序视角")
+    @GetMapping("/execution-scope")
+    @SaCheckPermission("production:operation-execution:view")
+    public Result<Map<String, Boolean>> executionScope() {
+        return Result.success(Map.of("global", SecurityUtils.isGlobalProductionScope()));
+    }
+
     @Operation(summary = "任务详情")
     @GetMapping("/{taskId}")
     @SaCheckPermission("production:task:view")
     public Result<TaskTreeRowVO> detail(@PathVariable Long taskId) {
         return Result.success(productionTaskService.getDetail(taskId));
+    }
+
+    @Operation(summary = "按工序执行查询 First Task 责任与数量投影")
+    @GetMapping("/execution/{executionId}/root")
+    @SaCheckPermission("production:task:view")
+    public Result<TaskTreeRowVO> rootByExecution(@PathVariable Long executionId) {
+        return Result.success(productionTaskService.getFirstTaskByExecution(executionId));
     }
 
     @Operation(summary = "完成明细（当前 Task 有效子树内全部 APPROVED WorkReport；合计 = completedQuantity）")

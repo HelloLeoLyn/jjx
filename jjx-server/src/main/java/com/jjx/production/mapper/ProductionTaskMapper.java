@@ -126,7 +126,7 @@ public interface ProductionTaskMapper extends BaseMapper<ProductionTask> {
             + "  JOIN desc_dept dd ON d.parent_id = dd.dept_id "
             + ") "
             + "SELECT u.user_id, u.user_name, u.nick_name, u.dept_id, d.dept_name, "
-            + "       d.parent_id AS parent_dept_id, d.leader_user_id, "
+            + "       d.parent_id AS parent_dept_id, d.leader_user_id AS dept_leader_id, "
             + "       (SELECT r2.role_key FROM sys_user_role ur2 JOIN sys_role r2 ON r2.role_id = ur2.role_id "
             + "         WHERE ur2.user_id = u.user_id "
             + "           AND r2.role_key IN ('production:dispatch_mgr','production:dispatch_leader','production:worker') "

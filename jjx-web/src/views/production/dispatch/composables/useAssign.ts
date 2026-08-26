@@ -56,6 +56,7 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
   function normalizeCandidates(nodes: TaskCandidate[]): TaskCandidate[] {
     return (nodes || []).map((n) => ({
       ...n,
+      disabled: n.selectable === false,
       children: normalizeCandidates(n.children || []),
     }))
   }
@@ -66,7 +67,7 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
     return count(candidateList.value)
   })
 
-  // 统一多选树（父子独立勾选，任意层级拆量；自己与全部层级下属均可选）
+  // 统一多选树（父子独立勾选；根节点不可选，任意合法后代均可选）
   const onTreeCheck = () => {
     const checked: TaskCandidate[] = candidateTreeRef.value?.getCheckedNodes(false) || []
     selectedRows.value = checked

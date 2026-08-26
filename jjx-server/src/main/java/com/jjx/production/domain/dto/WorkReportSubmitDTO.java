@@ -1,5 +1,7 @@
 package com.jjx.production.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.jjx.common.utils.DateUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -37,9 +39,11 @@ public class WorkReportSubmitDTO {
     private BigDecimal machineHours;
 
     @Schema(description = "本次生产开始时间（可空；与 end 同时传）")
+    @JsonFormat(pattern = DateUtils.PATTERN_DATE_TIME)
     private LocalDateTime workStartTime;
 
     @Schema(description = "本次生产结束时间（可空；与 start 同时传）")
+    @JsonFormat(pattern = DateUtils.PATTERN_DATE_TIME)
     private LocalDateTime workEndTime;
 
     @Schema(description = "本次实际使用设备ID（可空=默认用 execution 设备）")

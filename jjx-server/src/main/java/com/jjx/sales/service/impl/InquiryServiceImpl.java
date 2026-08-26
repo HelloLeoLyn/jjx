@@ -6,10 +6,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
+import com.jjx.sales.domain.dto.SalesInquiryEditDTO;
 import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.entity.SalesQuotationItem;
 import com.jjx.sales.domain.vo.InquiryToQuotationVO;
+import com.jjx.sales.domain.vo.SalesInquiryEditVO;
 import com.jjx.sales.enums.InquiryStatus;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.sales.mapper.SalesInquiryMapper;
@@ -20,7 +22,10 @@ import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.sales.service.IInquiryService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
+
+import cn.hutool.json.JSONUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -53,6 +58,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final com.jjx.product.service.IProductService productService;
     private final com.jjx.product.service.ProductCodeService productCodeService;
     private final IQuotationService quotationService;
+    private final OperLogChangeRecorder changeRecorder;
 
     /**
      * 分页查询询价单列表
@@ -197,27 +203,115 @@ public class InquiryServiceImpl implements IInquiryService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int updateInquiry(SalesInquiry inquiry) {
-        SalesInquiry existing = inquiryMapper.selectById(inquiry.getInquiryId());
-        if (existing == null || existing.getDeleted() == 1) {
+    public SalesInquiryEditVO updateInquiry(SalesInquiryEditDTO dto) {
+        SalesInquiry oldInquiry = inquiryMapper.selectById(dto.getInquiryId());
+        if (oldInquiry == null || oldInquiry.getDeleted() == 1) {
             throw new BusinessException("询价单不存在或已被删除");
         }
 
         // 已转换的询价单不能修改
-        if (InquiryStatus.CONVERTED.getCode().equals(existing.getInquiryStatus())) {
+        if (InquiryStatus.CONVERTED.getCode().equals(oldInquiry.getInquiryStatus())) {
             throw new BusinessException("已转换的询价单不能修改");
         }
 
         // 样品询价：修改时若编码变化且无产品关联，重新建档（2026-08-08）
-        if (java.lang.Integer.valueOf(2).equals(inquiry.getInquiryType())
-                && StringUtils.hasText(inquiry.getProductCode())
-                && inquiry.getProductId() == null) {
+        if (java.lang.Integer.valueOf(2).equals(dto.getInquiryType())
+                && StringUtils.hasText(dto.getProductCode())
+                && dto.getProductId() == null) {
             Long pid = productService.ensureDraftProduct(
-                    inquiry.getProductCode(), inquiry.getProductName(), "PCS", "inquiry");
-            inquiry.setProductId(pid);
+                    dto.getProductCode(), dto.getProductName(), "PCS", "inquiry");
+            dto.setProductId(pid);
         }
 
-        return inquiryMapper.updateById(inquiry);
+        SalesInquiry entity = new SalesInquiry();
+        copyEditableFields(dto, entity);
+        int rows = inquiryMapper.updateById(entity);
+        SalesInquiryEditVO vo = new SalesInquiryEditVO();
+        if (rows > 0) {
+            List<String> changes = new ArrayList<>();
+            diffMainFields(changes, oldInquiry, dto);
+            String detailString = JSONUtil.toJsonStr(Map.of("changes", changes));
+            vo.setDetailMessage(detailString);
+        }
+        vo.setRows(rows);
+        return vo;
+    }
+
+
+
+    /** DTO 可编辑字段 -> 实体（只拷业务字段，审计字段由 MyBatis-Plus 填充） */
+    private void copyEditableFields(SalesInquiryEditDTO dto, SalesInquiry entity) {
+        entity.setInquiryId(dto.getInquiryId());
+        entity.setCustomerId(dto.getCustomerId());
+        entity.setCustomerName(dto.getCustomerName());
+        entity.setContactPerson(dto.getContactPerson());
+        entity.setContactPhone(dto.getContactPhone());
+        entity.setInquiryDate(dto.getInquiryDate());
+        entity.setExpectedQuantity(dto.getExpectedQuantity());
+        entity.setUnitPrice(dto.getUnitPrice());
+        entity.setInquiryType(dto.getInquiryType());
+        entity.setProductId(dto.getProductId());
+        entity.setProductCode(dto.getProductCode());
+        entity.setProductName(dto.getProductName());
+        entity.setProductDescription(dto.getProductDescription());
+        entity.setSpecialRequirements(dto.getSpecialRequirements());
+        entity.setHasDrawing(dto.getHasDrawing());
+        entity.setRemark(dto.getRemark());
+        entity.setSalesPersonId(dto.getSalesPersonId());
+        entity.setSalesPersonName(dto.getSalesPersonName());
+    }
+
+    /** 主表字段对比（白名单=前端表单可编辑字段，排除审计/状态/流转字段） */
+    private void diffMainFields(List<String> changes, SalesInquiry oldInquiry,
+                                SalesInquiryEditDTO dto) {
+        changeRecorder.diff(changes, "客户", oldInquiry.getCustomerName(), dto.getCustomerName());
+        changeRecorder.diff(changes, "联系人", oldInquiry.getContactPerson(), dto.getContactPerson());
+        changeRecorder.diff(changes, "联系电话", oldInquiry.getContactPhone(), dto.getContactPhone());
+        changeRecorder.diff(changes, "询价日期",
+            changeRecorder.fmtDate(oldInquiry.getInquiryDate()),
+            changeRecorder.fmtDate(dto.getInquiryDate()));
+        changeRecorder.diff(changes, "预估数量", oldInquiry.getExpectedQuantity(), dto.getExpectedQuantity());
+        changeRecorder.diff(changes, "预估单价", oldInquiry.getUnitPrice(), dto.getUnitPrice());
+        changeRecorder.diff(changes, "类型",
+            typeLabel(oldInquiry.getInquiryType()), typeLabel(dto.getInquiryType()));
+        if (!java.util.Objects.equals(oldInquiry.getProductId(), dto.getProductId())) {
+            changes.add("产品:" + productLabel(oldInquiry.getProductName(),
+                oldInquiry.getProductCode(), oldInquiry.getProductId()) + "→"
+                + productLabel(dto.getProductName(), dto.getProductCode(), dto.getProductId()));
+        }
+        changeRecorder.diff(changes, "产品编码", oldInquiry.getProductCode(), dto.getProductCode());
+        changeRecorder.diff(changes, "产品描述", oldInquiry.getProductDescription(), dto.getProductDescription());
+        changeRecorder.diff(changes, "特殊要求", oldInquiry.getSpecialRequirements(), dto.getSpecialRequirements());
+        changeRecorder.diff(changes, "有图纸",
+            yesNo(oldInquiry.getHasDrawing()), yesNo(dto.getHasDrawing()));
+        changeRecorder.diff(changes, "备注", oldInquiry.getRemark(), dto.getRemark());
+        changeRecorder.diff(changes, "销售负责人",
+            oldInquiry.getSalesPersonName(), dto.getSalesPersonName());
+    }
+
+    private String typeLabel(Integer type) {
+        if (type == null) {
+            return "空";
+        }
+        return java.lang.Integer.valueOf(1).equals(type) ? "标准品"
+            : java.lang.Integer.valueOf(2).equals(type) ? "样品" : String.valueOf(type);
+    }
+
+    private String yesNo(Integer v) {
+        if (v == null) {
+            return "空";
+        }
+        return java.lang.Integer.valueOf(1).equals(v) ? "是" : "否";
+    }
+
+    private String productLabel(String productName, String productCode, Long productId) {
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(productName)) {
+            return productName;
+        }
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(productCode)) {
+            return productCode;
+        }
+        return productId == null ? "空" : String.valueOf(productId);
     }
 
     /**

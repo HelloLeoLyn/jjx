@@ -968,12 +968,7 @@ public class QuotationServiceImpl implements IQuotationService {
         return copy;
     }
 
-    /**
-     * 提交报价单审核
-     */
-    @Override
-    @Event(value = "quotation.submitted", bizId = "#quotationId", bizType = "'quotation'")
-    @Transactional(rollbackFor = Exception.class)
+
     /**
      * 提交审核（DEV-1116：校验前按当前明细兑底重算表头金额，避免明细有金额但表头未汇总误报）
      */

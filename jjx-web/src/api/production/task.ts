@@ -8,6 +8,8 @@ import type {
   TaskRecallPayload,
   TaskReturnPayload,
   TaskCompletePayload,
+  MyProductionExecution,
+  ChildProcessingDetail,
 } from '@/types/production/task'
 import type { PageResult, R } from '@/types'
 
@@ -20,6 +22,15 @@ export interface TaskTreeQuery {
   status?: string
 }
 
+export interface MyProductionExecutionQuery {
+  pageNum?: number
+  pageSize?: number
+  orderNo?: string
+  processName?: string
+  executionStatus?: string
+  equipmentId?: number
+}
+
 // ==================== P1 只读 ====================
 
 // 第一层任务分页（parent_task_id IS NULL；生产全局=全部，普通用户=本人持有；活动树排除 CANCELLED）
@@ -30,6 +41,11 @@ export function getTaskTreePage(params: TaskTreeQuery) {
 // 任务详情
 export function getTaskDetail(taskId: number) {
   return request.get<R<TaskTreeRow>>(`/production/tasks/${taskId}`)
+}
+
+// 按 Execution 获取唯一 First Task 责任与数量投影
+export function getExecutionRootTask(executionId: number) {
+  return request.get<R<TaskTreeRow>>(`/production/tasks/execution/${executionId}/root`)
 }
 
 // 直接子任务（真懒加载：每次只查 parent_task_id = taskId 的一层，排除 CANCELLED）
@@ -52,6 +68,18 @@ export function getMyTasks(executionId?: number) {
   return request.get<R<TaskTreeRow[]>>('/production/tasks/mine', {
     params: executionId ? { executionId } : undefined,
   })
+}
+
+export function getMyProductionExecutions(params: MyProductionExecutionQuery) {
+  return request.get<R<PageResult<MyProductionExecution>>>('/production/tasks/my-executions', { params })
+}
+
+export function getProductionExecutionScope() {
+  return request.get<R<{ global: boolean }>>('/production/tasks/execution-scope')
+}
+
+export function getMyChildProcessingDetail(executionId: number) {
+  return request.get<R<ChildProcessingDetail>>(`/production/tasks/my-executions/${executionId}/children`)
 }
 
 // ==================== P2 Task Flow ====================

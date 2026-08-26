@@ -4,8 +4,10 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
+import com.jjx.sales.domain.dto.SalesInquiryEditDTO;
 import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.domain.vo.InquiryToQuotationVO;
+import com.jjx.sales.domain.vo.SalesInquiryEditVO;
 import com.jjx.sales.service.IInquiryService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
@@ -20,9 +22,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 销售询价单控制器
@@ -66,7 +66,7 @@ public class InquiryController extends BaseController {
     }
 
     @Operation(summary = "新增询价单")
-    @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = "0")
+    @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).DRAFT")
     @SaCheckPermission("sales:inquiry:add")
     @PostMapping
     public Result<java.util.Map<String, Object>> add(@Validated @RequestBody SalesInquiry inquiry) {
@@ -85,11 +85,11 @@ public class InquiryController extends BaseController {
      * 修改询价单
      */
     @Operation(summary = "修改询价单")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiry.inquiryId")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", detail = "#result.data.detailMessage", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).DRAFT")
     @SaCheckPermission("sales:inquiry:edit")
     @PutMapping
-    public Result<Void> edit(@Validated @RequestBody SalesInquiry inquiry) {
-        return toAjax(inquiryService.updateInquiry(inquiry));
+    public Result<SalesInquiryEditVO> edit(@Validated @RequestBody SalesInquiryEditDTO inquiry) {
+        return Result.success(inquiryService.updateInquiry(inquiry));
     }
 
     /**
@@ -107,8 +107,7 @@ public class InquiryController extends BaseController {
      * 询价转报价
      */
     @Operation(summary = "询价转报价")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "3",
-         traceId = "#result.data.traceId")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).CONVERTED", traceId = "#result.data.traceId")
     @SaCheckPermission("sales:inquiry:convert")
     @PostMapping("/convert/{inquiryId}")
     public Result<InquiryToQuotationVO> convert(@PathVariable Long inquiryId) {

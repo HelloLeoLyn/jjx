@@ -3,11 +3,13 @@ package com.jjx.production.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.ProductionOperationExecutionCreateDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionQueryDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionUpdateDTO;
 import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
 import com.jjx.production.service.ProductionOperationExecutionService;
+import com.jjx.system.utils.SecurityUtils;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
@@ -81,6 +83,16 @@ public class ProductionOperationExecutionController {
     public Result<List<ProductionOperationExecutionVO>> queryExecutionList(ProductionOperationExecutionQueryDTO queryDTO) {
         List<ProductionOperationExecutionVO> executionList = productionOperationExecutionService.queryExecutionList(queryDTO);
         return Result.success(executionList);
+    }
+
+    @Operation(summary = "全部工序列表（仅生产全局范围）")
+    @GetMapping("/global-list")
+    @SaCheckPermission("production:operation-execution:view")
+    public Result<List<ProductionOperationExecutionVO>> queryGlobalExecutionList(ProductionOperationExecutionQueryDTO queryDTO) {
+        if (!SecurityUtils.isGlobalProductionScope()) {
+            throw new BusinessException("无全部工序数据范围");
+        }
+        return Result.success(productionOperationExecutionService.queryExecutionList(queryDTO));
     }
 
     @Operation(summary = "分页查询工序执行")

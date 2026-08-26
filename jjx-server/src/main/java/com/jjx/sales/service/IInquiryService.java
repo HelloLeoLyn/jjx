@@ -1,8 +1,10 @@
 package com.jjx.sales.service;
 
 import com.jjx.common.core.page.PageResult;
+import com.jjx.sales.domain.dto.SalesInquiryEditDTO;
 import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.domain.vo.InquiryToQuotationVO;
+import com.jjx.sales.domain.vo.SalesInquiryEditVO;
 
 import java.util.List;
 
@@ -39,7 +41,7 @@ public interface IInquiryService {
     /**
      * 修改询价单
      */
-    int updateInquiry(SalesInquiry inquiry);
+    SalesInquiryEditVO updateInquiry(SalesInquiryEditDTO inquiry);
 
     /**
      * 删除询价单

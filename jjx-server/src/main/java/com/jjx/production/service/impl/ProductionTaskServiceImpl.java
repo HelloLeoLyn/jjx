@@ -11,15 +11,19 @@ import com.jjx.production.domain.dto.TaskCompleteDTO;
 import com.jjx.production.domain.dto.TaskRecallDTO;
 import com.jjx.production.domain.dto.TaskReturnDTO;
 import com.jjx.production.domain.dto.TaskTreeQueryDTO;
+import com.jjx.production.domain.dto.MyProductionExecutionQueryDTO;
 import com.jjx.production.domain.entity.ProductionTask;
 import com.jjx.production.domain.entity.ProductionTaskEvent;
 import com.jjx.production.domain.vo.TaskCandidateVO;
 import com.jjx.production.domain.vo.TaskCompletionDetailVO;
 import com.jjx.production.domain.vo.TaskEventVO;
 import com.jjx.production.domain.vo.TaskTreeRowVO;
+import com.jjx.production.domain.vo.MyProductionExecutionVO;
+import com.jjx.production.domain.vo.ChildProcessingDetailVO;
 import com.jjx.production.enums.ProductionTaskStatus;
 import com.jjx.production.mapper.ProductionTaskEventMapper;
 import com.jjx.production.mapper.ProductionTaskMapper;
+import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionTaskAssigneeResolver;
 import com.jjx.production.service.ProductionTaskService;
@@ -87,6 +91,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     private final ProductionTaskEventMapper productionTaskEventMapper;
     private final ProductionTaskAssigneeResolver assigneeResolver;
     private final ProductionWorkReportMapper productionWorkReportMapper;
+    private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final JdbcTemplate jdbcTemplate;
 
     // ==================== P1 Foundation ====================
@@ -97,7 +102,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         if (executionId == null) {
             throw new BusinessException("executionId 不能为空");
         }
+        String taskNo = nextTaskNo(executionId, true);
+        Long existing = findFirstTask(executionId);
+        if (existing != null) return existing;
         ProductionTask task = new ProductionTask();
+        task.setTaskNo(taskNo);
         task.setExecutionId(executionId);
         task.setParentTaskId(null);
         task.setAssigneeId(null);
@@ -126,6 +135,17 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         } else {
             wrapper.eq(ProductionTask::getAssigneeId, SecurityUtils.getUserId());
         }
+        if (queryDTO != null && org.apache.commons.lang3.StringUtils.isNotBlank(queryDTO.getStatus())) {
+            wrapper.eq(ProductionTask::getStatus, queryDTO.getStatus().trim().toUpperCase());
+        }
+        if (queryDTO != null && org.apache.commons.lang3.StringUtils.isNotBlank(queryDTO.getKeyword())) {
+            String keyword = queryDTO.getKeyword().trim();
+            wrapper.apply("EXISTS (SELECT 1 FROM production_operation_execution e "
+                    + "LEFT JOIN production_order o ON o.order_id = e.order_id "
+                    + "WHERE e.execution_id = production_task.execution_id "
+                    + "AND (o.order_no LIKE CONCAT('%',{0},'%') "
+                    + "OR e.process_name LIKE CONCAT('%',{0},'%')))", keyword);
+        }
 
         Page<ProductionTask> page = productionTaskMapper.selectPage(
                 new Page<>(pageNum, pageSize), wrapper);
@@ -134,6 +154,227 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         Page<TaskTreeRowVO> voPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
         voPage.setRecords(rows);
         return voPage;
+    }
+
+    @Override
+    public Page<MyProductionExecutionVO> pageMyProductionExecutions(MyProductionExecutionQueryDTO queryDTO) {
+        MyProductionExecutionQueryDTO q = queryDTO == null ? new MyProductionExecutionQueryDTO() : queryDTO;
+        int pageNum = q.getPageNum() == null || q.getPageNum() < 1 ? 1 : q.getPageNum();
+        int pageSize = q.getPageSize() == null || q.getPageSize() < 1 ? 10 : Math.min(q.getPageSize(), 100);
+        Long userId = SecurityUtils.getUserId();
+
+        StringBuilder where = new StringBuilder(" WHERE t.assignee_id=? AND t.status!='CANCELLED'");
+        List<Object> args = new ArrayList<>();
+        args.add(userId);
+        if (q.getOrderNo() != null && !q.getOrderNo().isBlank()) {
+            where.append(" AND o.order_no LIKE ?");
+            args.add("%" + q.getOrderNo().trim() + "%");
+        }
+        if (q.getProcessName() != null && !q.getProcessName().isBlank()) {
+            where.append(" AND COALESCE(NULLIF(e.process_name,''),p.process_name) LIKE ?");
+            args.add("%" + q.getProcessName().trim() + "%");
+        }
+        if (q.getExecutionStatus() != null && !q.getExecutionStatus().isBlank()) {
+            where.append(" AND e.execution_status=?");
+            args.add(Integer.valueOf(q.getExecutionStatus()));
+        }
+        if (q.getEquipmentId() != null) {
+            where.append(" AND e.equipment_id=?");
+            args.add(q.getEquipmentId());
+        }
+        String joins = " FROM production_task t"
+                + " JOIN production_operation_execution e ON e.execution_id=t.execution_id"
+                + " LEFT JOIN production_order o ON o.order_id=e.order_id"
+                + " LEFT JOIN engineering_standard_process p ON p.process_id=e.process_id";
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT t.execution_id)" + joins + where,
+                Long.class, args.toArray());
+        Page<MyProductionExecutionVO> result = new Page<>(pageNum, pageSize, total == null ? 0 : total);
+        if (total == null || total == 0) return result;
+
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add((pageNum - 1) * pageSize);
+        pageArgs.add(pageSize);
+        List<Long> executionIds = jdbcTemplate.query(
+                "SELECT t.execution_id" + joins + where
+                        + " GROUP BY t.execution_id ORDER BY MAX(t.task_id) DESC LIMIT ?,?",
+                (rs, rowNum) -> rs.getLong("execution_id"), pageArgs.toArray());
+        if (executionIds.isEmpty()) return result;
+
+        List<ProductionTask> myTasks = productionTaskMapper.selectList(Wrappers.<ProductionTask>lambdaQuery()
+                .eq(ProductionTask::getAssigneeId, userId)
+                .in(ProductionTask::getExecutionId, executionIds)
+                .ne(ProductionTask::getStatus, STATUS_CANCELLED));
+        Map<Long, TaskTreeRowVO> projectedByTask = project(myTasks, null).stream()
+                .collect(Collectors.toMap(TaskTreeRowVO::getTaskId, row -> row));
+        List<Long> myTaskIds = myTasks.stream().map(ProductionTask::getTaskId).toList();
+        List<ProductionTask> children = myTaskIds.isEmpty() ? List.of()
+                : productionTaskMapper.selectList(Wrappers.<ProductionTask>lambdaQuery()
+                .in(ProductionTask::getParentTaskId, myTaskIds)
+                .ne(ProductionTask::getStatus, STATUS_CANCELLED));
+        Map<Long, BigDecimal[]> childSubtree = subtreeAggregates(children.stream()
+                .map(ProductionTask::getTaskId).toList());
+        Map<Long, BigDecimal> ownApproved = reportTotals(myTaskIds, REPORT_STATUS_APPROVED);
+        Map<Long, BigDecimal> ownPending = reportTotals(myTaskIds, REPORT_STATUS_PENDING);
+        Map<Long, BigDecimal> childPending = reportTotals(children.stream()
+                .map(ProductionTask::getTaskId).toList(), REPORT_STATUS_PENDING);
+
+        Map<Long, MyProductionExecutionVO> byExecution = new HashMap<>();
+        String ids = executionIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        jdbcTemplate.query("SELECT e.execution_id,e.order_id,o.order_no,e.process_id,"
+                        + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name,e.process_order,"
+                        + " e.execution_status,e.equipment_id,e.equipment_code,e.equipment_name,e.input_quantity"
+                        + " FROM production_operation_execution e"
+                        + " LEFT JOIN production_order o ON o.order_id=e.order_id"
+                        + " LEFT JOIN engineering_standard_process p ON p.process_id=e.process_id"
+                        + " WHERE e.execution_id IN (" + ids + ")",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    MyProductionExecutionVO vo = new MyProductionExecutionVO();
+                    vo.setExecutionId(rs.getLong("execution_id"));
+                    vo.setOrderId(rs.getLong("order_id"));
+                    vo.setOrderNo(rs.getString("order_no"));
+                    vo.setProcessId(rs.getObject("process_id") == null ? null : rs.getLong("process_id"));
+                    vo.setProcessName(rs.getString("process_name"));
+                    vo.setProcessOrder(rs.getObject("process_order") == null ? null : rs.getInt("process_order"));
+                    vo.setExecutionStatus(rs.getInt("execution_status"));
+                    vo.setEquipmentId(rs.getObject("equipment_id") == null ? null : rs.getLong("equipment_id"));
+                    vo.setEquipmentCode(rs.getString("equipment_code"));
+                    vo.setEquipmentName(rs.getString("equipment_name"));
+                    vo.setTaskCount(0);
+                    vo.setPlannedQuantity(zero(rs.getBigDecimal("input_quantity")));
+                    vo.setMyResponsibilityQuantity(BigDecimal.ZERO);
+                    vo.setMyCompletedQuantity(BigDecimal.ZERO);
+                    vo.setMyPendingReviewQuantity(BigDecimal.ZERO);
+                    vo.setMyProcessableQuantity(BigDecimal.ZERO);
+                    vo.setChildCompletedQuantity(BigDecimal.ZERO);
+                    vo.setChildProcessingQuantity(BigDecimal.ZERO);
+                    vo.setPendingMyApprovalQuantity(BigDecimal.ZERO);
+                    byExecution.put(vo.getExecutionId(), vo);
+                });
+        Map<Long, ProductionTask> myTaskById = myTasks.stream()
+                .collect(Collectors.toMap(ProductionTask::getTaskId, task -> task));
+        for (ProductionTask task : myTasks) {
+            MyProductionExecutionVO vo = byExecution.get(task.getExecutionId());
+            if (vo == null) continue;
+            int taskCount = vo.getTaskCount() + 1;
+            vo.setTaskCount(taskCount);
+            vo.setTaskNo(taskCount == 1 ? task.getTaskNo() : null);
+            vo.setMyResponsibilityQuantity(vo.getMyResponsibilityQuantity().add(zero(task.getTaskQuantity())));
+            vo.setMyCompletedQuantity(vo.getMyCompletedQuantity()
+                    .add(ownApproved.getOrDefault(task.getTaskId(), BigDecimal.ZERO)));
+            vo.setMyPendingReviewQuantity(vo.getMyPendingReviewQuantity()
+                    .add(ownPending.getOrDefault(task.getTaskId(), BigDecimal.ZERO)));
+            TaskTreeRowVO row = projectedByTask.get(task.getTaskId());
+            if (row != null) {
+                vo.setMyProcessableQuantity(vo.getMyProcessableQuantity().add(zero(row.getRemainingQuantity())));
+            }
+        }
+        for (ProductionTask child : children) {
+            ProductionTask parent = myTaskById.get(child.getParentTaskId());
+            if (parent == null) continue;
+            MyProductionExecutionVO vo = byExecution.get(parent.getExecutionId());
+            BigDecimal completed = childSubtree
+                    .getOrDefault(child.getTaskId(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO})[0];
+            vo.setChildCompletedQuantity(vo.getChildCompletedQuantity().add(completed));
+            vo.setChildProcessingQuantity(vo.getChildProcessingQuantity()
+                    .add(floorZero(zero(child.getTaskQuantity()).subtract(completed))));
+            vo.setPendingMyApprovalQuantity(vo.getPendingMyApprovalQuantity()
+                    .add(childPending.getOrDefault(child.getTaskId(), BigDecimal.ZERO)));
+        }
+        result.setRecords(executionIds.stream().map(byExecution::get).filter(Objects::nonNull).toList());
+        return result;
+    }
+
+    private Map<Long, BigDecimal> reportTotals(List<Long> taskIds, String status) {
+        Map<Long, BigDecimal> totals = new HashMap<>();
+        if (taskIds == null || taskIds.isEmpty()) return totals;
+        String ids = taskIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        jdbcTemplate.query("SELECT task_id,COALESCE(SUM(qualified_quantity+defective_quantity),0) total"
+                        + " FROM production_work_report WHERE task_id IN (" + ids + ")"
+                        + " AND report_status=? GROUP BY task_id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs ->
+                        totals.put(rs.getLong("task_id"), rs.getBigDecimal("total")), status);
+        return totals;
+    }
+
+    @Override
+    public ChildProcessingDetailVO getMyChildProcessingDetail(Long executionId) {
+        if (executionId == null) throw new BusinessException("executionId 不能为空");
+        Long userId = SecurityUtils.getUserId();
+        List<ProductionTask> myTasks = productionTaskMapper.selectList(Wrappers.<ProductionTask>lambdaQuery()
+                .eq(ProductionTask::getExecutionId, executionId)
+                .eq(ProductionTask::getAssigneeId, userId)
+                .ne(ProductionTask::getStatus, STATUS_CANCELLED));
+        if (myTasks.isEmpty()) {
+            throw new BusinessException("当前用户在该工序下没有有效生产任务");
+        }
+        List<Long> myTaskIds = myTasks.stream().map(ProductionTask::getTaskId).toList();
+        List<ProductionTask> children = productionTaskMapper.selectList(Wrappers.<ProductionTask>lambdaQuery()
+                .in(ProductionTask::getParentTaskId, myTaskIds)
+                .ne(ProductionTask::getStatus, STATUS_CANCELLED)
+                .orderByAsc(ProductionTask::getTaskId));
+        List<Long> childIds = children.stream().map(ProductionTask::getTaskId).toList();
+        Map<Long, BigDecimal[]> childSubtree = subtreeAggregates(childIds);
+        Map<Long, BigDecimal> childPending = reportTotals(childIds, REPORT_STATUS_PENDING);
+
+        Map<Long, String[]> assignees = new HashMap<>();
+        Set<Long> assigneeIds = children.stream().map(ProductionTask::getAssigneeId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if (!assigneeIds.isEmpty()) {
+            String ids = assigneeIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            jdbcTemplate.query("SELECT u.user_id,COALESCE(NULLIF(u.nick_name,''),u.user_name) assignee_name,"
+                            + " d.dept_name FROM sys_user u LEFT JOIN sys_dept d ON d.dept_id=u.dept_id"
+                            + " WHERE u.user_id IN (" + ids + ")",
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs -> assignees.put(rs.getLong("user_id"),
+                            new String[]{rs.getString("assignee_name"), rs.getString("dept_name")}));
+        }
+
+        ChildProcessingDetailVO detail = new ChildProcessingDetailVO();
+        detail.setExecutionId(executionId);
+        detail.setMyResponsibilityQuantity(myTasks.stream().map(ProductionTask::getTaskQuantity)
+                .map(this::zero).reduce(BigDecimal.ZERO, BigDecimal::add));
+        detail.setChildCompletedQuantity(BigDecimal.ZERO);
+        detail.setChildProcessingQuantity(BigDecimal.ZERO);
+        detail.setPendingMyApprovalQuantity(BigDecimal.ZERO);
+        jdbcTemplate.query("SELECT o.order_no,COALESCE(NULLIF(e.process_name,''),p.process_name) process_name,"
+                        + " e.execution_status FROM production_operation_execution e"
+                        + " LEFT JOIN production_order o ON o.order_id=e.order_id"
+                        + " LEFT JOIN engineering_standard_process p ON p.process_id=e.process_id"
+                        + " WHERE e.execution_id=?",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                    detail.setOrderNo(rs.getString("order_no"));
+                    detail.setProcessName(rs.getString("process_name"));
+                    detail.setExecutionStatus(rs.getInt("execution_status"));
+                }, executionId);
+        List<ChildProcessingDetailVO.Record> records = new ArrayList<>();
+        for (ProductionTask child : children) {
+            BigDecimal completed = childSubtree
+                    .getOrDefault(child.getTaskId(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO})[0];
+            BigDecimal pending = childPending.getOrDefault(child.getTaskId(), BigDecimal.ZERO);
+            BigDecimal processing = floorZero(zero(child.getTaskQuantity()).subtract(completed));
+            ChildProcessingDetailVO.Record record = new ChildProcessingDetailVO.Record();
+            record.setTaskId(child.getTaskId());
+            record.setTaskNo(child.getTaskNo());
+            record.setAssigneeId(child.getAssigneeId());
+            String[] assignee = assignees.get(child.getAssigneeId());
+            record.setAssigneeName(assignee == null ? null : assignee[0]);
+            record.setDepartmentName(assignee == null ? null : assignee[1]);
+            record.setTaskQuantity(zero(child.getTaskQuantity()));
+            record.setCompletedQuantity(completed);
+            record.setPendingApprovalQuantity(pending);
+            record.setProcessingQuantity(processing);
+            record.setStatus(child.getStatus());
+            record.setStatusLabel(statusLabel(child.getStatus()));
+            records.add(record);
+            detail.setChildCompletedQuantity(detail.getChildCompletedQuantity().add(completed));
+            detail.setChildProcessingQuantity(detail.getChildProcessingQuantity().add(processing));
+            detail.setPendingMyApprovalQuantity(detail.getPendingMyApprovalQuantity().add(pending));
+        }
+        detail.setRecords(records);
+        return detail;
+    }
+
+    private BigDecimal zero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     @Override
@@ -174,6 +415,15 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
         List<TaskTreeRowVO> rows = project(List.of(task), null);
         return rows.get(0);
+    }
+
+    @Override
+    public TaskTreeRowVO getFirstTaskByExecution(Long executionId) {
+        if (executionId == null) {
+            throw new BusinessException("executionId 不能为空");
+        }
+        Long firstTaskId = findFirstTask(executionId);
+        return firstTaskId == null ? null : getDetail(firstTaskId);
     }
 
     @Override
@@ -312,7 +562,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         } else if (!loginUserId.equals(task.getAssigneeId())) {
             throw new BusinessException("仅当前任务执行人可分配");
         }
-        // 无下属 → 无分配权限（候选 = 自己 + 全部层级下属；自己可被选 ≠ 无下属时可发起分配）
+        // 无可选下属 → 无分配权限（自己只作为候选树根展示，不可分配给自己）
         if (!assigneeResolver.hasAssignableSubordinates(loginUserId)) {
             throw new BusinessException("当前人员无可分配下属，无分配权限");
         }
@@ -349,6 +599,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
 
         for (TaskAssignItemDTO item : dto.getItems()) {
             ProductionTask child = new ProductionTask();
+            child.setTaskNo(nextTaskNo(task.getExecutionId(), false));
             child.setExecutionId(task.getExecutionId());
             child.setParentTaskId(taskId);
             child.setAssigneeId(item.getAssigneeId());
@@ -551,6 +802,34 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     }
 
     // ============ 私有方法 ============
+
+    /**
+     * 在当前工序执行行锁内领取下一个 Task 流水并生成全局唯一业务编号。
+     * First Task 的存在性检查也在同一把 execution 行锁内完成，避免重复创建时空耗流水。
+     */
+    private String nextTaskNo(Long executionId, boolean firstTask) {
+        Map<String, Object> context = productionOperationExecutionMapper
+                .selectTaskNoContextForUpdate(executionId);
+        if (context == null || context.isEmpty()) {
+            throw new BusinessException("工序执行不存在: " + executionId);
+        }
+        if (firstTask && findFirstTask(executionId) != null) {
+            return null;
+        }
+        Object orderNoValue = context.get("orderNo");
+        Object processOrderValue = context.get("processOrder");
+        Object taskSeqValue = context.get("taskSeq");
+        if (orderNoValue == null || processOrderValue == null || taskSeqValue == null) {
+            throw new BusinessException("工序执行缺少任务编号上下文: " + executionId);
+        }
+        if (productionOperationExecutionMapper.incrementTaskSeq(executionId) != 1) {
+            throw new BusinessException("任务流水生成失败，请重试");
+        }
+        long taskSeq = ((Number) taskSeqValue).longValue() + 1;
+        int processOrder = ((Number) processOrderValue).intValue();
+        return orderNoValue + "-P" + String.format("%02d", processOrder)
+                + "-T" + String.format("%03d", taskSeq);
+    }
 
     private Long findFirstTask(Long executionId) {
         ProductionTask first = productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
@@ -865,6 +1144,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         for (ProductionTask t : tasks) {
             TaskTreeRowVO vo = new TaskTreeRowVO();
             vo.setTaskId(t.getTaskId());
+            vo.setTaskNo(t.getTaskNo());
             vo.setParentTaskId(t.getParentTaskId());
             vo.setExecutionId(t.getExecutionId());
             Object[] exec = execMap.get(t.getExecutionId());

@@ -8,7 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -16,7 +16,8 @@ import java.util.Map;
  * 默认候选解析实现（候选责任树；组织关系 = sys_dept 部门树 + leader_user_id 负责人关联）
  * <p>
  * 核心原则（P4.5 最终规则）：
- * - 每个层级分配行为同构：候选 = 自己 + 全部层级下属，树根 = 当前分配人（自己），可多选、逐人拆量
+ * - 每个层级分配行为同构：树根 = 当前分配人（不可选），全部合法后代均可选
+ * - 选择直属负责人形成逐级责任链；选择任意后代形成跨级直派
  * - 已分配 Task：正常分配必须由 Task.assignee 执行（身份门在 assign 内校验）
  * - 没有下属 → 没有分配动作（canAssign=false；assign 内同样校验）
  * <p>
@@ -49,28 +50,30 @@ public class DefaultProductionTaskAssigneeResolver implements ProductionTaskAssi
         if (targetUserId == null) {
             return false;
         }
-        return containsUser(listAssignableUsers(rootUserId), targetUserId);
+        return !targetUserId.equals(rootUserId)
+                && containsSelectableUser(listAssignableUsers(rootUserId), targetUserId);
     }
 
     @Override
     public boolean hasAssignableSubordinates(Long rootUserId) {
-        return countUsers(listAssignableUsers(rootUserId)) > 1;
+        return countSelectableUsers(listAssignableUsers(rootUserId)) > 0;
     }
 
-    private int countUsers(List<TaskCandidateVO> nodes) {
+    private int countSelectableUsers(List<TaskCandidateVO> nodes) {
         int total = 0;
         for (TaskCandidateVO n : nodes) {
-            total += 1 + countUsers(n.getChildren() == null ? List.of() : n.getChildren());
+            total += (Boolean.TRUE.equals(n.getSelectable()) ? 1 : 0)
+                    + countSelectableUsers(n.getChildren() == null ? List.of() : n.getChildren());
         }
         return total;
     }
 
-    private boolean containsUser(List<TaskCandidateVO> nodes, Long userId) {
+    private boolean containsSelectableUser(List<TaskCandidateVO> nodes, Long userId) {
         for (TaskCandidateVO n : nodes) {
-            if (userId.equals(n.getUserId())) {
+            if (userId.equals(n.getUserId()) && Boolean.TRUE.equals(n.getSelectable())) {
                 return true;
             }
-            if (containsUser(n.getChildren(), userId)) {
+            if (containsSelectableUser(n.getChildren(), userId)) {
                 return true;
             }
         }
@@ -84,10 +87,12 @@ public class DefaultProductionTaskAssigneeResolver implements ProductionTaskAssi
             return new ArrayList<>();
         }
         // 部门层级信息由 selectAssigneeTreeUsers 行内列注入 VO（parentDeptId/deptLeaderId，@JsonIgnore）
-        Map<Long, Long> leaderByDept = new HashMap<>();
-        Map<Long, Long> parentByDept = new HashMap<>();
-        Map<Long, List<TaskCandidateVO>> usersByDept = new HashMap<>();
+        Map<Long, Long> leaderByDept = new LinkedHashMap<>();
+        Map<Long, Long> parentByDept = new LinkedHashMap<>();
+        Map<Long, List<TaskCandidateVO>> usersByDept = new LinkedHashMap<>();
         for (TaskCandidateVO u : users) {
+            u.setRoot(rootUserId.equals(u.getUserId()));
+            u.setSelectable(!rootUserId.equals(u.getUserId()));
             if (u.getDeptId() != null) {
                 usersByDept.computeIfAbsent(u.getDeptId(), k -> new ArrayList<>()).add(u);
                 if (u.getParentDeptId() != null) {
@@ -108,7 +113,6 @@ public class DefaultProductionTaskAssigneeResolver implements ProductionTaskAssi
         if (root == null || root.getDeptId() == null) {
             return new ArrayList<>();
         }
-        root.setRoot(true);
         root.setChildren(buildChildren(root.getDeptId(), rootUserId, usersByDept, leaderByDept, parentByDept));
         List<TaskCandidateVO> tree = new ArrayList<>();
         tree.add(root);

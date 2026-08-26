@@ -40,8 +40,11 @@ public class TaskCandidateVO {
     @Schema(description = "主生产角色名称")
     private String roleName;
 
-    @Schema(description = "是否分配根节点（首次=生产管理者本人，可选；已分配=assignee 自己，前端禁用）")
+    @Schema(description = "是否分配根节点（当前分配人，仅作为责任树入口，不可选）")
     private Boolean root;
+
+    @Schema(description = "是否可作为本次分配对象（根节点=false，合法后代=true）")
+    private Boolean selectable;
 
     /** 内部组织字段（不序列化）：部门层级，供 Resolver 组装责任树 */
     @JsonIgnore

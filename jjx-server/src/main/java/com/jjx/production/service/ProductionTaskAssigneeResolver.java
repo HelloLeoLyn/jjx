@@ -28,8 +28,8 @@ public interface ProductionTaskAssigneeResolver {
     boolean isAssignableTo(Long currentAssigneeId, Long targetUserId);
 
     /**
-     * 分配权限门：当前执行人的可分配集合内是否存在除自己以外的下属。
-     * 规则：候选 = 自己 + 全部层级下属；自己可被选 ≠ 没有下属时可发起分配。
+     * 分配权限门：当前执行人的可分配集合内是否存在可选下属。
+     * 规则：自己只作为树根展示且不可选，全部合法后代均可选。
      */
     boolean hasAssignableSubordinates(Long rootUserId);
 }

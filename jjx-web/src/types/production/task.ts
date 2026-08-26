@@ -5,6 +5,55 @@
 // PENDING=尚未进入责任执行 / ACTIVE=已进入责任执行 / COMPLETED=人工确认完成 / CANCELLED=责任取消或归零
 export type ProductionTaskStatus = 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
 
+export interface MyProductionExecution {
+  executionId: number
+  orderId?: number
+  orderNo?: string
+  processId?: number
+  processName?: string
+  processOrder?: number
+  executionStatus?: number
+  equipmentId?: number
+  equipmentCode?: string
+  equipmentName?: string
+  taskCount: number
+  taskNo?: string
+  plannedQuantity: number
+  myResponsibilityQuantity: number
+  myCompletedQuantity: number
+  myPendingReviewQuantity: number
+  myProcessableQuantity: number
+  childCompletedQuantity: number
+  childProcessingQuantity: number
+  pendingMyApprovalQuantity: number
+}
+
+export interface ChildProcessingRecord {
+  taskId: number
+  taskNo?: string
+  assigneeId?: number
+  assigneeName?: string
+  departmentName?: string
+  taskQuantity: number
+  completedQuantity: number
+  pendingApprovalQuantity: number
+  processingQuantity: number
+  status?: ProductionTaskStatus
+  statusLabel?: string
+}
+
+export interface ChildProcessingDetail {
+  executionId: number
+  orderNo?: string
+  processName?: string
+  executionStatus?: number
+  myResponsibilityQuantity: number
+  childCompletedQuantity: number
+  childProcessingQuantity: number
+  pendingMyApprovalQuantity: number
+  records: ChildProcessingRecord[]
+}
+
 // P6 类型拆分（不再混用一个 TaskAction）：
 // - TaskEventAction：production_task_event.action 业务事件（历史值 FIRST_ASSIGN/UNASSIGN 不再产生）
 // - TaskAllowedAction：allowedActions 前端动作集合（比事件多一个纯 UI 动作 FLOW）
@@ -14,6 +63,7 @@ export type TaskAllowedAction = TaskEventAction | 'FLOW'
 // 统一任务树行（第一层与所有下级同构；children 永远为数组，永不 null）
 export interface TaskTreeRow {
   taskId: number
+  taskNo?: string
   parentTaskId: number | null // null = 第一层真实任务（非 System Root）
   executionId: number
   orderNo?: string
@@ -83,8 +133,10 @@ export interface TaskCandidate {
   roleKey?: string
   /** 主生产角色名称 */
   roleName?: string
-  /** 是否分配根节点（首次=生产管理者本人，可选；已分配=assignee 自己，禁用） */
+  /** 是否分配根节点（当前分配人，仅作为责任树入口） */
   root?: boolean
+  /** 是否可以作为本次分配对象；根节点为 false，合法后代为 true */
+  selectable?: boolean
   /** 下属责任树（空=叶子） */
   children?: TaskCandidate[]
 }

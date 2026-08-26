@@ -48,6 +48,10 @@ public enum InquiryStatus {
         return null;
     }
 
+    public String getCodeString() {
+        return code+"";
+    }
+
     /**
      * 判断是否为待询价状态
      */

@@ -14,6 +14,7 @@ import com.jjx.product.service.IEngineeringRoutingService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.system.service.LogSaveService;
+import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ProductValidationVO;
@@ -75,6 +76,7 @@ public class OrderServiceImpl implements IOrderService {
     private final IEngineeringRoutingService routingService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final LogSaveService logSaveService;
+    private final OperLogChangeRecorder changeRecorder;
 
     /**
      * 查询销售订单列表
@@ -232,76 +234,36 @@ public class OrderServiceImpl implements IOrderService {
      */
     private void saveOrderUpdateChangeLog(SalesOrder oldOrder, java.util.List<SalesOrderProductVO> oldItems,
                                           SalesOrderEditDTO dto) {
-        try {
-            java.util.List<String> changes = new java.util.ArrayList<>();
-            diffMainFields(changes, oldOrder, dto);
-            diffItemFields(changes, oldItems, dto.getItems());
-            String summary = changes.isEmpty() ? "无字段变更" : String.join("；", changes);
-
-            SysOperLog operLog = new SysOperLog();
-            operLog.setModule("销售订单");
-            operLog.setBusinessType(2); // 修改
-            operLog.setOperUrl("order.update");
-            operLog.setBizType("order");
-            operLog.setBizId(String.valueOf(dto.getOrderId()));
-            operLog.setTraceId(oldOrder.getTraceId());
-            operLog.setBizStatus(oldOrder.getOrderStatus()); // 编辑不改变订单状态
-            operLog.setOperParam(summary);
-            operLog.setDetail(cn.hutool.json.JSONUtil.toJsonStr(java.util.Map.of("changes", changes)));
-            operLog.setStatus(1);
-            operLog.setCreateTime(LocalDateTime.now());
-            try {
-                operLog.setUsername(SecurityUtils.getUsername());
-                operLog.setUserId(SecurityUtils.getUserId());
-                operLog.setRealName(SecurityUtils.getRealName());
-            } catch (Exception ignored) {
-            }
-            logSaveService.saveOperLog(operLog);
-            log.info("订单{}修改已记录变更日志: {}", dto.getOrderId(), summary);
-        } catch (Exception e) {
-            log.warn("记录订单修改变更日志失败: {}", e.getMessage());
-        }
+        java.util.List<String> changes = new java.util.ArrayList<>();
+        diffMainFields(changes, oldOrder, dto);
+        diffItemFields(changes, oldItems, dto.getItems());
+        changeRecorder.recordUpdate("销售订单", "order.update", "order",
+            String.valueOf(dto.getOrderId()), oldOrder.getTraceId(),
+            oldOrder.getOrderStatus(), changes);
     }
 
     /** 主表字段对比（白名单，排除 createTime 等系统字段） */
     private void diffMainFields(java.util.List<String> changes, SalesOrder oldOrder, SalesOrderEditDTO dto) {
-        diff(changes, "客户", oldOrder.getCustomerName(), dto.getCustomerName());
-        diff(changes, "联系人", oldOrder.getContactPerson(), dto.getContactPerson());
-        diff(changes, "联系电话", oldOrder.getContactPhone(), dto.getContactPhone());
-        diff(changes, "下单日期", fmtDate(oldOrder.getOrderDate()), fmtDate(dto.getOrderDate()));
-        diff(changes, "交货日期", fmtDate(oldOrder.getDeliveryDate()), fmtDate(dto.getDeliveryDate()));
-        diff(changes, "订单类型", oldOrder.getOrderType(), dto.getOrderType());
-        diff(changes, "加急", oldOrder.getIsUrgent(), dto.getIsUrgent());
-        diff(changes, "币种", oldOrder.getCurrency(), dto.getCurrency());
-        diff(changes, "汇率", oldOrder.getExchangeRate(), dto.getExchangeRate());
-        diff(changes, "付款条款", oldOrder.getPaymentTerms(), dto.getPaymentTerms());
-        diff(changes, "交货条款", oldOrder.getDeliveryTerms(), dto.getDeliveryTerms());
-        diff(changes, "交货地址", oldOrder.getDeliveryAddress(), dto.getDeliveryAddress());
-        diff(changes, "总金额", oldOrder.getTotalAmount(), dto.getTotalAmount());
-        diff(changes, "税率", oldOrder.getTaxRate(), dto.getTaxRate());
-        diff(changes, "折扣率", oldOrder.getDiscountRate(), dto.getDiscountRate());
-        diff(changes, "总数量", oldOrder.getTotalQuantity(), dto.getTotalQuantity());
-        diff(changes, "销售员", oldOrder.getSalesManagerName(), dto.getSalesManagerName());
-        diff(changes, "备注", oldOrder.getRemark(), dto.getRemark());
-    }
-
-    private void diff(java.util.List<String> changes, String label, Object oldVal, Object newVal) {
-        if (!java.util.Objects.equals(oldVal, newVal)) {
-            changes.add(label + ":" + fmt(oldVal) + "→" + fmt(newVal));
-        }
-    }
-
-    private String fmt(Object v) {
-        return v == null ? "空" : String.valueOf(v);
-    }
-
-    private String fmtDate(java.util.Date d) {
-        if (d == null) return "空";
-        try {
-            return new java.text.SimpleDateFormat("yyyy-MM-dd").format(d);
-        } catch (Exception e) {
-            return String.valueOf(d);
-        }
+        changeRecorder.diff(changes, "客户", oldOrder.getCustomerName(), dto.getCustomerName());
+        changeRecorder.diff(changes, "联系人", oldOrder.getContactPerson(), dto.getContactPerson());
+        changeRecorder.diff(changes, "联系电话", oldOrder.getContactPhone(), dto.getContactPhone());
+        changeRecorder.diff(changes, "下单日期",
+            changeRecorder.fmtDate(oldOrder.getOrderDate()), changeRecorder.fmtDate(dto.getOrderDate()));
+        changeRecorder.diff(changes, "交货日期",
+            changeRecorder.fmtDate(oldOrder.getDeliveryDate()), changeRecorder.fmtDate(dto.getDeliveryDate()));
+        changeRecorder.diff(changes, "订单类型", oldOrder.getOrderType(), dto.getOrderType());
+        changeRecorder.diff(changes, "加急", oldOrder.getIsUrgent(), dto.getIsUrgent());
+        changeRecorder.diff(changes, "币种", oldOrder.getCurrency(), dto.getCurrency());
+        changeRecorder.diff(changes, "汇率", oldOrder.getExchangeRate(), dto.getExchangeRate());
+        changeRecorder.diff(changes, "付款条款", oldOrder.getPaymentTerms(), dto.getPaymentTerms());
+        changeRecorder.diff(changes, "交货条款", oldOrder.getDeliveryTerms(), dto.getDeliveryTerms());
+        changeRecorder.diff(changes, "交货地址", oldOrder.getDeliveryAddress(), dto.getDeliveryAddress());
+        changeRecorder.diff(changes, "总金额", oldOrder.getTotalAmount(), dto.getTotalAmount());
+        changeRecorder.diff(changes, "税率", oldOrder.getTaxRate(), dto.getTaxRate());
+        changeRecorder.diff(changes, "折扣率", oldOrder.getDiscountRate(), dto.getDiscountRate());
+        changeRecorder.diff(changes, "总数量", oldOrder.getTotalQuantity(), dto.getTotalQuantity());
+        changeRecorder.diff(changes, "销售员", oldOrder.getSalesManagerName(), dto.getSalesManagerName());
+        changeRecorder.diff(changes, "备注", oldOrder.getRemark(), dto.getRemark());
     }
 
     /** 明细对比（旧明细 vs 新明细：按 productId 匹配 新增/删除/修改数量单价） */

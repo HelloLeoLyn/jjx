@@ -69,10 +69,11 @@ public class OperLogAspect {
 
             // 执行业务方法
             Object result = point.proceed();
+            // 返回值表达式（bizId/traceId/detail 等）必须共享同一个上下文。
+            bindResult(spelCtx, result);
 
             // 如果参数没提取到，再从返回值提取
             if ((bizId == null || bizId.isEmpty()) && !logAnnotation.bizId().isEmpty()) {
-                spelCtx.setVariable("result", result);
                 bizId = evaluateSpel(spelCtx, logAnnotation.bizId());
             }
             if ((bizType == null || bizType.isEmpty()) && !logAnnotation.bizType().isEmpty()) {
@@ -136,28 +137,23 @@ public class OperLogAspect {
             operLog.setBizId(bizId);
             operLog.setBizType(bizType);
             operLog.setTraceId(traceId);
-            // bizStatus 支持 SpEL 表达式（如 "#approved ? 6 : 3"），解析后转数字
+            // bizStatus 支持数字字面量、SpEL 表达式以及带 getCode() 的枚举。
             try {
-                String bizStatusExpr = logAnnotation.bizStatus();
-                if (bizStatusExpr != null && bizStatusExpr.startsWith("#")) {
-                    Object val = evaluateSpel(spelCtx, bizStatusExpr);
-                    operLog.setBizStatus(val instanceof Number ? ((Number) val).intValue() : Integer.parseInt(String.valueOf(val)));
-                } else {
-                    operLog.setBizStatus(Integer.parseInt(bizStatusExpr));
-                }
+                operLog.setBizStatus(resolveBizStatus(spelCtx, logAnnotation.bizStatus()));
             } catch (Exception e) {
                 log.warn("bizStatus解析失败: {} ({})", logAnnotation.bizStatus(), e.getMessage());
                 operLog.setBizStatus(0);
             }
 
-            // detail: 附件ID列表（如 "#attachmentIds"）→ 查附件表组装 JSON 写入 detail（链路附件挂操作行）
+            // detail: attachmentIds 表达式组装附件 JSON，其他文本/JSON 原样写入。
             if (!logAnnotation.detail().isEmpty()) {
                 try {
-                    String detailVal = evaluateSpel(spelCtx, logAnnotation.detail());
-                    if (detailVal != null && !detailVal.trim().isEmpty()) {
-                        java.util.List<Long> ids = parseAttachmentIds(detailVal);
+                    String detailValue = evaluateSpel(spelCtx, logAnnotation.detail());
+                    if (isAttachmentDetailExpression(logAnnotation.detail())
+                            && detailValue != null && !detailValue.trim().isEmpty()) {
+                        java.util.List<Long> ids = parseAttachmentIds(detailValue);
                         if (!ids.isEmpty()) {
-                            java.util.List<com.jjx.system.domain.entity.SysAttachment> atts = attachmentMapper.selectBatchIds(ids);
+                            java.util.List<com.jjx.system.domain.entity.SysAttachment> atts = attachmentMapper.selectByIds(ids);
                             java.util.List<java.util.Map<String, Object>> attList = new java.util.ArrayList<>();
                             for (com.jjx.system.domain.entity.SysAttachment a : atts) {
                                 java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
@@ -169,6 +165,8 @@ public class OperLogAspect {
                                 operLog.setDetail(JSONUtil.toJsonStr(java.util.Map.of("attachments", attList)));
                             }
                         }
+                    } else {
+                        applyDetailValue(detailValue, operLog);
                     }
                 } catch (Exception e) {
                     log.warn("detail解析失败: {}", e.getMessage());
@@ -284,11 +282,56 @@ public class OperLogAspect {
         }
     }
 
+    static void bindResult(StandardEvaluationContext ctx, Object result) {
+        ctx.setVariable("result", result);
+    }
+
+    void applyDetail(StandardEvaluationContext ctx, String expression, SysOperLog operLog) {
+        applyDetailValue(evaluateSpel(ctx, expression), operLog);
+    }
+
+    private static void applyDetailValue(String detailValue, SysOperLog operLog) {
+        if (detailValue != null && !detailValue.trim().isEmpty()) {
+            operLog.setDetail(detailValue);
+        }
+    }
+
+    static boolean isAttachmentDetailExpression(String expression) {
+        return expression != null && expression.matches(".*#attachmentIds\\b.*");
+    }
+
+    Integer resolveBizStatus(StandardEvaluationContext ctx, String expression) throws Exception {
+        if (expression == null || expression.trim().isEmpty()) {
+            return 0;
+        }
+        Object value;
+        try {
+            value = Integer.valueOf(expression);
+        } catch (NumberFormatException ignored) {
+            value = spelParser.parseExpression(expression).getValue(ctx);
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null) {
+            try {
+                Object code = value.getClass().getMethod("getCode").invoke(value);
+                if (code instanceof Number number) {
+                    return number.intValue();
+                }
+                return Integer.valueOf(String.valueOf(code));
+            } catch (NoSuchMethodException ignored) {
+                return Integer.valueOf(String.valueOf(value));
+            }
+        }
+        return 0;
+    }
+
     /**
      * 解析附件ID列表：支持 "1,2,3"、"[1,2,3]"、"1" 格式
      */
-    private static java.util.List<Long> parseAttachmentIds(String raw) {
-        java.util.List<Long> ids = new java.util.ArrayList<>();
+    private static List<Long> parseAttachmentIds(String raw) {
+        List<Long> ids = new ArrayList<>();
         String cleaned = raw.replaceAll("[\\[\\]\\s\"]", "");
         if (cleaned.isEmpty()) {
             return ids;

@@ -1,4 +1,5 @@
 import { computed, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   completeTask,
@@ -17,13 +18,17 @@ import { orderProcessLabel } from '../utils/taskFormatters'
  * 第一层分页 + 筛选 + 统计 + 树懒加载 + 行刷新 + 完成操作
  */
 export function useDispatchList() {
+  const route = useRoute()
   const { initRow, updateFields, findRow, mergeChildren } = useTaskTree(() => firstLevelRows.value)
 
   const loading = ref(false)
   const firstLevelRows = ref<TreeRow[]>([])
   const total = ref(0)
   const queryParams = reactive<TaskTreeQuery>({ pageNum: 1, pageSize: 10 })
-  const filterForm = reactive({ keyword: '', status: '' })
+  const filterForm = reactive({
+    keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '',
+    status: typeof route.query.status === 'string' ? route.query.status : '',
+  })
 
   const getList = async () => {
     loading.value = true

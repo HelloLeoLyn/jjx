@@ -31,6 +31,9 @@ public class TaskTreeRowVO {
     @Schema(description = "任务ID（统一树节点ID）")
     private Long taskId;
 
+    @Schema(description = "业务任务号")
+    private String taskNo;
+
     @Schema(description = "父任务ID；null=第一层")
     private Long parentTaskId;
 

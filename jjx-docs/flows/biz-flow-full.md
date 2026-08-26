@@ -835,7 +835,7 @@ dev（开发任务：dev-YYYYMMDD-NNN 编码，sys_task kanban_module='dev'）
 | 登录日志 | `src/views/log/login/index.vue` | sys_login_log：登录/登出、IP、结果 |
 | 异常日志 | `src/views/log/exception/index.vue` | sys_error_log：异常堆栈 |
 
-> 操作日志即"流水"数据源：`@Log` 注解切面写入（OperLogAspect），按 traceId 组织链路（TraceTimeline）。
+> 操作日志即"流水"数据源：`@Log` 注解切面写入（OperLogAspect），按 traceId 组织链路（TraceTimeline）。`detail` 支持通用文本/JSON；引用 `#attachmentIds` 时由切面组装附件详情。
 
 ## 6.6 通知中心
 

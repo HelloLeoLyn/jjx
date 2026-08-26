@@ -20,6 +20,13 @@ export const operationExecutionApi = {
     )
   },
 
+  /** 全部工序视角；后端仅允许生产全局范围用户访问。 */
+  globalList(params: OperationExecutionQuery) {
+    return request.get<R<OperationExecutionVO[]>>(
+      '/production/operation-execution/global-list', { params }
+    )
+  },
+
   /** 分页查询工序执行列表（派工管理树形主列表第一层，服务端分页） */
   page(params: OperationExecutionQuery) {
     return request.get<R<PageResult<OperationExecutionVO>>>(

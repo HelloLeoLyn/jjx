@@ -6,10 +6,13 @@ import com.jjx.production.domain.dto.TaskCompleteDTO;
 import com.jjx.production.domain.dto.TaskRecallDTO;
 import com.jjx.production.domain.dto.TaskReturnDTO;
 import com.jjx.production.domain.dto.TaskTreeQueryDTO;
+import com.jjx.production.domain.dto.MyProductionExecutionQueryDTO;
 import com.jjx.production.domain.vo.TaskCandidateVO;
 import com.jjx.production.domain.vo.TaskCompletionDetailVO;
 import com.jjx.production.domain.vo.TaskEventVO;
 import com.jjx.production.domain.vo.TaskTreeRowVO;
+import com.jjx.production.domain.vo.MyProductionExecutionVO;
+import com.jjx.production.domain.vo.ChildProcessingDetailVO;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -35,10 +38,21 @@ public interface ProductionTaskService {
      */
     Page<TaskTreeRowVO> pageAccessibleTasks(TaskTreeQueryDTO queryDTO);
 
+    /** 从当前用户有效Task起查，按execution_id聚合。 */
+    Page<MyProductionExecutionVO> pageMyProductionExecutions(MyProductionExecutionQueryDTO queryDTO);
+
+    /** 当前用户本人有效Task对应的有效直接Child处理明细。 */
+    ChildProcessingDetailVO getMyChildProcessingDetail(Long executionId);
+
     /**
      * 任务详情（真实 production_task 单行 + 投影）
      */
     TaskTreeRowVO getDetail(Long taskId);
+
+    /**
+     * 按工序执行查询唯一 First Task 及其责任/报工投影；不存在时返回 null。
+     */
+    TaskTreeRowVO getFirstTaskByExecution(Long executionId);
 
     /**
      * 直接子任务（真懒加载：只查询 parent_task_id = taskId；活动树排除 CANCELLED）

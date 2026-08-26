@@ -68,13 +68,16 @@
         :load="loadTreeChildren"
         style="width: 100%"
       >
-        <!-- 第一列：树形缩进 + 工单/工序 -->
-        <el-table-column label="工单 / 工序" min-width="280">
+        <el-table-column label="工序单号" min-width="200">
           <template #default="{ row }">
-            {{ orderProcessLabel(row) }}
+            <span class="task-sub">任务号：{{ row.taskNo || '-' }}</span>
           </template>
         </el-table-column>
-
+        <el-table-column label="工序" min-width="180">
+          <template #default="{ row }">
+            <span class="task-sub">{{ row.processName || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="执行人" prop="assigneeName" width="120" align="right">
           <template #default="{ row }">
             <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
@@ -240,6 +243,9 @@
           <el-descriptions-item label="当前执行人">{{
             assignTarget.assigneeName || '未分配'
           }}</el-descriptions-item>
+          <el-descriptions-item label="任务号">{{
+            assignTarget.taskNo || '-'
+          }}</el-descriptions-item>
           <el-descriptions-item label="任务数量">{{
             fmtQty(assignTarget.taskQuantity)
           }}</el-descriptions-item>
@@ -257,6 +263,9 @@
           max-height="180"
           class="assigned-table"
         >
+          <el-table-column label="任务号" min-width="245" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.taskNo || '-' }}</template>
+          </el-table-column>
           <el-table-column label="姓名" width="140">
             <template #default="{ row }">{{ row.assigneeName || '-' }}</template>
           </el-table-column>
@@ -273,12 +282,13 @@
         <el-empty v-else-if="!assignedListLoading" description="暂无已分配责任" :image-size="40" />
 
         <div class="candidate-title">候选责任树（{{ totalCandidateCount }} 人）</div>
+        <div class="candidate-hint">可选择直属负责人逐级派工，也可展开班组直接选择工人</div>
         <el-tree
           ref="candidateTreeRef"
           v-loading="candidateLoading"
           :data="candidateList"
           node-key="userId"
-          :props="{ label: 'nickName', children: 'children' }"
+          :props="{ label: 'nickName', children: 'children', disabled: 'disabled' }"
           show-checkbox
           :check-strictly="true"
           :expand-on-click-node="false"
@@ -349,7 +359,6 @@
       </template>
     </el-dialog>
 
-
     <!-- ============ 退回 Dialog（当前执行人把自身剩余退给父任务） ============ -->
     <el-dialog v-model="returnOpen" title="退回" width="480px" append-to-body>
       <template v-if="returnTarget">
@@ -397,11 +406,7 @@
     </el-dialog>
 
     <!-- ============ 收回 Dialog（组件化：树形可收回列表 + 多选批量收回） ============ -->
-    <RecallDialog
-      v-model="recallOpen"
-      :target="recallTarget"
-      @success="handleRecallSuccess"
-    />
+    <RecallDialog v-model="recallOpen" :target="recallTarget" @success="handleRecallSuccess" />
 
     <!-- ============ 任务流水 Drawer（P6：ProductionTaskEvent 业务流水） ============ -->
     <el-drawer v-model="flowOpen" :title="`任务流水${flowTitle}`" size="620px" append-to-body>
@@ -658,6 +663,12 @@ onMounted(() => {
 .candidate-title {
   margin: 14px 0 8px;
   font-weight: 500;
+}
+
+.candidate-hint {
+  margin: -4px 0 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .candidate-tree {
   max-height: 300px;
