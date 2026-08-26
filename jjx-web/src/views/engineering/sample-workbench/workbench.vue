@@ -309,27 +309,15 @@ import ExecutionTimeline from './components/ExecutionTimeline.vue'
 import BomPanel from './components/BomPanel.vue'
 import NoteFilesPanel from './components/NoteFilesPanel.vue'
 import PrintProcessPanel from './components/PrintProcessPanel.vue'
+import { SampleOrderStatusEnum } from '@/enums/sales'
 
 defineOptions({ name: 'SampleWorkbenchPage' })
 
-// 历史复制列表：样品单状态展示（2026-08-12 DEV-988）
-const SAMPLE_STATUS_MAP: Record<number, { label: string; tag: string }> = {
-  1: { label: '样品需求已创建', tag: 'info' },
-  2: { label: '待审核', tag: 'warning' },
-  3: { label: '工程打样中', tag: 'warning' },
-  4: { label: '样品待送样', tag: 'primary' },
-  5: { label: '已送样待确认', tag: 'warning' },
-  6: { label: '样品确认', tag: 'success' },
-  7: { label: '已转量产', tag: 'success' },
-  8: { label: '已关闭', tag: 'info' },
-  9: { label: '客户退回', tag: 'danger' },
-  10: { label: '已取消', tag: 'danger' },
-}
 function sampleStatusText(status: number | undefined | null): string {
-  return SAMPLE_STATUS_MAP[status ?? 0]?.label || '未知'
+  return status == null ? '未知' : SampleOrderStatusEnum.getLabel(status)
 }
 function sampleStatusTag(status: number | undefined | null): any {
-  return SAMPLE_STATUS_MAP[status ?? 0]?.tag || 'info'
+  return status == null ? 'info' : SampleOrderStatusEnum.getTagProps(status).type || 'info'
 }
 
 // 全部状态与逻辑来自 composable（dev-20260811-008 组件化）

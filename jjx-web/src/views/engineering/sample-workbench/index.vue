@@ -4,10 +4,22 @@
     <el-card class="search-card" shadow="never">
       <el-form :inline="true" :model="queryParams" label-width="80px">
         <el-form-item label="样品单号">
-          <el-input v-model="queryParams.orderNo" placeholder="请输入样品单号" clearable style="width: 200px" @keyup.enter="getList" />
+          <el-input
+            v-model="queryParams.orderNo"
+            placeholder="请输入样品单号"
+            clearable
+            style="width: 200px"
+            @keyup.enter="getList"
+          />
         </el-form-item>
         <el-form-item label="客户名称">
-          <el-input v-model="queryParams.customerName" placeholder="请输入客户名称" clearable style="width: 200px" @keyup.enter="getList" />
+          <el-input
+            v-model="queryParams.customerName"
+            placeholder="请输入客户名称"
+            clearable
+            style="width: 200px"
+            @keyup.enter="getList"
+          />
         </el-form-item>
         <el-form-item label="分组">
           <el-select v-model="queryParams.group" style="width: 140px">
@@ -46,7 +58,9 @@
       <el-table :data="tableData" v-loading="loading" border stripe>
         <el-table-column label="样品单号" prop="orderNo" width="150">
           <template #default="scope">
-            <el-button link type="primary" @click="openWorkbench(scope.row)">{{ scope.row.orderNo }}</el-button>
+            <el-button link type="primary" @click="openWorkbench(scope.row)">{{
+              scope.row.orderNo
+            }}</el-button>
           </template>
         </el-table-column>
         <el-table-column label="客户" prop="customerName" min-width="130" show-overflow-tooltip />
@@ -74,13 +88,17 @@
         </el-table-column>
         <el-table-column label="工时(h)" width="90" align="center">
           <template #default="scope">
-            <span v-if="summaryMap[scope.row.orderId]">{{ summaryMap[scope.row.orderId].totalHours ?? '-' }}</span>
+            <span v-if="summaryMap[scope.row.orderId]">{{
+              summaryMap[scope.row.orderId].totalHours ?? '-'
+            }}</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="材料成本(¥)" width="110" align="center">
           <template #default="scope">
-            <span v-if="summaryMap[scope.row.orderId]">{{ summaryMap[scope.row.orderId].materialCost ?? '-' }}</span>
+            <span v-if="summaryMap[scope.row.orderId]">{{
+              summaryMap[scope.row.orderId].materialCost ?? '-'
+            }}</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -92,17 +110,26 @@
           <template #default="scope">
             <span v-if="lastOperatorMap[scope.row.orderId]">
               {{ lastOperatorMap[scope.row.orderId].operator }}
-              <div style="font-size: 11px; color: #909399">{{ lastOperatorMap[scope.row.orderId].time }}</div>
+              <div style="font-size: 11px; color: #909399">
+                {{ lastOperatorMap[scope.row.orderId].time }}
+              </div>
             </span>
             <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150" align="center" fixed="right">
           <template #default="scope">
-            <template v-if="scope.row.sampleStatus === 6">
-              <el-button v-hasPermi="['sales:sample:convert']" type="warning" link size="small" @click="handleTransfer(scope.row)">资料转移</el-button>
+            <template v-if="scope.row.sampleStatus === SampleOrderStatus.CONFIRMED.value">
+              <el-button
+                v-hasPermi="['sales:sample:convert']"
+                type="warning"
+                link
+                size="small"
+                @click="handleTransfer(scope.row)"
+                >资料转移</el-button
+              >
             </template>
-            <template v-else-if="scope.row.sampleStatus === 7">
+            <template v-else-if="scope.row.sampleStatus === SampleOrderStatus.TRANSFERRED.value">
               <el-tag size="small" type="success">已转量产</el-tag>
             </template>
             <template v-else>
@@ -132,30 +159,18 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { SampleOrderStatus, SampleOrderStatusEnum } from '@/enums/sales'
 import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
 
 const router = useRouter()
 
 defineOptions({ name: 'SampleWorkbench' })
 
-// 样品单状态展示（2026-08-12：打样成功/已确认单在打样平台可见，可资料转移）
-const SAMPLE_STATUS_MAP: Record<number, { label: string; tag: string }> = {
-  1: { label: '待接单', tag: 'warning' },
-  2: { label: '待审核', tag: 'warning' },
-  3: { label: '打样中', tag: 'primary' },
-  4: { label: '待送样', tag: 'primary' },
-  5: { label: '已送样', tag: 'warning' },
-  6: { label: '打样成功', tag: 'success' },
-  7: { label: '已转量产', tag: 'success' },
-  8: { label: '已关闭', tag: 'info' },
-  9: { label: '客户退回', tag: 'danger' },
-  10: { label: '已作废', tag: 'danger' },
-}
 function sampleStatusText(status: number | undefined | null): string {
-  return SAMPLE_STATUS_MAP[status ?? 0]?.label || '未知'
+  return status == null ? '未知' : SampleOrderStatusEnum.getLabel(status)
 }
 function sampleStatusTag(status: number | undefined | null): any {
-  return SAMPLE_STATUS_MAP[status ?? 0]?.tag || 'info'
+  return status == null ? 'info' : SampleOrderStatusEnum.getTagProps(status).type || 'info'
 }
 
 // 资料转移（轻量版弹窗，2026-08-12 入口移至打样平台）
@@ -203,8 +218,10 @@ async function getList() {
     const res = await sampleOrderApi.list(params)
     let rows: any[] = res.data || []
     // 本地过滤：单号/客户名（列表接口无此参数）
-    if (queryParams.orderNo) rows = rows.filter((r) => (r.orderNo || '').includes(queryParams.orderNo))
-    if (queryParams.customerName) rows = rows.filter((r) => (r.customerName || '').includes(queryParams.customerName))
+    if (queryParams.orderNo)
+      rows = rows.filter((r) => (r.orderNo || '').includes(queryParams.orderNo))
+    if (queryParams.customerName)
+      rows = rows.filter((r) => (r.customerName || '').includes(queryParams.customerName))
     tableData.value = rows
     totalCount.value = rows.length
     pendingCount.value = rows.filter((r) => !r.engineeringAcceptor).length
@@ -235,12 +252,15 @@ async function loadExtras(rows: any[]) {
         if (sum.data) summaryMap.value[oid] = sum.data
         if (list.length) {
           const last = list[list.length - 1]
-          lastOperatorMap.value[oid] = { operator: last.operator || '-', time: (last.startTime || '').replace('T', ' ').slice(0, 16) }
+          lastOperatorMap.value[oid] = {
+            operator: last.operator || '-',
+            time: (last.startTime || '').replace('T', ' ').slice(0, 16),
+          }
         }
       } catch {
         /* 单条失败不阻塞列表 */
       }
-    }),
+    })
   )
 }
 
@@ -256,9 +276,26 @@ onActivated(() => getList())
 </script>
 
 <style scoped>
-.search-card, .stat-card, .table-card { margin-bottom: 12px; }
-.stat-row { display: flex; gap: 40px; }
-.stat-item { text-align: center; }
-.stat-num { font-size: 24px; font-weight: 700; color: #409eff; }
-.stat-label { font-size: 12px; color: #909399; margin-top: 2px; }
+.search-card,
+.stat-card,
+.table-card {
+  margin-bottom: 12px;
+}
+.stat-row {
+  display: flex;
+  gap: 40px;
+}
+.stat-item {
+  text-align: center;
+}
+.stat-num {
+  font-size: 24px;
+  font-weight: 700;
+  color: #409eff;
+}
+.stat-label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+}
 </style>

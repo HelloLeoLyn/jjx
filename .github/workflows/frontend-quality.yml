@@ -1,0 +1,31 @@
+name: Frontend Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - "jjx-web/**"
+      - "jjx-docs/specs/state-machine-spec.md"
+  push:
+    branches: [dev, main]
+    paths:
+      - "jjx-web/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jjx-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: jjx-web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:status-enums
+      - run: pnpm run validate

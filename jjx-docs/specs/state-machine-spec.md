@@ -88,6 +88,14 @@
    - 草稿/待处理 = info
 4. 枚举缺值显示：`getLabelSafe` 返回"未知"，不报错不显示空
 
+### 状态字面量禁止规则
+
+- 状态字段参与展示、判断、过滤、权限、按钮控制或流转时，禁止直接与数字/字符串字面量比较。
+- 状态字面量只允许出现在 `src/enums/`、数据迁移和专用测试夹具中。
+- 业务分支必须使用具名成员，例如 `SampleOrderStatus.CONFIRMED.value`。
+- 页面内禁止重复定义 `STATUS_MAP/STATUS_NAMES/statusMap`，展示统一调用枚举的 `getLabel/getTagProps`。
+- `npm run check:status-enums` 为必过门禁；存量基线只能减少，新增违规禁止进入主分支。
+
 ---
 
 ## 五、新模块状态机过审清单（Checklist）
