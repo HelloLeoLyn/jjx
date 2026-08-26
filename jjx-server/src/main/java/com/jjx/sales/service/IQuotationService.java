@@ -159,6 +159,13 @@ public interface IQuotationService {
     int submitReview(Long quotationId, String attachmentIds);
 
     /**
+     * 按当前明细重算报价单表头金额（DEV-1116：提交审核/发送前兑底调用）
+     *
+     * @param quotationId 报价单ID
+     */
+    void recalcQuotationAmounts(Long quotationId);
+
+    /**
      * 审核报价单
      *
      * @param quotationId 报价单ID

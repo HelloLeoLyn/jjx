@@ -1103,6 +1103,11 @@ const handleConvertToSample = async (row?: any) => openPreview('quotation.toSamp
 const handleSubmitReview = async (row?: any) => {
   const quotationId = (row?.quotationId as number) ?? (row as any)?.quotationId
   if (!quotationId) return
+  // DEV-1116：若编辑表单正打开且是同一张单，先保存未保存改动再提交，避免后端校验到旧表头金额
+  // （当前弹窗为模态，列表按钮不可点，此分支为防御性保护）
+  if (open.value && form.quotationId === quotationId) {
+    submitForm()
+  }
   quotationDetailId.value = quotationId
   quotationDetailMode.value = 'submitReview'
   quotationDetailVisible.value = true

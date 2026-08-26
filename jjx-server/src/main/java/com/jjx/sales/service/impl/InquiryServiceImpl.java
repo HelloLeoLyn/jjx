@@ -15,6 +15,7 @@ import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.sales.mapper.SalesInquiryMapper;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.SalesQuotationItemMapper;
+import com.jjx.sales.service.IQuotationService;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.sales.service.IInquiryService;
@@ -51,6 +52,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final ProductMapper productMapper;
     private final com.jjx.product.service.IProductService productService;
     private final com.jjx.product.service.ProductCodeService productCodeService;
+    private final IQuotationService quotationService;
 
     /**
      * 分页查询询价单列表
@@ -369,6 +371,13 @@ public class InquiryServiceImpl implements IInquiryService {
 
         // 自动生成报价明细：从询价单带出产品/技术要求（DEV-588）
         createQuotationItemFromInquiry(inquiry, quotation.getQuotationId());
+
+        // DEV-1116：建单后按明细汇总表头金额（与保存/提交口径一致），避免转换单表头金额为空
+        try {
+            quotationService.recalcQuotationAmounts(quotation.getQuotationId());
+        } catch (Exception e) {
+            log.warn("询价转报价汇总金额失败: {}", e.getMessage());
+        }
 
         // 更新询价单状态
         inquiry.setInquiryStatus(InquiryStatus.CONVERTED.getCode());

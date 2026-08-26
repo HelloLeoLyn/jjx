@@ -348,6 +348,11 @@ public class QuotationServiceImpl implements IQuotationService {
         int rows = quotationMapper.updateById(quotation);
         // 样品报价：明细建档草稿产品（2026-08-08）
         ensureSampleDraftProducts(quotation);
+        // DEV-1116：更新未携带明细时跳过"先删后插"，避免误删明细且表头不重算
+        if (quotation.getItems() == null || quotation.getItems().isEmpty()) {
+            log.info("报价单[{}]更新未携带明细，跳过明细重写", quotation.getQuotationId());
+            return rows;
+        }
         // 先删后插，更新报价单明细
         quotationItemMapper.delete(new LambdaQueryWrapper<SalesQuotationItem>()
                 .eq(SalesQuotationItem::getQuotationId, quotation.getQuotationId()));
@@ -365,7 +370,6 @@ public class QuotationServiceImpl implements IQuotationService {
         if (quotationId == null || items == null || items.isEmpty()) {
             return;
         }
-        java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
         for (SalesQuotationItem item : items) {
             item.setItemId(null);
             item.setQuotationId(quotationId);
@@ -391,27 +395,51 @@ public class QuotationServiceImpl implements IQuotationService {
             if (item.getUnit() == null) item.setUnit("PCS");
             if (item.getItemOrder() == null) item.setItemOrder(0);
             quotationItemMapper.insert(item);
-            subtotal = subtotal.add(item.getAmount() != null ? item.getAmount() : java.math.BigDecimal.ZERO);
         }
-        // 自动汇总报价单金额（参考销售订单口径）
+        // DEV-1116：统一走重算方法汇总表头金额（口径：subtotal=Σ行金额；tax=subtotal×税率%÷100；total=subtotal+tax；final=total-折扣≥0）
+        recalcQuotationAmounts(quotationId);
+    }
+
+    /**
+     * 按当前明细重算报价单表头金额（DEV-1116）
+     * 提交审核/发送前兑底调用，保证明细有金额时表头金额一致，不再误报"报价金额必须大于0"
+     */
+    @Override
+    public void recalcQuotationAmounts(Long quotationId) {
+        if (quotationId == null) {
+            return;
+        }
         try {
-            BigDecimal rate = taxRate != null ? taxRate : java.math.BigDecimal.ZERO;
+            java.util.List<SalesQuotationItem> items = quotationItemMapper.selectList(
+                    new LambdaQueryWrapper<SalesQuotationItem>()
+                            .eq(SalesQuotationItem::getQuotationId, quotationId));
+            java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
+            if (items != null) {
+                for (SalesQuotationItem it : items) {
+                    subtotal = subtotal.add(it.getAmount() != null ? it.getAmount() : java.math.BigDecimal.ZERO);
+                }
+            }
+            SalesQuotation q = quotationMapper.selectById(quotationId);
+            if (q == null) {
+                return;
+            }
+            BigDecimal rate = q.getTaxRate() != null ? q.getTaxRate() : java.math.BigDecimal.ZERO;
             BigDecimal tax = subtotal.multiply(rate)
                     .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal total = subtotal.add(tax); // 含税总价
-            BigDecimal discount = discountAmount != null ? discountAmount : java.math.BigDecimal.ZERO;
+            BigDecimal discount = q.getDiscountAmount() != null ? q.getDiscountAmount() : java.math.BigDecimal.ZERO;
             BigDecimal finalAmount = total.subtract(discount).max(java.math.BigDecimal.ZERO);
 
-            SalesQuotation q = new SalesQuotation();
-            q.setQuotationId(quotationId);
-            q.setSubtotalAmount(subtotal);
-            q.setTaxAmount(tax);
-            q.setTotalAmount(total);
-            q.setDiscountAmount(discount);
-            q.setFinalAmount(finalAmount);
-            quotationMapper.updateById(q);
+            SalesQuotation upd = new SalesQuotation();
+            upd.setQuotationId(quotationId);
+            upd.setSubtotalAmount(subtotal);
+            upd.setTaxAmount(tax);
+            upd.setTotalAmount(total);
+            upd.setDiscountAmount(discount);
+            upd.setFinalAmount(finalAmount);
+            quotationMapper.updateById(upd);
         } catch (Exception e) {
-            log.warn("汇总报价单金额失败: {}", e.getMessage());
+            log.warn("重算报价单金额失败: {}", e.getMessage());
         }
     }
 
@@ -613,6 +641,10 @@ public class QuotationServiceImpl implements IQuotationService {
         if (!QuotationStatus.APPROVED.getCode().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("只有审核通过的报价单可以发送");
         }
+
+        // DEV-1116：发送前按当前明细兑底重算表头金额后重新读取，再校验
+        recalcQuotationAmounts(quotationId);
+        quotation = selectQuotationById(quotationId);
 
         // 发送前校验报价单信息完整性（客户/日期/金额，与提交审核一致）
         validateQuotationForReview(quotation);
@@ -942,6 +974,12 @@ public class QuotationServiceImpl implements IQuotationService {
     @Override
     @Event(value = "quotation.submitted", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
+    /**
+     * 提交审核（DEV-1116：校验前按当前明细兑底重算表头金额，避免明细有金额但表头未汇总误报）
+     */
+    @Override
+    @Event(value = "quotation.submitted", bizId = "#quotationId", bizType = "'quotation'")
+    @Transactional(rollbackFor = Exception.class)
     public int submitReview(Long quotationId, String attachmentIds) {
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
@@ -953,6 +991,10 @@ public class QuotationServiceImpl implements IQuotationService {
                 && !QuotationStatus.MODIFYING.getCode().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("只有草稿或改单状态的报价单可以提交审核");
         }
+
+        // DEV-1116：按当前明细兑底重算表头金额后重新读取，再校验
+        recalcQuotationAmounts(quotationId);
+        quotation = selectQuotationById(quotationId);
 
         // 检查报价单信息是否完整
         validateQuotationForReview(quotation);
@@ -1230,12 +1272,16 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("报价日期不能为空");
         }
 
+        // DEV-1116：报错信息区分"明细已有金额但表头未汇总"（提示保存）与"明细本身无金额"（提示定价），避免误导
         if (quotation.getTotalAmount() == null || quotation.getTotalAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("报价金额必须大于0");
+            if (sumItemAmounts(quotation.getQuotationId()).compareTo(java.math.BigDecimal.ZERO) > 0) {
+                throw new BusinessException("报价金额必须大于0：明细已有金额但表头未汇总，请先保存报价单再提交审核");
+            }
+            throw new BusinessException("报价金额必须大于0：请先完善明细单价并保存报价单");
         }
 
         if (quotation.getFinalAmount() == null || quotation.getFinalAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-            throw new BusinessException("最终金额必须大于0");
+            throw new BusinessException("最终金额必须大于0：请检查折扣金额或重新保存报价单");
         }
 
         // 报价明细不能为空（没有明细的报价单无法发送/审核）
@@ -1244,6 +1290,26 @@ public class QuotationServiceImpl implements IQuotationService {
                         .eq(SalesQuotationItem::getQuotationId, quotation.getQuotationId()));
         if (itemCount == null || itemCount == 0) {
             throw new BusinessException("报价明细不能为空，请先添加报价明细");
+        }
+    }
+
+    /**
+     * 报价单明细金额合计（DEV-1116：报错提示区分用）
+     */
+    private java.math.BigDecimal sumItemAmounts(Long quotationId) {
+        try {
+            java.util.List<SalesQuotationItem> items = quotationItemMapper.selectList(
+                    new LambdaQueryWrapper<SalesQuotationItem>()
+                            .eq(SalesQuotationItem::getQuotationId, quotationId));
+            java.math.BigDecimal sum = java.math.BigDecimal.ZERO;
+            if (items != null) {
+                for (SalesQuotationItem it : items) {
+                    sum = sum.add(it.getAmount() != null ? it.getAmount() : java.math.BigDecimal.ZERO);
+                }
+            }
+            return sum;
+        } catch (Exception e) {
+            return java.math.BigDecimal.ZERO;
         }
     }
 }
