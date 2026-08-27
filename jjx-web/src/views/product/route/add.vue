@@ -78,7 +78,7 @@
 
 <script setup lang="ts">
 defineOptions({
-  name: 'ProductRoutingAdd',
+  name: 'EngineeringRoutingAdd',
 })
 
 import { ref, reactive, onMounted } from 'vue'
@@ -89,8 +89,8 @@ import { productRouteApi } from '@/api/product/routing'
 import type { StandardProcessOption, ProductItem } from '@/types/product'
 import type {
   ProductRouteFormData,
-  ProductRoutingItemDTO,
-  ProductRoutingItemVO,
+  EngineeringRoutingItemDTO,
+  EngineeringRoutingItemVO,
 } from '@/types/product/routing'
 import RouteItemIconEditor from './components/RouteItemIconEditor.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
@@ -170,7 +170,7 @@ const handleSubmit = async () => {
     }
 
     // 将 VO 转换为 DTO（只保留后端需要的字段）
-    const itemDTOs: ProductRoutingItemDTO[] = items.map((item: ProductRoutingItemVO) => ({
+    const itemDTOs: EngineeringRoutingItemDTO[] = items.map((item: EngineeringRoutingItemVO) => ({
       itemId: item.itemId,
       routingId: item.routingId,
       groupId: item.groupId,
@@ -183,6 +183,7 @@ const handleSubmit = async () => {
       customProcessParams: item.customProcessParams,
       description: item.description,
       processCategory: item.processCategory,
+      majorCategory: item.majorCategory,
     }))
 
     submitLoading.value = true
@@ -199,7 +200,7 @@ const handleSubmit = async () => {
       items: itemDTOs as any,
     })
     ElMessage.success('新增成功')
-    router.push('/product/route')
+    router.push('/engineering/route')
   } catch (error) {
     console.error('新增工艺路线失败:', error)
   } finally {
@@ -209,7 +210,7 @@ const handleSubmit = async () => {
 
 // 返回
 const handleBack = () => {
-  router.push('/product/route')
+  router.push('/engineering/route')
 }
 
 onMounted(() => {

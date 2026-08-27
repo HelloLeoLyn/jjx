@@ -46,6 +46,28 @@
           <el-button @click="handleReset">重置</el-button>
         </div>
 
+        <!-- 已选择角色展示 -->
+        <div class="selected-roles" :class="{ 'is-empty': allSelectedIds.length === 0 }">
+          <span class="selected-roles-label">已选择角色</span>
+          <div class="selected-roles-tags">
+            <template v-if="allSelectedIds.length > 0">
+              <el-tag
+                v-for="rid in allSelectedIds"
+                :key="rid"
+                size="small"
+                class="role-tag"
+                :type="getRoleStatus(rid) === '1' ? 'info' : 'primary'"
+                effect="light"
+                closable
+                @close="removeSelectedRole(rid)"
+              >
+                {{ getRoleName(rid) }}
+              </el-tag>
+            </template>
+            <span v-else class="empty-tip">暂未选择角色</span>
+          </div>
+        </div>
+
         <!-- 角色表格 -->
         <div class="role-table-wrapper">
           <div class="table-header">
@@ -67,7 +89,8 @@
             :data="tableData"
             border
             row-key="roleId"
-            @selection-change="handleSelectionChange"
+            @select="handleSelect"
+            @select-all="handleSelectAll"
           >
             <el-table-column type="selection" width="55" :selectable="checkSelectable" />
 
@@ -124,6 +147,7 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Check } from '@element-plus/icons-vue'
 import { userApi } from '@/api/system/user'
+import { roleApi } from '@/api/system/role'
 import { type SysUserRoleVO, type SysRole, type SysUserRoleQuery } from '@/types/system'
 
 // Props
@@ -170,6 +194,29 @@ const tableRef = ref()
 // 所有已选中的角色ID（跨页保存）
 const allSelectedIds = ref<number[]>([])
 
+// 全量角色映射（roleId -> 角色），用于展示已选角色名称
+const roleMap = ref<Map<number, SysRole>>(new Map())
+
+// 获取角色名称
+const getRoleName = (roleId: number) => {
+  return roleMap.value.get(roleId)?.roleName || `角色#${roleId}`
+}
+
+// 获取角色状态（用于停用角色置灰）
+const getRoleStatus = (roleId: number) => {
+  return roleMap.value.get(roleId)?.status ?? '0'
+}
+
+// 移除已选角色（点击标签关闭按钮）
+const removeSelectedRole = (roleId: number) => {
+  allSelectedIds.value = allSelectedIds.value.filter((id) => id !== roleId)
+  // 同步取消当前页表格中的勾选
+  const row = tableData.value.find((item) => item.roleId === roleId)
+  if (tableRef.value && row) {
+    tableRef.value.toggleRowSelection(row, false)
+  }
+}
+
 // 保存状态
 const saving = ref(false)
 
@@ -181,30 +228,31 @@ const checkSelectable = (row: SysUserRoleVO) => {
   return row.roleStatus === '0'
 }
 
-// 处理表格选择变化
-const handleSelectionChange = (selection: SysRole[]) => {
+// 单行勾选/取消（仅用户手动操作时触发，数据刷新不会触发）
+const handleSelect = (selection: SysRole[], row: SysRole) => {
+  if (row.roleId === undefined) return
+  const isChecked = selection.some((item) => item.roleId === row.roleId)
+  if (isChecked) {
+    if (!allSelectedIds.value.includes(row.roleId)) {
+      allSelectedIds.value.push(row.roleId)
+    }
+  } else {
+    allSelectedIds.value = allSelectedIds.value.filter((id) => id !== row.roleId)
+  }
+}
+
+// 全选/取消全选（仅当前页）
+const handleSelectAll = (selection: SysRole[]) => {
+  const currentPageIds = tableData.value
+    .map((item) => item.roleId)
+    .filter((id): id is number => id !== undefined)
   const selectedIds = selection
     .map((item) => item.roleId)
     .filter((id): id is number => id !== undefined)
 
-  // 获取当前页所有角色的ID
-  const currentPageIds = tableData.value
-    .map((item) => item.roleId)
-    .filter((id): id is number => id !== undefined)
-
-  // 从全局选中中移除当前页的所有ID
+  // 从全局选中中移除当前页的所有ID，再加回当前页选中的ID
   allSelectedIds.value = allSelectedIds.value.filter((id) => !currentPageIds.includes(id))
-
-  // 添加当前页选中的ID
   allSelectedIds.value.push(...selectedIds)
-}
-
-// 从API数据中提取已选择的角色ID（userId不为null的）
-const extractSelectedRoleIds = (data: SysUserRoleVO[]): number[] => {
-  return data
-    .filter((item) => item.userId !== null && item.userId !== undefined && item.userId > 0)
-    .map((item) => item.roleId)
-    .filter((id): id is number => id !== undefined)
 }
 
 // 恢复当前页的选中状态
@@ -242,10 +290,6 @@ const loadRoleList = async () => {
       tableData.value = records
       total.value = res.data.total || 0
 
-      // 提取已选中的角色ID
-      const selectedIdsFromApi = extractSelectedRoleIds(records)
-      allSelectedIds.value = [...selectedIdsFromApi]
-
       // 延迟执行选中操作，确保表格已渲染
       setTimeout(() => {
         restoreCurrentPageSelection()
@@ -259,6 +303,33 @@ const loadRoleList = async () => {
   } finally {
     tableLoading.value = false
     isLoading = false
+  }
+}
+
+// 加载全量角色映射（用于展示已选角色名称）
+const loadRoleOptions = async () => {
+  try {
+    const res = await roleApi.optionselect()
+    const roles = res.data || []
+    roleMap.value = new Map(roles.map((role) => [role.roleId!, role]))
+  } catch (error) {
+    console.error('获取角色选项失败:', error)
+  }
+}
+
+// 获取用户已分配的全部角色ID（全量，作为跨页勾选基准）
+const loadUserRoleIds = async () => {
+  if (!props.userId || props.userId <= 0) return
+  try {
+    const res = await userApi.getInfo(props.userId)
+    if (res.code === 200 && res.data) {
+      allSelectedIds.value = (res.data.roleIds || []).filter((id): id is number => id !== undefined)
+    } else {
+      ElMessage.error(res.msg || '获取用户角色失败')
+    }
+  } catch (error) {
+    console.error('获取用户角色失败:', error)
+    ElMessage.error('获取用户角色失败')
   }
 }
 
@@ -365,6 +436,9 @@ const initData = async () => {
 
   try {
     resetState()
+    // 先加载全量角色映射与用户已选角色，再加载第一页（翻页/搜索时只刷表格，不再重置选择）
+    await loadRoleOptions()
+    await loadUserRoleIds()
     await loadRoleList()
   } catch (error) {
     console.error('初始化数据失败:', error)
@@ -393,6 +467,45 @@ watch(
 <style scoped lang="scss">
 .assign-role-content {
   min-height: 400px;
+
+  .selected-roles {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    border: 1px dashed #dcdfe6;
+    border-radius: 4px;
+    background-color: #fafafa;
+
+    .selected-roles-label {
+      flex-shrink: 0;
+      font-size: 13px;
+      color: #606266;
+      line-height: 24px;
+      font-weight: 500;
+    }
+
+    .selected-roles-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+
+      .role-tag {
+        cursor: pointer;
+      }
+    }
+
+    .empty-tip {
+      font-size: 13px;
+      color: #c0c4cc;
+      line-height: 24px;
+    }
+
+    &.is-empty {
+      border-style: dashed;
+    }
+  }
 
   .search-bar {
     margin-bottom: 20px;

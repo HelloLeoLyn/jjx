@@ -35,6 +35,14 @@ public interface ISysUserService extends IService<SysUser> {
     PageResult<SysUserVO> selectUserVOList(SysUser user, Integer pageNum, Integer pageSize);
 
     /**
+     * 按条件查询全部用户（不分页，导出用）
+     *
+     * @param user 查询条件
+     * @return 用户列表
+     */
+    java.util.List<SysUser> selectAllUserList(SysUser user);
+
+    /**
      * 根据条件分页查询已分配用户角色列表
      *
      * @param user 用户信息
@@ -251,5 +259,13 @@ public interface ISysUserService extends IService<SysUser> {
     SysUser findByPhone(String phone, Long tenantId);
 
     SysUser registerByPhone(String phone, Long tenantId);
+
+    /**
+     * 按角色标识前缀查询用户列表（2026-08-11 销售负责人等下拉用，不依赖角色ID）
+     *
+     * @param roleKeyPrefix 角色标识前缀，如 "sales"
+     * @return 用户列表
+     */
+    java.util.List<SysUser> selectUsersByRoleKeyPrefix(String roleKeyPrefix);
 
 }

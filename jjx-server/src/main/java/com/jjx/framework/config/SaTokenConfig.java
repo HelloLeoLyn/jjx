@@ -31,13 +31,13 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         "/auth/captchaImage",
                         "/sessions/auth",
                         "/sessions/sms",
-                        "/api/test/**",
                         "/swagger-ui/**",
                         "/order/export",
                         "/swagger-resources/**",
                         "/v3/api-docs/**",
                         "/doc.html",
                         "/webjars/**",
+                        "/uploads/**",
                         "/error"
                 );
     }

@@ -13,7 +13,7 @@ import com.jjx.product.domain.converter.ProductStandardProcessConverter;
 import com.jjx.product.domain.dto.ProductStandardProcessQueryDTO;
 import com.jjx.product.domain.entity.ProductStandardProcess;
 import com.jjx.product.domain.vo.ProductStandardProcessVO;
-import com.jjx.product.mapper.ProductRoutingItemMapper;
+import com.jjx.product.mapper.EngineeringRoutingItemMapper;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.product.service.IProductStandardProcessService;
 import com.jjx.system.service.SysDictService;
@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import com.jjx.system.annotation.Event;
 
 /**
  * 产品标准工序服务实现类
@@ -37,7 +38,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         implements IProductStandardProcessService {
 
     private final ProductStandardProcessMapper processMapper;
-    private final ProductRoutingItemMapper routingItemMapper;
+    private final EngineeringRoutingItemMapper routingItemMapper;
     private final ProductStandardProcessConverter productStandardProcessConverter;
     private final SysDictService dictService;
 
@@ -54,6 +55,9 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         // 设置默认值
         if (process.getIsEnabled() == null) {
             process.setIsEnabled(1);
+        }
+        if (process.getHasIndex() == null) {
+            process.setHasIndex(0);
         }
         if (process.getDisplayOrder() == null) {
             process.setDisplayOrder(0);
@@ -97,19 +101,20 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
             }
         }
 
-        // 更新字段
-        existing.setProcessCode(process.getProcessCode());
-        existing.setProcessName(process.getProcessName());
-        existing.setProcessType(process.getProcessType());
-        existing.setProcessCategory(process.getProcessCategory());
-        existing.setStandardLaborHours(process.getStandardLaborHours());
-        existing.setStandardMachineHours(process.getStandardMachineHours());
-        existing.setProcessParamTemplate(process.getProcessParamTemplate());
-        existing.setSkillRequirement(process.getSkillRequirement());
-        existing.setEquipmentType(process.getEquipmentType());
-        existing.setQualityStandard(process.getQualityStandard());
-        existing.setDescription(process.getDescription());
-        existing.setDisplayOrder(process.getDisplayOrder());
+        // 更新字段（null 安全：只更新传入的非空字段，2026-08-09 支持只改 description）
+        if (process.getProcessCode() != null) existing.setProcessCode(process.getProcessCode());
+        if (process.getProcessName() != null) existing.setProcessName(process.getProcessName());
+        if (process.getProcessType() != null) existing.setProcessType(process.getProcessType());
+        if (process.getProcessCategory() != null) existing.setProcessCategory(process.getProcessCategory());
+        if (process.getStandardLaborHours() != null) existing.setStandardLaborHours(process.getStandardLaborHours());
+        if (process.getStandardMachineHours() != null) existing.setStandardMachineHours(process.getStandardMachineHours());
+        if (process.getProcessParamTemplate() != null) existing.setProcessParamTemplate(process.getProcessParamTemplate());
+        if (process.getSkillRequirement() != null) existing.setSkillRequirement(process.getSkillRequirement());
+        if (process.getEquipmentType() != null) existing.setEquipmentType(process.getEquipmentType());
+        if (process.getQualityStandard() != null) existing.setQualityStandard(process.getQualityStandard());
+        if (process.getDescription() != null) existing.setDescription(process.getDescription());
+        if (process.getDisplayOrder() != null) existing.setDisplayOrder(process.getDisplayOrder());
+        if (process.getHasIndex() != null) existing.setHasIndex(process.getHasIndex());
         existing.setUpdateTime(LocalDateTime.now());
 
         // JSON字段处理：空字符串转为null，避免MySQL JSON类型报错
@@ -127,6 +132,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     }
 
     @Override
+    @Event(value = "product.standard_process.deleted", bizId = "#processId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void deleteProcess(Long processId) {
         ProductStandardProcess process = getById(processId);
@@ -203,6 +209,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     // ==================== 状态管理 ====================
 
     @Override
+    @Event(value = "product.standard_process.status_updated", bizId = "#processId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void setEnabled(Long processId, Boolean enabled) {
         ProductStandardProcess process = getById(processId);
@@ -364,7 +371,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     @Override
     public boolean canDelete(Long processId) {
         // 检查是否被工艺路线引用
-        // TODO: 实现引用检查，需要 ProductRoutingItemMapper 中的方法
+        // TODO: 实现引用检查，需要 EngineeringRoutingItemMapper 中的方法
         // return routingItemMapper.countByProcessId(processId) == 0;
         return true;
     }
@@ -421,5 +428,114 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         }
 
         return wrapper;
+    }
+
+    // ==================== 导入（2026-08-08） ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public com.jjx.inventory.dto.vo.MaterialImportResultVO importStandardProcesses(
+            java.util.List<com.jjx.product.dto.imports.StandardProcessImportDTO> importList) {
+        com.jjx.inventory.dto.vo.MaterialImportResultVO result = new com.jjx.inventory.dto.vo.MaterialImportResultVO();
+        if (importList == null || importList.isEmpty()) {
+            return result;
+        }
+
+        // 文件内重复检测（工序编码）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (com.jjx.product.dto.imports.StandardProcessImportDTO dto : importList) {
+            String code = dto.getProcessCode() == null ? "" : dto.getProcessCode().trim();
+            dupCountMap.merge(code, 1, Integer::sum);
+        }
+
+        for (int i = 0; i < importList.size(); i++) {
+            com.jjx.product.dto.imports.StandardProcessImportDTO dto = importList.get(i);
+            int excelRow = i + 2; // 第1行表头，数据从第2行开始
+            String code = dto.getProcessCode() == null ? "" : dto.getProcessCode().trim();
+            try {
+                // 必填校验
+                if (code.isEmpty()) {
+                    result.addFail(excelRow, dto.getProcessName(), "工序编码不能为空");
+                    continue;
+                }
+                if (dto.getProcessName() == null || dto.getProcessName().trim().isEmpty()) {
+                    result.addFail(excelRow, code, "工序名称不能为空");
+                    continue;
+                }
+                // 文件内重复
+                if (dupCountMap.getOrDefault(code, 0) > 1) {
+                    result.addFail(excelRow, code, "文件内重复行（工序编码出现 " + dupCountMap.get(code) + " 次），请删除重复行或合并");
+                    continue;
+                }
+                // 类型/类别枚举校验
+                String type = dto.getProcessType() == null ? "" : dto.getProcessType().trim();
+                if (!type.isEmpty() && !com.jjx.product.enums.ProcessTypeEnum.isValidCode(type)) {
+                    result.addFail(excelRow, code, "工序类型不合法: " + type + "（MAIN_PAD/UP_LINE/DOWN_LINE/PRINTING/CUTTING/LAMINATING/TESTING/PACKAGING）");
+                    continue;
+                }
+                String category = dto.getProcessCategory() == null ? "" : dto.getProcessCategory().trim();
+                if (!category.isEmpty() && !com.jjx.product.enums.ProcessCategoryEnum.isValidCode(category)) {
+                    result.addFail(excelRow, code, "工序类别不合法: " + category + "（PREPARATION/MAIN/FINISHING/QUALITY）");
+                    continue;
+                }
+                // 工时/机时/排序数字解析
+                java.math.BigDecimal laborHours = parseDecimal(dto.getStandardLaborHours());
+                java.math.BigDecimal machineHours = parseDecimal(dto.getStandardMachineHours());
+                Integer displayOrder = parseInteger(dto.getDisplayOrder());
+                Integer isEnabled = parseInteger(dto.getIsEnabled());
+                if (isEnabled == null) isEnabled = 1;
+                if (isEnabled != 0 && isEnabled != 1) {
+                    result.addFail(excelRow, code, "启用列只能填 1 或 0");
+                    continue;
+                }
+
+                // 库内判重（按工序编码）
+                Long existCount = processMapper.selectCount(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.ProductStandardProcess>()
+                                .eq(com.jjx.product.domain.entity.ProductStandardProcess::getProcessCode, code));
+                if (existCount != null && existCount > 0) {
+                    result.setSkipCount(result.getSkipCount() + 1);
+                    continue;
+                }
+
+                com.jjx.product.domain.entity.ProductStandardProcess p = new com.jjx.product.domain.entity.ProductStandardProcess();
+                p.setProcessCode(code);
+                p.setProcessName(dto.getProcessName().trim());
+                p.setProcessType(type.isEmpty() ? null : type);
+                p.setProcessCategory(category.isEmpty() ? null : category);
+                p.setStandardLaborHours(laborHours);
+                p.setStandardMachineHours(machineHours);
+                p.setProcessParamTemplate(dto.getProcessParamTemplate());
+                p.setSkillRequirement(dto.getSkillRequirement());
+                p.setEquipmentType(dto.getEquipmentType());
+                p.setQualityStandard(dto.getQualityStandard());
+                p.setDescription(dto.getDescription());
+                p.setDisplayOrder(displayOrder == null ? 0 : displayOrder);
+                p.setIsEnabled(isEnabled);
+                processMapper.insert(p);
+                result.setSuccessCount(result.getSuccessCount() + 1);
+            } catch (Exception e) {
+                result.addFail(excelRow, code, "导入失败: " + e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    private java.math.BigDecimal parseDecimal(String v) {
+        if (v == null || v.trim().isEmpty()) return null;
+        try {
+            return new java.math.BigDecimal(v.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer parseInteger(String v) {
+        if (v == null || v.trim().isEmpty()) return null;
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

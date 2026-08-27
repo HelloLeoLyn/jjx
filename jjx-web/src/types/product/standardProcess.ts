@@ -30,6 +30,8 @@ export interface StandardProcessFormData {
   qualityStandard: string
   description: string
   icon?: string
+  /** 是否带下标：0-不带,1-带 */
+  hasIndex: number
   isEnabled: number
   displayOrder: number
 }
@@ -55,6 +57,8 @@ export interface StandardProcessItem {
   qualityStandard: string
   description: string
   icon?: string
+  /** 是否带下标：0-不带,1-带 */
+  hasIndex: number
   isEnabled: number
   isEnabledName: string
   isEnabledTagType: string

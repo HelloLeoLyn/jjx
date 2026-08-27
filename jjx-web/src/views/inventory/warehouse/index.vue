@@ -52,8 +52,8 @@
           <template #default="{ row }">
             <el-switch
               v-model="row.status"
-              active-value="0"
-              inactive-value="1"
+              active-value="1"
+              inactive-value="0"
               @change="handleStatusChange(row)"
             />
           </template>
@@ -61,9 +61,9 @@
         <el-table-column label="创建时间" prop="createTime" width="160" />
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
+            <el-button link type="primary" v-hasPermi="['inventory:warehouse:edit']" @click="handleEdit(row)">编辑</el-button>
             <el-button link type="primary" @click="handleLocation(row)">库位</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="danger" v-hasPermi="['inventory:warehouse:delete']" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -130,8 +130,8 @@
 
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
-            <el-radio value="0">正常</el-radio>
-            <el-radio value="1">停用</el-radio>
+            <el-radio value="1">正常</el-radio>
+            <el-radio value="0">停用</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -217,7 +217,7 @@ const form = reactive<WarehouseUpdateDTO>({
   manager: '',
   contactPhone: '',
   sortOrder: 0,
-  status: '0',
+  status: '1',
   remark: '',
 })
 

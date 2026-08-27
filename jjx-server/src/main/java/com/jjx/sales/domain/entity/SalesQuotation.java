@@ -1,6 +1,7 @@
 package com.jjx.sales.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -11,6 +12,9 @@ import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
+
+import com.jjx.common.annotation.QuotationItemsValid;
 
 /**
  * 销售报价单实体类
@@ -19,6 +23,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("sales_quotation")
+@QuotationItemsValid
 public class SalesQuotation extends BaseEntity {
 
     /**
@@ -27,10 +32,24 @@ public class SalesQuotation extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long quotationId;
 
+    /** 链路追踪ID */
+    private String traceId;
+
+    /** 来源询价单号（非表字段，查询时按 traceId 关联填充） */
+    @TableField(exist = false)
+    private String sourceInquiryNo;
+
+    /** 查询参数：来源询价单号（非表字段，按 traceId 子查询过滤） */
+    @TableField(exist = false)
+    private String inquiryNo;
+
     /**
      * 报价单编号
      */
     private String quotationNo;
+
+    /** 报价单类型: 1标准品 2样品 */
+    private Integer quotationType;
 
     /**
      * 客户ID
@@ -73,9 +92,9 @@ public class SalesQuotation extends BaseEntity {
     private BigDecimal exchangeRate;
 
     /**
-     * 报价状态 (draft: 草稿, sent: 已发送, accepted: 已接受, rejected: 已拒绝, expired: 已过期)
+     * 报价状态: 0草稿,1已发送,2已确认,3已拒绝,4已过期,5待审核,6已审核,8改单,9已完成
      */
-    private String quotationStatus;
+    private Integer quotationStatus;
 
     /**
      * 小计金额
@@ -166,6 +185,18 @@ public class SalesQuotation extends BaseEntity {
      * 转为订单时间
      */
     private LocalDateTime convertTime;
+
+    /** 转成单类型（非表字段：1销售订单/2样品单，空=未转单） */
+    @TableField(exist = false)
+    private Integer convertedOrderType;
+
+    /** 转成单号（非表字段） */
+    @TableField(exist = false)
+    private String convertedOrderNo;
+
+    /** 报价单明细（非表字段，保存/查询时处理） */
+    @TableField(exist = false)
+    private List<SalesQuotationItem> items;
 
     /**
      * 删除标志 (0: 正常, 1: 删除)

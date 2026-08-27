@@ -1,82 +1,32 @@
 /**
- * 系统登录日志表 sys_login_log
+ * 登录日志表 sys_login_log（对齐后端 SysLoginLog 实体）
  */
 export interface SysLoginLog {
-  /**
-   * 访问ID
-   */
-  loginId?: number
-
-  /**
-   * 用户账号
-   */
-  userName?: string
-
-  /**
-   * 用户ID
-   */
+  id?: number
   userId?: number
-
-  /**
-   * 登录IP地址
-   */
-  ipAddress?: string
-
-  /**
-   * 登录地点
-   */
+  /** 用户账号 */
+  username?: string
+  tenantId?: number
+  /** 登录类型（如 PASSWORD / SMS 等） */
+  loginType?: string
+  /** 登录IP */
+  loginIp?: string
+  /** 登录地点 */
   loginLocation?: string
-
-  /**
-   * 浏览器类型
-   */
-  browser?: string
-
-  /**
-   * 操作系统
-   */
-  os?: string
-
-  /**
-   * 登录状态（0成功 1失败）
-   */
-  status?: number
-
-  /**
-   * 提示消息
-   */
-  msg?: string
-
-  /**
-   * 登录时间
-   */
+  userAgent?: string
+  /** 登录时间 */
   loginTime?: string
-
-  /**
-   * 创建时间
-   */
-  createTime?: string
-
-  /**
-   * 更新时间
-   */
-  updateTime?: string
-
-  /**
-   * 删除标志（0代表存在 2代表删除）
-   */
-  deleted?: number
+  /** 登录状态 0失败 1成功(YesNoEnum) */
+  status?: number
+  /** 失败原因/提示消息 */
+  failReason?: string
 }
 
-/**
- * 登录日志查询参数
- */
+/** 登录日志查询参数 */
 export interface SysLoginLogQuery {
   pageNum?: number
   pageSize?: number
-  userName?: string
-  ipAddress?: string
+  username?: string
+  loginType?: string
   status?: number
-  startTime?: string
-  endTime?: string
 }

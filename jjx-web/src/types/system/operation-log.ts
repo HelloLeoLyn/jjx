@@ -1,124 +1,47 @@
-import type { st } from 'vue-router/dist/router-CWoNjPRp.mjs'
-
 /**
- * 操作日志记录表 sys_operation_log
+ * 操作日志表 sys_oper_log（对齐后端 SysOperLog 实体）
  */
-export interface SysOperationLog {
-  /**
-   * 日志主键
-   */
-  logId?: number
-
-  /**
-   * 日志标题
-   */
-  title?: string
-
-  /**
-   * 业务类型（0其它 1新增 2修改 3删除 4授权 5导出 6导入 7强退 8生成代码 9清空数据）
-   */
-  businessType?: string
-
-  /**
-   * 方法名称
-   */
-  method?: string
-
-  /**
-   * 请求方式
-   */
-  requestMethod?: string
-
-  /**
-   * 操作类别（0其它 1后台用户 2手机端用户）
-   */
-  operatorType?: number
-
-  /**
-   * 操作人员ID
-   */
-  operatorId?: number
-
-  /**
-   * 操作人员名称
-   */
-  operatorName?: string
-
-  /**
-   * 部门名称
-   */
-  deptName?: string
-
-  /**
-   * 请求URL
-   */
-  requestUrl?: string
-
-  /**
-   * 主机地址
-   */
-  requestIp?: string
-
-  /**
-   * 操作地点
-   */
-  requestLocation?: string
-
-  /**
-   * 请求参数
-   */
-  requestParam?: string
-
-  /**
-   * 返回参数
-   */
-  jsonResult?: string
-
-  /**
-   * 操作状态（0正常 1异常）
-   */
-  status?: number
-
-  /**
-   * 错误消息
-   */
-  errorMsg?: string
-
-  /**
-   * 操作时间
-   */
-  operationTime?: string
-
-  /**
-   * 耗时（毫秒）
-   */
+export interface SysOperLog {
+  id?: number
+  userId?: number
+  username?: string
+  realName?: string
+  tenantId?: number
+  /** 模块名称 */
+  module?: string
+  /** 业务类型 0其它 1新增 2修改 3删除 4授权 5导出 6导入 7强退 8生成代码 9清空数据 */
+  businessType?: number
+  /** 请求URL */
+  operUrl?: string
+  /** 操作IP */
+  operIp?: string
+  /** 请求参数 */
+  operParam?: string
+  /** 业务类型标识 */
+  bizType?: string
+  /** 业务ID */
+  bizId?: string
+  /** 追踪ID */
+  traceId?: string
+  /** 详情 */
+  detail?: string
+  /** 耗时(ms) */
   costTime?: number
-
-  /**
-   * 创建时间
-   */
+  /** 操作状态 0失败 1成功(YesNoEnum) */
+  status?: number
+  /** 错误信息 */
+  errorMsg?: string
+  userAgent?: string
+  /** 创建时间 */
   createTime?: string
-
-  /**
-   * 更新时间
-   */
-  updateTime?: string
-
-  /**
-   * 删除标志（0代表存在 2代表删除）
-   */
-  deleted?: number
 }
 
-/**
- * 操作日志查询参数
- */
-export interface SysOperationLogQuery {
+/** 操作日志查询参数 */
+export interface SysOperLogQuery {
   pageNum?: number
   pageSize?: number
   module?: string
-  businessType?: string
-  operatorName?: string
+  bizType?: string
+  traceId?: string
   status?: number
-  time: string[]
 }

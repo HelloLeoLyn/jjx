@@ -28,6 +28,9 @@ public class PurchaseOrderDTO {
     @Size(max = 50, message = "采购订单号长度不能超过50个字符")
     private String orderNo;
 
+    /** 链路追踪ID（DEV-568） */
+    private String traceId;
+
     /**
      * 供应商ID
      */
@@ -42,9 +45,19 @@ public class PurchaseOrderDTO {
     private String supplierName;
 
     /**
-     * 订单类型（0正常/1紧急）
+     * 订单类型（normal正常/urgent紧急）
      */
-    private Integer orderType;
+    private String orderType;
+
+    /**
+     * 计划状态: 0普通/1计划单/2已转正式（DEV-664）
+     */
+    private Integer planStatus;
+
+    /**
+     * 是否存为计划单（DEV-664）：true 时跳过供应商/明细强校验，plan_status=1
+     */
+    private Boolean saveAsPlan;
 
     /**
      * 订单日期

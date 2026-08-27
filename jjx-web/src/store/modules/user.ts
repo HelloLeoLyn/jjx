@@ -41,19 +41,19 @@ export const useUserStore = defineStore('user', {
     // 判断是否有权限
     hasPermission: (state) => (permission: string) => {
       if (!permission) return true
-      if (state.permissions.includes('*:*:*')) return true
+      if (state.permissions.includes('*') || state.permissions.includes('*:*:*')) return true
       return state.permissions.includes(permission)
     },
 
     // 判断是否有任一权限
     hasAnyPermission: (state) => (permissions: string[]) => {
-      if (state.permissions.includes('*:*:*')) return true
+      if (state.permissions.includes('*') || state.permissions.includes('*:*:*')) return true
       return permissions.some((p) => state.permissions.includes(p))
     },
 
     // 判断是否有所有权限
     hasAllPermissions: (state) => (permissions: string[]) => {
-      if (state.permissions.includes('*:*:*')) return true
+      if (state.permissions.includes('*') || state.permissions.includes('*:*:*')) return true
       return permissions.every((p) => state.permissions.includes(p))
     },
   },
@@ -142,6 +142,14 @@ export const useUserStore = defineStore('user', {
 
           // 保存用户信息
           this.setUserInfo(userInfo)
+
+          // DEV-1018：刷新后从 /sessions/current 恢复权限（LoginVO 含 permissions），
+          // 避免 permission.ts 恢复失败后兑底 '*' 导致权限指令全部放行
+          if (res.data.permissions && Array.isArray(res.data.permissions) && res.data.permissions.length > 0) {
+            this.setPermissions(res.data.permissions)
+          } else if (userInfo?.permissions && Array.isArray(userInfo.permissions) && userInfo.permissions.length > 0) {
+            this.setPermissions(userInfo.permissions)
+          }
 
           return userInfo
         }

@@ -1,7 +1,9 @@
 package com.jjx.purchase.service;
 
+import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.purchase.domain.dto.POrderStatusDTO;
+import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.dto.PurchaseOrderApprovalDTO;
 import com.jjx.purchase.domain.dto.PurchaseOrderDTO;
 import com.jjx.purchase.domain.dto.PurchaseOrderQueryDTO;
@@ -12,12 +14,14 @@ import com.jjx.purchase.domain.vo.PurchaseOrderVO;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.List;
 
 /**
  * 采购订单服务接口
  * 提供采购订单的业务逻辑操作
  */
-public interface IPurchaseOrderService {
+public interface IPurchaseOrderService extends IService<PurchaseOrder> {
 
     /**
      * 查询采购订单列表
@@ -237,7 +241,69 @@ public interface IPurchaseOrderService {
     void cancelOrder(Long orderId);
 
     /**
+     * 采购退货
+     * @param orderId 采购订单ID
+     * @param reason 退货原因
+     * @param materialId 退货物料ID（0=全部）
+     * @param quantity 退货数量
+     */
+    void returnGoods(Long orderId, String reason, Long materialId, Integer quantity);
+
+    /**
      * 修改订单状态
      */
     void updateOrderStatus(POrderStatusDTO dto);
+
+    /**
+     * 导出采购订单PDF（单张表单）
+     */
+    byte[] exportPdf(Long orderId);
+
+    /**
+     * 确认计划单转正式采购单（DEV-664）
+     *
+     * @param orderId  计划单ID
+     * @param supplierId   供应商ID
+     * @param supplierName 供应商名称
+     * @return 更新行数
+     */
+    /**
+     * 确认计划单转正式（计划单体系已弃用，2026-08-18：前端无入口，待后续清理或重构）
+     *
+     * @deprecated 计划单体系（plan_status=1）无前端确认入口，已弃用
+     */
+    @Deprecated
+    int confirmPlan(Long orderId, Long supplierId, String supplierName);
+
+    /**
+     * 获取采购计划建议（DEV-664：安全库存预警 + 订单缺料预警）
+     * 供计划工作台"从预警加载"
+     */
+    List<Map<String, Object>> getPlanSuggestions();
+
+    /**
+     * 092定稿：缺料预警/采购建议一键生成采购计划单（物料+数量+建议交期自动带）
+     * @return 新计划单ID
+     */
+    /**
+     * @deprecated 计划单体系已弃用（2026-08-18），前端无调用
+     */
+    @Deprecated
+    Long createPlanFromSuggestions();
+
+    /**
+     * 查询物料在途采购量（2026-08-18 P1-B：含草稿单）
+     */
+    java.util.Map<Long, BigDecimal> getInTransitByMaterials(java.util.List<Long> materialIds);
+
+    /**
+     * DEV-996：按选中的预警一键生成采购计划单（物料+缺口数量自动带），生成后自动回写预警（batchProcessAlert）
+     * @param alertIds 选中的预警ID列表
+     * @return 新计划单ID
+     */
+    /**
+     * @deprecated 计划单体系已弃用（2026-08-18），预警页转采购入口已移除
+     */
+    @Deprecated
+    Long createPlanFromAlerts(java.util.List<Long> alertIds);
 }

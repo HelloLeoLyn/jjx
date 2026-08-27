@@ -69,10 +69,9 @@ public interface InventoryMaterialService extends IService<InventoryMaterial> {
      *
      * @param importList 导入的物料数据列表
      * @param operName 操作人
-     * @return 导入结果信息
+     * @return 导入结果（DEV-702：结构化返回含失败明细，前端可下载）
      */
-    String importMaterial(List<MaterialImportDTO> importList, String operName);
-
+    com.jjx.inventory.dto.vo.MaterialImportResultVO importMaterial(List<MaterialImportDTO> importList, String operName);
     List<MaterialVO> selectList(MaterialQueryDTO queryDTO);
 
     /** 生成编码 */

@@ -1,7 +1,10 @@
 package com.jjx.inventory.controller;
 
 import com.jjx.common.core.result.Result;
+import com.jjx.inventory.dto.query.StockQueryDTO;
+import com.jjx.inventory.dto.vo.StockSummaryVO;
 import com.jjx.inventory.service.InventoryReportService;
+import com.jjx.inventory.service.InventoryStockService;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,6 +27,14 @@ import java.util.Map;
 public class InventoryReportController {
 
     private final InventoryReportService reportService;
+    private final InventoryStockService stockService;
+
+    @GetMapping("/stock-summary")
+    @Operation(summary = "库存概览统计")
+    @SaCheckPermission("inventory:report:view")
+    public Result<StockSummaryVO> stockSummary(StockQueryDTO query) {
+        return Result.success(stockService.getSummary(query));
+    }
 
     @GetMapping("/turnover")
     @Operation(summary = "库存周转率统计")

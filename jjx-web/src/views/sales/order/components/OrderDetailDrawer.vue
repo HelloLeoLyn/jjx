@@ -1,11 +1,11 @@
 <!-- components/OrderDetailDrawer.vue -->
 <template>
-  <el-drawer
+  <el-dialog
     v-model="drawerVisible"
     :title="`订单详情 - ${orderDetail?.orderNo || ''}`"
-    size="60%"
-    direction="rtl"
+    width="70%"
     :close-on-click-modal="false"
+    destroy-on-close
     @close="handleClose"
   >
     <div v-loading="loading" class="order-detail">
@@ -277,17 +277,34 @@
           </el-timeline>
           <el-empty v-else description="暂无操作历史" :image-size="80" />
         </el-card>
+
+        <!-- 相关文档 -->
+        <el-card class="info-card" shadow="never">
+          <template #header>
+            <span>相关文档</span>
+          </template>
+          <AttachmentPanel
+            v-if="props.orderId"
+            biz-type="order"
+            :biz-id="props.orderId"
+          />
+        </el-card>
       </template>
 
       <template v-else-if="!loading">
         <el-empty description="未找到订单信息" />
       </template>
     </div>
-  </el-drawer>
+
+    <template #footer>
+      <el-button type="primary" @click="drawerVisible = false">关 闭</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import { ElMessage } from 'element-plus'
 import { orderApi } from '@/api/sales/order'
 import { salesLogApi } from '@/api/sales/log'
@@ -345,8 +362,8 @@ const fetchOrderDetail = async () => {
     orderDetail.value = response.data
 
     // 获取订单明细
-    if (response.data.items) {
-      orderItems.value = response.data.items
+    if ((response as any).data.items) {
+      orderItems.value = (response as any).data.items
     }
   } catch (error) {
     console.error('获取订单详情失败', error)

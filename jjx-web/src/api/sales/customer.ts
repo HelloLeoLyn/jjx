@@ -73,7 +73,7 @@ export const customerApi = {
 
   /** 获取客户统计信息 */
   getCustomerStatistics() {
-    return request.get<R<any>>('/sales/customers/statistics')
+    return request.get<R<Record<string, unknown>>>('/sales/customers/statistics')
   },
 
   /** 根据客户编码获取客户信息 */
@@ -90,23 +90,24 @@ export const customerApi = {
 
   /** 获取客户联系人列表 */
   getCustomerContacts(customerId: number) {
-    return request.get<R<any[]>>(`/sales/customers/${customerId}/contacts`)
+    return request.get<R<Record<string, unknown>[]>>(`/sales/customers/${customerId}/contacts`)
   },
 
   /** 获取客户历史订单 */
   getCustomerOrders(customerId: number) {
-    return request.get<R<any[]>>(`/sales/customers/${customerId}/orders`)
+    return request.get<R<Record<string, unknown>[]>>(`/sales/customers/${customerId}/orders`)
   },
 
   /** 获取客户报价记录 */
   getCustomerQuotations(customerId: number) {
-    return request.get<R<any[]>>(`/sales/customers/${customerId}/quotations`)
+    return request.get<R<Record<string, unknown>[]>>(`/sales/customers/${customerId}/quotations`)
   },
 
   /** 导入客户数据 */
-  importCustomers(data: any, updateSupport: boolean = false) {
+  importCustomers(data: FormData, updateSupport: boolean = false) {
     return request.post<R<void>>('/sales/customers/import', data, {
       params: { updateSupport },
+      headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
 

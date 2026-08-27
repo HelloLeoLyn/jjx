@@ -1,5 +1,6 @@
 package com.jjx.purchase.service.impl;
 
+import com.jjx.purchase.domain.enums.MaterialInquiryStatus;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -26,6 +27,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.jjx.system.annotation.Event;
 
 /**
  * 材料询价服务实现类
@@ -50,7 +52,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
         if (StringUtils.isNotEmpty(queryDTO.getSupplierName())) {
             queryWrapper.like(MaterialInquiry::getSupplierName, queryDTO.getSupplierName());
         }
-        if (StringUtils.isNotEmpty(queryDTO.getInquiryStatus())) {
+        if (queryDTO.getInquiryStatus() != null) {
             queryWrapper.eq(MaterialInquiry::getInquiryStatus, queryDTO.getInquiryStatus());
         }
         if (StringUtils.isNotEmpty(queryDTO.getInquiryPerson())) {
@@ -69,7 +71,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
             queryWrapper.orderBy(true, "ASC".equals(orderDirection),
                 "inquiryDate".equals(queryDTO.getOrderByColumn()) ? MaterialInquiry::getInquiryDate : MaterialInquiry::getCreateTime);
         } else {
-            queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate);
+            queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate).orderByDesc(MaterialInquiry::getInquiryId);
         }
 
         // 分页查询
@@ -81,7 +83,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
             .map(MaterialInquiryServiceImpl::convertToVO)
             .collect(Collectors.toList());
 
-        return new PageResult<>(voList, result.getTotal());
+        return PageResult.of(result, voList);
     }
 
     @Override
@@ -91,6 +93,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.created", bizId = "#inquiryDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertMaterialInquiry(MaterialInquiryDTO inquiryDTO) {
         MaterialInquiry entity = new MaterialInquiry();
@@ -99,6 +102,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.updated", bizId = "#inquiryDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int updateMaterialInquiry(MaterialInquiryDTO inquiryDTO) {
         MaterialInquiry entity = new MaterialInquiry();
@@ -113,6 +117,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.deleted", bizId = "#inquiryId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteMaterialInquiryById(Long inquiryId) {
         return baseMapper.deleteById(inquiryId);
@@ -195,6 +200,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
+    @Event(value = "purchase.material_inquiry.status_updated", bizId = "#inquiryIds", bizType = "'purchase'")
     public int updateInquiryStatusBatch(List<Long> inquiryIds, String status) {
         if (inquiryIds == null || inquiryIds.isEmpty()) {
             return 0;
@@ -204,7 +210,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
         for (Long inquiryId : inquiryIds) {
             MaterialInquiry entity = new MaterialInquiry();
             entity.setInquiryId(inquiryId);
-            entity.setInquiryStatus(status);
+            entity.setInquiryStatus(Integer.valueOf(status));
             updates.add(entity);
         }
         List<BatchResult> batchResults = baseMapper.updateById(updates);
@@ -216,7 +222,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
         LocalDate today = LocalDate.now();
 
         LambdaQueryWrapper<MaterialInquiry> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(MaterialInquiry::getInquiryStatus, "active")
+        queryWrapper.eq(MaterialInquiry::getInquiryStatus, MaterialInquiryStatus.ACTIVE.getCode())
                    .apply("DATE_ADD(inquiry_date, INTERVAL validity_days DAY) < {0}", today);
 
         List<MaterialInquiry> expiredInquiries = baseMapper.selectList(queryWrapper);
@@ -226,7 +232,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
         }
 
         for (MaterialInquiry inquiry : expiredInquiries) {
-            inquiry.setInquiryStatus("expired");
+            inquiry.setInquiryStatus(MaterialInquiryStatus.EXPIRED.getCode());
 //            inquiry.setUpdateBy("system");
 //            inquiry.setUpdateTime(DateUtils.getNowDate());
         }
@@ -319,11 +325,11 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
         if (StringUtils.isNotEmpty(queryDTO.getSupplierName())) {
             queryWrapper.like(MaterialInquiry::getSupplierName, queryDTO.getSupplierName());
         }
-        if (StringUtils.isNotEmpty(queryDTO.getInquiryStatus())) {
+        if (queryDTO.getInquiryStatus() != null) {
             queryWrapper.eq(MaterialInquiry::getInquiryStatus, queryDTO.getInquiryStatus());
         }
 
-        queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate);
+        queryWrapper.orderByDesc(MaterialInquiry::getInquiryDate).orderByDesc(MaterialInquiry::getInquiryId);
 
         List<MaterialInquiry> entities = baseMapper.selectList(queryWrapper);
         return entities.stream()
@@ -460,17 +466,17 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     /**
      * 获取询价状态标签
      */
-    private static String getInquiryStatusLabel(String status) {
+    private static String getInquiryStatusLabel(Integer status) {
         if (status == null) {
             return "未知";
         }
 
         switch (status) {
-            case "active": return "有效";
-            case "expired": return "已过期";
-            case "cancelled": return "已取消";
-            case "completed": return "已完成";
-            default: return status;
+            case 0: return "有效";
+            case 2: return "已过期";
+            case 3: return "已取消";
+            case 4: return "已完成";
+            default: return status != null ? String.valueOf(status) : "";
         }
     }
 
@@ -524,7 +530,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     @Override
     public List<String> getAvailableInquiryStatus() {
         // 返回可用的询价状态列表
-        return List.of("active", "expired", "cancelled", "completed");
+        return List.of("0", "2", "3", "4");
     }
 
     @Override

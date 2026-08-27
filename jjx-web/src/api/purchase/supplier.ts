@@ -1,8 +1,8 @@
 import request from '@/utils/request'
-import type { PurchaseSupplier } from '@/types/purchase'
+import type { PurchaseSupplier, SupplierQueryParams } from '@/types/purchase'
 
 // 查询供应商列表
-export function listSupplier(params?: any) {
+export function listSupplier(params?: SupplierQueryParams) {
   return request({
     url: '/purchase/supplier/list',
     method: 'get',
@@ -45,7 +45,7 @@ export function delSupplier(supplierIds: number | number[]) {
 }
 
 // 导出供应商
-export function exportSupplier(params?: any) {
+export function exportSupplier(params?: SupplierQueryParams) {
   return request({
     url: '/purchase/supplier/export',
     method: 'get',

@@ -29,8 +29,8 @@ export const searchConfig: SearchOptions[] = [
     label: '状态',
     type: 'select',
     options: [
-      { value: '0', label: '正常' },
-      { value: '1', label: '停用' },
+      { value: '1', label: '正常' },
+      { value: '0', label: '停用' },
     ],
   },
 ]

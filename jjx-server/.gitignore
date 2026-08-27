@@ -27,7 +27,7 @@ build/
 # ====================
 *.log
 logs/
-log/
+/log/
 
 # ====================
 # 系统文件
@@ -54,7 +54,6 @@ coverage/
 # ====================
 # 配置文件（敏感信息）
 # ====================
-application-dev.yml
 application-prod.yml
 *.local.properties
 *.local.yml

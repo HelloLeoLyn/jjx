@@ -29,6 +29,9 @@ public class DeptVO extends BaseVO implements TreeNode<DeptVO> {
     /** 负责人 */
     private String leader;
 
+    /** 负责人用户ID（DEV-1106） */
+    private Long leaderUserId;
+
     /** 联系电话 */
     private String phone;
 

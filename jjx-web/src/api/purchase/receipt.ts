@@ -1,7 +1,8 @@
 import request from '@/utils/request'
+import type { ReceiptVO, ReceiptItemVO } from '@/types/purchase/receipt'
 
 // 查询采购收货列表
-export function listReceipt(params?: any) {
+export function listReceipt(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/receipt/list',
     method: 'get',
@@ -18,7 +19,7 @@ export function getReceipt(receiptId: number) {
 }
 
 // 新增采购收货
-export function addReceipt(data: any) {
+export function addReceipt(data: Record<string, unknown>) {
   return request({
     url: '/purchase/receipt',
     method: 'post',
@@ -27,7 +28,7 @@ export function addReceipt(data: any) {
 }
 
 // 修改采购收货
-export function updateReceipt(data: any) {
+export function updateReceipt(data: Record<string, unknown>) {
   return request({
     url: '/purchase/receipt',
     method: 'put',
@@ -44,7 +45,7 @@ export function delReceipt(receiptIds: number | number[]) {
 }
 
 // 导出采购收货列表
-export function exportReceipt(params?: any) {
+export function exportReceipt(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/receipt/export',
     method: 'get',
@@ -169,7 +170,7 @@ export function getReceiptStatistics() {
 }
 
 // 批量收货
-export function batchReceive(data: any[]) {
+export function batchReceive(data: ReceiptItemVO[]) {
   return request({
     url: '/purchase/receipt/batch',
     method: 'post',
@@ -178,7 +179,7 @@ export function batchReceive(data: any[]) {
 }
 
 // 批量检验
-export function batchInspect(data: any[]) {
+export function batchInspect(data: ReceiptItemVO[]) {
   return request({
     url: '/purchase/receipt/batch-inspect',
     method: 'post',
@@ -187,7 +188,7 @@ export function batchInspect(data: any[]) {
 }
 
 // 导入收货数据
-export function importReceipt(data: any) {
+export function importReceipt(data: Record<string, unknown>) {
   return request({
     url: '/purchase/receipt/import',
     method: 'post',

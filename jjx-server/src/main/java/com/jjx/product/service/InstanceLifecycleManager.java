@@ -103,11 +103,11 @@ public class InstanceLifecycleManager {
         StateTransitionResult result = new StateTransitionResult();
         result.setInstanceId(instance.getInstanceId());
         result.setInstanceCode(instance.getInstanceCode());
-        result.setCurrentState(instance.getInstanceStatus());
+        result.setCurrentState(String.valueOf(instance.getInstanceStatus()));
         result.setTargetState(targetState);
 
         // 验证状态转换
-        if (!validateStateTransition(instance.getInstanceStatus(), targetState)) {
+        if (!validateStateTransition(String.valueOf(instance.getInstanceStatus()), targetState)) {
             result.setSuccess(false);
             result.setErrorMessage("状态转换不允许: " + instance.getInstanceStatus() + " -> " + targetState);
             return result;
@@ -122,8 +122,8 @@ public class InstanceLifecycleManager {
             result.setStateHistory(history);
 
             // 更新实例状态
-            String previousState = instance.getInstanceStatus();
-            instance.setInstanceStatus(targetState);
+            String previousState = String.valueOf(instance.getInstanceStatus());
+            instance.setInstanceStatus(Integer.valueOf(targetState));
             instance.setUpdateTime(LocalDateTime.now());
 
             // 根据目标状态设置相关字段
@@ -215,7 +215,7 @@ public class InstanceLifecycleManager {
                                            Map<String, Object> transitionData) {
         StateHistory history = new StateHistory();
         history.setInstanceId(instance.getInstanceId());
-        history.setFromState(instance.getInstanceStatus());
+        history.setFromState(String.valueOf(instance.getInstanceStatus()));
         history.setToState(targetState);
         history.setTransitionTime(LocalDateTime.now());
 
@@ -432,15 +432,15 @@ public class InstanceLifecycleManager {
         LifecycleStatus status = new LifecycleStatus();
         status.setInstanceId(instance.getInstanceId());
         status.setInstanceCode(instance.getInstanceCode());
-        status.setCurrentState(instance.getInstanceStatus());
-        status.setAllowedTransitions(getAllowedTransitions(instance.getInstanceStatus()));
+        status.setCurrentState(String.valueOf(instance.getInstanceStatus()));
+        status.setAllowedTransitions(getAllowedTransitions(String.valueOf(instance.getInstanceStatus())));
 
         // 计算生命周期阶段
-        String phase = calculateLifecyclePhase(instance.getInstanceStatus());
+        String phase = calculateLifecyclePhase(String.valueOf(instance.getInstanceStatus()));
         status.setLifecyclePhase(phase);
 
         // 计算进度百分比
-        int progress = calculateLifecycleProgress(instance.getInstanceStatus());
+        int progress = calculateLifecycleProgress(String.valueOf(instance.getInstanceStatus()));
         status.setProgressPercentage(progress);
 
         return status;

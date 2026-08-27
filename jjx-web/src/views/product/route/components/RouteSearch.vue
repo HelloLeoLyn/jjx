@@ -64,10 +64,11 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import type { FormInstance } from 'element-plus'
-import type { ProductRouteQueryParams } from '@/types/product'
+import type { ProductQueryParams } from '@/types/product'
+// ProductRouteQueryParams 改为使用 ProductQueryParams
 
 const emit = defineEmits<{
-  search: [params: ProductRouteQueryParams]
+  search: [params: ProductQueryParams]
   reset: []
 }>()
 
@@ -80,7 +81,7 @@ const approveStatusOptions = [
   { value: 4, label: '已拒绝' },
 ]
 
-const queryParams = reactive<ProductRouteQueryParams>({
+const queryParams = reactive<any>({
   pageNum: 1,
   pageSize: 10,
   routingCode: undefined,

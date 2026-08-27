@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
-import type { StockQueryParams, StockVO, StockSummaryVO } from '@/types/inventory/stock'
+import type { StockQueryParams, StockVO, StockSummaryVO, StockAlertInfo, StockDashboardData } from '@/types/inventory/stock'
 
 // 库存汇总API
 export const stockApi = {
@@ -12,7 +12,7 @@ export const stockApi = {
   },
 
   // 获取库存汇总
-  summary(params: StockQueryParams) {
+  summary(params?: StockQueryParams) {
     return request.get<R<StockSummaryVO>>('/inventory/stock/summary', {
       params,
     })
@@ -35,7 +35,7 @@ export const stockApi = {
 
   // 获取库存预警信息
   getAlertInfo() {
-    return request.get<R<any>>('/inventory/stock/alert')
+    return request.get<R<StockAlertInfo>>('/inventory/stock/alert')
   },
 
   // 查询低库存物料
@@ -55,7 +55,7 @@ export const stockApi = {
 
   // 获取库存仪表板数据
   getDashboard() {
-    return request.get<R<any>>('/inventory/stock/dashboard')
+    return request.get<R<StockDashboardData>>('/inventory/stock/dashboard')
   },
 
   // 校验物料并解析仓库库位（用于导入）
@@ -70,8 +70,20 @@ export const stockApi = {
   },
 
   // 批量导入库存数据（JSON格式）
-  batchImport(data: any[]) {
+  batchImport(data: Record<string, unknown>[]) {
     return request.post<R<StockImportResultVO>>('/inventory/stock/batch-import', data)
+  },
+
+  // 批量校验导入数据（DEV-697 模式③：逐行返回校验结果）
+  batchCheck(data: Record<string, unknown>[]) {
+    return request.post<R<StockBatchCheckItemVO[]>>('/inventory/stock/batch-check', data)
+  },
+
+  // 下载库存导入模板（DEV-672：后端生成，不再用静态文件）
+  downloadImportTemplate() {
+    return request.get('/inventory/stock/importTemplate', {
+      responseType: 'blob',
+    })
   },
 }
 
@@ -100,4 +112,20 @@ export interface StockImportFailDetail {
   rowIndex: number
   materialName: string
   reason: string
+}
+
+// 批量校验结果项（DEV-697 模式③）
+export interface StockBatchCheckItemVO {
+  rowIndex?: number
+  status: 'ok' | 'error'
+  materialId?: number
+  materialCode?: string
+  errorType?: 'NOT_FOUND' | 'WAREHOUSE_NOT_FOUND' | 'INVALID' | 'MISSING_REQUIRED' | 'DUPLICATE'
+  errors?: StockBatchCheckFieldError[]
+}
+
+export interface StockBatchCheckFieldError {
+  field: string
+  type: string
+  message: string
 }

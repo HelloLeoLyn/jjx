@@ -6,13 +6,15 @@
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
-        <el-button type="primary" icon="Plus" @click="handleAdd">新增工艺路线</el-button>
+        <el-button v-hasPermi="['engineering:routing:add']" type="primary" icon="Plus" @click="handleAdd">新增工艺路线</el-button>
+        <el-button type="warning" plain icon="CopyDocument" :disabled="!single" @click="handleCopySelected">复制版本</el-button>
       </div>
     </el-card>
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
-      <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%">
+      <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="50" align="center" />
         <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="routingCode" label="路线编码" width="140">
           <template #default="scope">
@@ -49,9 +51,10 @@
         </el-table-column>
         <el-table-column prop="createBy" label="创建人" width="100" />
         <el-table-column prop="createTime" label="创建时间" width="170" />
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" min-width="280" fixed="right">
           <template #default="scope">
             <el-button
+              v-hasPermi="['engineering:routing:edit']"
               link
               type="primary"
               size="small"
@@ -62,12 +65,11 @@
             </el-button>
             <el-button
               link
-              type="primary"
+              type="warning"
               size="small"
-              :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.EDIT)"
-              @click="handleCopy(scope.row)"
+              @click="handleVersionCompare(scope.row)"
             >
-              复制版本
+              版本对比
             </el-button>
             <el-button
               link
@@ -87,10 +89,22 @@
             >
               审批
             </el-button>
+            <!-- 2026-08-18：审批通过后需手动设为当前版本（生成计划/领料依赖 is_current=1） -->
+            <el-button
+              v-if="scope.row.approveStatus === 3 && scope.row.isCurrent !== 1"
+              v-hasPermi="['engineering:routing:edit']"
+              link
+              type="success"
+              size="small"
+              @click="handleSetCurrentRoute(scope.row)"
+            >
+              设为默认
+            </el-button>
             <el-button
               link
               type="danger"
               size="small"
+              v-hasPermi="['engineering:routing:delete']"
               :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.DELETE)"
               @click="handleDelete(scope.row)"
             >
@@ -115,6 +129,13 @@
 
     <!-- 详情对话框 -->
     <RouteDetailDialog v-model="detailDialogVisible" :routing-id="currentRoutingId" />
+
+    <!-- 版本对比对话框（DEV-768） -->
+    <RouteVersionCompareDialog
+      v-model="versionCompareVisible"
+      :product-id="compareProductId"
+      :product-name="compareProductName"
+    />
 
     <!-- 复制版本对话框 -->
     <RouteCopyDialog
@@ -144,12 +165,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { productRouteApi } from '@/api/product/routing'
 
 import type { StandardProcessOption } from '@/types/product'
-import type { ProductRouteQueryParams, ProductRoutingVO } from '@/types/product/routing'
+import type { ProductRouteQueryParams, EngineeringRoutingVO } from '@/types/product/routing'
 
 import RouteSearch from './components/RouteSearch.vue'
 import RouteDetailDialog from './components/RouteDetailDialog.vue'
 import RouteCopyDialog from './components/RouteCopyDialog.vue'
 import RouteApproveDialog from './components/RouteApproveDialog.vue'
+import RouteVersionCompareDialog from './components/RouteVersionCompareDialog.vue'
 import { useRouter } from 'vue-router'
 import { RouteStatusEnum, ProductActions } from '@/enums/product'
 const router = useRouter()
@@ -168,9 +190,19 @@ const queryParams = reactive<ProductRouteQueryParams>({
 })
 
 // ==================== 表格数据 ====================
-const tableData = ref<ProductRoutingVO[]>([])
+const tableData = ref<EngineeringRoutingVO[]>([])
 const total = ref(0)
 const loading = ref(false)
+const single = ref(true)
+const selectedRoute = ref<EngineeringRoutingVO | null>(null)
+const handleSelectionChange = (selection: EngineeringRoutingVO[]) => {
+  selectedRoute.value = selection.length === 1 ? selection[0] : null
+  single.value = selection.length !== 1
+}
+const handleCopySelected = () => {
+  if (!selectedRoute.value) return
+  handleCopy(selectedRoute.value)
+}
 
 // ==================== 产品选项 ====================
 interface ProductOption {
@@ -256,12 +288,12 @@ const handleAdd = () => {
 }
 
 // ==================== 编辑 ====================
-const handleEdit = (row: ProductRoutingVO) => {
+const handleEdit = (row: EngineeringRoutingVO) => {
   router.push(`/product/route/edit/${row.routingId}`)
 }
 
 // ==================== 删除 ====================
-const handleDelete = (row: ProductRoutingVO) => {
+const handleDelete = (row: EngineeringRoutingVO) => {
   ElMessageBox.confirm(
     `确定要删除工艺路线 "${row.routingName}" (${row.routingVersion}) 吗？`,
     '提示',
@@ -286,13 +318,23 @@ const handleDelete = (row: ProductRoutingVO) => {
 }
 
 // ==================== 详情 ====================
-const handleDetail = (row: ProductRoutingVO) => {
+const handleDetail = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   detailDialogVisible.value = true
 }
 
+// 版本对比（DEV-768）
+const versionCompareVisible = ref(false)
+const compareProductId = ref<number | null>(null)
+const compareProductName = ref('')
+function handleVersionCompare(row: EngineeringRoutingVO) {
+  compareProductId.value = row.productId ?? null
+  compareProductName.value = row.productName || ''
+  versionCompareVisible.value = true
+}
+
 // ==================== 复制版本 ====================
-const handleCopy = (row: ProductRoutingVO) => {
+const handleCopy = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   currentVersion.value = row.routingVersion
   copyDialogVisible.value = true
@@ -310,7 +352,7 @@ const handleCopyConfirm = async (newVersion: string) => {
 }
 
 // ==================== 提交审批 ====================
-const handleSubmitApprove = async (row: ProductRoutingVO) => {
+const handleSubmitApprove = async (row: EngineeringRoutingVO) => {
   try {
     await productRouteApi.submitProductRoute(row.routingId)
     ElMessage.success('已提交审批')
@@ -321,9 +363,22 @@ const handleSubmitApprove = async (row: ProductRoutingVO) => {
 }
 
 // ==================== 审批 ====================
-const handleApprove = (row: ProductRoutingVO) => {
+const handleApprove = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   approveDialogVisible.value = true
+}
+
+// 设为当前版本（2026-08-18：审批通过后需手动设为当前生效，生成计划/领料依赖）
+const handleSetCurrentRoute = (row: EngineeringRoutingVO) => {
+  ElMessageBox.confirm(`将工艺路线【${row.routingCode}】设为当前版本？（同产品其它路线将取消当前标记）`, '设为默认', {
+    type: 'warning',
+  })
+    .then(async () => {
+      await productRouteApi.setCurrentProductRoute(row.routingId)
+      ElMessage.success('已设为当前版本')
+      loadData()
+    })
+    .catch(() => {})
 }
 
 const handleApprovePass = async (remark?: string) => {

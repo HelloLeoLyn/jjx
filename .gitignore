@@ -1,4 +1,3 @@
-/jjx-server/
 # ====================
 # IDE 相关文件
 # ====================
@@ -28,7 +27,7 @@ build/
 # ====================
 *.log
 logs/
-log/
+/log/
 
 # ====================
 # 系统文件
@@ -55,7 +54,6 @@ coverage/
 # ====================
 # 配置文件（敏感信息）
 # ====================
-application-dev.yml
 application-prod.yml
 *.local.properties
 *.local.yml
@@ -102,3 +100,11 @@ Dockerfile.tmp
 *.tar.gz
 *.rar
 *.7z
+# Maven exploded archive
+BOOT-INF/
+
+# ====================
+# 运行时文件
+# ====================
+upload/
+*.tsbuildinfo

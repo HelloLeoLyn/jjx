@@ -9,10 +9,13 @@ import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryStorageLocation;
+import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.StockCheckDTO;
+import com.jjx.inventory.dto.query.StockBatchCheckItemDTO;
 import com.jjx.inventory.dto.query.StockImportDTO;
 import com.jjx.inventory.dto.query.StockQueryDTO;
 import com.jjx.inventory.dto.vo.StockCheckVO;
+import com.jjx.inventory.dto.vo.StockBatchCheckItemVO;
 import com.jjx.inventory.dto.vo.StockImportResultVO;
 import com.jjx.inventory.dto.vo.StockSummaryVO;
 import com.jjx.inventory.dto.vo.StockVO;
@@ -46,7 +49,7 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryMaterialMapper materialMapper;
     private final InventoryWarehouseMapper warehouseMapper;
-    private final InventoryStorageLocationMapper locationMapper;
+    private final InventoryStorageLocationMapper storageLocationMapper;
     private final StockConverter stockConverter;
 
     @Override
@@ -280,20 +283,163 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             result.setUnit(material.getUnit());
         }
 
-        // 2. 根据摆放/区域描述解析仓库和库位
-        if (checkDTO.getLocationDesc() != null && !checkDTO.getLocationDesc().isEmpty()) {
-            LambdaQueryWrapper<InventoryStorageLocation> locationWrapper = new LambdaQueryWrapper<>();
-            locationWrapper.eq(InventoryStorageLocation::getWarehouseId, checkDTO.getWarehouseId());
-            locationWrapper.like(InventoryStorageLocation::getLocationName, checkDTO.getLocationDesc());
-            InventoryStorageLocation location = locationMapper.selectOne(locationWrapper);
-            if (location != null) {
-                result.setLocationCode(location.getLocationCode());
-                result.setLocationName(location.getLocationName());
-                result.setWarehouseId(checkDTO.getWarehouseId());
+        // 解析仓库（DEV-692：校验时回填仓库名）
+        if (checkDTO.getWarehouseId() != null) {
+            InventoryWarehouse warehouse = warehouseMapper.selectById(checkDTO.getWarehouseId());
+            if (warehouse != null) {
+                result.setWarehouseId(warehouse.getWarehouseId());
+                result.setWarehouseName(warehouse.getWarehouseName());
+            }
+        }
+
+        // 解析库位（DEV-692：按「仓库+摆放区域」匹配，回填库位编码/名称）
+        if (checkDTO.getWarehouseId() != null && checkDTO.getLocationDesc() != null
+                && !checkDTO.getLocationDesc().trim().isEmpty()) {
+            String desc = checkDTO.getLocationDesc().trim();
+            LambdaQueryWrapper<InventoryStorageLocation> locWrapper = new LambdaQueryWrapper<>();
+            locWrapper.eq(InventoryStorageLocation::getWarehouseId, checkDTO.getWarehouseId())
+                    .and(w -> w.eq(InventoryStorageLocation::getLocationName, desc)
+                            .or().eq(InventoryStorageLocation::getLocationCode, desc))
+                    .last("LIMIT 1");
+            InventoryStorageLocation loc = storageLocationMapper.selectOne(locWrapper);
+            if (loc != null) {
+                result.setLocationCode(loc.getLocationCode());
+                result.setLocationName(loc.getLocationName());
             }
         }
 
         return result;
+    }
+
+    @Override
+    public java.util.List<StockBatchCheckItemVO> batchCheck(java.util.List<StockBatchCheckItemDTO> items) {
+        java.util.List<StockBatchCheckItemVO> results = new java.util.ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return results;
+        }
+
+        // DEV-701：统计文件内重复（物料+规格+仓库+摆放区域）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (StockBatchCheckItemDTO item : items) {
+            String k = (item.getMaterialName() == null ? "" : item.getMaterialName().trim())
+                    + "|" + (item.getSpecification() == null ? "" : item.getSpecification().trim())
+                    + "|" + (item.getWarehouseName() == null ? "" : item.getWarehouseName().trim())
+                    + "|" + (item.getLocationDesc() == null ? "" : item.getLocationDesc().trim());
+            dupCountMap.merge(k, 1, Integer::sum);
+        }
+
+        // 批量查物料缓存：key=名称|规格|供应商 -> 物料（避免逐行查库）
+        java.util.Map<String, InventoryMaterial> materialCache = new java.util.HashMap<>();
+        java.util.List<String> names = items.stream()
+                .map(StockBatchCheckItemDTO::getMaterialName)
+                .filter(n -> n != null && !n.isEmpty())
+                .distinct().collect(java.util.stream.Collectors.toList());
+        if (!names.isEmpty()) {
+            LambdaQueryWrapper<InventoryMaterial> mw = new LambdaQueryWrapper<>();
+            mw.in(InventoryMaterial::getMaterialName, names);
+            for (InventoryMaterial m : materialMapper.selectList(mw)) {
+                String spec = m.getSpecification() == null ? "" : m.getSpecification().trim();
+                String sup = m.getSupplierName() == null ? "" : m.getSupplierName().trim();
+                materialCache.put(m.getMaterialName().trim() + "|" + spec + "|" + sup, m);
+            }
+        }
+
+        // 批量查仓库缓存：名称 -> 仓库
+        java.util.Map<String, InventoryWarehouse> warehouseCache = new java.util.HashMap<>();
+        java.util.List<String> whNames = items.stream()
+                .map(StockBatchCheckItemDTO::getWarehouseName)
+                .filter(n -> n != null && !n.isEmpty())
+                .distinct().collect(java.util.stream.Collectors.toList());
+        if (!whNames.isEmpty()) {
+            LambdaQueryWrapper<InventoryWarehouse> ww = new LambdaQueryWrapper<>();
+            ww.in(InventoryWarehouse::getWarehouseName, whNames);
+            for (InventoryWarehouse w : warehouseMapper.selectList(ww)) {
+                warehouseCache.put(w.getWarehouseName().trim(), w);
+            }
+        }
+
+        for (StockBatchCheckItemDTO item : items) {
+            StockBatchCheckItemVO vo = new StockBatchCheckItemVO();
+            vo.setRowIndex(item.getRowIndex());
+            vo.setStatus("ok");
+
+            // 0. 文件内重复检测（DEV-701：同物料+规格+仓库+摆放区域重复行，导入会撞唯一键）
+            String dupKey = (item.getMaterialName() == null ? "" : item.getMaterialName().trim())
+                    + "|" + (item.getSpecification() == null ? "" : item.getSpecification().trim())
+                    + "|" + (item.getWarehouseName() == null ? "" : item.getWarehouseName().trim())
+                    + "|" + (item.getLocationDesc() == null ? "" : item.getLocationDesc().trim());
+            Integer dupCount = dupCountMap.get(dupKey);
+            if (dupCount != null && dupCount > 1) {
+                vo.setStatus("error");
+                vo.setErrorType("DUPLICATE");
+                addFieldError(vo, "materialName", "DUPLICATE",
+                        "文件内重复行（同一物料+仓库+摆放区域出现 " + dupCount + " 次），导入会冲突，请删除重复行或合并数量");
+            }
+
+            // 1. 物料名称必填
+            String name = item.getMaterialName() == null ? "" : item.getMaterialName().trim();
+            if (name.isEmpty()) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "materialName", "MISSING_REQUIRED", "物料名称不能为空");
+            } else {
+                // 2. 查物料（名称+规格+供应商匹配，与单行 check 一致）
+                String spec = item.getSpecification() == null ? "" : item.getSpecification().trim();
+                String sup = item.getSupplierName() == null ? "" : item.getSupplierName().trim();
+                InventoryMaterial m = materialCache.get(name + "|" + spec + "|" + sup);
+                if (m == null) {
+                    // 降级：只按名称+规格匹配（供应商可不填）
+                    for (java.util.Map.Entry<String, InventoryMaterial> e : materialCache.entrySet()) {
+                        if (e.getKey().startsWith(name + "|" + spec + "|")) {
+                            m = e.getValue();
+                            break;
+                        }
+                    }
+                }
+                if (m == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "materialName", "NOT_FOUND", "物料未建档: " + name + (spec.isEmpty() ? "" : " / " + spec));
+                } else {
+                    vo.setMaterialId(m.getMaterialId());
+                    vo.setMaterialCode(m.getMaterialCode());
+                }
+            }
+
+            // 3. 仓库校验
+            if (vo.getStatus().equals("ok")) {
+                String whName = item.getWarehouseName() == null ? "" : item.getWarehouseName().trim();
+                if (whName.isEmpty()) {
+                    vo.setStatus("error");
+                    vo.setErrorType("MISSING_REQUIRED");
+                    addFieldError(vo, "warehouseName", "MISSING_REQUIRED", "仓库不能为空");
+                } else if (!warehouseCache.containsKey(whName)) {
+                    vo.setStatus("error");
+                    vo.setErrorType("WAREHOUSE_NOT_FOUND");
+                    addFieldError(vo, "warehouseName", "WAREHOUSE_NOT_FOUND", "仓库不存在: " + whName);
+                }
+            }
+
+            // 4. 数量校验
+            if (vo.getStatus().equals("ok")) {
+                if (item.getQuantity() == null || item.getQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    vo.setStatus("error");
+                    vo.setErrorType("INVALID");
+                    addFieldError(vo, "quantity", "INVALID", "库存数量必须大于0");
+                }
+            }
+
+            results.add(vo);
+        }
+        return results;
+    }
+
+    private void addFieldError(StockBatchCheckItemVO vo, String field, String type, String message) {
+        StockBatchCheckItemVO.FieldError fe = new StockBatchCheckItemVO.FieldError();
+        fe.setField(field);
+        fe.setType(type);
+        fe.setMessage(message);
+        vo.getErrors().add(fe);
     }
 
     @Override
@@ -303,6 +449,23 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
 
         if (list == null || list.isEmpty()) {
             return result;
+        }
+
+        // 0. 批量查询所有仓库，缓存到 Map<仓库名称, 仓库>（模板「仓库」列为名称）
+        List<String> warehouseNames = list.stream()
+                .map(StockImportDTO::getWarehouseName)
+                .filter(n -> n != null && !n.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<String, InventoryWarehouse> warehouseCache = new HashMap<>();
+        if (!warehouseNames.isEmpty()) {
+            LambdaQueryWrapper<InventoryWarehouse> warehouseWrapper = new LambdaQueryWrapper<>();
+            warehouseWrapper.in(InventoryWarehouse::getWarehouseName, warehouseNames);
+            List<InventoryWarehouse> warehouses = warehouseMapper.selectList(warehouseWrapper);
+            for (InventoryWarehouse w : warehouses) {
+                warehouseCache.put(w.getWarehouseName(), w);
+            }
         }
 
         // 1. 批量查询所有物料，缓存到 Map<物料名称+规格, 物料>
@@ -322,25 +485,10 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             }
         }
 
-        // 2. 批量查询所有库位，缓存到 Map<库位编码, 库位>
-        List<String> locationCodes = list.stream()
-                .map(StockImportDTO::getLocationCode)
-                .filter(c -> c != null && !c.isEmpty())
-                .distinct()
-                .collect(Collectors.toList());
-
-        Map<String, InventoryStorageLocation> locationCache = new HashMap<>();
-        if (!locationCodes.isEmpty()) {
-            LambdaQueryWrapper<InventoryStorageLocation> locationWrapper = new LambdaQueryWrapper<>();
-            locationWrapper.in(InventoryStorageLocation::getLocationCode, locationCodes);
-            List<InventoryStorageLocation> locations = locationMapper.selectList(locationWrapper);
-            for (InventoryStorageLocation loc : locations) {
-                locationCache.put(loc.getLocationCode(), loc);
-            }
-        }
-
         // 3. 遍历导入数据，逐条处理
         int rowIndex = 0;
+        // 库位缓存：key=warehouseId|locationDesc -> locationId，避免重复查询/创建
+        Map<String, Long> locationCache = new HashMap<>();
         for (StockImportDTO dto : list) {
             rowIndex++;
 
@@ -362,31 +510,93 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                 continue;
             }
 
-            // 3.3 校验库位容量
-            if (dto.getLocationCode() != null && !dto.getLocationCode().isEmpty()) {
-                InventoryStorageLocation location = locationCache.get(dto.getLocationCode());
-                if (location == null) {
-                    result.addFail(rowIndex, dto.getMaterialName(),
-                            "库位编码'" + dto.getLocationCode() + "'不存在");
+            // 3.2.1 解析仓库：模板「仓库」列为名称，转仓库ID；空或查不到报错
+            Long warehouseId;
+            if (dto.getWarehouseName() != null && !dto.getWarehouseName().isEmpty()) {
+                InventoryWarehouse warehouse = warehouseCache.get(dto.getWarehouseName());
+                if (warehouse == null) {
+                    result.addFail(rowIndex, dto.getMaterialName(), "仓库'" + dto.getWarehouseName() + "'不存在");
                     continue;
                 }
-                if (location.getCapacity() != null && location.getUsedCapacity() != null) {
-                    BigDecimal newUsed = location.getUsedCapacity().add(dto.getQuantity());
-                    if (newUsed.compareTo(location.getCapacity()) > 0) {
-                        result.addFail(rowIndex, dto.getMaterialName(),
-                                "库位'" + location.getLocationName() + "'容量不足，当前已用"
-                                        + location.getUsedCapacity() + "，最大容量"
-                                        + location.getCapacity() + "，导入后为" + newUsed);
-                        continue;
+                warehouseId = warehouse.getWarehouseId();
+            } else {
+                result.addFail(rowIndex, dto.getMaterialName(), "仓库不能为空");
+                continue;
+            }
+
+            // 3.2.2 解析摆放区域 → 查找或自动创建库位（DEV-692）
+            Long locationId = null;
+            String locationDesc = dto.getLocationDesc();
+            if (locationDesc != null && !locationDesc.trim().isEmpty()) {
+                String desc = locationDesc.trim();
+                String cacheKey = warehouseId + "|" + desc;
+                if (locationCache.containsKey(cacheKey)) {
+                    locationId = locationCache.get(cacheKey);
+                } else {
+                    try {
+                        // 按「仓库+名称或编码」查找已存在库位
+                        LambdaQueryWrapper<InventoryStorageLocation> locWrapper = new LambdaQueryWrapper<>();
+                        locWrapper.eq(InventoryStorageLocation::getWarehouseId, warehouseId)
+                                .and(w -> w.eq(InventoryStorageLocation::getLocationName, desc)
+                                        .or().eq(InventoryStorageLocation::getLocationCode, desc))
+                                .last("LIMIT 1");
+                        InventoryStorageLocation existLoc = storageLocationMapper.selectOne(locWrapper);
+                        if (existLoc != null) {
+                            locationId = existLoc.getLocationId();
+                        } else {
+                            // 自动创建库位：编码=仓库编码-序号（如 WH-RAW-01）
+                            InventoryWarehouse wh = warehouseCache.get(dto.getWarehouseName());
+                            String prefix = wh != null && wh.getWarehouseCode() != null
+                                    ? wh.getWarehouseCode() : "WH" + warehouseId;
+                            Long count = storageLocationMapper.selectCount(
+                                    new LambdaQueryWrapper<InventoryStorageLocation>()
+                                            .eq(InventoryStorageLocation::getWarehouseId, warehouseId));
+                            InventoryStorageLocation newLoc = new InventoryStorageLocation();
+                            newLoc.setWarehouseId(warehouseId);
+                            newLoc.setLocationCode(String.format("%s-%02d", prefix, count + 1));
+                            newLoc.setLocationName(desc);
+                            newLoc.setLocationType("normal");
+                            newLoc.setCapacity(new BigDecimal("99999"));
+                            newLoc.setUsedCapacity(BigDecimal.ZERO);
+                            newLoc.setSortOrder(0);
+                            newLoc.setStatus("0"); // 启用
+                            storageLocationMapper.insert(newLoc);
+                            locationId = newLoc.getLocationId();
+                            log.info("库存导入自动创建库位: {} ({})", newLoc.getLocationCode(), desc);
+                        }
+                    } catch (Exception e) {
+                        log.warn("库存导入解析库位失败(跳过): warehouseId={}, desc={}, err={}", warehouseId, desc, e.getMessage());
+                        locationId = null;
                     }
+                    locationCache.put(cacheKey, locationId);
                 }
             }
 
             // 3.4 写入明细表
-            Long warehouseId = dto.getWarehouseId() != null ? dto.getWarehouseId() : 0L;
             String batchNo = dto.getBatchNo() != null && !dto.getBatchNo().isEmpty()
                     ? dto.getBatchNo()
                     : LocalDate.now().toString();
+
+            // DEV-701：同(物料+仓库+库位+批次)已存在 → 数量累加，避免唯一键冲突导致整批回滚
+            InventoryStockItem existing = stockItemMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryStockItem>()
+                            .eq(InventoryStockItem::getMaterialId, material.getMaterialId())
+                            .eq(InventoryStockItem::getWarehouseId, warehouseId)
+                            .eq(locationId != null, InventoryStockItem::getLocationId, locationId)
+                            .eq(InventoryStockItem::getBatchNo, batchNo)
+                            .last("LIMIT 1"));
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity().add(dto.getQuantity()));
+                existing.setLastInboundTime(LocalDateTime.now());
+                if (dto.getUnitCost() != null && existing.getUnitCost() == null) {
+                    existing.setUnitCost(dto.getUnitCost());
+                }
+                stockItemMapper.updateById(existing);
+                log.info("库存导入累加数量: material={}, batch={}, qty+={}", material.getMaterialName(), batchNo, dto.getQuantity());
+                refreshSummary(material.getMaterialId());
+                result.addSuccess();
+                continue;
+            }
 
             // 查找或创建明细记录
             InventoryStockItem newItem = new InventoryStockItem();
@@ -394,6 +604,7 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             newItem.setMaterialCode(material.getMaterialCode());
             newItem.setMaterialName(material.getMaterialName());
             newItem.setWarehouseId(warehouseId);
+            newItem.setLocationId(locationId);
             newItem.setBatchNo(batchNo);
             newItem.setQuantity(dto.getQuantity());
             newItem.setReservedQuantity(BigDecimal.ZERO);
@@ -420,28 +631,8 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                 newItem.setExpiryDate(LocalDate.now().plusYears(1));
             }
 
-            // 设置库位
-            if (dto.getLocationCode() != null && !dto.getLocationCode().isEmpty()) {
-                InventoryStorageLocation location = locationCache.get(dto.getLocationCode());
-                if (location != null) {
-                    newItem.setLocationId(location.getLocationId());
-                }
-            }
-
             newItem.setLastInboundTime(LocalDateTime.now());
             stockItemMapper.insert(newItem);
-
-            // 3.5 更新库位已使用容量
-            if (dto.getLocationCode() != null && !dto.getLocationCode().isEmpty()) {
-                InventoryStorageLocation location = locationCache.get(dto.getLocationCode());
-                if (location != null && location.getCapacity() != null) {
-                    BigDecimal newUsed = location.getUsedCapacity() != null
-                            ? location.getUsedCapacity().add(dto.getQuantity())
-                            : dto.getQuantity();
-                    location.setUsedCapacity(newUsed);
-                    locationMapper.updateById(location);
-                }
-            }
 
             // 3.6 刷新汇总表
             refreshSummary(material.getMaterialId());
@@ -501,12 +692,12 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
     private void enrichStockVO(StockVO vo) {
         if (vo == null) return;
 
-        // 填充库位信息
+        // 填充库位名称（DEV-692）
         if (vo.getLocationId() != null) {
-            InventoryStorageLocation location = locationMapper.selectById(vo.getLocationId());
-            if (location != null) {
-                vo.setLocationCode(location.getLocationCode());
-                vo.setLocationName(location.getLocationName());
+            InventoryStorageLocation loc = storageLocationMapper.selectById(vo.getLocationId());
+            if (loc != null) {
+                vo.setLocationCode(loc.getLocationCode());
+                vo.setLocationName(loc.getLocationName());
             }
         }
 

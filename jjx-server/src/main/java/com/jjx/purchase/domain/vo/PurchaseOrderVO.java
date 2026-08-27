@@ -23,6 +23,9 @@ public class PurchaseOrderVO {
      */
     private String orderNo;
 
+    /** 链路追踪ID（DEV-568/569） */
+    private String traceId;
+
     /**
      * 供应商ID
      */
@@ -34,14 +37,12 @@ public class PurchaseOrderVO {
     private String supplierName;
 
     /**
-     * 订单类型（0正常/1紧急）
+     * 订单类型（normal正常/urgent紧急）
      */
-    private Integer orderType;
+    private String orderType;
 
     /**
-     * 订单类型名称
      */
-    private String orderTypeName;
 
     /**
      * 订单日期
@@ -85,9 +86,7 @@ public class PurchaseOrderVO {
     private Integer approvalStatus;
 
     /**
-     * 审批状态名称
      */
-    private String approvalStatusName;
 
     /**
      * 收货状态（0待收货/1部分收货/2已收货）
@@ -95,9 +94,7 @@ public class PurchaseOrderVO {
     private Integer receiptStatus;
 
     /**
-     * 收货状态名称
      */
-    private String receiptStatusName;
 
     /**
      * 审批人ID
@@ -125,9 +122,7 @@ public class PurchaseOrderVO {
     private Integer paymentStatus;
 
     /**
-     * 付款状态名称
      */
-    private String paymentStatusName;
 
     /**
      * 已付款金额

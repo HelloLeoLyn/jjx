@@ -22,6 +22,7 @@
             <ProductSelector
               v-model="formData.productId"
               valueType="productId"
+              :options="productOptions"
               @change="handleProductChange"
             />
           </el-form-item>
@@ -99,7 +100,7 @@
           <em>点击选择文件</em>
         </div>
         <template #tip>
-          <div class="upload-tip">仅支持 .xlsx / .xls 格式，解析后将自动填充到物料明细表格</div>
+          <div class="upload-tip">仅支持 .xlsx / .xls 格式，解析后自动填充到物料明细表格。<b>导入的物料全部为根节点</b>，如需层级结构请在页面上用「子物料」按钮手动调整</div>
         </template>
       </el-upload>
     </div>
@@ -113,10 +114,23 @@
 
     <template #footer>
       <div class="dialog-footer">
+        <el-button v-if="formData.items?.length" icon="Printer" @click="printPreviewVisible = true">打印预览</el-button>
         <el-button type="primary" :loading="submitting" @click="submitForm">确 定</el-button>
         <el-button @click="handleCancel">取 消</el-button>
       </div>
     </template>
+
+    <!-- BOM 作业指导书打印预览（57.webp 样式） -->
+    <BomPrintPreview
+      v-model="printPreviewVisible"
+      :items="formData.items"
+      :bom-code="formData.bomCode"
+      :bom-name="formData.bomName"
+      :bom-version="formData.bomVersion || formData.bomVersion"
+      :product-id="formData.productId"
+      :product-code="formData.productCode"
+      :product-name="formData.productName"
+    />
   </el-dialog>
 </template>
 
@@ -127,8 +141,10 @@ import type { FormInstance, FormRules, UploadFile, UploadInstance } from 'elemen
 import { FullScreen, UploadFilled } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
 import BomItemEditor from '@/components/BomItemEditor.vue'
+import BomPrintPreview from './BomPrintPreview.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
-import type { ProductBomFormData, ProductBomItem } from '@/types/product/bom'
+import type { EngineeringBomFormData, EngineeringBomItem } from '@/types/product/bom'
+import type { ProductItem } from '@/types/product'
 import * as XLSX from 'xlsx'
 
 interface Props {
@@ -156,6 +172,8 @@ const visible = computed({
 
 // 响应式数据
 const submitting = ref(false)
+// BOM 打印预览弹窗
+const printPreviewVisible = ref(false)
 const activeTab = ref('basic')
 const bomFormRef = ref<FormInstance>()
 const bomItemEditorRef = ref()
@@ -170,8 +188,20 @@ const toggleFullscreen = () => {
 // 标题
 const title = computed(() => (props.bomId ? '修改BOM' : '新增BOM'))
 
+// 编辑回填时，把当前产品对象传给 ProductSelector，让其能显示产品名称
+const productOptions = computed<ProductItem[]>(() => {
+  if (formData.productId && formData.productName) {
+    return [{
+      productId: formData.productId,
+      productCode: formData.productCode,
+      productName: formData.productName,
+    } as ProductItem]
+  }
+  return []
+})
+
 // 表单数据
-const formData = reactive<ProductBomFormData>({
+const formData = reactive<EngineeringBomFormData>({
   bomId: undefined,
   bomCode: '',
   bomName: '',
@@ -207,7 +237,7 @@ const handleProductChange = (productId: number, product: any) => {
 }
 
 // 处理BOM明细变化
-const handleItemsChange = (items: ProductBomItem[]) => {
+const handleItemsChange = (items: EngineeringBomItem[]) => {
   console.log('BOM明细已更新:', items)
 }
 
@@ -260,7 +290,7 @@ const parseExcelFile = (file: File) => {
 
       // 将解析后的数据填充到 formData.items
       formData.items = [...formData.items, ...items]
-      ElMessage.success(`成功解析并添加 ${items.length} 项物料`)
+      ElMessage.success(`成功解析并添加 ${items.length} 项物料（全部为根节点，如需层级请用「子物料」按钮手动调整）`)
     } catch (error) {
       console.error('解析 Excel 失败:', error)
       ElMessage.error('解析 Excel 文件失败，请检查文件格式')
@@ -275,13 +305,13 @@ const parseExcelFile = (file: File) => {
 }
 
 /**
- * 解析行数据为 ProductBomItem 数组
+ * 解析行数据为 EngineeringBomItem 数组
  *
  * Excel 列结构（从第3行开始为数据行）：
  * 序号 | 项目名称 | 材料名称 | 单位 | 宽度 | 规格(乘/跳) | 长度 | 模数 | 单用量 | 基数 | 应用料 | 预计不良 | 最低投料 | 实际投料
  */
-const parseRows = (rows: any[][]): ProductBomItem[] => {
-  const items: ProductBomItem[] = []
+const parseRows = (rows: any[][]): EngineeringBomItem[] => {
+  const items: EngineeringBomItem[] = []
 
   // 查找表头行（包含"序号"、"项目名称"等关键字的行）
   let headerRowIndex = -1
@@ -327,21 +357,31 @@ const parseRows = (rows: any[][]): ProductBomItem[] => {
     const moduleQty = parseFloat(String(row[7] || '0').replace(/[^\d.]/g, '')) || 0
     const quantity = parseFloat(String(row[8] || '0').replace(/[^\d.]/g, '')) || 0
     const baseQty = parseFloat(String(row[9] || '1').replace(/[^\d.]/g, '')) || 1
+    // 应用料（第10列）：有值直读，无值留空由后端计算
+    const appliedRaw = String(row[10] ?? '').replace(/[^\d.]/g, '')
+    const appliedQty = appliedRaw ? parseFloat(appliedRaw) : undefined
     // 预计不良：Excel中为小数（如0.1表示10%），转为百分制显示（如10）
     const lossRate = (parseFloat(String(row[11] || '0').replace(/[^\d.]/g, '')) || 0) * 100
     const minIssueQty = parseFloat(String(row[12] || '0').replace(/[^\d.]/g, '')) || 0
+    // 实际投料（第13列）：有值直读，无值留空由后端计算
+    const actualRaw = String(row[13] ?? '').replace(/[^\d.]/g, '')
+    const actualIssueQty = actualRaw ? parseFloat(actualRaw) : undefined
 
     // 构建规格描述：第4/5/6列是什么就是什么，直接拼接
     const specification = col4 + col5 + col6
 
-    const item: ProductBomItem = {
+    const item: EngineeringBomItem = {
       itemId: undefined,
+      bomId: undefined,
+      parentMaterialId: null, // 导入全部为根节点，层级由用户手动调整
       materialId: 0,
       materialCode: '',
       materialName: materialName,
       specification: specification,
       unit: unit || 'PCS',
       quantity: quantity,
+      appliedQty: appliedQty,
+      actualIssueQty: actualIssueQty,
       lossRate: lossRate,
       baseQty: baseQty || 1,
       moduleQty: moduleQty || 1,
@@ -390,10 +430,10 @@ const resetForm = () => {
 // 加载BOM数据
 const loadBomData = async (bomId: number) => {
   try {
-    const response = await productBomApi.getProductBomInfo(bomId)
+    const response = await productBomApi.getEngineeringBomInfo(bomId)
     Object.assign(formData, response.data)
     // 加载BOM明细
-    const itemResponse = await productBomApi.listProductBomItem(bomId)
+    const itemResponse = await productBomApi.listEngineeringBomItem(bomId)
     formData.items = itemResponse.data || []
   } catch (error) {
     console.error('加载BOM数据失败:', error)
@@ -411,10 +451,10 @@ const submitForm = () => {
     submitting.value = true
     try {
       if (formData.bomId !== undefined) {
-        await productBomApi.editProductBom(formData as any)
+        await productBomApi.editEngineeringBom(formData as any)
         ElMessage.success('修改成功')
       } else {
-        await productBomApi.addProductBom(formData as any)
+        await productBomApi.addEngineeringBom(formData as any)
         ElMessage.success('新增成功')
       }
       visible.value = false

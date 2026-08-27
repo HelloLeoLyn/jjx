@@ -153,4 +153,11 @@ export const inboundApi = {
       responseType: 'blob',
     })
   },
+
+  // 导出入库单PDF（单张表单）
+  exportPdf(inboundId: number) {
+    return request.get(`/inventory/inbound/export-pdf/${inboundId}`, {
+      responseType: 'blob',
+    })
+  },
 }

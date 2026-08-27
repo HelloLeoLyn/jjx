@@ -56,7 +56,7 @@ export function useRole() {
   const saveAssignedRoles = async (userId: number, roleIds: number[]) => {
     loading.value = true
     try {
-      await userApi.insertAuthRole(userId, roleIds)
+      await userApi.authRole(userId, roleIds)
       ElMessage.success('分配角色成功')
       return true
     } catch (error) {

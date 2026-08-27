@@ -82,7 +82,7 @@ public interface InventoryStocktakeService extends IService<InventoryStocktakeOr
     /**
      * 更新盘点单状态
      */
-    boolean updateStatus(Long stocktakeId, String status);
+    boolean updateStatus(Long stocktakeId, Integer status);
 
     /**
      * 分页查询盘点单（旧方法，兼容性）

@@ -46,7 +46,7 @@ public interface IOrderService {
      * @param order 销售订单
      * @return 结果
      */
-    boolean insertOrder(SalesOrderAddDTO order);
+    Long insertOrder(SalesOrderAddDTO order);
 
     /**
      * 修改销售订单
@@ -78,6 +78,14 @@ public interface IOrderService {
      * @return 生成的订单号
      */
     String generateOrderNo();
+
+    /**
+     * 复制订单（终态订单如已取消/已完成可一键生成新草稿单）
+     *
+     * @param orderId 源订单ID
+     * @return 新订单ID
+     */
+    Long copyOrder(Long orderId);
 
     /**
      * 检查订单号是否存在
@@ -160,9 +168,23 @@ public interface IOrderService {
      * 导出PDF
      *
      * @param orderId 订单ID
-     * @return PDF文件路径
+     * @return PDF字节数组
      */
-    String exportPdf(Long orderId);
+    byte[] exportPdf(Long orderId);
+
+    /**
+     * 导出销售订单Excel（单张表单）
+     *
+     * @return xlsx字节数组
+     */
+    byte[] exportExcel(Long orderId);
+
+    /**
+     * 导出订单确认书PDF（DEV-343/314）
+     *
+     * @return PDF字节数组
+     */
+    byte[] exportConfirmationPdf(Long orderId);
 
     /**
      * 导出订单列表

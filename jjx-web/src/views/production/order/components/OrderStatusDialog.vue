@@ -36,7 +36,7 @@
       </el-form-item>
 
       <el-form-item
-        v-if="formData.orderStatus === 'approved'"
+        v-if="formData.orderStatus === 2"
         label="审批备注"
         prop="approvalRemark"
       >
@@ -51,7 +51,7 @@
       </el-form-item>
 
       <el-form-item
-        v-if="formData.orderStatus === 'completed'"
+        v-if="formData.orderStatus === 8"
         label="完成数量"
         prop="completedQuantity"
       >
@@ -65,7 +65,7 @@
       </el-form-item>
 
       <el-form-item
-        v-if="formData.orderStatus === 'completed'"
+        v-if="formData.orderStatus === 8"
         label="质量结果"
         prop="qualityResult"
       >

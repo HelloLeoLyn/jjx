@@ -86,4 +86,19 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
     int updateStatusWithCheck(@Param("orderId") Long orderId,
                               @Param("status") Integer status,
                               @Param("oldStatus") Integer oldStatus);
+
+    /**
+     * 更新样品单状态（带状态校验，防止并发脏数据）
+     */
+    @Update("UPDATE sales_order SET sample_status = #{newStatus}, update_time = NOW() " +
+            "WHERE order_id = #{orderId} AND order_type = 2 AND sample_status = #{oldStatus} AND deleted = 0")
+    int updateSampleStatus(@Param("orderId") Long orderId,
+                           @Param("oldStatus") Integer oldStatus,
+                           @Param("newStatus") Integer newStatus);
+
+    /**
+     * 查询样品单列表（order_type=2）
+     */
+    @Select("SELECT * FROM sales_order WHERE order_type = 2 AND deleted = 0 ORDER BY create_time DESC")
+    List<SalesOrder> selectSampleOrders();
 }

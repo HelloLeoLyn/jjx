@@ -47,6 +47,13 @@ public class InventoryTransactionController {
         return Result.success(transactionService.getBySource(sourceType, sourceId));
     }
 
+    @GetMapping("/by-doc-no")
+    @Operation(summary = "根据单据号查询流水（DEV-661：出入库详情展示用）")
+    @SaCheckPermission("inventory:transaction:view")
+    public Result<List<TransactionVO>> getByDocNo(@RequestParam String docNo) {
+        return Result.success(transactionService.getByDocNo(docNo));
+    }
+
     @GetMapping("/material/{materialId}")
     @Operation(summary = "查询物料流水记录")
     @SaCheckPermission("inventory:transaction:view")

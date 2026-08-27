@@ -147,25 +147,25 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { StandardProcessOption } from '@/types/product'
-import type { ProductRoutingItemVO } from '@/types/product/routing'
+import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import ProcessParamsEditor from './ProcessParamsEditor.vue'
 import { getDictLabel } from '@/utils/dict'
 import { useDict } from '@/composables/useDict'
 
 const props = defineProps<{
-  modelValue: ProductRoutingItemVO[]
+  modelValue: EngineeringRoutingItemVO[]
   standardProcesses: StandardProcessOption[]
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [items: ProductRoutingItemVO[]]
+  'update:modelValue': [items: EngineeringRoutingItemVO[]]
 }>()
 
 // 获取工序类别字典选项（带 Pinia 缓存�?
 const { options: processCategoryOptions } = useDict('process_category')
 
 // 本地数据
-const items = ref<ProductRoutingItemVO[]>([])
+const items = ref<EngineeringRoutingItemVO[]>([])
 const selectedProcessId = ref<number | undefined>(undefined)
 const addLaborHours = ref<number>(0)
 const addMachineHours = ref<number>(0)
@@ -231,7 +231,7 @@ const addItem = () => {
     return
   }
 
-  const newItem: ProductRoutingItemVO = {
+  const newItem: EngineeringRoutingItemVO = {
     itemId: 0,
     routingId: 0,
     processOrder: items.value.length + 1,
@@ -312,7 +312,7 @@ const updateOrder = () => {
 // 暴露方法给父组件
 defineExpose({
   getItems: () => JSON.parse(JSON.stringify(items.value)),
-  setItems: (data: ProductRoutingItemVO[]) => {
+  setItems: (data: EngineeringRoutingItemVO[]) => {
     items.value = JSON.parse(JSON.stringify(data))
   },
 })

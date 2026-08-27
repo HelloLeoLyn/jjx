@@ -41,7 +41,8 @@
       </el-col>
     </el-row>
 
-    <!-- 编码构成要素 -->
+
+    <!-- 编码构成要素（客户选择 + 公共编码生成组件 2026-08-12） -->
     <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="客户" prop="codeCustomerId" required>
@@ -58,93 +59,29 @@
           />
         </el-form-item>
       </el-col>
-      <el-col :span="12">
-        <el-form-item label="流水号" prop="codeSerialNo" required>
-          <el-input v-model="formData.codeSerialNo" placeholder="自动生成" maxlength="3" />
-        </el-form-item>
-      </el-col>
     </el-row>
-    <el-row :gutter="20">
-      <el-col :span="12">
-        <el-form-item label="面板结构" required>
-          <el-select
-            v-model="codePanelType"
-            placeholder="面板类型"
-            style="width: 100%"
-            @change="composeProductCode"
-          >
-            <el-option label="有面板有线路" value="M" />
-            <el-option label="仅有线路" value="S" />
-            <el-option label="仅有面板" value="P" />
-          </el-select>
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
-        <el-form-item label="面板特征" required>
-          <el-select
-            v-model="codePanelFeature"
-            placeholder="面板特征"
-            style="width: 100%"
-            @change="composeProductCode"
-          >
-            <el-option label="面板有凹凸" value="E" />
-            <el-option label="面板有窗口" value="W" />
-            <el-option label="有窗口也有凹凸" value="H" />
-            <el-option label="无" value="O" />
-          </el-select>
-        </el-form-item>
-      </el-col>
-    </el-row>
-    <el-row :gutter="20">
-      <el-col :span="12">
-        <el-form-item label="线路类型" required>
-          <el-select
-            v-model="codeCircuitType"
-            placeholder="线路类型"
-            style="width: 100%"
-            @change="composeProductCode"
-          >
-            <el-option label="无(印银平key)" value="O" />
-            <el-option label="有金属弹片" value="M" />
-            <el-option label="线路有凹凸" value="P" />
-          </el-select>
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
-        <el-form-item label="线路特征" required>
-          <el-select
-            v-model="codeCircuitFeature"
-            placeholder="线路特征"
-            style="width: 100%"
-            @change="composeProductCode"
-          >
-            <el-option label="无" value="O" />
-            <el-option label="有发光二极体" value="L" />
-            <el-option label="有连接器" value="C" />
-            <el-option label="有连接器及发光二极体" value="H" />
-          </el-select>
-        </el-form-item>
-      </el-col>
-    </el-row>
-    <!-- 产品编码构成 -->
+    <ProductCodeGenerator
+      ref="codeGenRef"
+      :customer-short="selectedCustomerShortName"
+      :fetch-serial="fetchProductSerial"
+      v-model:state="codeState"
+      :emit-params="true"
+      v-model:params="codeParams"
+      hide-short-name
+      @change="onCodeChange"
+    />
+
+    <!-- 产品编码（组件生成后自动填入，只读展示） -->
     <el-row :gutter="20">
       <el-col :span="24">
         <el-form-item label="产品编码" prop="productCode" required>
           <el-input
             v-model="formData.productCode"
-            placeholder="请选择编码构成要素自动生成"
+            placeholder="选择客户并点击生成编码自动填入"
             readonly
-          >
-            <template #append>
-              <el-button @click="validateCodeUnique" :loading="generatingCode">
-                <el-icon><Refresh /></el-icon> 校验唯一性
-              </el-button>
-            </template>
-          </el-input>
+          />
           <div class="form-tip" :class="{ 'is-error': codeError }">
-            {{
-              codeError || '编码格式：客户简称(3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)'
-            }}
+            {{ codeError || '编码格式：客户简称(1-3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)' }}
           </div>
         </el-form-item>
       </el-col>
@@ -293,11 +230,7 @@ const selectedCustomer = ref<CustomerSearchVO | null>(null)
 const selectedBom = ref<BomSimpleVo | null>(null)
 const selectedRouting = ref<RoutingSimpleVo | null>(null)
 
-// 编码结构要素（独立于formData，用于组合编码）
-const codePanelType = ref('')
-const codePanelFeature = ref('')
-const codeCircuitType = ref('')
-const codeCircuitFeature = ref('')
+// 编码结构要素已收敛到公共组件 codeState（2026-08-12）
 
 // 规格参数
 const specData = reactive({
@@ -331,14 +264,25 @@ const formData = reactive<Partial<ProductFormData>>({
 })
 
 // 客户简称显示
-const customerShortNameDisplay = computed(() => {
-  if (!selectedCustomer.value) return ''
-  return (
-    selectedCustomer.value.customerShortName ||
-    selectedCustomer.value.customerName.substring(0, 3) ||
-    ''
-  )
-})
+// 编码生成器（公共组件 2026-08-12）
+import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
+import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
+const codeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
+const codeState = ref<ProductCodeState>({ serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' })
+const codeParams = ref<ProductCodeResult | null>(null)
+
+// 编码生成回调：同步流水号/产品编码/错误提示
+function onCodeChange(data: string | ProductCodeResult) {
+  const result = typeof data === 'string' ? null : data
+  formData.codeSerialNo = codeState.value.serialNo
+  if (result) {
+    formData.productCode = result.productCode
+    codeError.value = ''
+  } else {
+    formData.productCode = ''
+    codeError.value = '请完整选择面板结构/特征、线路类型/特征'
+  }
+}
 
 // 级联选择器配置
 const cascaderProps = {
@@ -354,7 +298,8 @@ const rules = {
   categoryId: [{ required: true, message: '请选择产品分类', trigger: 'change' }],
   productCode: [
     { required: true, message: '请生成产品编码', trigger: 'blur' },
-    { pattern: /^[A-Za-z0-9]{10}$/, message: '编码格式不正确，请重新生成', trigger: 'blur' },
+    // 2026-08-10 DEV-772 补漏：客户简称1-3位 → 编码9-10位（原硬编码10位导致2位简称保存失败）
+    { pattern: /^[A-Za-z0-9]{9,10}$/, message: '编码格式不正确，请重新生成', trigger: 'blur' },
   ],
   productName: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
   codeCustomerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
@@ -382,56 +327,39 @@ const marginLevel = computed(() => {
   return '低毛利'
 })
 
-// 客户选择变化 - 生成流水号
+// 客户选择变化 - 生成流水号（公共组件自动取号，2026-08-12）
 const handleCustomerChange = async (
   value: number | string | null,
   customer: CustomerSearchVO | null
 ) => {
   if (!value || !customer) {
     formData.codeSerialNo = ''
+    formData.customerId = undefined
+    formData.customerName = ''
     selectedCustomer.value = null
-    composeProductCode()
+    selectedCustomerShortName.value = ''
+    codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
     return
   }
 
-  // 保存选中的客户对象
+  // 保存选中的客户对象（2026-08-10：同时写入 customerId/customerName 落库关联）
   selectedCustomer.value = customer
   selectedCustomerShortName.value = customer.customerShortName || ''
+  formData.customerId = customer.customerId
+  formData.customerName = customer.customerName
 
-  // 生成流水号（调用后端API）
-  try {
-    const res = await productApi.generateSerialNo(formData.codeCustomerId!)
-    if (res.code === 200 && res.data) {
-      formData.codeSerialNo = String(res.data).padStart(3, '0')
-    } else {
-      // 如果API失败，使用临时流水号
-      formData.codeSerialNo = '001'
-    }
-  } catch (error) {
-    console.error('生成流水号失败:', error)
-    formData.codeSerialNo = '001'
-  }
-
-  composeProductCode()
+  // 取流水号 + 拼码（组件 fetchSerial 按客户ID调用后端）
+  codeGenRef.value?.generate()
 }
 
-// 组合产品编码
-const composeProductCode = () => {
-  const customerPart = customerShortNameDisplay.value.substring(0, 3)
-  const serialPart = formData.codeSerialNo || ''
-  const panelPart = `${codePanelType.value}${codePanelFeature.value}`
-  const circuitPart = `${codeCircuitType.value}${codeCircuitFeature.value}`
-
-  if (
-    customerPart.length === 3 &&
-    serialPart.length === 3 &&
-    panelPart.length === 2 &&
-    circuitPart.length === 2
-  ) {
-    formData.productCode = `${customerPart}${serialPart}${panelPart}${circuitPart}`
-    codeError.value = ''
-  } else {
-    formData.productCode = ''
+// 产品表单专用取流水号：按客户ID（保持原有接口）
+async function fetchProductSerial(short: string) {
+  if (!formData.codeCustomerId) return '001'
+  try {
+    const res: any = await productApi.generateSerialNo(formData.codeCustomerId)
+    return res?.data || '001'
+  } catch {
+    return '001'
   }
 }
 
@@ -441,12 +369,48 @@ const loadCategoryTree = async () => {
   categoryTree.value = res.data || []
 }
 
+// 从产品编码反解编码构成要素（2026-08-10：编辑回显面板/线路/流水号）
+// 编码 = 客户简称(1-3) + 流水号(3) + 面板结构(1) + 面板特征(1) + 线路类型(1) + 线路特征(1)，总长9-10位
+function parseCodeElements(code?: string | null) {
+  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  formData.codeSerialNo = ''
+  if (!code) return
+  const c = code.trim()
+  if (c.length < 7 || c.length > 10) return // 长度不符，无法反解
+  // 面板结构合法值：M/S/P；面板特征：E/W/H/O；线路类型：O/M/P；线路特征：O/L/C/H
+  const panelType = c.charAt(c.length - 4)
+  const panelFeature = c.charAt(c.length - 3)
+  const circuitType = c.charAt(c.length - 2)
+  const circuitFeature = c.charAt(c.length - 1)
+  codeState.value = {
+    serialNo: '',
+    panelType: 'MSP'.includes(panelType) ? panelType : '',
+    panelFeature: 'EWHO'.includes(panelFeature) ? panelFeature : '',
+    circuitType: 'OMP'.includes(circuitType) ? circuitType : '',
+    circuitFeature: 'OLCH'.includes(circuitFeature) ? circuitFeature : '',
+  }
+  // 流水号：倒数第7~5位（3位数字）
+  const serial = c.slice(-7, -4)
+  if (/^\d{3}$/.test(serial)) {
+    codeState.value.serialNo = serial
+    formData.codeSerialNo = serial
+  }
+}
+
 // 加载产品详情
 const loadProductDetail = async () => {
   if (!props.productId) return
   const res = await productApi.info(props.productId)
   const data = res.data
   Object.assign(formData, data)
+
+  // 2026-08-10：编辑回显客户（CustomerSelector 用 codeCustomerId 显示，自动加载客户名）
+  if (data.customerId) {
+    formData.codeCustomerId = data.customerId
+  }
+
+  // 2026-08-10：从产品编码反解编码构成要素（面板/线路/流水号），编码=简称(1-3)+流水(3)+面板结构(1)+面板特征(1)+线路类型(1)+线路特征(1)
+  parseCodeElements(data.productCode)
 
   // 解析规格参数
   if (data.specJson) {
@@ -471,16 +435,6 @@ const handleCategoryChange = (categoryId?: number) => {
   // 分类变化不再自动生成编码，编码由结构要素决定
 }
 
-// 验证编码唯一性
-const validateCodeUnique = async () => {
-  if (!formData.productCode) return
-  const res = await productApi.isUniqueProductCode(formData.productCode)
-  if (res.data) {
-    codeError.value = '产品编码已存在'
-  } else {
-    codeError.value = ''
-  }
-}
 
 // 提交表单
 const handleSubmit = async () => {
@@ -503,10 +457,10 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (isEdit.value) {
-      await productApi.edit(submitData)
+      await productApi.edit(submitData as ProductFormData)
       ElMessage.success('更新成功')
     } else {
-      await productApi.add(submitData)
+      await productApi.add(submitData as ProductFormData)
       ElMessage.success('创建成功')
     }
     emit('success')
@@ -534,10 +488,8 @@ const resetForm = () => {
     codeCustomerId: undefined,
     codeSerialNo: '',
   })
-  codePanelType.value = ''
-  codePanelFeature.value = ''
-  codeCircuitType.value = ''
-  codeCircuitFeature.value = ''
+  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  codeParams.value = null
   selectedCustomer.value = null
   selectedCustomerShortName.value = ''
   Object.assign(specData, {

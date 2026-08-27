@@ -62,13 +62,24 @@
               size="small"
               class="group-item-tag"
             >
-              <SvgIcon
-                v-if="item.icon"
-                :name="item.icon"
+              <!-- 有下标（hasIndex=1）：图标+红底数字（只读） -->
+              <IconStepBadge
+                v-if="item.hasIndex === 1"
+                :icon="item.icon || ''"
                 :size="14"
-                style="margin-right: 4px; vertical-align: middle"
+                :index="item.indexNumber ?? null"
               />
-              <span>{{ item.processName }}</span>
+              <!-- 无下标：原样图标+名称（印刷工序带标识，2026-08-12） -->
+              <template v-else>
+                <SvgIcon
+                  v-if="item.icon"
+                  :name="item.icon"
+                  :size="14"
+                  style="margin-right: 4px; vertical-align: middle"
+                />
+                <el-tag v-if="item.majorCategory === 'PRINT'" size="small" type="warning" effect="plain" style="margin-right: 4px">印刷</el-tag>
+                <span>{{ item.processName }}</span>
+              </template>
             </el-tag>
           </div>
         </template>
@@ -78,6 +89,12 @@
           <el-tag v-if="scope.row.processCategoryName" type="info" size="small">{{
             scope.row.processCategoryName
           }}</el-tag>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="工艺参数" min-width="180">
+        <template #default="scope">
+          <span v-if="printParamsText(scope.row.items)" style="color: #e6a23c">🖨️ {{ printParamsText(scope.row.items) }}</span>
           <span v-else>-</span>
         </template>
       </el-table-column>
@@ -100,11 +117,35 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { productRouteApi } from '@/api/product/routing'
-import type { ProductRoutingVO, ProductRoutingItemVO } from '@/types/product/routing'
-import { RouteStatusEnum, StepTypeEnum } from '@/enums/product'
+import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/product/routing'
+import { RouteStatusEnum } from '@/enums/product'
+import { getDictLabel } from '@/utils/dict'
+import { useDict } from '@/composables/useDict'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
+
+/** 工序类别字典（process_category：PANEL/UP_LINE/DOWN_LINE/OTHER） */
+const { options: categoryOptions } = useDict('process_category')
+
+/** 印刷参数友好文本（2026-08-12）：组内任一行有参数即展示 */
+function printParamsText(items?: any[]): string {
+  if (!items?.length) return ''
+  const parts: string[] = []
+  for (const it of items) {
+    if (!it.customProcessParams) continue
+    try {
+      const o = JSON.parse(it.customProcessParams)
+      if (o.colorNo) parts.push(`色号:${o.colorNo}`)
+      if (o.inkNo) parts.push(`油墨:${o.inkNo}`)
+      if (o.screenNo) parts.push(`网框:${o.screenNo}`)
+    } catch {
+      /* ignore */
+    }
+  }
+  return parts.join(' ')
+}
 
 const loading = ref(false)
-const detail = reactive<ProductRoutingVO>({
+const detail = reactive<EngineeringRoutingVO>({
   routingId: 0,
   routingCode: '',
   routingName: '',
@@ -131,7 +172,7 @@ const detail = reactive<ProductRoutingVO>({
 interface GroupDisplay {
   groupOrder: number
   groupName: string
-  items: ProductRoutingItemVO[]
+  items: EngineeringRoutingItemVO[]
   totalLaborHours: number
   totalMachineHours: number
   remark: string
@@ -140,12 +181,12 @@ interface GroupDisplay {
 
 const groups = ref<GroupDisplay[]>([])
 
-const buildGroups = (items: ProductRoutingItemVO[]) => {
+const buildGroups = (items: EngineeringRoutingItemVO[]) => {
   if (!items || items.length === 0) {
     groups.value = []
     return
   }
-  const groupMap = new Map<string, ProductRoutingItemVO[]>()
+  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
   items.forEach((item) => {
     const key = item.groupId
       ? 'group_' + item.groupId
@@ -171,7 +212,7 @@ const buildGroups = (items: ProductRoutingItemVO[]) => {
       0
     ),
     remark: items[0]?.description || '',
-    processCategoryName: StepTypeEnum.getLabel(Number(items[0]?.processCategory) || 0) || '',
+    processCategoryName: getDictLabel(categoryOptions.value, items[0]?.processCategory) || '',
   }))
 }
 

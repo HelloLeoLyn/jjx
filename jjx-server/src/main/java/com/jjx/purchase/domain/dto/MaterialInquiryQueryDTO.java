@@ -56,7 +56,7 @@ public class MaterialInquiryQueryDTO {
     /**
      * 询价状态
      */
-    private String inquiryStatus;
+    private Integer inquiryStatus;
 
     /**
      * 询价人

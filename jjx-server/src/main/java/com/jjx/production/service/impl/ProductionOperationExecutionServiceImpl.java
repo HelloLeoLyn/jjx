@@ -1,6 +1,8 @@
 package com.jjx.production.service.impl;
 
+import com.jjx.production.enums.ExecutionStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.result.Result;
@@ -36,6 +38,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final ProductionOrderMapper productionOrderMapper;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
+    /** P3-C：FQC 自动创建 / 质检联动 */
+    private final com.jjx.production.service.QualityActionService qualityActionService;
+    /** P1：工序产生时同步创建 First ProductionTask（统一任务责任树） */
+    private final com.jjx.production.service.ProductionTaskService productionTaskService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -47,13 +55,16 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 转换为实体
         ProductionOperationExecution execution = convertCreateDTOToEntity(createDTO);
-        execution.setExecutionStatus("PENDING"); // 默认状态为待执行
+        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode()); // 默认状态为待执行
 
         // 保存到数据库
         boolean success = save(execution);
         if (!success) {
             throw new BusinessException("创建工序执行记录失败");
         }
+
+        // P1：同一事务内创建 First ProductionTask（真实第一层任务，非 System Root）
+        productionTaskService.createFirstTask(execution.getExecutionId(), execution.getInputQuantity());
 
         log.info("工序执行记录创建成功, ID: {}", execution.getExecutionId());
         return execution.getExecutionId();
@@ -148,7 +159,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("工序执行记录不存在: " + executionId);
         }
 
-        return convertToVO(execution);
+        ProductionOperationExecutionVO vo = convertToVO(execution);
+        // 补全工单号/工序名（P1：不再包含任何 Root/TaskNode 派工投影）
+        enrichExecutionVOs(java.util.List.of(vo));
+        return vo;
     }
 
     @Override
@@ -159,9 +173,100 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         wrapper.orderByDesc(ProductionOperationExecution::getCreateTime);
 
         List<ProductionOperationExecution> executions = list(wrapper);
-        return executions.stream()
+        List<ProductionOperationExecutionVO> vos = executions.stream()
                 .map(ProductionOperationExecutionServiceImpl::convertToVO)
                 .collect(Collectors.toList());
+
+        // 2026-08-11 修复：补全工单号/工序编码/工序名（convertToVO 只拷自身字段）
+        enrichExecutionVOs(vos);
+        // V1 Fix Pack FIX-2：排除 CANCELLED 工单的工序（历史保留，不进入生产操作任务）
+        vos.removeIf(vo -> Boolean.TRUE.equals(isOrderCancelled(vo.getOrderId())));
+        return vos;
+    }
+
+    /** 批量补全工单号、工序编码/名称 */
+    /**
+     * V1 Fix Pack FIX-2：判断订单是否 CANCELLED（批量查询缓存，避免 N+1）
+     * 历史 CANCELLED 工单的 Execution 保留数据库记录，但默认不进入生产操作任务范围
+     */
+    private java.util.Map<Long, Boolean> orderCancelledCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Boolean isOrderCancelled(Long orderId) {
+        if (orderId == null) return false;
+        return orderCancelledCache.computeIfAbsent(orderId, id -> {
+            try {
+                Integer cnt = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM production_order WHERE order_id = ? AND order_status = "
+                                + com.jjx.production.enums.OrderStatusEnum.CANCELLED.getCode(),
+                        Integer.class, id);
+                return cnt != null && cnt > 0;
+            } catch (Exception e) {
+                log.warn("查询工单取消状态失败 orderId={}: {}", id, e.getMessage());
+                return false;
+            }
+        });
+    }
+
+    private void enrichExecutionVOs(List<ProductionOperationExecutionVO> vos) {
+        if (vos == null || vos.isEmpty()) return;
+        try {
+            // 工单号
+            java.util.Set<Long> orderIds = vos.stream()
+                    .map(ProductionOperationExecutionVO::getOrderId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (!orderIds.isEmpty()) {
+                String orderIdStr = orderIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+                java.util.Map<Long, String> orderNoMap = new java.util.HashMap<>();
+                try {
+                    jdbcTemplate.query("SELECT order_id, order_no FROM production_order WHERE order_id IN (" + orderIdStr + ")",
+                            rs -> {
+                                orderNoMap.put(rs.getLong("order_id"), rs.getString("order_no"));
+                            });
+                } catch (Exception e) {
+                    log.warn("查询工单号失败: {}", e.getMessage());
+                }
+                for (ProductionOperationExecutionVO vo : vos) {
+                    if (vo.getOrderId() != null) vo.setOrderNo(orderNoMap.get(vo.getOrderId()));
+                }
+            }
+            // 工序编码/名称
+            java.util.Set<Long> processIds = vos.stream()
+                    .map(ProductionOperationExecutionVO::getProcessId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (!processIds.isEmpty()) {
+                String pidStr = processIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+                java.util.Map<Long, String[]> processMap = new java.util.HashMap<>();
+                try {
+                    jdbcTemplate.query("SELECT process_id, process_code, process_name, icon, has_index FROM engineering_standard_process WHERE process_id IN (" + pidStr + ")",
+                            rs -> {
+                                processMap.put(rs.getLong("process_id"),
+                                        new String[]{rs.getString("process_code"), rs.getString("process_name"),
+                                                rs.getString("icon"), String.valueOf(rs.getInt("has_index"))});
+                            });
+                } catch (Exception e) {
+                    log.warn("查询工序信息失败: {}", e.getMessage());
+                }
+                for (ProductionOperationExecutionVO vo : vos) {
+                    if (vo.getProcessId() != null) {
+                        String[] info = processMap.get(vo.getProcessId());
+                        if (info != null) {
+                            vo.setProcessCode(info[0]);
+                            vo.setProcessName(info[1]);
+                            vo.setIcon(info[2]);
+                            try {
+                                vo.setHasIndex(Integer.valueOf(info[3]));
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+
+
+            log.warn("补全工序执行展示信息失败: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -183,6 +288,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         List<ProductionOperationExecutionVO> voList = executionPage.getRecords().stream()
                 .map(ProductionOperationExecutionServiceImpl::convertToVO)
                 .collect(Collectors.toList());
+        // V1 Fix Pack FIX-4：分页列表同样补全工序名/工单号（原缺失导致 processName 显示"-"）
+        enrichExecutionVOs(voList);
+        // V1 Fix Pack FIX-2：排除 CANCELLED 工单的工序（历史保留，不进入生产操作任务）
+        voList.removeIf(vo -> Boolean.TRUE.equals(isOrderCancelled(vo.getOrderId())));
         voPage.setRecords(voList);
 
         return voPage;
@@ -204,7 +313,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为进行中
-        execution.setExecutionStatus("IN_PROGRESS");
+        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
         execution.setActualStartTime(LocalDateTime.now());
 
         boolean success = updateById(execution);
@@ -232,7 +341,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为暂停
-        execution.setExecutionStatus("PAUSED");
+        execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getCode());
 
         boolean success = updateById(execution);
         if (!success) {
@@ -245,46 +354,72 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean completeExecution(Long executionId) {
-        log.info("完成工序执行: {}", executionId);
+    public boolean qualityCheck(Long executionId, String checkType, String checkResult, String checkItems, String remark) {
+        log.info("工序{}: executionId={}", "首检".equals(checkType) ? "首检" : "巡检", executionId);
 
         ProductionOperationExecution execution = getById(executionId);
         if (execution == null) {
             throw new BusinessException("工序执行记录不存在: " + executionId);
         }
-
-        // 检查记录状态是否可以完成
-        if (!canCompleteExecution(execution)) {
-            throw new BusinessException("记录状态不允许完成");
+        // 只有执行中可质检
+        if (execution.getExecutionStatus() == null
+                || execution.getExecutionStatus() != ExecutionStatusEnum.EXECUTING.getCode()) {
+            throw new BusinessException("只有执行中的工序可以进行首检/巡检");
+        }
+        if (!"FIRST".equalsIgnoreCase(checkType) && !"PATROL".equalsIgnoreCase(checkType)) {
+            throw new BusinessException("质检类型不合法(FIRST首检/PATROL巡检)");
+        }
+        if (checkResult == null || (!"PASS".equalsIgnoreCase(checkResult) && !"FAIL".equalsIgnoreCase(checkResult))) {
+            throw new BusinessException("质检结论不合法(PASS/FAIL)");
         }
 
-        // 更新状态为已完成
-        execution.setExecutionStatus("COMPLETED");
-        execution.setActualEndTime(LocalDateTime.now());
+        // 记录质检结果到 quality_check_result(JSON数组追加)
+        String checkNo = "EXEC" + executionId + "-" + ("FIRST".equalsIgnoreCase(checkType) ? "F" : "P")
+                + System.currentTimeMillis() % 100000;
+        java.util.Map<String, Object> record = new java.util.LinkedHashMap<>();
+        record.put("checkNo", checkNo);
+        record.put("checkType", checkType);
+        record.put("checkResult", checkResult);
+        record.put("checkItems", checkItems);
+        record.put("remark", remark);
+        record.put("checker", com.jjx.system.utils.SecurityUtils.getUsername());
+        record.put("checkTime", java.time.LocalDateTime.now().toString());
 
-        // 如果没有设置产出数量，默认使用投入数量
-        if (execution.getOutputQuantity() == null || execution.getOutputQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-            execution.setOutputQuantity(execution.getInputQuantity());
+        String existing = execution.getQualityCheckResult();
+        java.util.List<java.util.Map<String, Object>> list = new java.util.ArrayList<>();
+        if (existing != null && !existing.isEmpty()) {
+            try {
+                list = new com.fasterxml.jackson.databind.ObjectMapper().readValue(existing,
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+            } catch (Exception e) {
+                log.warn("解析历史质检结果失败: {}", e.getMessage());
+                list = new java.util.ArrayList<>();
+            }
         }
-        // 如果没有设置合格数量，默认使用产出数量
-        if (execution.getQualifiedQuantity() == null) {
-            execution.setQualifiedQuantity(execution.getOutputQuantity());
+        list.add(record);
+        try {
+            execution.setQualityCheckResult(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(list));
+        } catch (Exception e) {
+            throw new BusinessException("质检结果序列化失败");
         }
-        // 如果没有设置不良数量，默认为0
-        if (execution.getDefectiveQuantity() == null) {
-            execution.setDefectiveQuantity(BigDecimal.ZERO);
+        updateById(execution);
+
+        // 不合格 → 自动暂停工序
+        if ("FAIL".equalsIgnoreCase(checkResult)) {
+            execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getCode());
+            updateById(execution);
+            log.warn("工序[{}] {}不合格，已自动暂停", executionId, checkType);
         }
 
-        boolean success = updateById(execution);
-        if (!success) {
-            throw new BusinessException("完成工序执行失败");
-        }
-
-        // 更新生产工单的完成数量
-        updateOrderCompletedQuantity(execution.getOrderId());
-
-        log.info("工序执行完成成功, ID: {}", executionId);
+        log.info("工序[{}] {}完成: {} ({})", executionId, checkType, checkResult, checkNo);
         return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean completeExecution(Long executionId) {
+        // TODO
+        return false;
     }
 
     @Override
@@ -303,7 +438,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为已取消
-        execution.setExecutionStatus("CANCELLED");
+        execution.setExecutionStatus(ExecutionStatusEnum.CANCELLED.getCode());
 
         boolean success = updateById(execution);
         if (!success) {
@@ -360,8 +495,11 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
                 // 转换为实体并保存
                 ProductionOperationExecution execution = convertCreateDTOToEntity(dto);
-                execution.setExecutionStatus("PENDING");
+                execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
                 save(execution);
+
+                // P1：同一事务内创建 First ProductionTask（导入路径与单条创建保持一致）
+                productionTaskService.createFirstTask(execution.getExecutionId(), execution.getInputQuantity());
 
                 successCount++;
             } catch (Exception e) {
@@ -413,19 +551,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 按状态统计
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "PENDING");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.PENDING.getCode());
         long pendingCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "IN_PROGRESS");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getCode());
         long inProgressCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "COMPLETED");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode());
         long completedCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, "CANCELLED");
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.CANCELLED.getCode());
         long cancelledCount = count(wrapper);
 
         // 构建统计结果
@@ -442,29 +580,41 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     // ============ 私有方法 ============
 
     /**
-     * 更新生产工单的完成数量
-     * 汇总所有已完成工序的合格数量，更新到工单的 completedQuantity
+     * 更新生产工单的完成数量（052口径修正）
+     * completedQuantity = 各工序合格汇总（仅作进度展示，避免中间环节虚高）
+     * finishedQuantity = 成品完工数量（最后一道工序/完工检验合格数，用于完工判断/入库/订单回写）
      */
     private void updateOrderCompletedQuantity(Long orderId) {
         // 查询该工单下所有已完成工序的合格数量总和
         LambdaQueryWrapper<ProductionOperationExecution> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ProductionOperationExecution::getOrderId, orderId)
-                .eq(ProductionOperationExecution::getExecutionStatus, "COMPLETED");
+                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode());
 
         List<ProductionOperationExecution> completedExecutions = list(wrapper);
         BigDecimal totalQualified = completedExecutions.stream()
                 .map(e -> e.getQualifiedQuantity() != null ? e.getQualifiedQuantity() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // 成品完工数量 = 最后一道工序（process_order 最大）的合格数
+        BigDecimal finishedQty = BigDecimal.ZERO;
+        ProductionOperationExecution lastOp = completedExecutions.stream()
+                .filter(e -> e.getProcessOrder() != null)
+                .max(java.util.Comparator.comparingInt(e -> e.getProcessOrder() == null ? 0 : e.getProcessOrder()))
+                .orElse(null);
+        if (lastOp != null && lastOp.getQualifiedQuantity() != null) {
+            finishedQty = lastOp.getQualifiedQuantity();
+        }
+
         // 更新工单的完成数量
         ProductionOrder order = productionOrderMapper.selectById(orderId);
         if (order != null) {
             order.setCompletedQuantity(totalQualified);
+            order.setFinishedQuantity(finishedQty);
             if (order.getPlannedQuantity() != null) {
                 order.setRemainingQuantity(order.getPlannedQuantity().subtract(totalQualified));
             }
             productionOrderMapper.updateById(order);
-            log.info("更新工单 {} 的完成数量为: {}", orderId, totalQualified);
+            log.info("更新工单 {} 完成数量: 工序汇总={}, 成品完工={}", orderId, totalQualified, finishedQty);
         }
     }
 
@@ -480,7 +630,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (queryDTO.getProcessId() != null) {
             wrapper.eq(ProductionOperationExecution::getProcessId, queryDTO.getProcessId());
         }
-        if (queryDTO.getExecutionStatus() != null) {
+        if (queryDTO.getExecutionStatus() != null && !queryDTO.getExecutionStatus().isEmpty()) {
             wrapper.eq(ProductionOperationExecution::getExecutionStatus, queryDTO.getExecutionStatus());
         }
         if (queryDTO.getEquipmentId() != null) {
@@ -492,8 +642,20 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (queryDTO.getOperatorId() != null) {
             wrapper.eq(ProductionOperationExecution::getOperatorId, queryDTO.getOperatorId());
         }
-        if (queryDTO.getOperatorName() != null) {
-            wrapper.like(ProductionOperationExecution::getOperatorName, queryDTO.getOperatorName());
+        if (queryDTO.getOperatorName() != null && !queryDTO.getOperatorName().isEmpty()) {
+            if ("当前用户".equals(queryDTO.getOperatorName())) {
+                // 2026-08-11 修复：前端"我的任务"传"当前用户"魔数，解析为当前登录用户名
+                try {
+                    String currentUser = com.jjx.system.utils.SecurityUtils.getUsername();
+                    if (currentUser != null) {
+                        wrapper.eq(ProductionOperationExecution::getOperatorName, currentUser);
+                    }
+                } catch (Exception e) {
+                    log.warn("解析当前用户失败(不按操作员过滤): {}", e.getMessage());
+                }
+            } else {
+                wrapper.like(ProductionOperationExecution::getOperatorName, queryDTO.getOperatorName());
+            }
         }
         if (queryDTO.getPlanStartTimeFrom() != null) {
             wrapper.ge(ProductionOperationExecution::getPlannedStartTime, queryDTO.getPlanStartTimeFrom().atStartOfDay());
@@ -531,8 +693,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canDeleteExecution(ProductionOperationExecution execution) {
         // 只有待执行和已取消状态的记录可以删除
-        String status = execution.getExecutionStatus();
-        return "PENDING".equals(status) || "CANCELLED".equals(status);
+        Integer status = execution.getExecutionStatus();
+        return ExecutionStatusEnum.PENDING.getCode().equals(status) || ExecutionStatusEnum.CANCELLED.getCode().equals(status);
     }
 
     /**
@@ -540,7 +702,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canStartExecution(ProductionOperationExecution execution) {
         // 只有待执行状态的记录可以开始
-        return "PENDING".equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.PENDING.getCode().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -548,7 +710,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canPauseExecution(ProductionOperationExecution execution) {
         // 只有进行中状态的记录可以暂停
-        return "IN_PROGRESS".equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -556,7 +718,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canCompleteExecution(ProductionOperationExecution execution) {
         // 只有进行中状态的记录可以完成
-        return "IN_PROGRESS".equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -564,8 +726,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canCancelExecution(ProductionOperationExecution execution) {
         // 只有待执行和进行中状态的记录可以取消
-        String status = execution.getExecutionStatus();
-        return "PENDING".equals(status) || "IN_PROGRESS".equals(status);
+        Integer status = execution.getExecutionStatus();
+        return ExecutionStatusEnum.PENDING.getCode().equals(status) || ExecutionStatusEnum.EXECUTING.getCode().equals(status);
     }
 
     /**
@@ -578,6 +740,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         vo.setExecutionId(execution.getExecutionId());
         vo.setOrderId(execution.getOrderId());
         vo.setProcessId(execution.getProcessId());
+        // 2026-08-12：印刷等自定义工序透传（名称/大类/计划参数）
+        vo.setMajorCategory(execution.getMajorCategory());
+        vo.setProcessName(execution.getProcessName());
+        vo.setCustomProcessParams(execution.getCustomProcessParams());
         vo.setProcessOrder(execution.getProcessOrder());
         vo.setExecutionStatus(execution.getExecutionStatus());
         vo.setPlannedStartTime(execution.getPlannedStartTime());
@@ -593,6 +759,13 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         vo.setOutputQuantity(execution.getOutputQuantity());
         vo.setQualifiedQuantity(execution.getQualifiedQuantity());
         vo.setDefectiveQuantity(execution.getDefectiveQuantity());
+
+        // 待完成 = 任务数量 - 已完成（WorkReport 有效产出），下限 0
+        BigDecimal inQty = execution.getInputQuantity();
+        BigDecimal outQty = execution.getOutputQuantity();
+        vo.setRemainingQuantity(inQty == null ? BigDecimal.ZERO
+                : inQty.subtract(outQty == null ? BigDecimal.ZERO : outQty).max(BigDecimal.ZERO));
+
         vo.setDefectiveReason(execution.getDefectiveReason());
         vo.setActualProcessParams(execution.getActualProcessParams());
         vo.setQualityCheckResult(execution.getQualityCheckResult());
@@ -649,6 +822,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         execution.setOrderId(createDTO.getOrderId());
         execution.setProcessId(createDTO.getProcessId());
+        // P1 Final Cleanup：透传 DTO 工序名称（此前丢失导致 Execution/任务树 processName 为空）
+        execution.setProcessName(createDTO.getProcessName());
         execution.setProcessOrder(createDTO.getProcessOrder());
         execution.setPlannedStartTime(createDTO.getPlanStartTime());
         execution.setPlannedEndTime(createDTO.getPlanEndTime());
@@ -666,26 +841,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      * 从UpdateDTO更新实体
      */
     private static void updateEntityFromUpdateDTO(ProductionOperationExecution execution, ProductionOperationExecutionUpdateDTO updateDTO) {
+        if (updateDTO.getActualLaborHours() != null
+                || updateDTO.getActualMachineHours() != null
+                || updateDTO.getActualCompletedQuantity() != null
+                || updateDTO.getActualQualifiedQuantity() != null
+                || updateDTO.getActualDefectiveQuantity() != null) {
+            // P2-C：生产数量与工时已切换为 WorkReport 事实，普通 Execution Update 不再直接维护（防双重累计）
+            throw new BusinessException("生产数量/工时已切换为报工记录，请使用报工功能维护");
+        }
         if (updateDTO.getActualStartTime() != null) {
             execution.setActualStartTime(updateDTO.getActualStartTime());
         }
         if (updateDTO.getActualEndTime() != null) {
             execution.setActualEndTime(updateDTO.getActualEndTime());
-        }
-        if (updateDTO.getActualLaborHours() != null) {
-            execution.setActualLaborHours(updateDTO.getActualLaborHours());
-        }
-        if (updateDTO.getActualMachineHours() != null) {
-            execution.setActualMachineHours(updateDTO.getActualMachineHours());
-        }
-        if (updateDTO.getActualCompletedQuantity() != null) {
-            execution.setOutputQuantity(updateDTO.getActualCompletedQuantity());
-        }
-        if (updateDTO.getActualQualifiedQuantity() != null) {
-            execution.setQualifiedQuantity(updateDTO.getActualQualifiedQuantity());
-        }
-        if (updateDTO.getActualDefectiveQuantity() != null) {
-            execution.setDefectiveQuantity(updateDTO.getActualDefectiveQuantity());
         }
         if (updateDTO.getOperatorId() != null) {
             execution.setOperatorId(updateDTO.getOperatorId());
@@ -705,9 +873,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (updateDTO.getExecutionStatus() != null) {
             execution.setExecutionStatus(updateDTO.getExecutionStatus());
         }
-        if (updateDTO.getRemark() != null) {
-            execution.setDefectiveReason(updateDTO.getRemark());
+        if (updateDTO.getDefectiveReason() != null) {
+            execution.setDefectiveReason(updateDTO.getDefectiveReason());
         }
+        // P0-03：DTO.remark 不再写入 defective_reason（原错误映射）；execution 实体无 remark 字段，remark 不持久化
 
         execution.setUpdateTime(LocalDateTime.now());
     }
@@ -715,16 +884,16 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     /**
      * 获取状态描述
      */
-    private static String getStatusDesc(String status) {
+    private static String getStatusDesc(Integer status) {
         if (status == null) {
             return "未知";
         }
         switch (status) {
-            case "PENDING": return "待执行";
-            case "IN_PROGRESS": return "进行中";
-            case "PAUSED": return "已暂停";
-            case "COMPLETED": return "已完成";
-            case "CANCELLED": return "已取消";
+            case 0: return "待执行";
+            case 2: return "进行中";
+            case 3: return "已暂停";
+            case 4: return "已完成";
+            case 6: return "已取消";
             default: return "未知";
         }
     }

@@ -60,6 +60,30 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     Long createFromProduction(Long workOrderId);
 
     /**
+     * 2026-08-18：领料预览调整版（adjustedItems 可选，仅可少领）
+     */
+    Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems);
+
+    /**
+     * 2026-08-18：领料预览（BOM展开+可用量+替代料）
+     */
+    java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId);
+
+    /**
+     * 追加领料（033定稿：多次领料，去幂等）
+     * 出库单号 PICK-{工单号}-{序号}；每次填本次领料数量，Σ累计领料 ≤ BOM需求量
+     * @param workOrderId 工单ID
+     * @param items 本次领料明细 [{materialId, materialCode, materialName, quantity}]
+     * @return 出库单ID
+     */
+    Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items);
+
+    /**
+     * 查询工单剩余可领料量（033：剩余需求量 = BOM需求量 - Σ已领料量）
+     */
+    java.util.List<java.util.Map<String, Object>> getPickRemaining(Long workOrderId);
+
+    /**
      * 销售出库（从销售订单创建）
      */
     Long createFromSales(Long salesOrderId);
@@ -82,7 +106,12 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     /**
      * 更新出库单状态
      */
-    boolean updateStatus(Long outboundId, String status);
+    boolean updateStatus(Long outboundId, Integer status);
+
+    /**
+     * 更新出库单（含明细，DEV-695）
+     */
+    boolean update(Map<String, Object> params);
 
     /**
      * 分页查询出库单（旧方法，兼容性）
@@ -93,5 +122,10 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      * 获取出库单详情（旧方法，兼容性）
      */
     Map<String, Object> getDetail(Map<String, Object> params);
+
+    /**
+     * 导出入库单PDF（单张表单）
+     */
+    byte[] exportPdf(Long outboundId);
 
 }

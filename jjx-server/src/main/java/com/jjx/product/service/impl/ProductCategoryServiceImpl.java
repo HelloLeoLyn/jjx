@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.jjx.system.annotation.Event;
 
 /**
  * 产品分类Service实现
@@ -104,6 +105,7 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
 
     @Transactional(rollbackFor = Exception.class)
     @Override
+    @Event(value = "product.category.created", bizId = "#category", bizType = "'product'")
     public boolean createCategory(ProductCategory category) {
         // 检查分类编码是否唯一
         if (!checkCategoryCodeUnique(category.getCategoryCode())) {
@@ -125,6 +127,7 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
 
     @Transactional(rollbackFor = Exception.class)
     @Override
+    @Event(value = "product.category.updated", bizId = "#category", bizType = "'product'")
     public boolean updateCategory(ProductCategory category) {
         // 检查分类编码是否唯一
         if (!checkCategoryCodeUnique(category.getCategoryCode())) {
@@ -141,6 +144,7 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
     }
 
     @Override
+    @Event(value = "product.category.deleted", bizId = "#categoryId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteCategory(Long categoryId) {
         // 检查是否有子分类
@@ -188,6 +192,7 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
     }
 
     @Override
+    @Event(value = "product.category.deleted_children", bizId = "#categoryId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean removeCategoryWithChildren(Long categoryId) {
         // 1. 验证分类是否存在

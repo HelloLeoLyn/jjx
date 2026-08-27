@@ -31,8 +31,20 @@ public class ProductionOperationExecution {
     @Schema(description = "标准工序ID")
     private Long processId;
 
+    @Schema(description = "大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）")
+    private String majorCategory;
+
+    @Schema(description = "工序名称冗余（印刷等自定义工序，2026-08-12）")
+    private String processName;
+
+    @Schema(description = "计划工艺参数JSON（从工艺路线带入，2026-08-12）")
+    private String customProcessParams;
+
     @Schema(description = "工序顺序")
     private Integer processOrder;
+
+    @Schema(description = "当前工序ProductionTask流水")
+    private Long taskSeq;
 
     @Schema(description = "计划开始时间")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
@@ -93,7 +105,7 @@ public class ProductionOperationExecution {
     private String qualityCheckResult;
 
     @Schema(description = "执行状态：PENDING待执行/PROCESSING执行中/COMPLETED已完成/SKIPPED已跳过")
-    private String executionStatus;
+    private Integer executionStatus;
 
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
@@ -121,28 +133,28 @@ public class ProductionOperationExecution {
      * 检查是否为待执行状态
      */
     public boolean isPending() {
-        return "PENDING".equals(executionStatus);
+        return Integer.valueOf(0).equals(executionStatus);
     }
 
     /**
      * 检查是否为执行中状态
      */
     public boolean isProcessing() {
-        return "PROCESSING".equals(executionStatus);
+        return Integer.valueOf(2).equals(executionStatus);
     }
 
     /**
      * 检查是否为已完成状态
      */
     public boolean isCompleted() {
-        return "COMPLETED".equals(executionStatus);
+        return Integer.valueOf(4).equals(executionStatus);
     }
 
     /**
      * 检查是否为已跳过状态
      */
     public boolean isSkipped() {
-        return "SKIPPED".equals(executionStatus);
+        return Integer.valueOf(5).equals(executionStatus);
     }
 
     /**
@@ -257,7 +269,7 @@ public class ProductionOperationExecution {
         if (processOrder == null || processOrder < 1) {
             throw new IllegalArgumentException("工序顺序必须大于0");
         }
-        if (executionStatus == null || executionStatus.trim().isEmpty()) {
+        if (executionStatus == null) {
             throw new IllegalArgumentException("执行状态不能为空");
         }
         if (plannedStartTime != null && plannedEndTime != null &&

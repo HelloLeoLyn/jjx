@@ -3,9 +3,10 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { userApi } from '@/api/system/user'
 import { authApi } from '@/api/auth'
-import type { SysUser } from '@/types/system'
+import type { SysUser, LoginUser } from '@/types/system'
 import type { RouteRecordRaw } from 'vue-router'
-import { resetRouter } from '@/router'
+import router from '@/router'
+const resetRouter = () => { router.getRoutes().forEach(r => { if (r.name) router.removeRoute(r.name) }) }
 
 export interface MenuItem {
   path: string
@@ -42,7 +43,7 @@ interface UserStoreReturn {
   getSidebarCollapsed: import('vue').ComputedRef<boolean>
   // actions
   setToken: (token: string) => void
-  setUserInfo: (userInfo: SysUser) => void
+  setUserInfo: (userInfo: SysUser | LoginUser) => void
   setRoles: (roles: string[]) => void
   setPermissions: (permissions: string[]) => void
   setAccessibleRoutes: (routes: RouteRecordRaw[]) => void
@@ -147,8 +148,8 @@ export const useUserStore = defineStore('user', (): UserStoreReturn => {
     localStorage.setItem('token', newToken)
   }
 
-  function setUserInfo(info: SysUser): void {
-    userInfo.value = info
+  function setUserInfo(info: SysUser | LoginUser): void {
+    userInfo.value = info as unknown as SysUser
     localStorage.setItem('userInfo', JSON.stringify(info))
   }
 
@@ -175,7 +176,7 @@ export const useUserStore = defineStore('user', (): UserStoreReturn => {
 
   async function getPermissionsFromDatabase(): Promise<string[]> {
     try {
-      const res = await userApi.getPermissions()
+      const res = await authApi.getPermission()
       if (res.data && Array.isArray(res.data)) {
         return res.data
       }
@@ -308,7 +309,7 @@ export const useUserStore = defineStore('user', (): UserStoreReturn => {
 
   async function updatePassword(oldPassword: string, newPassword: string): Promise<any> {
     try {
-      const res = await userApi.updatePwd(oldPassword, newPassword)
+      const res = await userApi.updatePwd({ oldPassword, newPassword })
       return Promise.resolve(res)
     } catch (error) {
       return Promise.reject(error)

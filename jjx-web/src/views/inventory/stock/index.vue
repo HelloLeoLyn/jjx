@@ -91,9 +91,19 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" @click="handleShowImport">
-            <el-icon><Upload /></el-icon>导入
-          </el-button>
+          <el-dropdown trigger="click" @command="handleImportMode">
+            <el-button type="success" v-hasPermi="['inventory:stock:import']">
+              <el-icon><Upload /></el-icon>导入<el-icon><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="quick">① 快速导入（≤100行）</el-dropdown-item>
+                <el-dropdown-item command="batch" divided>③ 批量校验导入（推荐）</el-dropdown-item>
+                <el-dropdown-item command="preview" disabled>② 大文件预览（开发中）</el-dropdown-item>
+                <el-dropdown-item command="server" disabled>④ 服务端直导（开发中）</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </el-col>
         <el-col :span="1.5">
           <el-button @click="handleRefresh">
@@ -202,7 +212,7 @@
             <el-tag v-else type="success" size="small">正常</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" min-width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleViewDetail(row)">批次明细</el-button>
             <el-button link type="primary" @click="handleAdjust(row)">调整</el-button>
@@ -221,6 +231,11 @@
 
     <!-- 导入对话框组件 -->
     <StockImportDialog v-model:visible="importDialogVisible" @success="handleImportSuccess" />
+    <!-- DEV-697 模式③：批量校验导入 -->
+    <StockBatchImportDialog
+      v-model:visible="batchImportVisible"
+      @success="handleImportSuccess"
+    />
 
     <!-- 批次明细对话框 -->
     <StockDetailDialog v-model:visible="detailDialogVisible" :material-id="currentMaterialId" />
@@ -244,11 +259,13 @@ import {
   Refresh,
   Filter,
   Upload,
+  ArrowDown,
 } from '@element-plus/icons-vue'
 import { stockApi } from '@/api/inventory/stock'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { StockQueryParams, StockVO, StockSummaryVO } from '@/types/inventory/stock'
 import StockImportDialog from '@/components/inventory/StockImportDialog.vue'
+import StockBatchImportDialog from '@/components/inventory/StockBatchImportDialog.vue'
 import StockDetailDialog from '@/components/inventory/StockDetailDialog.vue'
 
 const router = useRouter()
@@ -289,6 +306,8 @@ const total = ref(0)
 
 // 导入对话框
 const importDialogVisible = ref(false)
+// DEV-697 模式③：批量校验导入
+const batchImportVisible = ref(false)
 
 // 批次明细对话框
 const detailDialogVisible = ref(false)
@@ -365,9 +384,18 @@ const handleExport = () => {
   ElMessage.info('导出功能开发中')
 }
 
-// 显示导入对话框
+// 显示导入对话框（模式选择）
 const handleShowImport = () => {
   importDialogVisible.value = true
+}
+
+// 导入模式选择（DEV-696/697：①快速导入 ≤100行；③批量校验推荐）
+const handleImportMode = (mode: string) => {
+  if (mode === 'quick') {
+    importDialogVisible.value = true
+  } else if (mode === 'batch') {
+    batchImportVisible.value = true
+  }
 }
 
 // 导入成功回调

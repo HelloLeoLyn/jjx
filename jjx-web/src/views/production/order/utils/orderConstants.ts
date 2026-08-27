@@ -1,17 +1,13 @@
 import type { OrderStatus, OrderType, PlanType, Priority } from '@/types/production/order'
+import { ProductionOrderStatusEnum, ExecutionStatusEnum } from '@/enums/production'
 
 /**
- * 订单状态选项
+ * 订单状态选项（来自统一枚举）
  */
-export const ORDER_STATUS_OPTIONS = [
-  { label: '草稿', value: 'draft' as OrderStatus },
-  { label: '待审批', value: 'pending_approval' as OrderStatus },
-  { label: '已批准', value: 'approved' as OrderStatus },
-  { label: '已排程', value: 'scheduled' as OrderStatus },
-  { label: '进行中', value: 'in_progress' as OrderStatus },
-  { label: '已完成', value: 'completed' as OrderStatus },
-  { label: '已取消', value: 'cancelled' as OrderStatus },
-]
+export const ORDER_STATUS_OPTIONS = ProductionOrderStatusEnum.items.map((item) => ({
+  label: item.label,
+  value: item.value as OrderStatus,
+}))
 
 /**
  * 订单类型选项
@@ -45,22 +41,19 @@ export const PRIORITY_OPTIONS = [
  * 审批状态选项
  */
 export const APPROVAL_STATUS_OPTIONS = [
-  { label: '待审批', value: 'pending' },
-  { label: '已批准', value: 'approved' },
-  { label: '已拒绝', value: 'rejected' },
-  { label: '已取消', value: 'cancelled' },
+  { label: '待审批', value: 1 },
+  { label: '已批准', value: 2 },
+  { label: '已拒绝', value: 3 },
+  { label: '已取消', value: 4 },
 ]
 
 /**
- * 执行状态选项
+ * 执行状态选项（来自统一枚举）
  */
-export const EXECUTION_STATUS_OPTIONS = [
-  { label: '未开始', value: 'not_started' },
-  { label: '进行中', value: 'in_progress' },
-  { label: '已完成', value: 'completed' },
-  { label: '已暂停', value: 'paused' },
-  { label: '已取消', value: 'cancelled' },
-]
+export const EXECUTION_STATUS_OPTIONS = ExecutionStatusEnum.items.map((item) => ({
+  label: item.label,
+  value: item.value,
+}))
 
 /**
  * 分页配置
@@ -136,11 +129,11 @@ export function getFilteredStatusOptions(viewType: string) {
   switch (viewType) {
     case VIEW_TYPES.PLAN:
       return ORDER_STATUS_OPTIONS.filter((status) =>
-        ['draft', 'pending_approval', 'approved', 'cancelled'].includes(status.value)
+        [0, 1, 2, 9].includes(status.value)
       )
     case VIEW_TYPES.WORK_ORDER:
       return ORDER_STATUS_OPTIONS.filter((status) =>
-        ['scheduled', 'in_progress', 'completed', 'cancelled'].includes(status.value)
+        [4, 6, 8, 9].includes(status.value)
       )
     case VIEW_TYPES.ALL:
       return ORDER_STATUS_OPTIONS

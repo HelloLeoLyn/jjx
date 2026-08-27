@@ -7,6 +7,7 @@ import com.jjx.product.domain.entity.ProductInstance;
 import com.jjx.product.domain.query.ProductInstanceQuery;
 import com.jjx.product.domain.vo.ProductInstanceVo;
 import com.jjx.product.service.IProductInstanceService;
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -45,6 +46,7 @@ public class ProductInstanceController extends BaseController {
      * 新增产品实例
      */
     @PostMapping
+    @SaCheckPermission("product:instance:edit")
     public Result<Void> add(@Validated @RequestBody ProductInstance instance) {
         boolean result = IProductInstanceService.createInstance(instance);
         return result ? Result.success() : Result.error();
@@ -54,6 +56,7 @@ public class ProductInstanceController extends BaseController {
      * 批量新增产品实例
      */
     @PostMapping("/batch")
+    @SaCheckPermission("product:instance:edit")
     public Result<Void> batchAdd(@Validated @RequestBody List<ProductInstance> instances) {
         boolean result = IProductInstanceService.batchCreateInstances(instances);
         return result ? Result.success() : Result.error();
@@ -63,6 +66,7 @@ public class ProductInstanceController extends BaseController {
      * 修改产品实例
      */
     @PutMapping
+    @SaCheckPermission("product:instance:edit")
     public Result<Void> edit(@Validated @RequestBody ProductInstance instance) {
         boolean result = IProductInstanceService.updateById(instance);
         return result ? Result.success() : Result.error();
@@ -72,6 +76,7 @@ public class ProductInstanceController extends BaseController {
      * 删除产品实例
      */
     @DeleteMapping("/{instanceId}")
+    @SaCheckPermission("product:instance:delete")
     public Result<Void> remove(@PathVariable Long instanceId) {
         boolean result = IProductInstanceService.removeById(instanceId);
         return result ? Result.success() : Result.error();

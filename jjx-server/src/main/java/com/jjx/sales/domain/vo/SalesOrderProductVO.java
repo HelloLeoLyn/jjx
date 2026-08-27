@@ -40,6 +40,18 @@ public class SalesOrderProductVO {
     @Schema(description = "产品名称", example = "薄膜开关")
     private String productName;
 
+    @Schema(description = "备注")
+    private String remark;
+
+    @Schema(description = "规格描述")
+    private String specification;
+
+    @Schema(description = "客户物料号")
+    private String customerMaterialNo;
+
+    @Schema(description = "行备注")
+    private String lineRemark;
+
     @Schema(description = "创建时间", example = "2026-04-20 10:00:00")
     private Date createTime;
 

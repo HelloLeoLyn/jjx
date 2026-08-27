@@ -15,23 +15,12 @@
       </el-col>
       <el-col :span="10">
         <el-form-item label="客户" prop="customerId">
-          <el-select
+          <CustomerSelector
             v-model="form.customerId"
+            value-type="customerId"
             placeholder="请选择客户"
-            filterable
-            remote
-            :remote-method="searchCustomer"
-            :loading="customerLoading"
-            style="width: 100%"
             @change="customerChanged"
-          >
-            <el-option
-              v-for="item in customerOptions"
-              :key="item.customerId"
-              :label="item.customerName"
-              :value="item.customerId"
-            />
-          </el-select>
+          />
         </el-form-item>
       </el-col>
       <el-col :span="2"
@@ -77,18 +66,6 @@
 
     <el-row :gutter="20">
       <el-col :span="12">
-        <el-form-item label="订单类型" prop="orderType">
-          <el-select v-model="form.orderType" placeholder="请选择订单类型" style="width: 100%">
-            <el-option
-              v-for="dict in orderTypeOptions"
-              :key="dict.value"
-              :label="dict.label"
-              :value="dict.value"
-            />
-          </el-select>
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
         <el-form-item label="销售负责人" prop="salesPersonId">
           <el-select
             v-model="form.salesPersonId"
@@ -106,11 +83,9 @@
           </el-select>
         </el-form-item>
       </el-col>
-    </el-row>
-    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="币种" prop="currency">
-          <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%">
+          <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%" @change="handleCurrencyChange">
             <el-option
               v-for="dict in currencyOptions"
               :key="dict.value"
@@ -120,6 +95,9 @@
           </el-select>
         </el-form-item>
       </el-col>
+    </el-row>
+
+    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="汇率" prop="exchangeRate">
           <el-input-number
@@ -130,11 +108,9 @@
             placeholder="请输入汇率"
             style="width: 100%"
           />
+          <span v-if="exchangeRateHint" class="rate-hint">{{ exchangeRateHint }}</span>
         </el-form-item>
       </el-col>
-    </el-row>
-
-    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="付款条件" prop="paymentTerms">
           <el-select v-model="form.paymentTerms" placeholder="请选择付款条件" style="width: 100%">
@@ -147,6 +123,9 @@
           </el-select>
         </el-form-item>
       </el-col>
+    </el-row>
+
+    <el-row :gutter="20">
       <el-col :span="12">
         <el-form-item label="运输方式" prop="shippingMethod">
           <el-select v-model="form.shippingMethod" placeholder="请选择运输方式" style="width: 100%">
@@ -175,30 +154,20 @@
     >
     <el-table :data="form.items" style="width: 100%; margin-bottom: 20px" border>
       <el-table-column label="序号" type="index" width="60" align="center" />
-      <el-table-column label="产品编码" prop="productCode">
+      <el-table-column label="产品编码" prop="productCode" min-width="200">
         <template #default="scope">
-          <el-select
-            v-model="scope.row.productCode"
-            placeholder="请选择产品"
-            filterable
-            remote
-            :remote-method="(query) => searchProduct(query, scope.row)"
-            :loading="productLoading"
-            style="width: 100%"
-            @change="handleProductChange(scope.row)"
+          <!-- 标准单：ProductSelector 远程搜索选产品 -->
+          <ProductSelector
+            :model-value="scope.row.productCode"
+            value-type="productCode"
+            placeholder="搜索产品编码/名称"
+            :min-keyword-length="1"
             class="borderless-input"
-          >
-            <el-option
-              v-for="item in productOptions"
-              :key="item.productCode"
-              :label="item.productCode"
-              :value="item.productCode"
-              >{{ item.productCode }} - {{ item.productName }}</el-option
-            >
-          </el-select>
+            @change="(val: any, product: any) => handleProductChange(scope.row, val, product)"
+          />
         </template>
       </el-table-column>
-      <el-table-column label="产品名称" prop="productName" width="180">
+      <el-table-column label="产品名称" prop="productName" width="160">
         <template #default="scope">
           <el-input
             v-model="scope.row.productName"
@@ -213,6 +182,15 @@
           <el-input
             v-model="scope.row.specification"
             placeholder="规格型号"
+            class="borderless-input"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="客户物料号" prop="customerMaterialNo" width="120">
+        <template #default="scope">
+          <el-input
+            v-model="scope.row.customerMaterialNo"
+            placeholder="客户物料号"
             class="borderless-input"
           />
         </template>
@@ -263,9 +241,9 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="定制要求" prop="customRequirements">
+      <el-table-column label="行备注" prop="lineRemark" min-width="120">
         <template #default="scope">
-          <el-input v-model="scope.row.customRequirements" placeholder="定制要求" />
+          <el-input v-model="scope.row.lineRemark" placeholder="行备注" />
         </template>
       </el-table-column>
       <el-table-column label="操作" width="80" align="center">
@@ -280,6 +258,25 @@
         <el-button type="primary" icon="Plus" @click="addItem()">添加明细</el-button>
       </el-col>
     </el-row>
+
+    <!-- 附件上传（新建和编辑都显示） -->
+    <el-divider content-position="left">订单附件</el-divider>
+    <div class="attachment-section">
+      <AttachmentPanel
+        v-if="form.orderId"
+        biz-type="sales_order"
+        :biz-id="form.orderId"
+        style="margin-bottom: 10px"
+      />
+      <AttachmentUploader
+        ref="uploaderRef"
+        biz-type="sales_order"
+        :biz-id="form.orderId"
+        :accept="['.pdf','.doc','.docx','.xls','.xlsx','.jpg','.jpeg','.png']"
+        button-text="上传附件"
+        tip="支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传"
+      />
+    </div>
 
     <!-- 金额汇总 -->
     <el-divider content-position="left">金额汇总</el-divider>
@@ -348,6 +345,15 @@
         </el-form-item>
       </el-col>
     </el-row>
+    <el-row :gutter="20" v-if="form.currency && form.currency !== 'CNY'">
+      <el-col :span="8">
+        <el-form-item :label="`外币总金额（${form.currency}）`">
+          <el-input v-model="foreignCurrencyDisplay" readonly style="width: 100%">
+            <template #append>{{ form.currency }}</template>
+          </el-input>
+        </el-form-item>
+      </el-col>
+    </el-row>
 
     <!-- 其他信息 -->
     <el-divider content-position="left">其他信息</el-divider>
@@ -377,13 +383,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive } from 'vue'
+import { onMounted, ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import { orderApi } from '@/api/sales/order'
 import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
+import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
+import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import type { CustomerFormData } from '@/types/sales/customer'
-import { el } from 'element-plus/es/locale/index.mjs'
 
 interface Props {
   isEdit?: boolean
@@ -475,14 +486,11 @@ const handleCustomerSuccess = (data: CustomerFormData) => {
 const {
   orderFormRef,
   customerLoading,
-  productLoading,
   submitting,
   customerOptions,
-  productOptions,
   currencyOptions,
   paymentTermsOptions,
   shippingMethodOptions,
-  orderTypeOptions,
   salesPersonOptions,
   form,
   rules,
@@ -490,7 +498,6 @@ const {
   customerChanged,
   loadSalesPersons,
   salesPersonChanged,
-  searchProduct,
   handleProductChange,
   calculateItemAmount,
   calculateTotalAmount,
@@ -503,24 +510,121 @@ const {
   formatCurrency,
 } = useOrderForm({ isEdit: props.isEdit, initialData: props.initialData })
 
+// ===== 汇率自动填充 =====
+const exchangeRateLoading = ref(false)
+
+// 外币总金额显示（订单选外币时，将人民币总金额折算成外币）
+const foreignCurrencyDisplay = computed(() => {
+  if (!form.exchangeRate || !form.totalAmount || form.currency === 'CNY') return 0
+  // 汇率 = 1外币 = N人民币，所以外币金额 = 人民币总金额 / 汇率
+  const foreignAmount = form.totalAmount / form.exchangeRate
+  return foreignAmount.toFixed(2)
+})
+
+// 汇率提示文字
+const exchangeRateHint = computed(() => {
+  if (!form.currency || form.currency === 'CNY') return ''
+  return `1 ${form.currency} = ${form.exchangeRate} CNY`
+})
+
+// 币种变化时自动获取汇率
+const handleCurrencyChange = async (val: string) => {
+  if (val === 'CNY') {
+    form.exchangeRate = 1
+    return
+  }
+  exchangeRateLoading.value = true
+  try {
+    const res = await orderApi.getExchangeRate(val)
+    if (res?.code === 200 && res.data) {
+      form.exchangeRate = res.data
+    }
+  } catch (e) {
+    console.error('获取汇率失败:', e)
+  } finally {
+    exchangeRateLoading.value = false
+  }
+}
+
+// ===== 附件上传（DEV-733 统一组件） =====
+const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
+
 // 初始化
 onMounted(() => {
   resetForm()
   loadSalesPersons()
-  if (props.isEdit && props.orderId) {
-    loadOrderData(props.orderId)
-  } else if (!props.isEdit) {
+  if (!props.isEdit) {
     generateOrderNo()
   }
 })
 
-// 提交表单
+// 编辑模式：监听 orderId（父组件的 orderId 可能在 onMounted 之后才赋值）
+watch(
+  () => props.orderId,
+  (newId) => {
+    if (props.isEdit && newId) {
+      loadOrderData(newId)
+    }
+  },
+  { immediate: true }
+)
+
+// 提交表单（重写：保存订单后再上传附件）
 const submitForm = async (): Promise<boolean> => {
-  const success = await submitOrderForm()
-  if (success) {
-    emit('success')
+  if (props.isEdit) {
+    // 编辑模式：走原有逻辑（附件已直接上传）
+    const success = await submitOrderForm()
+    if (success) {
+      emit('success')
+    }
+    return success
   }
-  return success
+
+  // 新增模式：手动提交，获取新订单ID后上传附件
+  if (!orderFormRef.value) return false
+
+  // 先验证明细数量（独立于 element-plus 表单校验）
+  if (form.items.length === 0) {
+    ElMessage.warning('请至少添加一条订单明细')
+    return false
+  }
+
+  // 验证表单字段（使用 Promise 方式，校验失败会飘红）
+  try {
+    await orderFormRef.value.validate()
+  } catch {
+    // Element Plus 已自动将错误字段飘红
+    ElMessage.warning('请完善表单信息')
+    return false
+  }
+
+  // 构建提交数据
+  const submitData = {
+    ...form,
+    salesManagerId: form.salesPersonId!,
+    salesManagerName: form.salesPersonName,
+  }
+
+  try {
+    // 1. 保存订单，获取新订单ID
+    const orderResponse = await orderApi.addOrder(submitData as any)
+    if (orderResponse.code !== 200) {
+      ElMessage.error('新增订单失败')
+      return false
+    }
+    const newOrderId = orderResponse.data!
+
+    // 2. 上传待处理的附件
+    await uploaderRef.value?.flushPending(newOrderId)
+
+    ElMessage.success('新增成功')
+    emit('success')
+    return true
+  } catch (error) {
+    console.error('新增订单失败:', error)
+    ElMessage.error('新增订单失败')
+    return false
+  }
 }
 
 // 暴露给父组件的方法和属性
@@ -580,5 +684,14 @@ defineExpose({
 .borderless-textarea :deep(.el-textarea__inner:focus) {
   border: none;
   box-shadow: none;
+}
+
+/* 汇率提示文字 */
+.rate-hint {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 </style>

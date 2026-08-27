@@ -24,6 +24,16 @@ public class InventoryInboundItem extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long itemId;
 
+    /** 审计字段：inventory_inbound_item 表无审计列，排除父类字段避免 INSERT 报 Unknown column */
+    @TableField(exist = false)
+    private String createBy;
+    @TableField(exist = false)
+    private java.time.LocalDateTime createTime;
+    @TableField(exist = false)
+    private String updateBy;
+    @TableField(exist = false)
+    private java.time.LocalDateTime updateTime;
+
     /** 入库单ID */
     private Long inboundId;
 
@@ -76,5 +86,8 @@ public class InventoryInboundItem extends BaseEntity {
 
     /** 排序 */
     private Integer sortOrder;
+
+    /** 备注 */
+    private String remark;
 
 }

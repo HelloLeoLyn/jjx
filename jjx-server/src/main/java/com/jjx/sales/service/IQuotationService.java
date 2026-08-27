@@ -1,6 +1,8 @@
 package com.jjx.sales.service;
 
+import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesQuotation;
+import com.jjx.sales.domain.vo.SalesQuotationEditVO;
 
 import java.util.List;
 
@@ -18,6 +20,8 @@ public interface IQuotationService {
      */
     List<SalesQuotation> selectQuotationList(SalesQuotation quotation);
 
+    PageResult<SalesQuotation> selectQuotationPage(SalesQuotation quotation, Integer pageNum, Integer pageSize);
+
     /**
      * 根据ID查询销售报价单
      *
@@ -25,6 +29,11 @@ public interface IQuotationService {
      * @return 销售报价单
      */
     SalesQuotation selectQuotationById(Long quotationId);
+
+    /**
+     * 获取报价单明细（新增样品单预览用）
+     */
+    java.util.List<com.jjx.sales.domain.entity.SalesQuotationItem> getItems(Long quotationId);
 
     /**
      * 新增销售报价单
@@ -40,7 +49,7 @@ public interface IQuotationService {
      * @param quotation 销售报价单
      * @return 结果
      */
-    int updateQuotation(SalesQuotation quotation);
+    SalesQuotationEditVO updateQuotation(SalesQuotation quotation);
 
     /**
      * 删除销售报价单
@@ -73,15 +82,43 @@ public interface IQuotationService {
      * @param status 报价单状态
      * @return 结果
      */
-    int updateQuotationStatus(Long quotationId, String status);
+    int updateQuotationStatus(Long quotationId, Integer status, String attachmentIds);
+
+    /**
+     * 客户确认报价
+     *
+     * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
+     * @return 结果
+     */
+    int confirmQuotation(Long quotationId, String attachmentIds);
+
+    /**
+     * 客户拒绝报价
+     *
+     * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
+     * @return 结果
+     */
+    int rejectQuotation(Long quotationId, String attachmentIds);
+
+    /**
+     * 已完成报价单改单
+     *
+     * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
+     * @return 结果
+     */
+    int modifyQuotation(Long quotationId, String attachmentIds);
 
     /**
      * 发送报价单给客户
      *
      * @param quotationId 报价单ID
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
      * @return 结果
      */
-    int sendQuotation(Long quotationId);
+    int sendQuotation(Long quotationId, String attachmentIds);
 
     /**
      * 报价单转为订单
@@ -95,9 +132,16 @@ public interface IQuotationService {
      * 导出报价单PDF
      *
      * @param quotationId 报价单ID
-     * @return PDF文件路径
+     * @return PDF字节数组
      */
-    String exportPdf(Long quotationId);
+    byte[] exportPdf(Long quotationId);
+
+    /**
+     * 导出报价单Excel（单张表单）
+     *
+     * @return xlsx字节数组
+     */
+    byte[] exportExcel(Long quotationId);
 
     /**
      * 复制报价单
@@ -113,7 +157,14 @@ public interface IQuotationService {
      * @param quotationId 报价单ID
      * @return 结果
      */
-    int submitReview(Long quotationId);
+    int submitReview(Long quotationId, String attachmentIds);
+
+    /**
+     * 按当前明细重算报价单表头金额（DEV-1116：提交审核/发送前兑底调用）
+     *
+     * @param quotationId 报价单ID
+     */
+    void recalcQuotationAmounts(Long quotationId);
 
     /**
      * 审核报价单
@@ -121,9 +172,18 @@ public interface IQuotationService {
      * @param quotationId 报价单ID
      * @param approved 是否通过
      * @param remark 审核备注
+     * @param attachmentIds 附件ID列表(JSON数组)，可空
      * @return 结果
      */
-    int reviewQuotation(Long quotationId, Boolean approved, String remark);
+    int reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds);
+
+    /**
+     * 查询报价单流转记录
+     *
+     * @param quotationId 报价单ID
+     * @return 流转记录列表（时间倒序）
+     */
+    List<com.jjx.sales.domain.entity.SalesQuotationFlow> selectFlowRecords(Long quotationId);
 
     /**
      * 导出报价单列表
@@ -131,7 +191,7 @@ public interface IQuotationService {
      * @param quotation 查询条件
      * @return 导出文件路径
      */
-    String exportQuotationList(SalesQuotation quotation);
+    byte[] exportQuotationList(SalesQuotation quotation);
 
     /**
      * 获取报价单状态选项
@@ -146,30 +206,6 @@ public interface IQuotationService {
      * @return 币种选项列表
      */
     List<Object> getCurrencyOptions();
-
-    /**
-     * 获取报价模板列表
-     *
-     * @return 模板列表
-     */
-    List<Object> getTemplates();
-
-    /**
-     * 根据模板创建报价单
-     *
-     * @param templateId 模板ID
-     * @param customerId 客户ID
-     * @return 创建的报价单
-     */
-    SalesQuotation createFromTemplate(Long templateId, Long customerId);
-
-    /**
-     * 快速报价
-     *
-     * @param quickQuoteRequest 快速报价请求
-     * @return 创建的报价单
-     */
-    SalesQuotation quickQuote(Object quickQuoteRequest);
 
     /**
      * 获取客户历史报价

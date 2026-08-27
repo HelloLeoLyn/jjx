@@ -15,9 +15,9 @@ public class AlertVO {
 
     private Long alertId;
     private String alertType;
-    private String alertTypeName;
     private String alertLevel;
-    private String alertLevelName;
+    /** 关联订单号（order_shortage 缺料预警） */
+    private String orderNo;
     private Long materialId;
     private String materialCode;
     private String materialName;
@@ -43,8 +43,14 @@ public class AlertVO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime alertTime;
 
-    private String status;
+    private Integer status;
     private String statusName;
+    /** 上报人（2026-08-18 职责链：仓库标记已上报留痕） */
+    private String reportedBy;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime reportedTime;
+
     private String processedBy;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

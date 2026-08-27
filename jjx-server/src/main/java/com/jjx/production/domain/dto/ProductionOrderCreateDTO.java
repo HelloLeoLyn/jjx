@@ -18,6 +18,7 @@ import java.time.LocalDate;
 public class ProductionOrderCreateDTO {
     @Schema(description = "订单编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "PO20160901001")
     @NotBlank(message = "订单编号不能为空")
+    private String traceId;
     private String orderNo;
 
     @Schema(description = "订单类型：PLAN生产计划/WORK_ORDER生产工单", requiredMode = Schema.RequiredMode.REQUIRED, example = "PLAN")
@@ -58,6 +59,8 @@ public class ProductionOrderCreateDTO {
 
     @Schema(description = "使用的工艺路线ID", example = "1")
     private Long routingId;
+    private Long bomId;
+    private String bomCode;
 
     @Schema(description = "工艺路线编码", example = "ROUTE-001")
     @Size(max = 50, message = "工艺路线编码长度不能超过50个字符")

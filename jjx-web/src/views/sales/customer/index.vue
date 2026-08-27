@@ -49,26 +49,26 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['sales:customer:add']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
+          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:customer:edit']" :disabled="single" @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
+          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:customer:delete']" :disabled="multiple" @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:customer:export']" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" @click="handleImport">导入</el-button>
+          <el-button type="info" plain icon="Upload" v-hasPermi="['sales:customer:import']" @click="importDialogVisible = true">导入</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Check" :disabled="multiple" @click="handleApprove"
+          <el-button type="success" plain icon="Check" v-hasPermi="['sales:customer:edit']" :disabled="multiple" @click="handleApprove"
             >批量审核</el-button
           >
         </el-col>
@@ -144,6 +144,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['sales:customer:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -152,6 +153,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['sales:customer:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -245,7 +247,28 @@
         }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="customerStatusTextMap"
+      @success="getList"
+    />
+
+    <!-- 通用导入弹窗（2026-08-13） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入客户"
+      :import-api="importCustomerFile"
+      :template-api="customerApi.downloadCustomerTemplate"
+      template-name="客户导入模板.xlsx"
+      @success="getList"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -254,8 +277,11 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { customerApi } from '@/api/sales/customer'
+import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { parseTime, download } from '@/utils/format'
 import CustomerFormDialog from './components/CustomerFormDialog.vue'
 import { CustomerTypeEnum, CustomerLevelEnum, CustomerStatusEnum } from '@/enums/sales/CustomerEnum'
@@ -453,17 +479,23 @@ const handleExport = () => {
     type: 'warning',
   })
     .then(() => {
-      return customerApi.exportCustomers(queryParams)
-    })
-    .then((response: any) => {
-      download(response, '客户列表.xlsx')
+      const loading = ElLoading.service({ text: '导出中...', lock: true })
+      return customerApi
+        .exportCustomers(queryParams)
+        .then((response: any) => {
+          download(response, '客户列表.xlsx')
+        })
+        .finally(() => loading.close())
     })
     .catch(() => {})
 }
 
-// 导入按钮操作
-const handleImport = () => {
-  ElMessage.info('导入功能待实现')
+// 导入（2026-08-13 通用 ExcelImportDialog 组件）
+const importDialogVisible = ref(false)
+const importCustomerFile = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return customerApi.importCustomers(formData)
 }
 
 // 批量审核按钮操作
@@ -489,28 +521,21 @@ const handleApprove = () => {
     .catch(() => {})
 }
 
-// 状态变更按钮操作
+// 状态变更按钮操作（操作预览器：目标状态选择器 + 事件预告）
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+const customerStatusTextMap: Record<number, string> = { 1: '潜在客户', 2: '正式客户', 3: '暂停合作', 4: '终止合作' }
 const handleChangeStatus = (row: CustomerItem | MouseEvent) => {
   if (row instanceof MouseEvent) return
-  const customerId = row.customerId
-  ElMessageBox.prompt(
-    '请输入新的状态值（1:潜在客户, 2:正式客户, 3:暂停合作, 4:终止合作）',
-    '状态变更',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      inputPattern: /^[1-4]$/,
-      inputErrorMessage: '状态值必须是1-4之间的数字',
-    }
-  )
-    .then(({ value }) => {
-      return customerApi.changeCustomerStatus(customerId, parseInt(value))
-    })
-    .then(() => {
-      getList()
-      ElMessage.success('状态变更成功')
-    })
-    .catch(() => {})
+  if (!row.customerId) return
+  const op = getOperation('customer.changeStatus')
+  if (!op) return
+  previewOperation.value = op
+  previewBizId.value = row.customerId
+  previewBizNo.value = row.customerName || ''
+  previewVisible.value = true
 }
 
 // 查看详情按钮操作

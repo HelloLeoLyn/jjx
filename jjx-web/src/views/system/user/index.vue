@@ -95,7 +95,6 @@
       :form-data="formData"
       :rules="formRules"
       :submit-loading="submitLoading"
-      :role-options="roleSelectOptions"
       :dept-options="deptOptions"
       width="600px"
       @submit="handleSubmit"
@@ -157,11 +156,10 @@ import { ref, reactive, onMounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { Toolbar, DataTable } from '@/components/common-ui/index'
 import { userApi } from '@/api/system/user'
-import { roleApi } from '@/api/system/role'
 import { deptApi } from '@/api/system/dept'
-import type { SysUser, SysRole, SysDept, SysUserDTO, SecurityUser } from '@/types/system'
+import type { SysUser, SysDept, SysUserDTO, SecurityUser } from '@/types/system'
 import * as uiConfig from './index'
-import { parseTime } from '@/utils/format'
+import { parseTime, download } from '@/utils/format'
 import { assignExisting } from '@/utils/object'
 import { formRules, resetPwdRules, formDataPassword, resetPwdNewPassword } from './user.rules'
 import AssignRoleDialog from './components/AssignRoleDialog.vue'
@@ -173,7 +171,6 @@ const loading = ref(false)
 const userList = ref<SysUser[]>([])
 const total = ref(0)
 const selectedRows = ref<SysUser[]>([])
-const roleOptions = ref<SysRole[]>([])
 const deptOptions = ref<SysDept[]>([]) // 部门选项，结构根据接口返回调整
 const deptMap = ref<Map<number, string>>(new Map()) // 部门ID到名称的映射
 const queryParams = reactive({
@@ -184,9 +181,6 @@ const queryParams = reactive({
   phone: '',
   status: '',
 })
-
-// 角色选择选项（用于UserFormDialog）
-const roleSelectOptions = ref<{ value: number; label: string }[]>([])
 
 // 表单对话框
 const dialogVisible = ref(false)
@@ -201,7 +195,6 @@ const formData = ref<SysUserDTO>({
   phone: '',
   sex: '0',
   status: '0',
-  roleIds: [],
   deptId: undefined,
   remark: '',
 })
@@ -240,12 +233,6 @@ const currentUser = ref<SysUser>({
 })
 
 // 更新角色选项
-const updateRoleOptions = () => {
-  roleSelectOptions.value = roleOptions.value.map((role) => ({
-    value: role.roleId!,
-    label: role.roleName,
-  }))
-}
 
 // 将部门数据转换为 Map<id, deptName>
 const convertDeptToMap = (depts: any[]): Map<number, string> => {
@@ -276,16 +263,6 @@ const getList = async () => {
     total.value = res.data?.total || 0
   } finally {
     loading.value = false
-  }
-}
-
-const getRoleOptions = async () => {
-  try {
-    const res = await roleApi.optionselect()
-    roleOptions.value = res.data || []
-    updateRoleOptions()
-  } catch (error) {
-    console.error('获取角色选项失败:', error)
   }
 }
 
@@ -349,16 +326,13 @@ const handleAdd = () => {
     phone: '',
     sex: '0',
     status: '0',
-    roleIds: [],
     remark: '',
   }
-  getRoleOptions()
 
   dialogVisible.value = true
 }
 const copyFormData = (data: SysUser) => {
   assignExisting(formData.value, data)
-  formData.value.roleIds = data.roles ? data.roles.map((role) => role.roleId!) : []
   formData.value.password = ''
 }
 
@@ -370,7 +344,6 @@ const handleEdit = async (row: SysUser) => {
       copyFormData(res.data)
     }
     dialogTitle.value = '修改用户'
-    getRoleOptions()
     dialogVisible.value = true
   } catch (error) {
     console.error('获取用户信息失败:', error)
@@ -402,7 +375,9 @@ const handleBatchDelete = async () => {
 }
 
 const handleExport = () => {
-  ElMessage.info('导出功能待实现')
+  userApi.exportUsers(queryParams).then((response: any) => {
+    download(response, `用户列表_${parseTime(new Date(), '{y}{m}{d}')}.xlsx`)
+  })
 }
 
 const handleSubmit = async () => {

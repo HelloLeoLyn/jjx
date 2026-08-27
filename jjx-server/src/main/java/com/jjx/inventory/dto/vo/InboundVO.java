@@ -15,14 +15,17 @@ public class InboundVO {
 
     private Long inboundId;
     private String inboundNo;
+
+    /** 链路追踪ID（DEV-568/569） */
+    private String traceId;
     private String inboundType;
+    /** 入库类型名称（采购入库/生产入库/退货入库/调拨入库/其他入库） */
     private String inboundTypeName;
     private Long warehouseId;
     private String warehouseName;
     private Long locationId;
     private String locationName;
     private String sourceType;
-    private String sourceTypeName;
     private Long sourceId;
     private String sourceNo;
     private Long supplierId;
@@ -35,9 +38,11 @@ public class InboundVO {
     private BigDecimal totalQuantity;
     private BigDecimal totalAmount;
     private String orderStatus;
-    private String orderStatusName;
+    /** 状态码（与 orderStatus 同值，前端展示用） */
+    private Integer status;
+    /** 状态名称 */
+    private String statusName;
     private String approveStatus;
-    private String approveStatusName;
     private String remark;
     private String createBy;
     private String createByName;

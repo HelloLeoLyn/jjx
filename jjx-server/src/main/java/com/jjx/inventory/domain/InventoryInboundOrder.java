@@ -28,6 +28,9 @@ public class InventoryInboundOrder extends BaseEntity {
     /** 入库单号，格式：IN+YYYYMMDD+流水号 */
     private String inboundNo;
 
+    /** 链路追踪ID（DEV-568） */
+    private String traceId;
+
     /** 入库类型：purchase采购入库/production生产入库/return退货入库/transfer调拨入库/adjust盘盈入库 */
     private String inboundType;
 
@@ -79,10 +82,10 @@ public class InventoryInboundOrder extends BaseEntity {
     private String inspectionRemark;
 
     /** 订单状态：draft草稿/confirmed已确认/closed已关闭/cancelled已取消 */
-    private String orderStatus;
+    private Integer orderStatus;
 
     /** 审批状态：pending待审批/approved已批准/rejected已驳回 */
-    private String approveStatus;
+    private Integer approveStatus;
 
     /** 审批人ID */
     private Long approverId;
@@ -96,5 +99,8 @@ public class InventoryInboundOrder extends BaseEntity {
 
     /** 审批意见 */
     private String approveRemark;
+
+    /** 备注 */
+    private String remark;
 
 }

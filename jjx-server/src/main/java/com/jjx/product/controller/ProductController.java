@@ -11,6 +11,7 @@ import com.jjx.product.domain.query.ProductQuery;
 import com.jjx.product.domain.vo.ProductFullVO;
 import com.jjx.product.domain.vo.ProductVo;
 import com.jjx.product.service.IProductService;
+import com.jjx.product.service.ProductCodeService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,15 @@ import java.util.List;
 public class ProductController extends BaseController {
 
     private final IProductService productService;
+    private final ProductCodeService productCodeService;
+
+    /**
+     * 获取产品总数
+     */
+    @GetMapping("/count")
+    public Result<Long> count() {
+        return Result.success(productService.count());
+    }
 
     /**
      * 获取产品列表
@@ -67,7 +77,7 @@ public class ProductController extends BaseController {
      * 停产
      */
     @PutMapping("/obsolete/{id}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id")
     @SaCheckPermission("product:product:obsolete")
     public Result<Void> obsolete(@PathVariable Long id) {
         return toAjax(productService.obsoleteProduct(id));
@@ -77,18 +87,31 @@ public class ProductController extends BaseController {
      * 取消（取消审核/取消发布）
      */
     @PutMapping("/cancel/{id}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id")
     @SaCheckPermission("product:product:edit")
     public Result<Void> cancel(@PathVariable Long id) {
         return toAjax(productService.cancelProduct(id));
     }
 
     /**
+     * 新增产品
+     */
+    @PostMapping
+    @Log(module = "产品管理", businessType = BusinessType.INSERT,
+         bizId = "#result.data", bizType = "'product'")
+    @SaCheckPermission("product:create")
+    public Result<Long> add(@Validated @RequestBody ProductDTO productDTO) {
+        Long productId = productService.addProduct(productDTO);
+        return productId != null ? Result.success(productId) : Result.error();
+    }
+
+    /**
      * 修改产品
      */
     @PutMapping
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("product:index:edit")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productDTO.productId", bizType = "'product'")
+    @SaCheckPermission("product:edit")
     public Result<Void> edit(@Validated @RequestBody ProductDTO productDTO) {
         if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
             return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品编码已存在");
@@ -106,7 +129,8 @@ public class ProductController extends BaseController {
      * 删除产品
      */
     @DeleteMapping("/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.DELETE)
+    @Log(module = "产品管理", businessType = BusinessType.DELETE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:delete")
     public Result<Void> remove(@PathVariable Long productId) {
         boolean result = productService.removeById(productId);
@@ -117,7 +141,8 @@ public class ProductController extends BaseController {
      * 发布产品
      */
     @PutMapping("/release/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:release")
     public Result<Void> release(@PathVariable Long productId) {
         // 执行发布，验证逻辑在service层处理
@@ -128,7 +153,8 @@ public class ProductController extends BaseController {
      * 提交审核
      */
     @PutMapping("/submit/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:submit")
     public Result<Void> submit(@PathVariable Long productId) {
         // 执行发布，验证逻辑在service层处理
@@ -140,7 +166,8 @@ public class ProductController extends BaseController {
      * 审核通过
      */
     @PutMapping("/approve/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:approve")
     public Result<Void> approve(@PathVariable Long productId, ProductUpdateDTO dto) {
         // 执行发布，验证逻辑在service层处理
@@ -151,7 +178,8 @@ public class ProductController extends BaseController {
      * 驳回审核
      */
     @PutMapping("/reject/{productId}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE)
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE,
+         bizId = "#productId", bizType = "'product'")
     @SaCheckPermission("product:status:reject")
     public Result<Void> reject(@PathVariable Long productId, ProductUpdateDTO dto) {
         // 执行发布，验证逻辑在service层处理
@@ -180,8 +208,8 @@ public class ProductController extends BaseController {
      * 搜索产品
      */
     @GetMapping("/search")
-    public Result<List<Product>> search(String keyword) {
-        List<Product> products = productService.searchProducts(keyword);
+    public Result<List<Product>> search(String keyword, Long customerId) {
+        List<Product> products = productService.searchProducts(keyword, customerId);
         return Result.success(products);
     }
 
@@ -208,5 +236,14 @@ public class ProductController extends BaseController {
     @GetMapping("/serial-no/{customerId}")
     public Result<String> generateSerialNo(@PathVariable Long customerId) {
         return Result.success(productService.generateSerialNo(customerId));
+    }
+
+    /**
+     * 统一流水号接口（2026-08-12）：按客户简称取下一个流水号（兼容1-3位简称）
+     * 报价/询价/产品表单统一走这里
+     */
+    @GetMapping("/code/next-serial")
+    public Result<String> nextSerial(@RequestParam String customerShort) {
+        return Result.success(productCodeService.nextSerial(customerShort));
     }
 }

@@ -10,7 +10,11 @@ export interface InboundQueryParams {
   supplierName?: string
   materialCode?: string
   materialName?: string
+  sourceType?: string
+  sourceNo?: string
   status?: string
+  orderStatus?: string
+  approveStatus?: string
   createTimeStart?: string
   createTimeEnd?: string
   inboundTimeStart?: string
@@ -21,6 +25,7 @@ export interface InboundQueryParams {
 export interface InboundVO {
   inboundId: string
   inboundNo: string
+  traceId?: string
   inboundType: string
   inboundTypeName: string
   warehouseId: string
@@ -32,7 +37,7 @@ export interface InboundVO {
   sourceNo?: string
   totalQuantity: number
   totalAmount: number
-  status: string
+  status: number
   statusName: string
   remark?: string
   createBy: string

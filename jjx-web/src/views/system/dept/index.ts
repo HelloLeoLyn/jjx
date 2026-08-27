@@ -97,15 +97,6 @@ export const formOptions: FormOptions[] = [
     ],
     span: 12,
   },
-  {
-    prop: 'remark',
-    label: '备注',
-    type: 'textarea',
-    rows: 3,
-    maxlength: 500,
-    showWordLimit: true,
-    span: 24,
-  },
 ]
 
 // 表格列配置

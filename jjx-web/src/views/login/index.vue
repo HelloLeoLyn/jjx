@@ -7,9 +7,9 @@
           <div class="logo">
             <!-- Logo image commented out since file doesn't exist -->
             <!-- <img src="@/assets/logo.png" alt="Logo" /> -->
-            <div class="logo-text">JJX ERP</div>
+            <div class="logo-text">{{ systemName }}</div>
           </div>
-          <div class="slogan">智能制造管理系统</div>
+          <div class="slogan">{{ loginTitle }}</div>
         </div>
       </div>
 
@@ -18,7 +18,7 @@
         <div class="login-form">
           <div class="form-header">
             <h2>用户登录</h2>
-            <p>欢迎使用JJX ERP系统</p>
+            <p>{{ loginSubtitle }}</p>
           </div>
 
           <el-form
@@ -87,7 +87,7 @@
               <span class="divider">|</span>
               <a href="javascript:void(0);" @click="handleRegister">注册账号</a>
             </div>
-            <div class="copyright">© 2024 JJX ERP 版权所有</div>
+            <div class="copyright">{{ loginCopyright }}</div>
           </div>
         </div>
       </div>
@@ -102,9 +102,35 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock, Picture } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 import { captchaManager } from '@/utils/captcha'
+import { sysConfigApi } from '@/api/system/sysConfig'
 
 // 路由
 const router = useRouter()
+
+// 系统参数（登录页显示）
+const systemName = ref('JJX ERP')
+const loginTitle = ref('智能制造管理系统')
+const loginSubtitle = ref('欢迎使用JJX ERP系统')
+const loginCopyright = ref('© 2026 JJX ERP 版权所有')
+
+// 加载系统参数
+async function loadSystemConfig() {
+  try {
+    const res: any = await sysConfigApi.listByGroup('system')
+    const list: any[] = res?.data || []
+    const map: Record<string, string> = {}
+    for (const item of list) map[item.configKey] = item.configValue || ''
+    if (map.system_name) systemName.value = map.system_name
+    if (map.login_title) loginTitle.value = map.login_title
+    if (map.login_subtitle) loginSubtitle.value = map.login_subtitle
+    if (map.login_copyright) loginCopyright.value = map.login_copyright
+    // 系统名称存本地，供侧边栏/浏览器标题使用
+    localStorage.setItem('system_name', systemName.value)
+    document.title = systemName.value
+  } catch (e) {
+    console.error('加载系统参数失败:', e)
+  }
+}
 
 // 用户store
 const userStore = useUserStore()
@@ -116,7 +142,7 @@ const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
 // 验证码是否启用
-const captchaEnabled = ref(true)
+const captchaEnabled = ref(false)
 
 // 验证码图片
 const captchaImage = ref('')
@@ -228,6 +254,9 @@ const handleRegister = () => {
 
 // 页面加载时
 onMounted(() => {
+  // 加载系统参数（系统名称/登录页标题等）
+  loadSystemConfig()
+
   // 获取验证码
   getCaptcha()
 
@@ -252,7 +281,7 @@ onMounted(() => {
 .login-container {
   width: 100%;
   height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #409eff 50%, #66b1ff 100%);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -263,20 +292,44 @@ onMounted(() => {
   width: 900px;
   height: 500px;
   background: white;
-  border-radius: 10px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(64, 158, 255, 0.25);
   display: flex;
   overflow: hidden;
 }
 
 .login-left {
   flex: 1;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #409eff 100%);
   color: white;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-left::before {
+  content: '';
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  top: -80px;
+  right: -80px;
+}
+
+.login-left::after {
+  content: '';
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  bottom: -50px;
+  left: -50px;
 }
 
 .logo-container {
@@ -324,12 +377,12 @@ onMounted(() => {
 
 .form-header h2 {
   font-size: 28px;
-  color: #333;
+  color: #303133;
   margin-bottom: 10px;
 }
 
 .form-header p {
-  color: #666;
+  color: #909399;
   font-size: 14px;
 }
 
@@ -370,6 +423,7 @@ onMounted(() => {
   width: 100%;
   height: 45px;
   font-size: 16px;
+  border-radius: 8px;
 }
 
 .form-footer {
@@ -400,6 +454,44 @@ onMounted(() => {
 .copyright {
   color: #999;
   font-size: 12px;
+}
+
+.transition-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(2px);
+}
+
+.transition-content {
+  text-align: center;
+}
+
+.transition-spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 20px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.transition-text {
+  color: #fff;
+  font-size: 16px;
+  letter-spacing: 1px;
 }
 
 /* 响应式设计 */

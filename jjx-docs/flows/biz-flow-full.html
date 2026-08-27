@@ -1,0 +1,618 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JJX ERP 业务流程全图</title>
+<style>body{font-family:-apple-system,Segoe UI,Microsoft YaHei,sans-serif;max-width:860px;margin:0 auto;padding:16px;line-height:1.7;color:#222}pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow-x:auto;font-size:13px}code{background:#f0f0f0;padding:1px 5px;border-radius:3px}table{border-collapse:collapse;width:100%;margin:10px 0}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;font-size:14px}th{background:#f0f4ff}h1{border-bottom:2px solid #2b5aa7;padding-bottom:8px}h2{margin-top:32px;border-left:4px solid #2b5aa7;padding-left:10px}h3{margin-top:24px}blockquote{background:#fffbe6;border-left:4px solid #faad14;padding:8px 12px;margin:10px 0}</style></head><body>
+<h1>JJX ERP 业务流程全图（含前端操作）</h1>
+<blockquote>读者：开发 | 粒度：菜单→页面→按钮→弹窗→表单字段</blockquote>
+<blockquote>版本：v0.2（阶段一重点：打样→转销售）</blockquote>
+<blockquote>编写：2026-08-12</blockquote>
+<h1>总览</h1>
+<h2>核心业务主线（薄膜开关定制制造）</h2>
+<pre>
+客户需求 → 询价 → 报价 → 样品打样 → 客户确认 → 转量产订单
+  → 审核 → 生成生产计划 → 转工单 → 工序执行 → 质检 → 完工入库
+  → 发货 → 开票 → 收款
+</pre>
+<h2>六大模块与菜单树</h2>
+<tr><td>模块</td><td>顶级菜单</td><td>子菜单</td></tr>
+<p>|---|---|---|</p>
+<tr><td>销售管理</td><td>销售管理</td><td>客户管理 / 询价管理 / 报价管理 / 样品单管理 / 销售订单 / 订单跟踪 / 发货管理 / 销售报表</td></tr>
+<tr><td>产品管理</td><td>产品管理</td><td>产品列表 / 产品分类 / 产品实例 / 产品配置模型</td></tr>
+<tr><td>工程管理</td><td>工程管理</td><td>标准工序 / BOM管理 / 工艺路线 / 打样平台 / 薄膜管理 / 作业项目</td></tr>
+<tr><td>采购管理</td><td>采购管理</td><td>供应商管理 / 采购计划 / 采购订单 / 采购发票 / 采购付款 / 采购收货</td></tr>
+<tr><td>生产管理</td><td>生产管理</td><td>生产订单 / 工序执行 / 操作记录 / 派工管理 / 生产追溯 / 设备管理 / 工装模具档案 / 成本核算 / 生产报表</td></tr>
+<tr><td>库存管理</td><td>库存管理</td><td>物料管理 / 仓库管理 / 库存列表 / 预警管理 / 入库管理 / 出库管理 / 盘点管理 / 调拨管理</td></tr>
+<tr><td>系统管理</td><td>系统管理</td><td>用户 / 角色 / 菜单 / 部门 / 字典 / 事件配置 / 单据模板配置 / 系统配置 / 文件管理</td></tr>
+<tr><td>日志管理</td><td>日志管理</td><td>操作日志 / 登录日志 / 异常日志</td></tr>
+<h2>流水 / 任务 / 通知 归属说明（重要）</h2>
+<p>**这三者是系统级机制，不属于任何单一业务阶段**，业务阶段只负责&quot;触发&quot;：</p>
+<tr><td>机制</td><td>实现</td><td>归属</td></tr>
+<p>|---|---|---|</p>
+<tr><td>**流水（链路追踪）**</td><td>每个单据带 `traceId`，操作写 `sys_oper_log`，前端 TraceTimeline 按 traceId 查全链路</td><td>系统级（日志/链路），所有业务页面都有&quot;查看流水&quot;按钮</td></tr>
+<tr><td>**任务（sys_task）**</td><td>业务操作发 `@Event` → `LocalEventPublisher` 查 `sys_event_config` 配置 → 按角色创建看板任务（dev/office 模块）</td><td>系统级（事件配置），触发点在业务节点</td></tr>
+<tr><td>**通知（sys_notification）**</td><td>同一事件机制，按 `target_role` 展开用户逐个发通知（可排除触发者 exclude_trigger）</td><td>系统级（事件配置）</td></tr>
+<p>**事件配置**：系统管理 → 事件配置（`sys_event_config`），可开关、配角色/标题/内容模板。</p>
+<p>**看板**：任务看板模块（kanban），任务按 kanban_module 分组（dev/office/production）。</p>
+<blockquote>业务阶段文档只标注&quot;触发事件：xxx&quot;，机制细节在阶段六（系统管理）详述。</blockquote>
+<h1>阶段一：销售管理</h1>
+<blockquote>代码：`jjx-server/src/main/java/com/jjx/sales/` + `jjx-web/src/views/sales/`</blockquote>
+<blockquote>全链路必经：**客户 → 询价 → 报价 → 样品打样 → 转量产订单**</blockquote>
+<blockquote>⭐ 本阶段重点：**打样 → 转销售**</blockquote>
+<h2>1.1 客户管理（简单）</h2>
+<p>**菜单**：销售管理 → 客户管理 | **页面**：`src/views/sales/customer/index.vue`</p>
+<li>操作：新增 / 编辑 / 删除 / 审核(启停) / 导入 / 导出 / 查看</li>
+<li>关键字段：客户名称、简称、类型(终端/代理/经销)、等级(A/B/C)、联系人电话、税号、开户行账号、信用额度</li>
+<li>作用：销售链路的客户主数据，询价/报价/订单都引用</li>
+<h2>1.2 询价管理（简单）</h2>
+<p>**菜单**：销售管理 → 询价管理 | **页面**：`src/views/sales/inquiry/index.vue`</p>
+<li>状态机：`草稿 → 待处理 → 已发送 → 已确认/已拒绝`，`草稿 → 已转报价`（终态）</li>
+<li>操作：新增 / 编辑 / 删除 / 发送 / 接受 / 拒绝 / **转报价** / 导出</li>
+<li>关键字段：客户、产品描述、预估数量、预估单价（转报价继承）、特殊要求、有无图纸</li>
+<li>**转报价**：`convertToQuotation` → 生成报价单（承继客户/联系人/销售员/单价），回写询价单 converted 状态</li>
+<li>触发事件：`inquiry.converted`（通知：已转为报价单）</li>
+<h2>1.3 报价管理（中等，因为通向样品）</h2>
+<p>**菜单**：销售管理 → 报价管理 | **页面**：`src/views/sales/quotation/index.vue` + `print.vue`</p>
+<li>状态机：`草稿 → 待审核 → 已审核 → 已发送 → 已确认`，`已驳回 → 草稿`，`草稿 → 已转样品/订单`</li>
+<li>操作：新增 / 编辑 / 复制 / 提交审核 / 审核通过/驳回 / 发送 / **转样品单** / 转订单 / 重新报价 / 附件 / 导出Excel/PDF</li>
+<li>主表字段：报价单号、客户、类型、日期、有效期、币种汇率、交货天数、付款条件、销售员</li>
+<li>明细行：产品、数量、单位、单价、金额、特殊要求（增删行 addItem/removeItem）</li>
+<li>**转样品单**：`createFromQuotation` → 生成样品单（承继报价明细+客户）</li>
+<li>触发事件：`quotation.submitted / reviewed / sent / converted`</li>
+<h2>1.4 样品单管理（⭐ 本阶段重点：打样 → 转销售）</h2>
+<p>**菜单**：销售管理 → 样品单管理 | **页面**：`src/views/sales/sample-order/index.vue` + `print.vue` + `transfer-edit.vue`(资料转移)</p>
+<p>**API**：`src/api/sales/sampleOrder.ts`</p>
+<h3>状态机（10 态）</h3>
+<pre>
+1 样品需求已创建 → 2 待审核 → 3 工程打样中 → 4 样品待送样 → 5 已送样待确认
+  → 6 样品确认 → 7 已转量产（终态）
+  ↘ 9 客户退回 → 回 3 重新打样（可多轮）
+  2 → 10 已取消（终态）；8 已关闭（终态）
+</pre>
+<h3>操作按钮（按状态）</h3>
+<tr><td>状态</td><td>按钮</td></tr>
+<p>|---|---|</p>
+<tr><td>1 已创建</td><td>提交审核 / 编辑 / 删除</td></tr>
+<tr><td>2 待审核</td><td>审核通过 / 审核驳回</td></tr>
+<tr><td>3 工程打样中</td><td>**打样平台**（跳工程）/ 打样完成标记（打样平台联动）</td></tr>
+<tr><td>4 样品待送样</td><td>送样（填快递单号）</td></tr>
+<tr><td>5 已送样待确认</td><td>客户确认(OK) / 客户退回</td></tr>
+<tr><td>6 样品确认</td><td>**转量产** / 重新打样</td></tr>
+<tr><td>全部</td><td>详情 / 流水 / 打印 / 资料转移</td></tr>
+<h3>打样环节（核心：样品单 ↔ 工程打样平台联动）</h3>
+<pre>
+审核通过(2→3) → 工程打样中
+  → 工程侧「打样平台」(views/engineering/sample-workbench) 录工序/BOM/图纸
+  → 打样完成 → 样品单状态 4 样品待送样
+  → 送样(5) → 客户确认(6) 或 退回(9→回3重新打样)
+</pre>
+<li>图纸/文档：打样平台录图纸、BOM、工艺参数，样品单与产品/BOM/工艺路线资料转移衔接</li>
+<li>触发事件：`sample.created / submitted / approved / ready / sent / confirmed / rejected_by_customer / restarted`</li>
+<h3>转量产（⭐ 核心链路：打样成功 → 销售订单）</h3>
+<pre>
+convertToProduction(sampleOrderId)
+  ① 状态校验：必须 6 样品确认
+  ② 标准化（可选）：前端传 items 则按明细替换为正式产品档案（编码/名称/规格/单位）
+  ③ 就绪检查（SampleConvertCheckVO）：
+     - 产品建档 + 已发布（required）
+     - BOM 已批准（required）
+     - 工艺路线已批准（required）
+     - 菲林档案（suggest，不阻塞）
+     任一 required 不通过 → 抛&quot;转量产资料未就绪：xxx，请先补全&quot;
+  ④ 生成标准销售订单（SO 号，草稿状态，承继客户/报价/明细）
+  ⑤ 回写样品单：status=7 已转量产 + convertedOrderId
+</pre>
+<li>触发事件：`sample.converted`</li>
+<h2>1.5 销售订单（转量产产物 + 独立下单）</h2>
+<p>**菜单**：销售管理 → 销售订单 | **页面**：`src/views/sales/order/index.vue` + `add.vue`/`edit.vue`</p>
+<h3>状态机（10 态，2026-08-12 定稿：去掉客户确认）</h3>
+<pre>
+1草稿 → 2待审核 → 3审核中 → 4已审核/5已驳回 → (生成生产计划) → 7生产中 → 8已发货 → 9已完成
+  5已驳回 → 1草稿(重新提交)；任意 → 10已取消
+  状态6已确认：保留枚举不流转
+</pre>
+<h3>操作按钮（按状态）</h3>
+<tr><td>状态</td><td>按钮</td></tr>
+<p>|---|---|</p>
+<tr><td>1 草稿</td><td>提交审核 / 编辑 / 删除 / 复制</td></tr>
+<tr><td>2 待审核</td><td>开始审核</td></tr>
+<tr><td>3 审核中</td><td>审核通过（可上传确认书，选填）/ 审核驳回</td></tr>
+<tr><td>4 已审核</td><td>**生成生产计划**（唯一操作）</td></tr>
+<tr><td>5 已驳回</td><td>重新提交</td></tr>
+<tr><td>7 生产中</td><td>发货（自动创建销售出库单扣库存）/ 齐套检查</td></tr>
+<tr><td>8 已发货</td><td>完成订单</td></tr>
+<tr><td>全部</td><td>查看 / 流水 / 导出</td></tr>
+<h3>审核通过（approveOrder）联动</h3>
+<pre>
+校验 3 → 置 4，随后（异常不阻断主流程）：
+  ① 齐套检查 checkOrderShortage → order_shortage 预警
+  ② 全局缺料检查 checkGlobalShortage → demand_shortage 预警
+  ③ 成品库存预留 reserveForOrder
+  ④ 原料占用 confirmReserve
+  附件：审核时可上传确认书（AttachmentUploader，bizType=order，选填）
+</pre>
+<h3>生成生产计划</h3>
+<pre>
+校验 4 → 每产品生成一张 PLAN → 自动进入待审批 → 工单启动时才置 7
+（生产细节见阶段四）
+</pre>
+<h2>1.6 发票 / 收款（无前端入口，走流程即可）</h2>
+<blockquote>⚠️ 现状：后端接口存在（`/sales/invoice`、`/sales/receipt`），**前端暂无独立页面**（菜单未挂），走后端流程：</blockquote>
+<pre>
+销售订单（发货后）→ 发票登记 POST /sales/invoice（开票信息+金额）
+                 → 收款登记 POST /sales/receipt（收款金额，actualAmount 默认=receiptAmount）
+                 → 导出/查询
+</pre>
+<p>_阶段一完。下一步：阶段二（产品工程）——标准工序/BOM/工艺路线/打样平台/薄膜管理/作业项目，重点写&quot;图纸设计 + 打样文档&quot;（用户指定突出项）。_</p>
+<h1>阶段二：产品工程</h1>
+<blockquote>代码：`jjx-server/src/main/java/com/jjx/product/` + `com/jjx/engineering/` + `jjx-web/src/views/product/` + `src/views/engineering/`</blockquote>
+<blockquote>核心职责：**把样品打样成果固化成产品档案（BOM/工艺路线/图纸），为量产提供工程依据**</blockquote>
+<blockquote>⭐ 本阶段重点：**图纸设计 + 打样文档**（打样平台）</blockquote>
+<h2>2.1 产品列表（产品档案主数据）</h2>
+<p>**菜单**：产品管理 → 产品列表 | **页面**：`src/views/product/list/index.vue` + `add.vue`/`edit.vue`</p>
+<h3>状态机（8 态，前端 ProductStatusEnum）</h3>
+<pre>
+1开发中 → 2待审核 → 3审核中 → 4已通过 → 6已发布 → 7停产
+                    ↘ 5已驳回 → 回1
+任何状态可 → 8取消
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td><td>状态限制</td></tr>
+<p>|---|---|---|</p>
+<tr><td>新增/编辑</td><td>表单弹窗</td><td>开发中/已驳回/取消可编辑</td></tr>
+<tr><td>提交</td><td>handleSubmit → 待审核</td><td>开发中/已驳回</td></tr>
+<tr><td>审核通过/驳回</td><td>handleApprove/handleReject</td><td>待审核</td></tr>
+<tr><td>发布</td><td>handlePublish → 已发布</td><td>已通过</td></tr>
+<tr><td>停产</td><td>handleObsolete</td><td>已发布</td></tr>
+<tr><td>配置BOM</td><td>handleConfigBom → 跳 BOM 编辑</td><td>全部</td></tr>
+<tr><td>配置路线</td><td>handleConfigRoute → 跳工艺路线</td><td>全部</td></tr>
+<tr><td>查看BOM</td><td>handleViewBom</td><td>全部</td></tr>
+<tr><td>取消/删除/导出</td><td>常规</td><td>—</td></tr>
+<h3>关键字段</h3>
+<p>`productCode`(自动流水)、`productName`、`specJson`(规格)、`unit`、`categoryId`、`productStatus`、`版本/发布信息`</p>
+<blockquote>发布状态(6) 是转量产就绪检查的硬性条件（见阶段一 1.4）。</blockquote>
+<h2>2.2 产品分类 / 产品实例 / 产品配置模型</h2>
+<tr><td>菜单</td><td>页面</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>产品分类</td><td>`src/views/product/category/index.vue`</td><td>分类树，产品挂分类</td></tr>
+<tr><td>产品实例</td><td>`src/views/product/instance/index.vue`</td><td>产品配置实例（客户化变体）</td></tr>
+<tr><td>产品配置模型</td><td>`src/views/engineering/config/index.vue`</td><td>配置选项（addOption/设默认/启停），驱动实例化</td></tr>
+<h2>2.3 标准工序（工序主数据）</h2>
+<p>**菜单**：工程管理 → 标准工序 | **页面**：`src/views/product/standard-process/index.vue`</p>
+<li>操作：新增 / 编辑 / 删除 / 启用停用(handleToggleEnabled) / 导入(模板+结果) / 导出</li>
+<li>字段：工序编码、工序名称、工序类型、所属大类（冲型组装/印刷）</li>
+<li>作用：工艺路线的可选工序库（印刷类工序走自定义录入，不走库）</li>
+<h2>2.4 BOM 管理（物料清单）</h2>
+<p>**菜单**：工程管理 → BOM 管理 | **页面**：`src/views/product/bom/index.vue`</p>
+<p>**API**：`src/api/product/bom.ts`</p>
+<h3>状态机</h3>
+<pre>
+draft(草稿) → reviewing(审核中) → approved(已审核) → active(生效中) → inactive(已失效)
+                     ↘ 驳回 → 回 draft
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>新增 / 编辑</td><td>表单弹窗（明细行）</td></tr>
+<tr><td>复制BOM</td><td>handleCopyBom → 新版本草稿</td></tr>
+<tr><td>提交审核</td><td>handleSubmitApprove</td></tr>
+<tr><td>审核通过/驳回</td><td>handleApprove（ApproveDialog，结果+意见）</td></tr>
+<tr><td>删除 / 导出 / 查看</td><td>常规</td></tr>
+<h3>关键字段</h3>
+<p>`bomCode`、`bomName`、`bomVersion`、`productCode/Name`、`effectiveDate/expiryDate`、`approveStatus`</p>
+<p>明细：物料编码/名称/用量/单位（材料从工序聚合或手工维护）</p>
+<blockquote>BOM 已批准(approved+) 是转量产就绪检查的硬性条件。</blockquote>
+<h2>2.5 工艺路线（工序路线）</h2>
+<p>**菜单**：工程管理 → 工艺路线 | **页面**：`src/views/product/route/index.vue`</p>
+<h3>状态机（RouteStatusEnum）</h3>
+<pre>
+1草稿 → 2审核中 → 3已批准
+              ↘ 4已驳回 → 回草稿
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>新增 / 编辑</td><td>表单（工序列表：标准工序 + 自定义印刷行）</td></tr>
+<tr><td>复制</td><td>handleCopy → 新版本</td></tr>
+<tr><td>提交审核</td><td>handleSubmitApprove</td></tr>
+<tr><td>审核通过/驳回</td><td>handleApprove</td></tr>
+<tr><td>版本对比</td><td>handleVersionCompare（多版本 diff）</td></tr>
+<tr><td>详情</td><td>handleDetail</td></tr>
+<h3>关键字段</h3>
+<p>`routingCode`、`routingName`、`routingVersion`、`productCode/Name`、`isCurrent`(当前生效版本)、`processCount`、`totalLaborHours/totalMachineHours`</p>
+<p>工序行：工序顺序、标准工序/自定义印刷（major_category: ASSEMBLY/PRINT）、工艺参数、材料、工时</p>
+<blockquote>路线已批准是转量产就绪检查的硬性条件；印刷工序行承载打样阶段的印刷参数（印刷名称/色号/油墨/网框）。</blockquote>
+<h2>2.6 打样平台（⭐ 图纸设计 + 打样文档，本阶段重点）</h2>
+<p>**菜单**：工程管理 → 打样平台 | **页面**：`src/views/engineering/sample-workbench/index.vue`（列表）+ `workbench.vue`（工作台）</p>
+<p>**组件**：SampleInfoCard / ProcessCard / PrintProcessPanel / BomPanel / NoteFilesPanel / ExecutionTimeline / PlanBoard / BatchToolbar / FrequentMaterialsBar</p>
+<h3>入口</h3>
+<li>从样品单列表&quot;打样平台&quot;按钮进入（阶段一 1.4 联动）</li>
+<li>打样平台列表：样品单号（点击进工作台）、客户、轮次、状态、当前工序、工序数、工时</li>
+<h3>工作台结构（workbench.vue）</h3>
+<pre>
+① 轮次 Tabs（Round 1/2/…，多轮打样）
+② 大类 Tabs：🛠 冲型组装(ASSEMBLY) | 🖨️ 印刷(PRINT)
+   - 冲型组装：工序卡片（ProcessCard，标准工序流程）
+   - 印刷：PrintProcessPanel（自定义工序表格：印刷名称/色号/油墨编号/网框编号…）
+③ 样品信息卡（SampleInfoCard）：客户/轮次 + 接单/拒单 + 📤 上传图纸/文件（样品单级）
+④ BOM 面板（BomPanel）：各工序材料自动聚合 → 📦 资料转移
+⑤ 工艺参数/备注（NoteFilesPanel）
+⑥ 执行时间线（ExecutionTimeline）：工序完成进度
+</pre>
+<h3>打样流程（开发视角）</h3>
+<pre>
+进工作台 → 录/改工序（冲型组装 + 印刷）→ 挂材料（FrequentMaterialsBar 常用料）
+→ 保存工序计划 → 上传图纸/文件 → 执行工序（标记完成，时间线推进）
+→ 打样完成 → 回写样品单状态 4 样品待送样
+→ 客户确认(6) → 📦 资料转移：把本轮工序+材料建档为 产品/BOM/工艺路线
+</pre>
+<h3>资料转移（关键动作）</h3>
+<pre>
+transfer(样品单)
+  预览匹配：工序/材料 → 产品/BOM/工艺路线 映射（可人工调整）
+  确认后：建档产品（状态待审核）→ 建 BOM → 建工艺路线
+  回写样品单：transferred 标记
+  触发事件：sample.transferred
+</pre>
+<h2>2.7 图纸管理 / 薄膜管理 / 作业项目</h2>
+<tr><td>菜单</td><td>页面</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>图纸管理</td><td>`src/views/product/drawing/index.vue`</td><td>图纸上传/预览/下载/版本；字段：drawingNo/Name/Type/File/Format/Size/Version</td></tr>
+<tr><td>薄膜管理</td><td>`src/views/product/film/index.vue`</td><td>菲林档案（打样网版）；字段：filmCode/Name/Type/Size/Version/设计人；操作：新增/审核/发布/新版本</td></tr>
+<tr><td>作业项目</td><td>`src/views/engineering/work-project/index.vue`</td><td>项目式作业记录；字段：processCode/Name/Type/Category/Icon/Description；操作：新增/编辑/提交</td></tr>
+<blockquote>菲林档案：转量产就绪检查的**建议项**（不阻塞）。</blockquote>
+<p>_阶段二完。下一步：阶段三（采购管理）——供应商/采购计划/采购订单/收货/发票/付款，重点&quot;预警转采购计划&quot;。_</p>
+<h1>阶段三：采购管理</h1>
+<blockquote>代码：`jjx-server/src/main/java/com/jjx/purchase/` + `jjx-web/src/views/purchase/`</blockquote>
+<blockquote>核心链路：**缺料预警 → 采购计划 → 采购订单 → 收货 → 发票 → 付款**</blockquote>
+<blockquote>⭐ 本阶段重点：**预警转采购计划**（缺料驱动采购）</blockquote>
+<h2>3.0 触发源头：库存预警（在库存模块，但采购由此驱动）</h2>
+<p>**菜单**：库存管理 → 预警管理 | **页面**：`src/views/inventory/alert/index.vue`</p>
+<li>预警来源：订单齐套检查（order_shortage）/ 全局缺料检查（demand_shortage）——见阶段一 1.5 审核通过联动</li>
+<li>操作：标记已读 / 批量已读 / 处理（handleProcess）/ 查看详情 / 导出 / **去采购计划**(goPurchasePlan) / **去采购订单**(goPurchaseOrders)</li>
+<li>预警状态：0 未处理 / 1 已读 / 2 已处理（终态）</li>
+<h2>3.1 供应商管理</h2>
+<p>**菜单**：采购管理 → 供应商管理 | **页面**：`src/views/purchase/supplier/index.vue`</p>
+<li>操作：新增 / 编辑 / 删除 / 查看 / 导入(模板) / 导出 / **评估**(handleEvaluation，供应商评分)</li>
+<li>关键字段：供应商编码/名称/简称、类型、行业、联系人/电话/邮箱、税号、开户行账号、资质、评估记录</li>
+<h2>3.2 采购计划（⭐ 预警转计划）</h2>
+<p>**菜单**：采购管理 → 采购计划 | **页面**：`src/views/purchase/plan/index.vue`</p>
+<h3>入口</h3>
+<li>预警页&quot;去采购计划&quot;跳转（带 materialId/alertId，可预填——预警闭环4 目标）</li>
+<li>手动新增（showAddMaterial）</li>
+<h3>操作</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>添加物料</td><td>showAddMaterial → confirmAddMaterial（编码/名称/建议数量/当前库存/单位/原因）</td></tr>
+<tr><td>移除行</td><td>removeRow</td></tr>
+<tr><td>生成建议</td><td>loadSuggestions（按缺料建议补数量）</td></tr>
+<tr><td>清空</td><td>clearPlan</td></tr>
+<tr><td>**确认计划**</td><td>showConfirmDialog → doConfirmPlan → 生成采购订单（草稿）</td></tr>
+<tr><td>导出</td><td>handleExport</td></tr>
+<h3>计划行字段</h3>
+<p>`materialCode/materialName`、`suggestQuantity`、`currentStock`、`unit`、`reason`</p>
+<h3>确认计划链路</h3>
+<pre>
+doConfirmPlan(计划行)
+  校验物料/数量
+  生成采购订单（草稿，单号 PO-时间戳）
+  回写预警：batchProcess(alertIds, relatedOrderNo) → 预警状态=2 已处理 + 关联采购单号
+</pre>
+<h2>3.3 采购订单</h2>
+<p>**菜单**：采购管理 → 采购订单 | **页面**：`src/views/purchase/order/index.vue`</p>
+<h3>状态机（9 态，PurchaseOrderStatusEnum）</h3>
+<pre>
+0草稿 → 1询价中 → 2比价中 → 3已提交 → 4已批准 → 5执行中 → 6已完成
+                    ↘ 8已取消          ↘ 驳回
+7已关闭
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>新增</td><td>表单弹窗（明细行）</td></tr>
+<tr><td>提交审核</td><td>handleSubmitReview → 3已提交</td></tr>
+<tr><td>审核通过/驳回</td><td>openPreview(&#x27;purchase.approve&#x27;/&#x27;purchase.reject&#x27;)</td></tr>
+<tr><td>取消</td><td>openPreview(&#x27;purchase.cancel&#x27;)</td></tr>
+<tr><td>**收货**</td><td>receiveDialog（按明细行收货：收货数量/检验结果/备注）</td></tr>
+<tr><td>**付款**</td><td>paymentDialog（付款金额/状态，isOrderPayable 控制显示）</td></tr>
+<tr><td>打印 / 导出 PDF / 导出</td><td>handlePrint / handleExportPdf / handleExport</td></tr>
+<tr><td>流水</td><td>showTrace</td></tr>
+<h3>主表字段</h3>
+<p>`orderNo`(PO-时间戳)、`supplierId/Name`、`orderType`、`orderDate`、`expectedDeliveryDate`、`currency`、`orderAmount/orderTax/orderTotalAmount`、`approvalStatus`、`receiptStatus`、`paymentStatus`、`urgentFlag`</p>
+<p>明细：`materialId/Code/Name`、`quantity`、`unitPrice`、`amount`、`receivedQuantity`</p>
+<h2>3.4 收货 / 发票 / 付款（单据级推进）</h2>
+<tr><td>环节</td><td>实现</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>收货</td><td>`receiveOrderItem` / `/purchase/order/{id}/receive`</td><td>按明细收货数量 + 检验结果（合格/不合格）+ 备注；影响 receiptStatus</td></tr>
+<tr><td>发票</td><td>`/purchase/invoice`（upload-temp 临时上传 / batch-confirm 批量确认）</td><td>采购发票登记（临时文件 + 确认）</td></tr>
+<tr><td>付款</td><td>`updatePaymentInfo` → `/purchase/order/payment/{id}`</td><td>付款金额 + 状态；未付款订单列表 `/purchase/order/pending-payment`</td></tr>
+<blockquote>采购发票/付款前端入口：菜单挂载但组件待确认（同销售侧），单据级推进为主。</blockquote>
+<p>_阶段三完。下一步：阶段四（生产管理）——生产订单/派工/工序执行/质检/追溯/设备/工装模具/成本/报表。_</p>
+<p>_阶段三完。下一步：阶段四（生产管理）——生产订单/派工/工序执行/质检/追溯/设备/工装模具/成本/报表。_</p>
+<h1>阶段四：生产管理</h1>
+<blockquote>代码：`jjx-server/src/main/java/com/jjx/production/` + `jjx-web/src/views/production/`</blockquote>
+<blockquote>核心链路：**销售订单 → 生成生产计划(PLAN) → 转工单 → 派工 → 工序执行(报工) → 完工质检 → 完工入库 → 发货**</blockquote>
+<blockquote>⭐ 本阶段重点：**工单执行闭环（派工/工序执行/质检/追溯）**</blockquote>
+<h2>4.1 生产订单（计划 + 工单合并）</h2>
+<p>**菜单**：生产管理 → 生产订单 | **页面**：`src/views/production/order/index.vue`</p>
+<h3>状态机（12 态，ProductionOrderStatusEnum）</h3>
+<pre>
+0草稿 → 1待审核 → 2已审核 → 3已驳回 → 4已计划 → 5待开始 → 6进行中 → 8已完成
+                                                      ↘ 7已暂停 → 6
+                                                      ↘ 9已取消 / 11已超期
+10已关闭（终态）
+</pre>
+<h3>入口</h3>
+<li>销售订单&quot;生成生产计划&quot;（阶段一 1.5）→ 生成 PLAN（order_type=PLAN）</li>
+<li>计划审批 → **转工单**（convertPlanToWorkOrders：按产品拆 WORK_ORDER，编号 WO-{planNo}-{seq}）</li>
+<li>直接转工单（销售订单 startProduction 快捷模式，现已不在前端展示）</li>
+<h3>操作</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>计划转工单</td><td>convertDialogVisible → addConvertRow/submitConvert（按产品行拆工单）</td></tr>
+<tr><td>工单开始/暂停/完成</td><td>状态推进（联动工序执行）</td></tr>
+<tr><td>打印随工单</td><td>随工单打印页（含工单号二维码，扫码A-1）</td></tr>
+<tr><td>派工</td><td>跳派工管理（带 orderNo）</td></tr>
+<h3>工单关键字段</h3>
+<p>`orderNo`(WPO 或 WO-)、`orderType`(PLAN计划/WORK_ORDER工单)、`productId/Code/Name`、`plannedQuantity/completedQuantity/remainingQuantity`、`planStartDate/planEndDate`、`priority`(LOW/MEDIUM/HIGH/URGENT)、`dispatchTeam/Leader`、`materialStatus`(0未领料/1待发料/2已领料)、`orderStatus`</p>
+<blockquote>生成工单时按工艺路线自动生成工序执行记录（generateOperationExecutions，含印刷大类信息）。</blockquote>
+<h2>4.2 派工管理</h2>
+<p>**菜单**：生产管理 → 派工管理 | **页面**：`src/views/production/dispatch/index.vue`</p>
+<p>**方案**：`jjx-docs/specs/dispatch-spec.md`</p>
+<h3>状态机（派工单）</h3>
+<pre>
+0待派工 → 1已派工 → 2执行中 → 3已完成
+                  ↘ 4已退回（原因必填）→ 可改派
+</pre>
+<h3>操作</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>派工</td><td>openAssign → assignVisible → handleAssign（选班组/设备/操作员 operators JSON）</td></tr>
+<tr><td>批量派工</td><td>openBatchDialog → batchVisible → handleBatchAssign（多工单一次派）</td></tr>
+<tr><td>开始</td><td>handleStart → 执行中（联动工序执行）</td></tr>
+<tr><td>完成</td><td>handleComplete → 已完成</td></tr>
+<tr><td>退回</td><td>openReject → rejectVisible → handleReject（原因必填，可改派）</td></tr>
+<tr><td>派工记录</td><td>openLogs（派工操作流水）</td></tr>
+<tr><td>搜索/重置</td><td>handleSearch / handleReset</td></tr>
+<h3>派工字段</h3>
+<p>`orderId/orderNo`、`executionId`(工序执行)、`processName/processOrder`、`teamId/teamName`、`equipmentId/Name`、`operators`(JSON 操作员列表)、`assignedBy/assignTime`、`status`、`rejectReason`、`reDispatchCount`</p>
+<h2>4.3 工序执行（报工核心）</h2>
+<p>**菜单**：生产管理 → 工序执行 | **页面**：`src/views/production/execution/index.vue`</p>
+<p>**后端**：`ProductionOperationExecutionController`（/production/operation-execution）</p>
+<h3>状态机（10 态，ExecutionStatusEnum）</h3>
+<pre>
+0待执行 → 1准备中 → 2执行中 → 4已完成
+                    ↘ 3已暂停 → 2
+                    ↘ 6已取消 / 5已跳过 / 7已超期 / 8异常中 / 9待确认
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>开始</td><td>handleStart → 2执行中</td><td>记录实际开始时间</td></tr>
+<tr><td>暂停</td><td>handlePause → 3已暂停</td><td>记录暂停</td></tr>
+<tr><td>完成</td><td>handleComplete → 4已完成</td><td>校验投入/产出/合格/不良数量</td></tr>
+<tr><td>质检</td><td>handleQualityCheck → qcVisible → submitQc</td><td>首检/巡检，记录质量数据</td></tr>
+<tr><td>报工记录</td><td>handleRecord → recordOpen → submitRecord</td><td>写 production_operation_record（START/PAUSE/COMPLETE/QUALITY/ISSUE/PARAM）</td></tr>
+<tr><td>详情</td><td>detailOpen / handleView</td><td>执行详情</td></tr>
+<h3>关键字段</h3>
+<p>`orderId/processId/processOrder`、`plannedStart/EndTime`、`actualStart/EndTime`、`actualLaborHours/actualMachineHours`、`equipmentId/Code/Name`、`operatorId/Name`、`inputQuantity/outputQuantity`、`qualifiedQuantity/defectiveQuantity/defectiveReason`、`actualProcessParams`(JSON)、`qualityCheckResult`(JSON)、`executionStatus`</p>
+<p>印刷行：`majorCategory/processName/customProcessParams`（印刷工序参数，打样→路线→工单透传）</p>
+<blockquote>完成数量校验：工单已完工(8)后冻结，禁止再报工/改数量（053）。</blockquote>
+<h2>4.4 完工质检</h2>
+<p>**菜单**：生产管理 →（质检页面）| **页面**：`src/views/production/quality/index.vue`</p>
+<li>操作：创建质检单(handleCreate) / 检验报告(handleReport) / 设置(showSettings) / 全部检验(viewAllInspections) / 详情(viewInspectionDetail)</li>
+<li>质检结果：通过/不通过（FAIL 待返工，rework_flag）</li>
+<li>联动：完工质检通过 → 允许完工入库（createFromProduction 校验工单已完成）</li>
+<h2>4.5 生产追溯</h2>
+<p>**菜单**：生产管理 → 生产追溯 | **页面**：`src/views/production/trace/index.vue`</p>
+<li>操作：正向追溯(doTraceForward) / 反向追溯(doTraceBackward) / 查询 / 重置</li>
+<li>维度：工单 → 工序执行 → 操作记录 → 物料 → 批次，双向追溯</li>
+<h2>4.6 设备管理 / 工装模具档案</h2>
+<tr><td>菜单</td><td>页面</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>设备管理</td><td>`src/views/production/equipment/index.vue`</td><td>设备档案 + 维修(handleMaintenance)；字段：设备编码/名称/状态/车间</td></tr>
+<tr><td>工装模具档案</td><td>`src/views/production/tooling/index.vue`</td><td>网框/刀模等工艺装备档案；新增/编辑/删除/导入/导出；编号规则可配置</td></tr>
+<h2>4.7 操作记录 / 成本核算 / 生产报表</h2>
+<tr><td>菜单</td><td>页面</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>操作记录</td><td>`src/views/production/production-operation/index.vue`</td><td>production_operation_record 全量（START/PAUSE/COMPLETE/QUALITY/ISSUE…）</td></tr>
+<tr><td>成本核算</td><td>`src/views/production/cost/index.vue`</td><td>材料/人工/机器成本汇总</td></tr>
+<tr><td>生产报表</td><td>`src/views/production/report/index.vue`</td><td>生产统计报表</td></tr>
+<h2>4.8 完工入库（生产 → 库存衔接）</h2>
+<pre>
+工单完成(8) → POST /inventory/inbound/create-from-production/{workOrderId}
+  校验：工单必须已完成（未完工禁止入库，DEV-936/053）
+  生成完工入库单（默认取启用仓库）
+  成品物料(F类型)入库 → 库存入账 → 扣减工单 finishedQuantity
+</pre>
+<p>_阶段四完。下一步：阶段五（库存管理）——物料/仓库/库存/出入库/盘点/调拨/预警。_</p>
+<h1>阶段五：库存管理</h1>
+<blockquote>代码：`jjx-server/src/main/java/com/jjx/inventory/` + `jjx-web/src/views/inventory/`</blockquote>
+<blockquote>核心链路：**物料档案 → 仓库/库位 → 出入库（单据级）→ 库存/预警 → 盘点/调拨**</blockquote>
+<blockquote>⭐ 本阶段重点：**出入库单据流 + 缺料预警驱动采购**（预警见阶段三 3.0）</blockquote>
+<blockquote>⚠️ 概念约定：库存里只有**物料**（R原料/F成品/S半成品），**产品永远不入库**；物料档案的 product_id = 该物料被哪个产品专用</blockquote>
+<h2>5.1 物料管理（物料主数据）</h2>
+<p>**菜单**：库存管理 → 材料管理（物料列表） | **页面**：`src/views/inventory/material/index.vue` + `detail.vue` + `category.vue`</p>
+<h3>物料类型（MaterialEnum）</h3>
+<pre>
+R 原材料 | S 半成品 | F 成品（完工入库的落点）
+</pre>
+<h3>操作</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>新增/编辑</td><td>表单弹窗</td></tr>
+<tr><td>删除</td><td>物理删除</td></tr>
+<tr><td>导入</td><td>模板下载 + 导入 + 失败结果（handleDownloadTemplate / handleImport / handleDownloadFail）</td></tr>
+<tr><td>查看</td><td>详情页（库存/价格/关联）</td></tr>
+<h3>关键字段</h3>
+<p>`materialCode/Name`、`materialType`(R/S/F)、`categoryId`、`spec`、`unit`、`safetyStock/maxStock`、`productId`(专用物料，非等同产品)、`price`、`status`</p>
+<blockquote>成品物料(F)在产品**发布**时自动创建（转量产链路），完工入库入的是 F 物料。</blockquote>
+<h2>5.2 仓库 / 库位</h2>
+<p>**菜单**：库存管理 → 仓库管理 | **页面**：`src/views/inventory/warehouse/index.vue` + `location.vue`</p>
+<li>仓库：新增/编辑/删除 + **库位管理**(handleLocation/handleLocationManage)</li>
+<li>字段：仓库编码/名称/类型/状态(启用1)、库位编码/名称</li>
+<li>作用：出入库单的 warehouse_id 落点（销售/生产出入库默认取启用仓库）</li>
+<h2>5.3 库存列表</h2>
+<p>**菜单**：库存管理 → 库存列表 | **页面**：`src/views/inventory/stock/index.vue`</p>
+<li>操作：查看详情(handleViewDetail) / 调整(handleAdjust，盘盈盘亏) / 导出 / 刷新 / 筛选(showFilter)</li>
+<li>视图：按物料汇总库存（quantity/availableQuantity/锁定量），产品维度通过专用 F 物料间接看</li>
+<h2>5.4 入库管理</h2>
+<p>**菜单**：库存管理 → 入库管理 | **页面**：`src/views/inventory/inbound/index.vue` + `create.vue`</p>
+<h3>入库类型</h3>
+<pre>
+purchase(采购入库) / production(生产完工入库) / return(退货入库) / transfer(调拨入库) / adjust(盘盈入库)
+</pre>
+<h3>状态机</h3>
+<pre>
+draft(草稿) → pending(待审批) → approved(已批准) → confirmed(已确认) → closed(已关闭)
+                    ↘ rejected(已驳回)                    ↘ cancelled(已取消)
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>新建</td><td>handleCreate（含来源：采购单/生产工单 createFromProduction）</td></tr>
+<tr><td>提交</td><td>handleSubmit → 待审批</td></tr>
+<tr><td>审批</td><td>handleApprove → 已批准</td></tr>
+<tr><td>取消</td><td>handleCancel</td></tr>
+<tr><td>打印 / PDF / 导出</td><td>handlePrint / handleExportPdf / handleExport</td></tr>
+<tr><td>详情</td><td>detailDialogVisible</td></tr>
+<h3>生产完工入库链路</h3>
+<pre>
+工单完成(8) → createFromProduction（校验工单已完成，DEV-936）
+  → 成品物料(F)入库 → 库存入账 → 扣减工单 finishedQuantity
+</pre>
+<h2>5.5 出库管理（含销售发货、生产领料）</h2>
+<p>**菜单**：库存管理 → 出库管理 | **页面**：`src/views/inventory/outbound/index.vue` + `create.vue`</p>
+<h3>出库类型</h3>
+<pre>
+production(生产领料) / sales(销售出库) / return(退货出库) / scrap(报废出库) / transfer(调拨出库) / adjust(盘亏出库)
+</pre>
+<h3>状态机</h3>
+<pre>
+draft(草稿) → confirmed(已确认) → closed(已关闭)  ↘ cancelled(已取消)
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>新建</td><td>handleCreate（含来源：销售订单 createFromSales / 生产工单）</td></tr>
+<tr><td>确认</td><td>handleConfirm → 扣库存</td></tr>
+<tr><td>打印 / PDF / 导出</td><td>handlePrint / handleExportPdf / handleExport</td></tr>
+<tr><td>流水</td><td>showTrace</td></tr>
+<h3>销售发货链路（阶段一 1.5 状态7&quot;发货&quot;触发）</h3>
+<pre>
+订单发货(shipOrder) → createFromSales（自动建销售出库单，取默认启用仓库，DEV-932）
+  → 成品F物料出库扣库存 → 订单 7→8 已发货
+</pre>
+<h2>5.6 盘点管理</h2>
+<p>**菜单**：库存管理 → 盘点管理 | **页面**：`src/views/inventory/stocktake/index.vue`</p>
+<h3>盘点类型</h3>
+<pre>
+full(全盘) / partial(抽盘) / cycle(循环盘点)
+</pre>
+<h3>状态机</h3>
+<pre>
+draft(草稿) → processing(盘点中) → closed(已关闭) ↘ cancelled(已取消)
+差异行：pending(待处理) → processed(已处理) / skipped(已跳过)
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>创建</td><td>handleCreate → handleCreateSubmit</td></tr>
+<tr><td>开始盘点</td><td>handleStart</td></tr>
+<tr><td>录入盘点数</td><td>handleInput → handleInputSubmit</td></tr>
+<tr><td>确认结果</td><td>handleConfirmResult</td></tr>
+<tr><td>差异处理</td><td>handleProcessDiff（盘盈→入库/盘亏→出库）</td></tr>
+<tr><td>打印</td><td>handlePrint</td></tr>
+<h2>5.7 调拨管理</h2>
+<p>**菜单**：库存管理 → 调拨管理 | **页面**：`src/views/inventory/transfer/index.vue`</p>
+<h3>调拨类型</h3>
+<pre>
+normal(普通) / urgent(紧急)
+</pre>
+<h3>状态机</h3>
+<pre>
+draft(草稿) → approved(已批准) → out_confirm(已出库) → in_confirm(已入库) → closed(已关闭)
+                                                  ↘ cancelled(已取消)
+</pre>
+<h3>操作按钮</h3>
+<tr><td>按钮</td><td>动作</td></tr>
+<p>|---|---|</p>
+<tr><td>创建</td><td>handleCreate → handleCreateSubmit（addMaterialRow 明细）</td></tr>
+<tr><td>审批</td><td>handleApprove</td></tr>
+<tr><td>出库确认</td><td>handleConfirmOut</td></tr>
+<tr><td>入库确认</td><td>handleConfirmIn</td></tr>
+<tr><td>取消</td><td>handleCancel</td></tr>
+<h2>5.8 预警管理（衔接采购）</h2>
+<p>**菜单**：库存管理 → 预警管理 | **页面**：`src/views/inventory/alert/index.vue`</p>
+<p>**详见阶段三 3.0**：订单缺料(order_shortage)/安全库存(safe_stock)/最高库存(max_stock)/保质期(expiry)/呆滞料(obsolete)</p>
+<p>状态：0 未处理 / 1 已读 / 2 已处理（终态）</p>
+<p>_阶段五完。下一步：阶段六（系统管理/日志）——用户/角色/菜单/部门/字典/事件配置/配置/文件 + 日志三件套 + 任务看板。_</p>
+<h1>阶段六：系统管理 / 日志 / 看板</h1>
+<blockquote>代码：`jjx-server/src/main/java/com/jjx/system/` + `com/jjx/event/` + `com/jjx/notification/` + `jjx-web/src/views/system/` + `src/views/log/` + `src/views/kanban/`</blockquote>
+<blockquote>职责：**权限底座 + 事件驱动（任务/通知）+ 配置 + 日志审计 + 任务看板**</blockquote>
+<blockquote>⭐ 本阶段重点：**事件配置（驱动任务/通知）+ 任务看板**（全系统联动中枢）</blockquote>
+<h2>6.1 用户 / 角色 / 菜单 / 部门（权限底座）</h2>
+<h3>用户管理</h3>
+<p>**菜单**：系统管理 → 用户管理 | **页面**：`src/views/system/user/index.vue`</p>
+<li>操作：新增/编辑/删除/批量删除/重置密码(handleResetPwd)/分配角色(handleAssignRole)</li>
+<li>字段：账号、姓名、部门、角色、状态、手机/邮箱</li>
+<h3>角色管理</h3>
+<p>**菜单**：系统管理 → 角色管理 | **页面**：`src/views/system/role/index.vue`</p>
+<li>操作：新增/编辑/删除/分配用户(handleAuthUser)/**菜单按钮授权**(handleAuthMenuButton → menuButtonDialog → saveMenuButtonPermissions)</li>
+<li>权限模型：角色 → 菜单 + 按钮权限（perms 如 sales:order:view），前端 v-hasPermi 控制按钮显隐</li>
+<h3>菜单管理</h3>
+<p>**菜单**：系统管理 → 菜单管理 | **页面**：`src/views/system/menu/index.vue`</p>
+<li>菜单树：M目录/C菜单/F按钮，path/component/perms/icon/order</li>
+<li>新增菜单后需给角色授权才可见</li>
+<h3>部门管理</h3>
+<p>**菜单**：系统管理 → 部门管理 | **页面**：`src/views/system/dept/index.vue`</p>
+<li>树形组织；生产班组复用部门（派工 team_id 指向部门）</li>
+<h2>6.2 字典 / 系统配置 / 单据模板 / 文件管理</h2>
+<tr><td>菜单</td><td>页面</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>字典管理</td><td>`src/views/system/dict/index.vue`</td><td>字典类型 + 字典项（启用/停用/批量删），前端 useDict 加载</td></tr>
+<tr><td>系统配置</td><td>`src/views/system/config/index.vue`</td><td>配置分组(activeGroup) + 键值保存；如 pdf_template 公司抬头、tooling_no_rule 编号规则</td></tr>
+<tr><td>单据模板配置</td><td>`src/views/system/pdfConfig/index.vue`</td><td>打印模板配置</td></tr>
+<tr><td>文件管理</td><td>`src/views/system/file/index.vue`</td><td>附件存储管理：删除/恢复/永久删除 + 后台任务(runDaily/runCheck/runMigrate/runCleanExpired)</td></tr>
+<h2>6.3 事件配置（⭐ 任务/通知中枢）</h2>
+<p>**菜单**：系统管理 → 事件配置 | **页面**：`src/views/system/eventConfig/index.vue`</p>
+<p>**实现**：`LocalEventPublisher`（@Event 注解 → 查 sys_event_config → 发通知 + 创任务）</p>
+<h3>事件配置字段</h3>
+<p>`eventCode`(如 sample.converted)、`eventName`、`bizModule`(sales/purchase...)、`eventType`(notification/task/both)、`kanbanModule`(dev/office/production)、`priority`、`targetRole`(JSON 角色数组)、`title/content`(模板，{bizId} 占位符)、`isEnabled`、`excludeTrigger`(排除触发者)</p>
+<h3>触发机制</h3>
+<pre>
+业务方法 @Event(value=&quot;sample.converted&quot;) → LocalEventPublisher.fire
+  → 查 sys_event_config（enabled=1）
+  → notification 类型：按 targetRole 展开用户 → 逐人建 sys_notification
+  → task 类型：按角色建 sys_task（看板任务，kanban_module 分组）
+</pre>
+<h3>已配置事件示例（销售域）</h3>
+<p>`inquiry.converted` / `quotation.submitted/reviewed/sent/converted` / `sample.created/submitted/approved/ready/sent/confirmed/rejected_by_customer/converted` / `order.submitted/review_started/approved/rejected/resubmitted/cancelled/sent_to_customer`</p>
+<h2>6.4 任务看板（开发/办公/生产）</h2>
+<p>**菜单**：任务看板 | **页面**：`src/views/kanban/index.vue`</p>
+<p>**配置**：`src/views/kanban/config/board.ts`</p>
+<h3>模板（switchTemplate）</h3>
+<pre>
+production（生产管理看板：工单/派工/工序）
+office（办公任务：事件生成的通知类任务）
+dev（开发任务：dev-YYYYMMDD-NNN 编码，sys_task kanban_module=&#x27;dev&#x27;）
+</pre>
+<h3>任务状态流转</h3>
+<pre>
+0待处理 → 1进行中 → 2待审核 → 10已完成
+                ↘ 3阻塞(blocked)
+</pre>
+<h3>任务字段（sys_task）</h3>
+<p>`taskCode`、`taskType`(design/review/production/sample)、`kanbanModule`、`title/description`、`bizType/bizId`、`assigneeId/Name`、`assignRole`、`priority`(urgent/high/normal/low)、`sourceEvent/sourceId`、`status`、`deadline`</p>
+<blockquote>开发任务流程：看板登记 → 认领 → 完成置 2 待审核 → 审核后拖 10 已完成。</blockquote>
+<h2>6.5 日志三件套（审计）</h2>
+<p>**菜单**：日志管理</p>
+<tr><td>菜单</td><td>页面</td><td>说明</td></tr>
+<p>|---|---|---|</p>
+<tr><td>操作日志</td><td>`src/views/log/operation/index.vue`</td><td>sys_oper_log：操作人/模块/URL/参数/IP/状态/耗时；链路追踪（traceId）查询</td></tr>
+<tr><td>登录日志</td><td>`src/views/log/login/index.vue`</td><td>sys_login_log：登录/登出、IP、结果</td></tr>
+<tr><td>异常日志</td><td>`src/views/log/exception/index.vue`</td><td>sys_error_log：异常堆栈</td></tr>
+<blockquote>操作日志即&quot;流水&quot;数据源：`@Log` 注解切面写入（OperLogAspect），按 traceId 组织链路（TraceTimeline）。</blockquote>
+<h2>6.6 通知中心</h2>
+<li>数据表：`sys_notification`（标题/内容/类型/接收人/优先级/bizType）</li>
+<li>来源：事件配置（见 6.3），业务触发点自动生成</li>
+<li>前端：通知铃铛/通知列表（`src/views/notification/`）</li>
+<p>_阶段六完。全文完成：总览 + 阶段一~六（销售→产品工程→采购→生产→库存→系统）。_</p>
+</body></html>

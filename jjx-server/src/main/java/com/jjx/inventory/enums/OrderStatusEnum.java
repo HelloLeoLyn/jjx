@@ -5,26 +5,30 @@ import lombok.Getter;
 
 /**
  * 单据状态枚举
+ * 统一数字编码: 0草稿/1待审批/2已批准/3已驳回/4处理中/5已确认/6已出库/7已入库/8已关闭/9已取消/10已完成/11已处理/12调拨中
  */
 @Getter
 @AllArgsConstructor
 public enum OrderStatusEnum {
 
-    DRAFT("draft", "草稿"),
-    PENDING("pending", "待审批"),
-    APPROVED("approved", "已批准"),
-    REJECTED("rejected", "已驳回"),
-    PROCESSING("processing", "处理中"),
-    CONFIRMED("confirmed", "已确认"),
-    OUT_CONFIRM("out_confirm", "已出库"),
-    IN_CONFIRM("in_confirm", "已入库"),
-    CLOSED("closed", "已关闭"),
-    CANCELLED("cancelled", "已取消");
+    DRAFT(0, "草稿"),
+    PENDING(1, "待审批"),
+    APPROVED(2, "已批准"),
+    REJECTED(3, "已驳回"),
+    PROCESSING(4, "处理中"),
+    CONFIRMED(5, "已确认"),
+    OUT_CONFIRM(6, "已出库"),
+    IN_CONFIRM(7, "已入库"),
+    CLOSED(8, "已关闭"),
+    CANCELLED(9, "已取消"),
+    COMPLETED(10, "已完成"),
+    PROCESSED(11, "已处理"),
+    IN_PROGRESS(12, "调拨中");
 
-    private final String code;
+    private final Integer code;
     private final String label;
 
-    public static OrderStatusEnum getByCode(String code) {
+    public static OrderStatusEnum getByCode(Integer code) {
         for (OrderStatusEnum value : values()) {
             if (value.getCode().equals(code)) {
                 return value;

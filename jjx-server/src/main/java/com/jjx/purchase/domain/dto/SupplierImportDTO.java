@@ -12,17 +12,17 @@ public class SupplierImportDTO {
     /**
      * 供应商编码
      */
-    @ExcelColumn(value = "供应商编码(*)", order = 1, required = true, comment = "供应商唯一编码")
+    @ExcelColumn(value = "供应商编码", order = 1, required = true, comment = "供应商唯一编码")
     private String supplierCode;
 
     /**
      * 供应商名称
      */
-    @ExcelColumn(value = "供应商名称(*)", order = 2, required = true, comment = "供应商全称")
+    @ExcelColumn(value = "供应商名称", order = 2, required = true, comment = "供应商全称")
     private String supplierName;
 
 
-    @ExcelColumn(value = "供应商类型(*)", order = 3, required = true, comment = "M=物料,  E=设备, O=其他")
+    @ExcelColumn(value = "供应商类型", order = 3, required = true, comment = "M=物料,  E=设备, O=其他")
     private String supplierType;
 
     /**

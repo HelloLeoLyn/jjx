@@ -137,6 +137,9 @@ public class SalesOrderVO {
     @Schema(description = "备注", example = "客户要求加急处理")
     private String remark;
 
+    @Schema(description = "链路追踪ID", example = "af6d2e3034ab4649")
+    private String traceId;
+
     @Schema(description = "创建时间", example = "2026-04-19 10:00:00")
     private Date createTime;
 

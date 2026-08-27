@@ -1,16 +1,12 @@
 <!-- src/layout/components/SidebarItem.vue -->
+<!-- 官方标准写法（DEV-663 重做）：el-sub-menu/el-menu-item 原生结构，icon + span，无自定义装饰 -->
 <template>
   <div v-if="!item.hidden">
     <template v-if="hasChildren">
       <el-sub-menu :index="resolvePath">
         <template #title>
-          <svg-icon
-            v-if="isSvgIcon"
-            :name="item.icon!"
-            :size="18"
-            style="margin-right: 12px; margin-left: 3px"
-          />
-          <el-icon v-else-if="item.icon" :size="18" style="margin-right: 8px">
+          <svg-icon v-if="isSvgIcon" :name="item.icon!" :size="18" class="menu-icon" />
+          <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
             <component :is="item.icon" />
           </el-icon>
           <span>{{ item.title }}</span>
@@ -25,13 +21,8 @@
     </template>
     <template v-else>
       <el-menu-item :index="resolvePath" @click="handleClick">
-        <svg-icon
-          v-if="isSvgIcon"
-          :name="item.icon!"
-          :size="18"
-          style="margin-right: 12px; margin-left: 3px"
-        />
-        <el-icon v-else-if="item.icon" :size="18" style="margin-right: 8px">
+        <svg-icon v-if="isSvgIcon" :name="item.icon!" :size="18" class="menu-icon" />
+        <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
           <component :is="item.icon" />
         </el-icon>
         <template #title>
@@ -47,7 +38,8 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import path from 'path-browserify'
 import type { MenuItem } from '@/types/system'
-import SvgIcon from '@/components/SvgIcon/index.vue'
+
+defineOptions({ name: 'SidebarItem' })
 
 const props = defineProps({
   item: {
@@ -62,45 +54,18 @@ const props = defineProps({
 
 const router = useRouter()
 
-// 常见 Element Plus 图标列表
-const commonElementIcons = [
-  'HomeFilled',
-  'Setting',
-  'User',
-  'UserFilled',
-  'Menu',
-  'OfficeBuilding',
-  'Goods',
-  'List',
-  'Folder',
-  'Document',
-  'SetUp',
-  'Box',
-  'Picture',
-  'ShoppingCart',
-  'PriceTag',
-  'Location',
-  'ShoppingBag',
-  'Money',
-  'Files',
-  'Dashboard',
-  'Route',
-  'Play',
-  'Check',
-  'Lock',
-  'Search',
-  'BellFilled',
-  'CirclePlusFilled',
-  'RemoveFilled',
-  'Switch',
-  'Plus',
-  'Edit',
-]
+// 2026-08-12：isSvgIcon 改为基于实际 SVG 文件判断（替代硬编码白名单）
+// 图标渲染优先级：svg 目录有同名文件 → SVG 雪碧图；否则 → Element Plus 图标（main.ts 全量注册）
+const svgIconFiles = import.meta.glob('@/icons/svg/*.svg')
+const jjxIconFiles = import.meta.glob('@/icons/jjx/*.svg')
 
-// 判断是否是 SVG 图标（不在常见 Element Plus 图标列表中的就是 SVG）
+// 判断 icon 名是否为本地 SVG 图标（svg 或 jjx 目录有同名文件）
 const isSvgIcon = computed(() => {
   if (!props.item.icon) return false
-  return !commonElementIcons.includes(props.item.icon)
+  return (
+    svgIconFiles[`/src/icons/svg/${props.item.icon}.svg`] !== undefined ||
+    jjxIconFiles[`/src/icons/jjx/${props.item.icon}.svg`] !== undefined
+  )
 })
 
 const hasChildren = computed(() => {

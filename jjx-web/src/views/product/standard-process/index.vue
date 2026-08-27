@@ -72,9 +72,11 @@
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
-        <el-button type="primary" icon="Plus" @click="handleAdd">新增标准工序</el-button>
+        <el-button type="primary" icon="Plus" v-hasPermi="['engineering:standardProcess:add']" @click="handleAdd">新增标准工序</el-button>
+        <el-button type="success" plain icon="Upload" v-hasPermi="['engineering:standardProcess:add']" @click="openImportDialog">导入</el-button>
       </div>
     </el-card>
+
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
@@ -92,25 +94,33 @@
           min-width="160"
           show-overflow-tooltip
         />
-        <el-table-column prop="processType" label="工序类型" width="100" align="center">
+        <el-table-column prop="processType" label="工序类型" width="130" align="center">
           <template #default="scope">
             <el-tag size="small">
-              {{ getDictLabel(processTypeOptions, scope.row.processType) }}
+              {{ getProcessTypeLabel(scope.row.processType) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="processCategory" label="工序类别" width="100" align="center">
           <template #default="scope">
             <el-tag size="small">
-              {{ getDictLabel(processCategoryOptions, scope.row.processCategory) }}
+              {{ getProcessCategoryLabel(scope.row.processCategory) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="standardLaborHours" label="人工工时" width="90" align="right" />
         <el-table-column prop="standardMachineHours" label="机器工时" width="90" align="right" />
 
+        <el-table-column prop="hasIndex" label="带下标" width="90" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.hasIndex === 1 ? 'warning' : 'info'" size="small">
+              {{ scope.row.hasIndex === 1 ? '带下标' : '不带' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="displayOrder" label="排序" width="60" align="center" />
-        <el-table-column prop="isEnabled" label="启用状态" width="80" align="center">
+        <el-table-column prop="isEnabled" label="启用状态" width="120" align="center">
           <template #default="scope">
             <el-tag :type="scope.row.isEnabled === 1 ? 'success' : 'info'" size="small">
               {{ scope.row.isEnabled === 1 ? '启用' : '禁用' }}
@@ -121,18 +131,19 @@
         <el-table-column prop="createTime" label="创建时间" width="170" />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="scope">
-            <el-button link type="primary" size="small" @click="handleEdit(scope.row)">
+            <el-button link type="primary" size="small" v-hasPermi="['engineering:standardProcess:edit']" @click="handleEdit(scope.row)">
               编辑
             </el-button>
             <el-button
               link
               :type="scope.row.isEnabled === 1 ? 'warning' : 'success'"
               size="small"
+              v-hasPermi="['engineering:standardProcess:edit']"
               @click="handleToggleEnabled(scope.row)"
             >
               {{ scope.row.isEnabled === 1 ? '禁用' : '启用' }}
             </el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(scope.row)">
+            <el-button link type="danger" size="small" v-hasPermi="['engineering:standardProcess:edit']" @click="handleDelete(scope.row)">
               删除
             </el-button>
           </template>
@@ -151,7 +162,18 @@
         />
       </div>
     </el-card>
+    <!-- 通用导入弹窗（2026-08-13，含结果/失败明细） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入标准工序"
+      :import-api="standardProcessApi.importProcesses"
+      :template-api="standardProcessApi.importTemplate"
+      template-name="标准工序导入模板.xlsx"
+      @success="loadData"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -162,20 +184,28 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
+
 import { standardProcessApi } from '@/api/product/standardProcess'
+import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { useDict } from '@/composables/useDict'
-import { getDictLabel } from '@/utils/dict'
 import type {
   StandardProcessQueryParams,
   StandardProcessItem,
 } from '@/types/product/standardProcess'
-import type { PageResult } from '@/types'
 
 const router = useRouter()
 
-// 使用 useDict composable（带 Pinia 缓存）
+// 工序类型/类别选项（字典维护）
 const { options: processTypeOptions } = useDict('process_type')
 const { options: processCategoryOptions } = useDict('process_category')
+
+function getProcessTypeLabel(value: string): string {
+  return processTypeOptions.value.find((i) => i.itemValue === value)?.label || value || '未知'
+}
+
+function getProcessCategoryLabel(value: string): string {
+  return processCategoryOptions.value.find((i) => i.itemValue === value)?.label || value || '未知'
+}
 
 // ==================== 查询参数 ====================
 const queryParams = reactive<StandardProcessQueryParams>({
@@ -302,34 +332,11 @@ const handleDelete = (row: StandardProcessItem) => {
 onMounted(() => {
   loadData()
 })
+
+// 导入（2026-08-13 通用 ExcelImportDialog 组件）
+const importDialogVisible = ref(false)
+function openImportDialog() {
+  importDialogVisible.value = true
+}
+
 </script>
-
-<style scoped>
-.standard-process-container {
-  padding: 20px;
-}
-
-.search-card {
-  margin-bottom: 20px;
-}
-
-.operation-card {
-  margin-bottom: 20px;
-}
-
-.table-card {
-  margin-bottom: 20px;
-}
-
-.operation-bar {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-}
-
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-}
-</style>

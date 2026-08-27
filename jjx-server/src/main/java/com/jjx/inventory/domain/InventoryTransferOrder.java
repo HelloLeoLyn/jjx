@@ -66,10 +66,10 @@ public class InventoryTransferOrder extends BaseEntity {
     private BigDecimal totalAmount;
 
     /** 订单状态：draft草稿/approved已批准/out_confirm已出库/in_confirm已入库/closed已关闭/cancelled已取消 */
-    private String orderStatus;
+    private Integer orderStatus;
 
     /** 审批状态：pending待审批/approved已批准/rejected已驳回 */
-    private String approveStatus;
+    private Integer approveStatus;
 
     /** 审批人ID */
     private Long approverId;

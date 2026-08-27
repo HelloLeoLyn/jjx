@@ -84,8 +84,7 @@ public class SysDictController extends BaseController {
 
     // ==================== 字典项接口 ====================
 
-    @Operation(summary = "根据字典编码获取字典项列表")
-    @SaCheckPermission("system:dict:query")
+    @Operation(summary = "根据字典编码获取字典项列表（页面基础数据，登录用户可读）")
     @GetMapping("/code/{dictCode}")
     public Result<List<SysDictItemVO>> getDictItems(@PathVariable String dictCode) {
         return Result.success(dictService.selectActiveItemsByDictCode(dictCode));
@@ -118,5 +117,18 @@ public class SysDictController extends BaseController {
     @PutMapping("/item/{itemId}/status")
     public Result<Void> changeDictItemStatus(@PathVariable Long itemId, @RequestParam Integer isActive) {
         return toAjax(dictService.changeDictItemStatus(itemId, isActive));
+    }
+
+    @Operation(summary = "导出字典")
+    @SaCheckPermission("system:dict:export")
+    @GetMapping("/export/{dictCode}")
+    public Result<List<SysDictItemVO>> exportDict(@PathVariable String dictCode) {
+        return Result.success(dictService.selectActiveItemsByDictCode(dictCode));
+    }
+
+    @Operation(summary = "按分组列表")
+    @GetMapping("/group/{dictGroup}")
+    public Result<List<SysDictVO>> getByGroup(@PathVariable String dictGroup) {
+        return Result.success(dictService.selectDictListByGroup(dictGroup));
     }
 }

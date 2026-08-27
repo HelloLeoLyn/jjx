@@ -1,0 +1,806 @@
+<template>
+  <div class="gantt-chart" ref="chartRef">
+    <!-- 工具栏 -->
+    <div class="gantt-toolbar">
+      <div class="gantt-toolbar-left">
+        <el-date-picker
+          v-model="viewRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="视图起始"
+          end-placeholder="视图结束"
+          value-format="YYYY-MM-DD"
+          style="width: 260px"
+          @change="loadData"
+        />
+        <el-button @click="zoomIn" :disabled="zoomLevel >= 3">🔍+</el-button>
+        <el-button @click="zoomOut" :disabled="zoomLevel <= 0">🔍-</el-button>
+        <el-button @click="scrollToToday">📅 今天</el-button>
+      </div>
+      <div class="gantt-toolbar-right">
+        <span style="color:#94a3b8;font-size:13px;margin-right:8px">图例:</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>生产计划</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#10b981"></span>生产工单</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>已超期</span>
+      </div>
+    </div>
+
+    <!-- 加载中 -->
+    <div v-if="loading" class="gantt-loading">
+      <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+      <span>加载中...</span>
+    </div>
+
+    <!-- 甘特图主体 -->
+    <div v-else class="gantt-body" ref="bodyRef">
+      <!-- 头部：时间刻度 -->
+      <div class="gantt-header" ref="headerRef">
+        <div class="gantt-header-left">
+          <div class="gantt-label-cell gantt-label-header">生产单号 / 产品</div>
+        </div>
+        <div class="gantt-header-right" ref="timelineRef">
+          <div class="gantt-timeline-row">
+            <div
+              v-for="(day, idx) in timelineDays"
+              :key="day.date"
+              class="gantt-day-header"
+              :class="{ 'gantt-weekend': day.isWeekend, 'gantt-today': day.isToday }"
+              :style="{ width: dayWidth + 'px' }"
+            >
+              <!-- 2026-08-11 两行标签：上=年，下=月-日；按缩放级别间隔显示防密集；今天强制显示 -->
+              <template v-if="idx % dayLabelStep === 0 || day.isToday">
+                <div class="gantt-day-year">{{ day.date.slice(0, 4) }}</div>
+                <div class="gantt-day-md">{{ day.date.slice(5) }}</div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 滚动区域 -->
+      <div
+        class="gantt-scroll"
+        :class="{ 'gantt-panning': panState }"
+        @scroll="syncScroll"
+        @mousedown="startPan"
+        ref="scrollRef"
+      >
+        <div class="gantt-rows" :style="{ minWidth: timelineWidth + 'px' }">
+          <!-- 空状态 -->
+          <div v-if="orders.length === 0" class="gantt-empty">
+            暂无生产工单数据，请先创建生产计划或工单
+          </div>
+
+          <!-- 每行一个工单 -->
+          <div
+            v-for="(order, idx) in orders"
+            :key="order.orderId"
+            class="gantt-row"
+            :class="{ 'gantt-row-alt': idx % 2 === 1 }"
+          >
+            <!-- 左侧标签 -->
+            <div class="gantt-label">
+              <div class="gantt-label-title" :title="order.orderNo" @dblclick="$emit('view', order)">
+                <span class="gantt-label-badge" :class="'badge-' + (order.orderType === 'PLAN' ? 'plan' : 'work')">
+                  {{ order.orderType === 'PLAN' ? '计划' : '工单' }}
+                </span>
+                {{ order.orderNo }}
+              </div>
+              <div class="gantt-label-sub">
+                {{ order.productName || order.productCode || '-' }}
+                <template v-if="order.plannedQuantity">
+                  | {{ order.plannedQuantity }}{{ order.productUnit || '件' }}
+                </template>
+              </div>
+            </div>
+
+            <!-- 右侧甘特条 -->
+            <div class="gantt-bar-area" :style="{ position: 'relative', height: '100%' }">
+              <!-- 网格背景 -->
+              <div
+                v-for="day in timelineDays"
+                :key="'grid-' + day.date"
+                class="gantt-grid-cell"
+                :class="{ 'gantt-weekend': day.isWeekend }"
+                :style="{ left: day.left + 'px', width: dayWidth + 'px' }"
+              ></div>
+
+              <!-- 今天线 -->
+              <div
+                v-if="todayOffset >= 0"
+                class="gantt-today-line"
+                :style="{ left: todayOffset + 'px' }"
+              ></div>
+
+              <!-- 甘特条（2026-08-11 支持拖拽排期） -->
+              <div
+                v-if="order.barLeft !== undefined"
+                class="gantt-bar"
+                :class="[
+                  'gantt-bar-' + (order.orderType === 'PLAN' ? 'plan' : 'work'),
+                  { 'gantt-bar-overdue': order.isOverdue },
+                  { 'gantt-bar-dragging': dragState && dragState.orderId === order.orderId },
+                  { 'gantt-bar-disabled': !canDrag(order) },
+                ]"
+                :style="{
+                  left: (order.barLeft != null ? order.barLeft : 0) + 'px',
+                  width: Math.max(order.barWidth != null ? order.barWidth : 0, 4) + 'px',
+                }"
+                :title="(canDrag(order) ? '拖动调整排期，双击查看详情：' : '双击查看详情：') + order.orderNo + ': ' + order.planStartDate + ' ~ ' + order.planEndDate"
+                @dblclick="$emit('view', order)"
+                @mousedown="startDrag(order, $event)"
+              >
+                <span class="gantt-bar-text" v-if="(order.barWidth != null ? order.barWidth : 0) > 60">
+                  {{ order.productName || order.orderNo }}
+                </span>
+              </div>
+
+              <!-- 超期标记 -->
+              <span
+                v-if="order.isOverdue"
+                class="gantt-overdue-badge"
+                :style="{ left: Math.min((order.barLeft != null ? order.barLeft : 0) + (order.barWidth != null ? order.barWidth : 0) + 4, timelinePixels - 30) + 'px' }"
+                title="已超期"
+              >⚠️</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部统计 -->
+    <div class="gantt-footer" v-if="!loading">
+      <span>共 {{ orders.length }} 条</span>
+      <span style="margin-left:16px">
+        计划: {{ planCount }} | 工单: {{ workCount }}
+      </span>
+      <span style="margin-left:16px;color:#ef4444" v-if="overdueCount > 0">
+        超期: {{ overdueCount }}
+      </span>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { getProductionOrderList, updateGanttData } from '@/api/production/order'
+import { OrderType } from '@/types/production/order'
+
+interface GanttOrder {
+  orderId: number
+  orderNo: string
+  orderType: string
+  productName: string
+  productCode: string
+  productUnit: string
+  plannedQuantity: number
+  completedQuantity: number
+  planStartDate: string
+  planEndDate: string
+  orderStatus: number
+  orderStatusDesc: string
+  priority: string
+  barLeft?: number
+  barWidth?: number
+  isOverdue?: boolean
+}
+
+interface TimelineDay {
+  date: string
+  day: number
+  month: string
+  weekday: string
+  isWeekend: boolean
+  isToday: boolean
+  left: number
+}
+
+defineEmits<{
+  (e: 'view', order: GanttOrder): void
+}>()
+
+const props = withDefaults(defineProps<{
+  startDate?: string
+  endDate?: string
+  orderType?: string
+}>(), {})
+
+// ===== 状态 =====
+const loading = ref(false)
+const orders = ref<GanttOrder[]>([])
+const zoomLevel = ref(1)
+
+// DOM refs
+const chartRef = ref<HTMLElement>()
+const bodyRef = ref<HTMLElement>()
+const headerRef = ref<HTMLElement>()
+const scrollRef = ref<HTMLElement>()
+const timelineRef = ref<HTMLElement>()
+
+// ===== 拖拽排期状态（2026-08-11）=====
+interface DragState {
+  orderId: number
+  startClientX: number
+  startLeft: number
+  startDate: string
+  durationDays: number
+  dragged: boolean
+}
+const dragState = ref<DragState | null>(null)
+
+// ===== 画布平移状态（2026-08-11 抓手拖动查看） =====
+interface PanState {
+  startClientX: number
+  startClientY: number
+  startScrollLeft: number
+  startScrollTop: number
+  moved: boolean
+}
+const panState = ref<PanState | null>(null)
+
+// 视图日期范围（默认前后30天）
+const today = new Date()
+const viewRange = ref<string[]>([
+  formatDate(new Date(today.getTime() - 30 * 86400000)),
+  formatDate(new Date(today.getTime() + 30 * 86400000)),
+])
+
+// ===== 计算属性 =====
+const dayWidth = computed(() => 28 + zoomLevel.value * 8) // 28~52px
+const timelinePixels = computed(() => timelineDays.value.length * dayWidth.value)
+const timelineWidth = computed(() => timelinePixels.value + 'px') // 留给左侧标签
+
+const timelineDays = computed(() => {
+  const days: TimelineDay[] = []
+  if (!viewRange.value || viewRange.value.length < 2) return days
+
+  const start = new Date(viewRange.value[0])
+  const end = new Date(viewRange.value[1])
+  const now = new Date()
+
+  let left = 0
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateStr = formatDate(d)
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6
+    const isToday = dateStr === formatDate(now)
+    days.push({
+      date: dateStr,
+      day: d.getDate(),
+      month: d.getDate() === 1 ? (d.getMonth() + 1) + '月' : '',
+      weekday: ['日', '一', '二', '三', '四', '五', '六'][d.getDay()],
+      isWeekend,
+      isToday,
+      left,
+    })
+    left += dayWidth.value
+  }
+  return days
+})
+
+const todayOffset = computed(() => {
+  const now = formatDate(new Date())
+  const day = timelineDays.value.find(d => d.date === now)
+  return day ? day.left : -1
+})
+
+const planCount = computed(() => orders.value.filter(o => o.orderType === 'PLAN').length)
+const workCount = computed(() => orders.value.filter(o => o.orderType === 'WORK_ORDER').length)
+const overdueCount = computed(() => orders.value.filter(o => o.isOverdue).length)
+
+// ===== 方法 =====
+function formatDate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function parseDate(s: string): Date | null {
+  if (!s) return null
+  const parts = s.split('-')
+  if (parts.length !== 3) return null
+  return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]))
+}
+
+/** 将日期转换为甘特图中的像素位置 */
+function dateToPixel(dateStr: string): number | undefined {
+  if (!dateStr || timelineDays.value.length === 0) return undefined
+  const target = parseDate(dateStr)
+  if (!target) return undefined
+  const start = parseDate(viewRange.value[0])
+  if (!start) return undefined
+  const diff = (target.getTime() - start.getTime()) / 86400000
+  if (diff < -1 || diff > timelineDays.value.length + 1) return undefined
+  return Math.max(0, diff * dayWidth.value)
+}
+
+/** 加载数据 */
+async function loadData() {
+  loading.value = true
+  try {
+    const params: Record<string, any> = {
+      pageSize: 200,
+    }
+    if (viewRange.value && viewRange.value.length === 2) {
+      params.planStartDateFrom = viewRange.value[0]
+      params.planEndDateTo = viewRange.value[1]
+    }
+    if (props.orderType) {
+      params.orderType = props.orderType
+    }
+
+    const res = await getProductionOrderList(params as any)
+    // 2026-08-11 修复：list 接口返回数组（无 records 字段），直接取数组，否则甘特图永远空
+    const data = res?.data
+    let items = Array.isArray(data) ? data : data?.records || []
+    if (!Array.isArray(items)) items = []
+
+    const todayStr = formatDate(new Date())
+    orders.value = items.map((o: any): GanttOrder => {
+      const barLeft = dateToPixel(o.planStartDate)
+      const barEnd = dateToPixel(o.planEndDate)
+      const barWidth = barLeft !== undefined && barEnd !== undefined ? barEnd - barLeft + dayWidth.value : 0
+      return {
+        orderId: o.orderId,
+        orderNo: o.orderNo,
+        orderType: o.orderType || 'WORK_ORDER',
+        productName: o.productName || '',
+        productCode: o.productCode || '',
+        productUnit: o.productUnit || '件',
+        plannedQuantity: o.plannedQuantity || 0,
+        completedQuantity: o.completedQuantity || 0,
+        planStartDate: o.planStartDate || '',
+        planEndDate: o.planEndDate || '',
+        orderStatus: o.orderStatus,
+        orderStatusDesc: o.orderStatusDesc || '',
+        priority: o.priority || 'MEDIUM',
+        barLeft: barLeft !== undefined ? barLeft : undefined,
+        barWidth: barWidth,
+        isOverdue: o.planEndDate ? o.planEndDate < todayStr && o.orderStatus < 8 : false,
+      }
+    })
+  } catch (error) {
+    console.error('获取甘特图数据失败:', error)
+    orders.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 同步滚动（头和体联动） */
+function syncScroll(e: Event) {
+  const target = e.target as HTMLElement
+  if (headerRef.value) {
+    const right = headerRef.value.querySelector('.gantt-header-right') as HTMLElement
+    if (right) right.style.transform = `translateX(-${target.scrollLeft}px)`
+  }
+}
+
+// ===== 画布平移（2026-08-11 抓手拖动查看，类似地图拖拽） =====
+
+/** 是否命中可拖拽甘特条（跳过平移，交给排期拖拽） */
+function isOnGanttBar(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el && !!el.closest && !!el.closest('.gantt-bar')
+}
+
+/** 开始抓手平移（左键 + 非甘特条区域） */
+function startPan(e: MouseEvent) {
+  if (e.button !== 0) return // 仅左键
+  if (isOnGanttBar(e.target)) return // 甘特条交给排期拖拽
+  const scroller = scrollRef.value
+  if (!scroller) return
+  panState.value = {
+    startClientX: e.clientX,
+    startClientY: e.clientY,
+    startScrollLeft: scroller.scrollLeft,
+    startScrollTop: scroller.scrollTop,
+    moved: false,
+  }
+  window.addEventListener('mousemove', onPanMove)
+  window.addEventListener('mouseup', onPanEnd)
+}
+
+/** 平移移动：同步滚动位置（左右+上下） */
+function onPanMove(e: MouseEvent) {
+  const ps = panState.value
+  if (!ps) return
+  const dx = e.clientX - ps.startClientX
+  const dy = e.clientY - ps.startClientY
+  if (!ps.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return // 防误触
+  ps.moved = true
+  const scroller = scrollRef.value
+  if (!scroller) return
+  scroller.scrollLeft = ps.startScrollLeft - dx
+  scroller.scrollTop = ps.startScrollTop - dy
+}
+
+/** 平移结束 */
+function onPanEnd() {
+  window.removeEventListener('mousemove', onPanMove)
+  window.removeEventListener('mouseup', onPanEnd)
+  panState.value = null
+}
+
+/** 缩放 */
+function zoomIn() {
+  if (zoomLevel.value < 3) zoomLevel.value++
+}
+function zoomOut() {
+  if (zoomLevel.value > 0) zoomLevel.value--
+}
+
+/**
+ * 日期标签显示间隔（2026-08-11：防止时间轴过密）
+ * 按缩放级别：52px/天→每天；44px→隔天；36px→每3天；28px→每周
+ */
+const dayLabelStep = computed(() => {
+  if (zoomLevel.value >= 3) return 1
+  if (zoomLevel.value === 2) return 2
+  if (zoomLevel.value === 1) return 3
+  return 7
+})
+
+/** 跳到今天 */
+function scrollToToday() {
+  const now = new Date()
+  viewRange.value = [
+    formatDate(new Date(now.getTime() - 15 * 86400000)),
+    formatDate(new Date(now.getTime() + 15 * 86400000)),
+  ]
+}
+
+// ===== 拖拽排期（2026-08-11）=====
+
+/** 是否可拖拽：未完工、未取消、有计划日期 */
+function canDrag(order: GanttOrder): boolean {
+  if (!order.planStartDate || !order.planEndDate) return false
+  // orderStatus: 8=已完工, 9=已取消（参考状态机）
+  if (order.orderStatus === 8 || order.orderStatus === 9) return false
+  return true
+}
+
+/** 像素 → 日期字符串（视图起始为锚点） */
+function pixelToDate(px: number): string {
+  const start = parseDate(viewRange.value[0])
+  if (!start) return ''
+  const days = Math.round(px / dayWidth.value)
+  return formatDate(new Date(start.getTime() + days * 86400000))
+}
+
+/** 开始拖拽 */
+function startDrag(order: GanttOrder, e: MouseEvent) {
+  if (!canDrag(order) || order.barLeft === undefined) return
+  e.preventDefault()
+  e.stopPropagation() // 2026-08-11：阻止冒泡到画布平移
+  dragState.value = {
+    orderId: order.orderId,
+    startClientX: e.clientX,
+    startLeft: order.barLeft,
+    startDate: order.planStartDate,
+    durationDays: Math.max(1, Math.round((order.barWidth ?? dayWidth.value) / dayWidth.value)),
+    dragged: false,
+  }
+  window.addEventListener('mousemove', onDragMove)
+  window.addEventListener('mouseup', onDragEnd)
+}
+
+/** 拖拽移动 */
+function onDragMove(e: MouseEvent) {
+  const ds = dragState.value
+  if (!ds) return
+  const dx = e.clientX - ds.startClientX
+  if (!ds.dragged && Math.abs(dx) < 4) return // 防误触：小于4px视为点击
+  ds.dragged = true
+
+  const order = orders.value.find((o) => o.orderId === ds.orderId)
+  if (!order) return
+
+  const days = Math.round(dx / dayWidth.value)
+  const newLeft = ds.startLeft + days * dayWidth.value
+  const maxLeft = timelinePixels.value - (ds.durationDays * dayWidth.value)
+  const clamped = Math.max(0, Math.min(newLeft, maxLeft))
+
+  order.barLeft = clamped
+  order.planStartDate = pixelToDate(clamped)
+  order.planEndDate = pixelToDate(clamped + ds.durationDays * dayWidth.value - dayWidth.value)
+}
+
+/** 拖拽结束 → 保存 */
+async function onDragEnd() {
+  window.removeEventListener('mousemove', onDragMove)
+  window.removeEventListener('mouseup', onDragEnd)
+  const ds = dragState.value
+  dragState.value = null
+  if (!ds || !ds.dragged) return // 没拖动就忽略（恢复点击行为）
+
+  const order = orders.value.find((o) => o.orderId === ds.orderId)
+  if (!order) return
+  if (order.planStartDate === ds.startDate) {
+    loadData() // 位置没变，刷新还原
+    return
+  }
+
+  try {
+    await updateGanttData({
+      orderId: String(order.orderId),
+      orderType: order.orderType === 'PLAN' ? OrderType.PLAN : OrderType.WORK_ORDER,
+      planStartDate: order.planStartDate,
+      planEndDate: order.planEndDate,
+      remark: '甘特图拖拽调整排期',
+    })
+    ElMessage.success(`${order.orderNo} 排期已更新: ${order.planStartDate} ~ ${order.planEndDate}`)
+    loadData()
+  } catch (err: any) {
+    console.error('更新排期失败:', err)
+    ElMessage.error(err?.message || '更新排期失败')
+    loadData() // 失败回滚刷新
+  }
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onDragMove)
+  window.removeEventListener('mouseup', onDragEnd)
+  window.removeEventListener('mousemove', onPanMove)
+  window.removeEventListener('mouseup', onPanEnd)
+})
+
+watch(() => [props.startDate, props.endDate, props.orderType], () => loadData())
+
+onMounted(() => loadData())
+</script>
+
+<style scoped>
+.gantt-chart {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.gantt-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #334155;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gantt-toolbar-left { display: flex; align-items: center; gap: 8px; }
+.gantt-toolbar-right { display: flex; align-items: center; gap: 12px; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #94a3b8; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.gantt-loading {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 60px; color: #94a3b8;
+}
+
+.gantt-body {
+  position: relative;
+}
+
+.gantt-header {
+  display: flex;
+  border-bottom: 1px solid #334155;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #1e293b;
+}
+.gantt-header-left {
+  flex: 0 0 240px;
+  border-right: 1px solid #334155;
+}
+.gantt-label-header {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.gantt-header-right {
+  overflow: hidden;
+  transition: none;
+}
+.gantt-timeline-row {
+  display: flex;
+}
+.gantt-day-header {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 4px 0;
+  border-right: 1px solid #1e293b;
+  background: #1e293b;
+}
+.gantt-day-header.gantt-weekend { background: #162032; }
+.gantt-day-header.gantt-today {
+  background: #1e3a5f;
+  border-bottom: 2px solid #3b82f6;
+}
+.gantt-day-month { font-size: 10px; color: #64748b; }
+.gantt-day-date { font-size: 13px; font-weight: 700; color: #e2e8f0; }
+.gantt-day-weekday { font-size: 10px; color: #64748b; }
+/* 2026-08-11 两行日期标签：上=年，下=月-日 */
+.gantt-day-year { font-size: 10px; color: #94a3b8; line-height: 14px; }
+.gantt-day-md { font-size: 12px; font-weight: 700; color: #e2e8f0; line-height: 16px; }
+
+.gantt-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 350px);
+  cursor: grab; /* 2026-08-11 抓手平移 */
+}
+.gantt-scroll.gantt-panning {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.gantt-scroll::-webkit-scrollbar { height: 8px; width: 6px; }
+.gantt-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+.gantt-rows {
+  min-width: 100%;
+}
+
+.gantt-empty {
+  padding: 60px 24px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.gantt-row {
+  display: flex;
+  height: 48px;
+  border-bottom: 1px solid #1e293b;
+  position: relative;
+}
+.gantt-row-alt { background: rgba(255,255,255,.02); }
+
+.gantt-label {
+  flex: 0 0 240px;
+  padding: 4px 12px;
+  border-right: 1px solid #334155;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+.gantt-label-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gantt-label-title:hover { color: #3b82f6; }
+.gantt-label-sub {
+  font-size: 11px;
+  color: #64748b;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gantt-label-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.badge-plan { background: rgba(59,130,246,.2); color: #60a5fa; }
+.badge-work { background: rgba(16,185,129,.2); color: #34d399; }
+
+.gantt-bar-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.gantt-grid-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid rgba(51,65,85,.3);
+  pointer-events: none;
+}
+.gantt-grid-cell.gantt-weekend {
+  background: rgba(255,255,255,.02);
+}
+
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #3b82f6;
+  z-index: 5;
+  pointer-events: none;
+}
+.gantt-today-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 10px;
+  height: 10px;
+  background: #3b82f6;
+  border-radius: 50%;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 10px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  z-index: 3;
+  transition: opacity .15s;
+  min-width: 4px;
+}
+/* 2026-08-11 可拖拽：抓取光标 + 拖动高亮 */
+.gantt-bar:not(.gantt-bar-disabled) {
+  cursor: grab;
+}
+.gantt-bar-dragging {
+  cursor: grabbing !important;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.6);
+  opacity: .9;
+  z-index: 20;
+}
+.gantt-bar-disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+.gantt-bar:hover { opacity: .85; }
+.gantt-bar-plan {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  border: 1px solid #60a5fa;
+}
+.gantt-bar-work {
+  background: linear-gradient(135deg, #059669, #10b981);
+  border: 1px solid #34d399;
+}
+/* 2026-08-11 超期：整条变红，覆盖原色 */
+.gantt-bar-overdue {
+  background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+  border-color: #f87171 !important;
+}
+.gantt-bar-overdue .gantt-bar-text {
+  color: #fff;
+}
+.gantt-bar-text {
+  font-size: 11px;
+  color: #fff;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gantt-overdue-badge {
+  position: absolute;
+  top: 12px;
+  font-size: 14px;
+  z-index: 4;
+  cursor: help;
+}
+
+.gantt-footer {
+  padding: 10px 16px;
+  border-top: 1px solid #334155;
+  font-size: 13px;
+  color: #94a3b8;
+}
+</style>

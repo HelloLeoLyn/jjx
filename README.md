@@ -4,16 +4,15 @@
 
 ## 技术栈
 
-- **后端**: Spring Boot 3.4 + Java 21 + MyBatis-Plus + MySQL 8.4
-- **前端**: Vue 3.4 + Element Plus + Pinia + Vite
+- **后端**: Spring Boot 3.4 + Java 21 + MyBatis-Plus + MySQL 8.4 + Redis
+- **前端**: Vue 3.4 + Element Plus + Pinia + Vite + TypeScript
 - **安全**: Sa-Token + JWT
-- **部署**: 单机 2 核 4G 可运行
 
 ## 快速开始
 
 ```bash
 # 后端
-cd jjx-server && mvn spring-boot:run
+cd jjx-server && java -jar target/jjx-server-1.0.0.jar
 
 # 前端
 cd jjx-web && pnpm install && pnpm dev
@@ -21,29 +20,36 @@ cd jjx-web && pnpm install && pnpm dev
 
 ## 访问地址
 
-- 后端 API: http://localhost:8080
-- 前端页面: http://localhost:3000
-- API 文档: http://localhost:8080/doc.html
-- 默认账号: admin / 123456
+| 地址 | 说明 |
+|------|------|
+| http://localhost:3000 | 前端页面 |
+| http://localhost:8080 | 后端 API |
+| http://localhost:8080/doc.html | API 文档（Knife4j） |
 
-## 文档导航
+## 默认账号
 
-详细文档请查看 [docs/README.md](./docs/README.md)，包含：
+- **admin** / 123456
+- 数据库: `jjx_erp_db` (root / 123456)
 
-| 文档                                       | 说明                         |
-| ------------------------------------------ | ---------------------------- |
-| [项目介绍](./docs/01-项目概览/项目介绍.md) | 项目概述、技术栈、模块功能   |
-| [系统架构](./docs/02-架构设计/系统架构.md) | 系统架构图、模块结构         |
-| [模块说明](./docs/02-架构设计/模块说明.md) | 各模块完成状态               |
-| [开发规范](./docs/03-开发指南/开发规范.md) | 编码规范、Git 规范、API 规范 |
-| [实施计划](./docs/05-实施计划/实施计划.md) | 已完成/待开发功能            |
-| [技术总结](./docs/06-技术总结/)            | 各模块实现总结               |
+## 项目结构
 
-## 项目特点
-
-1. **模块化设计**: 前后端分离，模块清晰
-2. **权限控制**: 基于 Sa-Token 的细粒度权限控制
-3. **薄膜开关专用**: 针对薄膜开关制造的业务特点设计
-4. **多语言支持**: 支持 10 种语言的国际化门户
-5. **批次追踪**: 完整的正反向追溯体系
-6. **质量管理**: 全面的质量检验流程
+```
+jjx/
+├── jjx-server/          # 后端 Spring Boot
+│   └── src/main/java/com/jjx/
+│       ├── common/       # 通用工具
+│       ├── framework/    # 框架配置
+│       ├── system/       # 系统管理
+│       ├── inventory/    # 库存管理
+│       ├── product/      # 产品管理
+│       ├── production/   # 生产管理
+│       ├── purchase/     # 采购管理
+│       └── sales/        # 销售管理
+├── jjx-web/             # 前端 Vue 3
+│   └── src/
+│       ├── api/          # API 接口
+│       ├── views/        # 页面组件
+│       ├── router/       # 路由配置
+│       └── store/        # 状态管理
+└── docs/                 # 存档文档
+```

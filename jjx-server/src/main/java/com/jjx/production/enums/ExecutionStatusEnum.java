@@ -11,57 +11,57 @@ public enum ExecutionStatusEnum {
     /**
      * 待执行 - 等待开始执行
      */
-    PENDING("PENDING", "待执行", "等待开始执行"),
+    PENDING(0, "待执行", "等待开始执行"),
 
     /**
      * 准备中 - 准备工作进行中
      */
-    PREPARING("PREPARING", "准备中", "准备工作进行中"),
+    PREPARING(1, "准备中", "准备工作进行中"),
 
     /**
      * 执行中 - 正在执行
      */
-    EXECUTING("EXECUTING", "执行中", "正在执行"),
+    EXECUTING(2, "执行中", "正在执行"),
 
     /**
      * 已暂停 - 执行暂停
      */
-    PAUSED("PAUSED", "已暂停", "执行暂停"),
+    PAUSED(3, "已暂停", "执行暂停"),
 
     /**
      * 已完成 - 执行完成
      */
-    COMPLETED("COMPLETED", "已完成", "执行完成"),
+    COMPLETED(4, "已完成", "执行完成"),
 
     /**
      * 已跳过 - 跳过执行
      */
-    SKIPPED("SKIPPED", "已跳过", "跳过执行"),
+    SKIPPED(5, "已跳过", "跳过执行"),
 
     /**
      * 已取消 - 执行取消
      */
-    CANCELLED("CANCELLED", "已取消", "执行取消"),
+    CANCELLED(6, "已取消", "执行取消"),
 
     /**
      * 已超期 - 超过计划完成时间
      */
-    OVERDUE("OVERDUE", "已超期", "超过计划完成时间"),
+    OVERDUE(7, "已超期", "超过计划完成时间"),
 
     /**
      * 异常中 - 执行异常
      */
-    ABNORMAL("ABNORMAL", "异常中", "执行异常"),
+    ABNORMAL(8, "异常中", "执行异常"),
 
     /**
      * 待确认 - 等待确认结果
      */
-    PENDING_CONFIRMATION("PENDING_CONFIRMATION", "待确认", "等待确认结果");
+    PENDING_CONFIRMATION(9, "待确认", "等待确认结果");
 
     /**
      * 编码
      */
-    private final String code;
+    private final Integer code;
 
     /**
      * 名称
@@ -73,7 +73,7 @@ public enum ExecutionStatusEnum {
      */
     private final String description;
 
-    ExecutionStatusEnum(String code, String name, String description) {
+    ExecutionStatusEnum(Integer code, String name, String description) {
         this.code = code;
         this.name = name;
         this.description = description;
@@ -82,7 +82,7 @@ public enum ExecutionStatusEnum {
     /**
      * 根据编码获取枚举
      */
-    public static ExecutionStatusEnum getByCode(String code) {
+    public static ExecutionStatusEnum getByCode(Integer code) {
         for (ExecutionStatusEnum status : values()) {
             if (status.getCode().equals(code)) {
                 return status;
@@ -106,7 +106,7 @@ public enum ExecutionStatusEnum {
     /**
      * 检查编码是否存在
      */
-    public static boolean containsCode(String code) {
+    public static boolean containsCode(Integer code) {
         return getByCode(code) != null;
     }
 
@@ -120,9 +120,9 @@ public enum ExecutionStatusEnum {
     /**
      * 获取所有编码
      */
-    public static String[] getAllCodes() {
+    public static Integer[] getAllCodes() {
         ExecutionStatusEnum[] values = values();
-        String[] codes = new String[values.length];
+        Integer[] codes = new Integer[values.length];
         for (int i = 0; i < values.length; i++) {
             codes[i] = values[i].getCode();
         }

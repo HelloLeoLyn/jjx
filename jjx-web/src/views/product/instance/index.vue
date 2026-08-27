@@ -56,13 +56,14 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['product:instance:edit']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
             type="success"
             plain
             icon="Edit"
+            v-hasPermi="['product:instance:edit']"
             :disabled="single"
             @click="() => handleUpdate()"
             >修改</el-button
@@ -73,6 +74,7 @@
             type="danger"
             plain
             icon="Delete"
+            v-hasPermi="['product:instance:delete']"
             :disabled="multiple"
             @click="() => handleDelete()"
             >删除</el-button
@@ -86,6 +88,7 @@
             type="info"
             plain
             icon="Check"
+            v-hasPermi="['product:instance:edit']"
             :disabled="single"
             @click="() => handleActivate()"
             >激活</el-button
@@ -96,6 +99,7 @@
             type="warning"
             plain
             icon="Close"
+            v-hasPermi="['product:instance:edit']"
             :disabled="single"
             @click="() => handleDeactivate()"
             >停用</el-button
@@ -126,12 +130,12 @@
         </el-table-column>
         <el-table-column label="生产日期" align="center" prop="productionDate" width="120">
           <template #default="scope">
-            <span>{{ parseTime(scope.row.productionDate, '{y}-{m}-{d}') }}</span>
+            <span>{{ parseTime(scope.row.productionDate, 'yyyy-MM-dd') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="出厂日期" align="center" prop="shipmentDate" width="120">
           <template #default="scope">
-            <span>{{ parseTime(scope.row.shipmentDate, '{y}-{m}-{d}') }}</span>
+            <span>{{ parseTime(scope.row.shipmentDate, 'yyyy-MM-dd') }}</span>
           </template>
         </el-table-column>
         <el-table-column label="创建时间" align="center" prop="createTime" width="180">
@@ -151,6 +155,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['product:instance:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -159,6 +164,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['product:instance:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -309,10 +315,10 @@
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="生产日期">
-          {{ parseTime(detail.productionDate, '{y}-{m}-{d}') }}
+          {{ parseTime(detail.productionDate, 'yyyy-MM-dd') }}
         </el-descriptions-item>
         <el-descriptions-item label="出厂日期">
-          {{ parseTime(detail.shipmentDate, '{y}-{m}-{d}') }}
+          {{ parseTime(detail.shipmentDate, 'yyyy-MM-dd') }}
         </el-descriptions-item>
         <el-descriptions-item label="创建时间">{{
           parseTime(detail.createTime)
@@ -348,7 +354,7 @@ const queryParams = reactive({
   instanceCode: undefined as string | undefined,
   productCode: undefined as string | undefined,
   productName: undefined as string | undefined,
-  instanceStatus: undefined as string | undefined,
+  instanceStatus: undefined as number | undefined,
   startDate: undefined as string | undefined,
   endDate: undefined as string | undefined,
   orderByColumn: undefined as string | undefined,
@@ -378,7 +384,7 @@ const form = reactive({
   productCode: '',
   productName: '',
   serialNumber: '',
-  instanceStatus: 'active',
+  instanceStatus: 1,
   productionDate: '',
   shipmentDate: '',
   remark: '',
@@ -392,7 +398,7 @@ const detail = reactive({
   productCode: '',
   productName: '',
   serialNumber: '',
-  instanceStatus: '',
+  instanceStatus: undefined as number | undefined,
   productionDate: '',
   shipmentDate: '',
   remark: '',
@@ -418,10 +424,16 @@ const instanceList = ref<any[]>([])
 
 // 字典选项
 const instanceStatusOptions = ref([
-  { value: 'active', label: '激活' },
-  { value: 'inactive', label: '停用' },
-  { value: 'scrapped', label: '报废' },
-  { value: 'maintenance', label: '维修中' },
+  { value: 1, label: '已创建' },
+  { value: 2, label: '已计划' },
+  { value: 3, label: '生产中' },
+  { value: 4, label: '已暂停' },
+  { value: 5, label: '已完成' },
+  { value: 6, label: '已发货' },
+  { value: 9, label: '已交付' },
+  { value: 12, label: '维护中' },
+  { value: 16, label: '已报废' },
+  { value: 17, label: '已取消' },
 ])
 
 // 获取实例列表
@@ -440,29 +452,26 @@ const getList = async () => {
 }
 
 // 状态标签类型/文本
-const getInstanceStatusTagType = (status: string) => {
+const getInstanceStatusTagType = (status: number | undefined) => {
   switch (status) {
-    case 'active':
-      return 'success'
-    case 'inactive':
+    case 3:  // 生产中
       return 'warning'
-    case 'scrapped':
+    case 5:  // 已完成
+      return 'success'
+    case 16: // 已报废
       return 'danger'
-    case 'maintenance':
+    case 12: // 维护中
       return 'info'
+    case 17: // 已取消
+      return 'danger'
     default:
       return 'info'
   }
 }
 
-const getInstanceStatusLabel = (status: string) => {
-  const map: Record<string, string> = {
-    active: '激活',
-    inactive: '停用',
-    scrapped: '报废',
-    maintenance: '维修中',
-  }
-  return map[status] || '未知'
+const getInstanceStatusLabel = (status: number | undefined) => {
+  const option = instanceStatusOptions.value.find((opt) => opt.value === status)
+  return option ? option.label : '未知'
 }
 
 // 搜索按钮操作
@@ -528,7 +537,7 @@ const handleUpdate = (row?: any) => {
       productCode: 'P001',
       productName: '产品A',
       serialNumber: 'SN001',
-      instanceStatus: 'active',
+      instanceStatus: 1,
       productionDate: '2024-01-15',
       shipmentDate: '2024-01-20',
       remark: '测试实例',
@@ -625,7 +634,7 @@ const handleView = (row: any) => {
       productCode: 'P001',
       productName: '产品A',
       serialNumber: 'SN001',
-      instanceStatus: 'active',
+      instanceStatus: 1,
       productionDate: '2024-01-15',
       shipmentDate: '2024-01-20',
       remark: '测试实例',
@@ -685,7 +694,7 @@ const resetForm = () => {
     productCode: '',
     productName: '',
     serialNumber: '',
-    instanceStatus: 'active',
+    instanceStatus: 1,
     productionDate: '',
     shipmentDate: '',
     remark: '',

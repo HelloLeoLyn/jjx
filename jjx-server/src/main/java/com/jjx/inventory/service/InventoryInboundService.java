@@ -60,6 +60,12 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     Long createFromPurchase(Long purchaseOrderId);
 
     /**
+     * 采购收货自动生成入库单记录（DEV-624）
+     * 幂等：PO-单号已存在则返回已有ID；明细=已收数量；不加库存（收货流程已直接加库存，避免重复）
+     */
+    Long createInboundRecordFromPurchase(Long purchaseOrderId);
+
+    /**
      * 生产入库（从生产工单创建）
      */
     Long createFromProduction(Long workOrderId);
@@ -82,7 +88,7 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     /**
      * 更新入库单状态
      */
-    boolean updateStatus(Long inboundId, String status);
+    boolean updateStatus(Long inboundId, Integer status);
 
     /**
      * 分页查询入库单（旧方法，兼容性）
@@ -93,5 +99,10 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      * 获取入库单详情（旧方法，兼容性）
      */
     Map<String, Object> getDetail(Map<String, Object> params);
+
+    /**
+     * 导出入库单PDF（单张表单）
+     */
+    byte[] exportPdf(Long inboundId);
 
 }

@@ -28,6 +28,23 @@ public interface ProductMapper extends BaseMapper<Product> {
      */
     class ProductSqlProvider {
 
+        /** product 表全部列（WHERE 片段加 p. 前缀，避免与 engineering_routing 等 JOIN 表列歧义，2026-08-13） */
+        private static final String[] PRODUCT_COLUMNS = {
+                "product_id", "product_code", "product_name", "category_id", "customer_id", "customer_name",
+                "product_type", "spec_json", "base_price", "cost_price", "min_order_qty", "lead_time",
+                "product_status", "from_source", "current_bom_id", "current_route_id", "create_by", "create_time",
+                "update_by", "update_time", "remark", "unit", "approve_remark", "current_bom_version",
+                "current_routing_version"
+        };
+
+        private static String prefixProductColumns(String sql) {
+            if (sql == null) return sql;
+            for (String col : PRODUCT_COLUMNS) {
+                sql = sql.replaceAll("(?<![\\w.])" + col + "(?![\\w])", "p." + col);
+            }
+            return sql;
+        }
+
         public static String getProductFullPage(ProviderContext context, Map<String, Object> params) {
             @SuppressWarnings("unchecked") LambdaQueryWrapper<Product> wrapper = (LambdaQueryWrapper<Product>) params.get("ew");
 
@@ -38,6 +55,8 @@ public interface ProductMapper extends BaseMapper<Product> {
             sql.append("p.product_name, ");
             sql.append("p.category_id, ");
             sql.append("pc.category_name, ");
+            sql.append("p.customer_id, ");
+            sql.append("p.customer_name, ");
             sql.append("p.product_type, ");
             sql.append("p.product_status, ");
             sql.append("p.current_bom_id, ");
@@ -54,14 +73,14 @@ public interface ProductMapper extends BaseMapper<Product> {
             sql.append("p.unit ");
             sql.append("FROM product p ");
             sql.append("LEFT JOIN product_category pc ON p.category_id = pc.category_id ");
-            sql.append("LEFT JOIN product_bom pb ON p.current_bom_id = pb.bom_id ");
-            sql.append("LEFT JOIN product_routing pr ON p.current_route_id = pr.routing_id ");
+            sql.append("LEFT JOIN engineering_bom pb ON p.current_bom_id = pb.bom_id ");
+            sql.append("LEFT JOIN engineering_routing pr ON p.current_route_id = pr.routing_id ");
 
-            // 添加条件
+            // 添加条件（列名加 p. 前缀防歧义）
             if (wrapper != null) {
                 String customSqlSegment = wrapper.getCustomSqlSegment();
                 if (customSqlSegment != null && !customSqlSegment.isEmpty()) {
-                    sql.append(customSqlSegment);
+                    sql.append(prefixProductColumns(customSqlSegment));
                 }
             }
 

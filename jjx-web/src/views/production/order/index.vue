@@ -21,6 +21,7 @@
       @create="handleCreate"
       @refresh="refreshData"
       @export="handleExport"
+      @export-pdf="handleExportPdf"
       @batch-delete="handleBatchDelete"
       @batch-command="handleBatchCommand"
     />
@@ -55,12 +56,18 @@
       @cancel="handleCancelOrder"
       @delete="handleDeleteOrder"
       @more-action="handleMoreAction"
+      @trace="handleTrace"
+      @production-trace="handleProductionTrace"
+      @refresh="refreshData"
     />
 
     <!-- 甘特图视图 -->
-    <div v-if="activeView === 'gantt'" class="gantt-view">
-      <el-empty description="甘特图功能开发中..." />
-    </div>
+    <GanttChart
+      v-if="activeView === 'gantt'"
+      ref="ganttRef"
+      :order-type="searchForm.orderType"
+      @view="handleViewOrder"
+    />
 
     <!-- 订单表单对话框 -->
     <OrderFormDialog
@@ -80,6 +87,88 @@
       @close="handleStatusClose"
     />
 
+    <!-- 计划转工单（可拆分）弹窗 -->
+    <el-dialog
+      v-model="convertDialogVisible"
+      title="计划转工单（可拆分）"
+      width="780px"
+      append-to-body
+      destroy-on-close
+    >
+      <template v-if="convertPlan">
+        <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+          计划 {{ convertPlan.orderNo }}｜产品 {{ convertPlan.productName }}｜计划数量
+          {{ convertPlan.plannedQuantity }}｜剩余可下达 {{ convertRemaining }}——本次拆分合计不得超过剩余可下达
+        </el-alert>
+        <el-table :data="convertRows" border size="small">
+          <el-table-column label="数量" width="150">
+            <template #default="{ row }">
+              <el-input-number
+                v-model="row.plannedQuantity"
+                :min="0"
+                :precision="0"
+                :controls="false"
+                style="width: 110px"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="计划开始" width="170">
+            <template #default="{ row }">
+              <el-date-picker
+                v-model="row.planStartDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                style="width: 140px"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="计划结束" width="170">
+            <template #default="{ row }">
+              <el-date-picker
+                v-model="row.planEndDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                style="width: 140px"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="优先级" width="110">
+            <template #default="{ row }">
+              <el-select v-model="row.priority" size="small">
+                <el-option label="高" value="high" />
+                <el-option label="中" value="medium" />
+                <el-option label="低" value="low" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="70" align="center">
+            <template #default="{ $index }">
+              <el-button link type="danger" @click="convertRows.splice($index, 1)">删</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div
+          style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center"
+        >
+          <span :style="{ color: convertTotalQty > convertRemaining ? '#f56c6c' : '#303133' }">
+            合计：{{ convertTotalQty }} / 剩余可下达 {{ convertRemaining }}
+          </span>
+          <el-button size="small" @click="addConvertRow">＋ 添加拆分</el-button>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="convertDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="converting"
+          :disabled="convertTotalQty <= 0 || convertTotalQty > convertRemaining"
+          @click="submitConvert"
+        >
+          转工单
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 删除确认对话框 -->
     <OrderDeleteDialog
       v-model:visible="deleteDialogVisible"
@@ -89,6 +178,37 @@
       :require-reason="requireDeleteReason"
       @confirm="handleDeleteConfirm"
       @close="handleDeleteClose"
+    />
+
+    <!-- 查看流水（DEV-569） -->
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
+    <!-- P4-C：生产履历（只读时间线） -->
+    <ProductionTraceDrawer
+      v-model:visible="prodTraceVisible"
+      :order-id="prodTraceOrderId"
+    />
+
+    <!-- 生产随工单详情抽屉（2026-08-11） -->
+    <el-drawer
+      v-model="workCardVisible"
+      title="生产随工单"
+      size="860px"
+      destroy-on-close
+    >
+      <ProductionWorkCard v-if="workCardOrderId" :order-id="workCardOrderId" />
+    </el-drawer>
+
+    <!-- 2026-08-18：领料预览确认弹窗（A4打印样式） -->
+    <PickPreviewDialog
+      v-model="pickPreviewVisible"
+      v-if="pickPreviewOrder"
+      :work-order-id="pickPreviewOrder.orderId"
+      :order-no="pickPreviewOrder.orderNo"
+      :product-code="pickPreviewOrder.productCode"
+      :product-name="pickPreviewOrder.productName"
+      :planned-quantity="pickPreviewOrder.plannedQuantity"
+      @success="handlePickCreated"
     />
   </div>
 </template>
@@ -108,6 +228,11 @@ import OrderTable from './components/OrderTable.vue'
 import OrderFormDialog from './components/OrderFormDialog.vue'
 import OrderStatusDialog from './components/OrderStatusDialog.vue'
 import OrderDeleteDialog from './components/OrderDeleteDialog.vue'
+import GanttChart from './components/GanttChart.vue'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import ProductionTraceDrawer from './components/ProductionTraceDrawer.vue'
+import ProductionWorkCard from './components/ProductionWorkCard.vue'
+import PickPreviewDialog from './components/PickPreviewDialog.vue'
 import type {
   ProductionOrderVO,
   ProductionOrderQuery,
@@ -120,9 +245,16 @@ import { OrderType, OrderStatus } from '@/types/production/order'
 import { useProductionOrder } from './composables/useProductionOrder'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
+import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus, convertPlanToWorkOrders, completeExecution } from '@/api/production/order'
+import { download } from '@/utils/format'
+import { useRoute, useRouter } from 'vue-router'
 
-// 视图状态
-const activeView = ref<'plan' | 'work_order' | 'all' | 'gantt'>('all')
+// 视图状态：排程管理菜单(/production/schedule)默认进甘特图，生产订单菜单默认全部视图（2026-08-11）
+const route = useRoute()
+const router = useRouter()
+const activeView = ref<'plan' | 'work_order' | 'all' | 'gantt'>(
+  route.path.includes('schedule') ? 'gantt' : 'all'
+)
 
 // 搜索表单
 const searchForm = reactive<ProductionOrderQuery>({
@@ -260,15 +392,42 @@ const refreshData = () => {
   loadStats()
 }
 
+// 扫码定位（2026-08-12 DEV-979）：route.query.orderNo → 填入搜索并查询
+watch(
+  () => route.query.orderNo as string | undefined,
+  (no) => {
+    if (no && activeView.value !== 'gantt') {
+      searchForm.orderNo = no
+      searchForm.pageNum = 1
+      loadData(activeView.value === 'all' ? 'all' : activeView.value)
+    }
+  },
+  { immediate: true },
+)
+
+
 // 导出功能
 const handleExport = async () => {
   try {
-    // 模拟导出
-    ElMessage.success('导出功能开发中...')
+    const res = await exportProductionOrder({ ...searchForm })
+    download(res, `生产订单_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    ElMessage.success('导出成功')
   } catch (error) {
     console.error('导出失败:', error)
     ElMessage.error('导出失败')
   }
+}
+
+// 导出PDF（单张工单表单，需选中一行）
+const handleExportPdf = () => {
+  const row = selectedRows.value[0]
+  if (!row?.orderId) {
+    ElMessage.warning('请先选中一行工单')
+    return
+  }
+  exportProductionOrderPdf(Number(row.orderId)).then((response: any) => {
+    download(response, `生产工单_${row.orderNo || row.orderId}.pdf`)
+  })
 }
 
 // 批量操作
@@ -322,8 +481,13 @@ const handleBatchApprove = async () => {
 
   if (confirm) {
     try {
-      // 模拟批量审批
+      await batchUpdateOrderStatus({
+        orderIds: selectedRows.value.map((row) => row.orderId),
+        orderStatus: OrderStatus.APPROVED,
+        remark: '批量审批',
+      })
       ElMessage.success('批量审批成功')
+      selectedRows.value = []
       refreshData()
     } catch (error) {
       console.error('批量审批失败:', error)
@@ -345,8 +509,13 @@ const handleBatchStart = async () => {
 
   if (confirm) {
     try {
-      // 模拟批量开始
+      await batchUpdateOrderStatus({
+        orderIds: selectedRows.value.map((row) => row.orderId),
+        orderStatus: OrderStatus.IN_PROGRESS,
+        remark: '批量开始',
+      })
       ElMessage.success('批量开始成功')
+      selectedRows.value = []
       refreshData()
     } catch (error) {
       console.error('批量开始失败:', error)
@@ -367,13 +536,26 @@ const handleBatchComplete = async () => {
   )
 
   if (confirm) {
-    try {
-      // 模拟批量完成
-      ElMessage.success('批量完成成功')
-      refreshData()
-    } catch (error) {
-      console.error('批量完成失败:', error)
-      ElMessage.error('批量完成失败')
+    // V1 Release Fix：批量完成逐单调用正式 completeOrder（后端 FQC/工序/数量 gate），不再走通用状态更新
+    let okCount = 0
+    let failCount = 0
+    const failMsgs: string[] = []
+    for (const row of selectedRows.value) {
+      try {
+        await completeExecution(String(row.orderId), { completedQuantity: 0 })
+        okCount++
+      } catch (e: any) {
+        failCount++
+        const msg = e?.msg || e?.message || '完成失败'
+        failMsgs.push(`${row.orderNo || row.orderId}: ${msg}`)
+      }
+    }
+    selectedRows.value = []
+    refreshData()
+    if (okCount > 0) ElMessage.success(`批量完成成功 ${okCount} 个`)
+    if (failCount > 0) {
+      ElMessage.error(`批量完成失败 ${failCount} 个（多为完工校验未通过）`)
+      console.warn('批量完成失败明细:', failMsgs)
     }
   }
 }
@@ -391,8 +573,13 @@ const handleBatchCancel = async () => {
 
   if (confirm) {
     try {
-      // 模拟批量取消
+      await batchUpdateOrderStatus({
+        orderIds: selectedRows.value.map((row) => row.orderId),
+        orderStatus: OrderStatus.CANCELLED,
+        remark: '批量取消',
+      })
       ElMessage.success('批量取消成功')
+      selectedRows.value = []
       refreshData()
     } catch (error) {
       console.error('批量取消失败:', error)
@@ -406,44 +593,125 @@ const handleSelectionChange = (selection: ProductionOrderVO[]) => {
   selectedRows.value = selection
 }
 
-const handleViewOrder = (order: ProductionOrderVO) => {
-  // 跳转到详情页或打开详情对话框
-  ElMessage.info(`查看订单 ${order.orderNo}`)
+const handleViewOrder = (order: any) => {
+  // 打开生产随工单详情抽屉（2026-08-11 方案A：工单头+工序明细+领料+质检+签字区）
+  workCardOrderId.value = order.orderId
+  workCardVisible.value = true
 }
 
-const handleEditOrder = (order: ProductionOrderVO) => {
+const handleEditOrder = (order: any) => {
   currentOrder.value = order
   formDialogVisible.value = true
 }
 
-const handleConvertOrder = (order: ProductionOrderVO) => {
-  ElMessageBox.confirm(`确定要将计划 ${order.orderNo} 转为工单吗？`, '转为工单确认', {
-    confirmButtonText: '确认',
+// 计划转工单（可拆分弹窗，2026-08-11）
+const convertDialogVisible = ref(false)
+const convertPlan = ref<any>(null)
+const convertRows = ref<any[]>([])
+const converting = ref(false)
+const convertTotalQty = computed(() =>
+  convertRows.value.reduce((s, r) => s + (Number(r.plannedQuantity) || 0), 0),
+)
+
+// V1 Fix Pack FIX-3：剩余可下达数量（计划 remaining_quantity；兼容旧数据无字段时回落 planned）
+const convertRemaining = computed(() => {
+  const v = convertPlan.value?.remainingQuantity
+  if (v != null && Number(v) >= 0) return Number(v)
+  return Number(convertPlan.value?.plannedQuantity || 0)
+})
+
+const handleConvertOrder = (order: any) => {
+  convertPlan.value = order
+  const today = new Date()
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  const remaining = order.remainingQuantity != null && Number(order.remainingQuantity) >= 0
+    ? Number(order.remainingQuantity)
+    : Number(order.plannedQuantity || 0)
+  convertRows.value = [
+    {
+      productId: String(order.productId),
+      productCode: order.productCode || '',
+      productName: order.productName || '',
+      plannedQuantity: Math.min(Number(order.plannedQuantity || 0), remaining),
+      planStartDate: order.planStartDate ? String(order.planStartDate).slice(0, 10) : fmt(today),
+      planEndDate: order.planEndDate
+        ? String(order.planEndDate).slice(0, 10)
+        : fmt(new Date(today.getTime() + 7 * 24 * 3600 * 1000)),
+      priority: order.priority ? String(order.priority).toLowerCase() : 'medium',
+      remark: '',
+    },
+  ]
+  convertDialogVisible.value = true
+}
+
+// 添加拆分行
+const addConvertRow = () => {
+  const base = convertRows.value[0] || {}
+  convertRows.value.push({ ...base, plannedQuantity: 0, remark: '' })
+}
+
+// 提交转工单
+const submitConvert = async () => {
+  converting.value = true
+  try {
+    const dto = {
+      planId: String(convertPlan.value.orderId),
+      workOrders: convertRows.value.map((r) => ({
+        productId: r.productId,
+        productCode: r.productCode,
+        productName: r.productName,
+        plannedQuantity: Number(r.plannedQuantity),
+        planStartDate: r.planStartDate,
+        planEndDate: r.planEndDate,
+        priority: r.priority,
+        remark: r.remark || '',
+      })),
+      batchConvert: convertRows.value.length > 1,
+    }
+    const res: any = await convertPlanToWorkOrders(dto)
+    if (res.code === 200 || res.code === 0) {
+      ElMessage.success('转为工单成功')
+      convertDialogVisible.value = false
+      refreshData()
+    } else {
+      ElMessage.error(res.msg || '转为工单失败')
+    }
+  } catch (error: any) {
+    console.error('转为工单失败:', error)
+    ElMessage.error(error?.msg || '转为工单失败')
+  } finally {
+    converting.value = false
+  }
+}
+
+const handleStartOrder = (order: any) => {
+  currentOrder.value = order
+  statusDialogVisible.value = true
+}
+
+const handleCompleteOrder = async (order: any) => {
+  // V1 Release Fix：订单正式完成必须走 completeOrder（后端 FQC/工序/数量 gate），不走通用状态更新
+  const confirm = await ElMessageBox.confirm(`确定要完成工单 ${order.orderNo} 吗？`, '完成工单确认', {
+    confirmButtonText: '确认完成',
     cancelButtonText: '取消',
     type: 'warning',
-  }).then(async () => {
-    try {
-      // 模拟转为工单
-      ElMessage.success('转为工单成功')
-      refreshData()
-    } catch (error) {
-      console.error('转为工单失败:', error)
-      ElMessage.error('转为工单失败')
+  }).catch(() => null)
+  if (!confirm) return
+  try {
+    await completeExecution(String(order.orderId), { completedQuantity: 0 })
+    ElMessage.success('工单已完成')
+    refreshData()
+  } catch (e: any) {
+    const msg = e?.msg || e?.message || '完成工单失败'
+    if (msg.includes('FQC') || msg.includes('质检') || msg.includes('完工检验') || msg.includes('校验不通过')) {
+      ElMessage.error('完工校验未通过，订单暂不能完成：' + msg)
+    } else {
+      ElMessage.error(msg)
     }
-  })
+  }
 }
 
-const handleStartOrder = (order: ProductionOrderVO) => {
-  currentOrder.value = order
-  statusDialogVisible.value = true
-}
-
-const handleCompleteOrder = (order: ProductionOrderVO) => {
-  currentOrder.value = order
-  statusDialogVisible.value = true
-}
-
-const handleCancelOrder = (order: ProductionOrderVO) => {
+const handleCancelOrder = (order: any) => {
   ElMessageBox.confirm(`确定要取消订单 ${order.orderNo} 吗？`, '取消订单确认', {
     confirmButtonText: '确认',
     cancelButtonText: '取消',
@@ -464,7 +732,7 @@ const handleCancelOrder = (order: ProductionOrderVO) => {
   })
 }
 
-const handleDeleteOrder = (order: ProductionOrderVO) => {
+const handleDeleteOrder = (order: any) => {
   currentOrder.value = order
   deleteDialogVisible.value = true
 }
@@ -483,25 +751,71 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
     case 'history':
       handleViewHistory(order)
       break
+    case 'pick-material':
+      handlePickMaterial(order)
+      break
     default:
       ElMessage.warning('暂不支持该操作')
   }
 }
 
-const handleCopyOrder = (order: ProductionOrderVO) => {
+// 生成领料单（2026-08-18：先预览确认——A4打印样式弹窗展示BOM展开/可用量/替代料，可调实领数量）
+const pickPreviewVisible = ref(false)
+const pickPreviewOrder = ref<any>(null)
+
+async function handlePickMaterial(order: any) {
+  pickPreviewOrder.value = order
+  pickPreviewVisible.value = true
+}
+
+// 预览确认生成成功 → 引导去确认发料
+function handlePickCreated() {
+  loadData()
+  ElMessageBox.confirm('领料单已生成，是否前往【出库管理→生产领料】确认发料？', '生成领料单', {
+    confirmButtonText: '去确认发料',
+    cancelButtonText: '稍后',
+    type: 'success',
+  })
+    .then(() => {
+      router.push({ path: '/inventory/outbound', query: { outboundType: 'production' } })
+    })
+    .catch(() => {})
+}
+
+const handleCopyOrder = (order: any) => {
   ElMessage.info(`复制订单 ${order.orderNo}`)
 }
 
-const handleExportOrder = (order: ProductionOrderVO) => {
+const handleExportOrder = (order: any) => {
   ElMessage.info(`导出订单 ${order.orderNo}`)
 }
 
-const handlePrintOrder = (order: ProductionOrderVO) => {
-  ElMessage.info(`打印订单 ${order.orderNo}`)
+const handlePrintOrder = (order: any) => {
+  window.open(`/print/production-order/${order.orderId}`, '_blank')
 }
 
-const handleViewHistory = (order: ProductionOrderVO) => {
+const handleViewHistory = (order: any) => {
   ElMessage.info(`查看订单 ${order.orderNo} 的操作历史`)
+}
+
+// 查看流水（DEV-569）
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+
+// P4-C：生产履历（只读时间线）
+const prodTraceVisible = ref(false)
+const prodTraceOrderId = ref<number | null>(null)
+const handleProductionTrace = (order: any) => {
+  prodTraceOrderId.value = order?.orderId ?? null
+  prodTraceVisible.value = true
+}
+
+// 生产随工单详情抽屉（2026-08-11）
+const workCardVisible = ref(false)
+const workCardOrderId = ref<string | number>('')
+const handleTrace = (order: any) => {
+  currentTraceId.value = order.traceId || ''
+  traceDrawerVisible.value = true
 }
 
 // 创建订单
@@ -537,13 +851,26 @@ const handleFormClose = () => {
 // 状态更新
 const handleStatusSubmit = async (data: OrderStatusUpdateDTO) => {
   try {
+    // V1 Release Fix：目标为 COMPLETED 时必须走正式 completeOrder（FQC/工序/数量 gate）
+    if (data.orderStatus === OrderStatus.COMPLETED) {
+      await completeExecution(String(data.orderId), { completedQuantity: 0 })
+      ElMessage.success('工单已完成')
+      statusDialogVisible.value = false
+      refreshData()
+      return
+    }
     await updateOrderStatus(data)
     ElMessage.success('更新状态成功')
     statusDialogVisible.value = false
     refreshData()
-  } catch (error) {
+  } catch (error: any) {
     console.error('更新状态失败:', error)
-    ElMessage.error('更新状态失败')
+    const msg = error?.msg || error?.message || '更新状态失败'
+    if (msg.includes('FQC') || msg.includes('质检') || msg.includes('完工检验') || msg.includes('校验不通过') || msg.includes('完成操作')) {
+      ElMessage.error('完工校验未通过，订单暂不能完成：' + msg)
+    } else {
+      ElMessage.error(msg)
+    }
   }
 }
 

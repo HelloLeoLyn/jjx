@@ -87,7 +87,7 @@ public class PurchaseOrderItem {
     /**
      * 询价状态（pending待询价/inquired已询价/comparing比价中/selected已选中）
      */
-    private String inquiryStatus;
+    private Integer inquiryStatus;
 
     /**
      * 批次号

@@ -26,6 +26,9 @@ public class ProductionOrder{
     @TableId(type = IdType.AUTO)
     private Long orderId;
 
+    /** 链路追踪ID */
+    private String traceId;
+
     @Schema(description = "订单编号")
     private String orderNo;
 
@@ -62,11 +65,21 @@ public class ProductionOrder{
     @Schema(description = "工艺路线编码")
     private String routingCode;
 
+    @Schema(description = "使用的BOM ID（DEV-617：实体补字段，此前转换丢失导致落库为NULL）")
+    private Long bomId;
+
+    @Schema(description = "BOM编码")
+    private String bomCode;
+
     @Schema(description = "计划数量")
     private BigDecimal plannedQuantity;
 
-    @Schema(description = "已完成数量")
+    @Schema(description = "已完成数量(工序合格汇总，仅作进度展示)")
     private BigDecimal completedQuantity;
+
+    /** 成品完工数量（最后一道工序/完工检验合格数，052口径，用于完工判断/入库/订单回写） */
+    @Schema(description = "成品完工数量(最后一道工序合格数)")
+    private BigDecimal finishedQuantity;
 
     @Schema(description = "剩余数量")
     private BigDecimal remainingQuantity;
@@ -91,7 +104,7 @@ public class ProductionOrder{
     private Integer orderStatus;
 
     @Schema(description = "审批状态：PENDING待审批/APPROVED已批准/REJECTED已拒绝/CANCELLED已取消")
-    private String approvalStatus;
+    private Integer approvalStatus;
 
     @Schema(description = "审批人ID")
     private Long approverId;
@@ -117,6 +130,29 @@ public class ProductionOrder{
 
     @Schema(description = "材料成本")
     private BigDecimal materialCost;
+
+    @Schema(description = "领料状态：0未领料/1待发料/2已领料")
+    private Integer materialStatus;
+
+    /** 返工标记：0正常 1质检FAIL待返工（053） */
+    @Schema(description = "返工标记：0正常 1质检FAIL待返工")
+    private Integer reworkFlag;
+
+    /** 完工操作人（053留痕） */
+    @Schema(description = "完工操作人")
+    private String completedBy;
+
+    /** 关联完工质检单ID（053留痕） */
+    @Schema(description = "关联完工质检单ID")
+    private Long qualityInspectionId;
+
+    /** 入库待处理标记：0正常 1入库失败待重试（056） */
+    @Schema(description = "入库待处理标记：0正常 1入库失败待重试")
+    private Integer inboundPendingFlag;
+
+    /** 入库失败原因（056） */
+    @Schema(description = "入库失败原因")
+    private String inboundPendingReason;
 
     @Schema(description = "人工成本")
     private BigDecimal laborCost;

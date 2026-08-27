@@ -20,6 +20,9 @@ public class ProductionOrderVO {
     @Schema(description = "订单编号")
     private String orderNo;
 
+    /** 链路追踪ID（DEV-568/569） */
+    private String traceId;
+
     @Schema(description = "订单类型：PLAN生产计划/WORK_ORDER生产工单")
     private String orderType;
 
@@ -93,7 +96,7 @@ public class ProductionOrderVO {
     private String orderStatusDesc;
 
     @Schema(description = "审批状态：PENDING待审批/APPROVED已批准/REJECTED已拒绝/CANCELLED已取消")
-    private String approvalStatus;
+    private Integer approvalStatus;
 
     @Schema(description = "审批状态描述")
     private String approvalStatusDesc;
@@ -121,6 +124,12 @@ public class ProductionOrderVO {
 
     @Schema(description = "生产部门名称")
     private String departmentName;
+
+    @Schema(description = "领料状态：0未领料/1待发料/2已领料")
+    private Integer materialStatus;
+
+    @Schema(description = "领料状态描述")
+    private String materialStatusDesc;
 
     @Schema(description = "材料成本")
     private BigDecimal materialCost;

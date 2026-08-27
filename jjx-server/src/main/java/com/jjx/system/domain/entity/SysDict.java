@@ -18,6 +18,8 @@ public class SysDict {
 
     private String dictName;
 
+    private String dictGroup;
+
     private String remark;
 
     private Integer sortOrder;

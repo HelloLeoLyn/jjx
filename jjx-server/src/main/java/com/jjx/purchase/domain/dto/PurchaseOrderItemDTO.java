@@ -107,7 +107,7 @@ public class PurchaseOrderItemDTO {
      * 询价状态（pending待询价/inquired已询价/comparing比价中/selected已选中）
      */
     @Pattern(regexp = "^(pending|inquired|comparing|selected)$", message = "询价状态不正确")
-    private String inquiryStatus;
+    private Integer inquiryStatus;
 
     /**
      * 批次号

@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { AxiosPromise } from 'axios'
+import type { R } from '@/types'
 
 // 报价单查询参数
 export interface QuotationQueryParams {
@@ -7,7 +8,7 @@ export interface QuotationQueryParams {
   pageSize?: number
   quotationNo?: string
   customerName?: string
-  quotationStatus?: string
+  quotationStatus?: number
   startDate?: string
   endDate?: string
   orderByColumn?: string
@@ -66,11 +67,13 @@ export interface QuotationItem {
 // 完整的报价单信息
 export interface QuotationInfo extends QuotationBase {
   items?: QuotationItem[]
+  /** 链路追踪ID */
+  traceId?: string
 }
 
 // 报价单列表响应
 export interface QuotationListResponse {
-  rows: QuotationInfo[]
+  records: QuotationInfo[]
   total: number
 }
 
@@ -82,6 +85,14 @@ export const quotationApi = {
       url: '/sales/quotation/list',
       method: 'get',
       params,
+    })
+  },
+
+  // 获取报价单明细（新增样品单预览用）
+  getItems(quotationId: number): AxiosPromise<QuotationItem[]> {
+    return request({
+      url: `/sales/quotation/${quotationId}/items`,
+      method: 'get',
     })
   },
 
@@ -130,10 +141,73 @@ export const quotationApi = {
   },
 
   // 发送报价单给客户
-  send(quotationId: number): AxiosPromise<void> {
+  send(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
     return request({
-      url: `/sales/quotation/${quotationId}/send`,
-      method: 'post',
+      url: `/sales/quotation/send/${quotationId}`,
+      method: 'put',
+      params: attachmentIds ? { attachmentIds } : undefined,
+    })
+  },
+
+  // 提交报价单审核
+  submitReview(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+    return request({
+      url: `/sales/quotation/submit-review/${quotationId}`,
+      method: 'put',
+      params: attachmentIds ? { attachmentIds } : undefined,
+    })
+  },
+
+  // 审核报价单（通过/驳回）
+  review(quotationId: number, approved: boolean, remark?: string, attachmentIds?: string): AxiosPromise<void> {
+    return request({
+      url: `/sales/quotation/review/${quotationId}`,
+      method: 'put',
+      params: { approved, remark, ...(attachmentIds ? { attachmentIds } : {}) },
+    })
+  },
+
+  // 更新报价单状态（客户确认/拒绝）
+  changeStatus(quotationId: number, status: number, attachmentIds?: string): AxiosPromise<void> {
+    return request({
+      url: `/sales/quotation/status/${quotationId}`,
+      method: 'put',
+      params: { status, ...(attachmentIds ? { attachmentIds } : {}) },
+    })
+  },
+
+  // 客户确认报价（触发事件）
+  confirm(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+    return request({
+      url: `/sales/quotation/confirm/${quotationId}`,
+      method: 'put',
+      params: attachmentIds ? { attachmentIds } : undefined,
+    })
+  },
+
+  // 客户拒绝报价（触发事件）
+  reject(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+    return request({
+      url: `/sales/quotation/reject/${quotationId}`,
+      method: 'put',
+      params: attachmentIds ? { attachmentIds } : undefined,
+    })
+  },
+
+  // 已完成报价单改单
+  modify(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+    return request({
+      url: `/sales/quotation/modify/${quotationId}`,
+      method: 'put',
+      params: attachmentIds ? { attachmentIds } : undefined,
+    })
+  },
+
+  // 获取报价单流转记录
+  getFlowRecords(quotationId: number): AxiosPromise<any[]> {
+    return request({
+      url: `/sales/quotation/flow/${quotationId}`,
+      method: 'get',
     })
   },
 
@@ -142,7 +216,7 @@ export const quotationApi = {
     quotationId: number,
   ): AxiosPromise<{ orderId: number; orderNo: string }> {
     return request({
-      url: `/sales/quotation/${quotationId}/convert`,
+      url: `/sales/quotation/convert/${quotationId}`,
       method: 'post',
     })
   },
@@ -150,7 +224,16 @@ export const quotationApi = {
   // 导出报价单PDF
   exportPdf(quotationId: number): AxiosPromise<Blob> {
     return request({
-      url: `/sales/quotation/${quotationId}/export`,
+      url: `/sales/quotation/export-pdf/${quotationId}`,
+      method: 'get',
+      responseType: 'blob',
+    })
+  },
+
+  // 导出报价单Excel（单张表单）
+  exportExcel(quotationId: number): AxiosPromise<Blob> {
+    return request({
+      url: `/sales/quotation/export-excel/${quotationId}`,
       method: 'get',
       responseType: 'blob',
     })
@@ -172,45 +255,12 @@ export const quotationApi = {
     })
   },
 
-  // 获取报价模板列表
-  getTemplates(): AxiosPromise<
-    Array<{ templateId: number; templateName: string }>
-  > {
-    return request({
-      url: '/sales/quotation/templates',
-      method: 'get',
-    })
+  // 获取指定币种汇率（相对CNY）
+  getExchangeRate(currency: string) {
+    return request.get<R<number>>('/system/exchange-rate/rate', { params: { currency } })
   },
 
-  // 根据模板创建报价单
-  createFromTemplate(
-    templateId: number,
-    customerId: number,
-  ): AxiosPromise<QuotationInfo> {
-    return request({
-      url: `/sales/quotation/template/${templateId}`,
-      method: 'post',
-      params: { customerId },
-    })
-  },
-
-  // 快速报价（基于产品）
-  quickQuote(data: {
-    customerId: number
-    items: Array<{
-      productId: number
-      quantity: number
-      customRequirements?: string
-    }>
-  }): AxiosPromise<QuotationInfo> {
-    return request({
-      url: '/sales/quotation/quick',
-      method: 'post',
-      data,
-    })
-  },
-
-  // 获取客户历史报价
+    // 获取客户历史报价
   getCustomerHistory(customerId: number): AxiosPromise<QuotationInfo[]> {
     return request({
       url: `/sales/quotation/customer/${customerId}/history`,
@@ -218,31 +268,19 @@ export const quotationApi = {
     })
   },
 
-  // 提交报价单审核
-  submitReview(quotationId: number): AxiosPromise<void> {
-    return request({
-      url: `/sales/quotation/${quotationId}/submit-review`,
-      method: 'post',
-    })
-  },
-
-  // 审核报价单
-  review(
-    quotationId: number,
-    data: { approved: boolean; remark?: string },
-  ): AxiosPromise<void> {
-    return request({
-      url: `/sales/quotation/${quotationId}/review`,
-      method: 'post',
-      data,
-    })
-  },
-
   // 复制报价单
   copy(quotationId: number): AxiosPromise<QuotationInfo> {
     return request({
-      url: `/sales/quotation/${quotationId}/copy`,
+      url: `/sales/quotation/copy/${quotationId}`,
       method: 'post',
+    })
+  },
+
+  // 报价单统计（DEV-594 接前端）
+  statistics(): AxiosPromise {
+    return request({
+      url: '/sales/quotation/statistics',
+      method: 'get',
     })
   },
 }

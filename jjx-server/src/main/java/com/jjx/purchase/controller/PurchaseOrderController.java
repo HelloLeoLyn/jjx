@@ -2,6 +2,7 @@ package com.jjx.purchase.controller;
 
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.purchase.domain.dto.PurchaseOrderApprovalDTO;
 import com.jjx.purchase.domain.dto.PurchaseOrderDTO;
@@ -12,6 +13,7 @@ import com.jjx.purchase.domain.vo.PurchaseOrderVO;
 import com.jjx.purchase.service.IPurchaseOrderService;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.system.annotation.BusinessType;
+import io.swagger.v3.oas.annotations.Operation;
 import com.jjx.system.annotation.Log;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 采购订单Controller
@@ -31,6 +34,14 @@ import java.util.List;
 public class PurchaseOrderController extends BaseController {
 
     private final IPurchaseOrderService purchaseOrderService;
+
+    /**
+     * 获取采购订单总数
+     */
+    @GetMapping("/count")
+    public Result<Long> count() {
+        return Result.success(purchaseOrderService.count());
+    }
 
     /**
      * 查询采购订单列表
@@ -57,12 +68,22 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
+     * 查询物料在途采购量（2026-08-18 P1-B：采购计划工作台手动添加物料时防重复下单用，含草稿单）
+     */
+    @Operation(summary = "查询物料在途采购量")
+    @SaCheckPermission("purchase:plan:view")
+    @GetMapping("/in-transit")
+    public Result<Map<Long, BigDecimal>> inTransit(@RequestParam List<Long> materialIds) {
+        return Result.success(purchaseOrderService.getInTransitByMaterials(materialIds));
+    }
+
+    /**
      * 新增采购订单
      */
     @PostMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT)
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderDTO.orderId")
     @SaCheckPermission("purchase:order:add")
-    public Result<Void> add(@Valid @RequestBody PurchaseOrderDTO orderDTO) {
+    public Result<Void> add(@RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.insertOrder(orderDTO);
         return Result.success();
     }
@@ -71,7 +92,7 @@ public class PurchaseOrderController extends BaseController {
      * 修改采购订单
      */
     @PutMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderDTO.orderId")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> edit(@Valid @RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.updateOrder(orderDTO);
@@ -82,7 +103,7 @@ public class PurchaseOrderController extends BaseController {
      * 取消采购订单
      */
     @PutMapping("/cancel/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "2")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> cancel(@PathVariable Long orderId) {
         purchaseOrderService.cancelOrder(orderId);
@@ -90,10 +111,25 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
+     * 采购退货
+     */
+    @Operation(summary = "采购退货")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
+    @SaCheckPermission("purchase:order:edit")
+    @PostMapping("/return/{orderId}")
+    public Result<Void> returnGoods(@PathVariable Long orderId,
+                                    @RequestParam String reason,
+                                    @RequestParam(defaultValue = "0") Long materialId,
+                                    @RequestParam(defaultValue = "0") Integer quantity) {
+        purchaseOrderService.returnGoods(orderId, reason, materialId, quantity);
+        return Result.success();
+    }
+
+    /**
      * 提交审批
      */
     @PutMapping("/submit/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "3")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> submit(@PathVariable Long orderId) {
         purchaseOrderService.submitOrder(orderId);
@@ -104,7 +140,7 @@ public class PurchaseOrderController extends BaseController {
      * 批量提交审批
      */
     @PutMapping("/batch-submit")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderIds[0]", bizStatus = "3")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> batchSubmit(@RequestBody List<Long> orderIds) {
         purchaseOrderService.batchSubmitOrders(orderIds);
@@ -115,7 +151,7 @@ public class PurchaseOrderController extends BaseController {
      * 审批订单
      */
     @PutMapping("/approve")
-    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE)
+    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE, bizType = "'purchase_order'", bizId = "#dto.orderId", bizStatus = "#dto.approved ? 4 : 5")
     @SaCheckPermission("purchase:order:approve")
     public Result<Void> approve(@Valid @RequestBody PurchaseOrderApprovalDTO dto) {
         purchaseOrderService.approveOrder(dto);
@@ -126,7 +162,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新订单审批状态
      */
     @PutMapping("/status")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "#approvalStatus")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> updateStatus(@RequestParam Long orderId, @RequestParam Integer approvalStatus) {
         purchaseOrderService.updateOrderStatus(orderId, approvalStatus);
@@ -138,7 +174,7 @@ public class PurchaseOrderController extends BaseController {
      * 使用DTO模式，一次请求可同时收货多个明细项
      */
     @PostMapping("/{orderId}/receive")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "4")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> receive(@PathVariable Long orderId, @Valid @RequestBody PurchaseOrderReceiveDTO dto) {
         dto.setOrderId(orderId);
@@ -150,7 +186,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新收货状态
      */
     @PutMapping("/receiptStatus")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "#receiptStatus")
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> updateReceiptStatus(@RequestParam Long orderId, @RequestParam Integer receiptStatus) {
         purchaseOrderService.updateReceiptStatus(orderId, receiptStatus);
@@ -161,7 +197,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新付款信息
      */
     @PutMapping("/payment")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE)
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#result.data")
     @SaCheckPermission("purchase:order:edit")
     public Result<Integer> updatePayment(@RequestParam Long orderId,
                                       @RequestParam(required = false) BigDecimal paidAmount,
@@ -187,11 +223,69 @@ public class PurchaseOrderController extends BaseController {
         return Result.success(purchaseOrderService.generateOrderNo());
     }
 
+    // ==================== DEV-664 采购计划 ====================
+
+    /**
+     * 确认计划单转正式采购单（计划单体系已弃用，2026-08-18：前端无入口，待后续清理或重构）
+     *
+     * @deprecated 计划单体系（plan_status=1）已弃用
+     */
+    @Deprecated
+    @Operation(summary = "确认计划单转正式采购单（已弃用）")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
+    @SaCheckPermission("purchase:plan:confirm")
+    @PutMapping("/{orderId}/confirm-plan")
+    public Result<Void> confirmPlan(@PathVariable Long orderId,
+                                    @RequestParam Long supplierId,
+                                    @RequestParam String supplierName) {
+        purchaseOrderService.confirmPlan(orderId, supplierId, supplierName);
+        return Result.success();
+    }
+
+    /**
+     * 获取采购计划建议（安全库存预警 + 订单缺料预警）
+     */
+    @Operation(summary = "获取采购计划建议")
+    @SaCheckPermission("purchase:plan:view")
+    @GetMapping("/plan-suggestions")
+    public Result<List<Map<String, Object>>> planSuggestions() {
+        return Result.success(purchaseOrderService.getPlanSuggestions());
+    }
+
+    /**
+     * 092：缺料预警一键生成采购计划单（已弃用，2026-08-18：前端无调用）
+     *
+     * @deprecated 计划单体系已弃用
+     */
+    @Deprecated
+    @Operation(summary = "缺料预警一键生成采购计划单（已弃用）")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
+    @SaCheckPermission("purchase:plan:add")
+    @PostMapping("/create-plan-from-suggestions")
+    public Result<Long> createPlanFromSuggestions() {
+        return Result.success(purchaseOrderService.createPlanFromSuggestions());
+    }
+
+    /**
+     * DEV-996：预警页选中/单条预警一键转采购（生成采购计划单 + 自动回写预警）
+     * 已弃用（2026-08-18）：预警页转采购入口已移除，采购侧统一走采购计划工作台
+     *
+     * @deprecated 计划单体系已弃用
+     */
+    @Deprecated
+    @Operation(summary = "选中预警一键生成采购计划单（已弃用）")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
+    @SaCheckPermission("purchase:plan:add")
+    @PostMapping("/create-plan-from-alerts")
+    public Result<Long> createPlanFromAlerts(@RequestBody java.util.List<Long> alertIds) {
+        return Result.success(purchaseOrderService.createPlanFromAlerts(alertIds));
+    }
+
     /**
      * 复制订单
      */
     @PostMapping("/copy/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT)
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:add")
     public Result<Long> copy(@PathVariable Long orderId) {
         return Result.success(purchaseOrderService.copyOrder(orderId));
@@ -201,7 +295,7 @@ public class PurchaseOrderController extends BaseController {
      * 导出采购订单列表
      */
     @PostMapping("/export")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT)
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "'export'")
     @SaCheckPermission("purchase:order:export")
     public Result<String> export(@RequestBody PurchaseOrderQueryDTO queryVO) {
         return Result.success(purchaseOrderService.exportOrderList(queryVO));
@@ -211,9 +305,42 @@ public class PurchaseOrderController extends BaseController {
      * 导出采购订单详情
      */
     @PostMapping("/export/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT)
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId")
     @SaCheckPermission("purchase:order:export")
     public Result<String> exportDetail(@PathVariable Long orderId) {
         return Result.success(purchaseOrderService.exportOrderDetail(orderId));
+    }
+
+    /**
+     * 导出采购订单PDF（单张表单）
+     */
+    @Operation(summary = "导出采购订单PDF")
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId")
+    @SaCheckPermission("purchase:order:export")
+    @GetMapping("/export-pdf/{orderId}")
+    public void exportPdf(@PathVariable Long orderId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        com.jjx.purchase.domain.entity.PurchaseOrder order = purchaseOrderService.getById(orderId);
+        if (order == null) {
+            throw new BusinessException("采购订单不存在");
+        }
+        byte[] bytes = purchaseOrderService.exportPdf(orderId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + java.net.URLEncoder.encode(order.getOrderNo() + ".pdf", java.nio.charset.StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
+    /**
+     * 删除采购订单
+     */
+    @DeleteMapping("/{orderId}")
+    @Log(module = "采购订单管理", businessType = BusinessType.DELETE, bizType = "'purchase_order'", bizId = "#orderId")
+    @SaCheckPermission("purchase:order:delete")
+    public Result<Void> deleteOrder(@PathVariable Long orderId) {
+        com.jjx.purchase.domain.entity.PurchaseOrder order = purchaseOrderService.getById(orderId);
+        if (order == null) {
+            throw new BusinessException("采购订单不存在");
+        }
+        purchaseOrderService.removeById(orderId);
+        return Result.success();
     }
 }

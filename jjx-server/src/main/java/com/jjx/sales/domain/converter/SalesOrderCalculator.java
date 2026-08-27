@@ -79,17 +79,23 @@ public class SalesOrderCalculator {
             order.setPaidAmount(BigDecimal.ZERO);
         }
 
-        // 1. 计算税额
-        BigDecimal taxAmount = calculateTaxAmount(order.getTotalAmount(), order.getTaxRate());
-        order.setTaxAmount(taxAmount);
+        // 1. 计算税额（调用方已传则保留——报价转订单场景继承报价税额）
+        BigDecimal taxAmount = order.getTaxAmount();
+        if (taxAmount == null) {
+            taxAmount = calculateTaxAmount(order.getTotalAmount(), order.getTaxRate());
+            order.setTaxAmount(taxAmount);
+        }
 
         // 2. 计算含税总金额
         BigDecimal totalAmountWithTax = calculateTotalAmountWithTax(order.getTotalAmount(), taxAmount);
         order.setTotalAmountWithTax(totalAmountWithTax);
 
-        // 3. 计算折扣金额
-        BigDecimal discountAmount = calculateDiscountAmount(totalAmountWithTax, order.getDiscountRate());
-        order.setDiscountAmount(discountAmount);
+        // 3. 计算折扣金额（调用方已传则保留，否则按折扣率算）
+        BigDecimal discountAmount = order.getDiscountAmount();
+        if (discountAmount == null) {
+            discountAmount = calculateDiscountAmount(totalAmountWithTax, order.getDiscountRate());
+            order.setDiscountAmount(discountAmount);
+        }
 
         // 4. 计算最终金额
         BigDecimal finalAmount = calculateFinalAmount(totalAmountWithTax, discountAmount);
@@ -98,5 +104,6 @@ public class SalesOrderCalculator {
         // 5. 计算未付金额
         BigDecimal unpaidAmount = finalAmount.subtract(order.getPaidAmount());
         order.setUnpaidAmount(unpaidAmount.max(BigDecimal.ZERO));
+
     }
 }

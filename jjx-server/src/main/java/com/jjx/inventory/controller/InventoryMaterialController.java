@@ -3,7 +3,7 @@ package com.jjx.inventory.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
-import com.jjx.common.enums.StatusEnum;
+
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
@@ -37,6 +37,14 @@ import java.util.Map;
 public class InventoryMaterialController extends BaseController {
 
     private final InventoryMaterialService materialService;
+
+    /**
+     * 获取物料总数
+     */
+    @GetMapping("/count")
+    public Result<Long> count() {
+        return Result.success(materialService.count());
+    }
 
     /**
      * 分页查询物料列表
@@ -78,7 +86,7 @@ public class InventoryMaterialController extends BaseController {
      * 新增物料
      */
     @PostMapping
-    @Log(module = "物料管理", businessType = BusinessType.INSERT)
+    @Log(module = "物料管理", businessType = BusinessType.INSERT, bizType = "'material'", bizId = "#dto.materialId")
     @SaCheckPermission("inventory:material:add")
     public Result<Void> add(@RequestBody MaterialSaveDTO dto) {
         // 检查物料编码是否已存在
@@ -99,7 +107,7 @@ public class InventoryMaterialController extends BaseController {
      * 修改物料
      */
     @PutMapping
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#dto.materialId")
     @SaCheckPermission("inventory:material:edit")
     public Result<Void> update(@RequestBody MaterialUpdateDTO dto) {
         if (dto.getMaterialId() == null) {
@@ -119,7 +127,7 @@ public class InventoryMaterialController extends BaseController {
      * 删除物料
      */
     @DeleteMapping("/{id}")
-    @Log(module = "物料管理", businessType = BusinessType.DELETE)
+    @Log(module = "物料管理", businessType = BusinessType.DELETE, bizType = "'material'", bizId = "#id")
     @SaCheckPermission("inventory:material:delete")
     public Result<Void> delete(@PathVariable Long id) {
         materialService.deleteWithCheck(id);
@@ -130,11 +138,11 @@ public class InventoryMaterialController extends BaseController {
      * 更新物料状态
      */
     @PutMapping("/{id}/status")
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#id")
     @SaCheckPermission("inventory:material:edit")
-    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam StatusEnum status) {
+    public Result<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
         // 调用Service更新状态
-        materialService.batchUpdateStatus(List.of(id), status.getCode());
+        materialService.batchUpdateStatus(List.of(id), status);
         return Result.success();
     }
 
@@ -142,15 +150,15 @@ public class InventoryMaterialController extends BaseController {
      * 批量更新物料状态
      */
     @PutMapping("/batch-status")
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#ids[0]")
     @SaCheckPermission("inventory:material:edit")
-    public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam StatusEnum status) {
+    public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam Integer status) {
         if (ids == null || ids.isEmpty()) {
             throw new BusinessException("请选择要更新的物料");
         }
 
         // 调用Service批量更新状态
-        materialService.batchUpdateStatus(ids, status.getCode());
+        materialService.batchUpdateStatus(ids, status);
         return Result.success();
     }
 
@@ -188,13 +196,12 @@ public class InventoryMaterialController extends BaseController {
      * 导入物料数据
      */
     @PostMapping("/import")
-    @Log(module = "物料管理", businessType = BusinessType.IMPORT)
+    @Log(module = "物料管理", businessType = BusinessType.IMPORT, bizType = "'material'", bizId = "'batch'")
     @SaCheckPermission("inventory:material:add")
-    public Result<String> importMaterial(MultipartFile file) {
+    public Result<com.jjx.inventory.dto.vo.MaterialImportResultVO> importMaterial(MultipartFile file) {
         List<MaterialImportDTO> importList = ExcelUtils.importExcel(file, MaterialImportDTO.class);
         String operName = getUsername();
-        String message = materialService.importMaterial(importList, operName);
-        return Result.success(message);
+        return Result.success(materialService.importMaterial(importList, operName));
     }
 
     /**

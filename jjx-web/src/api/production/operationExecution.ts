@@ -20,6 +20,21 @@ export const operationExecutionApi = {
     )
   },
 
+  /** 全部工序视角；后端仅允许生产全局范围用户访问。 */
+  globalList(params: OperationExecutionQuery) {
+    return request.get<R<OperationExecutionVO[]>>(
+      '/production/operation-execution/global-list', { params }
+    )
+  },
+
+  /** 分页查询工序执行列表（派工管理树形主列表第一层，服务端分页） */
+  page(params: OperationExecutionQuery) {
+    return request.get<R<PageResult<OperationExecutionVO>>>(
+      '/production/operation-execution/page',
+      { params }
+    )
+  },
+
   /**
    * 查询工序执行列表（全量）
    */
@@ -69,6 +84,13 @@ export const operationExecutionApi = {
     return request.put<R<void>>(`/production/operation-execution/${executionId}/pause`)
   },
 
+  /** 工序首检/巡检（DEV-371） */
+  qualityCheck(executionId: number, checkType: string, checkResult: string, checkItems?: string, remark?: string) {
+    return request.put<R<void>>(`/production/operation-execution/${executionId}/quality-check`, null, {
+      params: { checkType, checkResult, checkItems, remark },
+    })
+  },
+
   /**
    * 完成工序执行
    */
@@ -105,7 +127,7 @@ export const operationExecutionApi = {
    * 获取工序执行统计
    */
   getStats(params?: OperationExecutionQuery) {
-    return request.get<R<OperationExecutionStats>>('/production/operation-execution/stats', {
+    return request.get<R<OperationExecutionStats>>('/production/operation-execution/statistics', {
       params,
     })
   },

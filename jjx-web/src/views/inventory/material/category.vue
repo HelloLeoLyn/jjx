@@ -19,6 +19,7 @@
             type="success"
             plain
             icon="Edit"
+            v-hasPermi="['inventory:category:edit']"
             :disabled="single"
             @click="() => handleUpdate()"
             >修改</el-button
@@ -29,6 +30,7 @@
             type="danger"
             plain
             icon="Delete"
+            v-hasPermi="['inventory:category:remove']"
             :disabled="multiple"
             @click="() => handleDelete()"
             >删除</el-button
@@ -66,7 +68,7 @@
           label="操作"
           align="center"
           class-name="small-padding fixed-width"
-          width="200"
+          min-width="200"
         >
           <template #default="scope">
             <el-tooltip content="修改" placement="top">
@@ -74,6 +76,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['inventory:category:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -82,6 +85,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['inventory:category:remove']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -195,7 +199,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import type { SearchOptions } from '@/components/common-ui/type'
-import { materialCategoryApi } from '@/api/inventory/material'
+import { materialCategoryApi } from '@/api/inventory/materialCategory'
 import type {
   MaterialCategoryItem,
   MaterialCategoryFormData,
@@ -226,7 +230,7 @@ const form = reactive<MaterialCategoryFormData>({
   categoryName: '',
   categoryLevel: 1,
   sortOrder: 0,
-  status: '0',
+  status: '1',
   remark: '',
 })
 
@@ -260,7 +264,7 @@ const categoryFormRef = ref()
 
 // 状态选项
 const statusOptions = [
-  { label: '正常', value: '0' },
+  { label: '正常', value: '1' },
   { label: '停用', value: '1' },
 ]
 
@@ -282,13 +286,13 @@ const ids = ref<number[]>([])
 const getCategoryTree = async () => {
   try {
     loading.value = true
-    const response = await materialCategoryApi.getTree(queryParams)
+    const response = await materialCategoryApi.getTree(queryParams as any)
     if (response.code === 200) {
       categoryTree.value = response.data || []
       if (response.data) {
         categoryTreeOptions.value = [
           { categoryId: 0, categoryName: '顶级分类', children: [] },
-          ...response.data,
+          ...(response.data as any),
         ]
       }
     }
@@ -450,7 +454,7 @@ const resetForm = () => {
     categoryName: '',
     categoryLevel: 1,
     sortOrder: 0,
-    status: '0',
+    status: '1',
     remark: '',
   })
 }

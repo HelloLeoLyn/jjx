@@ -20,6 +20,7 @@
             placeholder="请选择仓库"
             clearable
             style="width: 150px"
+            @change="handleWarehouseChange"
           >
             <el-option
               v-for="item in warehouseOptions"
@@ -143,6 +144,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { stockItemApi } from '@/api/inventory/stockItem'
 import { stockApi } from '@/api/inventory/stock'
+import { locationApi } from '@/api/inventory/location'
+import { warehouseApi } from '@/api/inventory/warehouse'
 import { formatCurrency } from '@/utils/format'
 import type { StockItemQueryParams, StockItemVO, StockVO } from '@/types/inventory/stock'
 
@@ -177,7 +180,7 @@ const loading = ref(false)
 const itemList = ref<StockItemVO[]>([])
 const total = ref(0)
 
-// 仓库选项（示例，实际应从API获取）
+// 仓库选项（从API获取）
 const warehouseOptions = ref<{ value: string; label: string }[]>([])
 const locationOptions = ref<{ value: string; label: string }[]>([])
 
@@ -247,9 +250,50 @@ const isExpiring = (dateStr: string): boolean => {
 }
 
 onMounted(() => {
+  loadWarehouseOptions()
+  loadLocationOptions()
   getMaterialSummary()
   getList()
 })
+
+// 加载仓库下拉
+const loadWarehouseOptions = async () => {
+  try {
+    const res = await warehouseApi.getOptions()
+    warehouseOptions.value = (res.data || []).map((w: any) => ({
+      value: String(w.warehouseId),
+      label: w.warehouseName,
+    }))
+  } catch (error) {
+    console.error('加载仓库选项失败:', error)
+  }
+}
+
+// 仓库切换时重新加载库位下拉
+const handleWarehouseChange = (val: string | undefined) => {
+  queryParams.locationId = undefined
+  loadLocationOptions(val ? Number(val) : undefined)
+}
+const loadLocationOptions = async (warehouseId?: number) => {
+  try {
+    if (warehouseId) {
+      const res = await locationApi.getByWarehouse(warehouseId)
+      locationOptions.value = (res.data || []).map((l: any) => ({
+        value: String(l.locationId),
+        label: l.locationName || l.locationCode,
+      }))
+    } else {
+      const res = await locationApi.list({ pageNum: 1, pageSize: 999 } as any)
+      const list = (res.data as any)?.records || res.data || []
+      locationOptions.value = list.map((l: any) => ({
+        value: String(l.locationId),
+        label: l.locationName || l.locationCode,
+      }))
+    }
+  } catch (error) {
+    console.error('加载库位选项失败:', error)
+  }
+}
 </script>
 
 <style scoped>

@@ -42,7 +42,7 @@ public interface IProductInstanceService extends IService<ProductInstance> {
     /**
      * 更新产品实例状态
      */
-    boolean updateInstanceStatus(Long instanceId, String status);
+    boolean updateInstanceStatus(Long instanceId, Integer status);
 
     /**
      * 开始生产

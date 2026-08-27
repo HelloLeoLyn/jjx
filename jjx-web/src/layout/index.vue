@@ -26,7 +26,7 @@ import AppMain from './components/AppMain.vue'
 const userStore = useUserStore()
 
 const sidebar = computed(() => ({
-  opened: !userStore.getSidebarCollapsed,
+  opened: !userStore.sidebarCollapsed,
 }))
 
 const device = computed(() => 'desktop')
@@ -52,10 +52,11 @@ const handleClickOutside = () => {
 
   .sidebar-container {
     flex-shrink: 0;
-    width: 210px;
+    width: 220px;
     transition: width 0.28s;
-    background-color: #304156;
+    background: #fff;
     overflow: hidden;
+    border-right: 1px solid #e8eaef;
   }
 
   .main-container {
@@ -63,12 +64,12 @@ const handleClickOutside = () => {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: #f0f2f6;
+    background: #f5f6fa;
   }
 
   &.hideSidebar {
     .sidebar-container {
-      width: 54px;
+      width: 64px;
     }
   }
 }

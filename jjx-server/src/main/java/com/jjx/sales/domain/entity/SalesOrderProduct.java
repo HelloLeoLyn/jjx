@@ -60,4 +60,24 @@ public class SalesOrderProduct{
      */
     private String productName;
 
+    /**
+     * 备注
+     */
+    private String remark;
+
+    /**
+     * 规格描述
+     */
+    private String specification;
+
+    /**
+     * 客户物料号
+     */
+    private String customerMaterialNo;
+
+    /**
+     * 行备注
+     */
+    private String lineRemark;
+
 }

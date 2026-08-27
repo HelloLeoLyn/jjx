@@ -129,7 +129,7 @@ import { Search, FolderDelete } from '@element-plus/icons-vue'
 import BomDetail from '../../bom/components/BomDetail.vue'
 import { productBomApi } from '@/api/product/bom'
 import { productApi } from '@/api/product'
-import type { ProductBomVO, ProductBomItem } from '@/types/product/bom'
+import type { EngineeringBomVO, EngineeringBomItem } from '@/types/product/bom'
 import type { ProductVo } from '@/types/product'
 
 interface Props {
@@ -159,7 +159,7 @@ const visible = computed({
 // 响应式数据
 const loading = ref(false)
 const saving = ref(false)
-const bomList = ref<ProductBomVO[]>([])
+const bomList = ref<EngineeringBomVO[]>([])
 const searchKeyword = ref('')
 const selectedBomId = ref<number | undefined>(undefined)
 const previewVisible = ref(false)
@@ -186,7 +186,7 @@ const filteredBomList = computed(() => {
 })
 
 // 计算总成本
-const calcTotalCost = (items?: ProductBomItem[]): number => {
+const calcTotalCost = (items?: EngineeringBomItem[]): number => {
   if (!items || items.length === 0) return 0
   return items.reduce((sum, item) => sum + ((item as any).totalPrice || 0), 0)
 }
@@ -203,12 +203,12 @@ const handleSearch = () => {
 }
 
 // 行点击
-const handleRowClick = (row: ProductBomVO) => {
+const handleRowClick = (row: EngineeringBomVO) => {
   selectedBomId.value = row.bomId
 }
 
 // 预览BOM
-const handlePreview = async (row: ProductBomVO) => {
+const handlePreview = async (row: EngineeringBomVO) => {
   previewBomId.value = row.bomId
   previewVisible.value = true
 }
@@ -216,7 +216,7 @@ const handlePreview = async (row: ProductBomVO) => {
 // 去创建BOM
 const handleGoCreateBom = () => {
   visible.value = false
-  router.push('/product/bom')
+  router.push('/engineering/bom')
 }
 
 // 加载已审批BOM列表
@@ -233,15 +233,15 @@ const loadApprovedBoms = async () => {
         return { ...item, items: [] }
       }
       return item
-    }) as ProductBomVO[]
+    }) as EngineeringBomVO[]
 
     // 如果返回的是简单VO，需要获取完整详情
     if (bomList.value.length > 0 && !bomList.value[0].items) {
-      const fullList: ProductBomVO[] = []
+      const fullList: EngineeringBomVO[] = []
       for (const bom of bomList.value) {
         try {
-          const detailRes = await productBomApi.getProductBomInfo(bom.bomId)
-          fullList.push(detailRes.data as ProductBomVO)
+          const detailRes = await productBomApi.getEngineeringBomInfo(bom.bomId)
+          fullList.push(detailRes.data as EngineeringBomVO)
         } catch {
           fullList.push(bom)
         }

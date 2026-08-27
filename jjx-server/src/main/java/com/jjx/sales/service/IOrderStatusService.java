@@ -46,9 +46,20 @@ public interface IOrderStatusService {
     void sendToCustomer(ODRSendToCustomerDTO dto);
 
     /**
-     * 开始生产 - 创建生产工单并更新销售订单状态
+     * 生成生产计划（标准模式：SO→PLAN→审批→转工单）
      */
-    void startProduction(Long orderId);
+    void createProductionPlan(Long orderId);
+    void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark);
+
+    /**
+     * 完成订单 - 已发货订单完结（SHIPPED -> COMPLETED）
+     */
+    void completeOrder(Long orderId);
+
+    /**
+     * 发货（025：IN_PRODUCTION→SHIPPED）
+     */
+    void shipOrder(Long orderId);
 
     /**
      * 获取订单审核状态

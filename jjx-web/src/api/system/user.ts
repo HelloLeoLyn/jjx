@@ -16,6 +16,16 @@ export const userApi = {
     return request.get<R<PageResult<SysUser>>>('/system/user/list', { params })
   },
 
+  // 导出用户列表Excel（DEV-1014）
+  exportUsers(params: SysUser & { pageNum?: number; pageSize?: number }) {
+    return request.get('/system/user/export', { params, responseType: 'blob' })
+  },
+
+  // 获取销售负责人列表（2026-08-11 按 role_key 前缀 sales 匹配）
+  salesPersons() {
+    return request.get<R<SysUser[]>>('/system/user/sales-persons')
+  },
+
   // 获取用户详情
   getInfo(userId: number) {
     return request.get<R<SysUser>>(`/system/user/${userId}`)
@@ -71,10 +81,8 @@ export const userApi = {
   },
 
   // 修改密码
-  updatePwd(oldPassword: string, newPassword: string) {
-    return request.put<R<void>>('/system/user/profile/updatePwd', null, {
-      params: { oldPassword, newPassword },
-    })
+  updatePwd(data: { oldPassword: string; newPassword: string }) {
+    return request.put<R<void>>('/system/user/profile/updatePwd', data)
   },
 
   // 修改头像

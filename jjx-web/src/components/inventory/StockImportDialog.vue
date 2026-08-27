@@ -107,19 +107,13 @@
               width="100%"
               :active-only="true"
               @change="
-                (warehouse) => {
+                (warehouse: any) => {
                   row.warehouseName = warehouse?.warehouseName || ''
                 }
               "
             />
           </template>
         </el-table-column>
-        <el-table-column label="库位" prop="locationCode" width="130">
-          <template #default="{ row }">
-            <el-input v-model="row.locationCode" size="small" />
-          </template>
-        </el-table-column>
-
         <el-table-column v-if="showExtraFields" label="批次号" prop="batchNo" width="120">
           <template #default="{ row }">
             <el-input v-model="row.batchNo" size="small" />
@@ -273,7 +267,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Search, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { stockApi } from '@/api/inventory/stock'
 import { materialApi } from '@/api/inventory/material'
-import { MaterialEnum } from '@/enums/inventory'
+import { MaterialEnum, WarehouseEnum } from '@/enums/inventory'
 import * as XLSX from 'xlsx'
 import type { UploadInstance } from 'element-plus'
 
@@ -382,13 +376,21 @@ const handleExceed = () => {
   ElMessage.warning('每次只能上传一个文件')
 }
 
-// 下载导入模板
-const handleDownloadTemplate = () => {
-  // 使用本地模板文件
-  const link = document.createElement('a')
-  link.href = '/templates/库存导入模板.xlsx'
-  link.download = '库存导入模板.xlsx'
-  link.click()
+// 下载导入模板（DEV-672：改调后端接口，模板统一后端生成，不再用静态文件）
+const handleDownloadTemplate = async () => {
+  try {
+    const res = await stockApi.downloadImportTemplate()
+    const blob = new Blob([res as any], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = '库存导入模板.xlsx'
+    link.click()
+    URL.revokeObjectURL(link.href)
+  } catch (error) {
+    ElMessage.error('下载模板失败')
+  }
 }
 
 // 解析文件
@@ -486,11 +488,20 @@ const handleParseFile = async () => {
             k === '摆放区域'
         )
 
+        // 智能匹配仓库（模板「仓库」列）
+        let warehouseKey = keys.find((k) => k.includes('仓库') || k === '仓库')
+
         const name = nameKey ? String(item[nameKey] || '').trim() : ''
         const spec = specKey ? String(item[specKey] || '').trim() : ''
         const qty = parseFloat(item[qtyKey || ''] || 0)
         const remark = remarkKey ? String(item[remarkKey] || '').trim() : ''
         const location = locationKey ? String(item[locationKey] || '').trim() : ''
+        // 仓库：从 Excel 读取名称，反查 WAREHOUSE_LIST 得到 ID；找不到则留空（等手动选择）
+        const warehouseName = warehouseKey ? String(item[warehouseKey] || '').trim() : ''
+        const matchedWarehouse = WarehouseEnum.list.items.find(
+          (w: any) => w.label === warehouseName || String(w.value) === String(warehouseName)
+        )
+        const matchedWarehouseId = matchedWarehouse ? matchedWarehouse.value : ''
 
         // 从物料名称中提取供应商简写（括号内的内容）
         // 例如 "0.125中砂PC(尚昇)" → "尚昇"
@@ -505,8 +516,8 @@ const handleParseFile = async () => {
           remark: remark,
           locationDesc: location,
           materialCode: '',
-          warehouseId: '',
-          warehouseName: '',
+          warehouseId: matchedWarehouseId,
+          warehouseName,
           locationCode: '',
           batchNo: '',
           unitCost: 0,
@@ -523,6 +534,13 @@ const handleParseFile = async () => {
       })
 
     parsed.value = true
+    // DEV-696：模式①快速导入仅支持 100 行，超出阻止进入表格（防浏览器崩溃）
+    if (dataList.value.length > 100) {
+      ElMessage.warning(`快速导入模式仅支持 100 行，当前 ${dataList.value.length} 行，请改用批量校验导入模式`)
+      dataList.value = []
+      parsed.value = false
+      return
+    }
     ElMessage.success(`成功解析 ${dataList.value.length} 条数据`)
   } catch (error) {
     console.error('解析文件失败:', error)
@@ -590,12 +608,9 @@ const checkMaterial = async (row: ImportRow): Promise<{ success: boolean; create
       locationDesc: row.locationDesc,
       warehouseId: row.warehouseId ? Number(row.warehouseId) : undefined,
     })
-    // 自动填充仓库和库位
+    // 自动填充仓库名称（库位已停用，不再回填）
     if (res.data && res.data.warehouseName) {
       row.warehouseName = res.data.warehouseName || ''
-    }
-    if (res.data && res.data.locationCode) {
-      row.locationCode = res.data.locationCode
     }
     if (res.data && res.data.materialId) {
       row.checked = true

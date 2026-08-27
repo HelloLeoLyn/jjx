@@ -19,6 +19,7 @@ import {
   getStatusLabel,
   getStatusType,
   getPriorityLabel,
+  getMaterialStatusLabel,
   calculateProgress,
   formatDateRange,
 } from '../utils/orderFormatters'
@@ -78,33 +79,52 @@ export function useProductionOrder() {
       }
 
       const response = await getProductionOrderList(queryParams)
+      const list = (response && response.data) || []
 
-      if (response && response.data && response.data.length > 0) {
-        // 转换API返回的数据为前端需要的格式
-        orderList.value = response.data.list.map((order: any) => ({
-          ...order,
-          // 计算显示字段
-          statusLabel: getStatusLabel(
-            order.orderStatus,
-            order.approvalStatus,
-            order.executionStatus
-          ),
-          statusType: getStatusType(order.orderStatus, order.approvalStatus, order.executionStatus),
-          priorityLabel: getPriorityLabel(order.priority),
-          planDateRange: formatDateRange(order.planStartDate, order.planEndDate),
-          actualTimeRange: formatDateRange(order.actualStartDate, order.actualEndDate),
-          progress: calculateProgress(order.completedQuantity, order.plannedQuantity),
-          progressLabel: `${order.completedQuantity}/${order.plannedQuantity}`,
-          remainingQuantity: order.plannedQuantity - order.completedQuantity,
-          // 权限控制字段
-          canConvertToWorkOrder: canConvertToWorkOrder(order),
-          canStart: canStart(order),
-          canComplete: canComplete(order),
-          canCancel: canCancel(order),
-          canEdit: canEdit(order),
-        }))
+      if (list.length > 0) {
+        // 转换API返回的数据为前端需要的格式（后端返回数组，无 .list 字段）
+        orderList.value = list.map((order: any) => {
+          // 2026-08-11 修复：后端存大写(PLAN/WORK_ORDER/HIGH)，前端判断用小写——统一小写化后，
+          // 展示字段和权限函数(转工单/开始/完成等按钮)必须都用小写化后的对象，否则按钮不显示
+          const normalized = {
+            ...order,
+            orderType: (order.orderType || '').toLowerCase(),
+            priority: (order.priority || '').toLowerCase(),
+          }
+          return {
+            ...normalized,
+            // 计算显示字段
+            statusLabel: getStatusLabel(
+              order.orderStatus,
+              order.approvalStatus,
+              order.executionStatus
+            ),
+            statusType: getStatusType(order.orderStatus, order.approvalStatus, order.executionStatus),
+            priorityLabel: getPriorityLabel(normalized.priority),
+            materialStatusLabel: getMaterialStatusLabel(order.materialStatus),
+            planDateRange: formatDateRange(order.planStartDate, order.planEndDate),
+            actualTimeRange: formatDateRange(order.actualStartDate, order.actualEndDate),
+            progress: calculateProgress(order.completedQuantity, order.plannedQuantity),
+            progressLabel: `${order.completedQuantity}/${order.plannedQuantity}`,
+            // 计划(PLAN)行：剩余可下达必须用后端动态 remainingQuantity（计划-有效已转工单），
+            // 禁止用 planned-completed 覆盖（PLAN 的 completed 恒为 0，会把已转工单额度错显示回全量）。
+            // 工单(WORK_ORDER)行：剩余 = 计划-完成（后端 persisted remaining 不随报工更新）。
+            remainingQuantity:
+              normalized.orderType === 'plan'
+                ? order.remainingQuantity != null && Number(order.remainingQuantity) >= 0
+                  ? Number(order.remainingQuantity)
+                  : Number(order.plannedQuantity || 0)
+                : order.plannedQuantity - order.completedQuantity,
+            // 权限控制字段（用 normalized：小写 orderType 判断才生效）
+            canConvertToWorkOrder: canConvertToWorkOrder(normalized),
+            canStart: canStart(normalized),
+            canComplete: canComplete(normalized),
+            canCancel: canCancel(normalized),
+            canEdit: canEdit(normalized),
+          }
+        })
 
-        total.value = response.data.total || 0
+        total.value = list.length || 0
       } else {
         orderList.value = []
         total.value = 0

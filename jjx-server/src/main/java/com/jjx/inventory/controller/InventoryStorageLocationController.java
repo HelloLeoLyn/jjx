@@ -60,7 +60,7 @@ public class InventoryStorageLocationController extends BaseController {
         List<StorageLocationVO> voList = convertToVOList(result.getRecords());
 
         // 返回分页数据
-        return Result.success(PageResult.build(voList, result.getTotal()));
+        return Result.success(PageResult.of(result, voList));
     }
 
     /**
@@ -93,7 +93,7 @@ public class InventoryStorageLocationController extends BaseController {
      * 新增库位
      */
     @PostMapping
-    @Log(module = "库位管理", businessType = BusinessType.INSERT)
+    @Log(module = "库位管理", businessType = BusinessType.INSERT, bizType = "'storage_location'", bizId = "#dto.locationId")
     @SaCheckPermission("inventory:storage-location:add")
     public Result<Void> add(@RequestBody StorageLocationSaveDTO dto) {
         // 检查库位编码是否已存在
@@ -117,7 +117,7 @@ public class InventoryStorageLocationController extends BaseController {
      * 修改库位
      */
     @PutMapping
-    @Log(module = "库位管理", businessType = BusinessType.UPDATE)
+    @Log(module = "库位管理", businessType = BusinessType.UPDATE, bizType = "'storage_location'", bizId = "#dto.locationId")
     @SaCheckPermission("inventory:storage-location:edit")
     public Result<Void> update(@RequestBody StorageLocationUpdateDTO dto) {
         if (dto.getLocationId() == null) {
@@ -146,7 +146,7 @@ public class InventoryStorageLocationController extends BaseController {
      * 删除库位
      */
     @DeleteMapping("/{id}")
-    @Log(module = "库位管理", businessType = BusinessType.DELETE)
+    @Log(module = "库位管理", businessType = BusinessType.DELETE, bizType = "'storage_location'", bizId = "#id")
     @SaCheckPermission("inventory:storage-location:delete")
     public Result<Void> delete(@PathVariable Long id) {
         storageLocationService.deleteWithCheck(id);
@@ -157,7 +157,7 @@ public class InventoryStorageLocationController extends BaseController {
      * 更新库位状态
      */
     @PutMapping("/{id}/status")
-    @Log(module = "库位管理", businessType = BusinessType.UPDATE)
+    @Log(module = "库位管理", businessType = BusinessType.UPDATE, bizType = "'storage_location'", bizId = "#id")
     @SaCheckPermission("inventory:storage-location:edit")
     public Result<Void> updateStatus(@PathVariable Long id, @RequestParam String status) {
         // 验证状态值
@@ -174,7 +174,7 @@ public class InventoryStorageLocationController extends BaseController {
      * 批量更新库位状态
      */
     @PutMapping("/batch-status")
-    @Log(module = "库位管理", businessType = BusinessType.UPDATE)
+    @Log(module = "库位管理", businessType = BusinessType.UPDATE, bizType = "'storage_location'", bizId = "#ids[0]")
     @SaCheckPermission("inventory:storage-location:edit")
     public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam String status) {
         // 验证状态值
@@ -298,7 +298,7 @@ public class InventoryStorageLocationController extends BaseController {
         }
 
         // 排序
-        wrapper.orderByDesc(InventoryStorageLocation::getCreateTime);
+        wrapper.orderByDesc(InventoryStorageLocation::getCreateTime).orderByDesc(InventoryStorageLocation::getLocationId);
 
         return wrapper;
     }
@@ -372,7 +372,7 @@ public class InventoryStorageLocationController extends BaseController {
      * 导入库位数据
      */
     @PostMapping("/import")
-    @Log(module = "库位管理", businessType = BusinessType.IMPORT)
+    @Log(module = "库位管理", businessType = BusinessType.IMPORT, bizType = "'storage_location'", bizId = "#warehouseId")
     @SaCheckPermission("inventory:storage-location:add")
     public Result<String> importStorageLocation(@RequestBody List<StorageLocationImportDTO> importList, @RequestParam Long warehouseId) {
         String operName = getUsername();

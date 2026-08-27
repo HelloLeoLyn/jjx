@@ -67,13 +67,14 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['product:create']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
             type="success"
             plain
             icon="Edit"
+            v-hasPermi="['product:edit']"
             :disabled="single"
             @click="() => handleUpdate()"
             >修改</el-button
@@ -84,6 +85,7 @@
             type="danger"
             plain
             icon="Delete"
+            v-hasPermi="['product:delete']"
             :disabled="multiple"
             @click="() => handleDelete()"
             >删除</el-button
@@ -97,6 +99,7 @@
             type="info"
             plain
             icon="Check"
+            v-hasPermi="['product:status:release']"
             :disabled="single"
             @click="() => handlePublish()"
             >发布</el-button
@@ -107,6 +110,7 @@
             type="warning"
             plain
             icon="Close"
+            v-hasPermi="['product:product:obsolete']"
             :disabled="single"
             @click="() => handleDisable()"
             >停用</el-button
@@ -133,6 +137,12 @@
           </template>
         </el-table-column>
 
+        <el-table-column label="客户" align="center" prop="customerName" min-width="130" show-overflow-tooltip>
+          <template #default="scope">
+            <span v-if="scope.row.customerName">{{ scope.row.customerName }}</span>
+            <span v-else style="color:#c0c4cc">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="产品状态" prop="productStatus" width="100">
           <template #default="scope">
             <el-tag :type="ProductEnum.status.getTagProps(scope.row.productStatus).type">
@@ -151,7 +161,7 @@
               @click="handleViewBom(scope.row)"
               >{{ scope.row.bomCode }}_{{ scope.row.bomVersion }}</el-button
             >
-            <el-button v-else link type="primary" icon="Plus" @click="handleConfigBom(scope.row)">
+            <el-button v-else link type="primary" icon="Plus" v-hasPermi="['product:edit']" @click="handleConfigBom(scope.row)">
               配置BOM
             </el-button>
           </template>
@@ -166,7 +176,7 @@
               @click="handleViewRoute(scope.row)"
               >{{ scope.row.routeCode }}_{{ scope.row.routeVersion }}</el-button
             >
-            <el-button v-else link type="primary" icon="Plus" @click="handleConfigRoute(scope.row)">
+            <el-button v-else link type="primary" icon="Plus" v-hasPermi="['product:edit']" @click="handleConfigRoute(scope.row)">
               配置工艺路线
             </el-button>
           </template>
@@ -180,30 +190,49 @@
           label="操作"
           align="left"
           class-name="small-padding fixed-width"
-          width="280"
+          min-width="300"
           fixed="right"
         >
           <template #default="scope">
             <div class="action-buttons">
+              <!-- 已配置BOM/工艺路线时可更换 -->
+              <el-button
+                v-if="scope.row.bomCode"
+                link
+                type="primary"
+                size="small"
+                v-hasPermi="['product:edit']"
+                @click="handleConfigBom(scope.row)"
+                >更换BOM</el-button
+              >
+              <el-button
+                v-if="scope.row.routeCode"
+                link
+                type="primary"
+                size="small"
+                v-hasPermi="['product:edit']"
+                @click="handleConfigRoute(scope.row)"
+                >更换工艺路线</el-button
+              >
               <!-- 开发中：编辑、提交审核、删除 -->
               <template
                 v-if="ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.EDIT)"
               >
-                <el-button link type="primary" size="small" @click="handleUpdate(scope.row)"
+                <el-button link type="primary" size="small" v-hasPermi="['product:edit']" @click="handleUpdate(scope.row)"
                   >编辑</el-button
                 >
               </template>
               <template
                 v-if="ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.SUBMIT)"
               >
-                <el-button link type="warning" size="small" @click="handleSubmit(scope.row)"
+                <el-button link type="warning" size="small" v-hasPermi="['product:status:submit']" @click="handleSubmit(scope.row)"
                   >提交审核</el-button
                 >
               </template>
               <template
                 v-if="ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.DELETE)"
               >
-                <el-button link type="danger" size="small" @click="handleDelete(scope.row)"
+                <el-button link type="danger" size="small" v-hasPermi="['product:delete']" @click="handleDelete(scope.row)"
                   >删除</el-button
                 >
               </template>
@@ -214,21 +243,21 @@
                   ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.APPROVE)
                 "
               >
-                <el-button link type="success" size="small" @click="handleApprove(scope.row)"
+                <el-button link type="success" size="small" v-hasPermi="['product:status:approve']" @click="handleApprove(scope.row)"
                   >通过</el-button
                 >
               </template>
               <template
                 v-if="ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.REJECT)"
               >
-                <el-button link type="danger" size="small" @click="handleReject(scope.row)"
+                <el-button link type="danger" size="small" v-hasPermi="['product:status:reject']" @click="handleReject(scope.row)"
                   >驳回</el-button
                 >
               </template>
               <template
                 v-if="ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.CANCEL)"
               >
-                <el-button link type="info" size="small" @click="handleCancel(scope.row)"
+                <el-button link type="info" size="small" v-hasPermi="['product:product:edit']" @click="handleCancel(scope.row)"
                   >取消</el-button
                 >
               </template>
@@ -239,7 +268,7 @@
                   ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.PUBLISH)
                 "
               >
-                <el-button link type="success" size="small" @click="handlePublish(scope.row)"
+                <el-button link type="success" size="small" v-hasPermi="['product:status:release']" @click="handlePublish(scope.row)"
                   >发布</el-button
                 >
               </template>
@@ -250,7 +279,7 @@
                   ProductEnum.status.canDo(scope.row.productStatus, ProductEnum.actions.OBSOLETE)
                 "
               >
-                <el-button link type="danger" size="small" @click="handleObsolete(scope.row)"
+                <el-button link type="danger" size="small" v-hasPermi="['product:product:obsolete']" @click="handleObsolete(scope.row)"
                   >停产</el-button
                 >
               </template>
@@ -281,7 +310,7 @@
     <BomDetail :bom-id="currentBomId" v-model="bomDetailDialogVisible" />
     <!-- 配置验证对话框组件 -->
     <ProductConfigValidateDialog v-model="validateOpen" :product-id="selectedProductId" />
-    <ApproveDialog v-model="approveOpen" :product-id="selectedProductId"></ApproveDialog>
+    <ApproveDialog v-model="approveOpen" :product-id="selectedProductId" @success="getList" />
     <!-- 配置BOM对话框 -->
     <BomConfigDialog v-model="bomConfigVisible" :product="bomConfigProduct" @success="getList" />
     <!-- 配置工艺路线对话框 -->

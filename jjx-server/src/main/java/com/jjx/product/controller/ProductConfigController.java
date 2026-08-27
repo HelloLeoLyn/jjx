@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 产品配置Controller
  */
 @RestController
-@RequestMapping("/product/config")
+@RequestMapping("/engineering/config")
 @RequiredArgsConstructor
 public class ProductConfigController extends BaseController {
     private final ProductService configService;

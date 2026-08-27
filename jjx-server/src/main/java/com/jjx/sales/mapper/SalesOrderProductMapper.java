@@ -38,8 +38,8 @@ public interface SalesOrderProductMapper extends BaseMapper<SalesOrderProduct> {
             "       pr.approve_status AS routing_status " +
             "FROM sales_order_product sop " +
             "LEFT JOIN product p ON sop.product_id = p.product_id " +
-            "LEFT JOIN product_bom pb ON p.current_bom_id = pb.bom_id " +
-            "LEFT JOIN product_routing pr ON p.current_route_id = pr.routing_id " +
+            "LEFT JOIN engineering_bom pb ON p.current_bom_id = pb.bom_id " +
+            "LEFT JOIN engineering_routing pr ON p.current_route_id = pr.routing_id " +
             "LEFT JOIN product_category pc ON pc.category_id = p.category_id " +
             "WHERE sop.order_id = #{orderId}")
     List<ProductValidationVO> selectProductValidationByOrderId(@Param("orderId") Long orderId);

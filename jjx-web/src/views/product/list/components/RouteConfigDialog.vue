@@ -142,7 +142,7 @@ import { Search, FolderDelete } from '@element-plus/icons-vue'
 import RouteDetailDialog from '../../route/components/RouteDetailDialog.vue'
 import { productRouteApi } from '@/api/product/routing'
 import { productApi } from '@/api/product'
-import type { ProductRoutingVO } from '@/types/product/routing'
+import type { EngineeringRoutingVO } from '@/types/product/routing'
 import type { ProductVo } from '@/types/product'
 
 interface Props {
@@ -172,7 +172,7 @@ const visible = computed({
 // 响应式数据
 const loading = ref(false)
 const saving = ref(false)
-const routeList = ref<ProductRoutingVO[]>([])
+const routeList = ref<EngineeringRoutingVO[]>([])
 const searchKeyword = ref('')
 const selectedRouteId = ref<number | undefined>(undefined)
 const previewVisible = ref(false)
@@ -205,12 +205,12 @@ const handleSearch = () => {
 }
 
 // 行点击
-const handleRowClick = (row: ProductRoutingVO) => {
+const handleRowClick = (row: EngineeringRoutingVO) => {
   selectedRouteId.value = row.routingId
 }
 
 // 预览工艺路线
-const handlePreview = async (row: ProductRoutingVO) => {
+const handlePreview = async (row: EngineeringRoutingVO) => {
   previewRouteId.value = row.routingId
   previewVisible.value = true
 }
@@ -218,7 +218,7 @@ const handlePreview = async (row: ProductRoutingVO) => {
 // 去创建工艺路线
 const handleGoCreateRoute = () => {
   visible.value = false
-  router.push('/product/route')
+  router.push('/engineering/route')
 }
 
 // 加载已审批工艺路线列表
@@ -229,7 +229,7 @@ const loadApprovedRoutes = async () => {
   selectedRouteId.value = undefined
   try {
     const res = await productRouteApi.getApprovedRouteList(props.product.productId)
-    routeList.value = (res.data || []) as ProductRoutingVO[]
+    routeList.value = (res.data || []) as EngineeringRoutingVO[]
   } catch (error) {
     console.error('获取已审批工艺路线列表失败:', error)
     ElMessage.error('获取工艺路线列表失败')

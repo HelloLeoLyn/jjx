@@ -67,7 +67,7 @@ public class ProductInstance {
     /**
      * 状态：pending待生产/in_production生产中/completed已完成/delivered已交付
      */
-    private String instanceStatus;
+    private Integer instanceStatus;
 
 //    /**
 //     * 生产开始时间

@@ -15,7 +15,7 @@ public enum OrderStatusEnum {
     PENDING_REVIEW(2, "待审核", "已提交审核，等待审核人审核", false, false),
     REVIEWING(3, "审核中", "审核人正在审核", false, false),
     APPROVED(4, "已审核", "审核通过", false, false),
-    REJECTED(5, "已驳回", "审核未通过", true, true),
+    REJECTED(5, "已驳回", "审核未通过", true, false),
     CONFIRMED(6, "已确认", "客户已确认订单", false, false),
     IN_PRODUCTION(7, "生产中", "订单已进入生产流程", false, false),
     SHIPPED(8, "已发货", "产品已发货", false, false),
@@ -43,7 +43,7 @@ public enum OrderStatusEnum {
         TRANSITIONS.put(DRAFT, EnumSet.of(PENDING_REVIEW, CANCELLED));
         TRANSITIONS.put(PENDING_REVIEW, EnumSet.of(REVIEWING, CANCELLED));
         TRANSITIONS.put(REVIEWING, EnumSet.of(APPROVED, REJECTED, CANCELLED));
-        TRANSITIONS.put(APPROVED, EnumSet.of(CONFIRMED, CANCELLED));
+        TRANSITIONS.put(APPROVED, EnumSet.of(CONFIRMED, IN_PRODUCTION, CANCELLED));
         TRANSITIONS.put(REJECTED, EnumSet.of(DRAFT, CANCELLED));
         TRANSITIONS.put(CONFIRMED, EnumSet.of(IN_PRODUCTION, CANCELLED));
         TRANSITIONS.put(IN_PRODUCTION, EnumSet.of(SHIPPED, CANCELLED));
@@ -81,5 +81,33 @@ public enum OrderStatusEnum {
 
     public boolean isReviewable() {
         return this == PENDING_REVIEW || this == REVIEWING;
+    }
+
+    /**
+     * 是否可客户确认（已审核状态可确认）
+     */
+    public boolean isConfirmable() {
+        return this == APPROVED;
+    }
+
+    /**
+     * 是否可取消（状态机中可流转到已取消的状态）
+     */
+    public boolean isCancellable() {
+        return TRANSITIONS.getOrDefault(this, Collections.emptySet()).contains(CANCELLED);
+    }
+
+    /**
+     * 是否为终态
+     */
+    public boolean isFinal() {
+        return this == COMPLETED || this == CANCELLED;
+    }
+
+    /**
+     * 是否为进行中状态（非草稿、非终态）
+     */
+    public boolean isInProgress() {
+        return this != DRAFT && !isFinal();
     }
 }

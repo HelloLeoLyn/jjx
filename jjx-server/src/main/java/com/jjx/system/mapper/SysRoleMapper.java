@@ -3,6 +3,8 @@ package com.jjx.system.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.jjx.system.domain.entity.SysRole;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -26,7 +28,8 @@ public interface SysRoleMapper extends BaseMapper<SysRole> {
      * @param userId 用户ID
      * @return 角色列表
      */
-    List<SysRole> selectRolePermissionByUserId(Long userId);
+    @Select("SELECT r.* FROM sys_role r JOIN sys_user_role ur ON r.role_id = ur.role_id WHERE ur.user_id = #{userId}")
+    List<SysRole> selectRolePermissionByUserId(@Param("userId") Long userId);
 
     /**
      * 查询所有角色

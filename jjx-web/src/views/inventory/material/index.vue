@@ -17,7 +17,7 @@
       @refresh="getList"
     >
       <template #batch-actions>
-        <el-button type="danger" size="small" @click="() => handleDelete(null)">
+        <el-button type="danger" size="small" v-hasPermi="['inventory:material:delete']" @click="() => handleDelete(null)">
           批量删除
         </el-button>
       </template>
@@ -62,8 +62,8 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
-            <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="primary" v-hasPermi="['inventory:material:edit']" @click="handleEdit(row)">编辑</el-button>
+            <el-button link type="danger" v-hasPermi="['inventory:material:delete']" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -77,44 +77,25 @@
       />
     </el-card>
 
-    <!-- 导入对话框 -->
-    <el-dialog title="导入物料" v-model="importDialogVisible" width="500px" append-to-body>
-      <el-upload
-        ref="uploadRef"
-        :auto-upload="false"
-        :limit="1"
-        :on-change="handleFileChange"
-        :on-exceed="handleExceed"
-        accept=".xlsx,.xls"
-        drag
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
-        <template #tip>
-          <div class="el-upload__tip">
-            <p>仅支持 .xlsx / .xls 格式的Excel文件</p>
-            <p>表头需包含：材料、规格、供应商、备注</p>
-            <el-button link type="primary" @click="handleDownloadTemplate">
-              下载导入模板
-            </el-button>
-          </div>
-        </template>
-      </el-upload>
-      <template #footer>
-        <el-button @click="handleImportCancel">取消</el-button>
-        <el-button type="primary" :loading="importLoading" @click="handleImport">
-          开始导入
-        </el-button>
-      </template>
-    </el-dialog>
-
     <!-- 物料表单对话框 -->
     <MaterialFormDialog
       v-model="dialogVisible"
       :material-id="editingMaterialId"
       @success="handleFormSuccess"
     />
+
+    <!-- 通用导入弹窗（2026-08-13，含结果/失败明细） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入物料"
+      :import-api="materialApi.importExcel"
+      :template-api="materialApi.downloadImportTemplate"
+      template-name="物料导入模板.xlsx"
+      @success="getList"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -124,12 +105,14 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
+import * as XLSX from 'xlsx'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import Toolbar from '@/components/common-ui/Toolbar.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import { materialApi } from '@/api/inventory/material'
+import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { formatCurrency } from '@/utils/format'
 import type { InventoryMaterial, InventoryMaterialQueryParams } from '@/types/inventory/material'
 import type { SearchOptions, ToolbarOptions } from '@/components/common-ui/type'
@@ -170,11 +153,8 @@ const multiple = ref(true)
 const dialogVisible = ref(false)
 const editingMaterialId = ref<number | null>(null)
 
-// 导入相关
+// 导入（2026-08-13 通用 ExcelImportDialog 组件）
 const importDialogVisible = ref(false)
-const importLoading = ref(false)
-const uploadRef = ref<UploadInstance>()
-const importFile = ref<File | null>(null)
 
 // 获取列表
 const getList = async () => {
@@ -253,77 +233,16 @@ const handleStatusChange = async (row: any) => {
 // 工具栏按钮点击事件
 const handleToolbarClick = (key: string) => {
   if (key === 'add') handleAdd()
-  if (key === 'import') handleShowImport()
+  if (key === 'import') importDialogVisible.value = true
   if (key === 'export') handleExport()
-}
-
-// 显示导入对话框
-const handleShowImport = () => {
-  importFile.value = null
-  importDialogVisible.value = true
-}
-
-// 文件选择变更
-const handleFileChange = (uploadFile: any) => {
-  importFile.value = uploadFile.raw
-}
-
-// 文件数量超出限制
-const handleExceed = () => {
-  ElMessage.warning('每次只能上传一个文件')
-}
-
-// 下载导入模板
-const handleDownloadTemplate = async () => {
-  try {
-    const res = await materialApi.downloadImportTemplate()
-    const blob = new Blob([res as any], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = '物料导入模板.xlsx'
-    link.click()
-    URL.revokeObjectURL(link.href)
-  } catch (error) {
-    ElMessage.error('下载模板失败')
-  }
-}
-
-// 取消导入
-const handleImportCancel = () => {
-  importDialogVisible.value = false
-  importFile.value = null
-  // 清除上传组件中的文件列表
-  uploadRef.value?.clearFiles()
-}
-
-// 执行导入
-const handleImport = async () => {
-  if (!importFile.value) {
-    ElMessage.warning('请先选择要导入的文件')
-    return
-  }
-
-  importLoading.value = true
-  try {
-    const res = await materialApi.importExcel(importFile.value)
-    ElMessage.success((res as any).data || '导入成功')
-    importDialogVisible.value = false
-    importFile.value = null
-    // 清除上传组件中的文件列表
-    uploadRef.value?.clearFiles()
-    getList()
-  } catch (error: any) {
-    ElMessage.error(error?.msg || '导入失败')
-  } finally {
-    importLoading.value = false
-  }
 }
 
 // 导出
 const handleExport = () => {
-  materialApi.export(queryParams)
+  const loading = ElLoading.service({ text: '导出中...', lock: true })
+  materialApi
+    .export(queryParams)
+    .finally(() => loading.close())
 }
 
 onMounted(() => {

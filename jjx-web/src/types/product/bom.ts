@@ -1,7 +1,7 @@
 // ==================== BOM管理类型 ====================
 // ==================== 通用类型 ====================
 import type { PageQuery, PageResult } from '@/types/index'
-export interface ProductBomQueryParams extends PageQuery {
+export interface EngineeringBomQueryParams extends PageQuery {
   bomCode?: string
   bomName?: string
   productCode?: string
@@ -12,7 +12,7 @@ export interface ProductBomQueryParams extends PageQuery {
   endDate?: string
 }
 
-export interface ProductBomFormData {
+export interface EngineeringBomFormData {
   bomId?: number
   bomCode: string
   bomName: string
@@ -25,18 +25,28 @@ export interface ProductBomFormData {
   effectiveDate?: string
   expiryDate?: string
   remark?: string
-  items: ProductBomItem[]
+  items: EngineeringBomItem[]
 }
 
-export interface ProductBomItem {
+export interface EngineeringBomItem {
   itemId?: number
   bomId?: number
+  /** 父节点明细ID（NULL=根节点，树形结构） */
+  parentMaterialId?: number | null
+  /** 子节点（树形表格用） */
+  children?: EngineeringBomItem[]
   materialId: number
   materialCode: string
   materialName: string
   specification: string
   unit: string
   quantity: number
+  /** 应用料（含损耗）= 用量×(1+损耗率/100) */
+  appliedQty?: number
+  /** 实际投料（板材/卷材按最低投料向上取整） */
+  actualIssueQty?: number
+  /** 物料类型（R=板材/卷材） */
+  materialType?: string
   lossRate: number
   remark?: string
   sortOrder: number
@@ -61,7 +71,7 @@ export interface BomSimpleVo {
   approveStatus: number
   materialCount: number
 }
-export interface ProductBom {
+export interface EngineeringBom {
   bomId: number
   bomCode: string
   bomName: string
@@ -69,6 +79,8 @@ export interface ProductBom {
   productCode: string
   productName: string
   bomVersion: string
+  /** 版本号（V1.0/V2.0，统一字段） */
+  version?: string
   approveStatus: number
   isCurrent: boolean
   effectiveDate: string
@@ -80,7 +92,7 @@ export interface ProductBom {
   createBy: string
   updateBy: string
 }
-export interface ProductBomVO {
+export interface EngineeringBomVO {
   bomId: number
   bomCode: string
   bomName: string
@@ -88,6 +100,8 @@ export interface ProductBomVO {
   productCode: string
   productName: string
   bomVersion: string
+  /** 版本号（V1.0/V2.0，统一字段） */
+  version?: string
   approveStatus: number
   isCurrent: boolean
   effectiveDate: string
@@ -98,5 +112,5 @@ export interface ProductBomVO {
   updateTime: string
   createBy: string
   updateBy: string
-  items: ProductBomItem[]
+  items: EngineeringBomItem[]
 }

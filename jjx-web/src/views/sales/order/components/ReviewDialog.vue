@@ -51,6 +51,18 @@
         />
       </el-form-item>
 
+      <!-- 审核通过时上传确认书等资料（选填，2026-08-12） -->
+      <el-form-item v-if="formData.result === 'approve'" label="确认书/资料">
+        <AttachmentUploader
+          biz-type="order"
+          :biz-id="props.orderId"
+          button-text="上传确认书"
+          tip="选填：客户确认书/签字扫描件等，审核通过后随订单存档"
+          :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
+          @success="onUploadSuccess"
+        />
+      </el-form-item>
+
       <!-- 审核人信息（只读） -->
       <el-divider content-position="left">审核信息</el-divider>
 
@@ -76,6 +88,7 @@ import { ElMessage } from 'element-plus'
 import { orderStatusApi } from '@/api/sales/orderStatus'
 import { orderApi } from '@/api/sales/order'
 import { useUserStore } from '@/store/modules/user'
+import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -123,6 +136,16 @@ const formData = ref({
   reviewTime: '',
 })
 
+// 审核通过时上传的附件ID列表（选填）
+const attachmentIds = ref<number[]>([])
+
+// 上传成功回调
+function onUploadSuccess(id: number) {
+  if (!attachmentIds.value.includes(id)) {
+    attachmentIds.value.push(id)
+  }
+}
+
 // 表单验证规则
 const rules = {
   remark: [
@@ -147,7 +170,7 @@ const fetchOrderDetail = async () => {
 
   try {
     const response = await orderApi.getOrder(props.orderId)
-    const data = response.data
+    const data = response.data!
 
     orderDetail.value = data
     formData.value.orderId = data.orderId
@@ -188,8 +211,9 @@ const handleConfirm = async () => {
 
   try {
     if (formData.value.result === 'approve') {
-      // 审核通过
-      await orderStatusApi.approveOrder(props.orderId, formData.value.remark)
+      // 审核通过（附带上传的确认书等附件ID，选填）
+      const attachments = attachmentIds.value.length ? attachmentIds.value.join(',') : undefined
+      await orderStatusApi.approveOrder(props.orderId, formData.value.remark, attachments)
       ElMessage.success('审核通过成功')
     } else {
       // 审核驳回
@@ -221,6 +245,7 @@ const handleClose = () => {
     reviewerName: '',
     reviewTime: '',
   }
+  attachmentIds.value = []
   formRef.value?.resetFields()
 }
 

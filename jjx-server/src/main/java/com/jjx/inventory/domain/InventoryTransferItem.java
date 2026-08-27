@@ -18,6 +18,16 @@ public class InventoryTransferItem extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
 
+    /** 审计字段：inventory_transfer_item 表无审计列，排除父类字段避免 INSERT 报 Unknown column */
+    @TableField(exist = false)
+    private String createBy;
+    @TableField(exist = false)
+    private java.time.LocalDateTime createTime;
+    @TableField(exist = false)
+    private String updateBy;
+    @TableField(exist = false)
+    private java.time.LocalDateTime updateTime;
+
     /** 明细ID */
     @TableId(type = IdType.AUTO)
     private Long itemId;
@@ -65,6 +75,6 @@ public class InventoryTransferItem extends BaseEntity {
     private BigDecimal inQuantity;
 
     /** 状态：pending待处理/partial部分完成/completed已完成 */
-    private String status;
+    private Integer status;
 
 }

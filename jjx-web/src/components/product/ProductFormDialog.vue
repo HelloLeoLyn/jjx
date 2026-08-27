@@ -139,9 +139,10 @@
 <script setup lang="ts">
 import { ref, reactive, watch, computed, nextTick } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import type { ProductFormData, ProductBom, ProductVo } from '@/types/product'
-import type { ProductRoutingVO } from '@/types/product/routing'
-import { getApprovedBomList, getApprovedRouteList } from '@/api/product'
+import type { ProductFormData, ProductVo } from '@/types/product'
+import type { EngineeringBomVO } from '@/types/product/bom'
+import type { EngineeringRoutingVO } from '@/types/product/routing'
+import { getApprovedBomList } from '@/api/product'
 import ProductSpecForm from './ProductSpecForm.vue'
 
 // Props定义
@@ -171,7 +172,7 @@ const props = withDefaults(defineProps<Props>(), {
     brand: '',
     model: '',
     description: '',
-    productStatus: '',
+    productStatus: 0,
     approvalStatus: 'pending',
     remark: '',
     attachments: [],
@@ -185,6 +186,7 @@ const props = withDefaults(defineProps<Props>(), {
     routeName: '',
     routeCode: '',
     routeVersion: '',
+    leadTime: 0,
   }),
   categoryOptions: () => [],
 })
@@ -211,8 +213,8 @@ const productFormRef = ref<FormInstance>()
 const form = reactive<ProductFormData>({ ...props.formData })
 
 // BOM和Route选项
-const bomOptions = ref<ProductBom[]>([])
-const routeOptions = ref<ProductRoutingVO[]>([])
+const bomOptions = ref<EngineeringBomVO[]>([])
+const routeOptions = ref<EngineeringRoutingVO[]>([])
 
 // 监听props.formData变化，更新本地表单数据
 watch(
@@ -246,7 +248,7 @@ const loadBomAndRouteOptions = async (productId: number) => {
   try {
     const [bomRes, routeRes] = await Promise.all([
       getApprovedBomList(productId),
-      getApprovedRouteList(productId),
+      getApprovedBomList(productId),
     ])
     bomOptions.value = (bomRes as any).data?.data || (bomRes as any).data || []
     routeOptions.value = (routeRes as any).data?.data || (routeRes as any).data || []

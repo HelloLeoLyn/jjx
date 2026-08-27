@@ -41,6 +41,7 @@
       <el-button
         type="danger"
         icon="Delete"
+        v-hasPermi="['production:order:delete']"
         @click="handleBatchDelete"
         :disabled="selectedRows.length === 0"
         :loading="deleting"
@@ -51,6 +52,14 @@
       <el-button icon="Refresh" @click="handleRefresh" :loading="loading"> 刷新 </el-button>
 
       <el-button icon="Download" @click="handleExport"> 导出 </el-button>
+
+      <el-button
+        icon="Document"
+        :disabled="selectedRows.length !== 1"
+        @click="emit('export-pdf')"
+      >
+        导出PDF
+      </el-button>
     </el-space>
 
     <div class="selection-info" v-if="selectedRows.length > 0">
@@ -83,6 +92,7 @@ interface Emits {
   (e: 'create'): void
   (e: 'refresh'): void
   (e: 'export'): void
+  (e: 'export-pdf'): void
   (e: 'batch-delete'): void
   (e: 'batch-command', command: string): void
 }
@@ -99,35 +109,35 @@ const emit = defineEmits<Emits>()
 const canBatchApprove = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderType === 'plan' && row.orderStatus === 'pending_approval'
+    (row) => row.orderType === 'plan' && row.orderStatus === 1
   )
 })
 
 const canBatchStart = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderType === 'work_order' && row.orderStatus === 'scheduled'
+    (row) => row.orderType === 'work_order' && row.orderStatus === 4
   )
 })
 
 const canBatchComplete = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderType === 'work_order' && row.orderStatus === 'in_progress'
+    (row) => row.orderType === 'work_order' && row.orderStatus === 6
   )
 })
 
 const canBatchCancel = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderStatus !== 'completed' && row.orderStatus !== 'cancelled'
+    (row) => row.orderStatus !== 8 && row.orderStatus !== 9
   )
 })
 
 const canBatchDelete = computed(() => {
   if (props.selectedRows.length === 0) return false
   return props.selectedRows.every(
-    (row) => row.orderStatus === 'draft' || row.orderStatus === 'cancelled'
+    (row) => row.orderStatus === 0 || row.orderStatus === 9
   )
 })
 

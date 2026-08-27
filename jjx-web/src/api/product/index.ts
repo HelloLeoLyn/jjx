@@ -14,8 +14,8 @@ import type { PageResult, R } from '@/types'
 /**
  * 搜索产品
  */
-export function searchProduct(keyword: string) {
-  return request.get('/product/search', { params: { keyword } })
+export function searchProduct(keyword: string, customerId?: number) {
+  return request.get('/product/search', { params: { keyword, customerId } })
 }
 
 /**
@@ -42,14 +42,14 @@ export function getProductInfo(productId: number) {
 /**
  * 新增产品
  */
-export function addProduct(data: any) {
+export function addProduct(data: ProductFormData) {
   return request.post('/product', data)
 }
 
 /**
  * 修改产品
  */
-export function editProduct(data: any) {
+export function editProduct(data: ProductFormData) {
   return request.put('/product', data)
 }
 
@@ -69,7 +69,7 @@ export function exportProduct(params: ProductQueryParams) {
       params,
       responseType: 'blob',
     })
-    .then((response: any) => {
+    .then((response: Blob) => {
       // 创建下载链接
       const url = window.URL.createObjectURL(new Blob([response]))
       const link = document.createElement('a')
@@ -173,7 +173,7 @@ export function removeProductInstance(instanceId: number) {
 /**
  * 批量创建产品实例
  */
-export function batchCreateProductInstances(orderId: number, config: any) {
+export function batchCreateProductInstances(orderId: number, config: Record<string, unknown>) {
   return request.post(`/product/instance/batch/${orderId}`, config)
 }
 
@@ -207,21 +207,21 @@ export function validateProductConfig(productId: number) {
  * 获取产品已审批的BOM列表
  */
 export function getApprovedBomList(productId: number) {
-  return request.get(`/product/bom/approved/${productId}`)
+  return request.get(`/engineering/bom/approved/${productId}`)
 }
 
 /**
  * 配置产品BOM
  */
-export function configProductBom(productId: number, currentBomId: number) {
-  return request.post('/product/config/bom', { productId, currentBomId })
+export function configEngineeringBom(productId: number, currentBomId: number) {
+  return request.post('/engineering/config/bom', { productId, currentBomId })
 }
 
 /**
  * 配置产品工艺路线
  */
 export function configProductRoute(productId: number, currentRouteId: number) {
-  return request.post('/product/config/route', { productId, currentRouteId })
+  return request.post('/engineering/config/route', { productId, currentRouteId })
 }
 
 export function generateProductCode(categoryId: number) {
@@ -238,6 +238,13 @@ export function isUniqueProductCode(productCode: string) {
 
 export function getFullProduct(productId: number) {
   return request.get<R<ProductFullVO>>(`/product/${productId}/full`)
+}
+
+/**
+ * 获取产品总数
+ */
+export function getProductCount() {
+  return request.get<R<number>>('/product/count')
 }
 
 import * as category from '@/api/product/category'
@@ -268,7 +275,7 @@ export const productApi = {
   standardProcess: standardProcessApi,
   isUniqueProductCode,
   full: getFullProduct,
-  configBom: configProductBom,
+  configBom: configEngineeringBom,
   configRoute: configProductRoute,
 }
 

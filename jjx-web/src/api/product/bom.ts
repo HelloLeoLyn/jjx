@@ -1,9 +1,9 @@
 import request from '@/utils/request'
 import type {
-  ProductBomQueryParams,
-  ProductBom,
-  ProductBomFormData,
-  ProductBomItem,
+  EngineeringBomQueryParams,
+  EngineeringBom,
+  EngineeringBomFormData,
+  EngineeringBomItem,
   BomSimpleVo,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
@@ -15,8 +15,8 @@ export const productBomApi = {
   /**
    * 获取BOM列表
    */
-  listProductBom(params: ProductBomQueryParams) {
-    return request.get<R<PageResult<ProductBom>>>('/product/bom/page', {
+  listEngineeringBom(params: EngineeringBomQueryParams) {
+    return request.get<R<PageResult<EngineeringBom>>>('/engineering/bom/page', {
       params,
     })
   },
@@ -24,96 +24,91 @@ export const productBomApi = {
    * 获取BOM列表
    */
   getApprovedBomByProductId(prodcutId: number) {
-    return request.get<R<BomSimpleVo[]>>(`/product/bom/approved/${prodcutId}`)
+    return request.get<R<BomSimpleVo[]>>(`/engineering/bom/approved/${prodcutId}`)
   },
   /**
    * 获取BOM详情
    */
-  getProductBomInfo(bomId: number) {
-    return request.get(`/product/bom/${bomId}`)
+  getEngineeringBomInfo(bomId: number) {
+    return request.get(`/engineering/bom/${bomId}`)
   },
 
   /**
    * 新增BOM
    */
-  addProductBom(data: ProductBomFormData) {
-    return request.post('/product/bom', data)
+  addEngineeringBom(data: EngineeringBomFormData) {
+    return request.post('/engineering/bom', data)
   },
 
   /**
    * 修改BOM
    */
-  editProductBom(data: ProductBomFormData) {
-    return request.put('/product/bom', data)
+  editEngineeringBom(data: EngineeringBomFormData) {
+    return request.put('/engineering/bom', data)
   },
 
   /**
    * 删除BOM
    */
-  removeProductBom(bomId: number) {
-    return request.delete(`/product/bom/${bomId}`)
+  removeEngineeringBom(bomId: number) {
+    return request.delete(`/engineering/bom/${bomId}`)
   },
 
   /**
    * 获取BOM明细列表
    */
-  listProductBomItem(bomId: number) {
-    return request.get(`/product/bom/items/${bomId}`)
+  listEngineeringBomItem(bomId: number) {
+    return request.get(`/engineering/bom/items/${bomId}`)
   },
 
   /**
-   * 新增BOM明细
+   * 提交BOM审核（草稿→审核中）
    */
-  addProductBomItem(bomId: number, data: ProductBomItem) {
-    return request.post(`/product/bom/${bomId}/items`, data)
-  },
-
-  /**
-   * 修改BOM明细
-   */
-  editProductBomItem(itemId: number, data: ProductBomItem) {
-    return request.put(`/product/bom/items/${itemId}`, data)
-  },
-
-  /**
-   * 删除BOM明细
-   */
-  removeProductBomItem(itemId: number) {
-    return request.delete(`/product/bom/items/${itemId}`)
+  submitEngineeringBom(bomId: number) {
+    return request.put(`/engineering/bom/submit/${bomId}`)
   },
 
   /**
    * 审批BOM
    */
-  approveProductBom(bomId: number, remark?: string) {
-    return request.put(`/product/bom/approve/${bomId}`, { bomId, remark })
+  approveEngineeringBom(bomId: number, remark?: string) {
+    return request.put(`/engineering/bom/approve/${bomId}`, { bomId, remark })
   },
 
   /**
    * 驳回BOM
    */
-  rejectProductBom(bomId: number, remark: string) {
-    return request.put(`/product/bom/reject/${bomId}`, { bomId, remark })
+  rejectEngineeringBom(bomId: number, remark: string) {
+    return request.put(`/engineering/bom/reject/${bomId}`, { bomId, remark })
   },
 
   /**
-   * 设置默认BOM（对应后端 PUT /product/bom/setDefault/{bomId}）
+   * 复制为新版本（DEV-619：版本号递增、明细复制、isCurrent=false）
    */
-  setCurrentProductBom(bomId: number) {
-    return request.put(`/product/bom/setDefault/${bomId}`)
+  copyEngineeringBom(bomId: number, newVersion: string) {
+    return request.post(`/engineering/bom/${bomId}/copy`, null, {
+      params: { newVersion },
+    })
   },
 
   /**
-   * 计算BOM成本（对应后端 POST /product/bom/calculateCost/{bomId}）
+   * 设置默认BOM（对应后端 PUT /engineering/bom/setDefault/{bomId}）
+   */
+  setCurrentEngineeringBom(bomId: number) {
+    return request.put(`/engineering/bom/setDefault/${bomId}`)
+  },
+
+  /**
+   * 计算BOM成本（对应后端 POST /engineering/bom/calculateCost/{bomId}）
    */ calculateBomCost(bomId: number) {
-    return request.post(`/product/bom/calculateCost/${bomId}`)
+    return request.post(`/engineering/bom/calculateCost/${bomId}`)
   },
 
   /**
    * 导出BOM数据
    */
-  exportProductBom(params: ProductBomQueryParams) {
-    return request.get('/product/bom/export', {
+  exportEngineeringBom(params: EngineeringBomQueryParams) {
+    return request.get('/engineering/bom/export', {
       params,
       responseType: 'blob',
     })

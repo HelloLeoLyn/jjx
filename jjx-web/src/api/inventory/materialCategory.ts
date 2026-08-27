@@ -2,6 +2,7 @@ import request from '@/utils/request'
 import type {
   MaterialCategoryQueryParams,
   MaterialCategoryFormData,
+  MaterialCategoryItem,
   MaterialCategoryListResult,
 } from '@/types/inventory/material'
 import type { PageResult, R } from '@/types'
@@ -17,14 +18,14 @@ export const materialCategoryApi = {
 
   // 获取材料分类树
   getTree(params: MaterialCategoryQueryParams) {
-    return request.get<R<any[]>>('/inventory/material-category/tree', {
+    return request.get<R<MaterialCategoryItem[]>>('/inventory/material-category/tree', {
       params,
     })
   },
 
   // 获取材料分类详情
   getInfo(categoryId: number) {
-    return request.get<R<any>>(`/inventory/material-category/${categoryId}`)
+    return request.get<R<MaterialCategoryFormData>>(`/inventory/material-category/${categoryId}`)
   },
 
   // 新增材料分类

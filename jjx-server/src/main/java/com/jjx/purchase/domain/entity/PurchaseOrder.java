@@ -28,6 +28,9 @@ public class PurchaseOrder {
      */
     private String orderNo;
 
+    /** 链路追踪ID（DEV-568） */
+    private String traceId;
+
     /**
      * 供应商ID
      */
@@ -39,9 +42,14 @@ public class PurchaseOrder {
     private String supplierName;
 
     /**
-     * 订单类型（0正常/1紧急）
+     * 订单类型（normal正常/urgent紧急/reorder补单/return退货/sample样品）
      */
-    private Integer orderType;
+    private String orderType;
+
+    /**
+     * 计划状态: 0普通订单/1计划单/2已转正式（DEV-664 采购计划）
+     */
+    private Integer planStatus;
 
     /**
      * 订单日期

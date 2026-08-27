@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
  * 产品标准工序实体类
  */
 @Data
-@TableName("product_standard_process")
+@TableName("engineering_standard_process")
 public class ProductStandardProcess {
     
     @TableId(type = IdType.AUTO)
@@ -75,6 +75,11 @@ public class ProductStandardProcess {
      * 图标
      */
     private String icon;
+
+    /**
+     * 是否带下标：0-不带,1-带（带下标的工序在工艺路线中需输入下标数字）
+     */
+    private Integer hasIndex;
     
     /**
      * 是否启用

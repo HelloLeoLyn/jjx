@@ -262,37 +262,20 @@ const handleCheckChange = (checkedNode: any, checkedInfo: any) => {
   const { checkedKeys } = checkedInfo
   const currentNode = checkedNode as SysMenu
 
-  // 如果启用了自动选中子项，手动处理父子关联（仅对非按钮节点生效）
-  if (autoSelectChildren.value && checkStrictly.value && currentNode.menuType !== 'F') {
-    const isChecked = checkedKeys.includes(currentNode.menuId)
+  // 判断该节点是被选中还是取消
+  const isChecked = checkedKeys.includes(currentNode.menuId)
 
-    if (currentNode.children && currentNode.children.length > 0) {
-      // 如果是父节点被选中/取消，同步所有子节点（包括按钮）
-      const childIds = getAllChildIds(currentNode)
-      childIds.forEach((childId) => {
-        if (treeRef.value) {
-          treeRef.value.setChecked(childId, isChecked, false)
-        }
-      })
-    } else if (currentNode.parentId) {
-      // 如果是子菜单节点被选中，检查是否所有兄弟节点都被选中，如果是则自动选中父节点
-      const parentNode = findNodeByKey(currentNode.parentId)
-      if (parentNode && parentNode.children && parentNode.children.length > 0) {
-        // 只检查非按钮的子节点
-        const siblingMenuIds = parentNode.children
-          .filter((c) => c.menuType !== 'F' && c.menuId)
-          .map((c) => c.menuId!)
-        const allMenuChildrenChecked = siblingMenuIds.every((id) =>
-          treeRef.value?.getCheckedKeys().includes(id)
-        )
-        if (allMenuChildrenChecked && parentNode.menuId) {
-          treeRef.value?.setChecked(parentNode.menuId, true, false)
-        } else if (!isChecked && parentNode.menuId) {
-          // 如果有子菜单节点取消选中，父节点也取消选中
-          treeRef.value?.setChecked(parentNode.menuId, false, false)
-        }
-      }
-    }
+  if (isChecked) {
+    // 半严格级联：子→父，自动勾选所有祖先节点
+    checkAncestors(currentNode)
+  }
+
+  // 如果启用了自动选中子项，父→子级联（由 autoSelectChildren 复选框控制）
+  if (autoSelectChildren.value && currentNode.children && currentNode.children.length > 0) {
+    const childIds = getAllChildIds(currentNode)
+    childIds.forEach((childId) => {
+      treeRef.value?.setChecked(childId, isChecked, false)
+    })
   }
 
   // 重新获取更新后的选中状态
@@ -306,6 +289,16 @@ const handleCheckChange = (checkedNode: any, checkedInfo: any) => {
 
   // 触发change事件
   emit('change', menuIds)
+}
+
+// 向上递归勾选所有祖先节点（半严格级联的核心）
+const checkAncestors = (node: SysMenu) => {
+  if (!node.parentId || !treeRef.value) return
+  const parent = findNodeByKey(node.parentId)
+  if (parent && parent.menuId) {
+    treeRef.value.setChecked(parent.menuId, true, false)
+    checkAncestors(parent)
+  }
 }
 
 // 方法：获取所有子节点ID（递归）

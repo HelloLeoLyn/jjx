@@ -9,29 +9,32 @@
           </div>
           <div class="header-actions">
             <el-button @click="handleBack">返回</el-button>
-            <el-button v-if="inboundData.status === 'draft'" type="primary" @click="handleEdit">
+            <el-button v-if="inboundData.status === 0" type="primary" @click="handleEdit">
               编辑
             </el-button>
-            <el-button v-if="inboundData.status === 'draft'" type="success" @click="handleSubmit">
+            <el-button v-if="inboundData.status === 0" type="success" v-hasPermi="['inventory:inbound:edit']" @click="handleSubmit">
               提交审批
             </el-button>
             <el-button
-              v-if="inboundData.status === 'pending'"
+              v-if="inboundData.status === 1"
               type="success"
+              v-hasPermi="['inventory:inbound:approve']"
               @click="handleApprove"
             >
               审批通过
             </el-button>
             <el-button
-              v-if="inboundData.status === 'approved'"
+              v-if="inboundData.status === 2"
               type="warning"
+              v-hasPermi="['inventory:inbound:approve']"
               @click="handleConfirm"
             >
               确认入库
             </el-button>
             <el-button
-              v-if="inboundData.status === 'draft' || inboundData.status === 'pending'"
+              v-if="inboundData.status === 0 || inboundData.status === 1"
               type="danger"
+              v-hasPermi="['inventory:inbound:edit']"
               @click="handleCancel"
             >
               取消
@@ -123,6 +126,31 @@
       </el-table>
     </el-card>
 
+    <!-- 库存流水（DEV-661） -->
+    <el-card class="tx-card">
+      <template #header>
+        <h3>库存流水</h3>
+      </template>
+      <el-table v-loading="txLoading" :data="transactions" border style="width: 100%">
+        <el-table-column label="物料编码" prop="materialCode" width="120" />
+        <el-table-column label="物料名称" prop="materialName" width="150" show-overflow-tooltip />
+        <el-table-column label="变动" prop="quantity" width="100" align="right">
+          <template #default="{ row }">
+            <span :style="{ color: row.quantity < 0 ? '#f56c6c' : '#67c23a' }">
+              {{ row.quantity > 0 ? '+' : '' }}{{ formatNumber(row.quantity) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="变动前" prop="beforeQuantity" width="100" align="right" />
+        <el-table-column label="变动后" prop="afterQuantity" width="100" align="right" />
+        <el-table-column label="批次号" prop="batchNo" width="120" />
+        <el-table-column label="操作人" prop="operatorName" width="100" />
+        <el-table-column label="时间" prop="transactionTime" width="170" />
+        <el-table-column label="备注" prop="remark" min-width="120" show-overflow-tooltip />
+      </el-table>
+      <el-empty v-if="!txLoading && transactions.length === 0" description="暂无库存流水" :image-size="60" />
+    </el-card>
+
     <!-- 操作日志 -->
     <el-card class="log-card" v-if="operationLogs.length > 0">
       <template #header>
@@ -157,6 +185,8 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
+import { getTransactionsByDocNo } from '@/api/inventory/transaction'
+import type { TransactionVO } from '@/api/inventory/transaction'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
 import { InboundEnum } from '@/enums/inventory'
@@ -179,7 +209,7 @@ const inboundData = ref<InboundVO>({
   sourceNo: '',
   totalQuantity: 0,
   totalAmount: 0,
-  status: '',
+  status: 0,
   statusName: '',
   remark: '',
   createBy: '',
@@ -215,12 +245,31 @@ const loadInboundDetail = async () => {
     const res = await inboundApi.getById(inboundId.value)
     if (res.data) {
       inboundData.value = res.data
+      // DEV-661：加载库存流水（按单据号）
+      if (res.data.inboundNo) {
+        loadTransactions(res.data.inboundNo)
+      }
     } else {
       ElMessage.error('未找到入库单详情')
     }
   } catch (error) {
     console.error('获取入库单详情失败:', error)
     ElMessage.error('获取入库单详情失败')
+  }
+}
+
+// DEV-661：加载库存流水
+const transactions = ref<TransactionVO[]>([])
+const txLoading = ref(false)
+const loadTransactions = async (docNo: string) => {
+  txLoading.value = true
+  try {
+    const txRes = await getTransactionsByDocNo(docNo)
+    transactions.value = txRes.data || []
+  } catch (e) {
+    ElMessage.error('获取库存流水失败')
+  } finally {
+    txLoading.value = false
   }
 }
 

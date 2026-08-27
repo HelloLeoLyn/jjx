@@ -27,7 +27,11 @@ export const materialApi = {
 
   // 根据物料编码获取物料
   getByCode(materialCode: string) {
-    const queryParams: any = {
+    const queryParams: {
+      current: number
+      pageSize: number
+      materialCode: string
+    } = {
       current: 1,
       pageSize: 1,
       materialCode: materialCode,
@@ -98,9 +102,14 @@ export const materialApi = {
     return request.get<R<InventoryMaterial[]>>('/inventory/material/low-stock')
   },
 
+  // 获取物料总数
+  getCount() {
+    return request.get<R<number>>('/inventory/material/count')
+  },
+
   // 获取物料下拉选项
   getOptions(keyword?: string) {
-    return request.get<R<any[]>>('/inventory/material/options', {
+    return request.get<R<InventoryMaterial[]>>('/inventory/material/options', {
       params: { keyword },
     })
   },
@@ -117,7 +126,7 @@ export const materialApi = {
   importExcel(file: File) {
     const formData = new FormData()
     formData.append('file', file)
-    return request.post<string>('/inventory/material/import', formData, {
+    return request.post<MaterialImportResultVO>('/inventory/material/import', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
@@ -133,4 +142,18 @@ export const materialApi = {
   generateCode() {
     return request.get<R<string>>('/inventory/material/code')
   },
+}
+
+// 物料导入结果（DEV-702：失败明细可下载）
+export interface MaterialImportResultVO {
+  successCount: number
+  skipCount: number
+  failCount: number
+  failDetails: MaterialImportFailDetail[]
+}
+
+export interface MaterialImportFailDetail {
+  rowIndex: number
+  materialName: string
+  reason: string
 }

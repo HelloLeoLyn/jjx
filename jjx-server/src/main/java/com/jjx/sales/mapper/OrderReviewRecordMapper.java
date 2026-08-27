@@ -20,7 +20,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param orderId 订单ID
      * @return 审核记录列表
      */
-    @Select("SELECT * FROM order_review_record WHERE order_id = #{orderId} AND deleted = 0 ORDER BY create_time DESC")
+    @Select("SELECT * FROM sales_order_review WHERE order_id = #{orderId} AND deleted = 0 ORDER BY create_time DESC")
     List<OrderReviewRecord> selectByOrderId(@Param("orderId") Long orderId);
 
     /**
@@ -30,7 +30,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param reviewStage 审核阶段
      * @return 审核记录
      */
-    @Select("SELECT * FROM order_review_record WHERE order_id = #{orderId} AND review_stage = #{reviewStage} AND deleted = 0 ORDER BY create_time DESC LIMIT 1")
+    @Select("SELECT * FROM sales_order_review WHERE order_id = #{orderId} AND review_stage = #{reviewStage} AND deleted = 0 ORDER BY create_time DESC LIMIT 1")
     OrderReviewRecord selectByOrderIdAndStage(@Param("orderId") Long orderId, @Param("reviewStage") Integer reviewStage);
 
     /**
@@ -39,7 +39,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param reviewerId 审核人ID
      * @return 审核记录列表
      */
-    @Select("SELECT * FROM order_review_record WHERE reviewer_id = #{reviewerId} AND review_result IS NULL AND deleted = 0 ORDER BY create_time DESC")
+    @Select("SELECT * FROM sales_order_review WHERE reviewer_id = #{reviewerId} AND review_result IS NULL AND deleted = 0 ORDER BY create_time DESC")
     List<OrderReviewRecord> selectPendingByReviewerId(@Param("reviewerId") Long reviewerId);
 
     /**
@@ -48,7 +48,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param orderId 订单ID
      * @return 当前审核记录
      */
-    @Select("SELECT * FROM order_review_record WHERE order_id = #{orderId} AND review_result IS NULL AND deleted = 0 ORDER BY create_time DESC LIMIT 1")
+    @Select("SELECT * FROM sales_order_review WHERE order_id = #{orderId} AND review_result IS NULL AND deleted = 0 ORDER BY create_time DESC LIMIT 1")
     OrderReviewRecord selectCurrentReview(@Param("orderId") Long orderId);
 
     /**
@@ -57,7 +57,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param orderId 订单ID
      * @return 审核历史记录
      */
-    @Select("SELECT * FROM order_review_record WHERE order_id = #{orderId} AND review_result IS NOT NULL AND deleted = 0 ORDER BY create_time DESC")
+    @Select("SELECT * FROM sales_order_review WHERE order_id = #{orderId} AND review_result IS NOT NULL AND deleted = 0 ORDER BY create_time DESC")
     List<OrderReviewRecord> selectReviewHistory(@Param("orderId") Long orderId);
 
     /**
@@ -66,7 +66,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param reviewProcessId 审核流程ID
      * @return 审核记录列表
      */
-    @Select("SELECT * FROM order_review_record WHERE review_process_id = #{reviewProcessId} AND deleted = 0 ORDER BY node_sequence ASC")
+    @Select("SELECT * FROM sales_order_review WHERE review_process_id = #{reviewProcessId} AND deleted = 0 ORDER BY node_sequence ASC")
     List<OrderReviewRecord> selectByProcessId(@Param("reviewProcessId") String reviewProcessId);
 
     /**
@@ -78,7 +78,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param reviewDuration 审核耗时
      * @return 更新结果
      */
-    @Select("UPDATE order_review_record SET review_result = #{reviewResult}, result_description = #{resultDescription}, review_duration = #{reviewDuration}, review_time = NOW() WHERE record_id = #{recordId}")
+    @Select("UPDATE sales_order_review SET review_result = #{reviewResult}, result_description = #{resultDescription}, review_duration = #{reviewDuration}, review_time = NOW() WHERE record_id = #{recordId}")
     int updateReviewResult(@Param("recordId") Long recordId, @Param("reviewResult") Integer reviewResult,
                            @Param("resultDescription") String resultDescription, @Param("reviewDuration") Integer reviewDuration);
 
@@ -88,7 +88,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param orderId 订单ID
      * @return 是否有未完成的审核
      */
-    @Select("SELECT COUNT(*) FROM order_review_record WHERE order_id = #{orderId} AND review_result IS NULL AND deleted = 0")
+    @Select("SELECT COUNT(*) FROM sales_order_review WHERE order_id = #{orderId} AND review_result IS NULL AND deleted = 0")
     int hasPendingReview(@Param("orderId") Long orderId);
 
     /**
@@ -105,7 +105,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
             "SUM(CASE WHEN review_result = 2 THEN 1 ELSE 0 END) as rejected_count, " +
             "SUM(CASE WHEN review_result = 3 THEN 1 ELSE 0 END) as returned_count, " +
             "AVG(review_duration) as avg_duration " +
-            "FROM order_review_record " +
+            "FROM sales_order_review " +
             "WHERE reviewer_id = #{reviewerId} " +
             "AND review_time BETWEEN #{startDate} AND #{endDate} " +
             "AND deleted = 0")
@@ -118,7 +118,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
      * @param timeoutHours 超时小时数
      * @return 超时审核记录列表
      */
-    @Select("SELECT * FROM order_review_record " +
+    @Select("SELECT * FROM sales_order_review " +
             "WHERE review_result IS NULL " +
             "AND TIMESTAMPDIFF(HOUR, create_time, NOW()) > #{timeoutHours} " +
             "AND deleted = 0")
@@ -134,7 +134,7 @@ public interface OrderReviewRecordMapper extends BaseMapper<OrderReviewRecord> {
             "COUNT(*) as total_nodes, " +
             "SUM(CASE WHEN review_result IS NOT NULL THEN 1 ELSE 0 END) as completed_nodes, " +
             "MIN(CASE WHEN review_result IS NULL THEN node_sequence END) as current_node " +
-            "FROM order_review_record " +
+            "FROM sales_order_review " +
             "WHERE review_process_id = #{reviewProcessId} " +
             "AND deleted = 0")
     Object getProcessProgress(@Param("reviewProcessId") String reviewProcessId);

@@ -3,6 +3,7 @@ package com.jjx.sales.service;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.dto.CustomerAddDTO;
 import com.jjx.sales.domain.dto.CustomerEditDTO;
+import com.jjx.sales.domain.dto.CustomerImportDTO;
 import com.jjx.sales.domain.dto.CustomerQueryDTO;
 import com.jjx.sales.domain.entity.SalesCustomer;
 import com.jjx.sales.domain.vo.CustomerVO;
@@ -143,4 +144,13 @@ public interface ICustomerService {
      * 生成客户编码
      */
     String generateCustomerCode();
+
+    /**
+     * 导入客户（DEV-662：按客户名称判重，存在则更新，否则新增）
+     *
+     * @param importList 导入数据
+     * @param operName   操作人
+     * @return 导入结果信息
+     */
+    String importCustomers(List<CustomerImportDTO> importList, String operName);
 }

@@ -61,12 +61,12 @@ export function deleteProductionOrder(orderId: string, orderType?: OrderType) {
   })
 }
 
-// 更新订单状态
+// 更新订单状态（后端为 @RequestParam query 参数，2026-08-11 修复：原放 body 导致 orderId 缺失）
 export function updateOrderStatus(data: OrderStatusUpdateDTO) {
   return request({
     url: '/production/order/status',
     method: 'put',
-    data,
+    params: data,
   })
 }
 
@@ -111,6 +111,15 @@ export function exportProductionOrder(params: ProductionOrderQuery) {
     url: '/production/order/export',
     method: 'get',
     params,
+    responseType: 'blob',
+  })
+}
+
+// 导出生产工单PDF（单张表单）
+export function exportProductionOrderPdf(orderId: number) {
+  return request({
+    url: `/production/order/export-pdf/${orderId}`,
+    method: 'get',
     responseType: 'blob',
   })
 }
@@ -173,7 +182,7 @@ export function startExecution(
 ) {
   return request({
     url: `/production/order/${orderId}/start`,
-    method: 'post',
+    method: 'put',
     data,
   })
 }
@@ -190,7 +199,7 @@ export function completeExecution(
 ) {
   return request({
     url: `/production/order/${orderId}/complete`,
-    method: 'post',
+    method: 'put',
     data,
   })
 }
@@ -199,7 +208,7 @@ export function completeExecution(
 export function pauseExecution(orderId: string, remark?: string) {
   return request({
     url: `/production/order/${orderId}/pause`,
-    method: 'post',
+    method: 'put',
     data: { remark },
   })
 }
@@ -307,7 +316,7 @@ export function getGanttData(params?: {
   orderType?: OrderType
 }) {
   return request({
-    url: '/production/order/gantt-data',
+    url: '/production/order/schedule/gantt',
     method: 'get',
     params,
   })
@@ -322,7 +331,7 @@ export function updateGanttData(data: {
   remark?: string
 }) {
   return request({
-    url: '/production/order/gantt-data',
+    url: '/production/order/schedule/gantt',
     method: 'put',
     data,
   })

@@ -7,8 +7,8 @@ import java.util.List;
 @Data
 public class ProductFullVO {
     private ProductVo product;
-    private ProductBomVO bom;
-    private ProductRoutingVO routing;
+    private EngineeringBomVO bom;
+    private EngineeringRoutingVO routing;
     private ProductCategoryVO category;
-    private List<ProductFilmVO> films;
+    private List<EngineeringFilmVO> films;
 }

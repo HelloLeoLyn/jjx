@@ -46,7 +46,7 @@ public class ProductionOrderQueryDTO {
     private Integer orderStatus;
 
     @Schema(description = "审批状态：PENDING待审批/APPROVED已批准/REJECTED已拒绝/CANCELLED已取消", example = "APPROVED")
-    private String approvalStatus;
+    private Integer approvalStatus;
 
     @Schema(description = "优先级：LOW低/MEDIUM中/HIGH高/URGENT紧急", example = "MEDIUM")
     private String priority;

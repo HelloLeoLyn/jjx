@@ -80,6 +80,18 @@ public class SysDictService {
     }
 
     /**
+     * 按分组查询字典列表
+     */
+    public List<SysDictVO> selectDictListByGroup(String dictGroup) {
+        LambdaQueryWrapper<SysDict> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(SysDict::getDictGroup, dictGroup);
+        wrapper.eq(SysDict::getIsActive, 1);
+        wrapper.orderByAsc(SysDict::getSortOrder);
+        List<SysDict> list = dictMapper.selectList(wrapper);
+        return dictConverter.toVOList(list);
+    }
+
+    /**
      * 根据ID查询字典类型
      */
     public SysDictVO selectDictById(Long dictId) {

@@ -1,5 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
-  <text x="200" y="260" font-family="Arial, Helvetica, sans-serif" font-size="160" font-weight="bold" fill="#000000" text-anchor="middle">
-    OHM
-  </text>
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="400" height="400">
+	<style>
+		tspan { white-space:pre } 
+		.t0 { font-size: 24px;fill: #000000;font-weight: 400;font-family: "DejaVuSans", "DejaVu Sans" } 
+	</style>
+	<text id="OHM" style="transform: matrix(16.887,0,0,22.743,61,739)">
+		<tspan x="0" y="0" class="t0">O</tspan><tspan  y="0" class="t0">H</tspan><tspan  y="0" class="t0">M
+</tspan>
+	</text>
 </svg>

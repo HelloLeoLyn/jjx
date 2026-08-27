@@ -22,6 +22,8 @@
       border
       style="width: 100%"
       row-key="itemId"
+      :tree-props="{ children: 'children' }"
+      default-expand-all
       :height="tableHeight"
       @selection-change="handleSelectionChange"
       class="bom-item-table"
@@ -148,9 +150,25 @@
             :step="0.01"
             size="small"
             controls-position="right"
+            @change="handleLossRateChange(scope.row)"
           >
             <template #append>%</template>
           </el-input-number>
+        </template>
+      </el-table-column>
+
+      <!-- 应用料（含损耗，只读） -->
+      <el-table-column label="应用料" prop="appliedQty" align="center" width="90">
+        <template #default="scope">{{ formatQty(scope.row.appliedQty) }}</template>
+      </el-table-column>
+
+      <!-- 实际投料（按最低投料向上取整，只读） -->
+      <el-table-column label="实际投料" prop="actualIssueQty" align="center" width="100">
+        <template #default="scope">
+          <span>{{ formatQty(scope.row.actualIssueQty) }}</span>
+          <el-tooltip v-if="scope.row.materialType === 'R'" content="板材/卷材，按最低投料量向上取整" placement="top">
+            <span style="color:#e6a23c;cursor:help"> ⓘ</span>
+          </el-tooltip>
         </template>
       </el-table-column>
 
@@ -222,23 +240,29 @@
       </el-table-column>
 
       <!-- 操作列 -->
-      <el-table-column label="操作" width="130" align="center" fixed="right">
+      <el-table-column label="操作" width="170" align="center" fixed="right">
         <template #default="scope">
           <el-button
             link
             type="primary"
+            size="small"
+            @click="handleAddChildItem(scope.row)"
+          >子物料</el-button>
+          <el-button
+            link
+            type="primary"
             :icon="CopyDocument"
-            @click="handleCopyItem(scope.row, scope.$index)"
+            @click="handleCopyItem(scope.row)"
           />
           <el-button
             v-if="scope.row.create"
             link
             type="warning"
             size="small"
-            @click="handleCreateMaterial(scope.row, scope.$index)"
+            @click="handleCreateMaterial(scope.row)"
             >建档</el-button
           >
-          <el-button link type="danger" :icon="Delete" @click="handleDeleteItem(scope.$index)" />
+          <el-button link type="danger" :icon="Delete" @click="handleDeleteItem(scope.row)" />
         </template>
       </el-table-column>
     </el-table>
@@ -250,24 +274,23 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Refresh, CopyDocument, Rank } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
-import type { ProductBomItem } from '@/types/product/bom'
+import type { EngineeringBomItem } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
-import Sortable from 'sortablejs'
 import MaterialCompleteSelector from '@/components/Selector/MaterialCompleteSelector.vue'
 import { materialApi } from '@/api/inventory/material'
 
 // ==================== Props & Emits ====================
 
 interface Props {
-  modelValue: ProductBomItem[]
+  modelValue: EngineeringBomItem[]
   bomId?: number
   readonly?: boolean
   maxItems?: number
 }
 
 interface Emits {
-  (e: 'update:modelValue', value: ProductBomItem[]): void
-  (e: 'change', value: ProductBomItem[]): void
+  (e: 'update:modelValue', value: EngineeringBomItem[]): void
+  (e: 'change', value: EngineeringBomItem[]): void
   (e: 'validate', valid: boolean): void
 }
 
@@ -283,8 +306,8 @@ const emit = defineEmits<Emits>()
 // ==================== 响应式数据 ====================
 
 const tableRef = ref()
-const items = ref<ProductBomItem[]>([])
-const selectedItems = ref<ProductBomItem[]>([])
+const items = ref<EngineeringBomItem[]>([])
+const selectedItems = ref<EngineeringBomItem[]>([])
 const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
@@ -303,16 +326,82 @@ const unitOptions = [
 
 const hasSelected = computed(() => selectedItems.value.length > 0)
 
+// ==================== 树形结构工具（2026-08-10） ====================
+
+/**
+ * 平铺数组 → 树（按 parentMaterialId 构建，NULL=根）
+ * 新行用临时负数 id 作为父引用（前端树形 row-key 需要稳定 id）
+ */
+function buildTree(list: EngineeringBomItem[]): EngineeringBomItem[] {
+  const arr = (list || []).map((it) => ({ ...it, children: it.children ? [...it.children] : undefined }))
+  // 确保每行有稳定的 itemId（新行用临时负数）
+  let tmpId = -1
+  arr.forEach((it) => {
+    if (it.itemId == null) it.itemId = tmpId--
+  })
+  const map = new Map<number, EngineeringBomItem>()
+  arr.forEach((it) => map.set(Number(it.itemId), it))
+  const roots: EngineeringBomItem[] = []
+  arr.forEach((it) => {
+    const pid = it.parentMaterialId
+    if (pid != null && map.has(Number(pid))) {
+      const parent = map.get(Number(pid))!
+      if (!parent.children) parent.children = []
+      parent.children.push(it)
+    } else {
+      roots.push(it)
+    }
+  })
+  return roots
+}
+
+/**
+ * 树 → 平铺（深度优先，保持层级顺序）
+ */
+function flattenTree(tree: EngineeringBomItem[]): EngineeringBomItem[] {
+  const out: EngineeringBomItem[] = []
+  const walk = (nodes: EngineeringBomItem[]) => {
+    nodes.forEach((n) => {
+      const copy = { ...n }
+      delete copy.children
+      out.push(copy)
+      if (n.children?.length) walk(n.children)
+    })
+  }
+  walk(tree || [])
+  return out
+}
+
+/** 遍历树（含所有层级） */
+function walkTree(tree: EngineeringBomItem[], fn: (row: EngineeringBomItem) => void) {
+  const walk = (nodes: EngineeringBomItem[]) => {
+    nodes.forEach((n) => {
+      fn(n)
+      if (n.children?.length) walk(n.children)
+    })
+  }
+  walk(tree || [])
+}
+
+/** 在树中查找节点 */
+function findInTree(tree: EngineeringBomItem[], itemId: number): EngineeringBomItem | null {
+  let found: EngineeringBomItem | null = null
+  walkTree(tree, (n) => {
+    if (Number(n.itemId) === itemId) found = n
+  })
+  return found
+}
+
 // ==================== 初始化 & 监听 ====================
 
 // 初始化数据（使用浅比较避免无限循环）
 let isUpdating = false
 
-// 防抖处理内部变化
+// 防抖处理内部变化（树 → 平铺提交）
 const emitChange = debounce(() => {
   if (isUpdating) return
   isUpdating = true
-  emit('update:modelValue', items.value)
+  emit('update:modelValue', flattenTree(items.value))
   nextTick(() => {
     isUpdating = false
   })
@@ -336,17 +425,13 @@ onMounted(() => {
   calculateTableHeight()
   window.addEventListener('resize', calculateTableHeight)
   nextTick(() => {
-    initSortable()
+    // 树形模式：拖拽排序已禁用
   })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', calculateTableHeight)
   emitChange.cancel()
-  if (sortableInstance) {
-    sortableInstance.destroy()
-    sortableInstance = null
-  }
 })
 
 // ==================== 物料选择处理 ====================
@@ -354,7 +439,7 @@ onUnmounted(() => {
 /**
  * 物料选择处理
  */
-const handleMaterialSelect = (material: InventoryMaterial, row: ProductBomItem) => {
+const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomItem) => {
   if (!material) return
 
   row.materialId = material.materialId || 0
@@ -362,40 +447,76 @@ const handleMaterialSelect = (material: InventoryMaterial, row: ProductBomItem) 
   row.materialName = material.materialName
   row.specification = material.specification || ''
   row.unit = material.unit || 'PCS'
+  row.materialType = material.materialType
+  recalcAppliedIssue(row)
 }
 
 /**
  * 模数变化时自动计算数量
  * 数量 = 基数 ÷ 模数
  */
-const handleModuleQtyChange = (row: ProductBomItem) => {
+const handleModuleQtyChange = (row: EngineeringBomItem) => {
   const moduleQty = Number(row.moduleQty) || 1
   const baseQty = Number(row.baseQty) || 1
   row.quantity = Number((baseQty / moduleQty).toFixed(4))
+  recalcAppliedIssue(row)
 }
 
 /**
  * 基数变化时自动计算数量
  * 数量 = 基数 ÷ 模数
  */
-const handleBaseQtyChange = (row: ProductBomItem) => {
+const handleBaseQtyChange = (row: EngineeringBomItem) => {
   const moduleQty = Number(row.moduleQty) || 1
   const baseQty = Number(row.baseQty) || 1
   row.quantity = Number((baseQty / moduleQty).toFixed(4))
+  recalcAppliedIssue(row)
 }
 
-// 监听外部数据变化，初始化数据
+/** 损耗率变化：重算应用料/实际投料 */
+const handleLossRateChange = (row: EngineeringBomItem) => {
+  recalcAppliedIssue(row)
+}
+
+/**
+ * 计算应用料/实际投料（前端预览，与后端一致）
+ * 应用料 = 用量 × (1 + 损耗率/100)
+ * 实际投料：板材/卷材(materialType=R)且最低投料>0 → CEIL(应用料/最低投料)×最低投料；否则=应用料
+ */
+const recalcAppliedIssue = (row: EngineeringBomItem) => {
+  const qty = Number(row.quantity) || 0
+  const loss = Number(row.lossRate) || 0
+  const applied = qty * (1 + loss / 100)
+  row.appliedQty = Number(applied.toFixed(4))
+  const minIssue = Number(row.minIssueQty) || 0
+  if (row.materialType === 'R' && minIssue > 0) {
+    const ceil = Math.ceil(applied / minIssue)
+    row.actualIssueQty = Number((ceil * minIssue).toFixed(4))
+  } else {
+    row.actualIssueQty = Number(applied.toFixed(4))
+  }
+}
+
+/** 数量格式化（只读列展示） */
+const formatQty = (v: any): string => {
+  if (v === null || v === undefined || v === '') return '-'
+  const n = Number(v)
+  return Number.isNaN(n) ? String(v) : String(n)
+}
+
+// 监听外部数据变化，初始化数据（平铺 → 树形）
 watch(
   () => props.modelValue,
   (newVal) => {
     if (isUpdating) return
-    if (JSON.stringify(newVal) !== JSON.stringify(items.value)) {
-      items.value = newVal.map((item, index) => ({
-        ...item,
-        quantity: item.quantity ?? 0,
-        lossRate: item.lossRate ?? 0,
-        sortOrder: item.sortOrder ?? index + 1,
-      }))
+    if (JSON.stringify(newVal) !== JSON.stringify(flattenTree(items.value))) {
+      items.value = buildTree(newVal)
+      // 应用料/实际投料：有库值保留，无则自动计算预览（递归）
+      walkTree(items.value, (row) => {
+        if (row.appliedQty == null && row.quantity != null) {
+          recalcAppliedIssue(row)
+        }
+      })
     }
   },
   { immediate: true, deep: true }
@@ -412,9 +533,10 @@ const handleAddItem = () => {
     return
   }
 
-  const newItem: ProductBomItem = {
+  const newItem: EngineeringBomItem = {
     itemId: undefined,
     bomId: props.bomId,
+    parentMaterialId: null, // 根节点
     materialId: 0,
     materialCode: '',
     materialName: '',
@@ -422,6 +544,8 @@ const handleAddItem = () => {
     unit: 'PCS',
     quantity: 0,
     lossRate: 0,
+    appliedQty: 0,
+    actualIssueQty: 0,
     baseQty: 1,
     remark: '',
     sortOrder: items.value.length + 1,
@@ -438,36 +562,96 @@ const handleAddItem = () => {
 }
 
 /**
- * 复制物料
+ * 添加子物料（挂到当前节点下，树形结构）
  */
-const handleCopyItem = (item: ProductBomItem, index: number) => {
-  const copyItem = JSON.parse(JSON.stringify(item))
-  copyItem.itemId = undefined
-  copyItem.sortOrder = items.value.length + 1
-  items.value.splice(index + 1, 0, copyItem)
-  ElMessage.success('复制成功')
-
-  // 重新排序
-  reorderItems()
+const handleAddChildItem = (parent: EngineeringBomItem) => {
+  const newItem: EngineeringBomItem = {
+    itemId: undefined,
+    bomId: props.bomId,
+    parentMaterialId: Number(parent.itemId),
+    materialId: 0,
+    materialCode: '',
+    materialName: '',
+    specification: '',
+    unit: 'PCS',
+    quantity: 0,
+    lossRate: 0,
+    appliedQty: 0,
+    actualIssueQty: 0,
+    baseQty: 1,
+    remark: '',
+    sortOrder: (parent.children?.length || 0) + 1,
+    create: false,
+  }
+  if (!parent.children) parent.children = []
+  parent.children.push(newItem)
 }
 
 /**
- * 删除物料
+ * 复制物料（复制整棵子树，挂到同父节点下）
  */
-const handleDeleteItem = async (index: number) => {
+const handleCopyItem = (item: EngineeringBomItem) => {
+  const copyItem = JSON.parse(JSON.stringify(item))
+  copyItem.itemId = undefined
+  copyItem.parentMaterialId = item.parentMaterialId ?? null
+  // 子树也重新生成临时 id
+  let tmpId = -1000000
+  const reId = (n: any, parentNewId: number | null) => {
+    const newId = tmpId--
+    n.itemId = newId
+    n.parentMaterialId = parentNewId
+    ;(n.children || []).forEach((c: any) => reId(c, newId))
+  }
+  reId(copyItem, copyItem.parentMaterialId)
+  // 找到父节点插入
+  if (copyItem.parentMaterialId != null) {
+    const parent = findInTree(items.value, copyItem.parentMaterialId)
+    if (parent) {
+      if (!parent.children) parent.children = []
+      parent.children.push(copyItem)
+      ElMessage.success('复制成功')
+      return
+    }
+  }
+  items.value.push(copyItem)
+  ElMessage.success('复制成功')
+}
+
+/**
+ * 删除物料（树形：有子节点时阻止删除）
+ */
+const handleDeleteItem = async (row: EngineeringBomItem) => {
+  // 有子节点 → 阻止
+  if (row.children && row.children.length > 0) {
+    ElMessage.warning('请先删除子节点，再删除该物料')
+    return
+  }
   try {
-    await ElMessageBox.confirm('确定要删除该物料吗？', '提示', {
+    await ElMessageBox.confirm(`确定要删除物料 "${row.materialName || row.materialCode || ''}" 吗？`, '提示', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
     })
-
-    items.value.splice(index, 1)
-    reorderItems()
+    // 从树中移除（递归查找父节点并 splice）
+    removeFromTree(items.value, Number(row.itemId))
     ElMessage.success('删除成功')
   } catch {
     // 用户取消
   }
+}
+
+/** 从树中移除节点（含嵌套） */
+function removeFromTree(tree: EngineeringBomItem[], itemId: number): boolean {
+  for (let i = 0; i < tree.length; i++) {
+    if (Number(tree[i].itemId) === itemId) {
+      tree.splice(i, 1)
+      return true
+    }
+    if (tree[i].children?.length && removeFromTree(tree[i].children!, itemId)) {
+      return true
+    }
+  }
+  return false
 }
 
 /**
@@ -480,54 +664,7 @@ const reorderItems = () => {
 }
 
 // ==================== 拖拽排序 ====================
-
-let sortableInstance: Sortable | null = null
-
-/**
- * 初始化拖拽排序
- */
-const initSortable = () => {
-  const el = tableRef.value?.$el?.querySelector('.el-table__body-wrapper tbody')
-  if (!el) {
-    // 如果表格还没渲染完成，延迟重试
-    setTimeout(() => initSortable(), 200)
-    return
-  }
-
-  // 销毁已有实例
-  if (sortableInstance) {
-    sortableInstance.destroy()
-  }
-
-  sortableInstance = Sortable.create(el, {
-    handle: '.drag-handle',
-    animation: 150,
-    easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
-    ghostClass: 'sortable-ghost',
-    dragClass: 'sortable-drag',
-    onStart: () => {
-      // 拖拽开始时添加样式
-      tableRef.value?.$el?.classList.add('is-dragging')
-    },
-    onEnd: (evt: Sortable.SortableEvent) => {
-      tableRef.value?.$el?.classList.remove('is-dragging')
-
-      const { oldIndex, newIndex } = evt
-      if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) return
-
-      // 移动数组元素 - 使用新数组触发响应式更新
-      const newItems = [...items.value]
-      const [movedItem] = newItems.splice(oldIndex, 1)
-      newItems.splice(newIndex, 0, movedItem)
-
-      // 重新分配排序值并替换整个数组以触发响应式更新
-      newItems.forEach((item, idx) => {
-        item.sortOrder = idx + 1
-      })
-      items.value = newItems
-    },
-  })
-}
+// 2026-08-10：树形表格不支持平铺拖拽排序，已禁用（原 Sortable 实现移除）
 
 /**
  * 刷新
@@ -551,7 +688,8 @@ const handleBatchQueryMaterialCode = async () => {
   let matchCount = 0
   let failCount = 0
 
-  for (const item of items.value) {
+  const rows = flattenTree(items.value)
+  for (const item of rows) {
     const materialName = item.materialName?.trim()
     const specification = item.specification?.trim()
     if (!materialName) {
@@ -601,7 +739,7 @@ const handleBatchQueryMaterialCode = async () => {
 /**
  * 快速建档：生成编码 → 新增物料 → 填充行
  */
-const handleCreateMaterial = async (row: ProductBomItem, index: number) => {
+const handleCreateMaterial = async (row: EngineeringBomItem) => {
   try {
     // 1. 生成物料编码
     const codeRes = await materialApi.generateCode()
@@ -637,7 +775,7 @@ const handleCreateMaterial = async (row: ProductBomItem, index: number) => {
 
 // ==================== 表格事件 ====================
 
-const handleSelectionChange = (selection: ProductBomItem[]) => {
+const handleSelectionChange = (selection: EngineeringBomItem[]) => {
   selectedItems.value = selection
 }
 
@@ -647,7 +785,7 @@ const handleSelectionChange = (selection: ProductBomItem[]) => {
  * 重置所有行的宽度为0
  */
 const resetAllWidth = () => {
-  items.value.forEach((item) => {
+  walkTree(items.value, (item) => {
     item.widthMm = 0
   })
   ElMessage.success('已重置所有宽度为0')
@@ -657,7 +795,7 @@ const resetAllWidth = () => {
  * 重置所有行的长度为0
  */
 const resetAllLength = () => {
-  items.value.forEach((item) => {
+  walkTree(items.value, (item) => {
     item.lengthMm = 0
   })
   ElMessage.success('已重置所有长度为0')
@@ -676,7 +814,7 @@ const getQuantityStep = (unit: string) => {
 // ==================== 暴露方法 ====================
 
 defineExpose({
-  getItems: () => items.value,
+  getItems: () => flattenTree(items.value),
   clearItems: () => {
     items.value = []
     selectedItems.value = []
@@ -687,22 +825,26 @@ defineExpose({
       return false
     }
 
-    for (const item of items.value) {
+    let ok = true
+    walkTree(items.value, (item) => {
+      if (!ok) return
       if (!item.materialCode?.trim()) {
         ElMessage.warning('物料编码不能为空')
-        return false
+        ok = false
+        return
       }
       if (!item.materialName?.trim()) {
         ElMessage.warning('物料名称不能为空')
-        return false
+        ok = false
+        return
       }
       if (item.quantity <= 0) {
         ElMessage.warning(`物料 "${item.materialName}" 数量必须大于0`)
-        return false
+        ok = false
       }
-    }
+    })
 
-    return true
+    return ok
   },
   reorderItems,
 })

@@ -150,58 +150,58 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .tags-view-container {
-  height: 34px;
+  height: 36px;
   width: 100%;
   background: #fff;
-  border-bottom: 1px solid #d8dce5;
-  box-shadow:
-    0 1px 3px 0 rgba(0, 0, 0, 0.12),
-    0 0 3px 0 rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid #e8eaef;
 
   .tags-view-wrapper {
     white-space: nowrap;
     position: relative;
     overflow-x: auto;
     overflow-y: hidden;
-    height: 34px;
+    height: 36px;
+    padding: 4px 0;
 
     .tags-view-item {
       display: inline-block;
       position: relative;
       cursor: pointer;
-      height: 26px;
-      line-height: 26px;
-      border: 1px solid #d8dce5;
-      color: #495060;
-      background: #fff;
-      padding: 0 8px;
+      height: 28px;
+      line-height: 28px;
+      border: 1px solid #e8eaef;
+      color: #606266;
+      background: #f8f9fc;
+      padding: 0 12px;
       font-size: 12px;
-      margin-left: 5px;
-      margin-top: 4px;
+      margin-left: 6px;
       text-decoration: none;
+      border-radius: 4px;
+      transition: all 0.2s;
 
       &:first-of-type {
-        margin-left: 15px;
+        margin-left: 16px;
       }
 
       &:last-of-type {
-        margin-right: 15px;
+        margin-right: 16px;
+      }
+
+      &:hover {
+        color: #409eff;
+        background: #ecf5ff;
+        border-color: #c6e2ff;
       }
 
       &.active {
-        background-color: #42b983;
+        background: #409eff;
         color: #fff;
-        border-color: #42b983;
+        border-color: #409eff;
 
-        &::before {
-          content: '';
-          background: #fff;
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          position: relative;
-          margin-right: 4px;
+        &:hover {
+          background: #337ecc;
+          color: #fff;
+          border-color: #337ecc;
         }
       }
 
@@ -209,10 +209,10 @@ onBeforeUnmount(() => {
         width: 12px;
         height: 12px;
         margin-left: 6px;
-        transition: all 0.3s;
+        transition: all 0.2s;
 
         &:hover {
-          background-color: #b4bccc;
+          background-color: rgba(255, 255, 255, 0.3);
           color: #fff;
           border-radius: 50%;
         }
@@ -228,19 +228,21 @@ onBeforeUnmount(() => {
   position: absolute;
   list-style-type: none;
   padding: 5px 0;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 400;
   color: #333;
-  box-shadow: 2px 2px 3px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 
   li {
     margin: 0;
     padding: 7px 16px;
     cursor: pointer;
+    transition: background 0.15s;
 
     &:hover {
-      background: #eee;
+      background: #ecf5ff;
+      color: #409eff;
     }
   }
 }

@@ -3,9 +3,11 @@ package com.jjx.inventory.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.StockCheckDTO;
+import com.jjx.inventory.dto.query.StockBatchCheckItemDTO;
 import com.jjx.inventory.dto.query.StockImportDTO;
 import com.jjx.inventory.dto.query.StockQueryDTO;
 import com.jjx.inventory.dto.vo.StockCheckVO;
+import com.jjx.inventory.dto.vo.StockBatchCheckItemVO;
 import com.jjx.inventory.dto.vo.StockImportResultVO;
 import com.jjx.inventory.dto.vo.StockSummaryVO;
 import com.jjx.inventory.dto.vo.StockVO;
@@ -109,11 +111,29 @@ public class InventoryStockController {
         return Result.success(stockService.check(checkDTO));
     }
 
+    @PostMapping("/batch-check")
+    @Operation(summary = "批量校验导入数据（DEV-697 模式③：逐行返回校验结果）")
+    @SaCheckPermission("inventory:stock:view")
+    public Result<java.util.List<StockBatchCheckItemVO>> batchCheck(@RequestBody java.util.List<StockBatchCheckItemDTO> items) {
+        return Result.success(stockService.batchCheck(items));
+    }
+
     @PostMapping("/batch-import")
     @Operation(summary = "批量导入库存")
-    @Log(module = "库存管理", businessType = BusinessType.IMPORT)
+    @Log(module = "库存管理", businessType = BusinessType.IMPORT, bizType = "'stock'", bizId = "#list[0].materialCode")
     @SaCheckPermission("inventory:stock:import")
     public Result<StockImportResultVO> batchImport(@RequestBody List<StockImportDTO> list) {
         return Result.success(stockService.batchImport(list));
+    }
+
+    /**
+     * 下载库存导入模板（DEV-672：模板统一由后端生成，不再用静态文件）
+     */
+    @Operation(summary = "下载库存导入模板")
+    @SaCheckPermission("inventory:stock:import")
+    @GetMapping("/importTemplate")
+    public void importTemplate(jakarta.servlet.http.HttpServletResponse response) {
+        com.jjx.common.utils.ExcelUtils.downloadTemplate(response,
+                com.jjx.inventory.dto.imports.StockImportTemplateDTO.class, "库存导入模板");
     }
 }

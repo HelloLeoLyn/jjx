@@ -146,7 +146,7 @@ export function getOperationRecords(operationId: string) {
 }
 
 // 记录操作参数
-export function recordOperationParameters(operationId: string, parameters: Record<string, any>) {
+export function recordOperationParameters(operationId: string, parameters: Record<string, unknown>) {
   return request({
     url: `/production/operation/${operationId}/parameters`,
     method: 'put',

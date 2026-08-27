@@ -1,7 +1,7 @@
 import request from '@/utils/request'
 
 // 查询采购发票列表
-export function listInvoice(params?: any) {
+export function listInvoice(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/invoice/list',
     method: 'get',
@@ -50,7 +50,7 @@ export function delInvoice(invoiceIds: number | number[]) {
 }
 
 // 导出采购发票列表
-export function exportInvoice(params?: any) {
+export function exportInvoice(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/invoice/export',
     method: 'get',
@@ -146,7 +146,7 @@ export function getInvoiceStatistics() {
 }
 
 // 批量核销
-export function batchVerify(data: any[]) {
+export function batchVerify(data: Record<string, unknown>[]) {
   return request({
     url: '/purchase/invoice/batch-verify',
     method: 'post',
@@ -209,7 +209,7 @@ export function getOverdueInvoices() {
 }
 
 // 获取发票趋势分析
-export function getInvoiceTrendAnalysis(params?: any) {
+export function getInvoiceTrendAnalysis(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/invoice/trend-analysis',
     method: 'get',

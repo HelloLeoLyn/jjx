@@ -1,8 +1,19 @@
 import request from '@/utils/request'
-import type { PurchaseOrder, PurchaseOrderItem } from '@/types/purchase'
+import type { R } from '@/types'
+import type { PurchaseOrder, PurchaseOrderItem, PurchaseDocument } from '@/types/purchase'
+import type { PurchaseOrderQuery } from '@/types/purchase/order'
 
-// 查询采购订单列表
-export function listOrder(params?: any) {
+/**
+ * 获取采购订单总数
+ */
+export function getOrderCount() {
+  return request.get<R<number>>('/purchase/order/count')
+}
+
+/**
+ * 查询采购订单列表
+ */
+export function listOrder(params?: PurchaseOrderQuery) {
   return request({
     url: '/purchase/order/list',
     method: 'get',
@@ -27,11 +38,14 @@ export function getOrderItems(orderId: number) {
 }
 
 // 新增采购订单
+// DEV-664：data.items 传明细；data.saveAsPlan=true 时存为计划单（跳过供应商/明细强校验）
 export function addOrder(data: PurchaseOrder, itemList?: PurchaseOrderItem[]) {
+  const payload: any = { ...data }
+  if (itemList) payload.items = itemList
   return request({
     url: '/purchase/order',
     method: 'post',
-    data: { ...data, itemList },
+    data: payload,
   })
 }
 
@@ -44,8 +58,13 @@ export function updateOrder(data: PurchaseOrder, itemList?: PurchaseOrderItem[])
   })
 }
 
-// 导出采购订单列表
-export function exportOrder(params?: any) {
+// 导出采购订单列表（支持按查询条件导出或按ID导出）
+export interface PurchaseExportParams extends Partial<PurchaseOrderQuery> {
+  orderId?: string
+  orderIds?: string
+  format?: 'excel' | 'pdf'
+}
+export function exportOrder(params?: PurchaseExportParams) {
   return request({
     url: '/purchase/order/export',
     method: 'get',
@@ -58,6 +77,14 @@ export function exportOrder(params?: any) {
 export function exportOrderDetail(orderId: number) {
   return request({
     url: `/purchase/order/export-detail/${orderId}`,
+    method: 'get',
+    responseType: 'blob',
+  })
+}
+
+export function exportOrderPdf(orderId: number) {
+  return request({
+    url: `/purchase/order/export-pdf/${orderId}`,
     method: 'get',
     responseType: 'blob',
   })
@@ -303,7 +330,7 @@ export function getDiskReceiptFiles(orderId: number) {
  * @param supplierId 供应商ID
  * @param files 文件信息列表 [{fileName, fileUrl, fileSize}]
  */
-export function confirmReceiptDocuments(orderId: number, supplierId: number, files: any[]) {
+export function confirmReceiptDocuments(orderId: number, supplierId: number, files: Pick<PurchaseDocument, 'fileName' | 'fileUrl' | 'fileSize'>[]) {
   return request({
     url: '/purchase/invoice/batch-confirm',
     method: 'post',
@@ -320,5 +347,39 @@ export function deleteTempReceiptFile(fileUrl: string) {
     url: '/purchase/invoice/temp-file',
     method: 'delete',
     params: { fileUrl },
+  })
+}
+
+// ==================== DEV-664 采购计划 ====================
+
+/**
+ * 获取采购计划建议（安全库存预警 + 订单缺料预警）
+ */
+export function getPlanSuggestions() {
+  return request({
+    url: '/purchase/order/plan-suggestions',
+    method: 'get',
+  })
+}
+
+/**
+ * 查询物料在途采购量（2026-08-18 P1-B：含草稿单，防重复下单）
+ */
+export function inTransit(materialIds: number[]) {
+  return request({
+    url: '/purchase/order/in-transit',
+    method: 'get',
+    params: { materialIds: materialIds.join(',') },
+  })
+}
+
+/**
+ * 确认计划单转正式采购单
+ */
+export function confirmPlan(orderId: string, supplierId: string, supplierName: string) {
+  return request({
+    url: `/purchase/order/${orderId}/confirm-plan`,
+    method: 'put',
+    params: { supplierId, supplierName },
   })
 }

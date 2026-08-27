@@ -49,6 +49,11 @@ public class SysDeptDTO implements Serializable {
     private String leader;
 
     /**
+     * 负责人用户ID（DEV-1106：部门负责人改为用户组件选择，落库关联用户）
+     */
+    private Long leaderUserId;
+
+    /**
      * 联系电话
      */
     private String phone;

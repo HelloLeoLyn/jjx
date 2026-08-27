@@ -1,5 +1,6 @@
 package com.jjx.purchase.service.impl;
 
+import com.jjx.purchase.domain.enums.InquiryStatus;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -20,6 +21,7 @@ import com.jjx.purchase.domain.vo.*;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.service.IPurchaseOrderService;
+import com.jjx.system.annotation.Event;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,17 +50,26 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final PurchaseOrderMapper orderMapper;
     private final PurchaseOrderItemMapper orderItemMapper;
     private final PurchaseConverter purchaseConverter;
+    private final com.jjx.inventory.mapper.InventoryStockItemMapper stockItemMapper;
+    private final com.jjx.inventory.mapper.InventoryStockMapper stockMapper;
+    private final com.jjx.inventory.mapper.InventoryTransactionMapper transactionMapper;
+    private final com.jjx.inventory.mapper.InventoryMaterialMapper materialMapper;
+    private final com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
+    private final com.jjx.inventory.service.InventoryInboundService inboundService;
+    private final com.jjx.inventory.service.InventoryAlertService alertService;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final com.jjx.system.service.LogSaveService logSaveService;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
         LambdaQueryWrapper<PurchaseOrder> wrapper = buildQueryWrapper(queryDTO);
         // 排序
-        wrapper.orderByDesc(PurchaseOrder::getCreateTime);
+        wrapper.orderByDesc(PurchaseOrder::getCreateTime).orderByDesc(PurchaseOrder::getOrderId);
         Page<PurchaseOrder> page = new Page<>(queryDTO.getPageNum(),queryDTO.getPageSize());
         orderMapper.selectPage(page,wrapper);
         List<PurchaseOrderVO> voList = purchaseConverter.toVOList(page.getRecords());
 
-        return PageResult.build(voList,page.getTotal());
+        return PageResult.of(page,voList);
     }
 
     @Override
@@ -89,26 +100,46 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertOrder(PurchaseOrderDTO orderDTO) {
-        // 检查订单号是否唯一
-        if (checkOrderNoUnique(orderDTO.getOrderNo())) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NO_DUPLICATE.getMessage());
-        }
+        // DEV-664：计划单模式（saveAsPlan=true）——跳过供应商/明细强校验，plan_status=1
+        boolean isPlan = Boolean.TRUE.equals(orderDTO.getSaveAsPlan());
+        if (!isPlan) {
+            // 检查订单号是否唯一
+            if (checkOrderNoUnique(orderDTO.getOrderNo())) {
+                throw new BusinessException(PurchaseExceptionEnum.ORDER_NO_DUPLICATE.getMessage());
+            }
 
-        // 验证供应商信息
-        if (orderDTO.getSupplierId() == null || StringUtils.isEmpty(orderDTO.getSupplierName())) {
-            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
-        }
+            // 验证供应商信息
+            if (orderDTO.getSupplierId() == null || StringUtils.isEmpty(orderDTO.getSupplierName())) {
+                throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
+            }
 
-        // 验证订单明细
-        if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
-        }
+            // 验证订单明细
+            if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
+                throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+            }
 
-        // 计算订单金额
-        calculateOrderAmount(orderDTO);
+            // 计算订单金额
+            calculateOrderAmount(orderDTO);
+        }
 
         // 转换实体
         PurchaseOrder order = purchaseConverter.toEntity(orderDTO);
+        if (isPlan) {
+            order.setPlanStatus(1);
+            // DEV-664：计划单可无供应商，表字段 NOT NULL 用占位/默认值
+            if (order.getSupplierId() == null) order.setSupplierId(0L);
+            if (StringUtils.isEmpty(order.getSupplierName())) order.setSupplierName("待定供应商");
+            if (order.getOrderDate() == null) order.setOrderDate(java.time.LocalDate.now());
+            if (order.getExpectedDeliveryDate() == null) {
+                order.setExpectedDeliveryDate(java.time.LocalDate.now().plusDays(7));
+            }
+            if (order.getOrderAmount() == null) order.setOrderAmount(java.math.BigDecimal.ZERO);
+            if (order.getOrderTotalAmount() == null) order.setOrderTotalAmount(java.math.BigDecimal.ZERO);
+        }
+
+        // 链路追踪（DEV-568）：无上游则生成 UUID，有上游继承（DTO 透传）
+        order.setTraceId(orderDTO.getTraceId() != null && !orderDTO.getTraceId().isEmpty()
+                ? orderDTO.getTraceId() : UUID.randomUUID().toString().replace("-", ""));
 
         // 设置默认状态
         if (order.getApprovalStatus() == null) {
@@ -136,7 +167,39 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 保存订单明细
         saveOrderItems(order.getOrderId(), orderDTO.getItems());
 
+        // 2026-08-18：写创建日志（带 traceId）——采购单链路出现"创建"节点，
+        // 后续审批/收货 @Log 可回退继承 traceId（原源头缺失致采购单流水全空）
+        savePurchaseCreateLog(order);
+
         return result;
+    }
+
+    /**
+     * 2026-08-18：采购订单创建日志（带 traceId，仿销售订单 saveOrderCreateLog）
+     */
+    private void savePurchaseCreateLog(PurchaseOrder order) {
+        try {
+            com.jjx.system.domain.entity.SysOperLog log = new com.jjx.system.domain.entity.SysOperLog();
+            log.setModule("purchase_order");
+            log.setBusinessType(1); // 新增
+            log.setOperUrl("order.create");
+            log.setBizType("purchase_order");
+            log.setBizId(String.valueOf(order.getOrderId()));
+            log.setTraceId(order.getTraceId());
+            log.setBizStatus(order.getApprovalStatus());
+            log.setOperParam("创建采购订单 " + order.getOrderNo() + "（" + order.getSupplierName() + "）");
+            log.setStatus(1);
+            log.setCreateTime(java.time.LocalDateTime.now());
+            try {
+                log.setUsername(com.jjx.system.utils.SecurityUtils.getUsername());
+                log.setUserId(com.jjx.system.utils.SecurityUtils.getUserId());
+                log.setRealName(com.jjx.system.utils.SecurityUtils.getRealName());
+            } catch (Exception ignored) {
+            }
+            logSaveService.saveOperLog(log);
+        } catch (Exception e) {
+            log.warn("记录采购订单创建日志失败: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -205,6 +268,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "purchase.submitted", bizId = "#orderId", bizType = "'purchase'")
     public int submitOrder(Long orderId) {
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(orderId);
@@ -265,6 +329,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
+    @Event(value = "purchase.approved", bizId = "#dto.orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int approveOrder(PurchaseOrderApprovalDTO dto) {
         // 检查订单是否存在
@@ -297,6 +362,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
+    @Event(value = "purchase.item_received", bizId = "#orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int receiveOrderItem(Long orderId, Long itemId, BigDecimal receivedQuantity, String inspectionResult, String inspectionRemark) {
         // 检查订单是否存在
@@ -318,9 +384,18 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND.getMessage());
         }
 
-        // 更新收货数量
+        // 030/087超收校验：单次收货>0（防负数/零）且 累计收货≤明细订单数量（防超收）
+        if (receivedQuantity == null || receivedQuantity.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("收货数量必须大于0");
+        }
         BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
                 item.getReceivedQuantity().add(receivedQuantity) : receivedQuantity;
+        if (newReceivedQuantity.compareTo(item.getQuantity()) > 0) {
+            throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
+                    + "（订单数量" + item.getQuantity().stripTrailingZeros().toPlainString()
+                    + ", 已收" + (item.getReceivedQuantity() != null ? item.getReceivedQuantity().stripTrailingZeros().toPlainString() : "0")
+                    + ", 本次" + receivedQuantity.stripTrailingZeros().toPlainString() + "）");
+        }
         item.setReceivedQuantity(newReceivedQuantity);
 
         // 更新检验结果
@@ -344,10 +419,121 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 检查订单整体收货状态
         updateOrderReceiptStatus(orderId);
 
+        // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
+        // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
+        inboundService.createInboundRecordFromPurchase(orderId);
+
         return result;
     }
 
+    /**
+     * 是否增加良品库存（单条/批量收货共用）：
+     * 未检验(空)、PASS、合格 → 入库；不合格/FAIL、部分合格 → 不入
+     */
+    private boolean shouldIncreaseStock(String inspectionResult) {
+        return StringUtils.isEmpty(inspectionResult)
+                || "PASS".equalsIgnoreCase(inspectionResult)
+                || "合格".equals(inspectionResult);
+    }
+
+    /**
+     * 采购到货加库存（DEV-471）：默认入原材料仓，无仓库时建批次库存+汇总+流水
+     */
+    private void increaseStockFromReceipt(PurchaseOrder order, PurchaseOrderItem item, BigDecimal receivedQuantity) {
+        // 默认仓库：物料默认仓库 或 第一个仓库
+        Long warehouseId = null;
+        Long locationId = null;
+        {
+            com.jjx.inventory.domain.InventoryMaterial mat = stockItemMapper == null ? null : null;
+            // 查物料默认仓库
+            try {
+                com.jjx.inventory.domain.InventoryMaterial m = materialMapper.selectById(item.getMaterialId());
+                if (m != null) {
+                    warehouseId = m.getDefaultWarehouseId();
+                }
+            } catch (Exception ignore) { }
+            if (warehouseId == null) {
+                // 取第一个仓库
+                com.jjx.inventory.domain.InventoryWarehouse wh = warehouseMapper.selectOne(
+                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryWarehouse>()
+                                .orderByAsc(com.jjx.inventory.domain.InventoryWarehouse::getWarehouseId)
+                                .last("LIMIT 1"));
+                if (wh != null) warehouseId = wh.getWarehouseId();
+            }
+        }
+        if (warehouseId == null) {
+            throw new BusinessException("无可用仓库，无法入库存");
+        }
+
+        // 029定稿：批次号统一规则——库存批次号=来源单据批次号（与入库单明细一致 PO-{orderNo}-{序号}）
+        Integer itemSeq = item.getItemOrder() != null ? item.getItemOrder() : 1;
+        String batchNo = "PO-" + order.getOrderNo() + "-" + itemSeq;
+        // 查找现有同物料批次库存（同仓库同批次）
+        com.jjx.inventory.domain.InventoryStockItem existing = stockItemMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryStockItem>()
+                        .eq(com.jjx.inventory.domain.InventoryStockItem::getMaterialId, item.getMaterialId())
+                        .eq(com.jjx.inventory.domain.InventoryStockItem::getWarehouseId, warehouseId)
+                        .eq(com.jjx.inventory.domain.InventoryStockItem::getBatchNo, batchNo)
+                        .last("LIMIT 1"));
+        if (existing == null) {
+            existing = new com.jjx.inventory.domain.InventoryStockItem();
+            existing.setMaterialId(item.getMaterialId());
+            existing.setMaterialCode(item.getMaterialCode());
+            existing.setMaterialName(item.getMaterialName());
+            existing.setWarehouseId(warehouseId);
+            existing.setLocationId(locationId);
+            existing.setBatchNo(batchNo);
+            existing.setQuantity(receivedQuantity);
+            existing.setReservedQuantity(java.math.BigDecimal.ZERO);
+            existing.setUnitCost(item.getUnitPrice());
+            existing.setStatus(1);
+            existing.setLastInboundTime(java.time.LocalDateTime.now());
+            stockItemMapper.insert(existing);
+        } else {
+            existing.setQuantity(existing.getQuantity().add(receivedQuantity));
+            existing.setLastInboundTime(java.time.LocalDateTime.now());
+            stockItemMapper.updateById(existing);
+        }
+
+        // 刷新库存汇总
+        stockMapper.refreshSummary(item.getMaterialId());
+
+        // 写库存流水
+        try {
+            com.jjx.inventory.domain.InventoryStock cur = stockMapper.selectByMaterialId(item.getMaterialId());
+            java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
+            if (cur != null && cur.getTotalQuantity() != null) {
+                beforeQty = cur.getTotalQuantity().subtract(receivedQuantity);
+            }
+            com.jjx.inventory.domain.InventoryTransaction tx = new com.jjx.inventory.domain.InventoryTransaction();
+            tx.setMaterialId(item.getMaterialId());
+            tx.setMaterialCode(item.getMaterialCode());
+            tx.setMaterialName(item.getMaterialName());
+            tx.setWarehouseId(warehouseId);
+            tx.setLocationId(locationId);
+            tx.setTransactionType("INBOUND");
+            tx.setSourceType("PURCHASE");
+            tx.setSourceId(order.getOrderId());
+            tx.setSourceNo(order.getOrderNo());
+            tx.setBatchNo(batchNo);
+            tx.setQuantity(receivedQuantity);
+            tx.setBeforeQuantity(beforeQty);
+            tx.setAfterQuantity(beforeQty.add(receivedQuantity));
+            tx.setUnitCost(item.getUnitPrice());
+            tx.setTransactionTime(java.time.LocalDateTime.now());
+            tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
+            tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
+            tx.setRemark("采购到货入库: " + order.getOrderNo());
+            transactionMapper.insert(tx);
+        } catch (Exception e) {
+            log.warn("写采购到货流水失败: {}", e.getMessage());
+        }
+
+        log.info("采购到货[{}] 物料[{}] +{} 库存(仓库{})", order.getOrderNo(), item.getMaterialCode(), receivedQuantity, warehouseId);
+    }
+
     @Override
+    @Event(value = "purchase.payment_updated", bizId = "#orderId", bizType = "'purchase'")
     public int updatePaymentInfo(Long orderId, BigDecimal paidAmount, Integer paymentStatus) {
         return orderMapper.updatePaymentInfo(orderId, paidAmount, paymentStatus);
     }
@@ -621,6 +807,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         newOrder.setRemark(sourceOrder.getRemark());
         newOrder.setUrgentFlag(sourceOrder.getUrgentFlag());
         newOrder.setUrgentReason(sourceOrder.getUrgentReason());
+        // 链路追踪（DEV-568）：复制订单继承源订单 traceId
+        newOrder.setTraceId(sourceOrder.getTraceId() != null && !sourceOrder.getTraceId().isEmpty()
+                ? sourceOrder.getTraceId() : UUID.randomUUID().toString().replace("-", ""));
 
         // 保存新订单
         int result = orderMapper.insert(newOrder);
@@ -727,6 +916,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
      * 保存订单明细
      */
     private void saveOrderItems(Long orderId, List<PurchaseOrderItemDTO> itemDTOs) {
+        // DEV-664：计划单明细可能为空（空计划单），兼容跳过
+        if (itemDTOs == null || itemDTOs.isEmpty()) {
+            return;
+        }
         for (int i = 0; i < itemDTOs.size(); i++) {
             PurchaseOrderItemDTO itemDTO = itemDTOs.get(i);
             PurchaseOrderItem item = purchaseConverter.toEntity(itemDTO);
@@ -741,7 +934,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 item.setReceiptStatus(ReceiptStatusEnum.PENDING.getCode());
             }
             if (item.getInquiryStatus() == null) {
-                item.setInquiryStatus("pending");
+                item.setInquiryStatus(InquiryStatus.PENDING.getCode());
             }
 
             orderItemMapper.insert(item);
@@ -769,8 +962,14 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (queryDTO.getPaymentStatus() != null) {
             wrapper.eq(PurchaseOrder::getPaymentStatus, queryDTO.getPaymentStatus());
         }
+        // DEV-664：不传 planStatus 时默认只显示普通订单(0)；计划单走独立Tab（传 planStatus=1）
+        if (queryDTO.getPlanStatus() != null) {
+            wrapper.eq(PurchaseOrder::getPlanStatus, queryDTO.getPlanStatus());
+        } else {
+            wrapper.eq(PurchaseOrder::getPlanStatus, 0);
+        }
 
-        wrapper.orderByDesc(PurchaseOrder::getCreateTime);
+        wrapper.orderByDesc(PurchaseOrder::getCreateTime).orderByDesc(PurchaseOrder::getOrderId);
         return wrapper;
     }
 
@@ -913,7 +1112,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "purchase.received", bizId = "#dto.orderId", bizType = "'purchase'")
     public int batchReceiveOrderItems(PurchaseOrderReceiveDTO dto) {
+        // 订单ID兜底校验（orderId 由接口路径注入，此处防御 null）
+        if (dto == null || dto.getOrderId() == null) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ID_REQUIRED.getMessage());
+        }
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
         if (order == null) {
@@ -938,6 +1142,16 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             // 更新收货数量
             BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
                     item.getReceivedQuantity().add(itemDTO.getReceivedQuantity()) : itemDTO.getReceivedQuantity();
+            // 2026-08-18：超收校验（对齐 receiveOrderItem，此前批量接口漏校验）
+            if (itemDTO.getReceivedQuantity() == null || itemDTO.getReceivedQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException("收货数量必须大于0");
+            }
+            if (newReceivedQuantity.compareTo(item.getQuantity()) > 0) {
+                throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
+                        + "（订单数量" + item.getQuantity().stripTrailingZeros().toPlainString()
+                        + ", 已收" + (item.getReceivedQuantity() != null ? item.getReceivedQuantity().stripTrailingZeros().toPlainString() : "0")
+                        + ", 本次" + itemDTO.getReceivedQuantity().stripTrailingZeros().toPlainString() + "）");
+            }
             item.setReceivedQuantity(newReceivedQuantity);
 
             // 更新检验结果
@@ -961,6 +1175,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 更新订单整体收货状态
         updateOrderReceiptStatus(dto.getOrderId());
+
+        // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
+        // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
+        inboundService.createInboundRecordFromPurchase(dto.getOrderId());
 
         return totalCount;
     }
@@ -998,5 +1216,306 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         orderMapper.updateReceiptStatus(orderId, receiptStatus);
+    }
+
+    @Override
+    public void returnGoods(Long orderId, String reason, Long materialId, Integer quantity) {
+        PurchaseOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+        }
+        log.info("采购退货: orderId={}, reason={}, materialId={}, quantity={}", orderId, reason, materialId, quantity);
+
+        // 记录退货状态
+        order.setRemark("退货: " + reason);
+        orderMapper.updateById(order);
+
+        // 退货扣库存（DEV-352 补全）：按 FIFO 扣减 + 写流水
+        if (materialId != null && quantity != null && quantity > 0) {
+            java.math.BigDecimal remaining = java.math.BigDecimal.valueOf(quantity);
+            java.util.List<com.jjx.inventory.domain.InventoryStockItem> fifoItems =
+                    stockItemMapper.selectFIFOAvailable(materialId);
+            if (fifoItems == null || fifoItems.isEmpty()) {
+                throw new BusinessException("物料无可用库存，无法退货");
+            }
+            for (com.jjx.inventory.domain.InventoryStockItem si : fifoItems) {
+                if (remaining.compareTo(java.math.BigDecimal.ZERO) <= 0) break;
+                java.math.BigDecimal deductQty = remaining.min(
+                        si.getQuantity().subtract(si.getReservedQuantity() == null ? java.math.BigDecimal.ZERO : si.getReservedQuantity()));
+                if (deductQty.compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
+                stockItemMapper.deductStock(si.getItemId(), deductQty);
+                remaining = remaining.subtract(deductQty);
+            }
+            if (remaining.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                throw new BusinessException("物料库存不足，缺少: " + remaining);
+            }
+            stockMapper.refreshSummary(materialId);
+
+            // 写库存流水
+            try {
+                com.jjx.inventory.domain.InventoryStock currentStock = stockMapper.selectByMaterialId(materialId);
+                java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
+                if (currentStock != null && currentStock.getTotalQuantity() != null) {
+                    beforeQty = currentStock.getTotalQuantity().add(java.math.BigDecimal.valueOf(quantity));
+                }
+                com.jjx.inventory.domain.InventoryTransaction tx = new com.jjx.inventory.domain.InventoryTransaction();
+                tx.setMaterialId(materialId);
+                tx.setTransactionType("RETURN");
+                tx.setSourceType("purchase_return");
+                tx.setSourceId(orderId);
+                tx.setSourceNo(order.getOrderNo());
+                tx.setQuantity(java.math.BigDecimal.valueOf(quantity).negate());
+                tx.setBeforeQuantity(beforeQty);
+                tx.setAfterQuantity(beforeQty.subtract(java.math.BigDecimal.valueOf(quantity)));
+                tx.setTransactionTime(java.time.LocalDateTime.now());
+                tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
+                tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
+                tx.setRemark("采购退货扣减: " + reason);
+                transactionMapper.insert(tx);
+            } catch (Exception e) {
+                log.warn("写退货库存流水失败: {}", e.getMessage());
+            }
+            log.info("采购退货扣库存完成: materialId={}, qty={}", materialId, quantity);
+        }
+
+        log.info("采购退货成功: orderId={}", orderId);
+    }
+
+    @Override
+    public byte[] exportPdf(Long orderId) {
+        PurchaseOrderVO order = selectOrderById(orderId);
+        java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.00");
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+
+        java.util.Map<String, String> info = new java.util.LinkedHashMap<>();
+        info.put("采购单号", order.getOrderNo());
+        info.put("下单日期", order.getOrderDate() == null ? "" : order.getOrderDate().toString());
+        info.put("供应商", order.getSupplierName());
+        info.put("预计到货", order.getExpectedDeliveryDate() == null ? "" : order.getExpectedDeliveryDate().toString());
+        info.put("币种", order.getCurrency() == null ? "CNY" : order.getCurrency());
+        info.put("交货方式", order.getDeliveryMethod() == null ? "-" : order.getDeliveryMethod());
+        info.put("合同号", order.getContractNo() == null ? "-" : order.getContractNo());
+        info.put("审核人", order.getApproverName() == null ? "-" : order.getApproverName());
+        info.put("创建人", order.getCreateBy() == null ? "-" : order.getCreateBy());
+
+        java.util.List<String[]> rows = new java.util.ArrayList<>();
+        if (order.getItems() != null) {
+            for (PurchaseOrderItemVO item : order.getItems()) {
+                String spec = item.getMaterialName() == null ? "" : item.getMaterialName();
+                if (item.getMaterialSpec() != null && !item.getMaterialSpec().isBlank()) {
+                    spec = spec.isBlank() ? item.getMaterialSpec() : spec + " / " + item.getMaterialSpec();
+                }
+                rows.add(new String[]{
+                        String.valueOf(rows.size() + 1),
+                        item.getMaterialCode() == null ? "" : item.getMaterialCode(),
+                        spec,
+                        item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
+                        item.getUnit() == null ? "" : item.getUnit(),
+                        item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
+                        item.getAmount() == null ? "" : df.format(item.getAmount()),
+                });
+            }
+        }
+
+        return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
+                .withConfig(pdfConfigLoader.load())
+                .title("采  购  订  单")
+                .info(info)
+                .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额"}, rows)
+                .amounts(new String[][]{
+                        {"订单金额(未税)", order.getOrderAmount() == null ? "" : df.format(order.getOrderAmount())},
+                        {"税额", order.getOrderTax() == null ? "" : df.format(order.getOrderTax())},
+                        {"订单总金额", order.getOrderTotalAmount() == null ? "" : df.format(order.getOrderTotalAmount())},
+                })
+                .remark(order.getRemark())
+                .signatures("采购负责人：" + (order.getCreateBy() == null ? "" : order.getCreateBy()),
+                        "供应商确认：", "日期：")
+                .toBytes();
+    }
+
+    // ==================== DEV-664 采购计划 ====================
+
+    /**
+     * 计划单转正式（计划单体系已弃用，2026-08-18：前端无确认入口，待后续清理或重构）
+     *
+     * @deprecated 计划单体系（plan_status=1）已弃用
+     */
+    @Deprecated
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int confirmPlan(Long orderId, Long supplierId, String supplierName) {
+        PurchaseOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+        }
+        if (!Objects.equals(1, order.getPlanStatus())) {
+            throw new BusinessException("只有计划单可以确认转正式，当前状态: " + order.getPlanStatus());
+        }
+        // 校验供应商和明细
+        if (supplierId == null || StringUtils.isEmpty(supplierName)) {
+            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
+        }
+        List<PurchaseOrderItem> items = orderItemMapper.selectList(
+                new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getOrderId, orderId));
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+        }
+
+        // 转正式：plan_status 1→0，补供应商信息，进入审批流（草稿态，需提交审批）
+        order.setPlanStatus(0);
+        order.setSupplierId(supplierId);
+        order.setSupplierName(supplierName);
+        int updated = orderMapper.updateById(order) > 0 ? 1 : 0;
+
+        // DEV-997：计划转正式后，按明细物料回写未处理预警（batchProcessAlert 接线）
+        try {
+            java.util.List<Long> materialIds = items.stream()
+                    .map(PurchaseOrderItem::getMaterialId)
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .collect(java.util.stream.Collectors.toList());
+            if (!materialIds.isEmpty()) {
+                java.util.List<Long> alertIds = alertService.getUnprocessedAlertIdsByMaterials(materialIds);
+                if (!alertIds.isEmpty()) {
+                    alertService.batchProcessAlert(alertIds, null, order.getOrderNo(), "采购计划确认转正式，关联采购单");
+                }
+            }
+        } catch (Exception e) {
+            log.warn("采购计划确认回写预警失败(不影响转正式): {}", e.getMessage());
+        }
+        return updated;
+    }
+
+    @Override
+    public List<Map<String, Object>> getPlanSuggestions() {
+        // 复用库存预警的采购建议（安全库存 + 订单缺料），算法已按 max_stock 优化
+        return alertService.generatePurchaseSuggestions();
+    }
+
+    /**
+     * 一键从建议生成计划单（计划单体系已弃用，2026-08-18：前端无调用）
+     *
+     * @deprecated 计划单体系已弃用
+     */
+    @Deprecated
+    @Override
+    public java.util.Map<Long, BigDecimal> getInTransitByMaterials(java.util.List<Long> materialIds) {
+        // 2026-08-18 P1-B：含草稿(1)/待审批(3)/已批准(4)未收货单，防手动添加物料重复下单
+        java.util.Map<Long, BigDecimal> result = new java.util.HashMap<>();
+        if (materialIds == null || materialIds.isEmpty()) {
+            return result;
+        }
+        try {
+            java.util.Set<Long> want = new java.util.HashSet<>(materialIds);
+            java.util.List<java.util.Map<String, Object>> rows = orderItemMapper.selectInTransitByMaterial();
+            for (java.util.Map<String, Object> row : rows) {
+                Object mid = row.get("material_id");
+                Object qty = row.get("in_transit");
+                if (mid == null || qty == null) continue;
+                Long materialId = ((Number) mid).longValue();
+                if (want.contains(materialId)) {
+                    result.put(materialId, new BigDecimal(qty.toString()));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询物料在途采购量失败: {}", e.getMessage());
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createPlanFromSuggestions() {
+        // 092定稿：缺料预警/采购建议一键生成采购计划单（物料+数量+建议交期自动带，计划员确认后转正式走审批）
+        List<Map<String, Object>> suggestions = alertService.generatePurchaseSuggestions();
+        if (suggestions == null || suggestions.isEmpty()) {
+            throw new BusinessException("当前无采购建议，无需生成计划单");
+        }
+        PurchaseOrder plan = new PurchaseOrder();
+        plan.setOrderNo(generateOrderNo());
+        plan.setOrderType("plan");
+        plan.setPlanStatus(1); // 计划单待确认
+        plan.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
+        plan.setReceiptStatus(0);
+        plan.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
+        orderMapper.insert(plan);
+        int sort = 1;
+        for (Map<String, Object> s : suggestions) {
+            Object mid = s.get("materialId");
+            Object qty = s.get("suggestQuantity");
+            if (mid == null || qty == null) continue;
+            PurchaseOrderItem item = new PurchaseOrderItem();
+            item.setOrderId(plan.getOrderId());
+            item.setMaterialId(((Number) mid).longValue());
+            item.setMaterialCode((String) s.get("materialCode"));
+            item.setMaterialName((String) s.get("materialName"));
+            item.setQuantity(new BigDecimal(qty.toString()));
+            item.setReceiptStatus(0);
+            item.setItemOrder(sort++);
+            orderItemMapper.insert(item);
+        }
+        log.info("缺料预警一键生成采购计划单: planId={}, 明细{}条", plan.getOrderId(), sort - 1);
+        return plan.getOrderId();
+    }
+
+    /**
+     * 从选中预警生成计划单（计划单体系已弃用，2026-08-18：预警页转采购入口已移除）
+     *
+     * @deprecated 计划单体系已弃用
+     */
+    @Deprecated
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createPlanFromAlerts(java.util.List<Long> alertIds) {
+        // DEV-996：预警页选中/单条预警一键转采购——按选中预警生成计划单（物料+缺口数量自动带），生成后自动回写预警
+        if (alertIds == null || alertIds.isEmpty()) {
+            throw new BusinessException("请先选择要转采购的预警");
+        }
+        java.util.List<Map<String, Object>> suggestions = alertService.generatePurchaseSuggestions();
+        if (suggestions == null || suggestions.isEmpty()) {
+            throw new BusinessException("当前无采购建议，无需生成计划单");
+        }
+        // 按选中预警ID过滤建议（建议带 sourceAlertId=预警ID）
+        java.util.Set<Long> idSet = new java.util.HashSet<>(alertIds);
+        java.util.List<Map<String, Object>> filtered = suggestions.stream()
+                .filter(s -> s.get("sourceAlertId") != null
+                        && idSet.contains(((Number) s.get("sourceAlertId")).longValue()))
+                .collect(java.util.stream.Collectors.toList());
+        if (filtered.isEmpty()) {
+            throw new BusinessException("所选预警无对应采购建议，无法生成计划单（可能已处理或库存已补足）");
+        }
+        // 建计划单（复用 092 逻辑）
+        PurchaseOrder plan = new PurchaseOrder();
+        plan.setOrderNo(generateOrderNo());
+        plan.setOrderType("plan");
+        plan.setPlanStatus(1); // 计划单待确认
+        plan.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
+        plan.setReceiptStatus(0);
+        plan.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
+        orderMapper.insert(plan);
+        int sort = 1;
+        for (Map<String, Object> s : filtered) {
+            Object mid = s.get("materialId");
+            Object qty = s.get("suggestQuantity");
+            if (mid == null || qty == null) continue;
+            PurchaseOrderItem item = new PurchaseOrderItem();
+            item.setOrderId(plan.getOrderId());
+            item.setMaterialId(((Number) mid).longValue());
+            item.setMaterialCode((String) s.get("materialCode"));
+            item.setMaterialName((String) s.get("materialName"));
+            item.setQuantity(new BigDecimal(qty.toString()));
+            item.setReceiptStatus(0);
+            item.setItemOrder(sort++);
+            orderItemMapper.insert(item);
+        }
+        // 自动回写预警：状态→2 + 关联采购单号（复用 batchProcessAlert）
+        try {
+            alertService.batchProcessAlert(alertIds, null, plan.getOrderNo(), "预警一键转采购生成采购计划单");
+        } catch (Exception e) {
+            log.warn("转采购后回写预警失败: {}", e.getMessage());
+        }
+        log.info("选中预警一键生成采购计划单: planId={}, 明细{}条, alertIds={}", plan.getOrderId(), sort - 1, alertIds);
+        return plan.getOrderId();
     }
 }

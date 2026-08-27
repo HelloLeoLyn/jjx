@@ -6,10 +6,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.inventory.converter.StockItemConverter;
 import com.jjx.inventory.domain.InventoryStockItem;
+import com.jjx.inventory.domain.InventoryStorageLocation;
 import com.jjx.inventory.dto.query.StockItemQueryDTO;
 import com.jjx.inventory.dto.vo.StockItemVO;
 import com.jjx.inventory.enums.StockItemStatusEnum;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
+import com.jjx.inventory.mapper.InventoryStorageLocationMapper;
 import com.jjx.inventory.service.InventoryStockItemService;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -26,6 +28,7 @@ import java.util.stream.Collectors;
 public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockItemMapper, InventoryStockItem> implements InventoryStockItemService {
 
     private final InventoryStockItemMapper stockItemMapper;
+    private final InventoryStorageLocationMapper storageLocationMapper;
     private final StockItemConverter stockItemConverter;
 
     @Override
@@ -98,6 +101,15 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
         StockItemStatusEnum statusEnum = StockItemStatusEnum.getByCode(entity.getStatus());
         if (statusEnum != null) {
             vo.setStatusName(statusEnum.getLabel());
+        }
+
+        // 填充库位名称（DEV-692）
+        if (entity.getLocationId() != null) {
+            InventoryStorageLocation loc = storageLocationMapper.selectById(entity.getLocationId());
+            if (loc != null) {
+                vo.setLocationCode(loc.getLocationCode());
+                vo.setLocationName(loc.getLocationName());
+            }
         }
 
         return vo;

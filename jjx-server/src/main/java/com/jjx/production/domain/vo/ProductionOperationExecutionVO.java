@@ -26,11 +26,26 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "标准工序ID")
     private Long processId;
 
-    @Schema(description = "工序编码")
-    private String processCode;
+    @Schema(description = "大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）")
+    private String majorCategory;
 
     @Schema(description = "工序名称")
     private String processName;
+
+    @Schema(description = "计划工艺参数JSON（2026-08-12）")
+    private String customProcessParams;
+
+    @Schema(description = "工序编码")
+    private String processCode;
+
+    @Schema(description = "工序图标（2026-08-11 展示用）")
+    private String icon;
+
+    @Schema(description = "是否有下标（2026-08-11 展示用）")
+    private Integer hasIndex;
+
+    @Schema(description = "下标数字（2026-08-11 展示用）")
+    private Integer indexNumber;
 
     @Schema(description = "工序顺序")
     private Integer processOrder;
@@ -86,6 +101,9 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "不良数量")
     private BigDecimal defectiveQuantity;
 
+    @Schema(description = "待完成数量（= 任务数量 - 已完成，下限0）")
+    private BigDecimal remainingQuantity;
+
     @Schema(description = "不良原因")
     private String defectiveReason;
 
@@ -96,7 +114,7 @@ public class ProductionOperationExecutionVO {
     private String qualityCheckResult;
 
     @Schema(description = "执行状态：PENDING待执行/PROCESSING执行中/COMPLETED已完成/SKIPPED已跳过")
-    private String executionStatus;
+    private Integer executionStatus;
 
     @Schema(description = "执行状态描述")
     private String executionStatusDesc;
@@ -172,4 +190,5 @@ public class ProductionOperationExecutionVO {
 
     @Schema(description = "设备利用率(%)")
     private BigDecimal equipmentUtilization;
+
 }

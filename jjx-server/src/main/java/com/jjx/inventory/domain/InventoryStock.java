@@ -44,6 +44,10 @@ public class InventoryStock implements Serializable {
     @TableField(exist = false)
     private BigDecimal availableQuantity;
 
+    /** 安全库存（关联 inventory_material.safe_stock，非表字段） */
+    @TableField(exist = false)
+    private BigDecimal safeStock;
+
     /** 当前最早有效期（来自最早批次的 expiry_date） */
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate earliestExpiry;

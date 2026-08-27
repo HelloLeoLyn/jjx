@@ -9,34 +9,34 @@ export enum OrderType {
 // 订单状态枚举（统一状态机）
 export enum OrderStatus {
   // 计划状态
-  DRAFT = 'draft', // 草稿
-  PENDING_APPROVAL = 'pending_approval', // 待审批
-  APPROVED = 'approved', // 已批准
+  DRAFT = 0, // 草稿
+  PENDING_APPROVAL = 1, // 待审批
+  APPROVED = 2, // 已批准
 
   // 工单状态
-  SCHEDULED = 'scheduled', // 已排程
-  IN_PROGRESS = 'in_progress', // 进行中
-  COMPLETED = 'completed', // 已完成
+  SCHEDULED = 4, // 已排程(已计划)
+  IN_PROGRESS = 6, // 进行中
+  COMPLETED = 8, // 已完成
 
   // 通用状态
-  CANCELLED = 'cancelled', // 已取消
+  CANCELLED = 9, // 已取消
 }
 
 // 审批状态枚举（计划特有）
 export enum ApprovalStatus {
-  PENDING = 'pending', // 待审批
-  APPROVED = 'approved', // 已批准
-  REJECTED = 'rejected', // 已拒绝
-  CANCELLED = 'cancelled', // 已取消
+  PENDING = 1, // 待审批
+  APPROVED = 2, // 已批准
+  REJECTED = 3, // 已拒绝
+  CANCELLED = 4, // 已取消
 }
 
 // 执行状态枚举（工单特有）
 export enum ExecutionStatus {
-  NOT_STARTED = 'not_started', // 未开始
-  IN_PROGRESS = 'in_progress', // 进行中
-  COMPLETED = 'completed', // 已完成
-  PAUSED = 'paused', // 已暂停
-  CANCELLED = 'cancelled', // 已取消
+  NOT_STARTED = 0, // 未开始(待执行)
+  IN_PROGRESS = 2, // 进行中(执行中)
+  COMPLETED = 4, // 已完成
+  PAUSED = 3, // 已暂停
+  CANCELLED = 6, // 已取消
 }
 
 // 优先级枚举
@@ -60,6 +60,7 @@ export interface ProductionOrderBase {
   // 标识信息
   orderId: string
   orderNo: string
+  traceId?: string
   orderType: OrderType
 
   // 关联信息
@@ -164,6 +165,8 @@ export interface ProductionOrderVO extends ProductionOrderBase {
   statusLabel: string // 状态标签
   statusType: string // 状态类型（用于标签颜色）
   priorityLabel: string // 优先级标签
+  materialStatus?: number // 领料状态：0未领料/1待发料/2已领料
+  materialStatusLabel?: string // 领料状态标签
 
   // 时间显示
   planDateRange: string // 计划日期范围显示
@@ -198,6 +201,7 @@ export interface ProductionOrderQuery {
   createTimeEnd?: string // 创建时间结束
 
   // 关联筛选
+  salesOrderId?: number // 销售订单ID
   salesOrderNo?: string // 销售订单编号
   instanceCode?: string // 产品实例编码
 

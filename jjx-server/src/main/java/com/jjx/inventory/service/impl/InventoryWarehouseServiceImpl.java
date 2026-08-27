@@ -2,6 +2,7 @@ package com.jjx.inventory.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.common.enums.StatusEnum;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.vo.WarehouseVO;
 import com.jjx.inventory.mapper.InventoryWarehouseMapper;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.jjx.system.annotation.Event;
 
 /**
  * 仓库服务实现类
@@ -30,7 +32,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
     public List<InventoryWarehouse> getAllEnabled() {
         return warehouseMapper.selectList(
                 new LambdaQueryWrapper<InventoryWarehouse>()
-                        .eq(InventoryWarehouse::getStatus, "0")
+                        .eq(InventoryWarehouse::getStatus, String.valueOf(StatusEnum.NORMAL.getCode()))
                         .orderByAsc(InventoryWarehouse::getSortOrder)
         );
     }
@@ -45,7 +47,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
         return warehouseMapper.selectList(
                 new LambdaQueryWrapper<InventoryWarehouse>()
                         .eq(InventoryWarehouse::getWarehouseType, warehouseType)
-                        .eq(InventoryWarehouse::getStatus, "0")
+                        .eq(InventoryWarehouse::getStatus, String.valueOf(StatusEnum.NORMAL.getCode()))
                         .orderByAsc(InventoryWarehouse::getSortOrder)
         );
     }
@@ -59,6 +61,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
     }
 
     @Override
+    @Event(value = "inventory.warehouse.status_updated", bizId = "#warehouseId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long warehouseId, String status) {
         InventoryWarehouse warehouse = warehouseMapper.selectById(warehouseId);
@@ -72,6 +75,7 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
     }
 
     @Override
+    @Event(value = "inventory.warehouse.deleted", bizId = "#warehouseId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long warehouseId) {
         InventoryWarehouse warehouse = warehouseMapper.selectById(warehouseId);

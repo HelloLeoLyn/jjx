@@ -3,15 +3,25 @@
   <div class="navbar">
     <div class="left-menu">
       <div class="hamburger-container" @click="toggleSidebar">
-        <el-icon :size="20">
-          <Expand v-if="!isCollapse" />
-          <Fold v-else />
+        <el-icon :size="18" class="hamburger-icon">
+          <DArrowRight v-if="isCollapse" />
+          <DArrowLeft v-else />
         </el-icon>
       </div>
       <breadcrumb />
     </div>
 
     <div class="right-menu">
+      <!-- 环境标识 -->
+      <NavEnvBadge />
+      <!-- 消息通知铃铛 -->
+      <NavNotification />
+      <!-- 看板入口 -->
+      <el-tooltip content="看板" placement="bottom">
+        <el-button class="kanban-btn" text circle @click="openKanban">
+          <el-icon :size="18"><Grid /></el-icon>
+        </el-button>
+      </el-tooltip>
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="avatar-wrapper">
           <el-avatar :size="32" :src="avatar" />
@@ -43,9 +53,11 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Expand, Fold, ArrowDown, User, Lock, SwitchButton } from '@element-plus/icons-vue'
+import { DArrowLeft, DArrowRight, ArrowDown, User, Lock, SwitchButton, Grid } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 import Breadcrumb from './Breadcrumb.vue'
+import NavNotification from './NavNotification.vue'
+import NavEnvBadge from './NavEnvBadge.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -59,13 +71,17 @@ const toggleSidebar = () => {
   userStore.toggleSidebar()
 }
 
+const openKanban = () => {
+  window.open('/kanban', '_blank')
+}
+
 const handleCommand = (command: string) => {
   switch (command) {
     case 'profile':
       router.push('/profile')
       break
     case 'password':
-      router.push('/password')
+      router.push('/profile?tab=pwd')
       break
     case 'logout':
       handleLogout()
@@ -95,7 +111,7 @@ const handleLogout = async () => {
   overflow: hidden;
   position: relative;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  border-bottom: 1px solid #e8eaef;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -111,11 +127,20 @@ const handleLogout = async () => {
       cursor: pointer;
       display: flex;
       align-items: center;
-      color: #5a5e66;
-      transition: all 0.3s;
+      color: #909399;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      justify-content: center;
+      transition: all 0.2s;
 
       &:hover {
         color: #409eff;
+        background: #ecf5ff;
+      }
+
+      .hamburger-icon {
+        transition: transform 0.2s ease;
       }
     }
   }
@@ -129,10 +154,18 @@ const handleLogout = async () => {
       align-items: center;
       gap: 8px;
       cursor: pointer;
+      padding: 4px 12px;
+      border-radius: 8px;
+      transition: all 0.2s;
+
+      &:hover {
+        background: #f5f6fa;
+      }
 
       .username {
         font-size: 14px;
-        color: #5a5e66;
+        color: #303133;
+        font-weight: 500;
       }
     }
   }

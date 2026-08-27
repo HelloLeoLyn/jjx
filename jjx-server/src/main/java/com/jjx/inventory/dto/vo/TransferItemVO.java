@@ -8,7 +8,7 @@ import java.math.BigDecimal;
  * 调拨单明细视图对象VO
  */
 @Data
-class TransferItemVO {
+public class TransferItemVO {
     private Long transferItemId;
     private Long transferId;
     private Long materialId;

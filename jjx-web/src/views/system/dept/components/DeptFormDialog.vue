@@ -25,7 +25,12 @@
         <el-input-number v-model="formData.orderNum" controls-position="right" :min="0" />
       </el-form-item>
       <el-form-item label="负责人" prop="leader">
-        <el-input v-model="formData.leader" placeholder="请输入负责人" />
+        <UserSelect
+          v-model="formData.leaderUserId"
+          placeholder="搜索用户名/姓名选择负责人"
+          @change="handleLeaderChange"
+          @clear="handleLeaderClear"
+        />
       </el-form-item>
       <el-form-item label="联系电话" prop="phone">
         <el-input v-model="formData.phone" placeholder="请输入联系电话" />
@@ -38,16 +43,6 @@
           <el-radio value="0">正常</el-radio>
           <el-radio value="1">停用</el-radio>
         </el-radio-group>
-      </el-form-item>
-      <el-form-item label="备注">
-        <el-input
-          v-model="formData.remark"
-          type="textarea"
-          placeholder="请输入内容"
-          :rows="3"
-          maxlength="500"
-          show-word-limit
-        />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -63,7 +58,8 @@
 import { ref, reactive, computed } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { deptApi } from '@/api/system/dept'
-import type { SysDept } from '@/types/system'
+import UserSelect from '@/components/system/UserSelect.vue'
+import type { SysDept, SysUser } from '@/types/system'
 
 interface Props {
   visible: boolean
@@ -74,10 +70,10 @@ interface Props {
     deptName: string
     orderNum: number
     leader: string
+    leaderUserId?: number | null
     phone: string
     email: string
     status: string
-    remark: string
   }
   deptOptions: SysDept[]
 }
@@ -108,6 +104,25 @@ const rules = reactive<FormRules>({
   orderNum: [{ required: true, message: '显示排序不能为空', trigger: 'blur' }],
 })
 
+/** DEV-1106：选中用户后联动填充负责人姓名；部门邮箱/电话为空时自动带出用户信息（不覆盖已填） */
+const handleLeaderChange = (user: SysUser | null) => {
+  // 回显同步导致的 change(null) 不处理，避免误清空已有负责人姓名
+  if (!user) return
+  props.formData.leader = user.nickName || user.userName
+  if (!props.formData.email && user.email) {
+    props.formData.email = user.email
+  }
+  if (!props.formData.phone && user.phone) {
+    props.formData.phone = user.phone
+  }
+}
+
+/** DEV-1106：用户主动清空选择 → 同时清空负责人姓名与用户ID */
+const handleLeaderClear = () => {
+  props.formData.leader = ''
+  props.formData.leaderUserId = null
+}
+
 const handleSubmit = async () => {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
@@ -115,11 +130,16 @@ const handleSubmit = async () => {
 
     submitLoading.value = true
     try {
+      // DEV-1106：leaderUserId 为 null（清空）时按 undefined 提交，避免 null 写库
+      const payload = {
+        ...props.formData,
+        leaderUserId: props.formData.leaderUserId ?? undefined,
+      }
       if (props.formData.id) {
-        await deptApi.edit(props.formData)
+        await deptApi.edit(payload)
         ElMessage.success('修改成功')
       } else {
-        await deptApi.add(props.formData)
+        await deptApi.add(payload)
         ElMessage.success('新增成功')
       }
       dialogVisible.value = false

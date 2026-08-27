@@ -18,10 +18,14 @@ import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -48,7 +52,7 @@ public class OrderController extends BaseController {
      * 获取销售订单详细信息
      */
     @Operation(summary = "获取销售订单详细信息")
-    @SaCheckPermission("sales:order:validation")
+    @SaCheckPermission("sales:order:view")
     @GetMapping("/{orderId}/validation")
     public Result<OrderReferValidationVO> validation(@PathVariable Long orderId) {
         OrderReferValidationVO salesOrder = orderService.validation(orderId);
@@ -58,27 +62,39 @@ public class OrderController extends BaseController {
      * 获取销售订单详细信息
      */
     @Operation(summary = "获取销售订单详细信息")
-    @SaCheckPermission("sales:order:detail")
+    @SaCheckPermission("sales:order:view")
     @GetMapping("/{orderId}")
     public Result<SalesOrderVO> getOrder(@PathVariable Long orderId) {
         return Result.success(orderService.selectOrderById(orderId));
     }
     /**
      * 新增销售订单
+     * 日志：手动写 order.create（带 traceId，见 OrderServiceImpl.saveOrderCreateLog）——不用 @Log 避免双写
      */
     @Operation(summary = "新增销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.INSERT)
     @SaCheckPermission("sales:order:add")
     @PostMapping
-    public Result<Void> addOrder(@Validated(ValidationGroups.Add.class) @RequestBody SalesOrderAddDTO dto) {
-        return toAjax(orderService.insertOrder(dto));
+    public Result<Long> addOrder(@Validated(ValidationGroups.Add.class) @RequestBody SalesOrderAddDTO dto) {
+        Long orderId = orderService.insertOrder(dto);
+        return Result.success(orderId);
+    }
+
+    /**
+     * 复制订单（终态订单一键重新生成新草稿单）
+     * 日志：新单/原单各写一条（带各自 traceId），见 OrderServiceImpl.copyOrder
+     */
+    @Operation(summary = "复制订单（重新生成新草稿单）")
+    @SaCheckPermission("sales:order:add")
+    @PostMapping("/{orderId}/copy")
+    public Result<Long> copyOrder(@PathVariable Long orderId) {
+        return Result.success(orderService.copyOrder(orderId));
     }
 
     /**
      * 修改销售订单
+     * 日志：手动写 order.update（带字段级变更明细，见 OrderServiceImpl.saveOrderUpdateChangeLog）——不用 @Log 避免双写
      */
     @Operation(summary = "修改销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}")
     public Result<Void> updateOrder(@PathVariable Long orderId, @Validated(ValidationGroups.Update.class) @RequestBody SalesOrderEditDTO dto) {
@@ -92,7 +108,7 @@ public class OrderController extends BaseController {
      * 删除销售订单
      */
     @Operation(summary = "删除销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.DELETE)
+    @Log(module = "销售订单管理", businessType = BusinessType.DELETE, bizType = "'order'", bizId = "#orderIds[0]")
     @SaCheckPermission("sales:order:delete")
     @DeleteMapping("/{orderIds}")
     public Result<Void> deleteOrders(@PathVariable Long[] orderIds) {
@@ -110,14 +126,66 @@ public class OrderController extends BaseController {
         return Result.success(filePath);
     }
 
+    /**
+     * 导出销售订单PDF（单张表单）
+     */
+    @Operation(summary = "导出销售订单PDF")
+    @SaCheckPermission("sales:order:export")
+    @GetMapping("/export-pdf/{orderId}")
+    public void exportPdf(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
+        SalesOrderVO order = orderService.selectOrderById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        byte[] bytes = orderService.exportPdf(orderId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(order.getOrderNo() + ".pdf", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
+    /**
+     * 导出销售订单Excel（单张表单）
+     */
+    @Operation(summary = "导出销售订单Excel")
+    @SaCheckPermission("sales:order:export")
+    @GetMapping("/export-excel/{orderId}")
+    public void exportExcel(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
+        SalesOrderVO order = orderService.selectOrderById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        byte[] bytes = orderService.exportExcel(orderId);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(order.getOrderNo() + ".xlsx", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
+    /**
+     * 导出订单确认书PDF（DEV-343/314）
+     */
+    @Operation(summary = "导出订单确认书PDF")
+    @SaCheckPermission("sales:order:export")
+    @GetMapping("/{orderId}/confirmation/pdf")
+    public void exportConfirmationPdf(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
+        SalesOrderVO order = orderService.selectOrderById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        byte[] bytes = orderService.exportConfirmationPdf(orderId);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode("确认书_" + order.getOrderNo() + ".pdf", StandardCharsets.UTF_8));
+        response.getOutputStream().write(bytes);
+    }
+
+
 
 
     /**
      * 创建产品实例
      */
     @Operation(summary = "创建产品实例")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:order:createInstances")
+    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @SaCheckPermission("sales:order:edit")
     @PutMapping("/create-instances/{orderId}")
     public Result<Void> createOrderInstances(@PathVariable Long orderId) {
         return toAjax(orderService.createInstances(orderId));
@@ -127,8 +195,8 @@ public class OrderController extends BaseController {
      * 更新付款信息
      */
     @Operation(summary = "更新付款信息")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:order:updatePayment")
+    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @SaCheckPermission("sales:order:edit")
     @PutMapping("/payment/{orderId}")
     public Result<Void> updateOrderPayment(@PathVariable Long orderId,
                                            @RequestParam Double paidAmount) {
@@ -139,7 +207,7 @@ public class OrderController extends BaseController {
      * 根据客户ID查询订单列表
      */
     @Operation(summary = "根据客户ID查询订单列表")
-    @SaCheckPermission("sales:order:byCustomer")
+    @SaCheckPermission("sales:order:view")
     @GetMapping("/customer/{customerId}")
     public Result<List<SalesOrder>> getOrdersByCustomerId(@PathVariable Long customerId) {
         return Result.success(orderService.selectOrdersByCustomerId(customerId));
@@ -149,7 +217,7 @@ public class OrderController extends BaseController {
      * 根据报价单ID查询订单
      */
     @Operation(summary = "根据报价单ID查询订单")
-    @SaCheckPermission("sales:order:byQuotation")
+    @SaCheckPermission("sales:order:view")
     @GetMapping("/quotation/{quotationId}")
     public Result<SalesOrder> getOrderByQuotationId(@PathVariable Long quotationId) {
         return Result.success(orderService.selectOrderByQuotationId(quotationId));
@@ -169,7 +237,7 @@ public class OrderController extends BaseController {
      * 检查订单号是否唯一
      */
     @Operation(summary = "检查订单号是否唯一")
-    @SaCheckPermission("sales:order:unique")
+    @SaCheckPermission("sales:order:add")
     @GetMapping("/order-no/{orderNo}/unique")
     public Result<Boolean> checkOrderNoUnique(@PathVariable String orderNo) {
         return Result.success(orderService.checkOrderNoUnique(orderNo));
@@ -179,7 +247,7 @@ public class OrderController extends BaseController {
      * 获取订单统计信息
      */
     @Operation(summary = "获取订单统计信息")
-    @SaCheckPermission("sales:order:statistics")
+    @SaCheckPermission("sales:order:view")
     @GetMapping("/statistics")
     public Result<Object> getOrderStatistics() {
         return Result.success(orderService.getOrderStatistics());

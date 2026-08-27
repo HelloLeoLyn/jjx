@@ -1,5 +1,15 @@
 package com.jjx.production.service.impl;
 
+import com.jjx.event.EventPublisher;
+import com.jjx.production.domain.dto.ConvertPlanToWorkOrdersDTO;
+import com.jjx.production.domain.entity.ProductionOperationExecution;
+import java.util.Map;
+import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.product.mapper.EngineeringRoutingItemMapper;
+import com.jjx.engineering.domain.entity.EngineeringRoutingItem;
+import java.util.ArrayList;
+import java.util.Map;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -13,8 +23,11 @@ import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.vo.OrderStatisticsVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.enums.OrderStatusEnum;
+import com.jjx.production.enums.QualityInspectionResultEnum;
+import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.ProductionOrderService;
+import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -23,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -37,6 +51,18 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOrderConverter productionOrderConverter;
 
+    private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
+    private final EngineeringRoutingItemMapper productRoutingItemMapper;
+    private final EventPublisher eventPublisher;
+    private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
+    private final com.jjx.production.mapper.ProductionQualityInspectionMapper qualityInspectionMapper;
+    private final com.jjx.inventory.service.InventoryInboundService inventoryInboundService;
+    private final com.jjx.inventory.service.InventoryOutboundService inventoryOutboundService;
+    private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
+    private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
+    private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
+    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
+    private final com.jjx.production.service.ProductionTaskService productionTaskService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -52,6 +78,14 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         // 转换为实体
         ProductionOrder order = productionOrderConverter.toEntity(createDTO);
+        // 2026-08-11 规范化：orderType 统一大写（PLAN/WORK_ORDER），避免与前端小写混存
+        if (order.getOrderType() != null) {
+            order.setOrderType(order.getOrderType().toUpperCase());
+        }
+        // 链路追踪（DEV-568）：无上游 traceId 则生成 UUID
+        if (order.getTraceId() == null || order.getTraceId().isEmpty()) {
+            order.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
+        }
         order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
         // 保存到数据库
         boolean success = save(order);
@@ -152,7 +186,12 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("生产工单不存在: " + orderId);
         }
 
-        return productionOrderConverter.toVO(order);
+        ProductionOrderVO vo = productionOrderConverter.toVO(order);
+        // WP-E-BUG-01：计划剩余可下达 = 动态计算（计划数量 - 有效子工单）
+        if (order != null && "PLAN".equals(order.getOrderType())) {
+            vo.setRemainingQuantity(planRemainingQuota(order));
+        }
+        return vo;
     }
 
     @Override
@@ -167,7 +206,11 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("生产工单不存在: " + orderCode);
         }
 
-        return productionOrderConverter.toVO(order);
+        ProductionOrderVO vo = productionOrderConverter.toVO(order);
+        if (order != null && "PLAN".equals(order.getOrderType())) {
+            vo.setRemainingQuantity(planRemainingQuota(order));
+        }
+        return vo;
     }
 
     @Override
@@ -178,7 +221,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         wrapper.orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -206,6 +251,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 转换为VO分页
         Page<ProductionOrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         List<ProductionOrderVO> voList = productionOrderConverter.toVOList(orderPage.getRecords());
+        fillPlanRemainingQuota(voList);
         voPage.setRecords(voList);
 
         return voPage;
@@ -213,6 +259,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "production.started", bizId = "#orderId", bizType = "'production'")
     public boolean startOrder(Long orderId) {
         log.info("启动生产工单: {}", orderId);
 
@@ -233,6 +280,31 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         boolean success = updateById(order);
         if (!success) {
             throw new BusinessException("启动生产工单失败");
+        }
+
+        // 生产领料自动出库（DEV-625）：开工时按 BOM 自动生成领料出库单，幂等（已存在跳过）
+        try {
+            inventoryOutboundService.createFromProduction(orderId);
+        } catch (Exception e) {
+            log.error("生产领料自动出库失败（不影响开工主流程）: {}", e.getMessage());
+        }
+
+        // 状态联动（2026-08-13：B方案去掉确认环节，SO 已审核(4)或已确认(6，历史订单) → 生产中(7)）
+        try {
+            if (order.getSalesOrderId() != null) {
+                com.jjx.sales.domain.entity.SalesOrder so = salesOrderMapper.selectById(order.getSalesOrderId());
+                if (so != null && (com.jjx.sales.enums.OrderStatusEnum.APPROVED.getCode().equals(so.getOrderStatus())
+                        || com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getCode().equals(so.getOrderStatus()))) {
+                    int up = salesOrderMapper.updateStatusWithCheck(order.getSalesOrderId(),
+                            com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode(),
+                            so.getOrderStatus());
+                    if (up > 0) {
+                        log.info("工单{}启动，销售订单{} 已审核/已确认(4/6)→生产中(7)", orderId, order.getSalesOrderNo());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("工单启动回写销售订单状态失败: {}", e.getMessage());
         }
 
         log.info("生产工单启动成功, ID: {}", orderId);
@@ -268,6 +340,32 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long retryInbound(Long orderId) {
+        log.info("重试完工入库: {}", orderId);
+        ProductionOrder order = getById(orderId);
+        if (order == null) {
+            throw new BusinessException("生产工单不存在: " + orderId);
+        }
+        // 056定稿：重试→成功→产品库存+→produced_quantity回写→标记清除
+        Long inboundId = inventoryInboundService.createFromProduction(orderId);
+        if (inboundId == null) {
+            // 入库单已存在（幂等返回null）→ 视为已处理，清除标记
+            order.setInboundPendingFlag(0);
+            order.setInboundPendingReason(null);
+            updateById(order);
+            log.info("重试入库：入库单已存在（幂等），清除待处理标记 orderId={}", orderId);
+            return null;
+        }
+        // 成功：清除标记
+        order.setInboundPendingFlag(0);
+        order.setInboundPendingReason(null);
+        updateById(order);
+        log.info("重试完工入库成功: orderId={}, inboundId={}", orderId, inboundId);
+        return inboundId;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean completeOrder(Long orderId) {
         log.info("完成生产工单: {}", orderId);
 
@@ -276,18 +374,97 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("生产工单不存在: " + orderId);
         }
 
-        // 检查工单状态是否可以完成
+        // 检查工单状态是否可以完成（053完工质检门：状态/工序/质检/数量四条件）
         if (!canCompleteOrder(order)) {
-            throw new BusinessException("工单状态不允许完成");
+            throw new BusinessException("完工校验不通过：工单需为进行中、全部工序已完成、FQC质检通过且成品完工数量>0（最后一道工序合格数）");
         }
 
         // 更新状态为已完成
         order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
         order.setActualEndTime(LocalDateTime.now());
+        order.setCompletedBy(com.jjx.system.utils.SecurityUtils.getUsername()); // 053完工留痕：谁
+
+        // 059定稿：完工自动核算人工成本 = Σ(工序实际工时 × 标准工价)
+        try {
+            java.math.BigDecimal laborTotal = java.math.BigDecimal.ZERO;
+            java.util.List<ProductionOperationExecution> executions = productionOperationExecutionMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionOperationExecution>()
+                            .eq(ProductionOperationExecution::getOrderId, orderId));
+            for (ProductionOperationExecution exec : executions) {
+                if (exec.getActualLaborHours() == null || exec.getActualLaborHours().compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
+                // 取该工序标准工价（工艺路线工序）
+                java.math.BigDecimal wage = java.math.BigDecimal.ZERO;
+                if (exec.getProcessId() != null) {
+                    try {
+                        com.jjx.engineering.domain.entity.EngineeringRoutingItem routeItem =
+                                productRoutingItemMapper.selectOne(
+                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRoutingItem>()
+                                                .eq(com.jjx.engineering.domain.entity.EngineeringRoutingItem::getRoutingId, order.getRoutingId())
+                                                .eq(com.jjx.engineering.domain.entity.EngineeringRoutingItem::getProcessId, exec.getProcessId())
+                                                .last("LIMIT 1"));
+                        if (routeItem != null && routeItem.getStandardWage() != null) {
+                            wage = routeItem.getStandardWage();
+                        }
+                    } catch (Exception e) {
+                        log.warn("查询工序工价失败: processId={}", exec.getProcessId());
+                    }
+                }
+                laborTotal = laborTotal.add(exec.getActualLaborHours().multiply(wage));
+            }
+            if (laborTotal.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                order.setLaborCost(laborTotal);
+                log.info("工单{}完工自动核算人工成本: {}", orderId, laborTotal);
+            }
+        } catch (Exception e) {
+            log.warn("工单人工成本自动核算失败（可手工调整）: {}", e.getMessage());
+        }
 
         boolean success = updateById(order);
         if (!success) {
             throw new BusinessException("完成生产工单失败");
+        }
+
+        // P3-C：移除“完工后自动创建 FQC”块（P3-A 死锁源）
+        // FQC 创建职责已移到最后有效 Execution 完成时（completeExecution → createFqcForExecution）
+        // Order complete 只校验“最新 FQC PASS”存在（canCompleteOrder ③），不再创建质检单
+
+        // 完工自动生成成品入库单（DEV-579：拍板4 生产完成→自动生成成品入库单，走入库流程）
+        try {
+            Long inboundId = inventoryInboundService.createFromProduction(orderId);
+            if (inboundId != null) {
+                log.info("工单[{}] 完工自动生成成品入库单[{}]", order.getOrderNo(), inboundId);
+                // 056：入库成功 → 清除待处理标记
+                if (order.getInboundPendingFlag() != null && order.getInboundPendingFlag() == 1) {
+                    order.setInboundPendingFlag(0);
+                    order.setInboundPendingReason(null);
+                    updateById(order);
+                }
+            }
+        } catch (Exception e) {
+            // 056定稿：入库失败不静默——打【入库待处理】标记（标红），带失败原因，供工单页重试
+            log.warn("完工自动生成成品入库单失败（已打入库待处理标记，可重试）: {}", e.getMessage());
+            try {
+                ProductionOrder mark = new ProductionOrder();
+                mark.setOrderId(orderId);
+                mark.setInboundPendingFlag(1);
+                mark.setInboundPendingReason(e.getMessage() != null ? e.getMessage().substring(0, Math.min(e.getMessage().length(), 500)) : "未知原因");
+                productionOrderMapper.updateById(mark);
+            } catch (Exception e2) {
+                log.warn("打入库待处理标记失败: {}", e2.getMessage());
+            }
+        }
+
+        // 触发联动事件
+        try {
+            eventPublisher.fire("production.completed", Map.of(
+                    "orderNo", order.getOrderNo(),
+                    "productId", String.valueOf(order.getProductId()),
+                    "productName", order.getProductName(),
+                    "quantity", order.getCompletedQuantity() != null ? order.getCompletedQuantity().toString() : "0",
+                    "orderId", String.valueOf(orderId)
+            ));
+        } catch (Exception e) {
+            log.warn("事件联动失败（不影响主流程）: {}", e.getMessage());
         }
 
         log.info("生产工单完成成功, ID: {}", orderId);
@@ -309,6 +486,20 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("工单状态不允许取消");
         }
 
+        // 095：取消工单部分完工入库（产品维度，入 product_stock 表）
+        // 已完工合格品（最后一道工序合格数 finishedQuantity>0）→ 自动部分完工入库，产品库存+
+        try {
+            BigDecimal finishedQty = order.getFinishedQuantity() != null ? order.getFinishedQuantity() : BigDecimal.ZERO;
+            if (finishedQty.compareTo(BigDecimal.ZERO) > 0) {
+                Long inboundId = inventoryInboundService.createFromProduction(orderId);
+                if (inboundId != null) {
+                    log.info("取消工单{}自动部分完工入库[{}]（产品入库，数量={}）", orderId, inboundId, finishedQty);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("取消工单部分完工入库失败（不影响取消主流程，可手动重试）: {}", e.getMessage());
+        }
+
         // 更新状态为已取消
         order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
 
@@ -317,8 +508,81 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("取消生产工单失败");
         }
 
+        // V1 验收：取消工单释放计划占用（幂等：仅首次从非 CANCELLED → CANCELLED 时释放）
+        releasePlanQuotaOnCancel(order);
+
         log.info("生产工单取消成功, ID: {}", orderId);
         return true;
+    }
+
+    @Override
+    public long countActivePlanBySalesOrderId(Long salesOrderId) {
+        return productionOrderMapper.selectCount(
+                new LambdaQueryWrapper<ProductionOrder>()
+                        .eq(ProductionOrder::getSalesOrderId, salesOrderId)
+                        .eq(ProductionOrder::getOrderType, "PLAN")
+                        .notIn(ProductionOrder::getOrderStatus,
+                                OrderStatusEnum.CLOSED.getCode(),
+                                OrderStatusEnum.CANCELLED.getCode(),
+                                OrderStatusEnum.COMPLETED.getCode()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int[] cancelBySalesOrderId(Long salesOrderId) {
+        List<ProductionOrder> orders = productionOrderMapper.selectList(
+                new LambdaQueryWrapper<ProductionOrder>()
+                        .eq(ProductionOrder::getSalesOrderId, salesOrderId));
+        if (orders == null || orders.isEmpty()) {
+            return new int[]{0, 0};
+        }
+
+        int cancelled = 0;
+        int skipped = 0;
+        for (ProductionOrder order : orders) {
+            if (canCancelOrder(order)) {
+                order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
+                updateById(order);
+                // V1 验收：取消工单释放计划占用（幂等）
+                releasePlanQuotaOnCancel(order);
+                cancelled++;
+                log.info("销售订单{}取消联动：生产工单{}已取消", salesOrderId, order.getOrderId());
+            } else {
+                skipped++;
+                log.info("销售订单{}取消联动：生产工单{}状态[{}]不可取消，跳过",
+                        salesOrderId, order.getOrderId(), order.getOrderStatus());
+            }
+        }
+        // 095⑧定稿：全部工单已取消（无跳过）→ 订单 7生产中 自动回退 4已审核（2026-08-13 B方案：回退到已审核，可重新生成生产计划），释放成品预留+原料占用/预占
+        if (cancelled > 0 && skipped == 0) {
+            try {
+                com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(salesOrderId);
+                if (salesOrder != null && com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode()
+                        .equals(salesOrder.getOrderStatus())) {
+                    int updated = salesOrderMapper.updateStatusWithCheck(
+                            salesOrderId,
+                            com.jjx.sales.enums.OrderStatusEnum.APPROVED.getCode(),
+                            com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getCode());
+                    if (updated > 0) {
+                        log.info("全部工单已取消，订单{}自动回退：生产中(7)→已审核(4)", salesOrderId);
+                        // 释放成品预留 + 材料预占
+                        try {
+                            orderStockReserveService.releaseByOrder(salesOrderId);
+                        } catch (Exception e) {
+                            log.warn("订单回退释放成品预留失败: {}", e.getMessage());
+                        }
+                        try {
+                            orderMaterialReserveService.releaseByOrder(salesOrderId, "全部工单取消，订单回退释放材料预占");
+                        } catch (Exception e) {
+                            log.warn("订单回退释放材料预占失败: {}", e.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("订单回退联动失败（不影响工单取消）: {}", e.getMessage());
+            }
+        }
+        return new int[]{cancelled, skipped};
     }
 
     @Override
@@ -364,7 +628,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 .orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -376,7 +642,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 .orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -479,7 +747,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         wrapper.orderByDesc(ProductionOrder::getCreateTime);
 
         List<ProductionOrder> orders = list(wrapper);
-        return productionOrderConverter.toVOList(orders);
+        List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        fillPlanRemainingQuota(vos);
+        return vos;
     }
 
     @Override
@@ -557,7 +827,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (queryDTO.getOrderStatus() != null) {
             wrapper.eq(ProductionOrder::getOrderStatus, queryDTO.getOrderStatus());
         }
-        if (queryDTO.getOrderType() != null) {
+        // 2026-08-11 修复：orderType=all 表示"全部"，不得作为过滤值（否则全部视图永远查不到数据）
+        if (StringUtils.isNotBlank(queryDTO.getOrderType()) && !"all".equalsIgnoreCase(queryDTO.getOrderType())) {
             wrapper.eq(ProductionOrder::getOrderType, queryDTO.getOrderType());
         }
 
@@ -631,24 +902,124 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     }
 
     /**
-     * 检查工单是否可以完成
+     * 完工质检门（053定稿）：工单完工必须过质检门
+     * ① 工单状态=进行中
+     * ② 全部工序已完成（执行状态=COMPLETED/SKIPPED）
+     * ③ FQC质检通过（存在 result=pass 的完工质检）
+     * ④ 成品完工数量达标（finishedQuantity>0，以最后工序合格数为准，052口径）
+     * 任一不满足拒绝完工；调用方拿失败原因提示用户
      */
-    private static boolean canCompleteOrder(ProductionOrder order) {
-        // 只有进行中状态的工单可以完成
-        return OrderStatusEnum.IN_PROGRESS.getCode().equals(order.getOrderStatus());
+    private boolean canCompleteOrder(ProductionOrder order) {
+        // ① 状态=进行中
+        if (!OrderStatusEnum.IN_PROGRESS.getCode().equals(order.getOrderStatus())) {
+            log.warn("完工质检门[1/4]失败：工单{}状态不是进行中", order.getOrderId());
+            return false;
+        }
+        // ② 全部工序已完成
+        try {
+            Long pendingCount = productionOperationExecutionMapper.selectCount(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionOperationExecution>()
+                            .eq(com.jjx.production.domain.entity.ProductionOperationExecution::getOrderId, order.getOrderId())
+                            .notIn(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionStatus,
+                                    com.jjx.production.enums.ExecutionStatusEnum.COMPLETED.getCode(),
+                                    com.jjx.production.enums.ExecutionStatusEnum.SKIPPED.getCode()));
+            if (pendingCount != null && pendingCount > 0) {
+                log.warn("完工质检门[2/4]失败：工单{}还有{}道工序未完成", order.getOrderId(), pendingCount);
+                return false;
+            }
+        } catch (Exception e) {
+            log.warn("完工质检门[2/4]查询工序失败(不阻断，按通过处理): {}", e.getMessage());
+        }
+        // ③ FQC质检通过（P3-C 重构：取最新一张 FQC，result 必须为 pass；消除 P3-A 死锁时序）
+        //    死锁源已移除：completeOrder 不再创建 FQC，FQC 由最后 Execution 完成时自动创建（P3-C）
+        try {
+            com.jjx.production.domain.entity.ProductionQualityInspection latestFqc =
+                    qualityInspectionMapper.selectOne(
+                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionQualityInspection>()
+                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getOrderId, order.getOrderId())
+                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
+                                    .orderByDesc(com.jjx.production.domain.entity.ProductionQualityInspection::getCreateTime)
+                                    .orderByDesc(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionId)
+                                    .last("LIMIT 1"));
+            if (latestFqc == null || !QualityInspectionResultEnum.PASS.getCode().equals(latestFqc.getResult())) {
+                log.warn("完工质检门[3/4]失败：工单{}无最新FQC PASS记录（最新FQC={}）",
+                        order.getOrderId(), latestFqc == null ? "无" : latestFqc.getResult());
+                return false;
+            }
+        } catch (Exception e) {
+            log.warn("完工质检门[3/4]查询质检失败(不阻断，按通过处理): {}", e.getMessage());
+        }
+        // ④ 成品完工数量达标（finishedQuantity>0）
+        if (order.getFinishedQuantity() == null || order.getFinishedQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            log.warn("完工质检门[4/4]失败：工单{}成品完工数量为0", order.getOrderId());
+            return false;
+        }
+        return true;
     }
 
     /**
      * 检查工单是否可以取消
      */
     private static boolean canCancelOrder(ProductionOrder order) {
-        // 只有草稿、待审批、已批准、已排程和进行中状态的工单可以取消
+        // 草稿、待审批、已批准、已计划、待开始、进行中、已暂停状态的工单可以取消
         Integer status = order.getOrderStatus();
         return OrderStatusEnum.DRAFT.getCode().equals(status) ||
                OrderStatusEnum.PENDING_APPROVAL.getCode().equals(status) ||
                OrderStatusEnum.APPROVED.getCode().equals(status) ||
                OrderStatusEnum.PLANNED.getCode().equals(status) ||
-               OrderStatusEnum.IN_PROGRESS.getCode().equals(status);
+               OrderStatusEnum.PENDING_START.getCode().equals(status) ||
+               OrderStatusEnum.IN_PROGRESS.getCode().equals(status) ||
+               OrderStatusEnum.PAUSED.getCode().equals(status);
+    }
+
+    /**
+     * V1 验收：取消工单释放计划占用（只处理真正 CANCELLED 的生产工单）
+     * <p>
+     * 规则：
+     * - 仅 WORK_ORDER 且有父计划（parentOrderId）时处理
+     * - 回补父计划 remaining_quantity（可下达数量）+= 工单计划数量
+     * - 幂等：仅当工单当前状态为 CANCELLED 且父计划非空时才回补；
+     *   重复 cancel 同一工单（状态已 CANCELLED）不二次释放（调用方保证只在首次转换时调用，此处再兜底判断）
+     * - 并发：回补上限 = planned_quantity（不允许超过原计划数量）
+     * - 不复活旧工单/旧 Execution；不删除任何历史事实
+     */
+    private void releasePlanQuotaOnCancel(ProductionOrder cancelledWorkOrder) {
+        if (cancelledWorkOrder == null
+                || !"WORK_ORDER".equals(cancelledWorkOrder.getOrderType())
+                || cancelledWorkOrder.getParentOrderId() == null) {
+            return;
+        }
+        // 兜底幂等：只有真正 CANCELLED 状态才释放
+        if (!OrderStatusEnum.CANCELLED.getCode().equals(cancelledWorkOrder.getOrderStatus())) {
+            return;
+        }
+        BigDecimal qty = cancelledWorkOrder.getPlannedQuantity();
+        if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        try {
+            ProductionOrder plan = getById(cancelledWorkOrder.getParentOrderId());
+            if (plan == null || !"PLAN".equals(plan.getOrderType())) {
+                return;
+            }
+            BigDecimal planned = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+            BigDecimal currentRemaining = plan.getRemainingQuantity() != null ? plan.getRemainingQuantity() : planned;
+            // 回补上限 = 原计划数量（并发安全：不允许超过）
+            BigDecimal restored = currentRemaining.add(qty);
+            if (restored.compareTo(planned) > 0) {
+                restored = planned;
+            }
+            plan.setRemainingQuantity(restored);
+            // 计划恢复可下达 → 状态回退到已批准（可再次转工单）
+            plan.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+            updateById(plan);
+            log.info("取消工单{}释放计划占用：计划{} 可下达数量 {} -> {}",
+                    cancelledWorkOrder.getOrderId(), plan.getOrderNo(),
+                    currentRemaining.stripTrailingZeros().toPlainString(),
+                    restored.stripTrailingZeros().toPlainString());
+        } catch (Exception e) {
+            log.warn("取消工单释放计划占用失败（不影响取消主流程）: {}", e.getMessage());
+        }
     }
 
     /**
@@ -771,5 +1142,407 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         target.setRemark(source.getRemark());
 
         return target;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<Long> convertPlanToWorkOrders(ConvertPlanToWorkOrdersDTO dto) {
+        log.info("计划转工单: planId={}, count={}", dto.getPlanId(), dto.getWorkOrders().size());
+
+        // 校验计划是否存在
+        ProductionOrder plan = getById(dto.getPlanId());
+        if (plan == null) {
+            throw new BusinessException("生产计划不存在: " + dto.getPlanId());
+        }
+        if (!"PLAN".equals(plan.getOrderType())) {
+            throw new BusinessException("订单不是生产计划类型，无法转换: " + plan.getOrderNo());
+        }
+        // 039⑤：仅已批准计划可转（2026-08-11 统一：审批动作只维护 orderStatus，2=已批准）
+        if (plan.getOrderStatus() == null || plan.getOrderStatus() != 2) {
+            throw new BusinessException("仅已审批通过的生产计划可转为工单，当前状态: " + (plan.getOrderStatus() == null ? "未知" : plan.getOrderStatus()));
+        }
+        // WP-E-BUG-01：可下达数量 = 计划数量 - 已成功下达的有效子工单数量（动态计算，不信任持久化 remaining_quantity）
+        // 有效子工单 = WORK_ORDER 且非 CANCELLED（取消的工单不占额度，释放后重新可下达）
+        // 持久化 remaining_quantity 仅作为历史兼容回退（脏数据不再影响判定）
+        BigDecimal plannedQty = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+        BigDecimal issuedQty = sumEffectiveWorkOrderQuantity(plan.getOrderId());
+        BigDecimal availableQty = plannedQty.subtract(issuedQty);
+        if (availableQty.compareTo(BigDecimal.ZERO) < 0) {
+            availableQty = BigDecimal.ZERO;
+        }
+        BigDecimal sumQty = BigDecimal.ZERO;
+        for (ConvertPlanToWorkOrdersDTO.WorkOrderItem item : dto.getWorkOrders()) {
+            if (item.getPlannedQuantity() != null) {
+                sumQty = sumQty.add(item.getPlannedQuantity());
+            }
+        }
+        if (sumQty.compareTo(availableQty) > 0) {
+            throw new BusinessException("子工单数量合计" + sumQty.stripTrailingZeros().toPlainString()
+                    + "超过计划剩余可下达数量" + availableQty.stripTrailingZeros().toPlainString() + "，请调整");
+        }
+        if (sumQty.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("转工单数量必须大于 0");
+        }
+        // 039⑤：无BOM/工艺路线产品拦截
+        if (plan.getBomId() == null && plan.getRoutingId() == null) {
+            throw new BusinessException("计划无BOM/工艺路线，无法转为工单");
+        }
+
+        List<Long> createdOrderIds = new ArrayList<>();
+
+        for (ConvertPlanToWorkOrdersDTO.WorkOrderItem item : dto.getWorkOrders()) {
+
+            // 生成工单编号（V1 修复：基于该计划历史所有子工单最大后缀+1，不复用已取消/完成/关闭的编号）
+            String workOrderNo = generateWorkOrderNo(plan);
+
+            // 创建工单
+            ProductionOrder workOrder = new ProductionOrder();
+            workOrder.setOrderNo(workOrderNo);
+            workOrder.setOrderType("WORK_ORDER");
+            workOrder.setParentOrderId(plan.getOrderId());
+            // 2026-08-18：继承计划 traceId（原缺失导致工单/领料单链路断）
+            workOrder.setTraceId(plan.getTraceId());
+            workOrder.setSalesOrderId(plan.getSalesOrderId());
+            workOrder.setSalesOrderNo(plan.getSalesOrderNo());
+            workOrder.setProductId(item.getProductId());
+            workOrder.setProductCode(item.getProductCode());
+            workOrder.setProductName(item.getProductName());
+            workOrder.setProductSpec(plan.getProductSpec());
+            workOrder.setProductUnit(plan.getProductUnit());
+            workOrder.setPlannedQuantity(item.getPlannedQuantity());
+            workOrder.setCompletedQuantity(BigDecimal.ZERO);
+            workOrder.setRemainingQuantity(item.getPlannedQuantity());
+            workOrder.setPlanStartDate(item.getPlanStartDate());
+            workOrder.setPlanEndDate(item.getPlanEndDate());
+            workOrder.setOrderStatus(OrderStatusEnum.PLANNED.getCode()); // 2026-08-11：计划转工单=排期确定，直接已计划，可启动
+            workOrder.setPriority(item.getPriority() != null ? item.getPriority() : "MEDIUM");
+            workOrder.setDepartmentId(plan.getDepartmentId());
+            workOrder.setDepartmentName(plan.getDepartmentName());
+            workOrder.setRemark(item.getRemark());
+            // 复制工艺路线
+            workOrder.setRoutingId(plan.getRoutingId());
+            workOrder.setRoutingCode(plan.getRoutingCode());
+
+            save(workOrder);
+            createdOrderIds.add(workOrder.getOrderId());
+
+            // 生成工序执行记录（基于工艺路线）
+            generateOperationExecutions(workOrder.getOrderId(), plan.getRoutingId(),
+                    workOrder.getPlannedQuantity(), item.getPlanStartDate(), item.getPlanEndDate());
+
+            log.info("工单已生成: {} (计划: {})", workOrderNo, plan.getOrderNo());
+        }
+
+        // V1 验收：转出成功 → 扣减计划剩余可下达数量（不再置 CLOSED，保留计划可再次转工单）
+        BigDecimal newRemaining = availableQty.subtract(sumQty);
+        plan.setRemainingQuantity(newRemaining);
+        // 计划数量扣减后为 0 时置 CLOSED（语义：已全部下达），取消回补时自动恢复可转
+        if (newRemaining.compareTo(BigDecimal.ZERO) <= 0) {
+            plan.setOrderStatus(OrderStatusEnum.CLOSED.getCode());
+        } else {
+            plan.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+        }
+        updateById(plan);
+
+        return createdOrderIds;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateOrderStatus(Long orderId, Integer newStatus, String remark) {
+        log.info("更新订单状态: orderId={}, newStatus={}", orderId, newStatus);
+
+        // V1 Release Fix：禁止通过通用状态修改直接进入 COMPLETED（防绕过 FQC gate）
+        // 订单正式完成只能走 completeOrder（含工序完成/FQC PASS/完工数量/入库链完整业务 gate）
+        if (OrderStatusEnum.COMPLETED.getCode().equals(newStatus)) {
+            throw new BusinessException("请使用生产订单完成操作完成工单（完工需通过工序完成/完工质检/数量校验）");
+        }
+
+        ProductionOrder order = getById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在: " + orderId);
+        }
+
+        // 状态流转校验
+        validateStatusTransition(order.getOrderStatus(), newStatus);
+
+        Integer oldStatus = order.getOrderStatus();
+        order.setOrderStatus(newStatus);
+        if (remark != null) {
+            order.setRemark(remark);
+        }
+
+        // 如果启动了，记录实际开始时间
+        if (OrderStatusEnum.IN_PROGRESS.getCode().equals(newStatus) && order.getActualStartTime() == null) {
+            order.setActualStartTime(LocalDateTime.now());
+        }
+        // V1 Release Fix：COMPLETED 分支已不可达（上面拦截），完成时间由 completeOrder 维护
+
+        boolean updated = updateById(order);
+        // V1 验收：通过通用状态更新取消工单 → 释放计划占用（幂等：仅首次从非 CANCELLED → CANCELLED）
+        if (updated && OrderStatusEnum.CANCELLED.getCode().equals(newStatus)
+                && !OrderStatusEnum.CANCELLED.getCode().equals(oldStatus)) {
+            releasePlanQuotaOnCancel(order);
+        }
+        return updated;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean batchUpdateOrderStatus(List<Long> orderIds, Integer newStatus, String remark) {
+        log.info("批量更新订单状态: count={}, newStatus={}", orderIds.size(), newStatus);
+        for (Long orderId : orderIds) {
+            updateOrderStatus(orderId, newStatus, remark);
+        }
+        return true;
+    }
+
+    /**
+     * WP-E-BUG-01：汇总计划下已成功下达的有效子工单数量
+     * 有效 = WORK_ORDER 且非 CANCELLED（含 PLANNED/进行中/已完成等）；取消工单不占额度
+     */
+    private BigDecimal sumEffectiveWorkOrderQuantity(Long planId) {
+        if (planId == null) return BigDecimal.ZERO;
+        try {
+            List<ProductionOrder> children = productionOrderMapper.selectList(
+                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ProductionOrder>()
+                            .select("planned_quantity")
+                            .eq("parent_order_id", planId)
+                            .ne("order_status", OrderStatusEnum.CANCELLED.getCode()));
+            BigDecimal sum = BigDecimal.ZERO;
+            if (children != null) {
+                for (ProductionOrder c : children) {
+                    if (c.getPlannedQuantity() != null) {
+                        sum = sum.add(c.getPlannedQuantity());
+                    }
+                }
+            }
+            return sum;
+        } catch (Exception e) {
+            log.warn("汇总计划子工单数量失败 planId={}: {}", planId, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * WP-E-BUG-01：计划剩余可下达数量（动态）＝ 计划数量 - 已下达有效子工单数量
+     * 供查询 VO 展示；与 convertPlanToWorkOrders 判定口径一致
+     */
+    private BigDecimal planRemainingQuota(ProductionOrder plan) {
+        if (plan == null) return BigDecimal.ZERO;
+        BigDecimal planned = plan.getPlannedQuantity() != null ? plan.getPlannedQuantity() : BigDecimal.ZERO;
+        BigDecimal issued = sumEffectiveWorkOrderQuantity(plan.getOrderId());
+        BigDecimal remaining = planned.subtract(issued);
+        return remaining.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remaining;
+    }
+
+    /** WP-E-BUG-01：批量填充 PLAN 行剩余可下达（动态口径） */
+    private void fillPlanRemainingQuota(List<ProductionOrderVO> vos) {
+        if (vos == null) return;
+        for (ProductionOrderVO vo : vos) {
+            if ("PLAN".equals(vo.getOrderType())) {
+                ProductionOrder plan = getById(vo.getOrderId());
+                if (plan != null) {
+                    vo.setRemainingQuantity(planRemainingQuota(plan));
+                }
+            }
+        }
+    }
+
+    /**
+     * 生成工单编号: WO-{计划编号}-{序号}
+     */
+    /**
+     * 生成工单编号: WO-{计划编号}-{序号}
+     * <p>
+     * V1 修复：序号 = 该计划历史所有子工单最大后缀 + 1（不依赖本次转单 seq，
+     * 已取消/完成/关闭的历史编号一律不复用；不用 COUNT+1）。
+     * 示例：已有 -01/-02 → -03；已有 -01/-02/-05 → -06；无历史 → -01。
+     */
+    private String generateWorkOrderNo(ProductionOrder plan) {
+        String planNo = plan.getOrderNo();
+        String prefix = "WO-" + planNo + "-";
+        // 查该计划全部子工单编号，取最大后缀
+        List<ProductionOrder> children = productionOrderMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ProductionOrder>()
+                        .select("order_no")
+                        .eq("parent_order_id", plan.getOrderId()));
+        int maxSuffix = 0;
+        if (children != null) {
+            for (ProductionOrder child : children) {
+                String no = child.getOrderNo();
+                if (no != null && no.startsWith(prefix)) {
+                    try {
+                        int suffix = Integer.parseInt(no.substring(prefix.length()));
+                        if (suffix > maxSuffix) {
+                            maxSuffix = suffix;
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // 非数字后缀忽略
+                    }
+                }
+            }
+        }
+        return prefix + String.format("%02d", maxSuffix + 1);
+    }
+
+    /**
+     * 根据工艺路线生成工序执行记录
+     */
+    private void generateOperationExecutions(Long orderId, Long routingId, java.math.BigDecimal orderPlannedQuantity,
+                                              LocalDate planStartDate, LocalDate planEndDate) {
+        if (routingId == null) {
+            log.warn("工单 {} 未指定工艺路线，跳过工序生成", orderId);
+            return;
+        }
+
+        // 查询工艺路线下的所有工序
+        List<EngineeringRoutingItem> routingItems = productRoutingItemMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringRoutingItem>()
+                        .eq(EngineeringRoutingItem::getRoutingId, routingId)
+                        .orderByAsc(EngineeringRoutingItem::getProcessOrder)
+        );
+
+        if (routingItems.isEmpty()) {
+            log.warn("工艺路线 {} 下没有工序，跳过工序生成", routingId);
+            return;
+        }
+
+        long daySpan = planStartDate != null && planEndDate != null ?
+                java.time.temporal.ChronoUnit.DAYS.between(planStartDate, planEndDate) : 0;
+        long totalSteps = routingItems.size();
+        long daysPerStep = totalSteps > 0 ? Math.max(1, daySpan / totalSteps) : 1;
+
+        for (int i = 0; i < routingItems.size(); i++) {
+            EngineeringRoutingItem item = routingItems.get(i);
+
+            ProductionOperationExecution execution = new ProductionOperationExecution();
+            execution.setOrderId(orderId);
+            execution.setProcessId(item.getProcessId());
+            // 2026-08-12：印刷等自定义工序透传 大类/名称/计划参数（生产侧接入）
+            execution.setMajorCategory(item.getMajorCategory() != null ? item.getMajorCategory() : "ASSEMBLY");
+            execution.setProcessName(item.getProcessName());
+            execution.setCustomProcessParams(item.getCustomProcessParams());
+            execution.setProcessOrder(item.getProcessOrder());
+
+            // WP-E2E-BUG-01 修复：转工单生成的所有 Execution 一律 PENDING/待执行
+            // 转工单不得自动启动首道工序；只有正式"开始"动作（startExecution）才能进入 EXECUTING
+            execution.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode());
+
+            // 按工序分配时间
+            if (planStartDate != null && planEndDate != null) {
+                LocalDate stepStart = planStartDate.plusDays(i * daysPerStep);
+                LocalDate stepEnd = i == routingItems.size() - 1 ?
+                        planEndDate : planStartDate.plusDays((i + 1) * daysPerStep - 1);
+                execution.setPlannedStartTime(stepStart.atStartOfDay());
+                execution.setPlannedEndTime(stepEnd.atTime(23, 59, 59));
+            }
+
+            // V1 Bug#1 修复：工序计划数量默认继承订单计划数量（当前无工序级独立数量模型）
+            // input_quantity 即“工序计划数量”语义（前端“计划数量”列直接显示）
+            if (orderPlannedQuantity != null) {
+                execution.setInputQuantity(orderPlannedQuantity);
+            } else {
+                execution.setInputQuantity(java.math.BigDecimal.ZERO);
+            }
+
+            execution.setActualLaborHours(BigDecimal.ZERO);
+            execution.setActualMachineHours(BigDecimal.ZERO);
+
+            productionOperationExecutionMapper.insert(execution);
+
+            // 统一生产任务模型：计划转工单生成 Execution 时，同事务初始化唯一 First Task。
+            // createFirstTask 由 uk_exec_first 保证重复调用幂等。
+            productionTaskService.createFirstTask(execution.getExecutionId(), execution.getInputQuantity());
+        }
+
+        log.info("已为工单 {} 生成 {} 个工序执行记录", orderId, routingItems.size());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateOrderPlanDate(Long orderId, String planStartDate, String planEndDate) {
+        ProductionOrder order = baseMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在: " + orderId);
+        }
+        if (planStartDate != null && !planStartDate.isEmpty()) {
+            order.setPlanStartDate(LocalDate.parse(planStartDate));
+        }
+        if (planEndDate != null && !planEndDate.isEmpty()) {
+            order.setPlanEndDate(LocalDate.parse(planEndDate));
+        }
+        return baseMapper.updateById(order) > 0;
+    }
+
+    /**
+     * 校验状态流转是否合法
+     */
+    private void validateStatusTransition(Integer currentStatus, Integer newStatus) {
+        if (currentStatus.equals(newStatus)) return;
+
+        int cs = currentStatus;
+        int ns = newStatus;
+
+        if (cs == 0) { // DRAFT
+            if (ns != 1 && ns != 9) throw new BusinessException("草稿状态只能转为待审批或已取消");
+        } else if (cs == 1) { // PENDING_APPROVAL
+            if (ns != 2 && ns != 3 && ns != 9) throw new BusinessException("待审批状态只能转为已审批、已驳回或已取消");
+        } else if (cs == 2) { // APPROVED
+            if (ns != 6 && ns != 9) throw new BusinessException("已审批状态只能转为进行中或已取消");
+        } else if (cs == 4) { // PLANNED
+            if (ns != 6 && ns != 9) throw new BusinessException("已计划状态只能转为进行中或已取消");
+        } else if (cs == 5) { // PENDING_START
+            if (ns != 6 && ns != 9) throw new BusinessException("待开始状态只能转为进行中或已取消");
+        } else if (cs == 6) { // IN_PROGRESS
+            if (ns != 8 && ns != 7 && ns != 9) throw new BusinessException("进行中状态只能转为已完成、已暂停或已取消");
+        } else if (cs == 7) { // PAUSED
+            if (ns != 6 && ns != 9) throw new BusinessException("已暂停状态只能转为进行中或已取消");
+        } else if (cs == 8) { // COMPLETED
+            if (ns != 10) throw new BusinessException("已完成状态只能转为已关闭");
+        } else {
+            throw new BusinessException("不支持的状态流转: " + currentStatus + " -> " + newStatus);
+        }
+    }
+
+    @Override
+    public byte[] exportPdf(Long orderId) {
+        ProductionOrderVO vo = getOrderById(orderId);
+        java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.00");
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+
+        java.util.Map<String, String> info = new java.util.LinkedHashMap<>();
+        info.put("工单号", vo.getOrderNo());
+        info.put("产品编码", vo.getProductCode());
+        info.put("产品名称", vo.getProductName());
+        info.put("产品规格", vo.getProductSpec() == null ? "-" : vo.getProductSpec());
+        info.put("来源销售单", vo.getSalesOrderNo() == null ? "-" : vo.getSalesOrderNo());
+        info.put("计划开始", vo.getPlanStartDate() == null ? "" : vo.getPlanStartDate().toString());
+        info.put("计划结束", vo.getPlanEndDate() == null ? "" : vo.getPlanEndDate().toString());
+        info.put("BOM", vo.getRoutingName() == null ? "-" : vo.getRoutingName());
+        info.put("工艺路线", vo.getRoutingCode() == null ? "-" : vo.getRoutingCode());
+        info.put("状态", vo.getOrderStatusDesc() == null ? "-" : vo.getOrderStatusDesc());
+
+        java.util.List<String[]> rows = new java.util.ArrayList<>();
+        rows.add(new String[]{"1", vo.getProductCode(), vo.getProductName(),
+                vo.getPlannedQuantity() == null ? "" : df.format(vo.getPlannedQuantity()),
+                vo.getProductUnit() == null ? "" : vo.getProductUnit(),
+                vo.getCompletedQuantity() == null ? "" : df.format(vo.getCompletedQuantity()),
+                vo.getRemainingQuantity() == null ? "" : df.format(vo.getRemainingQuantity())});
+
+        return com.jjx.common.utils.pdf.PdfDocBuilder.create()
+                .withConfig(pdfConfigLoader.load())
+                .withConfig(pdfConfigLoader.load())
+                .title("生  产  工  单")
+                .info(info)
+                .items(new String[]{"序号", "产品编码", "产品名称", "计划数量", "单位", "已完成", "剩余"}, rows)
+                .amounts(new String[][]{
+                        {"材料成本", vo.getMaterialCost() == null ? "" : df.format(vo.getMaterialCost())},
+                        {"人工成本", vo.getLaborCost() == null ? "" : df.format(vo.getLaborCost())},
+                        {"总成本", vo.getTotalCost() == null ? "" : df.format(vo.getTotalCost())},
+                })
+                .remark(vo.getRemark())
+                .signatures("生产负责人：", "车间确认：", "日期：")
+                .toBytes();
     }
 }

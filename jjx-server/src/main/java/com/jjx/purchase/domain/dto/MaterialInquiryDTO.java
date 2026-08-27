@@ -102,7 +102,7 @@ public class MaterialInquiryDTO {
     /**
      * 询价状态（active/inactive/expired）
      */
-    private String inquiryStatus;
+    private Integer inquiryStatus;
 
     /**
      * 备注

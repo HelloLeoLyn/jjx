@@ -1,24 +1,29 @@
 package com.jjx.inventory.service.impl;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryMaterialCategory;
 import com.jjx.inventory.dto.query.CategoryQueryDTO;
 import com.jjx.inventory.dto.vo.CategoryTreeVO;
 import com.jjx.inventory.dto.vo.MaterialCategoryVO;
 import com.jjx.inventory.mapper.InventoryMaterialCategoryMapper;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.service.InventoryMaterialCategoryService;
+
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import com.jjx.system.annotation.Event;
 
 /**
  * 物料分类服务实现类
@@ -26,22 +31,30 @@ import java.util.Map;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class InventoryMaterialCategoryServiceImpl extends ServiceImpl<InventoryMaterialCategoryMapper, InventoryMaterialCategory>
+public class InventoryMaterialCategoryServiceImpl
+        extends ServiceImpl<InventoryMaterialCategoryMapper, InventoryMaterialCategory>
         implements InventoryMaterialCategoryService {
 
     private final InventoryMaterialCategoryMapper materialCategoryMapper;
+    private final InventoryMaterialMapper materialMapper;
 
-    private static LambdaQueryWrapper<InventoryMaterialCategory> buildQueryWrapper(CategoryQueryDTO queryDTO){
+    private static LambdaQueryWrapper<InventoryMaterialCategory> buildQueryWrapper(CategoryQueryDTO queryDTO) {
         LambdaQueryWrapper<InventoryMaterialCategory> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(StringUtils.isNotBlank(queryDTO.getCategoryCode()), InventoryMaterialCategory::getCategoryCode, queryDTO.getCategoryCode())
-                .like(StringUtils.isNotBlank(queryDTO.getCategoryName()), InventoryMaterialCategory::getCategoryName, queryDTO.getCategoryName())
-                .eq(StringUtils.isNotBlank(queryDTO.getStatus()), InventoryMaterialCategory::getStatus, queryDTO.getStatus());
+        queryWrapper
+                .eq(StringUtils.isNotBlank(queryDTO.getCategoryCode()), InventoryMaterialCategory::getCategoryCode,
+                        queryDTO.getCategoryCode())
+                .like(StringUtils.isNotBlank(queryDTO.getCategoryName()), InventoryMaterialCategory::getCategoryName,
+                        queryDTO.getCategoryName())
+                .eq(StringUtils.isNotBlank(queryDTO.getStatus()), InventoryMaterialCategory::getStatus,
+                        queryDTO.getStatus());
         return queryWrapper;
     }
+
     @Override
     public List<MaterialCategoryVO> getCategoryTree(CategoryQueryDTO queryDTO) {
         LambdaQueryWrapper<InventoryMaterialCategory> queryWrapper = buildQueryWrapper(queryDTO);
-        List<InventoryMaterialCategory> categories = materialCategoryMapper.selectList(queryWrapper.orderByAsc(InventoryMaterialCategory::getSortOrder));
+        List<InventoryMaterialCategory> categories = materialCategoryMapper
+                .selectList(queryWrapper.orderByAsc(InventoryMaterialCategory::getSortOrder));
 
         // 构建分类映射
         Map<Long, MaterialCategoryVO> categoryMap = new HashMap<>();
@@ -94,6 +107,7 @@ public class InventoryMaterialCategoryServiceImpl extends ServiceImpl<InventoryM
     }
 
     @Override
+    @Event(value = "inventory.material_category.status_updated", bizId = "#categoryId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long categoryId, String status) {
         InventoryMaterialCategory category = materialCategoryMapper.selectById(categoryId);
@@ -107,6 +121,7 @@ public class InventoryMaterialCategoryServiceImpl extends ServiceImpl<InventoryM
     }
 
     @Override
+    @Event(value = "inventory.material_category.deleted", bizId = "#categoryId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long categoryId) {
         // 检查是否有子分类
@@ -116,8 +131,13 @@ public class InventoryMaterialCategoryServiceImpl extends ServiceImpl<InventoryM
             return false;
         }
 
-        // TODO: 检查是否有关联的物料
-        // 这里需要调用物料Mapper检查是否有物料使用此分类
+        // 检查是否有关联的物料
+        Long materialCount = materialMapper.selectCount(
+                new LambdaQueryWrapper<InventoryMaterial>().eq(InventoryMaterial::getCategoryId, categoryId));
+        if (materialCount != null && materialCount > 0) {
+            log.error("分类下存在物料，无法删除: categoryId={}, materialCount={}", categoryId, materialCount);
+            throw new RuntimeException("分类下存在 " + materialCount + " 个物料，无法删除");
+        }
 
         return materialCategoryMapper.deleteById(categoryId) > 0;
     }

@@ -132,10 +132,10 @@ const form = reactive({
   deptName: '',
   orderNum: 0,
   leader: '',
+  leaderUserId: null,
   phone: '',
   email: '',
   status: '0',
-  remark: '',
 })
 
 const deptOptions = ref<SysDept[]>([])
@@ -217,10 +217,10 @@ const resetForm = () => {
     deptName: '',
     orderNum: 0,
     leader: '',
+    leaderUserId: null,
     phone: '',
     email: '',
     status: '0',
-    remark: '',
   })
 }
 

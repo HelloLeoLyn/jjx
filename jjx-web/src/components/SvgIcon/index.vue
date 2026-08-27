@@ -1,7 +1,7 @@
 <!-- src/components/SvgIcon/index.vue -->
 <template>
   <svg aria-hidden="true" class="svg-icon" :width="sizeNum" :height="sizeNum">
-    <use :xlink:href="symbolId" :fill="color" />
+    <use :href="symbolId" :fill="color" />
   </svg>
 </template>
 

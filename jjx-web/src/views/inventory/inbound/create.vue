@@ -837,11 +837,10 @@ const handleSaveDraft = async () => {
 
   loading.value = true
   try {
-    // 模拟API调用
-    // const res = await inboundApi.create(formData)
-    const mockRes = { data: { inboundId: 'IN20260330001' } }
+    const res = await inboundApi.create(formData)
+    const inboundId = (res as any)?.data?.data?.inboundId
     ElMessage.success('保存草稿成功')
-    router.push(`/inventory/inbound/detail/${mockRes.data.inboundId}`)
+    router.push(`/inventory/inbound/detail/${inboundId}`)
   } catch (error) {
     console.error('保存草稿失败:', error)
     ElMessage.error('保存草稿失败')
@@ -858,13 +857,11 @@ const handleSubmit = async () => {
     .then(async () => {
       loading.value = true
       try {
-        // 模拟API调用
-        // const res = await inboundApi.create(formData)
-        const mockRes = { data: { inboundId: 'IN20260330001' } }
-        // TODO: 调用提交审批API
-        // await inboundApi.submitApprove(res.data.inboundId)
+        const res = await inboundApi.create(formData)
+        const inboundId = (res as any)?.data?.data?.inboundId
+        await inboundApi.submitApprove(inboundId)
         ElMessage.success('提交审批成功')
-        router.push(`/inventory/inbound/detail/${mockRes.data.inboundId}`)
+        router.push(`/inventory/inbound/detail/${inboundId}`)
       } catch (error) {
         console.error('提交审批失败:', error)
         ElMessage.error('提交审批失败')

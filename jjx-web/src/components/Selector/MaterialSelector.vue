@@ -137,9 +137,9 @@ const handleRemoteSearch = (query: string) => {
   debounceTimer = setTimeout(async () => {
     loading.value = true
     try {
-      const res = await materialApi.search(query)
+      const res = await materialApi.search({ keyword: query } as any)
       if (res.code === 200 && res.data) {
-        remoteOptions.value = res.data
+        remoteOptions.value = (res as any).data
         emit('search', query)
 
         if (props.autoSelectFirst && remoteOptions.value.length > 0) {

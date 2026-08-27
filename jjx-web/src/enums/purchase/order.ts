@@ -2,15 +2,15 @@ import { createEnum } from '@/enums/base'
 
 /**
  * 采购订单类型枚举
- * 0=正常, 1=紧急, 2=补单, 3=退货单, 4=样品单
+ * normal=正常, urgent=紧急, reorder=补单, return=退货, sample=样品
  */
 export const PurchaseOrderTypeEnum = createEnum({
   items: [
-    { value: 0, label: '正常', tagProps: { type: 'primary' } },
-    { value: 1, label: '紧急', tagProps: { type: 'danger' } },
-    { value: 2, label: '补单', tagProps: { type: 'warning' } },
-    { value: 3, label: '退货单', tagProps: { type: 'info' } },
-    { value: 4, label: '样品单', tagProps: { type: 'success' } },
+    { value: 'normal', label: '正常', tagProps: { type: 'primary' } },
+    { value: 'urgent', label: '紧急', tagProps: { type: 'danger' } },
+    { value: 'reorder', label: '补单', tagProps: { type: 'warning' } },
+    { value: 'return', label: '退货单', tagProps: { type: 'info' } },
+    { value: 'sample', label: '样品单', tagProps: { type: 'success' } },
   ],
   defaultTag: { type: 'info' },
 })
@@ -37,6 +37,25 @@ export const ApprovalStatusEnum = createEnum({
     { value: 3, label: '待审批', tagProps: { type: 'warning' } },
     { value: 4, label: '已批准', tagProps: { type: 'success' } },
     { value: 5, label: '已拒绝', tagProps: { type: 'danger' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
+/**
+ * 采购订单状态枚举
+ * 对应后端 PurchaseOrderStatusEnum
+ */
+export const PurchaseOrderStatusEnum = createEnum({
+  items: [
+    { value: 0, label: '草稿', tagProps: { type: 'info' } },
+    { value: 1, label: '询价中', tagProps: { type: 'warning' } },
+    { value: 2, label: '比价中', tagProps: { type: 'warning' } },
+    { value: 3, label: '已提交', tagProps: { type: 'primary' } },
+    { value: 4, label: '已批准', tagProps: { type: 'success' } },
+    { value: 5, label: '执行中', tagProps: { type: 'primary' } },
+    { value: 6, label: '已完成', tagProps: { type: 'success' } },
+    { value: 7, label: '已关闭', tagProps: { type: 'info' } },
+    { value: 8, label: '已取消', tagProps: { type: 'danger' } },
   ],
   defaultTag: { type: 'info' },
 })

@@ -106,7 +106,7 @@ export const roleApi = {
 
   // 批量授权菜单
   addAuthMenu(data: { roleId: number; menuIds: number[] }) {
-    const params: any = { roleId: data.roleId }
+    const params: Record<string, string | number> = { roleId: data.roleId }
     if (data.menuIds && data.menuIds.length > 0) {
       params.menuIds = data.menuIds.join(',')
     }

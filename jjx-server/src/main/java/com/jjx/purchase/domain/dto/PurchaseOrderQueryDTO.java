@@ -29,9 +29,14 @@ public class PurchaseOrderQueryDTO extends PageQuery {
     private String supplierName;
 
     /**
-     * 订单类型（0正常/1紧急）
+     * 订单类型（normal正常/urgent紧急）
      */
-    private Integer orderType;
+    private String orderType;
+
+    /**
+     * 计划状态筛选（DEV-664）：0普通/1计划单
+     */
+    private Integer planStatus;
 
     /**
      * 订单审批状态（1草稿/2已取消/3待审批/4已批准/5已拒绝）

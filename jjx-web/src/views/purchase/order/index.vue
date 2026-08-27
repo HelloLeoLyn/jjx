@@ -32,26 +32,31 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
+          <el-button type="primary" plain icon="Plus" v-hasPermi="['purchase:order:add']" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
             type="success"
             plain
             icon="Edit"
+            v-hasPermi="['purchase:order:edit']"
             :disabled="!single || !selectedOrderEditable"
             @click="() => handleUpdate()"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['purchase:order:export']" @click="handleExport">导出</el-button>
+        </el-col>
+        <el-col :span="1.5">
+          <el-button type="info" plain icon="Document" v-hasPermi="['purchase:order:export']" :disabled="!single" @click="handleExportPdf">导出PDF</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button
             type="info"
             plain
             icon="Send"
+            v-hasPermi="['purchase:order:edit']"
             :disabled="!multiple || !selectedOrderSubmittable"
             @click="handleSubmitReview"
             >提交审批</el-button
@@ -62,6 +67,7 @@
             type="success"
             plain
             icon="Check"
+            v-hasPermi="['purchase:order:approve']"
             :disabled="!single || !selectedOrderApprovable"
             @click="() => handleApprove()"
             >审批</el-button
@@ -72,6 +78,7 @@
             type="primary"
             plain
             icon="Location"
+            v-hasPermi="['purchase:receipt:add']"
             :disabled="!single || !selectedOrderReceivable"
             @click="() => handleReceive()"
             >收货</el-button
@@ -82,6 +89,7 @@
             type="warning"
             plain
             icon="Money"
+            v-hasPermi="['purchase:payment:add']"
             :disabled="!single || !selectedOrderPayable"
             @click="() => handlePayment()"
             >付款</el-button
@@ -92,6 +100,7 @@
             type="info"
             plain
             icon="CopyDocument"
+            v-hasPermi="['purchase:order:add']"
             :disabled="!single"
             @click="() => handleCopy()"
             >复制</el-button
@@ -132,7 +141,7 @@
               v-for="dict in approvalStatusOptions"
               :key="dict.value"
               :label="dict.label"
-              :value="Number(dict.value)"
+              :value="Number(dict.value as any)"
             />
           </el-select>
         </el-form-item>
@@ -150,10 +159,12 @@
         :data="orderList"
         @selection-change="handleSelectionChange"
         @sort-change="handleSortChange"
+        border
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="订单号" align="center" prop="orderNo" width="160">
           <template #default="scope">
+
             <el-tooltip content="详情" placement="top">
               <el-button link type="primary" @click="() => handleView(scope.row)">{{
                 scope.row.orderNo
@@ -214,17 +225,11 @@
           label="操作"
           align="left"
           class-name="small-padding fixed-width"
-          width="300"
+          min-width="300"
         >
           <template #default="scope">
-            <!-- 复制按钮（始终显示） -->
-            <el-tooltip content="复制" placement="top">
-              <el-button
-                link
-                type="info"
-                icon="CopyDocument"
-                @click="() => handleCopy(scope.row)"
-              ></el-button>
+            <el-tooltip content="打印" placement="top">
+              <el-button link type="info" icon="Printer" @click="handlePrint(scope.row)">打印</el-button>
             </el-tooltip>
             <!-- 修改按钮（草稿和已拒绝可修改） -->
             <el-tooltip
@@ -236,6 +241,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['purchase:order:edit']"
                 @click="() => handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -249,20 +255,50 @@
                 link
                 type="danger"
                 icon="Delete"
-                @click="() => handleCancle(scope.row)"
+                v-hasPermi="['purchase:order:edit']"
+                @click="() => openPreview('purchase.cancel', scope.row)"
               ></el-button>
             </el-tooltip>
             <!-- 审批按钮（待审批可审批） -->
             <el-tooltip
               v-if="isOrderApprovable(scope.row.approvalStatus)"
-              content="审批"
+              content="审批通过"
               placement="top"
             >
               <el-button
                 link
                 type="warning"
                 icon="Check"
-                @click="() => handleApprove(scope.row)"
+                v-hasPermi="['purchase:order:approve']"
+                @click="() => openPreview('purchase.approve', scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <!-- 驳回按钮（待审批可驳回） -->
+            <el-tooltip
+              v-if="isOrderApprovable(scope.row.approvalStatus)"
+              content="审批驳回"
+              placement="top"
+            >
+              <el-button
+                link
+                type="danger"
+                icon="CloseBold"
+                v-hasPermi="['purchase:order:approve']"
+                @click="() => openPreview('purchase.reject', scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <!-- 提交审核按钮（草稿可提交） -->
+            <el-tooltip
+              v-if="scope.row.approvalStatus === 1"
+              content="提交审核"
+              placement="top"
+            >
+              <el-button
+                link
+                type="primary"
+                icon="Promotion"
+                v-hasPermi="['purchase:order:edit']"
+                @click="() => openPreview('purchase.submitReview', scope.row)"
               ></el-button>
             </el-tooltip>
             <!-- 收货按钮（已批准且未完全收货） -->
@@ -275,6 +311,7 @@
                 link
                 type="success"
                 icon="Location"
+                v-hasPermi="['purchase:receipt:add']"
                 @click="() => handleReceive(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -288,7 +325,17 @@
                 link
                 type="primary"
                 icon="Money"
+                v-hasPermi="['purchase:payment:add']"
                 @click="() => handlePayment(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <!-- 查看流水（DEV-569） -->
+            <el-tooltip content="查看流水" placement="top">
+              <el-button
+                link
+                type="info"
+                icon="Connection"
+                @click="showTrace(scope.row)"
               ></el-button>
             </el-tooltip>
           </template>
@@ -341,6 +388,19 @@
 
     <!-- 详情对话框 -->
     <OrderDetailDialog v-model:visible="detailDialogVisible" :orderId="currentOrderId" />
+
+    <!-- 查看流水（DEV-569） -->
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+
+    <!-- 操作预览器 -->
+    <OperationPreviewDialog
+      v-model="previewVisible"
+      :operation="previewOperation"
+      :biz-id="previewBizId"
+      :biz-no="previewBizNo"
+      :status-text-map="approvalStatusTextMap"
+      @success="handleSuccess"
+    />
   </div>
 </template>
 
@@ -363,6 +423,14 @@ import {
   isOrderPayable,
 } from './utils/orderFormatters'
 import { usePurchaseOrder } from './composables/usePurchaseOrder'
+
+// 查看流水（DEV-569）
+const traceDrawerVisible = ref(false)
+const currentTraceId = ref('')
+function showTrace(row: PurchaseOrderVO) {
+  currentTraceId.value = row.traceId || ''
+  traceDrawerVisible.value = true
+}
 import { usePurchaseOrderStats } from './composables/usePurchaseOrderStats'
 import { usePurchaseOrderOperations } from './composables/usePurchaseOrderOperations'
 import OrderFormDialog from './components/OrderFormDialog.vue'
@@ -370,7 +438,11 @@ import OrderApproveDialog from './components/OrderApproveDialog.vue'
 import OrderReceiveDialog from './components/OrderReceiveDialog.vue'
 import OrderPaymentDialog from './components/OrderPaymentDialog.vue'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
-import { copyOrder, exportOrder as apiExportOrder, cancleOrder } from '@/api/purchase/order'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
+import { copyOrder, exportOrder as apiExportOrder, exportOrderPdf, cancleOrder } from '@/api/purchase/order'
+import { download } from '@/utils/format'
 
 // 使用Composables
 const { orderList, total, loading, loadData } = usePurchaseOrder()
@@ -541,7 +613,7 @@ const handleUpdate = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要修改的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   formDialogVisible.value = true
 }
@@ -560,6 +632,18 @@ const handleExport = () => {
       console.error('导出失败:', error)
       ElMessage.error('导出失败')
     }
+  })
+}
+
+// 导出PDF（单张表单，需选中一行）
+const handleExportPdf = () => {
+  const row = selectedRows.value[0]
+  if (!row?.orderId) {
+    ElMessage.warning('请先选中一行采购订单')
+    return
+  }
+  exportOrderPdf(Number(row.orderId)).then((response: any) => {
+    download(response, `采购订单_${row.orderNo || row.orderId}.pdf`)
   })
 }
 
@@ -603,14 +687,18 @@ const handleApprove = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要审批的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   approveDialogVisible.value = true
 }
 
 // 查看详情
+// 打印采购订单（跳转独立打印页）
+function handlePrint(row: PurchaseOrderVO) {
+  window.open(`/print/purchase-order/${row.orderId}`, '_blank')
+}
 const handleView = (row: PurchaseOrderVO) => {
-  currentOrderId.value = Number(row.orderId)
+  currentOrderId.value = Number(row.orderId as any)
   currentOrderNo.value = row.orderNo
   detailDialogVisible.value = true
 }
@@ -622,7 +710,7 @@ const handleReceive = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要收货的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   receiveDialogVisible.value = true
 }
@@ -634,7 +722,7 @@ const handlePayment = (row?: PurchaseOrderVO) => {
     ElMessage.warning('请先选择要付款的订单')
     return
   }
-  currentOrderId.value = Number(order.orderId)
+  currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   currentOrderTotalAmount.value = order.orderTotalAmount || 0
   currentPaidAmount.value = (order as any).paidAmount || 0
@@ -656,7 +744,7 @@ const handleCopy = async (row?: PurchaseOrderVO) => {
     type: 'info',
   }).then(async () => {
     try {
-      await copyOrder(Number(order.orderId))
+      await copyOrder(Number(order.orderId) as any)
       ElMessage.success('复制订单成功')
       handleSuccess()
     } catch (error) {
@@ -678,7 +766,7 @@ const handleCancle = async (row: PurchaseOrderVO) => {
     }
   ).then(async () => {
     try {
-      await cancleOrder(Number(row.orderId))
+      await cancleOrder(Number(row.orderId) as any)
       ElMessage.success('取消订单成功')
       handleSuccess()
     } catch (error) {
@@ -693,6 +781,29 @@ const handleCancle = async (row: PurchaseOrderVO) => {
  */
 function isOrderDeletable(approvalStatus: number): boolean {
   return approvalStatus === 1 || approvalStatus === 5
+}
+
+// ===== 操作预览器 =====
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+
+/** 审批状态文本映射（1草稿 2已取消 3待审批 4已批准 5已拒绝） */
+const approvalStatusTextMap: Record<number, string> = Object.fromEntries(
+  PurchaseEnum.approvalStatus.items.map((i) => [Number(i.value), i.label])
+)
+
+function openPreview(opKey: string, row?: PurchaseOrderVO) {
+  const op = getOperation(opKey)
+  if (!op) {
+    ElMessage.warning(`未注册的操作：${opKey}`)
+    return
+  }
+  previewOperation.value = op
+  previewBizId.value = Number(row?.orderId)
+  previewBizNo.value = row?.orderNo || ''
+  previewVisible.value = true
 }
 </script>
 

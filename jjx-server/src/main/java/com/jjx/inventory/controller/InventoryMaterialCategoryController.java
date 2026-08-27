@@ -48,7 +48,7 @@ public class InventoryMaterialCategoryController {
 
     @PostMapping
 //    @Operation(summary = "新增分类")
-    @Log(module = "物料分类管理", businessType = BusinessType.INSERT)
+    @Log(module = "物料分类管理", businessType = BusinessType.INSERT, bizType = "'material_category'", bizId = "#dto.categoryId")
     @SaCheckPermission("inventory:category:add")
     public Result<Boolean> add(@RequestBody CategorySaveDTO dto) {
         InventoryMaterialCategory entity = new InventoryMaterialCategory();
@@ -58,7 +58,7 @@ public class InventoryMaterialCategoryController {
 
     @PutMapping
 //    @Operation(summary = "修改分类")
-    @Log(module = "物料分类管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料分类管理", businessType = BusinessType.UPDATE, bizType = "'material_category'", bizId = "#dto.categoryId")
     @SaCheckPermission("inventory:category:edit")
     public Result<Boolean> update(@RequestBody CategoryUpdateDTO dto) {
         InventoryMaterialCategory entity = new InventoryMaterialCategory();
@@ -68,7 +68,7 @@ public class InventoryMaterialCategoryController {
 
     @DeleteMapping("/{categoryId}")
 //    @Operation(summary = "删除分类")
-    @Log(module = "物料分类管理", businessType = BusinessType.DELETE)
+    @Log(module = "物料分类管理", businessType = BusinessType.DELETE, bizType = "'material_category'", bizId = "#categoryId")
     @SaCheckPermission("inventory:category:remove")
     public Result<Boolean> delete(@PathVariable Long categoryId) {
         return Result.success(categoryService.deleteWithCheck(categoryId));
@@ -76,7 +76,7 @@ public class InventoryMaterialCategoryController {
 
     @PutMapping("/{categoryId}/status")
 //    @Operation(summary = "更新分类状态")
-    @Log(module = "物料分类管理", businessType = BusinessType.UPDATE)
+    @Log(module = "物料分类管理", businessType = BusinessType.UPDATE, bizType = "'material_category'", bizId = "#categoryId")
     @SaCheckPermission("inventory:category:edit")
     public Result<Boolean> updateStatus(@PathVariable Long categoryId,
                                         @RequestParam String status) {

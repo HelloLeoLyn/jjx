@@ -26,6 +26,12 @@ public class MaterialUpdateDTO {
     private BigDecimal maxStock;
     private BigDecimal reorderPoint;
     private BigDecimal standardPrice;
+
+    /** 成本单价（人定，099） */
+    private BigDecimal costPrice;
+
+    /** 成本单价来源（最近采购价/人工指定/初始，099） */
+    private String costPriceFrom;
     private Integer leadTime;
     private Long supplierId;
     private String supplierName;

@@ -265,6 +265,13 @@
       <div v-else class="empty-section">
         <el-empty description="未配置菲林" :image-size="40" />
       </div>
+
+      <!-- 产品文件库（DEV-734） -->
+      <el-divider content-position="left">产品文件库</el-divider>
+      <ProductFileLibrary
+        v-if="productData.product?.productCode"
+        :product-code="productData.product.productCode"
+      />
     </div>
   </div>
 </template>
@@ -275,7 +282,8 @@ import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
 import { ProductEnum, StepTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
-import type { ProductRoutingItemVO } from '@/types/product/routing'
+import type { EngineeringRoutingItemVO } from '@/types/product/routing'
+import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 
 // Props
 interface Props {
@@ -315,7 +323,7 @@ const getApproveStatusText = (status: number): string => {
 interface GroupDisplay {
   groupOrder: number
   groupName: string
-  items: ProductRoutingItemVO[]
+  items: EngineeringRoutingItemVO[]
   totalLaborHours: number
   totalMachineHours: number
   remark: string
@@ -327,7 +335,7 @@ const routeGroups = computed<GroupDisplay[]>(() => {
   const items = productData.value.routing?.items
   if (!items || items.length === 0) return []
 
-  const groupMap = new Map<string, ProductRoutingItemVO[]>()
+  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
   items.forEach((item) => {
     const key = item.groupId
       ? 'group_' + item.groupId

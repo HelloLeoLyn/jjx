@@ -18,8 +18,10 @@ public class PurchaseOrderReceiveDTO {
 
     /**
      * 采购订单ID
+     * 注：由接口路径 @PathVariable 注入（POST /purchase/order/{orderId}/receive），
+     * 请求体无需携带；@NotNull 移除（否则 @Valid 校验早于 setOrderId 必失败），
+     * 空值兜底由 service 层校验。
      */
-    @NotNull(message = "订单ID不能为空")
     private Long orderId;
 
     /**

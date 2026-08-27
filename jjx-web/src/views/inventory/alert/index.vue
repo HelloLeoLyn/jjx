@@ -51,7 +51,7 @@
               <div class="stat-value">
                 {{ alertStats.unprocessedCount || 0 }}
               </div>
-              <div class="stat-label">未处理预警</div>
+              <div class="stat-label">待处理预警</div>
             </div>
           </div>
         </el-card>
@@ -66,12 +66,14 @@
             v-model="queryParams.alertType"
             placeholder="请选择"
             clearable
-            style="width: 120px"
+            style="width: 140px"
           >
-            <el-option label="低库存" value="low_stock" />
-            <el-option label="临期" value="expiring" />
-            <el-option label="呆滞" value="obsolete" />
-            <el-option label="超储" value="overstock" />
+            <el-option
+              v-for="opt in alertTypeOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="预警级别">
@@ -81,20 +83,25 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="紧急" value="urgent" />
-            <el-option label="警告" value="warning" />
-            <el-option label="提示" value="info" />
+            <el-option
+              v-for="opt in alertLevelOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="处理状态">
           <el-select
-            v-model="queryParams.processed"
+            v-model="queryParams.status"
             placeholder="请选择"
             clearable
             style="width: 120px"
           >
-            <el-option label="未处理" value="false" />
-            <el-option label="已处理" value="true" />
+            <el-option label="未处理" value="0" />
+            <el-option label="已上报" value="1" />
+            <el-option label="已处理" value="2" />
+            <el-option label="已解除" value="3" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -108,13 +115,13 @@
     <el-card class="operation-card">
       <el-row :gutter="10">
         <el-col :span="1.5">
-          <el-button type="primary" @click="handleCheckAlert">
+          <el-button type="primary" v-hasPermi="['inventory:alert:edit']" @click="handleCheckAlert">
             <el-icon><Refresh /></el-icon>执行预警检查
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button @click="handleBatchMarkRead">
-            <el-icon><Check /></el-icon>批量标记已读
+          <el-button v-hasPermi="['inventory:alert:edit']" @click="handleBatchMarkRead">
+            <el-icon><Check /></el-icon>批量标记已上报
           </el-button>
         </el-col>
         <el-col :span="1.5">
@@ -134,14 +141,14 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="预警类型" prop="alertTypeName" width="120" align="center">
+        <el-table-column label="预警类型" width="120" align="center">
           <template #default="{ row }">
             <el-tag :type="getAlertTypeTag(row.alertType)" size="small">
               {{ row.alertTypeName }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="预警级别" prop="alertLevelName" width="100" align="center">
+        <el-table-column label="预警级别" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getAlertLevelTag(row.alertLevel)" size="small">
               {{ row.alertLevelName }}
@@ -150,39 +157,57 @@
         </el-table-column>
         <el-table-column label="物料编码" prop="materialCode" width="120" />
         <el-table-column label="物料名称" prop="materialName" width="150" show-overflow-tooltip />
-        <el-table-column label="仓库" prop="warehouseName" width="120" />
-        <el-table-column label="批次号" prop="batchNo" width="120" />
+        <el-table-column label="关联订单" width="150" align="center">
+          <template #default="{ row }">
+            <span v-if="row.orderNo">{{ row.orderNo }}</span>
+            <span v-else-if="row.involvedOrders" style="color:#e6a23c">涉及 {{ row.involvedOrders }} 个订单</span>
+            <span v-else style="color:#c0c4cc">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="当前库存" prop="currentStock" width="100" align="right">
           <template #default="{ row }">
             {{ formatNumber(row.currentStock) }}
           </template>
         </el-table-column>
-        <el-table-column label="安全库存" prop="safeStock" width="100" align="right">
-          <template #default="{ row }">
-            {{ formatNumber(row.safeStock) }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="预警内容"
-          prop="alertContent"
-          min-width="200"
+        <el-table-column label="预警内容"
+          prop="alertMessage"
+          min-width="220"
           show-overflow-tooltip
         />
         <el-table-column label="预警时间" prop="alertTime" width="150" align="center" />
-        <el-table-column label="处理状态" prop="processed" width="100" align="center">
+        <el-table-column label="处理状态" prop="status" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.processed ? 'success' : 'warning'" size="small">
-              {{ row.processed ? '已处理' : '未处理' }}
+            <el-tag :type="getStatusTag(row.status)" size="small">
+              {{ getStatusName(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="处理人" width="90" align="center">
           <template #default="{ row }">
-            <el-button v-if="!row.processed" link type="primary" @click="handleMarkRead(row)"
-              >标记已读</el-button
-            >
-            <el-button v-if="!row.processed" link type="success" @click="handleProcess(row)"
-              >处理</el-button
+            <span>{{ row.processedBy || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="处理时间" width="150" align="center">
+          <template #default="{ row }">
+            <span>{{ row.processedTime || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="关联采购订单" width="140" align="center">
+          <template #default="{ row }">
+            <el-link
+              v-if="extractPurchaseOrderNo(row.processRemark)"
+              type="primary"
+              :underline="false"
+              @click="goPurchaseOrders"
+            >{{ extractPurchaseOrderNo(row.processRemark) }}</el-link>
+            <span v-else style="color:#c0c4cc">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="170" fixed="right">
+          <template #default="{ row }">
+            <!-- 2026-08-18 职责链：仓库只负责上报（status 0→1），处理是采购侧动作（工作台生成采购单回写） -->
+            <el-button v-if="row.status === 0" v-hasPermi="['inventory:alert:edit']" link type="primary" @click="handleMarkRead(row)"
+              >标记已上报</el-button
             >
             <el-button link type="info" @click="handleViewDetail(row)">详情</el-button>
           </template>
@@ -208,7 +233,24 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Warning, Bell, InfoFilled, Clock, Refresh, Check, Download } from '@element-plus/icons-vue'
-import { formatNumber, formatCurrency } from '@/utils/format'
+import { formatNumber } from '@/utils/format'
+import { alertApi } from '@/api/inventory/alert'
+import { AlertEnum } from '@/enums/inventory/AlertEnum'
+import { useRouter } from 'vue-router'
+
+// 解析处理备注里的关联采购订单号（如"生成采购订单 PO-xxx"）
+function extractPurchaseOrderNo(remark: string | null | undefined): string {
+  if (!remark) return ''
+  const m = String(remark).match(/生成采购订单\s*([A-Za-z0-9\-]+)/)
+  return m ? m[1] : ''
+}
+
+const router = useRouter()
+
+// 去采购订单列表（查看关联订单）
+function goPurchaseOrders() {
+  router.push('/purchase/order')
+}
 
 // 查询参数
 const queryParams = reactive({
@@ -216,7 +258,7 @@ const queryParams = reactive({
   pageSize: 10,
   alertType: '',
   alertLevel: '',
-  processed: '',
+  status: '',
 })
 
 // 响应式数据
@@ -225,134 +267,50 @@ const alertList = ref<any[]>([])
 const total = ref(0)
 const selectedAlerts = ref<any[]>([])
 const alertStats = ref({
-  urgentCount: 5,
-  warningCount: 12,
-  infoCount: 8,
-  unprocessedCount: 15,
+  urgentCount: 0,
+  warningCount: 0,
+  infoCount: 0,
+  unprocessedCount: 0,
 })
 
-// 模拟数据
-const mockAlertData = [
-  {
-    alertId: '1',
-    alertType: 'low_stock',
-    alertTypeName: '低库存',
-    alertLevel: 'urgent',
-    alertLevelName: '紧急',
-    materialId: 'MAT001',
-    materialCode: 'MAT001',
-    materialName: '螺丝钉',
-    warehouseId: '1',
-    warehouseName: '原材料仓库',
-    batchNo: 'BATCH20240301',
-    currentStock: 50,
-    safeStock: 200,
-    alertContent: '库存低于安全库存，请及时采购',
-    alertTime: '2024-03-28 10:00:00',
-    processed: false,
-    processedBy: '',
-    processedTime: '',
-    remark: '',
-  },
-  {
-    alertId: '2',
-    alertType: 'expiring',
-    alertTypeName: '临期',
-    alertLevel: 'warning',
-    alertLevelName: '警告',
-    materialId: 'MAT002',
-    materialCode: 'MAT002',
-    materialName: '润滑油',
-    warehouseId: '2',
-    warehouseName: '成品仓库',
-    batchNo: 'BATCH20231201',
-    currentStock: 100,
-    safeStock: 50,
-    alertContent: '物料即将过期，剩余30天',
-    alertTime: '2024-03-28 09:30:00',
-    processed: false,
-    processedBy: '',
-    processedTime: '',
-    remark: '',
-  },
-  {
-    alertId: '3',
-    alertType: 'obsolete',
-    alertTypeName: '呆滞',
-    alertLevel: 'info',
-    alertLevelName: '提示',
-    materialId: 'MAT003',
-    materialCode: 'MAT003',
-    materialName: '旧型号零件',
-    warehouseId: '3',
-    warehouseName: '半成品仓库',
-    batchNo: 'BATCH20230101',
-    currentStock: 500,
-    safeStock: 100,
-    alertContent: '物料超过180天未使用',
-    alertTime: '2024-03-28 09:00:00',
-    processed: true,
-    processedBy: '张三',
-    processedTime: '2024-03-28 10:00:00',
-    remark: '已安排处理',
-  },
-  {
-    alertId: '4',
-    alertType: 'overstock',
-    alertTypeName: '超储',
-    alertLevel: 'warning',
-    alertLevelName: '警告',
-    materialId: 'MAT004',
-    materialCode: 'MAT004',
-    materialName: '包装箱',
-    warehouseId: '1',
-    warehouseName: '原材料仓库',
-    batchNo: 'BATCH20240201',
-    currentStock: 1000,
-    safeStock: 300,
-    maxStock: 800,
-    alertContent: '库存超过最高库存限制',
-    alertTime: '2024-03-28 08:30:00',
-    processed: false,
-    processedBy: '',
-    processedTime: '',
-    remark: '',
-  },
-]
+// 预警类型/级别选项（真实枚举，8-04 接真实接口）
+const alertTypeOptions = AlertEnum.type.items
+const alertLevelOptions = AlertEnum.level.items
 
-// 获取预警列表
+// 获取预警列表（真实接口）
 const getList = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    // 过滤数据
-    let filteredData = [...mockAlertData]
-
-    if (queryParams.alertType) {
-      filteredData = filteredData.filter((item) => item.alertType === queryParams.alertType)
-    }
-
-    if (queryParams.alertLevel) {
-      filteredData = filteredData.filter((item) => item.alertLevel === queryParams.alertLevel)
-    }
-
-    if (queryParams.processed !== '') {
-      const processed = queryParams.processed === 'true'
-      filteredData = filteredData.filter((item) => item.processed === processed)
-    }
-
-    // 模拟分页
-    const start = (queryParams.current - 1) * queryParams.pageSize
-    const end = start + queryParams.pageSize
-    alertList.value = filteredData.slice(start, end)
-    total.value = filteredData.length
+    const res: any = await alertApi.list(queryParams)
+    const data = res.data || {}
+    const records = data.records || []
+    alertList.value = records.map((item: any) => ({
+      ...item,
+      alertTypeName: AlertEnum.type.getLabel(item.alertType),
+      alertLevelName: AlertEnum.level.getLabel(item.alertLevel),
+    }))
+    total.value = data.total || 0
   } catch (error) {
     console.error('获取预警列表失败:', error)
     ElMessage.error('获取预警列表失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 获取统计卡片（真实接口：未处理预警按级别统计）
+const getStats = async () => {
+  try {
+    const res: any = await alertApi.unprocessed()
+    const list: any[] = res.data || []
+    alertStats.value = {
+      urgentCount: list.filter((i) => i.alertLevel === 'urgent').length,
+      warningCount: list.filter((i) => i.alertLevel === 'warning').length,
+      infoCount: list.filter((i) => i.alertLevel === 'info').length,
+      unprocessedCount: list.length,
+    }
+  } catch (error) {
+    console.error('获取未处理预警失败:', error)
   }
 }
 
@@ -367,7 +325,7 @@ const handleReset = () => {
   queryParams.current = 1
   queryParams.alertType = ''
   queryParams.alertLevel = ''
-  queryParams.processed = ''
+  queryParams.status = ''
   getList()
 }
 
@@ -379,90 +337,89 @@ const handleSelectionChange = (selection: any[]) => {
 // 执行预警检查
 const handleCheckAlert = () => {
   ElMessageBox.confirm('确认执行预警检查吗？', '提示', { type: 'warning' })
-    .then(() => {
-      // TODO: 调用预警检查API
+    .then(async () => {
+      await alertApi.executeCheck()
       ElMessage.success('预警检查执行成功')
       getList()
+      getStats()
     })
     .catch(() => {})
 }
 
-// 批量标记已读
+// 批量标记已上报（2026-08-18：原"批量标记已读"语义升级）
 const handleBatchMarkRead = () => {
   if (selectedAlerts.value.length === 0) {
-    ElMessage.warning('请选择要标记已读的预警')
+    ElMessage.warning('请选择要上报的预警')
     return
   }
 
-  ElMessageBox.confirm('确认批量标记已读吗？', '提示', { type: 'warning' })
-    .then(() => {
-      // TODO: 调用批量标记已读API
-      ElMessage.success('批量标记已读成功')
+  ElMessageBox.confirm(`确认批量上报选中的 ${selectedAlerts.value.length} 条预警吗？上报后采购侧将看到。`, '提示', { type: 'warning' })
+    .then(async () => {
+      await alertApi.batchMarkRead(selectedAlerts.value.map((i: any) => i.alertId))
+      ElMessage.success('批量上报成功')
       getList()
+      getStats()
     })
     .catch(() => {})
 }
 
-// 导出
+// 导出（预留：接后端导出接口）
 const handleExport = () => {
   ElMessage.info('导出功能开发中')
 }
 
-// 标记已读
-const handleMarkRead = (row: any) => {
-  // TODO: 调用标记已读API
-  row.processed = true
-  row.processedBy = '当前用户'
-  row.processedTime = new Date().toLocaleString()
-  ElMessage.success('标记已读成功')
-}
-
-// 处理预警
-const handleProcess = (row: any) => {
-  ElMessageBox.prompt('请输入处理备注', '处理预警', {
-    confirmButtonText: '确认处理',
-    cancelButtonText: '取消',
-    inputPlaceholder: '请输入处理备注',
-  })
-    .then(({ value }) => {
-      // TODO: 调用处理预警API
-      row.processed = true
-      row.processedBy = '当前用户'
-      row.processedTime = new Date().toLocaleString()
-      row.remark = value
-      ElMessage.success('处理成功')
-    })
-    .catch(() => {})
+// 标记已上报（2026-08-18：原"标记已读"语义升级，留痕 reported_by/reported_time）
+const handleMarkRead = async (row: any) => {
+  try {
+    await alertApi.markRead(row.alertId)
+    row.status = 1
+    ElMessage.success('已上报，采购侧将看到该预警')
+    getStats()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '上报失败')
+  }
 }
 
 // 查看详情
 const handleViewDetail = (row: any) => {
-  ElMessage.info(`查看预警详情: ${row.materialName} - ${row.alertContent}`)
+  ElMessageBox.alert(
+    `物料：${row.materialName || '-'}${row.orderNo ? `\n关联订单：${row.orderNo}` : ''}\n当前库存：${formatNumber(row.currentStock)}\n建议：${row.suggestion || '-'}\n预警内容：${row.alertMessage || '-'}\n上报人：${row.reportedBy || '-'}${row.reportedTime ? `（${row.reportedTime}）` : ''}`,
+    `预警详情 - ${row.materialName || row.materialCode || ''}`,
+    { confirmButtonText: '关闭' }
+  )
 }
 
 // 获取预警类型标签样式
 const getAlertTypeTag = (type: string): 'success' | 'warning' | 'info' | 'danger' | undefined => {
-  const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    low_stock: 'danger',
-    expiring: 'warning',
-    obsolete: 'info',
-    overstock: 'success',
-  }
-  return typeMap[type]
+  const t = AlertEnum.type.getTagProps(type).type
+  return t === 'primary' ? 'info' : t
 }
 
 // 获取预警级别标签样式
 const getAlertLevelTag = (level: string): 'success' | 'warning' | 'info' | 'danger' | undefined => {
-  const levelMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    urgent: 'danger',
-    warning: 'warning',
-    info: 'info',
+  const t = AlertEnum.level.getTagProps(level).type
+  return t === 'primary' ? 'info' : t
+}
+
+// 处理状态：0未处理 1已上报 2已处理 3已解除（2026-08-18 职责链）
+const getStatusName = (status: number): string => {
+  const map: Record<number, string> = { 0: '未处理', 1: '已上报', 2: '已处理', 3: '已解除' }
+  return map[status] ?? '未知'
+}
+
+const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' => {
+  const map: Record<number, 'success' | 'warning' | 'info' | 'danger'> = {
+    0: 'danger',
+    1: 'warning',
+    2: 'success',
+    3: 'info',
   }
-  return levelMap[level]
+  return map[status] ?? 'info'
 }
 
 onMounted(() => {
   getList()
+  getStats()
 })
 </script>
 

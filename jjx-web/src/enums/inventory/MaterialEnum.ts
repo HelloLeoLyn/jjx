@@ -21,9 +21,9 @@ export const MaterialTypeEnum = createEnum({
  */
 export const MaterialStatusEnum = createEnum({
   items: [
-    { value: 'active', label: '启用', tagProps: { type: 'success' } },
-    { value: 'inactive', label: '停用', tagProps: { type: 'danger' } },
-    { value: 'obsolete', label: '废弃', tagProps: { type: 'info' } },
+    { value: 1, label: '启用', tagProps: { type: 'success' } },
+    { value: 0, label: '停用', tagProps: { type: 'danger' } },
+    { value: 2, label: '废弃', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },
 })

@@ -3,9 +3,11 @@ package com.jjx.sales.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.dto.CustomerAddDTO;
 import com.jjx.sales.domain.dto.CustomerEditDTO;
+import com.jjx.sales.domain.dto.CustomerImportDTO;
 import com.jjx.sales.domain.dto.CustomerQueryDTO;
 import com.jjx.sales.domain.entity.SalesCustomer;
 import com.jjx.sales.domain.vo.CustomerVO;
@@ -17,7 +19,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 
 /**
@@ -47,7 +51,7 @@ public class CustomerController extends BaseController {
      * 根据关键词搜索客户
      */
     @Operation(summary = "根据关键词搜索客户")
-    @SaCheckPermission("sales:customer:view")
+    // @SaCheckPermission("sales:customer:view")
     @GetMapping("/search")
     public Result<List<CustomerVO>> searchCustomers(@RequestParam String keyword) {
         return Result.success(customerService.search(keyword));
@@ -67,7 +71,7 @@ public class CustomerController extends BaseController {
      * 生成客户编码
      */
     @Operation(summary = "生成客户编码")
-    @SaCheckPermission("sales:customer:code")
+    @SaCheckPermission("sales:customer:add")
     @GetMapping("/generate-code")
     public Result<String> generateCustomerCode() {
         return Result.success(customerService.generateCustomerCode());
@@ -77,7 +81,7 @@ public class CustomerController extends BaseController {
      * 新增客户
      */
     @Operation(summary = "新增客户")
-    @Log(module = "客户管理", businessType = BusinessType.INSERT)
+    @Log(module = "客户管理", businessType = BusinessType.INSERT, bizType = "'custom'", bizId = "#dto.customerId")
     @SaCheckPermission("sales:customer:add")
     @PostMapping
     public Result<Void> addCustomer(@Validated @RequestBody CustomerAddDTO dto) {
@@ -98,7 +102,7 @@ public class CustomerController extends BaseController {
      * 修改客户
      */
     @Operation(summary = "修改客户")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}")
     public Result<Void> updateCustomer(@PathVariable Long customerId, @Validated @RequestBody CustomerEditDTO dto) {
@@ -110,7 +114,7 @@ public class CustomerController extends BaseController {
      * 删除客户
      */
     @Operation(summary = "删除客户")
-    @Log(module = "客户管理", businessType = BusinessType.DELETE)
+    @Log(module = "客户管理", businessType = BusinessType.DELETE, bizType = "'custom'")
     @SaCheckPermission("sales:customer:delete")
     @DeleteMapping("/{customerIds}")
     public Result<Void> deleteCustomers(@PathVariable Long[] customerIds) {
@@ -129,10 +133,33 @@ public class CustomerController extends BaseController {
     }
 
     /**
+     * 导入客户（DEV-662）
+     */
+    @Operation(summary = "导入客户")
+    @Log(module = "客户管理", businessType = BusinessType.IMPORT, bizType = "'custom'")
+    @SaCheckPermission("sales:customer:import")
+    @PostMapping("/import")
+    public Result<String> importCustomers(MultipartFile file) throws Exception {
+        List<CustomerImportDTO> importList = ExcelUtils.importExcel(file, CustomerImportDTO.class);
+        String operName = getUsername();
+        return Result.success(customerService.importCustomers(importList, operName));
+    }
+
+    /**
+     * 下载客户导入模板（DEV-662）
+     */
+    @Operation(summary = "下载客户导入模板")
+    @SaCheckPermission("sales:customer:import")
+    @GetMapping("/importTemplate")
+    public void importTemplate(HttpServletResponse response) {
+        ExcelUtils.downloadTemplate(response, CustomerImportDTO.class, "客户导入模板");
+    }
+
+    /**
      * 获取客户下拉列表
      */
     @Operation(summary = "获取客户下拉列表")
-    @SaCheckPermission("sales:customer:dropdown")
+    // @SaCheckPermission("sales:customer:view")
     @GetMapping("/dropdown")
     public Result<List<SalesCustomer>> getCustomerDropdown() {
         return Result.success(customerService.selectCustomerDropdown());
@@ -142,8 +169,8 @@ public class CustomerController extends BaseController {
      * 变更客户状态
      */
     @Operation(summary = "变更客户状态")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:customer:status")
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
+    @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/status")
     public Result<Void> changeCustomerStatus(@PathVariable Long customerId, @RequestParam Integer status) {
         return toAjax(customerService.changeCustomerStatus(customerId, status));
@@ -153,8 +180,8 @@ public class CustomerController extends BaseController {
      * 批量审核客户
      */
     @Operation(summary = "批量审核客户")
-    @Log(module = "客户管理", businessType = BusinessType.APPROVE)
-    @SaCheckPermission("sales:customer:approve")
+    @Log(module = "客户管理", businessType = BusinessType.APPROVE, bizType = "'custom'")
+    @SaCheckPermission("sales:customer:edit")
     @PutMapping("/approve")
     public Result<Void> approveCustomers(@RequestBody Long[] customerIds) {
         return toAjax(customerService.approveCustomers(customerIds));
@@ -164,7 +191,7 @@ public class CustomerController extends BaseController {
      * 获取客户统计信息
      */
     @Operation(summary = "获取客户统计信息")
-    @SaCheckPermission("sales:customer:statistics")
+    @SaCheckPermission("sales:customer:view")
     @GetMapping("/statistics")
     public Result<Object> getCustomerStatistics() {
         return Result.success(customerService.getCustomerStatistics());
@@ -176,8 +203,8 @@ public class CustomerController extends BaseController {
      * 更新客户信用额度
      */
     @Operation(summary = "更新客户信用额度")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE)
-    @SaCheckPermission("sales:customer:credit")
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
+    @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/credit")
     public Result<Void> updateCustomerCreditLimit(@PathVariable Long customerId, @RequestParam Double creditLimit) {
         return toAjax(customerService.updateCustomerCreditLimit(customerId, creditLimit));

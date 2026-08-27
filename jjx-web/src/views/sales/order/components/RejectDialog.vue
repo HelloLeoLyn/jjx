@@ -89,9 +89,9 @@ const fetchOrderDetail = async () => {
     const response = await orderApi.getOrder(props.orderId)
     const data = response.data
 
-    formData.value.orderId = data.orderId
-    formData.value.orderNo = data.orderNo
-    formData.value.customerName = data.customerName
+    formData.value.orderId = (data as any).orderId
+    formData.value.orderNo = (data as any).orderNo
+    formData.value.customerName = (data as any).customerName
   } catch (error) {
     console.error('获取订单详情失败', error)
     ElMessage.error('获取订单详情失败')

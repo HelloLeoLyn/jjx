@@ -24,8 +24,11 @@ export interface OperationExecutionVO {
   orderId?: number
   orderNo?: string
   processId?: number
+  majorCategory?: string
+  processName?: string
+  customProcessParams?: string
   processOrder?: number
-  executionStatus?: string
+  executionStatus?: number
   executionStatusDesc?: string
   plannedStartTime?: string
   plannedEndTime?: string
@@ -40,6 +43,8 @@ export interface OperationExecutionVO {
   outputQuantity?: number
   qualifiedQuantity?: number
   defectiveQuantity?: number
+  /** 待完成 = 任务数量 - 已完成（下限0） */
+  remainingQuantity?: number
   defectiveReason?: string
   actualProcessParams?: string
   qualityCheckResult?: string
@@ -156,6 +161,8 @@ export interface OperationExecutionUpdateDTO {
   exceptionHandlerName?: string
   exceptionHandleTime?: string
   exceptionHandleResult?: string
+  /** 不良原因（P0-03：正确映射 defective_reason，不再借道 remark） */
+  defectiveReason?: string
   remark?: string
 }
 

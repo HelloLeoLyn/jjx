@@ -6,8 +6,8 @@ import { createEnum } from '../base'
  */
 export const UserStatusEnum = createEnum({
   items: [
-    { value: '0', label: '启用', tagProps: { type: 'success' } },
-    { value: '1', label: '停用', tagProps: { type: 'danger' } },
+    { value: 0, label: '启用', tagProps: { type: 'success' } },
+    { value: 1, label: '停用', tagProps: { type: 'danger' } },
   ],
   defaultTag: { type: 'info' },
 })

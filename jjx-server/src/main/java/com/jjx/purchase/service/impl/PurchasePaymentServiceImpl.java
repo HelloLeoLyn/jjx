@@ -8,6 +8,7 @@ import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchasePayment;
 import com.jjx.purchase.domain.enums.PaymentStatusEnum;
+import com.jjx.purchase.domain.enums.PurchaseExceptionEnum;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.mapper.PurchasePaymentMapper;
 import com.jjx.purchase.service.IPurchasePaymentService;
@@ -24,6 +25,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.jjx.system.annotation.Event;
 
 /**
  * 采购付款服务实现类
@@ -46,14 +48,14 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             if (dto.getOrderId() != null) {
                 wrapper.eq(PurchasePayment::getOrderId, dto.getOrderId());
             }
-            if (StringUtils.isNotEmpty(dto.getPaymentStatus())) {
+            if (dto.getPaymentStatus() != null) {
                 wrapper.eq(PurchasePayment::getPaymentStatus, dto.getPaymentStatus());
             }
             if (StringUtils.isNotEmpty(dto.getPaymentMethod())) {
                 wrapper.eq(PurchasePayment::getPaymentMethod, dto.getPaymentMethod());
             }
         }
-        wrapper.orderByDesc(PurchasePayment::getCreateTime);
+        wrapper.orderByDesc(PurchasePayment::getCreateTime).orderByDesc(PurchasePayment::getPaymentId);
         return paymentMapper.selectList(wrapper);
     }
 
@@ -67,6 +69,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.created", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertPayment(PurchasePaymentDTO dto) {
         // 检查付款单号是否唯一
@@ -80,12 +83,24 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("采购订单不存在");
         }
 
+        // 091定稿：已取消(2)/已拒绝(5)的订单不能付款
+        Integer approvalStatus = order.getApprovalStatus();
+        if (approvalStatus != null && (approvalStatus == 2 || approvalStatus == 5)) {
+            throw new BusinessException("订单已取消/已拒绝，不能付款");
+        }
+        // 付款不拦收货（允许预付款/定金），但累计付款≤订单金额
+        if (dto.getPaymentAmount() != null && order.getOrderTotalAmount() != null
+                && dto.getPaymentAmount().compareTo(order.getOrderTotalAmount()) > 0) {
+            throw new BusinessException(PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS.getMessage()
+                    + "（订单金额" + order.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "）");
+        }
+
         PurchasePayment payment = new PurchasePayment();
         copyProperties(dto, payment);
 
         // 设置默认状态
         if (payment.getPaymentStatus() == null) {
-            payment.setPaymentStatus("pending");
+            payment.setPaymentStatus(PaymentStatusEnum.PENDING.getCode());
         }
 
         int result = paymentMapper.insert(payment);
@@ -116,6 +131,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.deleted", bizId = "#paymentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deletePaymentById(Long paymentId) {
         PurchasePayment payment = paymentMapper.selectById(paymentId);
@@ -144,6 +160,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.approved", bizId = "#paymentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int approvePayment(Long paymentId, String approvalStatus, String approverName, String approvalComment) {
         PurchasePayment payment = paymentMapper.selectById(paymentId);
@@ -151,11 +168,11 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("付款记录不存在");
         }
 
-        if (!Objects.equals("pending", payment.getPaymentStatus())) {
+        if (!Objects.equals(PaymentStatusEnum.PENDING.getCode(), payment.getPaymentStatus())) {
             throw new BusinessException("只有待审批状态的付款可以审批");
         }
 
-        payment.setPaymentStatus(approvalStatus);
+        payment.setPaymentStatus("approved".equals(approvalStatus) ? PaymentStatusEnum.COMPLETED.getCode() : PaymentStatusEnum.PENDING.getCode());
         payment.setApprovalTime(LocalDateTime.now());
         if (StringUtils.isNotEmpty(approvalComment)) {
             payment.setRemark(approvalComment);
@@ -173,6 +190,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
+    @Event(value = "purchase.payment.confirmed", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int confirmPayment(PurchasePaymentDTO dto) {
         PurchasePayment payment = paymentMapper.selectById(dto.getPaymentId());
@@ -180,11 +198,11 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("付款记录不存在");
         }
 
-        if (!Objects.equals("approved", payment.getPaymentStatus())) {
+        if (!Objects.equals(PaymentStatusEnum.COMPLETED.getCode(), payment.getPaymentStatus())) {
             throw new BusinessException("只有已批准的付款可以确认");
         }
 
-        payment.setPaymentStatus("paid");
+        payment.setPaymentStatus(PaymentStatusEnum.COMPLETED.getCode());
         payment.setActualPaymentDate(dto.getActualPaymentDate() != null ? dto.getActualPaymentDate() : LocalDate.now());
         payment.setVoucherNo(dto.getVoucherNo());
         payment.setVoucherFileUrl(dto.getVoucherFileUrl());
@@ -271,10 +289,10 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
 
         long totalCount = allPayments.size();
         long pendingCount = allPayments.stream()
-                .filter(p -> Objects.equals("pending", p.getPaymentStatus()))
+                .filter(p -> Objects.equals(PaymentStatusEnum.PENDING.getCode(), p.getPaymentStatus()))
                 .count();
         long approvedCount = allPayments.stream()
-                .filter(p -> Objects.equals("approved", p.getPaymentStatus()))
+                .filter(p -> Objects.equals(PaymentStatusEnum.COMPLETED.getCode(), p.getPaymentStatus()))
                 .count();
         long paidCount = allPayments.stream()
                 .filter(p -> Objects.equals("paid", p.getPaymentStatus()))
@@ -355,5 +373,87 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         payment.setVoucherNo(dto.getVoucherNo());
         payment.setVoucherFileUrl(dto.getVoucherFileUrl());
         payment.setRemark(dto.getRemark());
+    }
+
+    @Override
+    public java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> batchCheckPayment(java.util.List<com.jjx.purchase.domain.dto.PaymentBatchCheckItemDTO> items) {
+        java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> results = new java.util.ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return results;
+        }
+
+        // 文件内重复检测（同付款单号）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (com.jjx.purchase.domain.dto.PaymentBatchCheckItemDTO item : items) {
+            String k = item.getPaymentNo() == null ? "" : item.getPaymentNo().trim();
+            dupCountMap.merge(k, 1, Integer::sum);
+        }
+
+        for (com.jjx.purchase.domain.dto.PaymentBatchCheckItemDTO item : items) {
+            com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO();
+            vo.setRowIndex(item.getRowIndex());
+            vo.setStatus("ok");
+
+            // 1. 付款单号必填
+            String paymentNo = item.getPaymentNo() == null ? "" : item.getPaymentNo().trim();
+            if (paymentNo.isEmpty()) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "paymentNo", "MISSING_REQUIRED", "付款单号不能为空");
+            } else {
+                // 2. 文件内重复
+                Integer dupCount = dupCountMap.get(paymentNo);
+                if (dupCount != null && dupCount > 1) {
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "paymentNo", "DUPLICATE", "文件内重复行（同一付款单号出现 " + dupCount + " 次），导入会冲突");
+                } else if (checkPaymentNoUnique(paymentNo)) {
+                    // 3. 库中已存在
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "paymentNo", "DUPLICATE", "付款单号已存在: " + paymentNo);
+                }
+            }
+
+            // 4. 订单存在性
+            if (vo.getStatus().equals("ok")) {
+                if (item.getOrderId() == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("MISSING_REQUIRED");
+                    addFieldError(vo, "orderId", "MISSING_REQUIRED", "采购订单ID不能为空");
+                } else if (orderMapper.selectById(item.getOrderId()) == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "orderId", "NOT_FOUND", "采购订单不存在: " + item.getOrderId());
+                }
+            }
+
+            // 5. 金额校验
+            if (vo.getStatus().equals("ok")) {
+                if (item.getPaymentAmount() == null || item.getPaymentAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    vo.setStatus("error");
+                    vo.setErrorType("INVALID");
+                    addFieldError(vo, "paymentAmount", "INVALID", "付款金额必须大于0");
+                }
+            }
+
+            // 6. 付款日期
+            if (vo.getStatus().equals("ok") && item.getPaymentDate() == null) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "paymentDate", "MISSING_REQUIRED", "付款日期不能为空");
+            }
+
+            results.add(vo);
+        }
+        return results;
+    }
+
+    private void addFieldError(com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo, String field, String type, String message) {
+        com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError fe = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError();
+        fe.setField(field);
+        fe.setType(type);
+        fe.setMessage(message);
+        vo.getErrors().add(fe);
     }
 }

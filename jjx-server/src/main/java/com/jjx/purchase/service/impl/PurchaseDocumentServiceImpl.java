@@ -31,6 +31,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import com.jjx.system.annotation.Event;
 
 /**
  * 采购票据服务实现类
@@ -59,11 +60,11 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             if (dto.getSupplierId() != null) {
                 wrapper.eq(PurchaseDocument::getSupplierId, dto.getSupplierId());
             }
-            if (StringUtils.isNotEmpty(dto.getDocumentStatus())) {
+            if (dto.getDocumentStatus() != null) {
                 wrapper.eq(PurchaseDocument::getDocumentStatus, dto.getDocumentStatus());
             }
         }
-        wrapper.orderByDesc(PurchaseDocument::getCreateTime);
+        wrapper.orderByDesc(PurchaseDocument::getCreateTime).orderByDesc(PurchaseDocument::getDocumentId);
         return documentMapper.selectList(wrapper);
     }
 
@@ -77,11 +78,46 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
+    @Event(value = "purchase.document.created", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertDocument(PurchaseDocumentDTO dto) {
         // 检查票据编号是否唯一
         if (checkDocumentNoUnique(dto.getDocumentNo())) {
             throw new BusinessException("票据编号已存在");
+        }
+
+        // 090定稿：发票轻量拦截——发票金额≤订单金额（防虚开），累计不超订单金额
+        // 注：PurchaseInvoiceController 强制 documentType="invoice"（小写），判断需忽略大小写
+        if (dto.getDocumentType() != null && dto.getDocumentType().equalsIgnoreCase("INVOICE")
+                && dto.getOrderId() != null && dto.getDocumentAmount() != null) {
+            try {
+                com.jjx.purchase.domain.entity.PurchaseOrder po = purchaseOrderMapper.selectById(dto.getOrderId());
+                if (po == null) {
+                    throw new BusinessException("采购订单不存在，无法登记发票");
+                }
+                if (po.getOrderTotalAmount() != null
+                        && dto.getDocumentAmount().compareTo(po.getOrderTotalAmount()) > 0) {
+                    throw new BusinessException("发票金额" + dto.getDocumentAmount().stripTrailingZeros().toPlainString()
+                            + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
+                }
+                // 累计发票金额校验（同订单已登记发票合计 + 本次 ≤ 订单金额）
+                java.math.BigDecimal sumInvoiced = documentMapper.selectList(
+                        new LambdaQueryWrapper<PurchaseDocument>()
+                                .eq(PurchaseDocument::getOrderId, dto.getOrderId())
+                                .eq(PurchaseDocument::getDocumentType, "invoice"))
+                        .stream()
+                        .map(d -> d.getDocumentAmount() != null ? d.getDocumentAmount() : java.math.BigDecimal.ZERO)
+                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                if (po.getOrderTotalAmount() != null
+                        && sumInvoiced.add(dto.getDocumentAmount()).compareTo(po.getOrderTotalAmount()) > 0) {
+                    throw new BusinessException("累计发票金额" + sumInvoiced.add(dto.getDocumentAmount()).stripTrailingZeros().toPlainString()
+                            + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
+                }
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("发票金额校验失败(跳过): {}", e.getMessage());
+            }
         }
 
         PurchaseDocument document = new PurchaseDocument();
@@ -115,6 +151,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
+    @Event(value = "purchase.document.deleted", bizId = "#documentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteDocumentById(Long documentId) {
         PurchaseDocument document = documentMapper.selectById(documentId);
@@ -135,6 +172,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
+    @Event(value = "purchase.document.verified", bizId = "#documentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark) {
         PurchaseDocument document = documentMapper.selectById(documentId);
@@ -460,5 +498,85 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
         document.setFileUrl(dto.getFileUrl());
         document.setFileSize(dto.getFileSize());
         document.setRemark(dto.getRemark());
+    }
+
+    @Override
+    public java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> batchCheckDocument(java.util.List<com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO> items) {
+        java.util.List<com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO> results = new java.util.ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return results;
+        }
+
+        // 文件内重复检测（同发票编号）
+        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
+        for (com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO item : items) {
+            String k = item.getDocumentNo() == null ? "" : item.getDocumentNo().trim();
+            dupCountMap.merge(k, 1, Integer::sum);
+        }
+
+        for (com.jjx.purchase.domain.dto.DocumentBatchCheckItemDTO item : items) {
+            com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO();
+            vo.setRowIndex(item.getRowIndex());
+            vo.setStatus("ok");
+
+            // 1. 发票编号必填 + 唯一
+            String documentNo = item.getDocumentNo() == null ? "" : item.getDocumentNo().trim();
+            if (documentNo.isEmpty()) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "documentNo", "MISSING_REQUIRED", "发票编号不能为空");
+            } else {
+                Integer dupCount = dupCountMap.get(documentNo);
+                if (dupCount != null && dupCount > 1) {
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "documentNo", "DUPLICATE", "文件内重复行（同一发票编号出现 " + dupCount + " 次），导入会冲突");
+                } else if (checkDocumentNoUnique(documentNo)) {
+                    vo.setStatus("error");
+                    vo.setErrorType("DUPLICATE");
+                    addFieldError(vo, "documentNo", "DUPLICATE", "发票编号已存在: " + documentNo);
+                }
+            }
+
+            // 2. 订单存在性
+            if (vo.getStatus().equals("ok")) {
+                if (item.getOrderId() == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("MISSING_REQUIRED");
+                    addFieldError(vo, "orderId", "MISSING_REQUIRED", "采购订单ID不能为空");
+                } else if (purchaseOrderMapper.selectById(item.getOrderId()) == null) {
+                    vo.setStatus("error");
+                    vo.setErrorType("NOT_FOUND");
+                    addFieldError(vo, "orderId", "NOT_FOUND", "采购订单不存在: " + item.getOrderId());
+                }
+            }
+
+            // 3. 金额校验
+            if (vo.getStatus().equals("ok")) {
+                if (item.getDocumentAmount() == null || item.getDocumentAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    vo.setStatus("error");
+                    vo.setErrorType("INVALID");
+                    addFieldError(vo, "documentAmount", "INVALID", "发票金额必须大于0");
+                }
+            }
+
+            // 4. 开票日期
+            if (vo.getStatus().equals("ok") && item.getDocumentDate() == null) {
+                vo.setStatus("error");
+                vo.setErrorType("MISSING_REQUIRED");
+                addFieldError(vo, "documentDate", "MISSING_REQUIRED", "开票日期不能为空");
+            }
+
+            results.add(vo);
+        }
+        return results;
+    }
+
+    private void addFieldError(com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO vo, String field, String type, String message) {
+        com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError fe = new com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO.FieldError();
+        fe.setField(field);
+        fe.setType(type);
+        fe.setMessage(message);
+        vo.getErrors().add(fe);
     }
 }

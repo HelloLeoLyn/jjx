@@ -111,6 +111,16 @@
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
+            <el-form-item label="是否带下标" prop="hasIndex">
+              <el-checkbox
+                :model-value="formData.hasIndex === 1"
+                @change="(v: boolean | string | number) => (formData.hasIndex = v ? 1 : 0)"
+              >
+                带下标（在工艺路线中需输入下标数字，如 ④）
+              </el-checkbox>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
             <el-form-item label="设备类型" prop="equipmentType">
               <el-input v-model="formData.equipmentType" placeholder="请输入设备类型" />
             </el-form-item>
@@ -202,7 +212,7 @@ const formRef = ref<FormInstance>()
 const submitLoading = ref(false)
 const loading = ref(false)
 
-// 使用 useDict composable（带 Pinia 缓存）
+// 工序类型/类别选项（字典维护）
 const { options: processTypeOptions } = useDict('process_type')
 const { options: processCategoryOptions } = useDict('process_category')
 
@@ -223,6 +233,7 @@ const formData = reactive<StandardProcessFormData>({
   qualityStandard: '',
   icon: '',
   description: '',
+  hasIndex: 0,
   isEnabled: 1,
   displayOrder: 0,
 })
@@ -287,6 +298,7 @@ const loadData = async () => {
         equipmentType: data.equipmentType,
         qualityStandard: data.qualityStandard,
         description: data.description,
+        hasIndex: data.hasIndex ?? 0,
         isEnabled: data.isEnabled,
         displayOrder: data.displayOrder,
       })

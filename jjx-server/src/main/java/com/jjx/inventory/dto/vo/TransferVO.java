@@ -17,7 +17,6 @@ public class TransferVO {
     private Long transferId;
     private String transferNo;
     private String transferType;
-    private String transferTypeName;
     private Long fromWarehouseId;
     private String fromWarehouseName;
     private Long fromLocationId;
@@ -38,10 +37,8 @@ public class TransferVO {
 
     private BigDecimal totalQuantity;
     private BigDecimal totalAmount;
-    private String orderStatus;
-    private String orderStatusName;
-    private String approveStatus;
-    private String approveStatusName;
+    private Integer orderStatus;
+    private Integer approveStatus;
     private Long approverId;
     private String approverName;
 

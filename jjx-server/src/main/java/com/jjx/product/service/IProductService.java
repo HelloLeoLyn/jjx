@@ -62,14 +62,14 @@ public interface IProductService extends IService<Product> {
     List<Product> getProductsByCategory(Long categoryId);
 
     /**
-     * 搜索产品
+     * 搜索产品（DEV-1121：支持按专属客户过滤，customerId 可空）
      */
-    List<Product> searchProducts(String keyword);
+    List<Product> searchProducts(String keyword, Long customerId);
 
     /**
      * 新增产品
      */
-    boolean addProduct(ProductDTO productDTO);
+    Long addProduct(ProductDTO productDTO);
 
     String getProductCode(String categoryCode);
 
@@ -90,4 +90,15 @@ public interface IProductService extends IService<Product> {
      * 根据客户ID生成流水号（3位数字）
      */
     String generateSerialNo(Long customerId);
+
+    /**
+     * 样品询价/报价建档草稿产品（2026-08-08）：同编码已存在则复用，否则新建（状态=开发中1，标记来源）
+     */
+    Long ensureDraftProduct(String productCode, String productName, String unit, String source);
+
+    /**
+     * 作废联动清理（2026-08-08）：来源匹配+开发中+无单据明细引用 → 置取消(8)
+     * @return 是否已置取消
+     */
+    boolean cleanupDraftProduct(Long productId, String source);
 }

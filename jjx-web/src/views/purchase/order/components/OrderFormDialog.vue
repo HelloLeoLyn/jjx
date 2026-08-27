@@ -279,7 +279,7 @@ interface OrderForm {
   orderDate: string
   expectedDeliveryDate: string
   currency: string
-  orderType: number
+  orderType: string
   deliveryMethod: string
   contractNo: string
   deliveryAddress: string
@@ -313,7 +313,7 @@ const defaultForm: OrderForm = {
   orderDate: '',
   expectedDeliveryDate: '',
   currency: 'CNY',
-  orderType: 0,
+  orderType: 'normal',
   deliveryMethod: '',
   contractNo: '',
   deliveryAddress: '',

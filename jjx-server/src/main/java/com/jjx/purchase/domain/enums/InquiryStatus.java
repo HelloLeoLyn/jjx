@@ -11,27 +11,27 @@ public enum InquiryStatus {
     /**
      * 待询价
      */
-    PENDING("pending", "待询价"),
+    PENDING(0, "待询价"),
 
     /**
      * 已询价
      */
-    INQUIRED("inquired", "已询价"),
+    INQUIRED(1, "已询价"),
 
     /**
      * 比价中
      */
-    COMPARING("comparing", "比价中"),
+    COMPARING(2, "比价中"),
 
     /**
      * 已选中
      */
-    SELECTED("selected", "已选中");
+    SELECTED(3, "已选中");
 
-    private final String code;
+    private final Integer code;
     private final String description;
 
-    InquiryStatus(String code, String description) {
+    InquiryStatus(Integer code, String description) {
         this.code = code;
         this.description = description;
     }
@@ -39,13 +39,17 @@ public enum InquiryStatus {
     /**
      * 根据code获取枚举
      */
-    public static InquiryStatus getByCode(String code) {
+    public static InquiryStatus getByCode(Integer code) {
         for (InquiryStatus status : values()) {
             if (status.getCode().equals(code)) {
                 return status;
             }
         }
         return null;
+    }
+
+    public String getCodeString() {
+        return code+"";
     }
 
     /**

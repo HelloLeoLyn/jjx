@@ -69,22 +69,35 @@ public final class ExcelUtils {
                     continue;
                 }
 
+                // DEV-671：跳过模板的示例行（"示例："开头）和说明行（"说明："开头），用户不删模板示例/说明也能正确导入
+                if (isTemplateMetaRow(row)) {
+                    continue;
+                }
+
                 try {
                     T instance = parseRowToObject(row, columnMapping, clazz);
                     validateRequiredFields(instance, columnMetas);
                     resultList.add(instance);
                 } catch (Exception e) {
-                    errors.add(String.format("第%d行: %s", rowNum + 1, e.getMessage()));
+                    // DEV-669：错误收集限 20 条，避免大量行刷屏
+                    if (errors.size() < 20) {
+                        errors.add(String.format("第%d行: %s", rowNum + 1, e.getMessage()));
+                    }
                 }
             }
 
             if (!errors.isEmpty()) {
-                throw new BusinessException("导入失败:\n" + String.join("\n", errors));
+                int totalErrors = totalRows - 1 - (int) resultList.size();
+                String summary = errors.size() >= 20 ? "\n...仅显示前20条，共" + totalErrors + "条错误" : "";
+                throw new BusinessException("导入失败:\n" + String.join("\n", errors) + summary);
             }
 
             log.info("导入成功，共 {} 条数据", resultList.size());
             return resultList;
 
+        } catch (BusinessException e) {
+            // DEV-669：已是业务异常（含表头不匹配/导入失败明细）原样抛出，不再重复包裹
+            throw e;
         } catch (Exception e) {
             log.error("导入失败", e);
             throw new BusinessException("导入失败: " + e.getMessage());
@@ -171,6 +184,27 @@ public final class ExcelUtils {
             } catch (NumberFormatException e) {
                 return null;
             }
+        } else if (targetType == Double.class || targetType == double.class) {
+            // DEV-669：补 Double 解析（creditLimit 等字段导入失败修复）
+            try {
+                return Double.parseDouble(cellValue);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        } else if (targetType == Long.class || targetType == long.class) {
+            // DEV-669：补 Long 解析
+            try {
+                return Long.parseLong(cellValue);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        } else if (targetType == Float.class || targetType == float.class) {
+            // DEV-669：补 Float 解析
+            try {
+                return Float.parseFloat(cellValue);
+            } catch (NumberFormatException e) {
+                return null;
+            }
         } else if (targetType == Date.class) {
             try {
                 return cell.getDateCellValue();
@@ -226,6 +260,19 @@ public final class ExcelUtils {
     }
 
     /**
+     * 判断是否为模板的示例行/说明行（DEV-671）：
+     * 首单元格以"示例："或"说明："开头则跳过，用户不删模板示例/说明也能正确导入
+     */
+    private static boolean isTemplateMetaRow(Row row) {
+        if (row == null) return false;
+        Cell firstCell = row.getCell(0);
+        if (firstCell == null) return false;
+        String val = firstCell.toString().trim();
+        return val.startsWith("示例：") || val.startsWith("说明：")
+                || val.startsWith("示例:") || val.startsWith("说明:");
+    }
+
+    /**
      * 构建列映射
      */
     private static Map<Integer, String> buildColumnMapping(Sheet sheet, List<ExcelColumnMeta> columnMetas) {
@@ -236,18 +283,31 @@ public final class ExcelUtils {
 
         Map<String, String> headerToField = new HashMap<>();
         for (ExcelColumnMeta meta : columnMetas) {
-            headerToField.put(meta.getHeaderName(), meta.getFieldName());
+            // DEV-669：表头去 "(*)" 星号标记，用户手工改表头（去星号）也能匹配
+            headerToField.put(meta.getHeaderName().replace("(*)", "").trim(), meta.getFieldName());
         }
 
         Map<Integer, String> mapping = new HashMap<>();
         for (int i = 0; i < headerRow.getLastCellNum(); i++) {
             Cell cell = headerRow.getCell(i);
             if (cell != null) {
-                String header = getCellStringValue(cell);
+                String header = getCellStringValue(cell).replace("(*)", "").trim();
                 if (headerToField.containsKey(header)) {
                     mapping.put(i, headerToField.get(header));
                 }
             }
+        }
+
+        // DEV-669：表头完全没匹配上时直接报错，一眼定位表头问题（而不是每行报必填缺失误导）
+        if (mapping.isEmpty()) {
+            StringBuilder sb = new StringBuilder("表头与模板不匹配，请下载模板对照列名。未识别列: ");
+            for (int i = 0; i < headerRow.getLastCellNum(); i++) {
+                Cell cell = headerRow.getCell(i);
+                if (cell != null) {
+                    sb.append("[").append(getCellStringValue(cell)).append("] ");
+                }
+            }
+            throw new BusinessException(sb.toString());
         }
 
         return mapping;
@@ -330,10 +390,7 @@ public final class ExcelUtils {
      * 获取示例值
      */
     private static String getExampleValue(ExcelColumnMeta meta) {
-        if (meta.getComment() != null && !meta.getComment().isEmpty()) {
-            return "示例：" + meta.getComment();
-        }
-
+        // 先查内置真实示例（更贴近实际数据），无则用 comment 生成示例说明
         switch (meta.getFieldName()) {
             case "materialCode":
                 return "MTR-20240001";
@@ -349,7 +406,34 @@ public final class ExcelUtils {
                 return "2024-12-31";
             case "supplier":
                 return "XX科技有限公司";
+            case "processCode":
+                return "SP-001";
+            case "processName":
+                return "丝印";
+            case "processType":
+                return "PRINTING";
+            case "processCategory":
+                return "MAIN";
+            case "standardLaborHours":
+                return "0.5";
+            case "standardMachineHours":
+                return "0.3";
+            case "processParamTemplate":
+                return "温度:130℃;压力:3kg";
+            case "skillRequirement":
+                return "熟练丝印工";
+            case "equipmentType":
+                return "丝印机";
+            case "qualityStandard":
+                return "GB/T 标准";
+            case "displayOrder":
+                return "1";
+            case "isEnabled":
+                return "1";
             default:
+                if (meta.getComment() != null && !meta.getComment().isEmpty()) {
+                    return "示例：" + meta.getComment();
+                }
                 return "示例数据";
         }
     }

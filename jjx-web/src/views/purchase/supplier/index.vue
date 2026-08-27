@@ -65,23 +65,20 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate"
+          <el-button type="success" plain icon="Edit" v-hasPermi="['purchase:supplier:edit']" :disabled="single" @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete"
+          <el-button type="danger" plain icon="Delete" v-hasPermi="['purchase:supplier:delete']" :disabled="multiple" @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
+          <el-button type="warning" plain icon="Download" v-hasPermi="['purchase:supplier:export']" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" @click="handleImport">导入</el-button>
-        </el-col>
-        <el-col :span="1.5">
-          <el-button plain icon="Download" @click="handleDownloadTemplate">下载模板</el-button>
+          <el-button type="info" plain icon="Upload" v-hasPermi="['purchase:supplier:import']" @click="importDialogVisible = true">导入</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button type="success" plain icon="Star" :disabled="single" @click="handleEvaluation"
@@ -150,6 +147,7 @@
                 link
                 type="primary"
                 icon="Edit"
+                v-hasPermi="['purchase:supplier:edit']"
                 @click="handleUpdate(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -158,6 +156,7 @@
                 link
                 type="danger"
                 icon="Delete"
+                v-hasPermi="['purchase:supplier:delete']"
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>
@@ -280,8 +279,8 @@
           <el-col :span="12">
             <el-form-item label="状态" prop="status">
               <el-radio-group v-model="form.status">
-                <el-radio value="0">正常</el-radio>
-                <el-radio value="1">停用</el-radio>
+                <el-radio value="1">正常</el-radio>
+                <el-radio value="0">停用</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -355,8 +354,8 @@
           {{ detail.lastEvaluationDate ? parseTime(detail.lastEvaluationDate) : '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="状态">
-          <el-tag :type="detail.status === '0' ? 'success' : 'danger'">
-            {{ detail.status === '0' ? '正常' : '停用' }}
+          <el-tag :type="detail.status === '1' ? 'success' : 'danger'">
+            {{ detail.status === '1' ? '正常' : '停用' }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{
@@ -429,7 +428,18 @@
         </div>
       </template>
     </el-dialog>
+    <!-- 通用导入弹窗（2026-08-13） -->
+    <ExcelImportDialog
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      title="导入供应商"
+      :import-api="importSupplierFile"
+      :template-api="importTemplate"
+      template-name="供应商导入模板.xlsx"
+      @success="getList"
+    />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -438,7 +448,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
   listSupplier,
@@ -494,7 +504,7 @@ const form = reactive({
   paymentTerms: '',
   bankAccount: '',
   taxNumber: '',
-  status: '0',
+  status: '1',
   remark: '',
 })
 
@@ -516,7 +526,7 @@ const detail = reactive({
   deliveryScore: 0,
   priceScore: 0,
   lastEvaluationDate: '',
-  status: '0',
+  status: '1',
   remark: '',
 })
 
@@ -621,8 +631,10 @@ const getList = async () => {
   loading.value = true
   try {
     const response = await listSupplier(queryParams)
-    supplierList.value = response.data?.records || []
-    total.value = response.data?.total || 0
+    // 兼容后端返回数组（当前实现）或分页对象（后续升级）
+    const data = response.data as any
+    supplierList.value = data?.records || data?.list || (Array.isArray(data) ? data : []) || []
+    total.value = data?.total ?? supplierList.value.length
   } catch (error) {
     console.error('获取供应商列表失败:', error)
   } finally {
@@ -722,48 +734,22 @@ const handleExport = () => {
     type: 'warning',
   })
     .then(() => {
+      const loading = ElLoading.service({ text: '导出中...', lock: true })
       return exportSupplier(queryParams)
-    })
-    .then((response: any) => {
-      download(response, '供应商列表.xlsx')
+        .then((response: any) => {
+          download(response, '供应商列表.xlsx')
+        })
+        .finally(() => loading.close())
     })
     .catch(() => {})
 }
 
-// 导入按钮操作
-const handleImport = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = '.xlsx,.xls'
-  input.onchange = async (event: Event) => {
-    const target = event.target as HTMLInputElement
-    const file = target.files?.[0]
-    if (!file) return
-
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-      await importSuppliers(formData)
-      ElMessage.success('导入成功')
-      getList()
-    } catch (error) {
-      console.error('导入失败:', error)
-      ElMessage.error('导入失败')
-    }
-  }
-  input.click()
-}
-
-// 下载导入模板
-const handleDownloadTemplate = async () => {
-  try {
-    const res = await importTemplate()
-    download(res, '供应商导入模板.xlsx')
-  } catch (error) {
-    console.error('下载模板失败:', error)
-    ElMessage.error('下载模板失败')
-  }
+// 导入（2026-08-13 通用 ExcelImportDialog 组件）
+const importDialogVisible = ref(false)
+const importSupplierFile = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return importSuppliers(formData)
 }
 
 // 评估按钮操作
@@ -807,7 +793,7 @@ const handleStatusChange = (row: any) => {
       getList()
     })
     .catch(() => {
-      row.status = row.status === '0' ? '1' : '0'
+      row.status = row.status === '1' ? '0' : '1'
     })
 }
 
@@ -828,7 +814,7 @@ const resetForm = () => {
     paymentTerms: '',
     bankAccount: '',
     taxNumber: '',
-    status: '0',
+    status: '1',
     remark: '',
   })
 }

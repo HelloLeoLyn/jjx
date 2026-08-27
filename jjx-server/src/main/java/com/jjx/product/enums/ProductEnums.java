@@ -1,6 +1,5 @@
 package com.jjx.product.enums;
 
-import com.baomidou.mybatisplus.annotation.EnumValue;
 import lombok.Getter;
 
 import java.util.Arrays;

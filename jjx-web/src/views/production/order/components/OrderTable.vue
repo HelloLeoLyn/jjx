@@ -10,7 +10,7 @@
     >
       <el-table-column type="selection" width="55" />
 
-      <el-table-column prop="orderNo" label="订单编号" width="150" sortable="custom">
+      <el-table-column prop="orderNo" label="订单编号" min-width="250" sortable="custom">
         <template #default="{ row }">
           <div class="order-no-cell">
             <el-tag
@@ -75,6 +75,14 @@
         </template>
       </el-table-column>
 
+      <el-table-column prop="materialStatusLabel" label="领料状态" width="100" align="center">
+        <template #default="{ row }">
+          <el-tag :type="getMaterialStatusTagType(row.materialStatus) as any" size="small" effect="plain">
+            {{ row.materialStatusLabel || '未领料' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+
       <el-table-column prop="priority" label="优先级" width="80">
         <template #default="{ row }">
           <el-tag :type="getPriorityTagType(row.priority) as any" size="small" effect="plain">
@@ -94,7 +102,10 @@
             @complete="() => handleComplete(row)"
             @cancel="() => handleCancel(row)"
             @delete="() => handleDelete(row)"
-            @more-action="(command) => handleMoreAction(row, command)"
+            @more-action="(command: string) => handleMoreAction(row, command)"
+            @trace="(o: ProductionOrderVO) => emit('trace', o)"
+            @production-trace="(o: ProductionOrderVO) => emit('production-trace', o)"
+            @refresh="emit('refresh')"
           />
         </template>
       </el-table-column>
@@ -121,26 +132,22 @@ import OrderTableActions from './OrderTableActions.vue'
 import type { ProductionOrderVO } from '@/types/production/order'
 import { getPriorityTagType } from '../utils/orderFormatters'
 
+// 领料状态标签样式
+function getMaterialStatusTagType(status?: number | null): string {
+  const map: Record<number, string> = {
+    0: 'info', // 未领料
+    1: 'warning', // 待发料
+    2: 'success', // 已领料
+  }
+  return map[status ?? 0] || 'info'
+}
+
 interface Props {
   orderList: ProductionOrderVO[]
   loading?: boolean
   total?: number
   pageNum?: number
   pageSize?: number
-}
-
-interface Emits {
-  (e: 'selection-change', selection: ProductionOrderVO[]): void
-  (e: 'sort-change', prop: string, order: 'ascending' | 'descending' | null): void
-  (e: 'page-change', page: number, size: number): void
-  (e: 'view', order: ProductionOrderVO): void
-  (e: 'edit', order: ProductionOrderVO): void
-  (e: 'convert', order: ProductionOrderVO): void
-  (e: 'start', order: ProductionOrderVO): void
-  (e: 'complete', order: ProductionOrderVO): void
-  (e: 'cancel', order: ProductionOrderVO): void
-  (e: 'delete', order: ProductionOrderVO): void
-  (e: 'more-action', order: ProductionOrderVO, command: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -150,7 +157,22 @@ const props = withDefaults(defineProps<Props>(), {
   pageSize: 20,
 })
 
-const emit = defineEmits<Emits>()
+const emit = defineEmits<{
+  'selection-change': [selection: ProductionOrderVO[]]
+  'sort-change': [prop: string, order: 'ascending' | 'descending' | null]
+  'page-change': [page: number, size: number]
+  view: [order: ProductionOrderVO]
+  edit: [order: ProductionOrderVO]
+  convert: [order: ProductionOrderVO]
+  start: [order: ProductionOrderVO]
+  complete: [order: ProductionOrderVO]
+  cancel: [order: ProductionOrderVO]
+  delete: [order: ProductionOrderVO]
+  'more-action': [order: ProductionOrderVO, command: string]
+  trace: [order: ProductionOrderVO]
+  'production-trace': [order: ProductionOrderVO]
+  refresh: []
+}>()
 
 // 分页状态
 const currentPage = ref(props.pageNum)

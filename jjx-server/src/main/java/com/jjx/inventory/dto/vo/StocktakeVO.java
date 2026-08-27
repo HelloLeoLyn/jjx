@@ -16,9 +16,10 @@ public class StocktakeVO {
     private Long stocktakeId;
     private String stocktakeNo;
     private String stocktakeType;
-    private String stocktakeTypeName;
     private Long warehouseId;
     private String warehouseName;
+    /** 物料数（DEV-694：列表展示用） */
+    private Long materialCount;
     private String locationIds;
     private String materialIds;
 
@@ -43,9 +44,7 @@ public class StocktakeVO {
     private BigDecimal totalDiffQuantity;
     private BigDecimal totalDiffAmount;
     private String orderStatus;
-    private String orderStatusName;
     private String approveStatus;
-    private String approveStatusName;
     private Long approverId;
     private String approverName;
 
@@ -67,30 +66,4 @@ public class StocktakeVO {
     private LocalDateTime updateTime;
 
     private List<StocktakeItemVO> items;
-}
-
-/**
- * 盘点单明细视图对象VO
- */
-@Data
-class StocktakeItemVO {
-    private Long stocktakeItemId;
-    private Long stocktakeId;
-    private Long materialId;
-    private String materialCode;
-    private String materialName;
-    private String specification;
-    private String unit;
-    private Long locationId;
-    private String locationName;
-    private String batchNo;
-    private BigDecimal systemQuantity;
-    private BigDecimal actualQuantity;
-    private BigDecimal diffQuantity;
-    private BigDecimal unitCost;
-    private BigDecimal diffAmount;
-    private String diffType;
-    private String diffReason;
-    private Integer sortOrder;
-    private String remark;
 }

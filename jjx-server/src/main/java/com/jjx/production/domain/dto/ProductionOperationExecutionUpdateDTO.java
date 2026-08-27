@@ -64,7 +64,7 @@ public class ProductionOperationExecutionUpdateDTO {
     private String operatorName;
 
     @Schema(description = "执行状态：NOT_STARTED未开始/IN_PROGRESS进行中/PAUSED已暂停/COMPLETED已完成/CANCELLED已取消", example = "IN_PROGRESS")
-    private String executionStatus;
+    private Integer executionStatus;
 
     @Schema(description = "质量状态：PENDING待检/QUALIFIED合格/DEFECTIVE不良/REWORK返修/SCRAP报废", example = "QUALIFIED")
     private String qualityStatus;
@@ -99,6 +99,9 @@ public class ProductionOperationExecutionUpdateDTO {
     @Schema(description = "异常处理结果", example = "已修复，恢复正常")
     private String exceptionHandleResult;
 
-    @Schema(description = "备注", example = "工序执行顺利")
+    /** 不良原因（P0-03：与 remark 分离，正确映射 defective_reason） */
+    private String defectiveReason;
+
+    /** 备注（P0-03：execution 实体无 remark 字段，不持久化，不再误写入 defective_reason） */
     private String remark;
 }

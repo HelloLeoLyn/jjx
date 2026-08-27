@@ -8,6 +8,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.sales.domain.converter.CustomerConverter;
 import com.jjx.sales.domain.dto.CustomerAddDTO;
 import com.jjx.sales.domain.dto.CustomerEditDTO;
+import com.jjx.sales.domain.dto.CustomerImportDTO;
 import com.jjx.sales.domain.dto.CustomerQueryDTO;
 import com.jjx.sales.domain.entity.SalesCustomer;
 import com.jjx.sales.domain.vo.CustomerVO;
@@ -23,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import com.jjx.system.annotation.Event;
 
 /**
  * 客户服务实现类
@@ -44,7 +46,7 @@ public class CustomerServiceImpl implements ICustomerService {
         LambdaQueryWrapper<SalesCustomer> queryWrapper = buildQueryWrapper(customer);
 
         // 按创建时间倒序排列
-        queryWrapper.orderByDesc(SalesCustomer::getCreateTime);
+        queryWrapper.orderByDesc(SalesCustomer::getCreateTime).orderByDesc(SalesCustomer::getCustomerId);
 
         List<SalesCustomer> salesCustomers = customerMapper.selectList(queryWrapper);
         return customerConverter.toVOList(salesCustomers);
@@ -57,7 +59,7 @@ public class CustomerServiceImpl implements ICustomerService {
         Page<SalesCustomer> page = new Page<>(queryDTO.getPageNum(), queryDTO.getPageSize());
         Page<SalesCustomer> result = customerMapper.selectPage(page, queryWrapper);
         List<CustomerVO> voList = customerConverter.toVOList(result.getRecords());
-        return PageResult.build(voList, result.getTotal());
+        return PageResult.of(result, voList);
     }
 
     /**
@@ -92,7 +94,7 @@ public class CustomerServiceImpl implements ICustomerService {
             queryWrapper.eq(SalesCustomer::getSalesManagerId, queryDTO.getSalesManagerId());
         }
 
-        queryWrapper.orderByDesc(SalesCustomer::getCreateTime);
+        queryWrapper.orderByDesc(SalesCustomer::getCreateTime).orderByDesc(SalesCustomer::getCustomerId);
         return queryWrapper;
     }
 
@@ -114,6 +116,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.created", bizId = "#dto", bizType = "'sales'")
     public int insertCustomer(CustomerAddDTO dto) {
         log.info("新增客户，DTO：{}", dto);
 
@@ -152,6 +155,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.updated", bizId = "#dto", bizType = "'sales'")
     public int updateCustomer(CustomerEditDTO dto) {
         log.info("修改客户，DTO：{}", dto);
 
@@ -188,6 +192,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.deleted", bizId = "#customerIds", bizType = "'sales'")
     public int deleteCustomerByIds(Long[] customerIds) {
         log.info("批量删除客户，客户ID数组：{}", Arrays.toString(customerIds));
 
@@ -230,6 +235,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.status_updated", bizId = "#customerId", bizType = "'sales'")
     public int changeCustomerStatus(Long customerId, Integer status) {
         log.info("变更客户状态，客户ID：{}，状态：{}", customerId, status);
 
@@ -268,6 +274,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @Event(value = "sales.customer.approved", bizId = "#customerIds", bizType = "'sales'")
     public int approveCustomers(Long[] customerIds) {
         log.info("批量审核客户，客户ID数组：{}", Arrays.toString(customerIds));
 
@@ -462,5 +469,91 @@ public class CustomerServiceImpl implements ICustomerService {
     @Override
     public String exportCustomerList(SalesCustomer customer) {
         return "";
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public String importCustomers(List<CustomerImportDTO> importList, String operName) {
+        log.info("导入客户，共 {} 条，操作人：{}", importList == null ? 0 : importList.size(), operName);
+        if (importList == null || importList.isEmpty()) {
+            throw new BusinessException("导入数据为空");
+        }
+
+        int successCount = 0;
+        int updateCount = 0;
+        int failCount = 0;
+        StringBuilder errorMsg = new StringBuilder();
+
+        for (int i = 0; i < importList.size(); i++) {
+            CustomerImportDTO importDTO = importList.get(i);
+            try {
+                // 按客户名称判重（同一批次内去重，防止重复导入）
+                SalesCustomer existing = customerMapper.selectOne(
+                        new LambdaQueryWrapper<SalesCustomer>()
+                                .eq(SalesCustomer::getCustomerName, importDTO.getCustomerName())
+                                .last("LIMIT 1"));
+                if (existing != null) {
+                    // 更新已有客户（保留编码，不覆盖编号字段）
+                    applyImportFields(existing, importDTO);
+                    customerMapper.updateById(existing);
+                    updateCount++;
+                } else {
+                    // 新增客户
+                    SalesCustomer customer = new SalesCustomer();
+                    customer.setCustomerCode(generateCustomerCode());
+                    customer.setCustomerName(importDTO.getCustomerName());
+                    applyImportFields(customer, importDTO);
+                    // 默认值
+                    if (customer.getCustomerStatus() == null) customer.setCustomerStatus(1);
+                    if (customer.getCustomerLevel() == null) customer.setCustomerLevel(3);
+                    if (customer.getCreditLimit() == null) customer.setCreditLimit(0.0);
+                    if (customer.getUsedCreditLimit() == null) customer.setUsedCreditLimit(0.0);
+                    if (customer.getVip() == null) customer.setVip(false);
+                    if (customer.getCustomerScore() == null) customer.setCustomerScore(3);
+                    customer.setCreateBy(operName);
+                    customer.setCreateTime(LocalDateTime.now());
+                    customerMapper.insert(customer);
+                    successCount++;
+                }
+            } catch (Exception e) {
+                failCount++;
+                errorMsg.append("第").append(i + 2).append("行(").append(importDTO.getCustomerName())
+                        .append("): ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        StringBuilder result = new StringBuilder();
+        result.append("导入完成：新增 ").append(successCount)
+                .append(" 条，更新 ").append(updateCount)
+                .append(" 条，失败 ").append(failCount).append(" 条");
+        if (failCount > 0) {
+            result.append("\n失败明细：\n").append(errorMsg);
+        }
+        return result.toString();
+    }
+
+    /**
+     * 将导入DTO字段应用到客户实体（DEV-662）
+     */
+    private void applyImportFields(SalesCustomer customer, CustomerImportDTO dto) {
+        customer.setCustomerShortName(dto.getCustomerShortName());
+        customer.setCustomerType(dto.getCustomerType());
+        customer.setCustomerLevel(dto.getCustomerLevel());
+        customer.setIndustryCategory(dto.getIndustryCategory());
+        customer.setCustomerSource(dto.getCustomerSource());
+        customer.setCountry(dto.getCountry());
+        customer.setProvince(dto.getProvince());
+        customer.setCity(dto.getCity());
+        customer.setAddress(dto.getAddress());
+        customer.setContactPerson(dto.getContactPerson());
+        customer.setContactPhone(dto.getContactPhone());
+        customer.setContactEmail(dto.getContactEmail());
+        customer.setUnifiedSocialCreditCode(dto.getUnifiedSocialCreditCode());
+        customer.setTaxpayerId(dto.getTaxpayerId());
+        customer.setBankName(dto.getBankName());
+        customer.setBankAccount(dto.getBankAccount());
+        customer.setPaymentMethod(dto.getPaymentMethod());
+        customer.setCreditLimit(dto.getCreditLimit());
+        customer.setRemark(dto.getRemark());
     }
 }

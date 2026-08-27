@@ -26,7 +26,10 @@ public class SalesOrderAddDTO {
     @Schema(description = "客户ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
     private Long customerId;
 
-    @NotNull(message = "订单编号不能为空")
+    @Schema(description = "链路追踪ID（可选，2026-08-11 修正：原误标必填）")
+    private String traceId;
+
+    @NotBlank(message = "订单编号不能为空")
     @Schema(description = "订单编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "SO260526015")
     private String orderNo;
 
@@ -96,10 +99,12 @@ public class SalesOrderAddDTO {
     @DecimalMax(value = "100", message = "税率不能大于100")
     @Schema(description = "税率", example = "13")
     private BigDecimal taxRate = BigDecimal.ZERO;
+    private BigDecimal taxAmount;
 
     @DecimalMin(value = "0", message = "折扣率不能为负数")
     @DecimalMax(value = "1", message = "折扣率不能大于1")
     @Schema(description = "折扣率", example = "0.05")
+    private BigDecimal discountAmount;
     private BigDecimal discountRate = BigDecimal.ZERO;
 
     @NotNull(message = "总数量不能为空")

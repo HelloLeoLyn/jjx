@@ -25,6 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import com.jjx.system.annotation.Event;
 
 /**
  * 供应商服务实现类
@@ -39,7 +42,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     private final PurchaseConverter purchaseConverter;
     private final SupplierConverter supplierConverter;
     @Override
-    public List<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO) {
+    public com.jjx.common.core.page.PageResult<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO) {
         LambdaQueryWrapper<PurchaseSupplier> wrapper = Wrappers.lambdaQuery();
 
         // 构建查询条件
@@ -63,10 +66,17 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         }
 
         // 排序
-        wrapper.orderByDesc(PurchaseSupplier::getCreateTime);
+        wrapper.orderByDesc(PurchaseSupplier::getCreateTime).orderByDesc(PurchaseSupplier::getSupplierId);
 
-        List<PurchaseSupplier> suppliers = supplierMapper.selectList(wrapper);
-        return supplierConverter.toVOList(suppliers);
+        // DEV-696：分页（pageNum/pageSize 为空时退化为全量，兼容下拉框等数组调用方）
+        int pageNum = queryVO.getPageNum() != null ? queryVO.getPageNum() : 1;
+        int pageSize = queryVO.getPageSize() != null ? queryVO.getPageSize() : Integer.MAX_VALUE;
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<PurchaseSupplier> page =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
+        com.baomidou.mybatisplus.core.metadata.IPage<PurchaseSupplier> pageResult = supplierMapper.selectPage(page, wrapper);
+
+        List<PurchaseSupplierVO> voList = supplierConverter.toVOList(pageResult.getRecords());
+        return com.jjx.common.core.page.PageResult.of(pageResult, voList);
     }
 
     @Override
@@ -87,6 +97,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.created", bizId = "#supplierDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertSupplier(PurchaseSupplierDTO supplierDTO) {
         // 检查供应商编码是否唯一
@@ -140,6 +151,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.updated", bizId = "#supplierDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int updateSupplier(PurchaseSupplierDTO supplierDTO) {
         if (supplierDTO.getSupplierId() == null) {
@@ -181,6 +193,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.deleted", bizId = "#supplierId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteSupplierById(Long supplierId) {
         // 检查供应商是否存在
@@ -222,6 +235,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
+    @Event(value = "purchase.supplier.status_updated", bizId = "#supplierId", bizType = "'purchase'")
     public int updateSupplierStatus(Long supplierId, Integer status) {
         // 检查供应商是否存在
         PurchaseSupplier supplier = supplierMapper.selectById(supplierId);
@@ -294,8 +308,16 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
 
     @Override
     public Object getSupplierStatistics() {
-        // TODO: 实现统计功能
-        throw new BusinessException("统计功能暂未实现");
+        Map<String, Object> stats = new HashMap<>();
+        List<PurchaseSupplier> all = supplierMapper.selectList(Wrappers.emptyWrapper());
+        stats.put("totalCount", (long) all.size());
+        long disabledCount = all.stream().filter(s -> s.getStatus() != null && s.getStatus() == 1).count();
+        stats.put("normalCount", all.size() - disabledCount);
+        stats.put("disabledCount", disabledCount);
+        stats.put("materialsCount", all.stream().filter(s -> "M".equals(s.getSupplierType())).count());
+        stats.put("equipmentCount", all.stream().filter(s -> "E".equals(s.getSupplierType())).count());
+        stats.put("otherCount", all.stream().filter(s -> !"M".equals(s.getSupplierType()) && !"E".equals(s.getSupplierType())).count());
+        return stats;
     }
 
     @Override

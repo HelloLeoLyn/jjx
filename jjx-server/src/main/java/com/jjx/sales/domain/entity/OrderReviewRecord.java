@@ -16,13 +16,13 @@ import java.time.LocalDateTime;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("order_review_record")
+@TableName("sales_order_review")
 public class OrderReviewRecord extends BaseEntity {
 
     /**
      * 审核记录ID
      */
-    @TableId(type = IdType.AUTO)
+    @TableId(value = "review_id", type = IdType.AUTO)
     private Long recordId;
 
     /**

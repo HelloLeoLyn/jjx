@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JJX ERP 任务看板</title>
+<style>
+  :root {
+    --done: #10b981; --doing: #3b82f6; --todo: #f59e0b;
+    --bg: #0f172a; --card-bg: #1e293b; --text: #e2e8f0; --muted: #94a3b8; --border: #334155;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; padding: 20px;
+  }
+  .sync-bar { position: fixed; top: 0; left: 0; right: 0; height: 3px; background: var(--card-bg); z-index: 200; }
+  .sync-bar-inner { height: 100%; background: var(--doing); width: 0%; transition: width .3s; border-radius: 2px; }
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+  }
+  .header h1 { font-size: 24px; display: flex; align-items: center; gap: 10px; }
+  .header h1 span { color: var(--muted); font-weight: normal; font-size: 13px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .header-actions button, .header-actions a {
+    background: var(--card-bg); border: 1px solid var(--border);
+    color: var(--text); padding: 6px 14px; border-radius: 6px;
+    cursor: pointer; font-size: 13px; transition: all .15s; text-decoration: none;
+  }
+  .header-actions button:hover, .header-actions a:hover { border-color: var(--doing); color: var(--doing); }
+  .search-box { display: flex; align-items: center; gap: 6px; }
+  .search-box input {
+    background: #0f172a; border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; color: var(--text); font-size: 13px; width: 200px;
+    outline: none; transition: border-color .15s;
+  }
+  .search-box input:focus { border-color: var(--doing); }
+  .search-box input::placeholder { color: var(--muted); }
+  .search-box .clear-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0; line-height: 1;
+  }
+  .search-box .clear-btn:hover { color: var(--text); }
+  .card-id {
+    font-size: 11px; color: var(--muted); background: rgba(255,255,255,.06);
+    padding: 1px 6px; border-radius: 4px; margin-right: 4px; font-family: monospace;
+  }
+  .stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 24px; min-width: 120px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .stat-card .num { font-size: 32px; font-weight: 700; }
+  .stat-card .label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .stat-card.done .num { color: var(--done); }
+  .stat-card.doing .num { color: var(--doing); }
+  .stat-card.todo .num { color: var(--todo); }
+  .board { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
+  .column {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+    min-height: 200px; max-height: calc(100vh - 220px); overflow-y: auto;
+    transition: background .2s;
+  }
+  .column::-webkit-scrollbar { width: 4px; }
+  .column::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .column.drag-over { background: #1e3a5f; border-color: var(--doing); }
+  .column-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  .column-header h2 { font-size: 15px; }
+  .column-header .count {
+    background: rgba(255,255,255,.08); padding: 2px 10px;
+    border-radius: 999px; font-size: 13px; color: var(--muted);
+  }
+  .card {
+    background: #0f172a; border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; margin-bottom: 8px;
+    transition: all .15s; cursor: grab; user-select: none; min-height: 80px;
+  }
+  .card:active { cursor: grabbing; }
+  .card.dragging { opacity: .4; }
+  .card:hover { border-color: #475569; }
+  .card-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 6px; gap: 8px;
+  }
+  .card-title { font-size: 14px; font-weight: 600; line-height: 1.4; cursor: pointer; }
+  .card-title:hover { color: var(--doing); }
+  .card-priority { flex-shrink: 0; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .card-priority.p0 { background: rgba(239,68,68,.2); color: #ef4444; }
+  .card-priority.p1 { background: rgba(245,158,11,.2); color: #f59e0b; }
+  .card-priority.p2 { background: rgba(59,130,246,.2); color: #3b82f6; }
+  .card-priority.p3 { background: rgba(148,163,184,.2); color: #94a3b8; }
+  .card-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .card-meta { display: flex; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .card-meta .tag { background: rgba(255,255,255,.06); padding: 1px 6px; border-radius: 4px; }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--card-bg); border: 1px solid var(--border);
+    padding: 10px 20px; border-radius: 8px; font-size: 13px;
+    opacity: 0; transition: all .3s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,.6); display: none; align-items: center;
+    justify-content: center; z-index: 1000;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; max-width: 480px; width: 90%;
+    position: relative; max-height: 80vh; overflow-y: auto;
+  }
+  .modal-close { position: absolute; top: 12px; right: 16px; cursor: pointer; font-size: 20px; color: var(--muted); }
+  .modal-close:hover { color: var(--text); }
+  .modal-priority { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .modal-title { font-size: 18px; margin-bottom: 12px; }
+  .modal-body { margin-bottom: 16px; }
+  .modal-desc { font-size: 14px; color: var(--muted); margin-bottom: 12px; line-height: 1.6; }
+  .modal-meta { font-size: 13px; color: var(--muted); }
+  .modal-meta div { margin-bottom: 6px; }
+  .modal-meta strong { color: var(--text); }
+  .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .modal-btn { background: #0f172a; border: 1px solid var(--border); color: var(--text); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .modal-btn:hover { border-color: var(--doing); }
+  .doing-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+  .done-btn:hover { border-color: #10b981; color: #10b981; }
+</style>
+</head>
+<body>
+<div class="sync-bar"><div class="sync-bar-inner" id="syncBar"></div></div>
+
+<div class="header">
+  <h1>📋 JJX ERP 任务看板 <span>拖拽移动 · 双击切换 · 点击查看详情</span></h1>
+  <div class="header-actions">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 搜索任务..." oninput="onSearch()" />
+      <button class="clear-btn" onclick="clearSearch()" id="clearSearchBtn" style="display:none">✕</button>
+    </div>
+    <span id="updateTime"></span>
+    <span id="sourceLabel">⚡ API</span>
+    <button onclick="loadTasks()">🔄 刷新</button>
+    <button onclick="resetTasks()">↺ 重置</button>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat-card done">
+    <div class="num" id="countDone"></div>
+    <div class="label">✅ 已完成</div>
+  </div>
+  <div class="stat-card doing">
+    <div class="num" id="countDoing"></div>
+    <div class="label">🔄 进行中</div>
+  </div>
+  <div class="stat-card todo">
+    <div class="num" id="countTodo"></div>
+    <div class="label">📋 待办</div>
+  </div>
+</div>
+
+<div class="board" id="board"></div>
+
+<div class="modal-overlay" id="modal" onclick="closeDetail()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-close" onclick="closeDetail()">✕</div>
+    <div class="modal-priority" id="modalPriority"></div>
+    <h2 class="modal-title" id="modalTitle"></h2>
+    <div class="modal-id" id="modalId" style="font-size:12px;color:var(--muted);margin-bottom:12px;font-family:monospace;"></div>
+    <div class="modal-body">
+      <div class="modal-desc" id="modalDesc"></div>
+      <div class="modal-meta">
+        <div><strong>状态：</strong><span id="modalStatus"></span></div>
+        <div><strong>日期：</strong><span id="modalDate"></span></div>
+        <div><strong>标签：</strong><span id="modalTags"></span></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="modalAction('todo')">📋 移到待办</button>
+      <button class="modal-btn doing-btn" onclick="modalAction('doing')">🔄 进行中</button>
+      <button class="modal-btn done-btn" onclick="modalAction('done')">✅ 已完成</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin + '/api/tasks';
+let tasks = [];
+let dragId = null;
+let detailTaskId = null;
+
+function syncBar(pct) { document.getElementById('syncBar').style.width = pct + '%'; }
+
+async function loadTasks() {
+  syncBar(30);
+  document.getElementById('sourceLabel').textContent = '⏳';
+  try {
+    const res = await fetch(API);
+    const json = await res.json();
+    if (json.code === 0 && Array.isArray(json.data)) {
+      tasks = json.data;
+      document.getElementById('sourceLabel').textContent = '⚡ 数据库(sys_task)';
+      syncBar(100);
+    } else throw new Error('invalid');
+  } catch(e) {
+    document.getElementById('sourceLabel').textContent = '⚠️ API 离线';
+    syncBar(0);
+    try { const s = localStorage.getItem('jjx_board_tasks'); if (s) tasks = JSON.parse(s); } catch(e2) {}
+  }
+  render();
+  setTimeout(() => syncBar(0), 500);
+}
+
+async function saveTasks() {
+  syncBar(50);
+  try {
+    await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tasks) });
+    syncBar(100);
+  } catch(e) {
+    localStorage.setItem('jjx_board_tasks', JSON.stringify(tasks));
+  }
+  render();
+  setTimeout(() => syncBar(0), 500);
+}
+
+let searchQuery = '';
+
+function onSearch() {
+  const val = document.getElementById('searchInput').value.trim().toLowerCase();
+  searchQuery = val;
+  document.getElementById('clearSearchBtn').style.display = val ? 'inline' : 'none';
+  render();
+}
+
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  searchQuery = '';
+  document.getElementById('clearSearchBtn').style.display = 'none';
+  render();
+}
+
+function filterTasks(list) {
+  if (!searchQuery) return list;
+  return list.filter(t => {
+    const title = (t.title || '').toLowerCase();
+    const desc = (t.desc || '').toLowerCase();
+    const tags = (t.tags || []).join(',').toLowerCase();
+    return title.includes(searchQuery) || desc.includes(searchQuery) || tags.includes(searchQuery);
+  });
+}
+
+function render() {
+  const done = filterTasks(tasks.filter(t => t.status === 'done'));
+  const doing = filterTasks(tasks.filter(t => t.status === 'doing'));
+  const todo = filterTasks(tasks.filter(t => t.status === 'todo'));
+
+  document.getElementById('countDone').textContent = done.length;
+  document.getElementById('countDoing').textContent = doing.length;
+  document.getElementById('countTodo').textContent = todo.length;
+  document.getElementById('updateTime').textContent =
+    '🕐 ' + new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+
+  document.getElementById('board').innerHTML = [
+    { title: '📋 待办', status: 'todo', items: todo },
+    { title: '🔄 进行中', status: 'doing', items: doing },
+    { title: '✅ 已完成', status: 'done', items: done },
+  ].map(col => `
+    <div class="column" data-status="${col.status}"
+      ondrop="onDrop(event)" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)">
+      <div class="column-header">
+        <h2>${col.title}</h2>
+        <span class="count">${col.items.length}</span>
+      </div>
+      ${col.items.length === 0 ?
+        '<div style="padding:40px 24px;text-align:center;color:var(--muted);font-size:14px;border:2px dashed var(--border);border-radius:8px;">📥 拖到这里</div>' : ''}
+      ${col.items.map(t => `
+        <div class="card" draggable="true" data-id="${t.id}" ondblclick="quickToggle(${t.id})"
+          ondragstart="onDragStart(event)" ondragend="onDragEnd(event)">
+          <div class="card-header">
+            <div class="card-title" onclick="showDetail(${t.id})"><span class="card-id">#${t.id}</span>${t.title}</div>
+            <span class="card-priority p${t.priority.replace('p','')}">${t.priority.toUpperCase()}</span>
+          </div>
+          ${t.desc ? `<div class="card-desc">${t.desc}</div>` : ''}
+          ${t.date ? `<div class="card-meta"><span>📅 ${t.date}</span></div>` : ''}
+          ${t.tags ? `<div class="card-meta">${t.tags.map(tag => `<span class="tag">#${tag}</span>`).join('')}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+// ===== Drag & Drop =====
+function onDragStart(e) {
+  dragId = parseInt(e.target.closest('.card').dataset.id);
+  e.target.closest('.card').classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragEnd(e) {
+  e.target.closest('.card').classList.remove('dragging');
+  document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+}
+function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add('drag-over'); }
+function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const newStatus = e.currentTarget.dataset.status;
+  const task = tasks.find(t => t.id === dragId);
+  if (task && task.status !== newStatus) {
+    task.status = newStatus;
+    saveTasks();
+    showToast(`「${task.title}」→ ${statusLabel(newStatus)}`);
+  }
+  dragId = null;
+}
+
+// ===== Double-click toggle =====
+function quickToggle(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const cycle = { 'todo': 'doing', 'doing': 'done', 'done': 'todo' };
+  task.status = cycle[task.status];
+  saveTasks();
+  showToast(`「${task.title}」→ ${statusLabel(task.status)}`);
+}
+
+// ===== Detail modal =====
+function showDetail(id) {
+  detailTaskId = id;
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('modalTitle').textContent = t.title;
+  document.getElementById('modalId').textContent = '# ' + t.id;
+  document.getElementById('modalDesc').textContent = t.desc || '暂无说明';
+  document.getElementById('modalStatus').textContent = statusLabel(t.status);
+  document.getElementById('modalDate').textContent = t.date || '-';
+  const tagsEl = document.getElementById('modalTags');
+  tagsEl.innerHTML = t.tags ? t.tags.map(tag => `<span class="tag">#${tag}</span>`).join(' ') : '-';
+  const prioEl = document.getElementById('modalPriority');
+  const colors = {p0:'#ef4444',p1:'#f59e0b',p2:'#3b82f6',p3:'#94a3b8'};
+  prioEl.textContent = t.priority.toUpperCase();
+  prioEl.style.background = colors[t.priority] + '33';
+  prioEl.style.color = colors[t.priority];
+  document.getElementById('modal').classList.add('show');
+}
+function closeDetail() { document.getElementById('modal').classList.remove('show'); detailTaskId = null; }
+function modalAction(status) {
+  const t = tasks.find(x => x.id === detailTaskId);
+  if (t) { t.status = status; saveTasks(); closeDetail(); showToast(`「${t.title}」→ ${statusLabel(status)}`); }
+}
+
+function statusLabel(s) { return { 'todo': '📋 待办', 'doing': '🔄 进行中', 'done': '✅ 已完成' }[s] || s; }
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+async function resetTasks() {
+  if (confirm('确定重置所有任务到初始状态？（当前改动将丢失）')) {
+    try { await fetch(API.replace('/tasks','/reset'), { method: 'POST' }); } catch(e) {}
+    localStorage.removeItem('jjx_board_tasks');
+    await loadTasks();
+    showToast('已重置');
+  }
+}
+
+loadTasks();
+</script>
+</body>
+</html>

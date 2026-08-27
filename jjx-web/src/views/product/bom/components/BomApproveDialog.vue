@@ -115,7 +115,7 @@
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="handleClose">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit"> 提交审核 </el-button>
+        <el-button type="primary" v-hasPermi="['engineering:bom:approve']" :loading="submitting" @click="handleSubmit"> 提交审核 </el-button>
       </span>
     </template>
   </el-dialog>
@@ -127,7 +127,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
 import { parseDate, parseTime } from '@/utils/format'
-import type { ProductBom, ProductBomItem } from '@/types/product/bom'
+import type { EngineeringBom, EngineeringBomItem } from '@/types/product/bom'
 import { ProductEnum, ProductActions, BomStatusEnum, SourceTypeEnum } from '@/enums/product'
 
 // Props
@@ -164,7 +164,7 @@ const dialogTitle = computed(() => {
 })
 
 // BOM详情数据
-const detail = reactive<ProductBom>({
+const detail = reactive<EngineeringBom>({
   bomId: 0,
   bomCode: '',
   bomName: '',
@@ -185,7 +185,7 @@ const detail = reactive<ProductBom>({
 })
 
 // BOM明细数据
-const bomDetailList = ref<ProductBomItem[]>([])
+const bomDetailList = ref<EngineeringBomItem[]>([])
 
 // 审核表单
 const approveForm = reactive({
@@ -223,7 +223,7 @@ const loadBomDetail = async () => {
   }
 
   try {
-    const response = await productBomApi.getProductBomInfo(props.bomId)
+    const response = await productBomApi.getEngineeringBomInfo(props.bomId)
     Object.assign(detail, response.data)
     bomDetailList.value = response.data.items || []
 
@@ -318,10 +318,10 @@ const handleSubmit = async () => {
     // 根据审核结果调用不同的API
     if (approveForm.approveResult === ProductActions.APPROVE) {
       // 调用审核通过API
-      await productBomApi.approveProductBom(props.bomId, approveForm.approveRemark)
+      await productBomApi.approveEngineeringBom(props.bomId, approveForm.approveRemark)
     } else {
       // 调用审核驳回API
-      await productBomApi.rejectProductBom(props.bomId, approveForm.approveRemark)
+      await productBomApi.rejectEngineeringBom(props.bomId, approveForm.approveRemark)
     }
 
     ElMessage.success(

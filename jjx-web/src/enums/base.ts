@@ -6,6 +6,32 @@ export type EnumObject<T> = {
   canDo: (value: T) => boolean
 }
 
+type NamedEnumItem<T> = {
+  value: T
+  label: string
+  tagProps: TagProps
+}
+
+type NamedEnumValue<TDefinitions> =
+  TDefinitions[keyof TDefinitions] extends NamedEnumItem<infer TValue> ? TValue : never
+
+type WidenEnumValue<T> = T extends number ? number : T extends string ? string : T
+
+/**
+ * 同时提供具名状态成员和展示工具，避免业务分支回退到数字魔法值。
+ */
+export function createNamedEnum<const TDefinitions extends Record<string, NamedEnumItem<unknown>>>(
+  definitions: TDefinitions,
+  defaultTag: TagProps
+): TDefinitions & EnumObject<WidenEnumValue<NamedEnumValue<TDefinitions>>> {
+  type TValue = WidenEnumValue<NamedEnumValue<TDefinitions>>
+  const enumObject = createEnum<TValue>({
+    items: Object.values(definitions) as NamedEnumItem<TValue>[],
+    defaultTag,
+  })
+  return Object.assign(definitions, enumObject)
+}
+
 export function createEnum<T>(options: {
   items: { value: T; label: string; tagProps: TagProps }[]
   defaultTag: TagProps
