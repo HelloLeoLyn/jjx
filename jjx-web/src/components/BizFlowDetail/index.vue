@@ -28,12 +28,7 @@
 
     <!-- 备注输入 -->
     <div class="biz-remark">
-      <el-input
-        v-model="remark"
-        type="textarea"
-        :rows="2"
-        placeholder="操作备注（选填）..."
-      />
+      <el-input v-model="remark" type="textarea" :rows="2" placeholder="操作备注（选填）..." />
     </div>
 
     <!-- 标签页 -->
@@ -41,7 +36,13 @@
       <!-- Tab1 单据详情 -->
       <el-tab-pane label="单据详情" name="detail">
         <slot name="detail" :data="data">
-          <BizDetailPanel v-if="data" :data="data" :items="detailItems" :column="2" />
+          <BizDetailPanel
+            v-if="data"
+            :data="data"
+            :items="detailItems"
+            :column="2"
+            :direction="direction"
+          />
           <el-empty v-else description="暂无单据数据" :image-size="50" />
         </slot>
       </el-tab-pane>
@@ -121,6 +122,9 @@ const props = defineProps<{
   data?: Record<string, any> | null
   /** 通用详情字段配置 */
   detailItems?: DetailItem[]
+  /** 通用详情布局方向 */
+  direction?: 'horizontal' | 'vertical'
+
   /** 确认接口配置 */
   confirmApi?: {
     url: string
@@ -156,8 +160,7 @@ async function handleConfirm() {
   confirmLoading.value = true
   try {
     if (props.confirmApi?.url && props.bizId != null) {
-      const build = props.confirmApi.buildParams
-        || ((id: number) => ({ bizId: id }))
+      const build = props.confirmApi.buildParams || ((id: number) => ({ bizId: id }))
       const params = build(props.bizId, remark.value.trim())
       const res: any = await request({
         url: props.confirmApi.url,

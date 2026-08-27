@@ -1,6 +1,12 @@
 <template>
   <div class="biz-detail-panel">
-    <el-descriptions :column="column" border size="small" v-if="items.length">
+    <el-descriptions
+      :column="column"
+      border
+      size="small"
+      v-if="items.length"
+      :direction="direction"
+    >
       <el-descriptions-item
         v-for="(item, idx) in items"
         :key="idx"
@@ -50,6 +56,7 @@ const props = defineProps<{
   data: Record<string, any> | null | undefined
   items: DetailItem[]
   column?: number
+  direction?: 'horizontal' | 'vertical'
 }>()
 
 function formatValue(item: DetailItem): string {

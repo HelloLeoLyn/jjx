@@ -61,17 +61,36 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:inquiry:edit']" :disabled="single" @click="handleUpdate"
+          <el-button
+            type="success"
+            plain
+            icon="Edit"
+            v-hasPermi="['sales:inquiry:edit']"
+            :disabled="single"
+            @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:inquiry:delete']" :disabled="multiple || !canDelete" @click="handleDelete()"
+          <el-button
+            type="danger"
+            plain
+            icon="Delete"
+            v-hasPermi="['sales:inquiry:delete']"
+            :disabled="multiple || !canDelete"
+            @click="handleDelete()"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:inquiry:export']" @click="handleExport">导出</el-button>
+          <el-button
+            type="warning"
+            plain
+            icon="Download"
+            v-hasPermi="['sales:inquiry:export']"
+            @click="handleExport"
+            >导出</el-button
+          >
         </el-col>
       </el-row>
     </el-card>
@@ -83,7 +102,9 @@
         <el-table-column label="流水号" width="155" align="center" prop="traceId" />
         <el-table-column label="询价单号" align="center" width="180">
           <template #default="scope">
-            <el-link type="primary" underline="never" @click="handleDetail(scope.row)">{{ scope.row.inquiryNo }}</el-link>
+            <el-link type="primary" underline="never" @click="handleDetail(scope.row)">{{
+              scope.row.inquiryNo
+            }}</el-link>
           </template>
         </el-table-column>
         <el-table-column label="类型" align="center" width="80">
@@ -152,10 +173,20 @@
             >
             <!-- 客户确认/拒绝（已发送） -->
             <template v-if="scope.row.inquiryStatus === 2">
-              <el-button link type="success" icon="CircleCheck" v-hasPermi="['sales:inquiry:edit']" @click="handleAccept(scope.row)"
+              <el-button
+                link
+                type="success"
+                icon="CircleCheck"
+                v-hasPermi="['sales:inquiry:edit']"
+                @click="handleAccept(scope.row)"
                 >确认</el-button
               >
-              <el-button link type="danger" icon="CircleClose" v-hasPermi="['sales:inquiry:edit']" @click="handleReject(scope.row)"
+              <el-button
+                link
+                type="danger"
+                icon="CircleClose"
+                v-hasPermi="['sales:inquiry:edit']"
+                @click="handleReject(scope.row)"
                 >拒绝</el-button
               >
             </template>
@@ -165,7 +196,12 @@
               >
             </template>
             <template v-else>
-              <el-button link type="primary" icon="Right" v-hasPermi="['sales:inquiry:convert']" @click="handleConvert(scope.row)"
+              <el-button
+                link
+                type="primary"
+                icon="Right"
+                v-hasPermi="['sales:inquiry:convert']"
+                @click="handleConvert(scope.row)"
                 >转报价</el-button
               >
             </template>
@@ -315,12 +351,15 @@
                 v-model="form.productDescription"
                 type="textarea"
                 :rows="3"
-                :placeholder="form.inquiryType === 1 ? '选择产品后自动带出，可修改' : '详细描述产品规格/功能要求'"
+                :placeholder="
+                  form.inquiryType === 1
+                    ? '选择产品后自动带出，可修改'
+                    : '详细描述产品规格/功能要求'
+                "
                 maxlength="2000"
                 show-word-limit
               />
             </el-form-item>
-
           </el-col>
         </el-row>
         <el-row :gutter="20">
@@ -372,7 +411,20 @@
               biz-type="inquiry"
               :biz-id="form.inquiryId"
               :trace-id="(form as any).traceId"
-              :accept="['.pdf','.doc','.docx','.xls','.xlsx','.jpg','.jpeg','.png','.dwg','.dxf','.zip','.md']"
+              :accept="[
+                '.pdf',
+                '.doc',
+                '.docx',
+                '.xls',
+                '.xlsx',
+                '.jpg',
+                '.jpeg',
+                '.png',
+                '.dwg',
+                '.dxf',
+                '.zip',
+                '.md',
+              ]"
               button-text="上传客户资料"
               tip="支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传"
             />
@@ -387,12 +439,8 @@
       </template>
     </el-dialog>
 
-
     <!-- 询价单详情（共享组件：询价单列表页 + 工程打样工作台"来源单据"查看共用一套） -->
-    <InquiryDetailDialog
-      v-model="inquiryDetailVisible"
-      :inquiry-id="inquiryDetailId"
-    />
+    <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
     <!-- 操作状态流转弹窗（审核/转报价） -->
     <BizFlowDetail
       v-model="opDialogVisible"
@@ -408,6 +456,7 @@
       :confirm-text="opConfirmText"
       :data="opRow"
       :detail-items="inquiryDetailItems"
+      direction="vertical"
       :confirm-api="opConfirmApi"
       @confirm-success="handleOpSuccess"
     />
@@ -553,7 +602,14 @@ const opConfirmApi = ref<any>(null)
 // 询价通用详情字段配置
 const inquiryDetailItems = [
   { key: 'inquiryNo', label: '询价单号' },
-  { key: 'inquiryType', label: '类型', type: 'tag' as const, tagType: 'primary' as const, format: (v: any) => (v === 2 ? '样品' : '标准') },
+  {
+    key: 'inquiryType',
+    label: '类型',
+    type: 'tag' as const,
+    tagType: 'primary' as const,
+    format: (v: any) => (v === 2 ? '样品' : '标准'),
+  },
+  { key: 'salesPersonName', label: '销售负责人' },
   { key: 'customerName', label: '客户名称' },
   { key: 'contactPerson', label: '联系人' },
   { key: 'contactPhone', label: '联系电话' },
@@ -561,10 +617,9 @@ const inquiryDetailItems = [
   { key: 'expectedQuantity', label: '预估数量' },
   { key: 'productCode', label: '产品编码' },
   { key: 'productName', label: '产品名称' },
-  { key: 'productDescription', label: '产品描述' },
-  { key: 'specialRequirements', label: '特殊要求' },
-  { key: 'salesPersonName', label: '销售负责人' },
-  { key: 'remark', label: '备注' },
+  { key: 'productDescription', label: '产品描述', span: 2 as const },
+  { key: 'specialRequirements', label: '特殊要求', span: 2 as const },
+  { key: 'remark', label: '备注', span: 2 as const },
 ]
 
 // 打开操作弹窗
@@ -696,7 +751,13 @@ function customerChanged(val: number) {
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 const codeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
-const codeState = ref<ProductCodeState>({ serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' })
+const codeState = ref<ProductCodeState>({
+  serialNo: '',
+  panelType: '',
+  panelFeature: '',
+  circuitType: '',
+  circuitFeature: '',
+})
 const codeParams = ref<ProductCodeResult | null>(null)
 const nameEdited = ref(false)
 
@@ -716,7 +777,13 @@ function onCodeChange(data: string | ProductCodeResult) {
 
 // 类型切换：标准品/样品切换时清掉编码生成状态（切换时清空避免串数据）
 function onTypeChange() {
-  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  codeState.value = {
+    serialNo: '',
+    panelType: '',
+    panelFeature: '',
+    circuitType: '',
+    circuitFeature: '',
+  }
   form.productCode = ''
   nameEdited.value = false
   if (form.inquiryType === 1) {
@@ -946,7 +1013,13 @@ function resetForm() {
     salesPersonName: '',
   })
   // 重置编码生成器
-  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  codeState.value = {
+    serialNo: '',
+    panelType: '',
+    panelFeature: '',
+    circuitType: '',
+    circuitFeature: '',
+  }
   codeParams.value = null
   nameEdited.value = false
 }
