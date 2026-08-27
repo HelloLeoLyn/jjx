@@ -103,13 +103,13 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.selectSampleList(customerId, sampleStatus, salesPersonId, hasAcceptor));
     }
 
-    @Operation(summary = "样品单提交审核")
+    @Operation(summary = "样品单申请打样")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "2", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:edit")
-    @PutMapping("/submit-review/{orderId}")
-    public Result<SalesOrder> submitReview(@PathVariable Long orderId,
+    @PutMapping("/submit-request/{orderId}")
+    public Result<SalesOrder> submitRequest(@PathVariable Long orderId,
                                            @RequestParam(required = false) String attachmentIds) {
-        return Result.success(sampleOrderService.submitReview(orderId));
+        return Result.success(sampleOrderService.submitRequest(orderId));
     }
 
     @Operation(summary = "样品单审核通过（进入工程打样）")

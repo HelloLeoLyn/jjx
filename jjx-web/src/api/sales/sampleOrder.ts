@@ -45,7 +45,7 @@ export const sampleOrderApi = {
       contactPhone?: string
       techRequirement?: string
       remark?: string
-    },
+    }
   ): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/${orderId}`,
@@ -111,9 +111,9 @@ export const sampleOrderApi = {
   },
 
   // 提交审核
-  submitReview(orderId: number, attachmentIds?: string): AxiosPromise<any> {
+  submitRequest(orderId: number, attachmentIds?: string): AxiosPromise<any> {
     return request({
-      url: `/sales/sample-order/submit-review/${orderId}`,
+      url: `/sales/sample-order/submit-request/${orderId}`,
       method: 'put',
       params: { attachmentIds },
     })
@@ -183,7 +183,10 @@ export const sampleOrderApi = {
   },
 
   // 转量产
-  convertToProduction(orderId: number, items?: Array<{ orderProductId: number; productId: number }>): AxiosPromise<any> {
+  convertToProduction(
+    orderId: number,
+    items?: Array<{ orderProductId: number; productId: number }>
+  ): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/convert-to-production/${orderId}`,
       method: 'put',
@@ -235,7 +238,13 @@ export const sampleOrderApi = {
   },
 
   // 更新打样当前工序（工序单元：材料+工艺说明+耗时；材料JSON走body，8-03避免长URL）
-  updateProcess(orderId: number, process: string, materials?: string | null, processNote?: string, durationMinutes?: number): AxiosPromise<any> {
+  updateProcess(
+    orderId: number,
+    process: string,
+    materials?: string | null,
+    processNote?: string,
+    durationMinutes?: number
+  ): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/update-process/${orderId}`,
       method: 'put',
@@ -330,7 +339,9 @@ export const sampleOrderApi = {
   },
 
   // 状态选项
-  getStatusOptions(): AxiosPromise<Array<{ value: number; label: string; description: string; terminal: boolean }>> {
+  getStatusOptions(): AxiosPromise<
+    Array<{ value: number; label: string; description: string; terminal: boolean }>
+  > {
     return request({
       url: '/sales/sample-order/status-options',
       method: 'get',

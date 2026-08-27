@@ -34,7 +34,7 @@ public interface ISampleOrderService {
     /**
      * 样品单提交审核
      */
-    SalesOrder submitReview(Long orderId);
+    SalesOrder submitRequest(Long orderId);
 
     /**
      * 样品单审核通过（审核通过后进入工程打样阶段）

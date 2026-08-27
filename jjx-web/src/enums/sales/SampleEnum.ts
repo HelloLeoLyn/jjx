@@ -7,8 +7,8 @@ import { createNamedEnum } from '../base'
  */
 export const SampleOrderStatus = createNamedEnum(
   {
-    CREATED: { value: 1, label: '样品需求已创建', tagProps: { type: 'info' } },
-    PENDING_REVIEW: { value: 2, label: '待审核', tagProps: { type: 'warning' } },
+    CREATED: { value: 1, label: '草稿', tagProps: { type: 'info' } },
+    REQUEST: { value: 2, label: '待打样', tagProps: { type: 'warning' } },
     ENGINEERING: { value: 3, label: '工程打样中', tagProps: { type: 'warning' } },
     SAMPLE_READY: { value: 4, label: '样品待送样', tagProps: { type: 'primary' } },
     SAMPLE_SENT: { value: 5, label: '已送样待确认', tagProps: { type: 'warning' } },

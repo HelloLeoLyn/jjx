@@ -119,7 +119,7 @@
         </el-table-column>
         <el-table-column label="操作" width="150" align="center" fixed="right">
           <template #default="scope">
-            <template v-if="scope.row.sampleStatus === SampleOrderStatus.CONFIRMED.value">
+            <template v-if="canTransfer(scope.row)">
               <el-button
                 v-hasPermi="['sales:sample:convert']"
                 type="warning"
@@ -129,12 +129,12 @@
                 >资料转移</el-button
               >
             </template>
-            <template v-else-if="scope.row.sampleStatus === SampleOrderStatus.TRANSFERRED.value">
+            <template v-else-if="isTransferred(scope.row)">
               <el-tag size="small" type="success">已转量产</el-tag>
             </template>
             <template v-else>
               <el-button
-                v-if="scope.row.engineeringAcceptor"
+                v-if="canEnterWorkbench(scope.row)"
                 type="primary"
                 link
                 size="small"
@@ -144,7 +144,7 @@
                 进入打样
               </el-button>
               <el-button
-                v-else
+                v-if="canAccept(scope.row)"
                 type="primary"
                 link
                 size="small"
@@ -198,6 +198,24 @@ function sampleStatusText(status: number | undefined | null): string {
 }
 function sampleStatusTag(status: number | undefined | null): any {
   return status == null ? 'info' : SampleOrderStatusEnum.getTagProps(status).type || 'info'
+}
+
+// ===== 操作谓词（canXXX）：状态机判断统一入口，仅引用枚举成员 =====
+// 资料转移：仅样品确认(6)可转移
+function canTransfer(row: any): boolean {
+  return row?.sampleStatus === SampleOrderStatus.CONFIRMED.value
+}
+// 已转量产展示
+function isTransferred(row: any): boolean {
+  return row?.sampleStatus === SampleOrderStatus.TRANSFERRED.value
+}
+// 已接单：进入打样平台
+function canEnterWorkbench(row: any): boolean {
+  return !!row?.engineeringAcceptor
+}
+// 接单打样：待打样(2)可接单（保持现有行为）
+function canAccept(row: any): boolean {
+  return row?.sampleStatus === SampleOrderStatus.REQUEST.value
 }
 
 // 资料转移（轻量版弹窗，2026-08-12 入口移至打样平台）

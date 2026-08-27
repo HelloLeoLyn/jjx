@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public enum SampleOrderStatusEnum {
 
     CREATED(1, "样品需求已创建", "样品单已创建，待提交审核", false, false),
-    PENDING_REVIEW(2, "待审核", "已提交审核，等待审核人审核", false, false),
+    REQUEST(2, "待审核", "已提交审核，等待审核人审核", false, false),
     ENGINEERING(3, "工程打样中", "审核通过，工程部门正在打样", false, false),
     SAMPLE_READY(4, "样品待送样", "样品已完成，待发送给客户", false, false),
     SAMPLE_SENT(5, "已送样待确认", "样品已发送客户，等待客户确认", false, false),
@@ -47,8 +47,8 @@ public enum SampleOrderStatusEnum {
     private static final Map<SampleOrderStatusEnum, Set<SampleOrderStatusEnum>> TRANSITIONS = new EnumMap<>(SampleOrderStatusEnum.class);
 
     static {
-        TRANSITIONS.put(CREATED, EnumSet.of(PENDING_REVIEW, CANCELLED));
-        TRANSITIONS.put(PENDING_REVIEW, EnumSet.of(ENGINEERING, REJECTED, CANCELLED));
+        TRANSITIONS.put(CREATED, EnumSet.of(REQUEST, CANCELLED));
+        TRANSITIONS.put(REQUEST, EnumSet.of(ENGINEERING, REJECTED, CANCELLED));
         TRANSITIONS.put(ENGINEERING, EnumSet.of(SAMPLE_READY, CANCELLED));
         TRANSITIONS.put(SAMPLE_READY, EnumSet.of(SAMPLE_SENT, CANCELLED));
         TRANSITIONS.put(SAMPLE_SENT, EnumSet.of(CONFIRMED, REJECTED, CANCELLED));

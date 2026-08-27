@@ -92,11 +92,18 @@ export const quotationOperations: OperationDef[] = [
     name: '审核通过',
     fromStatus: [5],
     toStatus: 6,
-    fields: [{ key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' }],
+    fields: [
+      { key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' },
+    ],
     evidence: true,
     events: ['quotation.reviewed'],
     api: ({ bizId, values, attachmentIds }) =>
-      quotationApi.review(bizId, true, values.remark, attachmentIds.length ? attachmentIds.join(',') : undefined),
+      quotationApi.review(
+        bizId,
+        true,
+        values.remark,
+        attachmentIds.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'quotation.reject',
@@ -104,11 +111,24 @@ export const quotationOperations: OperationDef[] = [
     name: '审核驳回',
     fromStatus: [5],
     toStatus: 3,
-    fields: [{ key: 'remark', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
+    fields: [
+      {
+        key: 'remark',
+        label: '驳回原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写驳回原因（必填）',
+      },
+    ],
     evidence: true,
     events: ['quotation.reviewed'],
     api: ({ bizId, values, attachmentIds }) =>
-      quotationApi.review(bizId, false, values.remark, attachmentIds.length ? attachmentIds.join(',') : undefined),
+      quotationApi.review(
+        bizId,
+        false,
+        values.remark,
+        attachmentIds.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'quotation.send',
@@ -138,7 +158,15 @@ export const quotationOperations: OperationDef[] = [
     name: '客户拒绝',
     fromStatus: [1],
     toStatus: 3,
-    fields: [{ key: 'remark', label: '拒绝原因', type: 'textarea', required: true, placeholder: '请填写拒绝原因（必填）' }],
+    fields: [
+      {
+        key: 'remark',
+        label: '拒绝原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写拒绝原因（必填）',
+      },
+    ],
     evidence: true,
     events: ['quotation.rejected'],
     api: ({ bizId, values, attachmentIds }) =>
@@ -152,8 +180,7 @@ export const quotationOperations: OperationDef[] = [
     toStatus: 9,
     evidence: true,
     events: ['quotation.converted'],
-    api: ({ bizId, attachmentIds }) =>
-      quotationApi.convert(bizId).then((r) => r),
+    api: ({ bizId, attachmentIds }) => quotationApi.convert(bizId).then((r) => r),
   },
   {
     key: 'quotation.toSample',
@@ -162,7 +189,8 @@ export const quotationOperations: OperationDef[] = [
     fromStatus: [0, 1, 2, 3, 4, 6],
     // DEV-1111：默认值由报价单页动态注入（按报价单明细数量求和），此处不再写死
     fields: [{ key: 'sampleQty', label: '打样数量', type: 'number', required: true }],
-    api: ({ bizId, values }) => sampleOrderApi.createFromQuotation(bizId, { sampleQty: Number(values.sampleQty) }),
+    api: ({ bizId, values }) =>
+      sampleOrderApi.createFromQuotation(bizId, { sampleQty: Number(values.sampleQty) }),
   },
 ]
 
@@ -170,15 +198,19 @@ export const quotationOperations: OperationDef[] = [
 
 export const sampleOperations: OperationDef[] = [
   {
-    key: 'sample.submitReview',
+    key: 'sample.submitRequest',
     bizType: 'sample_order',
-    name: '提交审核',
+    name: '申请打样',
     fromStatus: [1],
     toStatus: 2,
     events: ['sample.submitted'],
-    impact: '提交后进入待审核，并通知内部审核人员处理。审核通过后方可进入工程打样。',
-    successText: '已提交审核',
-    api: ({ bizId, attachmentIds }) => sampleOrderApi.submitReview(bizId, attachmentIds?.length ? attachmentIds.join(',') : undefined),
+    impact: '提交后进入工程打样。',
+    successText: '已提交打样申请',
+    api: ({ bizId, attachmentIds }) =>
+      sampleOrderApi.submitRequest(
+        bizId,
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'sample.approve',
@@ -187,10 +219,17 @@ export const sampleOperations: OperationDef[] = [
     fromStatus: [2],
     toStatus: 3,
     impact: '通过后进入工程打样，由工程人员接单处理。',
-    fields: [{ key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' }],
+    fields: [
+      { key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' },
+    ],
     evidence: true,
     events: ['sample.approved'],
-    api: ({ bizId, values, attachmentIds }) => sampleOrderApi.approve(bizId, values.remark || '', attachmentIds?.length ? attachmentIds.join(',') : undefined),
+    api: ({ bizId, values, attachmentIds }) =>
+      sampleOrderApi.approve(
+        bizId,
+        values.remark || '',
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'sample.rejectReview',
@@ -199,10 +238,23 @@ export const sampleOperations: OperationDef[] = [
     fromStatus: [2],
     toStatus: 1,
     impact: '驳回后退回销售处理，修改后可重新提交审核。',
-    fields: [{ key: 'remark', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
+    fields: [
+      {
+        key: 'remark',
+        label: '驳回原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写驳回原因（必填）',
+      },
+    ],
     evidence: true,
     events: ['sample.rejected'],
-    api: ({ bizId, values, attachmentIds }) => sampleOrderApi.rejectReview(bizId, values.remark, attachmentIds?.length ? attachmentIds.join(',') : undefined),
+    api: ({ bizId, values, attachmentIds }) =>
+      sampleOrderApi.rejectReview(
+        bizId,
+        values.remark,
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'sample.markReady',
@@ -210,7 +262,9 @@ export const sampleOperations: OperationDef[] = [
     name: '样品完成',
     fromStatus: [3],
     toStatus: 4,
-    fields: [{ key: 'sampleQty', label: '实际打样数量', type: 'number', required: true, defaultValue: 10 }],
+    fields: [
+      { key: 'sampleQty', label: '实际打样数量', type: 'number', required: true, defaultValue: 10 },
+    ],
     events: ['sample.ready'],
     api: ({ bizId, values }) => sampleOrderApi.markReady(bizId, Number(values.sampleQty)),
   },
@@ -231,7 +285,9 @@ export const sampleOperations: OperationDef[] = [
     name: '客户确认OK',
     fromStatus: [5],
     toStatus: 6,
-    fields: [{ key: 'clientName', label: '确认人姓名', type: 'input', placeholder: '客户方确认人姓名' }],
+    fields: [
+      { key: 'clientName', label: '确认人姓名', type: 'input', placeholder: '客户方确认人姓名' },
+    ],
     evidence: true,
     events: ['sample.confirmed'],
     api: ({ bizId, values }) => sampleOrderApi.confirm(bizId, values.clientName || '客户确认'),
@@ -242,7 +298,15 @@ export const sampleOperations: OperationDef[] = [
     name: '退回修改',
     fromStatus: [5],
     toStatus: 9,
-    fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请填写退回原因/修改要求（必填）' }],
+    fields: [
+      {
+        key: 'reason',
+        label: '退回原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写退回原因/修改要求（必填）',
+      },
+    ],
     evidence: true,
     events: ['sample.rejected_by_customer'],
     api: ({ bizId, values }) => sampleOrderApi.rejectSample(bizId, values.reason),
@@ -313,7 +377,8 @@ export const customerOperations: OperationDef[] = [
       { key: 'remark', label: '变更说明', type: 'textarea', placeholder: '选填' },
     ],
     events: ['sales.customer.status_updated'],
-    api: ({ bizId, values }) => customerApi.changeCustomerStatus(Number(bizId), Number(values.status)),
+    api: ({ bizId, values }) =>
+      customerApi.changeCustomerStatus(Number(bizId), Number(values.status)),
   },
 ]
 
@@ -339,7 +404,12 @@ export const inboundOperations: OperationDef[] = [
     events: ['inventory.inbound.approved'],
     api: ({ bizId, values }) => {
       const u = currentUser()
-      return inboundApi.approve({ inboundId: String(bizId), approverId: u.id, approverName: u.name, remark: values.remark || '' })
+      return inboundApi.approve({
+        inboundId: String(bizId),
+        approverId: u.id,
+        approverName: u.name,
+        remark: values.remark || '',
+      })
     },
   },
   {
@@ -359,7 +429,15 @@ export const inboundOperations: OperationDef[] = [
     bizType: 'inbound',
     name: '取消入库单',
     fromStatus: [0, 1],
-    fields: [{ key: 'reason', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
+    fields: [
+      {
+        key: 'reason',
+        label: '取消原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写取消原因（必填）',
+      },
+    ],
     events: ['inventory.inbound.cancelled'],
     api: ({ bizId, values }) => inboundApi.cancel(String(bizId), values.reason),
   },
@@ -400,7 +478,14 @@ export const purchaseOperations: OperationDef[] = [
     name: '审核通过',
     fromStatus: [3],
     toStatus: 4,
-    fields: [{ key: 'approvalComment', label: '审批意见', type: 'textarea', placeholder: '选填，审批意见/说明' }],
+    fields: [
+      {
+        key: 'approvalComment',
+        label: '审批意见',
+        type: 'textarea',
+        placeholder: '选填，审批意见/说明',
+      },
+    ],
     evidence: true,
     events: ['purchase.approved'],
     api: ({ bizId, values }) => {
@@ -420,7 +505,15 @@ export const purchaseOperations: OperationDef[] = [
     name: '审核驳回',
     fromStatus: [3],
     toStatus: 5,
-    fields: [{ key: 'approvalComment', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
+    fields: [
+      {
+        key: 'approvalComment',
+        label: '驳回原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写驳回原因（必填）',
+      },
+    ],
     evidence: true,
     events: ['purchase.approved'],
     api: ({ bizId, values }) => {
@@ -440,7 +533,15 @@ export const purchaseOperations: OperationDef[] = [
     name: '取消订单',
     fromStatus: [1, 3, 5],
     toStatus: 2,
-    fields: [{ key: 'reason', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
+    fields: [
+      {
+        key: 'reason',
+        label: '取消原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写取消原因（必填）',
+      },
+    ],
     evidence: true,
     events: [],
     api: ({ bizId }) => purchaseOrderApi.cancleOrder(Number(bizId)),
@@ -468,7 +569,14 @@ export const productionOperations: OperationDef[] = [
     name: '审核通过',
     fromStatus: [1],
     toStatus: 2,
-    fields: [{ key: 'approvalRemark', label: '审批意见', type: 'textarea', placeholder: '选填，审批意见/说明' }],
+    fields: [
+      {
+        key: 'approvalRemark',
+        label: '审批意见',
+        type: 'textarea',
+        placeholder: '选填，审批意见/说明',
+      },
+    ],
     evidence: true,
     events: [],
     api: ({ bizId, values }) =>
@@ -485,7 +593,15 @@ export const productionOperations: OperationDef[] = [
     name: '审核驳回',
     fromStatus: [1],
     toStatus: 3,
-    fields: [{ key: 'approvalRemark', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
+    fields: [
+      {
+        key: 'approvalRemark',
+        label: '驳回原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写驳回原因（必填）',
+      },
+    ],
     evidence: true,
     events: [],
     api: ({ bizId, values }) =>
@@ -518,7 +634,13 @@ export const productionOperations: OperationDef[] = [
     fromStatus: [6],
     toStatus: 8,
     fields: [
-      { key: 'completedQuantity', label: '完成数量', type: 'number', required: true, defaultValue: 1 },
+      {
+        key: 'completedQuantity',
+        label: '完成数量',
+        type: 'number',
+        required: true,
+        defaultValue: 1,
+      },
       {
         key: 'qualityResult',
         label: '质量结果',
@@ -547,7 +669,15 @@ export const productionOperations: OperationDef[] = [
     name: '取消工单',
     fromStatus: [0, 1, 2, 3, 4, 6],
     toStatus: 9,
-    fields: [{ key: 'remark', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
+    fields: [
+      {
+        key: 'remark',
+        label: '取消原因',
+        type: 'textarea',
+        required: true,
+        placeholder: '请填写取消原因（必填）',
+      },
+    ],
     evidence: true,
     events: [],
     api: ({ bizId, values }) =>

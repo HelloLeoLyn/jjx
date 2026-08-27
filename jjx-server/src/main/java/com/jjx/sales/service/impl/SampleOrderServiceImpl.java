@@ -572,11 +572,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     @Event(value = "sample.submitted", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
-    public SalesOrder submitReview(Long orderId) {
+    public SalesOrder submitRequest(Long orderId) {
         safeTransition(orderId,
                 SampleOrderStatusEnum.CREATED,
-                SampleOrderStatusEnum.PENDING_REVIEW,
-                "提交审核");
+                SampleOrderStatusEnum.REQUEST,
+                "提交申请");
         return orderMapper.selectById(orderId);
     }
 
@@ -585,7 +585,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder approveReview(Long orderId, String remark) {
         safeTransition(orderId,
-                SampleOrderStatusEnum.PENDING_REVIEW,
+                SampleOrderStatusEnum.REQUEST,
                 SampleOrderStatusEnum.ENGINEERING,
                 "审核通过");
 
@@ -609,7 +609,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     public SalesOrder rejectReview(Long orderId, String remark) {
         // 审核驳回：回到创建状态(1)，销售可改单后重新提交（语义与客户退回9区分）
         safeTransition(orderId,
-                SampleOrderStatusEnum.PENDING_REVIEW,
+                SampleOrderStatusEnum.REQUEST,
                 SampleOrderStatusEnum.CREATED,
                 "审核驳回");
         // 记录驳回原因
@@ -931,7 +931,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.ENGINEERING.getCode(),
-                SampleOrderStatusEnum.PENDING_REVIEW.getCode());
+                SampleOrderStatusEnum.REQUEST.getCode());
         if (affected == 0) {
             throw new BusinessException("样品单状态已变更，无法拒单，请刷新后重试");
         }
