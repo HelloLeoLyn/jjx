@@ -228,14 +228,19 @@
           <template #default="{ row }">{{ fmtQty(row.inputQuantity) }}</template>
         </el-table-column>
         <!-- 累计投影（WorkReport projection，后端提供） -->
-        <el-table-column label="累计合格" width="90" align="right">
+        <el-table-column label="累计合格（已审批）" width="135" align="right">
           <template #default="{ row }">{{ fmtQty(row.qualifiedQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="累计不良" width="90" align="right">
+        <el-table-column label="累计不良（已审批）" width="135" align="right">
           <template #default="{ row }">{{ fmtQty(row.defectiveQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="累计产出" width="90" align="right">
+        <el-table-column label="累计产出（已审批）" width="135" align="right">
           <template #default="{ row }">{{ fmtQty(row.outputQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="待审批" width="90" align="right">
+          <template #default="{ row }">
+            <span class="approval-value">{{ fmtQty(row.pendingApprovalQuantity) }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
@@ -389,10 +394,11 @@
           <span>已分配</span><strong>{{ fmtQty(detailRootTask?.assignedQuantity) }}</strong>
         </div>
         <div class="metric-card warning">
-          <span>待审批</span><strong>{{ fmtQty(detailRootTask?.pendingQuantity) }}</strong>
+          <span>待审批</span
+          ><strong>{{ fmtQty(detailRootTask?.pendingQuantity ?? detailForm.pendingApprovalQuantity) }}</strong>
         </div>
         <div class="metric-card success">
-          <span>已完成</span
+          <span>已完成（仅已审批报工）</span
           ><strong>{{
             fmtQty(detailRootTask?.completedQuantity ?? detailForm.outputQuantity)
           }}</strong>

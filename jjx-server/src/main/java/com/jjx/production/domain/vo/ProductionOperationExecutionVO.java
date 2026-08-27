@@ -101,6 +101,9 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "不良数量")
     private BigDecimal defectiveQuantity;
 
+    @Schema(description = "待审批报工数量（PENDING 报工的合格+不良，不计入累计产出）")
+    private BigDecimal pendingApprovalQuantity;
+
     @Schema(description = "待完成数量（= 任务数量 - 已完成，下限0）")
     private BigDecimal remainingQuantity;
 

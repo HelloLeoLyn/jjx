@@ -43,6 +43,8 @@ export interface OperationExecutionVO {
   outputQuantity?: number
   qualifiedQuantity?: number
   defectiveQuantity?: number
+  /** PENDING 报工数量（合格+不良），不计入累计产出 */
+  pendingApprovalQuantity?: number
   /** 待完成 = 任务数量 - 已完成（下限0） */
   remainingQuantity?: number
   defectiveReason?: string

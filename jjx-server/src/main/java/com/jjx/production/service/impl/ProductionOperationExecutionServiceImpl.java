@@ -210,6 +210,25 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private void enrichExecutionVOs(List<ProductionOperationExecutionVO> vos) {
         if (vos == null || vos.isEmpty()) return;
         try {
+            java.util.Set<Long> executionIds = vos.stream()
+                    .map(ProductionOperationExecutionVO::getExecutionId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            java.util.Map<Long, BigDecimal> pendingApprovalMap = new java.util.HashMap<>();
+            if (!executionIds.isEmpty()) {
+                String executionIdStr = executionIds.stream().map(String::valueOf)
+                        .collect(Collectors.joining(","));
+                jdbcTemplate.query("SELECT execution_id,"
+                                + " COALESCE(SUM(qualified_quantity + defective_quantity),0) pending_quantity"
+                                + " FROM production_work_report WHERE execution_id IN (" + executionIdStr + ")"
+                                + " AND report_status=? GROUP BY execution_id",
+                        (org.springframework.jdbc.core.RowCallbackHandler) rs -> pendingApprovalMap.put(
+                                rs.getLong("execution_id"), rs.getBigDecimal("pending_quantity")),
+                        com.jjx.production.enums.WorkReportStatusEnum.PENDING.getCode());
+            }
+            vos.forEach(vo -> vo.setPendingApprovalQuantity(
+                    pendingApprovalMap.getOrDefault(vo.getExecutionId(), BigDecimal.ZERO)));
+
             // 工单号
             java.util.Set<Long> orderIds = vos.stream()
                     .map(ProductionOperationExecutionVO::getOrderId)
