@@ -10,7 +10,6 @@
       :eng-file-list="engFileList"
       @history-copy="openHistoryCopy"
       @back="goBack"
-      @accept="handleAccept"
       @reject="handleReject"
       @view-inquiry="openInquiryDetail"
       @view-quotation="openQuotationDetail"
@@ -19,7 +18,7 @@
     />
 
     <!-- 轮次切换（全局，冲型组装/印刷共用，2026-08-12 布局调整） -->
-    <el-tabs v-model="activeRound" style="margin-bottom:10px">
+    <el-tabs v-model="activeRound" style="margin-bottom: 10px">
       <el-tab-pane
         v-for="r in roundList"
         :key="r.roundNo"
@@ -29,143 +28,223 @@
     </el-tabs>
 
     <!-- 一级大类 Tabs（dev-20260811-009）：冲型组装 | 印刷 -->
-    <el-tabs v-model="majorCategory" style="margin-bottom:10px">
+    <el-tabs v-model="majorCategory" style="margin-bottom: 10px">
       <el-tab-pane label="🛠 冲型组装" name="ASSEMBLY">
-      <template v-if="isCurrentRound">
-      <!-- 工序计划面板（左选择器 + 右卡片区） -->
-      <PlanBoard
-        :batch-mode="batchMode"
-        :batch-selected="batchSelected"
-        :batch-category="batchCategory"
-        :saving-plan="savingPlan"
-        :frequent-materials="frequentMaterials"
-        :plan-tabs="planTabs"
-        v-model:active-plan-tab="activePlanTab"
-        :category-options="categoryOptions"
-        :cards-by-tab="cardsByTab"
-        :save-state-text="saveStateText"
-        :parse-materials="parseMaterials"
-        :toggle-batch-mode="toggleBatchMode"
-        :toggle-batch-select="toggleBatchSelect"
-        :toggle-batch-select-all="toggleBatchSelectAll"
-        :save-plan="savePlan"
-        :add-frequent-material="addFrequentMaterial"
-        :on-plan-drop="onPlanDrop"
-        :on-card-drop="onCardDrop"
-        :on-card-drag-over="onCardDragOver"
-        :on-card-drag-leave="onCardDragLeave"
-        :remove-card-item="removeCardItem"
-        :remove-plan-card="removePlanCard"
-        :advance-plan="advancePlan"
-        :save-card="saveCard"
-        :add-material-row="addMaterialRow"
-        :start-edit="startEdit"
-        :open-card-picker="openCardPicker"
-        :open-batch-material="openBatchMaterial"
-        :batch-delete="batchDelete"
-        :apply-batch-category="applyBatchCategory"
-        :on-update-index="onUpdateIndex"
-        :search-materials="debouncedSearchMaterials"
-        :on-material-selected="onMaterialSelected"
-        :on-select-visible-change="onSelectVisibleChange"
-        :open-material-create="openMaterialCreate"
-      />
+        <template v-if="isCurrentRound">
+          <!-- 工序计划面板（左选择器 + 右卡片区） -->
+          <PlanBoard
+            :batch-mode="batchMode"
+            :batch-selected="batchSelected"
+            :batch-category="batchCategory"
+            :saving-plan="savingPlan"
+            :frequent-materials="frequentMaterials"
+            :plan-tabs="planTabs"
+            v-model:active-plan-tab="activePlanTab"
+            :category-options="categoryOptions"
+            :cards-by-tab="cardsByTab"
+            :save-state-text="saveStateText"
+            :parse-materials="parseMaterials"
+            :toggle-batch-mode="toggleBatchMode"
+            :toggle-batch-select="toggleBatchSelect"
+            :toggle-batch-select-all="toggleBatchSelectAll"
+            :save-plan="savePlan"
+            :add-frequent-material="addFrequentMaterial"
+            :on-plan-drop="onPlanDrop"
+            :on-card-drop="onCardDrop"
+            :on-card-drag-over="onCardDragOver"
+            :on-card-drag-leave="onCardDragLeave"
+            :remove-card-item="removeCardItem"
+            :remove-plan-card="removePlanCard"
+            :advance-plan="advancePlan"
+            :save-card="saveCard"
+            :add-material-row="addMaterialRow"
+            :start-edit="startEdit"
+            :open-card-picker="openCardPicker"
+            :open-batch-material="openBatchMaterial"
+            :batch-delete="batchDelete"
+            :apply-batch-category="applyBatchCategory"
+            :on-update-index="onUpdateIndex"
+            :search-materials="debouncedSearchMaterials"
+            :on-material-selected="onMaterialSelected"
+            :on-select-visible-change="onSelectVisibleChange"
+            :open-material-create="openMaterialCreate"
+          />
+        </template>
 
-      </template>
-
-    <!-- 历史轮次（只读，DEV-500） -->
-    <div v-else class="round-readonly">
-      <el-alert
-        type="info" :closable="false" show-icon style="margin-bottom:12px"
-        title="历史轮次（只读）"
-        description="该轮次已归档，如需调整请在当前轮次重新打样"
-      />
-      <div v-if="activeRoundData" style="margin-bottom:12px">
-        <el-tag :type="activeRoundData.result === 'confirmed' ? 'success' : activeRoundData.result === 'rejected' ? 'danger' : 'info'">
-          {{ activeRoundData.result === 'confirmed' ? '✅ 已确认' : activeRoundData.result === 'rejected' ? '⛔ 已退回' : '🔄 进行中' }}
-        </el-tag>
-        <span v-if="activeRoundData.rejectReason" style="margin-left:8px;color:#f56c6c;font-size:13px">
-          退回原因：{{ activeRoundData.rejectReason }}
-        </span>
-        <span v-if="activeRoundData.engineeringNote" style="margin-left:12px;color:#606266;font-size:13px">
-          工艺参数：{{ activeRoundData.engineeringNote }}
-        </span>
-      </div>
-      <el-card shadow="never" style="margin-bottom:16px">
-        <template #header><span style="font-weight:600">📜 工序快照</span></template>
-        <el-timeline v-if="activeRoundProcesses.length" style="padding-left:2px">
-          <el-timeline-item v-for="(p, i) in activeRoundProcesses" :key="i" :timestamp="formatTime(p.startTime)" placement="top" :type="i === activeRoundProcesses.length - 1 ? 'primary' : 'info'">
-            <div style="font-size:13px">
-              <span style="font-weight:600">{{ p.processName }}</span>
-              <span v-if="p.durationMinutes" style="margin-left:8px;color:#606266;font-size:12px">⏱ {{ p.durationMinutes }}分钟</span>
-              <span v-if="p.operator" style="margin-left:8px;color:#909399;font-size:12px">操作人：{{ p.operator }}</span>
-              <div v-if="p.processNote" style="color:#606266;font-size:12px;margin-top:2px">🔧 {{ p.processNote }}</div>
-              <div v-if="p.materials" style="margin-top:2px">
-                <el-tag v-for="(m, mi) in parseMaterials(p.materials)" :key="mi" size="small" type="info" style="margin-right:4px">{{ m.name }}{{ m.spec ? ' ' + m.spec : '' }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag>
-              </div>
-            </div>
-          </el-timeline-item>
-        </el-timeline>
-        <div v-else style="color:#999;font-size:13px">该轮次无工序快照</div>
-      </el-card>
-      <el-card shadow="never">
-        <template #header><span style="font-weight:600">🧾 BOM 物料快照</span></template>
-        <el-table v-if="activeRoundBom.length" :data="activeRoundBom" size="small" border style="width:100%">
-          <el-table-column prop="process" label="工序" width="90" />
-          <el-table-column prop="name" label="材料" min-width="140" />
-          <el-table-column prop="spec" label="规格" min-width="120" />
-          <el-table-column prop="qty" label="用量" width="90" />
-          <el-table-column prop="unit" label="单位" width="70" />
-        </el-table>
-        <div v-else style="color:#999;font-size:13px">该轮次无物料快照</div>
-      </el-card>
-    </div>
+        <!-- 历史轮次（只读，DEV-500） -->
+        <div v-else class="round-readonly">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 12px"
+            title="历史轮次（只读）"
+            description="该轮次已归档，如需调整请在当前轮次重新打样"
+          />
+          <div v-if="activeRoundData" style="margin-bottom: 12px">
+            <el-tag
+              :type="
+                activeRoundData.result === 'confirmed'
+                  ? 'success'
+                  : activeRoundData.result === 'rejected'
+                    ? 'danger'
+                    : 'info'
+              "
+            >
+              {{
+                activeRoundData.result === 'confirmed'
+                  ? '✅ 已确认'
+                  : activeRoundData.result === 'rejected'
+                    ? '⛔ 已退回'
+                    : '🔄 进行中'
+              }}
+            </el-tag>
+            <span
+              v-if="activeRoundData.rejectReason"
+              style="margin-left: 8px; color: #f56c6c; font-size: 13px"
+            >
+              退回原因：{{ activeRoundData.rejectReason }}
+            </span>
+            <span
+              v-if="activeRoundData.engineeringNote"
+              style="margin-left: 12px; color: #606266; font-size: 13px"
+            >
+              工艺参数：{{ activeRoundData.engineeringNote }}
+            </span>
+          </div>
+          <el-card shadow="never" style="margin-bottom: 16px">
+            <template #header><span style="font-weight: 600">📜 工序快照</span></template>
+            <el-timeline v-if="activeRoundProcesses.length" style="padding-left: 2px">
+              <el-timeline-item
+                v-for="(p, i) in activeRoundProcesses"
+                :key="i"
+                :timestamp="formatTime(p.startTime)"
+                placement="top"
+                :type="i === activeRoundProcesses.length - 1 ? 'primary' : 'info'"
+              >
+                <div style="font-size: 13px">
+                  <span style="font-weight: 600">{{ p.processName }}</span>
+                  <span
+                    v-if="p.durationMinutes"
+                    style="margin-left: 8px; color: #606266; font-size: 12px"
+                    >⏱ {{ p.durationMinutes }}分钟</span
+                  >
+                  <span v-if="p.operator" style="margin-left: 8px; color: #909399; font-size: 12px"
+                    >操作人：{{ p.operator }}</span
+                  >
+                  <div
+                    v-if="p.processNote"
+                    style="color: #606266; font-size: 12px; margin-top: 2px"
+                  >
+                    🔧 {{ p.processNote }}
+                  </div>
+                  <div v-if="p.materials" style="margin-top: 2px">
+                    <el-tag
+                      v-for="(m, mi) in parseMaterials(p.materials)"
+                      :key="mi"
+                      size="small"
+                      type="info"
+                      style="margin-right: 4px"
+                      >{{ m.name }}{{ m.spec ? ' ' + m.spec : ''
+                      }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag
+                    >
+                  </div>
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+            <div v-else style="color: #999; font-size: 13px">该轮次无工序快照</div>
+          </el-card>
+          <el-card shadow="never">
+            <template #header><span style="font-weight: 600">🧾 BOM 物料快照</span></template>
+            <el-table
+              v-if="activeRoundBom.length"
+              :data="activeRoundBom"
+              size="small"
+              border
+              style="width: 100%"
+            >
+              <el-table-column prop="process" label="工序" width="90" />
+              <el-table-column prop="name" label="材料" min-width="140" />
+              <el-table-column prop="spec" label="规格" min-width="120" />
+              <el-table-column prop="qty" label="用量" width="90" />
+              <el-table-column prop="unit" label="单位" width="70" />
+            </el-table>
+            <div v-else style="color: #999; font-size: 13px">该轮次无物料快照</div>
+          </el-card>
+        </div>
       </el-tab-pane>
       <el-tab-pane label="🖨️ 印刷" name="PRINT">
-      <template v-if="isCurrentRound">
-        <PrintProcessPanel
-          :print-list="printList"
-          :saving-plan="savingPlan"
-          :parse-materials="parseMaterials"
-          :add-print-row="addPrintRow"
-          :remove-print-row="removePrintRow"
-          :move-print-row="movePrintRow"
-          :advance-print="advancePrint"
-          :save-plan="savePlan"
-        />
-      </template>
-      <div v-else class="round-readonly">
-        <el-alert
-          type="info" :closable="false" show-icon style="margin-bottom:12px"
-          title="历史轮次（只读）"
-          description="该轮次已归档，印刷工序请查看下方快照"
-        />
-        <el-card shadow="never">
-          <template #header><span style="font-weight:600">🖨️ 印刷工序快照</span></template>
-          <el-table v-if="activeRoundPrintList.length" :data="activeRoundPrintList" size="small" border style="width:100%">
-            <el-table-column prop="processName" label="印刷名称" min-width="130" />
-            <el-table-column label="参数" min-width="200">
-              <template #default="{ row }">
-                <el-tag v-for="(v, k) in printParamsOf(row)" :key="k" size="small" type="info" style="margin-right:4px">{{ k }}: {{ v }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="材料" min-width="160">
-              <template #default="{ row }">
-                <el-tag v-for="(m, i) in parseMaterials(row.materials)" :key="i" size="small" style="margin-right:4px">{{ m.name }}</el-tag>
-                <span v-if="!parseMaterials(row.materials).length" style="color:#c0c4cc">无</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="80" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'info'" size="small">
-                  {{ row.status === 2 ? '完成' : row.status === 1 ? '进行中' : '待做' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div v-else style="color:#999;font-size:13px">该轮次无印刷工序</div>
-        </el-card>
-      </div>
+        <template v-if="isCurrentRound">
+          <PrintProcessPanel
+            :print-list="printList"
+            :saving-plan="savingPlan"
+            :parse-materials="parseMaterials"
+            :add-print-row="addPrintRow"
+            :remove-print-row="removePrintRow"
+            :move-print-row="movePrintRow"
+            :advance-print="advancePrint"
+            :save-plan="savePlan"
+          />
+        </template>
+        <div v-else class="round-readonly">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 12px"
+            title="历史轮次（只读）"
+            description="该轮次已归档，印刷工序请查看下方快照"
+          />
+          <el-card shadow="never">
+            <template #header><span style="font-weight: 600">🖨️ 印刷工序快照</span></template>
+            <el-table
+              v-if="activeRoundPrintList.length"
+              :data="activeRoundPrintList"
+              size="small"
+              border
+              style="width: 100%"
+            >
+              <el-table-column prop="processName" label="印刷名称" min-width="130" />
+              <el-table-column label="参数" min-width="200">
+                <template #default="{ row }">
+                  <el-tag
+                    v-for="(v, k) in printParamsOf(row)"
+                    :key="k"
+                    size="small"
+                    type="info"
+                    style="margin-right: 4px"
+                    >{{ k }}: {{ v }}</el-tag
+                  >
+                </template>
+              </el-table-column>
+              <el-table-column label="材料" min-width="160">
+                <template #default="{ row }">
+                  <el-tag
+                    v-for="(m, i) in parseMaterials(row.materials)"
+                    :key="i"
+                    size="small"
+                    style="margin-right: 4px"
+                    >{{ m.name }}</el-tag
+                  >
+                  <span v-if="!parseMaterials(row.materials).length" style="color: #c0c4cc"
+                    >无</span
+                  >
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag
+                    :type="row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'info'"
+                    size="small"
+                  >
+                    {{ row.status === 2 ? '完成' : row.status === 1 ? '进行中' : '待做' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-else style="color: #999; font-size: 13px">该轮次无印刷工序</div>
+          </el-card>
+        </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -188,8 +267,15 @@
       </div>
 
       <!-- 标记完成 -->
-      <div style="text-align:center;margin:12px 0 4px">
-        <el-button type="success" size="large" @click="handleMarkReady" :loading="saving" style="width:220px">🎯 标记样品完成（送样）</el-button>
+      <div style="text-align: center; margin: 12px 0 4px">
+        <el-button
+          type="success"
+          size="large"
+          @click="handleMarkReady"
+          :loading="saving"
+          style="width: 220px"
+          >🎯 标记样品完成（送样）</el-button
+        >
       </div>
     </template>
 
@@ -198,13 +284,18 @@
     <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
 
     <!-- 卡片作业项目追加选择器（多选，任意结构） -->
-    <el-dialog v-model="cardPickerVisible" title="＋ 添加作业项目（可多选）" width="620px" append-to-body>
+    <el-dialog
+      v-model="cardPickerVisible"
+      title="＋ 添加作业项目（可多选）"
+      width="620px"
+      append-to-body
+    >
       <WorkProjectPicker v-model="cardPickerIds" @confirm="onCardPickerConfirm" />
     </el-dialog>
 
     <!-- 下标输入弹窗（DEV-777，仿工艺路线） -->
     <el-dialog v-model="indexDialogVisible" title="输入下标数字" width="380px" append-to-body>
-      <div style="font-size:13px;color:#606266;margin-bottom:12px">
+      <div style="font-size: 13px; color: #606266; margin-bottom: 12px">
         作业项目 <b>{{ indexDialogName }}</b> 带下标，请输入下标数字（正整数）：
       </div>
       <el-input-number
@@ -213,12 +304,14 @@
         :max="999"
         :precision="0"
         controls-position="right"
-        style="width:100%"
+        style="width: 100%"
         placeholder="如 4 显示为 ④"
       />
       <template #footer>
         <el-button @click="indexDialogVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!indexDialogValue" @click="confirmIndexDialog">确定</el-button>
+        <el-button type="primary" :disabled="!indexDialogValue" @click="confirmIndexDialog"
+          >确定</el-button
+        >
       </template>
     </el-dialog>
 
@@ -239,13 +332,20 @@
     <!-- 从历史打样复制弹窗 -->
     <el-dialog v-model="historyCopyVisible" title="📋 从历史打样复制" width="640px" append-to-body>
       <el-alert
-        type="info" :closable="false" show-icon
+        type="info"
+        :closable="false"
+        show-icon
         title="选择已转标准的样品单，复制其工序计划（工序/分组/材料）到当前打样单，追加到现有卡片后面"
-        style="margin-bottom:12px"
+        style="margin-bottom: 12px"
       />
       <el-table
-        v-loading="historyLoading" :data="historyOrders" size="small" border stripe
-        max-height="360" highlight-current-row
+        v-loading="historyLoading"
+        :data="historyOrders"
+        size="small"
+        border
+        stripe
+        max-height="360"
+        highlight-current-row
         @current-change="(row: any) => (historySelected = row)"
       >
         <el-table-column prop="orderNo" label="样品单号" width="150" />
@@ -262,7 +362,12 @@
       </el-table>
       <template #footer>
         <el-button @click="historyCopyVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!historySelected" :loading="historyCopying" @click="confirmHistoryCopy">
+        <el-button
+          type="primary"
+          :disabled="!historySelected"
+          :loading="historyCopying"
+          @click="confirmHistoryCopy"
+        >
           复制到当前
         </el-button>
       </template>
@@ -277,21 +382,25 @@
         :remote-method="(q: string) => searchBatchMaterial(q)"
         :loading="batchMaterialLoading"
         placeholder="搜索物料档案"
-        style="width:100%"
+        style="width: 100%"
       >
         <el-option
-          v-for="opt in batchMaterialOptions" :key="opt.materialId"
+          v-for="opt in batchMaterialOptions"
+          :key="opt.materialId"
           :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
           :value="opt.materialId"
         />
       </el-select>
-      <div style="font-size:12px;color:#909399;margin-top:8px">将添加到 {{ batchSelected.size }} 张选中卡片的材料列表</div>
+      <div style="font-size: 12px; color: #909399; margin-top: 8px">
+        将添加到 {{ batchSelected.size }} 张选中卡片的材料列表
+      </div>
       <template #footer>
         <el-button @click="batchMaterialVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!batchMaterialId" @click="confirmBatchMaterial">添加</el-button>
+        <el-button type="primary" :disabled="!batchMaterialId" @click="confirmBatchMaterial"
+          >添加</el-button
+        >
       </template>
     </el-dialog>
-
   </div>
 </template>
 
@@ -322,33 +431,126 @@ function sampleStatusTag(status: number | undefined | null): any {
 
 // 全部状态与逻辑来自 composable（dev-20260811-008 组件化）
 const {
-  card, orderId, saving, savingPlan, form, planList, majorCategory, printList,
-  makePrintRow, addPrintRow, removePrintRow, movePrintRow, advancePrint,
-  frequentMaterials, saveStateText, markDirty,
-  batchMode, batchSelected, batchCategory, toggleBatchMode, toggleBatchSelect,
-  toggleBatchSelectAll, batchSelectedCards, applyBatchCategory, batchDelete,
-  batchMaterialVisible, batchMaterialId, batchMaterialOptions, batchMaterialLoading,
-  openBatchMaterial, searchBatchMaterial, confirmBatchMaterial,
-  historyCopyVisible, historyOrders, historyLoading, historySelected, historyCopying,
-  openHistoryCopy, confirmHistoryCopy,
-  loadFrequentMaterials, addFrequentMaterial,
-  planTabs, activePlanTab, cardsByTab, typeOptions, categoryOptions, typeLabel, categoryLabel,
-  allProcesses, loadAllProcesses, genUid, makeCard, savePlan,
-  cardPickerVisible, cardPickerTarget, cardPickerIds, openCardPicker, onCardPickerConfirm,
-  enrichProcess, indexDialogVisible, indexDialogValue, indexDialogName,
-  openIndexDialog, confirmIndexDialog, maybePromptIndex, onUpdateIndex,
-  parseDragData, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, clearDragOver,
-  removeCardItem, removePlanCard, advancePlan, saveCard,
-  addMaterialRow, startEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange, loadMoreMaterials,
-  onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate, onMaterialCreated,
-  parseMaterials, doneCount, summary, loadSummary,
-  roundList, activeRound, isCurrentRound, activeRoundData, activeRoundProcesses, activeRoundBom,
-  activeRoundPrintList, printParamsOf,
-  loadRounds, bomList, engUploadRef, engFileList, goBack,
-  loadDetail, formatTime, handleAccept, handleReject, saveNote,
-  handleTransfer, transferDialogVisible, onTransferSuccess,
-  engBeforeUpload, engUploadFile, engRemoveFile, loadEngFiles, handleMarkReady,
-  loadPlan, loadBom, refreshCard,
+  card,
+  orderId,
+  saving,
+  savingPlan,
+  form,
+  planList,
+  majorCategory,
+  printList,
+  makePrintRow,
+  addPrintRow,
+  removePrintRow,
+  movePrintRow,
+  advancePrint,
+  frequentMaterials,
+  saveStateText,
+  markDirty,
+  batchMode,
+  batchSelected,
+  batchCategory,
+  toggleBatchMode,
+  toggleBatchSelect,
+  toggleBatchSelectAll,
+  batchSelectedCards,
+  applyBatchCategory,
+  batchDelete,
+  batchMaterialVisible,
+  batchMaterialId,
+  batchMaterialOptions,
+  batchMaterialLoading,
+  openBatchMaterial,
+  searchBatchMaterial,
+  confirmBatchMaterial,
+  historyCopyVisible,
+  historyOrders,
+  historyLoading,
+  historySelected,
+  historyCopying,
+  openHistoryCopy,
+  confirmHistoryCopy,
+  loadFrequentMaterials,
+  addFrequentMaterial,
+  planTabs,
+  activePlanTab,
+  cardsByTab,
+  typeOptions,
+  categoryOptions,
+  typeLabel,
+  categoryLabel,
+  allProcesses,
+  loadAllProcesses,
+  genUid,
+  makeCard,
+  savePlan,
+  cardPickerVisible,
+  cardPickerTarget,
+  cardPickerIds,
+  openCardPicker,
+  onCardPickerConfirm,
+  enrichProcess,
+  indexDialogVisible,
+  indexDialogValue,
+  indexDialogName,
+  openIndexDialog,
+  confirmIndexDialog,
+  maybePromptIndex,
+  onUpdateIndex,
+  parseDragData,
+  onPlanDrop,
+  onCardDrop,
+  onCardDragOver,
+  onCardDragLeave,
+  clearDragOver,
+  removeCardItem,
+  removePlanCard,
+  advancePlan,
+  saveCard,
+  addMaterialRow,
+  startEdit,
+  searchMaterials,
+  debouncedSearchMaterials,
+  onSelectVisibleChange,
+  loadMoreMaterials,
+  onMaterialSelected,
+  materialCreateVisible,
+  materialPreset,
+  openMaterialCreate,
+  onMaterialCreated,
+  parseMaterials,
+  doneCount,
+  summary,
+  loadSummary,
+  roundList,
+  activeRound,
+  isCurrentRound,
+  activeRoundData,
+  activeRoundProcesses,
+  activeRoundBom,
+  activeRoundPrintList,
+  printParamsOf,
+  loadRounds,
+  bomList,
+  engUploadRef,
+  engFileList,
+  goBack,
+  loadDetail,
+  formatTime,
+  handleAccept,
+  handleReject,
+  saveNote,
+  handleTransfer,
+  transferDialogVisible,
+  onTransferSuccess,
+  engBeforeUpload,
+  engUploadFile,
+  engRemoveFile,
+  loadEngFiles,
+  handleMarkReady,
+  loadPlan,
+  loadBom,
+  refreshCard,
 } = useSampleWorkbench()
 
 // 来源单据查看（工作台第一步：复用询价/报价详情共享组件，弹窗查看不离开工作台）
@@ -573,7 +775,9 @@ loadDetail()
   padding: 12px 14px;
   margin-bottom: 12px;
   box-shadow: 0 1px 4px rgba(31, 45, 61, 0.05);
-  transition: box-shadow 0.2s, border-color 0.2s;
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
 }
 .plan-card.drag-over {
   border-color: #409eff;

@@ -1,11 +1,15 @@
 <template>
   <el-card class="wb-card" shadow="never">
     <template #header>
-      <span style="font-weight:600">样品单信息</span>
+      <span style="font-weight: 600">样品单信息</span>
       <span class="desc">Round {{ card.sampleRound || 1 }} · {{ card.orderNo || '' }}</span>
-      <span style="float:right">
-        <el-button size="small" icon="CopyDocument" @click="$emit('historyCopy')">📋 从历史打样复制</el-button>
-        <el-button link type="primary" style="margin-left:8px" @click="$emit('back')">← 返回打样平台</el-button>
+      <span style="float: right">
+        <el-button size="small" icon="CopyDocument" @click="$emit('historyCopy')"
+          >📋 从历史打样复制</el-button
+        >
+        <el-button link type="primary" style="margin-left: 8px" @click="$emit('back')"
+          >← 返回打样平台</el-button
+        >
       </span>
     </template>
     <el-descriptions :column="3" border size="small">
@@ -16,7 +20,9 @@
       <el-descriptions-item label="状态">
         <el-tag size="small" type="warning">工程打样中</el-tag>
       </el-descriptions-item>
-      <el-descriptions-item label="接单人">{{ card.engineeringAcceptor || '-' }}</el-descriptions-item>
+      <el-descriptions-item label="接单人">{{
+        card.engineeringAcceptor || '-'
+      }}</el-descriptions-item>
     </el-descriptions>
     <div class="summary-inline">
       <div class="summary-item">
@@ -33,13 +39,13 @@
       </div>
       <div class="summary-tip">工时=已完成工序耗时之和；材料成本=材料用量×标准单价</div>
     </div>
-    <div v-if="!card.engineeringAcceptor" class="accept-row">
+    <!-- <div v-if="!card.engineeringAcceptor" class="accept-row">
       <el-button type="primary" @click="$emit('accept')" :loading="saving">✅ 工程接单</el-button>
       <el-button type="danger" plain style="margin-left:8px" @click="$emit('reject')">✋ 工程拒单</el-button>
-    </div>
-    <div v-else class="accept-row">
-      <el-tag type="success">已接单：{{ card.engineeringAcceptor }}</el-tag>
-      <span style="margin-left:12px;color:#909399;font-size:12px">接单后开始记录打样过程</span>
+    </div> -->
+    <div class="accept-row">
+      <el-tag type="success">接单人员：{{ card.engineeringAcceptor || '-' }}</el-tag>
+      <span style="margin-left: 12px; color: #909399; font-size: 12px">接单后开始记录打样过程</span>
     </div>
 
     <!-- 来源单据（工作台第一步优化：询价单/报价单展示 + 查看入口，弹窗查看不离开工作台） -->
@@ -50,7 +56,9 @@
           <span class="source-docs-key">询价单</span>
           <template v-if="card.inquiryNo">
             {{ card.inquiryNo }}
-            <el-button link type="primary" size="small" @click="$emit('viewInquiry')">查看</el-button>
+            <el-button link type="primary" size="small" @click="$emit('viewInquiry')"
+              >查看</el-button
+            >
           </template>
           <span v-else>-</span>
         </span>
@@ -58,7 +66,9 @@
           <span class="source-docs-key">报价单</span>
           <template v-if="card.quotationNo">
             {{ card.quotationNo }}
-            <el-button link type="primary" size="small" @click="$emit('viewQuotation')">查看</el-button>
+            <el-button link type="primary" size="small" @click="$emit('viewQuotation')"
+              >查看</el-button
+            >
           </template>
           <span v-else>-</span>
         </span>
@@ -69,7 +79,7 @@
     <div class="eng-files">
       <div class="eng-files-label">📐 图纸 / 工艺文件</div>
       <el-upload
-:http-request="onUpload"
+        :http-request="onUpload"
         :on-remove="onRemove"
         :file-list="engFileList"
         :before-upload="beforeUpload"
@@ -78,17 +88,27 @@
       >
         <el-button type="primary" size="small">📤 上传图纸/文件</el-button>
       </el-upload>
-      <div v-if="engFileList.length > 0" style="margin-top:8px">
+      <div v-if="engFileList.length > 0" style="margin-top: 8px">
         <div
           v-for="f in engFileList"
           :key="f.uid || f.name"
-          style="padding:4px 0;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f0f0"
+          style="
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #f0f0f0;
+          "
         >
-          <el-link v-if="f.url" :href="f.url" target="_blank" type="primary" underline="never">📎 {{ f.name }}</el-link>
+          <el-link v-if="f.url" :href="f.url" target="_blank" type="primary" underline="never"
+            >📎 {{ f.name }}</el-link
+          >
           <span v-else>{{ f.name }} <el-tag size="small" type="warning">待上传</el-tag></span>
         </div>
       </div>
-      <div v-else style="color:#999;font-size:12px;margin-top:6px">菲林图 / 丝印图 / 模切图 / 规格书（≤10MB）</div>
+      <div v-else style="color: #999; font-size: 12px; margin-top: 6px">
+        菲林图 / 丝印图 / 模切图 / 规格书（≤10MB）
+      </div>
     </div>
   </el-card>
 </template>
@@ -112,7 +132,7 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'historyCopy'): void
   (e: 'back'): void
-  (e: 'accept'): void
+  // (e: 'accept'): void
   (e: 'reject'): void
   (e: 'upload', options: any): void
   (e: 'remove', file: any): void

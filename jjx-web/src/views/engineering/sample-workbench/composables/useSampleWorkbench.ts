@@ -40,10 +40,14 @@ export function useSampleWorkbench() {
   // 保存状态：synced 已同步 / dirty 未同步 / saving 保存中 / error 失败
   function saveStateText(pc: any): string {
     switch (pc.saveState) {
-      case 'dirty': return '⏳ 未同步'
-      case 'saving': return '🔄 保存中'
-      case 'error': return '❌ 保存失败'
-      default: return '✅ 已同步'
+      case 'dirty':
+        return '⏳ 未同步'
+      case 'saving':
+        return '🔄 保存中'
+      case 'error':
+        return '❌ 保存失败'
+      default:
+        return '✅ 已同步'
     }
   }
 
@@ -70,7 +74,8 @@ export function useSampleWorkbench() {
   /** 全选当前 tab 下所有卡片（dev-20260811-008） */
   function toggleBatchSelectAll() {
     const tabCards = cardsByTab(activePlanTab.value)
-    const allSelected = tabCards.length > 0 && tabCards.every((pc: any) => batchSelected.value.has(pc.uid))
+    const allSelected =
+      tabCards.length > 0 && tabCards.every((pc: any) => batchSelected.value.has(pc.uid))
     const s = new Set(batchSelected.value)
     if (allSelected) {
       tabCards.forEach((pc: any) => s.delete(pc.uid))
@@ -97,11 +102,15 @@ export function useSampleWorkbench() {
     const n = batchSelected.value.size
     if (!n) return
     ElMessageBox.confirm(`确定删除选中的 ${n} 张卡片？`, '批量删除', {
-      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
-    }).then(() => {
-      planList.value = planList.value.filter((pc) => !batchSelected.value.has(pc.uid))
-      batchSelected.value = new Set()
-    }).catch(() => {})
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+      .then(() => {
+        planList.value = planList.value.filter((pc) => !batchSelected.value.has(pc.uid))
+        batchSelected.value = new Set()
+      })
+      .catch(() => {})
   }
   // 批量添加材料
   const batchMaterialVisible = ref(false)
@@ -134,16 +143,29 @@ export function useSampleWorkbench() {
     batchSelectedCards().forEach((pc) => {
       const mats = parseMaterials(pc.materials) || []
       mats.push({
-        name: mat.materialName, spec: mat.specification || '', qty: 1,
-        unit: mat.unit || 'PCS', materialId: mat.materialId, materialCode: mat.materialCode || '',
+        name: mat.materialName,
+        spec: mat.specification || '',
+        qty: 1,
+        unit: mat.unit || 'PCS',
+        materialId: mat.materialId,
+        materialCode: mat.materialCode || '',
       })
       pc.materials = JSON.stringify(mats)
       // 编辑态同步到 materialRows
       if (pc.editing) {
         pc.materialRows.push({
-          name: mat.materialName, spec: mat.specification || '', qty: 1, unit: mat.unit || 'PCS',
-          materialId: mat.materialId, materialCode: mat.materialCode || '',
-          options: [], loading: false, uid: genUid(), pageNum: 1, total: 0, lastQuery: '',
+          name: mat.materialName,
+          spec: mat.specification || '',
+          qty: 1,
+          unit: mat.unit || 'PCS',
+          materialId: mat.materialId,
+          materialCode: mat.materialCode || '',
+          options: [],
+          loading: false,
+          uid: genUid(),
+          pageNum: 1,
+          total: 0,
+          lastQuery: '',
         })
       }
       markDirty(pc)
@@ -180,7 +202,9 @@ export function useSampleWorkbench() {
     try {
       const res = await sampleOrderApi.listProcesses(src.orderId)
       const list: any[] = (res.data || []).sort(
-        (a: any, b: any) => (a.processOrder || 999) - (b.processOrder || 999) || (a.processId || 0) - (b.processId || 0)
+        (a: any, b: any) =>
+          (a.processOrder || 999) - (b.processOrder || 999) ||
+          (a.processId || 0) - (b.processId || 0)
       )
       if (!list.length) {
         ElMessage.warning('该样品单没有工序计划')
@@ -201,7 +225,14 @@ export function useSampleWorkbench() {
         const first = rows[0]
         const enriched = rows.map((r: any) => {
           const src2 = allProcesses.value.find((x) => x.processId === r.stdProcessId)
-          return src2 ? { ...r, processType: src2.processType, processCategory: src2.processCategory, icon: src2.icon } : r
+          return src2
+            ? {
+                ...r,
+                processType: src2.processType,
+                processCategory: src2.processCategory,
+                icon: src2.icon,
+              }
+            : r
         })
         const pc = makeCard(enriched, {
           processOrder: 0, // 追加，保存时重新编号
@@ -257,9 +288,13 @@ export function useSampleWorkbench() {
               else freq.set(key, { name: m.name, spec: m.spec, materialId: m.materialId, count: 1 })
             }
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
-      frequentMaterials.value = Array.from(freq.values()).sort((a, b) => b.count - a.count).slice(0, 10)
+      frequentMaterials.value = Array.from(freq.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10)
     } catch {
       frequentMaterials.value = []
     }
@@ -274,19 +309,34 @@ export function useSampleWorkbench() {
     }
     const mats = parseMaterials(target.materials) || []
     mats.push({
-      name: fm.name, spec: fm.spec || '', qty: 1, unit: 'PCS',
-      materialId: fm.materialId, materialCode: '',
+      name: fm.name,
+      spec: fm.spec || '',
+      qty: 1,
+      unit: 'PCS',
+      materialId: fm.materialId,
+      materialCode: '',
     })
     target.materials = JSON.stringify(mats)
     if (target.editing) {
       target.materialRows.push({
-        name: fm.name, spec: fm.spec || '', qty: 1, unit: 'PCS',
-        materialId: fm.materialId, materialCode: '',
-        options: [], loading: false, uid: genUid(), pageNum: 1, total: 0, lastQuery: '',
+        name: fm.name,
+        spec: fm.spec || '',
+        qty: 1,
+        unit: 'PCS',
+        materialId: fm.materialId,
+        materialCode: '',
+        options: [],
+        loading: false,
+        uid: genUid(),
+        pageNum: 1,
+        total: 0,
+        lastQuery: '',
       })
     }
     markDirty(target)
-    ElMessage.success(`已添加 ${fm.name} 到「${target.items.map((i: any) => i.processName).join('+') || '未命名'}」`)
+    ElMessage.success(
+      `已添加 ${fm.name} 到「${target.items.map((i: any) => i.processName).join('+') || '未命名'}」`
+    )
   }
 
   // 计划标签：面板/上线/下线/未分类（卡片属于哪个标签 = 它的项目结构）
@@ -316,7 +366,13 @@ export function useSampleWorkbench() {
   async function loadAllProcesses() {
     try {
       const res = await request.get('/engineering/standard-processes/page', {
-        params: { pageNum: 1, pageSize: 100, isEnabled: 1, orderByColumn: 'displayOrder', isAsc: 'asc' },
+        params: {
+          pageNum: 1,
+          pageSize: 100,
+          isEnabled: 1,
+          orderByColumn: 'displayOrder',
+          isAsc: 'asc',
+        },
       })
       allProcesses.value = res.data?.records || []
     } catch {
@@ -368,8 +424,13 @@ export function useSampleWorkbench() {
     let params: any = {}
     if (src.customProcessParams) {
       try {
-        params = typeof src.customProcessParams === 'string' ? JSON.parse(src.customProcessParams) : src.customProcessParams
-      } catch { params = {} }
+        params =
+          typeof src.customProcessParams === 'string'
+            ? JSON.parse(src.customProcessParams)
+            : src.customProcessParams
+      } catch {
+        params = {}
+      }
     }
     return {
       uid: src.processId ? `dbp-${src.processId}` : `new-${genUid()}`,
@@ -484,7 +545,9 @@ export function useSampleWorkbench() {
       })
       await sampleOrderApi.saveProcessPlan(orderId.value, { items })
       planList.value.forEach((pc) => (pc.saveState = 'synced'))
-      ElMessage.success(`工序计划已保存（${planList.value.length + validPrints.length}道，含印刷${validPrints.length}）`)
+      ElMessage.success(
+        `工序计划已保存（${planList.value.length + validPrints.length}道，含印刷${validPrints.length}）`
+      )
       await loadPlan()
       await loadBom()
       await refreshCard()
@@ -593,7 +656,9 @@ export function useSampleWorkbench() {
     if (!data) return
     const enriched = enrichProcess(data)
     // 在哪个标签拖入，卡片就属于哪个项目结构（未分类标签=不设结构）
-    const pc = makeCard([enriched], { category: activePlanTab.value === '' ? undefined : activePlanTab.value })
+    const pc = makeCard([enriched], {
+      category: activePlanTab.value === '' ? undefined : activePlanTab.value,
+    })
     planList.value.push(pc)
     startEdit(pc)
     markDirty(pc)
@@ -704,10 +769,18 @@ export function useSampleWorkbench() {
   // 材料行
   function addMaterialRow(pc: any) {
     pc.materialRows.push({
-      name: '', spec: '', qty: 1, unit: 'PCS',
-      materialId: undefined as number | undefined, materialCode: '',
-      options: [], loading: false, uid: genUid(),
-      pageNum: 1, total: 0, lastQuery: '',
+      name: '',
+      spec: '',
+      qty: 1,
+      unit: 'PCS',
+      materialId: undefined as number | undefined,
+      materialCode: '',
+      options: [],
+      loading: false,
+      uid: genUid(),
+      pageNum: 1,
+      total: 0,
+      lastQuery: '',
     })
   }
 
@@ -722,15 +795,20 @@ export function useSampleWorkbench() {
         unit: m.unit || 'PCS',
         materialId: m.materialId,
         materialCode: m.materialCode || '',
-        options: [], loading: false, uid: genUid(),
-        pageNum: 1, total: 0, lastQuery: '',
+        options: [],
+        loading: false,
+        uid: genUid(),
+        pageNum: 1,
+        total: 0,
+        lastQuery: '',
       }))
       if (!pc.materialRows.length) addMaterialRow(pc)
     }
   }
 
   // 远程搜索物料档案（分页）
-  async function searchMaterials(query: string, m: any, pageNum = 1, append = false) {    m.loading = true
+  async function searchMaterials(query: string, m: any, pageNum = 1, append = false) {
+    m.loading = true
     m.lastQuery = (query || '').trim()
     try {
       const params: any = { pageNum, pageSize: 20 }
@@ -779,7 +857,9 @@ export function useSampleWorkbench() {
       searchMaterials(m.lastQuery || '', m, 1, false)
     }
     nextTick(() => {
-      const wrap = document.querySelector(`.material-popper-${m.uid} .el-select-dropdown__wrap`) as HTMLElement | null
+      const wrap = document.querySelector(
+        `.material-popper-${m.uid} .el-select-dropdown__wrap`
+      ) as HTMLElement | null
       if (!wrap) return
       wrap.onscroll = () => {
         if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 30) {
@@ -811,7 +891,11 @@ export function useSampleWorkbench() {
   const materialTarget = ref<any>(null)
   function openMaterialCreate(pc: any, m: any) {
     materialTarget.value = { card: pc, row: m }
-    materialPreset.value = { materialName: m?.name || '', specification: m?.spec || '', unit: m?.unit || 'PCS' }
+    materialPreset.value = {
+      materialName: m?.name || '',
+      specification: m?.spec || '',
+      unit: m?.unit || 'PCS',
+    }
     materialCreateVisible.value = true
   }
 
@@ -833,8 +917,12 @@ export function useSampleWorkbench() {
         unit: mat.unit || 'PCS',
         materialId: mat.materialId,
         materialCode: mat.materialCode || '',
-        options: [mat], loading: false, uid: genUid(),
-        pageNum: 1, total: 0, lastQuery: '',
+        options: [mat],
+        loading: false,
+        uid: genUid(),
+        pageNum: 1,
+        total: 0,
+        lastQuery: '',
       })
     }
   }
@@ -866,8 +954,12 @@ export function useSampleWorkbench() {
   // ===== 轮次展示（DEV-500）=====
   const roundList = ref<any[]>([])
   const activeRound = ref('')
-  const isCurrentRound = computed(() => Number(activeRound.value) === (card.value?.sampleRound || 1))
-  const activeRoundData = computed(() => roundList.value.find((r) => String(r.roundNo) === activeRound.value) || null)
+  const isCurrentRound = computed(
+    () => Number(activeRound.value) === (card.value?.sampleRound || 1)
+  )
+  const activeRoundData = computed(
+    () => roundList.value.find((r) => String(r.roundNo) === activeRound.value) || null
+  )
   const activeRoundProcesses = computed(() => {
     const d = activeRoundData.value
     if (!d?.processSnapshot) return []
@@ -896,7 +988,10 @@ export function useSampleWorkbench() {
   function printParamsOf(row: any): Record<string, string> {
     if (!row?.customProcessParams) return {}
     try {
-      const obj = typeof row.customProcessParams === 'string' ? JSON.parse(row.customProcessParams) : row.customProcessParams
+      const obj =
+        typeof row.customProcessParams === 'string'
+          ? JSON.parse(row.customProcessParams)
+          : row.customProcessParams
       const out: Record<string, string> = {}
       if (obj.printName) out['印刷名称'] = obj.printName
       if (obj.colorNo) out['色号'] = obj.colorNo
@@ -936,9 +1031,15 @@ export function useSampleWorkbench() {
     const dirty = planList.value.some((pc) => pc.saveState === 'dirty' || pc.saveState === 'error')
     if (!dirty) return true
     try {
-      await ElMessageBox.confirm('有卡片尚未同步保存，确定离开吗？未保存的修改将丢失。', '未保存修改', {
-        confirmButtonText: '仍要离开', cancelButtonText: '留下继续编辑', type: 'warning',
-      })
+      await ElMessageBox.confirm(
+        '有卡片尚未同步保存，确定离开吗？未保存的修改将丢失。',
+        '未保存修改',
+        {
+          confirmButtonText: '仍要离开',
+          cancelButtonText: '留下继续编辑',
+          type: 'warning',
+        }
+      )
       return true
     } catch {
       return false
@@ -951,7 +1052,15 @@ export function useSampleWorkbench() {
       const res = await sampleOrderApi.getInfo(orderId.value)
       card.value = res.data || {}
       form.note = card.value.engineeringNote || ''
-      await Promise.all([loadRounds(), loadPlan(), loadBom(), loadEngFiles(), loadSummary(), loadAllProcesses(), loadFrequentMaterials()])
+      await Promise.all([
+        loadRounds(),
+        loadPlan(),
+        loadBom(),
+        loadEngFiles(),
+        loadSummary(),
+        loadAllProcesses(),
+        loadFrequentMaterials(),
+      ])
     } catch (e: any) {
       ElMessage.error(e?.message || '加载样品单失败')
     }
@@ -963,10 +1072,14 @@ export function useSampleWorkbench() {
   }
 
   // 接单
-  async function handleAccept() {
+  async function handleAccept(orderId: any) {
     if (!orderId.value) return
     try {
-      await ElMessageBox.confirm('确认接单开始打样？', '工程接单', { confirmButtonText: '确认接单', cancelButtonText: '取消', type: 'info' })
+      await ElMessageBox.confirm('确认接单开始打样？', '工程接单', {
+        confirmButtonText: '确认接单',
+        cancelButtonText: '取消',
+        type: 'info',
+      })
       const userStore = useUserStore()
       const name = userStore.nickName || '工程'
       await sampleOrderApi.acceptEngineering(orderId.value, name)
@@ -982,7 +1095,9 @@ export function useSampleWorkbench() {
     if (!orderId.value) return
     try {
       const { value } = await ElMessageBox.prompt('请填写拒单原因', '工程拒单', {
-        confirmButtonText: '确认拒单', cancelButtonText: '取消', type: 'warning',
+        confirmButtonText: '确认拒单',
+        cancelButtonText: '取消',
+        type: 'warning',
         inputPlaceholder: '拒单原因（必填）',
         inputValidator: (v: string) => (v && v.trim() ? true : '拒单原因不能为空'),
       })
@@ -1055,16 +1170,21 @@ export function useSampleWorkbench() {
     if (file.id) {
       try {
         await request.delete(`/system/attachment/${file.id}`)
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-    engFileList.value = engFileList.value.filter(f => f.uid !== file.uid)
+    engFileList.value = engFileList.value.filter((f) => f.uid !== file.uid)
   }
   async function loadEngFiles() {
     if (!orderId.value) return
     try {
       const res = await request.get(`/system/attachment/list?bizType=sample&bizId=${orderId.value}`)
       engFileList.value = (res.data || []).map((a: any) => ({
-        uid: a.id, name: a.fileName, url: a.filePath, id: a.id,
+        uid: a.id,
+        name: a.fileName,
+        url: a.filePath,
+        id: a.id,
       }))
     } catch {
       engFileList.value = []
@@ -1076,7 +1196,9 @@ export function useSampleWorkbench() {
     if (!orderId.value) return
     try {
       await ElMessageBox.confirm('确认样品制作完成？将进入待送样状态', '标记完成', {
-        confirmButtonText: '确认', cancelButtonText: '取消', type: 'success',
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        type: 'success',
       })
       await sampleOrderApi.markReady(orderId.value)
       ElMessage.success('已标记完成，待送样')
@@ -1090,9 +1212,16 @@ export function useSampleWorkbench() {
   async function loadPlan() {
     if (!orderId.value) return
     try {
-      const res = await sampleOrderApi.listProcesses(orderId.value, card.value?.sampleRound || undefined)
+      const res = await sampleOrderApi.listProcesses(
+        orderId.value,
+        card.value?.sampleRound || undefined
+      )
       const list: any[] = res.data || []
-      list.sort((a, b) => (a.processOrder || 999) - (b.processOrder || 999) || (a.processId || 0) - (b.processId || 0))
+      list.sort(
+        (a, b) =>
+          (a.processOrder || 999) - (b.processOrder || 999) ||
+          (a.processId || 0) - (b.processId || 0)
+      )
       // 一级大类拆分（dev-20260811-009）：PRINT → printList（表格），其余 → planList（卡片）
       const printRows = list.filter((p) => p.majorCategory === 'PRINT')
       const assemblyRows = list.filter((p) => p.majorCategory !== 'PRINT')
@@ -1108,7 +1237,15 @@ export function useSampleWorkbench() {
         const first = rows[0]
         const enriched = rows.map((r: any) => {
           const src = allProcesses.value.find((x) => x.processId === r.stdProcessId)
-          return src ? { ...r, processType: src.processType, processCategory: src.processCategory, icon: src.icon, hasIndex: src.hasIndex ?? 0 } : { ...r, hasIndex: r.hasIndex ?? 0 }
+          return src
+            ? {
+                ...r,
+                processType: src.processType,
+                processCategory: src.processCategory,
+                icon: src.icon,
+                hasIndex: src.hasIndex ?? 0,
+              }
+            : { ...r, hasIndex: r.hasIndex ?? 0 }
         })
         return makeCard(enriched, {
           uid: `db-${order}`,
@@ -1123,7 +1260,6 @@ export function useSampleWorkbench() {
           operator: first.operator || '',
         })
       })
-
     } catch {
       planList.value = []
     }
@@ -1140,12 +1276,22 @@ export function useSampleWorkbench() {
         try {
           const mats = JSON.parse(p.materials)
           for (const m of mats) {
-            agg.push({ process: p.processName, name: m.name, spec: m.spec, qty: m.qty, unit: m.unit })
+            agg.push({
+              process: p.processName,
+              name: m.name,
+              spec: m.spec,
+              qty: m.qty,
+              unit: m.unit,
+            })
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       bomList.value = agg
-    } catch { bomList.value = [] }
+    } catch {
+      bomList.value = []
+    }
   }
 
   async function refreshCard() {
@@ -1153,16 +1299,23 @@ export function useSampleWorkbench() {
     try {
       const res = await sampleOrderApi.getInfo(orderId.value)
       card.value = res.data
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // 卡片内容修改自动标记未同步（材料行/描述/作业项目等 v-model 直接绑定）
   // 用 deep watch 检测：editing 中的卡片内容变化 → dirty
   watch(
-    () => planList.value.map((pc: any) => JSON.stringify({
-      items: pc.items, materials: pc.editing ? pc.materialRows : pc.materials,
-      processNote: pc.processNote, category: pc.category,
-    })),
+    () =>
+      planList.value.map((pc: any) =>
+        JSON.stringify({
+          items: pc.items,
+          materials: pc.editing ? pc.materialRows : pc.materials,
+          processNote: pc.processNote,
+          category: pc.category,
+        })
+      ),
     () => {
       planList.value.forEach((pc: any) => {
         if (pc.editing && pc.saveState === 'synced') markDirty(pc)
@@ -1172,32 +1325,125 @@ export function useSampleWorkbench() {
   )
 
   return {
-    card, orderId, saving, savingPlan, form, planList, majorCategory, printList,
-    makePrintRow, addPrintRow, removePrintRow, movePrintRow, advancePrint,
-    frequentMaterials, saveStateText, markDirty,
-    batchMode, batchSelected, batchCategory, toggleBatchMode, toggleBatchSelect,
-    toggleBatchSelectAll, batchSelectedCards, applyBatchCategory, batchDelete,
-    batchMaterialVisible, batchMaterialId, batchMaterialOptions, batchMaterialLoading,
-    openBatchMaterial, searchBatchMaterial, confirmBatchMaterial,
-    historyCopyVisible, historyOrders, historyLoading, historySelected, historyCopying,
-    openHistoryCopy, confirmHistoryCopy,
-    loadFrequentMaterials, addFrequentMaterial,
-    planTabs, activePlanTab, cardsByTab, typeOptions, categoryOptions, typeLabel, categoryLabel,
-    allProcesses, loadAllProcesses, genUid, makeCard, savePlan,
-    cardPickerVisible, cardPickerTarget, cardPickerIds, openCardPicker, onCardPickerConfirm,
-    enrichProcess, indexDialogVisible, indexDialogValue, indexDialogName,
-    openIndexDialog, confirmIndexDialog, maybePromptIndex, onUpdateIndex,
-    parseDragData, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, clearDragOver,
-    removeCardItem, removePlanCard, advancePlan, saveCard,
-    addMaterialRow, startEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange, loadMoreMaterials,
-    onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate, onMaterialCreated,
-    parseMaterials, doneCount, summary, loadSummary,
-    roundList, activeRound, isCurrentRound, activeRoundData, activeRoundProcesses, activeRoundBom,
-    activeRoundPrintList, printParamsOf,
-    loadRounds, bomList, engUploadRef, engFileList, goBack,
-    loadDetail, formatTime, handleAccept, handleReject, saveNote,
-    handleTransfer, transferDialogVisible, onTransferSuccess,
-    engBeforeUpload, engUploadFile, engRemoveFile, loadEngFiles, handleMarkReady,
-    loadPlan, loadBom, refreshCard,
+    card,
+    orderId,
+    saving,
+    savingPlan,
+    form,
+    planList,
+    majorCategory,
+    printList,
+    makePrintRow,
+    addPrintRow,
+    removePrintRow,
+    movePrintRow,
+    advancePrint,
+    frequentMaterials,
+    saveStateText,
+    markDirty,
+    batchMode,
+    batchSelected,
+    batchCategory,
+    toggleBatchMode,
+    toggleBatchSelect,
+    toggleBatchSelectAll,
+    batchSelectedCards,
+    applyBatchCategory,
+    batchDelete,
+    batchMaterialVisible,
+    batchMaterialId,
+    batchMaterialOptions,
+    batchMaterialLoading,
+    openBatchMaterial,
+    searchBatchMaterial,
+    confirmBatchMaterial,
+    historyCopyVisible,
+    historyOrders,
+    historyLoading,
+    historySelected,
+    historyCopying,
+    openHistoryCopy,
+    confirmHistoryCopy,
+    loadFrequentMaterials,
+    addFrequentMaterial,
+    planTabs,
+    activePlanTab,
+    cardsByTab,
+    typeOptions,
+    categoryOptions,
+    typeLabel,
+    categoryLabel,
+    allProcesses,
+    loadAllProcesses,
+    genUid,
+    makeCard,
+    savePlan,
+    cardPickerVisible,
+    cardPickerTarget,
+    cardPickerIds,
+    openCardPicker,
+    onCardPickerConfirm,
+    enrichProcess,
+    indexDialogVisible,
+    indexDialogValue,
+    indexDialogName,
+    openIndexDialog,
+    confirmIndexDialog,
+    maybePromptIndex,
+    onUpdateIndex,
+    parseDragData,
+    onPlanDrop,
+    onCardDrop,
+    onCardDragOver,
+    onCardDragLeave,
+    clearDragOver,
+    removeCardItem,
+    removePlanCard,
+    advancePlan,
+    saveCard,
+    addMaterialRow,
+    startEdit,
+    searchMaterials,
+    debouncedSearchMaterials,
+    onSelectVisibleChange,
+    loadMoreMaterials,
+    onMaterialSelected,
+    materialCreateVisible,
+    materialPreset,
+    openMaterialCreate,
+    onMaterialCreated,
+    parseMaterials,
+    doneCount,
+    summary,
+    loadSummary,
+    roundList,
+    activeRound,
+    isCurrentRound,
+    activeRoundData,
+    activeRoundProcesses,
+    activeRoundBom,
+    activeRoundPrintList,
+    printParamsOf,
+    loadRounds,
+    bomList,
+    engUploadRef,
+    engFileList,
+    goBack,
+    loadDetail,
+    formatTime,
+    handleAccept,
+    handleReject,
+    saveNote,
+    handleTransfer,
+    transferDialogVisible,
+    onTransferSuccess,
+    engBeforeUpload,
+    engUploadFile,
+    engRemoveFile,
+    loadEngFiles,
+    handleMarkReady,
+    loadPlan,
+    loadBom,
+    refreshCard,
   }
 }

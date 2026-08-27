@@ -64,7 +64,7 @@
           </template>
         </el-table-column>
         <el-table-column label="客户" prop="customerName" min-width="130" show-overflow-tooltip />
-        <el-table-column label="轮次" width="70" align="center">
+        <el-table-column label="轮次" width="100" align="center">
           <template #default="scope">Round {{ scope.row.sampleRound || 1 }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110" align="center">
@@ -133,8 +133,25 @@
               <el-tag size="small" type="success">已转量产</el-tag>
             </template>
             <template v-else>
-              <el-button type="primary" link size="small" @click="openWorkbench(scope.row)">
-                {{ scope.row.engineeringAcceptor ? '进入打样' : '接单打样' }}
+              <el-button
+                v-if="scope.row.engineeringAcceptor"
+                type="primary"
+                link
+                size="small"
+                :loading="acceptingOrderId === scope.row.orderId"
+                @click="openWorkbench(scope.row)"
+              >
+                进入打样
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                link
+                size="small"
+                :loading="acceptingOrderId === scope.row.orderId"
+                @click="handleAcceptClick(scope.row)"
+              >
+                接单打样
               </el-button>
             </template>
           </template>
@@ -152,19 +169,29 @@
     />
   </div>
 </template>
+gi
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import request from '@/utils/request'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatus, SampleOrderStatusEnum } from '@/enums/sales'
 import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
-
+import { useSampleWorkbench } from './composables/useSampleWorkbench'
 const router = useRouter()
 
 defineOptions({ name: 'SampleWorkbench' })
+
+// 全部状态与逻辑来自 composable（dev-20260811-008 组件化）
+const {
+  handleAccept,
+  handleReject,
+  // handleTransfer, transferDialogVisible, onTransferSuccess,
+} = useSampleWorkbench()
+
+// 防止重复点击导致重复接单
+const acceptingOrderId = ref<number | null>(null)
 
 function sampleStatusText(status: number | undefined | null): string {
   return status == null ? '未知' : SampleOrderStatusEnum.getLabel(status)
@@ -206,6 +233,26 @@ const lastOperatorMap = ref<Record<number, any>>({})
 function openWorkbench(row: any) {
   // 独立路由页打开（标签页），不在侧边栏显示
   router.push({ path: '/engineering-workbench/workbench', query: { orderId: row.orderId } })
+}
+
+// 点击接单，弹窗确认框，确认接单调用composable的接单接口，成功后打开打样工作台
+function handleAcceptClick(row: any) {
+  if (!row?.orderId || acceptingOrderId.value !== null) return
+  ElMessageBox.confirm('确认接单打样吗？', '提示', { type: 'warning' })
+    .then(async () => {
+      acceptingOrderId.value = row.orderId
+      try {
+        await handleAccept(row.orderId)
+        ElMessage.success('接单成功')
+        await getList()
+        openWorkbench(row)
+      } catch (e: any) {
+        ElMessage.error(e?.message || '接单失败')
+      } finally {
+        acceptingOrderId.value = null
+      }
+    })
+    .catch(() => {})
 }
 
 async function getList() {
