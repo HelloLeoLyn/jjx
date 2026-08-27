@@ -98,7 +98,6 @@ declare module 'vue' {
     MenuEditFormDialog: typeof import('./components/system/MenuEditFormDialog.vue')['default']
     OperationLogPanel: typeof import('./components/BizFlowDetail/OperationLogPanel.vue')['default']
     OperationPreviewDialog: typeof import('./components/OperationPreviewDialog/index.vue')['default']
-    OperationResultDialog: typeof import('./components/OperationResultDialog/index.vue')['default']
     OperatorPicker: typeof import('./components/OperatorPicker/index.vue')['default']
     Pagination: typeof import('./components/Pagination/index.vue')['default']
     PrintDialog: typeof import('./components/PrintDialog/index.vue')['default']

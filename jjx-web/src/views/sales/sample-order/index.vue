@@ -432,8 +432,6 @@
     </el-dialog>
 
     <!-- 工程打样工作台（独立路由页，按钮跳转） -->
-    <!-- 操作结果弹窗 -->
-    <OperationResultDialog v-model:visible="resultVisible" :data="resultData" />
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -442,7 +440,22 @@
       :biz-no="previewBizNo"
       :status-text-map="sampleStatusTextMap"
       @success="onPreviewSuccess"
-    />
+      @error="onPreviewError"
+    >
+      <!-- 业务预览（提交审核：报价转打样申请摘要；其他操作不注入，保持原通用展示） -->
+      <template #preview>
+        <SampleReviewPreview
+          v-if="previewOperation?.key === 'sample.submitReview'"
+          :order="submitPreviewData?.order"
+          :products="submitPreviewData?.products"
+          :loading="submitPreviewLoading"
+          @view-quotation="openQuotationDetail"
+        />
+      </template>
+    </OperationPreviewDialog>
+
+    <!-- 来源报价单详情（复用共享报价详情组件，查看不离开当前页） -->
+    <QuotationDetailDialog v-model="quotationDetailVisible" :quotation-id="quotationDetailId" />
 
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
@@ -473,9 +486,10 @@ import { quotationApi } from '@/api/sales/quotation'
 import { customerApi } from '@/api/sales/customer'
 import { searchProduct } from '@/api/product'
 import { SampleOrderStatusEnum } from '@/enums/sales'
-import OperationResultDialog from '@/components/OperationResultDialog/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
+import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationDetailDialog.vue'
+import SampleReviewPreview from './components/SampleReviewPreview.vue'
 
 defineOptions({ name: 'SalesSampleOrder' })
 
@@ -498,19 +512,15 @@ const createVisible = ref(false)
 const detailVisible = ref(false)
 const detailTab = ref('basic')
 
-// 操作结果弹窗
-const resultVisible = ref(false)
-const resultData = ref<any>(null)
-
-// 弹出操作结果（DEV-481 多视图）
-function showResult(payload: any) {
-  const userStore = useUserStore()
-  resultData.value = {
-    operator: userStore.nickName || 'admin',
-    time: new Date().toLocaleString('zh-CN', { hour12: false }),
-    ...payload,
-  }
-  resultVisible.value = true
+// 提交审核业务预览数据（打开弹窗前用现有 API 加载最新数据）
+const submitPreviewLoading = ref(false)
+const submitPreviewData = ref<{ order: any; products: any[] } | null>(null)
+// 来源报价单详情（复用共享报价详情组件）
+const quotationDetailVisible = ref(false)
+const quotationDetailId = ref<number>()
+function openQuotationDetail() {
+  quotationDetailId.value = submitPreviewData.value?.order?.quotationId
+  quotationDetailVisible.value = true
 }
 
 // 当前用户是否工程角色（9=工程管理）
@@ -1148,7 +1158,6 @@ const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
-const previewRow = ref<any>(null)
 // 状态码 → 状态名（预览器状态跳转展示用）
 const sampleStatusTextMap = Object.fromEntries(
   SampleOrderStatusEnum.items.map((i: any) => [i.value, i.label]),
@@ -1169,44 +1178,17 @@ function openPreview(opKey: string, row: any) {
   previewOperation.value = op
   previewBizId.value = row.orderId
   previewBizNo.value = row.orderNo || ''
-  previewRow.value = row
   previewVisible.value = true
 }
 
-// 预览器执行成功 → 刷新 + 结果展示器
-function onPreviewSuccess(payload?: any) {
-  const row = previewRow.value
-  const op = previewOperation.value
+// 预览器执行成功 → 刷新列表（成功反馈由通用弹窗 ElMessage 承担，不再弹结果大窗）
+function onPreviewSuccess() {
   getList()
-  if (!row || !op?.result) return
-  const r = op.result
-  const values = payload?.values || {}
-  const base: any = {
-    actionName: r.name,
-    docNo: row.orderNo,
-    fromStatus: r.from || statusLabel(row.sampleStatus),
-    toStatus: r.to,
-    docType: r.docType || 'audit',
-    nextSteps: r.nextSteps || [],
-  }
-  if (op.key === 'sample.approve') base.remark = values.remark || ''
-  if (op.key === 'sample.rejectReview') base.remark = values.remark
-  if (op.key === 'sample.markReady') base.sampleQty = Number(values.sampleQty)
-  if (op.key === 'sample.sendSample') {
-    Object.assign(base, {
-      customerName: row.customerName,
-      contactPhone: row.contactPhone,
-      sampleQty: row.sampleQty,
-      express: {
-        trackingNo: values.trackingNo || '-',
-        receiver: row.customerName,
-        qty: row.sampleQty,
-      },
-    })
-  }
-  if (op.key === 'sample.confirm') base.remark = `确认人：${values.clientName || '客户确认'}`
-  if (op.key === 'sample.rejectSample') base.remark = values.reason
-  showResult(base)
+}
+
+// 预览器操作失败 → 刷新列表恢复后端最新状态（如状态冲突）；错误提示已由通用弹窗 ElMessage 承担，不重复提示、不重试、不开结果弹窗
+function onPreviewError() {
+  getList()
 }
 
 // 作废样品单（列表行 + 详情弹窗共用）
@@ -1255,8 +1237,27 @@ async function handleCopySample(row: any) {
   }
 }
 
+// 提交审核：先加载最新业务数据（getInfo + getProducts），成功后才打开弹窗；失败不打开，避免预览空白/旧数据
 async function handleSubmitReview(row: any) {
-  openPreview('sample.submitReview', row)
+  const orderId = row?.orderId
+  if (!orderId) return
+  submitPreviewLoading.value = true
+  submitPreviewData.value = null
+  try {
+    const [infoRes, prodRes]: any[] = await Promise.all([
+      sampleOrderApi.getInfo(orderId),
+      sampleOrderApi.getProducts(orderId),
+    ])
+    submitPreviewData.value = {
+      order: infoRes?.data || null,
+      products: prodRes?.data || [],
+    }
+    openPreview('sample.submitReview', row)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载样品单数据失败，请刷新后重试')
+  } finally {
+    submitPreviewLoading.value = false
+  }
 }
 async function handleApprove(row: any) {
   openPreview('sample.approve', row)

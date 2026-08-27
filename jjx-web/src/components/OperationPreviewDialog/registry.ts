@@ -45,20 +45,6 @@ export interface OperationContext {
   attachmentIds: number[]
 }
 
-/** 操作成功后的结果展示配置（对接 OperationResultDialog） */
-export interface OperationResultSpec {
-  /** 结果卡操作名 */
-  name: string
-  /** 展示用旧状态文本 */
-  from?: string
-  /** 展示用新状态文本 */
-  to?: string
-  /** 单据类型：审核单/快递单/普通 */
-  docType?: 'audit' | 'express' | 'normal'
-  /** 下一步指引 */
-  nextSteps?: string[]
-}
-
 export interface OperationDef {
   /** 操作唯一标识，如 quotation.approve */
   key: string
@@ -78,8 +64,10 @@ export interface OperationDef {
   evidence?: boolean
   /** 触发的系统事件 code（对应 sys_event_config.event_code），用于事件预告 */
   events?: string[]
-  /** 成功后的结果展示配置（可选） */
-  result?: OperationResultSpec
+  /** 自然语言业务影响说明（纯文案，展示时不带任何技术信息；配置后替代技术事件预告区） */
+  impact?: string
+  /** 成功提示文案，默认 `${name}成功` */
+  successText?: string
   /** 确认后执行的真实接口调用 */
   api: (ctx: OperationContext) => Promise<any>
 }
@@ -188,13 +176,8 @@ export const sampleOperations: OperationDef[] = [
     fromStatus: [1],
     toStatus: 2,
     events: ['sample.submitted'],
-    result: {
-      name: '样品单提交审核',
-      from: '样品需求已创建',
-      to: '待审核',
-      docType: 'audit',
-      nextSteps: ['审核员审核样品单', '审核通过后进入工程打样'],
-    },
+    impact: '提交后进入待审核，并通知内部审核人员处理。审核通过后方可进入工程打样。',
+    successText: '已提交审核',
     api: ({ bizId, attachmentIds }) => sampleOrderApi.submitReview(bizId, attachmentIds?.length ? attachmentIds.join(',') : undefined),
   },
   {
@@ -206,13 +189,6 @@ export const sampleOperations: OperationDef[] = [
     fields: [{ key: 'remark', label: '审核备注', type: 'textarea', placeholder: '选填' }],
     evidence: true,
     events: ['sample.approved'],
-    result: {
-      name: '样品单审核通过',
-      from: '待审核',
-      to: '工程打样中',
-      docType: 'audit',
-      nextSteps: ['工程接单', '记录工序进度', '标记样品完成'],
-    },
     api: ({ bizId, values, attachmentIds }) => sampleOrderApi.approve(bizId, values.remark || '', attachmentIds?.length ? attachmentIds.join(',') : undefined),
   },
   {
@@ -224,13 +200,6 @@ export const sampleOperations: OperationDef[] = [
     fields: [{ key: 'remark', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
     evidence: true,
     events: ['sample.rejected'],
-    result: {
-      name: '样品单审核驳回',
-      from: '待审核',
-      to: '创建(可改重提)',
-      docType: 'audit',
-      nextSteps: ['销售修改样品单', '重新提交审核'],
-    },
     api: ({ bizId, values, attachmentIds }) => sampleOrderApi.rejectReview(bizId, values.remark, attachmentIds?.length ? attachmentIds.join(',') : undefined),
   },
   {
@@ -241,13 +210,6 @@ export const sampleOperations: OperationDef[] = [
     toStatus: 4,
     fields: [{ key: 'sampleQty', label: '实际打样数量', type: 'number', required: true, defaultValue: 10 }],
     events: ['sample.ready'],
-    result: {
-      name: '样品制作完成',
-      from: '工程打样中',
-      to: '待送样',
-      docType: 'audit',
-      nextSteps: ['销售登记送样(快递单号)', '客户确认/退回'],
-    },
     api: ({ bizId, values }) => sampleOrderApi.markReady(bizId, Number(values.sampleQty)),
   },
   {
@@ -259,13 +221,6 @@ export const sampleOperations: OperationDef[] = [
     fields: [{ key: 'trackingNo', label: '快递单号', type: 'input', placeholder: '选填' }],
     evidence: true,
     events: ['sample.sent'],
-    result: {
-      name: '样品送样登记',
-      from: '待送样',
-      to: '已送样',
-      docType: 'express',
-      nextSteps: ['等待客户确认样品OK', '客户退回则重新打样'],
-    },
     api: ({ bizId, values }) => sampleOrderApi.sendSample(bizId, values.trackingNo || ''),
   },
   {
@@ -277,13 +232,6 @@ export const sampleOperations: OperationDef[] = [
     fields: [{ key: 'clientName', label: '确认人姓名', type: 'input', placeholder: '客户方确认人姓名' }],
     evidence: true,
     events: ['sample.confirmed'],
-    result: {
-      name: '客户确认样品OK',
-      from: '已送样',
-      to: '已确认',
-      docType: 'audit',
-      nextSteps: ['转量产生成标准订单', '或继续多轮样品'],
-    },
     api: ({ bizId, values }) => sampleOrderApi.confirm(bizId, values.clientName || '客户确认'),
   },
   {
@@ -295,13 +243,6 @@ export const sampleOperations: OperationDef[] = [
     fields: [{ key: 'reason', label: '退回原因', type: 'textarea', required: true, placeholder: '请填写退回原因/修改要求（必填）' }],
     evidence: true,
     events: ['sample.rejected_by_customer'],
-    result: {
-      name: '客户退回样品',
-      from: '已送样',
-      to: '客户退回(工程重打)',
-      docType: 'audit',
-      nextSteps: ['工程重新打样', '重新送样确认'],
-    },
     api: ({ bizId, values }) => sampleOrderApi.rejectSample(bizId, values.reason),
   },
   {
@@ -311,13 +252,6 @@ export const sampleOperations: OperationDef[] = [
     fromStatus: [6],
     toStatus: 7,
     events: ['sample.converted'],
-    result: {
-      name: '样品转量产',
-      from: '已确认',
-      to: '已转量产',
-      docType: 'audit',
-      nextSteps: ['标准订单提交审核', '订单确认后提交生产'],
-    },
     api: ({ bizId }) => sampleOrderApi.convertToProduction(bizId),
   },
   {
@@ -327,13 +261,6 @@ export const sampleOperations: OperationDef[] = [
     fromStatus: [9],
     toStatus: 3,
     events: ['sample.restarted'],
-    result: {
-      name: '样品重新打样',
-      from: '客户退回',
-      to: '工程打样中',
-      docType: 'audit',
-      nextSteps: ['工程接单', '记录工序进度', '标记样品完成'],
-    },
     api: ({ bizId }) => sampleOrderApi.restartEngineering(bizId),
   },
   {
@@ -343,13 +270,6 @@ export const sampleOperations: OperationDef[] = [
     // 接单在工程打样中(3)内进行，状态不变（记录接单人）
     fromStatus: [3],
     events: [],
-    result: {
-      name: '工程接单',
-      from: '工程打样中',
-      to: '打样中（已接单）',
-      docType: 'normal',
-      nextSteps: ['到「工程管理 → 打样平台」录工序/工艺', '材料按物料档案选择', '打样完成后在打样平台标记完成'],
-    },
     api: ({ bizId }) => {
       const u = currentUser()
       return sampleOrderApi.acceptEngineering(bizId, u.name)
@@ -362,13 +282,6 @@ export const sampleOperations: OperationDef[] = [
     // 已确认(6)/已转量产(7)可转移；不改变样品单状态（建档前置动作）
     fromStatus: [6, 7],
     events: ['sample.transferred'],
-    result: {
-      name: '产品资料转移',
-      from: '样品确认',
-      to: '档案已建档（状态不变）',
-      docType: 'normal',
-      nextSteps: ['工程完善产品/BOM/工艺档案', '提交审核', '产品发布后转量产'],
-    },
     api: ({ bizId }) => sampleOrderApi.transfer(bizId),
   },
 ]
@@ -477,13 +390,6 @@ export const purchaseOperations: OperationDef[] = [
     fromStatus: [1],
     toStatus: 3,
     events: ['purchase.submitted'],
-    result: {
-      name: '采购订单提交审核',
-      from: '草稿',
-      to: '待审批',
-      docType: 'audit',
-      nextSteps: ['采购主管审批订单', '审批通过后可收货/付款'],
-    },
     api: ({ bizId }) => purchaseOrderApi.submitOrder(Number(bizId)),
   },
   {
@@ -495,13 +401,6 @@ export const purchaseOperations: OperationDef[] = [
     fields: [{ key: 'approvalComment', label: '审批意见', type: 'textarea', placeholder: '选填，审批意见/说明' }],
     evidence: true,
     events: ['purchase.approved'],
-    result: {
-      name: '采购订单审批通过',
-      from: '待审批',
-      to: '已批准',
-      docType: 'audit',
-      nextSteps: ['按订单收货登记', '按约定安排付款'],
-    },
     api: ({ bizId, values }) => {
       const u = currentUser()
       return purchaseOrderApi.approveOrder({
@@ -522,13 +421,6 @@ export const purchaseOperations: OperationDef[] = [
     fields: [{ key: 'approvalComment', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
     evidence: true,
     events: ['purchase.approved'],
-    result: {
-      name: '采购订单审核驳回',
-      from: '待审批',
-      to: '已拒绝',
-      docType: 'audit',
-      nextSteps: ['采购员修改订单', '重新提交审核'],
-    },
     api: ({ bizId, values }) => {
       const u = currentUser()
       return purchaseOrderApi.approveOrder({
@@ -549,13 +441,6 @@ export const purchaseOperations: OperationDef[] = [
     fields: [{ key: 'reason', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
     evidence: true,
     events: [],
-    result: {
-      name: '采购订单取消',
-      from: '草稿/待审批/已拒绝',
-      to: '已取消',
-      docType: 'normal',
-      nextSteps: ['如需重新采购，复制该订单生成新单'],
-    },
     api: ({ bizId }) => purchaseOrderApi.cancleOrder(Number(bizId)),
   },
 ]
@@ -570,13 +455,6 @@ export const productionOperations: OperationDef[] = [
     fromStatus: [0],
     toStatus: 1,
     events: [],
-    result: {
-      name: '生产工单提交审核',
-      from: '草稿',
-      to: '待审批',
-      docType: 'audit',
-      nextSteps: ['生产主管审批工单', '批准后排程排期'],
-    },
     api: ({ bizId }) =>
       productionOrderApi.submitApproval(String(bizId), {
         approvalStatus: 1,
@@ -591,13 +469,6 @@ export const productionOperations: OperationDef[] = [
     fields: [{ key: 'approvalRemark', label: '审批意见', type: 'textarea', placeholder: '选填，审批意见/说明' }],
     evidence: true,
     events: [],
-    result: {
-      name: '生产工单审批通过',
-      from: '待审批',
-      to: '已批准',
-      docType: 'audit',
-      nextSteps: ['排程/下达计划', '排程后可开始执行'],
-    },
     api: ({ bizId, values }) =>
       productionOrderApi.updateOrderStatus({
         orderId: String(bizId),
@@ -615,13 +486,6 @@ export const productionOperations: OperationDef[] = [
     fields: [{ key: 'approvalRemark', label: '驳回原因', type: 'textarea', required: true, placeholder: '请填写驳回原因（必填）' }],
     evidence: true,
     events: [],
-    result: {
-      name: '生产工单审核驳回',
-      from: '待审批',
-      to: '已驳回',
-      docType: 'audit',
-      nextSteps: ['修改工单信息', '重新提交审核'],
-    },
     api: ({ bizId, values }) =>
       productionOrderApi.updateOrderStatus({
         orderId: String(bizId),
@@ -640,13 +504,6 @@ export const productionOperations: OperationDef[] = [
     fields: [{ key: 'remark', label: '开始备注', type: 'textarea', placeholder: '选填，开工说明' }],
     evidence: true,
     events: ['product.instance.production_started'],
-    result: {
-      name: '生产工单开始执行',
-      from: '已排程',
-      to: '进行中',
-      docType: 'normal',
-      nextSteps: ['按工艺路线逐工序执行', '完成后登记完工数量'],
-    },
     api: ({ bizId, values }) =>
       productionOrderApi.startExecution(String(bizId), {
         remark: values.remark || '',
@@ -675,13 +532,6 @@ export const productionOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['production.completed'],
-    result: {
-      name: '生产工单完工',
-      from: '进行中',
-      to: '已完成',
-      docType: 'normal',
-      nextSteps: ['质检登记', '办理入库/转下工序'],
-    },
     api: ({ bizId, values }) =>
       productionOrderApi.completeExecution(String(bizId), {
         completedQuantity: Number(values.completedQuantity),
@@ -698,13 +548,6 @@ export const productionOperations: OperationDef[] = [
     fields: [{ key: 'remark', label: '取消原因', type: 'textarea', required: true, placeholder: '请填写取消原因（必填）' }],
     evidence: true,
     events: [],
-    result: {
-      name: '生产工单取消',
-      from: '未完成状态',
-      to: '已取消',
-      docType: 'normal',
-      nextSteps: ['如需重新生产，复制该工单新建'],
-    },
     api: ({ bizId, values }) =>
       productionOrderApi.updateOrderStatus({
         orderId: String(bizId),

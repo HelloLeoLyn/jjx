@@ -1,18 +1,17 @@
 <template>
   <el-dialog
-    :title="`操作预览 - ${operation?.name || ''}`"
+    :title="operation?.name || '操作确认'"
     v-model="visible"
     width="640px"
     append-to-body
     destroy-on-close
   >
     <div v-if="operation" class="op-preview">
-      <!-- ① 操作头：单据号 + 状态跳转 -->
+      <!-- ① 操作头：单据号 + 状态跳转（不展示内部动作编码） -->
       <div class="op-header">
         <div class="op-biz">
           <el-icon><Document /></el-icon>
           <span class="op-biz-no">{{ bizNo || '-' }}</span>
-          <el-tag v-if="operation.key" size="small" type="info">{{ operation.key }}</el-tag>
         </div>
         <div v-if="operation.toStatus !== undefined" class="op-status-flow">
           <template v-for="(from, idx) in operation.fromStatus" :key="from">
@@ -23,6 +22,18 @@
           <el-tag :type="statusTagType(operation.toStatus)" effect="dark">{{ statusText(operation.toStatus) }}</el-tag>
         </div>
       </div>
+
+      <!-- ①.5 自然语言业务影响（impact 配置，替代技术事件预告区） -->
+      <el-alert
+        v-if="operation.impact"
+        type="info"
+        :closable="false"
+        show-icon
+        :title="operation.impact"
+      />
+
+      <!-- ①.6 业务预览（由业务页面通过 slot 注入，通用组件不感知业务类型） -->
+      <slot name="preview" />
 
       <!-- ② 操作内容：动态表单 -->
       <div v-if="operation.fields?.length" class="op-section">
@@ -92,8 +103,8 @@
         </el-upload>
       </div>
 
-      <!-- ④ 事件预告：通知谁 / 派什么任务 -->
-      <div v-if="previewEvents.length" class="op-section">
+      <!-- ④ 事件预告：通知谁 / 派什么任务（配置了 impact 自然语言说明时隐藏，避免技术信息） -->
+      <div v-if="!operation?.impact && previewEvents.length" class="op-section">
         <div class="op-section-title">本次操作将触发</div>
         <div class="op-events">
           <div v-for="evt in previewEvents" :key="evt.eventCode" class="op-event-item">
@@ -153,6 +164,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   success: [payload?: { values: Record<string, any>; attachmentIds: number[] }]
+  /** 业务接口实际调用失败时触发（表单校验失败/用户取消/预览数据加载失败均不触发） */
+  error: [error: any]
 }>()
 
 const visible = computed({
@@ -276,11 +289,13 @@ async function confirm() {
       values: { ...formValues.value },
       attachmentIds: [...uploadedIds],
     })
-    ElMessage.success(`${op.name}成功`)
+    ElMessage.success(op.successText || `${op.name}成功`)
     emit('success', { values: { ...formValues.value }, attachmentIds: [...uploadedIds] })
     visible.value = false
   } catch (e: any) {
     ElMessage.error(e?.message || `${op.name}失败`)
+    // 业务接口已实际调用并失败：通知页面刷新列表恢复后端最新状态（如状态冲突）
+    emit('error', e)
   } finally {
     submitting.value = false
   }
