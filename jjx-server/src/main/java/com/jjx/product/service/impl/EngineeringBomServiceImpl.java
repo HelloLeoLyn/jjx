@@ -26,6 +26,7 @@ import com.jjx.product.mapper.EngineeringBomItemMapper;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.IEngineeringBomService;
+import com.jjx.system.service.ReviewFlowService;
 import lombok.NonNull;
 import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.stereotype.Service;
@@ -46,17 +47,20 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private final EngineeringBomConverter bomConverter;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
+    private final ReviewFlowService reviewFlowService;
     public EngineeringBomServiceImpl(EngineeringBomMapper productBomMapper,
                                  EngineeringBomItemMapper productBomItemMapper,
                                  ProductMapper productMapper, EngineeringBomConverter bomConverter,
                                  com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper,
-                                 com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper) {
+                                 com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper,
+                                 ReviewFlowService reviewFlowService) {
         this.productBomMapper = productBomMapper;
         this.productBomItemMapper = productBomItemMapper;
         this.productMapper = productMapper;
         this.bomConverter = bomConverter;
         this.productionOrderMapper = productionOrderMapper;
         this.inventoryMaterialMapper = inventoryMaterialMapper;
+        this.reviewFlowService = reviewFlowService;
     }
 
     @Override
@@ -446,6 +450,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
     @Event("bom.submitted")
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean submitApprove(Long bomId) {
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) throw new BusinessException("BOM不存在");
@@ -465,16 +470,27 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         dto.setBomId(bomId);
         dto.setCurrent(current);
         dto.setTarget(ProductEnums.BomStatus.REVIEWING.getValue());
-        return updateStatus(dto);
+        boolean updated = updateStatus(dto);
+        if (updated) {
+            reviewFlowService.record("engineering_bom", bomId, "SUBMIT", "提交审核",
+                    current, dto.getTarget(), null, null);
+        }
+        return updated;
     }
 
     @Event("bom.approved")
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean approve(UpdateBomStatusDTO dto) {
         EngineeringBom productBom = productBomMapper.selectById(dto.getBomId());
         dto.setCurrent(ProductEnums.BomStatus.REVIEWING.getValue());
         dto.setTarget(ProductEnums.BomStatus.APPROVED.getValue());
-        return updateStatus(dto);
+        boolean updated = updateStatus(dto);
+        if (updated) {
+            reviewFlowService.record("engineering_bom", dto.getBomId(), "APPROVE", "审核通过",
+                    dto.getCurrent(), dto.getTarget(), dto.getRemark(), null);
+        }
+        return updated;
     }
 
 
@@ -490,6 +506,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean reject(UpdateBomStatusDTO dto) {
         EngineeringBom productBom = productBomMapper.selectById(dto.getBomId());
         if (!Objects.equals(productBom.getApproveStatus(), ProductEnums.BomStatus.DRAFT.getValue())) {
@@ -497,7 +514,12 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
         dto.setCurrent(ProductEnums.BomStatus.DRAFT.getValue());
         dto.setTarget(ProductEnums.BomStatus.REJECT.getValue());
-        return updateStatus(dto);
+        boolean updated = updateStatus(dto);
+        if (updated) {
+            reviewFlowService.record("engineering_bom", dto.getBomId(), "REJECT", "审核驳回",
+                    dto.getCurrent(), dto.getTarget(), dto.getRemark(), null);
+        }
+        return updated;
     }
 
     /**

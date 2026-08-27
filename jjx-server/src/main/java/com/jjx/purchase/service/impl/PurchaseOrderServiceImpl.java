@@ -23,6 +23,7 @@ import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.service.IPurchaseOrderService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.utils.SecurityUtils;
+import com.jjx.system.service.ReviewFlowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -59,6 +60,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.service.InventoryAlertService alertService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.system.service.LogSaveService logSaveService;
+    private final ReviewFlowService reviewFlowService;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -291,10 +293,17 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         // 更新订单状态为待审批
+        Integer fromStatus = order.getApprovalStatus();
         order.setApprovalStatus(ApprovalStatusEnum.PENDING.getCode());
         order.setUpdateTime(LocalDateTime.now());
 
-        return orderMapper.updateById(order);
+        int result = orderMapper.updateById(order);
+        if (result > 0) {
+            reviewFlowService.record("purchase_order", orderId, "SUBMIT", "提交审批",
+                    fromStatus,
+                    ApprovalStatusEnum.PENDING.getCode(), null, null);
+        }
+        return result;
     }
 
     @Override
@@ -353,7 +362,14 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 .set(PurchaseOrder::getApproverId,SecurityUtils.getUserId())
                 .eq(PurchaseOrder::getOrderId,dto.getOrderId())
                 .eq(PurchaseOrder::getApprovalStatus,order.getApprovalStatus());
-        return orderMapper.update(updateWrapper);
+        int result = orderMapper.update(updateWrapper);
+        if (result > 0) {
+            boolean approved = Objects.equals(targetStatus, ApprovalStatusEnum.APPROVED.getCode());
+            reviewFlowService.record("purchase_order", dto.getOrderId(), approved ? "APPROVE" : "REJECT",
+                    approved ? "审批通过" : "审批驳回", order.getApprovalStatus(), targetStatus,
+                    dto.getApprovalComment(), null);
+        }
+        return result;
     }
 
     @Override

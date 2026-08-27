@@ -31,6 +31,7 @@ import com.jjx.sales.enums.OperationTypeEnum;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.service.LogSaveService;
+import com.jjx.system.service.ReviewFlowService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +63,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final com.jjx.inventory.service.InventoryAlertService inventoryAlertService;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
+    private final ReviewFlowService reviewFlowService;
     
     private void saveOrderLog(String orderNo, String desc, String remark, int status) {
         SysOperLog log = new SysOperLog();
@@ -130,6 +132,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
+        reviewFlowService.record("sales_order", orderId, "SUBMIT", "提交审核",
+                currentStatus.getCode(), targetStatus.getCode(), null, null);
 
         // 5. 记录成功日志
         String desc = getOperationDescription(currentStatus,targetStatus);
@@ -167,7 +171,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
-
         // 5. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
         saveOrderLog(order.getOrderNo(), "start_review", desc, 1);
@@ -202,6 +205,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
+        reviewFlowService.record("sales_order", reviewDTO.getOrderId(), "APPROVE", "审核通过",
+                currentStatus.getCode(), targetStatus.getCode(), reviewDTO.getRemark(), reviewDTO.getAttachments());
 
         // 6. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
@@ -269,6 +274,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
+        reviewFlowService.record("sales_order", reviewDTO.getOrderId(), "REJECT", "审核驳回",
+                currentStatus.getCode(), targetStatus.getCode(), reviewDTO.getRemark(), reviewDTO.getAttachments());
 
         // 7. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);
@@ -313,6 +320,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
+        reviewFlowService.record("sales_order", orderId, "SUBMIT", "重新提交审核",
+                currentStatus.getCode(), targetStatus.getCode(), null, null);
 
         // 5. 记录日志
         String desc = getOperationDescription(currentStatus,targetStatus);

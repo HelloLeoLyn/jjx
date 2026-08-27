@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.List;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.service.ReviewFlowService;
 
 @Slf4j
 @Service
@@ -29,6 +30,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         implements IEngineeringFilmService {
 
     private final EngineeringFilmMapper filmMapper;
+    private final ReviewFlowService reviewFlowService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -127,6 +129,8 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         film.setApproveStatus(ApproveStatusEnum.PENDING.getCode());
         film.setUpdateTime(LocalDateTime.now());
         updateById(film);
+        reviewFlowService.record("engineering_film", filmId, "SUBMIT", "提交审核",
+                ApproveStatusEnum.DRAFT.getCode(), ApproveStatusEnum.PENDING.getCode(), null, null);
 
         log.info("提交菲林审批成功: {}", film.getFilmCode());
     }
@@ -149,6 +153,8 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         film.setApproveTime(LocalDateTime.now());
         film.setUpdateTime(LocalDateTime.now());
         updateById(film);
+        reviewFlowService.record("engineering_film", filmId, "APPROVE", "审核通过",
+                ApproveStatusEnum.PENDING.getCode(), ApproveStatusEnum.APPROVED.getCode(), remark, null);
 
         log.info("菲林审批通过: {}", film.getFilmCode());
     }
@@ -175,6 +181,8 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         film.setApproveTime(LocalDateTime.now());
         film.setUpdateTime(LocalDateTime.now());
         updateById(film);
+        reviewFlowService.record("engineering_film", filmId, "REJECT", "审核驳回",
+                ApproveStatusEnum.PENDING.getCode(), ApproveStatusEnum.REJECTED.getCode(), remark, null);
 
         log.info("菲林审批驳回: {}, 原因: {}", film.getFilmCode(), remark);
     }
