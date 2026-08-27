@@ -2,7 +2,13 @@
 export type Priority = 'urgent' | 'high' | 'normal' | 'low'
 
 /** 卡片状态 */
-export type CardStatus = 'pending' | 'in_progress' | 'review' | 'completed' | 'blocked' | 'cancelled'
+export type CardStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'review'
+  | 'completed'
+  | 'blocked'
+  | 'cancelled'
 
 /** 看板模板类型 */
 export type TemplateType = 'production' | 'office' | 'emergency' | 'dev'
@@ -47,6 +53,7 @@ export interface BoardColumn {
 /** 看板卡片 */
 export interface BoardCard {
   id: string
+  taskCode: string
   title: string
   templateType: TemplateType
 
@@ -60,11 +67,11 @@ export interface BoardCard {
   updatedAt: string
 
   // 分组相关字段（不同视图用不同字段分组）
-  currentProcess?: string    // 工序视图
-  processOrder?: number      // 工序排序
-  taskType?: string           // 办公室/紧急任务类型
-  department?: string         // 部门
-  urgencyType?: string        // 紧急类型
+  currentProcess?: string // 工序视图
+  processOrder?: number // 工序排序
+  taskType?: string // 办公室/紧急任务类型
+  department?: string // 部门
+  urgencyType?: string // 紧急类型
 
   // 生产工单特有字段
   productName?: string

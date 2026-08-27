@@ -1,19 +1,10 @@
 <template>
-  <div
-    class="kanban-card"
-    :class="[priorityClass, statusClass]"
-    @click="onClick"
-  >
+  <div class="kanban-card" :class="[priorityClass, statusClass]" @click="onClick">
     <div class="card-header">
-      <el-tag
-        :type="priorityTagType"
-        size="small"
-        effect="dark"
-        class="priority-tag"
-      >
+      <el-tag :type="priorityTagType" size="small" effect="dark" class="priority-tag">
         {{ priorityLabel }}
       </el-tag>
-      <span class="card-id">{{ card.id }}</span>
+      <span class="card-id">{{ card.id }}-{{ card.taskCode }}</span>
     </div>
 
     <div class="card-title">{{ card.title }}</div>
@@ -49,7 +40,9 @@
 
     <div class="card-footer">
       <div class="card-assignee">
-        <el-avatar :size="20" style="background: #409eff">{{ card.assignee?.slice(0, 1) }}</el-avatar>
+        <el-avatar :size="20" style="background: #409eff">{{
+          card.assignee?.slice(0, 1)
+        }}</el-avatar>
         <span>{{ card.assignee }}</span>
       </div>
       <div class="card-deadline" :class="{ overdue: isOverdue }">
@@ -80,7 +73,12 @@ const priorityLabel = computed(() => {
 })
 
 const priorityTagType = computed<TagType>(() => {
-  const map: Record<string, TagType> = { urgent: 'danger', high: 'warning', normal: 'info', low: 'info' }
+  const map: Record<string, TagType> = {
+    urgent: 'danger',
+    high: 'warning',
+    normal: 'info',
+    low: 'info',
+  }
   return map[props.card.priority] ?? 'info'
 })
 
@@ -106,7 +104,9 @@ function onClick() {
   margin-bottom: 8px;
   cursor: pointer;
   border: 1px solid #e4e7ed;
-  transition: box-shadow 0.2s, transform 0.15s;
+  transition:
+    box-shadow 0.2s,
+    transform 0.15s;
   font-size: 13px;
 }
 

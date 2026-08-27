@@ -1,9 +1,25 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { BoardColumn, BoardCard, BoardFilter, BoardView, DragEvent, TemplateType } from '@/views/kanban/types/board'
+import type {
+  BoardColumn,
+  BoardCard,
+  BoardFilter,
+  BoardView,
+  DragEvent,
+  TemplateType,
+} from '@/views/kanban/types/board'
 import { boardTemplates } from '@/views/kanban/config/board'
-import { fetchViews, fetchBoardData, moveCard, updateCard, fetchCardDetail, createCard, fetchColumnTasks, statusToSysTask } from '@/views/kanban/api/board-real'
+import {
+  fetchViews,
+  fetchBoardData,
+  moveCard,
+  updateCard,
+  fetchCardDetail,
+  createCard,
+  fetchColumnTasks,
+  statusToSysTask,
+} from '@/views/kanban/api/board-real'
 
 export const useKanbanStore = defineStore('kanban', () => {
   // 当前选中的模板类型
@@ -16,7 +32,9 @@ export const useKanbanStore = defineStore('kanban', () => {
   const columns = ref<BoardColumn[]>([])
 
   // 每列分页状态（DEV-707）：key=columnId -> { pageNum, total, hasMore, loadingMore }
-  const columnPageState = ref<Record<string, { pageNum: number; total: number; hasMore: boolean; loadingMore: boolean }>>({})
+  const columnPageState = ref<
+    Record<string, { pageNum: number; total: number; hasMore: boolean; loadingMore: boolean }>
+  >({})
 
   const PAGE_SIZE = 5
 
@@ -40,7 +58,7 @@ export const useKanbanStore = defineStore('kanban', () => {
 
   // 当前模板
   const currentTemplateConfig = computed(() =>
-    boardTemplates.find(t => t.type === currentTemplate.value),
+    boardTemplates.find((t) => t.type === currentTemplate.value)
   )
 
   // 所有模板（给菜单用）
@@ -62,7 +80,8 @@ export const useKanbanStore = defineStore('kanban', () => {
   async function loadBoard() {
     loading.value = true
     try {
-      const view = currentView.value ?? availableViews.value.find(v => v.id === currentViewId.value) ?? null
+      const view =
+        currentView.value ?? availableViews.value.find((v) => v.id === currentViewId.value) ?? null
       if (!view) return
       currentView.value = view
 
@@ -86,7 +105,7 @@ export const useKanbanStore = defineStore('kanban', () => {
               status,
               1,
               PAGE_SIZE,
-              filter.value,
+              filter.value
             )
             return {
               def: colDef,
@@ -98,7 +117,7 @@ export const useKanbanStore = defineStore('kanban', () => {
             console.error(`加载看板列 ${colDef.label} 失败:`, e)
             return { def: colDef, cards: [], total: 0, pageNum: 1 }
           }
-        }),
+        })
       )
 
       columns.value = results.map((r) => ({ def: r.def, cards: r.cards }))
@@ -119,7 +138,7 @@ export const useKanbanStore = defineStore('kanban', () => {
   // 加载某列下一页（DEV-707：滚动到底部触发）
   async function loadMore(columnId: string) {
     const state = columnPageState.value[columnId]
-    const col = columns.value.find(c => c.def.id === columnId)
+    const col = columns.value.find((c) => c.def.id === columnId)
     if (!state || !col || !state.hasMore || state.loadingMore) return
 
     state.loadingMore = true
@@ -131,7 +150,7 @@ export const useKanbanStore = defineStore('kanban', () => {
         status,
         nextPage,
         PAGE_SIZE,
-        filter.value,
+        filter.value
       )
       col.cards.push(...records.map((t: any) => toBoardCard(t, currentTemplate.value)))
       state.pageNum = nextPage
@@ -147,7 +166,7 @@ export const useKanbanStore = defineStore('kanban', () => {
   // 只刷新某一列（DEV-707：重载该列第一页，不影响其他列）
   async function reloadColumn(columnId: string) {
     const state = columnPageState.value[columnId]
-    const col = columns.value.find(c => c.def.id === columnId)
+    const col = columns.value.find((c) => c.def.id === columnId)
     if (!state || !col) return
     if (state.loadingMore) return
 
@@ -159,7 +178,7 @@ export const useKanbanStore = defineStore('kanban', () => {
         status,
         1,
         PAGE_SIZE,
-        filter.value,
+        filter.value
       )
       col.cards = records.map((t: any) => toBoardCard(t, currentTemplate.value))
       state.pageNum = 1
@@ -176,9 +195,12 @@ export const useKanbanStore = defineStore('kanban', () => {
   function toBoardCard(t: any, templateType: TemplateType): BoardCard {
     return {
       id: String(t.taskId),
+      taskCode: t.taskCode || '',
       title: t.title,
       templateType,
-      priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority) ? t.priority : 'normal') as BoardCard['priority'],
+      priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority)
+        ? t.priority
+        : 'normal') as BoardCard['priority'],
       status: mapSysTaskStatus(t),
       assignee: t.assigneeName || '',
       deadline: t.deadline || '',
@@ -228,17 +250,18 @@ export const useKanbanStore = defineStore('kanban', () => {
   // 移动卡片（DEV-707：乐观更新，不重新查询，零闪烁）
   async function handleDrag(event: DragEvent) {
     const { cardId, toColumnId } = event
-    const fromColumnId = columns.value.find(c => c.cards.some(card => card.id === cardId))?.def.id
+    const fromColumnId = columns.value.find((c) => c.cards.some((card) => card.id === cardId))?.def
+      .id
     if (!fromColumnId) return
 
     // 从所有列移除该卡片
-    const movedCard = columns.value.flatMap(c => c.cards).find(card => card.id === cardId)
+    const movedCard = columns.value.flatMap((c) => c.cards).find((card) => card.id === cardId)
     for (const col of columns.value) {
-      col.cards = col.cards.filter(card => card.id !== cardId)
+      col.cards = col.cards.filter((card) => card.id !== cardId)
     }
 
     // 插入目标列顶部（update_time 最新 → 后端排序第 1 位，位置准确）
-    const targetCol = columns.value.find(c => c.def.id === toColumnId)
+    const targetCol = columns.value.find((c) => c.def.id === toColumnId)
     if (targetCol && movedCard) {
       targetCol.cards.unshift({ ...movedCard, status: toColumnId as BoardCard['status'] })
       // 若超每页上限，末尾卡片移出显示（属于下一页，滚动时自然加载）
@@ -284,8 +307,8 @@ export const useKanbanStore = defineStore('kanban', () => {
 
   // 更新卡片
   async function handleUpdateCard(cardId: string, updates: Partial<BoardCard>) {
-    const allCards = columns.value.flatMap(col => col.cards)
-    const card = allCards.find(c => c.id === cardId)
+    const allCards = columns.value.flatMap((col) => col.cards)
+    const card = allCards.find((c) => c.id === cardId)
     const templateType = card?.templateType ?? currentTemplate.value
     await updateCard(cardId, updates, templateType)
     await loadBoard()
@@ -311,7 +334,11 @@ export const useKanbanStore = defineStore('kanban', () => {
 
   // 获取某个列的总数（用后端 total，不是已加载卡片数）
   function getColumnCount(columnId: string): number {
-    return columnPageState.value[columnId]?.total ?? columns.value.find(c => c.def.id === columnId)?.cards.length ?? 0
+    return (
+      columnPageState.value[columnId]?.total ??
+      columns.value.find((c) => c.def.id === columnId)?.cards.length ??
+      0
+    )
   }
 
   // 获取某列是否还有更多
@@ -326,7 +353,7 @@ export const useKanbanStore = defineStore('kanban', () => {
 
   // 获取所有卡片总数（各列 total 合计）
   const totalCards = computed(() =>
-    Object.values(columnPageState.value).reduce((sum, s) => sum + (s.total || 0), 0),
+    Object.values(columnPageState.value).reduce((sum, s) => sum + (s.total || 0), 0)
   )
 
   return {

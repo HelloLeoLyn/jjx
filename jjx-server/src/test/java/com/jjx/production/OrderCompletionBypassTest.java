@@ -32,6 +32,7 @@ class OrderCompletionBypassTest {
     private ProductionOrderServiceImpl service;
     private ProductionOrderMapper orderMapper;
     private ProductionQualityInspectionMapper qualityInspectionMapper;
+    private com.jjx.inventory.service.InventoryInboundService inboundService;
 
     // 便于 mock 的内部引用（直接 mock 具体类型）
     private com.jjx.production.mapper.ProductionOperationExecutionMapper executionMapper;
@@ -45,7 +46,7 @@ class OrderCompletionBypassTest {
         var converter = mock(com.jjx.production.domain.converter.ProductionOrderConverter.class);
         var routingItemMapper = mock(com.jjx.product.mapper.EngineeringRoutingItemMapper.class);
         var eventPublisher = mock(com.jjx.event.EventPublisher.class);
-        var inboundService = mock(com.jjx.inventory.service.InventoryInboundService.class);
+        inboundService = mock(com.jjx.inventory.service.InventoryInboundService.class);
         var outboundService = mock(com.jjx.inventory.service.InventoryOutboundService.class);
         var stockReserveService = mock(com.jjx.inventory.service.OrderStockReserveService.class);
         var materialReserveService = mock(com.jjx.inventory.service.OrderMaterialReserveService.class);
@@ -131,8 +132,7 @@ class OrderCompletionBypassTest {
         when(qualityInspectionMapper.selectOne(any())).thenReturn(fqc(QualityInspectionResultEnum.PENDING.getCode()));
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.completeOrder(1L));
-        assertTrue(ex.getMessage().contains("质检") || ex.getMessage().contains("FQC")
-                        || ex.getMessage().contains("校验不通过"),
+        assertTrue(ex.getMessage().contains("最新完工检验未通过") && ex.getMessage().contains("待检"),
                 "FQC PENDING 应拒绝完成: " + ex.getMessage());
         verify(orderMapper, never()).updateById(any(ProductionOrder.class));
     }
@@ -145,8 +145,7 @@ class OrderCompletionBypassTest {
         when(qualityInspectionMapper.selectOne(any())).thenReturn(fqc(QualityInspectionResultEnum.FAIL.getCode()));
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.completeOrder(1L));
-        assertTrue(ex.getMessage().contains("质检") || ex.getMessage().contains("FQC")
-                        || ex.getMessage().contains("校验不通过"),
+        assertTrue(ex.getMessage().contains("最新完工检验未通过") && ex.getMessage().contains("不合格"),
                 "FQC FAIL 应拒绝完成: " + ex.getMessage());
     }
 
@@ -169,6 +168,7 @@ class OrderCompletionBypassTest {
             assertTrue(ok);
             assertEquals(OrderStatusEnum.COMPLETED.getCode(), order.getOrderStatus());
             assertNotNull(order.getActualEndTime());
+            verify(inboundService).createFromProduction(1L);
         }
     }
 
@@ -179,7 +179,31 @@ class OrderCompletionBypassTest {
         when(orderMapper.selectById(1L)).thenReturn(order);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.completeOrder(1L));
-        assertTrue(ex.getMessage().contains("校验不通过") || ex.getMessage().contains("质检"),
+        assertTrue(ex.getMessage().contains("当前为已计划"),
                 "非进行中应拒绝: " + ex.getMessage());
+    }
+
+    @Test
+    void completeOrder_unfinishedExecutions_reportsExactCount() {
+        ProductionOrder order = inProgressOrder(1L);
+        order.setFinishedQuantity(new BigDecimal("100"));
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(executionMapper.selectCount(any())).thenReturn(2L);
+        when(qualityInspectionMapper.selectOne(any())).thenReturn(fqc(QualityInspectionResultEnum.PASS.getCode()));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.completeOrder(1L));
+        assertTrue(ex.getMessage().contains("还有2道工序未完成"), ex.getMessage());
+    }
+
+    @Test
+    void completeOrder_zeroFinishedQuantity_reportsFqcWritebackRequirement() {
+        ProductionOrder order = inProgressOrder(1L);
+        order.setFinishedQuantity(BigDecimal.ZERO);
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(executionMapper.selectCount(any())).thenReturn(0L);
+        when(qualityInspectionMapper.selectOne(any())).thenReturn(fqc(QualityInspectionResultEnum.PASS.getCode()));
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.completeOrder(1L));
+        assertTrue(ex.getMessage().contains("由FQC合格数量回写"), ex.getMessage());
     }
 }

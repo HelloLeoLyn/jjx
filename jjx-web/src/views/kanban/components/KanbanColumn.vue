@@ -8,14 +8,7 @@
           {{ totalCount }}
         </el-tag>
       </div>
-      <el-button
-        circle
-        size="small"
-        type="primary"
-        plain
-        class="add-btn"
-        @click.stop="onAdd"
-      >
+      <el-button circle size="small" type="primary" plain class="add-btn" @click.stop="onAdd">
         <el-icon><Plus /></el-icon>
       </el-button>
       <el-button
@@ -55,13 +48,9 @@
         加载更多（还有 {{ moreCount }} 条）
       </el-button>
     </div>
-    <div v-else-if="!hasMore && column.cards.length > 0" class="column-end">
-      已加载全部
-    </div>
+    <div v-else-if="!hasMore && column.cards.length > 0" class="column-end">已加载全部</div>
 
-    <div v-if="column.cards.length === 0" class="column-empty">
-      暂无卡片
-    </div>
+    <div v-if="column.cards.length === 0" class="column-empty">暂无卡片</div>
   </div>
 </template>
 
@@ -100,7 +89,7 @@ const countType = computed(() => {
 
 // 还有多少条未加载
 const moreCount = computed(() =>
-  Math.max(0, (props.total ?? props.column.cards.length) - props.column.cards.length),
+  Math.max(0, (props.total ?? props.column.cards.length) - props.column.cards.length)
 )
 
 // ---------- 加载更多触发（三保险） ----------
@@ -128,7 +117,7 @@ function setupObserver() {
         }
       }
     },
-    { rootMargin: '80px' },
+    { rootMargin: '80px' }
   )
   if (loadAreaRef.value) observer.observe(loadAreaRef.value)
 }
@@ -150,7 +139,7 @@ watch(
       observer.unobserve(loadAreaRef.value)
       observer.observe(loadAreaRef.value)
     }
-  },
+  }
 )
 
 onMounted(() => {

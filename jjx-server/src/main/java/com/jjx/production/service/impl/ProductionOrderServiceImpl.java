@@ -374,10 +374,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("生产工单不存在: " + orderId);
         }
 
-        // 检查工单状态是否可以完成（053完工质检门：状态/工序/质检/数量四条件）
-        if (!canCompleteOrder(order)) {
-            throw new BusinessException("完工校验不通过：工单需为进行中、全部工序已完成、FQC质检通过且成品完工数量>0（最后一道工序合格数）");
-        }
+        // 053 完工质检门：状态/工序/质检/数量四条件；失败时返回具体缺失 gate。
+        validateOrderCompletion(order);
 
         // 更新状态为已完成
         order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
@@ -426,7 +424,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         // P3-C：移除“完工后自动创建 FQC”块（P3-A 死锁源）
         // FQC 创建职责已移到最后有效 Execution 完成时（completeExecution → createFqcForExecution）
-        // Order complete 只校验“最新 FQC PASS”存在（canCompleteOrder ③），不再创建质检单
+        // Order complete 只校验“最新 FQC PASS”存在（validateOrderCompletion ③），不再创建质检单
 
         // 完工自动生成成品入库单（DEV-579：拍板4 生产完成→自动生成成品入库单，走入库流程）
         try {
@@ -909,11 +907,14 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
      * ④ 成品完工数量达标（finishedQuantity>0，以最后工序合格数为准，052口径）
      * 任一不满足拒绝完工；调用方拿失败原因提示用户
      */
-    private boolean canCompleteOrder(ProductionOrder order) {
+    private void validateOrderCompletion(ProductionOrder order) {
+        List<String> blockers = new ArrayList<>();
         // ① 状态=进行中
         if (!OrderStatusEnum.IN_PROGRESS.getCode().equals(order.getOrderStatus())) {
             log.warn("完工质检门[1/4]失败：工单{}状态不是进行中", order.getOrderId());
-            return false;
+            OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
+            blockers.add("工单状态须为进行中，当前为"
+                    + (currentStatus == null ? String.valueOf(order.getOrderStatus()) : currentStatus.getName()));
         }
         // ② 全部工序已完成
         try {
@@ -925,10 +926,11 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                                     com.jjx.production.enums.ExecutionStatusEnum.SKIPPED.getCode()));
             if (pendingCount != null && pendingCount > 0) {
                 log.warn("完工质检门[2/4]失败：工单{}还有{}道工序未完成", order.getOrderId(), pendingCount);
-                return false;
+                blockers.add("还有" + pendingCount + "道工序未完成（须为已完成或已跳过）");
             }
         } catch (Exception e) {
-            log.warn("完工质检门[2/4]查询工序失败(不阻断，按通过处理): {}", e.getMessage());
+            log.error("完工质检门[2/4]查询工序失败", e);
+            throw new BusinessException("完工校验失败：无法读取工序完成状态，请稍后重试");
         }
         // ③ FQC质检通过（P3-C 重构：取最新一张 FQC，result 必须为 pass；消除 P3-A 死锁时序）
         //    死锁源已移除：completeOrder 不再创建 FQC，FQC 由最后 Execution 完成时自动创建（P3-C）
@@ -944,17 +946,22 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             if (latestFqc == null || !QualityInspectionResultEnum.PASS.getCode().equals(latestFqc.getResult())) {
                 log.warn("完工质检门[3/4]失败：工单{}无最新FQC PASS记录（最新FQC={}）",
                         order.getOrderId(), latestFqc == null ? "无" : latestFqc.getResult());
-                return false;
+                blockers.add(latestFqc == null
+                        ? "尚未生成完工检验（FQC）"
+                        : "最新完工检验未通过，当前为" + QualityInspectionResultEnum.labelOf(latestFqc.getResult()));
             }
         } catch (Exception e) {
-            log.warn("完工质检门[3/4]查询质检失败(不阻断，按通过处理): {}", e.getMessage());
+            log.error("完工质检门[3/4]查询质检失败", e);
+            throw new BusinessException("完工校验失败：无法读取完工检验结果，请稍后重试");
         }
         // ④ 成品完工数量达标（finishedQuantity>0）
         if (order.getFinishedQuantity() == null || order.getFinishedQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
             log.warn("完工质检门[4/4]失败：工单{}成品完工数量为0", order.getOrderId());
-            return false;
+            blockers.add("成品完工数量须大于0（由FQC合格数量回写）");
         }
-        return true;
+        if (!blockers.isEmpty()) {
+            throw new BusinessException("完工校验不通过：" + String.join("；", blockers));
+        }
     }
 
     /**
