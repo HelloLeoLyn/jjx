@@ -899,8 +899,22 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
-        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())) {
-            throw new BusinessException("当前状态不可接单，仅工程打样中状态可接单");
+        // 新模型（2026-08-27 以前端为准）：待打样(2)可直接接单，接单后进入打样中(3)；
+        // 兼容历史已打样中(3)但未接单的数据，也允许补录接单
+        Integer status = current.getSampleStatus();
+        if (!SampleOrderStatusEnum.REQUEST.getCode().equals(status)
+                && !SampleOrderStatusEnum.ENGINEERING.getCode().equals(status)) {
+            throw new BusinessException("当前状态不可接单，仅待打样/工程打样中状态可接单");
+        }
+
+        // 待打样(2)接单 → 状态推进到打样中(3)；打样中(3)接单仅补录接单人，状态不变
+        if (SampleOrderStatusEnum.REQUEST.getCode().equals(status)) {
+            int affected = orderMapper.updateSampleStatus(orderId,
+                    SampleOrderStatusEnum.REQUEST.getCode(),
+                    SampleOrderStatusEnum.ENGINEERING.getCode());
+            if (affected == 0) {
+                throw new BusinessException("样品单状态已变更，无法接单，请刷新后重试");
+            }
         }
 
         SalesOrder update = new SalesOrder();
@@ -909,7 +923,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         update.setEngineeringAcceptTime(new Date());
         orderMapper.updateById(update);
 
-        log.info("样品单[{}] 工程接单: {}", current.getOrderNo(), acceptorName);
+        log.info("样品单[{}] 工程接单: {}（状态 {} → 打样中）", current.getOrderNo(), acceptorName, status);
         return orderMapper.selectById(orderId);
     }
 

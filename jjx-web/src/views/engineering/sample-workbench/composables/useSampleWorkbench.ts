@@ -1071,22 +1071,17 @@ export function useSampleWorkbench() {
     return t.replace('T', ' ').slice(0, 16)
   }
 
-  // 接单
-  async function handleAccept(orderId: any) {
-    if (!orderId.value) return
+  // 接单：确认弹窗由调用方负责（消除双重确认），成功返回 true，失败提示并返回 false
+  async function handleAccept(orderId: number): Promise<boolean> {
+    if (!orderId) return false
     try {
-      await ElMessageBox.confirm('确认接单开始打样？', '工程接单', {
-        confirmButtonText: '确认接单',
-        cancelButtonText: '取消',
-        type: 'info',
-      })
       const userStore = useUserStore()
       const name = userStore.nickName || '工程'
-      await sampleOrderApi.acceptEngineering(orderId.value, name)
-      ElMessage.success('接单成功')
-      await refreshCard()
+      await sampleOrderApi.acceptEngineering(orderId, name)
+      return true
     } catch (e: any) {
-      if (e !== 'cancel') ElMessage.error(e?.message || '接单失败')
+      ElMessage.error(e?.message || '接单失败')
+      return false
     }
   }
 

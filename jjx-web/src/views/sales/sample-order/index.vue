@@ -1651,9 +1651,16 @@ function canEdit(row: any): boolean {
 function canSubmitRequest(row: any): boolean {
   return isCreated(row)
 }
-// 工程接单（打样中且未接单）/ 已接单跳工作台
+// 工程接单（待打样2/打样中3且未接单；新模型无审核环节）/ 已接单跳工作台
 function canAcceptEngineering(row: any): boolean {
-  return isEngineering(row) && isEngineerRole.value && !row.engineeringAcceptor
+  return (
+    [
+      SampleOrderStatusEnum.REQUEST.value,
+      SampleOrderStatusEnum.ENGINEERING.value,
+    ].includes(row?.sampleStatus) &&
+    isEngineerRole.value &&
+    !row.engineeringAcceptor
+  )
 }
 function canGoWorkbench(row: any): boolean {
   return isEngineering(row) && isEngineerRole.value && !!row.engineeringAcceptor

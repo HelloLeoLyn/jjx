@@ -213,9 +213,12 @@ function isTransferred(row: any): boolean {
 function canEnterWorkbench(row: any): boolean {
   return !!row?.engineeringAcceptor
 }
-// 接单打样：待打样(2)可接单（保持现有行为）
+// 接单打样：待打样(2)或打样中(3)且未接单可接单（新模型：无审核环节，工程直接接单）
 function canAccept(row: any): boolean {
-  return row?.sampleStatus === SampleOrderStatus.REQUEST.value
+  return (
+    [SampleOrderStatus.REQUEST.value, SampleOrderStatus.ENGINEERING.value].includes(row?.sampleStatus) &&
+    !row?.engineeringAcceptor
+  )
 }
 
 // 资料转移（轻量版弹窗，2026-08-12 入口移至打样平台）
@@ -260,7 +263,9 @@ function handleAcceptClick(row: any) {
     .then(async () => {
       acceptingOrderId.value = row.orderId
       try {
-        await handleAccept(row.orderId)
+        const accepted = await handleAccept(row.orderId)
+        // 后台确认接单成功后才刷新列表并打开打样工作台
+        if (!accepted) return
         ElMessage.success('接单成功')
         await getList()
         openWorkbench(row)
