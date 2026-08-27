@@ -1164,7 +1164,10 @@ const handleComplete = async (row: OperationExecutionVO) => {
     return
   }
   try {
-    await operationExecutionApi.complete(row.executionId!)
+    const result = await operationExecutionApi.complete(row.executionId!)
+    if (result.data !== true) {
+      throw new Error(result.msg || '工序完成失败')
+    }
     ElMessage.success('工序已完成；若为最后工序将自动生成完工检验，等待质检')
     getList()
   } catch (e: any) {

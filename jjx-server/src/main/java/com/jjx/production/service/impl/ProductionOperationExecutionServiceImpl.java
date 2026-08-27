@@ -418,8 +418,43 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean completeExecution(Long executionId) {
-        // TODO
-        return false;
+        log.info("完成工序执行: {}", executionId);
+
+        ProductionOperationExecution execution = getById(executionId);
+        if (execution == null) {
+            throw new BusinessException("工序执行记录不存在: " + executionId);
+        }
+        if (!ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus())) {
+            throw new BusinessException("只有执行中的工序可以完成");
+        }
+
+        // First Task COMPLETED 已由 ProductionTaskService.complete 统一保证：
+        // 整棵有效子树完成量=任务量、无 PENDING 报工、无剩余及未完成责任。
+        productionTaskService.assertExecutionCompletable(executionId);
+
+        LocalDateTime completedAt = LocalDateTime.now();
+        boolean success = update(Wrappers.<ProductionOperationExecution>lambdaUpdate()
+                .eq(ProductionOperationExecution::getExecutionId, executionId)
+                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getCode())
+                .set(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode())
+                .set(ProductionOperationExecution::getActualEndTime, completedAt));
+        if (!success) {
+            throw new BusinessException("工序状态已变更，请刷新后重试");
+        }
+
+        long unfinishedOtherExecutions = count(Wrappers.<ProductionOperationExecution>lambdaQuery()
+                .eq(ProductionOperationExecution::getOrderId, execution.getOrderId())
+                .ne(ProductionOperationExecution::getExecutionId, executionId)
+                .notIn(ProductionOperationExecution::getExecutionStatus,
+                        ExecutionStatusEnum.COMPLETED.getCode(),
+                        ExecutionStatusEnum.SKIPPED.getCode(),
+                        ExecutionStatusEnum.CANCELLED.getCode()));
+        if (unfinishedOtherExecutions == 0) {
+            qualityActionService.createFqcForExecution(executionId);
+        }
+
+        log.info("工序执行完成成功, ID: {}, 是否最后有效工序: {}", executionId, unfinishedOtherExecutions == 0);
+        return true;
     }
 
     @Override

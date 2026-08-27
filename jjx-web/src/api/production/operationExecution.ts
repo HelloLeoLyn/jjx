@@ -95,7 +95,7 @@ export const operationExecutionApi = {
    * 完成工序执行
    */
   complete(executionId: number) {
-    return request.put<R<void>>(`/production/operation-execution/${executionId}/complete`)
+    return request.put<R<boolean>>(`/production/operation-execution/${executionId}/complete`)
   },
 
   /**

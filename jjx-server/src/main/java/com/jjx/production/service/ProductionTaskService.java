@@ -55,6 +55,13 @@ public interface ProductionTaskService {
     TaskTreeRowVO getFirstTaskByExecution(Long executionId);
 
     /**
+     * 校验工序对应的 First Task 已完成。
+     * First Task 只有在整棵有效子树完成、无待审批报工、无剩余及未完成责任时才能置为 COMPLETED，
+     * 因而它是工序完成动作的统一任务树 gate。
+     */
+    void assertExecutionCompletable(Long executionId);
+
+    /**
      * 直接子任务（真懒加载：只查询 parent_task_id = taskId；活动树排除 CANCELLED）
      */
     List<TaskTreeRowVO> listChildren(Long taskId);

@@ -427,6 +427,21 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     }
 
     @Override
+    public void assertExecutionCompletable(Long executionId) {
+        if (executionId == null) {
+            throw new BusinessException("executionId 不能为空");
+        }
+        Long firstTaskId = findFirstTask(executionId);
+        if (firstTaskId == null) {
+            throw new BusinessException("工序尚未创建 First Task，不能完成");
+        }
+        ProductionTask firstTask = productionTaskMapper.selectById(firstTaskId);
+        if (firstTask == null || !STATUS_COMPLETED.equals(firstTask.getStatus())) {
+            throw new BusinessException("请先完成 First Task 及其全部下级责任（含报工审批）");
+        }
+    }
+
+    @Override
     public List<TaskTreeRowVO> listChildren(Long taskId) {
         if (productionTaskMapper.selectById(taskId) == null) {
             throw new BusinessException("任务不存在: " + taskId);
@@ -977,8 +992,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         if (!execIds.isEmpty()) {
             String execIdStr = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
             try {
-                jdbcTemplate.query("SELECT execution_id, order_id, process_id, process_name, process_order"
-                                + " FROM production_operation_execution WHERE execution_id IN (" + execIdStr + ")",
+                jdbcTemplate.query("SELECT e.execution_id, e.order_id, e.process_id,"
+                                + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name, e.process_order"
+                                + " FROM production_operation_execution e"
+                                + " LEFT JOIN engineering_standard_process p ON p.process_id = e.process_id"
+                                + " WHERE e.execution_id IN (" + execIdStr + ")",
                         rs -> {
                             Long eid = rs.getLong("execution_id");
                             execMap.put(eid, new Object[]{

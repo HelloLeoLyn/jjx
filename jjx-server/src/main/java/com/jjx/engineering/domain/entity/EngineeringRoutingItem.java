@@ -125,9 +125,9 @@ public class EngineeringRoutingItem {
     private ProductStandardProcess standardProcess;
 
     /**
-     * 工序名称
+     * 工序名称（冗余自标准工序/印刷自定义工序，2026-08-27 修复：此前误标 exist=false
+     * 导致查询不映射该列，工单生成 execution 时 process_name 透传为 null）
      */
-    @TableField(exist = false)
     private String processName;
 
     /**
