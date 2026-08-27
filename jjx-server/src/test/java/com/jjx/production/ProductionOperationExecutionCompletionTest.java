@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.enums.ExecutionStatusEnum;
+import com.jjx.production.enums.OrderStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.ProductionTaskService;
@@ -23,11 +25,13 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProductionOperationExecutionCompletionTest {
@@ -92,11 +96,44 @@ class ProductionOperationExecutionCompletionTest {
         verify(productionTaskService, never()).assertExecutionCompletable(any());
     }
 
+    @Test
+    void rejectsStartingExecutionBeforeOrderIsInProgress() {
+        ProductionOperationExecution execution = executing(11L, 22L);
+        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
+        doReturn(execution).when(service).getById(11L);
+        ProductionOrder order = order(22L, OrderStatusEnum.PLANNED);
+        when(orderMapper.selectById(22L)).thenReturn(order);
+
+        BusinessException error = assertThrows(BusinessException.class, () -> service.startExecution(11L));
+
+        assertTrue(error.getMessage().contains("请先启动生产工单"));
+        assertTrue(error.getMessage().contains("已计划"));
+    }
+
+    @Test
+    void startsExecutionAfterOrderIsInProgress() {
+        ProductionOperationExecution execution = executing(11L, 22L);
+        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
+        doReturn(execution).when(service).getById(11L);
+        when(orderMapper.selectById(22L)).thenReturn(order(22L, OrderStatusEnum.IN_PROGRESS));
+        doReturn(true).when(service).updateById(execution);
+
+        assertTrue(service.startExecution(11L));
+        assertEquals(ExecutionStatusEnum.EXECUTING.getCode(), execution.getExecutionStatus());
+    }
+
     private ProductionOperationExecution executing(Long executionId, Long orderId) {
         ProductionOperationExecution execution = new ProductionOperationExecution();
         execution.setExecutionId(executionId);
         execution.setOrderId(orderId);
         execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
         return execution;
+    }
+
+    private ProductionOrder order(Long orderId, OrderStatusEnum status) {
+        ProductionOrder order = new ProductionOrder();
+        order.setOrderId(orderId);
+        order.setOrderStatus(status.getCode());
+        return order;
     }
 }

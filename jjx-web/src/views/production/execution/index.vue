@@ -160,13 +160,20 @@
         <el-table-column label="操作" min-width="190" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value"
+              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value && row.orderStatus === ProductionOrderStatusEnum.IN_PROGRESS.value"
               type="success"
               link
               icon="PlayCircle"
               v-hasPermi="['production:operation-execution:edit']"
               @click="handleStart(asExecution(row))"
               >开始生产</el-button
+            >
+            <el-button
+              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value && row.orderStatus !== ProductionOrderStatusEnum.IN_PROGRESS.value"
+              type="info"
+              link
+              @click="goProductionOrder(row)"
+              >请先启动工单</el-button
             >
             <el-button
               v-if="Number(row.myProcessableQuantity || 0) > 0 && row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
@@ -999,7 +1006,7 @@ import type {
   OperationExecutionVO,
   OperationExecutionQuery,
 } from '@/types/production/operationExecution'
-import { ExecutionStatusEnum } from '@/enums/production'
+import { ExecutionStatusEnum, ProductionOrderStatusEnum } from '@/enums/production'
 
 defineOptions({ name: 'ProductionExecutionList' })
 
@@ -1100,6 +1107,9 @@ const goDispatchForRow = (row: MyProductionExecution) => {
     path: '/production/dispatch',
     query: { executionId: String(row.executionId), keyword: row.orderNo || '' },
   })
+}
+const goProductionOrder = (row: MyProductionExecution) => {
+  router.push({ path: '/production/order', query: { orderNo: row.orderNo || '' } })
 }
 const openChildProcessing = async (row: MyProductionExecution) => {
   if (Number(row.childProcessingQuantity || 0) <= 0) return

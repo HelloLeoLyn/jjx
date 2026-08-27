@@ -9,6 +9,7 @@ export interface MyProductionExecution {
   executionId: number
   orderId?: number
   orderNo?: string
+  orderStatus?: number
   processId?: number
   processName?: string
   processOrder?: number

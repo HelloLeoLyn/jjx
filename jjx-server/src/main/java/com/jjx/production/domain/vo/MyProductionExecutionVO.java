@@ -11,6 +11,7 @@ public class MyProductionExecutionVO {
     private Long executionId;
     private Long orderId;
     private String orderNo;
+    private Integer orderStatus;
     private Long processId;
     private String processName;
     private Integer processOrder;

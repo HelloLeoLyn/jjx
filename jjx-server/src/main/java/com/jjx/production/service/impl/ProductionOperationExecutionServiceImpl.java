@@ -331,6 +331,17 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("记录状态不允许开始");
         }
 
+        ProductionOrder order = productionOrderMapper.selectById(execution.getOrderId());
+        if (order == null) {
+            throw new BusinessException("所属生产工单不存在: " + execution.getOrderId());
+        }
+        if (!com.jjx.production.enums.OrderStatusEnum.IN_PROGRESS.getCode().equals(order.getOrderStatus())) {
+            com.jjx.production.enums.OrderStatusEnum current =
+                    com.jjx.production.enums.OrderStatusEnum.getByCode(order.getOrderStatus());
+            throw new BusinessException("请先启动生产工单，再开始工序（当前工单状态："
+                    + (current == null ? String.valueOf(order.getOrderStatus()) : current.getName()) + "）");
+        }
+
         // 更新状态为进行中
         execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
         execution.setActualStartTime(LocalDateTime.now());

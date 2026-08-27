@@ -220,7 +220,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
 
         Map<Long, MyProductionExecutionVO> byExecution = new HashMap<>();
         String ids = executionIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-        jdbcTemplate.query("SELECT e.execution_id,e.order_id,o.order_no,e.process_id,"
+        jdbcTemplate.query("SELECT e.execution_id,e.order_id,o.order_no,o.order_status,e.process_id,"
                         + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name,e.process_order,"
                         + " e.execution_status,e.actual_start_time,e.equipment_id,e.equipment_code,e.equipment_name,e.input_quantity"
                         + " FROM production_operation_execution e"
@@ -232,6 +232,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     vo.setExecutionId(rs.getLong("execution_id"));
                     vo.setOrderId(rs.getLong("order_id"));
                     vo.setOrderNo(rs.getString("order_no"));
+                    vo.setOrderStatus(rs.getObject("order_status") == null ? null : rs.getInt("order_status"));
                     vo.setProcessId(rs.getObject("process_id") == null ? null : rs.getLong("process_id"));
                     vo.setProcessName(rs.getString("process_name"));
                     vo.setProcessOrder(rs.getObject("process_order") == null ? null : rs.getInt("process_order"));
