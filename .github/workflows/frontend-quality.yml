@@ -2,9 +2,6 @@ name: Frontend Quality Gate
 
 on:
   pull_request:
-    paths:
-      - "jjx-web/**"
-      - "jjx-docs/specs/state-machine-spec.md"
   push:
     branches: [dev, main]
     paths:
