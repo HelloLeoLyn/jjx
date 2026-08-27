@@ -360,7 +360,7 @@
     </el-dialog>
 
     <!-- ============ 退回 Dialog（当前执行人把自身剩余退给父任务） ============ -->
-    <el-dialog v-model="returnOpen" title="退回" width="480px" append-to-body>
+    <el-dialog v-model="returnOpen" title="退回" width="800px" append-to-body>
       <template v-if="returnTarget">
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="工单/工序">{{

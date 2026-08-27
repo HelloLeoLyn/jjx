@@ -9,3 +9,6 @@ export default pinia
 export * from './modules/user'
 export * from './modules/permission'
 export * from './modules/sampleTransfer'
+export * from './modules/dict'
+export * from './modules/tagsView'
+export * from './modules/config'

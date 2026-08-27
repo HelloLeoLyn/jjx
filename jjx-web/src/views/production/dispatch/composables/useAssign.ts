@@ -131,6 +131,7 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
     try {
       await assignTask(target.taskId, payload)
       ElMessage.success('分配成功')
+      // 关闭弹窗 + 刷新列表
       assignOpen.value = false
       await options.onSuccess(target.taskId)
       await loadAssignedList(target.taskId)

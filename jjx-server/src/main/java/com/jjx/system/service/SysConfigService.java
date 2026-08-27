@@ -9,7 +9,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -27,6 +29,19 @@ public class SysConfigService {
         return configMapper.selectList(Wrappers.<SysConfig>lambdaQuery()
                 .eq(SysConfig::getConfigGroup, group)
                 .orderByAsc(SysConfig::getSortOrder));
+    }
+
+    /** 按分组返回启用配置键值对（仅 is_active=1），供前端配置模块加载 */
+    public Map<String, String> listActiveMapByGroup(String group) {
+        List<SysConfig> configs = configMapper.selectList(Wrappers.<SysConfig>lambdaQuery()
+                .eq(SysConfig::getConfigGroup, group)
+                .eq(SysConfig::getIsActive, 1)
+                .orderByAsc(SysConfig::getSortOrder));
+        Map<String, String> map = new LinkedHashMap<>();
+        for (SysConfig c : configs) {
+            map.put(c.getConfigKey(), c.getConfigValue());
+        }
+        return map;
     }
 
     public String getValue(String configKey) {
