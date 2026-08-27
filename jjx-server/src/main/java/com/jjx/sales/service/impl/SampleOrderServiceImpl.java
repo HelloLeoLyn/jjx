@@ -337,6 +337,103 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return copy;
     }
 
+    /**
+     * 更新样品单（驳回后编辑：仅 CREATED 状态可编辑；明细事务内全量替换；锁定单号/来源报价/状态/审核工程字段）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder updateSampleOrder(Long orderId, com.jjx.sales.domain.dto.SampleOrderUpdateDTO dto) {
+        if (orderId == null) {
+            throw new BusinessException("样品单ID不能为空");
+        }
+        if (dto == null || dto.getCustomerId() == null) {
+            throw new BusinessException("客户不能为空");
+        }
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null || (order.getDeleted() != null && order.getDeleted() == 1)) {
+            throw new BusinessException("样品单不存在");
+        }
+        // 仅 CREATED(1) 可编辑（后端强校验，其他状态一律禁止）
+        if (!SampleOrderStatusEnum.CREATED.getCode().equals(order.getSampleStatus())) {
+            String name = SampleOrderStatusEnum.getByCodeSafe(order.getSampleStatus())
+                    .map(SampleOrderStatusEnum::getName).orElse("未知");
+            throw new BusinessException("仅样品需求已创建状态可编辑，当前状态[" + name + "]");
+        }
+        // 客户校验
+        com.jjx.sales.domain.entity.SalesCustomer customer = customerMapper.selectById(dto.getCustomerId());
+        if (customer == null) {
+            throw new BusinessException("客户不存在");
+        }
+        // 明细校验：至少保留一条，数量必须有效
+        java.util.List<com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item> items = dto.getItems();
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("请至少添加一个产品明细");
+        }
+        for (com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item it : items) {
+            if (it.getQuantity() == null || it.getQuantity() <= 0) {
+                throw new BusinessException("产品数量必须大于0");
+            }
+        }
+
+        // 头信息白名单更新（锁定：样品单号/来源报价单关联/状态/审核及工程字段/创建信息）
+        SalesOrder upd = new SalesOrder();
+        upd.setOrderId(orderId);
+        upd.setCustomerId(customer.getCustomerId());
+        upd.setCustomerName(customer.getCustomerName());
+        upd.setContactPerson(dto.getContactPerson());
+        upd.setContactPhone(dto.getContactPhone());
+        upd.setRemark(dto.getRemark());
+        if (dto.getDeliveryDate() != null && !dto.getDeliveryDate().isEmpty()) {
+            try {
+                upd.setDeliveryDate(Date.from(java.time.LocalDate.parse(dto.getDeliveryDate())
+                        .atStartOfDay(ZoneId.systemDefault()).toInstant()));
+            } catch (Exception e) {
+                log.warn("解析期望交样日期失败: {}", dto.getDeliveryDate());
+            }
+        } else {
+            upd.setDeliveryDate(null);
+        }
+        // 技术要求写入工程备注（与创建一致，传承打样工作台）
+        upd.setEngineeringNote(dto.getTechRequirement() != null && !dto.getTechRequirement().isEmpty()
+                ? dto.getTechRequirement() : null);
+        orderMapper.updateById(upd);
+
+        // 产品明细：事务内全量替换（删旧插新）
+        orderProductService.deleteByOrderId(orderId);
+        java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> addList = new java.util.ArrayList<>();
+        for (com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item it : items) {
+            com.jjx.sales.domain.dto.SalesOrderProductDTO d = new com.jjx.sales.domain.dto.SalesOrderProductDTO();
+            d.setOrderId(orderId);
+            d.setProductId(it.getProductId());
+            d.setProductCode(it.getProductCode());
+            d.setProductName(it.getProductName());
+            d.setQuantity(it.getQuantity());
+            d.setUnit(it.getUnit() != null ? it.getUnit() : "PCS");
+            d.setUnitPrice(java.math.BigDecimal.ZERO);
+            d.setAmount(java.math.BigDecimal.ZERO);
+            addList.add(d);
+        }
+        orderProductService.batchAdd(addList);
+
+        // DEV-806：total_quantity = 明细求和；sample_qty 同步（与创建/复制一致）
+        updateTotalQuantityByItems(orderId);
+        try {
+            int sum = 0;
+            for (com.jjx.sales.domain.vo.SalesOrderProductVO v : orderProductService.getListByOrderId(orderId)) {
+                sum += v.getQuantity() != null ? v.getQuantity() : 0;
+            }
+            SalesOrder u = new SalesOrder();
+            u.setOrderId(orderId);
+            u.setSampleQty(sum);
+            orderMapper.updateById(u);
+        } catch (Exception e) {
+            log.warn("同步 sample_qty 失败: {}", e.getMessage());
+        }
+
+        log.info("样品单[{}] 编辑保存 orderId={}，客户={}，明细{}条", order.getOrderNo(), orderId, customer.getCustomerName(), items.size());
+        return orderMapper.selectById(orderId);
+    }
+
     @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)

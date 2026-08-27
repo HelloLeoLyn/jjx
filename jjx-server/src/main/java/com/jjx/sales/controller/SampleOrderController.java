@@ -38,6 +38,15 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.createSample(dto));
     }
 
+    @Operation(summary = "更新样品单（驳回后编辑：仅样品需求已创建状态可编辑，明细全量替换）")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", traceId = "#result.data.traceId", bizStatus = "1")
+    @SaCheckPermission("sales:sample:edit")
+    @PutMapping("/{orderId}")
+    public Result<SalesOrder> update(@PathVariable Long orderId,
+                                     @Valid @RequestBody com.jjx.sales.domain.dto.SampleOrderUpdateDTO dto) {
+        return Result.success(sampleOrderService.updateSampleOrder(orderId, dto));
+    }
+
     @Operation(summary = "从报价单创建样品单")
     @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "1")
     @SaCheckPermission("sales:sample:add")

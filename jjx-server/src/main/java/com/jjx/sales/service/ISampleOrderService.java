@@ -22,6 +22,11 @@ public interface ISampleOrderService {
     SalesOrder createSample(com.jjx.sales.domain.dto.SampleOrderCreateDTO dto);
 
     /**
+     * 更新样品单（驳回后编辑：仅 CREATED 状态可编辑；明细事务内全量替换；锁定单号/来源报价/状态/审核工程字段）
+     */
+    SalesOrder updateSampleOrder(Long orderId, com.jjx.sales.domain.dto.SampleOrderUpdateDTO dto);
+
+    /**
      * 复制样品单（仅已完成/已取消终态单，一键生成新草稿单）
      */
     SalesOrder copySampleOrder(Long orderId);

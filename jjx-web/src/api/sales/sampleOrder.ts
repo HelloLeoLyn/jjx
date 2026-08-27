@@ -28,6 +28,32 @@ export const sampleOrderApi = {
     })
   },
 
+  // 更新样品单（驳回后编辑：仅样品需求已创建状态可编辑，明细全量替换）
+  update(
+    orderId: number,
+    data: {
+      customerId: number
+      items?: Array<{
+        productId?: number
+        productCode?: string
+        productName?: string
+        quantity?: number
+        unit?: string
+      }>
+      deliveryDate?: string
+      contactPerson?: string
+      contactPhone?: string
+      techRequirement?: string
+      remark?: string
+    },
+  ): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/${orderId}`,
+      method: 'put',
+      data,
+    })
+  },
+
   createFromQuotation(
     quotationId: number,
     data?: {

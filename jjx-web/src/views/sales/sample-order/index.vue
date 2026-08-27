@@ -112,6 +112,7 @@
             >作废</el-button>
 
             <template v-if="scope.row.sampleStatus === 1">
+              <el-button v-hasPermi="['sales:sample:edit']" link type="primary" size="small" @click="handleEdit(scope.row)">编辑</el-button>
               <el-button v-hasPermi="['sales:sample:edit']" link type="primary" size="small" @click="handleSubmitReview(scope.row)">提交审核</el-button>
             </template>
             <template v-else-if="scope.row.sampleStatus === 2">
@@ -149,7 +150,7 @@
     </el-card>
 
     <!-- ===== 创建样品单弹窗 ===== -->
-    <el-dialog title="新增样品单" v-model="createVisible" width="860px" append-to-body @close="resetCreateForm">
+    <el-dialog :title="createEditId ? `编辑样品单（${createEditOrderNo}）` : '新增样品单'" v-model="createVisible" width="860px" append-to-body @close="resetCreateForm">
       <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="110px">
         <el-form-item label="客户" prop="customerId">
           <el-select
@@ -165,7 +166,7 @@
             <el-option v-for="c in customerOptions" :key="c.customerId" :label="c.customerName" :value="c.customerId" />
           </el-select>
         </el-form-item>
-        <el-form-item label="来源报价单">
+        <el-form-item label="来源报价单" v-if="!createEditId">
           <el-select
             v-model="createForm.quotationId"
             placeholder="可选：从报价单带出客户/产品明细"
@@ -244,7 +245,7 @@
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitCreate" :loading="creating">创建</el-button>
+        <el-button type="primary" @click="submitCreate" :loading="creating">{{ createEditId ? '保存' : '创建' }}</el-button>
       </template>
     </el-dialog>
 
@@ -829,8 +830,11 @@ const iterationHistory = computed(() => {
   return history
 })
 
-// ==================== 创建表单 ====================
+// ==================== 创建/编辑表单 ====================
 const createFormRef = ref<FormInstance>()
+// 编辑模式：非空表示当前弹窗为编辑（锁定单号与来源报价关系）
+const createEditId = ref<number | null>(null)
+const createEditOrderNo = ref('')
 const createForm = reactive({
   customerId: undefined as number | undefined,
   quotationId: undefined as number | undefined,
@@ -887,6 +891,8 @@ async function loadQuotationOptions() {
 
 // ==================== 创建样品单 ====================
 function showCreateDialog() {
+  createEditId.value = null
+  createEditOrderNo.value = ''
   createVisible.value = true
   createForm.customerId = undefined
   createForm.quotationId = undefined
@@ -898,6 +904,49 @@ function showCreateDialog() {
   createForm.remark = ''
   loadQuotationOptions()
   if (customerOptions.value.length === 0) searchCustomers('')
+}
+
+// 编辑样品单（驳回后编辑：仅 CREATED 状态入口；编辑前加载最新 getInfo + getProducts，不使用列表缓存）
+async function handleEdit(row: any) {
+  const orderId = row?.orderId
+  if (!orderId || row.sampleStatus !== 1) return
+  try {
+    const [infoRes, prodRes]: any[] = await Promise.all([
+      sampleOrderApi.getInfo(orderId),
+      sampleOrderApi.getProducts(orderId),
+    ])
+    const order = infoRes?.data || {}
+    const items: any[] = prodRes?.data || []
+    createForm.customerId = order.customerId
+    createForm.quotationId = undefined // 编辑模式不展示来源报价选择（来源报价关系锁定）
+    createForm.items = items.map((it: any) => ({
+      productId: it.productId ?? undefined,
+      productCode: it.productCode || '',
+      productName: it.productName || '',
+      quantity: it.quantity ?? 1,
+      unit: it.unit || 'PCS',
+    }))
+    if (createForm.items.length === 0) addItem()
+    createForm.deliveryDate = order.deliveryDate || ''
+    createForm.contactPerson = order.contactPerson || ''
+    createForm.contactPhone = order.contactPhone || ''
+    createForm.techRequirement = order.engineeringNote || ''
+    createForm.remark = order.remark || ''
+    // 回填客户选项（保证当前客户可显示）
+    if (order.customerId && !customerOptions.value.some((c) => c.customerId === order.customerId)) {
+      customerOptions.value.push({
+        customerId: order.customerId,
+        customerName: order.customerName || '',
+        contactPerson: order.contactPerson || '',
+        contactPhone: order.contactPhone || '',
+      })
+    }
+    createEditId.value = orderId
+    createEditOrderNo.value = order.orderNo || ''
+    createVisible.value = true
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载样品单数据失败，请刷新后重试')
+  }
 }
 
 // 客户搜索
@@ -997,27 +1046,38 @@ async function submitCreate() {
     return
   }
   creating.value = true
+  const payload = {
+    customerId: createForm.customerId,
+    items: validItems.map((i) => ({
+      productId: i.productId || undefined,
+      productCode: i.productCode,
+      productName: i.productName,
+      quantity: i.quantity,
+      unit: i.unit || 'PCS',
+    })),
+    deliveryDate: createForm.deliveryDate || undefined,
+    contactPerson: createForm.contactPerson || undefined,
+    contactPhone: createForm.contactPhone || undefined,
+    techRequirement: createForm.techRequirement || undefined,
+    remark: createForm.remark || undefined,
+  }
   try {
-    const res = await sampleOrderApi.create({
-      customerId: createForm.customerId,
-      quotationId: createForm.quotationId || undefined,
-      items: validItems.map((i) => ({
-        productId: i.productId || undefined,
-        productCode: i.productCode,
-        productName: i.productName,
-        quantity: i.quantity,
-        unit: i.unit || 'PCS',
-      })),
-      deliveryDate: createForm.deliveryDate || undefined,
-      contactPerson: createForm.contactPerson || undefined,
-      contactPhone: createForm.contactPhone || undefined,
-      techRequirement: createForm.techRequirement || undefined,
-      remark: createForm.remark || undefined,
-    })
-    ElMessage.success(`样品单创建成功: ${res.data.orderNo}，可前往工程打样`)
+    if (createEditId.value) {
+      // 编辑模式：走更新接口（不含 quotationId，来源报价关系锁定）
+      await sampleOrderApi.update(createEditId.value, payload)
+      ElMessage.success(`样品单${createEditOrderNo.value}已保存`)
+    } else {
+      const res = await sampleOrderApi.create({
+        ...payload,
+        quotationId: createForm.quotationId || undefined,
+      })
+      ElMessage.success(`样品单创建成功: ${res.data.orderNo}，可前往工程打样`)
+    }
     createVisible.value = false
+    createEditId.value = null
+    createEditOrderNo.value = ''
     getList()
-  } catch (e: any) { ElMessage.error(e.message || '创建失败') }
+  } catch (e: any) { ElMessage.error(e.message || '保存失败') }
   finally { creating.value = false }
 }
 
