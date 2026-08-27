@@ -99,7 +99,7 @@ export interface OperationExecutionQuery {
   equipmentName?: string
   operatorId?: number
   operatorName?: string
-  executionStatus?: string
+  executionStatus?: number | ''
   qualityStatus?: string
   planStartTimeFrom?: string
   planStartTimeTo?: string

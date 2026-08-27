@@ -665,7 +665,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (queryDTO.getProcessId() != null) {
             wrapper.eq(ProductionOperationExecution::getProcessId, queryDTO.getProcessId());
         }
-        if (queryDTO.getExecutionStatus() != null && !queryDTO.getExecutionStatus().isEmpty()) {
+        if (queryDTO.getExecutionStatus() != null) {
             wrapper.eq(ProductionOperationExecution::getExecutionStatus, queryDTO.getExecutionStatus());
         }
         if (queryDTO.getEquipmentId() != null) {

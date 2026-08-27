@@ -42,8 +42,8 @@ public class ProductionOperationExecutionQueryDTO {
     @Schema(description = "操作员姓名", example = "张三")
     private String operatorName;
 
-    @Schema(description = "执行状态：NOT_STARTED未开始/IN_PROGRESS进行中/PAUSED已暂停/COMPLETED已完成/CANCELLED已取消", example = "IN_PROGRESS")
-    private String executionStatus;
+    @Schema(description = "执行状态：0待执行/1准备中/2执行中/3已暂停/4已完成/5已跳过/6已取消/7已超期/8异常中/9待确认", example = "2")
+    private Integer executionStatus;
 
     @Schema(description = "质量状态：PENDING待检/QUALIFIED合格/DEFECTIVE不良/REWORK返修/SCRAP报废", example = "QUALIFIED")
     private String qualityStatus;

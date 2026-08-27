@@ -113,7 +113,7 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "质量检查结果（JSON格式）")
     private String qualityCheckResult;
 
-    @Schema(description = "执行状态：PENDING待执行/PROCESSING执行中/COMPLETED已完成/SKIPPED已跳过")
+    @Schema(description = "执行状态：0待执行/1准备中/2执行中/3已暂停/4已完成/5已跳过/6已取消/7已超期/8异常中/9待确认")
     private Integer executionStatus;
 
     @Schema(description = "执行状态描述")

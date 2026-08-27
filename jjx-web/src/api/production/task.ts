@@ -27,7 +27,7 @@ export interface MyProductionExecutionQuery {
   pageSize?: number
   orderNo?: string
   processName?: string
-  executionStatus?: string
+  executionStatus?: number | ''
   equipmentId?: number
 }
 

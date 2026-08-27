@@ -73,9 +73,6 @@ public class ProductionOperationExecutionCreateDTO {
     @Schema(description = "操作员姓名", example = "张三")
     private String operatorName;
 
-    @Schema(description = "执行状态：NOT_STARTED未开始/IN_PROGRESS进行中/PAUSED已暂停/COMPLETED已完成/CANCELLED已取消", example = "NOT_STARTED")
-    private String executionStatus = "NOT_STARTED";
-
     @Schema(description = "备注", example = "重要工序，注意质量")
     private String remark;
 }
