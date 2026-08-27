@@ -137,7 +137,7 @@ public interface ICustomerService {
     /**
      * 导出客户信息
      */
-    String exportCustomerList(SalesCustomer customer);
+    byte[] exportCustomerList(SalesCustomer customer);
 
 
     /**

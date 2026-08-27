@@ -48,18 +48,6 @@
         </el-form-item>
       </el-col>
 
-      <!-- 区/县 -->
-      <el-col :span="12">
-        <el-form-item label="区/县" :prop="propPath + '.district'">
-          <el-input
-            v-model="addressData.district"
-            placeholder="请输入区/县"
-            maxlength="50"
-            @input="emitChange"
-          />
-        </el-form-item>
-      </el-col>
-
       <!-- 街道/详细地址 -->
       <el-col :span="12">
         <el-form-item label="详细地址" :prop="propPath + '.street'">
@@ -110,12 +98,17 @@ import {
 
 const props = withDefaults(
   defineProps<{
-    /** 当前地址值（JSON 字符串） */
-    modelValue: string
+    /**
+     * 当前地址值，支持两种传入方式（输出始终为 JSON 字符串）：
+     * - string：InternationalAddress 的 JSON 序列化（旧数据纯文本会自动回退到详细地址）
+     * - InternationalAddress 对象：直接回填（推荐，各使用方传入自己的地址字段映射）
+     */
+    modelValue: string | InternationalAddress | null
     /** 表单校验的 prop 路径前缀 */
     propPath?: string
   }>(),
   {
+    modelValue: '',
     propPath: 'address',
   }
 )
@@ -131,17 +124,26 @@ const addressData = reactive<InternationalAddress>({
   country: '',
   province: '',
   city: '',
-  district: '',
   street: '',
   zipCode: '',
 })
 
-// 从 props 初始化
+// 从 props 初始化（兼容 JSON 字符串 / InternationalAddress 对象 / 空值）
 watch(
   () => props.modelValue,
   (newVal) => {
-    const parsed = deserializeAddress(newVal || '')
-    Object.assign(addressData, parsed)
+    if (newVal && typeof newVal === 'object') {
+      Object.assign(addressData, {
+        country: newVal.country || '',
+        province: newVal.province || '',
+        city: newVal.city || '',
+        street: newVal.street || '',
+        zipCode: newVal.zipCode || '',
+      })
+    } else {
+      const parsed = deserializeAddress(newVal || '')
+      Object.assign(addressData, parsed)
+    }
   },
   { immediate: true }
 )

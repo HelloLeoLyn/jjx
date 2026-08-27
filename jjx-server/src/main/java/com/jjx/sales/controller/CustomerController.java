@@ -22,6 +22,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -127,9 +132,13 @@ public class CustomerController extends BaseController {
     @Operation(summary = "导出客户列表")
     @SaCheckPermission("sales:customer:export")
     @GetMapping("/export")
-    public Result<String> exportCustomers(SalesCustomer customer) {
-        String filePath = customerService.exportCustomerList(customer);
-        return Result.success(filePath);
+    public ResponseEntity<byte[]> exportCustomers(SalesCustomer customer) {
+        byte[] bytes = customerService.exportCustomerList(customer);
+        String fileName = URLEncoder.encode("客户列表.xlsx", StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + fileName)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(bytes);
     }
 
     /**

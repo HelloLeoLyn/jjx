@@ -18,10 +18,15 @@ import com.jjx.sales.service.ICustomerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
 import java.util.*;
 import com.jjx.system.annotation.Event;
@@ -467,8 +472,124 @@ public class CustomerServiceImpl implements ICustomerService {
     }
 
     @Override
-    public String exportCustomerList(SalesCustomer customer) {
-        return "";
+    public byte[] exportCustomerList(SalesCustomer customer) {
+        LambdaQueryWrapper<SalesCustomer> queryWrapper = Wrappers.lambdaQuery();
+        if (customer != null) {
+            if (StringUtils.isNotBlank(customer.getCustomerCode())) {
+                queryWrapper.like(SalesCustomer::getCustomerCode, customer.getCustomerCode());
+            }
+            if (StringUtils.isNotBlank(customer.getCustomerName())) {
+                queryWrapper.like(SalesCustomer::getCustomerName, customer.getCustomerName());
+            }
+            if (customer.getCustomerType() != null) {
+                queryWrapper.eq(SalesCustomer::getCustomerType, customer.getCustomerType());
+            }
+            if (customer.getCustomerLevel() != null) {
+                queryWrapper.eq(SalesCustomer::getCustomerLevel, customer.getCustomerLevel());
+            }
+            if (customer.getCustomerStatus() != null) {
+                queryWrapper.eq(SalesCustomer::getCustomerStatus, customer.getCustomerStatus());
+            }
+            if (StringUtils.isNotBlank(customer.getContactPerson())) {
+                queryWrapper.like(SalesCustomer::getContactPerson, customer.getContactPerson());
+            }
+            if (StringUtils.isNotBlank(customer.getContactPhone())) {
+                queryWrapper.like(SalesCustomer::getContactPhone, customer.getContactPhone());
+            }
+            if (customer.getSalesManagerId() != null) {
+                queryWrapper.eq(SalesCustomer::getSalesManagerId, customer.getSalesManagerId());
+            }
+        }
+        queryWrapper.orderByDesc(SalesCustomer::getCreateTime).orderByDesc(SalesCustomer::getCustomerId);
+        List<SalesCustomer> list = customerMapper.selectList(queryWrapper);
+        if (list == null || list.isEmpty()) {
+            throw new BusinessException("没有可导出的客户数据");
+        }
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("客户列表");
+            String[] headers = {"客户编码", "客户名称", "客户简称", "客户类型", "客户等级", "国家", "省份", "城市", "地址",
+                    "联系人", "联系电话", "邮箱", "传真", "统一社会信用代码", "纳税人识别号", "开户行", "银行账号",
+                    "付款条款", "信用额度", "状态", "业务负责人", "合作开始日期", "合作结束日期", "备注", "创建时间"};
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            int r = 1;
+            for (SalesCustomer c : list) {
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(str(c.getCustomerCode()));
+                row.createCell(1).setCellValue(str(c.getCustomerName()));
+                row.createCell(2).setCellValue(str(c.getCustomerShortName()));
+                row.createCell(3).setCellValue(customerTypeLabel(c.getCustomerType()));
+                row.createCell(4).setCellValue(customerLevelLabel(c.getCustomerLevel()));
+                row.createCell(5).setCellValue(str(c.getCountry()));
+                row.createCell(6).setCellValue(str(c.getProvince()));
+                row.createCell(7).setCellValue(str(c.getCity()));
+                row.createCell(8).setCellValue(str(c.getAddress()));
+                row.createCell(9).setCellValue(str(c.getContactPerson()));
+                row.createCell(10).setCellValue(str(c.getContactPhone()));
+                row.createCell(11).setCellValue(str(c.getContactEmail()));
+                row.createCell(12).setCellValue(str(c.getFax()));
+                row.createCell(13).setCellValue(str(c.getUnifiedSocialCreditCode()));
+                row.createCell(14).setCellValue(str(c.getTaxpayerId()));
+                row.createCell(15).setCellValue(str(c.getBankName()));
+                row.createCell(16).setCellValue(str(c.getBankAccount()));
+                row.createCell(17).setCellValue(str(c.getPaymentTerms()));
+                row.createCell(18).setCellValue(c.getCreditLimit() == null ? "" : c.getCreditLimit().toString());
+                row.createCell(19).setCellValue(customerStatusLabel(c.getCustomerStatus()));
+                row.createCell(20).setCellValue(str(c.getSalesManagerName()));
+                row.createCell(21).setCellValue(c.getCooperationStartDate() == null ? "" : c.getCooperationStartDate().toString());
+                row.createCell(22).setCellValue(c.getCooperationEndDate() == null ? "" : c.getCooperationEndDate().toString());
+                row.createCell(23).setCellValue(str(c.getRemark()));
+                row.createCell(24).setCellValue(c.getCreateTime() == null ? "" : c.getCreateTime().toString().replace('T', ' '));
+            }
+            for (int i = 0; i < headers.length; i++) {
+                sheet.setColumnWidth(i, 16 * 256);
+            }
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            log.error("导出客户列表失败", e);
+            throw new BusinessException("导出失败: " + e.getMessage());
+        }
+    }
+
+    private String str(String s) {
+        return s == null ? "" : s;
+    }
+
+    /** 客户类型：1终端客户 / 2代理商 / 3经销商（与前端 CustomerTypeEnum 一致） */
+    private String customerTypeLabel(Integer type) {
+        if (type == null) return "";
+        return switch (type) {
+            case 1 -> "终端客户";
+            case 2 -> "代理商";
+            case 3 -> "经销商";
+            default -> "";
+        };
+    }
+
+    /** 客户等级：1A级 / 2B级 / 3C级（与前端 CustomerLevelEnum 一致） */
+    private String customerLevelLabel(Integer level) {
+        if (level == null) return "";
+        return switch (level) {
+            case 1 -> "A级";
+            case 2 -> "B级";
+            case 3 -> "C级";
+            default -> "";
+        };
+    }
+
+    /** 客户状态：1潜在客户 / 2正式客户 / 3暂停合作 / 4终止合作（与前端 CustomerStatusEnum 一致） */
+    private String customerStatusLabel(Integer status) {
+        if (status == null) return "";
+        return switch (status) {
+            case 1 -> "潜在客户";
+            case 2 -> "正式客户";
+            case 3 -> "暂停合作";
+            case 4 -> "终止合作";
+            default -> "";
+        };
     }
 
     @Override

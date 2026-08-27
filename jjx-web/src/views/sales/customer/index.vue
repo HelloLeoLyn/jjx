@@ -220,6 +220,10 @@
         <el-descriptions-item label="联系电话">{{ detail.contactPhone }}</el-descriptions-item>
         <el-descriptions-item label="联系邮箱">{{ detail.contactEmail }}</el-descriptions-item>
         <el-descriptions-item label="传真">{{ detail.fax }}</el-descriptions-item>
+        <el-descriptions-item label="所在地区" :span="2">
+          {{ [detail.country, detail.province, detail.city].filter(Boolean).join(' / ') || '-' }}
+          <template v-if="detail.postalCode"><span class="addr-postal">（邮编 {{ detail.postalCode }}）</span></template>
+        </el-descriptions-item>
         <el-descriptions-item label="详细地址" :span="2">{{ detail.address }}</el-descriptions-item>
         <el-descriptions-item label="信用额度">{{
           formatCurrency(detail.creditLimit)
@@ -320,7 +324,11 @@ const form = reactive<CustomerFormData>({
   contactPhone: '',
   contactEmail: '',
   fax: '',
+  country: '',
+  province: '',
+  city: '',
   address: '',
+  postalCode: '',
   creditLimit: 0,
   usedCreditLimit: 0,
   customerScore: 3,
@@ -344,7 +352,11 @@ const detail = reactive<CustomerDetail>({
   contactPhone: '',
   contactEmail: '',
   fax: '',
+  country: '',
+  province: '',
+  city: '',
   address: '',
+  postalCode: '',
   creditLimit: 0,
   usedCreditLimit: 0,
   customerScore: 3,
@@ -564,7 +576,11 @@ const resetForm = () => {
     contactPhone: '',
     contactEmail: '',
     fax: '',
+    country: '',
+    province: '',
+    city: '',
     address: '',
+    postalCode: '',
     creditLimit: 0,
     usedCreditLimit: 0,
     customerScore: 3,
@@ -602,6 +618,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.addr-postal {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 4px;
+}
 .search-card {
   margin-bottom: 16px;
 }

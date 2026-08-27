@@ -64,9 +64,25 @@ public class CustomerAddDTO implements Serializable {
     @Schema(description = "传真", example = "021-12345678")
     private String fax;
 
+    @Size(max = 50, message = "国家长度不能超过50个字符")
+    @Schema(description = "国家")
+    private String country;
+
+    @Size(max = 50, message = "省份长度不能超过50个字符")
+    @Schema(description = "省份")
+    private String province;
+
+    @Size(max = 50, message = "城市长度不能超过50个字符")
+    @Schema(description = "城市")
+    private String city;
+
     @Size(max = 200, message = "详细地址长度不能超过200个字符")
     @Schema(description = "详细地址", example = "上海市浦东新区XX路XX号")
     private String address;
+
+    @Size(max = 20, message = "邮编长度不能超过20个字符")
+    @Schema(description = "邮政编码")
+    private String postalCode;
 
     @DecimalMin(value = "0", message = "信用额度不能为负数")
     @Schema(description = "信用额度", example = "100000.00")

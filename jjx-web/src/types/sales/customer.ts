@@ -25,7 +25,11 @@ export interface CustomerFormData {
   contactPhone: string
   contactEmail: string
   fax: string
+  country?: string
+  province?: string
+  city?: string
   address: string
+  postalCode?: string
   creditLimit: number
   usedCreditLimit: number
   customerScore: number
@@ -49,6 +53,10 @@ export interface CustomerItem {
   contactPhone: string
   contactEmail?: string
   fax?: string
+  country?: string
+  province?: string
+  city?: string
+  postalCode?: string
   address?: string
   creditLimit: number
   usedCreditLimit: number

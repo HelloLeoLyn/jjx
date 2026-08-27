@@ -6,8 +6,6 @@ export interface InternationalAddress {
   province: string
   /** 城市 */
   city: string
-  /** 区/县 */
-  district: string
   /** 街道/详细地址 */
   street: string
   /** 邮政编码 */
@@ -63,7 +61,6 @@ export function deserializeAddress(jsonStr: string): InternationalAddress {
       country: parsed.country || '',
       province: parsed.province || '',
       city: parsed.city || '',
-      district: parsed.district || '',
       street: parsed.street || '',
       zipCode: parsed.zipCode || '',
     }
@@ -73,7 +70,6 @@ export function deserializeAddress(jsonStr: string): InternationalAddress {
       country: '',
       province: '',
       city: '',
-      district: '',
       street: jsonStr,
       zipCode: '',
     }
@@ -86,7 +82,6 @@ export function getAddressDisplayText(address: InternationalAddress): string {
     address.country,
     address.province,
     address.city,
-    address.district,
     address.street,
   ].filter(Boolean)
   const zip = address.zipCode ? ` ${address.zipCode}` : ''

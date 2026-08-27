@@ -165,9 +165,31 @@
         </el-col>
       </el-row>
       <el-divider content-position="left">地址信息</el-divider>
-      <el-row>
+      <el-row :gutter="8">
+        <el-col :span="12">
+          <el-form-item label="国家/地区" prop="country">
+            <el-input v-model="localFormData.country" placeholder="请输入国家/地区" maxlength="50" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="省份/州" prop="province">
+            <el-input v-model="localFormData.province" placeholder="请输入省份/州" maxlength="50" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="城市" prop="city">
+            <el-input v-model="localFormData.city" placeholder="请输入城市" maxlength="50" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="邮编" prop="postalCode">
+            <el-input v-model="localFormData.postalCode" placeholder="邮政编码" maxlength="20" />
+          </el-form-item>
+        </el-col>
         <el-col :span="24">
-          <InternationalAddressEditor v-model="localFormData.address" prop-path="address" />
+          <el-form-item label="详细地址" prop="address">
+            <el-input v-model="localFormData.address" placeholder="请输入街道门牌号/详细地址（含区/县）" maxlength="200" />
+          </el-form-item>
         </el-col>
       </el-row>
     </el-form>
@@ -187,7 +209,6 @@ import type { FormInstance, FormRules } from 'element-plus'
 import type { CustomerFormData } from '@/types/sales/customer'
 import { Search } from '@element-plus/icons-vue'
 import { customerApi } from '@/api/sales/customer'
-import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import { useCustomerOptions } from '../composables/useCustomerOptions'
 
 const {
@@ -234,7 +255,11 @@ const localFormData = reactive<CustomerFormData>({
   contactPhone: '',
   contactEmail: '',
   fax: '',
+  country: '',
+  province: '',
+  city: '',
   address: '',
+  postalCode: '',
   creditLimit: 0,
   usedCreditLimit: 0,
   customerScore: 3,

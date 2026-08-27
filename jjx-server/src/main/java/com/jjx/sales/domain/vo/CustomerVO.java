@@ -57,6 +57,18 @@ public class CustomerVO implements Serializable {
     @Schema(description = "地址", example = "上海市浦东新区XX路XX号")
     private String address;
 
+    @Schema(description = "国家")
+    private String country;
+
+    @Schema(description = "省份")
+    private String province;
+
+    @Schema(description = "城市")
+    private String city;
+
+    @Schema(description = "邮政编码")
+    private String postalCode;
+
     @Schema(description = "信用额度", example = "100000.00")
     private BigDecimal creditLimit;
 
