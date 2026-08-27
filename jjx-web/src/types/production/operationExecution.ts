@@ -149,7 +149,6 @@ export interface OperationExecutionUpdateDTO {
   equipmentName?: string
   operatorId?: number
   operatorName?: string
-  executionStatus?: string
   qualityStatus?: string
   qualityInspectorId?: number
   qualityInspectorName?: string

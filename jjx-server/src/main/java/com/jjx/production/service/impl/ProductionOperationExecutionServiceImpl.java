@@ -905,9 +905,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (updateDTO.getEquipmentName() != null) {
             execution.setEquipmentName(updateDTO.getEquipmentName());
         }
-        if (updateDTO.getExecutionStatus() != null) {
-            execution.setExecutionStatus(updateDTO.getExecutionStatus());
-        }
         if (updateDTO.getDefectiveReason() != null) {
             execution.setDefectiveReason(updateDTO.getDefectiveReason());
         }

@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * P2-C 回归测试：旧 Execution 数量写入封锁 + complete 不伪造数量
  * - updateEntityFromUpdateDTO 收到数量/工时字段 → BusinessException（提示用报工）
- * - 非数量字段（状态/操作员/设备等）正常更新不受影响
+ * - executionStatus 不再属于 UpdateDTO，状态只能通过 start/pause/complete/cancel 等动作接口变更
+ * - 非状态、非数量字段（操作员/设备等）正常更新不受影响
  * 说明：反射调用 private static 映射方法（P0 已验证的测试模式）。
  */
 class LegacyExecutionWriteBlockTest {
@@ -66,19 +67,27 @@ class LegacyExecutionWriteBlockTest {
     }
 
     @Test
-    void nonQuantityFieldsStillUpdate() throws Exception {
+    void nonStateAndNonQuantityFieldsStillUpdate() throws Exception {
         ProductionOperationExecutionUpdateDTO dto = new ProductionOperationExecutionUpdateDTO();
         dto.setOperatorId(99L);
         dto.setOperatorName("新操作员");
-        dto.setExecutionStatus(2);
         ProductionOperationExecution exec = new ProductionOperationExecution();
+        exec.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode());
         assertDoesNotThrow(() -> invoke(exec, dto));
         assertEquals(99L, exec.getOperatorId());
         assertEquals("新操作员", exec.getOperatorName());
-        assertEquals(2, exec.getExecutionStatus());
+        assertEquals(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode(), exec.getExecutionStatus());
         // 数量字段未被触碰
         assertNull(exec.getOutputQuantity());
         assertNull(exec.getQualifiedQuantity());
+    }
+
+    @Test
+    void updateDtoDoesNotExposeExecutionStatus() {
+        assertThrows(NoSuchMethodException.class,
+                () -> ProductionOperationExecutionUpdateDTO.class.getMethod("setExecutionStatus", Integer.class));
+        assertThrows(NoSuchFieldException.class,
+                () -> ProductionOperationExecutionUpdateDTO.class.getDeclaredField("executionStatus"));
     }
 
     @Test
