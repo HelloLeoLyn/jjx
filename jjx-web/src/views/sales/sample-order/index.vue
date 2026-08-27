@@ -442,14 +442,23 @@
       @success="onPreviewSuccess"
       @error="onPreviewError"
     >
-      <!-- 业务预览（提交审核：报价转打样申请摘要；其他操作不注入，保持原通用展示） -->
+      <!-- 业务预览（提交审核：报价转打样申请摘要；审核通过/驳回：audit 审核摘要；其他操作不注入，保持原通用展示） -->
       <template #preview>
         <SampleReviewPreview
           v-if="previewOperation?.key === 'sample.submitReview'"
-          :order="submitPreviewData?.order"
-          :products="submitPreviewData?.products"
-          :loading="submitPreviewLoading"
+          :order="previewData?.order"
+          :products="previewData?.products"
+          :loading="previewLoading"
           @view-quotation="openQuotationDetail"
+        />
+        <SampleReviewPreview
+          v-else-if="previewOperation?.key === 'sample.approve' || previewOperation?.key === 'sample.rejectReview'"
+          mode="audit"
+          :order="previewData?.order"
+          :products="previewData?.products"
+          :loading="previewLoading"
+          @view-quotation="openQuotationDetail"
+          @view-detail="openAuditDetail"
         />
       </template>
     </OperationPreviewDialog>
@@ -512,14 +521,14 @@ const createVisible = ref(false)
 const detailVisible = ref(false)
 const detailTab = ref('basic')
 
-// 提交审核业务预览数据（打开弹窗前用现有 API 加载最新数据）
-const submitPreviewLoading = ref(false)
-const submitPreviewData = ref<{ order: any; products: any[] } | null>(null)
+// 业务预览数据（提交审核 / 审核通过 / 审核驳回共用：打开弹窗前用现有 API 加载最新数据，失败不打开）
+const previewLoading = ref(false)
+const previewData = ref<{ order: any; products: any[] } | null>(null)
 // 来源报价单详情（复用共享报价详情组件）
 const quotationDetailVisible = ref(false)
 const quotationDetailId = ref<number>()
 function openQuotationDetail() {
-  quotationDetailId.value = submitPreviewData.value?.order?.quotationId
+  quotationDetailId.value = previewData.value?.order?.quotationId
   quotationDetailVisible.value = true
 }
 
@@ -1237,34 +1246,56 @@ async function handleCopySample(row: any) {
   }
 }
 
-// 提交审核：先加载最新业务数据（getInfo + getProducts），成功后才打开弹窗；失败不打开，避免预览空白/旧数据
-async function handleSubmitReview(row: any) {
-  const orderId = row?.orderId
-  if (!orderId) return
-  submitPreviewLoading.value = true
-  submitPreviewData.value = null
+// 加载最新业务数据（getInfo + getProducts），成功返回 true；每次加载前清空上一次预览数据
+// 加载失败：提示一次错误、返回 false，不打开可确认弹窗，不允许用残留数据继续操作
+async function loadPreviewData(orderId: number): Promise<boolean> {
+  previewLoading.value = true
+  previewData.value = null
   try {
     const [infoRes, prodRes]: any[] = await Promise.all([
       sampleOrderApi.getInfo(orderId),
       sampleOrderApi.getProducts(orderId),
     ])
-    submitPreviewData.value = {
+    previewData.value = {
       order: infoRes?.data || null,
       products: prodRes?.data || [],
     }
-    openPreview('sample.submitReview', row)
+    return true
   } catch (e: any) {
     ElMessage.error(e?.message || '加载样品单数据失败，请刷新后重试')
+    return false
   } finally {
-    submitPreviewLoading.value = false
+    previewLoading.value = false
   }
 }
+
+// 提交审核：先加载最新业务数据，成功后才打开弹窗
+async function handleSubmitReview(row: any) {
+  const orderId = row?.orderId
+  if (!orderId) return
+  if (!(await loadPreviewData(orderId))) return
+  openPreview('sample.submitReview', row)
+}
+
+// 审核通过：先加载最新业务数据，成功后才打开弹窗
 async function handleApprove(row: any) {
+  const orderId = row?.orderId
+  if (!orderId) return
+  if (!(await loadPreviewData(orderId))) return
   openPreview('sample.approve', row)
 }
 
+// 审核驳回：先加载最新业务数据，成功后才打开弹窗
 async function handleRejectReview(row: any) {
+  const orderId = row?.orderId
+  if (!orderId) return
+  if (!(await loadPreviewData(orderId))) return
   openPreview('sample.rejectReview', row)
+}
+
+// 审核预览 → 查看详情（图纸/工艺文件/附件等完整信息）
+function openAuditDetail() {
+  if (previewData.value?.order) showDetail(previewData.value.order)
 }
 
 async function handleMarkReady(row: any) {
