@@ -1,4 +1,5 @@
 // 统一的生产订单类型定义
+import { ExecutionStatusEnum } from '@/enums/production'
 
 // 订单类型枚举
 export enum OrderType {
@@ -30,14 +31,8 @@ export enum ApprovalStatus {
   CANCELLED = 4, // 已取消
 }
 
-// 执行状态枚举（工单特有）
-export enum ExecutionStatus {
-  NOT_STARTED = 0, // 未开始(待执行)
-  IN_PROGRESS = 2, // 进行中(执行中)
-  COMPLETED = 4, // 已完成
-  PAUSED = 3, // 已暂停
-  CANCELLED = 6, // 已取消
-}
+// 执行状态类型来自统一枚举；不在 types 中重复定义状态值。
+export type ExecutionStatus = (typeof ExecutionStatusEnum.items)[number]['value']
 
 // 优先级枚举
 export enum Priority {
@@ -411,13 +406,4 @@ export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
   [ApprovalStatus.APPROVED]: '已批准',
   [ApprovalStatus.REJECTED]: '已拒绝',
   [ApprovalStatus.CANCELLED]: '已取消',
-}
-
-// 执行状态标签映射
-export const EXECUTION_STATUS_LABELS: Record<ExecutionStatus, string> = {
-  [ExecutionStatus.NOT_STARTED]: '未开始',
-  [ExecutionStatus.IN_PROGRESS]: '进行中',
-  [ExecutionStatus.COMPLETED]: '已完成',
-  [ExecutionStatus.PAUSED]: '已暂停',
-  [ExecutionStatus.CANCELLED]: '已取消',
 }

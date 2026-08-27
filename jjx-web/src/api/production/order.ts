@@ -11,7 +11,6 @@ import type {
   OrderType,
   OrderStatus,
   ApprovalStatus,
-  ExecutionStatus,
   PlanType,
   Priority,
 } from '@/types/production/order'

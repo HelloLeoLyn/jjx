@@ -96,11 +96,11 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   OrderStatus,
   ApprovalStatus,
-  ExecutionStatus,
   type ProductionOrderVO,
   type OrderStatusUpdateDTO,
 } from '@/types/production/order'
 import { STATUS_FLOW_RULES, STATUS_LABELS } from '@/types/production/order'
+import { ExecutionStatusEnum } from '@/enums/production'
 
 interface Props {
   visible: boolean
@@ -229,7 +229,7 @@ const handleSubmit = async () => {
   }
 
   if (formData.orderStatus === OrderStatus.COMPLETED) {
-    submitData.executionStatus = ExecutionStatus.COMPLETED
+    submitData.executionStatus = ExecutionStatusEnum.COMPLETED.value
     submitData.completedQuantity = formData.completedQuantity
     submitData.qualityResult = formData.qualityResult
   }

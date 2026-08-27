@@ -1,23 +1,5 @@
 // 生产工序执行相关类型定义
 
-// 执行状态枚举
-export enum ExecutionStatus {
-  PENDING = 'PENDING', // 待执行
-  IN_PROGRESS = 'IN_PROGRESS', // 进行中
-  PAUSED = 'PAUSED', // 已暂停
-  COMPLETED = 'COMPLETED', // 已完成
-  CANCELLED = 'CANCELLED', // 已取消
-}
-
-// 执行状态映射
-export const ExecutionStatusMap: Record<string, string> = {
-  [ExecutionStatus.PENDING]: '待执行',
-  [ExecutionStatus.IN_PROGRESS]: '进行中',
-  [ExecutionStatus.PAUSED]: '已暂停',
-  [ExecutionStatus.COMPLETED]: '已完成',
-  [ExecutionStatus.CANCELLED]: '已取消',
-}
-
 // 工序执行 VO（与后端 ProductionOperationExecutionVO 对齐）
 export interface OperationExecutionVO {
   executionId?: number

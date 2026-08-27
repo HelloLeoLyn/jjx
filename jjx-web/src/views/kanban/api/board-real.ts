@@ -3,7 +3,13 @@
  * 全部模块统一走 /kanban/board/{module}/tasks（sys_task 表 / production_order 表）
  * 真实数据，不降级 mock
  */
-import type { ApiResponse, BoardCard, BoardView, ViewConfig, BoardFilter } from '@/views/kanban/types/board'
+import type {
+  ApiResponse,
+  BoardCard,
+  BoardView,
+  ViewConfig,
+  BoardFilter,
+} from '@/views/kanban/types/board'
 import { boardTemplates } from '@/views/kanban/config/board'
 import http from '@/utils/request'
 
@@ -16,7 +22,7 @@ function isOk(code: number | undefined): boolean {
  * 获取可用视图（所有模块都用本地配置，不再走后端）
  */
 export async function fetchViews(templateType: string): Promise<ApiResponse<BoardView[]>> {
-  const tmpl = boardTemplates.find(t => t.type === templateType)
+  const tmpl = boardTemplates.find((t) => t.type === templateType)
   return { code: 0, data: tmpl?.views ?? [], message: 'ok' }
 }
 
@@ -27,7 +33,7 @@ export async function fetchViews(templateType: string): Promise<ApiResponse<Boar
 export async function fetchBoardData(
   templateType: string,
   viewId: string,
-  filter?: BoardFilter,
+  filter?: BoardFilter
 ): Promise<ApiResponse<ViewConfig>> {
   return fetchSysTaskBoardData(templateType, viewId, filter)
 }
@@ -41,7 +47,7 @@ export async function fetchColumnTasks(
   status: number,
   pageNum: number,
   pageSize: number,
-  filter?: BoardFilter,
+  filter?: BoardFilter
 ): Promise<{ records: any[]; total: number }> {
   const res = await http.get(`/kanban/board/${templateType}/tasks`, {
     params: {
@@ -81,22 +87,30 @@ export function statusToSysTask(status: string): number {
 async function fetchSysTaskBoardData(
   templateType: string,
   viewId: string,
-  filter?: BoardFilter,
+  filter?: BoardFilter
 ): Promise<ApiResponse<ViewConfig>> {
   try {
     const res = await http.get(`/kanban/board/${templateType}/tasks`)
     if (!isOk(res?.code) || !Array.isArray(res?.data)) throw new Error('invalid')
 
-    const tmpl = boardTemplates.find(t => t.type === templateType)
-    const view = tmpl?.views.find(v => v.id === viewId)
-    if (!tmpl || !view) return { code: 404, data: { view, columns: [] } as unknown as ViewConfig, message: 'view not found' }
+    const tmpl = boardTemplates.find((t) => t.type === templateType)
+    const view = tmpl?.views.find((v) => v.id === viewId)
+    if (!tmpl || !view)
+      return {
+        code: 404,
+        data: { view, columns: [] } as unknown as ViewConfig,
+        message: 'view not found',
+      }
 
     // sys_task → 看板卡片
     const cards: BoardCard[] = (res.data as any[]).map((t: any) => ({
       id: String(t.taskId),
+      taskCode: t.taskCode || '',
       title: t.title,
       templateType: templateType as BoardCard['templateType'],
-      priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority) ? t.priority : 'normal') as BoardCard['priority'],
+      priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority)
+        ? t.priority
+        : 'normal') as BoardCard['priority'],
       status: mapSysTaskStatus(t),
       assignee: t.assigneeName || '',
       deadline: t.deadline || '',
@@ -111,17 +125,28 @@ async function fetchSysTaskBoardData(
     if (filter) {
       if (filter.keyword) {
         const kw = filter.keyword.toLowerCase()
-        filtered = filtered.filter(c => c.title.toLowerCase().includes(kw) || (c.remark || '').toLowerCase().includes(kw))
+        filtered = filtered.filter(
+          (c) => c.title.toLowerCase().includes(kw) || (c.remark || '').toLowerCase().includes(kw)
+        )
       }
-      if (filter.assignee) filtered = filtered.filter(c => (c.assignee || '').includes(filter.assignee || ''))
-      if (filter.priority) filtered = filtered.filter(c => c.priority === filter.priority)
-      if (filter.status) filtered = filtered.filter(c => c.status === filter.status)
+      if (filter.assignee)
+        filtered = filtered.filter((c) => (c.assignee || '').includes(filter.assignee || ''))
+      if (filter.priority) filtered = filtered.filter((c) => c.priority === filter.priority)
+      if (filter.status) filtered = filtered.filter((c) => c.status === filter.status)
     }
 
     const groups = groupCardsByColumn(filtered, view.columns, view.groupBy)
-    return { code: 200, data: { view, columns: groups.map(g => ({ def: g.column, cards: g.cards })) }, message: 'ok' }
+    return {
+      code: 200,
+      data: { view, columns: groups.map((g) => ({ def: g.column, cards: g.cards })) },
+      message: 'ok',
+    }
   } catch (e) {
-    return { code: 500, data: { view: undefined, columns: [] } as unknown as ViewConfig, message: String(e) }
+    return {
+      code: 500,
+      data: { view: undefined, columns: [] } as unknown as ViewConfig,
+      message: String(e),
+    }
   }
 }
 
@@ -168,11 +193,11 @@ function mapSysTaskDept(t: any): string {
   if (t.bizType && map[t.bizType]) return map[t.bizType]
   // 兜底：按指派角色归属部门（角色ID → 部门）
   const roleDept: Record<number, string> = {
-    7: '销售部',   // 销售人员
-    8: '销售部',   // 订单审核员
-    9: '设计部',   // 工程管理
-    10: '销售部',  // 销售管理
-    6: '系统',     // 系统用户
+    7: '销售部', // 销售人员
+    8: '销售部', // 订单审核员
+    9: '设计部', // 工程管理
+    10: '销售部', // 销售管理
+    6: '系统', // 系统用户
   }
   const roleId = Number(t.assignRole)
   return roleDept[roleId] || ''
@@ -190,12 +215,21 @@ function extractTaskId(cardId: string): string {
 export async function moveCard(
   cardId: string,
   toColumnId: string,
-  templateType: string,
+  templateType: string
 ): Promise<ApiResponse<null>> {
-  if (templateType === 'dev' || templateType === 'office' || templateType === 'emergency' || templateType === 'production') {
+  if (
+    templateType === 'dev' ||
+    templateType === 'office' ||
+    templateType === 'emergency' ||
+    templateType === 'production'
+  ) {
     const taskId = extractTaskId(cardId)
-    const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}`, { status: mapStatusToSysTask(toColumnId) })
-    return isOk(res?.code) ? { code: 200, data: null, message: 'ok' } : { code: 500, data: null, message: res?.msg || 'update failed' }
+    const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}`, {
+      status: mapStatusToSysTask(toColumnId),
+    })
+    return isOk(res?.code)
+      ? { code: 200, data: null, message: 'ok' }
+      : { code: 500, data: null, message: res?.msg || 'update failed' }
   }
   return { code: 500, data: null, message: 'unknown template' }
 }
@@ -204,17 +238,28 @@ export async function moveCard(
  * 卡片详情
  * office/emergency → 读 sys_task
  */
-export async function fetchCardDetail(cardId: string, templateType?: string): Promise<ApiResponse<BoardCard | null>> {
-  if (templateType === 'dev' || templateType === 'office' || templateType === 'emergency' || templateType === 'production') {
+export async function fetchCardDetail(
+  cardId: string,
+  templateType?: string
+): Promise<ApiResponse<BoardCard | null>> {
+  if (
+    templateType === 'dev' ||
+    templateType === 'office' ||
+    templateType === 'emergency' ||
+    templateType === 'production'
+  ) {
     const taskId = extractTaskId(cardId)
     const res = await http.get(`/kanban/board/${templateType}/tasks/${taskId}`)
     if (isOk(res?.code) && res?.data) {
       const t = res.data as any
       const card: BoardCard = {
         id: String(t.taskId),
+        taskCode: t.taskCode || '',
         title: t.title,
         templateType: templateType as BoardCard['templateType'],
-        priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority) ? t.priority : 'normal') as BoardCard['priority'],
+        priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority)
+          ? t.priority
+          : 'normal') as BoardCard['priority'],
         status: mapSysTaskStatus(t),
         assignee: t.assigneeName || '',
         deadline: t.deadline || '',
@@ -238,9 +283,14 @@ export async function fetchCardDetail(cardId: string, templateType?: string): Pr
 export async function createCard(
   card: Partial<BoardCard>,
   templateType: string,
-  targetColumnId: string,
+  targetColumnId: string
 ): Promise<ApiResponse<BoardCard>> {
-  if (templateType === 'dev' || templateType === 'office' || templateType === 'emergency' || templateType === 'production') {
+  if (
+    templateType === 'dev' ||
+    templateType === 'office' ||
+    templateType === 'emergency' ||
+    templateType === 'production'
+  ) {
     const res = await http.post(`/kanban/board/${templateType}/tasks`, {
       title: card.title,
       description: card.remark,
@@ -276,8 +326,17 @@ export async function createCard(
  * 更新卡片
  * office/emergency → 更新 sys_task
  */
-export async function updateCard(cardId: string, updates: Partial<BoardCard>, templateType?: string): Promise<ApiResponse<BoardCard | null>> {
-  if (templateType === 'dev' || templateType === 'office' || templateType === 'emergency' || templateType === 'production') {
+export async function updateCard(
+  cardId: string,
+  updates: Partial<BoardCard>,
+  templateType?: string
+): Promise<ApiResponse<BoardCard | null>> {
+  if (
+    templateType === 'dev' ||
+    templateType === 'office' ||
+    templateType === 'emergency' ||
+    templateType === 'production'
+  ) {
     const taskId = extractTaskId(cardId)
     const body: Record<string, unknown> = {}
     if (updates.title !== undefined) body.title = updates.title
@@ -287,7 +346,9 @@ export async function updateCard(cardId: string, updates: Partial<BoardCard>, te
     if (updates.assignee !== undefined) body.assigneeName = updates.assignee
     if (updates.deadline !== undefined) body.deadline = updates.deadline
     const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}`, body)
-    return isOk(res?.code) ? { code: 200, data: null, message: 'ok' } : { code: 500, data: null, message: res?.msg || 'update failed' }
+    return isOk(res?.code)
+      ? { code: 200, data: null, message: 'ok' }
+      : { code: 500, data: null, message: res?.msg || 'update failed' }
   }
   return { code: 500, data: null, message: 'unknown template' }
 }
@@ -297,14 +358,14 @@ export async function updateCard(cardId: string, updates: Partial<BoardCard>, te
 export function groupCardsByColumn(
   cards: BoardCard[],
   columns: BoardView['columns'],
-  groupBy: string,
+  groupBy: string
 ): { column: BoardView['columns'][number]; cards: BoardCard[] }[] {
   if (groupBy === 'deadline') {
     return groupByDeadline(cards, columns)
   }
-  return columns.map(col => ({
+  return columns.map((col) => ({
     column: col,
-    cards: cards.filter(c => {
+    cards: cards.filter((c) => {
       const val = (c as unknown as Record<string, unknown>)[groupBy] ?? ''
       return String(val) === String(col.filterValue ?? col.label)
     }),
@@ -314,7 +375,7 @@ export function groupCardsByColumn(
 function groupByDeadline(cards: BoardCard[], columns: BoardView['columns']) {
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
-  const groups = columns.map(col => ({ column: col, cards: [] as BoardCard[] }))
+  const groups = columns.map((col) => ({ column: col, cards: [] as BoardCard[] }))
   for (const card of cards) {
     let idx = columns.length - 1
     if (card.deadline < today) idx = 0

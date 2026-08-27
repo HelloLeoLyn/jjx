@@ -6,6 +6,7 @@ import type {
   PlanType,
   OrderType,
 } from '@/types/production/order'
+import { ExecutionStatusEnum } from '@/enums/production'
 
 /**
  * 获取订单状态标签
@@ -31,11 +32,11 @@ export function getStatusLabel(
     case 4:
       return '已排程'
     case 6:
-      return executionStatus === 0
+      return executionStatus === ExecutionStatusEnum.PENDING.value
         ? '未开始'
-        : executionStatus === 2
+        : executionStatus === ExecutionStatusEnum.EXECUTING.value
           ? '进行中'
-          : executionStatus === 3
+          : executionStatus === ExecutionStatusEnum.PAUSED.value
             ? '已暂停'
             : '进行中'
     case 8:
@@ -71,11 +72,11 @@ export function getStatusType(
     case 4:
       return 'primary'
     case 6:
-      return executionStatus === 0
+      return executionStatus === ExecutionStatusEnum.PENDING.value
         ? 'info'
-        : executionStatus === 2
+        : executionStatus === ExecutionStatusEnum.EXECUTING.value
           ? 'warning'
-          : executionStatus === 3
+          : executionStatus === ExecutionStatusEnum.PAUSED.value
             ? 'warning'
             : 'warning'
     case 8:
