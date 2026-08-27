@@ -74,14 +74,14 @@ export const operationExecutionApi = {
    * 开始工序执行
    */
   start(executionId: number) {
-    return request.put<R<void>>(`/production/operation-execution/${executionId}/start`)
+    return request.put<R<boolean>>(`/production/operation-execution/${executionId}/start`)
   },
 
   /**
    * 暂停工序执行
    */
   pause(executionId: number) {
-    return request.put<R<void>>(`/production/operation-execution/${executionId}/pause`)
+    return request.put<R<boolean>>(`/production/operation-execution/${executionId}/pause`)
   },
 
   /** 工序首检/巡检（DEV-371） */

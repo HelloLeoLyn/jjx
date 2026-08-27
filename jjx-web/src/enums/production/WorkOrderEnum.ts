@@ -1,5 +1,5 @@
 // src/enums/production/WorkOrderEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 生产工单状态枚举
@@ -27,21 +27,21 @@ export const ProductionOrderStatusEnum = createEnum<number>({
  * 工序执行状态枚举
  * 对应后端 ExecutionStatusEnum
  */
-export const ExecutionStatusEnum = createEnum<number>({
-  items: [
-    { value: 0, label: '待执行', tagProps: { type: 'info' } },
-    { value: 1, label: '准备中', tagProps: { type: 'warning' } },
-    { value: 2, label: '执行中', tagProps: { type: 'primary' } },
-    { value: 3, label: '已暂停', tagProps: { type: 'warning' } },
-    { value: 4, label: '已完成', tagProps: { type: 'success' } },
-    { value: 5, label: '已跳过', tagProps: { type: 'info' } },
-    { value: 6, label: '已取消', tagProps: { type: 'danger' } },
-    { value: 7, label: '已超期', tagProps: { type: 'danger' } },
-    { value: 8, label: '异常中', tagProps: { type: 'danger' } },
-    { value: 9, label: '待确认', tagProps: { type: 'warning' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const ExecutionStatusEnum = createNamedEnum(
+  {
+    PENDING: { value: 0, label: '待执行', tagProps: { type: 'info' } },
+    PREPARING: { value: 1, label: '准备中', tagProps: { type: 'warning' } },
+    EXECUTING: { value: 2, label: '执行中', tagProps: { type: 'primary' } },
+    PAUSED: { value: 3, label: '已暂停', tagProps: { type: 'warning' } },
+    COMPLETED: { value: 4, label: '已完成', tagProps: { type: 'success' } },
+    SKIPPED: { value: 5, label: '已跳过', tagProps: { type: 'info' } },
+    CANCELLED: { value: 6, label: '已取消', tagProps: { type: 'danger' } },
+    OVERDUE: { value: 7, label: '已超期', tagProps: { type: 'danger' } },
+    ABNORMAL: { value: 8, label: '异常中', tagProps: { type: 'danger' } },
+    PENDING_CONFIRMATION: { value: 9, label: '待确认', tagProps: { type: 'warning' } },
+  },
+  { type: 'info' }
+)
 
 /**
  * 生产记录类型枚举

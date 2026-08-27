@@ -160,7 +160,7 @@
         <el-table-column label="操作" min-width="190" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="Number(row.myProcessableQuantity || 0) > 0 && row.executionStatus === 2"
+              v-if="Number(row.myProcessableQuantity || 0) > 0 && row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
               type="primary"
               link
               @click="openReportDialog(asExecution(row))"
@@ -238,7 +238,7 @@
         <el-table-column label="操作" min-width="300" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.executionStatus === 0"
+              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value"
               type="success"
               link
               icon="PlayCircle"
@@ -247,7 +247,7 @@
               >开始</el-button
             >
             <el-button
-              v-if="row.executionStatus === 2"
+              v-if="canReportInAllView(row)"
               type="primary"
               link
               icon="EditPen"
@@ -256,7 +256,14 @@
               >报工</el-button
             >
             <el-button
-              v-if="row.executionStatus === 2"
+              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value && !canReportInAllView(row)"
+              type="info"
+              link
+              @click="switchView('mine')"
+              >请到我的任务报工</el-button
+            >
+            <el-button
+              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
               type="warning"
               link
               icon="Pause"
@@ -265,7 +272,7 @@
               >暂停</el-button
             >
             <el-button
-              v-if="row.executionStatus === 2"
+              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
               type="primary"
               link
               icon="View"
@@ -273,7 +280,7 @@
               >详情</el-button
             >
             <el-button
-              v-if="[2, 3].includes(row.executionStatus)"
+              v-if="[ExecutionStatusEnum.EXECUTING.value, ExecutionStatusEnum.PAUSED.value].includes(row.executionStatus)"
               type="success"
               link
               icon="Check"
@@ -282,7 +289,7 @@
               >完成</el-button
             >
             <el-button
-              v-if="[2, 4].includes(row.executionStatus)"
+              v-if="[ExecutionStatusEnum.EXECUTING.value, ExecutionStatusEnum.COMPLETED.value].includes(row.executionStatus)"
               type="warning"
               link
               icon="WarningFilled"
@@ -977,36 +984,19 @@ import type {
   OperationExecutionVO,
   OperationExecutionQuery,
 } from '@/types/production/operationExecution'
+import { ExecutionStatusEnum } from '@/enums/production'
 
 defineOptions({ name: 'ProductionExecutionList' })
 
 const router = useRouter()
 
-const STATUS_LABELS: Record<number, string> = {
-  0: '待执行',
-  1: '准备中',
-  2: '执行中',
-  3: '已暂停',
-  4: '已完成',
-  5: '已跳过',
-  6: '已取消',
-  7: '已超期',
-  8: '异常中',
-  9: '待确认',
-}
-const STATUS_ITEMS = Object.entries(STATUS_LABELS).map(([v, label]) => ({
-  value: Number(v),
-  label,
-}))
+const STATUS_ITEMS = ExecutionStatusEnum.items
 
 function statusLabel(s?: number): string {
-  return STATUS_LABELS[s ?? 0] || String(s ?? 0)
+  return s === undefined ? '未知' : ExecutionStatusEnum.getLabel(s)
 }
-function statusTag(s?: number): any {
-  return (
-    { 0: 'info', 1: 'warning', 2: 'success', 3: 'warning', 4: 'success', 6: 'danger' }[s ?? 0] ||
-    'info'
-  )
+function statusTag(s?: number) {
+  return s === undefined ? 'info' : ExecutionStatusEnum.getTagProps(s).type
 }
 function fmtQty(v?: number | string | null): string {
   if (v === null || v === undefined || v === '') return '0'
@@ -1019,6 +1009,7 @@ function fmtTime(t?: string | null): string {
 
 const loading = ref(false)
 const executionList = ref<OperationExecutionVO[]>([])
+const myTaskExecutionIds = ref<Set<number>>(new Set())
 const myExecutionList = ref<MyProductionExecution[]>([])
 const viewMode = ref<'mine' | 'all'>('mine')
 const canViewAll = ref(false)
@@ -1045,7 +1036,19 @@ const getList = async () => {
         : await operationExecutionApi.globalList(queryParams)
     const data = res?.data
     if (viewMode.value === 'mine') myExecutionList.value = data?.records || []
-    else executionList.value = Array.isArray(data) ? data : data?.records || []
+    else {
+      executionList.value = Array.isArray(data) ? data : data?.records || []
+      try {
+        const myTasksResult: any = await getMyTasks()
+        myTaskExecutionIds.value = new Set(
+          (myTasksResult?.data || [])
+            .filter((task: TaskTreeRow) => Number(task.remainingQuantity || 0) > 0)
+            .map((task: TaskTreeRow) => task.executionId)
+        )
+      } catch {
+        myTaskExecutionIds.value = new Set()
+      }
+    }
     total.value = Array.isArray(data) ? data.length : data?.total || 0
   } catch {
     executionList.value = []
@@ -1059,6 +1062,10 @@ const switchView = (mode: 'mine' | 'all') => {
   queryParams.pageNum = 1
   getList()
 }
+const canReportInAllView = (row: OperationExecutionVO) =>
+  row.executionStatus === ExecutionStatusEnum.EXECUTING.value &&
+  !!row.executionId &&
+  myTaskExecutionIds.value.has(row.executionId)
 const asExecution = (row: MyProductionExecution): OperationExecutionVO => ({
   executionId: row.executionId,
   orderId: row.orderId,
@@ -1115,7 +1122,8 @@ const handleReset = () => {
 // ============ 开始/暂停/恢复/完成 ============
 const handleStart = async (row: OperationExecutionVO) => {
   try {
-    await operationExecutionApi.start(row.executionId!)
+    const result = await operationExecutionApi.start(row.executionId!)
+    if (result.data !== true) throw new Error(result.msg || '开始工序失败')
     ElMessage.success('已开始')
     getList()
   } catch (e: any) {
@@ -1124,7 +1132,8 @@ const handleStart = async (row: OperationExecutionVO) => {
 }
 const handlePause = async (row: OperationExecutionVO) => {
   try {
-    await operationExecutionApi.pause(row.executionId!)
+    const result = await operationExecutionApi.pause(row.executionId!)
+    if (result.data !== true) throw new Error(result.msg || '暂停工序失败')
     ElMessage.success('已暂停')
     getList()
   } catch (e: any) {
@@ -1432,7 +1441,7 @@ const handleReportSubmit = async () => {
   }
   reportLoading.value = true
   try {
-    await submitWorkReport({
+    const result: any = await submitWorkReport({
       executionId: exec.executionId,
       taskId: reportTaskId.value,
       qualifiedQuantity: qualified,
@@ -1444,6 +1453,7 @@ const handleReportSubmit = async () => {
       defectReason: defective > 0 ? reportForm.defectReason.trim() : undefined,
       remark: reportForm.remark.trim() || undefined,
     })
+    if (!result?.data) throw new Error(result?.msg || '报工提交失败')
     ElMessage.success('报工已提交，等待审批')
     reportOpen.value = false
     getList()
