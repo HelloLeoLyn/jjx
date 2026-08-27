@@ -222,7 +222,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         String ids = executionIds.stream().map(String::valueOf).collect(Collectors.joining(","));
         jdbcTemplate.query("SELECT e.execution_id,e.order_id,o.order_no,e.process_id,"
                         + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name,e.process_order,"
-                        + " e.execution_status,e.equipment_id,e.equipment_code,e.equipment_name,e.input_quantity"
+                        + " e.execution_status,e.actual_start_time,e.equipment_id,e.equipment_code,e.equipment_name,e.input_quantity"
                         + " FROM production_operation_execution e"
                         + " LEFT JOIN production_order o ON o.order_id=e.order_id"
                         + " LEFT JOIN engineering_standard_process p ON p.process_id=e.process_id"
@@ -236,6 +236,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     vo.setProcessName(rs.getString("process_name"));
                     vo.setProcessOrder(rs.getObject("process_order") == null ? null : rs.getInt("process_order"));
                     vo.setExecutionStatus(rs.getInt("execution_status"));
+                    vo.setActualStartTime(rs.getTimestamp("actual_start_time") == null
+                            ? null : rs.getTimestamp("actual_start_time").toLocalDateTime());
                     vo.setEquipmentId(rs.getObject("equipment_id") == null ? null : rs.getLong("equipment_id"));
                     vo.setEquipmentCode(rs.getString("equipment_code"));
                     vo.setEquipmentName(rs.getString("equipment_name"));

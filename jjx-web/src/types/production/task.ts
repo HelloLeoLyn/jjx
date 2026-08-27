@@ -13,6 +13,7 @@ export interface MyProductionExecution {
   processName?: string
   processOrder?: number
   executionStatus?: number
+  actualStartTime?: string
   equipmentId?: number
   equipmentCode?: string
   equipmentName?: string

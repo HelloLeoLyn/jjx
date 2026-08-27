@@ -160,6 +160,15 @@
         <el-table-column label="操作" min-width="190" fixed="right">
           <template #default="{ row }">
             <el-button
+              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value"
+              type="success"
+              link
+              icon="PlayCircle"
+              v-hasPermi="['production:operation-execution:edit']"
+              @click="handleStart(asExecution(row))"
+              >开始生产</el-button
+            >
+            <el-button
               v-if="Number(row.myProcessableQuantity || 0) > 0 && row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
               type="primary"
               link
@@ -1074,6 +1083,7 @@ const asExecution = (row: MyProductionExecution): OperationExecutionVO => ({
   processName: row.processName,
   processOrder: row.processOrder,
   executionStatus: row.executionStatus,
+  actualStartTime: row.actualStartTime,
   equipmentId: row.equipmentId,
   equipmentCode: row.equipmentCode,
   equipmentName: row.equipmentName,
@@ -1381,6 +1391,21 @@ const reportForm = reactive({
   remark: '',
 })
 
+const formatLocalDateTime = (date: Date): string => {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+const normalizeDateTime = (value?: string): string | null =>
+  value ? value.replace('T', ' ').slice(0, 19) : null
+
+const hoursBetween = (start: string, end: string): number => {
+  const startAt = new Date(start.replace(' ', 'T')).getTime()
+  const endAt = new Date(end.replace(' ', 'T')).getTime()
+  if (!Number.isFinite(startAt) || !Number.isFinite(endAt) || endAt <= startAt) return 0
+  return Math.round(((endAt - startAt) / 3_600_000) * 100) / 100
+}
+
 const canSubmitReport = computed(() => {
   if (!reportTaskId.value) return false
   const q = Number(reportForm.qualifiedQuantity || 0)
@@ -1407,7 +1432,10 @@ const openReportDialog = async (row: OperationExecutionVO, preferredTaskId?: num
     machineHours: 0,
     remark: '',
   })
-  reportTimeRange.value = null
+  const startTime = normalizeDateTime(row.actualStartTime)
+  const endTime = formatLocalDateTime(new Date())
+  reportTimeRange.value = startTime ? [startTime, endTime] : null
+  if (startTime) reportForm.laborHours = hoursBetween(startTime, endTime)
   reportOpen.value = true
   if (!row.executionId) return
   reportTaskLoading.value = true
