@@ -166,17 +166,40 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   // 客户选择变化时，自动填充联系人、联系电话、收货地址
-  // 客户选择变化时，自动填充联系人、联系电话、收货地址（2026-08-11 修复：直接用组件回传的 customer 对象，不再依赖空的 customerOptions 反查）
-  const customerChanged = (customerId: number, customer?: any) => {
+  // （2026-08-11 修复：直接用组件回传的 customer 对象，不再依赖空的 customerOptions 反查）
+  // （2026-08-27：地址联动完整化——客户省市/邮编随客户变更带出；已填信息时确认后覆盖，防止误覆盖手改值）
+  const customerChanged = async (customerId: number, customer?: any) => {
     const selectedCustomer = customer || customerOptions.value.find(
       (c: any) => c.customerId === customerId
     )
-    if (selectedCustomer) {
-      form.customerName = selectedCustomer.customerName
-      form.contactPerson = selectedCustomer.contactPerson || ''
-      form.contactPhone = selectedCustomer.contactPhone || ''
-      form.shippingAddress = selectedCustomer.address || ''
+    if (!selectedCustomer) return
+    // 覆盖策略：订单已填写过联系人/电话/收货地址，且客户确实发生变更 → 确认后才覆盖
+    const hasManualInfo = !!(form.contactPerson || form.contactPhone || form.shippingAddress)
+    if (hasManualInfo && form.customerId && form.customerId !== customerId) {
+      try {
+        await ElMessageBox.confirm('客户已变更，是否同步更新联系人/电话/收货地址？', '提示', {
+          type: 'warning',
+          confirmButtonText: '同步更新',
+          cancelButtonText: '保留原值',
+        })
+      } catch {
+        return // 保留原联系人/地址
+      }
     }
+    form.customerName = selectedCustomer.customerName
+    form.contactPerson = selectedCustomer.contactPerson || ''
+    form.contactPhone = selectedCustomer.contactPhone || ''
+    // 完整地址联动：客户档案 国家/省/市/详细地址/邮编 → 订单收货地址（InternationalAddress JSON）
+    const address = {
+      country: selectedCustomer.country || '',
+      province: selectedCustomer.province || '',
+      city: selectedCustomer.city || '',
+      street: selectedCustomer.address || '',
+      zipCode: selectedCustomer.postalCode || '',
+    }
+    form.shippingAddress = Object.values(address).some((v) => v)
+      ? JSON.stringify(address)
+      : ''
   }
 
   /**
@@ -425,6 +448,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
         Object.assign(form, orderResponse.data)
         // 订单类型固定标准单（2026-08-11）
         form.orderType = 1
+        // 收货地址回显：后端 deliveryAddress（InternationalAddress JSON）→ 表单 shippingAddress
+        form.shippingAddress = orderResponse.data.deliveryAddress || ''
         // 2. 将后端字段映射为表单字段
         form.salesPersonId = orderResponse.data.salesManagerId
         form.salesPersonName = orderResponse.data.salesManagerName
@@ -497,7 +522,10 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
         ...form,
         salesManagerId: form.salesPersonId,
         salesManagerName: form.salesPersonName,
-      }
+        // 收货地址：前端表单字段 shippingAddress → 后端 DTO deliveryAddress
+        deliveryAddress: form.shippingAddress || '',
+      } as any
+      delete (submitData as any).shippingAddress
       // 1. 保存订单基本信息
       const orderResponse = await orderApi.addOrder(submitData as any)
       if (orderResponse.code !== 200) {
@@ -526,7 +554,10 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
         ...form,
         salesManagerId: form.salesPersonId,
         salesManagerName: form.salesPersonName,
-      }
+        // 收货地址：前端表单字段 shippingAddress → 后端 DTO deliveryAddress
+        deliveryAddress: form.shippingAddress || '',
+      } as any
+      delete (submitData as any).shippingAddress
       // 1. 更新订单基本信息
       const orderResponse = await orderApi.updateOrder(submitData as any)
       if (orderResponse.code !== 200) {

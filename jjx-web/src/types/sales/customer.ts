@@ -83,6 +83,10 @@ export interface CustomerSearchVO {
   contactPerson: string
   contactPhone: string
   email: string
+  country?: string
+  province?: string
+  city?: string
+  postalCode?: string
   address: string
   creditLimit: number
   status: number
