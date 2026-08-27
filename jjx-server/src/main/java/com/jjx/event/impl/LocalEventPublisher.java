@@ -51,7 +51,15 @@ public class LocalEventPublisher implements EventPublisher {
         String eventType = event.getEventType() != null ? event.getEventType() : "notification";
 
         // 通知处理：展开角色→查用户→每人发一条（exclude_trigger=1 时排除触发者，DEV-641）
-        if ("notification".equals(eventType) || "both".equals(eventType)) {
+        boolean notificationEnabled = "notification".equals(eventType) || "both".equals(eventType);
+        boolean notificationMissingTitle = notificationEnabled
+                && (event.getTitle() == null || event.getTitle().trim().isEmpty());
+        if (notificationMissingTitle) {
+            // 发布前校验：启用配置缺通知标题时明确报错并跳过，避免拖到 sys_notification.title NOT NULL 约束才暴露
+            log.error("❌ 事件配置缺少通知标题，已跳过通知: eventCode={}, eventId={}，请补全 sys_event_config.title",
+                    eventCode, event.getEventId());
+        }
+        if (notificationEnabled && !notificationMissingTitle) {
             JSONArray roles = parseRoles(event.getTargetRole());
             if (roles != null) {
                 Object triggerUserId = payload != null ? payload.get("triggerUserId") : null;
