@@ -29,7 +29,7 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
             "SELECT COALESCE(SUM(qualified_quantity),0), COALESCE(SUM(defective_quantity),0),"
                     + " COALESCE(SUM(qualified_quantity + defective_quantity),0),"
                     + " COALESCE(SUM(labor_hours),0), COALESCE(SUM(machine_hours),0)"
-                    + " FROM production_work_report WHERE execution_id=? AND report_status='APPROVED'";
+                    + " FROM production_work_report WHERE execution_id=? AND report_status=?";
 
     private final JdbcTemplate jdbcTemplate;
     private final ProductionOperationExecutionMapper executionMapper;
@@ -58,7 +58,8 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
         try {
             return jdbcTemplate.queryForObject(SUM_SQL, (rs, i) -> new BigDecimal[]{
                     rs.getBigDecimal(1), rs.getBigDecimal(2), rs.getBigDecimal(3),
-                    rs.getBigDecimal(4), rs.getBigDecimal(5)}, executionId);
+                    rs.getBigDecimal(4), rs.getBigDecimal(5)}, executionId,
+                    WorkReportStatusEnum.APPROVED.getCode());
         } catch (Exception e) {
             log.warn("SUM projection 查询失败 executionId={}: {}", executionId, e.getMessage());
             return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -75,13 +76,16 @@ public class WorkReportProjectionServiceImpl implements WorkReportProjectionServ
         if (reportCount == null || reportCount == 0) {
             // 无报工：execution 若有非零 legacy 数量 → NO_REPORT_LEGACY；否则 EMPTY
             boolean legacy = isNonZero(exec.getOutputQuantity()) || isNonZero(exec.getQualifiedQuantity())
-                    || isNonZero(exec.getDefectiveQuantity());
+                    || isNonZero(exec.getDefectiveQuantity()) || isNonZero(exec.getActualLaborHours())
+                    || isNonZero(exec.getActualMachineHours());
             return legacy ? "NO_REPORT_LEGACY" : "EMPTY";
         }
         BigDecimal[] sums = sumApproved(executionId);
         boolean match = eq(sums[0], exec.getQualifiedQuantity())
                 && eq(sums[1], exec.getDefectiveQuantity())
-                && eq(sums[2], exec.getOutputQuantity());
+                && eq(sums[2], exec.getOutputQuantity())
+                && eq(sums[3], exec.getActualLaborHours())
+                && eq(sums[4], exec.getActualMachineHours());
         return match ? "MATCH" : "MISMATCH";
     }
 

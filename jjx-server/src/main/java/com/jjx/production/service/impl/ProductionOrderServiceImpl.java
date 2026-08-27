@@ -25,6 +25,7 @@ import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.enums.OrderStatusEnum;
 import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.QualityInspectionTypeEnum;
+import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.ProductionOrderService;
 import com.jjx.system.annotation.Event;
@@ -382,37 +383,14 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         order.setActualEndTime(LocalDateTime.now());
         order.setCompletedBy(com.jjx.system.utils.SecurityUtils.getUsername()); // 053完工留痕：谁
 
-        // 059定稿：完工自动核算人工成本 = Σ(工序实际工时 × 标准工价)
+        // 完工人工成本以 APPROVED 报工事实为准：先按 execution 汇总 labor_hours，再乘标准工价。
+        // 禁止读取 execution.actualLaborHours 投影，避免投影延迟导致成本错误。
         try {
-            java.math.BigDecimal laborTotal = java.math.BigDecimal.ZERO;
-            java.util.List<ProductionOperationExecution> executions = productionOperationExecutionMapper.selectList(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionOperationExecution>()
-                            .eq(ProductionOperationExecution::getOrderId, orderId));
-            for (ProductionOperationExecution exec : executions) {
-                if (exec.getActualLaborHours() == null || exec.getActualLaborHours().compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
-                // 取该工序标准工价（工艺路线工序）
-                java.math.BigDecimal wage = java.math.BigDecimal.ZERO;
-                if (exec.getProcessId() != null) {
-                    try {
-                        com.jjx.engineering.domain.entity.EngineeringRoutingItem routeItem =
-                                productRoutingItemMapper.selectOne(
-                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRoutingItem>()
-                                                .eq(com.jjx.engineering.domain.entity.EngineeringRoutingItem::getRoutingId, order.getRoutingId())
-                                                .eq(com.jjx.engineering.domain.entity.EngineeringRoutingItem::getProcessId, exec.getProcessId())
-                                                .last("LIMIT 1"));
-                        if (routeItem != null && routeItem.getStandardWage() != null) {
-                            wage = routeItem.getStandardWage();
-                        }
-                    } catch (Exception e) {
-                        log.warn("查询工序工价失败: processId={}", exec.getProcessId());
-                    }
-                }
-                laborTotal = laborTotal.add(exec.getActualLaborHours().multiply(wage));
-            }
-            if (laborTotal.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                order.setLaborCost(laborTotal);
-                log.info("工单{}完工自动核算人工成本: {}", orderId, laborTotal);
-            }
+            BigDecimal laborTotal = productionOperationExecutionMapper.calculateApprovedLaborCost(
+                    orderId, order.getRoutingId(), WorkReportStatusEnum.APPROVED.getCode());
+            laborTotal = laborTotal == null ? BigDecimal.ZERO : laborTotal;
+            order.setLaborCost(laborTotal);
+            log.info("工单{}完工自动核算人工成本: {}", orderId, laborTotal);
         } catch (Exception e) {
             log.warn("工单人工成本自动核算失败（可手工调整）: {}", e.getMessage());
         }

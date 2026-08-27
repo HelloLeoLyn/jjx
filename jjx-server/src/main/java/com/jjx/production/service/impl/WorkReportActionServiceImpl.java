@@ -2,6 +2,8 @@ package com.jjx.production.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.notification.domain.dto.NotificationCreateDTO;
+import com.jjx.notification.service.NotificationService;
 import com.jjx.production.domain.dto.WorkReportCancelDTO;
 import com.jjx.production.domain.dto.WorkReportReviewDTO;
 import com.jjx.production.domain.dto.WorkReportSubmitDTO;
@@ -61,6 +63,10 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final WorkReportReadService readService;
     private final QualityInspectionService qualityInspectionService;
     private final JdbcTemplate jdbcTemplate;
+    private final NotificationService notificationService;
+
+    private static final String PROJECTION_MISMATCH = "MISMATCH";
+    private static final Long SYSTEM_ADMIN_ID = 1L;
 
     // ==================== SUBMIT ====================
 
@@ -192,8 +198,35 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             throw new BusinessException("报工状态已变化，请刷新后重试");
         }
         projectionService.recalculate(r.getExecutionId());
+        compareProjectionAndWarn(r);
         log.info("审批通过 reportId={}, executionId={}, reviewer={}", reportId, r.getExecutionId(), operatorName);
         return readService.getById(reportId);
+    }
+
+    /** 审批重算后立即对账；异常告警不阻断已经成功的审批事务。 */
+    private void compareProjectionAndWarn(ProductionWorkReport report) {
+        try {
+            String result = projectionService.compareProjection(report.getExecutionId());
+            if (!PROJECTION_MISMATCH.equals(result)) {
+                return;
+            }
+            NotificationCreateDTO notification = new NotificationCreateDTO();
+            notification.setTitle("生产报工投影对账异常");
+            notification.setContent("报工审批后投影仍不一致，请检查。reportId=" + report.getReportId()
+                    + "，executionId=" + report.getExecutionId());
+            notification.setNotificationType("system");
+            notification.setBizType("work_report_projection");
+            notification.setBizId(String.valueOf(report.getExecutionId()));
+            notification.setReceiverId(SYSTEM_ADMIN_ID);
+            notification.setReceiverName("系统管理员");
+            notification.setPriority("high");
+            notificationService.createNotification(notification);
+            log.warn("报工投影对账异常告警已创建: reportId={}, executionId={}",
+                    report.getReportId(), report.getExecutionId());
+        } catch (Exception e) {
+            log.error("报工投影对账或告警创建失败: reportId={}, executionId={}",
+                    report.getReportId(), report.getExecutionId(), e);
+        }
     }
 
     @Override

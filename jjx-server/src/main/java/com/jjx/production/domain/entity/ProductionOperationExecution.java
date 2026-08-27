@@ -62,10 +62,10 @@ public class ProductionOperationExecution {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime actualEndTime;
 
-    @Schema(description = "实际人工工时")
+    @Schema(description = "实际人工工时投影（仅汇总已审批报工）")
     private BigDecimal actualLaborHours;
 
-    @Schema(description = "实际机器工时")
+    @Schema(description = "实际机器工时投影（仅汇总已审批报工）")
     private BigDecimal actualMachineHours;
 
     @Schema(description = "使用设备ID")
@@ -86,13 +86,13 @@ public class ProductionOperationExecution {
     @Schema(description = "投入数量")
     private BigDecimal inputQuantity;
 
-    @Schema(description = "产出数量")
+    @Schema(description = "产出数量投影（仅汇总已审批报工的合格数与不良数）")
     private BigDecimal outputQuantity;
 
-    @Schema(description = "合格数量")
+    @Schema(description = "合格数量投影（仅汇总已审批报工）")
     private BigDecimal qualifiedQuantity;
 
-    @Schema(description = "不良数量")
+    @Schema(description = "不良数量投影（仅汇总已审批报工）")
     private BigDecimal defectiveQuantity;
 
     @Schema(description = "不良原因")
