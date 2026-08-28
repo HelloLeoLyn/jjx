@@ -72,6 +72,9 @@
           <el-tag :type="row.statusType as any" size="small">
             {{ row.statusLabel }}
           </el-tag>
+          <el-tag v-if="row.reworkFlag === 1" type="danger" size="small">
+            返工中
+          </el-tag>
         </template>
       </el-table-column>
 

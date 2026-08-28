@@ -95,6 +95,9 @@ public class ProductionOrderVO {
     @Schema(description = "订单状态描述")
     private String orderStatusDesc;
 
+    @Schema(description = "返工标记：0否/1返工中")
+    private Integer reworkFlag;
+
     @Schema(description = "审批状态：PENDING待审批/APPROVED已批准/REJECTED已拒绝/CANCELLED已取消")
     private Integer approvalStatus;
 

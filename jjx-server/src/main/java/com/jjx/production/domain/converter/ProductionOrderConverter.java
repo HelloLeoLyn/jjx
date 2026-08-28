@@ -49,6 +49,7 @@ public interface ProductionOrderConverter {
     @Mapping(target = "productionEfficiency", ignore = true)
     @Mapping(target = "qualityQualifiedRate", ignore = true)
     @Mapping(target = "routingName", ignore = true)
+    @Mapping(target = "reworkFlag", source = "reworkFlag")
     ProductionOrderVO toVO(ProductionOrder order);
 
     List<ProductionOrderVO> toVOList(List<ProductionOrder> list);

@@ -89,6 +89,7 @@ export interface ProductionOrderBase {
   orderStatus: OrderStatus // 统一订单状态
   approvalStatus?: ApprovalStatus // 审批状态（计划特有）
   executionStatus?: ExecutionStatus // 执行状态（工单特有）
+  reworkFlag?: number // 返工标记：1=返工中
 
   // 优先级
   priority: Priority
