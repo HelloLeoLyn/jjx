@@ -220,11 +220,10 @@ export const sampleOrderApi = {
   },
 
   // 工程接单确认
-  acceptEngineering(orderId: number, acceptorName?: string): AxiosPromise<any> {
+  acceptEngineering(orderId: number): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/accept-engineering/${orderId}`,
       method: 'put',
-      params: acceptorName ? { acceptorName } : undefined,
     })
   },
 

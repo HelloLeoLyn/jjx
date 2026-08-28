@@ -97,6 +97,19 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
                            @Param("newStatus") Integer newStatus);
 
     /**
+     * 工程接单：状态推进与接单信息一次性落库，且仅允许尚未接单的数据更新。
+     */
+    @Update("UPDATE sales_order SET sample_status = #{engineeringStatus}, " +
+            "engineering_acceptor = #{acceptorName}, engineering_accept_time = NOW(), update_time = NOW() " +
+            "WHERE order_id = #{orderId} AND order_type = 2 AND deleted = 0 " +
+            "AND sample_status IN (#{requestStatus}, #{engineeringStatus}) " +
+            "AND (engineering_acceptor IS NULL OR engineering_acceptor = '')")
+    int acceptEngineering(@Param("orderId") Long orderId,
+                          @Param("requestStatus") Integer requestStatus,
+                          @Param("engineeringStatus") Integer engineeringStatus,
+                          @Param("acceptorName") String acceptorName);
+
+    /**
      * 查询样品单列表（order_type=2）
      */
     @Select("SELECT * FROM sales_order WHERE order_type = 2 AND deleted = 0 ORDER BY create_time DESC")

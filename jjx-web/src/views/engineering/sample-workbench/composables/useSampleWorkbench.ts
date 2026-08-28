@@ -7,7 +7,6 @@ import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
 import { useDict } from '@/composables/useDict'
-import { useUserStore } from '@/store/modules/user'
 
 /**
  * 打样工作台组合式函数（dev-20260811-008 组件化第 1 步）
@@ -1075,9 +1074,7 @@ export function useSampleWorkbench() {
   async function handleAccept(orderId: number): Promise<boolean> {
     if (!orderId) return false
     try {
-      const userStore = useUserStore()
-      const name = userStore.nickName || '工程'
-      await sampleOrderApi.acceptEngineering(orderId, name)
+      await sampleOrderApi.acceptEngineering(orderId)
       return true
     } catch (e: any) {
       ElMessage.error(e?.message || '接单失败')

@@ -894,7 +894,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public SalesOrder acceptEngineering(Long orderId, String acceptorName) {
+    public SalesOrder acceptEngineering(Long orderId) {
         SalesOrder current = orderMapper.selectById(orderId);
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
@@ -907,21 +907,22 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("当前状态不可接单，仅待打样/工程打样中状态可接单");
         }
 
-        // 待打样(2)接单 → 状态推进到打样中(3)；打样中(3)接单仅补录接单人，状态不变
-        if (SampleOrderStatusEnum.REQUEST.getCode().equals(status)) {
-            int affected = orderMapper.updateSampleStatus(orderId,
-                    SampleOrderStatusEnum.REQUEST.getCode(),
-                    SampleOrderStatusEnum.ENGINEERING.getCode());
-            if (affected == 0) {
-                throw new BusinessException("样品单状态已变更，无法接单，请刷新后重试");
-            }
+        String acceptorName = SecurityUtils.getRealName();
+        if (acceptorName == null || acceptorName.isBlank()) {
+            acceptorName = SecurityUtils.getUsername();
+        }
+        if (acceptorName == null || acceptorName.isBlank()) {
+            throw new BusinessException("无法获取当前登录用户，接单失败");
         }
 
-        SalesOrder update = new SalesOrder();
-        update.setOrderId(orderId);
-        update.setEngineeringAcceptor(acceptorName);
-        update.setEngineeringAcceptTime(new Date());
-        orderMapper.updateById(update);
+        // 后端登录态是接单人身份的唯一可信来源；条件更新避免并发接单互相覆盖。
+        int affected = orderMapper.acceptEngineering(orderId,
+                SampleOrderStatusEnum.REQUEST.getCode(),
+                SampleOrderStatusEnum.ENGINEERING.getCode(),
+                acceptorName);
+        if (affected == 0) {
+            throw new BusinessException("该样品单已被其他人员接单或状态已变更，请刷新后查看");
+        }
 
         log.info("样品单[{}] 工程接单: {}（状态 {} → 打样中）", current.getOrderNo(), acceptorName, status);
         return orderMapper.selectById(orderId);

@@ -79,7 +79,7 @@ public interface ISampleOrderService {
     /**
      * 工程接单确认（工程打样中状态，记录接单人/时间）
      */
-    SalesOrder acceptEngineering(Long orderId, String acceptorName);
+    SalesOrder acceptEngineering(Long orderId);
 
     /**
      * 工程拒单（工程打样中状态，需拒单原因）

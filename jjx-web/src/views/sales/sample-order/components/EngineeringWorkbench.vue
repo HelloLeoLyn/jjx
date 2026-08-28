@@ -311,7 +311,6 @@ import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import WorkProjectPicker from './WorkProjectPicker.vue'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { useDict } from '@/composables/useDict'
-import { useUserStore } from '@/store/modules/user'
 
 const props = defineProps<{
   visible: boolean
@@ -660,9 +659,7 @@ async function handleAccept() {
   if (!props.card?.orderId) return
   try {
     await ElMessageBox.confirm('确认接单开始打样？', '工程接单', { confirmButtonText: '确认接单', cancelButtonText: '取消', type: 'info' })
-    const userStore = useUserStore()
-    const name = userStore.nickName || '工程'
-    await sampleOrderApi.acceptEngineering(props.card.orderId, name)
+    await sampleOrderApi.acceptEngineering(props.card.orderId)
     ElMessage.success('接单成功')
     emit('saved')
     await refreshCard()

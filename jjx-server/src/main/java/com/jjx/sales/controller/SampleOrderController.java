@@ -216,9 +216,8 @@ public class SampleOrderController extends BaseController {
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "3")
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/accept-engineering/{orderId}")
-    public Result<SalesOrder> acceptEngineering(@PathVariable Long orderId,
-                                                @RequestParam(required = false) String acceptorName) {
-        return Result.success(sampleOrderService.acceptEngineering(orderId, acceptorName));
+    public Result<SalesOrder> acceptEngineering(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.acceptEngineering(orderId));
     }
 
     /**

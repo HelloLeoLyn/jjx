@@ -336,10 +336,7 @@ export const sampleOperations: OperationDef[] = [
     // 接单在工程打样中(3)内进行，状态不变（记录接单人）
     fromStatus: [3],
     events: [],
-    api: ({ bizId }) => {
-      const u = currentUser()
-      return sampleOrderApi.acceptEngineering(bizId, u.name)
-    },
+    api: ({ bizId }) => sampleOrderApi.acceptEngineering(bizId),
   },
   {
     key: 'sample.transfer',

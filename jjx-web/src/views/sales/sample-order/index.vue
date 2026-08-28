@@ -895,9 +895,7 @@ async function handleAcceptEngineering() {
       cancelButtonText: '取消',
       type: 'info',
     })
-    const userStore = useUserStore()
-    const name = userStore.nickName || '工程'
-    await sampleOrderApi.acceptEngineering(detailData.value.orderId, name)
+    await sampleOrderApi.acceptEngineering(detailData.value.orderId)
     ElMessage.success('接单成功')
     await reloadDetail()
   } catch (e: any) {
