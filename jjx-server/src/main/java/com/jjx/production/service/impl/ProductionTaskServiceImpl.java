@@ -250,6 +250,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     vo.setMyPendingReviewQuantity(BigDecimal.ZERO);
                     vo.setMyProcessableQuantity(BigDecimal.ZERO);
                     vo.setChildCompletedQuantity(BigDecimal.ZERO);
+                    vo.setChildPendingQuantity(BigDecimal.ZERO);
                     vo.setChildProcessingQuantity(BigDecimal.ZERO);
                     vo.setPendingMyApprovalQuantity(BigDecimal.ZERO);
                     byExecution.put(vo.getExecutionId(), vo);
@@ -276,9 +277,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             ProductionTask parent = myTaskById.get(child.getParentTaskId());
             if (parent == null) continue;
             MyProductionExecutionVO vo = byExecution.get(parent.getExecutionId());
-            BigDecimal completed = childSubtree
-                    .getOrDefault(child.getTaskId(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO})[0];
+            BigDecimal[] subtree = childSubtree
+                    .getOrDefault(child.getTaskId(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            BigDecimal completed = subtree[0];
             vo.setChildCompletedQuantity(vo.getChildCompletedQuantity().add(completed));
+            vo.setChildPendingQuantity(vo.getChildPendingQuantity().add(subtree[1]));
             vo.setChildProcessingQuantity(vo.getChildProcessingQuantity()
                     .add(floorZero(zero(child.getTaskQuantity()).subtract(completed))));
             vo.setPendingMyApprovalQuantity(vo.getPendingMyApprovalQuantity()

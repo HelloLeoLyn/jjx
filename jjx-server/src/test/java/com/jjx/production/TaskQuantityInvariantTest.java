@@ -147,6 +147,38 @@ class TaskQuantityInvariantTest {
         assertEquals(0, new BigDecimal("28").compareTo(admin[0]));
     }
 
+    @Test
+    void responsibilitySummaryIncludesPendingFromEntireChildSubtree() {
+        Task responsibility = new Task(new BigDecimal("120"));
+        Task directChild = new Task(new BigDecimal("70"));
+        Task grandchild = new Task(new BigDecimal("40"));
+        responsibility.children.add(directChild);
+        directChild.children.add(grandchild);
+
+        responsibility.ownCompleted = new BigDecimal("10");
+        responsibility.ownPending = new BigDecimal("5");
+        directChild.ownCompleted = new BigDecimal("12");
+        directChild.ownPending = new BigDecimal("3");
+        grandchild.ownCompleted = new BigDecimal("8");
+        grandchild.ownPending = new BigDecimal("7");
+
+        BigDecimal[] ownDisplay = display(responsibility);
+        BigDecimal[] childSubtree = subtree(directChild);
+        BigDecimal completedIncludingChildren = responsibility.ownCompleted.add(childSubtree[0]);
+        BigDecimal pendingIncludingChildren = responsibility.ownPending.add(childSubtree[1]);
+        BigDecimal myProcessable = ownDisplay[3];
+        BigDecimal childProcessing = directChild.taskQuantity.subtract(childSubtree[0]);
+        BigDecimal childPending = childSubtree[1];
+        BigDecimal childUnfinished = childProcessing.subtract(childPending);
+
+        assertEquals(0, new BigDecimal("10").compareTo(childPending),
+                "直接子任务的 pending 应包含孙级子树报工");
+        BigDecimal summary = completedIncludingChildren.add(pendingIncludingChildren)
+                .add(myProcessable).add(childUnfinished);
+        assertEquals(0, responsibility.taskQuantity.compareTo(summary),
+                "责任 = 已完成(含下级) + 待审批(含下级) + 可处理 + 下级未完成");
+    }
+
     private static Task findB(Task root) {
         return root.children.get(0).children.get(0).children.get(0);
     }

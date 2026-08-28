@@ -28,6 +28,7 @@ public class MyProductionExecutionVO {
     private BigDecimal myPendingReviewQuantity;
     private BigDecimal myProcessableQuantity;
     private BigDecimal childCompletedQuantity;
+    private BigDecimal childPendingQuantity;
     private BigDecimal childProcessingQuantity;
     private BigDecimal pendingMyApprovalQuantity;
 }
