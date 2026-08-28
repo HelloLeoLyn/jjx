@@ -1,5 +1,12 @@
 <template>
   <div class="dict-page">
+    <el-alert
+      title="状态类系统字典由后端枚举自动导入，仅供查看，页面显示以代码枚举为准；工序类型、工序类目等运营字典仍可编辑。"
+      type="info"
+      show-icon
+      :closable="false"
+      class="readonly-alert"
+    />
     <!-- 搜索表单 -->
     <SearchForm
       v-model="queryParams"
@@ -18,7 +25,7 @@
     >
       <template #batch-actions>
         <el-button
-          :disabled="selectedRows.length === 0"
+          :disabled="selectedRows.length === 0 || selectedRows.some(isSystemDict)"
           type="danger"
           size="small"
           @click="handleBatchDelete"
@@ -55,9 +62,9 @@
 
       <!-- 操作列 -->
       <template #action="{ row }">
-        <el-button link type="primary" @click="handleEdit(row)" v-hasPermi="['system:dict:edit']">
-          修改
-        </el-button>
+        <el-tooltip :content="readonlyTip" :disabled="!isSystemDict(row)">
+          <span><el-button link type="primary" :disabled="isSystemDict(row)" @click="handleEdit(row)" v-hasPermi="['system:dict:edit']">修改</el-button></span>
+        </el-tooltip>
         <el-button
           link
           type="primary"
@@ -66,22 +73,13 @@
         >
           字典项
         </el-button>
-        <el-button
-          link
-          :type="row.isActive === 1 ? 'warning' : 'success'"
-          @click="handleToggleStatus(row)"
-          v-hasPermi="['system:dict:edit']"
-        >
-          {{ row.isActive === 1 ? '禁用' : '启用' }}
-        </el-button>
-        <el-button
-          link
-          type="danger"
-          @click="handleDelete(row)"
-          v-hasPermi="['system:dict:delete']"
-        >
-          删除
-        </el-button>
+        <el-tag v-if="isSystemDict(row)" type="info" size="small">系统字典</el-tag>
+        <el-tooltip :content="readonlyTip" :disabled="!isSystemDict(row)">
+          <span><el-button link :type="row.isActive === 1 ? 'warning' : 'success'" :disabled="isSystemDict(row)" @click="handleToggleStatus(row)" v-hasPermi="['system:dict:edit']">{{ row.isActive === 1 ? '禁用' : '启用' }}</el-button></span>
+        </el-tooltip>
+        <el-tooltip :content="readonlyTip" :disabled="!isSystemDict(row)">
+          <span><el-button link type="danger" :disabled="isSystemDict(row)" @click="handleDelete(row)" v-hasPermi="['system:dict:delete']">删除</el-button></span>
+        </el-tooltip>
       </template>
     </DataTable>
 
@@ -100,6 +98,7 @@
       v-model:visible="itemDialogVisible"
       :dict-code="currentDictCode"
       :dict-name="currentDictName"
+      :readonly="currentDictReadonly"
     />
   </div>
 </template>
@@ -148,8 +147,11 @@ const submitLoading = ref(false)
 const itemDialogVisible = ref(false)
 const currentDictCode = ref('')
 const currentDictName = ref('')
+const currentDictReadonly = ref(false)
 
 // ==================== 辅助函数 ====================
+const readonlyTip = '由后端枚举自动导入，页面显示以代码枚举为准，此处仅供查看'
+const isSystemDict = (dict: SysDict) => dict.remark?.includes('自动导入') === true
 const parseTime = (time: string) => {
   if (!time) return ''
   const date = new Date(time)
@@ -252,6 +254,10 @@ const handleDelete = async (row: SysDict) => {
 }
 
 const handleBatchDelete = async () => {
+  if (selectedRows.value.some(isSystemDict)) {
+    ElMessage.warning(readonlyTip)
+    return
+  }
   const ids = selectedRows.value.map((item) => item.dictId!)
   const names = selectedRows.value.map((item) => item.dictName).join(',')
   await ElMessageBox.confirm(`是否确认删除字典"${names}"？`, '警告', {
@@ -280,6 +286,7 @@ const handleToggleStatus = async (row: SysDict) => {
 const handleManageItems = (row: SysDict) => {
   currentDictCode.value = row.dictCode
   currentDictName.value = row.dictName
+  currentDictReadonly.value = isSystemDict(row)
   itemDialogVisible.value = true
 }
 
@@ -313,4 +320,5 @@ onMounted(() => {
 .dict-page {
   padding: 20px;
 }
+.readonly-alert { margin-bottom: 16px; }
 </style>

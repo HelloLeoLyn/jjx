@@ -1,6 +1,7 @@
 package com.jjx.system.controller;
 
 import com.jjx.common.core.result.Result;
+import com.jjx.system.service.SysConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,21 +28,40 @@ public class ExchangeRateController {
     private static final String EXCHANGE_RATE_API = "https://open.er-api.com/v6/latest/CNY";
 
     // 备用汇率（当API不可用时使用）
-    private static final Map<String, BigDecimal> FALLBACK_RATES = new HashMap<>();
+    private static final String EXCHANGE_RATE_GROUP = "exchange_rate";
+    private static final String EXCHANGE_RATE_KEY_PREFIX = "exchange_rate.";
+    private static final Map<String, BigDecimal> DEFAULT_FALLBACK_RATES = new HashMap<>();
 
     static {
-        FALLBACK_RATES.put("CNY", BigDecimal.ONE);
-        FALLBACK_RATES.put("USD", new BigDecimal("7.2400"));
-        FALLBACK_RATES.put("EUR", new BigDecimal("7.8800"));
-        FALLBACK_RATES.put("GBP", new BigDecimal("9.3500"));
-        FALLBACK_RATES.put("JPY", new BigDecimal("0.0480"));
-        FALLBACK_RATES.put("HKD", new BigDecimal("0.9270"));
-        FALLBACK_RATES.put("KRW", new BigDecimal("0.0053"));
-        FALLBACK_RATES.put("AUD", new BigDecimal("4.7500"));
-        FALLBACK_RATES.put("CAD", new BigDecimal("5.2700"));
-        FALLBACK_RATES.put("SGD", new BigDecimal("5.3800"));
-        FALLBACK_RATES.put("TWD", new BigDecimal("0.2230"));
-        FALLBACK_RATES.put("CHF", new BigDecimal("8.1400"));
+        DEFAULT_FALLBACK_RATES.put("CNY", BigDecimal.ONE);
+        DEFAULT_FALLBACK_RATES.put("USD", new BigDecimal("7.2400"));
+        DEFAULT_FALLBACK_RATES.put("EUR", new BigDecimal("7.8800"));
+        DEFAULT_FALLBACK_RATES.put("GBP", new BigDecimal("9.3500"));
+        DEFAULT_FALLBACK_RATES.put("JPY", new BigDecimal("0.0480"));
+        DEFAULT_FALLBACK_RATES.put("HKD", new BigDecimal("0.9270"));
+        DEFAULT_FALLBACK_RATES.put("KRW", new BigDecimal("0.0053"));
+        DEFAULT_FALLBACK_RATES.put("AUD", new BigDecimal("4.7500"));
+        DEFAULT_FALLBACK_RATES.put("CAD", new BigDecimal("5.2700"));
+        DEFAULT_FALLBACK_RATES.put("SGD", new BigDecimal("5.3800"));
+        DEFAULT_FALLBACK_RATES.put("TWD", new BigDecimal("0.2230"));
+        DEFAULT_FALLBACK_RATES.put("CHF", new BigDecimal("8.1400"));
+    }
+
+    private final SysConfigService sysConfigService;
+
+    private Map<String, BigDecimal> getFallbackRates() {
+        Map<String, BigDecimal> rates = new HashMap<>(DEFAULT_FALLBACK_RATES);
+        sysConfigService.listActiveMapByGroup(EXCHANGE_RATE_GROUP).forEach((key, value) -> {
+            if (!key.startsWith(EXCHANGE_RATE_KEY_PREFIX)) return;
+            String currency = key.substring(EXCHANGE_RATE_KEY_PREFIX.length()).toUpperCase();
+            try {
+                BigDecimal rate = new BigDecimal(value);
+                if (rate.compareTo(BigDecimal.ZERO) > 0) rates.put(currency, rate);
+            } catch (NumberFormatException e) {
+                log.warn("忽略无效汇率配置 {}={}", key, value);
+            }
+        });
+        return rates;
     }
 
     /**
@@ -79,12 +99,12 @@ public class ExchangeRateController {
                 result.put("source", "live");
                 log.debug("实时汇率获取成功");
             } else {
-                rates = FALLBACK_RATES;
+                rates = getFallbackRates();
                 result.put("source", "fallback");
                 log.warn("汇率API响应异常，使用备用汇率");
             }
         } catch (Exception e) {
-            rates = FALLBACK_RATES;
+            rates = getFallbackRates();
             result.put("source", "fallback");
             log.warn("汇率API调用失败，使用备用汇率: {}", e.getMessage());
         }

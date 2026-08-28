@@ -35,4 +35,15 @@ export const sysConfigApi = {
       params: { value },
     })
   },
+
+  uploadLogo(file: File, configId: number) {
+    const data = new FormData()
+    data.append('file', file)
+    data.append('bizType', 'system_config')
+    data.append('bizId', String(configId))
+    data.append('category', 'company_logo')
+    return request.post<R<number>>('/system/attachment/upload', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }

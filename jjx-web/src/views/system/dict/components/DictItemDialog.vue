@@ -6,11 +6,19 @@
     append-to-body
     :before-close="handleCancel"
   >
+    <el-alert
+      v-if="readonly"
+      :title="readonlyTip"
+      type="info"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+    />
     <!-- 工具栏 -->
     <div style="margin-bottom: 16px">
-      <el-button type="primary" icon="Plus" @click="handleAdd" v-hasPermi="['system:dict:add']">
-        新增字典项
-      </el-button>
+      <el-tooltip :content="readonlyTip" :disabled="!readonly">
+        <span><el-button type="primary" icon="Plus" :disabled="readonly" @click="handleAdd" v-hasPermi="['system:dict:add']">新增字典项</el-button></span>
+      </el-tooltip>
     </div>
 
     <!-- 字典项表格 -->
@@ -29,12 +37,13 @@
       </el-table-column>
       <el-table-column label="操作" width="200" align="center">
         <template #default="{ row }">
-          <el-button link type="primary" @click="handleEdit(row)" v-hasPermi="['system:dict:edit']">
+          <el-button link type="primary" :disabled="readonly" @click="handleEdit(row)" v-hasPermi="['system:dict:edit']">
             修改
           </el-button>
           <el-button
             link
             :type="row.isActive === 1 ? 'warning' : 'success'"
+            :disabled="readonly"
             @click="handleToggleStatus(row)"
             v-hasPermi="['system:dict:edit']"
           >
@@ -43,6 +52,7 @@
           <el-button
             link
             type="danger"
+            :disabled="readonly"
             @click="handleDelete(row)"
             v-hasPermi="['system:dict:delete']"
           >
@@ -117,13 +127,17 @@ interface Props {
   visible: boolean
   dictCode: string
   dictName: string
+  readonly?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   visible: false,
   dictCode: '',
   dictName: '',
+  readonly: false,
 })
+
+const readonlyTip = '由后端枚举自动导入，页面显示以代码枚举为准，此处仅供查看'
 
 // 组件事件
 const emit = defineEmits<{
