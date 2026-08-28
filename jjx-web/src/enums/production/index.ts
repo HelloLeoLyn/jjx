@@ -5,6 +5,7 @@ import { ToolingTypeEnum, ToolingStatusEnum } from './ToolingEnum'
 // 重新导出所有内容
 export * from './WorkOrderEnum'
 export * from './ToolingEnum'
+export * from './QualityTemplateEnum'
 
 // 重新导出统一对象
 export { WorkOrderEnum, ProductionOrderStatusEnum, ExecutionStatusEnum, RecordTypeEnum, ToolingTypeEnum, ToolingStatusEnum }

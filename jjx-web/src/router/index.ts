@@ -133,6 +133,23 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/production/quality-template',
+    name: 'ProductionQualityTemplate',
+    component: () => import('@/layout/index.vue'),
+    meta: {
+      title: '质量记录模板',
+      hidden: true,
+    },
+    children: [
+      {
+        path: '',
+        name: 'ProductionQualityTemplateIndex',
+        component: () => import('@/views/production/quality-template/index.vue'),
+        meta: { title: '质量记录模板', hidden: true },
+      },
+    ],
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),
