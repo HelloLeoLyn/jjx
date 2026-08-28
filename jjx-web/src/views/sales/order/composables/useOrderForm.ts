@@ -173,8 +173,18 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       (c: any) => c.customerId === customerId
     )
     if (!selectedCustomer) return
+    form.items.forEach((item: OrderItem) => {
+      item.productId = undefined
+      item.productCode = ''
+      item.productName = ''
+      item.specification = ''
+      item.unit = ''
+    })
+    productOptions.value = []
+    productSearchCache.value.clear()
     // 覆盖策略：订单已填写过联系人/电话/收货地址，且客户确实发生变更 → 确认后才覆盖
     const hasManualInfo = !!(form.contactPerson || form.contactPhone || form.shippingAddress)
+    let syncCustomerInfo = true
     if (hasManualInfo && form.customerId && form.customerId !== customerId) {
       try {
         await ElMessageBox.confirm('客户已变更，是否同步更新联系人/电话/收货地址？', '提示', {
@@ -183,10 +193,11 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
           cancelButtonText: '保留原值',
         })
       } catch {
-        return // 保留原联系人/地址
+        syncCustomerInfo = false
       }
     }
     form.customerName = selectedCustomer.customerName
+    if (!syncCustomerInfo) return
     form.contactPerson = selectedCustomer.contactPerson || ''
     form.contactPhone = selectedCustomer.contactPhone || ''
     // 完整地址联动：客户档案 国家/省/市/详细地址/邮编 → 订单收货地址（InternationalAddress JSON）
@@ -200,6 +211,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     form.shippingAddress = Object.values(address).some((v) => v)
       ? JSON.stringify(address)
       : ''
+
   }
 
   /**
@@ -273,7 +285,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     // 2. 执行API搜索
     try {
       productLoading.value = true
-      const res = await productApi.search(normalizedQuery)
+      const res = await productApi.search(normalizedQuery, form.customerId)
 
       if (res.code === 200 && res.data) {
         const productData = res.data.map((item: any) => ({

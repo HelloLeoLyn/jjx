@@ -423,18 +423,37 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
     @Override
     public Long ensureDraftProduct(String productCode, String productName, String unit, String source) {
+        return ensureDraftProduct(productCode, productName, unit, source, null);
+    }
+
+    @Override
+    public Long ensureDraftProduct(String productCode, String productName, String unit, String source, Long customerId) {
         if (productCode == null || productCode.isBlank()) return null;
         String code = productCode.trim();
         Product exist = productMapper.selectOne(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Product>()
                         .eq(Product::getProductCode, code).last("LIMIT 1"));
-        if (exist != null) return exist.getProductId();
+        if (exist != null) {
+            if (customerId != null && exist.getCustomerId() != null
+                    && !customerId.equals(exist.getCustomerId())) {
+                throw new BusinessException("产品编码[" + code + "]已属于其他客户");
+            }
+            if (customerId != null && exist.getCustomerId() == null
+                    && ProductEnums.Status.DEVELOPING.getValue().equals(exist.getProductStatus())) {
+                Product customerUpdate = new Product();
+                customerUpdate.setProductId(exist.getProductId());
+                customerUpdate.setCustomerId(customerId);
+                productMapper.updateById(customerUpdate);
+            }
+            return exist.getProductId();
+        }
         Product p = new Product();
         p.setProductCode(code);
         p.setProductName(productName != null && !productName.isBlank() ? productName : code);
         p.setProductStatus(ProductEnums.Status.DEVELOPING.getValue());
         p.setUnit(unit != null && !unit.isBlank() ? unit : "PCS");
         p.setFromSource(source);
+        p.setCustomerId(customerId);
         p.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
         productMapper.insert(p);
         return p.getProductId();

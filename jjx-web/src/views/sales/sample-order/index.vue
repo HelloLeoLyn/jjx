@@ -285,7 +285,8 @@
                   remote
                   :remote-method="(q) => searchProducts(q, scope.row)"
                   :loading="productSearching"
-                  placeholder="搜索产品编码/名称"
+                  :disabled="!createForm.customerId"
+                  placeholder="请先选择客户，再搜索该客户的产品"
                   style="width: 100%"
                   @change="onProductSelect(scope.row)"
                 >
@@ -1325,6 +1326,12 @@ function onCustomerChange(cid: number) {
     if (!createForm.contactPerson) createForm.contactPerson = c.contactPerson || ''
     if (!createForm.contactPhone) createForm.contactPhone = c.contactPhone || ''
   }
+  productOptions.value = []
+  createForm.items.forEach((item: any) => {
+    item.productId = undefined
+    item.productCode = ''
+    item.productName = ''
+  })
 }
 
 // 选择报价单：带出客户 + 联系人/电话/交期 + 产品明细（可继续编辑）
@@ -1359,7 +1366,11 @@ async function onQuotationChange(qid: number) {
 async function searchProducts(keyword: string, row: any) {
   productSearching.value = true
   try {
-    const res: any = await searchProduct(keyword || '')
+    if (!createForm.customerId) {
+      productOptions.value = []
+      return
+    }
+    const res: any = await searchProduct(keyword || '', createForm.customerId)
     productOptions.value = res.data || []
     if (row) row._options = productOptions.value
   } catch {

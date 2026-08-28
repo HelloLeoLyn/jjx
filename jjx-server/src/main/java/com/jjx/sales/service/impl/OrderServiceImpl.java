@@ -68,6 +68,7 @@ public class OrderServiceImpl implements IOrderService {
     private final OrderMapper orderMapper;
     private final RedisSequenceService redisSequenceService;
     private final SalesOrderConverter orderConverter;
+    private final com.jjx.product.service.ProductCustomerValidator productCustomerValidator;
     private final ISalesOrderProductService orderProductService;
     private final ICustomerService customerService;
     private final ProductMapper productMapper;
@@ -145,7 +146,7 @@ public class OrderServiceImpl implements IOrderService {
         int insert = orderMapper.insert(entity);
         if(insert>0){
             // 校验并处理产品明细
-            validateOrderItems(dto.getItems(), dto.getOrderType());
+            validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
             ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
             orderProductService.batchAdd(dto.getItems());
@@ -218,7 +219,7 @@ public class OrderServiceImpl implements IOrderService {
         orderProductService.deleteByOrderId(dto.getOrderId());
         if(insert>0){
             // 校验并处理产品明细
-            validateOrderItems(dto.getItems(), dto.getOrderType());
+            validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
             ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
             boolean ok = orderProductService.batchAdd(dto.getItems());
@@ -1004,7 +1005,7 @@ public class OrderServiceImpl implements IOrderService {
      * 样品单(orderType=2): productId 允许为空，productCode 允许自定义
      * 标准单(orderType=1): productId 和 productCode 需要完整
      */
-    private void validateOrderItems(List<SalesOrderProductDTO> items, Integer orderType) {
+    private void validateOrderItems(List<SalesOrderProductDTO> items, Integer orderType, Long customerId) {
         if (items == null || items.isEmpty()) {
             throw new BusinessException("产品明细不能为空");
         }
@@ -1039,6 +1040,7 @@ public class OrderServiceImpl implements IOrderService {
                 if (!ProductEnums.Status.RELEASED.getValue().equals(product.getProductStatus())) {
                     throw new BusinessException("第" + (i + 1) + "行产品：产品[" + product.getProductName() + "]尚未发布，请先发布产品后再下单");
                 }
+                productCustomerValidator.validateBelongsToCustomer(item.getProductId(), customerId);
             }
 
             if (!StringUtils.hasText(item.getProductName())) {

@@ -46,6 +46,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.sales.mapper.SalesQuotationItemMapper quotationItemMapper;
     private final com.jjx.sales.mapper.SalesInquiryMapper inquiryMapper;
     private final com.jjx.product.mapper.ProductMapper productMapper;
+    private final com.jjx.product.service.ProductCustomerValidator productCustomerValidator;
     private final com.jjx.sales.mapper.SalesSampleTransferMapper sampleTransferMapper;
     private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
     private final com.jjx.system.mapper.SysTaskMapper sysTaskMapper;
@@ -373,6 +374,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             if (it.getQuantity() == null || it.getQuantity() <= 0) {
                 throw new BusinessException("产品数量必须大于0");
             }
+            if (it.getProductId() != null) {
+                productCustomerValidator.validateBelongsToCustomer(it.getProductId(), dto.getCustomerId());
+            }
         }
 
         // 头信息白名单更新（锁定：样品单号/来源报价单关联/状态/审核及工程字段/创建信息）
@@ -453,6 +457,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             if (quotation == null || quotation.getDeleted() == 1) {
                 throw new BusinessException("报价单不存在");
             }
+            if (!dto.getCustomerId().equals(quotation.getCustomerId())) {
+                throw new BusinessException("来源报价单不属于当前客户");
+            }
             if (quotation.getQuotationStatus() != null
                     && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode()) {
                 throw new BusinessException("报价单已完成，不可重复转样品单");
@@ -521,6 +528,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (items != null && !items.isEmpty()) {
             java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> addList = new java.util.ArrayList<>();
             for (com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item it : items) {
+                if (it.getProductId() != null) {
+                    productCustomerValidator.validateBelongsToCustomer(it.getProductId(), dto.getCustomerId());
+                }
                 com.jjx.sales.domain.dto.SalesOrderProductDTO d = new com.jjx.sales.domain.dto.SalesOrderProductDTO();
                 d.setOrderId(order.getOrderId());
                 d.setProductId(it.getProductId());

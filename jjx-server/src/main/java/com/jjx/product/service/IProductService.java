@@ -96,6 +96,9 @@ public interface IProductService extends IService<Product> {
      */
     Long ensureDraftProduct(String productCode, String productName, String unit, String source);
 
+    /** 样品单据建档草稿产品，并记录定制客户归属。 */
+    Long ensureDraftProduct(String productCode, String productName, String unit, String source, Long customerId);
+
     /**
      * 作废联动清理（2026-08-08）：来源匹配+开发中+无单据明细引用 → 置取消(8)
      * @return 是否已置取消

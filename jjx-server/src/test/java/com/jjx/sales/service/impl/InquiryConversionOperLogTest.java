@@ -4,6 +4,7 @@ import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.IProductService;
 import com.jjx.product.service.ProductCodeService;
+import com.jjx.product.service.ProductCustomerValidator;
 import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.mapper.QuotationMapper;
@@ -28,7 +29,7 @@ class InquiryConversionOperLogTest {
         InquiryServiceImpl service = new InquiryServiceImpl(
             mock(SalesInquiryMapper.class), mock(QuotationMapper.class),
             mock(SalesQuotationItemMapper.class), mock(RedisSequenceService.class),
-            mock(ProductMapper.class), mock(IProductService.class),
+            mock(ProductMapper.class), mock(ProductCustomerValidator.class), mock(IProductService.class),
             mock(ProductCodeService.class), mock(IQuotationService.class),
             mock(OperLogChangeRecorder.class), mock(LogSaveService.class));
         SalesInquiry inquiry = new SalesInquiry();

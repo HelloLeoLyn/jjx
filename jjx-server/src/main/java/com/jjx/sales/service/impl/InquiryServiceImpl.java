@@ -60,6 +60,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final SalesQuotationItemMapper quotationItemMapper;
     private final RedisSequenceService redisSequenceService;
     private final ProductMapper productMapper;
+    private final com.jjx.product.service.ProductCustomerValidator productCustomerValidator;
     private final com.jjx.product.service.IProductService productService;
     private final com.jjx.product.service.ProductCodeService productCodeService;
     private final IQuotationService quotationService;
@@ -179,6 +180,9 @@ public class InquiryServiceImpl implements IInquiryService {
         if (java.lang.Integer.valueOf(1).equals(inquiry.getInquiryType()) && inquiry.getProductId() == null) {
             throw new BusinessException("标准品询价必须选择产品");
         }
+        if (java.lang.Integer.valueOf(1).equals(inquiry.getInquiryType())) {
+            productCustomerValidator.validateSelectable(inquiry.getProductId(), inquiry.getCustomerId());
+        }
         if (inquiry.getInquiryDate() == null) {
             inquiry.setInquiryDate(LocalDate.now());
         }
@@ -201,7 +205,7 @@ public class InquiryServiceImpl implements IInquiryService {
                 && org.apache.commons.lang3.StringUtils.isNotBlank(inquiry.getProductCode())
                 && inquiry.getProductId() == null) {
             Long pid = productService.ensureDraftProduct(
-                    inquiry.getProductCode(), inquiry.getProductName(), "PCS", "inquiry");
+                    inquiry.getProductCode(), inquiry.getProductName(), "PCS", "inquiry", inquiry.getCustomerId());
             inquiry.setProductId(pid);
         }
 
@@ -228,13 +232,16 @@ public class InquiryServiceImpl implements IInquiryService {
         if (java.lang.Integer.valueOf(1).equals(dto.getInquiryType()) && dto.getProductId() == null) {
             throw new BusinessException("标准品询价必须选择产品");
         }
+        if (java.lang.Integer.valueOf(1).equals(dto.getInquiryType())) {
+            productCustomerValidator.validateSelectable(dto.getProductId(), dto.getCustomerId());
+        }
 
         // 样品询价：修改时若编码变化且无产品关联，重新建档（2026-08-08）
         if (java.lang.Integer.valueOf(2).equals(dto.getInquiryType())
                 && StringUtils.hasText(dto.getProductCode())
                 && dto.getProductId() == null) {
             Long pid = productService.ensureDraftProduct(
-                    dto.getProductCode(), dto.getProductName(), "PCS", "inquiry");
+                    dto.getProductCode(), dto.getProductName(), "PCS", "inquiry", dto.getCustomerId());
             dto.setProductId(pid);
         }
 

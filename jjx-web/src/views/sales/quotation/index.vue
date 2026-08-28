@@ -398,7 +398,7 @@
             <el-tooltip
               content="重新报价"
               placement="top"
-              v-if="[3, 4].includes(scope.row.quotationStatus)"
+              v-if="[QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(scope.row.quotationStatus)"
             >
               <el-button
                 link
@@ -411,7 +411,7 @@
             <el-tooltip
               content="转为订单"
               placement="top"
-              v-if="scope.row.quotationStatus === 2 && scope.row.quotationType !== 2"
+              v-if="scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value && scope.row.quotationType !== 2"
             >
               <el-button
                 link
@@ -424,7 +424,7 @@
             <el-tooltip
               content="转为样品单"
               placement="top"
-              v-if="scope.row.quotationType !== 1 && scope.row.quotationStatus === 2"
+              v-if="scope.row.quotationType !== 1 && scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value"
             >
               <el-button
                 link
@@ -446,7 +446,7 @@
             <el-tooltip
               content="提交审核"
               placement="top"
-              v-if="[0, 8].includes(scope.row.quotationStatus)"
+              v-if="[QuotationStatusEnum.DRAFT.value, QuotationStatusEnum.MODIFYING.value].includes(scope.row.quotationStatus)"
             >
               <el-button
                 link
@@ -611,6 +611,7 @@
                 allow-create
                 default-first-option
                 :loading="productLoading"
+                :disabled="!form.customerId"
                 style="width: 100%"
                 @change="handleProductChange(scope.row)"
                 @focus="handleProductFocus(scope.row)"
@@ -1297,6 +1298,7 @@ const searchProduct = async (query: string, row: any) => {
       pageSize: 50,
       productName: query || undefined,
       productCode: query || undefined,
+      customerId: form.customerId,
     } as any)
     const data = (res?.data as any)?.records || res?.data || []
     productOptions.value = data.map((p: any) => ({
@@ -1357,6 +1359,12 @@ function onCustomerChange(val: any, customer: any) {
     form.customerName = ''
     qShortName.value = ''
   }
+  productOptions.value = []
+  form.items.forEach((item: any) => {
+    item.productId = undefined
+    item.productCode = ''
+    item.productName = ''
+  })
 }
 
 // 销售负责人选项（角色ID=7，同订单表单）
@@ -1435,7 +1443,11 @@ const handleProductFocus = async (item: any) => {
   if (productOptions.value.length === 0) {
     productLoading.value = true
     try {
-      const res = await listProduct({ pageNum: 1, pageSize: 50 } as any)
+      const res = await listProduct({
+        pageNum: 1,
+        pageSize: 50,
+        customerId: form.customerId,
+      } as any)
       const data = (res?.data as any)?.records || res?.data || []
       productOptions.value = data.map((p: any) => ({
         productId: p.productId,

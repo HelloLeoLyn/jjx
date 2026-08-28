@@ -64,6 +64,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final SalesQuotationItemMapper quotationItemMapper;
     private final SalesInquiryMapper salesInquiryMapper;
     private final ProductMapper productMapper;
+    private final com.jjx.product.service.ProductCustomerValidator productCustomerValidator;
     private final com.jjx.product.service.IProductService productService;
     private final IOrderService orderService;
     private final com.jjx.sales.mapper.OrderMapper orderMapper;
@@ -249,6 +250,7 @@ public class QuotationServiceImpl implements IQuotationService {
     public int insertQuotation(SalesQuotationAddDTO dto) {
 
         SalesQuotation quotation = quotationConverter.toEntity(dto);
+        validateCustomerProducts(quotation);
         // 销售负责人默认当前登录用户（2026-08-08）
         if (quotation.getSalesPersonId() == null) {
             quotation.setSalesPersonId(SecurityUtils.getUserId());
@@ -329,6 +331,16 @@ public class QuotationServiceImpl implements IQuotationService {
     /**
      * 样品报价建档草稿产品（2026-08-08）：明细有编码无产品 → 建档/复用，回填 productId
      */
+    private void validateCustomerProducts(SalesQuotation quotation) {
+        if (!java.lang.Integer.valueOf(1).equals(quotation.getQuotationType())
+                || quotation.getItems() == null || quotation.getItems().isEmpty()) {
+            return;
+        }
+        for (SalesQuotationItem item : quotation.getItems()) {
+            productCustomerValidator.validateSelectable(item.getProductId(), quotation.getCustomerId());
+        }
+    }
+
     private void ensureSampleDraftProducts(SalesQuotation quotation) {
         if (!java.lang.Integer.valueOf(2).equals(quotation.getQuotationType())) return;
         if (quotation.getItems() == null) return;
@@ -336,7 +348,8 @@ public class QuotationServiceImpl implements IQuotationService {
             if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
                 try {
                     Long pid = productService.ensureDraftProduct(
-                            item.getProductCode(), item.getProductName(), item.getUnit(), "quotation");
+                            item.getProductCode(), item.getProductName(), item.getUnit(), "quotation",
+                            quotation.getCustomerId());
                     item.setProductId(pid);
                 } catch (Exception e) {
                     log.warn("样品报价建档草稿产品失败: code={}, err={}", item.getProductCode(), e.getMessage());
@@ -356,6 +369,7 @@ public class QuotationServiceImpl implements IQuotationService {
         if (existingQuotation == null) {
             throw new BusinessException("报价单不存在");
         }
+        validateCustomerProducts(quotation);
 
         // 检查报价单号是否唯一（排除自身）
         if (quotation.getQuotationNo() != null && !quotation.getQuotationNo().equals(existingQuotation.getQuotationNo())) {

@@ -252,7 +252,7 @@ public class SampleOrderController extends BaseController {
      * 保存打样工序计划（方案A：多选作业项目形成计划，整单覆盖当前轮次）
      */
     @Operation(summary = "保存打样工序计划（多选作业项目，整单覆盖当前轮次）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    // @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/processes/{orderId}/plan")
     public Result<List<com.jjx.sales.domain.entity.SalesSampleProcess>> saveProcessPlan(

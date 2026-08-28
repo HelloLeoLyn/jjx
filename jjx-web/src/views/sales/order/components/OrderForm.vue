@@ -160,7 +160,9 @@
           <ProductSelector
             :model-value="scope.row.productCode"
             value-type="productCode"
-            placeholder="搜索产品编码/名称"
+            :customer-id="form.customerId"
+            :disabled="!form.customerId"
+            placeholder="请先选择客户，再搜索该客户的产品"
             :min-keyword-length="1"
             class="borderless-input"
             @change="(val: any, product: any) => handleProductChange(scope.row, val, product)"
