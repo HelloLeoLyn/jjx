@@ -2,7 +2,6 @@ package com.jjx.sales.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
-import com.jjx.sales.domain.dto.ODRSendToCustomerDTO;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.vo.ReviewHistoryVO;
 import com.jjx.sales.domain.vo.ReviewStatusVO;
@@ -73,21 +72,6 @@ public class OrderStatusController {
             @Valid @RequestBody ReviewDTO reviewDTO) {
         reviewDTO.setOrderId(orderId);
         orderStatusService.approveOrder(reviewDTO);
-        return Result.success();
-    }
-
-    /**
-     * 发送客户确认
-     */
-    @Operation(summary = "发送客户确认")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "4",
-            detail = "'{\"changes\":[\"已审核订单发送客户确认（状态不变）\"]}'")
-    @SaCheckPermission("sales:order:review")
-    @PutMapping("/{orderId}/status/send-to-customer")
-    public Result<Void> sendToCustomer(
-            @Parameter(description = "订单ID", required = true)
-            @PathVariable @NotNull Long orderId, @Valid @RequestBody ODRSendToCustomerDTO dto) {
-        orderStatusService.sendToCustomer(dto);
         return Result.success();
     }
 

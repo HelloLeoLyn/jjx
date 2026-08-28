@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OrderStatusLogContractTest {
 
     private static final List<String> STATUS_ACTIONS = List.of(
-            "submitReview", "startReview", "approveOrder", "sendToCustomer", "rejectOrder",
+            "submitReview", "startReview", "approveOrder", "rejectOrder",
             "resubmit", "cancelOrder", "generatePlan", "shipOrder", "completeOrder", "confirmOrder");
 
     @Test

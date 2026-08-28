@@ -1,6 +1,5 @@
 package com.jjx.sales.service;
 
-import com.jjx.sales.domain.dto.ODRSendToCustomerDTO;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.vo.ReviewHistoryVO;
 import com.jjx.sales.domain.vo.ReviewStatusVO;
@@ -39,11 +38,6 @@ public interface IOrderStatusService {
      * 取消订单
      */
     void cancelOrder(Long orderId, String reason);
-
-    /**
-     * 发送客户确认
-     */
-    void sendToCustomer(ODRSendToCustomerDTO dto);
 
     /**
      * 生成生产计划（标准模式：SO→PLAN→审批→转工单）

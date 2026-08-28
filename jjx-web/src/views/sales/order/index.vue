@@ -177,10 +177,15 @@
                 <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
                   生成生产计划
                 </el-button>
-                <!-- 打印确认书（2026-08-13：直接打开打印预览，不下载） -->
-                <el-button type="info" size="small" plain v-hasPermi="['sales:order:export']" @click="handleExportConfirmPdf(row)">
-                  打印确认书
-                </el-button>
+                <!-- 打印确认书（2026-08-13：直接打开打印预览，不下载；确认前确认人显示-，生成生产计划后打印带确认人） -->
+                <el-tooltip
+                  content="订单尚未确认，确认人显示为 -；生成生产计划（=确认）后打印将带确认人信息"
+                  placement="top"
+                >
+                  <el-button type="info" size="small" plain v-hasPermi="['sales:order:export']" @click="handleExportConfirmPdf(row)">
+                    打印确认书
+                  </el-button>
+                </el-tooltip>
               </template>
 
               <!-- 已驳回状态 (5) -->
@@ -282,13 +287,6 @@
     <!-- 订单详情对话框 -->
     <OrderDetailDrawer v-model="detailOpen" :order-id="currentOrderId" />
 
-    <!-- 发送客户确认弹窗（备注 + 凭证截图，DEV-343/314） -->
-    <OrderSendConfirmDialog
-      v-model:visible="sendConfirmVisible"
-      :order="sendConfirmOrder"
-      @success="getList"
-    />
-
     <!-- 生成生产计划弹窗（2026-08-13：生成计划=确认动作，可上传确认书） -->
     <GeneratePlanDialog
       v-model:visible="generatePlanVisible"
@@ -334,7 +332,6 @@ import { alertApi } from '@/api/inventory/alert'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
-import OrderSendConfirmDialog from './components/OrderSendConfirmDialog.vue'
 import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import ValidationDialog from './components/ValidationDialog.vue'
@@ -589,35 +586,6 @@ const handleResubmit = async (row: any) => {
     if (error !== 'cancel') {
       console.error('重新提交失败', error)
     }
-  }
-}
-
-// 发送客户确认（DEV-343/314：弹窗填写备注+凭证截图，替代原 confirm 提示框）
-const sendConfirmVisible = ref(false)
-const sendConfirmOrder = ref<any>(null)
-const handleSendToCustomer = async (row: any) => {
-  sendConfirmOrder.value = row
-  sendConfirmVisible.value = true
-}
-
-// 客户确认（2026-08-12 DEV-011：4→6，发送确认后的确认动作）
-const handleCustomerConfirm = async (row: any) => {
-  try {
-    const { value } = await ElMessageBox.prompt(
-      `确认订单【${row.orderNo}】已获客户确认，请输入确认人：`,
-      '客户确认',
-      {
-        confirmButtonText: '确认',
-        cancelButtonText: '取消',
-        inputPlaceholder: '客户方确认人',
-        inputValidator: (v: string) => (v && v.trim() ? true : '请输入确认人'),
-      },
-    )
-    await orderStatusApi.confirmOrder(row.orderId, value.trim())
-    ElMessage.success('客户确认成功，订单已进入已确认状态')
-    getList()
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '客户确认失败')
   }
 }
 

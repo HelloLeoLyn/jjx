@@ -12,7 +12,6 @@ import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.mapper.EngineeringRoutingMapper;
-import com.jjx.sales.domain.dto.ODRSendToCustomerDTO;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesOrderProduct;
@@ -29,6 +28,7 @@ import com.jjx.sales.enums.OperationResultEnum;
 import com.jjx.sales.enums.OperationTypeEnum;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.ReviewFlow;
 import com.jjx.system.service.ReviewFlowService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -339,58 +339,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         log.info("订单{}已取消，操作人：{}，原因：{}", orderId, SecurityUtils.getUsername(), reason);
     }
 
-    @Override
-    @Event(value = "order.sent_to_customer", bizId = "#dto.orderId", bizType = "'order'")
-    @Transactional(rollbackFor = Exception.class)
-    public void sendToCustomer(ODRSendToCustomerDTO dto) {
-        // 1. 查询订单
-        SalesOrder order = salesOrderMapper.selectById(dto.getOrderId());
-        if (order == null) {
-            throw new BusinessException("订单不存在");
-        }
-
-        // 2. 检查是否可发送（DEV-935 2026-08-12：仅已审核可发送，状态保持已审核，由 confirm 完成确认 4→6）
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByCode(order.getOrderStatus());
-        if (currentStatus != OrderStatusEnum.APPROVED) {
-            throw new BusinessException("订单不是已审核状态（" + currentStatus.getName() + "），无法发送客户确认");
-        }
-
-        // 3. 重新发送：清空上次确认记录，记录本次发送时间（2026-08-12 发送标识）
-        order.setConfirmBy(null);
-        order.setConfirmMethod(null);
-        order.setConfirmTime(null);
-        order.setConfirmSentTime(java.time.LocalDateTime.now());
-        salesOrderMapper.updateById(order);
-
-        log.info("订单{}已发送客户确认，操作人：{}，原因：{}", order.getOrderId(), SecurityUtils.getUsername(), "");
-
-        // 6. 订单齐套检查（DEV-572 8-04）：按 BOM 算料，缺口生成 order_shortage 预警
-        try {
-            inventoryAlertService.checkOrderShortage(order.getOrderId());
-        } catch (Exception e) {
-            log.error("订单{}齐套检查异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
-        }
-        // 7. 082定稿：订单确认时同步触发全局汇总缺料检查（物料维度 demand_shortage 预警，防忘预占的兜底）
-        try {
-            inventoryAlertService.checkGlobalShortage();
-        } catch (Exception e) {
-            log.error("订单{}确认后全局缺料检查异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
-        }
-
-        // 7. 成品库存预留（DEV-578 8-04）：确认时检查成品可用库存，库存部分预留，缺货部分进生产
-        try {
-            orderStockReserveService.reserveForOrder(order.getOrderId());
-        } catch (Exception e) {
-            log.error("订单{}成品库存预留异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
-        }
-        // 7.1 036定稿：订单确认时原料占用——预占转正式占用（无预占则自动按BOM占用，防多订单合计超卖）
-        try {
-            orderMaterialReserveService.confirmReserve(order.getOrderId());
-        } catch (Exception e) {
-            log.error("订单{}确认原料占用异常（不影响确认主流程）: {}", order.getOrderId(), e.getMessage());
-        }
-    }
-
     /**
      * 校验订单产品 BOM/工艺路线（生成生产计划用，2026-08-11 抽取）
      */
@@ -531,11 +479,38 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
     @Override
     public ReviewStatusVO getReviewStatus(Long orderId) {
-        return null;
+        SalesOrder order = salesOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        OrderStatusEnum status = OrderStatusEnum.getByCode(order.getOrderStatus());
+        List<ReviewFlow> flows = reviewFlowService.listByBiz("sales_order", orderId);
+        ReviewFlow latest = flows.isEmpty() ? null : flows.get(flows.size() - 1);
+        return ReviewStatusVO.builder()
+                .orderId(orderId)
+                .orderNo(order.getOrderNo())
+                .orderStatus(order.getOrderStatus())
+                .orderStatusName(status.getName())
+                .reviewerId(latest == null ? null : latest.getOperatorId())
+                .reviewerName(latest == null ? null : latest.getOperatorName())
+                .reviewEndTime(latest == null ? null : latest.getCreateTime())
+                .reviewRemark(latest == null ? null : latest.getComment())
+                .build();
     }
+
     @Override
     public List<ReviewHistoryVO> getReviewHistory(Long orderId) {
-        return List.of();
+        return reviewFlowService.listByBiz("sales_order", orderId).stream()
+                .map(f -> ReviewHistoryVO.builder()
+                        .historyId(f.getFlowId())
+                        .actionType(f.getActionCode())
+                        .actionName(f.getActionName())
+                        .operatorName(f.getOperatorName())
+                        .operateTime(f.getCreateTime())
+                        .remark(f.getComment())
+                        .result(f.getToStatus())
+                        .build())
+                .toList();
     }
 
 
@@ -598,6 +573,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark) {
+        // 主路径已由 createProductionPlan 兼任确认动作（2026-08-13：生成计划=确认，4→6 写确认记录）；
+        // 此方法保留供 API/后续使用，前端无入口。
         SalesOrder order = salesOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("订单不存在");
 
