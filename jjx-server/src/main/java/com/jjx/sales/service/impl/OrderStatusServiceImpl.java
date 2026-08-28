@@ -25,12 +25,10 @@ import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.SalesOrderProductMapper;
 import com.jjx.sales.service.IOrderStatusService;
 import com.jjx.system.annotation.Event;
-import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.sales.enums.OperationResultEnum;
 import com.jjx.sales.enums.OperationTypeEnum;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
-import com.jjx.system.service.LogSaveService;
 import com.jjx.system.service.ReviewFlowService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -51,7 +49,6 @@ import java.util.Map;
 public class OrderStatusServiceImpl implements IOrderStatusService {
 
     private final OrderMapper salesOrderMapper;
-    private final LogSaveService logSaveService;
     private final ISalesOrderProductService orderProductService;
     private final ProductionOrderService productionOrderService;
     private final SalesOrderProductMapper salesOrderProductMapper;
@@ -65,33 +62,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final ReviewFlowService reviewFlowService;
     
-    private void saveOrderLog(String orderNo, String desc, String remark, int status) {
-        SysOperLog log = new SysOperLog();
-        log.setBizType("order");
-        log.setBizId(orderNo);
-        log.setModule("sales_order");
-        log.setBusinessType(0);
-        log.setOperUrl("order." + desc);
-        log.setOperParam(remark);
-        log.setStatus(status);
-        log.setUsername(SecurityUtils.getUsername());
-        // 链路追踪：从订单记录取 trace_id（转量产生成的订单已继承样品单链路）
-        try {
-            com.jjx.sales.domain.entity.SalesOrder so = salesOrderMapper.selectOne(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesOrder>()
-                            .eq(com.jjx.sales.domain.entity.SalesOrder::getOrderNo, orderNo)
-                            .last("LIMIT 1"));
-            if (so != null) {
-                if (so.getTraceId() != null && !so.getTraceId().isEmpty()) {
-                    log.setTraceId(so.getTraceId());
-                }
-                // 2026-08-18：补 biz_status = 订单当前状态（所有调用点均在状态更新后，此前为 NULL/0）
-                log.setBizStatus(so.getOrderStatus());
-            }
-        } catch (Exception ignored) {
-        }
-        logSaveService.saveOperLog(log);
-    }
     @Event("order.submitted")
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -135,14 +105,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         reviewFlowService.record("sales_order", orderId, "SUBMIT", "提交审核",
                 currentStatus.getCode(), targetStatus.getCode(), null, null);
 
-        // 5. 记录成功日志
-        String desc = getOperationDescription(currentStatus,targetStatus);
-        saveOrderLog(order.getOrderNo(), "submit_review", desc, 1);
         log.info("订单{}提交审核，操作人：{}", orderId, SecurityUtils.getUsername());
-    }
-    private static String getOperationDescription(OrderStatusEnum current, OrderStatusEnum target){
-        return String.format("%s => %s (%d -> %d)",
-                current.getName(), target.getName(), current.getCode(), target.getCode());
     }
     @Override
     @Event(value = "order.review_started", bizId = "#orderId", bizType = "'order'")
@@ -171,9 +134,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
-        // 5. 记录日志
-        String desc = getOperationDescription(currentStatus,targetStatus);
-        saveOrderLog(order.getOrderNo(), "start_review", desc, 1);
         log.info("订单{}开始审核，审核人：{}", orderId, SecurityUtils.getUsername());
     }
 
@@ -207,10 +167,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
         reviewFlowService.record("sales_order", reviewDTO.getOrderId(), "APPROVE", "审核通过",
                 currentStatus.getCode(), targetStatus.getCode(), reviewDTO.getRemark(), reviewDTO.getAttachments());
-
-        // 6. 记录日志
-        String desc = getOperationDescription(currentStatus,targetStatus);
-        saveOrderLog(order.getOrderNo(), "approve", desc, 1);
 
         // 7. 审核通过联动（原客户确认环节的步骤前移到审核通过，2026-08-12 去掉客户确认后）
         // 齐套检查（DEV-572）：按 BOM 算料，缺口生成 order_shortage 预警
@@ -277,9 +233,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         reviewFlowService.record("sales_order", reviewDTO.getOrderId(), "REJECT", "审核驳回",
                 currentStatus.getCode(), targetStatus.getCode(), reviewDTO.getRemark(), reviewDTO.getAttachments());
 
-        // 7. 记录日志
-        String desc = getOperationDescription(currentStatus,targetStatus);
-        saveOrderLog(order.getOrderNo(), "reject", desc, 0);
         log.info("订单{}审核驳回，审核人：{}，原因：{}",
                  reviewDTO.getOrderId(), SecurityUtils.getUsername(), reviewDTO.getRemark());
     }
@@ -323,9 +276,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         reviewFlowService.record("sales_order", orderId, "SUBMIT", "重新提交审核",
                 currentStatus.getCode(), targetStatus.getCode(), null, null);
 
-        // 5. 记录日志
-        String desc = getOperationDescription(currentStatus,targetStatus);
-        saveOrderLog(order.getOrderNo(), "resubmit", desc, 1);
         log.info("订单{}重新提交审核，操作人：{}", orderId, SecurityUtils.getUsername());
     }
 
@@ -365,20 +315,11 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
 
-        // 5. 记录日志
-        String desc = getOperationDescription(currentStatus,targetStatus);
-        saveOrderLog(order.getOrderNo(), "cancel", desc, 1);
-
         // 6. 联动取消关联的生产工单（跳过已完成/已取消/已关闭）
         int[] result2 = productionOrderService.cancelBySalesOrderId(orderId);
         int cancelled = result2[0];
         int skipped = result2[1];
         if (cancelled > 0 || skipped > 0) {
-            String remark = "取消原因:" + reason + "；联动取消生产工单" + cancelled + "个";
-            if (skipped > 0) {
-                remark += "，跳过" + skipped + "个不可取消工单(已完成等)";
-            }
-            saveOrderLog(order.getOrderNo(), "cancel_work_order", remark, 1);
             log.info("订单{}取消联动：取消{}个生产工单，跳过{}个", orderId, cancelled, skipped);
         }
 
@@ -421,8 +362,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         order.setConfirmSentTime(java.time.LocalDateTime.now());
         salesOrderMapper.updateById(order);
 
-        // 4. 记录日志
-        saveOrderLog(order.getOrderNo(), "send", "发送客户确认", 1);
         log.info("订单{}已发送客户确认，操作人：{}，原因：{}", order.getOrderId(), SecurityUtils.getUsername(), "");
 
         // 6. 订单齐套检查（DEV-572 8-04）：按 BOM 算料，缺口生成 order_shortage 预警
@@ -572,9 +511,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (createdCount == 0) {
             throw new BusinessException("订单无可生成计划的产品（均无productId）");
         }
-        String desc = "生成生产计划 " + createdCount + " 张，待计划审批";
-        saveOrderLog(order.getOrderNo(), "generate_plan", desc, 1);
-
         // 2026-08-13：生成计划=确认动作，SO 已审核(4)→已确认(6)，写确认人/方式/时间（已确认的历史订单跳过）
         if (OrderStatusEnum.APPROVED.equals(currentStatus)) {
             int up = salesOrderMapper.updateStatusWithCheck(
@@ -586,8 +522,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                 confirmUpdate.setConfirmMethod("生成生产计划");
                 confirmUpdate.setConfirmTime(LocalDateTime.now());
                 salesOrderMapper.updateById(confirmUpdate);
-                saveOrderLog(order.getOrderNo(), "confirm",
-                        "生成生产计划即确认，确认人:" + SecurityUtils.getUsername(), 1);
                 log.info("订单{}生成生产计划后确认：已审核(4)→已确认(6)，确认人：{}",
                         orderId, SecurityUtils.getUsername());
             }
@@ -632,9 +566,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
-        // 4. 记录日志
-        String desc = getOperationDescription(currentStatus, OrderStatusEnum.SHIPPED);
-        saveOrderLog(order.getOrderNo(), "ship", desc, 1);
         log.info("订单{}已发货，操作人：{}", orderId, SecurityUtils.getUsername());
     }
 
@@ -661,10 +592,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
 
-        // 4. 记录日志
-        String desc = getOperationDescription(currentStatus, OrderStatusEnum.COMPLETED);
-        saveOrderLog(order.getOrderNo(), "complete", desc, 1);
-
         log.info("订单{}完成，操作人：{}", orderId, SecurityUtils.getUsername());
     }
 
@@ -686,10 +613,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         order.setConfirmMethod(confirmMethod);
         order.setConfirmTime(LocalDateTime.now());
         salesOrderMapper.updateById(order);
-
-        // 记录日志
-        String desc = getOperationDescription(OrderStatusEnum.APPROVED, OrderStatusEnum.CONFIRMED);
-        saveOrderLog(order.getOrderNo(), "confirm", desc + " 确认人:" + confirmedBy, 1);
 
         // 二次齐套检查（DEV-640 8-05）：客户确认环节再次按 BOM 算料，缺口生成/刷新 order_shortage 预警
         // 复用 checkOrderShortage 幂等逻辑（先清旧未处理预警再重算），异常不阻断确认主流程
