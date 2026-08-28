@@ -16,6 +16,11 @@ import java.math.BigDecimal;
 @Mapper
 public interface ProductionWorkReportMapper extends BaseMapper<ProductionWorkReport> {
 
+    /** 查询指定日期前缀下的最大报工单号（固定四位序号可按字符串倒序）。 */
+    @Select("SELECT report_no FROM production_work_report "
+            + "WHERE report_no LIKE CONCAT(#{prefix}, '%') ORDER BY report_no DESC LIMIT 1")
+    String selectMaxReportNo(@Param("prefix") String prefix);
+
     /** 当前 Task 自己指定状态报工数量 = SUM(qualified + defective)（P3 Task 投影用） */
     @Select("SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) "
             + "FROM production_work_report WHERE task_id = #{taskId} AND report_status = #{status}")

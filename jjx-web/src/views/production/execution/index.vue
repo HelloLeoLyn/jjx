@@ -710,6 +710,7 @@
         <!-- 报工记录 -->
         <el-tab-pane label="报工记录" name="reports">
           <el-table v-loading="reportsLoading" :data="reportList" size="small">
+            <el-table-column label="报工单号" prop="reportNo" min-width="160" />
             <el-table-column label="报工时间" width="120">
               <template #default="{ row }">{{ fmtTime(row.reportTime) }}</template>
             </el-table-column>
@@ -787,7 +788,7 @@
     <!-- 报工详情弹窗 -->
     <el-dialog v-model="reportDetailVisible" title="报工详情" width="460px" append-to-body>
       <el-descriptions v-if="reportDetail" :column="1" border size="small">
-        <el-descriptions-item label="报工ID">{{ reportDetail.reportId }}</el-descriptions-item>
+        <el-descriptions-item label="报工单号">{{ reportDetail.reportNo || '-' }}</el-descriptions-item>
         <el-descriptions-item label="报工人">{{ reportDetail.reporterName }}</el-descriptions-item>
         <el-descriptions-item label="合格数量">{{
           fmtQty(reportDetail.qualifiedQuantity)
@@ -1020,6 +1021,7 @@
     <!-- 我的报工 Drawer -->
     <el-drawer v-model="myReportsOpen" title="我的报工" size="720px" append-to-body>
       <el-table v-loading="myReportsLoading" :data="myReports" size="small">
+        <el-table-column label="报工单号" prop="reportNo" min-width="160" />
         <el-table-column label="工单/工序" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.orderNo || '-' }} · {{ row.executionId }}</template>
         </el-table-column>
@@ -1064,6 +1066,7 @@
     <!-- 待我审批 Drawer -->
     <el-drawer v-model="pendingOpen" title="待我审批" size="760px" append-to-body>
       <el-table v-loading="pendingLoading" :data="pendingList" size="small">
+        <el-table-column label="报工单号" prop="reportNo" min-width="160" />
         <el-table-column label="工单/工序" min-width="130" show-overflow-tooltip>
           <template #default="{ row }"
             >{{ row.orderNo || '-' }} · {{ row.processName || row.executionId }}</template

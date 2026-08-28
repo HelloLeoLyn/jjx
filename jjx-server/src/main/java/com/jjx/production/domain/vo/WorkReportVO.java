@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 public class WorkReportVO {
 
     private Long reportId;
+    private String reportNo;
 
     private Long orderId;
     private String orderNo;

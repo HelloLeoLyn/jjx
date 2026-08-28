@@ -29,11 +29,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -68,6 +71,9 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
 
     private static final String PROJECTION_MISMATCH = "MISMATCH";
     private static final Long SYSTEM_ADMIN_ID = 1L;
+    private static final String REPORT_NO_PREFIX = "WR-";
+    private static final DateTimeFormatter REPORT_NO_DATE = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final int REPORT_NO_MAX_ATTEMPTS = 3;
 
     // ==================== SUBMIT ====================
 
@@ -197,7 +203,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         r.setRemark(dto.getRemark());
         r.setReportStatus(WorkReportStatusEnum.PENDING.getCode());
         r.setCreateBy(operatorName);
-        workReportMapper.insert(r);
+        insertWithReportNo(r);
 
         // 重算 execution projection（同事务；只认 APPROVED，PENDING 不计入 output）
         projectionService.recalculate(exec.getExecutionId());
@@ -207,6 +213,49 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         result.setEventReceiverId(pendingReviewerId);
         result.setEventPublished(true);
         return result;
+    }
+
+    /**
+     * 生成并插入报工编号。不同 Task 可并发提交，最终由唯一索引裁决；冲突后重新读取最大号重试。
+     */
+    private void insertWithReportNo(ProductionWorkReport report) {
+        LocalDate reportDate = LocalDate.now();
+        for (int attempt = 1; attempt <= REPORT_NO_MAX_ATTEMPTS; attempt++) {
+            String prefix = reportNoPrefix(reportDate);
+            String maxReportNo = workReportMapper.selectMaxReportNo(prefix);
+            report.setReportId(null);
+            report.setReportNo(nextReportNo(reportDate, maxReportNo));
+            try {
+                workReportMapper.insert(report);
+                return;
+            } catch (DuplicateKeyException ex) {
+                if (attempt == REPORT_NO_MAX_ATTEMPTS) {
+                    throw new BusinessException("报工单号生成冲突，请重试");
+                }
+                log.warn("报工单号冲突，准备重试: reportNo={}, attempt={}", report.getReportNo(), attempt);
+            }
+        }
+    }
+
+    static String nextReportNo(LocalDate reportDate, String maxReportNo) {
+        String prefix = reportNoPrefix(reportDate);
+        int nextSequence = 1;
+        if (maxReportNo != null && maxReportNo.startsWith(prefix)) {
+            String sequencePart = maxReportNo.substring(prefix.length());
+            try {
+                nextSequence = Integer.parseInt(sequencePart) + 1;
+            } catch (NumberFormatException ex) {
+                throw new BusinessException("已有报工单号格式异常: " + maxReportNo);
+            }
+        }
+        if (nextSequence > 9999) {
+            throw new BusinessException("当日报工单号已达到上限");
+        }
+        return prefix + String.format("%04d", nextSequence);
+    }
+
+    private static String reportNoPrefix(LocalDate reportDate) {
+        return REPORT_NO_PREFIX + reportDate.format(REPORT_NO_DATE) + "-";
     }
 
     // ==================== APPROVE / REJECT ====================

@@ -6,6 +6,7 @@ export type WorkReportStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
 
 export interface WorkReportVO {
   reportId: number
+  reportNo?: string
   orderId?: number
   orderNo?: string
   executionId: number

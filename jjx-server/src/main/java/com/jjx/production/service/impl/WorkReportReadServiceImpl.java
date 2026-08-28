@@ -140,6 +140,7 @@ public class WorkReportReadServiceImpl implements WorkReportReadService {
     private WorkReportVO toVO(ProductionWorkReport e) {
         WorkReportVO vo = new WorkReportVO();
         vo.setReportId(e.getReportId());
+        vo.setReportNo(e.getReportNo());
         vo.setOrderId(e.getOrderId());
         vo.setOrderNo(e.getOrderNo());
         vo.setExecutionId(e.getExecutionId());

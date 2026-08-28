@@ -30,6 +30,9 @@ public class ProductionWorkReport {
     @TableId(type = IdType.AUTO)
     private Long reportId;
 
+    /** 报工单号：WR-YYYYMMDD-NNNN */
+    private String reportNo;
+
     /** 生产订单ID（冗余引用，便于追溯查询） */
     private Long orderId;
 

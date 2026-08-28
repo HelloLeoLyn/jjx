@@ -66,10 +66,9 @@ class ProductionWorkReportMapperTest {
     }
 
     @Test
-    void entityHasNoReportNoOrInputOutputFields() throws Exception {
-        // 正式决策：无 report_no / input_quantity / output_quantity / org 快照
+    void entityHasReportNoButNoInputOutputFields() throws Exception {
+        // DEV-20260827-018：新增 report_no；仍不引入 input/output/org 快照。
         for (var f : ProductionWorkReport.class.getDeclaredFields()) {
-            assertFalse(f.getName().contains("reportNo"), "不应有 report_no");
             assertFalse(f.getName().contains("inputQuantity"), "不应有 input_quantity");
             assertFalse(f.getName().contains("outputQuantity"), "不应有 output_quantity");
             assertFalse(f.getName().contains("reportedQuantity"), "不应有 reported_quantity");
@@ -77,6 +76,7 @@ class ProductionWorkReportMapperTest {
                     || f.getName().contains("orgPath"), "不应有 org 快照");
         }
         // 必须有的字段
+        assertTrue(hasField("reportNo"));
         assertTrue(hasField("cancelReason"));
         assertTrue(hasField("cancelledAt"));
     }
