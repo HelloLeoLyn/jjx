@@ -460,7 +460,12 @@
       :confirm-api="opConfirmApi"
       @confirm-success="handleOpSuccess"
     />
-    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+    <TraceTimeline
+      v-model="traceDrawerVisible"
+      :traceId="currentTraceId"
+      :bizType="currentTraceBizType"
+      :bizId="currentTraceBizId"
+    />
   </div>
 </template>
 
@@ -1085,8 +1090,12 @@ onMounted(() => {
 // 链路追踪抽屉
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')
+// 035：流水带 bizType+bizId（inquiry），事件流聚合附件/日志
+const currentTraceBizType = ref('inquiry')
+const currentTraceBizId = ref('')
 function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''
+  currentTraceBizId.value = row.inquiryId != null ? String(row.inquiryId) : ''
   traceDrawerVisible.value = true
 }
 </script>

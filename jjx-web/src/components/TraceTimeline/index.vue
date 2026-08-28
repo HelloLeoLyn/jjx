@@ -327,6 +327,24 @@ async function loadLegacyTrace() {
       })
     }
   }
+  // traceId 模式附件（035/询价）：按 traceId 拉 sys_attachment，作为"上传附件"事件行融入
+  try {
+    const attRes: any = await attachmentApi.listByTrace(props.traceId)
+    const attachments: any[] = attRes?.data || []
+    for (const att of attachments) {
+      legacyEvents.push({
+        eventId: `legacy-att-${att.id}`,
+        time: att.createTime,
+        actionTitle: '上传附件',
+        operatorName: att.createBy || '-',
+        result: 1,
+        attachments: [{ id: att.id, fileName: att.fileName }],
+        traceId: props.traceId,
+        module: '附件',
+        bizType: att.bizType,
+      })
+    }
+  } catch { /* 附件加载失败不阻断流水 */ }
   legacyEvents.sort((left, right) => String(left.time || '').localeCompare(String(right.time || '')))
   events.value = legacyEvents
   total.value = legacyEvents.length
