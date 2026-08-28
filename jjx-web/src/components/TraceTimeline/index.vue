@@ -81,12 +81,14 @@
       </el-table>
 
       <el-pagination
-        v-if="total > pageSize"
+        v-if="total > 10"
         v-model:current-page="pageNum"
         v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50]"
         :total="total"
-        layout="total, prev, pager, next"
+        layout="total, sizes, prev, pager, next"
         class="pagination"
+        @size-change="handleSizeChange"
         @current-change="handlePageChange"
       />
 
@@ -119,8 +121,16 @@
 
         <div v-if="detailAttachments.length" class="detail-block">
           <div class="detail-title">📎 附件</div>
+          <el-image
+            v-for="attachment in imageAttachments"
+            :key="attachment.id"
+            :src="downloadUrl(attachment.id)"
+            :preview-src-list="imagePreviewUrls"
+            fit="cover"
+            class="attachment-image"
+          />
           <el-link
-            v-for="attachment in detailAttachments"
+            v-for="attachment in fileAttachments"
             :key="attachment.id"
             type="primary"
             :href="downloadUrl(attachment.id)"
@@ -216,8 +226,7 @@ const legacyEvents = ref<TraceEvent[]>([])
 const selectedEvent = ref<TraceEvent | null>(null)
 const showTechnical = ref(false)
 const pageNum = ref(1)
-// 主表格一次看全：默认 100 条/页（接口分页保留，前端调大 pageSize）
-const pageSize = ref(100)
+const pageSize = ref(20)
 const total = ref(0)
 const serverMode = computed(() => Boolean(props.bizType && props.bizId))
 
@@ -267,6 +276,14 @@ const detailAttachments = computed(() => {
   return [...unique.values()]
 })
 
+const imageAttachments = computed(() => detailAttachments.value.filter(isImageAttachment))
+const fileAttachments = computed(() => detailAttachments.value.filter((attachment) => !isImageAttachment(attachment)))
+const imagePreviewUrls = computed(() => imageAttachments.value.map((attachment) => downloadUrl(attachment.id)))
+
+function isImageAttachment(attachment: TraceAttachment): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(attachment.fileName || '')
+}
+
 function handleClose() {
   emit('update:modelValue', false)
 }
@@ -313,6 +330,16 @@ async function loadEvents() {
 }
 
 function handlePageChange() {
+  selectedEvent.value = null
+  if (serverMode.value) {
+    loadEvents()
+    return
+  }
+  applyLegacyPage()
+}
+
+function handleSizeChange() {
+  pageNum.value = 1
   selectedEvent.value = null
   if (serverMode.value) {
     loadEvents()
@@ -604,6 +631,13 @@ function downloadUrl(id: number): string {
 }
 .attachment-link {
   margin-right: 14px;
+}
+.attachment-image {
+  width: 56px;
+  height: 56px;
+  margin-right: 10px;
+  vertical-align: middle;
+  border-radius: 4px;
 }
 .technical-detail {
   margin-top: 16px;

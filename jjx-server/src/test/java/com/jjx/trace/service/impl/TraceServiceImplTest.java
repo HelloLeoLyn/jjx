@@ -14,6 +14,7 @@ import com.jjx.trace.domain.vo.UnifiedTraceEventVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Proxy;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -25,6 +26,27 @@ class TraceServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new TraceServiceImpl(null, null, null, null, new ObjectMapper());
+    }
+
+    @Test
+    void doesNotQueryReviewFlowWhenLogsHaveNoReviewSemantic() {
+        SysOperLog update = oper(1L, LocalDateTime.of(2026, 8, 28, 10, 0), "/sales/order/update", 2);
+        update.setOperParam("修改订单交期");
+        int[] reviewQueries = {0};
+        int[] quotationQueries = {0};
+        SysOperLogMapper sysOperLogMapper = mapper(SysOperLogMapper.class, "selectList", List.of(update), null);
+        SysAttachmentMapper sysAttachmentMapper = mapper(SysAttachmentMapper.class, "selectList", List.of(), null);
+        ReviewFlowMapper reviewFlowMapper = mapper(ReviewFlowMapper.class, "selectList", List.of(), reviewQueries);
+        QuotationFlowMapper quotationFlowMapper = mapper(QuotationFlowMapper.class,
+                "selectByQuotationId", List.of(), quotationQueries);
+        service = new TraceServiceImpl(sysOperLogMapper, reviewFlowMapper, quotationFlowMapper,
+                sysAttachmentMapper, new ObjectMapper());
+
+        PageResult<UnifiedTraceEventVO> result = service.getEvents("order", 99L, 1, 20);
+
+        assertEquals(1, result.getTotal());
+        assertEquals(0, reviewQueries[0]);
+        assertEquals(0, quotationQueries[0]);
     }
 
     @Test
@@ -132,5 +154,16 @@ class TraceServiceImplTest {
         attachment.setFileName(name);
         attachment.setCreateTime(time);
         return attachment;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T mapper(Class<T> type, String methodName, Object result, int[] calls) {
+        return (T) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> {
+            if (method.getName().equals(methodName)) {
+                if (calls != null) calls[0]++;
+                return result;
+            }
+            return null;
+        });
     }
 }

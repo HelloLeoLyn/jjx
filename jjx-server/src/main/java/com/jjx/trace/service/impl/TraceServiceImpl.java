@@ -131,14 +131,19 @@ public class TraceServiceImpl implements TraceService {
 
         List<ReviewFlow> reviews = Collections.emptyList();
         List<SalesQuotationFlow> quotationFlows = Collections.emptyList();
-        String reviewBizType = reviewBizType(bizType);
-        if ("quotation".equals(bizType)) {
-            quotationFlows = quotationFlowMapper.selectByQuotationId(bizId);
-        } else if (reviewBizType != null) {
-            reviews = reviewFlowMapper.selectList(Wrappers.<ReviewFlow>lambdaQuery()
-                    .eq(ReviewFlow::getBizType, reviewBizType)
-                    .eq(ReviewFlow::getBizId, bizId)
-                    .orderByAsc(ReviewFlow::getCreateTime));
+        boolean hasReviewActions = logs.stream()
+                .anyMatch(log -> semantic((log.getOperUrl() == null ? "" : log.getOperUrl()) + " "
+                        + (log.getOperParam() == null ? "" : log.getOperParam())) != null);
+        if (hasReviewActions) {
+            String reviewBizType = reviewBizType(bizType);
+            if ("quotation".equals(bizType)) {
+                quotationFlows = quotationFlowMapper.selectByQuotationId(bizId);
+            } else if (reviewBizType != null) {
+                reviews = reviewFlowMapper.selectList(Wrappers.<ReviewFlow>lambdaQuery()
+                        .eq(ReviewFlow::getBizType, reviewBizType)
+                        .eq(ReviewFlow::getBizId, bizId)
+                        .orderByAsc(ReviewFlow::getCreateTime));
+            }
         }
         // 附件查询同样按别名匹配（样品附件 bizType=sample_order）
         List<SysAttachment> attachments = sysAttachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
