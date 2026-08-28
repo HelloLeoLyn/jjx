@@ -351,25 +351,7 @@
                 v-model="form.productDescription"
                 type="textarea"
                 :rows="3"
-                :placeholder="
-                  form.inquiryType === 1
-                    ? '选择产品后自动带出，可修改'
-                    : '详细描述产品规格/功能要求'
-                "
-                maxlength="2000"
-                show-word-limit
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="24">
-            <el-form-item label="特殊要求" prop="specialRequirements">
-              <el-input
-                v-model="form.specialRequirements"
-                type="textarea"
-                :rows="2"
-                placeholder="其他特殊要求"
+                placeholder="产品规格/描述"
                 maxlength="1000"
                 show-word-limit
               />
@@ -384,7 +366,7 @@
                 type="textarea"
                 :rows="2"
                 placeholder="备注"
-                maxlength="500"
+                maxlength="1000"
                 show-word-limit
               />
             </el-form-item>
@@ -460,12 +442,7 @@
       :confirm-api="opConfirmApi"
       @confirm-success="handleOpSuccess"
     />
-    <TraceTimeline
-      v-model="traceDrawerVisible"
-      :traceId="currentTraceId"
-      :bizType="currentTraceBizType"
-      :bizId="currentTraceBizId"
-    />
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
 </template>
 
@@ -483,8 +460,6 @@ import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
-import { getProductInfo } from '@/api/product'
-import { parseSpecJson } from '@/utils/specJsonHelper'
 import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'
 
@@ -555,7 +530,6 @@ const form = reactive({
   productName: '',
   customerShortName: '',
   productDescription: '',
-  specialRequirements: '',
   hasDrawing: 0,
   inquiryStatus: 0,
   inquiryType: 1,
@@ -623,7 +597,6 @@ const inquiryDetailItems = [
   { key: 'productCode', label: '产品编码' },
   { key: 'productName', label: '产品名称' },
   { key: 'productDescription', label: '产品描述', span: 2 as const },
-  { key: 'specialRequirements', label: '特殊要求', span: 2 as const },
   { key: 'remark', label: '备注', span: 2 as const },
 ]
 
@@ -746,7 +719,6 @@ function customerChanged(val: number) {
     form.productId = undefined
     form.productCode = ''
     form.productName = ''
-    form.productDescription = ''
     nameEdited.value = false
     formRef.value?.validateField('productId').catch(() => {})
   }
@@ -801,13 +773,12 @@ function onTypeChange() {
 
 // 加载产品列表（DEV-1121：已改用公共组件 ProductPicker 按客户加载，此函数废弃）
 
-// 选择产品：带出描述 + 按规格参数回填技术要求（DEV-590；DEV-1121：product 由公共组件 change 事件回传）
-async function onProductSelect(val: number, product?: any) {
+// 选择产品：仅带出编码和名称，产品描述由操作员自由填写
+function onProductSelect(val: number, product?: any) {
   if (!product) {
     product = productOptions.value.find((p: any) => p.productId === val)
   }
   if (product) {
-    form.productDescription = `${product.productName}（${product.productCode}）`
     // 标准品：编码/名称带出产品档案（可改），并反解编码构成要素供查看/修改
     form.productCode = product.productCode
     form.productName = product.productName
@@ -823,20 +794,6 @@ async function onProductSelect(val: number, product?: any) {
         circuitFeature: code.substring(9, 10),
       }
     }
-  }
-  try {
-    const res: any = await getProductInfo(val)
-    const vo = res?.data
-    if (vo?.specJson) {
-      // 规格要素拼接进产品描述（规格要求字段已移除，2026-08-08）
-      const specs = parseSpecJson(vo.specJson)
-      const specParts = specs.map((s: any) => `${s.name}:${s.value ?? ''}`)
-      if (specParts.length && !form.productDescription) {
-        form.productDescription = `${form.productName}（${form.productCode}） ${specParts.join('；')}`
-      }
-    }
-  } catch (e) {
-    console.error('加载产品规格失败:', e)
   }
 }
 
@@ -870,7 +827,6 @@ function handleUpdate(row?: any) {
       productCode: data.productCode || '',
       productName: data.productName || '',
       productDescription: data.productDescription,
-      specialRequirements: data.specialRequirements,
       hasDrawing: data.hasDrawing ?? 0,
       inquiryStatus: data.inquiryStatus,
       inquiryType: data.inquiryType ?? 1,
@@ -1010,7 +966,6 @@ function resetForm() {
     productName: '',
     customerShortName: '',
     productDescription: '',
-    specialRequirements: '',
     hasDrawing: 0,
     inquiryStatus: 0,
     remark: '',
