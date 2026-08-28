@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -269,6 +270,15 @@ public class QuotationServiceImpl implements IQuotationService {
         // 设置默认值
         if (quotation.getQuotationStatus() == null) {
             quotation.setQuotationStatus(QuotationStatus.DRAFT.getCode()); // 草稿状态
+        }
+
+        // valid_until 为数据库必填字段。手工新增或其他调用方未传日期时，
+        // 统一按报价日期起 30 天生成，避免 MyBatis-Plus 省略 null 字段导致插入失败。
+        if (quotation.getQuotationDate() == null) {
+            quotation.setQuotationDate(LocalDate.now());
+        }
+        if (quotation.getValidUntil() == null) {
+            quotation.setValidUntil(quotation.getQuotationDate().plusDays(30));
         }
 
         if (quotation.getCurrency() == null || quotation.getCurrency().isEmpty()) {

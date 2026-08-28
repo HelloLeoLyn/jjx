@@ -759,7 +759,11 @@
     </OperationPreviewDialog>
 
     <!-- 来源报价单详情（复用共享报价详情组件，查看不离开当前页） -->
-    <QuotationDetailDialog v-model="quotationDetailVisible" :quotation-id="quotationDetailId" />
+    <QuotationDetailDialog
+      v-model="quotationDetailVisible"
+      :quotation-id="quotationDetailId"
+      :is-sensitive="true"
+    />
 
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
@@ -1652,10 +1656,9 @@ function canSubmitRequest(row: any): boolean {
 // 工程接单（待打样2/打样中3且未接单；新模型无审核环节）/ 已接单跳工作台
 function canAcceptEngineering(row: any): boolean {
   return (
-    [
-      SampleOrderStatusEnum.REQUEST.value,
-      SampleOrderStatusEnum.ENGINEERING.value,
-    ].includes(row?.sampleStatus) &&
+    [SampleOrderStatusEnum.REQUEST.value, SampleOrderStatusEnum.ENGINEERING.value].includes(
+      row?.sampleStatus
+    ) &&
     isEngineerRole.value &&
     !row.engineeringAcceptor
   )

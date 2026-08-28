@@ -66,8 +66,12 @@
     <!-- 统计卡片（DEV-594） -->
     <el-card class="stat-card" shadow="never" v-if="stats">
       <el-row :gutter="16">
-        <el-col :span="3"><el-statistic title="报价单总数" :value="stats.totalCount || 0" /></el-col>
-        <el-col :span="5"><el-statistic title="报价总金额" :value="stats.totalAmount || 0" :precision="2" /></el-col>
+        <el-col :span="3"
+          ><el-statistic title="报价单总数" :value="stats.totalCount || 0"
+        /></el-col>
+        <el-col :span="5"
+          ><el-statistic title="报价总金额" :value="stats.totalAmount || 0" :precision="2"
+        /></el-col>
         <el-col :span="3"><el-statistic title="草稿" :value="stats.draftCount || 0" /></el-col>
         <el-col :span="3"><el-statistic title="已发送" :value="stats.sentCount || 0" /></el-col>
         <el-col :span="3"><el-statistic title="已确认" :value="stats.acceptedCount || 0" /></el-col>
@@ -83,20 +87,45 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:quotation:edit']" :disabled="single || !quotationActions.canEdit" @click="handleUpdate"
+          <el-button
+            type="success"
+            plain
+            icon="Edit"
+            v-hasPermi="['sales:quotation:edit']"
+            :disabled="single || !quotationActions.canEdit"
+            @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:quotation:delete']" :disabled="multiple || !quotationActions.canDelete" @click="handleDelete"
+          <el-button
+            type="danger"
+            plain
+            icon="Delete"
+            v-hasPermi="['sales:quotation:delete']"
+            :disabled="multiple || !quotationActions.canDelete"
+            @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:quotation:export']" @click="handleExport">导出</el-button>
+          <el-button
+            type="warning"
+            plain
+            icon="Download"
+            v-hasPermi="['sales:quotation:export']"
+            @click="handleExport"
+            >导出</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Send" v-hasPermi="['sales:quotation:edit']" :disabled="single || !quotationActions.canSend" @click="handleSend"
+          <el-button
+            type="info"
+            plain
+            icon="Send"
+            v-hasPermi="['sales:quotation:edit']"
+            :disabled="single || !quotationActions.canSend"
+            @click="handleSend"
             >发送报价</el-button
           >
         </el-col>
@@ -145,7 +174,14 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="CopyDocument" :disabled="single" @click="handleCopy()">复制报价</el-button>
+          <el-button
+            type="warning"
+            plain
+            icon="CopyDocument"
+            :disabled="single"
+            @click="handleCopy()"
+            >复制报价</el-button
+          >
         </el-col>
         <el-col :span="1.5">
           <el-button
@@ -201,7 +237,13 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="RefreshLeft" v-hasPermi="['sales:quotation:edit']" :disabled="single || !quotationActions.canReQuote" @click="handleReQuote"
+          <el-button
+            type="warning"
+            plain
+            icon="RefreshLeft"
+            v-hasPermi="['sales:quotation:edit']"
+            :disabled="single || !quotationActions.canReQuote"
+            @click="handleReQuote"
             >重新报价</el-button
           >
         </el-col>
@@ -242,12 +284,20 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="报价单号" align="center" width="160">
           <template #default="scope">
-            <el-link type="primary" underline="never" @click="handleView(scope.row)">{{ scope.row.quotationNo }}</el-link>
+            <el-link type="primary" underline="never" @click="handleView(scope.row)">{{
+              scope.row.quotationNo
+            }}</el-link>
           </template>
         </el-table-column>
         <el-table-column label="来源询价单" align="center" width="140">
           <template #default="scope">
-            <el-link v-if="scope.row.sourceInquiryNo" type="primary" underline="never" @click="gotoInquiry(scope.row)">{{ scope.row.sourceInquiryNo }}</el-link>
+            <el-link
+              v-if="scope.row.sourceInquiryNo"
+              type="primary"
+              underline="never"
+              @click="gotoInquiry(scope.row)"
+              >{{ scope.row.sourceInquiryNo }}</el-link
+            >
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -275,17 +325,13 @@
         <!-- 订单类型（转成单：样品单/销售订单/未转） -->
         <el-table-column label="订单类型" align="center" width="120">
           <template #default="scope">
-            <el-tag
-              v-if="scope.row.convertedOrderType === 2"
-              type="warning"
-              size="small"
-            >样品单</el-tag>
-            <el-tag
-              v-else-if="scope.row.convertedOrderType === 1"
-              type="success"
-              size="small"
-            >销售订单</el-tag>
-            <span v-else style="color:#c0c4cc">未转单</span>
+            <el-tag v-if="scope.row.convertedOrderType === 2" type="warning" size="small"
+              >样品单</el-tag
+            >
+            <el-tag v-else-if="scope.row.convertedOrderType === 1" type="success" size="small"
+              >销售订单</el-tag
+            >
+            <span v-else style="color: #c0c4cc">未转单</span>
           </template>
         </el-table-column>
         <el-table-column label="币种" align="center" prop="currency" width="80" />
@@ -307,7 +353,11 @@
           min-width="250"
         >
           <template #default="scope">
-            <el-tooltip content="修改" placement="top" v-if="[1, 2, 3, 4, 9].indexOf(scope.row.quotationStatus) === -1">
+            <el-tooltip
+              content="修改"
+              placement="top"
+              v-if="[1, 2, 3, 4, 9].indexOf(scope.row.quotationStatus) === -1"
+            >
               <el-button
                 link
                 type="primary"
@@ -324,7 +374,11 @@
               ></el-button
             ></el-tooltip>
 
-            <el-tooltip content="删除" placement="top" v-if="[1, 2, 5, 6, 8, 9].indexOf(scope.row.quotationStatus) === -1">
+            <el-tooltip
+              content="删除"
+              placement="top"
+              v-if="[1, 2, 5, 6, 8, 9].indexOf(scope.row.quotationStatus) === -1"
+            >
               <el-button
                 link
                 type="danger"
@@ -341,7 +395,11 @@
                 @click="handleSend(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-tooltip content="重新报价" placement="top" v-if="[3, 4].includes(scope.row.quotationStatus)">
+            <el-tooltip
+              content="重新报价"
+              placement="top"
+              v-if="[3, 4].includes(scope.row.quotationStatus)"
+            >
               <el-button
                 link
                 type="warning"
@@ -350,7 +408,11 @@
                 @click="handleReQuote(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-tooltip content="转为订单" placement="top" v-if="scope.row.quotationStatus === 2 && scope.row.quotationType !== 2">
+            <el-tooltip
+              content="转为订单"
+              placement="top"
+              v-if="scope.row.quotationStatus === 2 && scope.row.quotationType !== 2"
+            >
               <el-button
                 link
                 type="success"
@@ -359,7 +421,11 @@
                 @click="handleConvert(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-tooltip content="转为样品单" placement="top" v-if="scope.row.quotationType !== 1 && scope.row.quotationStatus === 2">
+            <el-tooltip
+              content="转为样品单"
+              placement="top"
+              v-if="scope.row.quotationType !== 1 && scope.row.quotationStatus === 2"
+            >
               <el-button
                 link
                 type="warning"
@@ -377,7 +443,11 @@
                 @click="handleModify(scope.row)"
               ></el-button>
             </el-tooltip>
-            <el-tooltip content="提交审核" placement="top" v-if="[0, 8].includes(scope.row.quotationStatus)">
+            <el-tooltip
+              content="提交审核"
+              placement="top"
+              v-if="[0, 8].includes(scope.row.quotationStatus)"
+            >
               <el-button
                 link
                 type="primary"
@@ -409,7 +479,7 @@
                 link
                 type="success"
                 icon="CircleCheck"
-                 v-hasPermi="['sales:quotation:approve']"
+                v-hasPermi="['sales:quotation:approve']"
                 @click="() => handleReview(true, scope.row)"
               ></el-button>
             </el-tooltip>
@@ -418,7 +488,7 @@
                 link
                 type="danger"
                 icon="CircleClose"
-                 v-hasPermi="['sales:quotation:approve']"
+                v-hasPermi="['sales:quotation:approve']"
                 @click="() => handleReview(false, scope.row)"
               ></el-button>
             </el-tooltip>
@@ -486,7 +556,12 @@
         <el-row>
           <el-col :span="12">
             <el-form-item label="币种" prop="currency">
-              <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%" @change="handleCurrencyChange">
+              <el-select
+                v-model="form.currency"
+                placeholder="请选择币种"
+                style="width: 100%"
+                @change="handleCurrencyChange"
+              >
                 <el-option
                   v-for="dict in currencyOptions"
                   :key="dict.value"
@@ -624,7 +699,9 @@
         <el-row>
           <el-col :span="24" style="text-align: right">
             <!-- 样品类型明细锁单行（2026-08-08）：不显示添加明细 -->
-            <el-button v-if="form.quotationType === 1" type="primary" icon="Plus" @click="addItem">添加明细</el-button>
+            <el-button v-if="form.quotationType === 1" type="primary" icon="Plus" @click="addItem"
+              >添加明细</el-button
+            >
           </el-col>
         </el-row>
 
@@ -729,6 +806,7 @@
       v-model="quotationDetailVisible"
       :quotation-id="quotationDetailId"
       :mode="quotationDetailMode"
+      :is-sensitive="false"
       @submitted="getList"
     />
 
@@ -774,6 +852,7 @@ defineOptions({
 
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
+import dayjs from 'dayjs'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -861,7 +940,9 @@ const dateRange = ref<string[]>([])
 const customerLoading = ref(false)
 const customerOptions = ref<Array<{ customerId: number; customerName: string }>>([])
 const productLoading = ref(false)
-const productOptions = ref<Array<{ productId: number; productCode: string; productName: string }>>([])
+const productOptions = ref<Array<{ productId: number; productCode: string; productName: string }>>(
+  []
+)
 
 // 表格数据
 const quotationList = ref<any[]>([])
@@ -872,7 +953,7 @@ const userStore = useUserStore()
 
 // 字典选项
 const quotationStatusOptions = ref(
-  QuotationStatusEnum.items.map((item) => ({ value: item.value, label: item.label })),
+  QuotationStatusEnum.items.map((item) => ({ value: item.value, label: item.label }))
 )
 
 const currencyOptions = ref([
@@ -887,6 +968,7 @@ const currencyOptions = ref([
 const rules = reactive<FormRules>({
   customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
   quotationDate: [{ required: true, message: '请选择报价日期', trigger: 'change' }],
+  validUntil: [{ required: true, message: '请选择有效期至', trigger: 'change' }],
   currency: [{ required: true, message: '请选择币种', trigger: 'change' }],
 })
 
@@ -954,16 +1036,16 @@ const quotationActions = computed(() => {
   const type = q?.quotationType
   const completed = status === 9
   return {
-    canSend: status === 6,                              // 仅审核通过的报价单可发送（上传报价）
-    canSubmitReview: [0, 8].includes(status),               // 草稿/改单可提交审核
-    canApprove: status === 5,                           // 待审核可审核
-    canCustomerConfirm: status === 1,                   // 已发送可确认/拒绝
-    canConvert: status === 2 && !completed,             // 已确认可转订单
-    canConvertToSample: status === 2 && !completed,     // 已确认(2)的非标准品可转样品单
-    canReQuote: [3, 4].includes(status),                // 已拒绝/已过期可重新报价
+    canSend: status === 6, // 仅审核通过的报价单可发送（上传报价）
+    canSubmitReview: [0, 8].includes(status), // 草稿/改单可提交审核
+    canApprove: status === 5, // 待审核可审核
+    canCustomerConfirm: status === 1, // 已发送可确认/拒绝
+    canConvert: status === 2 && !completed, // 已确认可转订单
+    canConvertToSample: status === 2 && !completed, // 已确认(2)的非标准品可转样品单
+    canReQuote: [3, 4].includes(status), // 已拒绝/已过期可重新报价
     canDelete: ![1, 2, 5, 6, 8, 9].includes(status) && !completed, // 已发送/待审核/已审核/已确认/已完成/改单禁删（8-05 DEV-594 补审核中）
     canEdit: ![1, 2, 3, 4].includes(status) && !completed, // 流转中/已拒绝/已过期/已完成禁改
-    canModify: status === 9,                            // 已完成可改单
+    canModify: status === 9, // 已完成可改单
   }
 })
 
@@ -982,6 +1064,9 @@ const handleSortChange = (column: any) => {
 // 新增按钮操作
 const handleAdd = () => {
   resetForm()
+  const quotationDate = dayjs()
+  form.quotationDate = quotationDate.format('YYYY-MM-DD')
+  form.validUntil = quotationDate.add(30, 'day').format('YYYY-MM-DD')
   // 销售负责人默认当前登录用户（可改，2026-08-08）
   form.salesPersonId = userStore.userId
   form.salesPersonName = userStore.nickName || ''
@@ -1067,7 +1152,7 @@ const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
 // 状态码 → 状态名（预览器状态跳转展示用）
 const quotationStatusTextMap = Object.fromEntries(
-  QuotationStatusEnum.items.map((i: any) => [i.value, i.label]),
+  QuotationStatusEnum.items.map((i: any) => [i.value, i.label])
 )
 async function openPreview(opKey: string, row?: any) {
   const quotationId = row?.quotationId || ids.value[0]
@@ -1083,7 +1168,7 @@ async function openPreview(opKey: string, row?: any) {
       op = {
         ...op,
         fields: (op.fields || []).map((f: any) =>
-          f.key === 'sampleQty' ? { ...f, defaultValue: total > 0 ? total : 1 } : f,
+          f.key === 'sampleQty' ? { ...f, defaultValue: total > 0 ? total : 1 } : f
         ),
       }
     } catch (e) {
@@ -1255,7 +1340,13 @@ const qShortName = ref('')
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 const qCodeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
-const qCodeState = ref<ProductCodeState>({ serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' })
+const qCodeState = ref<ProductCodeState>({
+  serialNo: '',
+  panelType: '',
+  panelFeature: '',
+  circuitType: '',
+  circuitFeature: '',
+})
 const qCodeParams = ref<ProductCodeResult | null>(null)
 
 // 编码生成回调：自动填入唯一明细行（样品类型单行明细）；空编码（重置/未完成）不处理不弹提示
@@ -1313,30 +1404,36 @@ function onSalesPersonChange(val: number) {
   form.salesPersonName = u ? u.nickName : ''
 }
 
-watch(() => form.customerId, (v) => {
-  if (v) qLoadShortName()
-})
+watch(
+  () => form.customerId,
+  (v) => {
+    if (v) qLoadShortName()
+  }
+)
 
 // 样品类型：明细锁单行（2026-08-08）
-watch(() => form.quotationType, (v) => {
-  if (v === 2) {
-    if (form.items.length > 1) {
-      form.items.splice(1)
-      ElMessage.info('样品类型仅支持一条明细，已保留第一行')
-    }
-    if (form.items.length === 0) {
-      form.items.push({
-        productId: undefined,
-        productCode: '',
-        productName: '',
-        quantity: 1,
-        unitPrice: 0,
-        amount: 0,
-        unit: 'PCS',
-      })
+watch(
+  () => form.quotationType,
+  (v) => {
+    if (v === 2) {
+      if (form.items.length > 1) {
+        form.items.splice(1)
+        ElMessage.info('样品类型仅支持一条明细，已保留第一行')
+      }
+      if (form.items.length === 0) {
+        form.items.push({
+          productId: undefined,
+          productCode: '',
+          productName: '',
+          quantity: 1,
+          unitPrice: 0,
+          amount: 0,
+          unit: 'PCS',
+        })
+      }
     }
   }
-})
+)
 
 const handleProductChange = (item: any) => {
   // 根据选择的产品编码自动填充产品名称和产品ID
@@ -1377,9 +1474,7 @@ const handleProductFocus = async (item: any) => {
 
 // 是否为库内标准品（选中库内产品时名称只读，自定义输入时可编辑）
 const isStandardProduct = (item: any) => {
-  return productOptions.value.some(
-    (product) => product.productCode === item.productCode
-  )
+  return productOptions.value.some((product) => product.productCode === item.productCode)
 }
 
 // 处理产品选择
@@ -1493,7 +1588,13 @@ const resetForm = () => {
     items: [],
   })
   // DEV-1108：重置编码生成器状态，避免新增/切换时残留上次的结构参数
-  qCodeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  qCodeState.value = {
+    serialNo: '',
+    panelType: '',
+    panelFeature: '',
+    circuitType: '',
+    circuitFeature: '',
+  }
   qCodeParams.value = null
 }
 
@@ -1642,11 +1743,15 @@ const handleModify = async (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   if (!quotationId) return
   try {
-    await ElMessageBox.confirm('确认将该已完成报价单改为改单状态？修改后需重新提交流转。', '改单确认', {
-      confirmButtonText: '确定改单',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(
+      '确认将该已完成报价单改为改单状态？修改后需重新提交流转。',
+      '改单确认',
+      {
+        confirmButtonText: '确定改单',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
     await quotationApi.modify(quotationId)
     ElMessage.success('已改为改单状态')
     getList()

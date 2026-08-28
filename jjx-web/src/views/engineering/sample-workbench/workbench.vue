@@ -280,7 +280,11 @@
     </template>
 
     <!-- 来源单据查看弹窗（复用询价/报价单列表页同一套详情组件，不新建第二套，不离开工作台） -->
-    <QuotationDetailDialog v-model="quotationDetailVisible" :quotation-id="quotationDetailId" />
+    <QuotationDetailDialog
+      v-model="quotationDetailVisible"
+      :quotation-id="quotationDetailId"
+      :is-sensitive="true"
+    />
     <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
 
     <!-- 卡片作业项目追加选择器（多选，任意结构） -->

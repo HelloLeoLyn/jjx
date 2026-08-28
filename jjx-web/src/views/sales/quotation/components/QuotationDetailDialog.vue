@@ -22,28 +22,30 @@
             {{ getStatusLabel(detail.quotationStatus) }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="币种">
-          {{ detail.currency || 'CNY' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="汇率">
-          {{ detail.exchangeRate || '1.0000' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="小计金额">
-          {{ formatCurrency(detail.subtotalAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="税率"> {{ detail.taxRate || 0 }}% </el-descriptions-item>
-        <el-descriptions-item label="税额">
-          {{ formatCurrency(detail.taxAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="折扣金额">
-          {{ formatCurrency(detail.discountAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="总金额">
-          {{ formatCurrency(detail.totalAmount || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="最终金额">
-          {{ formatCurrency(detail.finalAmount || 0) }}
-        </el-descriptions-item>
+        <template v-if="!isSensitive">
+          <el-descriptions-item label="币种">
+            {{ detail.currency || 'CNY' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="汇率">
+            {{ detail.exchangeRate || '1.0000' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="小计金额">
+            {{ formatCurrency(detail.subtotalAmount || 0) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="税率"> {{ detail.taxRate || 0 }}% </el-descriptions-item>
+          <el-descriptions-item label="税额">
+            {{ formatCurrency(detail.taxAmount || 0) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="折扣金额">
+            {{ formatCurrency(detail.discountAmount || 0) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="总金额">
+            {{ formatCurrency(detail.totalAmount || 0) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="最终金额">
+            {{ formatCurrency(detail.finalAmount || 0) }}
+          </el-descriptions-item>
+        </template>
         <el-descriptions-item label="销售员">
           {{ detail.salesPersonName || '-' }}
         </el-descriptions-item>
@@ -59,16 +61,18 @@
         <el-table-column label="产品编码" prop="productCode" width="120" />
         <el-table-column label="产品名称" prop="productName" width="180" />
         <el-table-column label="数量" prop="quantity" width="80" align="right" />
-        <el-table-column label="单价" prop="unitPrice" width="100" align="right">
-          <template #default="scope">
-            {{ formatCurrency(scope.row.unitPrice) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="金额" prop="amount" width="120" align="right">
-          <template #default="scope">
-            {{ formatCurrency(scope.row.amount) }}
-          </template>
-        </el-table-column>
+        <template v-if="!isSensitive">
+          <el-table-column label="单价" prop="unitPrice" width="100" align="right">
+            <template #default="scope">
+              {{ formatCurrency(scope.row.unitPrice) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="金额" prop="amount" width="120" align="right">
+            <template #default="scope">
+              {{ formatCurrency(scope.row.amount) }}
+            </template>
+          </el-table-column>
+        </template>
         <el-table-column label="单位" prop="unit" width="80" />
         <el-table-column label="交期(天)" prop="deliveryDays" width="100" />
         <el-table-column label="定制要求" prop="customRequirements" />
@@ -120,13 +124,14 @@ const props = defineProps<{
   modelValue: boolean
   quotationId?: number
   mode?: 'view' | 'submitReview'
+  // 默认 false，若为 true 则在提交审核时不显示明细金额（仅显示明细名称/数量/单位），用于敏感报价场景
+  isSensitive: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
   (e: 'submitted'): void
 }>()
-
 const detail = ref<any>({})
 const submitting = ref(false)
 
@@ -142,7 +147,7 @@ watch(
         ElMessage.error(e?.message || '加载报价单详情失败')
       }
     }
-  },
+  }
 )
 
 function getStatusTagType(status: number): any {
