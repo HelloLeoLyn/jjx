@@ -66,7 +66,10 @@ function toTimelineItem(r: any) {
 
 // 组装卡片 + 印刷行合并，按 processOrder 排序
 const merged = computed(() => {
-  const prints = (props.printList || []).map(toTimelineItem)
+  // 印刷面板会自动补一条未保存的空白录入行；只有已落库且名称有效的工序才进入执行时间线。
+  const prints = (props.printList || [])
+    .filter((row) => row.processId != null && String(row.printName || '').trim())
+    .map(toTimelineItem)
   return [...props.planList, ...prints].sort(
     (a, b) => (a.processOrder ?? 999) - (b.processOrder ?? 999),
   )
