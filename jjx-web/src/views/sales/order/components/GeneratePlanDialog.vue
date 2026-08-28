@@ -20,6 +20,7 @@
       <AttachmentUploader
         biz-type="sales_order_confirmation"
         :biz-id="order?.orderId"
+        :trace-id="order?.traceId"
         button-text="上传确认书"
         tip="选填：客户确认书/签字扫描件等，未上传可在订单【确认凭证】入口补充"
         :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"

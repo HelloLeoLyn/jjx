@@ -274,6 +274,7 @@
         ref="uploaderRef"
         biz-type="sales_order"
         :biz-id="form.orderId"
+        :trace-id="(form as any)?.traceId"
         :accept="['.pdf','.doc','.docx','.xls','.xlsx','.jpg','.jpeg','.png']"
         button-text="上传附件"
         tip="支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传"
