@@ -12,21 +12,7 @@
     <!-- A4 画布（干净页面） -->
     <A4Canvas :padding-mm="15" v-if="info">
       <!-- 公司抬头 -->
-      <div class="doc-header">
-        <div class="company-head-row">
-          <img v-if="companyLogo" :src="companyLogo" class="company-logo" alt="logo" />
-          <div class="company-head-text">
-            <div class="company-name">{{ companyName }}</div>
-            <div class="company-contact" v-if="companyContact">{{ companyContact }}</div>
-          </div>
-        </div>
-        <div class="company-extra" v-if="companyTaxNo || companyBank || companyAccount || companyLegal">
-          <span v-if="companyTaxNo">税号：{{ companyTaxNo }}</span>
-          <span v-if="companyLegal">法人：{{ companyLegal }}</span>
-          <span v-if="companyBank">开户行：{{ companyBank }}</span>
-          <span v-if="companyAccount">账号：{{ companyAccount }}</span>
-        </div>
-      </div>
+      <PrintCompanyHeader variant="center" />
 
       <!-- 单据标题 -->
       <div class="doc-title">盘 点 单</div>
@@ -125,34 +111,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { stocktakeApi } from '@/api/inventory/stocktake'
-import { sysConfigApi } from '@/api/system/sysConfig'
 import A4Canvas from '@/components/A4Canvas/index.vue'
+import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
 
 const info = ref<any>(null)
 const loading = ref(false)
-
-// 公司抬头（后台配置）
-const companyName = ref('')
-const companyAddress = ref('')
-const companyPhone = ref('')
-const companyEmail = ref('')
-const companyTaxNo = ref('')
-const companyBank = ref('')
-const companyAccount = ref('')
-const companyLegal = ref('')
-const companyWebsite = ref('')
-const companyLogo = ref('')
-const companyContact = computed(() => {
-  const parts: string[] = []
-  if (companyAddress.value) parts.push(`地址：${companyAddress.value}`)
-  if (companyPhone.value) parts.push(`电话：${companyPhone.value}`)
-  if (companyEmail.value) parts.push(`邮箱：${companyEmail.value}`)
-  if (companyWebsite.value) parts.push(`官网：${companyWebsite.value}`)
-  return parts.join(' ｜ ')
-})
 
 const itemsList = computed<any[]>(() => info.value?.items || [])
 
@@ -192,27 +158,6 @@ const fmtMoney = (v?: number | string | null): string => {
   return Number.isNaN(n) ? String(v) : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-async function loadCompanyConfig() {
-  try {
-    const res: any = await sysConfigApi.listByGroup('pdf_template')
-    const list: any[] = res?.data || []
-    const map: Record<string, string> = {}
-    for (const item of list) map[item.configKey] = item.configValue || ''
-    companyName.value = map.company_name || ''
-    companyAddress.value = map.company_address || ''
-    companyPhone.value = map.company_phone || ''
-    companyEmail.value = map.company_email || ''
-    companyTaxNo.value = map.company_tax_no || ''
-    companyBank.value = map.company_bank || ''
-    companyAccount.value = map.company_account || ''
-    companyLegal.value = map.company_legal || ''
-    companyWebsite.value = map.company_website || ''
-    companyLogo.value = map.company_logo || ''
-  } catch (e) {
-    console.error('加载公司配置失败:', e)
-  }
-}
-
 async function loadData() {
   const stocktakeId = route.params.id as string
   if (!stocktakeId) {
@@ -239,7 +184,7 @@ function handlePrint() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadData(), loadCompanyConfig()])
+  await loadData()
 })
 </script>
 
@@ -270,51 +215,6 @@ onMounted(async () => {
 }
 
 /* 画布内容样式 */
-.doc-header {
-  text-align: center;
-  margin-bottom: 6px;
-}
-
-.company-head-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-}
-
-.company-logo {
-  max-height: 44px;
-  max-width: 120px;
-  object-fit: contain;
-}
-
-.company-head-text {
-  text-align: center;
-}
-
-.company-name {
-  font-size: 20px;
-  font-weight: 700;
-  color: #2b5aa7;
-  letter-spacing: 2px;
-}
-
-.company-contact {
-  font-size: 9px;
-  color: #888;
-  margin-top: 2px;
-}
-
-.company-extra {
-  font-size: 9px;
-  color: #777;
-  margin-top: 3px;
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-}
-
 .doc-title {
   text-align: center;
   font-size: 18px;
