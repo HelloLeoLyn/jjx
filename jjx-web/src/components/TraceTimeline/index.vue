@@ -216,7 +216,8 @@ const legacyEvents = ref<TraceEvent[]>([])
 const selectedEvent = ref<TraceEvent | null>(null)
 const showTechnical = ref(false)
 const pageNum = ref(1)
-const pageSize = ref(10)
+// 主表格一次看全：默认 100 条/页（接口分页保留，前端调大 pageSize）
+const pageSize = ref(100)
 const total = ref(0)
 const serverMode = computed(() => Boolean(props.bizType && props.bizId))
 
