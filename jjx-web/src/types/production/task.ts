@@ -26,6 +26,7 @@ export interface MyProductionExecution {
   myPendingReviewQuantity: number
   myProcessableQuantity: number
   childCompletedQuantity: number
+  childPendingQuantity?: number
   childProcessingQuantity: number
   pendingMyApprovalQuantity: number
 }
