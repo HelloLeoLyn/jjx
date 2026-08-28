@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -176,6 +177,13 @@ public class TraceServiceImpl implements TraceService {
 
         for (SysAttachment attachment : safe(attachments)) {
             if (attachment.getId() == null || referencedAttachmentIds.contains(attachment.getId())) continue;
+            // 附件不单独成行：挂到时间最近（≤5秒）的操作事件行下，点开该行查看（用户要求）
+            UnifiedTraceEventVO target = findClosestEvent(events, attachment.getCreateTime());
+            if (target != null) {
+                target.getAttachments().add(new TraceAttachmentVO(attachment.getId(), attachment.getFileName()));
+                continue;
+            }
+            // 兜底：无操作行可挂（如只有附件无日志）才独立成行
             UnifiedTraceEventVO event = new UnifiedTraceEventVO();
             event.setEventId("attachment-" + attachment.getId());
             event.setTime(attachment.getCreateTime());
@@ -190,6 +198,22 @@ public class TraceServiceImpl implements TraceService {
         events.sort(Comparator.comparing(UnifiedTraceEventVO::getTime,
                 Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(UnifiedTraceEventVO::getEventId));
         return events;
+    }
+
+    /** 找时间最近（≤5秒窗口）的操作事件行，用于挂独立附件；无匹配返回 null */
+    private UnifiedTraceEventVO findClosestEvent(List<UnifiedTraceEventVO> events, LocalDateTime time) {
+        if (time == null) return null;
+        UnifiedTraceEventVO best = null;
+        long bestDiff = Long.MAX_VALUE;
+        for (UnifiedTraceEventVO event : events) {
+            if (event.getTime() == null) continue;
+            long diff = Math.abs(java.time.Duration.between(event.getTime(), time).getSeconds());
+            if (diff <= 5 && diff < bestDiff) {
+                bestDiff = diff;
+                best = event;
+            }
+        }
+        return best;
     }
 
     private UnifiedTraceEventVO fromLog(SysOperLog log) {

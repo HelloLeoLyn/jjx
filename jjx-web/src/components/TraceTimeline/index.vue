@@ -327,11 +327,18 @@ async function loadLegacyTrace() {
       })
     }
   }
-  // traceId 模式附件（035/询价）：按 traceId 拉 sys_attachment，作为"上传附件"事件行融入
+  // traceId 模式附件（035/询价）：附件不单独成行，挂到时间最近（≤5秒）的操作行下（用户要求）
   try {
     const attRes: any = await attachmentApi.listByTrace(props.traceId)
     const attachments: any[] = attRes?.data || []
     for (const att of attachments) {
+      const target = findClosestLegacyEvent(legacyEvents, att.createTime)
+      if (target) {
+        if (!target.attachments) target.attachments = []
+        target.attachments.push({ id: att.id, fileName: att.fileName })
+        continue
+      }
+      // 兜底：无操作行可挂才独立成行
       legacyEvents.push({
         eventId: `legacy-att-${att.id}`,
         time: att.createTime,
@@ -348,6 +355,26 @@ async function loadLegacyTrace() {
   legacyEvents.sort((left, right) => String(left.time || '').localeCompare(String(right.time || '')))
   events.value = legacyEvents
   total.value = legacyEvents.length
+}
+
+/** 找时间最近（≤5秒窗口）的操作事件行挂附件；无匹配返回 null */
+function findClosestLegacyEvent(events: TraceEvent[], time?: string): TraceEvent | null {
+  if (!time) return null
+  const t = new Date(String(time).replace('T', ' ').replace(' ', 'T')).getTime()
+  if (Number.isNaN(t)) return null
+  let best: TraceEvent | null = null
+  let bestDiff = Number.MAX_SAFE_INTEGER
+  for (const event of events) {
+    if (!event.time) continue
+    const et = new Date(String(event.time).replace('T', ' ').replace(' ', 'T')).getTime()
+    if (Number.isNaN(et)) continue
+    const diff = Math.abs(et - t) / 1000
+    if (diff <= 5 && diff < bestDiff) {
+      bestDiff = diff
+      best = event
+    }
+  }
+  return best
 }
 
 function selectEvent(row: TraceEvent) {
