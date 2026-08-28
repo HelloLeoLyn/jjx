@@ -73,6 +73,42 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 审核履历（review_flow，2026-08-28：审核意见/驳回原因/轮次/审核附件） -->
+    <div v-if="reviewRounds.length" class="review-section">
+      <div class="review-title">📋 审核履历</div>
+      <el-collapse v-model="reviewActiveRounds">
+        <el-collapse-item v-for="round in reviewRounds" :key="round.roundNo" :name="round.roundNo">
+          <template #title>
+            <span class="review-round">第 {{ round.roundNo }} 轮</span>
+            <span class="review-round-time">{{ formatTime(round.items[round.items.length - 1].createTime) }}</span>
+          </template>
+          <div v-for="item in round.items" :key="item.flowId" class="review-item">
+            <span class="review-icon">{{ reviewActionIcon(item.actionCode) }}</span>
+            <span class="review-action">{{ item.actionName || reviewActionLabel(item.actionCode) }}</span>
+            <span class="review-operator">{{ item.operatorName || '-' }}</span>
+            <span v-if="reviewStatusText(item)" class="review-flow">
+              {{ reviewStatusText(item) }}
+            </span>
+            <div class="review-comment" :class="{ 'is-reject': item.actionCode === 'REJECT' }">
+              {{ item.comment || '（无意见）' }}
+            </div>
+            <div v-if="reviewAttachmentIds(item).length" class="review-attachments">
+              <el-link
+                v-for="a in reviewAttachmentIds(item)"
+                :key="a"
+                type="primary"
+                :href="downloadUrl(a)"
+                :underline="false"
+                target="_blank"
+                style="margin-right: 8px"
+                >📎 附件{{ a }}</el-link
+              >
+            </div>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+    </div>
   </el-drawer>
 </template>
 
@@ -253,10 +289,90 @@ async function loadTrace() {
     }
     // 链路附件（DEV-735）
     await loadAttachments()
+    // 审核履历（review_flow，2026-08-28）
+    await loadReviewFlows()
   } catch {
     nodes.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// ==================== 审核履历（review_flow，2026-08-28） ====================
+
+const reviewFlows = ref<any[]>([])
+const reviewActiveRounds = ref<number[]>([])
+
+/** 前端 bizType → review_flow.bizType（020 已接入的模块；未接入的返回 undefined 不查询） */
+const REVIEW_FLOW_BIZ_MAP: Record<string, string> = {
+  order: 'sales_order',
+  sales_order: 'sales_order',
+  purchase: 'purchase_order',
+  purchase_order: 'purchase_order',
+  bom: 'engineering_bom',
+  film: 'engineering_film',
+}
+
+/** 审核动作图标（未匹配时用首字符） */
+function reviewActionIcon(actionCode: string): string {
+  return ({ SUBMIT: '📤', APPROVE: '✅', REJECT: '⛔', SEND: '📨', CONFIRM: '✔', CANCEL: '🚫' } as Record<string, string>)[actionCode] || '•'
+}
+
+function reviewActionLabel(actionCode: string): string {
+  return ({ SUBMIT: '提交审核', APPROVE: '审核通过', REJECT: '审核驳回', SEND: '发送', CONFIRM: '确认', CANCEL: '取消' } as Record<string, string>)[actionCode] || actionCode || ''
+}
+
+/** 状态码 → 状态名（复用 BIZ_STATUS_ENUMS；review_flow.bizType 需映射回枚举键） */
+const REVIEW_STATUS_ENUM_KEY: Record<string, string> = {
+  sales_order: 'sales_order',
+  purchase_order: 'purchase',
+}
+
+function reviewStatusText(item: any): string {
+  const enumKey = REVIEW_STATUS_ENUM_KEY[item.bizType]
+  const statusEnum = enumKey ? BIZ_STATUS_ENUMS[enumKey] : undefined
+  const nameOf = (code: string | null): string => {
+    if (code == null || code === '') return ''
+    if (statusEnum) {
+      const label = statusEnum.getLabel(Number(code))
+      if (label && label !== '未知') return label
+    }
+    return code
+  }
+  const from = nameOf(item.fromStatus)
+  const to = nameOf(item.toStatus)
+  if (!from && !to) return ''
+  return `${from || '?'} → ${to || '?'}`
+}
+
+/** 附件 id 列表（逗号分隔 → number[]） */
+function reviewAttachmentIds(item: any): number[] {
+  if (!item.attachmentIds) return []
+  return String(item.attachmentIds).split(',').map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n))
+}
+
+/** 按轮次分组：组内 flowId 升序，轮次降序（最新轮在前） */
+const reviewRounds = computed(() => {
+  const groups = new Map<number, any[]>()
+  for (const f of [...reviewFlows.value].sort((a, b) => (a.flowId || 0) - (b.flowId || 0))) {
+    const round = f.roundNo || 1
+    if (!groups.has(round)) groups.set(round, [])
+    groups.get(round)!.push(f)
+  }
+  return [...groups.entries()].sort((a, b) => b[0] - a[0]).map(([roundNo, items]) => ({ roundNo, items }))
+})
+
+async function loadReviewFlows() {
+  reviewFlows.value = []
+  const rfBizType = props.bizType ? REVIEW_FLOW_BIZ_MAP[props.bizType] : undefined
+  if (!rfBizType || !props.bizId) return
+  try {
+    const res = await request.get('/system/review-flow/list', { params: { bizType: rfBizType, bizId: props.bizId } })
+    reviewFlows.value = (res as any)?.data || []
+    const maxRound = reviewFlows.value.reduce((m, f) => Math.max(m, f.roundNo || 0), 0)
+    reviewActiveRounds.value = maxRound ? [maxRound] : []
+  } catch {
+    reviewFlows.value = []
   }
 }
 </script>
@@ -288,5 +404,68 @@ async function loadTrace() {
 }
 .op-attachments .el-link {
   font-size: 12px;
+}
+
+/* ==================== 审核履历（2026-08-28） ==================== */
+.review-section {
+  margin-top: 18px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding-top: 12px;
+}
+.review-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.review-round {
+  font-weight: 600;
+  margin-right: 12px;
+  color: var(--el-color-primary);
+}
+.review-round-time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.review-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 4px;
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+  font-size: 13px;
+}
+.review-item:last-child {
+  border-bottom: none;
+}
+.review-icon {
+  font-size: 14px;
+}
+.review-action {
+  font-weight: 600;
+}
+.review-operator {
+  color: var(--el-text-color-secondary);
+}
+.review-flow {
+  font-size: 12px;
+  color: var(--el-color-info);
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  padding: 0 6px;
+}
+.review-comment {
+  width: 100%;
+  padding-left: 22px;
+  color: var(--el-text-color-primary);
+  word-break: break-all;
+}
+.review-comment.is-reject {
+  color: var(--el-color-danger);
+  font-weight: 600;
+}
+.review-attachments {
+  width: 100%;
+  padding-left: 22px;
 }
 </style>
