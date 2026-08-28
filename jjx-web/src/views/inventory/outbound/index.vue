@@ -81,6 +81,11 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
+          <el-button :disabled="selectedRows.length !== 1" @click="handlePrintLabel">
+            <el-icon><Printer /></el-icon>打印标签
+          </el-button>
+        </el-col>
+        <el-col :span="1.5">
           <el-button @click="handleRefresh">
             <el-icon><Refresh /></el-icon>刷新
           </el-button>
@@ -234,7 +239,7 @@ defineOptions({
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, Download, Refresh } from '@element-plus/icons-vue'
+import { Plus, Download, Refresh, Printer } from '@element-plus/icons-vue'
 import { outboundApi } from '@/api/inventory/outbound'
 import { getTransactionsByDocNo } from '@/api/inventory/transaction'
 import type { TransactionVO } from '@/api/inventory/transaction'
@@ -244,6 +249,7 @@ import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { OutboundQueryParams, OutboundVO } from '@/types/inventory/outbound'
+import { openLabelPrint } from '@/utils/labelPrint'
 
 // 查看流水（DEV-569）
 const traceDrawerVisible = ref(false)
@@ -334,6 +340,15 @@ const handleExportPdf = () => {
     printFileName.value = `出库单_${row.outboundNo || row.outboundId}.pdf`
     printDialogVisible.value = true
   })
+}
+
+const handlePrintLabel = () => {
+  const row = selectedRows.value[0] as OutboundVO | undefined
+  if (!row?.outboundId) {
+    ElMessage.warning('请先选中一行出库单')
+    return
+  }
+  openLabelPrint(router, { type: 'box', outboundId: String(row.outboundId) })
 }
 
 // 刷新

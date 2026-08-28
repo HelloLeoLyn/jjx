@@ -124,6 +124,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/labels',
+    name: 'LabelPrint',
+    component: () => import('@/views/production/label-print/index.vue'),
+    meta: {
+      title: '标签打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/print/quality/:id',
     name: 'QualityPrint',
     component: () => import('@/views/production/quality/print.vue'),

@@ -119,6 +119,7 @@ import type { SearchOptions, ToolbarOptions } from '@/components/common-ui/type'
 import { searchOptions, toolbarOptions } from './config'
 import { MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
 import type { UploadInstance } from 'element-plus'
+import { openLabelPrint } from '@/utils/labelPrint'
 
 const router = useRouter()
 
@@ -235,6 +236,13 @@ const handleToolbarClick = (key: string) => {
   if (key === 'add') handleAdd()
   if (key === 'import') importDialogVisible.value = true
   if (key === 'export') handleExport()
+  if (key === 'print-label') {
+    if (!ids.value.length) {
+      ElMessage.warning('请先选择要打印的物料')
+      return
+    }
+    openLabelPrint(router, { type: 'material', materialIds: ids.value.map(Number) })
+  }
 }
 
 // 导出

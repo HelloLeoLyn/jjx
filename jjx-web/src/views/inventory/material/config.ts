@@ -55,6 +55,12 @@ export const toolbarOptions: ToolbarOptions[] = [
     icon: 'Download',
     // permission: 'inventory:material:export', // 后端无导出接口/权限点，暂不启用
   },
+  {
+    key: 'print-label',
+    label: '打印标签',
+    type: 'info',
+    icon: 'Printer',
+  },
 ]
 // 表格列配置
 export const tableOptions: TableOptions[] = [

@@ -95,6 +95,9 @@
           <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
         </el-col>
         <el-col :span="1.5">
+          <el-button plain icon="Printer" :disabled="multiple" @click="handlePrintLabels">打印标签</el-button>
+        </el-col>
+        <el-col :span="1.5">
           <el-button
             type="info"
             plain
@@ -345,6 +348,7 @@ import type { ProductCategoryDictItem } from '@/types/product/category'
 import ApproveDialog from './components/ApproveDialog.vue'
 import BomConfigDialog from './components/BomConfigDialog.vue'
 import RouteConfigDialog from './components/RouteConfigDialog.vue'
+import { openLabelPrint } from '@/utils/labelPrint'
 const router = useRouter()
 const { categoryList, fetchList } = useProductCategory()
 // 创建类别ID到名称的映射表（核心）
@@ -535,6 +539,10 @@ const handleExport = () => {
       ElMessage.success('导出成功')
     })
     .catch(() => {})
+}
+
+const handlePrintLabels = () => {
+  openLabelPrint(router, { type: 'product', productIds: ids.value })
 }
 
 // 分页大小改变
