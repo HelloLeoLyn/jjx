@@ -26,7 +26,6 @@
         highlight-current-row
         row-key="eventId"
         class="event-table"
-        @row-click="selectEvent"
       >
         <el-table-column label="时间" width="165">
           <template #default="scope">{{ formatTime(scope.row.time) }}</template>
@@ -38,7 +37,15 @@
         </el-table-column>
         <el-table-column label="操作" min-width="220">
           <template #default="scope">
-            <span>{{ scope.row.actionTitle || '-' }}</span>
+            <!-- 有详情（变更/意见/附件）的操作才可点击，primary 样式突出；普通操作不可点 -->
+            <el-link
+              v-if="hasDetail(scope.row)"
+              type="primary"
+              :underline="false"
+              @click.stop="selectEvent(scope.row)"
+              >{{ scope.row.actionTitle || '-' }}</el-link
+            >
+            <span v-else>{{ scope.row.actionTitle || '-' }}</span>
             <el-tag
               v-if="scope.row.changes?.length"
               size="small"
@@ -91,31 +98,10 @@
           </ul>
         </div>
 
-        <div v-if="reviewComments.length" class="detail-block">
+        <div v-if="reviewComment" class="detail-block">
           <div class="detail-title">💬 {{ isRejected ? '驳回原因' : '审核意见' }}</div>
-          <div
-            v-for="(comment, index) in reviewComments"
-            :key="index"
-            class="review-comment"
-            :class="{ rejected: isRejected }"
-          >
-            {{ comment }}
-          </div>
-        </div>
-
-        <div v-if="selectedEvent.reviewHistory?.length" class="detail-block">
-          <div class="detail-title">🕐 该轮审核记录（第 {{ selectedEvent.roundNo || 1 }} 轮）</div>
-          <div
-            v-for="(review, index) in selectedEvent.reviewHistory"
-            :key="`${review.actionCode}-${review.createTime}-${index}`"
-            class="review-row"
-          >
-            <span>{{ formatShortTime(review.createTime) }}</span>
-            <strong>{{ review.actionName || reviewActionLabel(review.actionCode) }}</strong>
-            <span>{{ review.operatorName || '-' }}</span>
-            <span>{{ formatReviewStatus(review) }}</span>
-            <span v-if="review.actionCode === 'APPROVE'" class="approved">✓</span>
-            <span v-if="review.actionCode === 'REJECT'" class="rejected">⛔</span>
+          <div class="review-comment" :class="{ rejected: isRejected }">
+            {{ reviewComment }}
           </div>
         </div>
 
@@ -186,6 +172,7 @@ interface TraceEvent {
   attachments?: TraceAttachment[]
   reviewHistory?: ReviewHistory[]
   roundNo?: number
+  comment?: string
   traceId?: string
   module?: string
   bizType?: string
@@ -236,27 +223,26 @@ function statusEnumForBizType(type?: string): { getLabel: (value: number) => str
   }
 }
 
-const reviewComments = computed(() => {
-  if (!selectedEvent.value?.reviewHistory) return []
-  return selectedEvent.value.reviewHistory
-    .filter((item) => item.comment?.trim())
-    .map((item) => item.comment!.trim())
-})
+/** 该操作是否有详情（变更/意见/附件）——有才可点击查看 */
+function hasDetail(event: TraceEvent): boolean {
+  return !!(
+    event.changes?.length ||
+    event.comment?.trim() ||
+    event.attachments?.length
+  )
+}
+
+const reviewComment = computed(() => selectedEvent.value?.comment?.trim() || '')
 
 const isRejected = computed(() =>
   selectedEvent.value?.actionCode === 'REJECT'
-  || selectedEvent.value?.reviewHistory?.some((item) => item.actionCode === 'REJECT') === true
+  || selectedEvent.value?.actionCode === 'CUSTOMER_REJECT'
 )
 
 const detailAttachments = computed(() => {
   const unique = new Map<number, TraceAttachment>()
   for (const attachment of selectedEvent.value?.attachments || []) {
     unique.set(attachment.id, attachment)
-  }
-  for (const review of selectedEvent.value?.reviewHistory || []) {
-    for (const id of parseAttachmentIds(review.attachmentIds)) {
-      if (!unique.has(id)) unique.set(id, { id, fileName: `审核附件${id}` })
-    }
   }
   return [...unique.values()]
 })
@@ -335,6 +321,7 @@ async function loadLegacyTrace() {
 }
 
 function selectEvent(row: TraceEvent) {
+  if (!hasDetail(row)) return
   selectedEvent.value = row
 }
 

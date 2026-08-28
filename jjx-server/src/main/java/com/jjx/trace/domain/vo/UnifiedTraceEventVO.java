@@ -18,6 +18,8 @@ public class UnifiedTraceEventVO {
     private List<TraceAttachmentVO> attachments = new ArrayList<>();
     private List<TraceReviewHistoryVO> reviewHistory = new ArrayList<>();
     private Integer roundNo;
+    /** 该操作自身的意见/驳回原因（合并审核记录时取自匹配的那条，非整轮） */
+    private String comment;
     private String traceId;
     private String module;
     private String bizType;

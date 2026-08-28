@@ -213,29 +213,19 @@ public class TraceServiceImpl implements TraceService {
         event.setBizType(bizType);
         event.setModule("审核");
         event.setActionCode(review.actionCode());
+        event.setComment(review.comment());
         return event;
     }
 
     private void attachReviewRound(UnifiedTraceEventVO event, ReviewRecord matched, List<ReviewRecord> all,
                                    Set<Long> referencedAttachmentIds, List<SysAttachment> attachments) {
+        // 只挂匹配的那条审核记录（该操作自身）：轮次/动作/意见/附件；
+        // 不展开同轮完整流程（时间线本身已按动作逐行展示）
         event.setRoundNo(matched.roundNo());
         event.setActionCode(matched.actionCode());
         event.setActionTitle(reviewActionTitle(matched.actionCode()));
         event.setBizStatus(parseStatus(matched.toStatus()));
-        for (ReviewRecord item : all) {
-            if (!Objects.equals(item.roundNo(), matched.roundNo())) continue;
-            TraceReviewHistoryVO history = new TraceReviewHistoryVO();
-            history.setRoundNo(item.roundNo());
-            history.setActionCode(item.actionCode());
-            history.setActionName(item.actionName());
-            history.setFromStatus(item.fromStatus());
-            history.setToStatus(item.toStatus());
-            history.setOperatorName(item.operatorName());
-            history.setComment(item.comment());
-            history.setAttachmentIds(item.attachmentIds());
-            history.setCreateTime(item.createTime());
-            event.getReviewHistory().add(history);
-        }
+        event.setComment(matched.comment());
         for (Long id : parseAttachmentIds(matched.attachmentIds())) {
             addAttachment(event, id, attachments, referencedAttachmentIds);
         }

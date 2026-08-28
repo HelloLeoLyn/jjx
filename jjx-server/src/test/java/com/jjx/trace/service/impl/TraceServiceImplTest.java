@@ -44,9 +44,8 @@ class TraceServiceImplTest {
         UnifiedTraceEventVO merged = events.get(1);
         assertEquals("审核通过", merged.getActionTitle());
         assertEquals(List.of("交货日期：09-05 → 09-08"), merged.getChanges());
-        assertEquals(2, merged.getReviewHistory().size());
         assertEquals(1, merged.getAttachments().size());
-        assertEquals("同意，注意交期", merged.getReviewHistory().get(1).getComment());
+        assertEquals("同意，注意交期", merged.getComment());
     }
 
     @Test
@@ -61,7 +60,8 @@ class TraceServiceImplTest {
         assertEquals(1, events.size());
         assertEquals("oper-2", events.get(0).getEventId());
         assertEquals("审核驳回", events.get(0).getActionTitle());
-        assertEquals(1, events.get(0).getReviewHistory().size());
+        assertEquals(1, events.get(0).getRoundNo());
+        assertEquals("REJECT", events.get(0).getActionCode());
     }
 
     @Test
