@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 
 /**
  * 生产报工提交入参（P2-C）
- * 客户端不提交：orderId/orderNo/reporterId/reporterName/equipmentName/reportStatus/reportTime
+ * 客户端不提交：orderId/orderNo/reporterName/equipmentName/reportStatus/reportTime
  * ——全部由后端根据上下文生成或解析。
  */
 @Data
@@ -23,8 +23,11 @@ public class WorkReportSubmitDTO {
     private Long executionId;
 
     @NotNull(message = "任务ID必填")
-    @Schema(description = "生产任务ID（P1 起报工必须绑定 ProductionTask，且当前用户须为该任务执行人）")
+    @Schema(description = "生产任务ID（报工必须绑定 ProductionTask；非任务执行人须持有代报权限）")
     private Long taskId;
+
+    @Schema(description = "事实报工人ID（本人报工可空；代报时必填）")
+    private Long reporterId;
 
     @Schema(description = "本次合格数量（>=0，与不良之和>0）")
     private BigDecimal qualifiedQuantity;

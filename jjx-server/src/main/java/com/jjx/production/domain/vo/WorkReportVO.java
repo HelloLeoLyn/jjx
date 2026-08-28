@@ -23,6 +23,8 @@ public class WorkReportVO {
 
     private Long reporterId;
     private String reporterName;
+    private Long proxyId;
+    private String proxyName;
 
     private Long equipmentId;
     private String equipmentName;
@@ -42,6 +44,9 @@ public class WorkReportVO {
 
     private String reportStatus;
     private String reportStatusLabel;
+
+    private Long pendingReviewerId;
+    private String pendingReviewerName;
 
     private Long reviewerId;
     private String reviewerName;

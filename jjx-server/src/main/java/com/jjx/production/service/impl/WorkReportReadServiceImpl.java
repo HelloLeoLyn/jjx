@@ -146,6 +146,8 @@ public class WorkReportReadServiceImpl implements WorkReportReadService {
         vo.setTaskId(e.getTaskId());
         vo.setReporterId(e.getReporterId());
         vo.setReporterName(e.getReporterName());
+        vo.setProxyId(e.getProxyId());
+        vo.setProxyName(e.getProxyName());
         vo.setEquipmentId(e.getEquipmentId());
         vo.setEquipmentName(e.getEquipmentName());
         vo.setQualifiedQuantity(e.getQualifiedQuantity());
@@ -159,6 +161,8 @@ public class WorkReportReadServiceImpl implements WorkReportReadService {
         vo.setRemark(e.getRemark());
         vo.setReportStatus(e.getReportStatus());
         vo.setReportStatusLabel(WorkReportStatusEnum.labelOf(e.getReportStatus()));
+        vo.setPendingReviewerId(e.getPendingReviewerId());
+        vo.setPendingReviewerName(e.getPendingReviewerName());
         vo.setReviewerId(e.getReviewerId());
         vo.setReviewerName(e.getReviewerName());
         vo.setReviewTime(e.getReviewTime());

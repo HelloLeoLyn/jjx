@@ -48,6 +48,12 @@ public class ProductionWorkReport {
     /** 报工提交人姓名快照（历史事实：人员改名后保持当时姓名） */
     private String reporterName;
 
+    /** 代操作人ID（空=本人报工） */
+    private Long proxyId;
+
+    /** 代操作人姓名快照 */
+    private String proxyName;
+
     /** 本次实际使用设备ID（可空=人工工序无设备） */
     private Long equipmentId;
 
@@ -83,6 +89,12 @@ public class ProductionWorkReport {
 
     /** 状态：PENDING/APPROVED/REJECTED/CANCELLED */
     private String reportStatus;
+
+    /** 提交时点应审批人ID（空=生产管理兜底） */
+    private Long pendingReviewerId;
+
+    /** 提交时点应审批人姓名快照 */
+    private String pendingReviewerName;
 
     /** 审批人ID（approve/reject 落库；一次审批） */
     private Long reviewerId;

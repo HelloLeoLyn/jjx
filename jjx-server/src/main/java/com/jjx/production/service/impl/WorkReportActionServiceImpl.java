@@ -99,9 +99,12 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         if ("COMPLETED".equals(task.getStatus())) {
             throw new BusinessException("任务已完成，不能报工");
         }
-        // 提交人 = Task 当前执行人（生产管理不得代报；如需代报以后单独设计动作/权限/审计）
-        if (operatorId == null || !operatorId.equals(task.getAssigneeId())) {
+        boolean proxySubmit = operatorId == null || !operatorId.equals(task.getAssigneeId());
+        if (proxySubmit && !SecurityUtils.hasPermission("production:work-report:proxy")) {
             throw new BusinessException("只有任务当前执行人可以报工");
+        }
+        if (proxySubmit && dto.getReporterId() == null) {
+            throw new BusinessException("代报时事实报工人必填");
         }
         // 锚点一致性：dto.executionId 必须等于 task.executionId
         if (!dto.getExecutionId().equals(task.getExecutionId())) {
@@ -167,8 +170,20 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         r.setOrderNo(orderNoOf(exec.getOrderId()));
         r.setExecutionId(exec.getExecutionId());
         r.setTaskId(task.getTaskId());
-        r.setReporterId(operatorId);
-        r.setReporterName(displayName(operatorName));
+        Long reporterId = proxySubmit ? dto.getReporterId() : operatorId;
+        String reporterName = proxySubmit ? userNameOf(reporterId) : displayName(operatorName);
+        if (proxySubmit && reporterName == null) {
+            throw new BusinessException("事实报工人不存在: " + reporterId);
+        }
+        r.setReporterId(reporterId);
+        r.setReporterName(reporterName);
+        if (proxySubmit) {
+            r.setProxyId(operatorId);
+            r.setProxyName(displayName(operatorName));
+        }
+        Long pendingReviewerId = parentAssigneeId(task);
+        r.setPendingReviewerId(pendingReviewerId);
+        r.setPendingReviewerName(userNameOf(pendingReviewerId));
         r.setEquipmentId(equipmentId);
         r.setEquipmentName(equipmentName);
         r.setQualifiedQuantity(qualified);
@@ -189,7 +204,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         log.info("提交报工 reportId={}, taskId={}, executionId={}, q={} d={}",
                 r.getReportId(), task.getTaskId(), exec.getExecutionId(), qualified, defective);
         WorkReportVO result = readService.getById(r.getReportId());
-        result.setEventReceiverId(parentAssigneeId(task));
+        result.setEventReceiverId(pendingReviewerId);
         result.setEventPublished(true);
         return result;
     }
@@ -373,17 +388,14 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         if (operatorId == null) {
             throw new BusinessException("未登录，无法审批");
         }
-        ProductionTask task = productionTaskMapper.selectById(r.getTaskId());
-        if (task == null) {
-            throw new BusinessException("报工关联任务不存在: " + r.getTaskId());
+        if (r.getPendingReviewerId() != null) {
+            if (!operatorId.equals(r.getPendingReviewerId())) {
+                throw new BusinessException("仅提交时点审批人可以审批");
+            }
+            return;
         }
-        if (task.getParentTaskId() == null) {
-            throw new BusinessException("第一层任务报工由生产管理审批");
-        }
-        ProductionTask parent = productionTaskMapper.selectById(task.getParentTaskId());
-        if (parent == null || !operatorId.equals(parent.getAssigneeId())) {
-            throw new BusinessException("仅当前任务的上级执行人可以审批");
-        }
+        // 无快照（历史记录或父任务无执行人）仅允许 production:all 兜底。
+        throw new BusinessException("该报工由生产管理审批");
     }
 
     /** 状态条件更新：PENDING → target（affectedRows=1 才成功；approve/reject 并发只有一个成功，无需 version） */
@@ -439,6 +451,21 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             return names.isEmpty() ? null : names.get(0);
         } catch (Exception e) {
             log.warn("查询设备失败 equipmentId={}: {}", equipmentId, e.getMessage());
+            return null;
+        }
+    }
+
+    private String userNameOf(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            var names = jdbcTemplate.query(
+                    "SELECT COALESCE(NULLIF(nick_name, ''), user_name) AS display_name FROM sys_user WHERE user_id = ?",
+                    (rs, i) -> rs.getString("display_name"), userId);
+            return names.isEmpty() ? null : names.get(0);
+        } catch (Exception e) {
+            log.warn("查询用户失败 userId={}: {}", userId, e.getMessage());
             return null;
         }
     }

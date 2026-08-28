@@ -9,10 +9,12 @@ export interface WorkReportVO {
   orderId?: number
   orderNo?: string
   executionId: number
-  /** 生产任务ID（P1 起报工必须绑定 ProductionTask，且当前用户须为该任务执行人） */
+  /** 生产任务ID（非任务执行人提交时须持有代报权限） */
   taskId?: number
   reporterId?: number
   reporterName?: string
+  proxyId?: number
+  proxyName?: string
   equipmentId?: number
   equipmentName?: string
   qualifiedQuantity?: number
@@ -26,6 +28,8 @@ export interface WorkReportVO {
   remark?: string
   reportStatus?: WorkReportStatus
   reportStatusLabel?: string
+  pendingReviewerId?: number
+  pendingReviewerName?: string
   /** P3 审批事实（approve/reject 落库；一笔只审批一次） */
   reviewerId?: number
   reviewerName?: string
@@ -38,8 +42,10 @@ export interface WorkReportVO {
 
 export interface WorkReportSubmitPayload {
   executionId: number
-  /** P1：报工必须绑定 ProductionTask（当前用户 = 任务执行人；本次数量 <= 当前剩余） */
+  /** 报工必须绑定 ProductionTask（本次数量 <= 当前剩余） */
   taskId: number
+  /** 事实报工人ID（本人报工可空；代报时必填） */
+  reporterId?: number
   qualifiedQuantity: number
   defectiveQuantity: number
   laborHours?: number
@@ -78,7 +84,7 @@ export interface PageResult<T> {
 
 // ============ API ============
 
-// 提交报工（SUBMIT：仅当前 Task 执行人；INSERT PENDING）
+// 提交报工（Task 执行人本人，或持 proxy 权限代报；INSERT PENDING）
 export function submitWorkReport(data: WorkReportSubmitPayload) {
   return request({
     url: '/production/work-report',
