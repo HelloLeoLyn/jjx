@@ -311,25 +311,29 @@ const REVIEW_FLOW_BIZ_MAP: Record<string, string> = {
   purchase_order: 'purchase_order',
   bom: 'engineering_bom',
   film: 'engineering_film',
+  // 报价：流水在 sales_quotation_flow（020 决策报价不接入 review_flow），走报价模块接口
+  quotation: 'quotation',
 }
 
 /** 审核动作图标（未匹配时用首字符） */
 function reviewActionIcon(actionCode: string): string {
-  return ({ SUBMIT: '📤', APPROVE: '✅', REJECT: '⛔', SEND: '📨', CONFIRM: '✔', CANCEL: '🚫' } as Record<string, string>)[actionCode] || '•'
+  return ({ SUBMIT: '📤', SUBMIT_REVIEW: '📤', APPROVE: '✅', REJECT: '⛔', SEND: '📨', CONFIRM: '✔', CUSTOMER_CONFIRM: '✔', CANCEL: '🚫' } as Record<string, string>)[actionCode] || '•'
 }
 
 function reviewActionLabel(actionCode: string): string {
-  return ({ SUBMIT: '提交审核', APPROVE: '审核通过', REJECT: '审核驳回', SEND: '发送', CONFIRM: '确认', CANCEL: '取消' } as Record<string, string>)[actionCode] || actionCode || ''
+  return ({ SUBMIT: '提交审核', SUBMIT_REVIEW: '提交审核', APPROVE: '审核通过', REJECT: '审核驳回', SEND: '发送', CONFIRM: '确认', CUSTOMER_CONFIRM: '客户确认', CANCEL: '取消' } as Record<string, string>)[actionCode] || actionCode || ''
 }
 
 /** 状态码 → 状态名（复用 BIZ_STATUS_ENUMS；review_flow.bizType 需映射回枚举键） */
-const REVIEW_STATUS_ENUM_KEY: Record<string, string> = {
-  sales_order: 'sales_order',
-  purchase_order: 'purchase',
+function reviewBizEnumKey(bizType: string): string | undefined {
+  if (bizType === 'sales_order') return 'sales_order'
+  if (bizType === 'purchase_order') return 'purchase'
+  if (bizType === 'quotation') return 'quotation'
+  return undefined
 }
 
 function reviewStatusText(item: any): string {
-  const enumKey = REVIEW_STATUS_ENUM_KEY[item.bizType]
+  const enumKey = reviewBizEnumKey(item.bizType)
   const statusEnum = enumKey ? BIZ_STATUS_ENUMS[enumKey] : undefined
   const nameOf = (code: string | null): string => {
     if (code == null || code === '') return ''
@@ -364,11 +368,32 @@ const reviewRounds = computed(() => {
 
 async function loadReviewFlows() {
   reviewFlows.value = []
+  if (!props.bizId) return
   const rfBizType = props.bizType ? REVIEW_FLOW_BIZ_MAP[props.bizType] : undefined
-  if (!rfBizType || !props.bizId) return
+  if (!rfBizType) return
   try {
-    const res = await request.get('/system/review-flow/list', { params: { bizType: rfBizType, bizId: props.bizId } })
-    reviewFlows.value = (res as any)?.data || []
+    let data: any[] = []
+    if (rfBizType === 'quotation') {
+      // 报价流水在 sales_quotation_flow（020 决策报价不接入 review_flow），复用报价模块接口
+      const res = await request.get(`/sales/quotation/flow/${props.bizId}`)
+      data = ((res as any)?.data || []).map((f: any) => ({
+        flowId: f.flowId,
+        bizType: 'quotation',
+        roundNo: 1,
+        actionCode: f.actionCode,
+        actionName: f.actionName,
+        fromStatus: f.fromStatus != null ? String(f.fromStatus) : null,
+        toStatus: f.toStatus != null ? String(f.toStatus) : null,
+        operatorName: f.operatorName,
+        comment: f.remark,
+        attachmentIds: f.attachmentIds,
+        createTime: f.createTime,
+      }))
+    } else {
+      const res = await request.get('/system/review-flow/list', { params: { bizType: rfBizType, bizId: props.bizId } })
+      data = (res as any)?.data || []
+    }
+    reviewFlows.value = data
     const maxRound = reviewFlows.value.reduce((m, f) => Math.max(m, f.roundNo || 0), 0)
     reviewActiveRounds.value = maxRound ? [maxRound] : []
   } catch {
