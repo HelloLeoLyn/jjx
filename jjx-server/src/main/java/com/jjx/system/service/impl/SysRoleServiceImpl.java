@@ -2,6 +2,7 @@ package com.jjx.system.service.impl;
 
 import cn.hutool.core.text.CharSequenceUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -11,6 +12,7 @@ import com.jjx.system.converter.SysRoleConverter;
 import com.jjx.system.converter.SysUserConverter;
 import com.jjx.system.domain.dto.RoleUserQueryDTO;
 import com.jjx.system.domain.dto.SysRoleDTO;
+import com.jjx.system.domain.entity.SysMenu;
 import com.jjx.system.domain.entity.SysRole;
 import com.jjx.system.domain.entity.SysRoleMenu;
 import com.jjx.system.domain.entity.SysUser;
@@ -409,9 +411,34 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
         deleteWrapper.eq(SysRoleMenu::getRoleId, roleId);
         userRoleMenuMapper.delete(deleteWrapper);
 
+        // 一次性加载菜单父子关系，在内存中补齐授权菜单的全部祖先。
+        QueryWrapper<SysMenu> menuWrapper = new QueryWrapper<>();
+        menuWrapper.select("menu_id", "parent_id");
+        List<SysMenu> menus = menuMapper.selectList(menuWrapper);
+        Map<Long, Long> parentByMenuId = new HashMap<>();
+        for (SysMenu menu : menus) {
+            if (menu.getMenuId() != null) {
+                parentByMenuId.put(menu.getMenuId(), menu.getParentId());
+            }
+        }
+
+        Set<Long> expandedMenuIds = new LinkedHashSet<>(Arrays.asList(menuIds));
+        for (Long menuId : menuIds) {
+            Long currentId = menuId;
+            Set<Long> visited = new HashSet<>();
+            while (currentId != null && currentId != 0L && visited.add(currentId)) {
+                Long parentId = parentByMenuId.get(currentId);
+                if (parentId == null || parentId == 0L || !parentByMenuId.containsKey(parentId)) {
+                    break;
+                }
+                expandedMenuIds.add(parentId);
+                currentId = parentId;
+            }
+        }
+
         // 创建角色菜单关联列表
         List<SysRoleMenu> roleMenuList = new ArrayList<>();
-        for (Long menuId : menuIds) {
+        for (Long menuId : expandedMenuIds) {
             SysRoleMenu roleMenu = new SysRoleMenu();
             roleMenu.setRoleId(roleId);
             roleMenu.setMenuId(menuId);
