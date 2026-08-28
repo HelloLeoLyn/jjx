@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class QualityTemplateQueryDTO extends PageQuery {
+    private String keyword;
     private String recordNo;
     private String recordName;
     private String ownerDept;

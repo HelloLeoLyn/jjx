@@ -150,6 +150,26 @@ export const constantRoutes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/production/quality-print',
+    name: 'ProductionQualityPrint',
+    component: () => import('@/layout/index.vue'),
+    meta: { title: '质量记录打印中心', hidden: true },
+    children: [
+      {
+        path: '',
+        name: 'ProductionQualityPrintIndex',
+        component: () => import('@/views/production/quality-print/index.vue'),
+        meta: { title: '质量记录打印中心', hidden: true },
+      },
+    ],
+  },
+  {
+    path: '/production/quality-print/print',
+    name: 'ProductionQualityPrintPage',
+    component: () => import('@/views/production/quality-print/print.vue'),
+    meta: { title: '质量记录打印', hidden: true },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),

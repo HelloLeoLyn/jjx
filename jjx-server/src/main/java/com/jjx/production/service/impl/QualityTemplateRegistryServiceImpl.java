@@ -6,8 +6,10 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.domain.dto.QualityTemplateQueryDTO;
 import com.jjx.production.domain.entity.QualityTemplateRegistry;
+import com.jjx.production.domain.entity.QualityTemplatePrintLog;
 import com.jjx.production.enums.QualityTemplateStatusEnum;
 import com.jjx.production.mapper.QualityTemplateRegistryMapper;
+import com.jjx.production.mapper.QualityTemplatePrintLogMapper;
 import com.jjx.production.service.QualityTemplateRegistryService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -15,16 +17,24 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegistryService {
     private static final String CATEGORY_BLANK = "blank";
     private static final String CATEGORY_DATA = "data";
     private final QualityTemplateRegistryMapper mapper;
+    private final QualityTemplatePrintLogMapper printLogMapper;
 
     @Override
     public PageResult<QualityTemplateRegistry> page(QualityTemplateQueryDTO query) {
         LambdaQueryWrapper<QualityTemplateRegistry> wrapper = new LambdaQueryWrapper<>();
+        if (StringUtils.isNotBlank(query.getKeyword())) {
+            wrapper.and(w -> w.like(QualityTemplateRegistry::getRecordNo, query.getKeyword())
+                    .or().like(QualityTemplateRegistry::getRecordName, query.getKeyword()));
+        }
         wrapper.like(StringUtils.isNotBlank(query.getRecordNo()), QualityTemplateRegistry::getRecordNo, query.getRecordNo())
                 .like(StringUtils.isNotBlank(query.getRecordName()), QualityTemplateRegistry::getRecordName, query.getRecordName())
                 .eq(StringUtils.isNotBlank(query.getOwnerDept()), QualityTemplateRegistry::getOwnerDept, query.getOwnerDept())
@@ -33,6 +43,7 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
                 .orderByAsc(QualityTemplateRegistry::getRecordNo);
         Page<QualityTemplateRegistry> page = new Page<>(query.getPageNum(), query.getPageSize());
         mapper.selectPage(page, wrapper);
+        page.getRecords().forEach(this::fillHasFile);
         return PageResult.of(page, page.getRecords());
     }
 
@@ -40,7 +51,37 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
     public QualityTemplateRegistry getById(Long id) {
         QualityTemplateRegistry template = mapper.selectById(id);
         if (template == null) throw new BusinessException("质量记录模板不存在");
+        fillHasFile(template);
         return template;
+    }
+
+    @Override
+    public List<String> listOwnerDepts() {
+        return mapper.selectDistinctOwnerDepts();
+    }
+
+    @Override
+    @Transactional
+    public void recordPrint(Long id) {
+        QualityTemplateRegistry template = getById(id);
+        if (!Integer.valueOf(QualityTemplateStatusEnum.ACTIVE.getCode()).equals(template.getStatus())) {
+            throw new BusinessException("仅生效模板可打印");
+        }
+        if (CATEGORY_DATA.equals(template.getCategory())) {
+            throw new BusinessException("数据联动模板将在后续版本开放打印");
+        }
+        QualityTemplatePrintLog log = new QualityTemplatePrintLog();
+        log.setTemplateId(template.getId());
+        log.setRecordNo(template.getRecordNo());
+        log.setOperatorId(SecurityUtils.getUserId());
+        String realName = SecurityUtils.getRealName();
+        log.setOperatorName(StringUtils.isNotBlank(realName) ? realName : SecurityUtils.getUsername());
+        log.setPrintTime(LocalDateTime.now());
+        printLogMapper.insert(log);
+    }
+
+    private void fillHasFile(QualityTemplateRegistry template) {
+        template.setHasFile(template.getFileId() != null);
     }
 
     @Override

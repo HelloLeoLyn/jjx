@@ -5,12 +5,15 @@ import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.dto.QualityTemplateQueryDTO;
 import com.jjx.production.domain.entity.QualityTemplateRegistry;
 import com.jjx.production.service.QualityTemplateRegistryService;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.List;
 
 @Tag(name = "质量记录模板注册表")
 @RestController
@@ -29,6 +32,21 @@ public class QualityTemplateRegistryController {
     @GetMapping("/{id}")
     public Result<QualityTemplateRegistry> detail(@PathVariable Long id) {
         return Result.success(service.getById(id));
+    }
+
+    @Operation(summary = "主管部门选项")
+    @GetMapping("/owner-depts")
+    public Result<List<String>> ownerDepts() {
+        return Result.success(service.listOwnerDepts());
+    }
+
+    @Operation(summary = "记录打印留痕")
+    @PostMapping("/{id}/print-log")
+    @Log(module = "质量记录打印", businessType = BusinessType.OTHER,
+            bizType = "'quality_template'", bizId = "#id")
+    public Result<Void> printLog(@PathVariable Long id) {
+        service.recordPrint(id);
+        return Result.success();
     }
 
     @Operation(summary = "新增")
