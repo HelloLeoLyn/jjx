@@ -767,12 +767,7 @@
     />
 
     <!-- 查看流水 -->
-    <TraceTimeline
-      v-model="traceDrawerVisible"
-      :trace-id="currentTraceId"
-      :biz-type="currentTraceBizType"
-      :biz-id="currentTraceBizId"
-    />
+    <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
 
     <!-- 转量产 · 就绪检查（DEV-xxx） -->
     <SampleConvertCheckDialog

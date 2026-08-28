@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     :title="title"
-    width="860px"
+    width="1200px"
     append-to-body
     destroy-on-close
     @update:model-value="handleUpdateVisible"

@@ -84,35 +84,26 @@ function formatBusinessType(code: number): string {
   return map[code] ?? String(code ?? '')
 }
 
-// 操作日志查询：优先 traceId，其次 bizType+bizId 模糊反查
+// 操作日志查询：统一走 trace_id 事件流（只查主表）
 async function loadLogs() {
   logs.value = []
-  if (!props.traceId && !props.bizId) return
+  if (!props.traceId) return
   loading.value = true
   try {
-    let nodes: any[] = []
-    if (props.traceId) {
-      const res = await request.get(`/api/trace/${props.traceId}`)
-      nodes = (res as any).data || []
-    }
-    if (!nodes.length && props.bizId) {
-      const res = await request.get('/api/trace/search', { params: { keyword: props.bizId } })
-      const traces: any[] = (res as any).data || []
-      const match = traces.find((t) => {
-        const firstNode = t.nodes?.[0]
-        return !props.bizType || firstNode?.bizType === props.bizType
-      }) || traces[0]
-      nodes = match?.nodes || []
-    }
-    // 平铺 + 按时间正序
-    const list: any[] = []
-    for (const node of nodes) {
-      for (const op of (node.operations || [])) {
-        list.push({ ...op, module: node.module })
-      }
-    }
-    list.sort((a, b) => (a.time || '').localeCompare(b.time || ''))
-    logs.value = list
+    const res = await request.get('/api/trace/events', {
+      params: { traceId: props.traceId, pageNum: 1, pageSize: 100 },
+    })
+    const records: any[] = (res as any)?.data?.records || []
+    logs.value = records.map((record: any) => ({
+      time: record.time,
+      bizStatus: record.bizStatus,
+      bizType: record.bizType,
+      businessType: record.businessType,
+      module: record.module,
+      operator: record.operatorName,
+      status: record.result,
+      detail: record.detail,
+    }))
   } catch {
     logs.value = []
   } finally {

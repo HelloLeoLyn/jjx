@@ -398,7 +398,11 @@
             <el-tooltip
               content="重新报价"
               placement="top"
-              v-if="[QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(scope.row.quotationStatus)"
+              v-if="
+                [QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(
+                  scope.row.quotationStatus
+                )
+              "
             >
               <el-button
                 link
@@ -411,7 +415,10 @@
             <el-tooltip
               content="转为订单"
               placement="top"
-              v-if="scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value && scope.row.quotationType !== 2"
+              v-if="
+                scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value &&
+                scope.row.quotationType !== 2
+              "
             >
               <el-button
                 link
@@ -424,7 +431,10 @@
             <el-tooltip
               content="转为样品单"
               placement="top"
-              v-if="scope.row.quotationType !== 1 && scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value"
+              v-if="
+                scope.row.quotationType !== 1 &&
+                scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value
+              "
             >
               <el-button
                 link
@@ -446,7 +456,11 @@
             <el-tooltip
               content="提交审核"
               placement="top"
-              v-if="[QuotationStatusEnum.DRAFT.value, QuotationStatusEnum.MODIFYING.value].includes(scope.row.quotationStatus)"
+              v-if="
+                [QuotationStatusEnum.DRAFT.value, QuotationStatusEnum.MODIFYING.value].includes(
+                  scope.row.quotationStatus
+                )
+              "
             >
               <el-button
                 link
@@ -790,12 +804,7 @@
     />
 
     <!-- 查看流水（2026-08-11 统一用 TraceTimeline） -->
-    <TraceTimeline
-      v-model="traceDialogVisible"
-      :trace-id="currentTraceId"
-      :biz-id="traceQuotationId ? String(traceQuotationId) : ''"
-      biz-type="quotation"
-    />
+    <TraceTimeline v-model="traceDialogVisible" :trace-id="currentTraceId" />
 
     <!-- 附件管理弹窗 -->
     <AttachmentUploadDialog

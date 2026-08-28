@@ -2,12 +2,12 @@
   <el-dialog
     title="询价单详情"
     :model-value="modelValue"
-    width="700px"
+    width="1200px"
     append-to-body
     @close="emitClose"
   >
     <template v-if="detailData.inquiryId">
-      <el-descriptions :column="2" border>
+      <el-descriptions :column="2" border class="inquiry-descriptions">
         <el-descriptions-item label="询价单号" :span="2">{{
           detailData.inquiryNo
         }}</el-descriptions-item>
@@ -15,13 +15,13 @@
           <el-tag v-if="detailData.inquiryType === 2" type="warning" size="small">样品</el-tag>
           <el-tag v-else type="primary" size="small">标准</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="产品编码">{{ detailData.productCode || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="产品编码">{{
+          detailData.productCode || '-'
+        }}</el-descriptions-item>
         <el-descriptions-item label="产品名称">{{
           detailData.productName || (detailData.productId ? '产品#' + detailData.productId : '-')
         }}</el-descriptions-item>
-        <el-descriptions-item label="客户名称">{{
-          detailData.customerName
-        }}</el-descriptions-item>
+        <el-descriptions-item label="客户名称">{{ detailData.customerName }}</el-descriptions-item>
         <el-descriptions-item label="联系人">{{
           detailData.contactPerson || '-'
         }}</el-descriptions-item>
@@ -100,7 +100,7 @@ watch(
         ElMessage.error(e?.message || '加载询价单详情失败')
       }
     }
-  },
+  }
 )
 
 // 询价单状态映射（与询价单列表页一致）
@@ -124,3 +124,10 @@ function emitClose() {
   emit('update:modelValue', false)
 }
 </script>
+<style scoped>
+.inquiry-descriptions :deep(.el-descriptions__label) {
+  width: 120px;
+  min-width: 120px;
+  white-space: nowrap;
+}
+</style>

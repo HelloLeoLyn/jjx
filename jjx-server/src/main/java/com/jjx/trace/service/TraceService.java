@@ -1,18 +1,15 @@
 package com.jjx.trace.service;
 
 import com.jjx.common.core.page.PageResult;
+import com.jjx.trace.domain.vo.TraceReviewVO;
 import com.jjx.trace.domain.vo.UnifiedTraceEventVO;
 
 import java.util.List;
-import java.util.Map;
 
 public interface TraceService {
-    /** 按trace_id查询完整业务链路 */
-    List<Map<String, Object>> getTraceByTraceId(String traceId);
+    /** 按 trace_id 查询操作流水（只查 sys_oper_log 主表，分页） */
+    PageResult<UnifiedTraceEventVO> getEvents(String traceId, int pageNum, int pageSize);
 
-    /** 按业务编号反查trace_id */
-    List<Map<String, Object>> searchTrace(String keyword);
-
-    /** 按业务单据聚合操作、审核与附件事件。 */
-    PageResult<UnifiedTraceEventVO> getEvents(String bizType, Long bizId, int pageNum, int pageSize);
+    /** 按业务单据查询审核流水（review_flow 与报价 sales_quotation_flow 统一返回） */
+    List<TraceReviewVO> reviewList(String bizType, Long bizId);
 }

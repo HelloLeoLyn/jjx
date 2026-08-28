@@ -69,12 +69,21 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button :disabled="single" v-hasPermi="['inventory:inbound:edit']" @click="() => handleEdit()">
+          <el-button
+            :disabled="single"
+            v-hasPermi="['inventory:inbound:edit']"
+            @click="() => handleEdit()"
+          >
             <el-icon><Edit /></el-icon>编辑
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button :disabled="multiple" type="danger" v-hasPermi="['inventory:inbound:edit']" @click="() => handleDelete()">
+          <el-button
+            :disabled="multiple"
+            type="danger"
+            v-hasPermi="['inventory:inbound:edit']"
+            @click="() => handleDelete()"
+          >
             <el-icon><Delete /></el-icon>删除
           </el-button>
         </el-col>
@@ -132,8 +141,16 @@
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
-            <el-button v-if="row.supplierId" link type="primary" @click="handleIqcPrint(row)">打印进料检验报告</el-button>
-            <el-button link type="primary" v-hasPermi="['inventory:inbound:edit']" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="row.supplierId" link type="primary" @click="handleIqcPrint(row)"
+              >打印进料检验报告</el-button
+            >
+            <el-button
+              link
+              type="primary"
+              v-hasPermi="['inventory:inbound:edit']"
+              @click="handleEdit(row)"
+              >编辑</el-button
+            >
             <el-button v-if="row.status === 0" link type="primary" v-hasPermi="['inventory:inbound:edit']" @click="handleSubmit(row)"
               >提交</el-button
             >
@@ -169,11 +186,14 @@
     <!-- 查看流水（DEV-569） -->
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
-    <!-- 查看流水（DEV-569） -->
-    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
-
     <!-- 入库单详情对话框（公共组件） -->
-    <el-dialog :title="dialogTitle" v-model="detailDialogVisible" width="1000px" append-to-body destroy-on-close>
+    <el-dialog
+      :title="dialogTitle"
+      v-model="detailDialogVisible"
+      width="1000px"
+      append-to-body
+      destroy-on-close
+    >
       <InboundDetail v-if="detailDialogVisible && detailInboundId" :inbound-id="detailInboundId" />
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
@@ -196,7 +216,6 @@
       :status-text-map="inboundStatusTextMap"
       @success="getList"
     />
-
   </div>
 </template>
 
@@ -343,7 +362,13 @@ function handlePrint(row: InboundVO) {
   window.open(`/print/inbound/${row.inboundId}`, '_blank')
 }
 function handleIqcPrint(row: InboundVO) {
-  window.open(router.resolve({ path: '/production/quality-print/iqc-report', query: { inboundId: row.inboundId } }).href, '_blank')
+  window.open(
+    router.resolve({
+      path: '/production/quality-print/iqc-report',
+      query: { inboundId: row.inboundId },
+    }).href,
+    '_blank'
+  )
 }
 // 查看详情
 // 查看详情（公共组件弹窗）
@@ -425,16 +450,16 @@ function showTrace(row: InboundVO) {
 // 获取状态标签样式
 const getStatusTag = (status?: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
   const statusMap: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    0: 'info',    // draft
+    0: 'info', // draft
     1: 'warning', // pending
     2: 'success', // approved
-    3: 'danger',  // rejected
+    3: 'danger', // rejected
     4: 'warning', // processing
     5: 'success', // confirmed
     6: 'success', // out_confirm
     7: 'success', // in_confirm
-    8: 'info',    // closed
-    9: 'danger',  // cancelled
+    8: 'info', // closed
+    9: 'danger', // cancelled
     10: 'success', // completed
     11: 'success', // processed
     12: 'warning', // in_progress

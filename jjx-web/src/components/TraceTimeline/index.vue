@@ -57,7 +57,8 @@
               size="small"
               type="primary"
               class="att-badge"
-            >📎 {{ scope.row.attachments.length }}</el-tag>
+              >📎 {{ scope.row.attachments.length }}</el-tag
+            >
             <el-tag
               v-if="scope.row.changes?.length"
               size="small"
@@ -176,7 +177,9 @@ interface TraceDetail {
   attachments: TraceAttachment[]
 }
 
+/** /api/trace/reviews 返回的审核流水记录 */
 interface ReviewHistory {
+  flowId?: string
   roundNo?: number
   actionCode?: string
   actionName?: string
@@ -195,16 +198,21 @@ interface TraceEvent {
   actionTitle?: string
   operatorName?: string
   result?: number
+  /** 以下为前端解析/按需加载后回填的展示字段 */
   changes?: string[]
   attachments?: TraceAttachment[]
-  reviewHistory?: ReviewHistory[]
   roundNo?: number
   comment?: string
+  actionCode?: string
+  isReview?: boolean
   traceId?: string
   module?: string
   bizType?: string
+  bizId?: string
   businessType?: number
-  actionCode?: string
+  operUrl?: string
+  operParam?: string
+  detail?: string
 }
 
 const props = defineProps<{
@@ -222,50 +230,65 @@ const emit = defineEmits<{
 const visible = ref(false)
 const loading = ref(false)
 const events = ref<TraceEvent[]>([])
-const legacyEvents = ref<TraceEvent[]>([])
 const selectedEvent = ref<TraceEvent | null>(null)
 const showTechnical = ref(false)
 const pageNum = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
-const serverMode = computed(() => Boolean(props.bizType && props.bizId))
 
-watch(() => props.modelValue, (value) => { visible.value = value })
-watch(() => [props.traceId, props.bizType, props.bizId], () => {
-  if (props.modelValue) resetAndLoad()
-})
+/** 按需加载缓存：key = bizType:bizId */
+const reviewCache = new Map<string, ReviewHistory[]>()
+const attachmentCache = new Map<string, TraceAttachment[]>()
+
+watch(
+  () => props.modelValue,
+  (value) => {
+    visible.value = value
+  }
+)
+watch(
+  () => props.traceId,
+  () => {
+    if (props.modelValue) resetAndLoad()
+  }
+)
 
 function statusEnumForBizType(type?: string): { getLabel: (value: number) => string } | undefined {
   switch (type) {
-    case 'inquiry': return InquiryStatusEnum
-    case 'quotation': return QuotationStatusEnum
+    case 'inquiry':
+      return InquiryStatusEnum
+    case 'quotation':
+      return QuotationStatusEnum
     case 'order':
-    case 'sales_order': return SalesOrderStatusEnum
-    case 'sample': return SampleOrderStatusEnum
+    case 'sales_order':
+      return SalesOrderStatusEnum
+    case 'sample':
+      return SampleOrderStatusEnum
     case 'purchase':
-    case 'purchase_order': return PurchaseOrderStatusEnum
+    case 'purchase_order':
+      return PurchaseOrderStatusEnum
     case 'production':
-    case 'production_order': return ProductionOrderStatusEnum
+    case 'production_order':
+      return ProductionOrderStatusEnum
     case 'execution':
-    case 'production_execution': return ExecutionStatusEnum
-    default: return undefined
+    case 'production_execution':
+      return ExecutionStatusEnum
+    default:
+      return undefined
   }
 }
 
-/** 该操作是否有详情（变更/意见/附件）——有才可点击查看 */
+/** 该操作是否有详情（变更/审核意见/附件）——有才可点击查看 */
 function hasDetail(event: TraceEvent): boolean {
-  return !!(
-    event.changes?.length ||
-    event.comment?.trim() ||
-    event.attachments?.length
-  )
+  return !!(event.changes?.length || event.isReview || event.attachments?.length)
 }
 
 const reviewComment = computed(() => selectedEvent.value?.comment?.trim() || '')
 
-const isRejected = computed(() =>
-  selectedEvent.value?.actionCode === 'REJECT'
-  || selectedEvent.value?.actionCode === 'CUSTOMER_REJECT'
+const isRejected = computed(
+  () =>
+    selectedEvent.value?.actionCode === 'REJECT' ||
+    selectedEvent.value?.actionCode === 'CUSTOMER_REJECT'
 )
 
 const detailAttachments = computed(() => {
@@ -277,8 +300,12 @@ const detailAttachments = computed(() => {
 })
 
 const imageAttachments = computed(() => detailAttachments.value.filter(isImageAttachment))
-const fileAttachments = computed(() => detailAttachments.value.filter((attachment) => !isImageAttachment(attachment)))
-const imagePreviewUrls = computed(() => imageAttachments.value.map((attachment) => downloadUrl(attachment.id)))
+const fileAttachments = computed(() =>
+  detailAttachments.value.filter((attachment) => !isImageAttachment(attachment))
+)
+const imagePreviewUrls = computed(() =>
+  imageAttachments.value.map((attachment) => downloadUrl(attachment.id))
+)
 
 function isImageAttachment(attachment: TraceAttachment): boolean {
   return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(attachment.fileName || '')
@@ -291,15 +318,24 @@ function handleClose() {
 function resetAndLoad() {
   pageNum.value = 1
   selectedEvent.value = null
-  loadTrace()
+  loadEvents()
 }
 
-async function loadTrace() {
-  if (!props.traceId && !props.bizId) return
+async function loadEvents() {
+  if (!props.traceId) return
   loading.value = true
   try {
-    if (serverMode.value) await loadEvents()
-    else await loadLegacyTrace()
+    const response = await request.get('/api/trace/events', {
+      params: {
+        traceId: props.traceId,
+        pageNum: pageNum.value,
+        pageSize: pageSize.value,
+      },
+    })
+    const data = (response as any)?.data || {}
+    events.value = (data.records || []).map(enrichEvent)
+    total.value = Number(data.total || 0)
+    selectedEvent.value = null
   } catch {
     events.value = []
     total.value = 0
@@ -308,136 +344,115 @@ async function loadTrace() {
   }
 }
 
-async function loadEvents() {
-  if (!props.bizType || !props.bizId) return
-  loading.value = true
-  try {
-    const response = await request.get('/api/trace/events', {
-      params: {
-        bizType: props.bizType,
-        bizId: props.bizId,
-        pageNum: pageNum.value,
-        pageSize: pageSize.value,
-      },
-    })
-    const data = (response as any)?.data || {}
-    events.value = data.records || []
-    total.value = Number(data.total || 0)
-    selectedEvent.value = null
-  } finally {
-    loading.value = false
+/** 后端只透传原文，前端解析 detail 并识别审核动作（标志驱动） */
+function enrichEvent(row: any): TraceEvent {
+  const detail = parseDetail(row.detail)
+  const actionCode = semanticAction(row.operUrl, row.operParam)
+  return {
+    ...row,
+    changes: detail.changes,
+    attachments: detail.attachments,
+    actionCode: actionCode || undefined,
+    isReview: !!actionCode,
   }
+}
+
+/** 前端语义识别：审核动作关键词（与后端 actionTitle 映射保持一致） */
+function semanticAction(operUrl?: string, operParam?: string): string | null {
+  const value = `${operUrl || ''} ${operParam || ''}`.toUpperCase()
+  if (/REJECT|驳回|拒绝/.test(value)) return 'REJECT'
+  if (/APPROVE|审核通过|审批通过/.test(value)) return 'APPROVE'
+  if (/SUBMIT|提交审核/.test(value)) return 'SUBMIT'
+  if (/CUSTOMER_CONFIRM|CONFIRM|客户确认/.test(value)) return 'CONFIRM'
+  if (/SEND|发送报价/.test(value)) return 'SEND'
+  if (/CANCEL|取消/.test(value)) return 'CANCEL'
+  return null
 }
 
 function handlePageChange() {
   selectedEvent.value = null
-  if (serverMode.value) {
-    loadEvents()
-    return
-  }
-  applyLegacyPage()
+  loadEvents()
 }
 
 function handleSizeChange() {
   pageNum.value = 1
   selectedEvent.value = null
-  if (serverMode.value) {
-    loadEvents()
-    return
-  }
-  applyLegacyPage()
+  loadEvents()
 }
 
-function applyLegacyPage() {
-  const start = (pageNum.value - 1) * pageSize.value
-  events.value = legacyEvents.value.slice(start, start + pageSize.value)
-}
-
-async function loadLegacyTrace() {
-  if (!props.traceId) return
-  const response = await request.get(`/api/trace/${props.traceId}`)
-  const nodes: any[] = (response as any)?.data || []
-  const allEvents: TraceEvent[] = []
-  for (const node of nodes) {
-    for (const operation of node.operations || []) {
-      allEvents.push({
-        eventId: `legacy-${operation.id}`,
-        time: operation.time,
-        bizStatus: operation.bizStatus,
-        actionTitle: formatBusinessType(operation.businessType),
-        operatorName: operation.operator,
-        result: operation.status,
-        changes: parseChanges(operation.detail),
-        attachments: parseDetailAttachments(operation.detail),
-        traceId: props.traceId,
-        module: node.module,
-        bizType: operation.bizType,
-        businessType: operation.businessType,
-      })
-    }
-  }
-  // traceId 模式附件（035/询价）：附件不单独成行，挂到时间最近（≤5秒）的操作行下（用户要求）
-  try {
-    const attRes: any = await attachmentApi.listByTrace(props.traceId)
-    const attachments: any[] = attRes?.data || []
-    for (const att of attachments) {
-      const target = findClosestLegacyEvent(allEvents, att.createTime)
-      if (target) {
-        if (!target.attachments) target.attachments = []
-        target.attachments.push({ id: att.id, fileName: att.fileName })
-        continue
-      }
-      // 兜底：无操作行可挂才独立成行
-      allEvents.push({
-        eventId: `legacy-att-${att.id}`,
-        time: att.createTime,
-        actionTitle: '上传附件',
-        operatorName: att.createBy || '-',
-        result: 1,
-        attachments: [{ id: att.id, fileName: att.fileName }],
-        traceId: props.traceId,
-        module: '附件',
-        bizType: att.bizType,
-      })
-    }
-  } catch { /* 附件加载失败不阻断流水 */ }
-  allEvents.sort((left, right) => String(left.time || '').localeCompare(String(right.time || '')))
-  legacyEvents.value = allEvents
-  total.value = allEvents.length
-  applyLegacyPage()
-}
-
-/** 找时间最近（≤5秒窗口）的操作事件行挂附件；无匹配返回 null */
-function findClosestLegacyEvent(events: TraceEvent[], time?: string): TraceEvent | null {
-  if (!time) return null
-  const t = new Date(String(time).replace('T', ' ').replace(' ', 'T')).getTime()
-  if (Number.isNaN(t)) return null
-  let best: TraceEvent | null = null
-  let bestDiff = Number.MAX_SAFE_INTEGER
-  for (const event of events) {
-    if (!event.time) continue
-    const et = new Date(String(event.time).replace('T', ' ').replace(' ', 'T')).getTime()
-    if (Number.isNaN(et)) continue
-    const diff = Math.abs(et - t) / 1000
-    if (diff <= 5 && diff < bestDiff) {
-      bestDiff = diff
-      best = event
-    }
-  }
-  return best
-}
-
-function selectEvent(row: TraceEvent) {
+async function selectEvent(row: TraceEvent) {
   if (!hasDetail(row)) return
   selectedEvent.value = row
+  await loadRowContent(row)
 }
 
-function parseChanges(detail?: string | null): string[] {
-  return parseDetail(detail).changes
+/** 点击行后按需加载：审核意见（/api/trace/reviews）+ 独立附件（attachmentApi.list） */
+async function loadRowContent(row: TraceEvent) {
+  const key = `${row.bizType || ''}:${row.bizId || ''}`
+  if (!key.includes(':') || !row.bizType || !row.bizId) return
+  if (row.isReview) {
+    try {
+      let reviews = reviewCache.get(key)
+      if (!reviews) {
+        const res: any = await request.get('/api/trace/reviews', {
+          params: { bizType: row.bizType, bizId: row.bizId },
+        })
+        reviews = res?.data || []
+        reviewCache.set(key, reviews || [])
+      }
+      const matched = matchReview(reviews ?? [], row)
+      if (matched) {
+        row.comment = matched.comment
+        row.roundNo = matched.roundNo
+        row.actionCode = matched.actionCode || row.actionCode
+      }
+    } catch {
+      /* 审核流水加载失败不阻断展示 */
+    }
+  }
+  // 独立附件（detail 未引用的，如询价图纸）：按 bizType+bizId 拉全单附件，与行内附件去重合并
+  try {
+    let all = attachmentCache.get(key)
+    if (!all) {
+      const res: any = await attachmentApi.list(row.bizType, Number(row.bizId))
+      all = res?.data || []
+      attachmentCache.set(key, all || [])
+    }
+    const merged = new Map<number, TraceAttachment>()
+    for (const attachment of row.attachments || []) merged.set(attachment.id, attachment)
+    for (const attachment of all || []) {
+      if (attachment?.id != null) merged.set(attachment.id, attachment)
+    }
+    row.attachments = [...merged.values()]
+  } catch {
+    /* 附件加载失败不阻断展示 */
+  }
 }
 
-function parseDetailAttachments(detail?: string | null): TraceAttachment[] {
-  return parseDetail(detail).attachments
+/** 按动作语义 + 时间最近匹配该行对应的审核记录 */
+function matchReview(reviews: ReviewHistory[], row: TraceEvent): ReviewHistory | null {
+  if (!reviews?.length) return null
+  const candidates = reviews.filter(
+    (r) => semanticAction(r.actionCode, r.actionName) === row.actionCode
+  )
+  const list = candidates.length ? candidates : reviews
+  const target = row.time
+    ? new Date(String(row.time).replace('T', ' ').replace(' ', 'T')).getTime()
+    : NaN
+  if (!Number.isFinite(target)) return list[list.length - 1] || null
+  let best: ReviewHistory | null = null
+  let bestDiff = Number.MAX_SAFE_INTEGER
+  for (const review of list) {
+    if (!review.createTime) continue
+    const t = new Date(String(review.createTime).replace('T', ' ').replace(' ', 'T')).getTime()
+    if (Number.isNaN(t)) continue
+    const diff = Math.abs(t - target)
+    if (diff < bestDiff) {
+      bestDiff = diff
+      best = review
+    }
+  }
+  return best || list[list.length - 1] || null
 }
 
 function parseDetail(detail?: string | null): TraceDetail {
@@ -453,17 +468,6 @@ function parseDetail(detail?: string | null): TraceDetail {
   }
 }
 
-function parseAttachmentIds(value?: string): number[] {
-  if (!value) return []
-  try {
-    const parsed = JSON.parse(value)
-    if (Array.isArray(parsed)) return parsed.map(Number).filter(Number.isFinite)
-  } catch {
-    // 兼容历史逗号分隔格式。
-  }
-  return value.split(',').map((item) => Number(item.trim())).filter(Number.isFinite)
-}
-
 function formatBizStatus(status?: number, type?: string): string {
   if (status == null) return '-'
   const statusEnum = statusEnumForBizType(type)
@@ -474,14 +478,22 @@ function formatBizStatus(status?: number, type?: string): string {
 
 /** 业务模块列：优先 bizType 映射，module 兜底（1199：业务化名称，不再显示技术模块名） */
 const BIZ_MODULE_NAMES: Record<string, string> = {
-  order: '销售订单', sales_order: '销售订单',
+  order: '销售订单',
+  sales_order: '销售订单',
   quotation: '报价单',
-  sample: '样品单', sample_order: '样品单',
+  sample: '样品单',
+  sample_order: '样品单',
   inquiry: '询价单',
-  purchase: '采购订单', purchase_order: '采购订单',
-  production: '生产', production_order: '生产工单', production_execution: '工序执行',
-  quality: '质检', bom: 'BOM', film: '工艺',
-  review: '审核', attachment: '附件',
+  purchase: '采购订单',
+  purchase_order: '采购订单',
+  production: '生产',
+  production_order: '生产工单',
+  production_execution: '工序执行',
+  quality: '质检',
+  bom: 'BOM',
+  film: '工艺',
+  review: '审核',
+  attachment: '附件',
 }
 function formatBizModule(module?: string, bizType?: string): string {
   const byBizType = bizType ? BIZ_MODULE_NAMES[bizType] : undefined
@@ -490,57 +502,8 @@ function formatBizModule(module?: string, bizType?: string): string {
   return BIZ_MODULE_NAMES[module] || module
 }
 
-function formatReviewStatus(review: ReviewHistory): string {
-  const statusEnum = statusEnumForBizType(selectedEvent.value?.bizType)
-  const label = (value: string | number | null | undefined) => {
-    if (value == null || value === '') return ''
-    if (!statusEnum) return String(value)
-    const result = statusEnum.getLabel(Number(value))
-    return result && result !== '未知' ? result : '-'
-  }
-  const from = label(review.fromStatus)
-  const to = label(review.toStatus)
-  return from || to ? `${from || '-'} → ${to || '-'}` : ''
-}
-
-function reviewActionLabel(actionCode?: string): string {
-  const labels: Record<string, string> = {
-    SUBMIT: '提交审核',
-    SUBMIT_REVIEW: '提交审核',
-    APPROVE: '审核通过',
-    REJECT: '审核驳回',
-    SEND: '发送报价',
-    CONFIRM: '客户确认报价',
-    CUSTOMER_CONFIRM: '客户确认报价',
-    CUSTOMER_REJECT: '客户拒绝报价',
-    CANCEL: '取消',
-  }
-  return actionCode ? labels[actionCode] || actionCode : '-'
-}
-
-function formatBusinessType(code?: number): string {
-  const labels: Record<number, string> = {
-    1: '创建',
-    2: '修改',
-    3: '删除',
-    4: '导出',
-    5: '导入',
-    6: '审批',
-    7: '登录',
-    8: '登出',
-    9: '业务操作',
-    10: '重置密码',
-    11: '转换',
-  }
-  return code == null ? '-' : labels[code] || '业务操作'
-}
-
 function formatTime(value?: string): string {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
-}
-
-function formatShortTime(value?: string): string {
-  return formatTime(value).slice(11, 16)
 }
 
 function downloadUrl(id: number): string {
@@ -631,13 +594,6 @@ function downloadUrl(id: number): string {
 }
 .attachment-link {
   margin-right: 14px;
-}
-.attachment-image {
-  width: 56px;
-  height: 56px;
-  margin-right: 10px;
-  vertical-align: middle;
-  border-radius: 4px;
 }
 .technical-detail {
   margin-top: 16px;

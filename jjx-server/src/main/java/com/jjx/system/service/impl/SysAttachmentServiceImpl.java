@@ -1,12 +1,17 @@
 package com.jjx.system.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.system.domain.entity.SysAttachment;
+import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.mapper.SysOperLogMapper;
 import com.jjx.system.service.ISysAttachmentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +47,8 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     private final SysAttachmentMapper attachmentMapper;
     private final ProductMapper productMapper;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final SysOperLogMapper sysOperLogMapper;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -100,8 +107,49 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setFileType(file.getContentType());
 
         save(attachment);
+        // 附件回填日志 detail：同事务提交，保证流水可见（2026-08-28）
+        attachToLatestOperLog(traceId, attachment);
         log.info("附件上传成功: id={}, bizType={}, bizId={}, file={}", attachment.getId(), bizType, bizId, originalName);
         return attachment.getId();
+    }
+
+    /**
+     * 上传成功后把附件回填进同 traceId 最近一条操作日志的 detail.attachments，
+     * 流水行即可直接解析显示附件（前端零改动，各模块上传都走这里自动生效）。
+     * 与附件入库同事务：异常抛出则上传一起回滚；查不到日志（该 traceId 无操作记录）则跳过。
+     */
+    private void attachToLatestOperLog(String traceId, SysAttachment attachment) {
+        if (attachment == null || attachment.getId() == null
+                || traceId == null || traceId.isBlank()) {
+            return;
+        }
+        try {
+            SysOperLog latest = sysOperLogMapper.selectOne(
+                    Wrappers.<SysOperLog>lambdaQuery()
+                            .eq(SysOperLog::getTraceId, traceId)
+                            .orderByDesc(SysOperLog::getCreateTime)
+                            .last("LIMIT 1"));
+            if (latest == null) {
+                return; // 该 traceId 还没有操作日志（如纯附件场景），跳过回填
+            }
+            ObjectNode node = (ObjectNode) objectMapper.readTree(
+                    latest.getDetail() == null || latest.getDetail().isBlank()
+                            ? "{}" : latest.getDetail());
+            if (!node.has("attachments") || !node.get("attachments").isArray()) {
+                node.set("attachments", objectMapper.createArrayNode());
+            }
+            node.withArray("attachments").add(objectMapper.createObjectNode()
+                    .put("id", attachment.getId())
+                    .put("fileName", attachment.getFileName() == null
+                            ? "附件" + attachment.getId() : attachment.getFileName()));
+            latest.setDetail(objectMapper.writeValueAsString(node));
+            sysOperLogMapper.updateById(latest);
+        } catch (Exception e) {
+            // 事务内抛出：附件入库一起回滚，保证 detail 与附件表一致
+            log.error("附件回填日志detail失败: traceId={}, attachmentId={}, err={}",
+                    traceId, attachment.getId(), e.getMessage());
+            throw new BusinessException("附件上传失败：日志回填异常");
+        }
     }
 
     @Override

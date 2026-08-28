@@ -3,9 +3,11 @@ package com.jjx.trace.domain.vo;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
+/**
+ * 统一流水事件（只来自 sys_oper_log 主表）。
+ * detail/operParam/operUrl 原文透传，由前端解析变更/附件/审核标志。
+ */
 @Data
 public class UnifiedTraceEventVO {
     private String eventId;
@@ -14,15 +16,12 @@ public class UnifiedTraceEventVO {
     private String actionTitle;
     private String operatorName;
     private Integer result;
-    private List<String> changes = new ArrayList<>();
-    private List<TraceAttachmentVO> attachments = new ArrayList<>();
-    private List<TraceReviewHistoryVO> reviewHistory = new ArrayList<>();
-    private Integer roundNo;
-    /** 该操作自身的意见/驳回原因（合并审核记录时取自匹配的那条，非整轮） */
-    private String comment;
     private String traceId;
     private String module;
     private String bizType;
+    private String bizId;
     private Integer businessType;
-    private String actionCode;
+    private String operUrl;
+    private String operParam;
+    private String detail;
 }

@@ -102,6 +102,7 @@ declare module 'vue' {
     OperationPreviewDialog: typeof import('./components/OperationPreviewDialog/index.vue')['default']
     OperatorPicker: typeof import('./components/OperatorPicker/index.vue')['default']
     Pagination: typeof import('./components/Pagination/index.vue')['default']
+    PrintCompanyHeader: typeof import('./components/PrintCompanyHeader.vue')['default']
     PrintDialog: typeof import('./components/PrintDialog/index.vue')['default']
     ProductCategorySelect: typeof import('./components/ProductCategorySelect.vue')['default']
     ProductCodeGenerator: typeof import('./components/ProductCodeGenerator/index.vue')['default']

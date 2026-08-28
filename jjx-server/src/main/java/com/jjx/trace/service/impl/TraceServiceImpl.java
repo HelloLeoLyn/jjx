@@ -1,29 +1,27 @@
 package com.jjx.trace.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.jjx.system.domain.entity.SysOperLog;
-import com.jjx.system.mapper.SysOperLogMapper;
-import com.jjx.system.mapper.ReviewFlowMapper;
-import com.jjx.system.mapper.SysAttachmentMapper;
-import com.jjx.system.domain.entity.ReviewFlow;
-import com.jjx.system.domain.entity.SysAttachment;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesQuotationFlow;
 import com.jjx.sales.mapper.QuotationFlowMapper;
-import com.jjx.common.core.page.PageResult;
-import com.jjx.trace.domain.vo.TraceAttachmentVO;
+import com.jjx.system.domain.entity.ReviewFlow;
+import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.mapper.ReviewFlowMapper;
+import com.jjx.system.mapper.SysOperLogMapper;
+import com.jjx.trace.domain.vo.TraceReviewVO;
 import com.jjx.trace.domain.vo.UnifiedTraceEventVO;
-import com.jjx.trace.domain.vo.TraceReviewHistoryVO;
 import com.jjx.trace.service.TraceService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
-import java.util.stream.Collectors;
-import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -33,192 +31,82 @@ public class TraceServiceImpl implements TraceService {
     private final SysOperLogMapper sysOperLogMapper;
     private final ReviewFlowMapper reviewFlowMapper;
     private final QuotationFlowMapper quotationFlowMapper;
-    private final SysAttachmentMapper sysAttachmentMapper;
-    private final ObjectMapper objectMapper;
-
-    private static final long REVIEW_MERGE_SECONDS = 5L;
-
-    /** bizType 别名（1199/1141）：前端统一标识 → 兼容历史/模块日志中的旧 bizType */
-    private static final Map<String, List<String>> LOG_BIZ_TYPE_ALIASES = Map.of(
-            "sample_order", List.of("sample_order", "sample"),
-            "sales_order", List.of("sales_order", "order"));
 
     @Override
-    public List<Map<String, Object>> getTraceByTraceId(String traceId) {
-        LambdaQueryWrapper<SysOperLog> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(SysOperLog::getTraceId, traceId);
-        wrapper.orderByAsc(SysOperLog::getCreateTime);
-        List<SysOperLog> logs = sysOperLogMapper.selectList(wrapper);
-        if (logs.isEmpty()) return Collections.emptyList();
-
-        Map<String, List<SysOperLog>> grouped = logs.stream()
-                .collect(Collectors.groupingBy(
-                        l -> l.getModule() != null ? l.getModule() : "其他",
-                        LinkedHashMap::new, Collectors.toList()));
-
-        List<Map<String, Object>> nodes = new ArrayList<>();
-        for (Map.Entry<String, List<SysOperLog>> e : grouped.entrySet()) {
-            List<SysOperLog> moduleLogs = e.getValue();
-            SysOperLog first = moduleLogs.get(0);
-            SysOperLog last = moduleLogs.get(moduleLogs.size() - 1);
-            Map<String, Object> node = new LinkedHashMap<>();
-            node.put("module", e.getKey());
-            node.put("bizType", first.getBizType());
-            node.put("bizId", first.getBizId());
-            node.put("startTime", first.getCreateTime());
-            node.put("endTime", last.getCreateTime());
-            node.put("totalOps", moduleLogs.size());
-            node.put("status", moduleLogs.stream().allMatch(l -> l.getStatus() != null && l.getStatus() == 1) ? "success" : "partial");
-
-            List<Map<String, Object>> ops = moduleLogs.stream().map(l -> {
-                Map<String, Object> op = new LinkedHashMap<>();
-                op.put("id", l.getId());
-                op.put("action", l.getOperUrl());
-                op.put("operator", l.getRealName() != null ? l.getRealName() : l.getUsername());
-                op.put("time", l.getCreateTime());
-                op.put("status", l.getStatus());
-                op.put("bizId", l.getBizId());
-                op.put("bizType", l.getBizType());
-                op.put("bizStatus", l.getBizStatus());
-                op.put("businessType", l.getBusinessType());
-                // 2026-08-18：透出 detail（变更JSON）/operParam（摘要），前端展示修改内容
-                op.put("detail", l.getDetail());
-                op.put("operParam", l.getOperParam());
-                return op;
-            }).collect(Collectors.toList());
-            node.put("operations", ops);
-            nodes.add(node);
+    public PageResult<UnifiedTraceEventVO> getEvents(String traceId, int pageNum, int pageSize) {
+        if (traceId == null || traceId.isBlank()) {
+            return PageResult.build(Collections.emptyList(), 0);
         }
-        return nodes;
+        IPage<SysOperLog> page = sysOperLogMapper.selectPage(
+                new Page<>(Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100)),
+                Wrappers.<SysOperLog>lambdaQuery()
+                        .eq(SysOperLog::getTraceId, traceId)
+                        .orderByAsc(SysOperLog::getCreateTime));
+        List<UnifiedTraceEventVO> records = page.getRecords().stream().map(this::fromLog).toList();
+        return PageResult.of(page, records);
     }
 
     @Override
-    public List<Map<String, Object>> searchTrace(String keyword) {
-        LambdaQueryWrapper<SysOperLog> wrapper = Wrappers.lambdaQuery();
-        wrapper.like(SysOperLog::getBizId, keyword);
-        wrapper.select(SysOperLog::getTraceId);
-        wrapper.isNotNull(SysOperLog::getTraceId);
-        wrapper.last("LIMIT 20");
-        List<SysOperLog> logs = sysOperLogMapper.selectList(wrapper);
-        Set<String> traceIds = logs.stream()
-                .map(SysOperLog::getTraceId).filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        List<Map<String, Object>> results = new ArrayList<>();
-        for (String tid : traceIds) {
-            List<Map<String, Object>> trace = getTraceByTraceId(tid);
-            if (!trace.isEmpty()) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("traceId", tid);
-                item.put("nodes", trace);
-                results.add(item);
-            }
-        }
-        return results;
-    }
-
-    @Override
-    public PageResult<UnifiedTraceEventVO> getEvents(String bizType, Long bizId, int pageNum, int pageSize) {
+    public List<TraceReviewVO> reviewList(String bizType, Long bizId) {
         if (bizType == null || bizType.isBlank() || bizId == null) {
-            return page(Collections.emptyList(), pageNum, pageSize);
+            return Collections.emptyList();
         }
-        // bizType 别名兼容（1199/1141）：前端统一用 sample_order，历史/模块日志用 sample
-        List<String> logBizTypes = LOG_BIZ_TYPE_ALIASES.getOrDefault(bizType, List.of(bizType));
-        List<SysOperLog> logs = sysOperLogMapper.selectList(Wrappers.<SysOperLog>lambdaQuery()
-                .in(SysOperLog::getBizType, logBizTypes)
-                .eq(SysOperLog::getBizId, String.valueOf(bizId))
-                .orderByAsc(SysOperLog::getCreateTime));
-
-        List<ReviewFlow> reviews = Collections.emptyList();
-        List<SalesQuotationFlow> quotationFlows = Collections.emptyList();
-        boolean hasReviewActions = logs.stream()
-                .anyMatch(log -> semantic((log.getOperUrl() == null ? "" : log.getOperUrl()) + " "
-                        + (log.getOperParam() == null ? "" : log.getOperParam())) != null);
-        if (hasReviewActions) {
-            String reviewBizType = reviewBizType(bizType);
-            if ("quotation".equals(bizType)) {
-                quotationFlows = quotationFlowMapper.selectByQuotationId(bizId);
-            } else if (reviewBizType != null) {
-                reviews = reviewFlowMapper.selectList(Wrappers.<ReviewFlow>lambdaQuery()
-                        .eq(ReviewFlow::getBizType, reviewBizType)
-                        .eq(ReviewFlow::getBizId, bizId)
-                        .orderByAsc(ReviewFlow::getCreateTime));
-            }
+        // 报价审核流水独立存储（sales_quotation_flow，020 决策报价不接入 review_flow）
+        if ("quotation".equals(bizType)) {
+            return quotationReviews(bizId);
         }
-        // 附件查询同样按别名匹配（样品附件 bizType=sample_order）
-        List<SysAttachment> attachments = sysAttachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
-                .in(SysAttachment::getBizType, logBizTypes)
-                .eq(SysAttachment::getBizId, bizId)
-                .orderByAsc(SysAttachment::getCreateTime));
-        return page(aggregateEvents(bizType, logs, reviews, quotationFlows, attachments), pageNum, pageSize);
+        String reviewBizType = reviewBizType(bizType);
+        if (reviewBizType == null) {
+            return Collections.emptyList();
+        }
+        List<ReviewFlow> flows = reviewFlowMapper.selectList(Wrappers.<ReviewFlow>lambdaQuery()
+                .eq(ReviewFlow::getBizType, reviewBizType)
+                .eq(ReviewFlow::getBizId, bizId)
+                .orderByAsc(ReviewFlow::getCreateTime));
+        return flows.stream().map(this::fromReviewFlow).toList();
     }
 
-    List<UnifiedTraceEventVO> aggregateEvents(String bizType, List<SysOperLog> logs,
-                                       List<ReviewFlow> reviews,
-                                       List<SalesQuotationFlow> quotationFlows,
-                                       List<SysAttachment> attachments) {
-        List<ReviewRecord> reviewRecords = normalizeReviews(bizType, reviews, quotationFlows);
-        Set<String> matchedReviews = new HashSet<>();
-        Set<Long> referencedAttachmentIds = new HashSet<>();
-        List<UnifiedTraceEventVO> events = new ArrayList<>();
-
-        for (SysOperLog log : safe(logs)) {
-            UnifiedTraceEventVO event = fromLog(log);
-            addDetail(event, log.getDetail(), referencedAttachmentIds);
-            ReviewRecord matched = findReview(log, reviewRecords, matchedReviews);
-            if (matched != null) {
-                matchedReviews.add(matched.id());
-                attachReviewRound(event, matched, reviewRecords, referencedAttachmentIds, attachments);
-            }
-            events.add(event);
+    /** 报价审核流水：轮次按动作序列归一化（驳回后再次提交轮次+1） */
+    private List<TraceReviewVO> quotationReviews(Long quotationId) {
+        List<SalesQuotationFlow> sorted = new ArrayList<>(
+                safe(quotationFlowMapper.selectByQuotationId(quotationId)));
+        sorted.sort(Comparator.comparing(SalesQuotationFlow::getCreateTime,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        List<TraceReviewVO> result = new ArrayList<>();
+        int round = 1;
+        boolean previousRejected = false;
+        for (SalesQuotationFlow flow : sorted) {
+            if (previousRejected && "SUBMIT".equals(semantic(flow.getActionCode()))) round++;
+            TraceReviewVO vo = new TraceReviewVO();
+            vo.setFlowId("qf-" + flow.getFlowId());
+            vo.setRoundNo(round);
+            vo.setActionCode(flow.getActionCode());
+            vo.setActionName(flow.getActionName());
+            vo.setFromStatus(asString(flow.getFromStatus()));
+            vo.setToStatus(asString(flow.getToStatus()));
+            vo.setOperatorName(flow.getOperatorName());
+            vo.setComment(flow.getRemark());
+            vo.setAttachmentIds(flow.getAttachmentIds());
+            vo.setCreateTime(flow.getCreateTime());
+            result.add(vo);
+            previousRejected = "REJECT".equals(semantic(flow.getActionCode()));
         }
-
-        for (ReviewRecord review : reviewRecords) {
-            if (matchedReviews.contains(review.id())) continue;
-            UnifiedTraceEventVO event = fromReview(review, bizType);
-            attachReviewRound(event, review, reviewRecords, referencedAttachmentIds, attachments);
-            events.add(event);
-        }
-
-        for (SysAttachment attachment : safe(attachments)) {
-            if (attachment.getId() == null || referencedAttachmentIds.contains(attachment.getId())) continue;
-            // 附件不单独成行：挂到时间最近（≤5秒）的操作事件行下，点开该行查看（用户要求）
-            UnifiedTraceEventVO target = findClosestEvent(events, attachment.getCreateTime());
-            if (target != null) {
-                target.getAttachments().add(new TraceAttachmentVO(attachment.getId(), attachment.getFileName()));
-                continue;
-            }
-            // 兜底：无操作行可挂（如只有附件无日志）才独立成行
-            UnifiedTraceEventVO event = new UnifiedTraceEventVO();
-            event.setEventId("attachment-" + attachment.getId());
-            event.setTime(attachment.getCreateTime());
-            event.setActionTitle("上传附件");
-            event.setOperatorName(attachment.getCreateBy());
-            event.setResult(1);
-            event.setBizType(bizType);
-            event.setModule("附件");
-            event.getAttachments().add(new TraceAttachmentVO(attachment.getId(), attachment.getFileName()));
-            events.add(event);
-        }
-        events.sort(Comparator.comparing(UnifiedTraceEventVO::getTime,
-                Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(UnifiedTraceEventVO::getEventId));
-        return events;
+        return result;
     }
 
-    /** 找时间最近（≤5秒窗口）的操作事件行，用于挂独立附件；无匹配返回 null */
-    private UnifiedTraceEventVO findClosestEvent(List<UnifiedTraceEventVO> events, LocalDateTime time) {
-        if (time == null) return null;
-        UnifiedTraceEventVO best = null;
-        long bestDiff = Long.MAX_VALUE;
-        for (UnifiedTraceEventVO event : events) {
-            if (event.getTime() == null) continue;
-            long diff = Math.abs(java.time.Duration.between(event.getTime(), time).getSeconds());
-            if (diff <= 5 && diff < bestDiff) {
-                bestDiff = diff;
-                best = event;
-            }
-        }
-        return best;
+    private TraceReviewVO fromReviewFlow(ReviewFlow flow) {
+        TraceReviewVO vo = new TraceReviewVO();
+        vo.setFlowId("rf-" + flow.getFlowId());
+        vo.setRoundNo(flow.getRoundNo() == null ? 1 : flow.getRoundNo());
+        vo.setActionCode(flow.getActionCode());
+        vo.setActionName(flow.getActionName());
+        vo.setFromStatus(flow.getFromStatus());
+        vo.setToStatus(flow.getToStatus());
+        vo.setOperatorName(flow.getOperatorName());
+        vo.setComment(flow.getComment());
+        vo.setAttachmentIds(flow.getAttachmentIds());
+        vo.setCreateTime(flow.getCreateTime());
+        return vo;
     }
 
     private UnifiedTraceEventVO fromLog(SysOperLog log) {
@@ -233,129 +121,15 @@ public class TraceServiceImpl implements TraceService {
         event.setTraceId(log.getTraceId());
         event.setModule(log.getModule());
         event.setBizType(log.getBizType());
+        event.setBizId(log.getBizId());
         event.setBusinessType(log.getBusinessType());
+        event.setOperUrl(log.getOperUrl());
+        event.setOperParam(log.getOperParam());
+        event.setDetail(log.getDetail());
         return event;
     }
 
-    private UnifiedTraceEventVO fromReview(ReviewRecord review, String bizType) {
-        UnifiedTraceEventVO event = new UnifiedTraceEventVO();
-        event.setEventId("review-" + review.id());
-        event.setTime(review.createTime());
-        event.setBizStatus(parseStatus(review.toStatus()));
-        event.setActionTitle(review.actionName() == null || review.actionName().isBlank()
-                ? reviewActionTitle(review.actionCode()) : review.actionName());
-        event.setOperatorName(review.operatorName());
-        event.setResult(1);
-        event.setRoundNo(review.roundNo());
-        event.setBizType(bizType);
-        event.setModule("审核");
-        event.setActionCode(review.actionCode());
-        event.setComment(review.comment());
-        return event;
-    }
-
-    private void attachReviewRound(UnifiedTraceEventVO event, ReviewRecord matched, List<ReviewRecord> all,
-                                   Set<Long> referencedAttachmentIds, List<SysAttachment> attachments) {
-        // 只挂匹配的那条审核记录（该操作自身）：轮次/动作/意见/附件；
-        // 不展开同轮完整流程（时间线本身已按动作逐行展示）
-        event.setRoundNo(matched.roundNo());
-        event.setActionCode(matched.actionCode());
-        event.setActionTitle(reviewActionTitle(matched.actionCode()));
-        event.setBizStatus(parseStatus(matched.toStatus()));
-        event.setComment(matched.comment());
-        for (Long id : parseAttachmentIds(matched.attachmentIds())) {
-            addAttachment(event, id, attachments, referencedAttachmentIds);
-        }
-    }
-
-    private ReviewRecord findReview(SysOperLog log, List<ReviewRecord> reviews, Set<String> matched) {
-        String logSemantic = semantic(log.getOperUrl() + " " + log.getOperParam());
-        if (logSemantic == null || log.getCreateTime() == null) return null;
-        return reviews.stream()
-                .filter(r -> !matched.contains(r.id()))
-                .filter(r -> Objects.equals(logSemantic, semantic(r.actionCode())))
-                .filter(r -> r.createTime() != null
-                        && Math.abs(java.time.Duration.between(log.getCreateTime(), r.createTime()).getSeconds())
-                        <= REVIEW_MERGE_SECONDS)
-                .min(Comparator.comparingLong(r -> Math.abs(
-                        java.time.Duration.between(log.getCreateTime(), r.createTime()).toMillis())))
-                .orElse(null);
-    }
-
-    private List<ReviewRecord> normalizeReviews(String bizType, List<ReviewFlow> reviews,
-                                                 List<SalesQuotationFlow> quotationFlows) {
-        List<ReviewRecord> result = new ArrayList<>();
-        for (ReviewFlow flow : safe(reviews)) {
-            result.add(new ReviewRecord("rf-" + flow.getFlowId(), flow.getRoundNo() == null ? 1 : flow.getRoundNo(),
-                    flow.getActionCode(), flow.getActionName(), flow.getFromStatus(), flow.getToStatus(),
-                    flow.getOperatorName(), flow.getComment(), flow.getAttachmentIds(), flow.getCreateTime()));
-        }
-        List<SalesQuotationFlow> sorted = new ArrayList<>(safe(quotationFlows));
-        sorted.sort(Comparator.comparing(SalesQuotationFlow::getCreateTime,
-                Comparator.nullsLast(Comparator.naturalOrder())));
-        int round = 1;
-        boolean previousRejected = false;
-        for (SalesQuotationFlow flow : sorted) {
-            if (previousRejected && semantic(flow.getActionCode()) != null
-                    && "SUBMIT".equals(semantic(flow.getActionCode()))) round++;
-            result.add(new ReviewRecord("qf-" + flow.getFlowId(), round, flow.getActionCode(), flow.getActionName(),
-                    asString(flow.getFromStatus()), asString(flow.getToStatus()), flow.getOperatorName(),
-                    flow.getRemark(), flow.getAttachmentIds(), flow.getCreateTime()));
-            previousRejected = "REJECT".equals(semantic(flow.getActionCode()));
-        }
-        result.sort(Comparator.comparing(ReviewRecord::createTime,
-                Comparator.nullsLast(Comparator.naturalOrder())));
-        return result;
-    }
-
-    private void addDetail(UnifiedTraceEventVO event, String detail, Set<Long> referencedAttachmentIds) {
-        if (detail == null || detail.isBlank()) return;
-        try {
-            JsonNode root = objectMapper.readTree(detail);
-            JsonNode changes = root.path("changes");
-            if (changes.isArray()) changes.forEach(n -> event.getChanges().add(n.asText()));
-            JsonNode detailAttachments = root.path("attachments");
-            if (detailAttachments.isArray()) {
-                detailAttachments.forEach(n -> {
-                    Long id = n.hasNonNull("id") ? n.get("id").asLong() : null;
-                    if (id != null) {
-                        event.getAttachments().add(new TraceAttachmentVO(id,
-                                n.hasNonNull("fileName") ? n.get("fileName").asText() : "附件" + id));
-                        referencedAttachmentIds.add(id);
-                    }
-                });
-            }
-        } catch (Exception ignored) {
-            // 兼容历史非 JSON detail。
-        }
-    }
-
-    private void addAttachment(UnifiedTraceEventVO event, Long id, List<SysAttachment> attachments,
-                               Set<Long> referencedAttachmentIds) {
-        if (id == null || event.getAttachments().stream().anyMatch(a -> id.equals(a.getId()))) return;
-        SysAttachment found = safe(attachments).stream().filter(a -> id.equals(a.getId())).findFirst().orElse(null);
-        event.getAttachments().add(new TraceAttachmentVO(id, found == null ? "附件" + id : found.getFileName()));
-        referencedAttachmentIds.add(id);
-    }
-
-    private List<Long> parseAttachmentIds(String value) {
-        if (value == null || value.isBlank()) return Collections.emptyList();
-        try {
-            JsonNode node = objectMapper.readTree(value);
-            if (node.isArray()) {
-                List<Long> ids = new ArrayList<>();
-                node.forEach(n -> ids.add(n.asLong()));
-                return ids;
-            }
-        } catch (Exception ignored) {
-        }
-        List<Long> ids = new ArrayList<>();
-        for (String part : value.split(",")) {
-            try { ids.add(Long.valueOf(part.trim())); } catch (NumberFormatException ignored) { }
-        }
-        return ids;
-    }
-
+    /** 前端统一标识 → review_flow 存储的 bizType */
     private String reviewBizType(String bizType) {
         return switch (bizType) {
             case "order", "sales_order" -> "sales_order";
@@ -413,30 +187,7 @@ public class TraceServiceImpl implements TraceService {
         };
     }
 
-    private Integer parseStatus(String value) {
-        try { return value == null ? null : Integer.valueOf(value); }
-        catch (NumberFormatException ignored) { return null; }
-    }
-
     private String asString(Object value) { return value == null ? null : String.valueOf(value); }
 
     private <T> List<T> safe(List<T> list) { return list == null ? Collections.emptyList() : list; }
-
-    PageResult<UnifiedTraceEventVO> page(List<UnifiedTraceEventVO> events, int pageNum, int pageSize) {
-        int safePage = Math.max(pageNum, 1);
-        int safeSize = Math.min(Math.max(pageSize, 1), 100);
-        int from = Math.min((safePage - 1) * safeSize, events.size());
-        int to = Math.min(from + safeSize, events.size());
-        PageResult<UnifiedTraceEventVO> result = new PageResult<>();
-        result.setTotal(events.size());
-        result.setRecords(new ArrayList<>(events.subList(from, to)));
-        result.setPageNum(safePage);
-        result.setPageSize(safeSize);
-        result.setTotalPages((events.size() + safeSize - 1) / safeSize);
-        return result;
-    }
-
-    private record ReviewRecord(String id, Integer roundNo, String actionCode, String actionName,
-                                String fromStatus, String toStatus, String operatorName, String comment,
-                                String attachmentIds, java.time.LocalDateTime createTime) { }
 }

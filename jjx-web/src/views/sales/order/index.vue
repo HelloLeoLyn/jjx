@@ -58,27 +58,77 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" v-hasPermi="['sales:order:add']" @click="handleAdd">新增</el-button>
+          <el-button
+            type="primary"
+            plain
+            icon="Plus"
+            v-hasPermi="['sales:order:add']"
+            @click="handleAdd"
+            >新增</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:order:edit']" :disabled="single" @click="handleUpdate">
+          <el-button
+            type="success"
+            plain
+            icon="Edit"
+            v-hasPermi="['sales:order:edit']"
+            :disabled="single"
+            @click="handleUpdate"
+          >
             修改
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:order:delete']" :disabled="multiple" @click="handleDelete">
+          <el-button
+            type="danger"
+            plain
+            icon="Delete"
+            v-hasPermi="['sales:order:delete']"
+            :disabled="multiple"
+            @click="handleDelete"
+          >
             删除
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:order:export']" @click="handleExport">导出</el-button>
+          <el-button
+            type="warning"
+            plain
+            icon="Download"
+            v-hasPermi="['sales:order:export']"
+            @click="handleExport"
+            >导出</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Document" v-hasPermi="['sales:order:export']" @click="handleExportPdf">导出PDF</el-button>
+          <el-button
+            type="info"
+            plain
+            icon="Document"
+            v-hasPermi="['sales:order:export']"
+            @click="handleExportPdf"
+            >导出PDF</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="DocumentCopy" v-hasPermi="['sales:order:export']" @click="handleExportExcel">导出Excel</el-button>
-          <el-button type="warning" plain icon="CopyDocument" v-hasPermi="['sales:order:add']" :disabled="!single" @click="handleCopySelected">复制</el-button>
+          <el-button
+            type="success"
+            plain
+            icon="DocumentCopy"
+            v-hasPermi="['sales:order:export']"
+            @click="handleExportExcel"
+            >导出Excel</el-button
+          >
+          <el-button
+            type="warning"
+            plain
+            icon="CopyDocument"
+            v-hasPermi="['sales:order:add']"
+            :disabled="!single"
+            @click="handleCopySelected"
+            >复制</el-button
+          >
         </el-col>
       </el-row>
     </el-card>
@@ -147,27 +197,49 @@
         <el-table-column label="操作" min-width="360" fixed="right">
           <template #default="{ row }">
             <div class="operation-buttons">
-              <el-button link type="info" icon="Connection" @click="showTrace(row)">查看流水</el-button>
+              <el-button link type="info" icon="Connection" @click="showTrace(row)"
+                >查看流水</el-button
+              >
               <!-- 草稿状态 (1) -->
               <template v-if="row.orderStatus === 1">
-                <el-button type="primary" size="small" v-hasPermi="['sales:order:submit']" @click="handleSubmitReview(row)">
+                <el-button
+                  type="primary"
+                  size="small"
+                  v-hasPermi="['sales:order:submit']"
+                  @click="handleSubmitReview(row)"
+                >
                   提交审核
                 </el-button>
               </template>
 
               <!-- 待审核状态 (2) -->
               <template v-else-if="row.orderStatus === 2">
-                <el-button type="primary" size="small" v-hasPermi="['sales:order:review']" @click="handleStartReview(row)">
+                <el-button
+                  type="primary"
+                  size="small"
+                  v-hasPermi="['sales:order:review']"
+                  @click="handleStartReview(row)"
+                >
                   开始审核
                 </el-button>
               </template>
 
               <!-- 审核中状态 (3) -->
               <template v-else-if="row.orderStatus === 3">
-                <el-button type="primary" size="small" v-hasPermi="['sales:order:approve']" @click="handleApprove(row)">
+                <el-button
+                  type="primary"
+                  size="small"
+                  v-hasPermi="['sales:order:approve']"
+                  @click="handleApprove(row)"
+                >
                   审核通过
                 </el-button>
-                <el-button type="danger" size="small" v-hasPermi="['sales:order:approve']" @click="handleReject(row)">
+                <el-button
+                  type="danger"
+                  size="small"
+                  v-hasPermi="['sales:order:approve']"
+                  @click="handleReject(row)"
+                >
                   审核驳回
                 </el-button>
               </template>
@@ -182,7 +254,13 @@
                   content="订单尚未确认，确认人显示为 -；生成生产计划（=确认）后打印将带确认人信息"
                   placement="top"
                 >
-                  <el-button type="info" size="small" plain v-hasPermi="['sales:order:export']" @click="handleExportConfirmPdf(row)">
+                  <el-button
+                    type="info"
+                    size="small"
+                    plain
+                    v-hasPermi="['sales:order:export']"
+                    @click="handleExportConfirmPdf(row)"
+                  >
                     打印确认书
                   </el-button>
                 </el-tooltip>
@@ -190,25 +268,48 @@
 
               <!-- 已驳回状态 (5) -->
               <template v-else-if="row.orderStatus === 5">
-                <el-button type="primary" size="small" v-hasPermi="['sales:order:submit']" @click="handleResubmit(row)">
+                <el-button
+                  type="primary"
+                  size="small"
+                  v-hasPermi="['sales:order:submit']"
+                  @click="handleResubmit(row)"
+                >
                   重新提交
                 </el-button>
               </template>
 
               <!-- 已确认状态 (6)：计划已生成，只保留齐套检查/打印确认书/确认凭证（2026-08-13） -->
               <template v-else-if="row.orderStatus === 6">
-                <el-button type="info" size="small" plain v-hasPermi="['sales:order:edit']" @click="handleRecheckShortage(row)">
+                <el-button
+                  type="info"
+                  size="small"
+                  plain
+                  v-hasPermi="['sales:order:edit']"
+                  @click="handleRecheckShortage(row)"
+                >
                   齐套检查
                 </el-button>
                 <el-tooltip
                   :content="`确认人：${row.confirmBy || '-'}｜方式：${row.confirmMethod || '-'}｜时间：${row.confirmTime || '-'}`"
                   placement="top"
                 >
-                  <el-button type="success" size="small" plain v-hasPermi="['sales:order:export']" @click="handleExportConfirmPdf(row)">
+                  <el-button
+                    type="success"
+                    size="small"
+                    plain
+                    v-hasPermi="['sales:order:export']"
+                    @click="handleExportConfirmPdf(row)"
+                  >
                     打印确认书
                   </el-button>
                 </el-tooltip>
-                <el-button type="info" size="small" plain v-hasPermi="['sales:order:view']" @click="openConfirmAttachment(row)">
+                <el-button
+                  type="info"
+                  size="small"
+                  plain
+                  v-hasPermi="['sales:order:view']"
+                  @click="openConfirmAttachment(row)"
+                >
                   确认凭证
                 </el-button>
               </template>
@@ -216,14 +317,24 @@
               <!-- 生产中状态 (7) -->
               <template v-else-if="row.orderStatus === 7">
                 <el-tag type="info" size="small">生产中</el-tag>
-                <el-button type="warning" size="small" v-hasPermi="['sales:order:edit']" @click="handleShip(row)">
+                <el-button
+                  type="warning"
+                  size="small"
+                  v-hasPermi="['sales:order:edit']"
+                  @click="handleShip(row)"
+                >
                   发货
                 </el-button>
               </template>
 
               <!-- 已发货状态 (8) -->
               <template v-else-if="row.orderStatus === 8">
-                <el-button type="success" size="small" v-hasPermi="['sales:order:edit']" @click="handleCompleteOrder(row)">
+                <el-button
+                  type="success"
+                  size="small"
+                  v-hasPermi="['sales:order:edit']"
+                  @click="handleCompleteOrder(row)"
+                >
                   完成订单
                 </el-button>
               </template>
@@ -275,7 +386,6 @@
       />
     </el-card>
 
-
     <!-- 审核对话框 -->
     <ReviewDialog
       v-model="reviewDialogVisible"
@@ -310,9 +420,8 @@
       @success="handleValidationSuccess"
       @cancel="handleValidationCancel"
     />
-    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" :bizType="'order'" :bizId="currentBizId" />
+    <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
-
 </template>
 
 <script setup lang="ts">
@@ -595,7 +704,7 @@ const handleShip = async (row: any) => {
     await ElMessageBox.confirm(
       `确认对订单【${row.orderNo}】发货？将自动创建销售出库单并扣减产品库存。`,
       '发货确认',
-      { confirmButtonText: '确认发货', cancelButtonText: '取消', type: 'warning' },
+      { confirmButtonText: '确认发货', cancelButtonText: '取消', type: 'warning' }
     )
     await orderStatusApi.shipOrder(row.orderId)
     ElMessage.success('发货成功，订单已进入已发货状态')
@@ -635,11 +744,15 @@ const openConfirmAttachment = (row: any) => {
 // 订单齐套检查（手动重新检查，DEV-572 8-04）
 const handleRecheckShortage = async (row: any) => {
   try {
-    await ElMessageBox.confirm(`确定要对订单【${row.orderNo}】重新执行齐套检查（按BOM算料，缺口扣除在途采购量）吗？`, '齐套检查', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(
+      `确定要对订单【${row.orderNo}】重新执行齐套检查（按BOM算料，缺口扣除在途采购量）吗？`,
+      '齐套检查',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
     const res: any = await alertApi.checkOrderShortage(row.orderId)
     const items: any[] = res?.data || []
     if (items.length === 0) {
@@ -652,7 +765,11 @@ const handleRecheckShortage = async (row: any) => {
     const fmt = (v: any) => (v === null || v === undefined ? '-' : String(v))
     ElMessageBox.alert(
       h('div', null, [
-        h('p', { style: 'margin-bottom:10px;color:#f56c6c;font-weight:600' }, `发现 ${items.length} 种物料缺料（已扣除在途采购量），缺料预警已生成：`),
+        h(
+          'p',
+          { style: 'margin-bottom:10px;color:#f56c6c;font-weight:600' },
+          `发现 ${items.length} 种物料缺料（已扣除在途采购量），缺料预警已生成：`
+        ),
         h('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' }, [
           h('tr', null, [
             h('th', { style: thStyle }, '物料'),
@@ -795,7 +912,6 @@ function showTrace(row: any) {
   currentBizId.value = row.orderId ? String(row.orderId) : ''
   traceDrawerVisible.value = true
 }
-
 </script>
 
 <style scoped lang="scss">
