@@ -29,6 +29,9 @@ public @interface Event {
     /** 业务类型，如 product */
     String bizType() default "";
 
+    /** 发布条件（SpEL）；为空时始终发布，如 #result.eventPublished。 */
+    String condition() default "";
+
     /**
      * 自定义事件参数（SpEL表达式）
      * 格式: "key = #spelExpression"

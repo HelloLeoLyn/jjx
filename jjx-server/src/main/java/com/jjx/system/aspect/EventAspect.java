@@ -74,6 +74,15 @@ public class EventAspect {
         }
         spelCtx.setVariable("result", result);
 
+        // 可选发布条件，用于成功但无需重复发布的幂等返回。
+        if (!eventAnnotation.condition().isEmpty()) {
+            Boolean shouldPublish = spelParser.parseExpression(eventAnnotation.condition())
+                    .getValue(spelCtx, Boolean.class);
+            if (!Boolean.TRUE.equals(shouldPublish)) {
+                return result;
+            }
+        }
+
         // 业务ID（支持SpEL表达式，如 #inquiryId / #result.inquiryNo）
         if (!eventAnnotation.bizId().isEmpty()) {
             String bizIdExpr = eventAnnotation.bizId();

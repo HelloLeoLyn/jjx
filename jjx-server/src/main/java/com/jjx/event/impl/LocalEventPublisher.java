@@ -60,34 +60,29 @@ public class LocalEventPublisher implements EventPublisher {
                     eventCode, event.getEventId());
         }
         if (notificationEnabled && !notificationMissingTitle) {
-            JSONArray roles = parseRoles(event.getTargetRole());
-            if (roles != null) {
-                Object triggerUserId = payload != null ? payload.get("triggerUserId") : null;
-                boolean excludeTrigger = event.getExcludeTrigger() != null && event.getExcludeTrigger() == 1;
-                for (int i = 0; i < roles.size(); i++) {
-                    Long roleId = roles.getLong(i);
-                    List<SysUserRole> userRoles = userRoleMapper.selectList(
-                            new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, roleId)
-                    );
-                    for (SysUserRole ur : userRoles) {
-                        // 排除触发者：自己操作不通知自己
-                        if (excludeTrigger && triggerUserId != null
-                                && ur.getUserId() != null
-                                && ur.getUserId().toString().equals(triggerUserId.toString())) {
-                            continue;
-                        }
-                        try {
-                            NotificationCreateDTO dto = new NotificationCreateDTO();
-                            dto.setTitle(resolveTemplate(event.getTitle(), payload));
-                            dto.setContent(resolveTemplate(event.getContent(), payload));
-                            dto.setNotificationType("system");
-                            dto.setBizType(eventCode);
-                            dto.setReceiverId(ur.getUserId());
-                            dto.setPriority("normal");
-                            notificationService.createNotification(dto);
-                            log.debug("   📨 通知已创建: event={}, userId={}", eventCode, ur.getUserId());
-                        } catch (Exception e) {
-                            log.error("   ❌ 通知失败: userId={}, {}", ur.getUserId(), e.getMessage());
+            Long directReceiverId = payloadLong(payload, "receiverId");
+            if (directReceiverId != null) {
+                createNotification(event, eventCode, payload, directReceiverId);
+            } else {
+                JSONArray roles = parseRoles(event.getTargetRole());
+                if (roles == null) {
+                    log.warn("事件[{}]未解析到动态收件人或目标角色，跳过通知", eventCode);
+                } else {
+                    Object triggerUserId = payload != null ? payload.get("triggerUserId") : null;
+                    boolean excludeTrigger = event.getExcludeTrigger() != null && event.getExcludeTrigger() == 1;
+                    for (int i = 0; i < roles.size(); i++) {
+                        Long roleId = roles.getLong(i);
+                        List<SysUserRole> userRoles = userRoleMapper.selectList(
+                                new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, roleId)
+                        );
+                        for (SysUserRole ur : userRoles) {
+                            // 排除触发者：自己操作不通知自己
+                            if (excludeTrigger && triggerUserId != null
+                                    && ur.getUserId() != null
+                                    && ur.getUserId().toString().equals(triggerUserId.toString())) {
+                                continue;
+                            }
+                            createNotification(event, eventCode, payload, ur.getUserId());
                         }
                     }
                 }
@@ -144,6 +139,33 @@ public class LocalEventPublisher implements EventPublisher {
         JSONArray arr = parseRoles(targetRole);
         if (arr == null || arr.isEmpty()) return null;
         return arr.getLong(0);
+    }
+
+    private Long payloadLong(Map<String, Object> payload, String key) {
+        if (payload == null || payload.get(key) == null) return null;
+        Object value = payload.get(key);
+        if (value instanceof Number number) return number.longValue();
+        try { return Long.valueOf(String.valueOf(value)); }
+        catch (NumberFormatException ignored) { return null; }
+    }
+
+    private void createNotification(SysEventConfig event, String eventCode,
+                                    Map<String, Object> payload, Long receiverId) {
+        try {
+            NotificationCreateDTO dto = new NotificationCreateDTO();
+            dto.setTitle(resolveTemplate(event.getTitle(), payload));
+            dto.setContent(resolveTemplate(event.getContent(), payload));
+            dto.setNotificationType("system");
+            dto.setBizType(eventCode);
+            Object bizId = payload == null ? null : payload.get("bizId");
+            dto.setBizId(bizId == null ? null : String.valueOf(bizId));
+            dto.setReceiverId(receiverId);
+            dto.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
+            notificationService.createNotification(dto);
+            log.debug("   📨 通知已创建: event={}, userId={}", eventCode, receiverId);
+        } catch (Exception e) {
+            log.error("   ❌ 通知失败: userId={}, {}", receiverId, e.getMessage());
+        }
     }
 
     private String resolveTemplate(String template, Map<String, Object> payload) {

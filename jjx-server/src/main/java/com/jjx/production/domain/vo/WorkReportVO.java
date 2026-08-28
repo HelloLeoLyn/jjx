@@ -1,5 +1,6 @@
 package com.jjx.production.domain.vo;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -50,4 +51,12 @@ public class WorkReportVO {
     private String cancelledByName;
     private LocalDateTime cancelledAt;
     private String cancelReason;
+
+    /** 仅供 @Event 动态收件人解析，不暴露给接口调用方。 */
+    @JsonIgnore
+    private Long eventReceiverId;
+
+    /** 幂等返回时为 false，阻止 @Event 重复发布。 */
+    @JsonIgnore
+    private boolean eventPublished;
 }

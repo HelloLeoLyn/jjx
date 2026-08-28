@@ -24,6 +24,7 @@ import com.jjx.production.service.WorkReportActionService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.WorkReportReadService;
 import com.jjx.system.utils.SecurityUtils;
+import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -71,11 +72,22 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     // ==================== SUBMIT ====================
 
     @Override
+    @Event(value = "production.work-report.submitted", bizId = "#result.reportId",
+            bizType = "'production'", params = {
+            "orderNo = #result.orderNo", "executionId = #result.executionId",
+            "taskId = #result.taskId", "reportId = #result.reportId",
+            "qualifiedQuantity = #result.qualifiedQuantity",
+            "defectiveQuantity = #result.defectiveQuantity",
+            "reporterId = #result.reporterId", "reporterName = #result.reporterName",
+            "receiverId = #result.eventReceiverId"
+    })
     @Transactional(rollbackFor = Exception.class)
     public WorkReportVO submit(WorkReportSubmitDTO dto, String operatorName, Long operatorId) {
         if (dto == null || dto.getTaskId() == null || dto.getExecutionId() == null) {
             throw new BusinessException("任务ID与工序执行ID必填");
         }
+        validateQuantityScale(dto.getQualifiedQuantity(), "合格数量");
+        validateQuantityScale(dto.getDefectiveQuantity(), "不良数量");
         // 锁 Task 行：同一 Task 的报工串行化（防 PENDING 超报），锁内重算 remaining
         ProductionTask task = productionTaskMapper.selectByIdForUpdate(dto.getTaskId());
         if (task == null) {
@@ -176,12 +188,24 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         projectionService.recalculate(exec.getExecutionId());
         log.info("提交报工 reportId={}, taskId={}, executionId={}, q={} d={}",
                 r.getReportId(), task.getTaskId(), exec.getExecutionId(), qualified, defective);
-        return readService.getById(r.getReportId());
+        WorkReportVO result = readService.getById(r.getReportId());
+        result.setEventReceiverId(parentAssigneeId(task));
+        result.setEventPublished(true);
+        return result;
     }
 
     // ==================== APPROVE / REJECT ====================
 
     @Override
+    @Event(value = "production.work-report.approved", bizId = "#result.reportId",
+            bizType = "'production'", condition = "#result.eventPublished", params = {
+            "orderNo = #result.orderNo", "executionId = #result.executionId",
+            "taskId = #result.taskId", "reportId = #result.reportId",
+            "qualifiedQuantity = #result.qualifiedQuantity",
+            "defectiveQuantity = #result.defectiveQuantity",
+            "reporterId = #result.reporterId", "reporterName = #result.reporterName",
+            "receiverId = #result.reporterId"
+    })
     @Transactional(rollbackFor = Exception.class)
     public WorkReportVO approve(Long reportId, WorkReportReviewDTO dto, String operatorName, Long operatorId) {
         ProductionWorkReport r = workReportMapper.selectById(reportId);
@@ -200,7 +224,9 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         projectionService.recalculate(r.getExecutionId());
         compareProjectionAndWarn(r);
         log.info("审批通过 reportId={}, executionId={}, reviewer={}", reportId, r.getExecutionId(), operatorName);
-        return readService.getById(reportId);
+        WorkReportVO result = readService.getById(reportId);
+        result.setEventPublished(true);
+        return result;
     }
 
     /** 审批重算后立即对账；异常告警不阻断已经成功的审批事务。 */
@@ -230,6 +256,15 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     }
 
     @Override
+    @Event(value = "production.work-report.rejected", bizId = "#result.reportId",
+            bizType = "'production'", condition = "#result.eventPublished", params = {
+            "orderNo = #result.orderNo", "executionId = #result.executionId",
+            "taskId = #result.taskId", "reportId = #result.reportId",
+            "qualifiedQuantity = #result.qualifiedQuantity",
+            "defectiveQuantity = #result.defectiveQuantity",
+            "reporterId = #result.reporterId", "reporterName = #result.reporterName",
+            "receiverId = #result.reporterId"
+    })
     @Transactional(rollbackFor = Exception.class)
     public WorkReportVO reject(Long reportId, WorkReportReviewDTO dto, String operatorName, Long operatorId) {
         if (dto == null || dto.getReviewRemark() == null || dto.getReviewRemark().isBlank()) {
@@ -252,7 +287,9 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         }
         projectionService.recalculate(r.getExecutionId());
         log.info("审批驳回 reportId={}, executionId={}, reviewer={}", reportId, r.getExecutionId(), operatorName);
-        return readService.getById(reportId);
+        WorkReportVO result = readService.getById(reportId);
+        result.setEventPublished(true);
+        return result;
     }
 
     // ==================== CANCEL ====================
@@ -310,6 +347,20 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     }
 
     // ==================== helpers ====================
+
+    private static void validateQuantityScale(BigDecimal quantity, String fieldName) {
+        if (quantity != null && quantity.scale() > 2) {
+            throw new BusinessException(fieldName + "最多 2 位小数");
+        }
+    }
+
+    private Long parentAssigneeId(ProductionTask task) {
+        if (task == null || task.getParentTaskId() == null) {
+            return null;
+        }
+        ProductionTask parent = productionTaskMapper.selectById(task.getParentTaskId());
+        return parent == null ? null : parent.getAssigneeId();
+    }
 
     /**
      * 审批关系（P5 业务身份，不使用 admin/*:*:* 全局豁免）：

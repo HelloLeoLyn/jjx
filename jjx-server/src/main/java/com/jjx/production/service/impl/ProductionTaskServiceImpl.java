@@ -86,6 +86,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     private static final String ACTION_RETURN = "RETURN";
     private static final String ACTION_COMPLETE = "COMPLETE";
     private static final String ROLE_PRODUCTION_MANAGER = "production:all";
+    static final BigDecimal COMPLETION_TOLERANCE = new BigDecimal("0.01");
 
     private final ProductionTaskMapper productionTaskMapper;
     private final ProductionTaskEventMapper productionTaskEventMapper;
@@ -785,7 +786,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         BigDecimal childAssigned = effectiveChildSum(taskId);
         BigDecimal ownPending = pendingQuantity(task);
         BigDecimal ownCompleted = completedQuantity(task);
-        BigDecimal remaining = floorZero(task.getTaskQuantity().subtract(childAssigned)
+        BigDecimal remaining = floorCompletionZero(task.getTaskQuantity().subtract(childAssigned)
                 .subtract(ownPending).subtract(ownCompleted));
         BigDecimal[] sub = subtreeAggregates(List.of(taskId))
                 .getOrDefault(taskId, new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
@@ -795,7 +796,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 .subtract(subtreeCompleted.subtract(ownCompleted))
                 .subtract(subtreePending.subtract(ownPending)));
         Long incompleteChildren = productionTaskMapper.countIncompleteChildren(taskId);
-        if (subtreeCompleted.compareTo(task.getTaskQuantity()) != 0) {
+        if (!withinCompletionTolerance(subtreeCompleted, task.getTaskQuantity())) {
             throw new BusinessException("有效完成量未达到任务数量，不能完成");
         }
         if (subtreePending.signum() > 0) {
@@ -1207,7 +1208,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     .subtract(subtreePending.subtract(ownPending));
             vo.setAssignedQuantity(floorZero(assignedDisplay));
             // remaining 保持 gate 口径：taskQuantity - childAssigned - ownPending - ownCompleted
-            BigDecimal remaining = floorZero(t.getTaskQuantity() == null ? BigDecimal.ZERO
+            BigDecimal remaining = floorCompletionZero(t.getTaskQuantity() == null ? BigDecimal.ZERO
                     : t.getTaskQuantity().subtract(childAssigned).subtract(ownPending).subtract(ownCompleted));
             vo.setRemainingQuantity(remaining);
             vo.setStatus(t.getStatus());
@@ -1278,7 +1279,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 .subtract(subtreePending.subtract(ownPending)));
         BigDecimal taskQuantity = t.getTaskQuantity() == null ? BigDecimal.ZERO : t.getTaskQuantity();
         if (STATUS_ACTIVE.equals(t.getStatus())
-                && subtreeCompleted.compareTo(taskQuantity) == 0
+                && withinCompletionTolerance(subtreeCompleted, taskQuantity)
                 && subtreePending.signum() == 0
                 && remaining.signum() == 0
                 && assignedOutstanding.signum() == 0
@@ -1306,5 +1307,19 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
 
     private static BigDecimal floorZero(BigDecimal v) {
         return v == null || v.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : v;
+    }
+
+    static boolean withinCompletionTolerance(BigDecimal actual, BigDecimal expected) {
+        if (actual == null || expected == null) {
+            return false;
+        }
+        return actual.subtract(expected).abs().compareTo(COMPLETION_TOLERANCE) <= 0;
+    }
+
+    static BigDecimal floorCompletionZero(BigDecimal value) {
+        if (value == null || value.compareTo(COMPLETION_TOLERANCE) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return value;
     }
 }
