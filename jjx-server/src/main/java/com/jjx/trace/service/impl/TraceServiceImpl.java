@@ -37,6 +37,11 @@ public class TraceServiceImpl implements TraceService {
 
     private static final long REVIEW_MERGE_SECONDS = 5L;
 
+    /** bizType 别名（1199/1141）：前端统一标识 → 兼容历史/模块日志中的旧 bizType */
+    private static final Map<String, List<String>> LOG_BIZ_TYPE_ALIASES = Map.of(
+            "sample_order", List.of("sample_order", "sample"),
+            "sales_order", List.of("sales_order", "order"));
+
     @Override
     public List<Map<String, Object>> getTraceByTraceId(String traceId) {
         LambdaQueryWrapper<SysOperLog> wrapper = Wrappers.lambdaQuery();
@@ -116,8 +121,10 @@ public class TraceServiceImpl implements TraceService {
         if (bizType == null || bizType.isBlank() || bizId == null) {
             return page(Collections.emptyList(), pageNum, pageSize);
         }
+        // bizType 别名兼容（1199/1141）：前端统一用 sample_order，历史/模块日志用 sample
+        List<String> logBizTypes = LOG_BIZ_TYPE_ALIASES.getOrDefault(bizType, List.of(bizType));
         List<SysOperLog> logs = sysOperLogMapper.selectList(Wrappers.<SysOperLog>lambdaQuery()
-                .eq(SysOperLog::getBizType, bizType)
+                .in(SysOperLog::getBizType, logBizTypes)
                 .eq(SysOperLog::getBizId, String.valueOf(bizId))
                 .orderByAsc(SysOperLog::getCreateTime));
 
@@ -132,8 +139,9 @@ public class TraceServiceImpl implements TraceService {
                     .eq(ReviewFlow::getBizId, bizId)
                     .orderByAsc(ReviewFlow::getCreateTime));
         }
+        // 附件查询同样按别名匹配（样品附件 bizType=sample_order）
         List<SysAttachment> attachments = sysAttachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
-                .eq(SysAttachment::getBizType, bizType)
+                .in(SysAttachment::getBizType, logBizTypes)
                 .eq(SysAttachment::getBizId, bizId)
                 .orderByAsc(SysAttachment::getCreateTime));
         return page(aggregateEvents(bizType, logs, reviews, quotationFlows, attachments), pageNum, pageSize);

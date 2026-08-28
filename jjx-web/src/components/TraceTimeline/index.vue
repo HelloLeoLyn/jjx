@@ -35,6 +35,11 @@
             {{ formatBizStatus(scope.row.bizStatus, scope.row.bizType) }}
           </template>
         </el-table-column>
+        <el-table-column label="业务模块" width="100">
+          <template #default="scope">
+            {{ formatBizModule(scope.row.module, scope.row.bizType) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" min-width="220">
           <template #default="scope">
             <!-- 有详情（变更/意见/附件）的操作才可点击，primary 样式突出；普通操作不可点 -->
@@ -46,6 +51,13 @@
               >{{ scope.row.actionTitle || '-' }}</el-link
             >
             <span v-else>{{ scope.row.actionTitle || '-' }}</span>
+            <!-- 附件徽标：该事件含附件时直接可见（1199） -->
+            <el-tag
+              v-if="(scope.row.attachments?.length || 0) > 0"
+              size="small"
+              type="primary"
+              class="att-badge"
+            >📎 {{ scope.row.attachments.length }}</el-tag>
             <el-tag
               v-if="scope.row.changes?.length"
               size="small"
@@ -362,6 +374,24 @@ function formatBizStatus(status?: number, type?: string): string {
   if (!statusEnum) return '-'
   const label = statusEnum.getLabel(status)
   return label && label !== '未知' ? label : '-'
+}
+
+/** 业务模块列：优先 bizType 映射，module 兜底（1199：业务化名称，不再显示技术模块名） */
+const BIZ_MODULE_NAMES: Record<string, string> = {
+  order: '销售订单', sales_order: '销售订单',
+  quotation: '报价单',
+  sample: '样品单', sample_order: '样品单',
+  inquiry: '询价单',
+  purchase: '采购订单', purchase_order: '采购订单',
+  production: '生产', production_order: '生产工单', production_execution: '工序执行',
+  quality: '质检', bom: 'BOM', film: '工艺',
+  review: '审核', attachment: '附件',
+}
+function formatBizModule(module?: string, bizType?: string): string {
+  const byBizType = bizType ? BIZ_MODULE_NAMES[bizType] : undefined
+  if (byBizType) return byBizType
+  if (!module) return '-'
+  return BIZ_MODULE_NAMES[module] || module
 }
 
 function formatReviewStatus(review: ReviewHistory): string {

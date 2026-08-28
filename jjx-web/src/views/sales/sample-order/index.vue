@@ -767,7 +767,12 @@
     />
 
     <!-- 查看流水 -->
-    <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
+    <TraceTimeline
+      v-model="traceDrawerVisible"
+      :trace-id="currentTraceId"
+      :biz-type="currentTraceBizType"
+      :biz-id="currentTraceBizId"
+    />
 
     <!-- 转量产 · 就绪检查（DEV-xxx） -->
     <SampleConvertCheckDialog
@@ -1889,12 +1894,16 @@ async function handleConvert(row: any) {
 // 查看流水
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')
+// 1199/1141：流水带 bizType+bizId（sample_order），事件流聚合才能拉到样品附件
+const currentTraceBizType = ref('sample_order')
+const currentTraceBizId = ref('')
 
 // 转量产标准化窗口
 const convertDialogVisible = ref(false)
 const convertRow = ref<any>(null)
 function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''
+  currentTraceBizId.value = row.orderId != null ? String(row.orderId) : ''
   traceDrawerVisible.value = true
 }
 
