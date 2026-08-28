@@ -32,6 +32,12 @@ export interface InboundVO {
   warehouseName: string
   supplierId?: string
   supplierName?: string
+  inboundDate?: string
+  inspectorId?: string
+  inspectorName?: string
+  inspectionResult?: string
+  inspectionTime?: string
+  inspectionRemark?: string
   sourceType?: string
   sourceId?: string
   sourceNo?: string
@@ -48,7 +54,8 @@ export interface InboundVO {
 
 // 入库单明细VO
 export interface InboundItemVO {
-  itemId: string
+  itemId?: string
+  inboundItemId?: string
   inboundId: string
   materialId: string
   materialCode: string
@@ -58,6 +65,9 @@ export interface InboundItemVO {
   unit: string
   batchNo?: string
   quantity: number
+  qualifiedQuantity?: number
+  rejectedQuantity?: number
+  rejectReason?: string
   unitPrice: number
   amount: number
   locationId?: string

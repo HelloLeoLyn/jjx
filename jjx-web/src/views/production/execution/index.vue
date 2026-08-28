@@ -662,6 +662,10 @@
               fmtTime(detailForm.actualEndTime)
             }}</el-descriptions-item>
           </el-descriptions>
+          <div class="detail-print-actions">
+            <el-button type="primary" icon="Printer" @click="openExecutionPrint('daily-report')">打印生产日报</el-button>
+            <el-button type="warning" icon="Printer" @click="openExecutionPrint('first-piece')">打印首件检查表</el-button>
+          </div>
           <div style="color: #909399; font-size: 12px; margin-top: 8px">
             数量/工时由报工记录自动汇总，不可直接编辑。
           </div>
@@ -1445,6 +1449,11 @@ const goDispatchManagement = () => {
     path: '/production/dispatch',
     query: { executionId: String(detailForm.executionId || ''), keyword: detailForm.orderNo || '' },
   })
+}
+
+const openExecutionPrint = (page: 'daily-report' | 'first-piece') => {
+  if (!detailForm.executionId) return
+  window.open(router.resolve({ path: `/production/quality-print/${page}`, query: { executionId: detailForm.executionId } }).href, '_blank')
 }
 
 // ============ 报工历史 ============

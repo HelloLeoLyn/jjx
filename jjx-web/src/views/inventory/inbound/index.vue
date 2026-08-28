@@ -132,6 +132,7 @@
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
+            <el-button v-if="row.supplierId" link type="primary" @click="handleIqcPrint(row)">打印进料检验报告</el-button>
             <el-button link type="primary" v-hasPermi="['inventory:inbound:edit']" @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="row.status === 0" link type="primary" v-hasPermi="['inventory:inbound:edit']" @click="handleSubmit(row)"
               >提交</el-button
@@ -340,6 +341,9 @@ const handleRefresh = () => {
 // 打印入库单（跳转独立打印页）
 function handlePrint(row: InboundVO) {
   window.open(`/print/inbound/${row.inboundId}`, '_blank')
+}
+function handleIqcPrint(row: InboundVO) {
+  window.open(router.resolve({ path: '/production/quality-print/iqc-report', query: { inboundId: row.inboundId } }).href, '_blank')
 }
 // 查看详情
 // 查看详情（公共组件弹窗）

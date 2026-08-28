@@ -135,11 +135,13 @@
           <el-table-column label="检验时间" width="160">
             <template #default="{ row }">{{ fmtTime(row.inspectTime) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="170" fixed="right">
+          <el-table-column label="操作" min-width="310" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.result === 'pending'" v-hasPermi="['production:quality:judge']" link type="primary" size="small" @click="openJudge(row)">判定</el-button>
               <el-button v-if="row.result === 'pass' || row.result === 'fail'" v-hasPermi="['production:quality:judge']" link type="warning" size="small" @click="openReinspect(row)">复检</el-button>
               <el-button link type="info" size="small" @click="openDetail(row)">详情</el-button>
+              <el-button v-if="row.inspectionType === InspectionType.FQC" link type="primary" size="small" @click="openLinkedPrint('fqc-report', row)">打印成品检验报告</el-button>
+              <el-button v-if="row.inspectionType === InspectionType.FQC && row.result === InspectionResult.FAIL" link type="danger" size="small" @click="openLinkedPrint('rework-form', row)">打印返工返修单</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -251,6 +253,10 @@
           <el-descriptions-item label="缺陷说明" :span="2">{{ detailRow.defectDesc || '-' }}</el-descriptions-item>
           <el-descriptions-item label="备注" :span="2">{{ detailRow.remark || '-' }}</el-descriptions-item>
         </el-descriptions>
+        <div style="margin-top: 12px">
+          <el-button v-if="detailRow.inspectionType === InspectionType.FQC" type="primary" @click="openLinkedPrint('fqc-report', detailRow)">打印成品检验报告</el-button>
+          <el-button v-if="detailRow.inspectionType === InspectionType.FQC && detailRow.result === InspectionResult.FAIL" type="danger" @click="openLinkedPrint('rework-form', detailRow)">打印返工返修单</el-button>
+        </div>
 
         <div class="history-section">
           <div class="history-title">复检 / 质检历史（同工单 + 工序 + 类型）</div>
@@ -285,6 +291,7 @@ import { qualityApi, type QualityVO, type QualityJudgePayload } from '@/api/prod
 import { getProductionOrderList } from '@/api/production/order'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import { getWorkReportsByExecution } from '@/api/production/workReport'
+import { InspectionResult, InspectionResultEnum, InspectionType, InspectionTypeEnum } from '@/enums/quality'
 
 const trendTimeRange = ref('week')
 const inspectionData = ref<QualityVO[]>([])
@@ -308,28 +315,10 @@ const failRate = computed(() => {
 })
 
 // ============ 展示辅助 ============
-const typeTag = (t?: string) => {
-  const map: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
-    FQC: 'danger', IPQC: 'warning', IQC: 'info', OQC: 'info',
-  }
-  return map[t || ''] || 'info'
-}
-const typeLabel = (t?: string) => {
-  const map: Record<string, string> = {
-    FQC: 'FQC 完工检验', IPQC: 'IPQC 过程检验', IQC: 'IQC 来料检验', OQC: 'OQC 出货检验',
-  }
-  return map[t || ''] || t || '-'
-}
-const resultTag = (r?: string) => {
-  const map: Record<string, 'success' | 'danger' | 'info' | 'warning'> = {
-    pass: 'success', fail: 'danger', pending: 'info',
-  }
-  return map[r || ''] || 'info'
-}
-const resultLabel = (r?: string) => {
-  const map: Record<string, string> = { pass: '合格', fail: '不合格', pending: '待检' }
-  return map[r || ''] || r || '-'
-}
+const typeTag = (t?: string) => t ? InspectionTypeEnum.getTagProps(t).type : 'info'
+const typeLabel = (t?: string) => t ? InspectionTypeEnum.getLabel(t) : '-'
+const resultTag = (r?: string) => r ? InspectionResultEnum.getTagProps(r).type : 'info'
+const resultLabel = (r?: string) => r ? InspectionResultEnum.getLabel(r) : '-'
 function fmtQty(v?: number | null): string {
   if (v === null || v === undefined) return '0'
   const n = Number(v)
@@ -525,6 +514,9 @@ const showSettings = () => {
   ElMessage.info('检验标准设置：P3 范围外，暂未开放')
 }
 const router = useRouter()
+const openLinkedPrint = (page: 'fqc-report' | 'rework-form', row: QualityVO) => {
+  window.open(router.resolve({ path: `/production/quality-print/${page}`, query: { inspectionId: row.inspectionId } }).href, '_blank')
+}
 const handleReport = () => {
   router.push('/production/quality/report')
 }

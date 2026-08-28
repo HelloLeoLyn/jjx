@@ -170,6 +170,31 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: '质量记录打印', hidden: true },
   },
   {
+    path: '/production/quality-print/fqc-report', name: 'ProductionFqcReportPrint',
+    component: () => import('@/views/production/quality-print/fqc-report.vue'),
+    meta: { title: '成品检验报告', hidden: true },
+  },
+  {
+    path: '/production/quality-print/iqc-report', name: 'ProductionIqcReportPrint',
+    component: () => import('@/views/production/quality-print/iqc-report.vue'),
+    meta: { title: '进料检验报告', hidden: true },
+  },
+  {
+    path: '/production/quality-print/daily-report', name: 'ProductionDailyReportPrint',
+    component: () => import('@/views/production/quality-print/daily-report.vue'),
+    meta: { title: '生产日报表', hidden: true },
+  },
+  {
+    path: '/production/quality-print/first-piece', name: 'ProductionFirstPiecePrint',
+    component: () => import('@/views/production/quality-print/first-piece.vue'),
+    meta: { title: '首件检查表', hidden: true },
+  },
+  {
+    path: '/production/quality-print/rework-form', name: 'ProductionReworkFormPrint',
+    component: () => import('@/views/production/quality-print/rework-form.vue'),
+    meta: { title: '返工返修单', hidden: true },
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),

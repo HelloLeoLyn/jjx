@@ -67,9 +67,6 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
         if (!Integer.valueOf(QualityTemplateStatusEnum.ACTIVE.getCode()).equals(template.getStatus())) {
             throw new BusinessException("仅生效模板可打印");
         }
-        if (CATEGORY_DATA.equals(template.getCategory())) {
-            throw new BusinessException("数据联动模板将在后续版本开放打印");
-        }
         QualityTemplatePrintLog log = new QualityTemplatePrintLog();
         log.setTemplateId(template.getId());
         log.setRecordNo(template.getRecordNo());

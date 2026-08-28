@@ -34,7 +34,7 @@
         </el-table-column>
         <el-table-column label="操作" width="210" fixed="right">
           <template #default="{ row }">
-            <el-tag v-if="row.category === QualityTemplateCategory.DATA" type="warning">待联动</el-tag>
+            <el-tag v-if="row.category === QualityTemplateCategory.DATA" type="warning">请到对应业务模块打印</el-tag>
             <template v-else><el-button link type="primary" @click="openPrint(row)">空白表打印</el-button><el-link v-if="row.fileId" class="download-link" :href="attachmentApi.downloadUrl(row.fileId)" target="_blank">下载</el-link></template>
           </template>
         </el-table-column>
