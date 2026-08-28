@@ -3,7 +3,7 @@
     v-model="visible"
     title="业务事件流"
     size="880px"
-    @open="loadTrace"
+    @open="resetAndLoad"
     @close="handleClose"
   >
     <div class="toolbar">
@@ -81,13 +81,13 @@
       </el-table>
 
       <el-pagination
-        v-if="serverMode && total > pageSize"
+        v-if="total > pageSize"
         v-model:current-page="pageNum"
         v-model:page-size="pageSize"
         :total="total"
         layout="total, prev, pager, next"
         class="pagination"
-        @current-change="loadEvents"
+        @current-change="handlePageChange"
       />
 
       <section v-if="selectedEvent" class="event-detail">
@@ -161,6 +161,11 @@ interface TraceAttachment {
   fileName?: string
 }
 
+interface TraceDetail {
+  changes: string[]
+  attachments: TraceAttachment[]
+}
+
 interface ReviewHistory {
   roundNo?: number
   actionCode?: string
@@ -207,6 +212,7 @@ const emit = defineEmits<{
 const visible = ref(false)
 const loading = ref(false)
 const events = ref<TraceEvent[]>([])
+const legacyEvents = ref<TraceEvent[]>([])
 const selectedEvent = ref<TraceEvent | null>(null)
 const showTechnical = ref(false)
 const pageNum = ref(1)
@@ -215,8 +221,9 @@ const total = ref(0)
 const serverMode = computed(() => Boolean(props.bizType && props.bizId))
 
 watch(() => props.modelValue, (value) => { visible.value = value })
-watch(() => props.traceId, () => { if (props.modelValue) resetAndLoad() })
-watch(() => props.bizId, () => { if (props.modelValue) resetAndLoad() })
+watch(() => [props.traceId, props.bizType, props.bizId], () => {
+  if (props.modelValue) resetAndLoad()
+})
 
 function statusEnumForBizType(type?: string): { getLabel: (value: number) => string } | undefined {
   switch (type) {
@@ -304,14 +311,28 @@ async function loadEvents() {
   }
 }
 
+function handlePageChange() {
+  selectedEvent.value = null
+  if (serverMode.value) {
+    loadEvents()
+    return
+  }
+  applyLegacyPage()
+}
+
+function applyLegacyPage() {
+  const start = (pageNum.value - 1) * pageSize.value
+  events.value = legacyEvents.value.slice(start, start + pageSize.value)
+}
+
 async function loadLegacyTrace() {
   if (!props.traceId) return
   const response = await request.get(`/api/trace/${props.traceId}`)
   const nodes: any[] = (response as any)?.data || []
-  const legacyEvents: TraceEvent[] = []
+  const allEvents: TraceEvent[] = []
   for (const node of nodes) {
     for (const operation of node.operations || []) {
-      legacyEvents.push({
+      allEvents.push({
         eventId: `legacy-${operation.id}`,
         time: operation.time,
         bizStatus: operation.bizStatus,
@@ -332,14 +353,14 @@ async function loadLegacyTrace() {
     const attRes: any = await attachmentApi.listByTrace(props.traceId)
     const attachments: any[] = attRes?.data || []
     for (const att of attachments) {
-      const target = findClosestLegacyEvent(legacyEvents, att.createTime)
+      const target = findClosestLegacyEvent(allEvents, att.createTime)
       if (target) {
         if (!target.attachments) target.attachments = []
         target.attachments.push({ id: att.id, fileName: att.fileName })
         continue
       }
       // 兜底：无操作行可挂才独立成行
-      legacyEvents.push({
+      allEvents.push({
         eventId: `legacy-att-${att.id}`,
         time: att.createTime,
         actionTitle: '上传附件',
@@ -352,9 +373,10 @@ async function loadLegacyTrace() {
       })
     }
   } catch { /* 附件加载失败不阻断流水 */ }
-  legacyEvents.sort((left, right) => String(left.time || '').localeCompare(String(right.time || '')))
-  events.value = legacyEvents
-  total.value = legacyEvents.length
+  allEvents.sort((left, right) => String(left.time || '').localeCompare(String(right.time || '')))
+  legacyEvents.value = allEvents
+  total.value = allEvents.length
+  applyLegacyPage()
 }
 
 /** 找时间最近（≤5秒窗口）的操作事件行挂附件；无匹配返回 null */
@@ -383,22 +405,23 @@ function selectEvent(row: TraceEvent) {
 }
 
 function parseChanges(detail?: string | null): string[] {
-  if (!detail) return []
-  try {
-    const parsed = JSON.parse(detail)
-    return Array.isArray(parsed?.changes) ? parsed.changes : []
-  } catch {
-    return []
-  }
+  return parseDetail(detail).changes
 }
 
 function parseDetailAttachments(detail?: string | null): TraceAttachment[] {
-  if (!detail) return []
+  return parseDetail(detail).attachments
+}
+
+function parseDetail(detail?: string | null): TraceDetail {
+  if (!detail) return { changes: [], attachments: [] }
   try {
     const parsed = JSON.parse(detail)
-    return Array.isArray(parsed?.attachments) ? parsed.attachments : []
+    return {
+      changes: Array.isArray(parsed?.changes) ? parsed.changes : [],
+      attachments: Array.isArray(parsed?.attachments) ? parsed.attachments : [],
+    }
   } catch {
-    return []
+    return { changes: [], attachments: [] }
   }
 }
 

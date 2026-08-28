@@ -49,6 +49,23 @@ class TraceServiceImplTest {
     }
 
     @Test
+    void parsesFixedDetailSchemaWhenEitherArrayIsEmpty() {
+        LocalDateTime time = LocalDateTime.of(2026, 8, 28, 10, 16);
+        SysOperLog changesOnly = oper(4L, time, "update", 2);
+        changesOnly.setDetail("{\"changes\":[\"字段变更\"],\"attachments\":[]}");
+        SysOperLog attachmentsOnly = oper(5L, time.plusSeconds(1), "upload", 2);
+        attachmentsOnly.setDetail("{\"changes\":[],\"attachments\":[{\"id\":9,\"fileName\":\"附件.pdf\"}]}");
+
+        List<UnifiedTraceEventVO> events = service.aggregateEvents("order", List.of(changesOnly, attachmentsOnly),
+                List.of(), List.of(), List.of());
+
+        assertEquals(List.of("字段变更"), events.get(0).getChanges());
+        assertTrue(events.get(0).getAttachments().isEmpty());
+        assertTrue(events.get(1).getChanges().isEmpty());
+        assertEquals(9L, events.get(1).getAttachments().get(0).getId());
+    }
+
+    @Test
     void keepsUnmatchedReviewAsStandaloneEventWithoutDuplicatingMatchedAction() {
         LocalDateTime time = LocalDateTime.of(2026, 8, 28, 10, 20);
         SysOperLog rejectLog = oper(2L, time, "rejectOrder", 5);

@@ -37,8 +37,11 @@ class OrderStatusLogContractTest {
             String detail = parser.parseExpression(annotation.detail())
                     .getValue(new StandardEvaluationContext(), String.class);
             var changes = JSONUtil.parseObj(detail).getJSONArray("changes");
+            var attachments = JSONUtil.parseObj(detail).getJSONArray("attachments");
             assertNotNull(changes, methodName + " detail 必须包含 changes");
             assertFalse(changes.isEmpty(), methodName + " changes 不能为空");
+            assertNotNull(attachments, methodName + " detail 必须包含 attachments");
+            assertTrue(attachments.isEmpty(), methodName + " attachments 应为空");
         }
     }
 

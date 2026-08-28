@@ -1,8 +1,8 @@
 package com.jjx.system.service;
 
-import cn.hutool.json.JSONUtil;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.utils.OperLogDetailBuilder;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,14 +13,13 @@ import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
  * 操作日志“字段级变更内容”记录器
  *
  * 后端权威 diff：调用方传入可编辑字段白名单的旧值/新值对比，把变更内容写入
- * sys_oper_log（operParam=人读摘要，detail={"changes":[...]}）。
+ * sys_oper_log（operParam=人读摘要，detail={"changes":[...],"attachments":[]}）。
  * 销售订单 / 销售询价等“整单提交、后端判变更”的编辑场景共用。
  */
 @Slf4j
@@ -56,7 +55,7 @@ public class OperLogChangeRecorder {
             operLog.setTraceId(traceId);
             operLog.setBizStatus(bizStatus);
             operLog.setOperParam(summary);
-            operLog.setDetail(JSONUtil.toJsonStr(Map.of("changes", safe)));
+            operLog.setDetail(OperLogDetailBuilder.changes(safe));
             operLog.setStatus(1);
             operLog.setCreateTime(LocalDateTime.now());
             try {
@@ -90,7 +89,7 @@ public class OperLogChangeRecorder {
 
     /** 统一生成 @Log.detail 使用的字段变更 JSON。 */
     public String toDetailJson(List<String> changes) {
-        return JSONUtil.toJsonStr(Map.of("changes", changes == null ? List.of() : changes));
+        return OperLogDetailBuilder.changes(changes);
     }
 
     public String fmt(Object value) {
