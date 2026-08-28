@@ -43,6 +43,7 @@ public interface IOrderStatusService {
      * 生成生产计划（标准模式：SO→PLAN→审批→转工单）
      */
     void createProductionPlan(Long orderId);
+    
     void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark);
 
     /**

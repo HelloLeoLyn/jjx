@@ -5,6 +5,7 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
+import com.jjx.sales.domain.dto.SalesQuotationAddDTO;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.vo.SalesQuotationEditVO;
 import com.jjx.sales.service.IQuotationService;
@@ -74,7 +75,7 @@ public class QuotationController extends BaseController {
     @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = "0")
     @SaCheckPermission("sales:quotation:add")
     @PostMapping
-    public Result<Void> add(@Validated @RequestBody SalesQuotation quotation) {
+    public Result<Void> add(@Validated @RequestBody SalesQuotationAddDTO quotation) {
         return toAjax(quotationService.insertQuotation(quotation));
     }
 

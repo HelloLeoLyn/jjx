@@ -598,28 +598,6 @@
           />
         </template>
 
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="销售负责人" prop="salesPersonId">
-              <el-select
-                v-model="form.salesPersonId"
-                placeholder="请选择销售负责人"
-                filterable
-                clearable
-                style="width: 100%"
-                @change="onSalesPersonChange"
-              >
-                <el-option
-                  v-for="item in salesPersonOptions"
-                  :key="item.userId"
-                  :label="item.nickName"
-                  :value="item.userId"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
         <!-- 报价明细表格 -->
         <el-divider content-position="left">报价明细</el-divider>
         <el-table :data="form.items" border style="width: 100%; margin-bottom: 10px">

@@ -15,7 +15,9 @@ import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.system.service.ISysAttachmentService;
+import com.jjx.sales.domain.converter.SalesQuotationConverter;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
+import com.jjx.sales.domain.dto.SalesQuotationAddDTO;
 import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
 import com.jjx.sales.domain.vo.SalesQuotationEditVO;
@@ -69,7 +71,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final RedisSequenceService redisSequenceService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final OperLogChangeRecorder changeRecorder;
-
+    private final SalesQuotationConverter quotationConverter;
     /**
      * 查询销售报价单列表
      */
@@ -244,7 +246,9 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int insertQuotation(SalesQuotation quotation) {
+    public int insertQuotation(SalesQuotationAddDTO dto) {
+
+        SalesQuotation quotation = quotationConverter.toEntity(dto);
         // 销售负责人默认当前登录用户（2026-08-08）
         if (quotation.getSalesPersonId() == null) {
             quotation.setSalesPersonId(SecurityUtils.getUserId());
@@ -1071,7 +1075,7 @@ public class QuotationServiceImpl implements IQuotationService {
         copy.setSalesPersonName(original.getSalesPersonName());
 
         // 保存副本
-        insertQuotation(copy);
+        this.quotationMapper.insert(copy);
         return copy;
     }
 
