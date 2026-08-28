@@ -2,6 +2,7 @@ package com.jjx.production.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.notification.domain.dto.NotificationCreateDTO;
 import com.jjx.notification.service.NotificationService;
 import com.jjx.production.domain.dto.WorkReportCancelDTO;
@@ -68,6 +69,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final QualityInspectionService qualityInspectionService;
     private final JdbcTemplate jdbcTemplate;
     private final NotificationService notificationService;
+    private final RedisSequenceService redisSequenceService;
 
     private static final String PROJECTION_MISMATCH = "MISMATCH";
     private static final Long SYSTEM_ADMIN_ID = 1L;
@@ -219,12 +221,10 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
      * 生成并插入报工编号。不同 Task 可并发提交，最终由唯一索引裁决；冲突后重新读取最大号重试。
      */
     private void insertWithReportNo(ProductionWorkReport report) {
-        LocalDate reportDate = LocalDate.now();
         for (int attempt = 1; attempt <= REPORT_NO_MAX_ATTEMPTS; attempt++) {
-            String prefix = reportNoPrefix(reportDate);
-            String maxReportNo = workReportMapper.selectMaxReportNo(prefix);
             report.setReportId(null);
-            report.setReportNo(nextReportNo(reportDate, maxReportNo));
+            report.setReportNo(redisSequenceService.generateBusinessNumberByType(
+                    "work_report", "WR-", "yyyyMMdd-", 4));
             try {
                 workReportMapper.insert(report);
                 return;

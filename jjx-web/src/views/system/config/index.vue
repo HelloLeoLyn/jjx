@@ -116,6 +116,7 @@ const GROUP_LABELS: Record<string, string> = {
   sms: '短信',
   pdf_template: 'PDF模板 / 公司信息',
   system: '系统',
+  biz_no_rule: '单据编号规则',
 }
 
 function groupLabel(group: string): string {

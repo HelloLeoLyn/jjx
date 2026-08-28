@@ -64,7 +64,8 @@ class WorkReportSnapshotProxyTest {
         jdbcTemplate = mock(JdbcTemplate.class);
         service = new WorkReportActionServiceImpl(workReportMapper, executionMapper, taskMapper,
                 taskService, projectionService, readService, mock(QualityInspectionService.class),
-                jdbcTemplate, mock(NotificationService.class));
+                jdbcTemplate, mock(NotificationService.class),
+                mock(com.jjx.framework.common.RedisSequenceService.class));
     }
 
     @Test

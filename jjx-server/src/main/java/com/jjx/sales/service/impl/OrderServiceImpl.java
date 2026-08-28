@@ -470,8 +470,7 @@ public class OrderServiceImpl implements IOrderService {
      */
     @Override
     public String generateOrderNo() {
-        // 使用Redis序列号服务生成订单号
-        return redisSequenceService.generateSalesOrderNumber();
+        return redisSequenceService.generateBusinessNumberByType("sales_order", "SO", "yyMMdd", 3);
     }
 
     /**

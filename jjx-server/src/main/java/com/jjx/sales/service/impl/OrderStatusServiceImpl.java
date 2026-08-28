@@ -442,7 +442,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             }
             createDTO.setPriority(order.getIsUrgent() != null && order.getIsUrgent() == 1 ? "HIGH" : "MEDIUM");
             createDTO.setRemark("由销售订单[" + order.getOrderNo() + "]生成生产计划");
-            createDTO.setOrderNo(redisSequenceService.generateBusinessNumber("PL", "YYMMDD"));
+            createDTO.setOrderNo(redisSequenceService.generateBusinessNumberByType(
+                    "production_plan", "PL", "yyMMdd", 4));
             createDTO.setTraceId(order.getTraceId());
             Product productInfo = productMapper.selectById(product.getProductId());
             if (productInfo != null) {

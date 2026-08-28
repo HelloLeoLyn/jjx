@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.annotation.ExcelColumn;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.purchase.converter.PurchaseConverter;
 import com.jjx.purchase.domain.dto.*;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
@@ -61,6 +62,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.system.service.LogSaveService logSaveService;
     private final ReviewFlowService reviewFlowService;
+    private final RedisSequenceService redisSequenceService;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -762,29 +764,15 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     public String generateOrderNo() {
-        // 生成订单号：PO + 日期(yyyyMMdd) + 4位序号
-        String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String prefix = "PO" + dateStr;
-
-        // 查询当天最大序号
-        LambdaQueryWrapper<PurchaseOrder> wrapper = Wrappers.lambdaQuery();
-        wrapper.likeRight(PurchaseOrder::getOrderNo, prefix);
-        wrapper.orderByDesc(PurchaseOrder::getOrderNo);
-        wrapper.last("LIMIT 1");
-        List<PurchaseOrder> lastOrders = orderMapper.selectList(wrapper);
-
-        int seq = 1;
-        if (!lastOrders.isEmpty()) {
-            String lastOrderNo = lastOrders.get(0).getOrderNo();
-            String seqStr = lastOrderNo.substring(prefix.length());
-            try {
-                seq = Integer.parseInt(seqStr) + 1;
-            } catch (NumberFormatException e) {
-                seq = 1;
+        // 采购旧实现以数据库最大号递增；首次切换 Redis 时跳过当天已存在的号码。
+        for (int i = 0; i < 9999; i++) {
+            String orderNo = redisSequenceService.generateBusinessNumberByType(
+                    "purchase_order", "PO", "yyyyMMdd", 4);
+            if (orderMapper.checkOrderNoUnique(orderNo) == 0) {
+                return orderNo;
             }
         }
-
-        return prefix + StringUtils.leftPad(String.valueOf(seq), 4, "0");
+        throw new BusinessException("采购订单当日序列号已用尽");
     }
 
     @Override

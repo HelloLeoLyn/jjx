@@ -1,6 +1,8 @@
 package com.jjx.framework.common;
 
 import com.jjx.common.exception.BusinessException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jjx.system.service.SysConfigService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,8 @@ import java.util.concurrent.TimeUnit;
 public class RedisSequenceService {
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final SysConfigService sysConfigService;
+    private final ObjectMapper objectMapper;
 
     /** 日期格式化器 */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyMMdd");
@@ -213,6 +217,69 @@ public class RedisSequenceService {
         log.info("生成{}编号: {}，日期: {}，序列号: {}", desc, bizNumber, datePart, sequence);
         return bizNumber;
     }
+
+    public String generateBusinessNumberByType(String bizType, String fallbackPrefix,
+                                               String fallbackDateFormat, int fallbackDigits) {
+        BusinessNumberRule rule = loadRule(bizType, fallbackPrefix, fallbackDateFormat, fallbackDigits);
+        return generateBusinessNumber(rule, LocalDate.now(), bizType);
+    }
+
+    BusinessNumberRule loadRule(String bizType, String fallbackPrefix,
+                                String fallbackDateFormat, int fallbackDigits) {
+        BusinessNumberRule fallback = new BusinessNumberRule(fallbackPrefix, fallbackDateFormat, fallbackDigits);
+        String value;
+        try {
+            value = sysConfigService.getValue("biz_no_rule." + bizType);
+        } catch (Exception ex) {
+            log.error("读取业务编号规则失败，使用兼容规则: bizType={}", bizType, ex);
+            return fallback;
+        }
+        if (value == null || value.isBlank()) {
+            log.warn("业务编号规则未配置，使用兼容规则: bizType={}", bizType);
+            return fallback;
+        }
+        try {
+            BusinessNumberRule configured = objectMapper.readValue(value, BusinessNumberRule.class);
+            validateRule(configured);
+            return configured;
+        } catch (Exception ex) {
+            log.error("业务编号规则无效，使用兼容规则: bizType={}, value={}", bizType, value, ex);
+            return fallback;
+        }
+    }
+
+    String generateBusinessNumber(BusinessNumberRule rule, LocalDate date, String bizType) {
+        validateRule(rule);
+        String datePart = date.format(DateTimeFormatter.ofPattern(normalizeDatePattern(rule.dateFormat())));
+        // 沿用旧版 prefix 维度的 Redis key，迁移后不会把当日序列从 1 重新开始。
+        Long sequence = getNextSequence(SEQUENCE_KEY_PREFIX + rule.prefix() + ":" + datePart);
+        if (sequence > maxSequence(rule.digits())) {
+            throw new BusinessException(bizType + "序列号已达到最大值，日期: " + datePart);
+        }
+        return rule.prefix() + datePart + String.format("%0" + rule.digits() + "d", sequence);
+    }
+
+    private static void validateRule(BusinessNumberRule rule) {
+        if (rule == null || rule.prefix() == null || rule.prefix().isBlank()
+                || rule.dateFormat() == null || rule.dateFormat().isBlank()
+                || rule.digits() < 1 || rule.digits() > 12) {
+            throw new IllegalArgumentException("编号规则必须包含 prefix、dateFormat，digits 范围为 1-12");
+        }
+        DateTimeFormatter.ofPattern(normalizeDatePattern(rule.dateFormat()));
+    }
+
+    private static String normalizeDatePattern(String pattern) {
+        return pattern.replace("YYYY", "yyyy").replace("YY", "yy")
+                .replace("DD", "dd").replace("D", "d");
+    }
+
+    private static long maxSequence(int digits) {
+        long max = 0;
+        for (int i = 0; i < digits; i++) max = max * 10 + 9;
+        return max;
+    }
+
+    public record BusinessNumberRule(String prefix, String dateFormat, int digits) {}
 
     /**
      * 序列号统计信息
