@@ -61,6 +61,24 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/sales/receipt/print/:id',
+    name: 'SalesReceiptPrint',
+    component: () => import('@/views/sales/receipt/print.vue'),
+    meta: { title: '收款单打印', hidden: true },
+  },
+  {
+    path: '/sales/invoice/print/:id',
+    name: 'SalesInvoicePrint',
+    component: () => import('@/views/sales/invoice/print.vue'),
+    meta: { title: '销售发票打印', hidden: true },
+  },
+  {
+    path: '/purchase/plan/print',
+    name: 'PurchasePlanPrint',
+    component: () => import('@/views/purchase/plan/print.vue'),
+    meta: { title: '采购计划打印', hidden: true },
+  },
+  {
     path: '/print/transfer/:id',
     name: 'TransferPrint',
     component: () => import('@/views/inventory/transfer/print.vue'),

@@ -9,6 +9,7 @@ export * from './OrderEnum'
 export * from './QuotationEnum'
 export * from './SampleEnum'
 export * from './InquiryEnum'
+export * from './FinanceDocumentEnum'
 
 // 重新导出统一对象
 export { OrderEnum, QuotationStatusEnum, SampleOrderStatusEnum, InquiryStatusEnum }

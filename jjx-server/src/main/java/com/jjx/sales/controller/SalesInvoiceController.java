@@ -29,8 +29,13 @@ public class SalesInvoiceController {
     @SaCheckPermission("sales:order:view")
     @GetMapping("/page")
     public Result<PageResult<SalesInvoice>> page(@RequestParam(defaultValue = "1") int pageNum,
-                                                  @RequestParam(defaultValue = "10") int pageSize) {
-        return Result.success(invoiceService.page(pageNum, pageSize));
+                                                  @RequestParam(defaultValue = "10") int pageSize,
+                                                  @RequestParam(required = false) String invoiceNo,
+                                                  @RequestParam(required = false) String customerName,
+                                                  @RequestParam(required = false) java.time.LocalDate startDate,
+                                                  @RequestParam(required = false) java.time.LocalDate endDate,
+                                                  @RequestParam(required = false) Integer status) {
+        return Result.success(invoiceService.page(pageNum, pageSize, invoiceNo, customerName, startDate, endDate, status));
     }
 
     @Operation(summary = "发票详情")
@@ -39,6 +44,12 @@ public class SalesInvoiceController {
     public Result<SalesInvoice> getById(@PathVariable Long id) {
         return Result.success(invoiceService.getById(id));
     }
+
+    @Operation(summary = "记录发票打印")
+    @Log(module = "销售发票", businessType = BusinessType.OTHER, bizType = "'invoice_print'", bizId = "#id")
+    @SaCheckPermission("sales:order:view")
+    @PostMapping("/{id}/print-log")
+    public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }
 
     @Operation(summary = "新增发票")
     @Log(module = "销售发票", businessType = BusinessType.INSERT, bizType = "'invoice'")
@@ -64,7 +75,7 @@ public class SalesInvoiceController {
     @SaCheckPermission("sales:order:export")
     @GetMapping("/export")
     public void export(HttpServletResponse response) {
-        PageResult<SalesInvoice> page = invoiceService.page(1, 100000);
+        PageResult<SalesInvoice> page = invoiceService.page(1, 100000, null, null, null, null, null);
         List<SalesInvoiceExportVO> rows = new ArrayList<>();
         if (page != null && page.getRecords() != null) {
             for (SalesInvoice inv : page.getRecords()) {

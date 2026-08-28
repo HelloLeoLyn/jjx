@@ -252,6 +252,12 @@ public class PurchaseOrderController extends BaseController {
         return Result.success(purchaseOrderService.getPlanSuggestions());
     }
 
+    @Operation(summary = "记录采购计划打印")
+    @Log(module = "采购计划", businessType = BusinessType.OTHER, bizType = "'plan_print'", bizId = "'suggestions'")
+    @SaCheckPermission("purchase:plan:view")
+    @PostMapping("/plan-suggestions/print-log")
+    public Result<Void> planPrintLog() { return Result.success(); }
+
     /**
      * 092：缺料预警一键生成采购计划单（已弃用，2026-08-18：前端无调用）
      *

@@ -15,9 +15,17 @@ import org.springframework.stereotype.Service;
 public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, SalesReceipt> implements SalesReceiptService {
     private final SalesReceiptMapper receiptMapper;
 
-    @Override public PageResult<SalesReceipt> page(int pageNum, int pageSize) {
+    @Override public PageResult<SalesReceipt> page(int pageNum, int pageSize, String receiptNo, String customerName,
+                                                   java.time.LocalDate startDate, java.time.LocalDate endDate, Integer status) {
+        LambdaQueryWrapper<SalesReceipt> query = new LambdaQueryWrapper<SalesReceipt>()
+                .like(receiptNo != null && !receiptNo.isBlank(), SalesReceipt::getReceiptNo, receiptNo)
+                .like(customerName != null && !customerName.isBlank(), SalesReceipt::getCustomerName, customerName)
+                .ge(startDate != null, SalesReceipt::getReceiptDate, startDate)
+                .le(endDate != null, SalesReceipt::getReceiptDate, endDate)
+                .eq(status != null, SalesReceipt::getStatus, status)
+                .orderByDesc(SalesReceipt::getCreateTime).orderByDesc(SalesReceipt::getReceiptId);
         Page<SalesReceipt> p = receiptMapper.selectPage(new Page<>(pageNum, pageSize),
-                new LambdaQueryWrapper<SalesReceipt>().orderByDesc(SalesReceipt::getCreateTime).orderByDesc(SalesReceipt::getReceiptId));
+                query);
         return PageResult.of(p, p.getRecords());
     }
     @Override public SalesReceipt getById(Long id) { return receiptMapper.selectById(id); }

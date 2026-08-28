@@ -3,6 +3,10 @@ import type { R } from '@/types'
 import type { PurchaseOrder, PurchaseOrderItem, PurchaseDocument } from '@/types/purchase'
 import type { PurchaseOrderQuery } from '@/types/purchase/order'
 
+export function logPlanPrint() {
+  return request.post('/purchase/order/plan-suggestions/print-log')
+}
+
 /**
  * 获取采购订单总数
  */

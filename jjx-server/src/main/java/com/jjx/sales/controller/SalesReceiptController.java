@@ -29,9 +29,27 @@ public class SalesReceiptController {
     @SaCheckPermission("sales:order:view")
     @GetMapping("/page")
     public Result<PageResult<SalesReceipt>> page(@RequestParam(defaultValue = "1") int pageNum,
-                                                  @RequestParam(defaultValue = "10") int pageSize) {
-        return Result.success(receiptService.page(pageNum, pageSize));
+                                                  @RequestParam(defaultValue = "10") int pageSize,
+                                                  @RequestParam(required = false) String receiptNo,
+                                                  @RequestParam(required = false) String customerName,
+                                                  @RequestParam(required = false) java.time.LocalDate startDate,
+                                                  @RequestParam(required = false) java.time.LocalDate endDate,
+                                                  @RequestParam(required = false) Integer status) {
+        return Result.success(receiptService.page(pageNum, pageSize, receiptNo, customerName, startDate, endDate, status));
     }
+
+    @Operation(summary = "收款详情")
+    @SaCheckPermission("sales:order:view")
+    @GetMapping("/{id}")
+    public Result<SalesReceipt> getById(@PathVariable Long id) {
+        return Result.success(receiptService.getById(id));
+    }
+
+    @Operation(summary = "记录收款单打印")
+    @Log(module = "销售收款", businessType = BusinessType.OTHER, bizType = "'receipt_print'", bizId = "#id")
+    @SaCheckPermission("sales:order:view")
+    @PostMapping("/{id}/print-log")
+    public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }
 
     @Operation(summary = "新增收款")
     @Log(module = "销售收款", businessType = BusinessType.INSERT, bizType = "'receipt'")
@@ -48,7 +66,7 @@ public class SalesReceiptController {
     @SaCheckPermission("sales:order:export")
     @GetMapping("/export")
     public void export(HttpServletResponse response) {
-        PageResult<SalesReceipt> page = receiptService.page(1, 100000);
+        PageResult<SalesReceipt> page = receiptService.page(1, 100000, null, null, null, null, null);
         List<SalesReceiptExportVO> rows = new ArrayList<>();
         if (page != null && page.getRecords() != null) {
             for (SalesReceipt r : page.getRecords()) {

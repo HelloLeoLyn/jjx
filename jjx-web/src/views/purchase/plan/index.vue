@@ -25,6 +25,9 @@
         <el-col :span="1.5">
           <el-button plain icon="Download" :disabled="planRows.length === 0" @click="handleExport">导出 Excel</el-button>
         </el-col>
+        <el-col :span="1.5">
+          <el-button plain icon="Printer" @click="handlePrintPlan">打印计划</el-button>
+        </el-col>
         <el-col :span="1.5" style="float: right">
           <el-button type="primary" icon="Check" :disabled="planRows.length === 0" @click="handleConfirmPlan">
             确认计划 → 生成采购订单
@@ -162,6 +165,8 @@ const confirming = ref(false)
 
 const selectedRows = ref<PlanRow[]>([])
 const selectedTotalQty = computed(() => selectedRows.value.reduce((s, r) => s + (r.quantity || 0), 0))
+
+const handlePrintPlan = () => window.open('/purchase/plan/print', '_blank')
 
 // 勾选变化（DEV：确认计划按勾选行生成订单）
 const handleSelectionChange = (rows: PlanRow[]) => {
