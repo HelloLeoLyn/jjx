@@ -89,7 +89,11 @@
         <el-tooltip content="删除" placement="top" v-if="canDelete(row)">
           <el-button link type="danger" icon="Delete" @click="emit('delete', row)" />
         </el-tooltip>
-        <el-tooltip content="发送报价" placement="top" v-if="row.quotationStatus === 6">
+        <el-tooltip
+          content="发送报价"
+          placement="top"
+          v-if="row.quotationStatus === QuotationStatusEnum.APPROVED.value"
+        >
           <el-button
             link
             type="warning"
@@ -125,7 +129,11 @@
             @click="emit('convertToSample', row)"
           />
         </el-tooltip>
-        <el-tooltip content="改单" placement="top" v-if="row.quotationStatus === 9">
+        <el-tooltip
+          content="改单"
+          placement="top"
+          v-if="row.quotationStatus === QuotationStatusEnum.COMPLETED.value"
+        >
           <el-button
             link
             type="warning"
@@ -143,7 +151,11 @@
             @click="emit('submitReview', row)"
           />
         </el-tooltip>
-        <el-tooltip content="客户确认" placement="top" v-if="row.quotationStatus === 1">
+        <el-tooltip
+          content="客户确认"
+          placement="top"
+          v-if="row.quotationStatus === QuotationStatusEnum.SENT.value"
+        >
           <el-button
             link
             type="success"
@@ -152,7 +164,11 @@
             @click="emit('customerConfirm', true, row)"
           />
         </el-tooltip>
-        <el-tooltip content="客户拒绝" placement="top" v-if="row.quotationStatus === 1">
+        <el-tooltip
+          content="客户拒绝"
+          placement="top"
+          v-if="row.quotationStatus === QuotationStatusEnum.SENT.value"
+        >
           <el-button
             link
             type="danger"
@@ -161,7 +177,11 @@
             @click="emit('customerConfirm', false, row)"
           />
         </el-tooltip>
-        <el-tooltip content="审核通过" placement="top" v-if="row.quotationStatus === 5">
+        <el-tooltip
+          content="审核通过"
+          placement="top"
+          v-if="row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value"
+        >
           <el-button
             link
             type="success"
@@ -170,7 +190,11 @@
             @click="emit('review', true, row)"
           />
         </el-tooltip>
-        <el-tooltip content="审核驳回" placement="top" v-if="row.quotationStatus === 5">
+        <el-tooltip
+          content="审核驳回"
+          placement="top"
+          v-if="row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value"
+        >
           <el-button
             link
             type="danger"
@@ -211,11 +235,25 @@ const getStatusLabel = (status: number) => {
 // 行内操作权限判断
 // ============================================================
 const canEdit = (row: any) => {
-  return ![1, 2, 3, 4].includes(row.quotationStatus) && row.quotationStatus !== 9
+  return (
+    ![
+      QuotationStatusEnum.SENT.value,
+      QuotationStatusEnum.ACCEPTED.value,
+      QuotationStatusEnum.REJECTED.value,
+      QuotationStatusEnum.EXPIRED.value,
+    ].includes(row.quotationStatus) && row.quotationStatus !== QuotationStatusEnum.COMPLETED.value
+  )
 }
 
 const canDelete = (row: any) => {
-  return ![1, 2, 5, 6, 8, 9].includes(row.quotationStatus)
+  return ![
+    QuotationStatusEnum.SENT.value,
+    QuotationStatusEnum.ACCEPTED.value,
+    QuotationStatusEnum.PENDING_REVIEW.value,
+    QuotationStatusEnum.APPROVED.value,
+    QuotationStatusEnum.MODIFYING.value,
+    QuotationStatusEnum.COMPLETED.value,
+  ].includes(row.quotationStatus)
 }
 
 const canReQuote = (row: any) => {

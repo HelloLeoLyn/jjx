@@ -131,7 +131,11 @@
               <el-tooltip content="删除" placement="top" v-if="canDelete(row)">
                 <el-button link type="danger" icon="Delete" @click="handleDelete(row)" />
               </el-tooltip>
-              <el-tooltip content="发送报价" placement="top" v-if="row.quotationStatus === 6">
+              <el-tooltip
+                content="发送报价"
+                placement="top"
+                v-if="row.quotationStatus === QuotationStatusEnum.APPROVED.value"
+              >
                 <el-button
                   link
                   type="warning"
@@ -167,7 +171,11 @@
                   @click="handleConvertToSample(row)"
                 />
               </el-tooltip>
-              <el-tooltip content="改单" placement="top" v-if="row.quotationStatus === 9">
+              <el-tooltip
+                content="改单"
+                placement="top"
+                v-if="row.quotationStatus === QuotationStatusEnum.COMPLETED.value"
+              >
                 <el-button
                   link
                   type="warning"
@@ -185,7 +193,11 @@
                   @click="handleSubmitReview(row)"
                 />
               </el-tooltip>
-              <el-tooltip content="客户确认" placement="top" v-if="row.quotationStatus === 1">
+              <el-tooltip
+                content="客户确认"
+                placement="top"
+                v-if="row.quotationStatus === QuotationStatusEnum.SENT.value"
+              >
                 <el-button
                   link
                   type="success"
@@ -194,7 +206,11 @@
                   @click="() => handleCustomerConfirm(true, row)"
                 />
               </el-tooltip>
-              <el-tooltip content="客户拒绝" placement="top" v-if="row.quotationStatus === 1">
+              <el-tooltip
+                content="客户拒绝"
+                placement="top"
+                v-if="row.quotationStatus === QuotationStatusEnum.SENT.value"
+              >
                 <el-button
                   link
                   type="danger"
@@ -203,7 +219,11 @@
                   @click="() => handleCustomerConfirm(false, row)"
                 />
               </el-tooltip>
-              <el-tooltip content="审核通过" placement="top" v-if="row.quotationStatus === 5">
+              <el-tooltip
+                content="审核通过"
+                placement="top"
+                v-if="row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value"
+              >
                 <el-button
                   link
                   type="success"
@@ -212,7 +232,11 @@
                   @click="() => handleReview(true, row)"
                 />
               </el-tooltip>
-              <el-tooltip content="审核驳回" placement="top" v-if="row.quotationStatus === 5">
+              <el-tooltip
+                content="审核驳回"
+                placement="top"
+                v-if="row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value"
+              >
                 <el-button
                   link
                   type="danger"
@@ -457,11 +481,25 @@ const getStatusLabel = (status: number) => {
 // 9. 行内操作权限
 // ============================================================
 const canEdit = (row: any) => {
-  return ![1, 2, 3, 4].includes(row.quotationStatus) && row.quotationStatus !== 9
+  return (
+    ![
+      QuotationStatusEnum.SENT.value,
+      QuotationStatusEnum.ACCEPTED.value,
+      QuotationStatusEnum.REJECTED.value,
+      QuotationStatusEnum.EXPIRED.value,
+    ].includes(row.quotationStatus) && row.quotationStatus !== QuotationStatusEnum.COMPLETED.value
+  )
 }
 
 const canDelete = (row: any) => {
-  return ![1, 2, 5, 6, 8, 9].includes(row.quotationStatus)
+  return ![
+    QuotationStatusEnum.SENT.value,
+    QuotationStatusEnum.ACCEPTED.value,
+    QuotationStatusEnum.PENDING_REVIEW.value,
+    QuotationStatusEnum.APPROVED.value,
+    QuotationStatusEnum.MODIFYING.value,
+    QuotationStatusEnum.COMPLETED.value,
+  ].includes(row.quotationStatus)
 }
 
 const canReQuote = (row: any) => {
@@ -504,8 +542,22 @@ const quotationActions = computed(() => {
     canReQuote: [QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(
       status
     ),
-    canDelete: ![1, 2, 5, 6, 8, 9].includes(status) && !completed,
-    canEdit: ![1, 2, 3, 4].includes(status) && !completed,
+    canDelete:
+      ![
+        QuotationStatusEnum.SENT.value,
+        QuotationStatusEnum.ACCEPTED.value,
+        QuotationStatusEnum.PENDING_REVIEW.value,
+        QuotationStatusEnum.APPROVED.value,
+        QuotationStatusEnum.MODIFYING.value,
+        QuotationStatusEnum.COMPLETED.value,
+      ].includes(status) && !completed,
+    canEdit:
+      ![
+        QuotationStatusEnum.SENT.value,
+        QuotationStatusEnum.ACCEPTED.value,
+        QuotationStatusEnum.REJECTED.value,
+        QuotationStatusEnum.EXPIRED.value,
+      ].includes(status) && !completed,
     canModify: status === QuotationStatusEnum.COMPLETED.value,
   }
 })

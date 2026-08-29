@@ -132,8 +132,22 @@ export function useQuotation() {
       canReQuote: [QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(
         status
       ),
-      canDelete: ![1, 2, 5, 6, 8, 9].includes(status) && !completed,
-      canEdit: ![1, 2, 3, 4].includes(status) && !completed,
+      canDelete:
+        ![
+          QuotationStatusEnum.SENT.value,
+          QuotationStatusEnum.ACCEPTED.value,
+          QuotationStatusEnum.PENDING_REVIEW.value,
+          QuotationStatusEnum.APPROVED.value,
+          QuotationStatusEnum.MODIFYING.value,
+          QuotationStatusEnum.COMPLETED.value,
+        ].includes(status) && !completed,
+      canEdit:
+        ![
+          QuotationStatusEnum.SENT.value,
+          QuotationStatusEnum.ACCEPTED.value,
+          QuotationStatusEnum.REJECTED.value,
+          QuotationStatusEnum.EXPIRED.value,
+        ].includes(status) && !completed,
       canModify: status === QuotationStatusEnum.COMPLETED.value,
     }
   })
