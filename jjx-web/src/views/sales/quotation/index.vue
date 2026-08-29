@@ -257,7 +257,7 @@
         v-model="quotationDetailVisible"
         :quotation-id="quotationDetailId"
         :mode="quotationDetailMode"
-        :is-sensitive="false"
+        :is-sensitive="true"
         @submitted="getList"
       />
     </SkeletonAction>

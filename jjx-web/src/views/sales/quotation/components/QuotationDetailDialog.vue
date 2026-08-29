@@ -30,23 +30,27 @@
         <el-descriptions-item label="报价日期">
           {{ detailData.quotationDate }}
         </el-descriptions-item>
+
         <el-descriptions-item label="有效期至">
           {{ detailData.validUntil || '-' }}
         </el-descriptions-item>
-        <el-descriptions-item label="币种">
-          {{ detailData.currency }}
-        </el-descriptions-item>
-        <el-descriptions-item label="汇率">
-          {{ detailData.exchangeRate }}
-        </el-descriptions-item>
-        <el-descriptions-item label="销售员">
-          {{ detailData.salesPersonName || '-' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="总金额" :span="3">
-          <span style="font-weight: bold; font-size: 16px; color: #409eff">
-            {{ formatCurrency(detailData.totalAmount) }} {{ detailData.currency }}
-          </span>
-        </el-descriptions-item>
+
+        <template v-if="isSensitive">
+          <el-descriptions-item label="币种">
+            {{ detailData.currency }}
+          </el-descriptions-item>
+          <el-descriptions-item label="汇率">
+            {{ detailData.exchangeRate }}
+          </el-descriptions-item>
+          <el-descriptions-item label="销售员">
+            {{ detailData.salesPersonName || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="总金额" :span="3">
+            <span style="font-weight: bold; font-size: 16px; color: #409eff">
+              {{ formatCurrency(detailData.totalAmount) }} {{ detailData.currency }}
+            </span>
+          </el-descriptions-item>
+        </template>
         <el-descriptions-item label="备注" :span="3">
           {{ detailData.remark || '-' }}
         </el-descriptions-item>
@@ -59,34 +63,38 @@
         <el-table-column label="产品编码" prop="productCode" width="140" />
         <el-table-column label="产品名称" prop="productName" />
         <el-table-column label="数量" prop="quantity" width="100" align="center" />
-        <el-table-column label="单价" prop="unitPrice" width="120" align="right">
-          <template #default="{ row }">
-            {{ formatCurrency(row.unitPrice) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="金额" prop="amount" width="150" align="right">
-          <template #default="{ row }">
-            <span style="font-weight: bold">{{ formatCurrency(row.amount) }}</span>
-          </template>
-        </el-table-column>
+        <template v-if="isSensitive">
+          <el-table-column label="单价" prop="unitPrice" width="120" align="right">
+            <template #default="{ row }">
+              {{ formatCurrency(row.unitPrice) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="金额" prop="amount" width="150" align="right">
+            <template #default="{ row }">
+              <span style="font-weight: bold">{{ formatCurrency(row.amount) }}</span>
+            </template>
+          </el-table-column>
+        </template>
       </el-table>
 
-      <!-- 金额汇总 -->
-      <el-divider content-position="left">金额汇总</el-divider>
-      <el-row :gutter="20">
-        <el-col :span="6">
-          <el-statistic title="小计金额" :value="detailData.subtotalAmount || 0" :precision="2" />
-        </el-col>
-        <el-col :span="6">
-          <el-statistic title="税额" :value="detailData.taxAmount || 0" :precision="2" />
-        </el-col>
-        <el-col :span="6">
-          <el-statistic title="折扣金额" :value="detailData.discountAmount || 0" :precision="2" />
-        </el-col>
-        <el-col :span="6">
-          <el-statistic title="最终金额" :value="detailData.finalAmount || 0" :precision="2" />
-        </el-col>
-      </el-row>
+      <template v-if="isSensitive">
+        <!-- 金额汇总 -->
+        <el-divider content-position="left">金额汇总</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="6">
+            <el-statistic title="小计金额" :value="detailData.subtotalAmount || 0" :precision="2" />
+          </el-col>
+          <el-col :span="6">
+            <el-statistic title="税额" :value="detailData.taxAmount || 0" :precision="2" />
+          </el-col>
+          <el-col :span="6">
+            <el-statistic title="折扣金额" :value="detailData.discountAmount || 0" :precision="2" />
+          </el-col>
+          <el-col :span="6">
+            <el-statistic title="最终金额" :value="detailData.finalAmount || 0" :precision="2" />
+          </el-col>
+        </el-row>
+      </template>
 
       <!-- 底部按钮 -->
       <div v-if="mode === 'submitReview'" style="margin-top: 20px; text-align: center">

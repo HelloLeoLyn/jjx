@@ -828,7 +828,7 @@ const previewLoading = ref(false)
 const previewData = ref<{ order: any; products: any[] } | null>(null)
 // 来源报价单详情（复用共享报价详情组件）
 const quotationDetailVisible = ref(false)
-const quotationDetailId = ref<number>()
+const quotationDetailId = ref<number>(0)
 function openQuotationDetail() {
   quotationDetailId.value = previewData.value?.order?.quotationId
   quotationDetailVisible.value = true

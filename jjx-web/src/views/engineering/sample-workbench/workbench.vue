@@ -559,7 +559,7 @@ const {
 
 // 来源单据查看（工作台第一步：复用询价/报价详情共享组件，弹窗查看不离开工作台）
 const quotationDetailVisible = ref(false)
-const quotationDetailId = ref<number>()
+const quotationDetailId = ref<number>(0)
 const inquiryDetailVisible = ref(false)
 const inquiryDetailId = ref<number>()
 function openQuotationDetail() {
