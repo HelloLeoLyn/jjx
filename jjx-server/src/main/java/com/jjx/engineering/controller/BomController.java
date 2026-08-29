@@ -140,10 +140,12 @@ public class BomController extends BaseController {
      * 新增BOM
      */
     @PostMapping
-    @Log(module = "产品BOM管理", businessType = BusinessType.INSERT, bizType = "'bom'", bizId = "#dto.bomId")
+    @Log(module = "产品BOM管理", businessType = BusinessType.INSERT, bizType = "'bom'",
+         bizId = "#result.data")
     @SaCheckPermission("engineering:bom:add")
-    public Result<Void> add(@Validated @RequestBody EngineeringBomDTO dto) {
-        return productBomService.createBom(dto) ? Result.success() : Result.error();
+    public Result<Long> add(@Validated @RequestBody EngineeringBomDTO dto) {
+        Long bomId = productBomService.createBomReturnId(dto);
+        return bomId != null ? Result.success(bomId) : Result.error();
     }
 
     /**

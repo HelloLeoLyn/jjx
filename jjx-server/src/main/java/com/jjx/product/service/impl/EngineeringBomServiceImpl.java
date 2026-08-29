@@ -110,7 +110,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean createBom(EngineeringBomDTO dto) {
+        return createBomReturnId(dto) != null;
+    }
 
+    /**
+     * 创建BOM，返回新 BOM id（失败返回 null），供 @Log bizId 使用
+     */
+    @Override
+    public Long createBomReturnId(EngineeringBomDTO dto) {
         EngineeringBom bom = bomConverter.toEntity(dto);
         bom.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
 
@@ -119,7 +126,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
         // 保存BOM主表
         if (!saveBom(bom)) {
-            return false;
+            return null;
         }
 
         // 保存BOM明细
@@ -130,7 +137,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             setOtherBomNotCurrent(bom.getProductId(), bom.getBomId());
         }
 
-        return true;
+        return bom.getBomId();
     }
 
 // ==================== 提取的方法 ====================

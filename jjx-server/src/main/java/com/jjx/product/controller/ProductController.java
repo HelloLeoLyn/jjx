@@ -123,13 +123,21 @@ public class ProductController extends BaseController {
         }
         Product product = new Product();
         org.springframework.beans.BeanUtils.copyProperties(productDTO, product);
+        // Double → BigDecimal 手动转换（BeanUtils 跨类型不复制，价格会静默丢失）
+        if (productDTO.getBasePrice() != null) {
+            product.setBasePrice(java.math.BigDecimal.valueOf(productDTO.getBasePrice()));
+        }
+        if (productDTO.getCostPrice() != null) {
+            product.setCostPrice(java.math.BigDecimal.valueOf(productDTO.getCostPrice()));
+        }
+        // 变更明细必须在 updateById 之前采集（此时库里还是旧值）
+        String detailMessage = productService.buildEditDetail(productDTO);
         boolean result = productService.updateById(product);
         ProductEditVO vo = new ProductEditVO();
         vo.setSuccess(result);
-        vo.setDetailMessage(productService.buildEditDetail(productDTO));
+        vo.setDetailMessage(detailMessage);
         return result ? Result.success(vo) : Result.error();
     }
-
     /**
      * 删除产品
      */

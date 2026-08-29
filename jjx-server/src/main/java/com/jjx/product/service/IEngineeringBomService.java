@@ -36,6 +36,11 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     boolean createBom(EngineeringBomDTO dto);
 
     /**
+     * 创建BOM，返回新 BOM id（失败返回 null），供 @Log bizId 使用
+     */
+    Long createBomReturnId(EngineeringBomDTO dto);
+
+    /**
      * 更新BOM（包含明细）
      */
     boolean updateBom(EngineeringBomDTO dto);

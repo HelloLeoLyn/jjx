@@ -54,6 +54,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
     private final com.jjx.sales.mapper.CustomerMapper salesCustomerMapper;
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
+    private final com.jjx.system.service.LogSaveService logSaveService;
     @Override
     public List<ProductVo> getProductList(ProductQuery query) {
         LambdaQueryWrapper<Product> wrapper = buildWrapper(query);
@@ -457,6 +458,23 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         p.setCustomerId(customerId);
         p.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
         productMapper.insert(p);
+        // 自动建档也要记产品创建日志（询价/报价流程内触发，无 @Log 包裹）
+        try {
+            com.jjx.system.domain.entity.SysOperLog operLog = new com.jjx.system.domain.entity.SysOperLog();
+            operLog.setModule("产品管理");
+            operLog.setBusinessType(com.jjx.system.annotation.BusinessType.INSERT.getCode());
+            operLog.setBizType("product");
+            operLog.setBizId(String.valueOf(p.getProductId()));
+            operLog.setDetail(com.jjx.system.utils.OperLogDetailBuilder.changes(
+                    java.util.List.of("产品自动建档（来源:" + source + "）")));
+            operLog.setStatus(1);
+            operLog.setCreateTime(java.time.LocalDateTime.now());
+            operLog.setUsername(com.jjx.system.utils.SecurityUtils.getUsername());
+            operLog.setUserId(com.jjx.system.utils.SecurityUtils.getUserId());
+            logSaveService.saveOperLog(operLog);
+        } catch (Exception logEx) {
+            log.warn("产品自动建档日志记录失败: " + logEx.getMessage());
+        }
         return p.getProductId();
     }
 
