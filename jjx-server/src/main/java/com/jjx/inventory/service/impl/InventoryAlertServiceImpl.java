@@ -604,7 +604,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             alert.setAlertTime(java.time.LocalDateTime.now());
             alertLogMapper.insert(alert);
         }
-        try { if (!overStock.isEmpty()) eventPublisher.fire("stock.max", Map.of("count", String.valueOf(overStock.size()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
+        try { if (!overStock.isEmpty()) eventPublisher.fire("stock.over", Map.of("count", String.valueOf(overStock.size()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("最高库存预警检查完成，发现 {} 条", overStock.size());
     }
 

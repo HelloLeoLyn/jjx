@@ -43,6 +43,7 @@ public class LocalEventPublisher implements EventPublisher {
                         .eq(SysEventConfig::getIsEnabled, 1)
         );
         if (event == null) {
+            log.warn("事件未配置或已停用，跳过: {}", eventCode);
             log.debug("事件[{}]未配置或已禁用，跳过", eventCode);
             return;
         }
