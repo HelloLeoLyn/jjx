@@ -2,6 +2,7 @@ package com.jjx.sales.service.impl;
 
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
+import com.jjx.inventory.enums.OrderStatusEnum;
 import com.jjx.sales.domain.dto.SalesOrderProductDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesQuotation;
@@ -21,6 +22,8 @@ import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.system.service.LogSaveService;
 import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
+
+import cn.hutool.db.sql.Order;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -298,7 +301,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             newLog.setBizType("sample");
             newLog.setBizId(String.valueOf(copy.getOrderId()));
             newLog.setTraceId(copy.getTraceId());
-            newLog.setBizStatus(copy.getSampleStatus());
+            newLog.setBizStatus(OrderStatusEnum.APPROVED.getLabel()); // 新单草稿
             newLog.setStatus(1);
             newLog.setOperParam("{\"action\":\"copy\",\"sourceOrderNo\":\"" + source.getOrderNo() + "\"}");
             newLog.setCreateTime(LocalDateTime.now());
@@ -320,7 +323,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             operLog.setBizType("sample");
             operLog.setBizId(String.valueOf(orderId));
             operLog.setTraceId(source.getTraceId());
-            operLog.setBizStatus(source.getSampleStatus());
+            operLog.setBizStatus(OrderStatusEnum.getByCode(source.getOrderStatus()).getLabel());
             operLog.setStatus(1);
             operLog.setOperParam("{\"action\":\"copy\",\"newOrderNo\":\"" + copy.getOrderNo()
                     + "\",\"newOrderId\":" + copy.getOrderId() + "}");
@@ -2229,6 +2232,60 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
+     * 样品转量产-资料转移提醒（DEV-1228）
+     * 转量产就绪检查处置栏：不再直接转移，改为发布任务提醒工程执行资料转移（建档产品/BOM/工艺路线）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public java.util.Map<String, Object> remindTransfer(Long orderId) {
+        SalesOrder sampleOrder = orderMapper.selectById(orderId);
+        if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
+            throw new BusinessException("样品单不存在");
+        }
+        // 防重复：同一单未完成的提醒任务只发一次（status=10 已完成允许再次提醒）
+        Long existCount = sysTaskMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.system.domain.entity.SysTask>()
+                        .eq(com.jjx.system.domain.entity.SysTask::getKanbanModule, "office")
+                        .eq(com.jjx.system.domain.entity.SysTask::getSourceEvent, "sample.transfer.remind")
+                        .eq(com.jjx.system.domain.entity.SysTask::getBizType, "sample")
+                        .eq(com.jjx.system.domain.entity.SysTask::getBizId, orderId)
+                        .ne(com.jjx.system.domain.entity.SysTask::getStatus, 10));
+        if (existCount != null && existCount > 0) {
+            java.util.Map<String, Object> dup = new java.util.LinkedHashMap<>();
+            dup.put("reminded", true);
+            dup.put("duplicated", true);
+            dup.put("message", "该样品单已提醒过工程处理资料转移，请勿重复提醒");
+            return dup;
+        }
+
+        com.jjx.system.domain.entity.SysTask task = new com.jjx.system.domain.entity.SysTask();
+        task.setTaskCode("sample.transfer.remind-" + System.currentTimeMillis());
+        task.setTaskType("general");
+        task.setTitle("样品单【" + sampleOrder.getOrderNo() + "】待工程资料转移（建档产品/BOM/工艺路线）");
+        task.setDescription("转量产就绪检查发现该样品单尚未执行资料转移。\n"
+                + "请到打样平台执行资料转移（一键建档产品/BOM/工艺路线）。\n"
+                + "样品单号：" + sampleOrder.getOrderNo());
+        task.setKanbanModule("office");
+        task.setAssignRole(16L);
+        task.setSourceEvent("sample.transfer.remind");
+        task.setBizType("sample");
+        task.setBizId(orderId);
+        task.setPriority("normal");
+        task.setStatus(0);
+        task.setStartTime(java.time.LocalDateTime.now());
+        task.setCreateBy(SecurityUtils.getUsername());
+        sysTaskMapper.insert(task);
+        log.info("样品单[{}] 资料转移提醒已发布任务[{}]给工程(role=16)", sampleOrder.getOrderNo(), task.getTaskId());
+
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("reminded", true);
+        result.put("duplicated", false);
+        result.put("taskId", task.getTaskId());
+        result.put("orderNo", sampleOrder.getOrderNo());
+        return result;
+    }
+
+    /**
      * 取括号前内容（“丝印（临时）” → “丝印”），用于模糊匹配
      */
     private String stripBracketSuffix(String name) {
@@ -2650,7 +2707,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             operLog.setBizType("order");
             operLog.setBizId(String.valueOf(standardOrder.getOrderId()));
             operLog.setTraceId(sampleOrder.getTraceId());
-            operLog.setBizStatus(1); // 订单草稿
+            operLog.setBizStatus(OrderStatusEnum.DRAFT.getLabel()); // 订单草稿
             operLog.setStatus(1);
             operLog.setOperParam("{\"orderNo\":\"" + standardOrder.getOrderNo()
                     + "\",\"sourceSample\":\"" + sampleOrder.getOrderNo() + "\"}");

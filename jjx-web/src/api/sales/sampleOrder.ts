@@ -202,6 +202,14 @@ export const sampleOrderApi = {
     })
   },
 
+  // 转量产 · 资料转移提醒（DEV-1228：发布任务给工程执行资料转移，不再直接转移）
+  transferRemind(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sample/transfer/remind/${orderId}`,
+      method: 'post',
+    })
+  },
+
   // 作废
   cancel(orderId: number, cancelReason?: string): AxiosPromise<any> {
     return request({

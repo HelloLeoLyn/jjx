@@ -184,6 +184,11 @@ public interface ISampleOrderService {
     java.util.Map<String, Object> confirmTransfer(com.jjx.sales.dto.transfer.SampleTransferConfirmDTO dto);
 
     /**
+     * 打样转标准-资料转移提醒（DEV-1228）：不再直接转移，发布任务给工程执行资料转移
+     */
+    java.util.Map<String, Object> remindTransfer(Long orderId);
+
+    /**
      * 样品单列表（DEV-526 打样平台：支持按是否已接单筛选）
      */
     List<com.jjx.sales.domain.entity.SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor);

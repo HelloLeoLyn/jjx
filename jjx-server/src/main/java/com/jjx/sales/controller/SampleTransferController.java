@@ -53,4 +53,15 @@ public class SampleTransferController extends BaseController {
     public Result<java.util.Map<String, Object>> confirm(@RequestBody SampleTransferConfirmDTO dto) {
         return Result.success(sampleOrderService.confirmTransfer(dto));
     }
+
+    /**
+     * 打样转标准-资料转移提醒（DEV-1228）
+     * 转量产就绪检查处置栏：不再直接转移，改为发布任务提醒工程执行资料转移
+     */
+    @Operation(summary = "资料转移提醒（发布任务给工程执行资料转移）")
+    @SaCheckPermission(value = {"sales:sample:convert", "sales:sample:view", "engineering:sample:workbench"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
+    @PostMapping("/remind/{orderId}")
+    public Result<java.util.Map<String, Object>> remind(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.remindTransfer(orderId));
+    }
 }

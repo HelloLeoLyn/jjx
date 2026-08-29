@@ -66,7 +66,14 @@
             >
           </template>
           <template v-else-if="scope.row.action === 'transfer'">
-            <el-button link type="warning" size="small" @click="goTransfer">去资料转移</el-button>
+            <el-button
+              link
+              type="warning"
+              size="small"
+              :loading="reminding"
+              @click="remindTransfer(scope.row)"
+              >提醒工程</el-button
+            >
           </template>
           <span v-else>-</span>
         </template>
@@ -101,8 +108,6 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   success: []
-  /** 去资料转移（关闭弹窗，父组件触发 handleTransfer） */
-  goTransfer: []
 }>()
 
 const visible = computed({
@@ -113,6 +118,7 @@ const visible = computed({
 const items = ref<any[]>([])
 const loading = ref(false)
 const submitting = ref(false)
+const reminding = ref(false)
 
 const allPass = computed(
   () => items.value.length > 0 && items.value.every((i) => i.pass || i.level !== 'required')
@@ -168,9 +174,27 @@ function goListProduct() {
   window.open('/product/list', '_blank')
 }
 
-function goTransfer() {
-  visible.value = false
-  emit('goTransfer')
+/** 提醒工程执行资料转移（DEV-1228：发布任务给工程，不再直接转移） */
+async function remindTransfer(row: any) {
+  if (!props.orderId) return
+  reminding.value = true
+  try {
+    const res: any = await sampleOrderApi.transferRemind(props.orderId)
+    if (res?.code === 200) {
+      const data = res.data || {}
+      if (data.duplicated) {
+        ElMessage.info(data.message || '该样品单已提醒过工程')
+      } else {
+        ElMessage.success('已提醒工程处理资料转移')
+      }
+    } else {
+      ElMessage.error(res?.msg || '提醒失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '提醒失败')
+  } finally {
+    reminding.value = false
+  }
 }
 
 async function submit() {
