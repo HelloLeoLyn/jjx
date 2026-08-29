@@ -132,7 +132,6 @@ public class TraceServiceImpl implements TraceService {
         event.setEventId("oper-" + log.getId());
         event.setTime(log.getCreateTime());
         event.setBizStatus(log.getBizStatus());
-        event.setActionTitle(actionTitle(log.getOperUrl(), log.getOperParam(), log.getBusinessType()));
         event.setOperatorName(log.getRealName() != null && !log.getRealName().isBlank()
                 ? log.getRealName() : log.getUsername());
         event.setResult(log.getStatus());
@@ -168,41 +167,6 @@ public class TraceServiceImpl implements TraceService {
         if (code.contains("SEND") || code.contains("发送报价")) return "SEND";
         if (code.contains("CANCEL") || code.contains("取消")) return "CANCEL";
         return null;
-    }
-
-    private String reviewActionTitle(String actionCode) {
-        if (actionCode != null) {
-            String exactCode = actionCode.toUpperCase(Locale.ROOT);
-            if (exactCode.contains("CUSTOMER_REJECT")) return "客户拒绝报价";
-            if (exactCode.contains("CUSTOMER_CONFIRM")) return "客户确认报价";
-        }
-        String semantic = semantic(actionCode);
-        if (semantic == null) return actionCode == null ? "审核操作" : actionCode;
-        return switch (semantic) {
-            case "SUBMIT" -> "提交审核";
-            case "APPROVE" -> "审核通过";
-            case "REJECT" -> "审核驳回";
-            case "SEND" -> "发送报价";
-            case "CONFIRM" -> "客户确认报价";
-            case "CANCEL" -> "取消";
-            default -> "审核操作";
-        };
-    }
-
-    private String actionTitle(String operUrl, String operParam, Integer businessType) {
-        String semantic = semantic((operUrl == null ? "" : operUrl) + " " + (operParam == null ? "" : operParam));
-        if (semantic != null) return reviewActionTitle(semantic);
-        if (operParam != null && !operParam.isBlank() && operParam.length() <= 60) return operParam;
-        return switch (businessType == null ? 9 : businessType) {
-            case 1 -> "创建";
-            case 2 -> "修改";
-            case 3 -> "删除";
-            case 4 -> "导出";
-            case 5 -> "导入";
-            case 6 -> "审批";
-            case 11 -> "转换";
-            default -> "业务操作";
-        };
     }
 
     private String asString(Object value) { return value == null ? null : String.valueOf(value); }

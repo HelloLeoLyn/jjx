@@ -9,4 +9,6 @@ import lombok.Data;
 public class EngineeringBomEditVO {
     private boolean success;
     private String detailMessage;
+    /** 修改完成后 BOM 在库中的真实状态（供 @Log bizStatus 取值），对应 ProductEnums.BomStatus */
+    private String bizStatus;
 }

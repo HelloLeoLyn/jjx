@@ -54,6 +54,24 @@ class OperLogAspectTest {
             "T(com.jjx.sales.enums.InquiryStatus).DRAFT"));
     }
 
+    /**
+     * BOM 的 @Log 用 T(嵌套枚举).X.getValue() 取状态常量：
+     * 内部类枚举必须能被 SpEL 解析，否则会静默落 0（与 InquiryStatus 那种裸枚举一样）。
+     */
+    @Test
+    void shouldResolveNestedEnumBizStatusByValue() throws Exception {
+        StandardEvaluationContext context = new StandardEvaluationContext();
+
+        assertEquals(1, aspect.resolveBizStatus(context,
+            "T(com.jjx.product.enums.ProductEnums.BomStatus).DRAFT.getValue()"));
+        assertEquals(2, aspect.resolveBizStatus(context,
+            "T(com.jjx.product.enums.ProductEnums.BomStatus).REVIEWING.getValue()"));
+        assertEquals(3, aspect.resolveBizStatus(context,
+            "T(com.jjx.product.enums.ProductEnums.BomStatus).APPROVED.getValue()"));
+        assertEquals(4, aspect.resolveBizStatus(context,
+            "T(com.jjx.product.enums.ProductEnums.BomStatus).REJECT.getValue()"));
+    }
+
     @Test
     void shouldRecognizeOnlyAttachmentIdsDetailExpression() {
         assertEquals(true, OperLogAspect.isAttachmentDetailExpression("#attachmentIds"));

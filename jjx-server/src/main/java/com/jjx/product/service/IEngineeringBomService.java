@@ -52,13 +52,17 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
 
     /**
      * 删除BOM（包含明细）
+     *
+     * @return 删除成功时返回该 BOM 删除前的 approve_status（供 @Log bizStatus 取值），失败返回 null
      */
-    boolean removeBomWithItems(Long bomId);
+    Integer removeBomWithItems(Long bomId);
 
     /**
      * 设置默认BOM
+     *
+     * @return 成功时返回该 BOM 当前的 approve_status（本操作不改状态），失败返回 null
      */
-    boolean setDefaultBom(Long bomId);
+    Integer setDefaultBom(Long bomId);
 
     /**
      * 获取产品的默认BOM
@@ -90,10 +94,14 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
      */
     EngineeringBomVO copyAsNewVersion(Long bomId, String newVersion);
 
+    /** 审批通过：固定流转到 BomStatus.APPROVED */
     boolean approve(UpdateBomStatusDTO dto);
+
+    /** 提交审批：固定流转到 BomStatus.REVIEWING */
     boolean submitApprove(Long bomId);
 
     boolean updateStatus(UpdateBomStatusDTO dto);
 
+    /** 审批驳回：固定流转到 BomStatus.REJECT */
     boolean reject(UpdateBomStatusDTO dto);
 }

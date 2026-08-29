@@ -166,6 +166,7 @@ import {
 } from '@/enums/sales'
 import { ExecutionStatusEnum, ProductionOrderStatusEnum } from '@/enums/production'
 import { PurchaseOrderStatusEnum } from '@/enums/purchase/order'
+import { BusinessTypeEnum } from '@/enums/system/LogEnum'
 
 interface TraceAttachment {
   id: number
@@ -353,29 +354,27 @@ async function loadEvents() {
   }
 }
 
-/** 后端只透传原文，前端解析 detail 并识别审核动作（标志驱动） */
+/** 后端只透传原文，前端解析 detail；标题按 businessType 枚举映射，不做 URL 语义判断 */
 function enrichEvent(row: any): TraceEvent {
   const detail = parseDetail(row.detail)
-  const actionCode = semanticAction(row.operUrl, row.operParam)
+  // 审批类操作（businessType=6）才有审核意见可拉取，按枚举识别，不做 URL 猜测
+  const isReview = row.businessType === 6
   return {
     ...row,
+    actionTitle: buildActionTitle(row),
     changes: detail.changes,
     attachments: detail.attachments,
-    actionCode: actionCode || undefined,
-    isReview: !!actionCode,
+    actionCode: isReview ? 'REVIEW' : undefined,
+    isReview,
   }
 }
 
-/** 前端语义识别：审核动作关键词（与后端 actionTitle 映射保持一致） */
-function semanticAction(operUrl?: string, operParam?: string): string | null {
-  const value = `${operUrl || ''} ${operParam || ''}`.toUpperCase()
-  if (/REJECT|驳回|拒绝/.test(value)) return 'REJECT'
-  if (/APPROVE|审核通过|审批通过/.test(value)) return 'APPROVE'
-  if (/SUBMIT|提交审核/.test(value)) return 'SUBMIT'
-  if (/CUSTOMER_CONFIRM|CONFIRM|客户确认/.test(value)) return 'CONFIRM'
-  if (/SEND|发送报价/.test(value)) return 'SEND'
-  if (/CANCEL|取消/.test(value)) return 'CANCEL'
-  return null
+/** 流水标题：module（去"管理"后缀）+ 业务类型枚举，如「产品BOM - 修改」 */
+function buildActionTitle(row: any): string {
+  const module = (row.module || '').replace(/管理$/, '')
+  const bizLabel = BusinessTypeEnum.getLabel(row.businessType)
+  if (module && bizLabel) return `${module} - ${bizLabel}`
+  return bizLabel || module || '操作'
 }
 
 function handlePageChange() {
@@ -421,13 +420,10 @@ async function loadRowContent(row: TraceEvent) {
   }
 }
 
-/** 按动作语义 + 时间最近匹配该行对应的审核记录 */
+/** 按时间最近匹配该行对应的审核记录（审核记录 actionCode 与日志行 actionCode 不做语义猜测，直接按时间就近） */
 function matchReview(reviews: ReviewHistory[], row: TraceEvent): ReviewHistory | null {
   if (!reviews?.length) return null
-  const candidates = reviews.filter(
-    (r) => semanticAction(r.actionCode, r.actionName) === row.actionCode
-  )
-  const list = candidates.length ? candidates : reviews
+  const list = reviews
   const target = row.time
     ? new Date(String(row.time).replace('T', ' ').replace(' ', 'T')).getTime()
     : NaN

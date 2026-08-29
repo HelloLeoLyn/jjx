@@ -22,6 +22,7 @@ import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.query.EngineeringBomQuery;
 import com.jjx.product.domain.vo.EngineeringBomVO;
 import com.jjx.product.enums.ProductEnums;
+import com.jjx.product.enums.ProductEnums.BomStatus;
 import com.jjx.product.mapper.EngineeringBomItemMapper;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.mapper.ProductMapper;
@@ -289,6 +290,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         com.jjx.product.domain.vo.EngineeringBomEditVO vo = new com.jjx.product.domain.vo.EngineeringBomEditVO();
         vo.setSuccess(true);
         vo.setDetailMessage(changes.isEmpty() ? null : changeRecorder.toDetailJson(changes));
+        vo.setBizStatus(bom.getApproveStatus()+"");
         return vo;
     }
 
@@ -353,11 +355,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean removeBomWithItems(Long bomId) {
+    public Integer removeBomWithItems(Long bomId) {
         // 检查BOM是否存在
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) {
-            return false;
+            return null;
         }
 
         // 状态校验（2026-08-08 修复：原 "approved".equals(Integer) 永远不生效，已批准BOM可删）
@@ -387,15 +389,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         productBomItemMapper.deleteByBomId(bomId);
 
         // 删除BOM主表
-        return productBomMapper.deleteById(bomId) > 0;
+        // 记录删除时的状态：行已不存在，能反映业务事实的只有删除前的 approve_status
+        return productBomMapper.deleteById(bomId) > 0 ? st : null;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean setDefaultBom(Long bomId) {
+    public Integer setDefaultBom(Long bomId) {
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) {
-            return false;
+            return null;
         }
 
         // 设置当前BOM为默认
@@ -415,7 +418,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             }
         }
 
-        return true;
+        // 本操作只改 is_current，不改 approve_status，直接返回该 BOM 当前状态
+        return bom.getApproveStatus();
     }
 
     @Override

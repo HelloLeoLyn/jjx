@@ -37,8 +37,9 @@ public @interface Log {
     /**
      * 业务状态值，如 draft / converted / approved
      * 对应实体中的 *Status 字段值；支持 SpEL 表达式（如 "#approved ? 6 : 3"）
+     * 设置为必填
      */
-    String bizStatus() default "0";
+    String bizStatus() default "";
 
     /** 详情文本或 JSON 的 SpEL 表达式，求值结果原样写入 detail。 */
     String detail() default "";

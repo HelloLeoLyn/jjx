@@ -43,7 +43,6 @@ class TraceServiceImplTest {
         assertEquals(2, result.getTotal());
         assertEquals("oper-1", result.getRecords().get(0).getEventId());
         assertEquals("oper-2", result.getRecords().get(1).getEventId());
-        assertEquals("创建", result.getRecords().get(0).getActionTitle());
         assertEquals("T-100", result.getRecords().get(0).getTraceId());
     }
 
@@ -60,7 +59,6 @@ class TraceServiceImplTest {
         PageResult<UnifiedTraceEventVO> result = service.getEvents("T-101", 1, 20);
 
         UnifiedTraceEventVO event = result.getRecords().get(0);
-        assertEquals("审核通过", event.getActionTitle());
         assertEquals("approveOrder", event.getOperUrl());
         assertTrue(event.getDetail().contains("\"changes\""));
         assertTrue(event.getDetail().contains("\"attachments\""));

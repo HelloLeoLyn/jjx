@@ -4,26 +4,15 @@ import type {
   FormOptions,
   TableOptions,
 } from '@/components/common-ui/type'
+import { BusinessTypeEnum } from '@/enums/system/LogEnum'
 
-// 业务类型字典（与后端 @Log#businessType 枚举对齐）
-// 对齐后端 BusinessType 枚举 code
-const businessTypeMap: Record<number, string> = {
-  1: '新增',
-  2: '修改',
-  3: '删除',
-  4: '导出',
-  5: '导入',
-  6: '审批',
-  7: '登录',
-  8: '登出',
-  9: '其他',
-  10: '重置密码',
-  11: '转换',
-}
+const businessTypeMap: Record<number, string> = Object.fromEntries(
+  BusinessTypeEnum.items.map((item) => [item.value, item.label])
+) as Record<number, string>
 
-const businessTypeOptions = Object.entries(businessTypeMap).map(([value, label]) => ({
-  value: Number(value),
-  label,
+const businessTypeOptions = BusinessTypeEnum.items.map((item) => ({
+  value: item.value,
+  label: item.label,
 }))
 
 // 搜索表单配置（对齐后端 OperLogController 查询参数）

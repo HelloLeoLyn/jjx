@@ -37,7 +37,6 @@ import java.util.List;
 public class BomController extends BaseController {
 
     private final IEngineeringBomService productBomService;
-    private final EngineeringBomMapper productBomMapper;
 
     /**
      * 获取BOM列表
@@ -141,7 +140,8 @@ public class BomController extends BaseController {
      */
     @PostMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.INSERT, bizType = "'bom'",
-         bizId = "#result.data")
+         bizId = "#result.data",
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).DRAFT.getValue()")
     @SaCheckPermission("engineering:bom:add")
     public Result<Long> add(@Validated @RequestBody EngineeringBomDTO dto) {
         Long bomId = productBomService.createBomReturnId(dto);
@@ -153,7 +153,7 @@ public class BomController extends BaseController {
      */
     @PutMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#dto.bomId",
-         detail = "#result.data.detailMessage")
+         bizStatus = "#result.data.bizStatus", detail = "#result.data.detailMessage")
     @SaCheckPermission("engineering:bom:edit")
     public Result<EngineeringBomEditVO> edit(@Validated @RequestBody EngineeringBomDTO dto) {
         EngineeringBomEditVO vo = productBomService.updateBomWithDetail(dto);
@@ -164,17 +164,20 @@ public class BomController extends BaseController {
      * 删除BOM
      */
     @DeleteMapping("/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.DELETE, bizType = "'bom'", bizId = "#bomId")
+    @Log(module = "产品BOM管理", businessType = BusinessType.DELETE, bizType = "'bom'", bizId = "#bomId",
+         bizStatus = "#result.data")
     @SaCheckPermission("engineering:bom:delete")
-    public Result<Void> remove(@PathVariable Long bomId) {
-        return productBomService.removeBomWithItems(bomId) ? Result.success() : Result.error();
+    public Result<Integer> remove(@PathVariable Long bomId) {
+        Integer statusBeforeDelete = productBomService.removeBomWithItems(bomId);
+        return statusBeforeDelete != null ? Result.success(statusBeforeDelete) : Result.error();
     }
 
     /**
      * 提交BOM审批
      */
     @PutMapping("/submit/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId",
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REVIEWING.getValue()")
     @SaCheckPermission("engineering:bom:edit")
     public Result<Void> submit(@PathVariable Long bomId) {
         return productBomService.submitApprove(bomId) ? Result.success() : Result.error();
@@ -184,7 +187,8 @@ public class BomController extends BaseController {
      * 审批BOM
      */
     @PutMapping("/approve/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId")
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId",
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).APPROVED.getValue()")
     @SaCheckPermission("engineering:bom:approve")
     public Result<Void> approve(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.approve(dto) ? Result.success() : Result.error();
@@ -194,7 +198,8 @@ public class BomController extends BaseController {
      * 驳回BOM
      */
     @PutMapping("/reject/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId")
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId",
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REJECT.getValue()")
     @SaCheckPermission("engineering:bom:reject")
     public Result<Void> reject(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.reject(dto) ? Result.success() : Result.error();
@@ -204,10 +209,12 @@ public class BomController extends BaseController {
      * 设置默认BOM
      */
     @PutMapping("/setDefault/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId",
+         bizStatus = "#result.data")
     @SaCheckPermission("engineering:bom:edit")
-    public Result<Void> setDefault(@PathVariable Long bomId) {
-        return productBomService.setDefaultBom(bomId) ? Result.success() : Result.error();
+    public Result<Integer> setDefault(@PathVariable Long bomId) {
+        Integer bizStatus = productBomService.setDefaultBom(bomId);
+        return bizStatus != null ? Result.success(bizStatus) : Result.error();
     }
 
     /**

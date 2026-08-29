@@ -2,6 +2,27 @@
 import { createEnum } from '../base'
 
 /**
+ * 业务类型枚举（与后端 @Log#businessType 枚举对齐：BusinessType.java）
+ * 操作日志/流水标题统一按此映射，不做 URL 语义判断
+ */
+export const BusinessTypeEnum = createEnum({
+  items: [
+    { value: 1, label: '新增', tagProps: { type: 'primary' } },
+    { value: 2, label: '修改', tagProps: { type: 'warning' } },
+    { value: 3, label: '删除', tagProps: { type: 'danger' } },
+    { value: 4, label: '导出', tagProps: { type: 'success' } },
+    { value: 5, label: '导入', tagProps: { type: 'success' } },
+    { value: 6, label: '审批', tagProps: { type: 'warning' } },
+    { value: 7, label: '登录', tagProps: { type: 'info' } },
+    { value: 8, label: '登出', tagProps: { type: 'info' } },
+    { value: 9, label: '其他', tagProps: { type: 'info' } },
+    { value: 10, label: '重置密码', tagProps: { type: 'warning' } },
+    { value: 11, label: '转换', tagProps: { type: 'primary' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
+/**
  * 操作类型枚举
  */
 export const OperTypeEnum = createEnum({
