@@ -9,6 +9,7 @@ import com.jjx.production.domain.dto.ProductionOperationExecutionQueryDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionUpdateDTO;
 import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
 import com.jjx.production.service.ProductionOperationExecutionService;
+import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.system.utils.SecurityUtils;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
@@ -32,6 +33,7 @@ import java.util.List;
 public class ProductionOperationExecutionController {
 
     private final ProductionOperationExecutionService productionOperationExecutionService;
+    private final ProductionRoleResolver productionRoleResolver;
 
     @Operation(summary = "创建工序执行记录")
     @PostMapping
@@ -89,8 +91,8 @@ public class ProductionOperationExecutionController {
     @GetMapping("/global-list")
     @SaCheckPermission("production:operation-execution:view")
     public Result<List<ProductionOperationExecutionVO>> queryGlobalExecutionList(ProductionOperationExecutionQueryDTO queryDTO) {
-        if (!SecurityUtils.isGlobalProductionScope()) {
-            throw new BusinessException("无全部工序数据范围");
+        if (!productionRoleResolver.isGlobalProductionScope()) {
+            throw new BusinessException("无全部工序数据范围：请在 系统管理→基础配置→系统参数→生产配置 中配置 production_global_scope 名单");
         }
         return Result.success(productionOperationExecutionService.queryExecutionList(queryDTO));
     }

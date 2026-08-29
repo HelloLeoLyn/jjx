@@ -11,6 +11,7 @@ import com.jjx.production.domain.dto.WorkReportSubmitDTO;
 import com.jjx.production.domain.vo.WorkReportVO;
 import com.jjx.production.service.WorkReportActionService;
 import com.jjx.production.service.WorkReportReadService;
+import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.system.utils.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,6 +39,7 @@ public class WorkReportController extends BaseController {
 
     private final WorkReportReadService workReportReadService;
     private final WorkReportActionService workReportActionService;
+    private final ProductionRoleResolver productionRoleResolver;
 
     @Operation(summary = "报工单条详情")
     @SaCheckPermission("production:operation-execution:view")
@@ -65,7 +67,7 @@ public class WorkReportController extends BaseController {
     @GetMapping("/pending-approval")
     public Result<PageResult<WorkReportVO>> pendingApproval(WorkReportQueryDTO queryDTO) {
         return Result.success(workReportReadService.pagePendingApproval(queryDTO,
-                SecurityUtils.getUserId(), SecurityUtils.hasRole("production:all")));
+                SecurityUtils.getUserId(), productionRoleResolver.isGlobalProductionScope()));
     }
 
     // ==================== 写动作 ====================

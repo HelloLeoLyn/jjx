@@ -15,7 +15,7 @@ class WorkReportActionServicePrecisionTest {
     @Test
     void submitRejectsQuantityWithThreeDecimalPlaces() {
         WorkReportActionServiceImpl service = new WorkReportActionServiceImpl(
-                null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
         WorkReportSubmitDTO dto = new WorkReportSubmitDTO();
         dto.setTaskId(1L);
         dto.setExecutionId(2L);

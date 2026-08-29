@@ -7,6 +7,8 @@ import com.jjx.system.domain.entity.SysConfig;
 import com.jjx.system.mapper.SysConfigMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.jjx.system.event.SysConfigChangedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -19,6 +21,7 @@ import java.util.Map;
 public class SysConfigService {
 
     private final SysConfigMapper configMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public List<SysConfig> listAll() {
         return configMapper.selectList(Wrappers.lambdaQuery(SysConfig.class)
@@ -56,5 +59,10 @@ public class SysConfigService {
         if (config == null) throw new BusinessException("配置不存在");
         config.setConfigValue(value);
         configMapper.updateById(config);
+        try {
+            eventPublisher.publishEvent(new SysConfigChangedEvent(this, config.getConfigGroup(), config.getConfigKey()));
+        } catch (Exception e) {
+            log.warn("发布系统配置更新事件失败 configKey={}: {}", config.getConfigKey(), e.getMessage());
+        }
     }
 }

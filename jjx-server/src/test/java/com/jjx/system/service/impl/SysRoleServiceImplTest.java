@@ -6,6 +6,8 @@ import com.jjx.system.domain.entity.SysRoleMenu;
 import com.jjx.system.mapper.SysMenuMapper;
 import com.jjx.system.mapper.SysRoleMapper;
 import com.jjx.system.mapper.SysRoleMenuMapper;
+import com.jjx.system.mapper.SysConfigMapper;
+import com.jjx.system.service.SysConfigService;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -18,6 +20,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class SysRoleServiceImplTest {
 
@@ -56,6 +59,23 @@ class SysRoleServiceImplTest {
         assertEquals(1, inserted.size());
     }
 
+    @Test
+    void deleteRoleReferencedByProductionConfigReturnsFalse() {
+        SysRole role = new SysRole();
+        role.setRoleId(20L);
+        role.setRoleKey("production:manager");
+        SysRoleMapper roleMapper = mapper(SysRoleMapper.class, Map.of("selectById", role));
+        com.jjx.system.domain.entity.SysConfig config = new com.jjx.system.domain.entity.SysConfig();
+        config.setConfigKey("production_admin");
+        config.setConfigValue("production:all, production:manager");
+        SysConfigMapper configMapper = mapper(SysConfigMapper.class, Map.of("selectList", List.of(config)));
+        SysConfigService configService = new SysConfigService(configMapper, event -> { });
+        SysRoleServiceImpl service = new SysRoleServiceImpl(
+                roleMapper, null, null, null, null, null, null, configService);
+
+        assertFalse(service.deleteRoleById(20L));
+    }
+
     private SysRoleServiceImpl service(List<SysMenu> menus, List<SysRoleMenu> inserted) {
         SysRole role = new SysRole();
         role.setRoleId(15L);
@@ -73,7 +93,7 @@ class SysRoleServiceImplTest {
                     }
                     return null;
                 });
-        return new SysRoleServiceImpl(roleMapper, null, null, roleMenuMapper, menuMapper, null, null);
+        return new SysRoleServiceImpl(roleMapper, null, null, roleMenuMapper, menuMapper, null, null, null);
     }
 
     private SysMenu menu(Long menuId, Long parentId) {

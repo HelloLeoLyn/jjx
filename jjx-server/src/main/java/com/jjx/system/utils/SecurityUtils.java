@@ -77,13 +77,4 @@ public class SecurityUtils {
         }
     }
 
-    /**
-     * 全局生产数据范围（查询视角，与动作权限解耦）：
-     * 超级管理员（*:*:* 或 role_key=admin）或 生产全局角色（role_key=production:all）→ true。
-     * 注意：与 production:task:dispatch 等动作权限无关——未来某角色获得 dispatch 不自动获得全局可见范围；
-     *       普通生产角色（production:ops/dispatch_mgr/dispatch_leader/worker）即使有 task:view 也不属于全局视角。
-     */
-    public static boolean isGlobalProductionScope() {
-        return hasPermission("*:*:*") || hasRole("admin") || hasRole("production:all");
-    }
 }

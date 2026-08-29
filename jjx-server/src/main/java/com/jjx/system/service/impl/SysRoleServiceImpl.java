@@ -21,6 +21,7 @@ import com.jjx.system.domain.vo.SysRoleVO;
 import com.jjx.system.domain.vo.SysUserVO;
 import com.jjx.system.mapper.*;
 import com.jjx.system.service.ISysRoleService;
+import com.jjx.system.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
     private final SysMenuMapper menuMapper;
     private final SysUserConverter sysUserConverter;
     private final SysRoleConverter sysRoleConverter;
+    private final SysConfigService sysConfigService;
 
     @Override
     public PageResult<SysRole> selectRoleList(SysRole role, Integer pageNum, Integer pageSize) {
@@ -205,12 +207,28 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
 
     @Override
     public boolean deleteRoleById(Long roleId) {
+        SysRole role = roleMapper.selectById(roleId);
+        if (role != null && isReferencedByProductionConfig(role.getRoleKey())) {
+            return false;
+        }
         // 检查角色是否被用户使用
         if (countUserRoleByRoleId(roleId) > 0) {
             // 有用户使用，不能删除
             return false;
         }
         return removeById(roleId);
+    }
+
+    private boolean isReferencedByProductionConfig(String roleKey) {
+        if (StringUtils.isBlank(roleKey)) {
+            return false;
+        }
+        Map<String, String> configs = sysConfigService.listActiveMapByGroup("production_config");
+        return configs.values().stream()
+                .filter(StringUtils::isNotBlank)
+                .flatMap(value -> Arrays.stream(value.split(",")))
+                .map(String::trim)
+                .anyMatch(roleKey::equals);
     }
 
     @Override

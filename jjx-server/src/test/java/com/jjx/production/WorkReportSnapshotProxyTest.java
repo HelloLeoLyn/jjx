@@ -12,6 +12,7 @@ import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionTaskMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
+import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.production.service.ProductionTaskService;
 import com.jjx.production.service.QualityInspectionService;
 import com.jjx.production.service.WorkReportProjectionService;
@@ -50,6 +51,7 @@ class WorkReportSnapshotProxyTest {
     private ProductionTaskService taskService;
     private WorkReportProjectionService projectionService;
     private WorkReportReadService readService;
+    private ProductionRoleResolver roleResolver;
     private JdbcTemplate jdbcTemplate;
     private WorkReportActionServiceImpl service;
 
@@ -61,11 +63,13 @@ class WorkReportSnapshotProxyTest {
         taskService = mock(ProductionTaskService.class);
         projectionService = mock(WorkReportProjectionService.class);
         readService = mock(WorkReportReadService.class);
+        roleResolver = mock(ProductionRoleResolver.class);
         jdbcTemplate = mock(JdbcTemplate.class);
         service = new WorkReportActionServiceImpl(workReportMapper, executionMapper, taskMapper,
                 taskService, projectionService, readService, mock(QualityInspectionService.class),
                 jdbcTemplate, mock(NotificationService.class),
-                mock(com.jjx.framework.common.RedisSequenceService.class));
+                mock(com.jjx.framework.common.RedisSequenceService.class),
+                roleResolver);
     }
 
     @Test
@@ -122,12 +126,10 @@ class WorkReportSnapshotProxyTest {
         ProductionWorkReport report = pendingReport(30L);
         when(workReportMapper.selectById(1L)).thenReturn(report);
 
-        try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
-            security.when(() -> SecurityUtils.hasRole("production:all")).thenReturn(false);
-            BusinessException error = assertThrows(BusinessException.class,
-                    () -> service.approve(1L, null, "new-parent", 31L));
-            assertTrue(error.getMessage().contains("提交时点审批人"));
-        }
+        when(roleResolver.isGlobalProductionScope()).thenReturn(false);
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.approve(1L, null, "new-parent", 31L));
+        assertTrue(error.getMessage().contains("提交时点审批人"));
         verify(taskMapper, never()).selectById(anyLong());
     }
 
@@ -137,9 +139,9 @@ class WorkReportSnapshotProxyTest {
         when(workReportMapper.selectById(1L)).thenReturn(report);
         when(workReportMapper.update(any(), any())).thenReturn(1);
         when(readService.getById(1L)).thenReturn(new WorkReportVO());
+        when(roleResolver.isGlobalProductionScope()).thenReturn(false);
 
         try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
-            security.when(() -> SecurityUtils.hasRole("production:all")).thenReturn(false);
             security.when(SecurityUtils::getRealName).thenReturn("组长");
             service.approve(1L, null, "leader", 30L);
         }
@@ -151,9 +153,10 @@ class WorkReportSnapshotProxyTest {
         when(workReportMapper.selectById(1L)).thenReturn(report);
         when(workReportMapper.update(any(), any())).thenReturn(1);
         when(readService.getById(1L)).thenReturn(new WorkReportVO());
+        when(roleResolver.isGlobalProductionScope()).thenReturn(false, true);
 
         try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
-            security.when(() -> SecurityUtils.hasRole("production:all")).thenReturn(false, true);
+            security.when(SecurityUtils::getRealName).thenReturn("生产管理员");
             assertThrows(BusinessException.class, () -> service.approve(1L, null, "worker", 10L));
             service.approve(1L, null, "manager", 99L);
         }

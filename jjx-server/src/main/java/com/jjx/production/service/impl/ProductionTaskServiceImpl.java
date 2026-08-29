@@ -27,6 +27,7 @@ import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionTaskAssigneeResolver;
 import com.jjx.production.service.ProductionTaskService;
+import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -85,7 +86,6 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     private static final String ACTION_RECALL = "RECALL";
     private static final String ACTION_RETURN = "RETURN";
     private static final String ACTION_COMPLETE = "COMPLETE";
-    private static final String ROLE_PRODUCTION_MANAGER = "production:all";
     static final BigDecimal COMPLETION_TOLERANCE = new BigDecimal("0.01");
 
     private final ProductionTaskMapper productionTaskMapper;
@@ -94,6 +94,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     private final ProductionWorkReportMapper productionWorkReportMapper;
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final ProductionRoleResolver productionRoleResolver;
 
     // ==================== P1 Foundation ====================
 
@@ -131,7 +132,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         
         LambdaQueryWrapper<ProductionTask> wrapper = Wrappers.lambdaQuery();
 
-        if (SecurityUtils.isGlobalProductionScope()) {
+        if (productionRoleResolver.isGlobalProductionScope()) {
             wrapper.isNull(ProductionTask::getParentTaskId);
         } else {
             wrapper.eq(ProductionTask::getAssigneeId, SecurityUtils.getUserId());
@@ -533,7 +534,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
         if (task.getAssigneeId() == null) {
             // 首次分配：仅生产管理者拥有首次分配权限；候选树根 = 当前登录人（自己 + 全部层级下属）
-            if (!SecurityUtils.hasRole(ROLE_PRODUCTION_MANAGER)) {
+            if (!productionRoleResolver.isProductionAdmin()) {
                 return new ArrayList<>();
             }
             Long loginUserId;
@@ -578,8 +579,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             throw new BusinessException("无法获取当前登录人");
         }
         if (task.getAssigneeId() == null) {
-            if (!SecurityUtils.hasRole(ROLE_PRODUCTION_MANAGER)) {
-                throw new BusinessException("仅生产管理者可进行首次分配");
+            if (!productionRoleResolver.isProductionAdmin()) {
+                throw new BusinessException("无首次分配权限：当前角色不在 系统管理→基础配置→系统参数→生产配置 的 production_admin 名单中");
             }
         } else if (!loginUserId.equals(task.getAssigneeId())) {
             throw new BusinessException("仅当前任务执行人可分配");
@@ -942,13 +943,13 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             throw new BusinessException("无法获取当前登录人");
         }
         if (task.getAssigneeId() == null) {
-            if (!SecurityUtils.hasRole(ROLE_PRODUCTION_MANAGER)) {
-                throw new BusinessException("仅生产管理者可执行该操作");
+            if (!productionRoleResolver.isProductionAdmin()) {
+                throw new BusinessException("无生产管理权限：当前角色不在 系统管理→基础配置→系统参数→生产配置 的 production_admin 名单中");
             }
             return;
         }
-        if (!userId.equals(task.getAssigneeId()) && !SecurityUtils.hasRole(ROLE_PRODUCTION_MANAGER)) {
-            throw new BusinessException("仅当前任务执行人或生产管理者可执行该操作");
+        if (!userId.equals(task.getAssigneeId()) && !productionRoleResolver.isProductionAdmin()) {
+            throw new BusinessException("仅当前任务执行人或生产管理者可执行；生产管理者请在 系统参数→生产配置 的 production_admin 名单中配置");
         }
     }
 
@@ -1148,7 +1149,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         boolean loginIsProdMgr = false;
         try {
             loginUserId = SecurityUtils.getUserId();
-            loginIsProdMgr = SecurityUtils.hasRole(ROLE_PRODUCTION_MANAGER);
+            loginIsProdMgr = productionRoleResolver.isProductionAdmin();
         } catch (Exception e) {
             log.warn("获取登录人失败，首次分配能力视为无: {}", e.getMessage());
         }

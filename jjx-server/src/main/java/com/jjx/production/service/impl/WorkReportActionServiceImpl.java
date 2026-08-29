@@ -20,6 +20,7 @@ import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionTaskMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionTaskService;
+import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.production.service.QualityInspectionService;
 import com.jjx.production.service.WorkReportActionService;
 import com.jjx.production.service.WorkReportProjectionService;
@@ -70,6 +71,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final JdbcTemplate jdbcTemplate;
     private final NotificationService notificationService;
     private final RedisSequenceService redisSequenceService;
+    private final ProductionRoleResolver productionRoleResolver;
 
     private static final String PROJECTION_MISMATCH = "MISMATCH";
     private static final Long SYSTEM_ADMIN_ID = 1L;
@@ -431,7 +433,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
      * 生产管理者（production:all）可批；普通 Task 由 Parent Task assignee 审批；First Task 仅生产管理者审批。
      */
     private void checkApprover(ProductionWorkReport r, Long operatorId) {
-        if (SecurityUtils.hasRole("production:all")) {
+        if (productionRoleResolver.isGlobalProductionScope()) {
             return;
         }
         if (operatorId == null) {
@@ -444,7 +446,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             return;
         }
         // 无快照（历史记录或父任务无执行人）仅允许 production:all 兜底。
-        throw new BusinessException("该报工由生产管理审批");
+        throw new BusinessException("该报工由生产管理审批；请在 系统管理→基础配置→系统参数→生产配置 中配置 production_global_scope 名单");
     }
 
     /** 状态条件更新：PENDING → target（affectedRows=1 才成功；approve/reject 并发只有一个成功，无需 version） */

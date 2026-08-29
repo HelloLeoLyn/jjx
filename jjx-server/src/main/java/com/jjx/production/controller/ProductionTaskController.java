@@ -16,6 +16,7 @@ import com.jjx.production.domain.vo.TaskTreeRowVO;
 import com.jjx.production.domain.vo.MyProductionExecutionVO;
 import com.jjx.production.domain.vo.ChildProcessingDetailVO;
 import com.jjx.production.service.ProductionTaskService;
+import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.system.utils.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -51,6 +52,7 @@ import java.util.Map;
 public class ProductionTaskController {
 
     private final ProductionTaskService productionTaskService;
+    private final ProductionRoleResolver productionRoleResolver;
 
     @Operation(summary = "任务分页查询接口")
     @GetMapping("/page")
@@ -77,7 +79,7 @@ public class ProductionTaskController {
     @GetMapping("/execution-scope")
     @SaCheckPermission("production:operation-execution:view")
     public Result<Map<String, Boolean>> executionScope() {
-        return Result.success(Map.of("global", SecurityUtils.isGlobalProductionScope()));
+        return Result.success(Map.of("global", productionRoleResolver.isGlobalProductionScope()));
     }
 
     @Operation(summary = "任务详情")
