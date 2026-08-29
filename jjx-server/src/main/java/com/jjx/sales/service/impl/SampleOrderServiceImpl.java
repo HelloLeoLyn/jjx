@@ -19,6 +19,7 @@ import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.system.service.LogSaveService;
+import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +65,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
     private final com.jjx.product.mapper.EngineeringFilmMapper engineeringFilmMapper;
     private final LogSaveService logSaveService;
+    private final OperLogChangeRecorder changeRecorder;
     private final com.jjx.sales.mapper.CustomerMapper customerMapper;
 
     // ============ 状态更新辅助 ============
@@ -360,6 +362,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     .map(SampleOrderStatusEnum::getName).orElse("未知");
             throw new BusinessException("仅样品需求已创建状态可编辑，当前状态[" + name + "]");
         }
+        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> oldItems =
+                orderProductService.getListByOrderId(orderId);
         // 客户校验
         com.jjx.sales.domain.entity.SalesCustomer customer = customerMapper.selectById(dto.getCustomerId());
         if (customer == null) {
@@ -400,6 +404,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 技术要求写入工程备注（与创建一致，传承打样工作台）
         upd.setEngineeringNote(dto.getTechRequirement() != null && !dto.getTechRequirement().isEmpty()
                 ? dto.getTechRequirement() : null);
+
+        List<String> changes = new ArrayList<>();
+        diffSampleOrderMainFields(changes, order, upd);
+        diffSampleOrderItems(changes, oldItems, items);
         orderMapper.updateById(upd);
 
         // 产品明细：事务内全量替换（删旧插新）
@@ -435,7 +443,62 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         log.info("样品单[{}] 编辑保存 orderId={}，客户={}，明细{}条", order.getOrderNo(), orderId, customer.getCustomerName(), items.size());
-        return orderMapper.selectById(orderId);
+        SalesOrder result = orderMapper.selectById(orderId);
+        result.setDetailMessage(changes.isEmpty() ? null : changeRecorder.toDetailJson(changes));
+        return result;
+    }
+
+    /** 样品单主表可编辑字段白名单对比。 */
+    private void diffSampleOrderMainFields(List<String> changes, SalesOrder oldOrder, SalesOrder newOrder) {
+        if (!java.util.Objects.equals(oldOrder.getCustomerId(), newOrder.getCustomerId())
+                || !java.util.Objects.equals(oldOrder.getCustomerName(), newOrder.getCustomerName())) {
+            changes.add("客户:" + changeRecorder.fmt(oldOrder.getCustomerName()) + "→"
+                    + changeRecorder.fmt(newOrder.getCustomerName()));
+        }
+        changeRecorder.diff(changes, "交期", changeRecorder.fmtDate(oldOrder.getDeliveryDate()),
+                changeRecorder.fmtDate(newOrder.getDeliveryDate()));
+        changeRecorder.diff(changes, "联系人", oldOrder.getContactPerson(), newOrder.getContactPerson());
+        changeRecorder.diff(changes, "联系电话", oldOrder.getContactPhone(), newOrder.getContactPhone());
+        changeRecorder.diff(changes, "技术要求", oldOrder.getEngineeringNote(), newOrder.getEngineeringNote());
+        changeRecorder.diff(changes, "备注", oldOrder.getRemark(), newOrder.getRemark());
+    }
+
+    /** 全量替换明细只记录摘要，避免逐行字段变更噪音。 */
+    private void diffSampleOrderItems(List<String> changes,
+                                      List<com.jjx.sales.domain.vo.SalesOrderProductVO> oldItems,
+                                      List<com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item> newItems) {
+        List<com.jjx.sales.domain.vo.SalesOrderProductVO> safeOld =
+                oldItems == null ? java.util.Collections.emptyList() : oldItems;
+        changeRecorder.diff(changes, "明细行数", safeOld.size(), newItems.size());
+
+        int oldTotal = safeOld.stream().map(com.jjx.sales.domain.vo.SalesOrderProductVO::getQuantity)
+                .filter(java.util.Objects::nonNull).mapToInt(Integer::intValue).sum();
+        int newTotal = newItems.stream().map(com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item::getQuantity)
+                .filter(java.util.Objects::nonNull).mapToInt(Integer::intValue).sum();
+        changeRecorder.diff(changes, "明细总数量", oldTotal, newTotal);
+
+        java.util.Map<String, String> oldProducts = new java.util.LinkedHashMap<>();
+        for (com.jjx.sales.domain.vo.SalesOrderProductVO item : safeOld) {
+            oldProducts.putIfAbsent(item.getProductCode(), productSummary(item.getProductName(), item.getProductCode()));
+        }
+        java.util.Map<String, String> newProducts = new java.util.LinkedHashMap<>();
+        for (com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item item : newItems) {
+            newProducts.putIfAbsent(item.getProductCode(), productSummary(item.getProductName(), item.getProductCode()));
+        }
+        for (java.util.Map.Entry<String, String> entry : newProducts.entrySet()) {
+            if (!oldProducts.containsKey(entry.getKey())) {
+                changes.add("新增产品:" + entry.getValue());
+            }
+        }
+        for (java.util.Map.Entry<String, String> entry : oldProducts.entrySet()) {
+            if (!newProducts.containsKey(entry.getKey())) {
+                changes.add("移除产品:" + entry.getValue());
+            }
+        }
+    }
+
+    private String productSummary(String productName, String productCode) {
+        return changeRecorder.fmt(productName) + "(" + changeRecorder.fmt(productCode) + ")";
     }
 
     @Override

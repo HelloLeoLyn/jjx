@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.jjx.common.core.domain.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -351,6 +352,11 @@ public class SalesOrder extends BaseEntity {
      */
     @TableField(exist = false)
     private String inquiryNo;
+
+    /** 当前操作的字段级变更详情，仅供操作日志切面读取。 */
+    @TableField(exist = false)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String detailMessage;
 
     /**
      * 删除标志 (0: 正常, 1: 删除)

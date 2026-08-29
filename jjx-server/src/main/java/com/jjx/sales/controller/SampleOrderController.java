@@ -39,7 +39,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "更新样品单（驳回后编辑：仅样品需求已创建状态可编辑，明细全量替换）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", traceId = "#result.data.traceId", bizStatus = "1")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", traceId = "#result.data.traceId", bizStatus = "1", detail = "#result.data.detailMessage")
     @SaCheckPermission("sales:sample:edit")
     @PutMapping("/{orderId}")
     public Result<SalesOrder> update(@PathVariable Long orderId,
