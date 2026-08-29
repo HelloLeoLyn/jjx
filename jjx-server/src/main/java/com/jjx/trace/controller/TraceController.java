@@ -26,10 +26,15 @@ public class TraceController {
     @Operation(summary = "按 trace_id 查询操作流水（主表，分页）")
     @GetMapping("/events")
     public Result<PageResult<UnifiedTraceEventVO>> getEvents(
-            @RequestParam String traceId,
+            @RequestParam(required = false) String traceId,
+            @RequestParam(required = false) String bizType,
+            @RequestParam(required = false) Long bizId,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.success(traceService.getEvents(traceId, pageNum, pageSize));
+        if (traceId != null && !traceId.isBlank()) {
+            return Result.success(traceService.getEvents(traceId, pageNum, pageSize));
+        }
+        return Result.success(traceService.getEventsByBiz(bizType, bizId, pageNum, pageSize));
     }
 
     @Operation(summary = "按业务单据查询审核流水（review_flow + 报价 sales_quotation_flow）")

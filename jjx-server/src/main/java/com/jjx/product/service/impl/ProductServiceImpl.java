@@ -53,6 +53,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final com.jjx.sales.mapper.SalesQuotationItemMapper quotationItemMapper;
     private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
     private final com.jjx.sales.mapper.CustomerMapper salesCustomerMapper;
+    private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     @Override
     public List<ProductVo> getProductList(ProductQuery query) {
         LambdaQueryWrapper<Product> wrapper = buildWrapper(query);
@@ -479,6 +480,79 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         upd.setProductStatus(ProductEnums.Status.CANCELLED.getValue());
         productMapper.updateById(upd);
         return true;
+    }
+
+    /**
+     * 产品编辑变更明细（产品流水节点展开内容）
+     * 白名单 = 前端表单可编辑字段，排除审计/状态流转字段
+     */
+    @Override
+    public String buildEditDetail(ProductDTO dto) {
+        try {
+            if (dto == null || dto.getProductId() == null) return null;
+            Product old = productMapper.selectById(dto.getProductId());
+            if (old == null) return null;
+            List<String> changes = new java.util.ArrayList<>();
+            changeRecorder.diff(changes, "产品名称", old.getProductName(), dto.getProductName());
+            changeRecorder.diff(changes, "产品编码", old.getProductCode(), dto.getProductCode());
+            changeRecorder.diff(changes, "分类",
+                    categoryName(old.getCategoryId()), categoryName(dto.getCategoryId()));
+            changeRecorder.diff(changes, "客户", old.getCustomerName(), dto.getCustomerName());
+            changeRecorder.diff(changes, "基准价", fmtDouble(old.getBasePrice()), fmtDouble(dto.getBasePrice()));
+            changeRecorder.diff(changes, "成本价", fmtDouble(old.getCostPrice()), fmtDouble(dto.getCostPrice()));
+            changeRecorder.diff(changes, "最小起订量", old.getMinOrderQty(), dto.getMinOrderQty());
+            changeRecorder.diff(changes, "交期天数", old.getLeadTime(), dto.getLeadTime());
+            changeRecorder.diff(changes, "当前BOM", bomLabel(old.getCurrentBomId()), bomLabel(dto.getCurrentBomId()));
+            changeRecorder.diff(changes, "当前工艺路线",
+                    routeLabel(old.getCurrentRouteId()), routeLabel(dto.getCurrentRouteId()));
+            changeRecorder.diff(changes, "备注", old.getRemark(), dto.getRemark());
+            return changes.isEmpty() ? null : changeRecorder.toDetailJson(changes);
+        } catch (Exception e) {
+            log.warn("产品编辑变更明细生成失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String categoryName(Long categoryId) {
+        if (categoryId == null) return "空";
+        try {
+            com.jjx.product.domain.entity.ProductCategory c = categoryService.getById(categoryId);
+            return c != null ? c.getCategoryName() : String.valueOf(categoryId);
+        } catch (Exception e) {
+            return String.valueOf(categoryId);
+        }
+    }
+
+    private String fmtDouble(Object value) {
+        if (value == null) return null;
+        try {
+            return new java.math.BigDecimal(String.valueOf(value)).stripTrailingZeros().toPlainString();
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
+    }
+
+    private String bomLabel(Long bomId) {
+        if (bomId == null) return "空";
+        try {
+            EngineeringBom bom = bomService.getById(bomId);
+            return bom != null ? (bom.getBomCode() + " v" + bom.getBomVersion()) : String.valueOf(bomId);
+        } catch (Exception e) {
+            return String.valueOf(bomId);
+        }
+    }
+
+    private String routeLabel(Long routeId) {
+        if (routeId == null) return "空";
+        try {
+            EngineeringRouting routing = routingService.getById(routeId);
+            return routing != null
+                    ? (routing.getRoutingCode() != null ? routing.getRoutingCode() : routing.getRoutingName())
+                          + " v" + routing.getRoutingVersion()
+                    : String.valueOf(routeId);
+        } catch (Exception e) {
+            return String.valueOf(routeId);
+        }
     }
 
 }

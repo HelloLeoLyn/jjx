@@ -5,6 +5,7 @@ import com.jjx.common.core.result.Result;
 import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.product.domain.dto.EngineeringBomDTO;
+import com.jjx.product.domain.vo.EngineeringBomEditVO;
 import com.jjx.product.domain.dto.UpdateBomStatusDTO;
 import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
@@ -149,10 +150,12 @@ public class BomController extends BaseController {
      * 修改BOM
      */
     @PutMapping
-    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#dto.bomId")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#dto.bomId",
+         detail = "#result.data.detailMessage")
     @SaCheckPermission("engineering:bom:edit")
-    public Result<Void> edit(@Validated @RequestBody EngineeringBomDTO dto) {
-        return productBomService.updateBom(dto) ? Result.success() : Result.error();
+    public Result<EngineeringBomEditVO> edit(@Validated @RequestBody EngineeringBomDTO dto) {
+        EngineeringBomEditVO vo = productBomService.updateBomWithDetail(dto);
+        return vo.isSuccess() ? Result.success(vo) : Result.error();
     }
 
     /**

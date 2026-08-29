@@ -286,6 +286,11 @@
                   >停产</el-button
                 >
               </template>
+
+              <!-- 流水 -->
+              <el-button link type="primary" size="small" @click="openTrace(scope.row)"
+                >流水</el-button
+              >
             </div>
           </template>
         </el-table-column>
@@ -322,6 +327,12 @@
       :product="routeConfigProduct"
       @success="getList"
     />
+    <!-- 流水抽屉（bizType=product，按 bizId 聚合产品自身操作日志） -->
+    <TraceTimeline
+      v-model="traceVisible"
+      :biz-type="'product'"
+      :biz-id="String(traceProductId || '')"
+    />
   </div>
 </template>
 
@@ -336,6 +347,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
 import ProductCategorySelect from '@/components/ProductCategorySelect.vue'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import ProductForm from './components/ProductForm.vue'
 import ProductDetailDialog from './components/ProductDetailDialog.vue'
 import BomDetail from '../bom/components/BomDetail.vue'
@@ -420,6 +432,14 @@ const categoryOptions = ref<
   Array<{ categoryId: number; categoryName: string; categoryCode: string }>
 >([])
 const selectedProductId = ref<number | undefined>(undefined)
+
+// 流水抽屉（bizType=product，按 bizId 聚合产品自身操作日志）
+const traceVisible = ref(false)
+const traceProductId = ref<number | undefined>(undefined)
+const openTrace = (row: any) => {
+  traceProductId.value = row?.productId
+  traceVisible.value = true
+}
 
 // 配置BOM相关
 const bomConfigVisible = ref(false)

@@ -71,6 +71,11 @@ public interface IProductService extends IService<Product> {
      */
     Long addProduct(ProductDTO productDTO);
 
+    /**
+     * 产品编辑变更明细（供 @Log detail 展示，无变更返回 null）
+     */
+    String buildEditDetail(ProductDTO productDTO);
+
     String getProductCode(String categoryCode);
 
     ProductFullVO getFullProductDetail(Long productId);

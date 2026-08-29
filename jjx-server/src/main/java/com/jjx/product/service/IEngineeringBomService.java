@@ -41,6 +41,11 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     boolean updateBom(EngineeringBomDTO dto);
 
     /**
+     * 更新BOM（含变更明细，供 @Log detail 展示）
+     */
+    com.jjx.product.domain.vo.EngineeringBomEditVO updateBomWithDetail(EngineeringBomDTO dto);
+
+    /**
      * 删除BOM（包含明细）
      */
     boolean removeBomWithItems(Long bomId);

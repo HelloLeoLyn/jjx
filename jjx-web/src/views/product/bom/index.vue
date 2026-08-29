@@ -205,6 +205,9 @@
                 @click="handleSetDefaultBom(scope.row)"
               ></el-button>
             </el-tooltip>
+            <el-tooltip content="流水" placement="top">
+              <el-button link type="primary" icon="Clock" @click="openTrace(scope.row)"></el-button>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -230,6 +233,9 @@
       @success="handleApproveSuccess"
       @close="handleApproveClose"
     />
+
+    <!-- 流水抽屉（bizType=bom，按 bizId 聚合该 BOM 全部操作） -->
+    <TraceTimeline v-model="traceVisible" :biz-type="'bom'" :biz-id="String(traceBomId || '')" />
   </div>
 </template>
 
@@ -242,6 +248,7 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
 import { parseTime, parseDate } from '@/utils/format'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
 import BomFormDialog from './components/BomFormDialog.vue'
@@ -415,6 +422,14 @@ const handleSetDefaultBom = (row: EngineeringBom) => {
       getList()
     })
     .catch(() => {})
+}
+
+// 流水抽屉
+const traceVisible = ref(false)
+const traceBomId = ref<number | undefined>(undefined)
+const openTrace = (row: EngineeringBom) => {
+  traceBomId.value = row.bomId
+  traceVisible.value = true
 }
 
 // 提交BOM审核（草稿→审核中）

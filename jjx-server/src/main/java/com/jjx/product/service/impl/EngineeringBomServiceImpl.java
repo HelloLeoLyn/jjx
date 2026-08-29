@@ -48,12 +48,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final ReviewFlowService reviewFlowService;
+    private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     public EngineeringBomServiceImpl(EngineeringBomMapper productBomMapper,
                                  EngineeringBomItemMapper productBomItemMapper,
                                  ProductMapper productMapper, EngineeringBomConverter bomConverter,
                                  com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper,
                                  com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper,
-                                 ReviewFlowService reviewFlowService) {
+                                 ReviewFlowService reviewFlowService,
+                                 com.jjx.system.service.OperLogChangeRecorder changeRecorder) {
         this.productBomMapper = productBomMapper;
         this.productBomItemMapper = productBomItemMapper;
         this.productMapper = productMapper;
@@ -61,6 +63,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         this.productionOrderMapper = productionOrderMapper;
         this.inventoryMaterialMapper = inventoryMaterialMapper;
         this.reviewFlowService = reviewFlowService;
+        this.changeRecorder = changeRecorder;
     }
 
     @Override
@@ -194,6 +197,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean updateBom(EngineeringBomDTO dto) {
+        return updateBomWithDetail(dto).isSuccess();
+    }
+
+    /**
+     * 更新BOM（含变更明细，供 @Log detail 展示）
+     */
+    @Override
+    public com.jjx.product.domain.vo.EngineeringBomEditVO updateBomWithDetail(EngineeringBomDTO dto) {
         if (dto.getBomId() == null) {
             throw new BusinessException("BOM ID不能为空");
         }
@@ -210,13 +221,23 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             throw new BusinessException("BOM已审批，不允许修改");
         }
 
+        // 变更明细：主表 + 明细行对比（保存前采集）
+        List<String> changes = new java.util.ArrayList<>();
+        try {
+            buildBomDiff(changes, existingBom, dto);
+        } catch (Exception e) {
+            log.warn("BOM变更明细生成失败: " + e.getMessage());
+        }
+
         // DTO转Entity
         EngineeringBom bom = bomConverter.toEntity(dto);
 
         // 更新BOM主表
         boolean bomUpdated = productBomMapper.updateById(bom) > 0;
         if (!bomUpdated) {
-            return false;
+            com.jjx.product.domain.vo.EngineeringBomEditVO failVo = new com.jjx.product.domain.vo.EngineeringBomEditVO();
+            failVo.setSuccess(false);
+            return failVo;
         }
 
         // 删除旧的BOM明细
@@ -258,7 +279,69 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             setOtherBomNotCurrent(bom.getProductId(), bom.getBomId());
         }
 
-        return true;
+        com.jjx.product.domain.vo.EngineeringBomEditVO vo = new com.jjx.product.domain.vo.EngineeringBomEditVO();
+        vo.setSuccess(true);
+        vo.setDetailMessage(changes.isEmpty() ? null : changeRecorder.toDetailJson(changes));
+        return vo;
+    }
+
+    /**
+     * BOM 变更对比：主表字段 + 明细行（按 materialId 键对比，明细为全量替换）
+     */
+    private void buildBomDiff(List<String> changes, EngineeringBom old, EngineeringBomDTO dto) {
+        changeRecorder.diff(changes, "BOM版本", old.getBomVersion(), dto.getBomVersion());
+        changeRecorder.diff(changes, "BOM名称", old.getBomName(), dto.getBomName());
+        changeRecorder.diff(changes, "备注", old.getRemark(), dto.getRemark());
+        if (old.getEffectiveDate() != null || dto.getEffectiveDate() != null) {
+            changeRecorder.diff(changes, "生效日期",
+                    changeRecorder.fmtDate(old.getEffectiveDate()),
+                    changeRecorder.fmtDate(dto.getEffectiveDate()));
+        }
+        if (old.getExpiryDate() != null || dto.getExpiryDate() != null) {
+            changeRecorder.diff(changes, "失效日期",
+                    changeRecorder.fmtDate(old.getExpiryDate()),
+                    changeRecorder.fmtDate(dto.getExpiryDate()));
+        }
+        // 明细对比（全量替换：旧行集合 vs 新行集合）
+        java.util.List<EngineeringBomItem> oldItems = productBomItemMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringBomItem>()
+                        .eq(EngineeringBomItem::getBomId, dto.getBomId()));
+        java.util.Map<Long, EngineeringBomItem> oldByMat = new java.util.HashMap<>();
+        for (EngineeringBomItem it : oldItems) {
+            if (it.getMaterialId() != null) oldByMat.put(it.getMaterialId(), it);
+        }
+        java.util.Map<Long, EngineeringBomItemDTO> newByMat = new java.util.HashMap<>();
+        if (dto.getItems() != null) {
+            for (EngineeringBomItemDTO it : dto.getItems()) {
+                if (it.getMaterialId() != null) newByMat.put(it.getMaterialId(), it);
+            }
+        }
+        for (java.util.Map.Entry<Long, EngineeringBomItemDTO> e : newByMat.entrySet()) {
+            EngineeringBomItem oldIt = oldByMat.get(e.getKey());
+            if (oldIt == null) {
+                changes.add("新增物料:" + matLabel(e.getValue()));
+            } else {
+                changeRecorder.diff(changes, "用量(" + matLabel(e.getValue()) + ")",
+                        oldIt.getQuantity(), e.getValue().getQuantity());
+            }
+        }
+        for (EngineeringBomItem oldIt : oldItems) {
+            if (oldIt.getMaterialId() != null && !newByMat.containsKey(oldIt.getMaterialId())) {
+                changes.add("移除物料:" + matLabel(oldIt));
+            }
+        }
+    }
+
+    private String matLabel(EngineeringBomItem it) {
+        String code = it.getMaterialCode() != null ? it.getMaterialCode()
+                : (it.getMaterialName() != null ? it.getMaterialName() : String.valueOf(it.getMaterialId()));
+        return code + "(id:" + it.getMaterialId() + ")";
+    }
+
+    private String matLabel(EngineeringBomItemDTO it) {
+        String code = it.getMaterialCode() != null ? it.getMaterialCode()
+                : (it.getMaterialName() != null ? it.getMaterialName() : String.valueOf(it.getMaterialId()));
+        return code + "(id:" + it.getMaterialId() + ")";
     }
 
     @Override

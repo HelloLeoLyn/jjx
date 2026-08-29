@@ -216,7 +216,7 @@ interface TraceEvent {
 }
 
 const props = defineProps<{
-  traceId: string
+  traceId?: string
   bizType?: string
   bizId?: string
   module?: string
@@ -247,6 +247,12 @@ watch(
 )
 watch(
   () => props.traceId,
+  () => {
+    if (props.modelValue) resetAndLoad()
+  }
+)
+watch(
+  () => [props.bizType, props.bizId] as const,
   () => {
     if (props.modelValue) resetAndLoad()
   }
@@ -321,16 +327,20 @@ function resetAndLoad() {
 }
 
 async function loadEvents() {
-  if (!props.traceId) return
+  if (!props.traceId && !(props.bizType && props.bizId)) return
   loading.value = true
   try {
-    const response = await request.get('/api/trace/events', {
-      params: {
-        traceId: props.traceId,
-        pageNum: pageNum.value,
-        pageSize: pageSize.value,
-      },
-    })
+    const params: Record<string, any> = {
+      pageNum: pageNum.value,
+      pageSize: pageSize.value,
+    }
+    if (props.traceId) {
+      params.traceId = props.traceId
+    } else {
+      params.bizType = props.bizType
+      params.bizId = props.bizId
+    }
+    const response = await request.get('/api/trace/events', { params })
     const data = (response as any)?.data || {}
     events.value = (data.records || []).map(enrichEvent)
     total.value = Number(data.total || 0)

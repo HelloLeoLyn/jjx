@@ -46,6 +46,24 @@ public class TraceServiceImpl implements TraceService {
         return PageResult.of(page, records);
     }
 
+    /**
+     * 按业务对象查询操作日志（产品/BOM/工艺路线等主数据无 trace_id，按 bizType+bizId 聚合）
+     */
+    @Override
+    public PageResult<UnifiedTraceEventVO> getEventsByBiz(String bizType, Long bizId, int pageNum, int pageSize) {
+        if (bizType == null || bizType.isBlank() || bizId == null) {
+            return PageResult.build(Collections.emptyList(), 0);
+        }
+        IPage<SysOperLog> page = sysOperLogMapper.selectPage(
+                new Page<>(Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100)),
+                Wrappers.<SysOperLog>lambdaQuery()
+                        .eq(SysOperLog::getBizType, bizType)
+                        .eq(SysOperLog::getBizId, bizId)
+                        .orderByAsc(SysOperLog::getCreateTime));
+        List<UnifiedTraceEventVO> records = page.getRecords().stream().map(this::fromLog).toList();
+        return PageResult.of(page, records);
+    }
+
     @Override
     public List<TraceReviewVO> reviewList(String bizType, Long bizId) {
         if (bizType == null || bizType.isBlank() || bizId == null) {

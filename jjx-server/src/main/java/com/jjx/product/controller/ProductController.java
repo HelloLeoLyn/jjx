@@ -8,6 +8,7 @@ import com.jjx.product.domain.dto.ProductDTO;
 import com.jjx.product.domain.dto.ProductUpdateDTO;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.query.ProductQuery;
+import com.jjx.product.domain.vo.ProductEditVO;
 import com.jjx.product.domain.vo.ProductFullVO;
 import com.jjx.product.domain.vo.ProductVo;
 import com.jjx.product.service.IProductService;
@@ -110,9 +111,10 @@ public class ProductController extends BaseController {
      */
     @PutMapping
     @Log(module = "产品管理", businessType = BusinessType.UPDATE,
-         bizId = "#productDTO.productId", bizType = "'product'")
+         bizId = "#productDTO.productId", bizType = "'product'",
+         detail = "#result.data.detailMessage")
     @SaCheckPermission("product:edit")
-    public Result<Void> edit(@Validated @RequestBody ProductDTO productDTO) {
+    public Result<ProductEditVO> edit(@Validated @RequestBody ProductDTO productDTO) {
         if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
             return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品编码已存在");
         }
@@ -122,7 +124,10 @@ public class ProductController extends BaseController {
         Product product = new Product();
         org.springframework.beans.BeanUtils.copyProperties(productDTO, product);
         boolean result = productService.updateById(product);
-        return result ? Result.success() : Result.error();
+        ProductEditVO vo = new ProductEditVO();
+        vo.setSuccess(result);
+        vo.setDetailMessage(productService.buildEditDetail(productDTO));
+        return result ? Result.success(vo) : Result.error();
     }
 
     /**
