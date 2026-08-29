@@ -27,8 +27,20 @@
       <el-table-column label="校验项" width="110">
         <template #default="scope">
           <span :style="{ fontWeight: 600 }">{{ scope.row.name }}</span>
-          <el-tag v-if="scope.row.level === 'suggest'" size="small" type="info" style="margin-left: 4px">建议</el-tag>
-          <el-tag v-if="scope.row.level === 'info'" size="small" type="info" style="margin-left: 4px">信息</el-tag>
+          <el-tag
+            v-if="scope.row.level === 'suggest'"
+            size="small"
+            type="info"
+            style="margin-left: 4px"
+            >建议</el-tag
+          >
+          <el-tag
+            v-if="scope.row.level === 'info'"
+            size="small"
+            type="info"
+            style="margin-left: 4px"
+            >信息</el-tag
+          >
         </template>
       </el-table-column>
       <el-table-column label="状态" width="100" align="center">
@@ -44,10 +56,14 @@
       <el-table-column label="处置" width="140" align="center">
         <template #default="scope">
           <template v-if="scope.row.action === 'edit-product'">
-            <el-button link type="primary" size="small" @click="goEditProduct(scope.row)">编辑产品</el-button>
+            <el-button link type="primary" size="small" @click="goEditProduct(scope.row)"
+              >编辑产品</el-button
+            >
           </template>
           <template v-else-if="scope.row.action === 'list-product'">
-            <el-button link type="primary" size="small" @click="goListProduct">产品列表建档</el-button>
+            <el-button link type="primary" size="small" @click="goListProduct"
+              >产品列表建档</el-button
+            >
           </template>
           <template v-else-if="scope.row.action === 'transfer'">
             <el-button link type="warning" size="small" @click="goTransfer">去资料转移</el-button>
@@ -71,11 +87,16 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 
-const props = defineProps<{
-  modelValue: boolean
-  orderId: number | null
-  orderNo?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    orderId?: number | null
+    orderNo?: string
+  }>(),
+  {
+    orderId: null,
+  }
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -93,14 +114,22 @@ const items = ref<any[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 
-const allPass = computed(() => items.value.length > 0 && items.value.every((i) => i.pass || i.level !== 'required'))
+const allPass = computed(
+  () => items.value.length > 0 && items.value.every((i) => i.pass || i.level !== 'required')
+)
 const missingNames = computed(() =>
-  items.value.filter((i) => i.level === 'required' && !i.pass).map((i) => i.name).join('、')
+  items.value
+    .filter((i) => i.level === 'required' && !i.pass)
+    .map((i) => i.name)
+    .join('、')
 )
 
-watch(() => props.modelValue, async (v) => {
-  if (v && props.orderId) await load()
-})
+watch(
+  () => props.modelValue,
+  async (v) => {
+    if (v && props.orderId) await load()
+  }
+)
 
 async function load() {
   loading.value = true

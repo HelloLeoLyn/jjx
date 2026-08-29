@@ -396,328 +396,77 @@
       @open="onDetailOpen"
     >
       <template v-if="detailData">
-        <el-tabs v-model="detailTab">
-          <el-tab-pane label="基本信息" name="basic">
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="样品单号" :span="2">{{
-                detailData.orderNo
-              }}</el-descriptions-item>
-              <el-descriptions-item label="客户名称">{{
-                detailData.customerName
-              }}</el-descriptions-item>
-              <el-descriptions-item label="联系人">{{
-                detailData.contactPerson || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="样品状态">
-                <el-tag :type="statusTagType(detailData.sampleStatus)" size="small">{{
-                  statusLabel(detailData.sampleStatus)
-                }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="迭代轮次"
-                >Round {{ detailData.sampleRound || 1 }}</el-descriptions-item
-              >
-              <el-descriptions-item label="打样数量">{{
-                detailData.sampleQty || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="送样日期">{{
-                detailData.sampleSendDate || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="快递单号">{{
-                detailData.sampleTrackingNo || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="客户确认日期">{{
-                detailData.sampleConfirmDate || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="客户确认人">{{
-                detailData.sampleClientName || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="转量产订单ID">{{
-                detailData.convertedOrderId || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="转量产时间">{{
-                detailData.convertOrderTime || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="备注" :span="2">{{
-                detailData.remark || '-'
-              }}</el-descriptions-item>
-            </el-descriptions>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="样品单号" :span="2">{{
+            detailData.orderNo
+          }}</el-descriptions-item>
+          <el-descriptions-item label="客户名称">{{
+            detailData.customerName
+          }}</el-descriptions-item>
+          <el-descriptions-item label="联系人">{{
+            detailData.contactPerson || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="样品状态">
+            <el-tag :type="statusTagType(detailData.sampleStatus)" size="small">{{
+              statusLabel(detailData.sampleStatus)
+            }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="迭代轮次"
+            >Round {{ detailData.sampleRound || 1 }}</el-descriptions-item
+          >
+          <el-descriptions-item label="打样数量">{{
+            detailData.sampleQty || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="送样日期">{{
+            detailData.sampleSendDate || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="快递单号">{{
+            detailData.sampleTrackingNo || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="客户确认日期">{{
+            detailData.sampleConfirmDate || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="客户确认人">{{
+            detailData.sampleClientName || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="转量产订单ID">{{
+            detailData.convertedOrderId || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="转量产时间">{{
+            detailData.convertOrderTime || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">{{
+            detailData.remark || '-'
+          }}</el-descriptions-item>
+        </el-descriptions>
 
-            <!-- 产品明细（DEV-781：报价转样品后详情展示） -->
-            <el-divider content-position="left">产品明细</el-divider>
-            <el-table
-              v-if="detailProducts.length"
-              :data="detailProducts"
-              size="small"
-              border
-              stripe
-              style="width: 100%"
-            >
-              <el-table-column prop="productCode" label="产品编码" width="120" />
-              <el-table-column prop="productName" label="产品名称" min-width="140" />
-              <el-table-column prop="specification" label="规格/要求" min-width="140" />
-              <el-table-column prop="quantity" label="数量" width="80" align="center" />
-              <el-table-column prop="unit" label="单位" width="70" align="center" />
-              <el-table-column prop="unitPrice" label="单价" width="90" align="right" />
-            </el-table>
-            <div v-else style="color: #999; font-size: 13px; padding: 8px 0">暂无产品明细</div>
+        <!-- 产品明细（DEV-781：报价转样品后详情展示） -->
+        <el-divider content-position="left">产品明细</el-divider>
+        <el-table
+          v-if="detailProducts.length"
+          :data="detailProducts"
+          size="small"
+          border
+          stripe
+          style="width: 100%"
+        >
+          <el-table-column prop="productCode" label="产品编码" width="120" />
+          <el-table-column prop="productName" label="产品名称" min-width="140" />
+          <el-table-column prop="specification" label="规格/要求" min-width="140" />
+          <el-table-column prop="quantity" label="数量" width="80" align="center" />
+          <el-table-column prop="unit" label="单位" width="70" align="center" />
+          <el-table-column prop="unitPrice" label="单价" width="90" align="right" />
+        </el-table>
+        <div v-else style="color: #999; font-size: 13px; padding: 8px 0">暂无产品明细</div>
 
-            <!-- 相关文档 -->
-            <el-divider content-position="left">相关文档</el-divider>
-            <AttachmentPanel
-              v-if="detailData?.orderId"
-              biz-type="sample"
-              :biz-id="detailData.orderId"
-              :trace-id="detailData.traceId"
-            />
-          </el-tab-pane>
-
-          <!-- 打样过程（只读） -->
-          <el-tab-pane label="🔧 打样过程" name="engineering">
-            <!-- 工艺参数 -->
-            <el-card shadow="never" style="margin-bottom: 16px">
-              <template #header><span style="font-weight: 600">工艺参数 / 工程备注</span></template>
-              <div
-                v-if="detailData.engineeringNote"
-                style="color: #606266; font-size: 13px; white-space: pre-wrap; line-height: 1.8"
-              >
-                {{ detailData.engineeringNote }}
-              </div>
-              <div v-else style="color: #999; font-size: 13px">暂无工艺参数</div>
-              <div v-if="detailData.engineeringAcceptor" style="margin-top: 8px">
-                <el-tag type="success" size="small"
-                  >接单人：{{ detailData.engineeringAcceptor }}</el-tag
-                >
-              </div>
-              <div
-                v-if="detailData.rejectReason"
-                style="margin-top: 8px; color: #f56c6c; font-size: 13px"
-              >
-                拒单原因：{{ detailData.rejectReason }}
-              </div>
-            </el-card>
-
-            <!-- 工序计划 -->
-            <el-card shadow="never" style="margin-bottom: 16px">
-              <template #header><span style="font-weight: 600">工序计划</span></template>
-              <el-timeline v-if="processList.length > 0" style="padding-left: 2px">
-                <el-timeline-item
-                  v-for="(p, i) in processList"
-                  :key="p.processId"
-                  :timestamp="formatTime(p.startTime)"
-                  placement="top"
-                  :type="p.status === 1 ? 'primary' : p.status === 2 ? 'success' : 'info'"
-                >
-                  <div style="font-size: 13px">
-                    <span style="font-weight: 600">{{ p.processName }}</span>
-                    <el-tag
-                      v-if="p.status === 2"
-                      size="small"
-                      type="success"
-                      style="margin-left: 6px"
-                      >✓ 已完成</el-tag
-                    >
-                    <el-tag
-                      v-else-if="p.status === 1"
-                      size="small"
-                      type="warning"
-                      style="margin-left: 6px"
-                      >⏳ 进行中</el-tag
-                    >
-                    <el-tag v-else size="small" type="info" style="margin-left: 6px">待做</el-tag>
-                    <span
-                      v-if="p.durationMinutes"
-                      style="margin-left: 8px; color: #606266; font-size: 12px"
-                      >⏱ {{ p.durationMinutes }}分钟</span
-                    >
-                    <span
-                      v-if="p.operator"
-                      style="margin-left: 8px; color: #909399; font-size: 12px"
-                      >操作人：{{ p.operator }}</span
-                    >
-                    <div
-                      v-if="p.processNote"
-                      style="color: #606266; font-size: 12px; margin-top: 2px"
-                    >
-                      🔧 {{ p.processNote }}
-                    </div>
-                    <div v-if="p.materials" style="margin-top: 2px">
-                      <el-tag
-                        v-for="(m, mi) in parseProcessMaterials(p.materials)"
-                        :key="mi"
-                        size="small"
-                        type="info"
-                        style="margin-right: 4px"
-                        >{{ m.name }}{{ m.spec ? ' ' + m.spec : ''
-                        }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag
-                      >
-                    </div>
-                  </div>
-                </el-timeline-item>
-              </el-timeline>
-              <div v-else style="color: #999; font-size: 13px; padding: 8px 0">
-                暂无工序计划（在打样工作台选择作业项目生成）
-              </div>
-            </el-card>
-
-            <!-- 成本/工时 -->
-            <el-card shadow="never" style="margin-bottom: 16px">
-              <template #header><span style="font-weight: 600">成本 / 工时</span></template>
-              <div style="font-size: 13px; color: #606266">
-                成本：{{ detailData.sampleCost ? '¥' + detailData.sampleCost : '-' }} ｜ 工时：{{
-                  detailData.sampleWorkHours ? detailData.sampleWorkHours + 'h' : '-'
-                }}
-              </div>
-            </el-card>
-
-            <!-- 图纸 / 工艺文件 -->
-            <el-card shadow="never" style="margin-bottom: 16px">
-              <template #header><span style="font-weight: 600">图纸 / 工艺文件</span></template>
-              <AttachmentPanel
-                v-if="detailData?.orderId"
-                biz-type="sample"
-                :biz-id="detailData.orderId"
-                :trace-id="detailData.traceId"
-              />
-            </el-card>
-
-            <!-- 物料清单（只读，从工序单元聚合） -->
-            <el-card shadow="never" style="margin-bottom: 16px">
-              <template #header
-                ><span style="font-weight: 600">🧾 打样物料清单（BOM）</span></template
-              >
-              <el-table
-                v-if="bomList.length > 0"
-                :data="bomList"
-                size="small"
-                border
-                style="width: 100%"
-              >
-                <el-table-column prop="process" label="工序" width="90" />
-                <el-table-column prop="name" label="物料名称" min-width="140" />
-                <el-table-column prop="spec" label="规格" min-width="130" />
-                <el-table-column prop="qty" label="用量" width="90" />
-                <el-table-column prop="unit" label="单位" width="70" align="center" />
-              </el-table>
-              <div v-else style="color: #999; font-size: 13px; padding: 8px 0">暂无物料清单</div>
-            </el-card>
-
-            <!-- 打样轮次快照 -->
-            <el-card shadow="never" style="margin-bottom: 16px">
-              <template #header><span style="font-weight: 600">📦 打样轮次快照</span></template>
-              <el-timeline v-if="roundList.length > 0">
-                <el-timeline-item
-                  v-for="r in roundList"
-                  :key="r.roundId"
-                  :timestamp="r.createTime || ''"
-                  :type="
-                    r.result === 'rejected'
-                      ? 'danger'
-                      : r.result === 'confirmed'
-                        ? 'success'
-                        : 'primary'
-                  "
-                  placement="top"
-                >
-                  <div style="font-weight: 500">
-                    Round {{ r.roundNo }}
-                    <el-tag
-                      size="small"
-                      :type="
-                        r.result === 'rejected'
-                          ? 'danger'
-                          : r.result === 'confirmed'
-                            ? 'success'
-                            : 'info'
-                      "
-                      style="margin-left: 8px"
-                    >
-                      {{
-                        r.result === 'rejected'
-                          ? '已退回'
-                          : r.result === 'confirmed'
-                            ? '已确认'
-                            : '待确认'
-                      }}
-                    </el-tag>
-                  </div>
-                  <div
-                    v-if="r.engineeringNote"
-                    style="color: #666; font-size: 13px; margin-top: 4px; white-space: pre-wrap"
-                  >
-                    {{ r.engineeringNote }}
-                  </div>
-                  <div v-if="r.bomSnapshot" style="margin-top: 6px">
-                    <div style="font-size: 12px; color: #909399; margin-bottom: 4px">
-                      🧾 物料清单（{{ parseBom(r.bomSnapshot).length }} 项）
-                    </div>
-                    <el-table
-                      :data="parseBom(r.bomSnapshot)"
-                      size="small"
-                      border
-                      style="width: 100%"
-                    >
-                      <el-table-column prop="layerName" label="层" width="60" />
-                      <el-table-column prop="materialName" label="物料" min-width="110" />
-                      <el-table-column prop="specification" label="规格" min-width="90" />
-                      <el-table-column prop="quantity" label="用量" width="70" />
-                      <el-table-column prop="unit" label="单位" width="60" />
-                    </el-table>
-                  </div>
-                  <div v-if="r.processSnapshot" style="margin-top: 6px">
-                    <div style="font-size: 12px; color: #909399; margin-bottom: 4px">
-                      🔧 工序记录（{{ parseProcess(r.processSnapshot).length }} 道）
-                    </div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 4px">
-                      <el-tag
-                        v-for="p in parseProcess(r.processSnapshot)"
-                        :key="p.processId"
-                        size="small"
-                        type="info"
-                        >{{ p.processName }}</el-tag
-                      >
-                    </div>
-                  </div>
-                  <div
-                    v-if="r.rejectReason"
-                    style="color: #f56c6c; font-size: 13px; margin-top: 4px"
-                  >
-                    退回原因：{{ r.rejectReason }}
-                  </div>
-                </el-timeline-item>
-              </el-timeline>
-              <div v-else style="color: #999; text-align: center; padding: 12px">
-                暂无轮次快照（标记样品完成后自动归档）
-              </div>
-            </el-card>
-          </el-tab-pane>
-
-          <!-- 迭代记录 -->
-          <el-tab-pane label="📋 迭代记录" name="history">
-            <el-card shadow="never" style="margin-bottom: 16px">
-              <template #header><span style="font-weight: 600">样品迭代历程</span></template>
-              <el-timeline>
-                <el-timeline-item
-                  v-for="(item, idx) in iterationHistory"
-                  :key="idx"
-                  :timestamp="item.time"
-                  :type="item.type"
-                  placement="top"
-                >
-                  <div style="font-weight: 500">{{ item.action }}</div>
-                  <div v-if="item.detail" style="color: #666; font-size: 13px; margin-top: 4px">
-                    {{ item.detail }}
-                  </div>
-                </el-timeline-item>
-              </el-timeline>
-              <div
-                v-if="iterationHistory.length === 0"
-                style="color: #999; text-align: center; padding: 20px"
-              >
-                暂无迭代记录
-              </div>
-            </el-card>
-          </el-tab-pane>
-        </el-tabs>
+        <!-- 相关文档 -->
+        <el-divider content-position="left">相关文档</el-divider>
+        <AttachmentPanel
+          v-if="detailData?.orderId"
+          biz-type="sample"
+          :biz-id="detailData.orderId"
+          :trace-id="detailData.traceId"
+        />
       </template>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
@@ -772,7 +521,7 @@
     <!-- 转量产 · 就绪检查（DEV-xxx） -->
     <SampleConvertCheckDialog
       v-model="convertDialogVisible"
-      :order-id="convertRow?.orderId"
+      :order-id="convertRow?.orderId ?? null"
       :order-no="convertRow?.orderNo"
       @success="getList"
     />
@@ -862,103 +611,10 @@ async function loadDetailProducts(orderId: number) {
 }
 
 // ==================== 工程区数据 ====================
-const engUploadRef = ref()
 const engFileList = ref<any[]>([])
 const engineeringForm = reactive({ note: '', process: '' })
-const savingEng = ref(false)
 const costForm = reactive({ cost: 0, workHours: 0 })
 const roundList = ref<any[]>([])
-const processList = ref<any[]>([])
-const bomList = ref<any[]>([])
-const savingBom = ref(false)
-const bomLayerOptions = ['面板', '线路', '间隔', '背胶', '连接器', '其他']
-
-// 打样工序选项（薄膜开关典型工艺）
-const sampleProcessOptions = ['印刷', '冲切', '贴合', 'SMT贴片', '装配', '测试', '包装']
-
-// 工程区操作权限
-const isEngineeringStatus = computed(
-  () => detailData.value?.sampleStatus === SampleOrderStatusEnum.ENGINEERING.value
-)
-const isRejectedStatus = computed(
-  () => detailData.value?.sampleStatus === SampleOrderStatusEnum.REJECTED.value
-)
-const isEditableStatus = computed(() =>
-  [
-    SampleOrderStatusEnum.ENGINEERING.value,
-    SampleOrderStatusEnum.SAMPLE_READY.value,
-    SampleOrderStatusEnum.SAMPLE_SENT.value,
-  ].includes(detailData.value?.sampleStatus)
-)
-
-// 工程接单
-async function handleAcceptEngineering() {
-  if (!detailData.value?.orderId) return
-  try {
-    await ElMessageBox.confirm('确认接单开始打样？', '工程接单', {
-      confirmButtonText: '确认接单',
-      cancelButtonText: '取消',
-      type: 'info',
-    })
-    await sampleOrderApi.acceptEngineering(detailData.value.orderId)
-    ElMessage.success('接单成功')
-    await reloadDetail()
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '接单失败')
-  }
-}
-
-// 工程拒单
-async function handleRejectEngineering() {
-  if (!detailData.value?.orderId) return
-  try {
-    const { value } = await ElMessageBox.prompt('请填写拒单原因', '工程拒单', {
-      confirmButtonText: '确认拒单',
-      cancelButtonText: '取消',
-      type: 'warning',
-      inputPlaceholder: '拒单原因（必填）',
-      inputValidator: (v: string) => (v && v.trim() ? true : '拒单原因不能为空'),
-    })
-    await sampleOrderApi.rejectEngineering(detailData.value.orderId, value.trim())
-    ElMessage.success('已拒单，退回待审核')
-    detailVisible.value = false
-    getList()
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '拒单失败')
-  }
-}
-
-// 更新当前工序
-async function handleUpdateProcess(process: string) {
-  if (!detailData.value?.orderId || !process) return
-  try {
-    await sampleOrderApi.updateProcess(detailData.value.orderId, process)
-    detailData.value.currentProcess = process
-    // 刷新工序历史（选完立即显示新记录）
-    try {
-      const pRes = await sampleOrderApi.listProcesses(detailData.value.orderId)
-      processList.value = pRes.data || []
-    } catch {
-      /* 忽略历史刷新失败 */
-    }
-    ElMessage.success(`已更新为：${process}`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '更新工序失败')
-  }
-}
-
-// 录入成本/工时
-async function handleRecordCost() {
-  if (!detailData.value?.orderId) return
-  try {
-    await sampleOrderApi.recordCost(detailData.value.orderId, costForm.cost, costForm.workHours)
-    ElMessage.success('成本/工时已保存')
-    detailData.value.sampleCost = costForm.cost
-    detailData.value.sampleWorkHours = costForm.workHours
-  } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败')
-  }
-}
 
 // 加载轮次快照
 async function loadRounds(orderId: number) {
@@ -967,127 +623,6 @@ async function loadRounds(orderId: number) {
     roundList.value = (res as any)?.data || []
   } catch {
     roundList.value = []
-  }
-}
-
-// 重新加载详情（接单后刷新工程区）
-async function reloadDetail() {
-  if (detailData.value?.orderId) {
-    const res = await sampleOrderApi.getInfo(detailData.value.orderId)
-    detailData.value = res.data
-    engineeringForm.note = res.data.engineeringNote || ''
-    engineeringForm.process = res.data.currentProcess || ''
-    // 加载工序计划（按顺序排序）
-    try {
-      const pRes = await sampleOrderApi.listProcesses(detailData.value.orderId)
-      const list: any[] = pRes.data || []
-      list.sort(
-        (a, b) =>
-          (a.processOrder || 999) - (b.processOrder || 999) ||
-          (a.processId || 0) - (b.processId || 0)
-      )
-      processList.value = list
-    } catch {
-      processList.value = []
-    }
-    // 加载打样BOM（从工序单元材料聚合）
-    try {
-      const pRes2 = await sampleOrderApi.listProcesses(detailData.value.orderId)
-      const procs = pRes2.data || []
-      const agg: any[] = []
-      for (const p of procs) {
-        if (!p.materials) continue
-        try {
-          const mats = JSON.parse(p.materials)
-          for (const m of mats) {
-            agg.push({
-              process: p.processName,
-              name: m.name,
-              spec: m.spec,
-              qty: m.qty,
-              unit: m.unit,
-            })
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      bomList.value = agg
-    } catch {
-      bomList.value = []
-    }
-  }
-}
-
-// 删除物料行（本地行直接删，已有记录调接口）
-async function removeBomRow(index: number, row: any) {
-  if (row.bomId) {
-    try {
-      await sampleOrderApi.deleteBomItem(row.bomId)
-    } catch (e: any) {
-      ElMessage.error(e?.message || '删除失败')
-      return
-    }
-  }
-  bomList.value.splice(index, 1)
-}
-
-// 保存物料清单
-async function saveBomList() {
-  if (!detailData.value?.orderId) return
-  const valid = bomList.value.filter((i) => i.materialName && i.materialName.trim())
-  if (valid.length === 0) {
-    ElMessage.warning('请至少填写一条物料名称')
-    return
-  }
-  savingBom.value = true
-  try {
-    const res = await sampleOrderApi.saveBom(detailData.value.orderId, valid)
-    bomList.value = res.data || []
-    ElMessage.success(`已保存 ${bomList.value.length} 条物料`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败')
-  } finally {
-    savingBom.value = false
-  }
-}
-
-// 时间格式化
-function formatTime(t?: string) {
-  if (!t) return ''
-  return t.replace('T', ' ').slice(0, 16)
-}
-
-// 解析BOM快照 JSON
-function parseBom(json?: string) {
-  if (!json) return []
-  try {
-    const arr = JSON.parse(json)
-    return Array.isArray(arr) ? arr : []
-  } catch {
-    return []
-  }
-}
-
-// 解析工序快照 JSON
-function parseProcess(json?: string) {
-  if (!json) return []
-  try {
-    const arr = JSON.parse(json)
-    return Array.isArray(arr) ? arr : []
-  } catch {
-    return []
-  }
-}
-
-// 解析工序材料 JSON
-function parseProcessMaterials(json?: string) {
-  if (!json) return []
-  try {
-    const arr = JSON.parse(json)
-    return Array.isArray(arr) ? arr : []
-  } catch {
-    return []
   }
 }
 
@@ -1547,83 +1082,6 @@ function engBeforeUpload(file: UploadRawFile) {
   return true
 }
 
-// 上传文件
-const engUploadFile: UploadProps['httpRequest'] = async (options) => {
-  const orderId = detailData.value?.orderId
-  if (!orderId) {
-    options.onError(new Error('无订单ID') as any)
-    return
-  }
-
-  const fd = new FormData()
-  fd.append('file', options.file)
-  fd.append('bizType', 'sample_order')
-  fd.append('bizId', String(orderId))
-  fd.append('traceId', detailData.value?.traceId || '')
-
-  try {
-    const res: any = await request({
-      url: '/system/attachment/upload',
-      method: 'post',
-      data: fd,
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    if (res?.code === 200) {
-      options.onSuccess(res.data)
-      // 刷新文件列表
-      await loadEngFiles(orderId)
-    } else {
-      options.onError(new Error(res?.msg || '上传失败') as any)
-    }
-  } catch (e: any) {
-    options.onError(e)
-  }
-}
-
-// 删除文件
-async function engRemoveFile(file: any) {
-  if (!file.response) return
-  try {
-    await request({ url: '/system/attachment/' + file.response, method: 'delete' })
-    await loadEngFiles(detailData.value?.orderId)
-  } catch {
-    /* 静默 */
-  }
-}
-
-// 保存工程备注
-async function saveEngineeringNote() {
-  if (!detailData.value?.orderId) return
-  savingEng.value = true
-  try {
-    await sampleOrderApi.startEngineering(detailData.value.orderId, engineeringForm.note)
-    ElMessage.success('工艺参数已保存')
-    detailData.value.engineeringNote = engineeringForm.note
-  } catch {
-    ElMessage.error('保存失败')
-  } finally {
-    savingEng.value = false
-  }
-}
-
-// 标记样品完成（在工程区内操作）
-async function handleDetailMarkReady() {
-  if (!detailData.value?.orderId) return
-  const { value } = await ElMessageBox.prompt('实际打样数量', '标记样品完成', {
-    inputValue: String(detailData.value.sampleQty || 10),
-    confirmButtonText: '样品完成',
-  })
-  const qty = parseInt(value || '0')
-  if (qty <= 0) {
-    ElMessage.warning('请输入有效数量')
-    return
-  }
-  await sampleOrderApi.markReady(detailData.value.orderId, qty)
-  ElMessage.success('样品已完成，待送样')
-  detailVisible.value = false
-  getList()
-}
-
 // 退回后重新打样（客户退回9 → 工程打样中3，走操作预览器）
 async function handleRestart(row: any) {
   openPreview('sample.restart', row)
@@ -1657,13 +1115,6 @@ function isCancelled(row: any): boolean {
   return row?.sampleStatus === SampleOrderStatusEnum.CANCELLED.value
 }
 
-// 草稿可编辑 / 可申请打样
-function canEdit(row: any): boolean {
-  return isCreated(row)
-}
-function canSubmitRequest(row: any): boolean {
-  return isCreated(row)
-}
 // 工程接单（待打样2/打样中3且未接单；新模型无审核环节）/ 已接单跳工作台
 function canAcceptEngineering(row: any): boolean {
   return (

@@ -58,7 +58,7 @@
       <el-table :data="tableData" v-loading="loading" border stripe>
         <el-table-column label="样品单号" prop="orderNo" width="150">
           <template #default="scope">
-            <el-button link type="primary" @click="openWorkbench(scope.row)">{{
+            <el-button link type="primary" @click="openWorkbench(scope.row, true)">{{
               scope.row.orderNo
             }}</el-button>
           </template>
