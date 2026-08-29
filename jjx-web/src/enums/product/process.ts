@@ -1,5 +1,5 @@
 // src/enums/product/process.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 工序类型枚举
@@ -28,6 +28,19 @@ export const ProcessTypeEnum = createEnum<string>({
   ],
   defaultTag: { type: 'info' },
 })
+
+/**
+ * 工序状态枚举
+ * 对应后端 ProcessStatusEnum；用于样品打样工作台中的状态流转与展示。
+ */
+export const ProcessStatusEnum = createNamedEnum(
+  {
+    TODO: { value: 0, label: '待做', tagProps: { type: 'info' } },
+    DOING: { value: 1, label: '进行中', tagProps: { type: 'warning' } },
+    DONE: { value: 2, label: '已完成', tagProps: { type: 'success' } },
+  },
+  { type: 'info' }
+)
 
 /**
  * 工序类别枚举

@@ -4,7 +4,11 @@
       <span style="font-weight: 600">样品单信息</span>
       <span class="desc">Round {{ card.sampleRound || 1 }} · {{ card.orderNo || '' }}</span>
       <span style="float: right">
-        <el-button size="small" icon="CopyDocument" @click="$emit('historyCopy')"
+        <el-button
+          size="small"
+          icon="CopyDocument"
+          :disabled="readonly"
+          @click="$emit('historyCopy')"
           >📋 从历史打样复制</el-button
         >
         <el-button link type="primary" style="margin-left: 8px" @click="$emit('back')"
@@ -79,6 +83,7 @@
     <div class="eng-files">
       <div class="eng-files-label">📐 图纸 / 工艺文件</div>
       <el-upload
+        :disabled="readonly"
         :http-request="onUpload"
         :on-remove="onRemove"
         :file-list="engFileList"
@@ -86,7 +91,7 @@
         list-type="text"
         multiple
       >
-        <el-button type="primary" size="small">📤 上传图纸/文件</el-button>
+        <el-button type="primary" size="small" :disabled="readonly">📄 上传图纸/文件</el-button>
       </el-upload>
       <div v-if="engFileList.length > 0" style="margin-top: 8px">
         <div
@@ -127,6 +132,7 @@ defineProps<{
   summary: any
   saving: boolean
   engFileList: any[]
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{

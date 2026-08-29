@@ -18,6 +18,7 @@ export function useSampleWorkbench() {
 
   const card = ref<any>({})
   const orderId = computed(() => Number(route.query.orderId))
+  const readonlyMode = computed(() => route.query.readonly === 'true')
 
   const saving = ref(false)
   const savingPlan = ref(false)
@@ -88,6 +89,7 @@ export function useSampleWorkbench() {
   }
   // 统一设置工序类别
   function applyBatchCategory(cat: string | undefined) {
+    if (readonlyMode.value) return
     if (!cat) return
     batchSelectedCards().forEach((pc) => {
       pc.category = cat
@@ -98,6 +100,7 @@ export function useSampleWorkbench() {
   }
   // 批量删除
   function batchDelete() {
+    if (readonlyMode.value) return
     const n = batchSelected.value.size
     if (!n) return
     ElMessageBox.confirm(`确定删除选中的 ${n} 张卡片？`, '批量删除', {
@@ -136,6 +139,7 @@ export function useSampleWorkbench() {
     }
   }
   function confirmBatchMaterial() {
+    if (readonlyMode.value) return
     if (!batchMaterialId.value) return
     const mat = batchMaterialOptions.value.find((o) => o.materialId === batchMaterialId.value)
     if (!mat) return
@@ -195,6 +199,7 @@ export function useSampleWorkbench() {
     }
   }
   async function confirmHistoryCopy() {
+    if (readonlyMode.value) return
     const src = historySelected.value
     if (!src) return
     historyCopying.value = true
@@ -300,6 +305,7 @@ export function useSampleWorkbench() {
   }
   // 常用物料点击 → 加入当前编辑/激活卡片
   function addFrequentMaterial(fm: any) {
+    if (readonlyMode.value) return
     const tabCards = cardsByTab(activePlanTab.value)
     const target = tabCards.find((c: any) => c.editing) || tabCards[tabCards.length - 1]
     if (!target) {
@@ -452,11 +458,13 @@ export function useSampleWorkbench() {
 
   // 新增印刷行（表格追加）
   function addPrintRow(category = '') {
+    if (readonlyMode.value) return
     printList.value.push(makePrintRow({ processCategory: category }, printList.value.length + 1))
   }
 
   // 删除印刷行
   function removePrintRow(row: any) {
+    if (readonlyMode.value) return
     const i = printList.value.indexOf(row)
     if (i >= 0) {
       printList.value.splice(i, 1)
@@ -466,6 +474,7 @@ export function useSampleWorkbench() {
 
   // 印刷行上移/下移（dir: -1 上移 / 1 下移）
   function movePrintRow(row: any, dir: number) {
+    if (readonlyMode.value) return
     const i = printList.value.indexOf(row)
     const j = i + dir
     if (i < 0 || j < 0 || j >= printList.value.length) return
@@ -476,6 +485,7 @@ export function useSampleWorkbench() {
 
   // 印刷行状态推进：0待做 → 1进行中 → 2完成
   async function advancePrint(row: any) {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     if (!row.processId) {
       ElMessage.warning('该印刷工序还未保存，请先保存计划')
@@ -495,6 +505,7 @@ export function useSampleWorkbench() {
 
   // 保存工序计划（整单覆盖当前轮次；卡片展开为多行，同卡片同行序）
   async function savePlan() {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     const validPrints = printList.value.filter((r) => (r.printName || '').trim())
     if (!planList.value.length && !validPrints.length) {
@@ -574,6 +585,7 @@ export function useSampleWorkbench() {
 
   // 弹窗确认：追加到卡片（去重，保留自定义项）
   function onCardPickerConfirm(items: any[]) {
+    if (readonlyMode.value) return
     cardPickerVisible.value = false
     const target = cardPickerTarget.value
     if (!target) return
@@ -651,6 +663,7 @@ export function useSampleWorkbench() {
 
   // 拖到空白区 → 新建卡片（自动进入编辑状态）
   function onPlanDrop(e: DragEvent) {
+    if (readonlyMode.value) return
     const data = parseDragData(e)
     if (!data) return
     const enriched = enrichProcess(data)
@@ -667,6 +680,7 @@ export function useSampleWorkbench() {
 
   // 拖到卡片 → 追加组合（去重），并自动进入编辑状态
   function onCardDrop(e: DragEvent, pc: any) {
+    if (readonlyMode.value) return
     const data = parseDragData(e)
     pc.draggingOver = false
     if (!data) return
@@ -702,6 +716,7 @@ export function useSampleWorkbench() {
 
   // 移除卡片内作业项目
   function removeCardItem(pc: any, idx: number) {
+    if (readonlyMode.value) return
     // 只移除作业项目，卡片保留（可再拖入）；删卡片走右下角删除按钮
     pc.items.splice(idx, 1)
     markDirty(pc)
@@ -709,6 +724,7 @@ export function useSampleWorkbench() {
 
   // 删除整张卡片（保存计划时生效）
   function removePlanCard(pc: any) {
+    if (readonlyMode.value) return
     planList.value = planList.value.filter((x) => x !== pc)
     if (batchSelected.value.has(pc.uid)) {
       const s = new Set(batchSelected.value)
@@ -717,6 +733,7 @@ export function useSampleWorkbench() {
     }
   }
   async function advancePlan(pc: any) {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     const next = pc.status === 1 ? 2 : 1
     pc.advancing = true
@@ -738,6 +755,7 @@ export function useSampleWorkbench() {
 
   // 保存卡片（整单保存，数据一致）
   async function saveCard(pc: any) {
+    if (readonlyMode.value) return
     pc.savingCard = true
     pc.saveState = 'saving'
     try {
@@ -767,6 +785,7 @@ export function useSampleWorkbench() {
 
   // 材料行
   function addMaterialRow(pc: any) {
+    if (readonlyMode.value) return
     pc.materialRows.push({
       name: '',
       spec: '',
@@ -900,6 +919,7 @@ export function useSampleWorkbench() {
 
   // 建档成功 → 填入目标行（无目标行则加到卡片材料表）
   function onMaterialCreated(mat: any) {
+    if (readonlyMode.value) return
     const t = materialTarget.value
     if (t?.row) {
       t.row.materialId = mat.materialId
@@ -1072,6 +1092,7 @@ export function useSampleWorkbench() {
 
   // 接单：确认弹窗由调用方负责（消除双重确认），成功返回 true，失败提示并返回 false
   async function handleAccept(orderId: number): Promise<boolean> {
+    if (readonlyMode.value) return false
     if (!orderId) return false
     try {
       await sampleOrderApi.acceptEngineering(orderId)
@@ -1084,6 +1105,7 @@ export function useSampleWorkbench() {
 
   // 拒单
   async function handleReject() {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     try {
       const { value } = await ElMessageBox.prompt('请填写拒单原因', '工程拒单', {
@@ -1103,6 +1125,7 @@ export function useSampleWorkbench() {
 
   // 保存工艺参数
   async function saveNote() {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     saving.value = true
     try {
@@ -1118,6 +1141,7 @@ export function useSampleWorkbench() {
 
   // 资料转移（DEV-764：改为打开轻量版弹窗，复用样品单列表同一组件/store）
   function handleTransfer() {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     transferDialogVisible.value = true
   }
@@ -1140,6 +1164,7 @@ export function useSampleWorkbench() {
     return true
   }
   async function engUploadFile(options: any) {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     const fd = new FormData()
     fd.append('file', options.file)
@@ -1159,6 +1184,7 @@ export function useSampleWorkbench() {
     }
   }
   async function engRemoveFile(file: any) {
+    if (readonlyMode.value) return
     if (file.id) {
       try {
         await request.delete(`/system/attachment/${file.id}`)
@@ -1185,6 +1211,7 @@ export function useSampleWorkbench() {
 
   // 标记完成
   async function handleMarkReady() {
+    if (readonlyMode.value) return
     if (!orderId.value) return
     try {
       await ElMessageBox.confirm('确认样品制作完成？将进入待送样状态', '标记完成', {
@@ -1437,5 +1464,6 @@ export function useSampleWorkbench() {
     loadPlan,
     loadBom,
     refreshCard,
+    readonlyMode,
   }
 }

@@ -2,6 +2,7 @@
   <div class="wb-page">
     <!-- 样品单信息（含接单/拒单 + 图纸上传，dev-20260811-008） -->
     <SampleInfoCard
+      :readonly="readonlyMode"
       :card="card"
       :done-count="doneCount"
       :plan-count="planList.length"
@@ -33,6 +34,7 @@
         <template v-if="isCurrentRound">
           <!-- 工序计划面板（左选择器 + 右卡片区） -->
           <PlanBoard
+            :readonly="readonlyMode"
             :batch-mode="batchMode"
             :batch-selected="batchSelected"
             :batch-category="batchCategory"
@@ -176,6 +178,7 @@
       <el-tab-pane label="🖨️ 印刷" name="PRINT">
         <template v-if="isCurrentRound">
           <PrintProcessPanel
+            :readonly="readonlyMode"
             :print-list="printList"
             :saving-plan="savingPlan"
             :parse-materials="parseMaterials"
@@ -258,12 +261,17 @@
           :format-time="formatTime"
           :parse-materials="parseMaterials"
         />
-        <BomPanel :bom-list="bomList" @transfer="handleTransfer" />
+        <BomPanel :readonly="readonlyMode" :bom-list="bomList" @transfer="handleTransfer" />
       </div>
 
       <!-- 工艺参数（图纸已挪到样品信息卡） -->
       <div class="bottom-row">
-        <NoteFilesPanel v-model="form.note" :saving="saving" @save="saveNote" />
+        <NoteFilesPanel
+          :readonly="readonlyMode"
+          v-model="form.note"
+          :saving="saving"
+          @save="saveNote"
+        />
       </div>
 
       <!-- 标记完成 -->
@@ -283,7 +291,7 @@
     <QuotationDetailDialog
       v-model="quotationDetailVisible"
       :quotation-id="quotationDetailId"
-      :is-sensitive="true"
+      :is-sensitive="false"
     />
     <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
 
@@ -555,6 +563,7 @@ const {
   loadPlan,
   loadBom,
   refreshCard,
+  readonlyMode,
 } = useSampleWorkbench()
 
 // 来源单据查看（工作台第一步：复用询价/报价详情共享组件，弹窗查看不离开工作台）

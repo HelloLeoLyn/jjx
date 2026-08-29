@@ -216,8 +216,9 @@ function canEnterWorkbench(row: any): boolean {
 // 接单打样：待打样(2)或打样中(3)且未接单可接单（新模型：无审核环节，工程直接接单）
 function canAccept(row: any): boolean {
   return (
-    [SampleOrderStatus.REQUEST.value, SampleOrderStatus.ENGINEERING.value].includes(row?.sampleStatus) &&
-    !row?.engineeringAcceptor
+    [SampleOrderStatus.REQUEST.value, SampleOrderStatus.ENGINEERING.value].includes(
+      row?.sampleStatus
+    ) && !row?.engineeringAcceptor
   )
 }
 
@@ -251,9 +252,15 @@ const doneCountMap = ref<Record<number, number>>({})
 const summaryMap = ref<Record<number, any>>({})
 const lastOperatorMap = ref<Record<number, any>>({})
 
-function openWorkbench(row: any) {
+function openWorkbench(row: any, readonly = false) {
   // 独立路由页打开（标签页），不在侧边栏显示
-  router.push({ path: '/engineering-workbench/workbench', query: { orderId: row.orderId } })
+  router.push({
+    path: '/engineering-workbench/workbench',
+    query: {
+      orderId: row.orderId,
+      readonly: readonly ? 'true' : 'false',
+    },
+  })
 }
 
 // 点击接单，弹窗确认框，确认接单调用composable的接单接口，成功后打开打样工作台

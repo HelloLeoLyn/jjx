@@ -2,28 +2,48 @@
   <div class="print-panel">
     <el-card shadow="never">
       <template #header>
-        <span style="font-weight:600">🖨️ 印刷工序（自定义工序，表格录入）</span>
+        <span style="font-weight: 600">🖨️ 印刷工序（自定义工序，表格录入）</span>
         <span class="desc">无标准工序库，逐行录入；每行一道印刷，可排序/推进/挂材料</span>
         <el-button
-          type="success" size="small" :loading="savingPlan" @click="savePlan"
+          type="success"
+          size="small"
+          :loading="savingPlan"
+          :disabled="readonly"
+          @click="savePlan"
           style="float: right; margin-top: -2px"
-        >💾 保存工序计划</el-button>
+          >💾 保存工序计划</el-button
+        >
         <el-button
-          type="primary" size="small" icon="Plus" @click="addPrintRow(activeTab)"
+          type="primary"
+          size="small"
+          icon="Plus"
+          :disabled="readonly"
+          @click="addPrintRow(activeTab)"
           style="float: right; margin-top: -2px; margin-right: 8px"
-        >＋ 添加印刷工序</el-button>
+          >＋ 添加印刷工序</el-button
+        >
       </template>
 
       <!-- 子结构 tabs（面板/上线/下线/未分类，与冲型组装一致） -->
       <el-tabs v-model="activeTab" type="border-card">
-        <el-tab-pane v-for="tab in tabs" :key="tab.value" :name="tab.value" :label="`${tab.label}（${filtered(tab.value).length}）`">
+        <el-tab-pane
+          v-for="tab in tabs"
+          :key="tab.value"
+          :name="tab.value"
+          :label="`${tab.label}（${filtered(tab.value).length}）`"
+        >
           <el-table :data="filtered(tab.value)" size="small" border stripe>
             <el-table-column label="#" width="44" align="center">
               <template #default="{ $index }">{{ $index + 1 }}</template>
             </el-table-column>
             <el-table-column label="印刷名称 *" min-width="140">
               <template #default="{ row }">
-                <el-input v-model="row.printName" size="small" placeholder="如：丝印/移印/网印" :class="{ 'input-error': !(row.printName || '').trim() }" />
+                <el-input
+                  v-model="row.printName"
+                  size="small"
+                  placeholder="如：丝印/移印/网印"
+                  :class="{ 'input-error': !(row.printName || '').trim() }"
+                />
               </template>
             </el-table-column>
             <el-table-column label="色号" width="120">
@@ -44,22 +64,57 @@
             <el-table-column label="🧾 材料" min-width="180">
               <template #default="{ row }">
                 <div class="mat-cell">
-                  <el-tag v-for="(m, i) in parseMaterials(row.materials)" :key="i" size="small" type="info" closable @close="removeMaterial(row, i)" style="margin-right:4px;margin-bottom:2px">
+                  <el-tag
+                    v-for="(m, i) in parseMaterials(row.materials)"
+                    :key="i"
+                    size="small"
+                    type="info"
+                    closable
+                    @close="removeMaterial(row, i)"
+                    style="margin-right: 4px; margin-bottom: 2px"
+                  >
                     {{ m.name }}{{ m.spec ? ' ' + m.spec : '' }}{{ m.qty ? ' ×' + m.qty : '' }}
                   </el-tag>
-                  <el-button size="small" link type="primary" icon="Plus" @click="openMaterialPicker(row)">材料</el-button>
+                  <el-button
+                    size="small"
+                    link
+                    type="primary"
+                    icon="Plus"
+                    @click="openMaterialPicker(row)"
+                    >材料</el-button
+                  >
                 </div>
               </template>
             </el-table-column>
             <el-table-column label="状态" width="110" align="left">
               <template #default="{ row }">
-                <el-tag :type="row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'info'" size="small">
-                  {{ row.status === 2 ? '✓ 已完成' : row.status === 1 ? '⏳ 进行中' : '待做' }}
+                <el-tag
+                  :type="
+                    row.status === ProcessStatusEnum.DONE.value
+                      ? 'success'
+                      : row.status === ProcessStatusEnum.DOING.value
+                        ? 'warning'
+                        : 'info'
+                  "
+                  size="small"
+                >
+                  {{
+                    row.status === ProcessStatusEnum.DONE.value
+                      ? '✓ 已完成'
+                      : row.status === ProcessStatusEnum.DOING.value
+                        ? '⏳ 进行中'
+                        : '待做'
+                  }}
                 </el-tag>
                 <el-button
-                  v-if="row.status !== 2 && !isEmptyRow(row)" size="small" link type="primary"
-                  :loading="row.advancing" @click="advancePrint(row)"
-                >{{ row.status === 1 ? '完成' : '开始' }}</el-button>
+                  v-if="row.status !== ProcessStatusEnum.DONE.value && !isEmptyRow(row)"
+                  size="small"
+                  link
+                  type="primary"
+                  :loading="row.advancing"
+                  @click="advancePrint(row)"
+                  >{{ row.status === ProcessStatusEnum.DOING.value ? '完成' : '开始' }}</el-button
+                >
               </template>
             </el-table-column>
             <el-table-column label="操作" min-width="200" align="center">
@@ -67,18 +122,47 @@
                 <template v-if="!isEmptyRow(row)">
                   <el-button
                     v-if="row.saveState === 'dirty'"
-                    size="small" link type="primary" :loading="savingPlan"
+                    size="small"
+                    link
+                    type="primary"
+                    :loading="savingPlan"
                     @click="handleRowSave(row)"
-                  >保存</el-button>
+                    >保存</el-button
+                  >
                   <el-button v-else size="small" link disabled>✓ 已存</el-button>
-                  <el-button size="small" link icon="Top" :disabled="isFirst(row)" @click="movePrintRow(row, -1)">上移</el-button>
-                  <el-button size="small" link icon="Bottom" :disabled="isLast(row)" @click="movePrintRow(row, 1)">下移</el-button>
-                  <el-button size="small" link type="danger" icon="Delete" @click="removePrintRow(row)">删</el-button>
+                  <el-button
+                    size="small"
+                    link
+                    icon="Top"
+                    :disabled="readonly || isFirst(row)"
+                    @click="movePrintRow(row, -1)"
+                    >上移</el-button
+                  >
+                  <el-button
+                    size="small"
+                    link
+                    icon="Bottom"
+                    :disabled="readonly || isLast(row)"
+                    @click="movePrintRow(row, 1)"
+                    >下移</el-button
+                  >
+                  <el-button
+                    size="small"
+                    link
+                    type="danger"
+                    icon="Delete"
+                    :disabled="readonly"
+                    @click="removePrintRow(row)"
+                    >删</el-button
+                  >
                 </template>
               </template>
             </el-table-column>
           </el-table>
-          <div v-if="!filtered(tab.value).length" style="text-align:center;color:#c0c4cc;padding:24px 0;font-size:13px">
+          <div
+            v-if="!filtered(tab.value).length"
+            style="text-align: center; color: #c0c4cc; padding: 24px 0; font-size: 13px"
+          >
             暂无印刷工序，点击右上角【＋ 添加印刷工序】录入
           </div>
         </el-tab-pane>
@@ -94,17 +178,20 @@
         :remote-method="searchMaterial"
         :loading="pickerLoading"
         placeholder="搜索物料档案"
-        style="width:100%"
+        style="width: 100%"
       >
         <el-option
-          v-for="opt in pickerOptions" :key="opt.materialId"
+          v-for="opt in pickerOptions"
+          :key="opt.materialId"
           :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
           :value="opt.materialId"
         />
       </el-select>
       <template #footer>
         <el-button @click="pickerVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!pickerMaterialId" @click="confirmMaterial">添加</el-button>
+        <el-button type="primary" :disabled="!pickerMaterialId" @click="confirmMaterial"
+          >添加</el-button
+        >
       </template>
     </el-dialog>
   </div>
@@ -114,6 +201,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
+import { ProcessStatusEnum } from '@/enums/product/process'
 
 /**
  * 印刷工序面板（dev-20260811-009）
@@ -129,6 +217,7 @@ const props = defineProps<{
   movePrintRow: (row: any, dir: number) => void
   advancePrint: (row: any) => void
   savePlan: () => void
+  readonly?: boolean
 }>()
 
 // 子结构 tabs（与冲型组装 planTabs 一致）
@@ -146,12 +235,14 @@ function filtered(value: string) {
 
 // 空行判定：新建行(uid 以 new- 开头)且所有录入字段为空
 function isEmptyRow(r: any) {
-  return !!r
-    && String(r.uid || '').startsWith('new-')
-    && !(r.printName || '').trim()
-    && !(r.colorNo || '').trim()
-    && !(r.inkNo || '').trim()
-    && !(r.screenNo || '').trim()
+  return (
+    !!r &&
+    String(r.uid || '').startsWith('new-') &&
+    !(r.printName || '').trim() &&
+    !(r.colorNo || '').trim() &&
+    !(r.inkNo || '').trim() &&
+    !(r.screenNo || '').trim()
+  )
 }
 
 // 行级保存（2026-08-12）：编辑不再自动补行，点“保存”才提交并触发新行/材料/执行时间线
@@ -165,7 +256,7 @@ watch(
     uidSnapshot.value = uids
     ensureEmptyRow()
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 // 切换子结构 tab → 目标 tab 也保证空行
@@ -181,16 +272,20 @@ function ensureEmptyRow() {
 
 // 行内容变化 → 标记 dirty（非空行，编辑后显示“保存”按钮）
 watch(
-  () => props.printList.map((r) =>
-    `${r.uid}:${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
-  ).join('|'),
+  () =>
+    props.printList
+      .map(
+        (r) =>
+          `${r.uid}:${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
+      )
+      .join('|'),
   () => {
     props.printList.forEach((r) => {
       if (isEmptyRow(r)) return
       if (r.saveState === 'saving') return
       r.saveState = 'dirty'
     })
-  },
+  }
 )
 
 // 行保存：提交整单（父组件 savePlan 内含 loadPlan+loadBom），成功后自动补空行/刷新时间线
@@ -247,7 +342,14 @@ function confirmMaterial() {
   const opt = pickerOptions.value.find((o) => o.materialId === pickerMaterialId.value)
   if (!row || !opt) return
   const mats = props.parseMaterials(row.materials) || []
-  mats.push({ name: opt.materialName, spec: opt.specification || '', qty: 1, unit: opt.unitName || '', materialId: opt.materialId, materialCode: opt.materialCode || '' })
+  mats.push({
+    name: opt.materialName,
+    spec: opt.specification || '',
+    qty: 1,
+    unit: opt.unitName || '',
+    materialId: opt.materialId,
+    materialCode: opt.materialCode || '',
+  })
   row.materials = JSON.stringify(mats)
   row.saveState = 'dirty'
   pickerVisible.value = false

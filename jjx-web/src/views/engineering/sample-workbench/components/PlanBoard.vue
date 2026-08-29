@@ -2,7 +2,7 @@
   <div class="mid-row">
     <el-card class="col-picker" shadow="never">
       <template #header>
-        <span style="font-weight:600">选择作业项目</span>
+        <span style="font-weight: 600">选择作业项目</span>
         <span class="desc">选结构 → 拖拽工序到右侧卡片组合</span>
       </template>
       <WorkProjectPicker />
@@ -10,22 +10,37 @@
 
     <el-card class="col-plan" shadow="never">
       <template #header>
-        <span style="font-weight:600">打样工序计划</span>
+        <span style="font-weight: 600">打样工序计划</span>
         <span class="desc">在哪个标签编辑，卡片就属于哪个项目结构</span>
-        <el-button size="small" :type="batchMode ? 'warning' : 'default'" icon="Grid" @click="toggleBatchMode" style="float: right; margin-top: -2px">
+        <el-button
+          size="small"
+          :type="batchMode ? 'warning' : 'default'"
+          icon="Grid"
+          @click="toggleBatchMode"
+          style="float: right; margin-top: -2px"
+        >
           {{ batchMode ? '退出批量编辑' : '批量编辑' }}
         </el-button>
         <el-button
-          type="success" size="small" :loading="savingPlan" @click="savePlan"
+          type="success"
+          size="small"
+          :loading="savingPlan"
+          @click="savePlan"
           style="float: right; margin-top: -2px"
-        >💾 保存工序计划</el-button>
+          >💾 保存工序计划</el-button
+        >
       </template>
 
       <!-- 常用物料快捷区 -->
       <FrequentMaterialsBar :frequent-materials="frequentMaterials" @add="addFrequentMaterial" />
 
       <el-tabs v-model="activePlanTab" type="border-card" style="min-height: 420px">
-        <el-tab-pane v-for="tab in planTabs" :key="tab.value" :name="tab.value" :label="`${tab.label}（${cardsByTab(tab.value).length}）`">
+        <el-tab-pane
+          v-for="tab in planTabs"
+          :key="tab.value"
+          :name="tab.value"
+          :label="`${tab.label}（${cardsByTab(tab.value).length}）`"
+        >
           <div class="plan-scroll" @dragover.prevent @drop="onPlanDrop">
             <ProcessCard
               v-for="(pc, idx) in cardsByTab(tab.value)"
@@ -124,6 +139,7 @@ const props = defineProps<{
   onMaterialSelected: (row: any, v: any) => void
   onSelectVisibleChange: (row: any, v: boolean) => void
   openMaterialCreate: (pc: any, m: any) => void
+  readonly?: boolean
 }>()
 
 // activePlanTab 双向绑定（v-model:active-plan-tab）

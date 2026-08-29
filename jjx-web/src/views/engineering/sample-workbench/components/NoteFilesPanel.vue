@@ -1,10 +1,24 @@
 <template>
   <el-card class="col-note" shadow="never">
-    <template #header><span style="font-weight:600">工艺参数 / 工程备注</span></template>
-    <el-input v-model="note" type="textarea" :rows="3"
+    <template #header><span style="font-weight: 600">工艺参数 / 工程备注</span></template>
+    <el-input
+      v-model="note"
+      type="textarea"
+      :rows="3"
+      :readonly="readonly"
       placeholder="填写工艺参数/材料规格/丝印要求/模切尺寸等"
-      maxlength="2000" show-word-limit />
-    <el-button type="primary" size="small" style="margin-top:8px" @click="$emit('save')" :loading="saving">💾 保存工艺参数</el-button>
+      maxlength="2000"
+      show-word-limit
+    />
+    <el-button
+      type="primary"
+      size="small"
+      style="margin-top: 8px"
+      :disabled="readonly"
+      @click="$emit('save')"
+      :loading="saving"
+      >💾 保存工艺参数</el-button
+    >
   </el-card>
 </template>
 
@@ -18,6 +32,7 @@ import { computed } from 'vue'
 const props = defineProps<{
   modelValue: string
   saving: boolean
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
