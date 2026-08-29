@@ -172,7 +172,7 @@ public class OrderServiceImpl implements IOrderService {
             log.setBizType("order");
             log.setBizId(String.valueOf(order.getOrderId()));
             log.setTraceId(order.getTraceId());
-            log.setBizStatus(order.getOrderStatus());
+            log.setBizStatus(OrderStatusEnum.getByCode(order.getOrderStatus()).getDescription());
             log.setOperParam("创建销售订单 " + order.getOrderNo() + "（" + order.getCustomerName() + "）");
             log.setStatus(1);
             log.setCreateTime(LocalDateTime.now());
@@ -242,7 +242,7 @@ public class OrderServiceImpl implements IOrderService {
         diffItemFields(changes, oldItems, dto.getItems());
         changeRecorder.recordUpdate("销售订单", "order.update", "order",
             String.valueOf(dto.getOrderId()), oldOrder.getTraceId(),
-            oldOrder.getOrderStatus(), changes);
+            OrderStatusEnum.getByCode(oldOrder.getOrderStatus()).getDescription(), changes);
     }
 
     /** 主表字段对比（白名单，排除 createTime 等系统字段） */
@@ -423,7 +423,7 @@ public class OrderServiceImpl implements IOrderService {
             newLog.setBizType("order");
             newLog.setBizId(String.valueOf(copy.getOrderId()));
             newLog.setTraceId(copy.getTraceId());
-            newLog.setBizStatus(copy.getOrderStatus());
+            newLog.setBizStatus(OrderStatusEnum.getByCode(copy.getOrderStatus()).getDescription());
             newLog.setStatus(1);
             newLog.setOperParam("{\"action\":\"copy\",\"sourceOrderNo\":\"" + source.getOrderNo() + "\"}");
             newLog.setCreateTime(LocalDateTime.now());
@@ -447,7 +447,7 @@ public class OrderServiceImpl implements IOrderService {
             operLog.setBizType("order");
             operLog.setBizId(String.valueOf(orderId));
             operLog.setTraceId(source.getTraceId());
-            operLog.setBizStatus(source.getOrderStatus());
+            operLog.setBizStatus(OrderStatusEnum.getByCode(source.getOrderStatus()).getDescription());
             operLog.setStatus(1);
             operLog.setOperParam("{\"action\":\"copy\",\"newOrderNo\":\"" + copy.getOrderNo()
                     + "\",\"newOrderId\":" + copy.getOrderId() + "}");

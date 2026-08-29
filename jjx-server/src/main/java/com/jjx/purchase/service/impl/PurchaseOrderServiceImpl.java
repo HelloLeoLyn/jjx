@@ -17,6 +17,7 @@ import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.purchase.domain.enums.ApprovalStatusEnum;
 import com.jjx.purchase.domain.enums.PaymentStatusEnum;
 import com.jjx.purchase.domain.enums.PurchaseExceptionEnum;
+import com.jjx.purchase.domain.enums.PurchaseOrderStatusEnum;
 import com.jjx.purchase.domain.enums.ReceiptStatusEnum;
 import com.jjx.purchase.domain.vo.*;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
@@ -190,7 +191,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             log.setBizType("purchase_order");
             log.setBizId(String.valueOf(order.getOrderId()));
             log.setTraceId(order.getTraceId());
-            log.setBizStatus(order.getApprovalStatus());
+            log.setBizStatus(PurchaseOrderStatusEnum.getByCode(order.getApprovalStatus()).getDescription());
             log.setOperParam("创建采购订单 " + order.getOrderNo() + "（" + order.getSupplierName() + "）");
             log.setStatus(1);
             log.setCreateTime(java.time.LocalDateTime.now());

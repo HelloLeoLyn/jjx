@@ -41,7 +41,7 @@ public class OperLogChangeRecorder {
      * @param changes   字段级变更清单（可为空，记“无字段变更”）
      */
     public void recordUpdate(String module, String operUrl, String bizType, String bizId,
-                             String traceId, Integer bizStatus, List<String> changes) {
+                             String traceId, String bizStatus, List<String> changes) {
         try {
             List<String> safe = changes == null ? List.of() : changes;
             String summary = safe.isEmpty() ? "无字段变更" : String.join("；", safe);

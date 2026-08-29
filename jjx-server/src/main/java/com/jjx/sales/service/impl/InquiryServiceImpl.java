@@ -539,7 +539,7 @@ public class InquiryServiceImpl implements IInquiryService {
         LocalDateTime auditTime = LocalDateTime.now();
         SysOperLog inquiryLog = buildConversionOperLog(
             "询价单管理", BusinessType.UPDATE, "inquiry", inquiry.getInquiryId(),
-            inquiry.getTraceId(), InquiryStatus.CONVERTED.getCode(), auditTime,
+            inquiry.getTraceId(), InquiryStatus.CONVERTED.getName(), auditTime,
             "询价单[" + inquiry.getInquiryNo() + "]转为报价单[" + quotation.getQuotationNo() + "]",
             JSONUtil.toJsonStr(Map.of(
                 "action", "CONVERT_TO_QUOTATION",
@@ -548,7 +548,7 @@ public class InquiryServiceImpl implements IInquiryService {
 
         SysOperLog quotationLog = buildConversionOperLog(
             "报价单管理", BusinessType.INSERT, "quotation", quotation.getQuotationId(),
-            inquiry.getTraceId(), QuotationStatus.DRAFT.getCode(), auditTime,
+            inquiry.getTraceId(), QuotationStatus.DRAFT.getName(), auditTime,
             "由询价单[" + inquiry.getInquiryNo() + "]创建报价单[" + quotation.getQuotationNo() + "]",
             JSONUtil.toJsonStr(Map.of(
                 "action", "CREATE_FROM_INQUIRY",
@@ -559,7 +559,7 @@ public class InquiryServiceImpl implements IInquiryService {
 
     private SysOperLog buildConversionOperLog(String module, BusinessType businessType,
                                               String bizType, Long bizId, String traceId,
-                                              Integer bizStatus, LocalDateTime createTime,
+                                              String bizStatus, LocalDateTime createTime,
                                               String operParam, String detail) {
         SysOperLog operLog = new SysOperLog();
         operLog.setModule(module);

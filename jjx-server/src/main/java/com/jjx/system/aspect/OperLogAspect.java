@@ -38,6 +38,13 @@ public class OperLogAspect {
     private final com.jjx.sales.mapper.QuotationMapper quotationMapper;
     private final com.jjx.system.mapper.SysAttachmentMapper attachmentMapper;
 
+    /** 表达式缓存：注解上的表达式是有限集合，避免每次调用都重新 parse */
+    private final java.util.concurrent.ConcurrentHashMap<String, Expression> spelCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** sys_oper_log.biz_status 列宽 varchar(200) */
+    private static final int BIZ_STATUS_MAX_LENGTH = 200;
+
     @Around("@annotation(logAnnotation)")
     public Object around(ProceedingJoinPoint point, Log logAnnotation) throws Throwable {
         long startTime = System.currentTimeMillis();
@@ -137,12 +144,14 @@ public class OperLogAspect {
             operLog.setBizId(bizId);
             operLog.setBizType(bizType);
             operLog.setTraceId(traceId);
-            // bizStatus 支持数字字面量、SpEL 表达式以及带 getCode() 的枚举。
+            // bizStatus 支持纯字面量（"3" / "DRAFT"，不进 SpEL）、SpEL 表达式以及枚举。
             try {
                 operLog.setBizStatus(resolveBizStatus(spelCtx, logAnnotation.bizStatus()));
             } catch (Exception e) {
-                log.warn("bizStatus解析失败: {} ({})", logAnnotation.bizStatus(), e.getMessage());
-                operLog.setBizStatus(0);
+                // 解析不出来就留空，不要写 "0"——"0" 看起来像一个合法状态码，会污染数据
+                log.error("bizStatus解析失败，该条流水将不带状态: method={}, expression={}, error={}",
+                        point.getSignature().toShortString(), logAnnotation.bizStatus(), e.getMessage());
+                operLog.setBizStatus("");
             }
 
             // detail: attachmentIds 表达式组装附件 JSON，其他文本/JSON 原样写入。
@@ -273,13 +282,18 @@ public class OperLogAspect {
             return null;
         }
         try {
-            Expression exp = spelParser.parseExpression(expression);
+            Expression exp = parseCached(expression);
             Object value = exp.getValue(ctx);
             return value == null ? null : String.valueOf(value);
         } catch (Exception e) {
             log.warn("SpEL解析失败: expression={}, error={}", expression, e.getMessage());
             return null;
         }
+    }
+
+    /** 表达式只 parse 一次，之后复用（注解上的表达式是有限集合） */
+    private Expression parseCached(String expression) {
+        return spelCache.computeIfAbsent(expression, spelParser::parseExpression);
     }
 
     static void bindResult(StandardEvaluationContext ctx, Object result) {
@@ -300,31 +314,65 @@ public class OperLogAspect {
         return expression != null && expression.matches(".*#attachmentIds\\b.*");
     }
 
-    Integer resolveBizStatus(StandardEvaluationContext ctx, String expression) throws Exception {
+    String resolveBizStatus(StandardEvaluationContext ctx, String expression) throws Exception {
         if (expression == null || expression.trim().isEmpty()) {
-            return 0;
+            return "";
         }
-        Object value;
-        try {
-            value = Integer.valueOf(expression);
-        } catch (NumberFormatException ignored) {
-            value = spelParser.parseExpression(expression).getValue(ctx);
+        String trimmed = expression.trim();
+
+        // 1) 纯字面量（"3" / "DRAFT" / "PENDING_REVIEW"）：原样落库，不进 SpEL，零反射。
+        //    biz_status 已是 varchar，注解写什么库里就是什么。
+        if (isLiteralBizStatus(trimmed)) {
+            return clampBizStatus(trimmed);
         }
-        if (value instanceof Number number) {
-            return number.intValue();
+
+        // 2) 其余按 SpEL 求值（#result.data.bizStatus / #dto.status / T(枚举).X...）
+        Object value = parseCached(trimmed).getValue(ctx);
+        if (value == null) {
+            // 表达式合法但取不到值（方法没把状态带出来）——留空，让人一眼看出是漏了，而不是伪造一个状态
+            log.warn("bizStatus表达式求值为空: {}", trimmed);
+            return "";
         }
-        if (value != null) {
+
+        // 3) 求值结果是枚举常量（注解写成 T(枚举).X 而没有调取值方法）：
+        //    优先取业务码（getCode/getValue），取不到再退到枚举名，保持与历史落库值一致。
+        if (value instanceof Enum<?> enumValue) {
+            String code = enumCodeOf(enumValue);
+            return clampBizStatus(code != null ? code : enumValue.name());
+        }
+
+        return clampBizStatus(String.valueOf(value));
+    }
+
+    /**
+     * 是否为纯字面量：不含 SpEL 变量引用（#）也不含类型引用（T(...)）。
+     * 命中则直接落库，既省掉一次 SpEL 解析，也让 "DRAFT" 这种语义值不会被当表达式解析失败。
+     */
+    static boolean isLiteralBizStatus(String expression) {
+        return expression != null && !expression.contains("#") && !expression.contains("T(");
+    }
+
+    /** 枚举取业务码：getCode() / getValue() 任一存在即用，都没有返回 null（由调用方退到 name()） */
+    private static String enumCodeOf(Enum<?> enumValue) {
+        for (String getter : new String[]{"getCode", "getValue"}) {
             try {
-                Object code = value.getClass().getMethod("getCode").invoke(value);
-                if (code instanceof Number number) {
-                    return number.intValue();
+                Object code = enumValue.getClass().getMethod(getter).invoke(enumValue);
+                if (code != null) {
+                    return String.valueOf(code);
                 }
-                return Integer.valueOf(String.valueOf(code));
-            } catch (NoSuchMethodException ignored) {
-                return Integer.valueOf(String.valueOf(value));
+            } catch (ReflectiveOperationException ignored) {
+                // 换下一个取值方法
             }
         }
-        return 0;
+        return null;
+    }
+
+    /** 截到列宽，不加省略号——状态值被截断也要保持是个干净的值 */
+    private static String clampBizStatus(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() > BIZ_STATUS_MAX_LENGTH ? value.substring(0, BIZ_STATUS_MAX_LENGTH) : value;
     }
 
     /**

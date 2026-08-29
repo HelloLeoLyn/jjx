@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 public class UnifiedTraceEventVO {
     private String eventId;
     private LocalDateTime time;
-    private Integer bizStatus;
+    private String bizStatus;
     private String operatorName;
     private Integer result;
     private String traceId;
