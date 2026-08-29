@@ -238,7 +238,6 @@ const total = ref(0)
 
 /** 按需加载缓存：key = bizType:bizId */
 const reviewCache = new Map<string, ReviewHistory[]>()
-const attachmentCache = new Map<string, TraceAttachment[]>()
 
 watch(
   () => props.modelValue,
@@ -386,10 +385,10 @@ async function selectEvent(row: TraceEvent) {
   await loadRowContent(row)
 }
 
-/** 点击行后按需加载：审核意见（/api/trace/reviews）+ 独立附件（attachmentApi.list） */
+/** 点击行后按需加载审核意见（/api/trace/reviews） */
 async function loadRowContent(row: TraceEvent) {
   const key = `${row.bizType || ''}:${row.bizId || ''}`
-  if (!key.includes(':') || !row.bizType || !row.bizId) return
+  if (!row.bizType || !row.bizId) return
   if (row.isReview) {
     try {
       let reviews = reviewCache.get(key)
@@ -409,23 +408,6 @@ async function loadRowContent(row: TraceEvent) {
     } catch {
       /* 审核流水加载失败不阻断展示 */
     }
-  }
-  // 独立附件（detail 未引用的，如询价图纸）：按 bizType+bizId 拉全单附件，与行内附件去重合并
-  try {
-    let all = attachmentCache.get(key)
-    if (!all) {
-      const res: any = await attachmentApi.list(row.bizType, Number(row.bizId))
-      all = res?.data || []
-      attachmentCache.set(key, all || [])
-    }
-    const merged = new Map<number, TraceAttachment>()
-    for (const attachment of row.attachments || []) merged.set(attachment.id, attachment)
-    for (const attachment of all || []) {
-      if (attachment?.id != null) merged.set(attachment.id, attachment)
-    }
-    row.attachments = [...merged.values()]
-  } catch {
-    /* 附件加载失败不阻断展示 */
   }
 }
 
