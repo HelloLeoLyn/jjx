@@ -61,11 +61,11 @@ export function deleteProductionOrder(orderId: string, orderType?: OrderType) {
 }
 
 // 更新订单状态（后端为 @RequestParam query 参数，2026-08-11 修复：原放 body 导致 orderId 缺失）
-export function updateOrderStatus(data: OrderStatusUpdateDTO) {
+export function updateOrderStatus(data: OrderStatusUpdateDTO, attachmentIds?: string) {
   return request({
     url: '/production/order/status',
     method: 'put',
-    params: data,
+    params: { ...data, attachmentIds },
   })
 }
 
@@ -177,12 +177,14 @@ export function startExecution(
     operatorId?: string
     equipmentId?: string
     remark?: string
-  }
+  },
+  attachmentIds?: string
 ) {
   return request({
     url: `/production/order/${orderId}/start`,
     method: 'put',
     data,
+    params: { attachmentIds },
   })
 }
 
@@ -194,12 +196,14 @@ export function completeExecution(
     completedQuantity: number
     qualityResult?: string
     remark?: string
-  }
+  },
+  attachmentIds?: string
 ) {
   return request({
     url: `/production/order/${orderId}/complete`,
     method: 'put',
     data,
+    params: { attachmentIds },
   })
 }
 

@@ -277,7 +277,12 @@ export const sampleOperations: OperationDef[] = [
     fields: [{ key: 'trackingNo', label: '快递单号', type: 'input', placeholder: '选填' }],
     evidence: true,
     events: ['sample.sent'],
-    api: ({ bizId, values }) => sampleOrderApi.sendSample(bizId, values.trackingNo || ''),
+    api: ({ bizId, values, attachmentIds }) =>
+      sampleOrderApi.sendSample(
+        bizId,
+        values.trackingNo || '',
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'sample.confirm',
@@ -290,7 +295,12 @@ export const sampleOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['sample.confirmed'],
-    api: ({ bizId, values }) => sampleOrderApi.confirm(bizId, values.clientName || '客户确认'),
+    api: ({ bizId, values, attachmentIds }) =>
+      sampleOrderApi.confirm(
+        bizId,
+        values.clientName || '客户确认',
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'sample.rejectSample',
@@ -309,7 +319,12 @@ export const sampleOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['sample.rejected_by_customer'],
-    api: ({ bizId, values }) => sampleOrderApi.rejectSample(bizId, values.reason),
+    api: ({ bizId, values, attachmentIds }) =>
+      sampleOrderApi.rejectSample(
+        bizId,
+        values.reason,
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'sample.convert',
@@ -485,15 +500,18 @@ export const purchaseOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['purchase.approved'],
-    api: ({ bizId, values }) => {
+    api: ({ bizId, values, attachmentIds }) => {
       const u = currentUser()
-      return purchaseOrderApi.approveOrder({
-        orderId: Number(bizId),
-        approverId: Number(u.id),
-        approverName: u.name,
-        approvalComment: values.approvalComment || '',
-        approvalStatus: 4,
-      })
+      return purchaseOrderApi.approveOrder(
+        {
+          orderId: Number(bizId),
+          approverId: Number(u.id),
+          approverName: u.name,
+          approvalComment: values.approvalComment || '',
+          approvalStatus: 4,
+        },
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      )
     },
   },
   {
@@ -513,15 +531,18 @@ export const purchaseOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['purchase.approved'],
-    api: ({ bizId, values }) => {
+    api: ({ bizId, values, attachmentIds }) => {
       const u = currentUser()
-      return purchaseOrderApi.approveOrder({
-        orderId: Number(bizId),
-        approverId: Number(u.id),
-        approverName: u.name,
-        approvalComment: values.approvalComment || '',
-        approvalStatus: 5,
-      })
+      return purchaseOrderApi.approveOrder(
+        {
+          orderId: Number(bizId),
+          approverId: Number(u.id),
+          approverName: u.name,
+          approvalComment: values.approvalComment || '',
+          approvalStatus: 5,
+        },
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      )
     },
   },
   {
@@ -541,7 +562,11 @@ export const purchaseOperations: OperationDef[] = [
     ],
     evidence: true,
     events: [],
-    api: ({ bizId }) => purchaseOrderApi.cancleOrder(Number(bizId)),
+    api: ({ bizId, attachmentIds }) =>
+      purchaseOrderApi.cancleOrder(
+        Number(bizId),
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
 ]
 
@@ -576,13 +601,16 @@ export const productionOperations: OperationDef[] = [
     ],
     evidence: true,
     events: [],
-    api: ({ bizId, values }) =>
-      productionOrderApi.updateOrderStatus({
-        orderId: String(bizId),
-        orderStatus: 2,
-        approvalStatus: 2,
-        approvalRemark: values.approvalRemark || '',
-      }),
+    api: ({ bizId, values, attachmentIds }) =>
+      productionOrderApi.updateOrderStatus(
+        {
+          orderId: String(bizId),
+          orderStatus: 2,
+          approvalStatus: 2,
+          approvalRemark: values.approvalRemark || '',
+        },
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'production.reject',
@@ -601,14 +629,17 @@ export const productionOperations: OperationDef[] = [
     ],
     evidence: true,
     events: [],
-    api: ({ bizId, values }) =>
-      productionOrderApi.updateOrderStatus({
-        orderId: String(bizId),
-        // 3=已驳回（WorkOrderEnum 状态，OrderStatus 类型缺该成员，后端合法）
-        orderStatus: 3 as any,
-        approvalStatus: 3,
-        approvalRemark: values.approvalRemark || '',
-      }),
+    api: ({ bizId, values, attachmentIds }) =>
+      productionOrderApi.updateOrderStatus(
+        {
+          orderId: String(bizId),
+          // 3=已驳回（WorkOrderEnum 状态，OrderStatus 类型缺该成员，后端合法）
+          orderStatus: 3 as any,
+          approvalStatus: 3,
+          approvalRemark: values.approvalRemark || '',
+        },
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'production.start',
@@ -619,10 +650,12 @@ export const productionOperations: OperationDef[] = [
     fields: [{ key: 'remark', label: '开始备注', type: 'textarea', placeholder: '选填，开工说明' }],
     evidence: true,
     events: ['product.instance.production_started'],
-    api: ({ bizId, values }) =>
-      productionOrderApi.startExecution(String(bizId), {
-        remark: values.remark || '',
-      }),
+    api: ({ bizId, values, attachmentIds }) =>
+      productionOrderApi.startExecution(
+        String(bizId),
+        { remark: values.remark || '' },
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'production.complete',
@@ -653,12 +686,16 @@ export const productionOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['production.completed'],
-    api: ({ bizId, values }) =>
-      productionOrderApi.completeExecution(String(bizId), {
-        completedQuantity: Number(values.completedQuantity),
-        qualityResult: values.qualityResult,
-        remark: values.remark || '',
-      }),
+    api: ({ bizId, values, attachmentIds }) =>
+      productionOrderApi.completeExecution(
+        String(bizId),
+        {
+          completedQuantity: Number(values.completedQuantity),
+          qualityResult: values.qualityResult,
+          remark: values.remark || '',
+        },
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
   {
     key: 'production.cancel',
@@ -677,12 +714,15 @@ export const productionOperations: OperationDef[] = [
     ],
     evidence: true,
     events: [],
-    api: ({ bizId, values }) =>
-      productionOrderApi.updateOrderStatus({
-        orderId: String(bizId),
-        orderStatus: 9,
-        remark: values.remark || '',
-      }),
+    api: ({ bizId, values, attachmentIds }) =>
+      productionOrderApi.updateOrderStatus(
+        {
+          orderId: String(bizId),
+          orderStatus: 9,
+          remark: values.remark || '',
+        },
+        attachmentIds?.length ? attachmentIds.join(',') : undefined
+      ),
   },
 ]
 

@@ -103,10 +103,11 @@ export function submitOrder(orderId: number) {
 }
 
 // 提交订单审批
-export function cancleOrder(orderId: number) {
+export function cancleOrder(orderId: number, attachmentIds?: string) {
   return request({
     url: `/purchase/order/cancel/${orderId}`,
     method: 'put',
+    params: { attachmentIds },
   })
 }
 
@@ -120,17 +121,21 @@ export function batchSubmitOrders(orderIds: number[]) {
 }
 
 // 审批订单
-export function approveOrder(data: {
-  orderId: number
-  approverId: number
-  approverName: string
-  approvalComment?: string
-  approvalStatus?: number
-}) {
+export function approveOrder(
+  data: {
+    orderId: number
+    approverId: number
+    approverName: string
+    approvalComment?: string
+    approvalStatus?: number
+  },
+  attachmentIds?: string
+) {
   return request({
     url: '/purchase/order/approve',
     method: 'put',
     data,
+    params: { attachmentIds },
   })
 }
 

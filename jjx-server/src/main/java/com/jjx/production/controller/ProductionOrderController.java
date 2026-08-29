@@ -104,9 +104,11 @@ public class ProductionOrderController {
 
     @Operation(summary = "启动生产工单")
     @PutMapping("/{orderId}/start")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "6")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "6", detail = "#attachmentIds")
     @SaCheckPermission("production:order:edit")
-    public Result<Boolean> startOrder(@PathVariable Long orderId) {
+    public Result<Boolean> startOrder(@PathVariable Long orderId,
+                                      // 仅供 @Log SpEL 取值，业务方法无需使用
+                                      @RequestParam(required = false) String attachmentIds) {
         boolean success = productionOrderService.startOrder(orderId);
         return Result.success(success);
     }
@@ -122,9 +124,11 @@ public class ProductionOrderController {
 
     @Operation(summary = "完成生产工单")
     @PutMapping("/{orderId}/complete")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "8")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "8", detail = "#attachmentIds")
     @SaCheckPermission("production:order:edit")
-    public Result<Boolean> completeOrder(@PathVariable Long orderId) {
+    public Result<Boolean> completeOrder(@PathVariable Long orderId,
+                                         // 仅供 @Log SpEL 取值，业务方法无需使用
+                                         @RequestParam(required = false) String attachmentIds) {
         boolean success = productionOrderService.completeOrder(orderId);
         return Result.success(success);
     }
@@ -298,11 +302,13 @@ public class ProductionOrderController {
 
     @Operation(summary = "更新订单状态")
     @PutMapping("/status")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", detail = "#attachmentIds")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> updateOrderStatus(@RequestParam Long orderId,
                                               @RequestParam Integer orderStatus,
-                                              @RequestParam(required = false) String remark) {
+                                              @RequestParam(required = false) String remark,
+                                              // 仅供 @Log SpEL 取值，业务方法无需使用
+                                              @RequestParam(required = false) String attachmentIds) {
         boolean success = productionOrderService.updateOrderStatus(orderId, orderStatus, remark);
         return Result.success(success);
     }

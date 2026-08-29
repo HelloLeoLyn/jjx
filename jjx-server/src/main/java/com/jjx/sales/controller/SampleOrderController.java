@@ -151,20 +151,24 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "销售送样登记")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "5")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "5", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:deliver")
     @PutMapping("/send-sample/{orderId}")
     public Result<SalesOrder> sendSample(@PathVariable Long orderId,
-                                         @RequestParam(required = false) String trackingNo) {
+                                         @RequestParam(required = false) String trackingNo,
+                                         // 仅供 @Log SpEL 取值，业务方法无需使用
+                                         @RequestParam(required = false) String attachmentIds) {
         return Result.success(sampleOrderService.sendSample(orderId, trackingNo));
     }
 
     @Operation(summary = "客户确认样品OK")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "6")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "6", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:confirm")
     @PutMapping("/confirm/{orderId}")
     public Result<SalesOrder> confirm(@PathVariable Long orderId,
-                                      @RequestParam(required = false) String clientName) {
+                                      @RequestParam(required = false) String clientName,
+                                      // 仅供 @Log SpEL 取值，业务方法无需使用
+                                      @RequestParam(required = false) String attachmentIds) {
         return Result.success(sampleOrderService.confirmSample(orderId, clientName));
     }
 
@@ -173,7 +177,9 @@ public class SampleOrderController extends BaseController {
     @SaCheckPermission("sales:sample:confirm")
     @PutMapping("/reject-sample/{orderId}")
     public Result<SalesOrder> rejectSample(@PathVariable Long orderId,
-                                           @RequestParam(required = false) String rejectReason) {
+                                           @RequestParam(required = false) String rejectReason,
+                                           // 仅供 @Log SpEL 取值，业务方法无需使用
+                                           @RequestParam(required = false) String attachmentIds) {
         return Result.success(sampleOrderService.rejectSample(orderId, rejectReason));
     }
 

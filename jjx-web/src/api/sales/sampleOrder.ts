@@ -156,29 +156,29 @@ export const sampleOrderApi = {
   },
 
   // 送样登记
-  sendSample(orderId: number, trackingNo?: string): AxiosPromise<any> {
+  sendSample(orderId: number, trackingNo?: string, attachmentIds?: string): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/send-sample/${orderId}`,
       method: 'put',
-      params: { trackingNo },
+      params: { trackingNo, attachmentIds },
     })
   },
 
   // 客户确认
-  confirm(orderId: number, clientName?: string): AxiosPromise<any> {
+  confirm(orderId: number, clientName?: string, attachmentIds?: string): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/confirm/${orderId}`,
       method: 'put',
-      params: { clientName },
+      params: { clientName, attachmentIds },
     })
   },
 
   // 客户退回
-  rejectSample(orderId: number, rejectReason?: string): AxiosPromise<any> {
+  rejectSample(orderId: number, rejectReason?: string, attachmentIds?: string): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/reject-sample/${orderId}`,
       method: 'put',
-      params: { rejectReason },
+      params: { rejectReason, attachmentIds },
     })
   },
 

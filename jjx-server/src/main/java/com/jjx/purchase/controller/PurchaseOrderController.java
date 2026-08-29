@@ -103,9 +103,11 @@ public class PurchaseOrderController extends BaseController {
      * 取消采购订单
      */
     @PutMapping("/cancel/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "2")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "2", detail = "#attachmentIds")
     @SaCheckPermission("purchase:order:edit")
-    public Result<Void> cancel(@PathVariable Long orderId) {
+    public Result<Void> cancel(@PathVariable Long orderId,
+                               // 仅供 @Log SpEL 取值，业务方法无需使用
+                               @RequestParam(required = false) String attachmentIds) {
         purchaseOrderService.cancelOrder(orderId);
         return Result.success();
     }
@@ -151,9 +153,11 @@ public class PurchaseOrderController extends BaseController {
      * 审批订单
      */
     @PutMapping("/approve")
-    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE, bizType = "'purchase_order'", bizId = "#dto.orderId", bizStatus = "#dto.approved ? 4 : 5")
+    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE, bizType = "'purchase_order'", bizId = "#dto.orderId", bizStatus = "#dto.approved ? 4 : 5", detail = "#attachmentIds")
     @SaCheckPermission("purchase:order:approve")
-    public Result<Void> approve(@Valid @RequestBody PurchaseOrderApprovalDTO dto) {
+    public Result<Void> approve(@Valid @RequestBody PurchaseOrderApprovalDTO dto,
+                                // 仅供 @Log SpEL 取值，业务方法无需使用
+                                @RequestParam(required = false) String attachmentIds) {
         purchaseOrderService.approveOrder(dto);
         return Result.success();
     }
