@@ -24,6 +24,14 @@ export function getProductionOrderList(params: ProductionOrderQuery) {
   })
 }
 
+// 根据编码获取生产工单详情（扫码定位用，后端 GET /production/order/code/{orderCode}）
+export function getProductionOrderByCode(orderCode: string) {
+  return request({
+    url: `/production/order/code/${orderCode}`,
+    method: 'get',
+  })
+}
+
 // 获取生产订单详情
 export function getProductionOrderDetail(orderId: string, orderType?: OrderType) {
   return request({

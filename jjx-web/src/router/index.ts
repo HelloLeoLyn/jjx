@@ -42,6 +42,52 @@ export const constantRoutes: RouteRecordRaw[] = [
       hidden: true,
     },
   },
+  // ============ 移动端 H5（扫码B，DEV-981） ============
+  {
+    path: '/m/login',
+    name: 'MobileLogin',
+    component: () => import('@/views/mobile/login.vue'),
+    meta: {
+      title: '移动登录',
+      hidden: true,
+    },
+  },
+  {
+    path: '/m/scan',
+    name: 'MobileScan',
+    component: () => import('@/views/mobile/scan.vue'),
+    meta: {
+      title: '扫码定位',
+      hidden: true,
+    },
+  },
+  {
+    path: '/m/order',
+    name: 'MobileOrder',
+    component: () => import('@/views/mobile/order.vue'),
+    meta: {
+      title: '工单任务',
+      hidden: true,
+    },
+  },
+  {
+    path: '/m/report',
+    name: 'MobileReport',
+    component: () => import('@/views/mobile/report.vue'),
+    meta: {
+      title: '报工',
+      hidden: true,
+    },
+  },
+  {
+    path: '/m/reports',
+    name: 'MobileReports',
+    component: () => import('@/views/mobile/reports.vue'),
+    meta: {
+      title: '我的报工',
+      hidden: true,
+    },
+  },
   {
     path: '/demo/a4-print',
     name: 'A4PrintDemo',
@@ -435,6 +481,14 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   if (to.path !== from.path) {
     startProgress()
+  }
+  // 移动端路由守卫（DEV-981 扫码B）：/m/* 需登录，未登录跳 /m/login
+  if (to.path.startsWith('/m/') && to.path !== '/m/login') {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      next({ path: '/m/login', query: { redirect: to.fullPath } })
+      return
+    }
   }
   next()
 })
