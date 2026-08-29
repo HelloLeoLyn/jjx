@@ -141,8 +141,10 @@ public class OrderServiceImpl implements IOrderService {
         SalesOrder entity = orderConverter.toEntity(dto);
         entity.setOrderNo(orderNo);
         // 链路追踪（DEV-568）：无上游 traceId 则生成 UUID
-        entity.setTraceId(dto.getTraceId() != null && !dto.getTraceId().isEmpty()
-                ? dto.getTraceId() : java.util.UUID.randomUUID().toString().replace("-", ""));
+        String traceId = dto.getTraceId() != null && !dto.getTraceId().isEmpty()
+                ? dto.getTraceId() : java.util.UUID.randomUUID().toString().replace("-", "");
+        dto.setTraceId(traceId);
+        entity.setTraceId(traceId);
         int insert = orderMapper.insert(entity);
         if(insert>0){
             // 校验并处理产品明细

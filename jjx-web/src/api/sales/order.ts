@@ -34,7 +34,7 @@ export const orderApi = {
 
   /** 新增订单 */
   addOrder(data: SalesOrderAddDTO) {
-    return request.post<R<number>>('/sales/orders', data)
+    return request.post<R<{ orderId: number; traceId: string }>>('/sales/orders', data)
   },
 
   /** 复制订单（终态订单一键生成新草稿单） */

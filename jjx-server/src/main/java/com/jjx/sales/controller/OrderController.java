@@ -74,9 +74,12 @@ public class OrderController extends BaseController {
     @Operation(summary = "新增销售订单")
     @SaCheckPermission("sales:order:add")
     @PostMapping
-    public Result<Long> addOrder(@Validated(ValidationGroups.Add.class) @RequestBody SalesOrderAddDTO dto) {
+    public Result<java.util.Map<String, Object>> addOrder(@Validated(ValidationGroups.Add.class) @RequestBody SalesOrderAddDTO dto) {
         Long orderId = orderService.insertOrder(dto);
-        return Result.success(orderId);
+        java.util.Map<String, Object> data = new java.util.HashMap<>();
+        data.put("orderId", orderId);
+        data.put("traceId", dto.getTraceId());
+        return Result.success(data);
     }
 
     /**

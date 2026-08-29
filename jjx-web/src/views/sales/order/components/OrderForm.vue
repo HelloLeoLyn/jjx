@@ -615,10 +615,12 @@ const submitForm = async (): Promise<boolean> => {
       ElMessage.error('新增订单失败')
       return false
     }
-    const newOrderId = orderResponse.data!
+    const data = orderResponse.data!
+    const newOrderId = data.orderId
+    const newTraceId = data.traceId
 
     // 2. 上传待处理的附件
-    await uploaderRef.value?.flushPending(newOrderId)
+    await uploaderRef.value?.flushPending(newOrderId, newTraceId)
 
     ElMessage.success('新增成功')
     emit('success')

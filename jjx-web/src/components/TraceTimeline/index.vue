@@ -46,7 +46,7 @@
             <el-link
               v-if="hasDetail(scope.row)"
               type="primary"
-              :underline="false"
+              underline="never"
               @click.stop="selectEvent(scope.row)"
               >{{ scope.row.actionTitle || '-' }}</el-link
             >
@@ -136,7 +136,7 @@
             type="primary"
             :href="downloadUrl(attachment.id)"
             target="_blank"
-            :underline="false"
+            underline="never"
             class="attachment-link"
           >
             {{ attachment.fileName || `附件${attachment.id}` }} <el-icon><Download /></el-icon>

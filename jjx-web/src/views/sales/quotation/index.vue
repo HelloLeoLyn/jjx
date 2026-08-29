@@ -1,835 +1,311 @@
+<!-- views/sales/quotation/index.vue -->
 <template>
   <div class="app-container">
-    <!-- 搜索区域 -->
-    <el-card class="search-card" shadow="never">
-      <el-form :model="queryParams" ref="queryForm" :inline="true" label-width="80px">
-        <el-form-item label="报价单号" prop="quotationNo">
-          <el-input
-            v-model="queryParams.quotationNo"
-            placeholder="请输入报价单号"
-            clearable
-            style="width: 200px"
-            @keyup.enter="handleQuery"
-          />
-        </el-form-item>
-        <el-form-item label="询价单号" prop="inquiryNo">
-          <el-input
-            v-model="queryParams.inquiryNo"
-            placeholder="请输入来源询价单号"
-            clearable
-            style="width: 200px"
-            @keyup.enter="handleQuery"
-          />
-        </el-form-item>
-        <el-form-item label="客户名称" prop="customerName">
-          <el-input
-            v-model="queryParams.customerName"
-            placeholder="请输入客户名称"
-            clearable
-            style="width: 200px"
-            @keyup.enter="handleQuery"
-          />
-        </el-form-item>
-        <el-form-item label="报价状态" prop="quotationStatus">
-          <el-select
-            v-model="queryParams.quotationStatus"
-            placeholder="请选择报价状态"
-            clearable
-            style="width: 200px"
-          >
-            <el-option
-              v-for="dict in quotationStatusOptions"
-              :key="dict.value"
-              :label="dict.label"
-              :value="dict.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="报价日期">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 240px"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
-          <el-button icon="Refresh" @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 统计卡片（DEV-594） -->
-    <el-card class="stat-card" shadow="never" v-if="stats">
-      <el-row :gutter="16">
-        <el-col :span="3"
-          ><el-statistic title="报价单总数" :value="stats.totalCount || 0"
-        /></el-col>
-        <el-col :span="5"
-          ><el-statistic title="报价总金额" :value="stats.totalAmount || 0" :precision="2"
-        /></el-col>
-        <el-col :span="3"><el-statistic title="草稿" :value="stats.draftCount || 0" /></el-col>
-        <el-col :span="3"><el-statistic title="已发送" :value="stats.sentCount || 0" /></el-col>
-        <el-col :span="3"><el-statistic title="已确认" :value="stats.acceptedCount || 0" /></el-col>
-        <el-col :span="3"><el-statistic title="已拒绝" :value="stats.rejectedCount || 0" /></el-col>
-        <el-col :span="3"><el-statistic title="已过期" :value="stats.expiredCount || 0" /></el-col>
-      </el-row>
-    </el-card>
-
-    <!-- 操作按钮区域 -->
-    <el-card class="operation-card" shadow="never">
-      <el-row :gutter="10" class="mb8">
-        <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="success"
-            plain
-            icon="Edit"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canEdit"
-            @click="handleUpdate"
-            >修改</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="danger"
-            plain
-            icon="Delete"
-            v-hasPermi="['sales:quotation:delete']"
-            :disabled="multiple || !quotationActions.canDelete"
-            @click="handleDelete"
-            >删除</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="warning"
-            plain
-            icon="Download"
-            v-hasPermi="['sales:quotation:export']"
-            @click="handleExport"
-            >导出</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="info"
-            plain
-            icon="Send"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canSend"
-            @click="handleSend"
-            >发送报价</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="success"
-            plain
-            icon="Switch"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canConvert"
-            @click="handleConvert"
-            >转为订单</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="warning"
-            plain
-            icon="Collection"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canConvertToSample"
-            @click="handleConvertToSample"
-            >转为样品单</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="success"
-            plain
-            icon="CircleCheck"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canCustomerConfirm"
-            @click="() => handleCustomerConfirm(true)"
-            >客户确认</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="danger"
-            plain
-            icon="CircleClose"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canCustomerConfirm"
-            @click="() => handleCustomerConfirm(false)"
-            >客户拒绝</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="warning"
-            plain
-            icon="CopyDocument"
-            :disabled="single"
-            @click="handleCopy()"
-            >复制报价</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="primary"
-            plain
-            icon="Upload"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canSubmitReview"
-            @click="handleSubmitReview"
-            >提交审核</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="success"
-            plain
-            icon="CircleCheck"
-            v-hasPermi="['sales:quotation:approve']"
-            :disabled="single || !quotationActions.canApprove"
-            @click="() => handleReview(true)"
-            >审核通过</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="danger"
-            plain
-            icon="CircleClose"
-            v-hasPermi="['sales:quotation:approve']"
-            :disabled="single || !quotationActions.canApprove"
-            @click="() => handleReview(false)"
-            >审核驳回</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="primary"
-            plain
-            icon="Document"
-            :disabled="single"
-            @click="handleExportPdf"
-            >导出PDF</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="success"
-            plain
-            icon="DocumentCopy"
-            :disabled="single"
-            @click="handleExportExcel"
-            >导出Excel</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="warning"
-            plain
-            icon="RefreshLeft"
-            v-hasPermi="['sales:quotation:edit']"
-            :disabled="single || !quotationActions.canReQuote"
-            @click="handleReQuote"
-            >重新报价</el-button
-          >
-        </el-col>
-
-        <el-col :span="1.5">
-          <el-button
-            type="warning"
-            plain
-            icon="EditPen"
-            :disabled="single || !quotationActions.canModify"
-            @click="handleModify"
-            >改单</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="info"
-            plain
-            icon="FolderOpened"
-            :disabled="single"
-            @click="handleAttachment"
-            >附件</el-button
-          >
-        </el-col>
-      </el-row>
-    </el-card>
-
-    <!-- 数据表格 -->
-    <el-card class="table-card" shadow="never">
-      <el-table
-        ref="tableRef"
-        v-loading="loading"
-        :data="quotationList"
-        highlight-current-row
-        @selection-change="handleSelectionChange"
-        @sort-change="handleSortChange"
-      >
-        <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="报价单号" align="center" width="160">
-          <template #default="scope">
-            <el-link type="primary" underline="never" @click="handleView(scope.row)">{{
-              scope.row.quotationNo
-            }}</el-link>
-          </template>
-        </el-table-column>
-        <el-table-column label="来源询价单" align="center" width="140">
-          <template #default="scope">
-            <el-link
-              v-if="scope.row.sourceInquiryNo"
-              type="primary"
-              underline="never"
-              @click="gotoInquiry(scope.row)"
-              >{{ scope.row.sourceInquiryNo }}</el-link
-            >
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
-        <el-table-column label="报价日期" align="center" prop="quotationDate" width="120">
-          <template #default="scope">
-            <span>{{ parseTime(scope.row.quotationDate, 'yyyy-MM-dd') }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="有效期至" prop="validUntil" width="120">
-          <template #default="scope">
-            <span v-if="scope.row.validUntil">{{
-              parseTime(scope.row.validUntil, 'yyyy-MM-dd')
-            }}</span>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="报价状态" prop="quotationStatus" width="100">
-          <template #default="scope">
-            <el-tag :type="getStatusTagType(scope.row.quotationStatus)">
-              {{ getStatusLabel(scope.row.quotationStatus) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <!-- 订单类型（转成单：样品单/销售订单/未转） -->
-        <el-table-column label="订单类型" align="center" width="120">
-          <template #default="scope">
-            <el-tag v-if="scope.row.convertedOrderType === 2" type="warning" size="small"
-              >样品单</el-tag
-            >
-            <el-tag v-else-if="scope.row.convertedOrderType === 1" type="success" size="small"
-              >销售订单</el-tag
-            >
-            <span v-else style="color: #c0c4cc">未转单</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="币种" align="center" prop="currency" width="80" />
-        <el-table-column label="总金额" align="center" prop="totalAmount" width="120">
-          <template #default="scope">
-            <span>{{ formatCurrency(scope.row.totalAmount) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="销售员" align="center" prop="salesPersonName" width="100" />
-        <el-table-column label="创建时间" align="center" prop="createTime" width="180">
-          <template #default="scope">
-            <span>{{ parseTime(scope.row.createTime) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="操作"
-          align="center"
-          class-name="small-padding fixed-width"
-          min-width="250"
-        >
-          <template #default="scope">
-            <el-tooltip
-              content="修改"
-              placement="top"
-              v-if="[1, 2, 3, 4, 9].indexOf(scope.row.quotationStatus) === -1"
-            >
-              <el-button
-                link
-                type="primary"
-                icon="Edit"
-                @click="handleUpdate(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="查看流水" placement="top"
-              ><el-button
-                link
-                type="info"
-                icon="Connection"
-                @click="showTrace(scope.row)"
-              ></el-button
-            ></el-tooltip>
-
-            <el-tooltip
-              content="删除"
-              placement="top"
-              v-if="[1, 2, 5, 6, 8, 9].indexOf(scope.row.quotationStatus) === -1"
-            >
-              <el-button
-                link
-                type="danger"
-                icon="Delete"
-                @click="handleDelete(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="发送报价" placement="top" v-if="scope.row.quotationStatus === 6">
-              <el-button
-                link
-                type="warning"
-                icon="Promotion"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="handleSend(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip
-              content="重新报价"
-              placement="top"
-              v-if="
-                [QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(
-                  scope.row.quotationStatus
-                )
-              "
-            >
-              <el-button
-                link
-                type="warning"
-                icon="RefreshLeft"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="handleReQuote(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip
-              content="转为订单"
-              placement="top"
-              v-if="
-                scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value &&
-                scope.row.quotationType !== 2
-              "
-            >
-              <el-button
-                link
-                type="success"
-                icon="Switch"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="handleConvert(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip
-              content="转为样品单"
-              placement="top"
-              v-if="
-                scope.row.quotationType !== 1 &&
-                scope.row.quotationStatus === QuotationStatusEnum.ACCEPTED.value
-              "
-            >
-              <el-button
-                link
-                type="warning"
-                icon="Collection"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="handleConvertToSample(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="改单" placement="top" v-if="scope.row.quotationStatus === 9">
-              <el-button
-                link
-                type="warning"
-                icon="EditPen"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="handleModify(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip
-              content="提交审核"
-              placement="top"
-              v-if="
-                [QuotationStatusEnum.DRAFT.value, QuotationStatusEnum.MODIFYING.value].includes(
-                  scope.row.quotationStatus
-                )
-              "
-            >
-              <el-button
-                link
-                type="primary"
-                icon="Upload"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="handleSubmitReview(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="客户确认" placement="top" v-if="scope.row.quotationStatus === 1">
-              <el-button
-                link
-                type="success"
-                icon="CircleCheck"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="() => handleCustomerConfirm(true, scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="客户拒绝" placement="top" v-if="scope.row.quotationStatus === 1">
-              <el-button
-                link
-                type="danger"
-                icon="CircleClose"
-                v-hasPermi="['sales:quotation:edit']"
-                @click="() => handleCustomerConfirm(false, scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="审核通过" placement="top" v-if="scope.row.quotationStatus === 5">
-              <el-button
-                link
-                type="success"
-                icon="CircleCheck"
-                v-hasPermi="['sales:quotation:approve']"
-                @click="() => handleReview(true, scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="审核驳回" placement="top" v-if="scope.row.quotationStatus === 5">
-              <el-button
-                link
-                type="danger"
-                icon="CircleClose"
-                v-hasPermi="['sales:quotation:approve']"
-                @click="() => handleReview(false, scope.row)"
-              ></el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- 分页 -->
-      <pagination
-        v-show="total > 0"
-        :total="total"
-        v-model:page="queryParams.pageNum"
-        v-model:limit="queryParams.pageSize"
-        @pagination="getList"
+    <!-- ============================================================ -->
+    <!-- ✅ 搜索区域 -->
+    <!-- ============================================================ -->
+    <SkeletonQuery>
+      <QuotationSearchForm
+        :query-params.sync="queryParams"
+        :date-range.sync="dateRange"
+        @query="handleSearch"
+        @reset="handleReset"
       />
-    </el-card>
+    </SkeletonQuery>
 
-    <!-- 添加或修改报价单对话框 -->
-    <el-dialog :title="title" v-model="open" width="1300px" append-to-body>
-      <el-form ref="quotationFormRef" :model="form" :rules="rules" label-width="100px">
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="报价类型" prop="quotationType">
-              <el-radio-group v-model="form.quotationType">
-                <el-radio :value="1" border>标准品</el-radio>
-                <el-radio :value="2" border>样品</el-radio>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="客户" prop="customerId">
-              <CustomerSelector
-                v-model="form.customerId"
-                value-type="customerId"
-                placeholder="请选择客户"
-                @change="onCustomerChange"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="报价日期" prop="quotationDate">
-              <el-date-picker
-                v-model="form.quotationDate"
-                type="date"
-                placeholder="请选择报价日期"
-                value-format="YYYY-MM-DD"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="有效期至" prop="validUntil">
-              <el-date-picker
-                v-model="form.validUntil"
-                type="date"
-                placeholder="请选择有效期至"
-                value-format="YYYY-MM-DD"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="12">
-            <el-form-item label="币种" prop="currency">
-              <el-select
-                v-model="form.currency"
-                placeholder="请选择币种"
-                style="width: 100%"
-                @change="handleCurrencyChange"
+    <!-- ============================================================ -->
+    <!-- ✅ 统计卡片 -->
+    <!-- ============================================================ -->
+    <SkeletonStats>
+      <QuotationStats :stats="stats" />
+    </SkeletonStats>
+
+    <!-- ============================================================ -->
+    <!-- ✅ 操作按钮栏 -->
+    <!-- ============================================================ -->
+    <SkeletonToolbar>
+      <QuotationToolbar
+        :single="single"
+        :multiple="multiple"
+        :actions="quotationActions"
+        @add="handleAdd"
+        @update="handleUpdate"
+        @delete="handleDelete"
+        @export="handleExport"
+        @send="handleSend"
+        @convert="handleConvert"
+        @convert-to-sample="handleConvertToSample"
+        @customer-confirm="handleCustomerConfirm"
+        @copy="handleCopy"
+        @submit-review="handleSubmitReview"
+        @review="handleReview"
+        @export-pdf="handleExportPdf"
+        @export-excel="handleExportExcel"
+        @re-quote="handleReQuote"
+        @modify="handleModify"
+        @attachment="handleAttachment"
+      />
+    </SkeletonToolbar>
+
+    <!-- ============================================================ -->
+    <!-- ✅ 表格区域 -->
+    <!-- ============================================================ -->
+    <SkeletonTable>
+      <el-card class="table-card" shadow="never">
+        <el-table
+          ref="tableRef"
+          v-loading="loading"
+          :data="quotationList"
+          highlight-current-row
+          @selection-change="handleSelectionChange"
+          @sort-change="handleSortChange"
+        >
+          <el-table-column type="selection" width="55" align="center" />
+          <el-table-column label="报价单号" align="center" width="160">
+            <template #default="{ row }">
+              <el-link type="primary" underline="never" @click="handleView(row)">
+                {{ row.quotationNo }}
+              </el-link>
+            </template>
+          </el-table-column>
+          <el-table-column label="来源询价单" align="center" width="140">
+            <template #default="{ row }">
+              {{ row.sourceInquiryNo }}
+            </template>
+          </el-table-column>
+          <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
+          <el-table-column label="报价日期" align="center" prop="quotationDate" width="120">
+            <template #default="{ row }">
+              <span>{{ parseTime(row.quotationDate, 'yyyy-MM-dd') }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="有效期至" prop="validUntil" width="120">
+            <template #default="{ row }">
+              <span v-if="row.validUntil">{{ parseTime(row.validUntil, 'yyyy-MM-dd') }}</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="报价状态" prop="quotationStatus" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getStatusTagType(row.quotationStatus)">
+                {{ getStatusLabel(row.quotationStatus) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="订单类型" align="center" width="120">
+            <template #default="{ row }">
+              <el-tag v-if="row.convertedOrderType === 2" type="warning" size="small"
+                >样品单</el-tag
               >
-                <el-option
-                  v-for="dict in currencyOptions"
-                  :key="dict.value"
-                  :label="dict.label"
-                  :value="dict.value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="汇率" prop="exchangeRate">
-              <el-input-number
-                v-model="form.exchangeRate"
-                :min="0"
-                :precision="4"
-                :step="0.0001"
-                placeholder="请输入汇率"
-                style="width: 100%"
-              />
-              <span v-if="exchangeRateHint" class="rate-hint">{{ exchangeRateHint }}</span>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <!-- 编码生成器（样品报价：公共组件 2026-08-12，生成编码自动填入明细） -->
-        <template v-if="form.quotationType === 2">
-          <ProductCodeGenerator
-            ref="qCodeGenRef"
-            :customer-short="qShortName"
-            v-model:state="qCodeState"
-            :emit-params="true"
-            v-model:params="qCodeParams"
-            @change="onQCodeChange"
-          />
-        </template>
-
-        <!-- 报价明细表格 -->
-        <el-divider content-position="left">报价明细</el-divider>
-        <el-table :data="form.items" border style="width: 100%; margin-bottom: 10px">
-          <el-table-column label="序号" type="index" width="60" align="center" />
-          <el-table-column label="产品编码" prop="productCode" width="140">
-            <template #default="scope">
-              <el-select
-                v-model="scope.row.productCode"
-                placeholder="选择产品或输入编码"
-                filterable
-                allow-create
-                default-first-option
-                :loading="productLoading"
-                :disabled="!form.customerId"
-                style="width: 100%"
-                @change="handleProductChange(scope.row)"
-                @focus="handleProductFocus(scope.row)"
+              <el-tag v-else-if="row.convertedOrderType === 1" type="success" size="small"
+                >销售订单</el-tag
               >
-                <el-option
-                  v-for="item in productOptions"
-                  :key="item.productCode"
-                  :label="item.productCode"
-                  :value="item.productCode"
+              <span v-else style="color: #c0c4cc">未转单</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="币种" align="center" prop="currency" width="80" />
+          <el-table-column label="总金额" align="center" prop="totalAmount" width="120">
+            <template #default="{ row }">
+              <span>{{ formatCurrency(row.totalAmount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="销售员" align="center" prop="salesPersonName" width="100" />
+          <el-table-column label="创建时间" align="center" prop="createTime" width="180">
+            <template #default="{ row }">
+              <span>{{ parseTime(row.createTime) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="操作"
+            align="center"
+            class-name="small-padding fixed-width"
+            min-width="250"
+          >
+            <template #default="{ row }">
+              <el-tooltip content="修改" placement="top" v-if="canEdit(row)">
+                <el-button link type="primary" icon="Edit" @click="handleUpdate(row)" />
+              </el-tooltip>
+              <el-tooltip content="查看流水" placement="top">
+                <el-button link type="info" icon="Connection" @click="showTrace(row)" />
+              </el-tooltip>
+              <el-tooltip content="删除" placement="top" v-if="canDelete(row)">
+                <el-button link type="danger" icon="Delete" @click="handleDelete(row)" />
+              </el-tooltip>
+              <el-tooltip content="发送报价" placement="top" v-if="row.quotationStatus === 6">
+                <el-button
+                  link
+                  type="warning"
+                  icon="Promotion"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="handleSend(row)"
                 />
-              </el-select>
-            </template>
-          </el-table-column>
-          <el-table-column label="产品名称" prop="productName" width="180">
-            <template #default="scope">
-              <el-input
-                v-model="scope.row.productName"
-                placeholder="产品名称（样品可手动输入）"
-                :readonly="isStandardProduct(scope.row)"
-              />
-            </template>
-          </el-table-column>
-          <el-table-column label="数量" prop="quantity" width="120">
-            <template #default="scope">
-              <el-input
-                type="number"
-                v-model="scope.row.quantity"
-                :min="1"
-                :precision="0"
-                @change="calculateItemAmount(scope.row)"
-                style="width: 100%"
-              />
-            </template>
-          </el-table-column>
-          <el-table-column label="单价" prop="unitPrice" width="150">
-            <template #default="scope">
-              <el-input-number
-                v-model="scope.row.unitPrice"
-                :min="0"
-                :precision="2"
-                @change="calculateItemAmount(scope.row)"
-                style="width: 100%"
-              />
-            </template>
-          </el-table-column>
-          <el-table-column label="金额" prop="amount" width="120">
-            <template #default="scope">
-              <span>{{ formatCurrency(scope.row.amount) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" min-width="80" align="center">
-            <template #default="scope">
-              <el-button
-                v-if="form.quotationType === 1"
-                link
-                type="danger"
-                icon="Delete"
-                @click="removeItem(scope.$index)"
-              ></el-button>
+              </el-tooltip>
+              <el-tooltip content="重新报价" placement="top" v-if="canReQuote(row)">
+                <el-button
+                  link
+                  type="warning"
+                  icon="RefreshLeft"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="handleReQuote(row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="转为订单" placement="top" v-if="canConvert(row)">
+                <el-button
+                  link
+                  type="success"
+                  icon="Switch"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="handleConvert(row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="转为样品单" placement="top" v-if="canConvertToSample(row)">
+                <el-button
+                  link
+                  type="warning"
+                  icon="Collection"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="handleConvertToSample(row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="改单" placement="top" v-if="row.quotationStatus === 9">
+                <el-button
+                  link
+                  type="warning"
+                  icon="EditPen"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="handleModify(row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="提交审核" placement="top" v-if="canSubmitReview(row)">
+                <el-button
+                  link
+                  type="primary"
+                  icon="Upload"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="handleSubmitReview(row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="客户确认" placement="top" v-if="row.quotationStatus === 1">
+                <el-button
+                  link
+                  type="success"
+                  icon="CircleCheck"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="() => handleCustomerConfirm(true, row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="客户拒绝" placement="top" v-if="row.quotationStatus === 1">
+                <el-button
+                  link
+                  type="danger"
+                  icon="CircleClose"
+                  v-hasPermi="['sales:quotation:edit']"
+                  @click="() => handleCustomerConfirm(false, row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="审核通过" placement="top" v-if="row.quotationStatus === 5">
+                <el-button
+                  link
+                  type="success"
+                  icon="CircleCheck"
+                  v-hasPermi="['sales:quotation:approve']"
+                  @click="() => handleReview(true, row)"
+                />
+              </el-tooltip>
+              <el-tooltip content="审核驳回" placement="top" v-if="row.quotationStatus === 5">
+                <el-button
+                  link
+                  type="danger"
+                  icon="CircleClose"
+                  v-hasPermi="['sales:quotation:approve']"
+                  @click="() => handleReview(false, row)"
+                />
+              </el-tooltip>
             </template>
           </el-table-column>
         </el-table>
 
-        <el-row>
-          <el-col :span="24" style="text-align: right">
-            <!-- 样品类型明细锁单行（2026-08-08）：不显示添加明细 -->
-            <el-button v-if="form.quotationType === 1" type="primary" icon="Plus" @click="addItem"
-              >添加明细</el-button
-            >
-          </el-col>
-        </el-row>
+        <pagination
+          v-show="total > 0"
+          :total="total"
+          v-model:page="queryParams.pageNum"
+          v-model:limit="queryParams.pageSize"
+          @pagination="getList"
+        />
+      </el-card>
+    </SkeletonTable>
 
-        <!-- 金额汇总 -->
-        <el-divider content-position="left">金额汇总</el-divider>
-        <el-row>
-          <el-col :span="8">
-            <el-form-item label="小计金额">
-              <el-input v-model="form.subtotalAmount" readonly style="width: 100%">
-                <template #append>元</template>
-              </el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="税率(%)">
-              <el-input-number
-                v-model="form.taxRate"
-                :min="0"
-                :max="100"
-                :precision="2"
-                @change="calculateTotalAmount"
-                style="width: 100%"
-              >
-                <template #append>%</template>
-              </el-input-number>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="税额">
-              <el-input v-model="form.taxAmount" readonly style="width: 100%">
-                <template #append>元</template>
-              </el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row>
-          <el-col :span="8">
-            <el-form-item label="折扣金额">
-              <el-input-number
-                v-model="form.discountAmount"
-                :min="0"
-                :precision="2"
-                @change="calculateTotalAmount"
-                style="width: 100%"
-              >
-                <template #append>元</template>
-              </el-input-number>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="总金额">
-              <el-input v-model="form.totalAmount" readonly style="width: 100%">
-                <template #append>元</template>
-              </el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="最终金额">
-              <el-input v-model="form.finalAmount" readonly style="width: 100%">
-                <template #append>元</template>
-              </el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row v-if="form.currency && form.currency !== 'CNY' && form.exchangeRate > 0">
-          <el-col :span="24">
-            <el-form-item label="外币折算">
-              <span class="rate-hint" style="font-size: 13px">
-                最终金额 {{ formatCurrency(form.finalAmount) }} CNY ≈
-                <b>{{ formatCurrency(Number(foreignCurrencyDisplay)) }} {{ form.currency }}</b>
-                （1 {{ form.currency }} = {{ form.exchangeRate }} CNY）
-              </span>
-            </el-form-item>
-          </el-col>
-        </el-row>
+    <!-- ============================================================ -->
+    <!-- ✅ 新增/编辑弹窗 -->
+    <!-- ============================================================ -->
+    <SkeletonAction>
+      <QuotationFormDialog
+        v-model="open"
+        :title="title"
+        :form-data="form"
+        :currency-options="currencyOptions"
+        @submit="submitForm"
+        @cancel="cancel"
+      />
+    </SkeletonAction>
 
-        <el-row>
-          <el-col :span="24">
-            <el-form-item label="备注" prop="remark">
-              <el-input
-                v-model="form.remark"
-                type="textarea"
-                placeholder="请输入备注"
-                :rows="3"
-                maxlength="500"
-                show-word-limit
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-form>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button type="primary" @click="submitForm">确 定</el-button>
-          <el-button @click="cancel">取 消</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- ============================================================ -->
+    <!-- ✅ 详情弹窗 -->
+    <!-- ============================================================ -->
+    <SkeletonAction>
+      <QuotationDetailDialog
+        v-model="quotationDetailVisible"
+        :quotation-id="quotationDetailId"
+        :mode="quotationDetailMode"
+        :is-sensitive="false"
+        @submitted="getList"
+      />
+    </SkeletonAction>
+    <!-- ============================================================ -->
+    <!-- ✅ 流水弹窗 -->
+    <!-- ============================================================ -->
+    <SkeletonAction>
+      <TraceTimeline v-model="traceDialogVisible" :trace-id="currentTraceId" />
+    </SkeletonAction>
+    <SkeletonAction>
+      <AttachmentUploadDialog
+        v-model="attachmentDialogVisible"
+        biz-type="quotation"
+        :biz-id="attachmentQuotationId"
+        :trace-id="attachmentTraceId"
+        :dialog-title="attachmentQuotationNo"
+      />
+    </SkeletonAction>
+    <SkeletonAction>
+      <OperationPreviewDialog
+        v-model="previewVisible"
+        :operation="previewOperation"
+        :biz-id="previewBizId"
+        :biz-no="previewBizNo"
+        :status-text-map="quotationStatusTextMap"
+        @success="getList"
+      />
+    </SkeletonAction>
+    <!-- 发送报价 -->
+    <SkeletonAction>
+      <QuotationSendDialog
+        v-model:visible="sendDialogVisible"
+        :quotation-id="sendQuotationId"
+        @success="getList"
+      />
+    </SkeletonAction>
 
-    <!-- 报价单详情（共享组件：报价单列表页 + 工程打样工作台"来源单据"查看共用一套） -->
-    <QuotationDetailDialog
-      v-model="quotationDetailVisible"
-      :quotation-id="quotationDetailId"
-      :mode="quotationDetailMode"
-      :is-sensitive="false"
-      @submitted="getList"
-    />
-
-    <!-- 查看流水（2026-08-11 统一用 TraceTimeline） -->
-    <TraceTimeline v-model="traceDialogVisible" :trace-id="currentTraceId" />
-
-    <!-- 附件管理弹窗 -->
-    <AttachmentUploadDialog
-      v-model="attachmentDialogVisible"
-      biz-type="quotation"
-      :biz-id="attachmentQuotationId"
-      :trace-id="attachmentTraceId"
-      :dialog-title="attachmentQuotationNo"
-    />
     <!-- 操作预览器 -->
-    <OperationPreviewDialog
-      v-model="previewVisible"
-      :operation="previewOperation"
-      :biz-id="previewBizId"
-      :biz-no="previewBizNo"
-      :status-text-map="quotationStatusTextMap"
-      @success="getList"
-    />
-
-    <!-- 发送报价弹窗（报价表单 + 打印/导出） -->
-    <QuotationSendDialog
-      v-model:visible="sendDialogVisible"
-      :quotation-id="sendQuotationId"
-      @success="getList"
-    />
+    <SkeletonAction>
+      <OperationPreviewDialog
+        v-model="previewVisible"
+        :operation="previewOperation"
+        :biz-id="previewBizId"
+        :biz-no="previewBizNo"
+        :status-text-map="quotationStatusTextMap"
+        @success="getList"
+      />
+    </SkeletonAction>
   </div>
 </template>
 
@@ -838,44 +314,221 @@ defineOptions({
   name: 'Quotation',
 })
 
-import { ref, reactive, computed, onMounted, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
-import dayjs from 'dayjs'
-import type { TagType } from '@/types'
+// ============================================================
+// 1. 基础导入
+// ============================================================
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
-import TraceTimeline from '@/components/TraceTimeline/index.vue'
-import QuotationSendDialog from './components/QuotationSendDialog.vue'
-import QuotationDetailDialog from './components/QuotationDetailDialog.vue'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
-import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
-import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
-import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
-import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { useUserStore } from '@/store/modules/user'
-import type { FormInstance, FormRules } from 'element-plus'
+import { useTable } from '@/composables/useTable'
 import { quotationApi } from '@/api/sales/quotation'
-import { customerApi } from '@/api/sales/customer'
-import { listProduct } from '@/api/product'
 import { roleApi } from '@/api/system/role'
 import { QuotationStatusEnum } from '@/enums/sales'
-import { sampleOrderApi } from '@/api/sales/sampleOrder'
-import { parseTime, download, formatCurrency } from '@/utils/format'
+import { parseTime, formatCurrency, download } from '@/utils/format'
 
-// 查询参数
-const queryParams = reactive({
-  pageNum: 1,
-  pageSize: 10,
-  quotationNo: undefined as string | undefined,
-  inquiryNo: undefined as string | undefined,
-  customerName: undefined as string | undefined,
-  quotationStatus: undefined as number | undefined,
-  startDate: undefined as string | undefined,
-  endDate: undefined as string | undefined,
-  orderByColumn: undefined as string | undefined,
-  isAsc: undefined as 'asc' | 'desc' | undefined,
+// ============================================================
+// 2. 组件导入
+// ============================================================
+import QuotationSearchForm from './components/QuotationSearchForm.vue'
+import QuotationStats from './components/QuotationStats.vue'
+import QuotationToolbar from './components/QuotationToolbar.vue'
+import QuotationFormDialog from './components/QuotationFormDialog.vue'
+import QuotationDetailDialog from './components/QuotationDetailDialog.vue' // ✅ 新增
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
+import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import { getOperation } from '@/components/OperationPreviewDialog/registry'
+import QuotationSendDialog from './components/QuotationSendDialog.vue'
+// ============================================================
+// 3. 状态选项
+// ============================================================
+const statusOptions = QuotationStatusEnum.items.map((item) => ({
+  value: item.value,
+  label: item.label,
+}))
+
+const currencyOptions = [
+  { value: 'CNY', label: '人民币' },
+  { value: 'USD', label: '美元' },
+  { value: 'EUR', label: '欧元' },
+  { value: 'JPY', label: '日元' },
+  { value: 'HKD', label: '港币' },
+]
+// 状态
+const traceDialogVisible = ref(false)
+const currentTraceId = ref('')
+const attachmentDialogVisible = ref(false)
+const attachmentQuotationId = ref<number | null>(null)
+const attachmentQuotationNo = ref('')
+const attachmentTraceId = ref('')
+const previewVisible = ref(false)
+const previewOperation = ref<any>(null)
+const previewBizId = ref<number | null>(null)
+const previewBizNo = ref('')
+const sendDialogVisible = ref(false)
+const sendQuotationId = ref<number>()
+// ============================================================
+// 4. useTable
+// ============================================================
+const {
+  data: quotationList,
+  loading,
+  total,
+  pageNum,
+  pageSize,
+  queryParams,
+  getList,
+  handleSearch: tableHandleSearch,
+  handleReset: tableHandleReset,
+} = useTable<any, any>({
+  api: quotationApi.list,
+  immediate: false,
+  defaultParams: {
+    quotationNo: undefined,
+    inquiryNo: undefined,
+    customerName: undefined,
+    quotationStatus: undefined,
+    startDate: undefined,
+    endDate: undefined,
+    orderByColumn: undefined,
+    isAsc: undefined,
+  },
 })
 
-// 表单数据
+// ============================================================
+// 5. 日期范围
+// ============================================================
+const dateRange = ref<string[]>([])
+
+// ============================================================
+// 6. 统计数据
+// ============================================================
+const stats = ref<any>(null)
+
+const loadStatistics = async () => {
+  try {
+    const res: any = await quotationApi.statistics()
+    stats.value = res?.data || null
+  } catch {
+    stats.value = null
+  }
+}
+
+// ============================================================
+// 7. 表格状态
+// ============================================================
+const tableRef = ref<any>()
+const ids = ref<number[]>([])
+const single = ref(true)
+const multiple = ref(true)
+const selectedQuotation = ref<any>(null)
+
+const handleSelectionChange = (selection: any[]) => {
+  ids.value = selection.map((item) => item.quotationId)
+  single.value = selection.length !== 1
+  multiple.value = !selection.length
+  selectedQuotation.value = selection.length === 1 ? selection[0] : null
+}
+
+const handleSortChange = (column: any) => {
+  if (column.prop && column.order) {
+    queryParams.orderByColumn = column.prop
+    queryParams.isAsc = column.order === 'ascending' ? 'asc' : 'desc'
+  } else {
+    queryParams.orderByColumn = undefined
+    queryParams.isAsc = undefined
+  }
+  getList()
+}
+
+// ============================================================
+// 8. 状态工具
+// ============================================================
+const getStatusTagType = (status: number) => {
+  return QuotationStatusEnum.getTagProps(status).type || 'info'
+}
+
+const getStatusLabel = (status: number) => {
+  const label = QuotationStatusEnum.getLabel(status)
+  return label && label !== '未知' ? label : '未知状态'
+}
+
+// ============================================================
+// 9. 行内操作权限
+// ============================================================
+const canEdit = (row: any) => {
+  return ![1, 2, 3, 4].includes(row.quotationStatus) && row.quotationStatus !== 9
+}
+
+const canDelete = (row: any) => {
+  return ![1, 2, 5, 6, 8, 9].includes(row.quotationStatus)
+}
+
+const canReQuote = (row: any) => {
+  return [QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(
+    row.quotationStatus
+  )
+}
+
+const canConvert = (row: any) => {
+  return row.quotationStatus === QuotationStatusEnum.ACCEPTED.value && row.quotationType !== 2
+}
+
+const canConvertToSample = (row: any) => {
+  return row.quotationType !== 1 && row.quotationStatus === QuotationStatusEnum.ACCEPTED.value
+}
+
+const canSubmitReview = (row: any) => {
+  return [QuotationStatusEnum.DRAFT.value, QuotationStatusEnum.MODIFYING.value].includes(
+    row.quotationStatus
+  )
+}
+
+// ============================================================
+// 10. 状态机
+// ============================================================
+const quotationActions = computed(() => {
+  const q = selectedQuotation.value
+  const status = q?.quotationStatus
+  const completed = status === QuotationStatusEnum.COMPLETED.value
+  return {
+    canSend: status === QuotationStatusEnum.APPROVED.value,
+    canSubmitReview: [
+      QuotationStatusEnum.DRAFT.value,
+      QuotationStatusEnum.MODIFYING.value,
+    ].includes(status),
+    canApprove: status === QuotationStatusEnum.APPROVED.value,
+    canCustomerConfirm: status === QuotationStatusEnum.SENT.value,
+    canConvert: status === QuotationStatusEnum.ACCEPTED.value && !completed,
+    canConvertToSample: status === QuotationStatusEnum.ACCEPTED.value && !completed,
+    canReQuote: [QuotationStatusEnum.REJECTED.value, QuotationStatusEnum.EXPIRED.value].includes(
+      status
+    ),
+    canDelete: ![1, 2, 5, 6, 8, 9].includes(status) && !completed,
+    canEdit: ![1, 2, 3, 4].includes(status) && !completed,
+    canModify: status === QuotationStatusEnum.COMPLETED.value,
+  }
+})
+const quotationStatusTextMap = computed(() => {
+  const map: Record<number, string> = {}
+  QuotationStatusEnum.items.forEach((item: any) => {
+    map[item.value] = item.label
+  })
+  return map
+})
+// ============================================================
+// 11. 弹窗状态
+// ============================================================
+const open = ref(false)
+const title = ref('')
+const quotationDetailVisible = ref(false) // ✅ 新增
+const quotationDetailId = ref<number>(0) // ✅ 新增
+const quotationDetailMode = ref<'view' | 'submitReview'>('view') // ✅ 新增
+const userStore = useUserStore()
+
+// ============================================================
+// 12. 表单数据
+// ============================================================
 const form = reactive({
   quotationId: undefined as number | undefined,
   quotationNo: '',
@@ -907,479 +560,12 @@ const form = reactive({
   }>,
 })
 
-// 响应式数据
-const loading = ref(false)
-const tableRef = ref<any>()
-const route = useRoute()
-const showSearch = ref(true)
-const ids = ref<number[]>([])
-const single = ref(true)
-const multiple = ref(true)
-const selectedQuotation = ref<any>(null)
-const total = ref(0)
-const title = ref('')
-const open = ref(false)
-// 报价单详情弹窗（共享组件，工作台来源单据查看同用）
-const quotationDetailVisible = ref(false)
-const quotationDetailId = ref<number>()
-// 详情对话框模式：'view'=查看 / 'submitReview'=提交审核（底部显示确认提交）
-const quotationDetailMode = ref<'view' | 'submitReview'>('view')
-const dateRange = ref<string[]>([])
-const customerLoading = ref(false)
-const customerOptions = ref<Array<{ customerId: number; customerName: string }>>([])
-const productLoading = ref(false)
-const productOptions = ref<Array<{ productId: number; productCode: string; productName: string }>>(
-  []
-)
-
-// 表格数据
-const quotationList = ref<any[]>([])
-
-// 表单引用
-const quotationFormRef = ref<FormInstance>()
-const userStore = useUserStore()
-
-// 字典选项
-const quotationStatusOptions = ref(
-  QuotationStatusEnum.items.map((item) => ({ value: item.value, label: item.label }))
-)
-
-const currencyOptions = ref([
-  { value: 'CNY', label: '人民币' },
-  { value: 'USD', label: '美元' },
-  { value: 'EUR', label: '欧元' },
-  { value: 'JPY', label: '日元' },
-  { value: 'HKD', label: '港币' },
-])
-
-// 表单验证规则
-const rules = reactive<FormRules>({
-  customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
-  quotationDate: [{ required: true, message: '请选择报价日期', trigger: 'change' }],
-  validUntil: [{ required: true, message: '请选择有效期至', trigger: 'change' }],
-  currency: [{ required: true, message: '请选择币种', trigger: 'change' }],
-})
-
-// 获取报价单列表
-const getList = async () => {
-  loading.value = true
-  try {
-    // 处理日期范围
-    if (dateRange.value && dateRange.value.length === 2) {
-      queryParams.startDate = dateRange.value[0]
-      queryParams.endDate = dateRange.value[1]
-    } else {
-      queryParams.startDate = undefined
-      queryParams.endDate = undefined
-    }
-
-    const response = await quotationApi.list(queryParams)
-    quotationList.value = response.data ? response.data.records : []
-    total.value = response.data ? response.data.total : 0
-  } catch (error) {
-    console.error('获取报价单列表失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-// 搜索按钮操作
-const handleQuery = () => {
-  queryParams.pageNum = 1
-  getList()
-}
-
-// 重置按钮操作
-const resetQuery = () => {
-  dateRange.value = []
-  Object.assign(queryParams, {
-    pageNum: 1,
-    pageSize: 10,
-    quotationNo: undefined,
-    inquiryNo: undefined,
-    customerName: undefined,
-    quotationStatus: undefined,
-    startDate: undefined,
-    endDate: undefined,
-    orderByColumn: undefined,
-    isAsc: undefined,
-  })
-  getList()
-}
-
-// 多选框选中数据
-const handleSelectionChange = (selection: any[]) => {
-  ids.value = selection.map((item) => item.quotationId)
-  single.value = selection.length !== 1
-  multiple.value = !selection.length
-  selectedQuotation.value = selection.length === 1 ? selection[0] : null
-}
-
-// ===== 报价单状态机：按状态返回可用操作 =====
-// 后端规则：草稿0→提交审核5/发送1；待审核5→通过6/驳回3；已审核6→发送1；
-// 已发送1→确认2/拒绝3；已确认2→转订单(完成9)；已完成9→仅改单8；改单8→可编辑重新流转
-const quotationActions = computed(() => {
-  const q = selectedQuotation.value
-  const status = q?.quotationStatus
-  const type = q?.quotationType
-  const completed = status === 9
-  return {
-    canSend: status === 6, // 仅审核通过的报价单可发送（上传报价）
-    canSubmitReview: [0, 8].includes(status), // 草稿/改单可提交审核
-    canApprove: status === 5, // 待审核可审核
-    canCustomerConfirm: status === 1, // 已发送可确认/拒绝
-    canConvert: status === 2 && !completed, // 已确认可转订单
-    canConvertToSample: status === 2 && !completed, // 已确认(2)的非标准品可转样品单
-    canReQuote: [3, 4].includes(status), // 已拒绝/已过期可重新报价
-    canDelete: ![1, 2, 5, 6, 8, 9].includes(status) && !completed, // 已发送/待审核/已审核/已确认/已完成/改单禁删（8-05 DEV-594 补审核中）
-    canEdit: ![1, 2, 3, 4].includes(status) && !completed, // 流转中/已拒绝/已过期/已完成禁改
-    canModify: status === 9, // 已完成可改单
-  }
-})
-
-// 排序触发
-const handleSortChange = (column: any) => {
-  if (column.prop && column.order) {
-    queryParams.orderByColumn = column.prop
-    queryParams.isAsc = column.order === 'ascending' ? 'asc' : 'desc'
-  } else {
-    queryParams.orderByColumn = undefined
-    queryParams.isAsc = undefined
-  }
-  getList()
-}
-
-// 新增按钮操作
-const handleAdd = () => {
-  resetForm()
-  const quotationDate = dayjs()
-  form.quotationDate = quotationDate.format('YYYY-MM-DD')
-  form.validUntil = quotationDate.add(30, 'day').format('YYYY-MM-DD')
-  // 销售负责人默认当前登录用户（可改，2026-08-08）
-  form.salesPersonId = userStore.userId
-  form.salesPersonName = userStore.nickName || ''
-  open.value = true
-  title.value = '新增报价单'
-}
-
-// 修改按钮操作
-const handleUpdate = (row?: any) => {
-  resetForm()
-  const quotationId = row?.quotationId || ids.value[0]
-  quotationApi.getInfo(quotationId).then((response: any) => {
-    Object.assign(form, response.data)
-    // DEV-602：回填当前客户到选项列表，避免 el-select（remote 模式）无匹配项时直接显示 id
-    if (response.data?.customerId != null) {
-      const current = {
-        customerId: response.data.customerId,
-        customerName: response.data.customerName || `客户#${response.data.customerId}`,
-      }
-      customerOptions.value = [
-        current,
-        ...customerOptions.value.filter((c) => c.customerId !== current.customerId),
-      ]
-    }
-    // DEV-1108：样品报价（type=2）回填编码生成器结构参数（面板/线路/流水号）
-    if (response.data?.quotationType === 2 && response.data?.items?.length) {
-      const it = response.data.items[0]
-      qCodeState.value = {
-        serialNo: it.serialNo || '',
-        panelType: it.panelType || '',
-        panelFeature: it.panelFeature || '',
-        circuitType: it.circuitType || '',
-        circuitFeature: it.circuitFeature || '',
-      }
-      qCodeParams.value = null
-    }
-    open.value = true
-    title.value = `修改报价单【${response.data?.quotationNo || ''}】`
-  })
-}
-
-// 删除按钮操作
-const handleDelete = (row?: any) => {
-  const quotationIds = row?.quotationId || ids.value
-  ElMessageBox.confirm('是否确认删除报价单号为"' + quotationIds + '"的数据项？', '警告', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(() => {
-      return quotationApi.remove(quotationIds)
-    })
-    .then(() => {
-      getList()
-      ElMessage.success('删除成功')
-    })
-    .catch(() => {})
-}
-
-// 导出按钮操作
-const handleExport = () => {
-  ElMessageBox.confirm('是否确认导出所有报价单数据项？', '警告', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(() => {
-      const loading = ElLoading.service({ text: '导出中...', lock: true })
-      return quotationApi
-        .export(queryParams)
-        .then((response: any) => {
-          download(response, '报价单列表.xlsx')
-        })
-        .finally(() => loading.close())
-    })
-    .catch(() => {})
-}
-
-// 操作预览器状态
-const previewVisible = ref(false)
-const previewOperation = ref<any>(null)
-const previewBizId = ref<number | null>(null)
-const previewBizNo = ref('')
-// 状态码 → 状态名（预览器状态跳转展示用）
-const quotationStatusTextMap = Object.fromEntries(
-  QuotationStatusEnum.items.map((i: any) => [i.value, i.label])
-)
-async function openPreview(opKey: string, row?: any) {
-  const quotationId = row?.quotationId || ids.value[0]
-  if (!quotationId) return
-  let op = getOperation(opKey)
-  if (!op) return
-  // DEV-1111：转为样品单时，打样数量默认取报价单明细数量求和（与 DEV-806 total_quantity 口径一致）
-  if (opKey === 'quotation.toSample') {
-    try {
-      const res: any = await quotationApi.getItems(quotationId)
-      const items: any[] = res?.data || []
-      const total = items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0)
-      op = {
-        ...op,
-        fields: (op.fields || []).map((f: any) =>
-          f.key === 'sampleQty' ? { ...f, defaultValue: total > 0 ? total : 1 } : f
-        ),
-      }
-    } catch (e) {
-      console.error('加载报价单明细失败，打样数量使用默认值', e)
-    }
-  }
-  previewOperation.value = op
-  previewBizId.value = quotationId
-  previewBizNo.value = row?.quotationNo || selectedQuotation.value?.quotationNo || ''
-  previewVisible.value = true
-}
-
-// 转为样品单
-const handleConvertToSample = async (row?: any) => openPreview('quotation.toSample', row)
-
-// 提交审核（DEV-706：展示完整详情供核对 + 确认提交，不再用操作预览器/附件）
-const handleSubmitReview = async (row?: any) => {
-  const quotationId = (row?.quotationId as number) ?? (row as any)?.quotationId
-  if (!quotationId) return
-  // DEV-1116：若编辑表单正打开且是同一张单，先保存未保存改动再提交，避免后端校验到旧表头金额
-  // （当前弹窗为模态，列表按钮不可点，此分支为防御性保护）
-  if (open.value && form.quotationId === quotationId) {
-    submitForm()
-  }
-  quotationDetailId.value = quotationId
-  quotationDetailMode.value = 'submitReview'
-  quotationDetailVisible.value = true
-}
-
-// 审核（通过/驳回）
-const handleReview = async (approved: boolean, row?: any) =>
-  openPreview(approved ? 'quotation.approve' : 'quotation.reject', row)
-
-// 客户确认/拒绝（状态=1 已发送时）
-const handleCustomerConfirm = async (confirmed: boolean, row?: any) =>
-  openPreview(confirmed ? 'quotation.customerConfirm' : 'quotation.customerReject', row)
-
-// 发送报价（报价表单 + 打印/导出，DEV-637）
-const sendDialogVisible = ref(false)
-const sendQuotationId = ref<number>()
-const handleSend = (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  if (!quotationId) {
-    ElMessage.warning('请先选中一行报价单')
-    return
-  }
-  sendQuotationId.value = quotationId
-  sendDialogVisible.value = true
-}
-
-// 转为订单
-const handleConvert = (row?: any) => openPreview('quotation.convert', row)
-
-// 导出PDF按钮操作（跳转独立打印页，A4Canvas渲染）
-const handleExportPdf = (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  if (!quotationId) {
-    ElMessage.warning('请先选择报价单')
-    return
-  }
-  window.open(`/print/quotation/${quotationId}`, '_blank')
-}
-
-// 导出Excel按钮操作（单张表单）
-const handleExportExcel = (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  quotationApi.exportExcel(quotationId).then((response: any) => {
-    download(response, `报价单_${quotationId}.xlsx`)
-  })
-}
-
-// 复制报价按钮操作
-const handleCopy = (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  quotationApi.copy(quotationId).then((response: any) => {
-    Object.assign(form, response.data)
-    form.quotationNo = `COPY_${form.quotationNo}`
-    open.value = true
-    title.value = '复制报价单'
-    ElMessage.success('复制成功，请修改报价单号后保存')
-  })
-}
-
-// 重新报价（已拒绝/已过期 → 原单状态流转回草稿，保留单号重新走流程）
-const handleReQuote = async (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  if (!quotationId) return
-  try {
-    await quotationApi.changeStatus(quotationId, 0)
-    ElMessage.success('已重新报价：原单状态恢复为草稿，请修改后重新提交审核')
-    getList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '重新报价失败')
-  }
-}
-
-// 查看详情按钮操作
-const handleView = (row: any) => {
-  quotationDetailId.value = row.quotationId as number
-  quotationDetailMode.value = 'view'
-  quotationDetailVisible.value = true
-}
-
-// 搜索客户
-// 搜索客户（远程搜索，DEV修复：customerApi 只有 searchCustomers，原代码调用不存在的 list 导致无请求）
-const searchCustomer = async (query: string) => {
-  if (!query) {
-    customerOptions.value = []
-    return
-  }
-  customerLoading.value = true
-  try {
-    const res: any = await customerApi.searchCustomers(query)
-    customerOptions.value = (res?.data || []).map((item: any) => ({
-      customerId: item.customerId,
-      customerName: item.customerName,
-    }))
-  } catch {
-    customerOptions.value = []
-  } finally {
-    customerLoading.value = false
-  }
-}
-
-// 下拉聚焦时加载全部客户（避免下拉空白）
-const loadCustomerOptions = async () => {
-  if (customerOptions.value.length > 0) return
-  customerLoading.value = true
-  try {
-    const res: any = await customerApi.searchCustomers('')
-    customerOptions.value = (res?.data || []).map((item: any) => ({
-      customerId: item.customerId,
-      customerName: item.customerName,
-    }))
-  } catch {
-    customerOptions.value = []
-  } finally {
-    customerLoading.value = false
-  }
-}
-
-// 搜索产品（真实产品库）
-const searchProduct = async (query: string, row: any) => {
-  productLoading.value = true
-  try {
-    const res = await listProduct({
-      pageNum: 1,
-      pageSize: 50,
-      productName: query || undefined,
-      productCode: query || undefined,
-      customerId: form.customerId,
-    } as any)
-    const data = (res?.data as any)?.records || res?.data || []
-    productOptions.value = data.map((p: any) => ({
-      productId: p.productId,
-      productCode: p.productCode,
-      productName: p.productName,
-    }))
-  } catch {
-    productOptions.value = []
-  } finally {
-    productLoading.value = false
-  }
-}
-
-// 处理产品选择变化
-// ===== 编码生成器（样品报价：面板线路自动拼编码，自动填入唯一明细行，2026-08-08） =====
-const qShortName = ref('')
-// 编码生成器（公共组件 2026-08-12）
-import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
-import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
-const qCodeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
-const qCodeState = ref<ProductCodeState>({
-  serialNo: '',
-  panelType: '',
-  panelFeature: '',
-  circuitType: '',
-  circuitFeature: '',
-})
-const qCodeParams = ref<ProductCodeResult | null>(null)
-
-// 编码生成回调：自动填入唯一明细行（样品类型单行明细）；空编码（重置/未完成）不处理不弹提示
-function onQCodeChange(data: string | ProductCodeResult) {
-  const code = typeof data === 'string' ? data : data.productCode
-  const row = form.items[0]
-  if (!row || !code) return
-  row.productCode = code
-  row.productName = code
-  ElMessage.success('编码与名称已填入明细')
-}
-
-async function qLoadShortName() {
-  if (!form.customerId) return
-  try {
-    const res: any = await customerApi.getCustomer(form.customerId)
-    const short = (res as any)?.data?.customerShortName || ''
-    qShortName.value = short.substring(0, 3)
-  } catch {
-    qShortName.value = ''
-  }
-}
-
-// 客户选择：回填客户名称 + 刷新编码生成器客户简称（2026-08-08）
-function onCustomerChange(val: any, customer: any) {
-  if (customer) {
-    form.customerName = customer.customerName
-    qShortName.value = (customer.customerShortName || '').substring(0, 3)
-  } else {
-    form.customerName = ''
-    qShortName.value = ''
-  }
-  productOptions.value = []
-  form.items.forEach((item: any) => {
-    item.productId = undefined
-    item.productCode = ''
-    item.productName = ''
-  })
-}
-
-// 销售负责人选项（角色ID=7，同订单表单）
+// ============================================================
+// 13. 销售负责人
+// ============================================================
 const salesPersonOptions = ref<Array<{ userId: number; nickName: string; userName: string }>>([])
 
-async function loadSalesPersons() {
+const loadSalesPersons = async () => {
   try {
     const res: any = await roleApi.allocatedList({ roleId: 7, pageNum: 1, pageSize: 999 })
     if (res.code === 200 && res.data?.records) {
@@ -1394,178 +580,12 @@ async function loadSalesPersons() {
   }
 }
 
-function onSalesPersonChange(val: number) {
-  const u = salesPersonOptions.value.find((x) => x.userId === val)
-  form.salesPersonName = u ? u.nickName : ''
-}
-
-watch(
-  () => form.customerId,
-  (v) => {
-    if (v) qLoadShortName()
-  }
-)
-
-// 样品类型：明细锁单行（2026-08-08）
-watch(
-  () => form.quotationType,
-  (v) => {
-    if (v === 2) {
-      if (form.items.length > 1) {
-        form.items.splice(1)
-        ElMessage.info('样品类型仅支持一条明细，已保留第一行')
-      }
-      if (form.items.length === 0) {
-        form.items.push({
-          productId: undefined,
-          productCode: '',
-          productName: '',
-          quantity: 1,
-          unitPrice: 0,
-          amount: 0,
-          unit: 'PCS',
-        })
-      }
-    }
-  }
-)
-
-const handleProductChange = (item: any) => {
-  // 根据选择的产品编码自动填充产品名称和产品ID
-  const selectedProduct = productOptions.value.find(
-    (product) => product.productCode === item.productCode
-  )
-  if (selectedProduct) {
-    item.productName = selectedProduct.productName
-    item.productId = selectedProduct.productId
-  } else if (item.productCode) {
-    // 没有匹配（用户自定义输入/样品）→ 名称留给用户手动输入，不再自动生成
-    item.productId = undefined
-    if (!item.productName || item.productName.startsWith('产品_')) {
-      item.productName = ''
-    }
-  }
-}
-
-// 编码聚焦时加载产品列表（只加载一次，供本地过滤 + allow-create）
-const handleProductFocus = async (item: any) => {
-  if (productOptions.value.length === 0) {
-    productLoading.value = true
-    try {
-      const res = await listProduct({
-        pageNum: 1,
-        pageSize: 50,
-        customerId: form.customerId,
-      } as any)
-      const data = (res?.data as any)?.records || res?.data || []
-      productOptions.value = data.map((p: any) => ({
-        productId: p.productId,
-        productCode: p.productCode,
-        productName: p.productName,
-      }))
-    } catch {
-      productOptions.value = []
-    } finally {
-      productLoading.value = false
-    }
-  }
-}
-
-// 是否为库内标准品（选中库内产品时名称只读，自定义输入时可编辑）
-const isStandardProduct = (item: any) => {
-  return productOptions.value.some((product) => product.productCode === item.productCode)
-}
-
-// 处理产品选择
-const handleProductSelect = (item: any) => {
-  // 这里可以添加产品搜索逻辑
-  if (item.productCode && !item.productName) {
-    item.productName = `产品_${item.productCode}`
-  }
-}
-
-// 计算明细金额
-const calculateItemAmount = (item: any) => {
-  item.amount = (item.quantity || 0) * (item.unitPrice || 0)
-  calculateTotalAmount()
-}
-
-// 计算总金额
-const calculateTotalAmount = () => {
-  // 计算小计金额
-  form.subtotalAmount = form.items.reduce((sum, item) => sum + (item.amount || 0), 0)
-
-  // 计算税额
-  form.taxAmount = (form.subtotalAmount * (form.taxRate || 0)) / 100
-
-  // 计算总金额
-  form.totalAmount = form.subtotalAmount + form.taxAmount
-
-  // 计算最终金额
-  form.finalAmount = form.totalAmount - (form.discountAmount || 0)
-}
-
-// ===== 汇率自动填充（对齐销售订单 OrderForm 逻辑） =====
-const exchangeRateLoading = ref(false)
-
-// 外币折算显示：最终金额（CNY）÷ 汇率 = 外币金额
-const foreignCurrencyDisplay = computed(() => {
-  if (!form.exchangeRate || !form.finalAmount || form.currency === 'CNY') return '0.00'
-  const foreignAmount = form.finalAmount / form.exchangeRate
-  return foreignAmount.toFixed(2)
-})
-
-// 汇率提示文字
-const exchangeRateHint = computed(() => {
-  if (!form.currency || form.currency === 'CNY') return ''
-  return `1 ${form.currency} = ${form.exchangeRate} CNY`
-})
-
-// 币种变化时自动获取汇率
-const handleCurrencyChange = async (val: string) => {
-  if (val === 'CNY') {
-    form.exchangeRate = 1
-    return
-  }
-  exchangeRateLoading.value = true
-  try {
-    const res = await quotationApi.getExchangeRate(val)
-    if (res?.code === 200 && res.data) {
-      form.exchangeRate = res.data
-    }
-  } catch (e) {
-    console.error('获取汇率失败:', e)
-  } finally {
-    exchangeRateLoading.value = false
-  }
-}
-
-// 添加明细
-const addItem = () => {
-  form.items.push({
-    productId: undefined,
-    productCode: '',
-    productName: '',
-    quantity: 1,
-    unitPrice: 0,
-    amount: 0,
-    unit: 'PCS',
-  })
-}
-
-// 删除明细
-const removeItem = (index: number) => {
-  form.items.splice(index, 1)
-  calculateTotalAmount()
-}
-
-// 表单重置
+// ============================================================
+// 14. 表单操作
+// ============================================================
 const resetForm = () => {
-  if (quotationFormRef.value) {
-    quotationFormRef.value.resetFields()
-  }
   Object.assign(form, {
-    quotationId: undefined,
+    quotationId: 0,
     quotationNo: '',
     quotationType: 1,
     customerId: undefined,
@@ -1586,171 +606,198 @@ const resetForm = () => {
     remark: '',
     items: [],
   })
-  // DEV-1108：重置编码生成器状态，避免新增/切换时残留上次的结构参数
-  qCodeState.value = {
-    serialNo: '',
-    panelType: '',
-    panelFeature: '',
-    circuitType: '',
-    circuitFeature: '',
-  }
-  qCodeParams.value = null
 }
 
-// 提交表单
 const submitForm = () => {
-  if (!quotationFormRef.value) return
-
-  quotationFormRef.value.validate((valid) => {
-    if (valid) {
-      // 验证明细
-      if (form.items.length === 0) {
-        ElMessage.warning('请至少添加一条报价明细')
-        return
-      }
-
-      // 验证明细数据
-      for (const item of form.items) {
-        if (!item.productCode || !item.productName) {
-          ElMessage.warning('请填写完整的产品信息')
-          return
-        }
-        if (item.quantity <= 0) {
-          ElMessage.warning('数量必须大于0')
-          return
-        }
-        if (item.unitPrice < 0) {
-          ElMessage.warning('单价不能为负数')
-          return
-        }
-      }
-
-      // DEV-1108：样品报价（type=2）把编码生成器结构参数写入明细行一起保存
-      if (form.quotationType === 2 && qCodeParams.value && form.items.length) {
-        const p = qCodeParams.value
-        Object.assign(form.items[0], {
-          serialNo: p.serialNo,
-          panelType: p.panelType,
-          panelFeature: p.panelFeature,
-          circuitType: p.circuitType,
-          circuitFeature: p.circuitFeature,
-        })
-      }
-
-      if (form.quotationId !== undefined) {
-        quotationApi.edit(form as any).then(() => {
-          ElMessage.success('修改成功')
-          open.value = false
-          getList()
-        })
-      } else {
-        quotationApi.add(form as any).then(() => {
-          ElMessage.success('新增成功')
-          open.value = false
-          getList()
-        })
-      }
-    }
-  })
+  if (form.quotationId !== undefined) {
+    quotationApi.edit(form as any).then(() => {
+      ElMessage.success('修改成功')
+      open.value = false
+      getList()
+    })
+  } else {
+    quotationApi.add(form as any).then(() => {
+      ElMessage.success('新增成功')
+      open.value = false
+      getList()
+    })
+  }
 }
 
-// 取消按钮
 const cancel = () => {
   open.value = false
   resetForm()
 }
 
-// 获取状态标签类型
-const getStatusTagType = (status: number): TagType => {
-  return (QuotationStatusEnum.getTagProps(status).type as TagType) || 'info'
+// ============================================================
+// 15. 操作按钮函数
+// ============================================================
+const handleAdd = () => {
+  resetForm()
+  form.quotationDate = new Date().toISOString().split('T')[0]
+  const validUntil = new Date()
+  validUntil.setDate(validUntil.getDate() + 30)
+  form.validUntil = validUntil.toISOString().split('T')[0]
+  form.salesPersonId = userStore.userId
+  form.salesPersonName = userStore.nickName || ''
+  open.value = true
+  title.value = '新增报价单'
 }
 
-// 获取状态标签文本
-const getStatusLabel = (status: number) => {
-  const label = QuotationStatusEnum.getLabel(status)
-  return label && label !== '未知' ? label : '未知状态'
-}
-
-// 组件挂载时获取数据
-onMounted(() => {
-  getList().then(() => {
-    // DEV-590：从询价页跳转带 quotationId，定位来源报价单
-    const targetId = route.query.quotationId
-    if (targetId) {
-      locateQuotation(Number(targetId))
-    }
+const handleUpdate = (row?: any) => {
+  resetForm()
+  const quotationId = row?.quotationId || ids.value[0]
+  quotationApi.getInfo(quotationId).then((response: any) => {
+    Object.assign(form, response.data)
+    open.value = true
+    title.value = `修改报价单【${response.data?.quotationNo || ''}】`
   })
-  loadStatistics()
-  loadSalesPersons()
-})
-
-// 加载统计面板（DEV-594）
-const stats = ref<any>(null)
-async function loadStatistics() {
-  try {
-    const res: any = await quotationApi.statistics()
-    stats.value = res?.data || null
-  } catch {
-    stats.value = null
-  }
 }
 
-// 定位到指定报价单（高亮当前行；不在当前列表则直接打开详情）
-async function locateQuotation(quotationId: number) {
-  await nextTick()
-  const found = quotationList.value.find((r: any) => r.quotationId === quotationId)
-  if (found) {
-    tableRef.value?.setCurrentRow(found)
-    ElMessage.success(`已定位到报价单 ${found.quotationNo}`)
-  } else {
-    quotationDetailId.value = quotationId
-    quotationDetailMode.value = 'view'
-    quotationDetailVisible.value = true
-  }
+const handleDelete = (row?: any) => {
+  const quotationIds = row?.quotationId || ids.value
+  ElMessageBox.confirm('是否确认删除？', '警告', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => quotationApi.remove(quotationIds))
+    .then(() => {
+      getList()
+      ElMessage.success('删除成功')
+    })
+    .catch(() => {})
 }
 
-// 跳转回询价管理页
-function gotoInquiry(row: any) {
-  window.open('/sales/inquiry', '_blank')
-}
-// 组合弹窗：业务流水 + 链路追踪（2026-08-11 统一用 TraceTimeline）
-const traceDialogVisible = ref(false)
-const currentTraceId = ref('')
-const traceQuotationId = ref<number | null>(null)
-function showTrace(row: any) {
-  traceQuotationId.value = row.quotationId ?? null
-  currentTraceId.value = row.traceId || ''
-  traceDialogVisible.value = true
+const handleExport = () => {
+  ElMessageBox.confirm('是否确认导出？', '警告', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => {
+      const loading = ElLoading.service({ text: '导出中...', lock: true })
+      return quotationApi
+        .export(queryParams)
+        .then((response: any) => download(response, '报价单列表.xlsx'))
+        .finally(() => loading.close())
+    })
+    .catch(() => {})
 }
 
-// 附件管理弹窗
-const attachmentDialogVisible = ref(false)
-const attachmentQuotationId = ref<number | null>(null)
-const attachmentQuotationNo = ref('')
-const attachmentTraceId = ref('')
-function handleAttachment() {
+// ============================================================
+// 附件
+// ============================================================
+const handleAttachment = () => {
   const q = selectedQuotation.value
-  if (!q) return
+  if (!q) {
+    ElMessage.warning('请先选择一条报价单')
+    return
+  }
   attachmentQuotationId.value = q.quotationId
   attachmentQuotationNo.value = q.quotationNo || ''
   attachmentTraceId.value = q.traceId || ''
   attachmentDialogVisible.value = true
 }
 
-// 改单（已完成 → 改单状态）
+// ============================================================
+// 发送报价
+// ============================================================
+const handleSend = (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) {
+    ElMessage.warning('请先选择一条报价单')
+    return
+  }
+  sendQuotationId.value = quotationId
+  sendDialogVisible.value = true
+}
+
+// ============================================================
+// 操作预览器
+// ============================================================
+const openPreview = async (opKey: string, row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) {
+    ElMessage.warning('请先选择一条报价单')
+    return
+  }
+  let op = getOperation(opKey)
+  if (!op) {
+    ElMessage.warning('未知操作')
+    return
+  }
+  // 转为样品单时，打样数量默认取报价单明细数量求和
+  if (opKey === 'quotation.toSample') {
+    try {
+      const res: any = await quotationApi.getItems(quotationId)
+      const items: any[] = res?.data || []
+      const total = items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0)
+      op = {
+        ...op,
+        fields: (op.fields || []).map((f: any) =>
+          f.key === 'sampleQty' ? { ...f, defaultValue: total > 0 ? total : 1 } : f
+        ),
+      }
+    } catch (e) {
+      console.error('加载报价单明细失败', e)
+    }
+  }
+  previewOperation.value = op
+  previewBizId.value = quotationId
+  previewBizNo.value = row?.quotationNo || selectedQuotation.value?.quotationNo || ''
+  previewVisible.value = true
+}
+
+// ============================================================
+// 转为订单
+// ============================================================
+const handleConvert = (row?: any) => openPreview('quotation.convert', row)
+
+// ============================================================
+// 转为样品单
+// ============================================================
+const handleConvertToSample = (row?: any) => openPreview('quotation.toSample', row)
+
+// ============================================================
+// 审核
+// ============================================================
+const handleReview = (approved: boolean, row?: any) =>
+  openPreview(approved ? 'quotation.approve' : 'quotation.reject', row)
+
+// ============================================================
+// 客户确认/拒绝
+// ============================================================
+const handleCustomerConfirm = (confirmed: boolean, row?: any) =>
+  openPreview(confirmed ? 'quotation.customerConfirm' : 'quotation.customerReject', row)
+
+// ============================================================
+// 重新报价
+// ============================================================
+const handleReQuote = async (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) return
+  try {
+    await quotationApi.changeStatus(quotationId, QuotationStatusEnum.DRAFT.value)
+    ElMessage.success('已重新报价')
+    getList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '重新报价失败')
+  }
+}
+
+// ============================================================
+// 改单
+// ============================================================
 const handleModify = async (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   if (!quotationId) return
   try {
-    await ElMessageBox.confirm(
-      '确认将该已完成报价单改为改单状态？修改后需重新提交流转。',
-      '改单确认',
-      {
-        confirmButtonText: '确定改单',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
+    await ElMessageBox.confirm('确认将该已完成报价单改为改单状态？', '改单确认', {
+      confirmButtonText: '确定改单',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
     await quotationApi.modify(quotationId)
     ElMessage.success('已改为改单状态')
     getList()
@@ -1758,27 +805,113 @@ const handleModify = async (row?: any) => {
     if (e !== 'cancel') ElMessage.error(e?.message || '改单失败')
   }
 }
+
+// ============================================================
+// 复制报价
+// ============================================================
+const handleCopy = (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  quotationApi.copy(quotationId).then((response: any) => {
+    Object.assign(form, response.data)
+    form.quotationNo = `COPY_${form.quotationNo}`
+    open.value = true
+    title.value = '复制报价单'
+    ElMessage.success('复制成功')
+  })
+}
+
+// ============================================================
+// 导出PDF
+// ============================================================
+const handleExportPdf = (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) {
+    ElMessage.warning('请先选择一条报价单')
+    return
+  }
+  window.open(`/print/quotation/${quotationId}`, '_blank')
+}
+
+// ============================================================
+// 导出Excel
+// ============================================================
+const handleExportExcel = (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  quotationApi.exportExcel(quotationId).then((response: any) => {
+    download(response, `报价单_${quotationId}.xlsx`)
+  })
+}
+
+// ============================================================
+// 提交审核
+// ============================================================
+const handleSubmitReview = async (row?: any) => {
+  const quotationId = row?.quotationId || ids.value[0]
+  if (!quotationId) return
+  quotationDetailId.value = quotationId
+  quotationDetailMode.value = 'submitReview'
+  quotationDetailVisible.value = true
+}
+
+// ============================================================
+// 16. 查看详情（完善）
+// ============================================================
+const handleView = (row: any) => {
+  quotationDetailId.value = row.quotationId
+  quotationDetailMode.value = 'view'
+  quotationDetailVisible.value = true
+}
+
+// ============================================================
+// 17. 占位函数
+// ============================================================
+// 方法
+const showTrace = (row: any) => {
+  currentTraceId.value = row.traceId || ''
+  traceDialogVisible.value = true
+}
+
+// ============================================================
+// 18. 搜索/重置
+// ============================================================
+const handleSearch = () => {
+  if (dateRange.value?.length === 2) {
+    queryParams.startDate = dateRange.value[0]
+    queryParams.endDate = dateRange.value[1]
+  } else {
+    queryParams.startDate = undefined
+    queryParams.endDate = undefined
+  }
+  tableHandleSearch()
+}
+
+const handleReset = () => {
+  dateRange.value = []
+  Object.assign(queryParams, {
+    quotationNo: undefined,
+    inquiryNo: undefined,
+    customerName: undefined,
+    quotationStatus: undefined,
+    startDate: undefined,
+    endDate: undefined,
+    orderByColumn: undefined,
+    isAsc: undefined,
+  })
+  tableHandleReset()
+}
+
+// ============================================================
+// 19. 初始化
+// ============================================================
+onMounted(() => {
+  getList()
+  loadStatistics()
+  loadSalesPersons()
+})
 </script>
 
 <style scoped>
-.detail-footer {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-}
-.search-card {
-  margin-bottom: 16px;
-}
-
-.operation-card {
-  margin-bottom: 16px;
-}
-
 .table-card {
   margin-bottom: 16px;
-}
-
-.dialog-footer {
-  text-align: right;
 }
 </style>
