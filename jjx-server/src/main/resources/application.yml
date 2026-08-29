@@ -52,3 +52,8 @@ sa-token:
   token-style: uuid
   # 是否输出操作日志
   is-log: true
+
+# Springdoc OpenAPI 配置（2026-08-29 DEV-306：移除 knife4j，原生 swagger-ui 挂载到原 doc.html 路径）
+springdoc:
+  swagger-ui:
+    path: /doc.html

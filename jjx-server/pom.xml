@@ -28,9 +28,7 @@
         <hutool.version>5.8.40</hutool.version>
         <lombok.version>1.18.38</lombok.version>
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
-        <knife4j.version>4.5.0</knife4j.version>
-        <springdoc.version>2.6.0</springdoc.version>
-        <springdoc.version>2.6.0</springdoc.version>
+        <springdoc.version>2.8.9</springdoc.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <jackson.version>2.21.1</jackson.version>
         <fastjson2.version>2.0.53</fastjson2.version>
@@ -98,12 +96,6 @@
         </dependency>
 
         <!-- Knife4j (Swagger) -->
-        <dependency>
-            <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-            <version>${knife4j.version}</version>
-        </dependency>
-
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>

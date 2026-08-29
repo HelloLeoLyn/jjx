@@ -41,9 +41,13 @@ public class WebConfig implements WebMvcConfigurer {
 
     /**
      * 配置Jackson
+     * <p>DEV-306(2026-08-30)：必须移除默认 Jackson 后追加，不能 add(0) 插到最前——
+     * 否则 springdoc 的 api-docs 返回 byte[] 时会被 Jackson Base64 化
+     * （官方 issue springdoc/springdoc-openapi#2289），ByteArray/String 转换器必须保持优先。
      */
     @Override
     public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+        converters.removeIf(c -> c instanceof MappingJackson2HttpMessageConverter);
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
         ObjectMapper objectMapper = new ObjectMapper();
 
@@ -53,7 +57,7 @@ public class WebConfig implements WebMvcConfigurer {
         objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
 
         converter.setObjectMapper(objectMapper);
-        converters.add(0, converter);
+        converters.add(converter);
     }
 
     /**
@@ -66,8 +70,6 @@ public class WebConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/META-INF/resources/");
         registry.addResourceHandler("/webjars/**")
                 .addResourceLocations("classpath:/META-INF/resources/webjars/");
-        registry.addResourceHandler("doc.html")
-                .addResourceLocations("classpath:/META-INF/resources/");
 
         // 上传文件访问映射
         registry.addResourceHandler("/uploads/**")

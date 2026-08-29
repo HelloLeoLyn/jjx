@@ -89,25 +89,3 @@ sa-token:
   # 是否在登录时输出token
   is-print: true
 
-# Knife4j配置
-knife4j:
-  enable: true
-  setting:
-    language: zh-CN
-    enable-swagger-models: true
-    enable-document-manage: true
-    enable-version: true
-    enable-author: true
-    enable-request-cache: true
-    enable-response-cache: true
-    enable-filter-multipart-api-method-type: POST
-    enable-filter-multipart-apis: false
-    enable-request-params: true
-    enable-host: true
-    enable-host-text: http://localhost:${server.port}
-    enable-footer: true
-    enable-footer-custom: true
-    footer-custom-content: Copyright © 2024 JJX ERP System
-    enable-search-params: true
-    enable-open-api: true
-    enable-group: true
