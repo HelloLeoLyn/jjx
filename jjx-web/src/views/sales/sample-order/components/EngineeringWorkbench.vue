@@ -63,7 +63,7 @@
         <div class="mid-row">
           <el-card class="col-picker" shadow="never">
             <template #header>
-              <span style="font-weight:600">① 选择作业项目</span>
+              <span style="font-weight:600">① 选择标准工序</span>
               <span class="desc">已选 <b>{{ selectedProcessIds.length }}</b> 个</span>
             </template>
             <WorkProjectPicker v-model="selectedProcessIds" />
@@ -154,7 +154,7 @@
                   </div>
                 </div>
               </div>
-              <el-empty v-if="!planList.length" description="左侧勾选作业项目，自动生成工序计划" :image-size="70" />
+              <el-empty v-if="!planList.length" description="左侧勾选标准工序，自动生成工序计划" :image-size="70" />
             </div>
           </el-card>
         </div>
@@ -376,7 +376,7 @@ watch(selectedProcessIds, (ids) => {
   planList.value = planList.value.filter((p) => !p.stdProcessId || targetIds.has(p.stdProcessId))
 }, { deep: false })
 
-// 作业项目全量（WorkProjectPicker 内部已加载，这里再取一次用于名称回填）
+// 标准工序全量（WorkProjectPicker 内部已加载，这里再取一次用于名称回填）
 const allProcesses = ref<any[]>([])
 async function loadAllProcesses() {
   try {
@@ -393,7 +393,7 @@ async function loadAllProcesses() {
 async function savePlan() {
   if (!props.card?.orderId) return
   if (!planList.value.length) {
-    ElMessage.warning('工序计划为空，请先勾选作业项目')
+    ElMessage.warning('工序计划为空，请先勾选标准工序')
     return
   }
   savingPlan.value = true

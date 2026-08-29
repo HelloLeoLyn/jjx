@@ -22,7 +22,7 @@
             type="danger"
             size="small"
             @click="() => handleDelete()"
-            v-hasPermi="['system:eventConfig:remove']"
+            v-hasPermi="['system:eventConfig:delete']"
           >
             批量删除
           </el-button>
@@ -98,7 +98,7 @@
             link
             type="danger"
             @click="handleDelete(row)"
-            v-hasPermi="['system:eventConfig:remove']"
+            v-hasPermi="['system:eventConfig:delete']"
           >
             删除
           </el-button>

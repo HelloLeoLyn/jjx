@@ -1,5 +1,6 @@
 package com.jjx.system.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.system.service.SysConfigService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -75,6 +76,7 @@ public class ExchangeRateController {
     }
 
     @Operation(summary = "获取所有币种汇率（CNY本币）")
+    @SaCheckPermission("system:exchangeRate:view")
     @GetMapping("/latest")
     public Result<Map<String, Object>> getLatestRates() {
         Map<String, Object> result = new HashMap<>();
@@ -115,6 +117,7 @@ public class ExchangeRateController {
     }
 
     @Operation(summary = "获取指定币种汇率（相对CNY）")
+    @SaCheckPermission("system:exchangeRate:view")
     @GetMapping("/rate")
     public Result<BigDecimal> getRate(@RequestParam String currency) {
         Map<String, Object> latest = getLatestRates().getData();

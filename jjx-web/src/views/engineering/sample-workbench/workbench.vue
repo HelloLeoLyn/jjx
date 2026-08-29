@@ -17,7 +17,7 @@
       @upload="engUploadFile"
       @remove="engRemoveFile"
     />
-
+    {{ readonlyMode }}
     <!-- 轮次切换（全局，冲型组装/印刷共用，2026-08-12 布局调整） -->
     <el-tabs v-model="activeRound" style="margin-bottom: 10px">
       <el-tab-pane
@@ -280,6 +280,7 @@
           type="success"
           size="large"
           @click="handleMarkReady"
+          :disabled="readonlyMode"
           :loading="saving"
           style="width: 220px"
           >🎯 标记样品完成（送样）</el-button
@@ -295,10 +296,10 @@
     />
     <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
 
-    <!-- 卡片作业项目追加选择器（多选，任意结构） -->
+    <!-- 卡片标准工序追加选择器（多选，任意结构） -->
     <el-dialog
       v-model="cardPickerVisible"
-      title="＋ 添加作业项目（可多选）"
+      title="＋ 添加标准工序（可多选）"
       width="620px"
       append-to-body
     >
@@ -308,7 +309,7 @@
     <!-- 下标输入弹窗（DEV-777，仿工艺路线） -->
     <el-dialog v-model="indexDialogVisible" title="输入下标数字" width="380px" append-to-body>
       <div style="font-size: 13px; color: #606266; margin-bottom: 12px">
-        作业项目 <b>{{ indexDialogName }}</b> 带下标，请输入下标数字（正整数）：
+        标准工序 <b>{{ indexDialogName }}</b> 带下标，请输入下标数字（正整数）：
       </div>
       <el-input-number
         v-model="indexDialogValue"

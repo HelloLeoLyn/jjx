@@ -106,7 +106,7 @@
               </div>
 
               <el-form-item>
-                <el-button type="primary" :loading="saving" @click="handleSave">保存配置</el-button>
+                <el-button type="primary" :loading="saving" @click="handleSave" v-hasPermi="['system:config:edit']">保存配置</el-button>
                 <el-button @click="loadData">重置</el-button>
               </el-form-item>
             </el-form>

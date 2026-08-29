@@ -260,7 +260,7 @@ export const sampleOrderApi = {
     })
   },
 
-  // 保存打样工序计划（多选作业项目，整单覆盖当前轮次）
+  // 保存打样工序计划（多选标准工序，整单覆盖当前轮次）
   saveProcessPlan(orderId: number, data: any): AxiosPromise<any> {
     return request({
       url: `/sales/sample-order/processes/${orderId}/plan`,

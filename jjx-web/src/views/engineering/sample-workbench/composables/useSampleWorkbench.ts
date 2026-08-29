@@ -24,7 +24,7 @@ export function useSampleWorkbench() {
   const savingPlan = ref(false)
   const form = reactive({ note: '' })
 
-  // ===== 工序计划（方案A：卡片 = 一个工序单元，可挂多个作业项目）=====
+  // ===== 工序计划（方案A：卡片 = 一个工序单元，可挂多个标准工序）=====
   const planList = ref<any[]>([])
 
   // ===== 一级大类（dev-20260811-009）：ASSEMBLY冲型组装 / PRINT印刷 =====
@@ -389,7 +389,7 @@ export function useSampleWorkbench() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
   }
 
-  // 新建卡片（items: 作业项目数组）
+  // 新建卡片（items: 标准工序数组）
   function makeCard(items: any[], extra: any = {}) {
     return {
       uid: extra.uid || `new-${genUid()}`,
@@ -509,7 +509,7 @@ export function useSampleWorkbench() {
     if (!orderId.value) return
     const validPrints = printList.value.filter((r) => (r.printName || '').trim())
     if (!planList.value.length && !validPrints.length) {
-      ElMessage.warning('工序计划为空，请先勾选作业项目或添加印刷工序')
+      ElMessage.warning('工序计划为空，请先勾选标准工序或添加印刷工序')
       return
     }
     // 保存状态：全部标记为保存中
@@ -570,7 +570,7 @@ export function useSampleWorkbench() {
     }
   }
 
-  // 卡片内追加作业项目（弹窗多选，任意结构）
+  // 卡片内追加标准工序（弹窗多选，任意结构）
   const cardPickerVisible = ref(false)
   const cardPickerTarget = ref<any>(null)
   const cardPickerIds = ref<number[]>([])
@@ -606,7 +606,7 @@ export function useSampleWorkbench() {
   }
 
   // ===== 拖拽接收（左侧工序 → 右侧卡片组合）=====
-  // DEV-777：从标准工序库补 hasIndex（拖入的作业项目是否带下标）
+  // DEV-777：从标准工序库补 hasIndex（拖入的标准工序是否带下标）
   function enrichProcess(data: any) {
     let hasIndex = 0
     if (data.processId) {
@@ -641,7 +641,7 @@ export function useSampleWorkbench() {
     pendingIndexItem = null
   }
 
-  // 带下标作业项目拖入后弹窗输数字
+  // 带下标标准工序拖入后弹窗输数字
   function maybePromptIndex(item: any) {
     if (item.hasIndex === 1) openIndexDialog(item)
   }
@@ -714,10 +714,10 @@ export function useSampleWorkbench() {
     planList.value.forEach((pc: any) => (pc.draggingOver = false))
   }
 
-  // 移除卡片内作业项目
+  // 移除卡片内标准工序
   function removeCardItem(pc: any, idx: number) {
     if (readonlyMode.value) return
-    // 只移除作业项目，卡片保留（可再拖入）；删卡片走右下角删除按钮
+    // 只移除标准工序，卡片保留（可再拖入）；删卡片走右下角删除按钮
     pc.items.splice(idx, 1)
     markDirty(pc)
   }
@@ -1323,7 +1323,7 @@ export function useSampleWorkbench() {
     }
   }
 
-  // 卡片内容修改自动标记未同步（材料行/描述/作业项目等 v-model 直接绑定）
+  // 卡片内容修改自动标记未同步（材料行/描述/标准工序等 v-model 直接绑定）
   // 用 deep watch 检测：editing 中的卡片内容变化 → dirty
   watch(
     () =>

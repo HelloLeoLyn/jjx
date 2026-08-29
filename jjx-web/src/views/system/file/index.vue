@@ -60,13 +60,13 @@
           <div class="stat-card">
             <div class="stat-label">操作</div>
             <div style="margin-top: 6px">
-              <el-button size="small" type="primary" plain :loading="backingDaily" @click="runDaily">
+              <el-button size="small" type="primary" plain :loading="backingDaily" @click="runDaily" v-hasPermi="['system:file:backup']">
                 日备份
               </el-button>
-              <el-button size="small" type="warning" plain :loading="backingWeekly" @click="runWeekly">
+              <el-button size="small" type="warning" plain :loading="backingWeekly" @click="runWeekly" v-hasPermi="['system:file:backup']">
                 周全量
               </el-button>
-              <el-button size="small" :loading="checking" @click="runCheck">预警检查</el-button>
+              <el-button size="small" :loading="checking" @click="runCheck" v-hasPermi="['system:file:check']">预警检查</el-button>
             </div>
             <div style="margin-top: 8px; display: flex; gap: 6px">
               <el-input
@@ -75,7 +75,7 @@
                 placeholder="迁移源目录，如 D:/jjx"
                 style="flex: 1"
               />
-              <el-button size="small" type="success" plain :loading="migrating" @click="runMigrate">
+              <el-button size="small" type="success" plain :loading="migrating" @click="runMigrate" v-hasPermi="['system:file:migrate']">
                 迁移产品文件
               </el-button>
             </div>

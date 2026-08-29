@@ -45,7 +45,7 @@ import { ref, computed } from 'vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 
 /**
- * 作业项目图标 + 可编辑步骤下标（2026-08-09 创建，2026-08-10 支持 index 模式）
+ * 标准工序图标 + 可编辑步骤下标（2026-08-09 创建，2026-08-10 支持 index 模式）
  *
  * 两种模式：
  *  - description 模式（默认）：description 中存富文本标记 <jump>N</jump>，

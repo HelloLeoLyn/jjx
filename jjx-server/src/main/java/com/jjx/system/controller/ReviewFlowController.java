@@ -1,5 +1,6 @@
 package com.jjx.system.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.system.domain.entity.ReviewFlow;
 import com.jjx.system.service.ReviewFlowService;
@@ -18,6 +19,7 @@ public class ReviewFlowController {
     private final ReviewFlowService reviewFlowService;
 
     @GetMapping("/list")
+    @SaCheckPermission("system:reviewFlow:view")
     public Result<List<ReviewFlow>> list(@RequestParam String bizType, @RequestParam Long bizId) {
         return Result.success(reviewFlowService.listByBiz(bizType, bizId));
     }

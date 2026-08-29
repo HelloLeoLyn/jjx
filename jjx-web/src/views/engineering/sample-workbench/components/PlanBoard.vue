@@ -2,10 +2,10 @@
   <div class="mid-row">
     <el-card class="col-picker" shadow="never">
       <template #header>
-        <span style="font-weight: 600">选择作业项目</span>
+        <span style="font-weight: 600">选择标准工序</span>
         <span class="desc">选结构 → 拖拽工序到右侧卡片组合</span>
       </template>
-      <WorkProjectPicker />
+      <WorkProjectPicker :readonly="readonly" />
     </el-card>
 
     <el-card class="col-plan" shadow="never">
@@ -13,6 +13,7 @@
         <span style="font-weight: 600">打样工序计划</span>
         <span class="desc">在哪个标签编辑，卡片就属于哪个项目结构</span>
         <el-button
+          v-if="!readonly"
           size="small"
           :type="batchMode ? 'warning' : 'default'"
           icon="Grid"
@@ -22,6 +23,7 @@
           {{ batchMode ? '退出批量编辑' : '批量编辑' }}
         </el-button>
         <el-button
+          v-if="!readonly"
           type="success"
           size="small"
           :loading="savingPlan"
@@ -51,6 +53,7 @@
               :batch-selected="batchSelected.has(pc.uid)"
               :save-state-text="saveStateText"
               :parse-materials="parseMaterials"
+              :readonly="readonly"
               @toggle-select="(v: boolean) => toggleBatchSelect(pc, v)"
               @advance="advancePlan(pc)"
               @remove-item="(i: number) => removeCardItem(pc, i)"
@@ -78,6 +81,7 @@
 
       <!-- 批量操作栏（含全选） -->
       <BatchToolbar
+        v-if="!readonly"
         :batch-mode="batchMode"
         :batch-selected="batchSelected"
         :batch-category="batchCategory"
@@ -101,7 +105,7 @@ import BatchToolbar from './BatchToolbar.vue'
 
 /**
  * 工序计划面板（dev-20260811-008 组件化）
- * 左：作业项目选择器；右：工序卡片列表（拖拽/编辑/批量）
+ * 左：标准工序选择器；右：工序卡片列表（拖拽/编辑/批量）
  * 全部数据与逻辑来自 composable（props/emits 透传）
  */
 const props = defineProps<{

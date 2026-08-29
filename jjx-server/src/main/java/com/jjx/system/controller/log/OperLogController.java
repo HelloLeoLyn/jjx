@@ -1,5 +1,6 @@
 package com.jjx.system.controller.log;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -28,6 +29,7 @@ public class OperLogController {
     private final SysErrorLogMapper errorLogMapper;
 
     @GetMapping("/oper")
+    @SaCheckPermission("log:operation:view")
     @Operation(summary = "分页查询操作日志")
     public Result<PageResult<SysOperLog>> page(
             @RequestParam(defaultValue = "1") Integer pageNum,
@@ -48,6 +50,7 @@ public class OperLogController {
     }
 
     @GetMapping("/login")
+    @SaCheckPermission("log:login:view")
     @Operation(summary = "分页查询登录日志")
     public Result<PageResult<SysLoginLog>> loginLogPage(
             @RequestParam(defaultValue = "1") Integer pageNum,
@@ -62,6 +65,7 @@ public class OperLogController {
     }
 
     @GetMapping("/error")
+    @SaCheckPermission("log:exception:view")
     @Operation(summary = "分页查询异常日志")
     public Result<PageResult<SysErrorLog>> errorLogPage(
             @RequestParam(defaultValue = "1") Integer pageNum,
@@ -76,24 +80,28 @@ public class OperLogController {
     }
 
     @GetMapping("/login/{id}")
+    @SaCheckPermission("log:login:view")
     @Operation(summary = "获取登录日志详情")
     public Result<SysLoginLog> getLoginById(@PathVariable Long id) {
         return Result.success(loginLogMapper.selectById(id));
     }
 
     @GetMapping("/error/{id}")
+    @SaCheckPermission("log:exception:view")
     @Operation(summary = "获取异常日志详情")
     public Result<SysErrorLog> getErrorById(@PathVariable Long id) {
         return Result.success(errorLogMapper.selectById(id));
     }
 
     @GetMapping("/operation-log/{id}")
+    @SaCheckPermission("log:operation:view")
     @Operation(summary = "获取操作日志详情")
     public Result<SysOperLog> getById(@PathVariable Long id) {
         return Result.success(operLogMapper.selectById(id));
     }
 
     @DeleteMapping("/operation-log/{ids}")
+    @SaCheckPermission("log:operation:delete")
     @Operation(summary = "删除操作日志")
     public Result<Void> delete(@PathVariable List<Long> ids) {
         operLogMapper.deleteBatchIds(ids);
@@ -101,6 +109,7 @@ public class OperLogController {
     }
 
     @DeleteMapping("/operation-log/clean")
+    @SaCheckPermission("log:operation:clean")
     @Operation(summary = "清空操作日志")
     public Result<Void> clean() {
         operLogMapper.delete(Wrappers.emptyWrapper());

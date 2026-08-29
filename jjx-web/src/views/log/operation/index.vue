@@ -43,7 +43,7 @@
           link
           type="primary"
           @click="handleView(row)"
-          v-hasPermi="['system:log:operation:view']"
+          v-hasPermi="['log:operation:view']"
         >
           查看
         </el-button>
