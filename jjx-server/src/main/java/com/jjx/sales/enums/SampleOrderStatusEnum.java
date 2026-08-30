@@ -1,5 +1,7 @@
 package com.jjx.sales.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 import java.util.*;
@@ -16,7 +18,7 @@ import java.util.stream.Collectors;
  * 任意状态 → CANCELLED(10)
  */
 @Getter
-public enum SampleOrderStatusEnum {
+public enum SampleOrderStatusEnum implements BizStatusEnum {
 
     CREATED(1, "样品需求已创建", "样品单已创建，待提交审核", false, false),
     REQUEST(2, "待打样", "提交打样申请，等待工程人员接单", false, false),
@@ -29,15 +31,15 @@ public enum SampleOrderStatusEnum {
     REJECTED(9, "客户退回", "客户退回要求修改，退回工程重新打样", true, false),
     CANCELLED(10, "已取消", "样品单已取消", false, true);
 
-    private final Integer code;
-    private final String name;
+    private final Integer value;
+    private final String label;
     private final String description;
     private final boolean editable;
     private final boolean terminal;
 
-    SampleOrderStatusEnum(Integer code, String name, String description, boolean editable, boolean terminal) {
-        this.code = code;
-        this.name = name;
+    SampleOrderStatusEnum(Integer value, String label, String description, boolean editable, boolean terminal) {
+        this.value = value;
+        this.label = label;
         this.description = description;
         this.editable = editable;
         this.terminal = terminal;
@@ -59,19 +61,19 @@ public enum SampleOrderStatusEnum {
         TRANSITIONS.put(CANCELLED, EnumSet.noneOf(SampleOrderStatusEnum.class));
     }
 
-    private static final Map<Integer, SampleOrderStatusEnum> CODE_MAP =
-            Arrays.stream(values()).collect(Collectors.toMap(SampleOrderStatusEnum::getCode, s -> s));
+    private static final Map<Integer, SampleOrderStatusEnum> VALUE_MAP =
+            Arrays.stream(values()).collect(Collectors.toMap(SampleOrderStatusEnum::getValue, s -> s));
 
-    public static SampleOrderStatusEnum getByCode(Integer code) {
-        SampleOrderStatusEnum status = CODE_MAP.get(code);
+    public static SampleOrderStatusEnum getByValue(Integer value) {
+        SampleOrderStatusEnum status = VALUE_MAP.get(value);
         if (status == null) {
-            throw new IllegalArgumentException("无效的样品单状态码: " + code);
+            throw new IllegalArgumentException("无效的样品单状态码: " + value);
         }
         return status;
     }
 
-    public static Optional<SampleOrderStatusEnum> getByCodeSafe(Integer code) {
-        return Optional.ofNullable(CODE_MAP.get(code));
+    public static Optional<SampleOrderStatusEnum> getByValueSafe(Integer value) {
+        return Optional.ofNullable(VALUE_MAP.get(value));
     }
 
     public boolean canTransitionTo(SampleOrderStatusEnum target) {

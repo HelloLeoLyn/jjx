@@ -1,5 +1,7 @@
 package com.jjx.sales.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 /**
@@ -7,7 +9,7 @@ import lombok.Getter;
  * 与数据库 sales_quotation.quotation_status 数字编码一致
  */
 @Getter
-public enum QuotationStatus {
+public enum QuotationStatus implements BizStatusEnum {
     DRAFT(0, "草稿"),
     SENT(1, "已发送"),
     ACCEPTED(2, "已确认"),
@@ -18,18 +20,18 @@ public enum QuotationStatus {
     MODIFYING(8, "改单"),
     COMPLETED(9, "已完成");
 
-    private final Integer code;
-    private final String name;
+    private final Integer value;
+    private final String label;
 
-    QuotationStatus(Integer code, String name) {
-        this.code = code;
-        this.name = name;
+    QuotationStatus(Integer value, String label) {
+        this.value = value;
+        this.label = label;
     }
 
-    public static QuotationStatus getByCode(Integer code) {
-        if (code == null) return null;
+    public static QuotationStatus getByValue(Integer value) {
+        if (value == null) return null;
         for (QuotationStatus s : values()) {
-            if (s.code.equals(code)) return s;
+            if (s.value.equals(value)) return s;
         }
         return null;
     }

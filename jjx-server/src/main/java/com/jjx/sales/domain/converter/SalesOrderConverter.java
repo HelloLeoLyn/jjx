@@ -117,13 +117,13 @@ public interface SalesOrderConverter {
         if (entity != null) {
             // 设置默认状态
             if (entity.getOrderStatus() == null) {
-                entity.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+                entity.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
             }
             if (entity.getProdStatus() == null) {
-                entity.setProdStatus(ProdStatusEnum.NONE.getCode());
+                entity.setProdStatus(ProdStatusEnum.NONE.getValue());
             }
             if (entity.getPaymentStatus() == null) {
-                entity.setPaymentStatus(PaymentStatusEnum.UNPAID.getCode());
+                entity.setPaymentStatus(PaymentStatusEnum.UNPAID.getValue());
             }
             if (entity.getShippedQuantity() == null) {
                 entity.setShippedQuantity(0);
@@ -173,7 +173,7 @@ public interface SalesOrderConverter {
      * 获取订单状态描述
      */
     default String getOrderStatusDesc(Integer orderStatus) {
-        OrderStatusEnum enumValue = OrderStatusEnum.getByCode(orderStatus);
+        OrderStatusEnum enumValue = OrderStatusEnum.getByValue(orderStatus);
         return enumValue.getDescription();
     }
 
@@ -181,16 +181,16 @@ public interface SalesOrderConverter {
      * 获取生产状态描述
      */
     default String getProdStatusDesc(Integer prodStatus) {
-        ProdStatusEnum enumValue = ProdStatusEnum.getByCode(prodStatus);
-        return enumValue != null ? enumValue.getDesc() : "";
+        ProdStatusEnum enumValue = ProdStatusEnum.getByValue(prodStatus);
+        return enumValue != null ? enumValue.getLabel() : "";
     }
 
     /**
      * 获取支付状态描述
      */
     default String getPaymentStatusDesc(Integer paymentStatus) {
-        PaymentStatusEnum enumValue = PaymentStatusEnum.getByCode(paymentStatus);
-        return enumValue != null ? enumValue.getDesc() : "";
+        PaymentStatusEnum enumValue = PaymentStatusEnum.getByValue(paymentStatus);
+        return enumValue != null ? enumValue.getLabel() : "";
     }
 
     /**

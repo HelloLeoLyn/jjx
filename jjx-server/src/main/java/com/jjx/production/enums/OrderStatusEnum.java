@@ -1,5 +1,7 @@
 package com.jjx.production.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 import java.util.*;
@@ -9,7 +11,7 @@ import java.util.stream.Collectors;
  * 订单状态枚举
  */
 @Getter
-public enum OrderStatusEnum {
+public enum OrderStatusEnum implements BizStatusEnum {
 
     /**
      * 草稿 - 订单创建但未提交
@@ -74,40 +76,40 @@ public enum OrderStatusEnum {
     /**
      * 编码
      */
-    private final Integer code;
+    private final Integer value;
 
     /**
      * 名称
      */
-    private final String name;
+    private final String label;
 
     /**
      * 描述
      */
     private final String description;
 
-    private static final Map<Integer, OrderStatusEnum> CODE_MAP =
-            Arrays.stream(values()).collect(Collectors.toMap(OrderStatusEnum::getCode, s -> s));
+    private static final Map<Integer, OrderStatusEnum> VALUE_MAP =
+            Arrays.stream(values()).collect(Collectors.toMap(OrderStatusEnum::getValue, s -> s));
 
-    OrderStatusEnum(Integer code, String name, String description) {
-        this.code = code;
-        this.name = name;
+    OrderStatusEnum(Integer value, String label, String description) {
+        this.value = value;
+        this.label = label;
         this.description = description;
     }
 
     /**
      * 根据编码获取枚举
      */
-    public static OrderStatusEnum getByCode(Integer code) {
-        return CODE_MAP.get(code);
+    public static OrderStatusEnum getByValue(Integer value) {
+        return VALUE_MAP.get(value);
     }
 
     /**
      * 根据名称获取枚举
      */
-    public static OrderStatusEnum getByName(String name) {
+    public static OrderStatusEnum getByName(String label) {
         for (OrderStatusEnum status : values()) {
-            if (status.getName().equals(name)) {
+            if (status.getLabel().equals(label)) {
                 return status;
             }
         }
@@ -117,27 +119,27 @@ public enum OrderStatusEnum {
     /**
      * 检查编码是否存在
      */
-    public static boolean containsCode(Integer code) {
-        return CODE_MAP.containsKey(code);
+    public static boolean containsCode(Integer value) {
+        return VALUE_MAP.containsKey(value);
     }
 
     /**
      * 检查名称是否存在
      */
-    public static boolean containsName(String name) {
-        return getByName(name) != null;
+    public static boolean containsName(String label) {
+        return getByName(label) != null;
     }
 
     /**
      * 获取所有编码
      */
-    public static Integer[] getAllCodes() {
+    public static Integer[] getAllValues() {
         OrderStatusEnum[] values = values();
-        Integer[] codes = new Integer[values.length];
+        Integer[] valueArray = new Integer[values.length];
         for (int i = 0; i < values.length; i++) {
-            codes[i] = values[i].getCode();
+            valueArray[i] = values[i].getValue();
         }
-        return codes;
+        return valueArray;
     }
 
     /**
@@ -147,7 +149,7 @@ public enum OrderStatusEnum {
         OrderStatusEnum[] values = values();
         String[] names = new String[values.length];
         for (int i = 0; i < values.length; i++) {
-            names[i] = values[i].getName();
+            names[i] = values[i].getLabel();
         }
         return names;
     }
@@ -226,7 +228,7 @@ public enum OrderStatusEnum {
      * 获取状态流转顺序（数值越小越靠前）
      */
     public int getFlowOrder() {
-        return this.code;
+        return this.value;
     }
 
     /**
@@ -267,14 +269,14 @@ public enum OrderStatusEnum {
      * 获取显示文本（编码 + 名称）
      */
     public String getDisplayText() {
-        return code + " - " + name;
+        return value + " - " + label;
     }
 
     /**
      * 获取详细描述
      */
     public String getDetailedDescription() {
-        return name + "：" + description;
+        return label + "：" + description;
     }
 
     /**

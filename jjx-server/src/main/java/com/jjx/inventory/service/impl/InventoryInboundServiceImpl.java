@@ -212,7 +212,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             order.setInboundDate(LocalDate.now());
         }
         order.setRemark((String) params.get("remark"));
-        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
+        order.setOrderStatus(OrderStatusEnum.PENDING.getValue());
         inboundOrderMapper.insert(order);
 
         // 保存明细（DEV-436 修复：原 create 不落 items，导致入库单无明细无法确认）
@@ -272,14 +272,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         // 2026-08-11 业务定稿：审核不能跳过——只有“已批准”才能确认入库，待审批必须先走审批
-        if (!OrderStatusEnum.APPROVED.getCode().equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法确认（需先审批通过）: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
         // 库存操作统一发生在 confirm：加库存+流水+置完成
         addStock(order, operatorId, operatorName, "确认入库");
-        order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
+        order.setOrderStatus(OrderStatusEnum.COMPLETED.getValue());
         // 安全库存检查
         try {
             List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
@@ -303,12 +303,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if (OrderStatusEnum.COMPLETED.getCode().equals(order.getOrderStatus())) {
+        if (OrderStatusEnum.COMPLETED.getValue().equals(order.getOrderStatus())) {
             log.error("已完成的入库单无法取消: inboundId={}", inboundId);
             return false;
         }
 
-        order.setOrderStatus(OrderStatusEnum.CANCELLED.getCode());
+        order.setOrderStatus(OrderStatusEnum.CANCELLED.getValue());
         order.setRemark(reason);
         return inboundOrderMapper.updateById(order) > 0;
     }
@@ -326,14 +326,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // DEV-651：只有草稿/已驳回/已取消状态的单才能提交审批
         Integer status = order.getOrderStatus();
-        if (!OrderStatusEnum.DRAFT.getCode().equals(status)
-                && !OrderStatusEnum.REJECTED.getCode().equals(status)
-                && !OrderStatusEnum.CANCELLED.getCode().equals(status)) {
+        if (!OrderStatusEnum.DRAFT.getValue().equals(status)
+                && !OrderStatusEnum.REJECTED.getValue().equals(status)
+                && !OrderStatusEnum.CANCELLED.getValue().equals(status)) {
             log.error("入库单状态不允许提交审批: inboundId={}, status={}", inboundId, status);
             return false;
         }
 
-        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
+        order.setOrderStatus(OrderStatusEnum.PENDING.getValue());
         return inboundOrderMapper.updateById(order) > 0;
     }
 
@@ -348,14 +348,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法审批: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
         // 2026-08-11 业务定稿：审批通过 = 确认入库（一步到位）——直接加库存+流水+置完成，不再需要单独的"确认入库"环节
         addStock(order, approverId, approverName, "审批通过入库");
-        order.setOrderStatus(OrderStatusEnum.COMPLETED.getCode());
+        order.setOrderStatus(OrderStatusEnum.COMPLETED.getValue());
         // 安全库存检查
         try {
             List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
@@ -379,12 +379,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getCode().equals(order.getOrderStatus())) {
+        if (!OrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法驳回: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
-        order.setOrderStatus(OrderStatusEnum.REJECTED.getCode());
+        order.setOrderStatus(OrderStatusEnum.REJECTED.getValue());
         order.setRemark(remark);
         return inboundOrderMapper.updateById(order) > 0;
     }
@@ -502,7 +502,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setTraceId(po.getTraceId()); // 链路追踪（DEV-568）：采购到货→入库单继承
         order.setWarehouseId(1L); // 默认仓库
         order.setInboundDate(LocalDate.now());
-        order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+        order.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
         // 供应商/创建人从采购单带过来，避免列表页数据空白
         order.setSupplierId(po.getSupplierId());
         order.setSupplierName(po.getSupplierName());
@@ -550,7 +550,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundOrderMapper.updateById(order);
 
         // 6. 提交审批并自动审批
-        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
+        order.setOrderStatus(OrderStatusEnum.PENDING.getValue());
         inboundOrderMapper.updateById(order);
         approve(order.getInboundId(), null, null, "采购到货入库");
 
@@ -617,7 +617,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setTraceId(po.getTraceId());
         order.setWarehouseId(1L);
         order.setInboundDate(LocalDate.now());
-        order.setOrderStatus(OrderStatusEnum.PENDING.getCode()); // 待审批：收货后需仓库审批→确认入库才加库存（2026-08-11 业务定稿：收货≠入库）
+        order.setOrderStatus(OrderStatusEnum.PENDING.getValue()); // 待审批：收货后需仓库审批→确认入库才加库存（2026-08-11 业务定稿：收货≠入库）
         order.setRemark("采购收货自动入库（DEV-624）批次" + existingList.size());
         // 供应商/创建人从采购单带过来，避免列表页数据空白
         order.setSupplierId(po.getSupplierId());
@@ -677,11 +677,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // DEV-936（2026-08-12）：工单未完工禁止生成完工入库单（与 DEV-053 完工质检门一致），
         // 否则 finishedQuantity=0 导致入库数量记 0、库存不入账
-        if (!com.jjx.production.enums.OrderStatusEnum.COMPLETED.getCode().equals(prodOrder.getOrderStatus())) {
+        if (!com.jjx.production.enums.OrderStatusEnum.COMPLETED.getValue().equals(prodOrder.getOrderStatus())) {
             String statusName = "状态码" + prodOrder.getOrderStatus();
             try {
-                var pe = com.jjx.production.enums.OrderStatusEnum.getByCode(prodOrder.getOrderStatus());
-                statusName = pe.getName();
+                var pe = com.jjx.production.enums.OrderStatusEnum.getByValue(prodOrder.getOrderStatus());
+                statusName = pe.getLabel();
             } catch (Exception ignored) {}
             throw new BusinessException("工单未完工，不能生成完工入库单（当前状态：" + statusName + "）");
         }
@@ -716,7 +716,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         } catch (Exception e) {
             log.warn("获取默认仓库失败: {}", e.getMessage());
         }
-        order.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+        order.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
         inboundOrderMapper.insert(order);
 
         // 3. 创建入库明细（DEV-579：物料=成品物料档案 F类型，产品ID→物料ID映射）
@@ -751,7 +751,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundItemMapper.insert(inboundItem);
 
         // 4. 提交审批并自动审批
-        order.setOrderStatus(OrderStatusEnum.PENDING.getCode());
+        order.setOrderStatus(OrderStatusEnum.PENDING.getValue());
         inboundOrderMapper.updateById(order);
         approve(order.getInboundId(), null, null, "生产完工入库");
 
@@ -792,7 +792,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     public List<InboundVO> getPendingApproval() {
         List<InventoryInboundOrder> orders = inboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryInboundOrder>()
-                        .eq(InventoryInboundOrder::getOrderStatus, OrderStatusEnum.PENDING.getCode())
+                        .eq(InventoryInboundOrder::getOrderStatus, OrderStatusEnum.PENDING.getValue())
                         .orderByAsc(InventoryInboundOrder::getCreateTime)
         );
         return convertToVOList(orders);
@@ -890,8 +890,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         BeanUtils.copyProperties(order, vo);
         // 状态码/名称（前端展示用，与实体 Integer 字段对齐）
         vo.setStatus(order.getOrderStatus());
-        vo.setStatusName(com.jjx.inventory.enums.OrderStatusEnum.getByCode(order.getOrderStatus()) != null
-                ? com.jjx.inventory.enums.OrderStatusEnum.getByCode(order.getOrderStatus()).getLabel() : null);
+        vo.setStatusName(com.jjx.inventory.enums.OrderStatusEnum.getByValue(order.getOrderStatus()) != null
+                ? com.jjx.inventory.enums.OrderStatusEnum.getByValue(order.getOrderStatus()).getLabel() : null);
         // 入库类型名称
         vo.setInboundTypeName(inboundTypeName(order.getInboundType()));
         // 仓库名称

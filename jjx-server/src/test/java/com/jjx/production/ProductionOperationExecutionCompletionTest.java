@@ -89,7 +89,7 @@ class ProductionOperationExecutionCompletionTest {
     @Test
     void rejectsCompletionUnlessExecutionIsExecuting() {
         ProductionOperationExecution execution = executing(11L, 22L);
-        execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getValue());
         doReturn(execution).when(service).getById(11L);
 
         assertThrows(BusinessException.class, () -> service.completeExecution(11L));
@@ -99,7 +99,7 @@ class ProductionOperationExecutionCompletionTest {
     @Test
     void rejectsStartingExecutionBeforeOrderIsInProgress() {
         ProductionOperationExecution execution = executing(11L, 22L);
-        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getValue());
         doReturn(execution).when(service).getById(11L);
         ProductionOrder order = order(22L, OrderStatusEnum.PLANNED);
         when(orderMapper.selectById(22L)).thenReturn(order);
@@ -113,27 +113,27 @@ class ProductionOperationExecutionCompletionTest {
     @Test
     void startsExecutionAfterOrderIsInProgress() {
         ProductionOperationExecution execution = executing(11L, 22L);
-        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getValue());
         doReturn(execution).when(service).getById(11L);
         when(orderMapper.selectById(22L)).thenReturn(order(22L, OrderStatusEnum.IN_PROGRESS));
         doReturn(true).when(service).updateById(execution);
 
         assertTrue(service.startExecution(11L));
-        assertEquals(ExecutionStatusEnum.EXECUTING.getCode(), execution.getExecutionStatus());
+        assertEquals(ExecutionStatusEnum.EXECUTING.getValue(), execution.getExecutionStatus());
     }
 
     private ProductionOperationExecution executing(Long executionId, Long orderId) {
         ProductionOperationExecution execution = new ProductionOperationExecution();
         execution.setExecutionId(executionId);
         execution.setOrderId(orderId);
-        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getValue());
         return execution;
     }
 
     private ProductionOrder order(Long orderId, OrderStatusEnum status) {
         ProductionOrder order = new ProductionOrder();
         order.setOrderId(orderId);
-        order.setOrderStatus(status.getCode());
+        order.setOrderStatus(status.getValue());
         return order;
     }
 }

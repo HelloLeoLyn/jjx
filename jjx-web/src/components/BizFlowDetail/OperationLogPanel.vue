@@ -21,8 +21,8 @@
               {{ log.status === 1 ? '成功' : '失败' }}
             </el-tag>
             <span class="op-module">{{ log.module }}</span>
-            <span class="op-biz-status" v-if="log.bizStatus != null">
-              → {{ formatBizStatus(log.bizStatus, log.bizType) }}
+            <span class="op-biz-status" v-if="log.bizStatus">
+              → {{ log.bizStatus }}
             </span>
           </div>
           <div class="op-action">{{ formatBusinessType(log.businessType) }}</div>
@@ -41,10 +41,6 @@
 import { ref, watch } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import request from '@/utils/request'
-import { QuotationStatusEnum, SalesOrderStatusEnum, SampleOrderStatusEnum, InquiryStatusEnum } from '@/enums/sales'
-import { ProductionOrderStatusEnum } from '@/enums/production'
-import { PurchaseOrderStatusEnum } from '@/enums/purchase/order'
-
 const props = defineProps<{
   bizType: string
   bizId: number
@@ -55,26 +51,7 @@ const props = defineProps<{
 const loading = ref(false)
 const logs = ref<any[]>([])
 
-// 业务码 → 状态枚举（与 TraceTimeline 保持一致）
-const BIZ_STATUS_ENUMS: Record<string, { getLabel: (v: number) => string }> = {
-  inquiry: InquiryStatusEnum,
-  quotation: QuotationStatusEnum,
-  order: SalesOrderStatusEnum,
-  sales_order: SalesOrderStatusEnum,
-  sample: SampleOrderStatusEnum,
-  purchase: PurchaseOrderStatusEnum,
-  production: ProductionOrderStatusEnum,
-}
-
-function formatBizStatus(bizStatus: number, bizType: string): string {
-  if (bizStatus == null) return ''
-  const statusEnum = BIZ_STATUS_ENUMS[bizType || '']
-  if (statusEnum) {
-    const label = statusEnum.getLabel(bizStatus)
-    return label && label !== '未知' ? label : String(bizStatus)
-  }
-  return String(bizStatus)
-}
+// bizStatus 由后端在写入流水时快照成状态文案（sys_oper_log.biz_status 为 varchar），前端不再做映射
 
 function formatBusinessType(code: number): string {
   const map: Record<number, string> = {

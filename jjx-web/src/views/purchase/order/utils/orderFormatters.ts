@@ -116,36 +116,36 @@ export function getStatusColor(status: string): string {
 
 /**
  * 检查订单是否可取消（草稿、待审批、已拒绝可取消）
- * 已取消(2)和已批准(4)的订单不可取消
+ * 已取消(5)和已批准(3)的订单不可取消（DEV-1230 对齐 common ApproveStatusEnum）
  */
 export function isOrderCancellable(approvalStatus: number): boolean {
-  return approvalStatus === 1 || approvalStatus === 3 || approvalStatus === 5
+  return approvalStatus === 1 || approvalStatus === 2 || approvalStatus === 4
 }
 
 /**
  * 检查订单是否可编辑（草稿和已拒绝可编辑）
  */
 export function isOrderEditable(approvalStatus: number): boolean {
-  return approvalStatus === 1 || approvalStatus === 5
+  return approvalStatus === 1 || approvalStatus === 4
 }
 
 /**
  * 检查订单是否可审批（待审批可审批）
  */
 export function isOrderApprovable(approvalStatus: number): boolean {
-  return approvalStatus === 3
+  return approvalStatus === 2
 }
 
 /**
  * 检查订单是否可收货（已批准且未完全收货）
  */
 export function isOrderReceivable(approvalStatus: number, receiptStatus: number): boolean {
-  return approvalStatus === 4 && (receiptStatus === 0 || receiptStatus === 1)
+  return approvalStatus === 3 && (receiptStatus === 0 || receiptStatus === 1)
 }
 
 /**
  * 检查订单是否可付款（已批准且未完全付款）
  */
 export function isOrderPayable(approvalStatus: number, paymentStatus: number): boolean {
-  return approvalStatus === 4 && (paymentStatus === 0 || paymentStatus === 1)
+  return approvalStatus === 3 && (paymentStatus === 0 || paymentStatus === 1)
 }

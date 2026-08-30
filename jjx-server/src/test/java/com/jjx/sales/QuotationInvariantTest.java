@@ -35,7 +35,7 @@ class QuotationInvariantTest {
     @Test void illegalQuotationStatusJumpIsRejectedWithoutWrite() {
         when(quotationMapper.selectById(1L)).thenReturn(quotation(QuotationStatus.DRAFT));
         assertThrows(BusinessException.class,
-                () -> service.updateQuotationStatus(1L, QuotationStatus.COMPLETED.getCode(), null));
+                () -> service.updateQuotationStatus(1L, QuotationStatus.COMPLETED.getValue(), null));
         verify(quotationMapper, never()).updateById(any(SalesQuotation.class));
         verify(quotationFlowMapper, never()).insert(any(SalesQuotationFlow.class));
     }
@@ -77,7 +77,7 @@ class QuotationInvariantTest {
         assertEquals(new BigDecimal("5.00"), order.getDiscountAmount());
         assertEquals("USD", order.getCurrency());
         assertEquals(new BigDecimal("7.20"), order.getExchangeRate());
-        assertEquals(QuotationStatus.COMPLETED.getCode(), quotation.getQuotationStatus());
+        assertEquals(QuotationStatus.COMPLETED.getValue(), quotation.getQuotationStatus());
         assertEquals(99L, quotation.getConvertedOrderId());
     }
 
@@ -90,7 +90,7 @@ class QuotationInvariantTest {
     private static SalesQuotation quotation(QuotationStatus status) {
         SalesQuotation quotation = new SalesQuotation();
         quotation.setQuotationId(1L);
-        quotation.setQuotationStatus(status.getCode());
+        quotation.setQuotationStatus(status.getValue());
         quotation.setDeleted(0);
         return quotation;
     }

@@ -72,7 +72,7 @@ public class QuotationController extends BaseController {
      * 新增销售报价单
      */
     @Operation(summary = "新增销售报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = "0")
+    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).DRAFT.getLabel()")
     @SaCheckPermission("sales:quotation:add")
     @PostMapping
     public Result<Void> add(@Validated @RequestBody SalesQuotationAddDTO quotation) {
@@ -96,7 +96,7 @@ public class QuotationController extends BaseController {
      * 删除销售报价单
      */
     @Operation(summary = "删除销售报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.DELETE, bizType = "'quotation'", bizStatus = "0")
+    @Log(module = "报价单管理", businessType = BusinessType.DELETE, bizType = "'quotation'", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).DRAFT.getLabel()")
     @SaCheckPermission("sales:quotation:delete")
     @DeleteMapping("/{quotationIds}")
     public Result<Void> remove(@PathVariable Long[] quotationIds) {
@@ -122,7 +122,7 @@ public class QuotationController extends BaseController {
      * 发送报价单给客户
      */
     @Operation(summary = "发送报价单给客户")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "1")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).SENT.getLabel()")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/send/{quotationId}")
     public Result<Void> send(@PathVariable Long quotationId,
@@ -134,7 +134,7 @@ public class QuotationController extends BaseController {
      * 报价单转为订单
      */
     @Operation(summary = "报价单转为订单")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "9")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).COMPLETED.getLabel()")
     @SaCheckPermission("sales:quotation:edit")
     @PostMapping("/convert/{quotationId}")
     public Result<Object> convert(@PathVariable Long quotationId) {
@@ -179,7 +179,7 @@ public class QuotationController extends BaseController {
      * 复制报价单
      */
     @Operation(summary = "复制报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "0")
+    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).DRAFT.getLabel()")
     @SaCheckPermission("sales:quotation:add")
     @PostMapping("/copy/{quotationId}")
     public Result<SalesQuotation> copy(@PathVariable Long quotationId) {
@@ -190,7 +190,7 @@ public class QuotationController extends BaseController {
      * 提交报价单审核
      */
     @Operation(summary = "提交报价单审核")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "5", detail = "#attachmentIds")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).PENDING_REVIEW.getLabel()", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/submit-review/{quotationId}")
     public Result<Void> submitReview(@PathVariable Long quotationId,
@@ -202,14 +202,16 @@ public class QuotationController extends BaseController {
      * 审核报价单
      */
     @Operation(summary = "审核报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.APPROVE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "#approved ? 6 : 3", detail = "#attachmentIds")
+    @Log(module = "报价单管理", businessType = BusinessType.APPROVE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "#result.data.label", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:approve")
     @PutMapping("/review/{quotationId}")
-    public Result<Void> review(@PathVariable Long quotationId,
+    public Result<com.jjx.sales.enums.QuotationStatus> review(@PathVariable Long quotationId,
                                @RequestParam Boolean approved,
                                @RequestParam(required = false) String remark,
                                @RequestParam(required = false) String attachmentIds) {
-        return toAjax(quotationService.reviewQuotation(quotationId, approved, remark, attachmentIds));
+        com.jjx.sales.enums.QuotationStatus status =
+                quotationService.reviewQuotation(quotationId, approved, remark, attachmentIds);
+        return status != null ? Result.success(status) : Result.error();
     }
 
     /**
@@ -226,7 +228,7 @@ public class QuotationController extends BaseController {
      * 更新报价单状态
      */
     @Operation(summary = "更新报价单状态")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "#status", detail = "#attachmentIds")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).getByValue(#status)?.label", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/status/{quotationId}")
     public Result<Void> changeStatus(@PathVariable Long quotationId,
@@ -246,7 +248,7 @@ public class QuotationController extends BaseController {
      * 客户确认报价（独立接口，触发 quotation.confirmed 事件）
      */
     @Operation(summary = "客户确认报价")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "2", detail = "#attachmentIds")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).ACCEPTED.getLabel()", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/confirm/{quotationId}")
     public Result<Void> confirm(@PathVariable Long quotationId,
@@ -258,7 +260,7 @@ public class QuotationController extends BaseController {
      * 客户拒绝报价（独立接口，触发 quotation.rejected 事件）
      */
     @Operation(summary = "客户拒绝报价")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "3", detail = "#attachmentIds")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).REJECTED.getLabel()", detail = "#attachmentIds")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/reject/{quotationId}")
     public Result<Void> reject(@PathVariable Long quotationId,
@@ -270,7 +272,7 @@ public class QuotationController extends BaseController {
      * 已完成报价单改单（回到改单状态，可重新编辑）
      */
     @Operation(summary = "已完成报价单改单")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "8")
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).MODIFYING.getLabel()")
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/modify/{quotationId}")
     public Result<Void> modify(@PathVariable Long quotationId,

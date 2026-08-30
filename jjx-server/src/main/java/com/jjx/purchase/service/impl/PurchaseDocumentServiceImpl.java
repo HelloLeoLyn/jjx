@@ -125,7 +125,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
 
         // 设置默认状态
         if (document.getDocumentStatus() == null) {
-            document.setDocumentStatus(DocumentStatus.PENDING.getCode());
+            document.setDocumentStatus(DocumentStatus.PENDING.getValue());
         }
 
         return documentMapper.insert(document);
@@ -180,11 +180,11 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             throw new BusinessException("票据不存在");
         }
 
-        if (!Objects.equals(DocumentStatus.PENDING.getCode(), document.getDocumentStatus())) {
+        if (!Objects.equals(DocumentStatus.PENDING.getValue(), document.getDocumentStatus())) {
             throw new BusinessException("只有待处理状态的票据可以核验");
         }
 
-        document.setDocumentStatus(DocumentStatus.VERIFIED.getCode());
+        document.setDocumentStatus(DocumentStatus.VERIFIED.getValue());
         document.setVerificationDate(verificationDate != null ? LocalDate.parse(verificationDate) : LocalDate.now());
         if (StringUtils.isNotEmpty(verificationRemark)) {
             document.setRemark(verificationRemark);
@@ -274,13 +274,13 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
 
         long totalCount = allDocs.size();
         long pendingCount = allDocs.stream()
-                .filter(d -> Objects.equals(DocumentStatus.PENDING.getCode(), d.getDocumentStatus()))
+                .filter(d -> Objects.equals(DocumentStatus.PENDING.getValue(), d.getDocumentStatus()))
                 .count();
         long verifiedCount = allDocs.stream()
-                .filter(d -> Objects.equals(DocumentStatus.VERIFIED.getCode(), d.getDocumentStatus()))
+                .filter(d -> Objects.equals(DocumentStatus.VERIFIED.getValue(), d.getDocumentStatus()))
                 .count();
         long archivedCount = allDocs.stream()
-                .filter(d -> Objects.equals(DocumentStatus.ARCHIVED.getCode(), d.getDocumentStatus()))
+                .filter(d -> Objects.equals(DocumentStatus.ARCHIVED.getValue(), d.getDocumentStatus()))
                 .count();
 
         return Map.of(
@@ -444,7 +444,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             document.setDocumentDate(LocalDate.now());
             document.setDocumentAmount(java.math.BigDecimal.ZERO);
             document.setCurrency("CNY");
-            document.setDocumentStatus(DocumentStatus.PENDING.getCode());
+            document.setDocumentStatus(DocumentStatus.PENDING.getValue());
             document.setFileName(fileName);
             document.setFileUrl(fileUrl);
             document.setFileSize(fileSize);

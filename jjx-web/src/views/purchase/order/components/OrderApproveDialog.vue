@@ -14,8 +14,8 @@
       </el-form-item>
       <el-form-item label="审批结果" prop="approvalStatus">
         <el-radio-group v-model="form.approvalStatus">
-          <el-radio :value="4" border>通过</el-radio>
-          <el-radio :value="5" border>拒绝</el-radio>
+          <el-radio :value="3" border>通过</el-radio>
+          <el-radio :value="4" border>拒绝</el-radio>
         </el-radio-group>
       </el-form-item>
       <el-form-item label="审批意见" prop="approvalComment">
@@ -61,7 +61,7 @@ const submitting = ref(false)
 
 const form = reactive({
   approvalComment: '',
-  approvalStatus: 4,
+  approvalStatus: 3,
 })
 
 const title = computed(() => `审批采购订单 - ${props.orderNo}`)

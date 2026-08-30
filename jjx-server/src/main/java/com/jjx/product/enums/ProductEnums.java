@@ -74,7 +74,7 @@ public final class ProductEnums {
     /**
      * 值枚举接口
      */
-    public interface ValueEnum {
+    public interface ValueEnum extends com.jjx.common.enums.BizStatusEnum {
         Integer getValue();
         String getLabel();
         String getTagType();

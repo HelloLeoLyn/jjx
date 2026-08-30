@@ -58,7 +58,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         if (routing.getRoutingVersion() == null || routing.getRoutingVersion().isEmpty()) {
             routing.setRoutingVersion(routing.getVersion());
         }
-        routing.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        routing.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         routing.setIsCurrent(0);
         routing.setProcessCount(0);
         routing.setTotalLaborHours(BigDecimal.ZERO);
@@ -85,7 +85,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         }
 
         // 检查状态是否可编辑
-        if (!ApproveStatusEnum.getByCode(routing.getApproveStatus()).isEditable()) {
+        if (!ApproveStatusEnum.getByValue(routing.getApproveStatus()).isEditable()) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_CANNOT_EDIT);
         }
 
@@ -136,7 +136,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         newRouting.setRoutingVersion(newVersion);
         newRouting.setIsCurrent(1);
         newRouting.setParentRoutingId(oldRouting.getRoutingId());
-        newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newRouting.setProcessCount(0);
         newRouting.setTotalLaborHours(BigDecimal.ZERO);
         newRouting.setTotalMachineHours(BigDecimal.ZERO);
@@ -194,7 +194,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         newRouting.setRoutingId(null);
         newRouting.setRoutingVersion(newVersion);
         newRouting.setVersion(newVersion); // 2026-08-10 DEV-769：双字段同步，统一语义
-        newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newRouting.setIsCurrent(0);
         save(newRouting);
 
@@ -242,12 +242,12 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
 
-        if (routing.getApproveStatus() != ApproveStatusEnum.DRAFT.getCode()
-                && routing.getApproveStatus() != ApproveStatusEnum.REJECTED.getCode()) {
+        if (routing.getApproveStatus() != ApproveStatusEnum.DRAFT.getValue()
+                && routing.getApproveStatus() != ApproveStatusEnum.REJECTED.getValue()) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_ALREADY_APPROVED);
         }
 
-        routing.setApproveStatus(ApproveStatusEnum.PENDING.getCode());
+        routing.setApproveStatus(ApproveStatusEnum.PENDING.getValue());
         updateById(routing);
 
         log.info("提交审批成功: {}", routing.getRoutingCode());
@@ -262,11 +262,11 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
 
-        if (routing.getApproveStatus() != ApproveStatusEnum.PENDING.getCode()) {
+        if (routing.getApproveStatus() != ApproveStatusEnum.PENDING.getValue()) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_ALREADY_APPROVED);
         }
 
-        routing.setApproveStatus(ApproveStatusEnum.APPROVED.getCode());
+        routing.setApproveStatus(ApproveStatusEnum.APPROVED.getValue());
         updateById(routing);
 
         log.info("审批通过: {}", routing.getRoutingCode());
@@ -281,11 +281,11 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
 
-        if (routing.getApproveStatus() != ApproveStatusEnum.PENDING.getCode()) {
+        if (routing.getApproveStatus() != ApproveStatusEnum.PENDING.getValue()) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_ALREADY_APPROVED);
         }
 
-        routing.setApproveStatus(ApproveStatusEnum.REJECTED.getCode());
+        routing.setApproveStatus(ApproveStatusEnum.REJECTED.getValue());
         updateById(routing);
 
         log.info("审批驳回: {}", routing.getRoutingCode());

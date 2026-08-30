@@ -32,7 +32,7 @@
         </el-table-column>
         <el-table-column label="业务状态" width="110">
           <template #default="scope">
-            {{ formatBizStatus(scope.row.bizStatus, scope.row.bizType) }}
+            {{ formatBizStatus(scope.row.bizStatus) }}
           </template>
         </el-table-column>
         <el-table-column label="业务模块" width="100">
@@ -158,14 +158,6 @@ import { computed, ref, watch } from 'vue'
 import { Download, Loading } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { attachmentApi } from '@/api/system/attachment'
-import {
-  InquiryStatusEnum,
-  QuotationStatusEnum,
-  SalesOrderStatusEnum,
-  SampleOrderStatusEnum,
-} from '@/enums/sales'
-import { ExecutionStatusEnum, ProductionOrderStatusEnum } from '@/enums/production'
-import { PurchaseOrderStatusEnum } from '@/enums/purchase/order'
 import { BusinessTypeEnum } from '@/enums/system/LogEnum'
 
 interface TraceAttachment {
@@ -195,7 +187,7 @@ interface ReviewHistory {
 interface TraceEvent {
   eventId: string
   time?: string
-  bizStatus?: number
+  bizStatus?: string
   actionTitle?: string
   operatorName?: string
   result?: number
@@ -259,30 +251,6 @@ watch(
   }
 )
 
-function statusEnumForBizType(type?: string): { getLabel: (value: number) => string } | undefined {
-  switch (type) {
-    case 'inquiry':
-      return InquiryStatusEnum
-    case 'quotation':
-      return QuotationStatusEnum
-    case 'order':
-    case 'sales_order':
-      return SalesOrderStatusEnum
-    case 'sample':
-      return SampleOrderStatusEnum
-    case 'purchase':
-    case 'purchase_order':
-      return PurchaseOrderStatusEnum
-    case 'production':
-    case 'production_order':
-      return ProductionOrderStatusEnum
-    case 'execution':
-    case 'production_execution':
-      return ExecutionStatusEnum
-    default:
-      return undefined
-  }
-}
 
 /** 该操作是否有详情（变更/审核意见/附件）——有才可点击查看 */
 function hasDetail(event: TraceEvent): boolean {
@@ -456,12 +424,13 @@ function parseDetail(detail?: string | null): TraceDetail {
   }
 }
 
-function formatBizStatus(status?: number, type?: string): string {
-  if (status == null) return '-'
-  const statusEnum = statusEnumForBizType(type)
-  if (!statusEnum) return '-'
-  const label = statusEnum.getLabel(status)
-  return label && label !== '未知' ? label : '-'
+/**
+ * bizStatus 直接显示：后端在写入流水时已把当时的状态快照成文案
+ * （sys_oper_log.biz_status 为 varchar，@Log 取 T(状态枚举).常量.getLabel()），前端不再做映射。
+ * 历史行里残留的数字是迁移前的旧数据。
+ */
+function formatBizStatus(status?: string): string {
+  return status && status.trim() ? status : '-'
 }
 
 /** 业务模块列：优先 bizType 映射，module 兜底（1199：业务化名称，不再显示技术模块名） */

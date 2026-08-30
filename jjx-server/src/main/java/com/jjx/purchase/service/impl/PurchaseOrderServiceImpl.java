@@ -14,7 +14,7 @@ import com.jjx.purchase.converter.PurchaseConverter;
 import com.jjx.purchase.domain.dto.*;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
-import com.jjx.purchase.domain.enums.ApprovalStatusEnum;
+import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.purchase.domain.enums.PaymentStatusEnum;
 import com.jjx.purchase.domain.enums.PurchaseExceptionEnum;
 import com.jjx.purchase.domain.enums.PurchaseOrderStatusEnum;
@@ -148,13 +148,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 设置默认状态
         if (order.getApprovalStatus() == null) {
-            order.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
+            order.setApprovalStatus(ApproveStatusEnum.DRAFT.getValue());
         }
         if (order.getReceiptStatus() == null) {
-            order.setReceiptStatus(ReceiptStatusEnum.PENDING.getCode());
+            order.setReceiptStatus(ReceiptStatusEnum.PENDING.getValue());
         }
         if (order.getPaymentStatus() == null) {
-            order.setPaymentStatus(PaymentStatusEnum.PENDING.getCode());
+            order.setPaymentStatus(PaymentStatusEnum.PENDING.getValue());
         }
         if (order.getPaidAmount() == null) {
             order.setPaidAmount(BigDecimal.ZERO);
@@ -191,7 +191,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             log.setBizType("purchase_order");
             log.setBizId(String.valueOf(order.getOrderId()));
             log.setTraceId(order.getTraceId());
-            log.setBizStatus(PurchaseOrderStatusEnum.getByCode(order.getApprovalStatus()).getDescription());
+            log.setBizStatus(PurchaseOrderStatusEnum.getByValue(order.getApprovalStatus()).getLabel());
             log.setOperParam("创建采购订单 " + order.getOrderNo() + "（" + order.getSupplierName() + "）");
             log.setStatus(1);
             log.setCreateTime(java.time.LocalDateTime.now());
@@ -221,8 +221,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         // 检查订单状态是否允许修改（只有草稿和已拒绝可修改）
-        if (!Objects.equals(ApprovalStatusEnum.DRAFT.getCode(), existingOrder.getApprovalStatus())
-                && !Objects.equals(ApprovalStatusEnum.REJECTED.getCode(), existingOrder.getApprovalStatus())) {
+        if (!Objects.equals(ApproveStatusEnum.DRAFT.getValue(), existingOrder.getApprovalStatus())
+                && !Objects.equals(ApproveStatusEnum.REJECTED.getValue(), existingOrder.getApprovalStatus())) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_EDITABLE.getMessage());
         }
 
@@ -282,8 +282,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         // 检查订单状态（只有草稿和已拒绝可提交）
-        if (!Objects.equals(ApprovalStatusEnum.DRAFT.getCode(), order.getApprovalStatus())
-                && !Objects.equals(ApprovalStatusEnum.REJECTED.getCode(), order.getApprovalStatus())) {
+        if (!Objects.equals(ApproveStatusEnum.DRAFT.getValue(), order.getApprovalStatus())
+                && !Objects.equals(ApproveStatusEnum.REJECTED.getValue(), order.getApprovalStatus())) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_SUBMITTABLE.getMessage());
         }
 
@@ -297,14 +297,14 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 更新订单状态为待审批
         Integer fromStatus = order.getApprovalStatus();
-        order.setApprovalStatus(ApprovalStatusEnum.PENDING.getCode());
+        order.setApprovalStatus(ApproveStatusEnum.PENDING.getValue());
         order.setUpdateTime(LocalDateTime.now());
 
         int result = orderMapper.updateById(order);
         if (result > 0) {
             reviewFlowService.record("purchase_order", orderId, "SUBMIT", "提交审批",
                     fromStatus,
-                    ApprovalStatusEnum.PENDING.getCode(), null, null);
+                    ApproveStatusEnum.PENDING.getValue(), null, null);
         }
         return result;
     }
@@ -343,7 +343,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Override
     @Event(value = "purchase.approved", bizId = "#dto.orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
-    public int approveOrder(PurchaseOrderApprovalDTO dto) {
+    public ApproveStatusEnum approveOrder(PurchaseOrderApprovalDTO dto) {
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
         if (order == null) {
@@ -351,11 +351,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         // 检查订单状态
-        if (!Objects.equals(ApprovalStatusEnum.PENDING.getCode(), order.getApprovalStatus())) {
+        if (!Objects.equals(ApproveStatusEnum.PENDING.getValue(), order.getApprovalStatus())) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_APPROVABLE.getMessage());
         }
-        Integer targetStatus = Objects.equals(ApprovalStatusEnum.APPROVED.getCode(), dto.getApprovalStatus()) ?ApprovalStatusEnum.APPROVED.getCode():
-                ApprovalStatusEnum.REJECTED.getCode();
+        Integer targetStatus = Objects.equals(ApproveStatusEnum.APPROVED.getValue(), dto.getApprovalStatus()) ?ApproveStatusEnum.APPROVED.getValue():
+                ApproveStatusEnum.REJECTED.getValue();
         // 更新审批信息
         LambdaUpdateWrapper<PurchaseOrder> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.set(PurchaseOrder::getApprovalStatus, targetStatus)
@@ -367,12 +367,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 .eq(PurchaseOrder::getApprovalStatus,order.getApprovalStatus());
         int result = orderMapper.update(updateWrapper);
         if (result > 0) {
-            boolean approved = Objects.equals(targetStatus, ApprovalStatusEnum.APPROVED.getCode());
+            boolean approved = Objects.equals(targetStatus, ApproveStatusEnum.APPROVED.getValue());
             reviewFlowService.record("purchase_order", dto.getOrderId(), approved ? "APPROVE" : "REJECT",
                     approved ? "审批通过" : "审批驳回", order.getApprovalStatus(), targetStatus,
                     dto.getApprovalComment(), null);
         }
-        return result;
+        // 返回落库后的真实状态：批准/驳回由入参决定，注解里不能写死，@Log 取 #result.data.label
+        return result > 0 ? ApproveStatusEnum.getByValue(targetStatus) : null;
     }
 
     @Override
@@ -392,8 +393,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 检查订单状态（已批准或待审批可收货）
         Integer status = order.getApprovalStatus();
-        if (!Objects.equals(ApprovalStatusEnum.PENDING.getCode(), status)
-                && !Objects.equals(ApprovalStatusEnum.APPROVED.getCode(), status)) {
+        if (!Objects.equals(ApproveStatusEnum.PENDING.getValue(), status)
+                && !Objects.equals(ApproveStatusEnum.APPROVED.getValue(), status)) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_RECEIVABLE.getMessage());
         }
 
@@ -427,9 +428,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 更新收货状态
         if (newReceivedQuantity.compareTo(item.getQuantity()) >= 0) {
-            item.setReceiptStatus(ReceiptStatusEnum.COMPLETED.getCode());
+            item.setReceiptStatus(ReceiptStatusEnum.COMPLETED.getValue());
         } else if (newReceivedQuantity.compareTo(BigDecimal.ZERO) > 0) {
-            item.setReceiptStatus(ReceiptStatusEnum.PARTIALLY_RECEIVED.getCode());
+            item.setReceiptStatus(ReceiptStatusEnum.PARTIALLY_RECEIVED.getValue());
         }
 
         // 更新明细项
@@ -684,41 +685,41 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 按审批状态统计
         long draftCount = allOrders.stream()
-                .filter(o -> Objects.equals(ApprovalStatusEnum.DRAFT.getCode(), o.getApprovalStatus()))
+                .filter(o -> Objects.equals(ApproveStatusEnum.DRAFT.getValue(), o.getApprovalStatus()))
                 .count();
         long pendingCount = allOrders.stream()
-                .filter(o -> Objects.equals(ApprovalStatusEnum.PENDING.getCode(), o.getApprovalStatus()))
+                .filter(o -> Objects.equals(ApproveStatusEnum.PENDING.getValue(), o.getApprovalStatus()))
                 .count();
         long approvedCount = allOrders.stream()
-                .filter(o -> Objects.equals(ApprovalStatusEnum.APPROVED.getCode(), o.getApprovalStatus()))
+                .filter(o -> Objects.equals(ApproveStatusEnum.APPROVED.getValue(), o.getApprovalStatus()))
                 .count();
         long rejectedCount = allOrders.stream()
-                .filter(o -> Objects.equals(ApprovalStatusEnum.REJECTED.getCode(), o.getApprovalStatus()))
+                .filter(o -> Objects.equals(ApproveStatusEnum.REJECTED.getValue(), o.getApprovalStatus()))
                 .count();
         long cancelledCount = allOrders.stream()
-                .filter(o -> Objects.equals(ApprovalStatusEnum.CANCELLED.getCode(), o.getApprovalStatus()))
+                .filter(o -> Objects.equals(ApproveStatusEnum.CANCELLED.getValue(), o.getApprovalStatus()))
                 .count();
 
         // 按收货状态统计
         long pendingReceiptCount = allOrders.stream()
-                .filter(o -> Objects.equals(ReceiptStatusEnum.PENDING.getCode(), o.getReceiptStatus()))
+                .filter(o -> Objects.equals(ReceiptStatusEnum.PENDING.getValue(), o.getReceiptStatus()))
                 .count();
         long partiallyReceivedCount = allOrders.stream()
-                .filter(o -> Objects.equals(ReceiptStatusEnum.PARTIALLY_RECEIVED.getCode(), o.getReceiptStatus()))
+                .filter(o -> Objects.equals(ReceiptStatusEnum.PARTIALLY_RECEIVED.getValue(), o.getReceiptStatus()))
                 .count();
         long completedReceiptCount = allOrders.stream()
-                .filter(o -> Objects.equals(ReceiptStatusEnum.COMPLETED.getCode(), o.getReceiptStatus()))
+                .filter(o -> Objects.equals(ReceiptStatusEnum.COMPLETED.getValue(), o.getReceiptStatus()))
                 .count();
 
         // 按付款状态统计
         long pendingPaymentCount = allOrders.stream()
-                .filter(o -> Objects.equals(PaymentStatusEnum.PENDING.getCode(), o.getPaymentStatus()))
+                .filter(o -> Objects.equals(PaymentStatusEnum.PENDING.getValue(), o.getPaymentStatus()))
                 .count();
         long partiallyPaidCount = allOrders.stream()
-                .filter(o -> Objects.equals(PaymentStatusEnum.PARTIALLY_PAID.getCode(), o.getPaymentStatus()))
+                .filter(o -> Objects.equals(PaymentStatusEnum.PARTIALLY_PAID.getValue(), o.getPaymentStatus()))
                 .count();
         long completedPaymentCount = allOrders.stream()
-                .filter(o -> Objects.equals(PaymentStatusEnum.COMPLETED.getCode(), o.getPaymentStatus()))
+                .filter(o -> Objects.equals(PaymentStatusEnum.COMPLETED.getValue(), o.getPaymentStatus()))
                 .count();
 
         // 紧急订单统计
@@ -802,9 +803,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         newOrder.setOrderAmount(sourceOrder.getOrderAmount());
         newOrder.setOrderTax(sourceOrder.getOrderTax());
         newOrder.setOrderTotalAmount(sourceOrder.getOrderTotalAmount());
-        newOrder.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
-        newOrder.setReceiptStatus(ReceiptStatusEnum.PENDING.getCode());
-        newOrder.setPaymentStatus(PaymentStatusEnum.PENDING.getCode());
+        newOrder.setApprovalStatus(ApproveStatusEnum.DRAFT.getValue());
+        newOrder.setReceiptStatus(ReceiptStatusEnum.PENDING.getValue());
+        newOrder.setPaymentStatus(PaymentStatusEnum.PENDING.getValue());
         newOrder.setPaidAmount(BigDecimal.ZERO);
         newOrder.setContractNo(sourceOrder.getContractNo());
         newOrder.setDeliveryMethod(sourceOrder.getDeliveryMethod());
@@ -835,7 +836,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             newItem.setUnitPrice(sourceItem.getUnitPrice());
             newItem.setAmount(sourceItem.getAmount());
             newItem.setReceivedQuantity(BigDecimal.ZERO);
-            newItem.setReceiptStatus(ReceiptStatusEnum.PENDING.getCode());
+            newItem.setReceiptStatus(ReceiptStatusEnum.PENDING.getValue());
             newItem.setInquiryInfo(sourceItem.getInquiryInfo());
             newItem.setInquiryStatus(sourceItem.getInquiryStatus());
             newItem.setBatchNo(sourceItem.getBatchNo());
@@ -870,11 +871,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         // 检查订单状态是否允许删除（只有草稿可删除）
-        ApprovalStatusEnum current = ApprovalStatusEnum.getByCode(order.getApprovalStatus());
+        ApproveStatusEnum current = ApproveStatusEnum.getByValue(order.getApprovalStatus());
         if (!current.isCancelable()) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_DELETABLE.getMessage());
         }
-        POrderStatusDTO dto = POrderStatusDTO.builder().orderId(orderId).currentStatus(current.getCode()).targetStatus(ApprovalStatusEnum.CANCELLED.getCode()).build();
+        POrderStatusDTO dto = POrderStatusDTO.builder().orderId(orderId).currentStatus(current.getValue()).targetStatus(ApproveStatusEnum.CANCELLED.getValue()).build();
         updateOrderStatus(dto);
     }
 
@@ -936,10 +937,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 item.setReceivedQuantity(BigDecimal.ZERO);
             }
             if (item.getReceiptStatus() == null) {
-                item.setReceiptStatus(ReceiptStatusEnum.PENDING.getCode());
+                item.setReceiptStatus(ReceiptStatusEnum.PENDING.getValue());
             }
             if (item.getInquiryStatus() == null) {
-                item.setInquiryStatus(InquiryStatus.PENDING.getCode());
+                item.setInquiryStatus(InquiryStatus.PENDING.getValue());
             }
 
             orderItemMapper.insert(item);
@@ -1131,8 +1132,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 检查订单状态（已批准或待审批可收货）
         Integer status = order.getApprovalStatus();
-        if (!Objects.equals(ApprovalStatusEnum.PENDING.getCode(), status)
-                && !Objects.equals(ApprovalStatusEnum.APPROVED.getCode(), status)) {
+        if (!Objects.equals(ApproveStatusEnum.PENDING.getValue(), status)
+                && !Objects.equals(ApproveStatusEnum.APPROVED.getValue(), status)) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_RECEIVABLE.getMessage());
         }
 
@@ -1169,9 +1170,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
             // 更新收货状态
             if (newReceivedQuantity.compareTo(item.getQuantity()) >= 0) {
-                item.setReceiptStatus(ReceiptStatusEnum.COMPLETED.getCode());
+                item.setReceiptStatus(ReceiptStatusEnum.COMPLETED.getValue());
             } else if (newReceivedQuantity.compareTo(BigDecimal.ZERO) > 0) {
-                item.setReceiptStatus(ReceiptStatusEnum.PARTIALLY_RECEIVED.getCode());
+                item.setReceiptStatus(ReceiptStatusEnum.PARTIALLY_RECEIVED.getValue());
             }
 
             orderItemMapper.updateById(item);
@@ -1204,20 +1205,20 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 统计收货状态
         long totalItems = items.size();
         long completedItems = items.stream()
-                .filter(item -> Objects.equals(ReceiptStatusEnum.COMPLETED.getCode(), item.getReceiptStatus()))
+                .filter(item -> Objects.equals(ReceiptStatusEnum.COMPLETED.getValue(), item.getReceiptStatus()))
                 .count();
         long partiallyReceivedItems = items.stream()
-                .filter(item -> Objects.equals(ReceiptStatusEnum.PARTIALLY_RECEIVED.getCode(), item.getReceiptStatus()))
+                .filter(item -> Objects.equals(ReceiptStatusEnum.PARTIALLY_RECEIVED.getValue(), item.getReceiptStatus()))
                 .count();
 
         // 更新订单收货状态
         Integer receiptStatus;
         if (completedItems == totalItems) {
-            receiptStatus = ReceiptStatusEnum.COMPLETED.getCode();
+            receiptStatus = ReceiptStatusEnum.COMPLETED.getValue();
         } else if (completedItems > 0 || partiallyReceivedItems > 0) {
-            receiptStatus = ReceiptStatusEnum.PARTIALLY_RECEIVED.getCode();
+            receiptStatus = ReceiptStatusEnum.PARTIALLY_RECEIVED.getValue();
         } else {
-            receiptStatus = ReceiptStatusEnum.PENDING.getCode();
+            receiptStatus = ReceiptStatusEnum.PENDING.getValue();
         }
 
         orderMapper.updateReceiptStatus(orderId, receiptStatus);
@@ -1441,7 +1442,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         plan.setOrderNo(generateOrderNo());
         plan.setOrderType("plan");
         plan.setPlanStatus(1); // 计划单待确认
-        plan.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
+        plan.setApprovalStatus(ApproveStatusEnum.DRAFT.getValue());
         plan.setReceiptStatus(0);
         plan.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
         orderMapper.insert(plan);
@@ -1495,7 +1496,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         plan.setOrderNo(generateOrderNo());
         plan.setOrderType("plan");
         plan.setPlanStatus(1); // 计划单待确认
-        plan.setApprovalStatus(ApprovalStatusEnum.DRAFT.getCode());
+        plan.setApprovalStatus(ApproveStatusEnum.DRAFT.getValue());
         plan.setReceiptStatus(0);
         plan.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
         orderMapper.insert(plan);

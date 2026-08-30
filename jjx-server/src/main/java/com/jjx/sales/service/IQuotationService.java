@@ -176,7 +176,7 @@ public interface IQuotationService {
      * @param attachmentIds 附件ID列表(JSON数组)，可空
      * @return 结果
      */
-    int reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds);
+    com.jjx.sales.enums.QuotationStatus reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds);
 
     /**
      * 查询报价单流转记录

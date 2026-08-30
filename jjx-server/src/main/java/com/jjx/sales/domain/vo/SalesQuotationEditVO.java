@@ -7,6 +7,7 @@ import lombok.Data;
 public class SalesQuotationEditVO {
     private int rows;
     private String detailMessage;
-    private Integer bizStatus;
+    /** 修改完成后报价单在库中的真实状态文案（供 @Log bizStatus 取值） */
+    private String bizStatus;
     private String traceId;
 }

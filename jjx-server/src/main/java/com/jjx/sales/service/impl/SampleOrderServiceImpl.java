@@ -77,15 +77,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 安全更新样品单状态（带旧状态校验防并发）
      */
     private void safeTransition(Long orderId, SampleOrderStatusEnum from, SampleOrderStatusEnum to, String actionDesc) {
-        int affected = orderMapper.updateSampleStatus(orderId, from.getCode(), to.getCode());
+        int affected = orderMapper.updateSampleStatus(orderId, from.getValue(), to.getValue());
         if (affected == 0) {
             SalesOrder current = orderMapper.selectById(orderId);
             String statusName = current != null && current.getSampleStatus() != null
-                    ? SampleOrderStatusEnum.getByCodeSafe(current.getSampleStatus()).map(SampleOrderStatusEnum::getName).orElse("未知")
+                    ? SampleOrderStatusEnum.getByValueSafe(current.getSampleStatus()).map(SampleOrderStatusEnum::getLabel).orElse("未知")
                     : "未知";
             throw new BusinessException(String.format("样品单状态已变更(当前:%s)，无法%s，请刷新后重试", statusName, actionDesc));
         }
-        log.info("样品单[{}] 状态 {} → {}", orderId, from.getName(), to.getName());
+        log.info("样品单[{}] 状态 {} → {}", orderId, from.getLabel(), to.getLabel());
     }
 
     // ============ 核心业务流程 ============
@@ -102,12 +102,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         // 防重复转换：已完成(9)的报价单不可再转样品
         if (quotation.getQuotationStatus() != null
-                && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode()) {
+                && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getValue()) {
             throw new BusinessException("报价单已完成，不可重复转样品单");
         }
         // 只有客户已确认(2)的报价单可转样品单（8-03 规则）
         if (quotation.getQuotationStatus() == null
-                || quotation.getQuotationStatus() != com.jjx.sales.enums.QuotationStatus.ACCEPTED.getCode()) {
+                || quotation.getQuotationStatus() != com.jjx.sales.enums.QuotationStatus.ACCEPTED.getValue()) {
             throw new BusinessException("只有客户已确认的报价单可以转为样品单");
         }
 
@@ -126,7 +126,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 ? contactPhone : quotation.getContactPhone());
         order.setOrderDate(new Date());
         order.setOrderType(OrderTypeEnum.SAMPLE.getCode());
-        order.setSampleStatus(SampleOrderStatusEnum.CREATED.getCode());
+        order.setSampleStatus(SampleOrderStatusEnum.CREATED.getValue());
         order.setSampleRound(1);
         // DEV-1111：打样数量前端传入优先；未传时按报价单明细数量求和默认（与 total_quantity 口径一致），无明细兜底 1
         if (sampleQty == null) {
@@ -181,7 +181,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         try {
             SalesQuotation update = new SalesQuotation();
             update.setQuotationId(quotationId);
-            update.setQuotationStatus(com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode());
+            update.setQuotationStatus(com.jjx.sales.enums.QuotationStatus.COMPLETED.getValue());
             update.setConvertedOrderId(order.getOrderId());
             update.setConvertTime(LocalDateTime.now());
             quotationMapper.updateById(update);
@@ -210,9 +210,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         if (source.getSampleStatus() == null
                 || !java.util.Set.of(
-                SampleOrderStatusEnum.TRANSFERRED.getCode(),
-                SampleOrderStatusEnum.CLOSED.getCode(),
-                SampleOrderStatusEnum.CANCELLED.getCode()).contains(source.getSampleStatus())) {
+                SampleOrderStatusEnum.TRANSFERRED.getValue(),
+                SampleOrderStatusEnum.CLOSED.getValue(),
+                SampleOrderStatusEnum.CANCELLED.getValue()).contains(source.getSampleStatus())) {
             throw new BusinessException("仅已完成或已取消的样品单可复制");
         }
 
@@ -229,7 +229,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         copy.setOrderDate(new Date());
         copy.setDeliveryDate(source.getDeliveryDate());
         copy.setOrderType(OrderTypeEnum.SAMPLE.getCode());
-        copy.setSampleStatus(SampleOrderStatusEnum.CREATED.getCode());
+        copy.setSampleStatus(SampleOrderStatusEnum.CREATED.getValue());
         copy.setSampleRound(1);
         copy.setSampleQty(0);
         // 技术要求（工程打样要求）继承原单，新单可继续传承
@@ -323,7 +323,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             operLog.setBizType("sample");
             operLog.setBizId(String.valueOf(orderId));
             operLog.setTraceId(source.getTraceId());
-            operLog.setBizStatus(OrderStatusEnum.getByCode(source.getOrderStatus()).getLabel());
+            operLog.setBizStatus(OrderStatusEnum.getByValue(source.getOrderStatus()).getLabel());
             operLog.setStatus(1);
             operLog.setOperParam("{\"action\":\"copy\",\"newOrderNo\":\"" + copy.getOrderNo()
                     + "\",\"newOrderId\":" + copy.getOrderId() + "}");
@@ -360,9 +360,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("样品单不存在");
         }
         // 仅 CREATED(1) 可编辑（后端强校验，其他状态一律禁止）
-        if (!SampleOrderStatusEnum.CREATED.getCode().equals(order.getSampleStatus())) {
-            String name = SampleOrderStatusEnum.getByCodeSafe(order.getSampleStatus())
-                    .map(SampleOrderStatusEnum::getName).orElse("未知");
+        if (!SampleOrderStatusEnum.CREATED.getValue().equals(order.getSampleStatus())) {
+            String name = SampleOrderStatusEnum.getByValueSafe(order.getSampleStatus())
+                    .map(SampleOrderStatusEnum::getLabel).orElse("未知");
             throw new BusinessException("仅样品需求已创建状态可编辑，当前状态[" + name + "]");
         }
         java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> oldItems =
@@ -527,11 +527,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 throw new BusinessException("来源报价单不属于当前客户");
             }
             if (quotation.getQuotationStatus() != null
-                    && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode()) {
+                    && quotation.getQuotationStatus() == com.jjx.sales.enums.QuotationStatus.COMPLETED.getValue()) {
                 throw new BusinessException("报价单已完成，不可重复转样品单");
             }
             if (quotation.getQuotationStatus() == null
-                    || quotation.getQuotationStatus() != com.jjx.sales.enums.QuotationStatus.ACCEPTED.getCode()) {
+                    || quotation.getQuotationStatus() != com.jjx.sales.enums.QuotationStatus.ACCEPTED.getValue()) {
                 throw new BusinessException("只有客户已确认的报价单可以转为样品单");
             }
         }
@@ -553,7 +553,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 : (quotation != null && quotation.getContactPhone() != null ? quotation.getContactPhone() : customer.getContactPhone()));
         order.setOrderDate(new Date());
         order.setOrderType(OrderTypeEnum.SAMPLE.getCode());
-        order.setSampleStatus(SampleOrderStatusEnum.CREATED.getCode());
+        order.setSampleStatus(SampleOrderStatusEnum.CREATED.getValue());
         order.setSampleRound(1);
         order.setCurrency(quotation != null ? quotation.getCurrency() : "CNY");
         order.setExchangeRate(quotation != null ? quotation.getExchangeRate() : java.math.BigDecimal.ONE);
@@ -632,7 +632,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             try {
                 SalesQuotation update = new SalesQuotation();
                 update.setQuotationId(quotation.getQuotationId());
-                update.setQuotationStatus(com.jjx.sales.enums.QuotationStatus.COMPLETED.getCode());
+                update.setQuotationStatus(com.jjx.sales.enums.QuotationStatus.COMPLETED.getValue());
                 update.setConvertedOrderId(order.getOrderId());
                 update.setConvertTime(LocalDateTime.now());
                 quotationMapper.updateById(update);
@@ -708,7 +708,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (order == null || order.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
-        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(order.getSampleStatus())) {
+        if (!SampleOrderStatusEnum.ENGINEERING.getValue().equals(order.getSampleStatus())) {
             throw new BusinessException("当前状态不可进行工程接单操作");
         }
 
@@ -898,15 +898,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 只能从 SAMPLE_SENT 退回（已送样的状态下退回）
-        SampleOrderStatusEnum currentStatus = SampleOrderStatusEnum.getByCodeSafe(current.getSampleStatus())
+        SampleOrderStatusEnum currentStatus = SampleOrderStatusEnum.getByValueSafe(current.getSampleStatus())
                 .orElseThrow(() -> new BusinessException("当前状态不可退回"));
 
         if (currentStatus != SampleOrderStatusEnum.SAMPLE_SENT) {
             throw new BusinessException("当前状态不可退回，仅已送样待确认的样品可退回");
         }
 
-        orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.SAMPLE_SENT.getCode(),
-                SampleOrderStatusEnum.REJECTED.getCode());
+        orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.SAMPLE_SENT.getValue(),
+                SampleOrderStatusEnum.REJECTED.getValue());
 
         // 退回轮次+1，并退回工程阶段
         int nextRound = (current.getSampleRound() != null ? current.getSampleRound() : 1) + 1;
@@ -948,14 +948,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 只有客户退回(9)状态可以重新打样
-        if (!SampleOrderStatusEnum.REJECTED.getCode().equals(current.getSampleStatus())) {
-            String name = SampleOrderStatusEnum.getByCodeSafe(current.getSampleStatus())
-                    .map(SampleOrderStatusEnum::getName).orElse("未知");
+        if (!SampleOrderStatusEnum.REJECTED.getValue().equals(current.getSampleStatus())) {
+            String name = SampleOrderStatusEnum.getByValueSafe(current.getSampleStatus())
+                    .map(SampleOrderStatusEnum::getLabel).orElse("未知");
             throw new BusinessException("当前状态[" + name + "]不可重新打样，仅客户退回状态可重新打样");
         }
 
-        int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.REJECTED.getCode(),
-                SampleOrderStatusEnum.ENGINEERING.getCode());
+        int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.REJECTED.getValue(),
+                SampleOrderStatusEnum.ENGINEERING.getValue());
         if (affected == 0) {
             throw new BusinessException("样品单状态已变更，无法重新打样，请刷新后重试");
         }
@@ -978,8 +978,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 新模型（2026-08-27 以前端为准）：待打样(2)可直接接单，接单后进入打样中(3)；
         // 兼容历史已打样中(3)但未接单的数据，也允许补录接单
         Integer status = current.getSampleStatus();
-        if (!SampleOrderStatusEnum.REQUEST.getCode().equals(status)
-                && !SampleOrderStatusEnum.ENGINEERING.getCode().equals(status)) {
+        if (!SampleOrderStatusEnum.REQUEST.getValue().equals(status)
+                && !SampleOrderStatusEnum.ENGINEERING.getValue().equals(status)) {
             throw new BusinessException("当前状态不可接单，仅待打样/工程打样中状态可接单");
         }
 
@@ -993,8 +993,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         // 后端登录态是接单人身份的唯一可信来源；条件更新避免并发接单互相覆盖。
         int affected = orderMapper.acceptEngineering(orderId,
-                SampleOrderStatusEnum.REQUEST.getCode(),
-                SampleOrderStatusEnum.ENGINEERING.getCode(),
+                SampleOrderStatusEnum.REQUEST.getValue(),
+                SampleOrderStatusEnum.ENGINEERING.getValue(),
                 acceptorName);
         if (affected == 0) {
             throw new BusinessException("该样品单已被其他人员接单或状态已变更，请刷新后查看");
@@ -1014,15 +1014,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
-        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())) {
+        if (!SampleOrderStatusEnum.ENGINEERING.getValue().equals(current.getSampleStatus())) {
             throw new BusinessException("当前状态不可拒单，仅工程打样中状态可拒单");
         }
         if (rejectReason == null || rejectReason.trim().isEmpty()) {
             throw new BusinessException("拒单原因不能为空");
         }
 
-        int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.ENGINEERING.getCode(),
-                SampleOrderStatusEnum.REQUEST.getCode());
+        int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.ENGINEERING.getValue(),
+                SampleOrderStatusEnum.REQUEST.getValue());
         if (affected == 0) {
             throw new BusinessException("样品单状态已变更，无法拒单，请刷新后重试");
         }
@@ -1046,9 +1046,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
-        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())
-                && !SampleOrderStatusEnum.SAMPLE_READY.getCode().equals(current.getSampleStatus())
-                && !SampleOrderStatusEnum.SAMPLE_SENT.getCode().equals(current.getSampleStatus())) {
+        if (!SampleOrderStatusEnum.ENGINEERING.getValue().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_READY.getValue().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_SENT.getValue().equals(current.getSampleStatus())) {
             throw new BusinessException("当前状态不可更新工序进度");
         }
 
@@ -1106,11 +1106,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
-        if (!SampleOrderStatusEnum.ENGINEERING.getCode().equals(current.getSampleStatus())
-                && !SampleOrderStatusEnum.SAMPLE_READY.getCode().equals(current.getSampleStatus())
-                && !SampleOrderStatusEnum.SAMPLE_SENT.getCode().equals(current.getSampleStatus())
-                && !SampleOrderStatusEnum.CONFIRMED.getCode().equals(current.getSampleStatus())
-                && !SampleOrderStatusEnum.TRANSFERRED.getCode().equals(current.getSampleStatus())) {
+        if (!SampleOrderStatusEnum.ENGINEERING.getValue().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_READY.getValue().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.SAMPLE_SENT.getValue().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.CONFIRMED.getValue().equals(current.getSampleStatus())
+                && !SampleOrderStatusEnum.TRANSFERRED.getValue().equals(current.getSampleStatus())) {
             throw new BusinessException("当前状态不可保存工序计划");
         }
         Integer roundNo = dto.getRoundNo() != null ? dto.getRoundNo()
@@ -1422,8 +1422,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         // 已确认(6)或已转量产(7)可转移（转量产后可补转移）
         Integer st = sampleOrder.getSampleStatus();
-        if (!SampleOrderStatusEnum.CONFIRMED.getCode().equals(st)
-                && !SampleOrderStatusEnum.TRANSFERRED.getCode().equals(st)) {
+        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(st)
+                && !SampleOrderStatusEnum.TRANSFERRED.getValue().equals(st)) {
             throw new BusinessException("仅已确认或已转量产的样品单可进行资料转移");
         }
 
@@ -1945,8 +1945,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         // 已确认(6)或已转量产(7)可转移
         Integer st = sampleOrder.getSampleStatus();
-        if (!SampleOrderStatusEnum.CONFIRMED.getCode().equals(st)
-                && !SampleOrderStatusEnum.TRANSFERRED.getCode().equals(st)) {
+        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(st)
+                && !SampleOrderStatusEnum.TRANSFERRED.getValue().equals(st)) {
             throw new BusinessException("仅已确认或已转量产的样品单可进行资料转移");
         }
         java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping> processMappings =
@@ -2766,15 +2766,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         // 终态不允许作废：已转量产(7)/已关闭(8)/已作废(10)
         Integer current = sampleOrder.getSampleStatus();
-        if (SampleOrderStatusEnum.TRANSFERRED.getCode().equals(current)
-                || SampleOrderStatusEnum.CLOSED.getCode().equals(current)
-                || SampleOrderStatusEnum.CANCELLED.getCode().equals(current)) {
-            String name = SampleOrderStatusEnum.getByCodeSafe(current)
-                    .map(SampleOrderStatusEnum::getName).orElse("未知");
+        if (SampleOrderStatusEnum.TRANSFERRED.getValue().equals(current)
+                || SampleOrderStatusEnum.CLOSED.getValue().equals(current)
+                || SampleOrderStatusEnum.CANCELLED.getValue().equals(current)) {
+            String name = SampleOrderStatusEnum.getByValueSafe(current)
+                    .map(SampleOrderStatusEnum::getLabel).orElse("未知");
             throw new BusinessException("当前状态[" + name + "]不允许作废");
         }
 
-        int affected = orderMapper.updateSampleStatus(orderId, current, SampleOrderStatusEnum.CANCELLED.getCode());
+        int affected = orderMapper.updateSampleStatus(orderId, current, SampleOrderStatusEnum.CANCELLED.getValue());
         if (affected == 0) {
             throw new BusinessException("样品单状态已变更，无法作废，请刷新后重试");
         }

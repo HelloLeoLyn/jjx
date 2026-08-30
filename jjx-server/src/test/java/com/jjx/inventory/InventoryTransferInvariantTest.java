@@ -30,7 +30,7 @@ class InventoryTransferInvariantTest {
 
     @Test void alreadyTransferredOutOrderCannotBeTransferredOutAgain() {
         InventoryTransferOrder order = transfer(OrderStatusEnum.OUT_CONFIRM);
-        order.setApproveStatus(OrderStatusEnum.APPROVED.getCode());
+        order.setApproveStatus(OrderStatusEnum.APPROVED.getValue());
         when(transferOrderMapper.selectById(1L)).thenReturn(order);
         assertFalse(service.confirmOut(1L, 9L, "tester"));
         verify(transferItemMapper, never()).selectByTransferId(any());
@@ -107,7 +107,7 @@ class InventoryTransferInvariantTest {
     private static InventoryTransferOrder transfer(OrderStatusEnum status) {
         InventoryTransferOrder order = new InventoryTransferOrder();
         order.setTransferId(1L);
-        order.setOrderStatus(status.getCode());
+        order.setOrderStatus(status.getValue());
         return order;
     }
 

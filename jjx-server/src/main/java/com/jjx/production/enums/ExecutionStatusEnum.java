@@ -1,12 +1,14 @@
 package com.jjx.production.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 /**
  * 执行状态枚举
  */
 @Getter
-public enum ExecutionStatusEnum {
+public enum ExecutionStatusEnum implements BizStatusEnum {
 
     /**
      * 待执行 - 等待开始执行
@@ -61,30 +63,30 @@ public enum ExecutionStatusEnum {
     /**
      * 编码
      */
-    private final Integer code;
+    private final Integer value;
 
     /**
      * 名称
      */
-    private final String name;
+    private final String label;
 
     /**
      * 描述
      */
     private final String description;
 
-    ExecutionStatusEnum(Integer code, String name, String description) {
-        this.code = code;
-        this.name = name;
+    ExecutionStatusEnum(Integer value, String label, String description) {
+        this.value = value;
+        this.label = label;
         this.description = description;
     }
 
     /**
      * 根据编码获取枚举
      */
-    public static ExecutionStatusEnum getByCode(Integer code) {
+    public static ExecutionStatusEnum getByValue(Integer value) {
         for (ExecutionStatusEnum status : values()) {
-            if (status.getCode().equals(code)) {
+            if (status.getValue().equals(value)) {
                 return status;
             }
         }
@@ -94,9 +96,9 @@ public enum ExecutionStatusEnum {
     /**
      * 根据名称获取枚举
      */
-    public static ExecutionStatusEnum getByName(String name) {
+    public static ExecutionStatusEnum getByName(String label) {
         for (ExecutionStatusEnum status : values()) {
-            if (status.getName().equals(name)) {
+            if (status.getLabel().equals(label)) {
                 return status;
             }
         }
@@ -106,27 +108,27 @@ public enum ExecutionStatusEnum {
     /**
      * 检查编码是否存在
      */
-    public static boolean containsCode(Integer code) {
-        return getByCode(code) != null;
+    public static boolean containsCode(Integer value) {
+        return getByValue(value) != null;
     }
 
     /**
      * 检查名称是否存在
      */
-    public static boolean containsName(String name) {
-        return getByName(name) != null;
+    public static boolean containsName(String label) {
+        return getByName(label) != null;
     }
 
     /**
      * 获取所有编码
      */
-    public static Integer[] getAllCodes() {
+    public static Integer[] getAllValues() {
         ExecutionStatusEnum[] values = values();
-        Integer[] codes = new Integer[values.length];
+        Integer[] valueArray = new Integer[values.length];
         for (int i = 0; i < values.length; i++) {
-            codes[i] = values[i].getCode();
+            valueArray[i] = values[i].getValue();
         }
-        return codes;
+        return valueArray;
     }
 
     /**
@@ -136,7 +138,7 @@ public enum ExecutionStatusEnum {
         ExecutionStatusEnum[] values = values();
         String[] names = new String[values.length];
         for (int i = 0; i < values.length; i++) {
-            names[i] = values[i].getName();
+            names[i] = values[i].getLabel();
         }
         return names;
     }
@@ -275,14 +277,14 @@ public enum ExecutionStatusEnum {
      * 获取显示文本（编码 + 名称）
      */
     public String getDisplayText() {
-        return code + " - " + name;
+        return value + " - " + label;
     }
 
     /**
      * 获取详细描述
      */
     public String getDetailedDescription() {
-        return name + "：" + description;
+        return label + "：" + description;
     }
 
     /**

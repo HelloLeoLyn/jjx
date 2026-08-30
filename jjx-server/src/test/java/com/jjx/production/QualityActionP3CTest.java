@@ -122,7 +122,7 @@ class QualityActionP3CTest {
         when(productionOrderMapper.selectById(2L)).thenReturn(o);
         ProductionOperationExecution exec = new ProductionOperationExecution();
         exec.setExecutionId(3L);
-        exec.setExecutionStatus(ExecutionStatusEnum.COMPLETED.getCode());
+        exec.setExecutionStatus(ExecutionStatusEnum.COMPLETED.getValue());
         when(executionMapper.selectById(3L)).thenReturn(exec);
         when(qualityInspectionService.getById(1L)).thenReturn(new QualityInspectionVO());
 
@@ -138,7 +138,7 @@ class QualityActionP3CTest {
         assertEquals(1, o.getReworkFlag());
         assertEquals(0, BigDecimal.ZERO.compareTo(o.getFinishedQuantity()));
         // Execution 恢复 EXECUTING
-        assertEquals(ExecutionStatusEnum.EXECUTING.getCode(), exec.getExecutionStatus());
+        assertEquals(ExecutionStatusEnum.EXECUTING.getValue(), exec.getExecutionStatus());
         assertNull(exec.getActualEndTime());
         verify(executionMapper).updateById(exec);
     }

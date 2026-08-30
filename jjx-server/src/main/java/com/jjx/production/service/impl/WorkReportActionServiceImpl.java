@@ -125,7 +125,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         if (exec == null) {
             throw new BusinessException("工序执行记录不存在: " + dto.getExecutionId());
         }
-        if (!ExecutionStatusEnum.EXECUTING.getCode().equals(exec.getExecutionStatus())) {
+        if (!ExecutionStatusEnum.EXECUTING.getValue().equals(exec.getExecutionStatus())) {
             throw new BusinessException("工序未处于执行中状态，不能报工");
         }
 
@@ -371,7 +371,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
 
         // 已完成 execution 禁止撤销（完成后的数量可能已影响 order/库存）
         ProductionOperationExecution exec = executionMapper.selectById(r.getExecutionId());
-        if (exec != null && ExecutionStatusEnum.COMPLETED.getCode().equals(exec.getExecutionStatus())) {
+        if (exec != null && ExecutionStatusEnum.COMPLETED.getValue().equals(exec.getExecutionStatus())) {
             throw new BusinessException("工序已完成，不允许撤销报工");
         }
 

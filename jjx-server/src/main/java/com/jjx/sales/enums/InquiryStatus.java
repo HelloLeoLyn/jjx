@@ -1,9 +1,11 @@
 package com.jjx.sales.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 @Getter
-public enum InquiryStatus {
+public enum InquiryStatus implements BizStatusEnum {
     DRAFT(0, "草稿"),
     PENDING(1, "待处理"),
     SENT(2, "已发送"),
@@ -12,18 +14,18 @@ public enum InquiryStatus {
     REJECTED(5, "已拒绝"),
     EXPIRED(6, "已过期");
 
-    private final Integer code;
-    private final String name;
+    private final Integer value;
+    private final String label;
 
-    InquiryStatus(Integer code, String name) {
-        this.code = code;
-        this.name = name;
+    InquiryStatus(Integer value, String label) {
+        this.value = value;
+        this.label = label;
     }
 
-    public static InquiryStatus getByCode(Integer code) {
-        if (code == null) return null;
+    public static InquiryStatus getByValue(Integer value) {
+        if (value == null) return null;
         for (InquiryStatus s : values()) {
-            if (s.code.equals(code)) return s;
+            if (s.value.equals(value)) return s;
         }
         return null;
     }

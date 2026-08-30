@@ -1,12 +1,14 @@
 package com.jjx.purchase.domain.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 /**
  * 票据状态枚举
  */
 @Getter
-public enum DocumentStatus {
+public enum DocumentStatus implements BizStatusEnum {
 
     /**
      * 待处理
@@ -23,20 +25,20 @@ public enum DocumentStatus {
      */
     ARCHIVED(2, "已归档");
 
-    private final Integer code;
-    private final String description;
+    private final Integer value;
+    private final String label;
 
-    DocumentStatus(Integer code, String description) {
-        this.code = code;
-        this.description = description;
+    DocumentStatus(Integer value, String label) {
+        this.value = value;
+        this.label = label;
     }
 
     /**
      * 根据code获取枚举
      */
-    public static DocumentStatus getByCode(Integer code) {
+    public static DocumentStatus getByValue(Integer value) {
         for (DocumentStatus status : values()) {
-            if (status.getCode().equals(code)) {
+            if (status.getValue().equals(value)) {
                 return status;
             }
         }

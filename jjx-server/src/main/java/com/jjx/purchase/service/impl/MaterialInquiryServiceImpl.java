@@ -222,7 +222,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
         LocalDate today = LocalDate.now();
 
         LambdaQueryWrapper<MaterialInquiry> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(MaterialInquiry::getInquiryStatus, MaterialInquiryStatus.ACTIVE.getCode())
+        queryWrapper.eq(MaterialInquiry::getInquiryStatus, MaterialInquiryStatus.ACTIVE.getValue())
                    .apply("DATE_ADD(inquiry_date, INTERVAL validity_days DAY) < {0}", today);
 
         List<MaterialInquiry> expiredInquiries = baseMapper.selectList(queryWrapper);
@@ -232,7 +232,7 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
         }
 
         for (MaterialInquiry inquiry : expiredInquiries) {
-            inquiry.setInquiryStatus(MaterialInquiryStatus.EXPIRED.getCode());
+            inquiry.setInquiryStatus(MaterialInquiryStatus.EXPIRED.getValue());
 //            inquiry.setUpdateBy("system");
 //            inquiry.setUpdateTime(DateUtils.getNowDate());
         }

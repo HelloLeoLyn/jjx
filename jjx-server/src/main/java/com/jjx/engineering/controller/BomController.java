@@ -141,7 +141,7 @@ public class BomController extends BaseController {
     @PostMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.INSERT, bizType = "'bom'",
          bizId = "#result.data",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).DRAFT.getValue()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).DRAFT.getLabel()")
     @SaCheckPermission("engineering:bom:add")
     public Result<Long> add(@Validated @RequestBody EngineeringBomDTO dto) {
         Long bomId = productBomService.createBomReturnId(dto);
@@ -165,10 +165,10 @@ public class BomController extends BaseController {
      */
     @DeleteMapping("/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.DELETE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "#result.data")
+         bizStatus = "#result.data.label")
     @SaCheckPermission("engineering:bom:delete")
-    public Result<Integer> remove(@PathVariable Long bomId) {
-        Integer statusBeforeDelete = productBomService.removeBomWithItems(bomId);
+    public Result<ProductEnums.BomStatus> remove(@PathVariable Long bomId) {
+        ProductEnums.BomStatus statusBeforeDelete = productBomService.removeBomWithItems(bomId);
         return statusBeforeDelete != null ? Result.success(statusBeforeDelete) : Result.error();
     }
 
@@ -177,7 +177,7 @@ public class BomController extends BaseController {
      */
     @PutMapping("/submit/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REVIEWING.getValue()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REVIEWING.getLabel()")
     @SaCheckPermission("engineering:bom:edit")
     public Result<Void> submit(@PathVariable Long bomId) {
         return productBomService.submitApprove(bomId) ? Result.success() : Result.error();
@@ -188,7 +188,7 @@ public class BomController extends BaseController {
      */
     @PutMapping("/approve/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).APPROVED.getValue()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).APPROVED.getLabel()")
     @SaCheckPermission("engineering:bom:approve")
     public Result<Void> approve(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.approve(dto) ? Result.success() : Result.error();
@@ -199,7 +199,7 @@ public class BomController extends BaseController {
      */
     @PutMapping("/reject/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REJECT.getValue()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REJECT.getLabel()")
     @SaCheckPermission("engineering:bom:reject")
     public Result<Void> reject(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.reject(dto) ? Result.success() : Result.error();
@@ -210,11 +210,11 @@ public class BomController extends BaseController {
      */
     @PutMapping("/setDefault/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "#result.data")
+         bizStatus = "#result.data.label")
     @SaCheckPermission("engineering:bom:edit")
-    public Result<Integer> setDefault(@PathVariable Long bomId) {
-        Integer bizStatus = productBomService.setDefaultBom(bomId);
-        return bizStatus != null ? Result.success(bizStatus) : Result.error();
+    public Result<ProductEnums.BomStatus> setDefault(@PathVariable Long bomId) {
+        ProductEnums.BomStatus currentStatus = productBomService.setDefaultBom(bomId);
+        return currentStatus != null ? Result.success(currentStatus) : Result.error();
     }
 
     /**

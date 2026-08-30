@@ -1,5 +1,7 @@
 package com.jjx.purchase.domain.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 /**
@@ -7,7 +9,7 @@ import lombok.Getter;
  * 数字编码: 0有效/1无效/2已过期/3已取消/4已完成
  */
 @Getter
-public enum MaterialInquiryStatus {
+public enum MaterialInquiryStatus implements BizStatusEnum {
 
     /**
      * 有效
@@ -34,21 +36,21 @@ public enum MaterialInquiryStatus {
      */
     COMPLETED(4, "已完成");
 
-    private final Integer code;
-    private final String description;
+    private final Integer value;
+    private final String label;
 
-    MaterialInquiryStatus(Integer code, String description) {
-        this.code = code;
-        this.description = description;
+    MaterialInquiryStatus(Integer value, String label) {
+        this.value = value;
+        this.label = label;
     }
 
     /**
      * 根据code获取枚举
      */
-    public static MaterialInquiryStatus getByCode(Integer code) {
-        if (code == null) return null;
+    public static MaterialInquiryStatus getByValue(Integer value) {
+        if (value == null) return null;
         for (MaterialInquiryStatus status : values()) {
-            if (status.getCode().equals(code)) {
+            if (status.getValue().equals(value)) {
                 return status;
             }
         }

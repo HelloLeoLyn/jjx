@@ -1,5 +1,7 @@
 package com.jjx.inventory.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -9,7 +11,7 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
-public enum OrderStatusEnum {
+public enum OrderStatusEnum implements BizStatusEnum {
 
     DRAFT(0, "草稿"),
     PENDING(1, "待审批"),
@@ -25,13 +27,13 @@ public enum OrderStatusEnum {
     PROCESSED(11, "已处理"),
     IN_PROGRESS(12, "调拨中");
 
-    private final Integer code;
+    private final Integer value;
     private final String label;
 
-    public static OrderStatusEnum getByCode(Integer code) {
-        for (OrderStatusEnum value : values()) {
-            if (value.getCode().equals(code)) {
-                return value;
+    public static OrderStatusEnum getByValue(Integer value) {
+        for (OrderStatusEnum status : values()) {
+            if (status.getValue().equals(value)) {
+                return status;
             }
         }
         return null;

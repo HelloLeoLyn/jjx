@@ -144,15 +144,6 @@ public class OperLogAspect {
             operLog.setBizId(bizId);
             operLog.setBizType(bizType);
             operLog.setTraceId(traceId);
-            // bizStatus 支持纯字面量（"3" / "DRAFT"，不进 SpEL）、SpEL 表达式以及枚举。
-            try {
-                operLog.setBizStatus(resolveBizStatus(spelCtx, logAnnotation.bizStatus()));
-            } catch (Exception e) {
-                // 解析不出来就留空，不要写 "0"——"0" 看起来像一个合法状态码，会污染数据
-                log.error("bizStatus解析失败，该条流水将不带状态: method={}, expression={}, error={}",
-                        point.getSignature().toShortString(), logAnnotation.bizStatus(), e.getMessage());
-                operLog.setBizStatus("");
-            }
 
             // detail: attachmentIds 表达式组装附件 JSON，其他文本/JSON 原样写入。
             if (!logAnnotation.detail().isEmpty()) {
@@ -203,6 +194,28 @@ public class OperLogAspect {
                 }
             } else {
                 operLog.setStatus(3);
+            }
+
+            // bizStatus 必须落真实状态，放在成功/失败判定之后处理：
+            // 操作成功却取不到状态 = 注解写错或方法没把状态带出来，直接抛错，不允许静默落空；
+            // 操作本身失败时状态没变，取不到属正常，留空即可。
+            boolean succeeded = YesNoEnum.YES.getCode().equals(operLog.getStatus());
+            try {
+                operLog.setBizStatus(resolveBizStatus(spelCtx, logAnnotation.bizStatus()));
+            } catch (Exception e) {
+                if (succeeded) {
+                    throw new IllegalStateException(String.format(
+                            "@Log bizStatus 解析失败: method=%s, expression=%s",
+                            point.getSignature().toShortString(), logAnnotation.bizStatus()), e);
+                }
+                log.warn("操作失败且 bizStatus 取不到，留空: method={}, expression={}",
+                        point.getSignature().toShortString(), logAnnotation.bizStatus());
+                operLog.setBizStatus("");
+            }
+            if (succeeded && (operLog.getBizStatus() == null || operLog.getBizStatus().isEmpty())) {
+                throw new IllegalStateException(String.format(
+                        "@Log bizStatus 求值为空: method=%s, expression=%s",
+                        point.getSignature().toShortString(), logAnnotation.bizStatus()));
             }
             return result;
 
@@ -329,16 +342,18 @@ public class OperLogAspect {
         // 2) 其余按 SpEL 求值（#result.data.bizStatus / #dto.status / T(枚举).X...）
         Object value = parseCached(trimmed).getValue(ctx);
         if (value == null) {
-            // 表达式合法但取不到值（方法没把状态带出来）——留空，让人一眼看出是漏了，而不是伪造一个状态
-            log.warn("bizStatus表达式求值为空: {}", trimmed);
+            // 表达式合法但取不到值（方法没把状态带出来）——返回空串，由调用方按成功/失败决定是否抛错
             return "";
         }
 
-        // 3) 求值结果是枚举常量（注解写成 T(枚举).X 而没有调取值方法）：
-        //    优先取业务码（getCode/getValue），取不到再退到枚举名，保持与历史落库值一致。
+        // 3) 求值结果是状态枚举常量（注解写成 T(枚举).X 而没有调 getLabel()）：
+        //    统一契约后直接按接口取文案，不再反射。biz_status 是 varchar，存的就是 label。
+        if (value instanceof com.jjx.common.enums.BizStatusEnum statusEnum) {
+            return clampBizStatus(statusEnum.getLabel());
+        }
         if (value instanceof Enum<?> enumValue) {
-            String code = enumCodeOf(enumValue);
-            return clampBizStatus(code != null ? code : enumValue.name());
+            // 未接入 BizStatusEnum 的枚举（类型/是否 之类）：落枚举名，至少可读
+            return clampBizStatus(enumValue.name());
         }
 
         return clampBizStatus(String.valueOf(value));
@@ -352,20 +367,6 @@ public class OperLogAspect {
         return expression != null && !expression.contains("#") && !expression.contains("T(");
     }
 
-    /** 枚举取业务码：getCode() / getValue() 任一存在即用，都没有返回 null（由调用方退到 name()） */
-    private static String enumCodeOf(Enum<?> enumValue) {
-        for (String getter : new String[]{"getCode", "getValue"}) {
-            try {
-                Object code = enumValue.getClass().getMethod(getter).invoke(enumValue);
-                if (code != null) {
-                    return String.valueOf(code);
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // 换下一个取值方法
-            }
-        }
-        return null;
-    }
 
     /** 截到列宽，不加省略号——状态值被截断也要保持是个干净的值 */
     private static String clampBizStatus(String value) {

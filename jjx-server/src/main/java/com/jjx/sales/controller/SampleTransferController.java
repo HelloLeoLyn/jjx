@@ -47,7 +47,7 @@ public class SampleTransferController extends BaseController {
      */
     @Operation(summary = "打样转标准-确认转移（接收前端编辑后的标准数据落库）")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'",
-            bizId = "#dto.orderId", bizStatus = "7", detail = "#result.data.transferNo")
+            bizId = "#dto.orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).TRANSFERRED.getLabel()", detail = "#result.data.transferNo")
     @SaCheckPermission(value = {"sales:sample:convert", "engineering:sample:workbench"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
     @PostMapping("/confirm")
     public Result<java.util.Map<String, Object>> confirm(@RequestBody SampleTransferConfirmDTO dto) {

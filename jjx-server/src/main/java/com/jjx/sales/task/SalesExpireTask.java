@@ -41,15 +41,15 @@ public class SalesExpireTask {
     @Transactional(rollbackFor = Exception.class)
     public void expireQuotations() {
         List<Integer> activeStatuses = List.of(
-                QuotationStatus.DRAFT.getCode(),          // 草稿
-                QuotationStatus.SENT.getCode(),           // 已发送
-                QuotationStatus.PENDING_REVIEW.getCode(), // 待审核
-                QuotationStatus.MODIFYING.getCode());     // 改单
+                QuotationStatus.DRAFT.getValue(),          // 草稿
+                QuotationStatus.SENT.getValue(),           // 已发送
+                QuotationStatus.PENDING_REVIEW.getValue(), // 待审核
+                QuotationStatus.MODIFYING.getValue());     // 改单
         LambdaUpdateWrapper<SalesQuotation> wrapper = Wrappers.lambdaUpdate();
         wrapper.lt(SalesQuotation::getValidUntil, LocalDate.now())
                 .in(SalesQuotation::getQuotationStatus, activeStatuses)
                 .eq(SalesQuotation::getDeleted, 0)
-                .set(SalesQuotation::getQuotationStatus, QuotationStatus.EXPIRED.getCode());
+                .set(SalesQuotation::getQuotationStatus, QuotationStatus.EXPIRED.getValue());
         int rows = quotationMapper.update(null, wrapper);
         if (rows > 0) {
             log.info("[过期任务] 报价单置为已过期 {} 条", rows);
@@ -61,14 +61,14 @@ public class SalesExpireTask {
     @Transactional(rollbackFor = Exception.class)
     public void expireInquiries() {
         List<Integer> activeStatuses = List.of(
-                InquiryStatus.DRAFT.getCode(),   // 草稿
-                InquiryStatus.PENDING.getCode(), // 待处理
-                InquiryStatus.SENT.getCode());   // 已发送
+                InquiryStatus.DRAFT.getValue(),   // 草稿
+                InquiryStatus.PENDING.getValue(), // 待处理
+                InquiryStatus.SENT.getValue());   // 已发送
         LambdaUpdateWrapper<SalesInquiry> wrapper = Wrappers.lambdaUpdate();
         wrapper.lt(SalesInquiry::getInquiryDate, LocalDate.now().minusDays(INQUIRY_VALID_DAYS))
                 .in(SalesInquiry::getInquiryStatus, activeStatuses)
                 .eq(SalesInquiry::getDeleted, 0)
-                .set(SalesInquiry::getInquiryStatus, InquiryStatus.EXPIRED.getCode());
+                .set(SalesInquiry::getInquiryStatus, InquiryStatus.EXPIRED.getValue());
         int rows = inquiryMapper.update(null, wrapper);
         if (rows > 0) {
             log.info("[过期任务] 询价单置为已过期 {} 条", rows);

@@ -64,7 +64,7 @@ class InventoryOutboundInvariantTest {
     private static InventoryOutboundOrder outbound(OrderStatusEnum status) {
         InventoryOutboundOrder order = new InventoryOutboundOrder();
         order.setOutboundId(1L);
-        order.setOrderStatus(status.getCode());
+        order.setOrderStatus(status.getValue());
         return order;
     }
 }

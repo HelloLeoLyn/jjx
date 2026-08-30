@@ -7,7 +7,7 @@ import com.jjx.framework.common.controller.BaseController;
 import com.jjx.purchase.domain.dto.ReceiptBatchCheckItemDTO;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
-import com.jjx.purchase.domain.enums.ApprovalStatusEnum;
+import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderVO;
@@ -353,8 +353,8 @@ public class PurchaseReceiptController extends BaseController {
                     addFieldError(vo, "orderId", "NOT_FOUND", "采购订单不存在: " + item.getOrderId());
                 } else {
                     Integer status = order.getApprovalStatus();
-                    if (!Objects.equals(ApprovalStatusEnum.PENDING.getCode(), status)
-                            && !Objects.equals(ApprovalStatusEnum.APPROVED.getCode(), status)) {
+                    if (!Objects.equals(ApproveStatusEnum.PENDING.getValue(), status)
+                            && !Objects.equals(ApproveStatusEnum.APPROVED.getValue(), status)) {
                         vo.setStatus("error");
                         vo.setErrorType("INVALID");
                         addFieldError(vo, "orderId", "INVALID", "订单当前状态不可收货（需待审批或已批准）");

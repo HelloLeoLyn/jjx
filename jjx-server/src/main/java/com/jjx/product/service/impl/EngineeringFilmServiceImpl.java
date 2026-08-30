@@ -43,7 +43,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         BeanUtil.copyProperties(dto, film);
         film.setVersion("v1.0");
         film.setIsCurrent(0);
-        film.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        film.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         film.setCreateTime(LocalDateTime.now());
         film.setUpdateTime(LocalDateTime.now());
 
@@ -122,15 +122,15 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
 
-        if (!film.getApproveStatus().equals(ApproveStatusEnum.DRAFT.getCode())) {
+        if (!film.getApproveStatus().equals(ApproveStatusEnum.DRAFT.getValue())) {
             throw new BusinessException(BusinessExceptionEnum.BOM_ALREADY_APPROVED);
         }
 
-        film.setApproveStatus(ApproveStatusEnum.PENDING.getCode());
+        film.setApproveStatus(ApproveStatusEnum.PENDING.getValue());
         film.setUpdateTime(LocalDateTime.now());
         updateById(film);
         reviewFlowService.record("engineering_film", filmId, "SUBMIT", "提交审核",
-                ApproveStatusEnum.DRAFT.getCode(), ApproveStatusEnum.PENDING.getCode(), null, null);
+                ApproveStatusEnum.DRAFT.getValue(), ApproveStatusEnum.PENDING.getValue(), null, null);
 
         log.info("提交菲林审批成功: {}", film.getFilmCode());
     }
@@ -144,17 +144,17 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
 
-        if (film.getApproveStatus() != ApproveStatusEnum.PENDING.getCode()) {
+        if (film.getApproveStatus() != ApproveStatusEnum.PENDING.getValue()) {
             throw new BusinessException(BusinessExceptionEnum.BOM_ALREADY_APPROVED);
         }
 
-        film.setApproveStatus(ApproveStatusEnum.APPROVED.getCode());
+        film.setApproveStatus(ApproveStatusEnum.APPROVED.getValue());
         film.setApproveRemark(remark);
         film.setApproveTime(LocalDateTime.now());
         film.setUpdateTime(LocalDateTime.now());
         updateById(film);
         reviewFlowService.record("engineering_film", filmId, "APPROVE", "审核通过",
-                ApproveStatusEnum.PENDING.getCode(), ApproveStatusEnum.APPROVED.getCode(), remark, null);
+                ApproveStatusEnum.PENDING.getValue(), ApproveStatusEnum.APPROVED.getValue(), remark, null);
 
         log.info("菲林审批通过: {}", film.getFilmCode());
     }
@@ -168,7 +168,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
 
-        if (film.getApproveStatus() != ApproveStatusEnum.PENDING.getCode()) {
+        if (film.getApproveStatus() != ApproveStatusEnum.PENDING.getValue()) {
             throw new BusinessException(BusinessExceptionEnum.BOM_ALREADY_APPROVED);
         }
 
@@ -176,13 +176,13 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
             throw new BusinessException(BusinessExceptionEnum.FILM_REJECT_REASON_REQUIRED);
         }
 
-        film.setApproveStatus(ApproveStatusEnum.REJECTED.getCode());
+        film.setApproveStatus(ApproveStatusEnum.REJECTED.getValue());
         film.setApproveRemark(remark);
         film.setApproveTime(LocalDateTime.now());
         film.setUpdateTime(LocalDateTime.now());
         updateById(film);
         reviewFlowService.record("engineering_film", filmId, "REJECT", "审核驳回",
-                ApproveStatusEnum.PENDING.getCode(), ApproveStatusEnum.REJECTED.getCode(), remark, null);
+                ApproveStatusEnum.PENDING.getValue(), ApproveStatusEnum.REJECTED.getValue(), remark, null);
 
         log.info("菲林审批驳回: {}, 原因: {}", film.getFilmCode(), remark);
     }
@@ -211,7 +211,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         newFilm.setFilmId(null);
         newFilm.setVersion(newVersion);
         newFilm.setParentFilmId(oldFilm.getFilmId());
-        newFilm.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        newFilm.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newFilm.setIsCurrent(0);
         newFilm.setCreateTime(LocalDateTime.now());
         newFilm.setUpdateTime(LocalDateTime.now());
@@ -237,7 +237,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
 
-        if (film.getApproveStatus() != ApproveStatusEnum.APPROVED.getCode()) {
+        if (film.getApproveStatus() != ApproveStatusEnum.APPROVED.getValue()) {
             throw new BusinessException(BusinessExceptionEnum.BOM_ALREADY_APPROVED, "只有已批准的菲林才能设为当前版本");
         }
 
@@ -261,7 +261,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
 
-        if (!film.getApproveStatus().equals(ApproveStatusEnum.APPROVED.getCode())) {
+        if (!film.getApproveStatus().equals(ApproveStatusEnum.APPROVED.getValue())) {
             throw new BusinessException(BusinessExceptionEnum.BOM_ALREADY_APPROVED, "只有已批准的菲林才能下发生产");
         }
 
@@ -332,8 +332,8 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
 
         // 设置审核状态名称
         try {
-            ApproveStatusEnum statusEnum = ApproveStatusEnum.getByCode(film.getApproveStatus());
-            vo.setApproveStatusName(statusEnum.getName());
+            ApproveStatusEnum statusEnum = ApproveStatusEnum.getByValue(film.getApproveStatus());
+            vo.setApproveStatusName(statusEnum.getLabel());
         } catch (Exception e) {
             vo.setApproveStatusName("未知");
         }

@@ -61,7 +61,7 @@ class InventoryInboundInvariantTest {
 
     @Test void unfinishedProductionOrderCannotCreateFinishedGoodsInbound() {
         ProductionOrder order = new ProductionOrder();
-        order.setOrderStatus(com.jjx.production.enums.OrderStatusEnum.IN_PROGRESS.getCode());
+        order.setOrderStatus(com.jjx.production.enums.OrderStatusEnum.IN_PROGRESS.getValue());
         when(productionOrderMapper.selectById(7L)).thenReturn(order);
         assertThrows(BusinessException.class, () -> service.createFromProduction(7L));
         verify(inboundOrderMapper, never()).insert(any(InventoryInboundOrder.class));
@@ -70,7 +70,7 @@ class InventoryInboundInvariantTest {
 
     @Test void existingProductionInboundIsNotCreatedTwice() {
         ProductionOrder order = new ProductionOrder();
-        order.setOrderStatus(com.jjx.production.enums.OrderStatusEnum.COMPLETED.getCode());
+        order.setOrderStatus(com.jjx.production.enums.OrderStatusEnum.COMPLETED.getValue());
         order.setOrderNo("WO-001");
         when(productionOrderMapper.selectById(7L)).thenReturn(order);
         when(inboundOrderMapper.selectCount(any())).thenReturn(1L);
@@ -82,7 +82,7 @@ class InventoryInboundInvariantTest {
     private static InventoryInboundOrder inbound(OrderStatusEnum status) {
         InventoryInboundOrder order = new InventoryInboundOrder();
         order.setInboundId(1L);
-        order.setOrderStatus(status.getCode());
+        order.setOrderStatus(status.getValue());
         return order;
     }
 }

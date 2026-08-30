@@ -104,7 +104,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "启动生产工单")
     @PutMapping("/{orderId}/start")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "6", detail = "#attachmentIds")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.OrderStatusEnum).IN_PROGRESS.getLabel()", detail = "#attachmentIds")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> startOrder(@PathVariable Long orderId,
                                       // 仅供 @Log SpEL 取值，业务方法无需使用
@@ -115,7 +115,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "暂停生产工单")
     @PutMapping("/{orderId}/pause")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "7")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.OrderStatusEnum).PAUSED.getLabel()")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> pauseOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.pauseOrder(orderId);
@@ -124,7 +124,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "完成生产工单")
     @PutMapping("/{orderId}/complete")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "8", detail = "#attachmentIds")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.OrderStatusEnum).COMPLETED.getLabel()", detail = "#attachmentIds")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> completeOrder(@PathVariable Long orderId,
                                          // 仅供 @Log SpEL 取值，业务方法无需使用
@@ -143,7 +143,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "取消生产工单")
     @PutMapping("/{orderId}/cancel")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "9")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.OrderStatusEnum).CANCELLED.getLabel()")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> cancelOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.cancelOrder(orderId);
@@ -152,7 +152,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "关闭生产工单")
     @PutMapping("/{orderId}/close")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "10")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.OrderStatusEnum).CLOSED.getLabel()")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> closeOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.closeOrder(orderId);

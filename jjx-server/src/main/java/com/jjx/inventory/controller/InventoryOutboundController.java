@@ -51,7 +51,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/confirm/{outboundId}")
     @Operation(summary = "确认出库")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "10")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).COMPLETED.getLabel()")
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> confirm(@PathVariable Long outboundId,
                                    @RequestParam Long operatorId,
@@ -69,7 +69,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/cancel/{outboundId}")
     @Operation(summary = "取消出库单")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "9")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).CANCELLED.getLabel()")
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> cancel(@PathVariable Long outboundId,
                                   @RequestParam String reason) {
@@ -78,7 +78,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/submit-approve/{outboundId}")
     @Operation(summary = "提交审批")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "1")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).PENDING.getLabel()")
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> submitApprove(@PathVariable Long outboundId) {
         return Result.success(outboundService.submitApprove(outboundId));
@@ -86,7 +86,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/approve/{outboundId}")
     @Operation(summary = "审批通过")
-    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "2")
+    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).APPROVED.getLabel()")
     @SaCheckPermission("inventory:outbound:approve")
     public Result<Boolean> approve(@PathVariable Long outboundId,
                                    @RequestParam Long approverId,
@@ -97,7 +97,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/reject/{outboundId}")
     @Operation(summary = "审批驳回")
-    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "3")
+    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).REJECTED.getLabel()")
     @SaCheckPermission("inventory:outbound:approve")
     public Result<Boolean> reject(@PathVariable Long outboundId,
                                   @RequestParam Long approverId,

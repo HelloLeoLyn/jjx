@@ -72,11 +72,11 @@ class LegacyExecutionWriteBlockTest {
         dto.setOperatorId(99L);
         dto.setOperatorName("新操作员");
         ProductionOperationExecution exec = new ProductionOperationExecution();
-        exec.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode());
+        exec.setExecutionStatus(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getValue());
         assertDoesNotThrow(() -> invoke(exec, dto));
         assertEquals(99L, exec.getOperatorId());
         assertEquals("新操作员", exec.getOperatorName());
-        assertEquals(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode(), exec.getExecutionStatus());
+        assertEquals(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getValue(), exec.getExecutionStatus());
         // 数量字段未被触碰
         assertNull(exec.getOutputQuantity());
         assertNull(exec.getQualifiedQuantity());

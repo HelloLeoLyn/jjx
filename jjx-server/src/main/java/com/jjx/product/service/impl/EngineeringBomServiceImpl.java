@@ -118,7 +118,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     public Long createBomReturnId(EngineeringBomDTO dto) {
         EngineeringBom bom = bomConverter.toEntity(dto);
-        bom.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        bom.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
 
         // 生成BOM版本
         generateBomVersion(dto.getProductId(), bom);
@@ -288,7 +288,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         com.jjx.product.domain.vo.EngineeringBomEditVO vo = new com.jjx.product.domain.vo.EngineeringBomEditVO();
         vo.setSuccess(true);
         vo.setDetailMessage(changes.isEmpty() ? null : changeRecorder.toDetailJson(changes));
-        vo.setBizStatus(bom.getApproveStatus()+"");
+        ProductEnums.BomStatus latestStatus = ProductEnums.BomStatus.fromValue(bom.getApproveStatus());
+        vo.setBizStatus(latestStatus != null ? latestStatus.getLabel() : null);
         return vo;
     }
 
@@ -353,7 +354,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Integer removeBomWithItems(Long bomId) {
+    public ProductEnums.BomStatus removeBomWithItems(Long bomId) {
         // 检查BOM是否存在
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) {
@@ -387,13 +388,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         productBomItemMapper.deleteByBomId(bomId);
 
         // 删除BOM主表
-        // 记录删除时的状态：行已不存在，能反映业务事实的只有删除前的 approve_status
-        return productBomMapper.deleteById(bomId) > 0 ? st : null;
+        // 记录删除时的状态：行已不存在，能反映业务事实的只有删除前的状态
+        return productBomMapper.deleteById(bomId) > 0 ? ProductEnums.BomStatus.fromValue(st) : null;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Integer setDefaultBom(Long bomId) {
+    public ProductEnums.BomStatus setDefaultBom(Long bomId) {
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) {
             return null;
@@ -417,7 +418,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
 
         // 本操作只改 is_current，不改 approve_status，直接返回该 BOM 当前状态
-        return bom.getApproveStatus();
+        return ProductEnums.BomStatus.fromValue(bom.getApproveStatus());
     }
 
     @Override
@@ -508,7 +509,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         newBom.setBomId(null);
         newBom.setBomVersion(newVersion);
         newBom.setVersion(newVersion); // 2026-08-10 DEV-769：双字段同步，统一语义
-        newBom.setApproveStatus(ApproveStatusEnum.DRAFT.getCode());
+        newBom.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newBom.setIsCurrent(false);
         productBomMapper.insert(newBom);
 

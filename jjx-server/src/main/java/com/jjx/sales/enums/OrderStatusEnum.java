@@ -1,5 +1,7 @@
 package com.jjx.sales.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 import java.util.*;
@@ -9,7 +11,7 @@ import java.util.stream.Collectors;
  * 订单状态枚举
  */
 @Getter
-public enum OrderStatusEnum {
+public enum OrderStatusEnum implements BizStatusEnum {
 
     DRAFT(1, "草稿", "订单创建后，未提交审核", true, false),
     PENDING_REVIEW(2, "待审核", "已提交审核，等待审核人审核", false, false),
@@ -22,15 +24,15 @@ public enum OrderStatusEnum {
     COMPLETED(9, "已完成", "订单已完成", false, true),
     CANCELLED(10, "已取消", "订单已取消", false, true);
 
-    private final Integer code;
-    private final String name;
+    private final Integer value;
+    private final String label;
     private final String description;
     private final boolean editable;
     private final boolean terminal;
 
-    OrderStatusEnum(Integer code, String name, String description, boolean editable, boolean terminal) {
-        this.code = code;
-        this.name = name;
+    OrderStatusEnum(Integer value, String label, String description, boolean editable, boolean terminal) {
+        this.value = value;
+        this.label = label;
         this.description = description;
         this.editable = editable;
         this.terminal = terminal;
@@ -52,19 +54,19 @@ public enum OrderStatusEnum {
         TRANSITIONS.put(CANCELLED, EnumSet.noneOf(OrderStatusEnum.class));
     }
 
-    private static final Map<Integer, OrderStatusEnum> CODE_MAP =
-            Arrays.stream(values()).collect(Collectors.toMap(OrderStatusEnum::getCode, s -> s));
+    private static final Map<Integer, OrderStatusEnum> VALUE_MAP =
+            Arrays.stream(values()).collect(Collectors.toMap(OrderStatusEnum::getValue, s -> s));
 
-    public static OrderStatusEnum getByCode(Integer code) {
-        OrderStatusEnum status = CODE_MAP.get(code);
+    public static OrderStatusEnum getByValue(Integer value) {
+        OrderStatusEnum status = VALUE_MAP.get(value);
         if (status == null) {
-            throw new IllegalArgumentException("无效的订单状态码: " + code);
+            throw new IllegalArgumentException("无效的订单状态码: " + value);
         }
         return status;
     }
 
-    public static Optional<OrderStatusEnum> getByCodeSafe(Integer code) {
-        return Optional.ofNullable(CODE_MAP.get(code));
+    public static Optional<OrderStatusEnum> getByValueSafe(Integer value) {
+        return Optional.ofNullable(VALUE_MAP.get(value));
     }
 
     public boolean canTransitionTo(OrderStatusEnum target) {

@@ -182,7 +182,7 @@ class WorkReportSnapshotProxyTest {
         ProductionOperationExecution execution = new ProductionOperationExecution();
         execution.setExecutionId(2L);
         execution.setOrderId(3L);
-        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getValue());
         when(executionMapper.selectById(2L)).thenReturn(execution);
         when(taskService.remainingQuantity(1L)).thenReturn(BigDecimal.TEN);
         when(workReportMapper.insert(any(ProductionWorkReport.class))).thenAnswer(invocation -> {

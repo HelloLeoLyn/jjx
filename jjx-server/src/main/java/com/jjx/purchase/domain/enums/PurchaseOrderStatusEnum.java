@@ -1,12 +1,14 @@
 package com.jjx.purchase.domain.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 /**
  * 采购订单状态枚举
  */
 @Getter
-public enum PurchaseOrderStatusEnum {
+public enum PurchaseOrderStatusEnum implements BizStatusEnum {
 
     /**
      * 草稿
@@ -53,21 +55,21 @@ public enum PurchaseOrderStatusEnum {
      */
     CANCELLED(8, "已取消");
 
-    private final Integer code;
-    private final String description;
+    private final Integer value;
+    private final String label;
 
-    PurchaseOrderStatusEnum(Integer code, String description) {
-        this.code = code;
-        this.description = description;
+    PurchaseOrderStatusEnum(Integer value, String label) {
+        this.value = value;
+        this.label = label;
     }
 
     /**
      * 根据code获取枚举
      */
-    public static PurchaseOrderStatusEnum getByCode(Integer code) {
-        if (code == null) return null;
+    public static PurchaseOrderStatusEnum getByValue(Integer value) {
+        if (value == null) return null;
         for (PurchaseOrderStatusEnum status : values()) {
-            if (status.getCode().equals(code)) {
+            if (status.getValue().equals(value)) {
                 return status;
             }
         }
@@ -77,9 +79,9 @@ public enum PurchaseOrderStatusEnum {
     /**
      * 根据code获取描述
      */
-    public static String getDescriptionByCode(Integer code) {
-        PurchaseOrderStatusEnum status = getByCode(code);
-        return status != null ? status.getDescription() : null;
+    public static String getLabelByValue(Integer value) {
+        PurchaseOrderStatusEnum status = getByValue(value);
+        return status != null ? status.getLabel() : null;
     }
 
     /**

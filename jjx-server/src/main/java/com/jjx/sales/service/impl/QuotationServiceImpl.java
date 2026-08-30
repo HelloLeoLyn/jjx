@@ -275,7 +275,7 @@ public class QuotationServiceImpl implements IQuotationService {
 
         // 设置默认值
         if (quotation.getQuotationStatus() == null) {
-            quotation.setQuotationStatus(QuotationStatus.DRAFT.getCode()); // 草稿状态
+            quotation.setQuotationStatus(QuotationStatus.DRAFT.getValue()); // 草稿状态
         }
 
         // valid_until 为数据库必填字段。手工新增或其他调用方未传日期时，
@@ -397,7 +397,8 @@ public class QuotationServiceImpl implements IQuotationService {
         SalesQuotationEditVO result = new SalesQuotationEditVO();
         result.setRows(rows);
         result.setDetailMessage(changeRecorder.toDetailJson(changes));
-        result.setBizStatus(updatedQuotation.getQuotationStatus());
+        QuotationStatus updatedStatus = QuotationStatus.getByValue(updatedQuotation.getQuotationStatus());
+        result.setBizStatus(updatedStatus != null ? updatedStatus.getLabel() : null);
         result.setTraceId(updatedQuotation.getTraceId());
         return result;
     }
@@ -580,12 +581,12 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         // 检查报价单状态：已发送/待审核/已审核/已确认/已完成/改单中的报价单不能删除（DEV-594 补待审核/已审核）
-        if (QuotationStatus.SENT.getCode().equals(quotation.getQuotationStatus())
-                || QuotationStatus.PENDING_REVIEW.getCode().equals(quotation.getQuotationStatus())
-                || QuotationStatus.APPROVED.getCode().equals(quotation.getQuotationStatus())
-                || QuotationStatus.ACCEPTED.getCode().equals(quotation.getQuotationStatus())
-                || QuotationStatus.COMPLETED.getCode().equals(quotation.getQuotationStatus())
-                || QuotationStatus.MODIFYING.getCode().equals(quotation.getQuotationStatus())) {
+        if (QuotationStatus.SENT.getValue().equals(quotation.getQuotationStatus())
+                || QuotationStatus.PENDING_REVIEW.getValue().equals(quotation.getQuotationStatus())
+                || QuotationStatus.APPROVED.getValue().equals(quotation.getQuotationStatus())
+                || QuotationStatus.ACCEPTED.getValue().equals(quotation.getQuotationStatus())
+                || QuotationStatus.COMPLETED.getValue().equals(quotation.getQuotationStatus())
+                || QuotationStatus.MODIFYING.getValue().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("已发送、待审核、已审核、已确认、已完成或改单中的报价单不能删除");
         }
 
@@ -700,7 +701,7 @@ public class QuotationServiceImpl implements IQuotationService {
     @Event(value = "quotation.confirmed", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int confirmQuotation(Long quotationId, String attachmentIds) {
-        return changeToStatus(quotationId, QuotationStatus.ACCEPTED.getCode(), "CUSTOMER_CONFIRM", "客户确认报价", attachmentIds);
+        return changeToStatus(quotationId, QuotationStatus.ACCEPTED.getValue(), "CUSTOMER_CONFIRM", "客户确认报价", attachmentIds);
     }
 
     /**
@@ -710,7 +711,7 @@ public class QuotationServiceImpl implements IQuotationService {
     @Event(value = "quotation.rejected", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int rejectQuotation(Long quotationId, String attachmentIds) {
-        return changeToStatus(quotationId, QuotationStatus.REJECTED.getCode(), "CUSTOMER_REJECT", "客户拒绝报价", attachmentIds);
+        return changeToStatus(quotationId, QuotationStatus.REJECTED.getValue(), "CUSTOMER_REJECT", "客户拒绝报价", attachmentIds);
     }
 
     /**
@@ -724,13 +725,13 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("报价单不存在");
         }
         // 只有已完成状态可以改单
-        if (!QuotationStatus.COMPLETED.getCode().equals(quotation.getQuotationStatus())) {
+        if (!QuotationStatus.COMPLETED.getValue().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("只有已完成的报价单可以改单");
         }
         Integer from = quotation.getQuotationStatus();
-        quotation.setQuotationStatus(QuotationStatus.MODIFYING.getCode());
+        quotation.setQuotationStatus(QuotationStatus.MODIFYING.getValue());
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, "MODIFY", "改单", from, QuotationStatus.MODIFYING.getCode(), null, attachmentIds);
+        recordFlow(quotation, "MODIFY", "改单", from, QuotationStatus.MODIFYING.getValue(), null, attachmentIds);
         return rows;
     }
 
@@ -763,7 +764,7 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         // 只有审核通过(6)状态的报价单可以发送（规则：仅审核通过的报价单才能上传/发送报价）
-        if (!QuotationStatus.APPROVED.getCode().equals(quotation.getQuotationStatus())) {
+        if (!QuotationStatus.APPROVED.getValue().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("只有审核通过的报价单可以发送");
         }
 
@@ -776,12 +777,12 @@ public class QuotationServiceImpl implements IQuotationService {
 
         // 更新发送信息
         Integer from = quotation.getQuotationStatus();
-        quotation.setQuotationStatus(QuotationStatus.SENT.getCode());
+        quotation.setQuotationStatus(QuotationStatus.SENT.getValue());
         quotation.setSendTime(LocalDateTime.now());
         quotation.setSendMethod("email"); // 默认邮件发送
 
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, "SEND", "发送报价", from, QuotationStatus.SENT.getCode(), null, attachmentIds);
+        recordFlow(quotation, "SEND", "发送报价", from, QuotationStatus.SENT.getValue(), null, attachmentIds);
         return rows;
     }
 
@@ -798,7 +799,7 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         // 只有已接受的报价单可以转为订单
-        if (!QuotationStatus.ACCEPTED.getCode().equals(quotation.getQuotationStatus())) {
+        if (!QuotationStatus.ACCEPTED.getValue().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("只有已接受的报价单可以转为订单");
         }
 
@@ -847,11 +848,11 @@ public class QuotationServiceImpl implements IQuotationService {
 
         // 转订单成功后：报价单状态改为已完成(9)，并回写转换结果（反向引用）
         Integer from = quotation.getQuotationStatus();
-        quotation.setQuotationStatus(QuotationStatus.COMPLETED.getCode());
+        quotation.setQuotationStatus(QuotationStatus.COMPLETED.getValue());
         quotation.setConvertedOrderId(orderId);
         quotation.setConvertTime(LocalDateTime.now());
         quotationMapper.updateById(quotation);
-        recordFlow(quotation, "CONVERT_ORDER", "转订单完成", from, QuotationStatus.COMPLETED.getCode(), "转为销售订单，订单号:" + orderId, null);
+        recordFlow(quotation, "CONVERT_ORDER", "转订单完成", from, QuotationStatus.COMPLETED.getValue(), "转为销售订单，订单号:" + orderId, null);
 
         log.info("报价单{}已转为订单: orderId={}", quotationId, orderId);
         return orderId;
@@ -1077,7 +1078,7 @@ public class QuotationServiceImpl implements IQuotationService {
         copy.setValidUntil(original.getValidUntil());
         copy.setCurrency(original.getCurrency());
         copy.setExchangeRate(original.getExchangeRate());
-        copy.setQuotationStatus(QuotationStatus.DRAFT.getCode());
+        copy.setQuotationStatus(QuotationStatus.DRAFT.getValue());
         copy.setSubtotalAmount(original.getSubtotalAmount());
         copy.setTaxRate(original.getTaxRate());
         copy.setTaxAmount(original.getTaxAmount());
@@ -1107,8 +1108,8 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         // 草稿(0)或改单(8)状态的报价单可以提交审核（改单后重新流转）
-        if (!QuotationStatus.DRAFT.getCode().equals(quotation.getQuotationStatus())
-                && !QuotationStatus.MODIFYING.getCode().equals(quotation.getQuotationStatus())) {
+        if (!QuotationStatus.DRAFT.getValue().equals(quotation.getQuotationStatus())
+                && !QuotationStatus.MODIFYING.getValue().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("只有草稿或改单状态的报价单可以提交审核");
         }
 
@@ -1121,9 +1122,9 @@ public class QuotationServiceImpl implements IQuotationService {
 
         // 更新状态为待审核
         Integer from = quotation.getQuotationStatus();
-        quotation.setQuotationStatus(QuotationStatus.PENDING_REVIEW.getCode());
+        quotation.setQuotationStatus(QuotationStatus.PENDING_REVIEW.getValue());
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, "SUBMIT_REVIEW", "提交审核", from, QuotationStatus.PENDING_REVIEW.getCode(), null, attachmentIds);
+        recordFlow(quotation, "SUBMIT_REVIEW", "提交审核", from, QuotationStatus.PENDING_REVIEW.getValue(), null, attachmentIds);
         return rows;
     }
 
@@ -1133,14 +1134,14 @@ public class QuotationServiceImpl implements IQuotationService {
     @Override
     @Event(value = "quotation.reviewed", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
-    public int reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds) {
+    public QuotationStatus reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds) {
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
             throw new BusinessException("报价单不存在");
         }
 
         // 只有待审核状态的报价单可以审核
-        if (!QuotationStatus.PENDING_REVIEW.getCode().equals(quotation.getQuotationStatus())) {
+        if (!QuotationStatus.PENDING_REVIEW.getValue().equals(quotation.getQuotationStatus())) {
             throw new BusinessException("只有待审核状态的报价单可以审核");
         }
 
@@ -1152,15 +1153,16 @@ public class QuotationServiceImpl implements IQuotationService {
 
         Integer from = quotation.getQuotationStatus();
         if (approved) {
-            quotation.setQuotationStatus(QuotationStatus.APPROVED.getCode());
+            quotation.setQuotationStatus(QuotationStatus.APPROVED.getValue());
         } else {
-            quotation.setQuotationStatus(QuotationStatus.REJECTED.getCode());
+            quotation.setQuotationStatus(QuotationStatus.REJECTED.getValue());
         }
 
         int rows = quotationMapper.updateById(quotation);
         recordFlow(quotation, approved ? "APPROVE" : "REJECT", approved ? "审核通过" : "审核驳回",
                 from, quotation.getQuotationStatus(), remark, attachmentIds);
-        return rows;
+        // 返回落库后的真实状态：审核结果由入参决定，注解里不能写死，@Log 取 #result.data.label
+        return rows > 0 ? QuotationStatus.getByValue(quotation.getQuotationStatus()) : null;
     }
 
     /**
@@ -1235,31 +1237,31 @@ public class QuotationServiceImpl implements IQuotationService {
     public List<Object> getStatusOptions() {
         List<Object> options = new ArrayList<>();
         options.add(new Object() {
-            public final Integer value = QuotationStatus.DRAFT.getCode();
+            public final Integer value = QuotationStatus.DRAFT.getValue();
             public final String label = "草稿";
         });
         options.add(new Object() {
-            public final Integer value = QuotationStatus.SENT.getCode();
+            public final Integer value = QuotationStatus.SENT.getValue();
             public final String label = "已发送";
         });
         options.add(new Object() {
-            public final Integer value = QuotationStatus.ACCEPTED.getCode();
+            public final Integer value = QuotationStatus.ACCEPTED.getValue();
             public final String label = "已接受";
         });
         options.add(new Object() {
-            public final Integer value = QuotationStatus.REJECTED.getCode();
+            public final Integer value = QuotationStatus.REJECTED.getValue();
             public final String label = "已拒绝";
         });
         options.add(new Object() {
-            public final Integer value = QuotationStatus.EXPIRED.getCode();
+            public final Integer value = QuotationStatus.EXPIRED.getValue();
             public final String label = "已过期";
         });
         options.add(new Object() {
-            public final Integer value = QuotationStatus.PENDING_REVIEW.getCode();
+            public final Integer value = QuotationStatus.PENDING_REVIEW.getValue();
             public final String label = "待审核";
         });
         options.add(new Object() {
-            public final Integer value = QuotationStatus.APPROVED.getCode();
+            public final Integer value = QuotationStatus.APPROVED.getValue();
             public final String label = "已审核";
         });
         return options;
@@ -1316,11 +1318,11 @@ public class QuotationServiceImpl implements IQuotationService {
         List<SalesQuotation> all = quotationMapper.selectList(Wrappers.emptyWrapper());
         stats.put("totalCount", (long) all.size());
         stats.put("totalAmount", all.stream().filter(q -> q.getTotalAmount() != null).mapToDouble(q -> q.getTotalAmount().doubleValue()).sum());
-        long draftCount = all.stream().filter(q -> QuotationStatus.DRAFT.getCode().equals(q.getQuotationStatus())).count();
-        long sentCount = all.stream().filter(q -> QuotationStatus.SENT.getCode().equals(q.getQuotationStatus())).count();
-        long acceptedCount = all.stream().filter(q -> QuotationStatus.ACCEPTED.getCode().equals(q.getQuotationStatus())).count();
-        long rejectedCount = all.stream().filter(q -> QuotationStatus.REJECTED.getCode().equals(q.getQuotationStatus())).count();
-        long expiredCount = all.stream().filter(q -> QuotationStatus.EXPIRED.getCode().equals(q.getQuotationStatus())).count();
+        long draftCount = all.stream().filter(q -> QuotationStatus.DRAFT.getValue().equals(q.getQuotationStatus())).count();
+        long sentCount = all.stream().filter(q -> QuotationStatus.SENT.getValue().equals(q.getQuotationStatus())).count();
+        long acceptedCount = all.stream().filter(q -> QuotationStatus.ACCEPTED.getValue().equals(q.getQuotationStatus())).count();
+        long rejectedCount = all.stream().filter(q -> QuotationStatus.REJECTED.getValue().equals(q.getQuotationStatus())).count();
+        long expiredCount = all.stream().filter(q -> QuotationStatus.EXPIRED.getValue().equals(q.getQuotationStatus())).count();
         stats.put("draftCount", draftCount);
         stats.put("sentCount", sentCount);
         stats.put("acceptedCount", acceptedCount);
@@ -1343,37 +1345,37 @@ public class QuotationServiceImpl implements IQuotationService {
         // modifying -> draft (编辑后重新提交)
         // rejected, expired -> draft (重新报价：原单状态流转复活)
 
-        if (QuotationStatus.DRAFT.getCode().equals(currentStatus) && (QuotationStatus.PENDING_REVIEW.getCode().equals(newStatus) || QuotationStatus.SENT.getCode().equals(newStatus))) {
+        if (QuotationStatus.DRAFT.getValue().equals(currentStatus) && (QuotationStatus.PENDING_REVIEW.getValue().equals(newStatus) || QuotationStatus.SENT.getValue().equals(newStatus))) {
             return;
         }
 
-        if (QuotationStatus.PENDING_REVIEW.getCode().equals(currentStatus) && (QuotationStatus.APPROVED.getCode().equals(newStatus) || QuotationStatus.REJECTED.getCode().equals(newStatus))) {
+        if (QuotationStatus.PENDING_REVIEW.getValue().equals(currentStatus) && (QuotationStatus.APPROVED.getValue().equals(newStatus) || QuotationStatus.REJECTED.getValue().equals(newStatus))) {
             return;
         }
 
-        if (QuotationStatus.APPROVED.getCode().equals(currentStatus) && QuotationStatus.SENT.getCode().equals(newStatus)) {
+        if (QuotationStatus.APPROVED.getValue().equals(currentStatus) && QuotationStatus.SENT.getValue().equals(newStatus)) {
             return;
         }
 
-        if (QuotationStatus.SENT.getCode().equals(currentStatus) && (QuotationStatus.ACCEPTED.getCode().equals(newStatus) || QuotationStatus.REJECTED.getCode().equals(newStatus) || QuotationStatus.EXPIRED.getCode().equals(newStatus))) {
+        if (QuotationStatus.SENT.getValue().equals(currentStatus) && (QuotationStatus.ACCEPTED.getValue().equals(newStatus) || QuotationStatus.REJECTED.getValue().equals(newStatus) || QuotationStatus.EXPIRED.getValue().equals(newStatus))) {
             return;
         }
 
-        if (QuotationStatus.ACCEPTED.getCode().equals(currentStatus) && QuotationStatus.COMPLETED.getCode().equals(newStatus)) {
+        if (QuotationStatus.ACCEPTED.getValue().equals(currentStatus) && QuotationStatus.COMPLETED.getValue().equals(newStatus)) {
             return;
         }
 
-        if (QuotationStatus.COMPLETED.getCode().equals(currentStatus) && QuotationStatus.MODIFYING.getCode().equals(newStatus)) {
+        if (QuotationStatus.COMPLETED.getValue().equals(currentStatus) && QuotationStatus.MODIFYING.getValue().equals(newStatus)) {
             return;
         }
 
-        if (QuotationStatus.MODIFYING.getCode().equals(currentStatus) && QuotationStatus.DRAFT.getCode().equals(newStatus)) {
+        if (QuotationStatus.MODIFYING.getValue().equals(currentStatus) && QuotationStatus.DRAFT.getValue().equals(newStatus)) {
             return;
         }
 
         // 重新报价：已拒绝/已过期 → 草稿（原单状态流转，保留单号与历史）
-        if ((QuotationStatus.REJECTED.getCode().equals(currentStatus) || QuotationStatus.EXPIRED.getCode().equals(currentStatus))
-                && QuotationStatus.DRAFT.getCode().equals(newStatus)) {
+        if ((QuotationStatus.REJECTED.getValue().equals(currentStatus) || QuotationStatus.EXPIRED.getValue().equals(currentStatus))
+                && QuotationStatus.DRAFT.getValue().equals(newStatus)) {
             return;
         }
 

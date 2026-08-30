@@ -100,7 +100,7 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
      * 审批订单
      *
      */
-    int approveOrder(PurchaseOrderApprovalDTO dto);
+    com.jjx.common.enums.ApproveStatusEnum approveOrder(PurchaseOrderApprovalDTO dto);
 
     /**
      * 更新收货状态

@@ -102,7 +102,7 @@ class ExecutionPlannedQuantityTest {
         }
         // WP-E2E-BUG-01（DEV-1081）：转工单生成的所有工序一律 PENDING，不得自动激活首道
         for (ProductionOperationExecution e : all) {
-            assertEquals(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getCode(), e.getExecutionStatus());
+            assertEquals(com.jjx.production.enums.ExecutionStatusEnum.PENDING.getValue(), e.getExecutionStatus());
             assertNull(e.getActualStartTime(), "转工单阶段不得有实际开始时间");
         }
     }

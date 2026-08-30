@@ -1,12 +1,14 @@
 package com.jjx.purchase.domain.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 /**
  * 付款状态枚举
  */
 @Getter
-public enum PaymentStatusEnum {
+public enum PaymentStatusEnum implements BizStatusEnum {
 
     /**
      * 待付款
@@ -23,21 +25,21 @@ public enum PaymentStatusEnum {
      */
     COMPLETED(2, "已付款");
 
-    private final Integer code;
-    private final String description;
+    private final Integer value;
+    private final String label;
 
-    PaymentStatusEnum(Integer code, String description) {
-        this.code = code;
-        this.description = description;
+    PaymentStatusEnum(Integer value, String label) {
+        this.value = value;
+        this.label = label;
     }
 
     /**
      * 根据code获取枚举
      */
-    public static PaymentStatusEnum getByCode(Integer code) {
-        if (code == null) return null;
+    public static PaymentStatusEnum getByValue(Integer value) {
+        if (value == null) return null;
         for (PaymentStatusEnum status : values()) {
-            if (status.getCode().equals(code)) {
+            if (status.getValue().equals(value)) {
                 return status;
             }
         }
@@ -47,8 +49,8 @@ public enum PaymentStatusEnum {
     /**
      * 根据code获取描述
      */
-    public static String getDescriptionByCode(Integer code) {
-        PaymentStatusEnum status = getByCode(code);
-        return status != null ? status.getDescription() : null;
+    public static String getLabelByValue(Integer value) {
+        PaymentStatusEnum status = getByValue(value);
+        return status != null ? status.getLabel() : null;
     }
 }

@@ -82,7 +82,7 @@ class OrderStatusReviewFlowTest {
 
     @Test
     void reviewStatusReturnsLatestFlowInfo() {
-        when(salesOrderMapper.selectById(10L)).thenReturn(order(OrderStatusEnum.APPROVED.getCode()));
+        when(salesOrderMapper.selectById(10L)).thenReturn(order(OrderStatusEnum.APPROVED.getValue()));
         when(reviewFlowService.listByBiz("sales_order", 10L)).thenReturn(List.of(
                 flow(1L, 1, "SUBMIT", "销售员", null),
                 flow(2L, 1, "APPROVE", "审核员", "同意")));
@@ -91,7 +91,7 @@ class OrderStatusReviewFlowTest {
 
         assertEquals(10L, vo.getOrderId());
         assertEquals("SO-TEST-1", vo.getOrderNo());
-        assertEquals(OrderStatusEnum.APPROVED.getCode(), vo.getOrderStatus());
+        assertEquals(OrderStatusEnum.APPROVED.getValue(), vo.getOrderStatus());
         assertEquals("已审核", vo.getOrderStatusName());
         assertEquals("审核员", vo.getReviewerName());
         assertEquals("同意", vo.getReviewRemark());
@@ -99,7 +99,7 @@ class OrderStatusReviewFlowTest {
 
     @Test
     void reviewStatusWithoutFlowsReturnsOrderStateOnly() {
-        when(salesOrderMapper.selectById(10L)).thenReturn(order(OrderStatusEnum.DRAFT.getCode()));
+        when(salesOrderMapper.selectById(10L)).thenReturn(order(OrderStatusEnum.DRAFT.getValue()));
         when(reviewFlowService.listByBiz("sales_order", 10L)).thenReturn(List.of());
 
         ReviewStatusVO vo = service.getReviewStatus(10L);

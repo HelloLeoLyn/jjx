@@ -1,5 +1,7 @@
 package com.jjx.inventory.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -9,19 +11,19 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
-public enum StockItemStatusEnum {
+public enum StockItemStatusEnum implements BizStatusEnum {
 
     INACTIVE(0, "未生效"),
     ACTIVE(1, "生效");
 
-    private final Integer code;
+    private final Integer value;
     private final String label;
 
-    public static StockItemStatusEnum getByCode(Integer code) {
-        if (code == null) return null;
-        for (StockItemStatusEnum value : values()) {
-            if (value.getCode().equals(code)) {
-                return value;
+    public static StockItemStatusEnum getByValue(Integer value) {
+        if (value == null) return null;
+        for (StockItemStatusEnum status : values()) {
+            if (status.getValue().equals(value)) {
+                return status;
             }
         }
         return null;

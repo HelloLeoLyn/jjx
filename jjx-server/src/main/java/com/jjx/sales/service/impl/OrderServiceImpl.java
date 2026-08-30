@@ -172,7 +172,7 @@ public class OrderServiceImpl implements IOrderService {
             log.setBizType("order");
             log.setBizId(String.valueOf(order.getOrderId()));
             log.setTraceId(order.getTraceId());
-            log.setBizStatus(OrderStatusEnum.getByCode(order.getOrderStatus()).getDescription());
+            log.setBizStatus(OrderStatusEnum.getByValue(order.getOrderStatus()).getLabel());
             log.setOperParam("创建销售订单 " + order.getOrderNo() + "（" + order.getCustomerName() + "）");
             log.setStatus(1);
             log.setCreateTime(LocalDateTime.now());
@@ -242,7 +242,7 @@ public class OrderServiceImpl implements IOrderService {
         diffItemFields(changes, oldItems, dto.getItems());
         changeRecorder.recordUpdate("销售订单", "order.update", "order",
             String.valueOf(dto.getOrderId()), oldOrder.getTraceId(),
-            OrderStatusEnum.getByCode(oldOrder.getOrderStatus()).getDescription(), changes);
+            OrderStatusEnum.getByValue(oldOrder.getOrderStatus()).getLabel(), changes);
     }
 
     /** 主表字段对比（白名单，排除 createTime 等系统字段） */
@@ -323,7 +323,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 检查订单状态，已确认或生产中的订单不能删除
-        if (order.getOrderStatus() >= OrderStatusEnum.PENDING_REVIEW.getCode()) {
+        if (order.getOrderStatus() >= OrderStatusEnum.PENDING_REVIEW.getValue()) {
             throw new BusinessException("已确认或生产中的订单不能删除");
         }
 
@@ -382,7 +382,7 @@ public class OrderServiceImpl implements IOrderService {
         copy.setSalesManagerId(source.getSalesManagerId());
         copy.setSalesManagerName(source.getSalesManagerName());
         // 新单草稿状态，独立链路追踪
-        copy.setOrderStatus(OrderStatusEnum.DRAFT.getCode());
+        copy.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
         copy.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
         copy.setRemark("复制自订单[" + source.getOrderNo() + "]"
                 + (source.getRemark() != null ? "\n" + source.getRemark() : ""));
@@ -423,7 +423,7 @@ public class OrderServiceImpl implements IOrderService {
             newLog.setBizType("order");
             newLog.setBizId(String.valueOf(copy.getOrderId()));
             newLog.setTraceId(copy.getTraceId());
-            newLog.setBizStatus(OrderStatusEnum.getByCode(copy.getOrderStatus()).getDescription());
+            newLog.setBizStatus(OrderStatusEnum.getByValue(copy.getOrderStatus()).getLabel());
             newLog.setStatus(1);
             newLog.setOperParam("{\"action\":\"copy\",\"sourceOrderNo\":\"" + source.getOrderNo() + "\"}");
             newLog.setCreateTime(LocalDateTime.now());
@@ -447,7 +447,7 @@ public class OrderServiceImpl implements IOrderService {
             operLog.setBizType("order");
             operLog.setBizId(String.valueOf(orderId));
             operLog.setTraceId(source.getTraceId());
-            operLog.setBizStatus(OrderStatusEnum.getByCode(source.getOrderStatus()).getDescription());
+            operLog.setBizStatus(OrderStatusEnum.getByValue(source.getOrderStatus()).getLabel());
             operLog.setStatus(1);
             operLog.setOperParam("{\"action\":\"copy\",\"newOrderNo\":\"" + copy.getOrderNo()
                     + "\",\"newOrderId\":" + copy.getOrderId() + "}");
@@ -515,12 +515,12 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有草稿状态的订单可以审核
-        if (order.getOrderStatus() != OrderStatusEnum.DRAFT.getCode()) {
+        if (order.getOrderStatus() != OrderStatusEnum.DRAFT.getValue()) {
             throw new BusinessException("只有草稿状态的订单可以审核");
         }
 
         // 更新审核信息
-        order.setOrderStatus(OrderStatusEnum.PENDING_REVIEW.getCode()); // 待审核
+        order.setOrderStatus(OrderStatusEnum.PENDING_REVIEW.getValue()); // 待审核
 
         return orderMapper.updateById(order);
     }
@@ -585,7 +585,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有草稿状态的订单可以提交审核
-        if (order.getOrderStatus() != OrderStatusEnum.DRAFT.getCode()) {
+        if (order.getOrderStatus() != OrderStatusEnum.DRAFT.getValue()) {
             throw new BusinessException("只有草稿状态的订单可以提交审核");
         }
 
@@ -593,7 +593,7 @@ public class OrderServiceImpl implements IOrderService {
         validateOrderForReview(order);
 
         // 更新状态为待审核（这里假设状态2是待审核）
-        return orderMapper.updateOrderStatus(orderId, OrderStatusEnum.PENDING_REVIEW.getCode());
+        return orderMapper.updateOrderStatus(orderId, OrderStatusEnum.PENDING_REVIEW.getValue());
     }
 
     /**
@@ -608,12 +608,12 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有已审核的订单可以客户确认
-        if (order.getOrderStatus() != OrderStatusEnum.APPROVED.getCode()) {
+        if (order.getOrderStatus() != OrderStatusEnum.APPROVED.getValue()) {
             throw new BusinessException("只有已审核的订单可以客户确认");
         }
 
         // 更新状态为已确认
-        order.setOrderStatus(OrderStatusEnum.CONFIRMED.getCode());
+        order.setOrderStatus(OrderStatusEnum.CONFIRMED.getValue());
         // 这里可以添加确认人信息到备注中
         String newRemark = order.getRemark() + "\n客户确认人：" + confirmedBy + "，确认时间：" + LocalDateTime.now();
         order.setRemark(newRemark);
@@ -642,7 +642,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 只有已确认的订单可以创建产品实例
-        if (order.getOrderStatus() != OrderStatusEnum.CONFIRMED.getCode()) {
+        if (order.getOrderStatus() != OrderStatusEnum.CONFIRMED.getValue()) {
             throw new BusinessException("只有已确认的订单可以创建产品实例");
         }
 
@@ -713,7 +713,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         // 更新订单状态为生产中(4)
-        order.setOrderStatus(OrderStatusEnum.IN_PRODUCTION.getCode());
+        order.setOrderStatus(OrderStatusEnum.IN_PRODUCTION.getValue());
         return orderMapper.updateById(order);
     }
 
@@ -943,11 +943,11 @@ public class OrderServiceImpl implements IOrderService {
         long totalCount = allOrders.size();
         stats.put("totalCount", totalCount);
         stats.put("totalAmount", allOrders.stream().filter(o -> o.getTotalAmount() != null).mapToDouble(o -> o.getTotalAmount().doubleValue()).sum());
-        stats.put("draftCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.DRAFT.getCode()).count());
-        stats.put("pendingCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.PENDING_REVIEW.getCode()).count());
-        stats.put("approvedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.APPROVED.getCode()).count());
-        stats.put("completedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.COMPLETED.getCode()).count());
-        stats.put("cancelledCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.CANCELLED.getCode()).count());
+        stats.put("draftCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.DRAFT.getValue()).count());
+        stats.put("pendingCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.PENDING_REVIEW.getValue()).count());
+        stats.put("approvedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.APPROVED.getValue()).count());
+        stats.put("completedCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.COMPLETED.getValue()).count());
+        stats.put("cancelledCount", allOrders.stream().filter(o -> o.getOrderStatus() != null && o.getOrderStatus() == OrderStatusEnum.CANCELLED.getValue()).count());
         return stats;
     }
 
@@ -977,13 +977,13 @@ public class OrderServiceImpl implements IOrderService {
                 }
                 // BOM 缺失或未审核 → 错误
                 if (item.getBomId() == null || item.getBomStatus() == null
-                        || item.getBomStatus() != com.jjx.common.enums.ApproveStatusEnum.APPROVED.getCode()) {
+                        || item.getBomStatus() != com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue()) {
                     errorCount++;
                     continue;
                 }
                 // 工艺路线缺失或未审核 → 错误
                 if (item.getRoutingId() == null || item.getRoutingStatus() == null
-                        || item.getRoutingStatus() != com.jjx.common.enums.ApproveStatusEnum.APPROVED.getCode()) {
+                        || item.getRoutingStatus() != com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue()) {
                     errorCount++;
                     continue;
                 }
@@ -1102,8 +1102,8 @@ public class OrderServiceImpl implements IOrderService {
      */
     private static void validateStatusTransition(Integer currentStatus, Integer newStatus) {
         // 统一使用 OrderStatusEnum 状态机校验（DEV-024 两套枚举统一后）
-        OrderStatusEnum current = OrderStatusEnum.getByCodeSafe(currentStatus).orElse(null);
-        OrderStatusEnum target = OrderStatusEnum.getByCodeSafe(newStatus).orElse(null);
+        OrderStatusEnum current = OrderStatusEnum.getByValueSafe(currentStatus).orElse(null);
+        OrderStatusEnum target = OrderStatusEnum.getByValueSafe(newStatus).orElse(null);
         if (current == null || target == null) {
             throw new BusinessException("无效的订单状态：当前=" + currentStatus + " 目标=" + newStatus);
         }
@@ -1112,7 +1112,7 @@ public class OrderServiceImpl implements IOrderService {
             return;
         }
         if (!current.canTransitionTo(target)) {
-            throw new BusinessException("状态转换不合法：从[" + current.getName() + "]转换到[" + target.getName() + "]");
+            throw new BusinessException("状态转换不合法：从[" + current.getLabel() + "]转换到[" + target.getLabel() + "]");
         }
     }
 

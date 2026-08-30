@@ -85,7 +85,7 @@ class PlanQuotaDynamicTest {
             if (w instanceof com.baomidou.mybatisplus.core.conditions.query.QueryWrapper) {
                 // 子工单查询（generateWorkOrderNo / sumEffectiveWorkOrderQuantity）
                 return childrenRows.stream()
-                        .filter(child -> !OrderStatusEnum.CANCELLED.getCode().equals(child.getOrderStatus()))
+                        .filter(child -> !OrderStatusEnum.CANCELLED.getValue().equals(child.getOrderStatus()))
                         .collect(java.util.stream.Collectors.toList());
             }
             return new ArrayList<>(childrenRows);
@@ -146,7 +146,7 @@ class PlanQuotaDynamicTest {
     @Test
     void dirtyRemainingZero_noChildren_convert600_success() {
         // Bug 复现：DB remaining_quantity=0（脏），但无子工单 → 动态剩余应为 1000
-        planRow = plan(1L, new BigDecimal("1000"), BigDecimal.ZERO, OrderStatusEnum.APPROVED.getCode());
+        planRow = plan(1L, new BigDecimal("1000"), BigDecimal.ZERO, OrderStatusEnum.APPROVED.getValue());
         childrenRows.clear();
 
         List<Long> ids = service.convertPlanToWorkOrders(dto(Arrays.asList(
@@ -155,12 +155,12 @@ class PlanQuotaDynamicTest {
 
         // 动态剩余 = 1000 - 600 = 400（持久字段被同步为 400）
         assertEquals(0, new BigDecimal("400").compareTo(planRow.getRemainingQuantity()), "转后剩余应 400");
-        assertEquals(OrderStatusEnum.APPROVED.getCode(), planRow.getOrderStatus(), "有剩余保持已批准");
+        assertEquals(OrderStatusEnum.APPROVED.getValue(), planRow.getOrderStatus(), "有剩余保持已批准");
     }
 
     @Test
     void convert600_then400_thenOverRejected() {
-        planRow = plan(1L, new BigDecimal("1000"), BigDecimal.ZERO, OrderStatusEnum.APPROVED.getCode());
+        planRow = plan(1L, new BigDecimal("1000"), BigDecimal.ZERO, OrderStatusEnum.APPROVED.getValue());
         childrenRows.clear();
 
         // 1. 转 600 成功
@@ -172,7 +172,7 @@ class PlanQuotaDynamicTest {
         wo1.setOrderType("WORK_ORDER");
         wo1.setParentOrderId(1L);
         wo1.setPlannedQuantity(new BigDecimal("600"));
-        wo1.setOrderStatus(OrderStatusEnum.PLANNED.getCode());
+        wo1.setOrderStatus(OrderStatusEnum.PLANNED.getValue());
         childrenRows.add(wo1);
 
         // 2. 再转 400 成功（动态剩余 = 1000 - 600 = 400）
@@ -183,13 +183,13 @@ class PlanQuotaDynamicTest {
         wo2.setOrderType("WORK_ORDER");
         wo2.setParentOrderId(1L);
         wo2.setPlannedQuantity(new BigDecimal("400"));
-        wo2.setOrderStatus(OrderStatusEnum.PLANNED.getCode());
+        wo2.setOrderStatus(OrderStatusEnum.PLANNED.getValue());
         childrenRows.add(wo2);
-        assertEquals(OrderStatusEnum.CLOSED.getCode(), planRow.getOrderStatus(), "全部下达后计划 CLOSED");
+        assertEquals(OrderStatusEnum.CLOSED.getValue(), planRow.getOrderStatus(), "全部下达后计划 CLOSED");
 
         // 3. 再转 100 → 超量拒绝（动态剩余 = 1000 - 1000 = 0）
         //    注：正常业务中 CLOSED 计划前端不再提供转单；此处将计划恢复 APPROVED 以验证超量判定本身
-        planRow.setOrderStatus(OrderStatusEnum.APPROVED.getCode());
+        planRow.setOrderStatus(OrderStatusEnum.APPROVED.getValue());
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 service.convertPlanToWorkOrders(dto(Arrays.asList(item(1L, new BigDecimal("100"))))));
         assertTrue(ex.getMessage().contains("超过"), ex.getMessage());
@@ -198,7 +198,7 @@ class PlanQuotaDynamicTest {
     @Test
     void cancelledWorkOrder_notCounted_quotaRestored() {
         // 取消的工单不占额度：转 600 → cancel → 动态剩余恢复 1000（即使 DB remaining 未正确回补）
-        planRow = plan(1L, new BigDecimal("1000"), BigDecimal.ZERO, OrderStatusEnum.APPROVED.getCode());
+        planRow = plan(1L, new BigDecimal("1000"), BigDecimal.ZERO, OrderStatusEnum.APPROVED.getValue());
         childrenRows.clear();
 
         service.convertPlanToWorkOrders(dto(Arrays.asList(item(1L, new BigDecimal("600")))));
@@ -208,7 +208,7 @@ class PlanQuotaDynamicTest {
         wo1.setOrderType("WORK_ORDER");
         wo1.setParentOrderId(1L);
         wo1.setPlannedQuantity(new BigDecimal("600"));
-        wo1.setOrderStatus(OrderStatusEnum.CANCELLED.getCode()); // 已取消
+        wo1.setOrderStatus(OrderStatusEnum.CANCELLED.getValue()); // 已取消
         childrenRows.add(wo1);
 
         // 动态剩余 = 1000 - 0（无有效子工单）= 1000 → 可再转 600

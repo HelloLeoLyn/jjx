@@ -153,8 +153,8 @@ public class QualityActionServiceImpl implements QualityActionService {
         if (entity.getExecutionId() != null) {
             try {
                 ProductionOperationExecution exec = executionMapper.selectById(entity.getExecutionId());
-                if (exec != null && ExecutionStatusEnum.COMPLETED.getCode().equals(exec.getExecutionStatus())) {
-                    exec.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
+                if (exec != null && ExecutionStatusEnum.COMPLETED.getValue().equals(exec.getExecutionStatus())) {
+                    exec.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getValue());
                     exec.setActualEndTime(null);
                     executionMapper.updateById(exec);
                     log.warn("FQC FAIL：execution={} 恢复 EXECUTING（可继续生产/报工）", entity.getExecutionId());

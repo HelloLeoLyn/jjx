@@ -66,7 +66,7 @@ public class InquiryController extends BaseController {
     }
 
     @Operation(summary = "新增询价单")
-    @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).DRAFT")
+    @Log(module = "询价单管理", businessType = BusinessType.INSERT, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", traceId = "#inquiry.traceId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).DRAFT.getLabel()")
     @SaCheckPermission("sales:inquiry:add")
     @PostMapping
     public Result<java.util.Map<String, Object>> add(@Validated @RequestBody SalesInquiry inquiry) {
@@ -85,7 +85,7 @@ public class InquiryController extends BaseController {
      * 修改询价单
      */
     @Operation(summary = "修改询价单")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", detail = "#result.data.detailMessage", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).DRAFT")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiry.inquiryId", detail = "#result.data.detailMessage", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).DRAFT.getLabel()")
     @SaCheckPermission("sales:inquiry:edit")
     @PutMapping
     public Result<SalesInquiryEditVO> edit(@Validated @RequestBody SalesInquiryEditDTO inquiry) {
@@ -117,7 +117,7 @@ public class InquiryController extends BaseController {
      * 发送询价（发给客户）
      */
     @Operation(summary = "发送询价（草稿/待处理 → 已发送）")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "2")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).SENT.getLabel()")
     @SaCheckPermission("sales:inquiry:edit")
     @PutMapping("/send/{inquiryId}")
     public Result<Void> send(@PathVariable Long inquiryId) {
@@ -128,7 +128,7 @@ public class InquiryController extends BaseController {
      * 客户确认询价
      */
     @Operation(summary = "客户确认询价（已发送 → 已确认）")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "4")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).ACCEPTED.getLabel()")
     @SaCheckPermission("sales:inquiry:edit")
     @PutMapping("/accept/{inquiryId}")
     public Result<Void> accept(@PathVariable Long inquiryId) {
@@ -139,7 +139,7 @@ public class InquiryController extends BaseController {
      * 客户拒绝询价
      */
     @Operation(summary = "客户拒绝询价（已发送 → 已拒绝）")
-    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "5")
+    @Log(module = "询价单管理", businessType = BusinessType.UPDATE, bizType = "'inquiry'", bizId = "#inquiryId", bizStatus = "T(com.jjx.sales.enums.InquiryStatus).REJECTED.getLabel()")
     @SaCheckPermission("sales:inquiry:edit")
     @PutMapping("/reject/{inquiryId}")
     public Result<Void> reject(@PathVariable Long inquiryId) {

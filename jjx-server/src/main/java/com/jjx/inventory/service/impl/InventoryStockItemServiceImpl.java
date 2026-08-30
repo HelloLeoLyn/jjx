@@ -98,7 +98,7 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
         StockItemVO vo = stockItemConverter.toVO(entity);
 
         // 设置状态名称
-        StockItemStatusEnum statusEnum = StockItemStatusEnum.getByCode(entity.getStatus());
+        StockItemStatusEnum statusEnum = StockItemStatusEnum.getByValue(entity.getStatus());
         if (statusEnum != null) {
             vo.setStatusName(statusEnum.getLabel());
         }

@@ -55,7 +55,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 转换为实体
         ProductionOperationExecution execution = convertCreateDTOToEntity(createDTO);
-        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode()); // 默认状态为待执行
+        execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getValue()); // 默认状态为待执行
 
         // 保存到数据库
         boolean success = save(execution);
@@ -197,7 +197,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             try {
                 Integer cnt = jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM production_order WHERE order_id = ? AND order_status = "
-                                + com.jjx.production.enums.OrderStatusEnum.CANCELLED.getCode(),
+                                + com.jjx.production.enums.OrderStatusEnum.CANCELLED.getValue(),
                         Integer.class, id);
                 return cnt != null && cnt > 0;
             } catch (Exception e) {
@@ -335,15 +335,15 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (order == null) {
             throw new BusinessException("所属生产工单不存在: " + execution.getOrderId());
         }
-        if (!com.jjx.production.enums.OrderStatusEnum.IN_PROGRESS.getCode().equals(order.getOrderStatus())) {
+        if (!com.jjx.production.enums.OrderStatusEnum.IN_PROGRESS.getValue().equals(order.getOrderStatus())) {
             com.jjx.production.enums.OrderStatusEnum current =
-                    com.jjx.production.enums.OrderStatusEnum.getByCode(order.getOrderStatus());
+                    com.jjx.production.enums.OrderStatusEnum.getByValue(order.getOrderStatus());
             throw new BusinessException("请先启动生产工单，再开始工序（当前工单状态："
-                    + (current == null ? String.valueOf(order.getOrderStatus()) : current.getName()) + "）");
+                    + (current == null ? String.valueOf(order.getOrderStatus()) : current.getLabel()) + "）");
         }
 
         // 更新状态为进行中
-        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getValue());
         execution.setActualStartTime(LocalDateTime.now());
 
         boolean success = updateById(execution);
@@ -371,7 +371,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为暂停
-        execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getValue());
 
         boolean success = updateById(execution);
         if (!success) {
@@ -393,7 +393,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
         // 只有执行中可质检
         if (execution.getExecutionStatus() == null
-                || execution.getExecutionStatus() != ExecutionStatusEnum.EXECUTING.getCode()) {
+                || execution.getExecutionStatus() != ExecutionStatusEnum.EXECUTING.getValue()) {
             throw new BusinessException("只有执行中的工序可以进行首检/巡检");
         }
         if (!"FIRST".equalsIgnoreCase(checkType) && !"PATROL".equalsIgnoreCase(checkType)) {
@@ -436,7 +436,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 不合格 → 自动暂停工序
         if ("FAIL".equalsIgnoreCase(checkResult)) {
-            execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getCode());
+            execution.setExecutionStatus(ExecutionStatusEnum.PAUSED.getValue());
             updateById(execution);
             log.warn("工序[{}] {}不合格，已自动暂停", executionId, checkType);
         }
@@ -454,7 +454,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (execution == null) {
             throw new BusinessException("工序执行记录不存在: " + executionId);
         }
-        if (!ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus())) {
+        if (!ExecutionStatusEnum.EXECUTING.getValue().equals(execution.getExecutionStatus())) {
             throw new BusinessException("只有执行中的工序可以完成");
         }
 
@@ -465,8 +465,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         LocalDateTime completedAt = LocalDateTime.now();
         boolean success = update(Wrappers.<ProductionOperationExecution>lambdaUpdate()
                 .eq(ProductionOperationExecution::getExecutionId, executionId)
-                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getCode())
-                .set(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode())
+                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getValue())
+                .set(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getValue())
                 .set(ProductionOperationExecution::getActualEndTime, completedAt));
         if (!success) {
             throw new BusinessException("工序状态已变更，请刷新后重试");
@@ -476,9 +476,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                 .eq(ProductionOperationExecution::getOrderId, execution.getOrderId())
                 .ne(ProductionOperationExecution::getExecutionId, executionId)
                 .notIn(ProductionOperationExecution::getExecutionStatus,
-                        ExecutionStatusEnum.COMPLETED.getCode(),
-                        ExecutionStatusEnum.SKIPPED.getCode(),
-                        ExecutionStatusEnum.CANCELLED.getCode()));
+                        ExecutionStatusEnum.COMPLETED.getValue(),
+                        ExecutionStatusEnum.SKIPPED.getValue(),
+                        ExecutionStatusEnum.CANCELLED.getValue()));
         if (unfinishedOtherExecutions == 0) {
             qualityActionService.createFqcForExecution(executionId);
         }
@@ -503,7 +503,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         }
 
         // 更新状态为已取消
-        execution.setExecutionStatus(ExecutionStatusEnum.CANCELLED.getCode());
+        execution.setExecutionStatus(ExecutionStatusEnum.CANCELLED.getValue());
 
         boolean success = updateById(execution);
         if (!success) {
@@ -560,7 +560,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
                 // 转换为实体并保存
                 ProductionOperationExecution execution = convertCreateDTOToEntity(dto);
-                execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getCode());
+                execution.setExecutionStatus(ExecutionStatusEnum.PENDING.getValue());
                 save(execution);
 
                 // P1：同一事务内创建 First ProductionTask（导入路径与单条创建保持一致）
@@ -616,19 +616,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         // 按状态统计
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.PENDING.getCode());
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.PENDING.getValue());
         long pendingCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getCode());
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getValue());
         long inProgressCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode());
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getValue());
         long completedCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.CANCELLED.getCode());
+        wrapper.eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.CANCELLED.getValue());
         long cancelledCount = count(wrapper);
 
         // 构建统计结果
@@ -653,7 +653,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         // 查询该工单下所有已完成工序的合格数量总和
         LambdaQueryWrapper<ProductionOperationExecution> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ProductionOperationExecution::getOrderId, orderId)
-                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getCode());
+                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getValue());
 
         List<ProductionOperationExecution> completedExecutions = list(wrapper);
         BigDecimal totalQualified = completedExecutions.stream()
@@ -759,7 +759,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private static boolean canDeleteExecution(ProductionOperationExecution execution) {
         // 只有待执行和已取消状态的记录可以删除
         Integer status = execution.getExecutionStatus();
-        return ExecutionStatusEnum.PENDING.getCode().equals(status) || ExecutionStatusEnum.CANCELLED.getCode().equals(status);
+        return ExecutionStatusEnum.PENDING.getValue().equals(status) || ExecutionStatusEnum.CANCELLED.getValue().equals(status);
     }
 
     /**
@@ -767,7 +767,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canStartExecution(ProductionOperationExecution execution) {
         // 只有待执行状态的记录可以开始
-        return ExecutionStatusEnum.PENDING.getCode().equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.PENDING.getValue().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -775,7 +775,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canPauseExecution(ProductionOperationExecution execution) {
         // 只有进行中状态的记录可以暂停
-        return ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.EXECUTING.getValue().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -783,7 +783,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      */
     private static boolean canCompleteExecution(ProductionOperationExecution execution) {
         // 只有进行中状态的记录可以完成
-        return ExecutionStatusEnum.EXECUTING.getCode().equals(execution.getExecutionStatus());
+        return ExecutionStatusEnum.EXECUTING.getValue().equals(execution.getExecutionStatus());
     }
 
     /**
@@ -792,7 +792,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private static boolean canCancelExecution(ProductionOperationExecution execution) {
         // 只有待执行和进行中状态的记录可以取消
         Integer status = execution.getExecutionStatus();
-        return ExecutionStatusEnum.PENDING.getCode().equals(status) || ExecutionStatusEnum.EXECUTING.getCode().equals(status);
+        return ExecutionStatusEnum.PENDING.getValue().equals(status) || ExecutionStatusEnum.EXECUTING.getValue().equals(status);
     }
 
     /**

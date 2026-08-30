@@ -508,7 +508,7 @@ export const purchaseOperations: OperationDef[] = [
           approverId: Number(u.id),
           approverName: u.name,
           approvalComment: values.approvalComment || '',
-          approvalStatus: 4,
+          approvalStatus: 3,
         },
         attachmentIds?.length ? attachmentIds.join(',') : undefined
       )
@@ -539,7 +539,7 @@ export const purchaseOperations: OperationDef[] = [
           approverId: Number(u.id),
           approverName: u.name,
           approvalComment: values.approvalComment || '',
-          approvalStatus: 5,
+          approvalStatus: 4,
         },
         attachmentIds?.length ? attachmentIds.join(',') : undefined
       )

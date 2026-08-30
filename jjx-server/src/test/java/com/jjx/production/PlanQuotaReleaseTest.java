@@ -130,7 +130,7 @@ class PlanQuotaReleaseTest {
     @Test
     void fullChain_plan1000_convert550_450_cancelBoth_reconvert() {
         planRow = plan(1L, "PL2608200001", new BigDecimal("1000"), new BigDecimal("1000"),
-                OrderStatusEnum.APPROVED.getCode());
+                OrderStatusEnum.APPROVED.getValue());
         when(orderMapper.selectById(1L)).thenAnswer(inv -> planRow);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             planRow = inv.getArgument(0);
@@ -150,7 +150,7 @@ class PlanQuotaReleaseTest {
             Object w = inv.getArgument(0);
             if (w instanceof com.baomidou.mybatisplus.core.conditions.query.QueryWrapper) {
                 return childrenRows.stream()
-                        .filter(child -> !OrderStatusEnum.CANCELLED.getCode().equals(child.getOrderStatus()))
+                        .filter(child -> !OrderStatusEnum.CANCELLED.getValue().equals(child.getOrderStatus()))
                         .collect(java.util.stream.Collectors.toList());
             }
             return new ArrayList<>(childrenRows);
@@ -161,10 +161,10 @@ class PlanQuotaReleaseTest {
                 item(1L, new BigDecimal("550"), "P001", "产品A"))));
         assertEquals(1, ids1.size());
         assertEquals(0, new BigDecimal("450").compareTo(planRow.getRemainingQuantity()), "转 550 后剩余应 450");
-        assertEquals(OrderStatusEnum.APPROVED.getCode(), planRow.getOrderStatus(), "还有剩余可下达，计划保持已批准");
+        assertEquals(OrderStatusEnum.APPROVED.getValue(), planRow.getOrderStatus(), "还有剩余可下达，计划保持已批准");
         // 模拟子工单入库（动态剩余计算依赖）——实例稍后由 wo550[0] 接管
         ProductionOrder wo550Row = workOrder(2L, "WO-PL2608200001-01", 1L, new BigDecimal("550"),
-                OrderStatusEnum.PLANNED.getCode());
+                OrderStatusEnum.PLANNED.getValue());
         childrenRows.add(wo550Row);
 
         // 2. 转 450
@@ -172,8 +172,8 @@ class PlanQuotaReleaseTest {
                 item(1L, new BigDecimal("450"), "P001", "产品A"))));
         assertEquals(0, new BigDecimal("0").compareTo(planRow.getRemainingQuantity()), "再转 450 后剩余应 0");
         childrenRows.add(workOrder(3L, "WO-PL2608200001-02", 1L, new BigDecimal("450"),
-                OrderStatusEnum.PLANNED.getCode()));
-        assertEquals(OrderStatusEnum.CLOSED.getCode(), planRow.getOrderStatus(), "全部下达后计划 CLOSED");
+                OrderStatusEnum.PLANNED.getValue()));
+        assertEquals(OrderStatusEnum.CLOSED.getValue(), planRow.getOrderStatus(), "全部下达后计划 CLOSED");
 
         // 3. 超量拦截
         assertThrows(BusinessException.class, () -> service.convertPlanToWorkOrders(dto(1L, Arrays.asList(
@@ -181,7 +181,7 @@ class PlanQuotaReleaseTest {
 
         // 4. cancel 550 工单 → 释放
         ProductionOrder[] wo550 = { workOrder(2L, "WO-PL2608200001-01", 1L, new BigDecimal("550"),
-                OrderStatusEnum.IN_PROGRESS.getCode()) };
+                OrderStatusEnum.IN_PROGRESS.getValue()) };
         when(orderMapper.selectById(2L)).thenAnswer(inv -> wo550[0]);
         // 同步 childrenRows 引用（动态剩余计算能看到 CANCELLED 状态）
         childrenRows.clear();
@@ -196,13 +196,13 @@ class PlanQuotaReleaseTest {
             return 1;
         });
         service.cancelOrder(2L);
-        assertEquals(OrderStatusEnum.CANCELLED.getCode(), wo550[0].getOrderStatus());
+        assertEquals(OrderStatusEnum.CANCELLED.getValue(), wo550[0].getOrderStatus());
         assertEquals(0, new BigDecimal("550").compareTo(planRow.getRemainingQuantity()), "cancel 550 后剩余应恢复 550");
-        assertEquals(OrderStatusEnum.APPROVED.getCode(), planRow.getOrderStatus(), "计划恢复可下达");
+        assertEquals(OrderStatusEnum.APPROVED.getValue(), planRow.getOrderStatus(), "计划恢复可下达");
 
         // 5. cancel 450 工单 → 释放
         ProductionOrder[] wo450 = { workOrder(3L, "WO-PL2608200001-02", 1L, new BigDecimal("450"),
-                OrderStatusEnum.IN_PROGRESS.getCode()) };
+                OrderStatusEnum.IN_PROGRESS.getValue()) };
         when(orderMapper.selectById(3L)).thenAnswer(inv -> wo450[0]);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);
@@ -235,8 +235,8 @@ class PlanQuotaReleaseTest {
         }
 
         // 8. 旧工单保留历史（CANCELLED 状态）
-        assertEquals(OrderStatusEnum.CANCELLED.getCode(), wo550[0].getOrderStatus());
-        assertEquals(OrderStatusEnum.CANCELLED.getCode(), wo450[0].getOrderStatus());
+        assertEquals(OrderStatusEnum.CANCELLED.getValue(), wo550[0].getOrderStatus());
+        assertEquals(OrderStatusEnum.CANCELLED.getValue(), wo450[0].getOrderStatus());
     }
 
     // ==================== 幂等：重复 cancel 不二次释放 ====================
@@ -244,7 +244,7 @@ class PlanQuotaReleaseTest {
     @Test
     void repeatedCancel_doesNotDoubleRelease() throws Exception {
         planRow = plan(1L, "PL2608200001", new BigDecimal("1000"), new BigDecimal("550"),
-                OrderStatusEnum.APPROVED.getCode());
+                OrderStatusEnum.APPROVED.getValue());
         when(orderMapper.selectById(1L)).thenAnswer(inv -> planRow);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);
@@ -256,7 +256,7 @@ class PlanQuotaReleaseTest {
 
         // 已 CANCELLED 的工单再次走 updateOrderStatus(CANCELLED) → validateStatusTransition 直接 return（同状态），不释放
         ProductionOrder[] cancelledWo = { workOrder(2L, "WO-PL2608200001-01", 1L, new BigDecimal("550"),
-                OrderStatusEnum.CANCELLED.getCode()) };
+                OrderStatusEnum.CANCELLED.getValue()) };
         when(orderMapper.selectById(2L)).thenAnswer(inv -> cancelledWo[0]);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);
@@ -268,7 +268,7 @@ class PlanQuotaReleaseTest {
             return 1;
         });
 
-        boolean ok = service.updateOrderStatus(2L, OrderStatusEnum.CANCELLED.getCode(), "重复取消");
+        boolean ok = service.updateOrderStatus(2L, OrderStatusEnum.CANCELLED.getValue(), "重复取消");
         assertTrue(ok);
         assertEquals(0, new BigDecimal("550").compareTo(planRow.getRemainingQuantity()),
                 "重复 cancel 不应二次释放（剩余保持 550）");
@@ -280,7 +280,7 @@ class PlanQuotaReleaseTest {
     void release_neverExceedsOriginalPlanQuantity() throws Exception {
         // 极端：计划剩余已被外部改大（异常态），取消回补也不得超过 planned_quantity
         planRow = plan(1L, "PL2608200001", new BigDecimal("1000"), new BigDecimal("900"),
-                OrderStatusEnum.APPROVED.getCode());
+                OrderStatusEnum.APPROVED.getValue());
         when(orderMapper.selectById(1L)).thenAnswer(inv -> planRow);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);
@@ -291,7 +291,7 @@ class PlanQuotaReleaseTest {
         });
 
         ProductionOrder[] wo = { workOrder(2L, "WO-PL2608200001-01", 1L, new BigDecimal("550"),
-                OrderStatusEnum.IN_PROGRESS.getCode()) };
+                OrderStatusEnum.IN_PROGRESS.getValue()) };
         when(orderMapper.selectById(2L)).thenAnswer(inv -> wo[0]);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);
@@ -313,7 +313,7 @@ class PlanQuotaReleaseTest {
     @Test
     void nonWorkOrderOrNoParent_skipped() throws Exception {
         planRow = plan(1L, "PL2608200001", new BigDecimal("1000"), new BigDecimal("550"),
-                OrderStatusEnum.APPROVED.getCode());
+                OrderStatusEnum.APPROVED.getValue());
         when(orderMapper.selectById(1L)).thenAnswer(inv -> planRow);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);
@@ -325,7 +325,7 @@ class PlanQuotaReleaseTest {
 
         // 无父计划的工单取消 → 不释放
         ProductionOrder[] orphan = { workOrder(2L, "WO-ORPHAN", null, new BigDecimal("100"),
-                OrderStatusEnum.IN_PROGRESS.getCode()) };
+                OrderStatusEnum.IN_PROGRESS.getValue()) };
         when(orderMapper.selectById(2L)).thenAnswer(inv -> orphan[0]);
         when(orderMapper.updateById(any(ProductionOrder.class))).thenAnswer(inv -> {
             Object o = inv.getArgument(0);

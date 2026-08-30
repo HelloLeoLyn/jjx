@@ -1,12 +1,14 @@
 package com.jjx.purchase.domain.enums;
 
+import com.jjx.common.enums.BizStatusEnum;
+
 import lombok.Getter;
 
 /**
  * 询价状态枚举（用于采购订单明细）
  */
 @Getter
-public enum InquiryStatus {
+public enum InquiryStatus implements BizStatusEnum {
 
     /**
      * 待询价
@@ -28,20 +30,20 @@ public enum InquiryStatus {
      */
     SELECTED(3, "已选中");
 
-    private final Integer code;
-    private final String description;
+    private final Integer value;
+    private final String label;
 
-    InquiryStatus(Integer code, String description) {
-        this.code = code;
-        this.description = description;
+    InquiryStatus(Integer value, String label) {
+        this.value = value;
+        this.label = label;
     }
 
     /**
      * 根据code获取枚举
      */
-    public static InquiryStatus getByCode(Integer code) {
+    public static InquiryStatus getByValue(Integer value) {
         for (InquiryStatus status : values()) {
-            if (status.getCode().equals(code)) {
+            if (status.getValue().equals(value)) {
                 return status;
             }
         }
@@ -49,7 +51,7 @@ public enum InquiryStatus {
     }
 
     public String getCodeString() {
-        return code+"";
+        return value+"";
     }
 
     /**

@@ -80,7 +80,7 @@ class OrderCompletionBypassTest {
         ProductionOrder o = new ProductionOrder();
         o.setOrderId(id);
         o.setOrderNo("WO-TEST-001");
-        o.setOrderStatus(OrderStatusEnum.IN_PROGRESS.getCode());
+        o.setOrderStatus(OrderStatusEnum.IN_PROGRESS.getValue());
         return o;
     }
 
@@ -101,7 +101,7 @@ class OrderCompletionBypassTest {
         when(orderMapper.updateById(any(ProductionOrder.class))).thenReturn(1);
 
         BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.updateOrderStatus(1L, OrderStatusEnum.COMPLETED.getCode(), null));
+                () -> service.updateOrderStatus(1L, OrderStatusEnum.COMPLETED.getValue(), null));
         assertTrue(ex.getMessage().contains("完成操作") || ex.getMessage().contains("生产订单完成"),
                 "应提示使用完成操作: " + ex.getMessage());
         // 状态未被修改
@@ -115,9 +115,9 @@ class OrderCompletionBypassTest {
         when(orderMapper.updateById(any(ProductionOrder.class))).thenReturn(1);
 
         // 进行中 → 暂停（正常流转，不受影响）
-        boolean ok = service.updateOrderStatus(1L, OrderStatusEnum.PAUSED.getCode(), "测试暂停");
+        boolean ok = service.updateOrderStatus(1L, OrderStatusEnum.PAUSED.getValue(), "测试暂停");
         assertTrue(ok);
-        assertEquals(OrderStatusEnum.PAUSED.getCode(), order.getOrderStatus());
+        assertEquals(OrderStatusEnum.PAUSED.getValue(), order.getOrderStatus());
     }
 
     // ==================== 2. completeOrder FQC gate ====================
@@ -166,7 +166,7 @@ class OrderCompletionBypassTest {
             mocked.when(com.jjx.system.utils.SecurityUtils::getUsername).thenReturn("测试员");
             boolean ok = service.completeOrder(1L);
             assertTrue(ok);
-            assertEquals(OrderStatusEnum.COMPLETED.getCode(), order.getOrderStatus());
+            assertEquals(OrderStatusEnum.COMPLETED.getValue(), order.getOrderStatus());
             assertNotNull(order.getActualEndTime());
             verify(inboundService).createFromProduction(1L);
         }
@@ -175,7 +175,7 @@ class OrderCompletionBypassTest {
     @Test
     void completeOrder_notInProgress_rejected() {
         ProductionOrder order = inProgressOrder(1L);
-        order.setOrderStatus(OrderStatusEnum.PLANNED.getCode());
+        order.setOrderStatus(OrderStatusEnum.PLANNED.getValue());
         when(orderMapper.selectById(1L)).thenReturn(order);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.completeOrder(1L));

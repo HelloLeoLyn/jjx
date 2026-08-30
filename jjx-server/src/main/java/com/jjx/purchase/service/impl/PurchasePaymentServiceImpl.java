@@ -100,7 +100,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
 
         // 设置默认状态
         if (payment.getPaymentStatus() == null) {
-            payment.setPaymentStatus(PaymentStatusEnum.PENDING.getCode());
+            payment.setPaymentStatus(PaymentStatusEnum.PENDING.getValue());
         }
 
         int result = paymentMapper.insert(payment);
@@ -168,11 +168,11 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("付款记录不存在");
         }
 
-        if (!Objects.equals(PaymentStatusEnum.PENDING.getCode(), payment.getPaymentStatus())) {
+        if (!Objects.equals(PaymentStatusEnum.PENDING.getValue(), payment.getPaymentStatus())) {
             throw new BusinessException("只有待审批状态的付款可以审批");
         }
 
-        payment.setPaymentStatus("approved".equals(approvalStatus) ? PaymentStatusEnum.COMPLETED.getCode() : PaymentStatusEnum.PENDING.getCode());
+        payment.setPaymentStatus("approved".equals(approvalStatus) ? PaymentStatusEnum.COMPLETED.getValue() : PaymentStatusEnum.PENDING.getValue());
         payment.setApprovalTime(LocalDateTime.now());
         if (StringUtils.isNotEmpty(approvalComment)) {
             payment.setRemark(approvalComment);
@@ -198,11 +198,11 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("付款记录不存在");
         }
 
-        if (!Objects.equals(PaymentStatusEnum.COMPLETED.getCode(), payment.getPaymentStatus())) {
+        if (!Objects.equals(PaymentStatusEnum.COMPLETED.getValue(), payment.getPaymentStatus())) {
             throw new BusinessException("只有已批准的付款可以确认");
         }
 
-        payment.setPaymentStatus(PaymentStatusEnum.COMPLETED.getCode());
+        payment.setPaymentStatus(PaymentStatusEnum.COMPLETED.getValue());
         payment.setActualPaymentDate(dto.getActualPaymentDate() != null ? dto.getActualPaymentDate() : LocalDate.now());
         payment.setVoucherNo(dto.getVoucherNo());
         payment.setVoucherFileUrl(dto.getVoucherFileUrl());
@@ -289,10 +289,10 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
 
         long totalCount = allPayments.size();
         long pendingCount = allPayments.stream()
-                .filter(p -> Objects.equals(PaymentStatusEnum.PENDING.getCode(), p.getPaymentStatus()))
+                .filter(p -> Objects.equals(PaymentStatusEnum.PENDING.getValue(), p.getPaymentStatus()))
                 .count();
         long approvedCount = allPayments.stream()
-                .filter(p -> Objects.equals(PaymentStatusEnum.COMPLETED.getCode(), p.getPaymentStatus()))
+                .filter(p -> Objects.equals(PaymentStatusEnum.COMPLETED.getValue(), p.getPaymentStatus()))
                 .count();
         long paidCount = allPayments.stream()
                 .filter(p -> Objects.equals("paid", p.getPaymentStatus()))
@@ -348,11 +348,11 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
 
         Integer paymentStatus;
         if (totalPaid.compareTo(BigDecimal.ZERO) == 0) {
-            paymentStatus = PaymentStatusEnum.PENDING.getCode();
+            paymentStatus = PaymentStatusEnum.PENDING.getValue();
         } else if (order.getOrderTotalAmount() != null && totalPaid.compareTo(order.getOrderTotalAmount()) >= 0) {
-            paymentStatus = PaymentStatusEnum.COMPLETED.getCode();
+            paymentStatus = PaymentStatusEnum.COMPLETED.getValue();
         } else {
-            paymentStatus = PaymentStatusEnum.PARTIALLY_PAID.getCode();
+            paymentStatus = PaymentStatusEnum.PARTIALLY_PAID.getValue();
         }
 
         orderMapper.updatePaymentInfo(orderId, totalPaid, paymentStatus);

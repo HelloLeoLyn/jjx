@@ -32,13 +32,13 @@ public class ProductionOrderTimeoutTask {
             List<ProductionOrder> overdueOrders = productionOrderMapper.selectList(
                     new LambdaQueryWrapper<ProductionOrder>()
                             .in(ProductionOrder::getOrderStatus,
-                                    OrderStatusEnum.PENDING_START.getCode(),
-                                    OrderStatusEnum.IN_PROGRESS.getCode(),
-                                    OrderStatusEnum.PAUSED.getCode())
+                                    OrderStatusEnum.PENDING_START.getValue(),
+                                    OrderStatusEnum.IN_PROGRESS.getValue(),
+                                    OrderStatusEnum.PAUSED.getValue())
                             .lt(ProductionOrder::getPlanEndDate, LocalDate.now()));
             int updated = 0;
             for (ProductionOrder order : overdueOrders) {
-                order.setOrderStatus(OrderStatusEnum.OVERDUE.getCode());
+                order.setOrderStatus(OrderStatusEnum.OVERDUE.getValue());
                 productionOrderMapper.updateById(order);
                 updated++;
                 log.info("工单{}已超期（计划完成{}），置为已超期(11)", order.getOrderNo(), order.getPlanEndDate());

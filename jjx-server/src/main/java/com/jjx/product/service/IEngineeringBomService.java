@@ -53,16 +53,16 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     /**
      * 删除BOM（包含明细）
      *
-     * @return 删除成功时返回该 BOM 删除前的 approve_status（供 @Log bizStatus 取值），失败返回 null
+     * @return 删除成功时返回该 BOM 删除前的状态（供 @Log bizStatus 取 label），失败返回 null
      */
-    Integer removeBomWithItems(Long bomId);
+    com.jjx.product.enums.ProductEnums.BomStatus removeBomWithItems(Long bomId);
 
     /**
      * 设置默认BOM
      *
-     * @return 成功时返回该 BOM 当前的 approve_status（本操作不改状态），失败返回 null
+     * @return 成功时返回该 BOM 当前状态（本操作不改状态），失败返回 null
      */
-    Integer setDefaultBom(Long bomId);
+    com.jjx.product.enums.ProductEnums.BomStatus setDefaultBom(Long bomId);
 
     /**
      * 获取产品的默认BOM

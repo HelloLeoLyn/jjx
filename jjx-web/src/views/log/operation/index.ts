@@ -203,23 +203,8 @@ const tableOptions: TableOptions[] = [
     label: '业务状态',
     prop: 'bizStatus',
     width: 100,
-    formatter: (row: any) => {
-      const mod = row.module || ''
-      // 按模块匹配对应状态字典
-      if (mod.includes('询价')) {
-        const inquiryMap: Record<number, string> = { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已转报价', 4:'已确认', 5:'已拒绝', 6:'已过期' }
-        return inquiryMap[row.bizStatus] ?? ''
-      }
-      if (mod.includes('报价')) {
-        const quoteMap: Record<number, string> = { 0:'草稿', 1:'待处理', 2:'已发送', 3:'已报价', 4:'已确认', 5:'已拒绝', 6:'已过期' }
-        return quoteMap[row.bizStatus] ?? ''
-      }
-      if (mod.includes('订单') || mod.includes('销售')) {
-        const orderMap: Record<number, string> = { 0:'待确认', 1:'已确认', 2:'生产中', 3:'已完成', 4:'已取消' }
-        return orderMap[row.bizStatus] ?? ''
-      }
-      return String(row.bizStatus ?? '')
-    },
+    // biz_status 已是 varchar，后端在写入流水时快照成状态文案，这里直接显示，不再做页面本地映射
+    formatter: (row: any) => row.bizStatus ?? '',
   },
   { label: '追踪ID', prop: 'traceId', width: 180 },
   { label: '耗时(ms)', prop: 'costTime', width: 90, align: 'center' },

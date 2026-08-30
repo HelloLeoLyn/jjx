@@ -65,7 +65,7 @@ public class PurchaseInvoiceController extends BaseController {
     public Result<Void> add(@Valid PurchaseDocumentDTO dto) {
         dto.setDocumentType("invoice");
         if (dto.getDocumentStatus() == null) {
-            dto.setDocumentStatus(DocumentStatus.PENDING.getCode());
+            dto.setDocumentStatus(DocumentStatus.PENDING.getValue());
         }
         documentService.insertDocument(dto);
         return Result.success();
@@ -229,7 +229,7 @@ public class PurchaseInvoiceController extends BaseController {
         for (PurchaseDocumentDTO dto : importData) {
             dto.setDocumentType("invoice");
             if (dto.getDocumentStatus() == null) {
-                dto.setDocumentStatus(DocumentStatus.PENDING.getCode());
+                dto.setDocumentStatus(DocumentStatus.PENDING.getValue());
             }
             documentService.insertDocument(dto);
         }

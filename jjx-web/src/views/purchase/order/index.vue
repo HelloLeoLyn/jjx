@@ -780,7 +780,7 @@ const handleCancle = async (row: PurchaseOrderVO) => {
  * 判断订单是否可删除（草稿和已拒绝可删除）
  */
 function isOrderDeletable(approvalStatus: number): boolean {
-  return approvalStatus === 1 || approvalStatus === 5
+  return approvalStatus === 1 || approvalStatus === 4
 }
 
 // ===== 操作预览器 =====

@@ -91,7 +91,7 @@ public class ToolingServiceImpl extends ServiceImpl<ProductionToolingMapper, Pro
         q.setType(type);
         LambdaQueryWrapper<ProductionTooling> w = buildWrapper(q);
         // 排除已报废：status != 4
-        w.ne(ProductionTooling::getStatus, ToolingStatusEnum.SCRAPPED.getCode());
+        w.ne(ProductionTooling::getStatus, ToolingStatusEnum.SCRAPPED.getValue());
         w.orderByAsc(ProductionTooling::getToolingNo);
         List<ToolingVO> vos = new ArrayList<>();
         for (ProductionTooling e : toolingMapper.selectList(w)) {
@@ -258,7 +258,7 @@ public class ToolingServiceImpl extends ServiceImpl<ProductionToolingMapper, Pro
                 e.setSpec(dto.getSpec());
                 e.setLifeLimit(dto.getLifeLimit());
                 e.setCurrentCount(0);
-                e.setStatus(ToolingStatusEnum.IN_STOCK.getCode());
+                e.setStatus(ToolingStatusEnum.IN_STOCK.getValue());
                 e.setLocation(dto.getLocation());
                 e.setResponsible(dto.getResponsible());
                 e.setCustomer(dto.getCustomer());
