@@ -23,13 +23,13 @@ public class BusinessException extends RuntimeException{
         this.message = message;
     }
     
-    public BusinessException(BusinessExceptionEnum exceptionEnum) {
+    public BusinessException(IExceptionEnum exceptionEnum) {
         super(exceptionEnum.getMessage());
         code = exceptionEnum.getCode();
         message = exceptionEnum.getMessage();
     }
     
-    public BusinessException(BusinessExceptionEnum exceptionEnum, String message) {
+    public BusinessException(IExceptionEnum exceptionEnum, String message) {
         super(message);
         code = exceptionEnum.getCode();
         this.message = message;
@@ -41,7 +41,7 @@ public class BusinessException extends RuntimeException{
         this.message = message;
     }
     
-    public BusinessException(BusinessExceptionEnum exceptionEnum, Throwable cause) {
+    public BusinessException(IExceptionEnum exceptionEnum, Throwable cause) {
         super(exceptionEnum.getMessage(), cause);
         code = exceptionEnum.getCode();
         message = exceptionEnum.getMessage();

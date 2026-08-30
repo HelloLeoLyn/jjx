@@ -1,5 +1,6 @@
 package com.jjx.purchase.domain.enums;
 
+import com.jjx.common.exception.IExceptionEnum;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -9,7 +10,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Getter
 @RequiredArgsConstructor
-public enum PurchaseExceptionEnum {
+public enum PurchaseExceptionEnum implements IExceptionEnum {
 
     // ==================== 采购订单异常 (10000-10099) ====================
 

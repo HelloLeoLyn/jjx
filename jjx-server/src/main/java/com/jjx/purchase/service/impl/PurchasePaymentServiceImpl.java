@@ -91,7 +91,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         // 付款不拦收货（允许预付款/定金），但累计付款≤订单金额
         if (dto.getPaymentAmount() != null && order.getOrderTotalAmount() != null
                 && dto.getPaymentAmount().compareTo(order.getOrderTotalAmount()) > 0) {
-            throw new BusinessException(PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS.getMessage()
+            throw new BusinessException(PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS, PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS.getMessage()
                     + "（订单金额" + order.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "）");
         }
 

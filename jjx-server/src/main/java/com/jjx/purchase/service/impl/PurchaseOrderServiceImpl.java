@@ -81,7 +81,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public PurchaseOrderVO selectOrderById(Long orderId) {
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         PurchaseOrderVO orderVO = purchaseConverter.toVO(order);
@@ -110,17 +110,17 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (!isPlan) {
             // 检查订单号是否唯一
             if (checkOrderNoUnique(orderDTO.getOrderNo())) {
-                throw new BusinessException(PurchaseExceptionEnum.ORDER_NO_DUPLICATE.getMessage());
+                throw new BusinessException(PurchaseExceptionEnum.ORDER_NO_DUPLICATE);
             }
 
             // 验证供应商信息
             if (orderDTO.getSupplierId() == null || StringUtils.isEmpty(orderDTO.getSupplierName())) {
-                throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
+                throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE);
             }
 
             // 验证订单明细
             if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
-                throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+                throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
             }
 
             // 计算订单金额
@@ -166,7 +166,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 保存订单
         int result = orderMapper.insert(order);
         if (result <= 0) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_SAVE_FAILED.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_SAVE_FAILED);
         }
 
         // 保存订单明细
@@ -211,29 +211,29 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Transactional(rollbackFor = Exception.class)
     public int updateOrder(PurchaseOrderDTO orderDTO) {
         if (orderDTO.getOrderId() == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ID_REQUIRED.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ID_REQUIRED);
         }
 
         // 检查订单是否存在
         PurchaseOrder existingOrder = orderMapper.selectById(orderDTO.getOrderId());
         if (existingOrder == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         // 检查订单状态是否允许修改（只有草稿和已拒绝可修改）
         if (!Objects.equals(ApproveStatusEnum.DRAFT.getValue(), existingOrder.getApprovalStatus())
                 && !Objects.equals(ApproveStatusEnum.REJECTED.getValue(), existingOrder.getApprovalStatus())) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_EDITABLE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_EDITABLE);
         }
 
         // 验证供应商信息
         if (orderDTO.getSupplierId() == null || StringUtils.isEmpty(orderDTO.getSupplierName())) {
-            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE);
         }
 
         // 验证订单明细
         if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
         }
 
         // 计算订单金额
@@ -245,7 +245,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 更新订单
         int result = orderMapper.updateById(order);
         if (result <= 0) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_UPDATE_FAILED.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_UPDATE_FAILED);
         }
 
         // 删除原有明细
@@ -278,13 +278,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         // 检查订单状态（只有草稿和已拒绝可提交）
         if (!Objects.equals(ApproveStatusEnum.DRAFT.getValue(), order.getApprovalStatus())
                 && !Objects.equals(ApproveStatusEnum.REJECTED.getValue(), order.getApprovalStatus())) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_SUBMITTABLE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_SUBMITTABLE);
         }
 
         // 检查订单明细
@@ -292,7 +292,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         itemWrapper.eq(PurchaseOrderItem::getOrderId, orderId);
         long itemCount = orderItemMapper.selectCount(itemWrapper);
         if (itemCount == 0) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
         }
 
         // 更新订单状态为待审批
@@ -313,7 +313,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Transactional(rollbackFor = Exception.class)
     public int batchSubmitOrders(List<Long> orderIds) {
         if (orderIds == null || orderIds.isEmpty()) {
-            throw new BusinessException(PurchaseExceptionEnum.BATCH_NO_ORDERS_SELECTED.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.BATCH_NO_ORDERS_SELECTED);
         }
 
         int successCount = 0;
@@ -330,7 +330,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         if (successCount == 0) {
-            throw new BusinessException(PurchaseExceptionEnum.BATCH_SUBMIT_FAILED.getMessage() + ": " + String.join("; ", failedOrders));
+            throw new BusinessException(PurchaseExceptionEnum.BATCH_SUBMIT_FAILED, PurchaseExceptionEnum.BATCH_SUBMIT_FAILED.getMessage() + ": " + String.join("; ", failedOrders));
         }
 
         if (!failedOrders.isEmpty()) {
@@ -347,12 +347,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         // 检查订单状态
         if (!Objects.equals(ApproveStatusEnum.PENDING.getValue(), order.getApprovalStatus())) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_APPROVABLE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_APPROVABLE);
         }
         Integer targetStatus = Objects.equals(ApproveStatusEnum.APPROVED.getValue(), dto.getApprovalStatus()) ?ApproveStatusEnum.APPROVED.getValue():
                 ApproveStatusEnum.REJECTED.getValue();
@@ -388,20 +388,20 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         // 检查订单状态（已批准或待审批可收货）
         Integer status = order.getApprovalStatus();
         if (!Objects.equals(ApproveStatusEnum.PENDING.getValue(), status)
                 && !Objects.equals(ApproveStatusEnum.APPROVED.getValue(), status)) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_RECEIVABLE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_RECEIVABLE);
         }
 
         // 检查明细项
         PurchaseOrderItem item = orderItemMapper.selectById(itemId);
         if (item == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND);
         }
 
         // 030/087超收校验：单次收货>0（防负数/零）且 累计收货≤明细订单数量（防超收）
@@ -411,7 +411,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
                 item.getReceivedQuantity().add(receivedQuantity) : receivedQuantity;
         if (newReceivedQuantity.compareTo(item.getQuantity()) > 0) {
-            throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
+            throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS, PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
                     + "（订单数量" + item.getQuantity().stripTrailingZeros().toPlainString()
                     + ", 已收" + (item.getReceivedQuantity() != null ? item.getReceivedQuantity().stripTrailingZeros().toPlainString() : "0")
                     + ", 本次" + receivedQuantity.stripTrailingZeros().toPlainString() + "）");
@@ -601,7 +601,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 查询订单列表
         List<PurchaseOrder> orders = orderMapper.selectList(buildQueryWrapper(queryDTO));
         if (orders.isEmpty()) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_EXPORT_NO_DATA.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_EXPORT_NO_DATA);
         }
 
         // 转换为导出VO
@@ -623,7 +623,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             }
         } catch (Exception e) {
             log.error("导出采购订单列表失败", e);
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_EXPORT_FAILED.getMessage() + ": " + e.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_EXPORT_FAILED, PurchaseExceptionEnum.ORDER_EXPORT_FAILED.getMessage() + ": " + e.getMessage());
         }
 
         log.info("导出采购订单列表成功，文件路径: {}", filePath);
@@ -635,7 +635,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 查询订单
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         // 查询订单明细
@@ -668,7 +668,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             }
         } catch (Exception e) {
             log.error("导出采购订单明细失败", e);
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_EXPORT_FAILED.getMessage() + ": " + e.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_EXPORT_FAILED, PurchaseExceptionEnum.ORDER_EXPORT_FAILED.getMessage() + ": " + e.getMessage());
         }
 
         log.info("导出采购订单明细成功，文件路径: {}", filePath);
@@ -783,7 +783,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 查询源订单
         PurchaseOrder sourceOrder = orderMapper.selectById(sourceOrderId);
         if (sourceOrder == null) {
-            throw new BusinessException(PurchaseExceptionEnum.SOURCE_ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.SOURCE_ORDER_NOT_FOUND);
         }
 
         // 查询源订单明细
@@ -820,7 +820,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 保存新订单
         int result = orderMapper.insert(newOrder);
         if (result <= 0) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_COPY_FAILED.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_COPY_FAILED);
         }
 
         // 复制订单明细
@@ -867,13 +867,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         // 检查订单状态是否允许删除（只有草稿可删除）
         ApproveStatusEnum current = ApproveStatusEnum.getByValue(order.getApprovalStatus());
         if (!current.isCancelable()) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_DELETABLE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_DELETABLE);
         }
         POrderStatusDTO dto = POrderStatusDTO.builder().orderId(orderId).currentStatus(current.getValue()).targetStatus(ApproveStatusEnum.CANCELLED.getValue()).build();
         updateOrderStatus(dto);
@@ -1122,19 +1122,19 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public int batchReceiveOrderItems(PurchaseOrderReceiveDTO dto) {
         // 订单ID兜底校验（orderId 由接口路径注入，此处防御 null）
         if (dto == null || dto.getOrderId() == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ID_REQUIRED.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ID_REQUIRED);
         }
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
 
         // 检查订单状态（已批准或待审批可收货）
         Integer status = order.getApprovalStatus();
         if (!Objects.equals(ApproveStatusEnum.PENDING.getValue(), status)
                 && !Objects.equals(ApproveStatusEnum.APPROVED.getValue(), status)) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_RECEIVABLE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_RECEIVABLE);
         }
 
         int totalCount = 0;
@@ -1142,7 +1142,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             // 检查明细项
             PurchaseOrderItem item = orderItemMapper.selectById(itemDTO.getItemId());
             if (item == null) {
-                throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND.getMessage() + ": itemId=" + itemDTO.getItemId());
+                throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND, PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND.getMessage() + ": itemId=" + itemDTO.getItemId());
             }
 
             // 更新收货数量
@@ -1153,7 +1153,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 throw new BusinessException("收货数量必须大于0");
             }
             if (newReceivedQuantity.compareTo(item.getQuantity()) > 0) {
-                throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
+                throw new BusinessException(PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS, PurchaseExceptionEnum.RECEIVE_QUANTITY_EXCEEDS.getMessage()
                         + "（订单数量" + item.getQuantity().stripTrailingZeros().toPlainString()
                         + ", 已收" + (item.getReceivedQuantity() != null ? item.getReceivedQuantity().stripTrailingZeros().toPlainString() : "0")
                         + ", 本次" + itemDTO.getReceivedQuantity().stripTrailingZeros().toPlainString() + "）");
@@ -1228,7 +1228,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public void returnGoods(Long orderId, String reason, Long materialId, Integer quantity) {
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
         log.info("采购退货: orderId={}, reason={}, materialId={}, quantity={}", orderId, reason, materialId, quantity);
 
@@ -1353,19 +1353,19 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public int confirmPlan(Long orderId, Long supplierId, String supplierName) {
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
         if (!Objects.equals(1, order.getPlanStatus())) {
             throw new BusinessException("只有计划单可以确认转正式，当前状态: " + order.getPlanStatus());
         }
         // 校验供应商和明细
         if (supplierId == null || StringUtils.isEmpty(supplierName)) {
-            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE);
         }
         List<PurchaseOrderItem> items = orderItemMapper.selectList(
                 new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getOrderId, orderId));
         if (items == null || items.isEmpty()) {
-            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY.getMessage());
+            throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
         }
 
         // 转正式：plan_status 1→0，补供应商信息，进入审批流（草稿态，需提交审批）

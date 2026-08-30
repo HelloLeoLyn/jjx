@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Getter
 @RequiredArgsConstructor
-public enum ValidationExceptionEnum {
+public enum ValidationExceptionEnum implements IExceptionEnum {
     
     // 通用校验
     NOT_NULL(40001, "不能为空"),

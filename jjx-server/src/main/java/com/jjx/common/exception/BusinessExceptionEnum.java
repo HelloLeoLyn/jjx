@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Getter
 @RequiredArgsConstructor
-public enum BusinessExceptionEnum {
+public enum BusinessExceptionEnum implements IExceptionEnum {
 
     // ==================== 通用异常 (1000-1999) ====================
     SUCCESS(200, "操作成功"),
