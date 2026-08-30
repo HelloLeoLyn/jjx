@@ -14,7 +14,7 @@ import com.jjx.inventory.mapper.SalesOrderStockReserveMapper;
 import com.jjx.inventory.service.OrderStockReserveService;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesOrderProduct;
-import com.jjx.sales.enums.OrderTypeEnum;
+import com.jjx.sales.enums.SalesOrderTypeEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.SalesOrderProductMapper;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +59,7 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             return new HashMap<>();
         }
         // 样品单跳过
-        if (OrderTypeEnum.SAMPLE.getCode().equals(order.getOrderType())) {
+        if (SalesOrderTypeEnum.SAMPLE.getCode().equals(order.getOrderType())) {
             log.info("样品单{}跳过成品库存预留", order.getOrderNo());
             return new HashMap<>();
         }

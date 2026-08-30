@@ -3,7 +3,7 @@ import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 生产工单状态枚举
- * 对应后端 production OrderStatusEnum
+ * 对应后端 production ProductionOrderStatusEnum
  */
 export const ProductionOrderStatusEnum = createNamedEnum(
   {

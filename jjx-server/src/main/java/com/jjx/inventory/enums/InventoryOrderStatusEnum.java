@@ -11,7 +11,7 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
-public enum OrderStatusEnum implements BizStatusEnum {
+public enum InventoryOrderStatusEnum implements BizStatusEnum {
 
     DRAFT(0, "草稿"),
     PENDING(1, "待审批"),
@@ -30,8 +30,8 @@ public enum OrderStatusEnum implements BizStatusEnum {
     private final Integer value;
     private final String label;
 
-    public static OrderStatusEnum getByValue(Integer value) {
-        for (OrderStatusEnum status : values()) {
+    public static InventoryOrderStatusEnum getByValue(Integer value) {
+        for (InventoryOrderStatusEnum status : values()) {
             if (status.getValue().equals(value)) {
                 return status;
             }

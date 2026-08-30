@@ -8,18 +8,18 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
-public enum OrderTypeEnum {
+public enum SalesOrderTypeEnum {
     STANDARD(1, "标准订单"),
     SAMPLE(2, "样品订单");
 
     private final Integer code;
     private final String label;
 
-    public static OrderTypeEnum getByCode(Integer code) {
+    public static SalesOrderTypeEnum getByCode(Integer code) {
         if (code == null) {
             return null;
         }
-        for (OrderTypeEnum value : values()) {
+        for (SalesOrderTypeEnum value : values()) {
             if (value.getCode().equals(code)) {
                 return value;
             }

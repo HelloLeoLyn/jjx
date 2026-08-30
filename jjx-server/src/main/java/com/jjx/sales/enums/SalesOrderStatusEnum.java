@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
  * 订单状态枚举
  */
 @Getter
-public enum OrderStatusEnum implements BizStatusEnum {
+public enum SalesOrderStatusEnum implements BizStatusEnum {
 
     DRAFT(1, "草稿", "订单创建后，未提交审核", true, false),
     PENDING_REVIEW(2, "待审核", "已提交审核，等待审核人审核", false, false),
@@ -30,7 +30,7 @@ public enum OrderStatusEnum implements BizStatusEnum {
     private final boolean editable;
     private final boolean terminal;
 
-    OrderStatusEnum(Integer value, String label, String description, boolean editable, boolean terminal) {
+    SalesOrderStatusEnum(Integer value, String label, String description, boolean editable, boolean terminal) {
         this.value = value;
         this.label = label;
         this.description = description;
@@ -39,7 +39,7 @@ public enum OrderStatusEnum implements BizStatusEnum {
     }
 
     // 状态转换规则
-    private static final Map<OrderStatusEnum, Set<OrderStatusEnum>> TRANSITIONS = new EnumMap<>(OrderStatusEnum.class);
+    private static final Map<SalesOrderStatusEnum, Set<SalesOrderStatusEnum>> TRANSITIONS = new EnumMap<>(SalesOrderStatusEnum.class);
 
     static {
         TRANSITIONS.put(DRAFT, EnumSet.of(PENDING_REVIEW, CANCELLED));
@@ -50,30 +50,30 @@ public enum OrderStatusEnum implements BizStatusEnum {
         TRANSITIONS.put(CONFIRMED, EnumSet.of(IN_PRODUCTION, CANCELLED));
         TRANSITIONS.put(IN_PRODUCTION, EnumSet.of(SHIPPED, CANCELLED));
         TRANSITIONS.put(SHIPPED, EnumSet.of(COMPLETED, CANCELLED));
-        TRANSITIONS.put(COMPLETED, EnumSet.noneOf(OrderStatusEnum.class));
-        TRANSITIONS.put(CANCELLED, EnumSet.noneOf(OrderStatusEnum.class));
+        TRANSITIONS.put(COMPLETED, EnumSet.noneOf(SalesOrderStatusEnum.class));
+        TRANSITIONS.put(CANCELLED, EnumSet.noneOf(SalesOrderStatusEnum.class));
     }
 
-    private static final Map<Integer, OrderStatusEnum> VALUE_MAP =
-            Arrays.stream(values()).collect(Collectors.toMap(OrderStatusEnum::getValue, s -> s));
+    private static final Map<Integer, SalesOrderStatusEnum> VALUE_MAP =
+            Arrays.stream(values()).collect(Collectors.toMap(SalesOrderStatusEnum::getValue, s -> s));
 
-    public static OrderStatusEnum getByValue(Integer value) {
-        OrderStatusEnum status = VALUE_MAP.get(value);
+    public static SalesOrderStatusEnum getByValue(Integer value) {
+        SalesOrderStatusEnum status = VALUE_MAP.get(value);
         if (status == null) {
             throw new IllegalArgumentException("无效的订单状态码: " + value);
         }
         return status;
     }
 
-    public static Optional<OrderStatusEnum> getByValueSafe(Integer value) {
+    public static Optional<SalesOrderStatusEnum> getByValueSafe(Integer value) {
         return Optional.ofNullable(VALUE_MAP.get(value));
     }
 
-    public boolean canTransitionTo(OrderStatusEnum target) {
+    public boolean canTransitionTo(SalesOrderStatusEnum target) {
         return TRANSITIONS.getOrDefault(this, Collections.emptySet()).contains(target);
     }
 
-    public Set<OrderStatusEnum> getNextStatuses() {
+    public Set<SalesOrderStatusEnum> getNextStatuses() {
         return TRANSITIONS.getOrDefault(this, Collections.emptySet());
     }
 

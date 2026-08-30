@@ -8,7 +8,7 @@ import lombok.Getter;
  * 询价状态枚举（用于采购订单明细）
  */
 @Getter
-public enum InquiryStatus implements BizStatusEnum {
+public enum PurchaseInquiryStatus implements BizStatusEnum {
 
     /**
      * 待询价
@@ -33,7 +33,7 @@ public enum InquiryStatus implements BizStatusEnum {
     private final Integer value;
     private final String label;
 
-    InquiryStatus(Integer value, String label) {
+    PurchaseInquiryStatus(Integer value, String label) {
         this.value = value;
         this.label = label;
     }
@@ -41,8 +41,8 @@ public enum InquiryStatus implements BizStatusEnum {
     /**
      * 根据code获取枚举
      */
-    public static InquiryStatus getByValue(Integer value) {
-        for (InquiryStatus status : values()) {
+    public static PurchaseInquiryStatus getByValue(Integer value) {
+        for (PurchaseInquiryStatus status : values()) {
             if (status.getValue().equals(value)) {
                 return status;
             }

@@ -2,7 +2,7 @@ package com.jjx.production.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.jjx.production.enums.OrderStatusEnum;
+import com.jjx.production.enums.ProductionOrderStatusEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
@@ -201,49 +201,49 @@ public class ProductionOrder{
      * 检查是否为草稿状态
      */
     public boolean isDraft() {
-        return OrderStatusEnum.DRAFT.getValue().equals(orderStatus);
+        return ProductionOrderStatusEnum.DRAFT.getValue().equals(orderStatus);
     }
 
     /**
      * 检查是否为待审批状态
      */
     public boolean isPendingApproval() {
-        return OrderStatusEnum.PENDING_APPROVAL.getValue().equals(orderStatus);
+        return ProductionOrderStatusEnum.PENDING_APPROVAL.getValue().equals(orderStatus);
     }
 
     /**
      * 检查是否为已批准状态
      */
     public boolean isApproved() {
-        return OrderStatusEnum.APPROVED.getValue().equals(orderStatus);
+        return ProductionOrderStatusEnum.APPROVED.getValue().equals(orderStatus);
     }
 
     /**
      * 检查是否为已排程状态
      */
     public boolean isScheduled() {
-        return OrderStatusEnum.PLANNED.getValue().equals(orderStatus);
+        return ProductionOrderStatusEnum.PLANNED.getValue().equals(orderStatus);
     }
 
     /**
      * 检查是否为进行中状态
      */
     public boolean isInProgress() {
-        return OrderStatusEnum.IN_PROGRESS.getValue().equals(orderStatus);
+        return ProductionOrderStatusEnum.IN_PROGRESS.getValue().equals(orderStatus);
     }
 
     /**
      * 检查是否为已完成状态
      */
     public boolean isCompleted() {
-        return OrderStatusEnum.COMPLETED.getValue().equals(orderStatus);
+        return ProductionOrderStatusEnum.COMPLETED.getValue().equals(orderStatus);
     }
 
     /**
      * 检查是否为已取消状态
      */
     public boolean isCancelled() {
-        return OrderStatusEnum.CANCELLED.getValue().equals(orderStatus);
+        return ProductionOrderStatusEnum.CANCELLED.getValue().equals(orderStatus);
     }
 
     /**

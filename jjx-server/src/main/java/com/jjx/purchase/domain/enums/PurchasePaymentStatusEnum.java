@@ -8,7 +8,7 @@ import lombok.Getter;
  * 付款状态枚举
  */
 @Getter
-public enum PaymentStatusEnum implements BizStatusEnum {
+public enum PurchasePaymentStatusEnum implements BizStatusEnum {
 
     /**
      * 待付款
@@ -28,7 +28,7 @@ public enum PaymentStatusEnum implements BizStatusEnum {
     private final Integer value;
     private final String label;
 
-    PaymentStatusEnum(Integer value, String label) {
+    PurchasePaymentStatusEnum(Integer value, String label) {
         this.value = value;
         this.label = label;
     }
@@ -36,9 +36,9 @@ public enum PaymentStatusEnum implements BizStatusEnum {
     /**
      * 根据code获取枚举
      */
-    public static PaymentStatusEnum getByValue(Integer value) {
+    public static PurchasePaymentStatusEnum getByValue(Integer value) {
         if (value == null) return null;
-        for (PaymentStatusEnum status : values()) {
+        for (PurchasePaymentStatusEnum status : values()) {
             if (status.getValue().equals(value)) {
                 return status;
             }
@@ -50,7 +50,7 @@ public enum PaymentStatusEnum implements BizStatusEnum {
      * 根据code获取描述
      */
     public static String getLabelByValue(Integer value) {
-        PaymentStatusEnum status = getByValue(value);
+        PurchasePaymentStatusEnum status = getByValue(value);
         return status != null ? status.getLabel() : null;
     }
 }

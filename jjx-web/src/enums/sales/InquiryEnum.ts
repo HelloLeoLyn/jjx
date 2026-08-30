@@ -3,7 +3,7 @@ import { createEnum } from '../base'
 
 /**
  * 销售询价单状态枚举
- * 对应后端 sales InquiryStatus
+ * 对应后端 sales SalesInquiryStatus
  */
 export const InquiryStatusEnum = createEnum<number>({
   items: [

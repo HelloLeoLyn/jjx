@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.sales.domain.entity.SalesInquiry;
 import com.jjx.sales.domain.entity.SalesQuotation;
-import com.jjx.sales.enums.InquiryStatus;
+import com.jjx.sales.enums.SalesInquiryStatus;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.SalesInquiryMapper;
@@ -61,14 +61,14 @@ public class SalesExpireTask {
     @Transactional(rollbackFor = Exception.class)
     public void expireInquiries() {
         List<Integer> activeStatuses = List.of(
-                InquiryStatus.DRAFT.getValue(),   // 草稿
-                InquiryStatus.PENDING.getValue(), // 待处理
-                InquiryStatus.SENT.getValue());   // 已发送
+                SalesInquiryStatus.DRAFT.getValue(),   // 草稿
+                SalesInquiryStatus.PENDING.getValue(), // 待处理
+                SalesInquiryStatus.SENT.getValue());   // 已发送
         LambdaUpdateWrapper<SalesInquiry> wrapper = Wrappers.lambdaUpdate();
         wrapper.lt(SalesInquiry::getInquiryDate, LocalDate.now().minusDays(INQUIRY_VALID_DAYS))
                 .in(SalesInquiry::getInquiryStatus, activeStatuses)
                 .eq(SalesInquiry::getDeleted, 0)
-                .set(SalesInquiry::getInquiryStatus, InquiryStatus.EXPIRED.getValue());
+                .set(SalesInquiry::getInquiryStatus, SalesInquiryStatus.EXPIRED.getValue());
         int rows = inquiryMapper.update(null, wrapper);
         if (rows > 0) {
             log.info("[过期任务] 询价单置为已过期 {} 条", rows);

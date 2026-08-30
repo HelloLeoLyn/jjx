@@ -3,7 +3,7 @@ import { createEnum } from '../base'
 
 /**
  * 销售订单状态枚举
- * 对应后端 OrderStatusEnum
+ * 对应后端 SalesOrderStatusEnum
  */
 export const SalesOrderStatusEnum = createEnum<number>({
   items: [
@@ -22,7 +22,7 @@ export const SalesOrderStatusEnum = createEnum<number>({
 })
 /**
  * 订单类型枚举
- * 对应后端 OrderTypeEnum
+ * 对应后端 SalesOrderTypeEnum
  */
 export const OrderTypeEnum = createEnum<number>({
   items: [
@@ -48,7 +48,7 @@ export const ProdStatusEnum = createEnum<number>({
 
 /**
  * 支付状态枚举
- * 对应后端 PaymentStatusEnum
+ * 对应后端 SalesPaymentStatusEnum
  */
 export const PaymentStatusEnum = createEnum<number>({
   items: [

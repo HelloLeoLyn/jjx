@@ -51,7 +51,7 @@ public class InventoryInboundController {
 
     @PostMapping("/confirm/{inboundId}")
     @Operation(summary = "确认入库")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).COMPLETED.getLabel()")
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).COMPLETED.getLabel()")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> confirm(@PathVariable Long inboundId,
                                    @RequestParam Long operatorId,
@@ -61,7 +61,7 @@ public class InventoryInboundController {
 
     @PostMapping("/cancel/{inboundId}")
     @Operation(summary = "取消入库单")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).CANCELLED.getLabel()")
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CANCELLED.getLabel()")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> cancel(@PathVariable Long inboundId,
                                   @RequestParam String reason) {
@@ -70,7 +70,7 @@ public class InventoryInboundController {
 
     @PostMapping("/submit-approve/{inboundId}")
     @Operation(summary = "提交审批")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).PENDING.getLabel()")
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> submitApprove(@PathVariable Long inboundId) {
         return Result.success(inboundService.submitApprove(inboundId));
@@ -78,7 +78,7 @@ public class InventoryInboundController {
 
     @PostMapping("/approve/{inboundId}")
     @Operation(summary = "审批通过")
-    @Log(module = "入库管理", businessType = BusinessType.APPROVE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).APPROVED.getLabel()")
+    @Log(module = "入库管理", businessType = BusinessType.APPROVE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).APPROVED.getLabel()")
     @SaCheckPermission("inventory:inbound:approve")
     public Result<Boolean> approve(@PathVariable Long inboundId,
                                    @RequestParam Long approverId,
@@ -89,7 +89,7 @@ public class InventoryInboundController {
 
     @PostMapping("/reject/{inboundId}")
     @Operation(summary = "审批驳回")
-    @Log(module = "入库管理", businessType = BusinessType.APPROVE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).REJECTED.getLabel()")
+    @Log(module = "入库管理", businessType = BusinessType.APPROVE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).REJECTED.getLabel()")
     @SaCheckPermission("inventory:inbound:approve")
     public Result<Boolean> reject(@PathVariable Long inboundId,
                                   @RequestParam Long approverId,
@@ -139,7 +139,7 @@ public class InventoryInboundController {
 
     @PostMapping("/update-status/{inboundId}")
     @Operation(summary = "更新入库单状态")
-    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.OrderStatusEnum).getByValue(#status)?.label")
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).getByValue(#status)?.label")
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> updateStatus(@PathVariable Long inboundId,
                                         @RequestParam Integer status) {

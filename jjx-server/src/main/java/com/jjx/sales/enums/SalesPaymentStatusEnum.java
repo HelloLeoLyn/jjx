@@ -10,7 +10,7 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
-public enum PaymentStatusEnum implements BizStatusEnum {
+public enum SalesPaymentStatusEnum implements BizStatusEnum {
     UNPAID(1, "未支付"),
     PAYING(2, "支付中"),
     PAID(3, "已支付"),
@@ -20,11 +20,11 @@ public enum PaymentStatusEnum implements BizStatusEnum {
     private final Integer value;
     private final String label;
 
-    public static PaymentStatusEnum getByValue(Integer value) {
+    public static SalesPaymentStatusEnum getByValue(Integer value) {
         if (value == null) {
             return null;
         }
-        for (PaymentStatusEnum status : values()) {
+        for (SalesPaymentStatusEnum status : values()) {
             if (status.getValue().equals(value)) {
                 return status;
             }

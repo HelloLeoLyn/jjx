@@ -1,6 +1,6 @@
 package com.jjx.purchase.service.impl;
 
-import com.jjx.purchase.domain.enums.InquiryStatus;
+import com.jjx.purchase.domain.enums.PurchaseInquiryStatus;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -15,7 +15,7 @@ import com.jjx.purchase.domain.dto.*;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.common.enums.ApproveStatusEnum;
-import com.jjx.purchase.domain.enums.PaymentStatusEnum;
+import com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum;
 import com.jjx.purchase.domain.enums.PurchaseExceptionEnum;
 import com.jjx.purchase.domain.enums.PurchaseOrderStatusEnum;
 import com.jjx.purchase.domain.enums.ReceiptStatusEnum;
@@ -154,7 +154,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             order.setReceiptStatus(ReceiptStatusEnum.PENDING.getValue());
         }
         if (order.getPaymentStatus() == null) {
-            order.setPaymentStatus(PaymentStatusEnum.PENDING.getValue());
+            order.setPaymentStatus(PurchasePaymentStatusEnum.PENDING.getValue());
         }
         if (order.getPaidAmount() == null) {
             order.setPaidAmount(BigDecimal.ZERO);
@@ -713,13 +713,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 按付款状态统计
         long pendingPaymentCount = allOrders.stream()
-                .filter(o -> Objects.equals(PaymentStatusEnum.PENDING.getValue(), o.getPaymentStatus()))
+                .filter(o -> Objects.equals(PurchasePaymentStatusEnum.PENDING.getValue(), o.getPaymentStatus()))
                 .count();
         long partiallyPaidCount = allOrders.stream()
-                .filter(o -> Objects.equals(PaymentStatusEnum.PARTIALLY_PAID.getValue(), o.getPaymentStatus()))
+                .filter(o -> Objects.equals(PurchasePaymentStatusEnum.PARTIALLY_PAID.getValue(), o.getPaymentStatus()))
                 .count();
         long completedPaymentCount = allOrders.stream()
-                .filter(o -> Objects.equals(PaymentStatusEnum.COMPLETED.getValue(), o.getPaymentStatus()))
+                .filter(o -> Objects.equals(PurchasePaymentStatusEnum.COMPLETED.getValue(), o.getPaymentStatus()))
                 .count();
 
         // 紧急订单统计
@@ -805,7 +805,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         newOrder.setOrderTotalAmount(sourceOrder.getOrderTotalAmount());
         newOrder.setApprovalStatus(ApproveStatusEnum.DRAFT.getValue());
         newOrder.setReceiptStatus(ReceiptStatusEnum.PENDING.getValue());
-        newOrder.setPaymentStatus(PaymentStatusEnum.PENDING.getValue());
+        newOrder.setPaymentStatus(PurchasePaymentStatusEnum.PENDING.getValue());
         newOrder.setPaidAmount(BigDecimal.ZERO);
         newOrder.setContractNo(sourceOrder.getContractNo());
         newOrder.setDeliveryMethod(sourceOrder.getDeliveryMethod());
@@ -940,7 +940,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 item.setReceiptStatus(ReceiptStatusEnum.PENDING.getValue());
             }
             if (item.getInquiryStatus() == null) {
-                item.setInquiryStatus(InquiryStatus.PENDING.getValue());
+                item.setInquiryStatus(PurchaseInquiryStatus.PENDING.getValue());
             }
 
             orderItemMapper.insert(item);

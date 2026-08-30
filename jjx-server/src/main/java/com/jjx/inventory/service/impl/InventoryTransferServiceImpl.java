@@ -1,6 +1,6 @@
 package com.jjx.inventory.service.impl;
 
-import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -168,7 +168,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             String dateStr = params.get("expectedDate").toString();
             order.setExpectedDate(LocalDate.parse(dateStr));
         }
-        order.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
         order.setRemark((String) params.get("remark"));
 
         // 3. 解析明细列表
@@ -242,7 +242,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             return false;
         }
 
-        order.setApproveStatus(OrderStatusEnum.PENDING.getValue());
+        order.setApproveStatus(InventoryOrderStatusEnum.PENDING.getValue());
         return transferOrderMapper.updateById(order) > 0;
     }
 
@@ -255,16 +255,16 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getValue().equals(order.getApproveStatus())) {
+        if (!InventoryOrderStatusEnum.PENDING.getValue().equals(order.getApproveStatus())) {
             log.error("调拨单审批状态不正确，无法审批: transferId={}, status={}", transferId, order.getApproveStatus());
             return false;
         }
 
-        order.setApproveStatus(OrderStatusEnum.APPROVED.getValue());
+        order.setApproveStatus(InventoryOrderStatusEnum.APPROVED.getValue());
         order.setApproverId(approverId);
         order.setApproverName(approverName);
         order.setApproveRemark(remark);
-        order.setOrderStatus(OrderStatusEnum.APPROVED.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
         return transferOrderMapper.updateById(order) > 0;
     }
 
@@ -277,16 +277,16 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getValue().equals(order.getApproveStatus())) {
+        if (!InventoryOrderStatusEnum.PENDING.getValue().equals(order.getApproveStatus())) {
             log.error("调拨单审批状态不正确，无法驳回: transferId={}, status={}", transferId, order.getApproveStatus());
             return false;
         }
 
-        order.setApproveStatus(OrderStatusEnum.REJECTED.getValue());
+        order.setApproveStatus(InventoryOrderStatusEnum.REJECTED.getValue());
         order.setApproverId(approverId);
         order.setApproverName(approverName);
         order.setApproveRemark(remark);
-        order.setOrderStatus(OrderStatusEnum.CANCELLED.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
         return transferOrderMapper.updateById(order) > 0;
     }
 
@@ -301,11 +301,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         }
 
         // 校验状态：必须已审核
-        if (!OrderStatusEnum.APPROVED.getValue().equals(order.getApproveStatus())) {
+        if (!InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getApproveStatus())) {
             log.error("调拨单审批状态不正确，无法调出: transferId={}, approveStatus={}", transferId, order.getApproveStatus());
             return false;
         }
-        if (!OrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus())) {
+        if (!InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus())) {
             log.error("调拨单状态不正确，无法调出: transferId={}, orderStatus={}", transferId, order.getOrderStatus());
             return false;
         }
@@ -373,7 +373,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         }
 
         // 更新调拨单状态
-        order.setOrderStatus(OrderStatusEnum.OUT_CONFIRM.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.OUT_CONFIRM.getValue());
         order.setOutOperator(operatorName);
         order.setOutTime(LocalDateTime.now());
         transferOrderMapper.updateById(order);
@@ -396,7 +396,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         }
 
         // 校验状态：必须已调出
-        if (!OrderStatusEnum.OUT_CONFIRM.getValue().equals(order.getOrderStatus())) {
+        if (!InventoryOrderStatusEnum.OUT_CONFIRM.getValue().equals(order.getOrderStatus())) {
             log.error("调拨单状态不正确，无法调入: transferId={}, orderStatus={}", transferId, order.getOrderStatus());
             return false;
         }
@@ -462,7 +462,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         }
 
         // 更新调拨单状态为 completed
-        order.setOrderStatus(OrderStatusEnum.COMPLETED.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         order.setInOperator(operatorName);
         order.setInTime(LocalDateTime.now());
         order.setActualDate(LocalDate.now());
@@ -485,13 +485,13 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             return false;
         }
 
-        if (OrderStatusEnum.IN_CONFIRM.getValue().equals(order.getOrderStatus()) || OrderStatusEnum.CLOSED.getValue().equals(order.getOrderStatus())) {
+        if (InventoryOrderStatusEnum.IN_CONFIRM.getValue().equals(order.getOrderStatus()) || InventoryOrderStatusEnum.CLOSED.getValue().equals(order.getOrderStatus())) {
             log.error("已完成的调拨单无法取消: transferId={}", transferId);
             return false;
         }
 
         // 方案A（2026-08-06）：OUT_CONFIRM（已调出未调入）取消 → 回补源仓库存，避免库存凭空消失
-        if (OrderStatusEnum.OUT_CONFIRM.getValue().equals(order.getOrderStatus())) {
+        if (InventoryOrderStatusEnum.OUT_CONFIRM.getValue().equals(order.getOrderStatus())) {
             List<InventoryTransferItem> items = transferItemMapper.selectByTransferId(transferId);
             if (items != null) {
                 for (InventoryTransferItem item : items) {
@@ -540,7 +540,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             }
         }
 
-        order.setOrderStatus(OrderStatusEnum.CANCELLED.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
         order.setRemark(reason);
         return transferOrderMapper.updateById(order) > 0;
     }
@@ -549,7 +549,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     public List<TransferVO> getPendingApproval() {
         List<InventoryTransferOrder> orders = transferOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryTransferOrder>()
-                        .eq(InventoryTransferOrder::getApproveStatus, OrderStatusEnum.PENDING.getValue())
+                        .eq(InventoryTransferOrder::getApproveStatus, InventoryOrderStatusEnum.PENDING.getValue())
                         .orderByAsc(InventoryTransferOrder::getCreateTime)
         );
         return convertToVOList(orders);
@@ -559,7 +559,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     public List<TransferVO> getProcessing() {
         List<InventoryTransferOrder> orders = transferOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryTransferOrder>()
-                        .in(InventoryTransferOrder::getOrderStatus, OrderStatusEnum.APPROVED.getValue(), OrderStatusEnum.OUT_CONFIRM.getValue())
+                        .in(InventoryTransferOrder::getOrderStatus, InventoryOrderStatusEnum.APPROVED.getValue(), InventoryOrderStatusEnum.OUT_CONFIRM.getValue())
                         .orderByAsc(InventoryTransferOrder::getCreateTime)
         );
         return convertToVOList(orders);

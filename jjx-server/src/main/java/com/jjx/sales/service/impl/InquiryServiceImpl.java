@@ -12,7 +12,7 @@ import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.entity.SalesQuotationItem;
 import com.jjx.sales.domain.vo.InquiryToQuotationVO;
 import com.jjx.sales.domain.vo.SalesInquiryEditVO;
-import com.jjx.sales.enums.InquiryStatus;
+import com.jjx.sales.enums.SalesInquiryStatus;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.sales.mapper.SalesInquiryMapper;
 import com.jjx.sales.mapper.QuotationMapper;
@@ -171,7 +171,7 @@ public class InquiryServiceImpl implements IInquiryService {
 
         // 设置默认值
         if (inquiry.getInquiryStatus() == null) {
-            inquiry.setInquiryStatus(InquiryStatus.DRAFT.getValue());
+            inquiry.setInquiryStatus(SalesInquiryStatus.DRAFT.getValue());
         }
         if (inquiry.getInquiryType() == null) {
             inquiry.setInquiryType(1); // 默认标准品
@@ -224,7 +224,7 @@ public class InquiryServiceImpl implements IInquiryService {
         }
 
         // 已转换的询价单不能修改
-        if (InquiryStatus.CONVERTED.getValue().equals(oldInquiry.getInquiryStatus())) {
+        if (SalesInquiryStatus.CONVERTED.getValue().equals(oldInquiry.getInquiryStatus())) {
             throw new BusinessException("已转换的询价单不能修改");
         }
 
@@ -361,7 +361,7 @@ public class InquiryServiceImpl implements IInquiryService {
         // 已转报价的询价单禁止删除（保护报价单来源记录）
         List<SalesInquiry> list = inquiryMapper.selectBatchIds(Arrays.asList(inquiryIds));
         for (SalesInquiry inquiry : list) {
-            if (inquiry != null && InquiryStatus.CONVERTED.getValue().equals(inquiry.getInquiryStatus())) {
+            if (inquiry != null && SalesInquiryStatus.CONVERTED.getValue().equals(inquiry.getInquiryStatus())) {
                 throw new BusinessException("询价单[" + inquiry.getInquiryNo() + "]已转报价，不能删除");
             }
         }
@@ -404,12 +404,12 @@ public class InquiryServiceImpl implements IInquiryService {
             throw new BusinessException("询价单不存在或已被删除");
         }
         Integer status = inquiry.getInquiryStatus();
-        if (!InquiryStatus.DRAFT.getValue().equals(status) && !InquiryStatus.PENDING.getValue().equals(status)) {
+        if (!SalesInquiryStatus.DRAFT.getValue().equals(status) && !SalesInquiryStatus.PENDING.getValue().equals(status)) {
             throw new BusinessException("只有草稿或待处理的询价单可以发送");
         }
         SalesInquiry update = new SalesInquiry();
         update.setInquiryId(inquiryId);
-        update.setInquiryStatus(InquiryStatus.SENT.getValue());
+        update.setInquiryStatus(SalesInquiryStatus.SENT.getValue());
         return inquiryMapper.updateById(update);
     }
 
@@ -423,12 +423,12 @@ public class InquiryServiceImpl implements IInquiryService {
         if (inquiry == null || inquiry.getDeleted() == 1) {
             throw new BusinessException("询价单不存在或已被删除");
         }
-        if (!InquiryStatus.SENT.getValue().equals(inquiry.getInquiryStatus())) {
+        if (!SalesInquiryStatus.SENT.getValue().equals(inquiry.getInquiryStatus())) {
             throw new BusinessException("只有已发送的询价单可以确认");
         }
         SalesInquiry update = new SalesInquiry();
         update.setInquiryId(inquiryId);
-        update.setInquiryStatus(InquiryStatus.ACCEPTED.getValue());
+        update.setInquiryStatus(SalesInquiryStatus.ACCEPTED.getValue());
         return inquiryMapper.updateById(update);
     }
 
@@ -442,12 +442,12 @@ public class InquiryServiceImpl implements IInquiryService {
         if (inquiry == null || inquiry.getDeleted() == 1) {
             throw new BusinessException("询价单不存在或已被删除");
         }
-        if (!InquiryStatus.SENT.getValue().equals(inquiry.getInquiryStatus())) {
+        if (!SalesInquiryStatus.SENT.getValue().equals(inquiry.getInquiryStatus())) {
             throw new BusinessException("只有已发送的询价单可以拒绝");
         }
         SalesInquiry update = new SalesInquiry();
         update.setInquiryId(inquiryId);
-        update.setInquiryStatus(InquiryStatus.REJECTED.getValue());
+        update.setInquiryStatus(SalesInquiryStatus.REJECTED.getValue());
         return inquiryMapper.updateById(update);
     }
 
@@ -461,7 +461,7 @@ public class InquiryServiceImpl implements IInquiryService {
     public InquiryToQuotationVO convertToQuotation(Long inquiryId) {
         SalesInquiry inquiry = selectInquiryById(inquiryId);
 
-        if (InquiryStatus.CONVERTED.getValue().equals(inquiry.getInquiryStatus())) {
+        if (SalesInquiryStatus.CONVERTED.getValue().equals(inquiry.getInquiryStatus())) {
             throw new BusinessException("该询价单已转换，不能重复转换");
         }
 
@@ -496,7 +496,7 @@ public class InquiryServiceImpl implements IInquiryService {
         }
 
         // 更新询价单状态
-        inquiry.setInquiryStatus(InquiryStatus.CONVERTED.getValue());
+        inquiry.setInquiryStatus(SalesInquiryStatus.CONVERTED.getValue());
         inquiry.setConvertedQuotationId(quotation.getQuotationId());
         inquiry.setConvertTime(LocalDateTime.now());
         inquiryMapper.updateById(inquiry);
@@ -539,7 +539,7 @@ public class InquiryServiceImpl implements IInquiryService {
         LocalDateTime auditTime = LocalDateTime.now();
         SysOperLog inquiryLog = buildConversionOperLog(
             "询价单管理", BusinessType.UPDATE, "inquiry", inquiry.getInquiryId(),
-            inquiry.getTraceId(), InquiryStatus.CONVERTED.getLabel(), auditTime,
+            inquiry.getTraceId(), SalesInquiryStatus.CONVERTED.getLabel(), auditTime,
             "询价单[" + inquiry.getInquiryNo() + "]转为报价单[" + quotation.getQuotationNo() + "]",
             JSONUtil.toJsonStr(Map.of(
                 "action", "CONVERT_TO_QUOTATION",
@@ -733,12 +733,12 @@ public class InquiryServiceImpl implements IInquiryService {
         //    只有 草稿(0) 和 已转报价(3) 两个状态有实际逻辑
         //    pending/sent/accepted/rejected 为预留状态，暂不实现
         Object[][] statuses = {
-            {InquiryStatus.DRAFT.getValue(), "草稿"},          // ✅ 新建时默认
-            {InquiryStatus.PENDING.getValue(), "待处理"},      // 💤 预留
-            {InquiryStatus.SENT.getValue(), "已发送"},         // 💤 预留
-            {InquiryStatus.ACCEPTED.getValue(), "已确认"},     // 💤 预留
-            {InquiryStatus.REJECTED.getValue(), "已拒绝"},     // 💤 预留
-            {InquiryStatus.CONVERTED.getValue(), "已转报价"}   // ✅ 转报价时自动设置
+            {SalesInquiryStatus.DRAFT.getValue(), "草稿"},          // ✅ 新建时默认
+            {SalesInquiryStatus.PENDING.getValue(), "待处理"},      // 💤 预留
+            {SalesInquiryStatus.SENT.getValue(), "已发送"},         // 💤 预留
+            {SalesInquiryStatus.ACCEPTED.getValue(), "已确认"},     // 💤 预留
+            {SalesInquiryStatus.REJECTED.getValue(), "已拒绝"},     // 💤 预留
+            {SalesInquiryStatus.CONVERTED.getValue(), "已转报价"}   // ✅ 转报价时自动设置
         };
 
         for (Object[] s : statuses) {

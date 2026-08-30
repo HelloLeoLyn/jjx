@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
  * 订单状态枚举
  */
 @Getter
-public enum OrderStatusEnum implements BizStatusEnum {
+public enum ProductionOrderStatusEnum implements BizStatusEnum {
 
     /**
      * 草稿 - 订单创建但未提交
@@ -88,10 +88,10 @@ public enum OrderStatusEnum implements BizStatusEnum {
      */
     private final String description;
 
-    private static final Map<Integer, OrderStatusEnum> VALUE_MAP =
-            Arrays.stream(values()).collect(Collectors.toMap(OrderStatusEnum::getValue, s -> s));
+    private static final Map<Integer, ProductionOrderStatusEnum> VALUE_MAP =
+            Arrays.stream(values()).collect(Collectors.toMap(ProductionOrderStatusEnum::getValue, s -> s));
 
-    OrderStatusEnum(Integer value, String label, String description) {
+    ProductionOrderStatusEnum(Integer value, String label, String description) {
         this.value = value;
         this.label = label;
         this.description = description;
@@ -100,15 +100,15 @@ public enum OrderStatusEnum implements BizStatusEnum {
     /**
      * 根据编码获取枚举
      */
-    public static OrderStatusEnum getByValue(Integer value) {
+    public static ProductionOrderStatusEnum getByValue(Integer value) {
         return VALUE_MAP.get(value);
     }
 
     /**
      * 根据名称获取枚举
      */
-    public static OrderStatusEnum getByName(String label) {
-        for (OrderStatusEnum status : values()) {
+    public static ProductionOrderStatusEnum getByName(String label) {
+        for (ProductionOrderStatusEnum status : values()) {
             if (status.getLabel().equals(label)) {
                 return status;
             }
@@ -134,7 +134,7 @@ public enum OrderStatusEnum implements BizStatusEnum {
      * 获取所有编码
      */
     public static Integer[] getAllValues() {
-        OrderStatusEnum[] values = values();
+        ProductionOrderStatusEnum[] values = values();
         Integer[] valueArray = new Integer[values.length];
         for (int i = 0; i < values.length; i++) {
             valueArray[i] = values[i].getValue();
@@ -146,7 +146,7 @@ public enum OrderStatusEnum implements BizStatusEnum {
      * 获取所有名称
      */
     public static String[] getAllNames() {
-        OrderStatusEnum[] values = values();
+        ProductionOrderStatusEnum[] values = values();
         String[] names = new String[values.length];
         for (int i = 0; i < values.length; i++) {
             names[i] = values[i].getLabel();
@@ -234,34 +234,34 @@ public enum OrderStatusEnum implements BizStatusEnum {
     /**
      * 获取下一个可能的状态
      */
-    public OrderStatusEnum[] getNextPossibleStatuses() {
+    public ProductionOrderStatusEnum[] getNextPossibleStatuses() {
         switch (this) {
             case DRAFT:
-                return new OrderStatusEnum[]{PENDING_APPROVAL, CANCELLED};
+                return new ProductionOrderStatusEnum[]{PENDING_APPROVAL, CANCELLED};
             case PENDING_APPROVAL:
-                return new OrderStatusEnum[]{APPROVED, REJECTED};
+                return new ProductionOrderStatusEnum[]{APPROVED, REJECTED};
             case APPROVED:
-                return new OrderStatusEnum[]{PLANNED, CANCELLED};
+                return new ProductionOrderStatusEnum[]{PLANNED, CANCELLED};
             case REJECTED:
-                return new OrderStatusEnum[]{DRAFT, CANCELLED};
+                return new ProductionOrderStatusEnum[]{DRAFT, CANCELLED};
             case PLANNED:
-                return new OrderStatusEnum[]{PENDING_START, CANCELLED};
+                return new ProductionOrderStatusEnum[]{PENDING_START, CANCELLED};
             case PENDING_START:
-                return new OrderStatusEnum[]{IN_PROGRESS, CANCELLED};
+                return new ProductionOrderStatusEnum[]{IN_PROGRESS, CANCELLED};
             case IN_PROGRESS:
-                return new OrderStatusEnum[]{PAUSED, COMPLETED, OVERDUE};
+                return new ProductionOrderStatusEnum[]{PAUSED, COMPLETED, OVERDUE};
             case PAUSED:
-                return new OrderStatusEnum[]{IN_PROGRESS, CANCELLED};
+                return new ProductionOrderStatusEnum[]{IN_PROGRESS, CANCELLED};
             case COMPLETED:
-                return new OrderStatusEnum[]{CLOSED};
+                return new ProductionOrderStatusEnum[]{CLOSED};
             case CANCELLED:
-                return new OrderStatusEnum[]{CLOSED};
+                return new ProductionOrderStatusEnum[]{CLOSED};
             case CLOSED:
-                return new OrderStatusEnum[]{};
+                return new ProductionOrderStatusEnum[]{};
             case OVERDUE:
-                return new OrderStatusEnum[]{IN_PROGRESS, CANCELLED};
+                return new ProductionOrderStatusEnum[]{IN_PROGRESS, CANCELLED};
             default:
-                return new OrderStatusEnum[]{};
+                return new ProductionOrderStatusEnum[]{};
         }
     }
 

@@ -1,6 +1,6 @@
 package com.jjx.inventory.service.impl;
 
-import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -176,7 +176,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         order.setRemark((String) params.get("remark"));
 
         // 初始状态：草稿
-        order.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
 
         // 插入主记录
         stocktakeOrderMapper.insert(order);
@@ -294,12 +294,12 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             return false;
         }
 
-        if (!OrderStatusEnum.DRAFT.getValue().equals(order.getOrderStatus())) {
+        if (!InventoryOrderStatusEnum.DRAFT.getValue().equals(order.getOrderStatus())) {
             log.error("盘点单状态不正确，无法开始盘点: stocktakeId={}, status={}", stocktakeId, order.getOrderStatus());
             return false;
         }
 
-        order.setOrderStatus(OrderStatusEnum.PROCESSING.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.PROCESSING.getValue());
         order.setActualStartTime(LocalDateTime.now());
         return stocktakeOrderMapper.updateById(order) > 0;
     }
@@ -314,7 +314,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             return false;
         }
 
-        if (!OrderStatusEnum.PROCESSING.getValue().equals(order.getOrderStatus())) {
+        if (!InventoryOrderStatusEnum.PROCESSING.getValue().equals(order.getOrderStatus())) {
             log.error("盘点单状态不正确，无法录入数据: stocktakeId={}, status={}", stocktakeId, order.getOrderStatus());
             return false;
         }
@@ -475,12 +475,12 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             return false;
         }
 
-        if (!OrderStatusEnum.PROCESSING.getValue().equals(order.getOrderStatus())) {
+        if (!InventoryOrderStatusEnum.PROCESSING.getValue().equals(order.getOrderStatus())) {
             log.error("盘点单状态不正确，无法确认结果: stocktakeId={}, status={}", stocktakeId, order.getOrderStatus());
             return false;
         }
 
-        order.setOrderStatus(OrderStatusEnum.CONFIRMED.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.CONFIRMED.getValue());
         order.setActualEndTime(LocalDateTime.now());
         return stocktakeOrderMapper.updateById(order) > 0;
     }
@@ -495,7 +495,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             return false;
         }
 
-        if (!OrderStatusEnum.CONFIRMED.getValue().equals(order.getOrderStatus())) {
+        if (!InventoryOrderStatusEnum.CONFIRMED.getValue().equals(order.getOrderStatus())) {
             log.error("盘点单状态不正确，无法处理盈亏: stocktakeId={}, status={}", stocktakeId, order.getOrderStatus());
             return false;
         }
@@ -504,7 +504,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         List<InventoryStocktakeItem> items = stocktakeItemMapper.selectByStocktakeId(stocktakeId);
         if (items == null || items.isEmpty()) {
             log.warn("盘点单{}没有明细数据，直接标记为已处理", stocktakeId);
-            order.setOrderStatus(OrderStatusEnum.PROCESSED.getValue());
+            order.setOrderStatus(InventoryOrderStatusEnum.PROCESSED.getValue());
             return stocktakeOrderMapper.updateById(order) > 0;
         }
 
@@ -554,7 +554,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             inboundOrder.setSourceId(stocktakeId);
             inboundOrder.setSourceNo(order.getStocktakeNo());
             inboundOrder.setWarehouseId(warehouseId);
-            inboundOrder.setOrderStatus(OrderStatusEnum.DRAFT.getValue()); // 创建为草稿状态，等待后续确认
+            inboundOrder.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue()); // 创建为草稿状态，等待后续确认
             inboundOrder.setInboundDate(LocalDate.now());
             inboundOrderMapper.insert(inboundOrder);
             Long inboundId = inboundOrder.getInboundId();
@@ -606,7 +606,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             outboundOrder.setSourceId(stocktakeId);
             outboundOrder.setSourceNo(order.getStocktakeNo());
             outboundOrder.setWarehouseId(warehouseId);
-            outboundOrder.setOrderStatus(OrderStatusEnum.DRAFT.getValue()); // 创建为草稿状态
+            outboundOrder.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue()); // 创建为草稿状态
             outboundOrder.setOutboundDate(LocalDate.now());
             outboundOrderMapper.insert(outboundOrder);
             Long outboundId = outboundOrder.getOutboundId();
@@ -649,7 +649,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         }
 
         // 3. 更新盘点单状态为 completed (已处理完成)
-        order.setOrderStatus(OrderStatusEnum.PROCESSED.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.PROCESSED.getValue());
         int updated = stocktakeOrderMapper.updateById(order);
 
         log.info("盘点盈亏处理完成: stocktakeId={}, 盘盈{}个, 盘亏{}个, operatorId={}, operatorName={}",
@@ -668,12 +668,12 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             return false;
         }
 
-        if (!OrderStatusEnum.PROCESSED.getValue().equals(order.getOrderStatus())) {
+        if (!InventoryOrderStatusEnum.PROCESSED.getValue().equals(order.getOrderStatus())) {
             log.error("盘点单状态不正确，无法关闭: stocktakeId={}, status={}", stocktakeId, order.getOrderStatus());
             return false;
         }
 
-        order.setOrderStatus(OrderStatusEnum.CLOSED.getValue());
+        order.setOrderStatus(InventoryOrderStatusEnum.CLOSED.getValue());
         return stocktakeOrderMapper.updateById(order) > 0;
     }
 
@@ -686,7 +686,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             return false;
         }
 
-        order.setApproveStatus(OrderStatusEnum.PENDING.getValue());
+        order.setApproveStatus(InventoryOrderStatusEnum.PENDING.getValue());
         return stocktakeOrderMapper.updateById(order) > 0;
     }
 
@@ -699,12 +699,12 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             return false;
         }
 
-        if (!OrderStatusEnum.PENDING.getValue().equals(order.getApproveStatus())) {
+        if (!InventoryOrderStatusEnum.PENDING.getValue().equals(order.getApproveStatus())) {
             log.error("盘点单审批状态不正确，无法审批: stocktakeId={}, status={}", stocktakeId, order.getApproveStatus());
             return false;
         }
 
-        order.setApproveStatus(OrderStatusEnum.APPROVED.getValue());
+        order.setApproveStatus(InventoryOrderStatusEnum.APPROVED.getValue());
         order.setApproverId(approverId);
         order.setApproverName(approverName);
         order.setApproveRemark(remark);
@@ -715,7 +715,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     public List<StocktakeVO> getProcessing() {
         List<InventoryStocktakeOrder> orders = stocktakeOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryStocktakeOrder>()
-                        .eq(InventoryStocktakeOrder::getOrderStatus, OrderStatusEnum.PROCESSING.getValue())
+                        .eq(InventoryStocktakeOrder::getOrderStatus, InventoryOrderStatusEnum.PROCESSING.getValue())
                         .orderByAsc(InventoryStocktakeOrder::getCreateTime)
         );
         return convertToVOList(orders);
@@ -725,7 +725,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     public List<StocktakeVO> getPendingApproval() {
         List<InventoryStocktakeOrder> orders = stocktakeOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryStocktakeOrder>()
-                        .eq(InventoryStocktakeOrder::getApproveStatus, OrderStatusEnum.PENDING.getValue())
+                        .eq(InventoryStocktakeOrder::getApproveStatus, InventoryOrderStatusEnum.PENDING.getValue())
                         .orderByAsc(InventoryStocktakeOrder::getCreateTime)
         );
         return convertToVOList(orders);

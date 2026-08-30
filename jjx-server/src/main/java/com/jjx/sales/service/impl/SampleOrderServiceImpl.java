@@ -2,13 +2,13 @@ package com.jjx.sales.service.impl;
 
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
-import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.sales.domain.dto.SalesOrderProductDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.entity.SalesSampleProcess;
 import com.jjx.sales.domain.entity.SalesSampleBom;
-import com.jjx.sales.enums.OrderTypeEnum;
+import com.jjx.sales.enums.SalesOrderTypeEnum;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.QuotationMapper;
@@ -125,7 +125,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setContactPhone(contactPhone != null && !contactPhone.isEmpty()
                 ? contactPhone : quotation.getContactPhone());
         order.setOrderDate(new Date());
-        order.setOrderType(OrderTypeEnum.SAMPLE.getCode());
+        order.setOrderType(SalesOrderTypeEnum.SAMPLE.getCode());
         order.setSampleStatus(SampleOrderStatusEnum.CREATED.getValue());
         order.setSampleRound(1);
         // DEV-1111：打样数量前端传入优先；未传时按报价单明细数量求和默认（与 total_quantity 口径一致），无明细兜底 1
@@ -205,7 +205,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (source == null) {
             throw new BusinessException("样品单不存在");
         }
-        if (!OrderTypeEnum.SAMPLE.getCode().equals(source.getOrderType())) {
+        if (!SalesOrderTypeEnum.SAMPLE.getCode().equals(source.getOrderType())) {
             throw new BusinessException("该单据不是样品单，不可复制");
         }
         if (source.getSampleStatus() == null
@@ -228,7 +228,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         copy.setContactPhone(source.getContactPhone());
         copy.setOrderDate(new Date());
         copy.setDeliveryDate(source.getDeliveryDate());
-        copy.setOrderType(OrderTypeEnum.SAMPLE.getCode());
+        copy.setOrderType(SalesOrderTypeEnum.SAMPLE.getCode());
         copy.setSampleStatus(SampleOrderStatusEnum.CREATED.getValue());
         copy.setSampleRound(1);
         copy.setSampleQty(0);
@@ -301,7 +301,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             newLog.setBizType("sample");
             newLog.setBizId(String.valueOf(copy.getOrderId()));
             newLog.setTraceId(copy.getTraceId());
-            newLog.setBizStatus(OrderStatusEnum.APPROVED.getLabel()); // 新单草稿
+            newLog.setBizStatus(InventoryOrderStatusEnum.APPROVED.getLabel()); // 新单草稿
             newLog.setStatus(1);
             newLog.setOperParam("{\"action\":\"copy\",\"sourceOrderNo\":\"" + source.getOrderNo() + "\"}");
             newLog.setCreateTime(LocalDateTime.now());
@@ -323,7 +323,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             operLog.setBizType("sample");
             operLog.setBizId(String.valueOf(orderId));
             operLog.setTraceId(source.getTraceId());
-            operLog.setBizStatus(OrderStatusEnum.getByValue(source.getOrderStatus()).getLabel());
+            operLog.setBizStatus(InventoryOrderStatusEnum.getByValue(source.getOrderStatus()).getLabel());
             operLog.setStatus(1);
             operLog.setOperParam("{\"action\":\"copy\",\"newOrderNo\":\"" + copy.getOrderNo()
                     + "\",\"newOrderId\":" + copy.getOrderId() + "}");
@@ -552,7 +552,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 ? dto.getContactPhone()
                 : (quotation != null && quotation.getContactPhone() != null ? quotation.getContactPhone() : customer.getContactPhone()));
         order.setOrderDate(new Date());
-        order.setOrderType(OrderTypeEnum.SAMPLE.getCode());
+        order.setOrderType(SalesOrderTypeEnum.SAMPLE.getCode());
         order.setSampleStatus(SampleOrderStatusEnum.CREATED.getValue());
         order.setSampleRound(1);
         order.setCurrency(quotation != null ? quotation.getCurrency() : "CNY");
@@ -2670,7 +2670,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         standardOrder.setContactPhone(sampleOrder.getContactPhone());
         standardOrder.setOrderDate(new Date());
         standardOrder.setDeliveryDate(sampleOrder.getDeliveryDate());
-        standardOrder.setOrderType(OrderTypeEnum.STANDARD.getCode());
+        standardOrder.setOrderType(SalesOrderTypeEnum.STANDARD.getCode());
         standardOrder.setOrderStatus(1); // DRAFT
         standardOrder.setCurrency(sampleOrder.getCurrency());
         standardOrder.setExchangeRate(sampleOrder.getExchangeRate());
@@ -2718,7 +2718,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             operLog.setBizType("order");
             operLog.setBizId(String.valueOf(standardOrder.getOrderId()));
             operLog.setTraceId(sampleOrder.getTraceId());
-            operLog.setBizStatus(OrderStatusEnum.DRAFT.getLabel()); // 订单草稿
+            operLog.setBizStatus(InventoryOrderStatusEnum.DRAFT.getLabel()); // 订单草稿
             operLog.setStatus(1);
             operLog.setOperParam("{\"orderNo\":\"" + standardOrder.getOrderNo()
                     + "\",\"sourceSample\":\"" + sampleOrder.getOrderNo() + "\"}");

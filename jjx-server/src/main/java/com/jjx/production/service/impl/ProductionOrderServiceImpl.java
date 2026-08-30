@@ -22,7 +22,7 @@ import com.jjx.production.domain.dto.ProductionOrderUpdateDTO;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.vo.OrderStatisticsVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
-import com.jjx.production.enums.OrderStatusEnum;
+import com.jjx.production.enums.ProductionOrderStatusEnum;
 import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
@@ -87,7 +87,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (order.getTraceId() == null || order.getTraceId().isEmpty()) {
             order.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
         }
-        order.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
+        order.setOrderStatus(ProductionOrderStatusEnum.DRAFT.getValue());
         // 保存到数据库
         boolean success = save(order);
         if (!success) {
@@ -275,7 +275,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 更新状态为进行中
-        order.setOrderStatus(OrderStatusEnum.IN_PROGRESS.getValue());
+        order.setOrderStatus(ProductionOrderStatusEnum.IN_PROGRESS.getValue());
         order.setActualStartTime(LocalDateTime.now());
 
         boolean success = updateById(order);
@@ -294,10 +294,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         try {
             if (order.getSalesOrderId() != null) {
                 com.jjx.sales.domain.entity.SalesOrder so = salesOrderMapper.selectById(order.getSalesOrderId());
-                if (so != null && (com.jjx.sales.enums.OrderStatusEnum.APPROVED.getValue().equals(so.getOrderStatus())
-                        || com.jjx.sales.enums.OrderStatusEnum.CONFIRMED.getValue().equals(so.getOrderStatus()))) {
+                if (so != null && (com.jjx.sales.enums.SalesOrderStatusEnum.APPROVED.getValue().equals(so.getOrderStatus())
+                        || com.jjx.sales.enums.SalesOrderStatusEnum.CONFIRMED.getValue().equals(so.getOrderStatus()))) {
                     int up = salesOrderMapper.updateStatusWithCheck(order.getSalesOrderId(),
-                            com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getValue(),
+                            com.jjx.sales.enums.SalesOrderStatusEnum.IN_PRODUCTION.getValue(),
                             so.getOrderStatus());
                     if (up > 0) {
                         log.info("工单{}启动，销售订单{} 已审核/已确认(4/6)→生产中(7)", orderId, order.getSalesOrderNo());
@@ -328,7 +328,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 更新状态为暂停
-        order.setOrderStatus(OrderStatusEnum.PAUSED.getValue());
+        order.setOrderStatus(ProductionOrderStatusEnum.PAUSED.getValue());
 
         boolean success = updateById(order);
         if (!success) {
@@ -379,7 +379,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         validateOrderCompletion(order);
 
         // 更新状态为已完成
-        order.setOrderStatus(OrderStatusEnum.COMPLETED.getValue());
+        order.setOrderStatus(ProductionOrderStatusEnum.COMPLETED.getValue());
         order.setActualEndTime(LocalDateTime.now());
         order.setCompletedBy(com.jjx.system.utils.SecurityUtils.getUsername()); // 053完工留痕：谁
 
@@ -477,7 +477,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 更新状态为已取消
-        order.setOrderStatus(OrderStatusEnum.CANCELLED.getValue());
+        order.setOrderStatus(ProductionOrderStatusEnum.CANCELLED.getValue());
 
         boolean success = updateById(order);
         if (!success) {
@@ -498,9 +498,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                         .eq(ProductionOrder::getSalesOrderId, salesOrderId)
                         .eq(ProductionOrder::getOrderType, "PLAN")
                         .notIn(ProductionOrder::getOrderStatus,
-                                OrderStatusEnum.CLOSED.getValue(),
-                                OrderStatusEnum.CANCELLED.getValue(),
-                                OrderStatusEnum.COMPLETED.getValue()));
+                                ProductionOrderStatusEnum.CLOSED.getValue(),
+                                ProductionOrderStatusEnum.CANCELLED.getValue(),
+                                ProductionOrderStatusEnum.COMPLETED.getValue()));
     }
 
     @Override
@@ -517,7 +517,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         int skipped = 0;
         for (ProductionOrder order : orders) {
             if (canCancelOrder(order)) {
-                order.setOrderStatus(OrderStatusEnum.CANCELLED.getValue());
+                order.setOrderStatus(ProductionOrderStatusEnum.CANCELLED.getValue());
                 updateById(order);
                 // V1 验收：取消工单释放计划占用（幂等）
                 releasePlanQuotaOnCancel(order);
@@ -533,12 +533,12 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (cancelled > 0 && skipped == 0) {
             try {
                 com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(salesOrderId);
-                if (salesOrder != null && com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getValue()
+                if (salesOrder != null && com.jjx.sales.enums.SalesOrderStatusEnum.IN_PRODUCTION.getValue()
                         .equals(salesOrder.getOrderStatus())) {
                     int updated = salesOrderMapper.updateStatusWithCheck(
                             salesOrderId,
-                            com.jjx.sales.enums.OrderStatusEnum.APPROVED.getValue(),
-                            com.jjx.sales.enums.OrderStatusEnum.IN_PRODUCTION.getValue());
+                            com.jjx.sales.enums.SalesOrderStatusEnum.APPROVED.getValue(),
+                            com.jjx.sales.enums.SalesOrderStatusEnum.IN_PRODUCTION.getValue());
                     if (updated > 0) {
                         log.info("全部工单已取消，订单{}自动回退：生产中(7)→已审核(4)", salesOrderId);
                         // 释放成品预留 + 材料预占
@@ -577,7 +577,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 更新状态为已关闭
-        order.setOrderStatus(OrderStatusEnum.CLOSED.getValue());
+        order.setOrderStatus(ProductionOrderStatusEnum.CLOSED.getValue());
 
         boolean success = updateById(order);
         if (!success) {
@@ -644,7 +644,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         targetOrder.setOrderId(null);
         targetOrder.setOrderNo(targetOrderCode);
         targetOrder.setProductName(targetOrderName);
-        targetOrder.setOrderStatus(OrderStatusEnum.DRAFT.getValue()); // 新工单状态为草稿
+        targetOrder.setOrderStatus(ProductionOrderStatusEnum.DRAFT.getValue()); // 新工单状态为草稿
         targetOrder.setCreateTime(null);
         targetOrder.setUpdateTime(null);
         targetOrder.setActualStartTime(null);
@@ -686,7 +686,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
                 // 转换为实体并保存
                 ProductionOrder order = productionOrderConverter.toEntity(dto);
-                order.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
+                order.setOrderStatus(ProductionOrderStatusEnum.DRAFT.getValue());
                 save(order);
 
                 successCount++;
@@ -740,31 +740,31 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         // 按状态统计
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOrder::getOrderStatus, OrderStatusEnum.DRAFT.getValue());
+        wrapper.eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.DRAFT.getValue());
         long draftCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOrder::getOrderStatus, OrderStatusEnum.PENDING_APPROVAL.getValue());
+        wrapper.eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.PENDING_APPROVAL.getValue());
         long pendingApprovalCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOrder::getOrderStatus, OrderStatusEnum.APPROVED.getValue());
+        wrapper.eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.APPROVED.getValue());
         long approvedCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOrder::getOrderStatus, OrderStatusEnum.PLANNED.getValue());
+        wrapper.eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.PLANNED.getValue());
         long scheduledCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOrder::getOrderStatus, OrderStatusEnum.IN_PROGRESS.getValue());
+        wrapper.eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.IN_PROGRESS.getValue());
         long inProgressCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOrder::getOrderStatus, OrderStatusEnum.COMPLETED.getValue());
+        wrapper.eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.COMPLETED.getValue());
         long completedCount = count(wrapper);
 
         wrapper = buildQueryWrapper(queryDTO);
-        wrapper.eq(ProductionOrder::getOrderStatus, OrderStatusEnum.CANCELLED.getValue());
+        wrapper.eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.CANCELLED.getValue());
         long cancelledCount = count(wrapper);
 
         // 构建统计结果
@@ -857,7 +857,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private static boolean canDeleteOrder(ProductionOrder order) {
         // 只有草稿和已取消状态的工单可以删除
         Integer status = order.getOrderStatus();
-        return OrderStatusEnum.DRAFT.getValue().equals(status) || OrderStatusEnum.CANCELLED.getValue().equals(status);
+        return ProductionOrderStatusEnum.DRAFT.getValue().equals(status) || ProductionOrderStatusEnum.CANCELLED.getValue().equals(status);
     }
 
     /**
@@ -866,7 +866,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private static boolean canStartOrder(ProductionOrder order) {
         // 只有已批准和已排程状态的工单可以开始
         Integer status = order.getOrderStatus();
-        return OrderStatusEnum.APPROVED.getValue().equals(status) || OrderStatusEnum.PLANNED.getValue().equals(status);
+        return ProductionOrderStatusEnum.APPROVED.getValue().equals(status) || ProductionOrderStatusEnum.PLANNED.getValue().equals(status);
     }
 
     /**
@@ -874,7 +874,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
      */
     private static boolean canPauseOrder(ProductionOrder order) {
         // 只有进行中状态的工单可以暂停
-        return OrderStatusEnum.IN_PROGRESS.getValue().equals(order.getOrderStatus());
+        return ProductionOrderStatusEnum.IN_PROGRESS.getValue().equals(order.getOrderStatus());
     }
 
     /**
@@ -888,9 +888,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private void validateOrderCompletion(ProductionOrder order) {
         List<String> blockers = new ArrayList<>();
         // ① 状态=进行中
-        if (!OrderStatusEnum.IN_PROGRESS.getValue().equals(order.getOrderStatus())) {
+        if (!ProductionOrderStatusEnum.IN_PROGRESS.getValue().equals(order.getOrderStatus())) {
             log.warn("完工质检门[1/4]失败：工单{}状态不是进行中", order.getOrderId());
-            OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
+            ProductionOrderStatusEnum currentStatus = ProductionOrderStatusEnum.getByValue(order.getOrderStatus());
             blockers.add("工单状态须为进行中，当前为"
                     + (currentStatus == null ? String.valueOf(order.getOrderStatus()) : currentStatus.getLabel()));
         }
@@ -948,13 +948,13 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private static boolean canCancelOrder(ProductionOrder order) {
         // 草稿、待审批、已批准、已计划、待开始、进行中、已暂停状态的工单可以取消
         Integer status = order.getOrderStatus();
-        return OrderStatusEnum.DRAFT.getValue().equals(status) ||
-               OrderStatusEnum.PENDING_APPROVAL.getValue().equals(status) ||
-               OrderStatusEnum.APPROVED.getValue().equals(status) ||
-               OrderStatusEnum.PLANNED.getValue().equals(status) ||
-               OrderStatusEnum.PENDING_START.getValue().equals(status) ||
-               OrderStatusEnum.IN_PROGRESS.getValue().equals(status) ||
-               OrderStatusEnum.PAUSED.getValue().equals(status);
+        return ProductionOrderStatusEnum.DRAFT.getValue().equals(status) ||
+               ProductionOrderStatusEnum.PENDING_APPROVAL.getValue().equals(status) ||
+               ProductionOrderStatusEnum.APPROVED.getValue().equals(status) ||
+               ProductionOrderStatusEnum.PLANNED.getValue().equals(status) ||
+               ProductionOrderStatusEnum.PENDING_START.getValue().equals(status) ||
+               ProductionOrderStatusEnum.IN_PROGRESS.getValue().equals(status) ||
+               ProductionOrderStatusEnum.PAUSED.getValue().equals(status);
     }
 
     /**
@@ -975,7 +975,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             return;
         }
         // 兜底幂等：只有真正 CANCELLED 状态才释放
-        if (!OrderStatusEnum.CANCELLED.getValue().equals(cancelledWorkOrder.getOrderStatus())) {
+        if (!ProductionOrderStatusEnum.CANCELLED.getValue().equals(cancelledWorkOrder.getOrderStatus())) {
             return;
         }
         BigDecimal qty = cancelledWorkOrder.getPlannedQuantity();
@@ -996,7 +996,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             }
             plan.setRemainingQuantity(restored);
             // 计划恢复可下达 → 状态回退到已批准（可再次转工单）
-            plan.setOrderStatus(OrderStatusEnum.APPROVED.getValue());
+            plan.setOrderStatus(ProductionOrderStatusEnum.APPROVED.getValue());
             updateById(plan);
             log.info("取消工单{}释放计划占用：计划{} 可下达数量 {} -> {}",
                     cancelledWorkOrder.getOrderId(), plan.getOrderNo(),
@@ -1013,7 +1013,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private static boolean canCloseOrder(ProductionOrder order) {
         // 只有已完成和已取消状态的工单可以关闭
         Integer status = order.getOrderStatus();
-        return OrderStatusEnum.COMPLETED.getValue().equals(status) || OrderStatusEnum.CANCELLED.getValue().equals(status);
+        return ProductionOrderStatusEnum.COMPLETED.getValue().equals(status) || ProductionOrderStatusEnum.CANCELLED.getValue().equals(status);
     }
 
 
@@ -1199,7 +1199,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             workOrder.setRemainingQuantity(item.getPlannedQuantity());
             workOrder.setPlanStartDate(item.getPlanStartDate());
             workOrder.setPlanEndDate(item.getPlanEndDate());
-            workOrder.setOrderStatus(OrderStatusEnum.PLANNED.getValue()); // 2026-08-11：计划转工单=排期确定，直接已计划，可启动
+            workOrder.setOrderStatus(ProductionOrderStatusEnum.PLANNED.getValue()); // 2026-08-11：计划转工单=排期确定，直接已计划，可启动
             workOrder.setPriority(item.getPriority() != null ? item.getPriority() : "MEDIUM");
             workOrder.setDepartmentId(plan.getDepartmentId());
             workOrder.setDepartmentName(plan.getDepartmentName());
@@ -1223,9 +1223,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         plan.setRemainingQuantity(newRemaining);
         // 计划数量扣减后为 0 时置 CLOSED（语义：已全部下达），取消回补时自动恢复可转
         if (newRemaining.compareTo(BigDecimal.ZERO) <= 0) {
-            plan.setOrderStatus(OrderStatusEnum.CLOSED.getValue());
+            plan.setOrderStatus(ProductionOrderStatusEnum.CLOSED.getValue());
         } else {
-            plan.setOrderStatus(OrderStatusEnum.APPROVED.getValue());
+            plan.setOrderStatus(ProductionOrderStatusEnum.APPROVED.getValue());
         }
         updateById(plan);
 
@@ -1239,7 +1239,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         // V1 Release Fix：禁止通过通用状态修改直接进入 COMPLETED（防绕过 FQC gate）
         // 订单正式完成只能走 completeOrder（含工序完成/FQC PASS/完工数量/入库链完整业务 gate）
-        if (OrderStatusEnum.COMPLETED.getValue().equals(newStatus)) {
+        if (ProductionOrderStatusEnum.COMPLETED.getValue().equals(newStatus)) {
             throw new BusinessException("请使用生产订单完成操作完成工单（完工需通过工序完成/完工质检/数量校验）");
         }
 
@@ -1258,15 +1258,15 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 如果启动了，记录实际开始时间
-        if (OrderStatusEnum.IN_PROGRESS.getValue().equals(newStatus) && order.getActualStartTime() == null) {
+        if (ProductionOrderStatusEnum.IN_PROGRESS.getValue().equals(newStatus) && order.getActualStartTime() == null) {
             order.setActualStartTime(LocalDateTime.now());
         }
         // V1 Release Fix：COMPLETED 分支已不可达（上面拦截），完成时间由 completeOrder 维护
 
         boolean updated = updateById(order);
         // V1 验收：通过通用状态更新取消工单 → 释放计划占用（幂等：仅首次从非 CANCELLED → CANCELLED）
-        if (updated && OrderStatusEnum.CANCELLED.getValue().equals(newStatus)
-                && !OrderStatusEnum.CANCELLED.getValue().equals(oldStatus)) {
+        if (updated && ProductionOrderStatusEnum.CANCELLED.getValue().equals(newStatus)
+                && !ProductionOrderStatusEnum.CANCELLED.getValue().equals(oldStatus)) {
             releasePlanQuotaOnCancel(order);
         }
         return updated;
@@ -1293,7 +1293,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                     new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ProductionOrder>()
                             .select("planned_quantity")
                             .eq("parent_order_id", planId)
-                            .ne("order_status", OrderStatusEnum.CANCELLED.getValue()));
+                            .ne("order_status", ProductionOrderStatusEnum.CANCELLED.getValue()));
             BigDecimal sum = BigDecimal.ZERO;
             if (children != null) {
                 for (ProductionOrder c : children) {

@@ -19,7 +19,7 @@ import com.jjx.sales.domain.vo.ReviewHistoryVO;
 import com.jjx.sales.domain.vo.ReviewStatusVO;
 import com.jjx.sales.enums.OperationResultEnum;
 import com.jjx.sales.enums.OperationTypeEnum;
-import com.jjx.sales.enums.OrderStatusEnum;
+import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.SalesOrderProductMapper;
 import com.jjx.sales.service.IOrderStatusService;
@@ -85,13 +85,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2. 检查状态是否可提交审核
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
         if (!currentStatus.isSubmittable()) {
             throw new BusinessException("当前状态不可提交审核，当前状态：" + currentStatus.getLabel());
         }
 
         // 3. 更新状态
-        final OrderStatusEnum targetStatus = OrderStatusEnum.PENDING_REVIEW;
+        final SalesOrderStatusEnum targetStatus = SalesOrderStatusEnum.PENDING_REVIEW;
         order.setOrderStatus(targetStatus.getValue());
 
 
@@ -118,13 +118,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2. 检查状态是否为待审核
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
-        if (currentStatus != OrderStatusEnum.PENDING_REVIEW) {
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
+        if (currentStatus != SalesOrderStatusEnum.PENDING_REVIEW) {
             throw new BusinessException("只有待审核状态的订单才能开始审核，当前状态：" + currentStatus.getLabel());
         }
 
         // 3. 更新状态（接口层已校验 sales:order:review，2026-08-18 移除幽灵权限码 order:status:review）
-        final OrderStatusEnum targetStatus = OrderStatusEnum.REVIEWING;
+        final SalesOrderStatusEnum targetStatus = SalesOrderStatusEnum.REVIEWING;
         order.setOrderStatus(targetStatus.getValue());
 
         // 4. 保存
@@ -148,13 +148,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2. 检查状态是否为审核中
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
-        if (currentStatus != OrderStatusEnum.REVIEWING) {
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
+        if (currentStatus != SalesOrderStatusEnum.REVIEWING) {
             throw new BusinessException("只有审核中的订单才能审核通过，当前状态：" + currentStatus.getLabel());
         }
 
         // 4. 更新状态
-        final OrderStatusEnum targetStatus = OrderStatusEnum.APPROVED;
+        final SalesOrderStatusEnum targetStatus = SalesOrderStatusEnum.APPROVED;
         order.setOrderStatus(targetStatus.getValue());
 
 
@@ -208,8 +208,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2. 检查状态是否为审核中
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
-        if (currentStatus != OrderStatusEnum.REVIEWING) {
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
+        if (currentStatus != SalesOrderStatusEnum.REVIEWING) {
             throw new BusinessException("只有审核中的订单才能审核驳回，当前状态：" + currentStatus.getLabel());
         }
 
@@ -220,7 +220,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 5. 更新状态
-        final OrderStatusEnum targetStatus = OrderStatusEnum.REJECTED;
+        final SalesOrderStatusEnum targetStatus = SalesOrderStatusEnum.REJECTED;
         order.setOrderStatus(targetStatus.getValue());
 
         // 6. 保存
@@ -257,13 +257,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2. 检查状态是否为已驳回
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
-        if (currentStatus != OrderStatusEnum.REJECTED) {
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
+        if (currentStatus != SalesOrderStatusEnum.REJECTED) {
             throw new BusinessException("只有已驳回的订单才能重新提交");
         }
 
         // 3. 更新状态
-        final OrderStatusEnum targetStatus = OrderStatusEnum.PENDING_REVIEW;
+        final SalesOrderStatusEnum targetStatus = SalesOrderStatusEnum.PENDING_REVIEW;
         order.setOrderStatus(targetStatus.getValue());
 
         // 4. 保存
@@ -298,13 +298,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2. 检查是否可取消
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
         if (currentStatus.isTerminal()) {
             throw new BusinessException("订单已完成或已取消，无法再次取消");
         }
 
         // 3. 更新状态
-        final OrderStatusEnum targetStatus = OrderStatusEnum.CANCELLED;
+        final SalesOrderStatusEnum targetStatus = SalesOrderStatusEnum.CANCELLED;
         order.setOrderStatus(targetStatus.getValue());
 
         // 4. 保存
@@ -398,9 +398,9 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (order == null) {
             throw new BusinessException("订单不存在");
         }
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
         // 2026-08-13：已审核(4)生成计划即确认；已确认(6)兼容历史订单补生成
-        if (currentStatus != OrderStatusEnum.APPROVED && currentStatus != OrderStatusEnum.CONFIRMED) {
+        if (currentStatus != SalesOrderStatusEnum.APPROVED && currentStatus != SalesOrderStatusEnum.CONFIRMED) {
             throw new BusinessException("只有已审核/已确认的订单才能生成生产计划，当前状态：" + currentStatus.getLabel());
         }
         // 防重复生成：同一订单已有未关闭的 PLAN 则拦截
@@ -461,9 +461,9 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单无可生成计划的产品（均无productId）");
         }
         // 2026-08-13：生成计划=确认动作，SO 已审核(4)→已确认(6)，写确认人/方式/时间（已确认的历史订单跳过）
-        if (OrderStatusEnum.APPROVED.equals(currentStatus)) {
+        if (SalesOrderStatusEnum.APPROVED.equals(currentStatus)) {
             int up = salesOrderMapper.updateStatusWithCheck(
-                    orderId, OrderStatusEnum.CONFIRMED.getValue(), OrderStatusEnum.APPROVED.getValue());
+                    orderId, SalesOrderStatusEnum.CONFIRMED.getValue(), SalesOrderStatusEnum.APPROVED.getValue());
             if (up > 0) {
                 SalesOrder confirmUpdate = new SalesOrder();
                 confirmUpdate.setOrderId(orderId);
@@ -484,7 +484,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (order == null) {
             throw new BusinessException("订单不存在");
         }
-        OrderStatusEnum status = OrderStatusEnum.getByValue(order.getOrderStatus());
+        SalesOrderStatusEnum status = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
         List<ReviewFlow> flows = reviewFlowService.listByBiz("sales_order", orderId);
         ReviewFlow latest = flows.isEmpty() ? null : flows.get(flows.size() - 1);
         return ReviewStatusVO.builder()
@@ -531,13 +531,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单不存在");
         }
         // 2. 校验状态流转（仅生产中可发货）
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
-        if (!currentStatus.canTransitionTo(OrderStatusEnum.SHIPPED)) {
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
+        if (!currentStatus.canTransitionTo(SalesOrderStatusEnum.SHIPPED)) {
             throw new BusinessException("订单当前状态[" + currentStatus.getLabel() + "]不能发货，仅生产中订单可发货");
         }
         // 3. 更新状态
         int result = salesOrderMapper.updateStatusWithCheck(
-                orderId, OrderStatusEnum.SHIPPED.getValue(), currentStatus.getValue()
+                orderId, SalesOrderStatusEnum.SHIPPED.getValue(), currentStatus.getValue()
         );
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
@@ -555,14 +555,14 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2. 校验状态流转（仅已发货可完成）
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
-        if (!currentStatus.canTransitionTo(OrderStatusEnum.COMPLETED)) {
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
+        if (!currentStatus.canTransitionTo(SalesOrderStatusEnum.COMPLETED)) {
             throw new BusinessException("订单当前状态[" + currentStatus.getLabel() + "]不能直接完成，仅已发货订单可完成");
         }
 
         // 3. 更新状态
         int result = salesOrderMapper.updateStatusWithCheck(
-                orderId, OrderStatusEnum.COMPLETED.getValue(), currentStatus.getValue()
+                orderId, SalesOrderStatusEnum.COMPLETED.getValue(), currentStatus.getValue()
         );
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
@@ -579,13 +579,13 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         SalesOrder order = salesOrderMapper.selectById(orderId);
         if (order == null) throw new BusinessException("订单不存在");
 
-        OrderStatusEnum currentStatus = OrderStatusEnum.getByValue(order.getOrderStatus());
-        if (currentStatus != OrderStatusEnum.APPROVED) {
+        SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
+        if (currentStatus != SalesOrderStatusEnum.APPROVED) {
             throw new BusinessException("只有已审核的订单才能确认，当前状态：" + currentStatus.getLabel());
         }
 
         // 更新状态为 CONFIRMED
-        order.setOrderStatus(OrderStatusEnum.CONFIRMED.getValue());
+        order.setOrderStatus(SalesOrderStatusEnum.CONFIRMED.getValue());
         // 确认记录落库（DEV-343/314：人/方式/时间）
         order.setConfirmBy(confirmedBy);
         order.setConfirmMethod(confirmMethod);

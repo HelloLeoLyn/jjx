@@ -5,9 +5,9 @@ import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesOrderEditDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.vo.SalesOrderVO;
-import com.jjx.sales.enums.OrderStatusEnum;
-import com.jjx.sales.enums.OrderTypeEnum;
-import com.jjx.sales.enums.PaymentStatusEnum;
+import com.jjx.sales.enums.SalesOrderStatusEnum;
+import com.jjx.sales.enums.SalesOrderTypeEnum;
+import com.jjx.sales.enums.SalesPaymentStatusEnum;
 import com.jjx.sales.enums.ProdStatusEnum;
 import org.mapstruct.*;
 
@@ -117,13 +117,13 @@ public interface SalesOrderConverter {
         if (entity != null) {
             // 设置默认状态
             if (entity.getOrderStatus() == null) {
-                entity.setOrderStatus(OrderStatusEnum.DRAFT.getValue());
+                entity.setOrderStatus(SalesOrderStatusEnum.DRAFT.getValue());
             }
             if (entity.getProdStatus() == null) {
                 entity.setProdStatus(ProdStatusEnum.NONE.getValue());
             }
             if (entity.getPaymentStatus() == null) {
-                entity.setPaymentStatus(PaymentStatusEnum.UNPAID.getValue());
+                entity.setPaymentStatus(SalesPaymentStatusEnum.UNPAID.getValue());
             }
             if (entity.getShippedQuantity() == null) {
                 entity.setShippedQuantity(0);
@@ -165,7 +165,7 @@ public interface SalesOrderConverter {
      * 获取订单类型描述
      */
     default String getOrderTypeDesc(Integer orderType) {
-        OrderTypeEnum enumValue = OrderTypeEnum.getByCode(orderType);
+        SalesOrderTypeEnum enumValue = SalesOrderTypeEnum.getByCode(orderType);
         return enumValue != null ? enumValue.getDesc() : "";
     }
 
@@ -173,7 +173,7 @@ public interface SalesOrderConverter {
      * 获取订单状态描述
      */
     default String getOrderStatusDesc(Integer orderStatus) {
-        OrderStatusEnum enumValue = OrderStatusEnum.getByValue(orderStatus);
+        SalesOrderStatusEnum enumValue = SalesOrderStatusEnum.getByValue(orderStatus);
         return enumValue.getDescription();
     }
 
@@ -189,7 +189,7 @@ public interface SalesOrderConverter {
      * 获取支付状态描述
      */
     default String getPaymentStatusDesc(Integer paymentStatus) {
-        PaymentStatusEnum enumValue = PaymentStatusEnum.getByValue(paymentStatus);
+        SalesPaymentStatusEnum enumValue = SalesPaymentStatusEnum.getByValue(paymentStatus);
         return enumValue != null ? enumValue.getLabel() : "";
     }
 

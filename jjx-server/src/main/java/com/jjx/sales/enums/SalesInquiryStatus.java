@@ -5,7 +5,7 @@ import com.jjx.common.enums.BizStatusEnum;
 import lombok.Getter;
 
 @Getter
-public enum InquiryStatus implements BizStatusEnum {
+public enum SalesInquiryStatus implements BizStatusEnum {
     DRAFT(0, "草稿"),
     PENDING(1, "待处理"),
     SENT(2, "已发送"),
@@ -17,14 +17,14 @@ public enum InquiryStatus implements BizStatusEnum {
     private final Integer value;
     private final String label;
 
-    InquiryStatus(Integer value, String label) {
+    SalesInquiryStatus(Integer value, String label) {
         this.value = value;
         this.label = label;
     }
 
-    public static InquiryStatus getByValue(Integer value) {
+    public static SalesInquiryStatus getByValue(Integer value) {
         if (value == null) return null;
-        for (InquiryStatus s : values()) {
+        for (SalesInquiryStatus s : values()) {
             if (s.value.equals(value)) return s;
         }
         return null;

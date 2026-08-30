@@ -197,7 +197,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             try {
                 Integer cnt = jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM production_order WHERE order_id = ? AND order_status = "
-                                + com.jjx.production.enums.OrderStatusEnum.CANCELLED.getValue(),
+                                + com.jjx.production.enums.ProductionOrderStatusEnum.CANCELLED.getValue(),
                         Integer.class, id);
                 return cnt != null && cnt > 0;
             } catch (Exception e) {
@@ -335,9 +335,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         if (order == null) {
             throw new BusinessException("所属生产工单不存在: " + execution.getOrderId());
         }
-        if (!com.jjx.production.enums.OrderStatusEnum.IN_PROGRESS.getValue().equals(order.getOrderStatus())) {
-            com.jjx.production.enums.OrderStatusEnum current =
-                    com.jjx.production.enums.OrderStatusEnum.getByValue(order.getOrderStatus());
+        if (!com.jjx.production.enums.ProductionOrderStatusEnum.IN_PROGRESS.getValue().equals(order.getOrderStatus())) {
+            com.jjx.production.enums.ProductionOrderStatusEnum current =
+                    com.jjx.production.enums.ProductionOrderStatusEnum.getByValue(order.getOrderStatus());
             throw new BusinessException("请先启动生产工单，再开始工序（当前工单状态："
                     + (current == null ? String.valueOf(order.getOrderStatus()) : current.getLabel()) + "）");
         }
