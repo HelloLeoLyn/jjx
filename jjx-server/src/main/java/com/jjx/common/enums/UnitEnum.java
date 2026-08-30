@@ -52,14 +52,14 @@ public enum UnitEnum {
     PAIR("PAIR", "双", "other", 1d, "pair");
 
     private final String code;
-    private final String name;
+    private final String label;
     private final String category;
     private final Double baseConversion;
     private final String englishName;
 
     UnitEnum(String code, String name, String category, Double baseConversion, String englishName) {
         this.code = code;
-        this.name = name;
+        this.label = name;
         this.category = category;
         this.baseConversion = baseConversion;
         this.englishName = englishName;
@@ -78,7 +78,15 @@ public enum UnitEnum {
 
     public static String getNameByCode(String code) {
         UnitEnum unit = fromCode(code);
-        return unit != null ? unit.getName() : code;
+        return unit != null ? unit.getLabel() : code;
+    }
+
+    /**
+     * @deprecated 使用 {@link #getLabel()}
+     */
+    @Deprecated
+    public String getName() {
+        return label;
     }
 
     public static boolean isValidCode(String code) {

@@ -57,7 +57,7 @@ public enum OrderTypeEnum {
     /**
      * 名称
      */
-    private final String name;
+    private final String label;
 
     /**
      * 描述
@@ -66,7 +66,7 @@ public enum OrderTypeEnum {
 
     OrderTypeEnum(String code, String name, String description) {
         this.code = code;
-        this.name = name;
+        this.label = name;
         this.description = description;
     }
 
@@ -212,14 +212,14 @@ public enum OrderTypeEnum {
      * 获取显示文本（编码 + 名称）
      */
     public String getDisplayText() {
-        return code + " - " + name;
+        return code + " - " + label;
     }
 
     /**
      * 获取详细描述
      */
     public String getDetailedDescription() {
-        return name + "：" + description;
+        return label + "：" + description;
     }
 
     /**
@@ -272,5 +272,13 @@ public enum OrderTypeEnum {
             default:
                 return "file";
         }
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getName() {
+        return label;
     }
 }

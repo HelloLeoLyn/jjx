@@ -17,5 +17,13 @@ public enum ProductionTaskStatus {
 
     private final String code;
 
-    private final String description;
+    private final String label;
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDescription() {
+        return label;
+    }
 }

@@ -13,12 +13,12 @@ public enum ProcessGroup {
 
     private final String code;
     private final String englishName;
-    private final String name;
+    private final String label;
 
     ProcessGroup(String code, String englishName, String name) {
         this.code = code;
         this.englishName = englishName;
-        this.name = name;
+        this.label = name;
     }
 
     public String getCode() {
@@ -30,12 +30,16 @@ public enum ProcessGroup {
     }
 
 
+    /**
+     * @deprecated 使用 {@link #getLabel()}
+     */
+    @Deprecated
     public String getName() {
-        return name;
+        return label;
     }
 
     public String getLabel() {
-        return name;
+        return label;
     }
 
     public static ProcessGroup fromCode(String code) {
@@ -57,7 +61,7 @@ public enum ProcessGroup {
     }
     public static ProcessGroup fromName(String name) {
         for (ProcessGroup group : values()) {
-            if (group.name.equals(name)) {
+            if (group.label.equals(name)) {
                 return group;
             }
         }
@@ -65,6 +69,6 @@ public enum ProcessGroup {
     }
     @Override
     public String toString() {
-        return name;
+        return label;
     }
 }

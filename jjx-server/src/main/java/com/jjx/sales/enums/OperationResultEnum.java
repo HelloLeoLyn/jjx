@@ -17,11 +17,11 @@ public enum OperationResultEnum {
     FAILURE(2, "失败");
 
     private final Integer code;
-    private final String name;
+    private final String label;
 
     OperationResultEnum(Integer code, String name) {
         this.code = code;
-        this.name = name;
+        this.label = name;
     }
 
     private static final Map<Integer, OperationResultEnum> CODE_MAP =
@@ -33,5 +33,13 @@ public enum OperationResultEnum {
             return SUCCESS;
         }
         return result;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getName() {
+        return label;
     }
 }

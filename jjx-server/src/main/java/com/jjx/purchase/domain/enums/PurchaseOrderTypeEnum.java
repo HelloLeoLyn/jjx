@@ -19,11 +19,11 @@ public enum PurchaseOrderTypeEnum {
     URGENT(1, "紧急");
 
     private final Integer code;
-    private final String description;
+    private final String label;
 
     PurchaseOrderTypeEnum(Integer code, String description) {
         this.code = code;
-        this.description = description;
+        this.label = description;
     }
 
     /**
@@ -45,5 +45,13 @@ public enum PurchaseOrderTypeEnum {
     public static String getDescriptionByCode(Integer code) {
         PurchaseOrderTypeEnum type = getByCode(code);
         return type != null ? type.getDescription() : null;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDescription() {
+        return label;
     }
 }

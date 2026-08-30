@@ -19,11 +19,11 @@ public enum OrderType {
     URGENT("urgent", "紧急");
 
     private final String code;
-    private final String description;
+    private final String label;
 
     OrderType(String code, String description) {
         this.code = code;
-        this.description = description;
+        this.label = description;
     }
 
     /**
@@ -43,5 +43,13 @@ public enum OrderType {
      */
     public boolean isUrgent() {
         return this == URGENT;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDescription() {
+        return label;
     }
 }

@@ -39,11 +39,11 @@ public enum DocumentType {
     OTHER("other", "其他");
 
     private final String code;
-    private final String description;
+    private final String label;
 
     DocumentType(String code, String description) {
         this.code = code;
-        this.description = description;
+        this.label = description;
     }
 
     /**
@@ -56,5 +56,13 @@ public enum DocumentType {
             }
         }
         return null;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDescription() {
+        return label;
     }
 }

@@ -13,7 +13,7 @@ public enum OrderTypeEnum {
     SAMPLE(2, "样品订单");
 
     private final Integer code;
-    private final String desc;
+    private final String label;
 
     public static OrderTypeEnum getByCode(Integer code) {
         if (code == null) {
@@ -25,5 +25,13 @@ public enum OrderTypeEnum {
             }
         }
         return null;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDesc() {
+        return label;
     }
 }

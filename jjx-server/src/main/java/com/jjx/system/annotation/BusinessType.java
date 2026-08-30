@@ -15,11 +15,19 @@ public enum BusinessType {
     OTHER("其他",9),
     RESET("重置密码",10);
 
-    private final String desc;
+    private final String label;
     private final Integer code;
 
     BusinessType(String desc, Integer code) {
-        this.desc = desc;
+        this.label = desc;
         this.code = code;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDesc() {
+        return label;
     }
 }

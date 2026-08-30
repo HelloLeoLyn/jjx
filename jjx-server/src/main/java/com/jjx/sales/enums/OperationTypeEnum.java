@@ -29,11 +29,11 @@ public enum OperationTypeEnum {
     COMPLETE(14, "完成订单");
 
     private final Integer code;
-    private final String name;
+    private final String label;
 
     OperationTypeEnum(Integer code, String name) {
         this.code = code;
-        this.name = name;
+        this.label = name;
     }
 
     private static final Map<Integer, OperationTypeEnum> CODE_MAP =
@@ -49,5 +49,13 @@ public enum OperationTypeEnum {
 
     public static boolean isValidCode(Integer code) {
         return CODE_MAP.containsKey(code);
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getName() {
+        return label;
     }
 }

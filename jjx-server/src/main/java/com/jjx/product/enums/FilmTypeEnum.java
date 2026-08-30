@@ -19,12 +19,12 @@ public enum FilmTypeEnum {
     BACK_ADHESIVE("BACK_ADHESIVE", "背胶菲林", 5);
 
     private final String code;
-    private final String name;
+    private final String label;
     private final Integer order;
 
     FilmTypeEnum(String code, String name, Integer order) {
         this.code = code;
-        this.name = name;
+        this.label = name;
         this.order = order;
     }
 
@@ -42,5 +42,13 @@ public enum FilmTypeEnum {
     public static String getNameByCode(String code) {
         FilmTypeEnum type = fromCode(code);
         return type != null ? type.getName() : "未知";
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getName() {
+        return label;
     }
 }

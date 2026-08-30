@@ -57,11 +57,11 @@ public class RedisSequenceService {
         CUST("CST", "客户编码");
 
         private final String code;
-        private final String desc;
+        private final String label;
 
         BizCode(String code, String desc) {
             this.code = code;
-            this.desc = desc;
+            this.label = desc;
         }
     }
 
@@ -87,13 +87,13 @@ public class RedisSequenceService {
         // 验证序列号范围
         if (sequence > MAX_SEQUENCE) {
             log.error("序列号已达到最大值: {}，业务: {}，日期: {}", sequence, bizCode.getCode(), datePart);
-            throw new BusinessException(bizCode.getDesc() + "序列号已达到最大值，日期: " + datePart);
+            throw new BusinessException(bizCode.getLabel() + "序列号已达到最大值，日期: " + datePart);
         }
 
         // 生成编号：业务代码 + 日期 + 3位序列号
         String bizNumber = bizCode.getCode() + datePart + String.format("%03d", sequence);
 
-        log.info("生成{}编号: {}，日期: {}，序列号: {}", bizCode.getDesc(), bizNumber, datePart, sequence);
+        log.info("生成{}编号: {}，日期: {}，序列号: {}", bizCode.getLabel(), bizNumber, datePart, sequence);
         return bizNumber;
     }
 
@@ -178,7 +178,7 @@ public class RedisSequenceService {
 
         return SequenceStats.builder()
                 .bizCode(bizCode.getCode())
-                .bizDesc(bizCode.getDesc())
+                .bizDesc(bizCode.getLabel())
                 .currentSequence(current)
                 .maxSequence(MAX_SEQUENCE)
                 .usageRate(current != null ? (double) current / MAX_SEQUENCE : 0.0)

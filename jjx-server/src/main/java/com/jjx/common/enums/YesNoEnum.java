@@ -13,7 +13,7 @@ public enum YesNoEnum {
     YES(1, "是");
 
     private final Integer code;
-    private final String desc;
+    private final String label;
 
     public static YesNoEnum getByCode(Integer code) {
         if (code == null) {
@@ -29,5 +29,13 @@ public enum YesNoEnum {
 
     public boolean isYes() {
         return this == YES;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDesc() {
+        return label;
     }
 }

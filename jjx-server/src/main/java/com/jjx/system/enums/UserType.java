@@ -9,11 +9,11 @@ public enum UserType{
     NORMAL("99", "普通用户");
 
     private final String code;
-    private final String desc;
+    private final String label;
 
     UserType(String code, String desc) {
         this.code = code;
-        this.desc = desc;
+        this.label = desc;
     }
 
     // 校验方法
@@ -25,5 +25,13 @@ public enum UserType{
             }
         }
         return false;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDesc() {
+        return label;
     }
 }

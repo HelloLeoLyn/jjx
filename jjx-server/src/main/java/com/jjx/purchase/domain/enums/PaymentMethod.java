@@ -24,11 +24,11 @@ public enum PaymentMethod {
     CHECK("check", "支票");
 
     private final String code;
-    private final String description;
+    private final String label;
 
     PaymentMethod(String code, String description) {
         this.code = code;
-        this.description = description;
+        this.label = description;
     }
 
     /**
@@ -41,5 +41,13 @@ public enum PaymentMethod {
             }
         }
         return null;
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getDescription() {
+        return label;
     }
 }

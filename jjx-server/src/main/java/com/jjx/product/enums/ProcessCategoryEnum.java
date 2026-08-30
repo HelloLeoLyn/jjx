@@ -18,12 +18,12 @@ public enum ProcessCategoryEnum {
     OTHER("OTHER", "其他", "info");
 
     private final String code;
-    private final String name;
+    private final String label;
     private final String tagType;
 
     ProcessCategoryEnum(String code, String name, String tagType) {
         this.code = code;
-        this.name = name;
+        this.label = name;
         this.tagType = tagType;
     }
 
@@ -40,5 +40,13 @@ public enum ProcessCategoryEnum {
 
     public static boolean isValidCode(String code) {
         return code != null && CODE_MAP.containsKey(code);
+    }
+
+    /**
+     * @deprecated 使用 { #getLabel()}
+     */
+    @Deprecated
+    public String getName() {
+        return label;
     }
 }
