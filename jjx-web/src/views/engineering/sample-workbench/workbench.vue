@@ -5,7 +5,7 @@
       :readonly="readonlyMode"
       :card="card"
       :done-count="doneCount"
-      :plan-count="planList.length"
+      :plan-count="totalCount"
       :summary="summary"
       :saving="saving"
       :eng-file-list="engFileList"
@@ -533,6 +533,7 @@ const {
   onMaterialCreated,
   parseMaterials,
   doneCount,
+  totalCount,
   summary,
   loadSummary,
   roundList,

@@ -958,7 +958,13 @@ export function useSampleWorkbench() {
   }
 
   // ===== 汇总 =====
-  const doneCount = computed(() => planList.value.filter((p) => p.status === 2).length)
+  // 完成进度 = 组装卡片 + 印刷行（dev-1788002406240：展示用，与后端校验口径对齐）
+  const doneCount = computed(
+    () =>
+      planList.value.filter((p) => p.status === 2).length +
+      printList.value.filter((r) => r.status === 2).length
+  )
+  const totalCount = computed(() => planList.value.length + printList.value.length)
   const summary = ref<any>({})
   async function loadSummary() {
     if (!orderId.value) return
@@ -1209,10 +1215,22 @@ export function useSampleWorkbench() {
     }
   }
 
-  // 标记完成
+  // 标记完成（dev-1788002406240：全部工序完成后才允许）
   async function handleMarkReady() {
     if (readonlyMode.value) return
     if (!orderId.value) return
+    // 前置检测：当前轮次所有工序必须已完成（与后端 markSampleReady 强制校验一致）
+    const unfinished: string[] = []
+    for (const pc of planList.value) {
+      if (pc.status !== 2) unfinished.push(pc.category || pc.processName || '工序')
+    }
+    for (const r of printList.value) {
+      if (r.status !== 2) unfinished.push(r.printName || r.processName || '印刷工序')
+    }
+    if (unfinished.length) {
+      ElMessage.error(`还有 ${unfinished.length} 道工序未完成（${unfinished.slice(0, 3).join('、')}${unfinished.length > 3 ? '…' : ''}），请先完成全部工序`)
+      return
+    }
     try {
       await ElMessageBox.confirm('确认样品制作完成？将进入待送样状态', '标记完成', {
         confirmButtonText: '确认',
@@ -1433,6 +1451,7 @@ export function useSampleWorkbench() {
     onMaterialCreated,
     parseMaterials,
     doneCount,
+    totalCount,
     summary,
     loadSummary,
     roundList,

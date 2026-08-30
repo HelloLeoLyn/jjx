@@ -772,9 +772,15 @@ async function loadEngFiles() {
   }
 }
 
-// 标记完成
+// 标记完成（dev-1788002406240：全部工序完成后才允许）
 async function handleMarkReady() {
   if (!props.card?.orderId) return
+  // 前置检测：当前轮次所有工序必须已完成（与后端 markSampleReady 强制校验一致）
+  const unfinished = planList.value.filter((p) => p.status !== 2)
+  if (unfinished.length) {
+    ElMessage.error(`还有 ${unfinished.length} 道工序未完成（${unfinished.slice(0, 3).map((p) => p.processName || '工序').join('、')}${unfinished.length > 3 ? '…' : ''}），请先完成全部工序`)
+    return
+  }
   try {
     await ElMessageBox.confirm('确认样品制作完成？将进入待送样状态', '标记完成', {
       confirmButtonText: '确认', cancelButtonText: '取消', type: 'success',

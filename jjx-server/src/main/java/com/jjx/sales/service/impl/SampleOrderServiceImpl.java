@@ -740,6 +740,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (roundProcs == null || roundProcs.isEmpty()) {
             throw new BusinessException("当前轮次(Round" + roundNo + ")无工序记录，请先录入工序再标记完成");
         }
+        // ③ 当前轮次全部工序必须已完成（dev-1788002406240 强制校验，防工序未完成即标记成功）
+        java.util.List<String> unfinished = new java.util.ArrayList<>();
+        for (com.jjx.sales.domain.entity.SalesSampleProcess p : roundProcs) {
+            if (p.getStatus() == null || p.getStatus() != 2) {
+                unfinished.add(p.getProcessName() != null ? p.getProcessName() : "#" + p.getProcessId());
+            }
+        }
+        if (!unfinished.isEmpty()) {
+            throw new BusinessException("工序未全部完成，无法标记样品成功：[" + String.join("、", unfinished)
+                    + "]，请先完成全部工序（已" + (roundProcs.size() - unfinished.size()) + "/" + roundProcs.size() + "）");
+        }
 
         safeTransition(orderId,
                 SampleOrderStatusEnum.ENGINEERING,
