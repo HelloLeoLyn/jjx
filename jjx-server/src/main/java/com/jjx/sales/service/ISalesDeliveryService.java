@@ -27,6 +27,9 @@ public interface ISalesDeliveryService {
      */
     List<SalesDeliveryVO> listByOrderId(Long orderId);
 
+    /** 签收发货单 */
+    void receive(Long deliveryId, SalesDelivery receiveInfo);
+
     /**
      * 导出送货单PDF（单张表单）
      */

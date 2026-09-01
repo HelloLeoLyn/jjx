@@ -11,8 +11,11 @@ import com.jjx.sales.service.ISalesDeliveryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.jjx.system.utils.SecurityUtils;
 
 import java.util.List;
+import java.util.Date;
 import java.util.stream.Collectors;
 
 /**
@@ -72,6 +75,32 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         return salesDeliveryMapper.selectList(wrapper).stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void receive(Long deliveryId, SalesDelivery receiveInfo) {
+        SalesDelivery current = salesDeliveryMapper.selectById(deliveryId);
+        if (current == null) {
+            throw new BusinessException("发货单不存在");
+        }
+        if (Integer.valueOf(4).equals(current.getDeliveryStatus())) {
+            throw new BusinessException("发货单已签收，请勿重复操作");
+        }
+        SalesDelivery update = new SalesDelivery();
+        update.setDeliveryId(deliveryId);
+        update.setReceiverName(receiveInfo == null ? null : receiveInfo.getReceiverName());
+        update.setReceiverPhone(receiveInfo == null ? null : receiveInfo.getReceiverPhone());
+        update.setReceiveRemark(receiveInfo == null ? null : receiveInfo.getReceiveRemark());
+        update.setReceiveTime(new Date());
+        update.setReceiveBy(SecurityUtils.getUserId());
+        String receiveName = SecurityUtils.getRealName();
+        update.setReceiveName(receiveName == null || receiveName.isBlank()
+                ? SecurityUtils.getUsername() : receiveName);
+        update.setDeliveryStatus(4);
+        if (salesDeliveryMapper.updateById(update) <= 0) {
+            throw new BusinessException("签收失败，请刷新后重试");
+        }
     }
 
     private SalesDeliveryVO toVO(SalesDelivery entity) {

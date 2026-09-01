@@ -15,6 +15,7 @@ import com.jjx.product.mapper.EngineeringRoutingMapper;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesOrderProduct;
+import com.jjx.sales.domain.entity.SalesDelivery;
 import com.jjx.sales.domain.vo.ReviewHistoryVO;
 import com.jjx.sales.domain.vo.ReviewStatusVO;
 import com.jjx.sales.enums.OperationResultEnum;
@@ -22,6 +23,7 @@ import com.jjx.sales.enums.OperationTypeEnum;
 import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.SalesOrderProductMapper;
+import com.jjx.sales.mapper.SalesDeliveryMapper;
 import com.jjx.sales.service.IOrderStatusService;
 import com.jjx.system.annotation.Event;
 import com.jjx.sales.enums.OperationResultEnum;
@@ -61,6 +63,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final ReviewFlowService reviewFlowService;
+    private final SalesDeliveryMapper salesDeliveryMapper;
     
     @Event("order.submitted")
     @Override
@@ -524,7 +527,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     @Event(value = "order.delivering", bizId = "#orderId", bizType = "'order'")
-    public void shipOrder(Long orderId) {
+    public void shipOrder(Long orderId, SalesDelivery delivery) {
         // 1. 查询订单
         SalesOrder order = salesOrderMapper.selectById(orderId);
         if (order == null) {
@@ -535,14 +538,55 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (!currentStatus.canTransitionTo(SalesOrderStatusEnum.SHIPPED)) {
             throw new BusinessException("订单当前状态[" + currentStatus.getLabel() + "]不能发货，仅生产中订单可发货");
         }
-        // 3. 更新状态
+        // 3. 先创建发货凭证，失败则中止状态流转及后续出库事件
+        List<SalesOrderProduct> products = salesOrderProductMapper.selectList(
+                new LambdaQueryWrapper<SalesOrderProduct>().eq(SalesOrderProduct::getOrderId, orderId));
+        int totalQuantity = products.stream()
+                .map(SalesOrderProduct::getQuantity)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+        BigDecimal totalAmount = products.stream()
+                .map(SalesOrderProduct::getAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        SalesDelivery record = delivery == null ? new SalesDelivery() : delivery;
+        record.setDeliveryId(null);
+        record.setDeliveryNo(redisSequenceService.generateBusinessNumberByType(
+                "sales_delivery", "DL", "yyMMdd", 3));
+        record.setOrderId(orderId);
+        record.setCustomerId(order.getCustomerId());
+        record.setCustomerName(order.getCustomerName());
+        if (record.getDeliveryDate() == null) {
+            record.setDeliveryDate(new java.util.Date());
+        }
+        if (record.getContactPerson() == null || record.getContactPerson().isBlank()) {
+            record.setContactPerson(order.getContactPerson());
+        }
+        if (record.getContactPhone() == null || record.getContactPhone().isBlank()) {
+            record.setContactPhone(order.getContactPhone());
+        }
+        record.setDeliveryStatus(2);
+        record.setTotalQuantity(totalQuantity);
+        record.setTotalAmount(totalAmount);
+        record.setDeliveryPersonId(SecurityUtils.getUserId());
+        String deliveryPersonName = SecurityUtils.getRealName();
+        record.setDeliveryPersonName(deliveryPersonName == null || deliveryPersonName.isBlank()
+                ? SecurityUtils.getUsername() : deliveryPersonName);
+        if (salesDeliveryMapper.insert(record) <= 0) {
+            throw new BusinessException("发货单创建失败，请稍后重试");
+        }
+
+        // 4. 更新状态
         int result = salesOrderMapper.updateStatusWithCheck(
                 orderId, SalesOrderStatusEnum.SHIPPED.getValue(), currentStatus.getValue()
         );
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
-        log.info("订单{}已发货，操作人：{}", orderId, SecurityUtils.getUsername());
+        log.info("订单{}已发货，发货单号：{}，操作人：{}",
+                orderId, record.getDeliveryNo(), SecurityUtils.getUsername());
     }
 
     @Override

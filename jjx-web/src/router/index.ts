@@ -119,6 +119,12 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: '销售发票打印', hidden: true },
   },
   {
+    path: '/sales/delivery/print',
+    name: 'SalesDeliveryPrint',
+    component: () => import('@/views/sales/delivery/print.vue'),
+    meta: { title: '送货单打印', hidden: true },
+  },
+  {
     path: '/purchase/plan/print',
     name: 'PurchasePlanPrint',
     component: () => import('@/views/purchase/plan/print.vue'),

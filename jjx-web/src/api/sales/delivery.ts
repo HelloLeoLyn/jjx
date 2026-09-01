@@ -39,6 +39,23 @@ export interface SalesDeliveryQueryDTO {
   pageSize?: number
 }
 
+export interface SalesDeliveryReceiveDTO {
+  receiverName?: string
+  receiverPhone?: string
+  receiveRemark?: string
+}
+
+export interface SalesDeliveryCreateDTO {
+  deliveryMethod?: string
+  contactPerson?: string
+  contactPhone?: string
+  deliveryAddress?: string
+  carrier?: string
+  trackingNo?: string
+  remark?: string
+  deliveryDate?: string
+}
+
 export const deliveryApi = {
   /** 分页查询发货单 */
   list(params: SalesDeliveryQueryDTO) {
@@ -53,6 +70,11 @@ export const deliveryApi = {
   /** 根据销售订单ID查询发货单 */
   listByOrderId(orderId: number) {
     return request.get<R<SalesDeliveryVO[]>>(`/sales/deliveries/by-order/${orderId}`)
+  },
+
+  /** 签收发货单 */
+  receive(deliveryId: number, data: SalesDeliveryReceiveDTO) {
+    return request.put<R<void>>(`/sales/deliveries/${deliveryId}/receive`, data)
   },
 
   /** 导出送货单PDF（单张表单） */

@@ -320,12 +320,15 @@ defineOptions({
 })
 
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import type { TagType } from '@/types'
 import { parseTime, formatCurrency, download } from '@/utils/format'
 import { orderApi } from '@/api/sales/order'
 import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { getProductionOrderList } from '@/api/production/order'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
+
+const router = useRouter()
 
 // ==================== 类型定义 ====================
 interface ProductionOrderItem {
@@ -546,15 +549,13 @@ const loadDeliveryRecords = async (orderId: number) => {
   }
 }
 
-/** 导出送货单PDF */
+/** 打开送货单打印页 */
 const handleExportDeliveryPdf = (row: any) => {
   if (!row?.deliveryId) {
     ElMessage.warning('送货单ID缺失')
     return
   }
-  deliveryApi.exportPdf(row.deliveryId).then((response: any) => {
-    download(response, `送货单_${row.deliveryNo || row.deliveryId}.pdf`)
-  })
+  router.push({ path: '/sales/delivery/print', query: { deliveryId: row.deliveryId } })
 }
 
 /** 构建发货时间线 */

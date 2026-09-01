@@ -1,6 +1,7 @@
 package com.jjx.sales.service;
 
 import com.jjx.sales.domain.dto.ReviewDTO;
+import com.jjx.sales.domain.entity.SalesDelivery;
 import com.jjx.sales.domain.vo.ReviewHistoryVO;
 import com.jjx.sales.domain.vo.ReviewStatusVO;
 
@@ -54,7 +55,14 @@ public interface IOrderStatusService {
     /**
      * 发货（025：IN_PRODUCTION→SHIPPED）
      */
-    void shipOrder(Long orderId);
+    default void shipOrder(Long orderId) {
+        shipOrder(orderId, null);
+    }
+
+    /**
+     * 发货并创建发货单；delivery 为空时使用订单默认交货信息。
+     */
+    void shipOrder(Long orderId, SalesDelivery delivery);
 
     /**
      * 获取订单审核状态

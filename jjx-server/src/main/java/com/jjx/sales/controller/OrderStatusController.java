@@ -3,6 +3,7 @@ package com.jjx.sales.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.sales.domain.dto.ReviewDTO;
+import com.jjx.sales.domain.entity.SalesDelivery;
 import com.jjx.sales.domain.vo.ReviewHistoryVO;
 import com.jjx.sales.domain.vo.ReviewStatusVO;
 import com.jjx.sales.service.IOrderStatusService;
@@ -175,8 +176,9 @@ public class OrderStatusController {
     @PutMapping("/{orderId}/status/ship")
     public Result<Void> shipOrder(
             @Parameter(description = "订单ID", required = true)
-            @PathVariable @NotNull Long orderId) {
-        orderStatusService.shipOrder(orderId);
+            @PathVariable @NotNull Long orderId,
+            @RequestBody(required = false) SalesDelivery delivery) {
+        orderStatusService.shipOrder(orderId, delivery);
         return Result.success();
     }
 

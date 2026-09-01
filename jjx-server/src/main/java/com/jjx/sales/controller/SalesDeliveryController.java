@@ -5,7 +5,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.result.Result;
 import com.jjx.sales.domain.dto.SalesDeliveryQueryDTO;
 import com.jjx.sales.domain.vo.SalesDeliveryVO;
+import com.jjx.sales.domain.entity.SalesDelivery;
 import com.jjx.sales.service.ISalesDeliveryService;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +47,17 @@ public class SalesDeliveryController {
     @GetMapping("/by-order/{orderId}")
     public Result<List<SalesDeliveryVO>> listByOrderId(@PathVariable Long orderId) {
         return Result.success(salesDeliveryService.listByOrderId(orderId));
+    }
+
+    @Operation(summary = "签收发货单")
+    @SaCheckPermission("sales:delivery:view")
+    @Log(module = "销售发货", businessType = BusinessType.UPDATE,
+            bizType = "'sales_delivery'", bizId = "#deliveryId")
+    @PutMapping("/{deliveryId}/receive")
+    public Result<Void> receive(@PathVariable Long deliveryId,
+                                @RequestBody(required = false) SalesDelivery receiveInfo) {
+        salesDeliveryService.receive(deliveryId, receiveInfo);
+        return Result.success();
     }
 
     @Operation(summary = "导出送货单PDF（单张表单）")

@@ -420,6 +420,21 @@
       @success="handleValidationSuccess"
       @cancel="handleValidationCancel"
     />
+    <el-dialog v-model="shipDialogVisible" title="订单发货" width="620px">
+      <el-form :model="shipForm" label-width="90px">
+        <el-row :gutter="16">
+          <el-col :span="12"><el-form-item label="交货方式"><el-input v-model="shipForm.deliveryMethod" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="发货日期"><el-date-picker v-model="shipForm.deliveryDate" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="收货人"><el-input v-model="shipForm.contactPerson" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="收货电话"><el-input v-model="shipForm.contactPhone" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="收货地址"><el-input v-model="shipForm.deliveryAddress" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="承运商"><el-input v-model="shipForm.carrier" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="物流单号"><el-input v-model="shipForm.trackingNo" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="备注"><el-input v-model="shipForm.remark" type="textarea" :rows="3" /></el-form-item></el-col>
+        </el-row>
+      </el-form>
+      <template #footer><el-button @click="shipDialogVisible = false">取消</el-button><el-button type="primary" :loading="shipSubmitting" @click="submitShip">确认发货</el-button></template>
+    </el-dialog>
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
 </template>
@@ -445,6 +460,7 @@ import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import ValidationDialog from './components/ValidationDialog.vue'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
+import type { SalesDeliveryCreateDTO } from '@/api/sales/delivery'
 import { SalesOrderStatusEnum, PaymentStatusEnum, ProdStatusEnum } from '@/enums/sales/OrderEnum'
 
 // 查询参数
@@ -480,6 +496,10 @@ const currentAction = ref<'approve' | 'reject' | null>(null)
 
 // 验证相关
 const validationDialogVisible = ref(false)
+const shipDialogVisible = ref(false)
+const shipSubmitting = ref(false)
+const shipOrderId = ref<number>()
+const shipForm = reactive<SalesDeliveryCreateDTO>({})
 
 // 表格数据
 const orderList = ref<any[]>([])
@@ -700,17 +720,27 @@ const handleResubmit = async (row: any) => {
 
 // 发货（2026-08-12 DEV-012：7→8，自动创建销售出库单并扣产品库存）
 const handleShip = async (row: any) => {
+  shipOrderId.value = row.orderId
+  Object.assign(shipForm, {
+    deliveryMethod: '', contactPerson: row.contactPerson || '', contactPhone: row.contactPhone || '',
+    deliveryAddress: row.deliveryAddress || '', carrier: '', trackingNo: '', remark: '',
+    deliveryDate: new Date().toISOString().slice(0, 10),
+  })
+  shipDialogVisible.value = true
+}
+
+const submitShip = async () => {
+  if (!shipOrderId.value) return
+  shipSubmitting.value = true
   try {
-    await ElMessageBox.confirm(
-      `确认对订单【${row.orderNo}】发货？将自动创建销售出库单并扣减产品库存。`,
-      '发货确认',
-      { confirmButtonText: '确认发货', cancelButtonText: '取消', type: 'warning' }
-    )
-    await orderStatusApi.shipOrder(row.orderId)
+    await orderStatusApi.shipOrder(shipOrderId.value, shipForm)
     ElMessage.success('发货成功，订单已进入已发货状态')
+    shipDialogVisible.value = false
     getList()
   } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '发货失败')
+    ElMessage.error(e?.message || '发货失败')
+  } finally {
+    shipSubmitting.value = false
   }
 }
 

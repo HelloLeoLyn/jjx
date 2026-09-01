@@ -103,6 +103,12 @@ public class SalesDelivery extends BaseEntity {
     /** 收货备注 */
     private String receiveRemark;
 
+    /** 签收操作人ID */
+    private Long receiveBy;
+
+    /** 签收操作人姓名 */
+    private String receiveName;
+
     /** 逻辑删除 */
     @TableLogic
     private Integer deleted;

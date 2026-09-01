@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
+import type { SalesDeliveryCreateDTO } from '@/api/sales/delivery'
 // 添加以下 API 方法
 export const orderStatusApi = {
   // ==================== 订单状态流转 ====================
@@ -46,7 +47,8 @@ export const orderStatusApi = {
     request.put(`/sales/orders/${orderId}/status/generate-plan`),
 
   // 发货（7→8，触发 order.delivering 自动创建销售出库单扣库存，2026-08-12）
-  shipOrder: (orderId: number) => request.put(`/sales/orders/${orderId}/status/ship`),
+  shipOrder: (orderId: number, body?: SalesDeliveryCreateDTO) =>
+    request.put(`/sales/orders/${orderId}/status/ship`, body),
 
   // 完成订单
   completeOrder: (orderId: number) => request.put(`/sales/orders/${orderId}/status/complete`),
