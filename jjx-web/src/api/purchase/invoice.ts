@@ -307,3 +307,41 @@ export function getYearlyInvoiceStatistics(
     params: { startYear, endYear },
   })
 }
+
+/** 上传临时发票文件（按订单） */
+export function uploadInvoiceTemp(orderId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request({
+    url: `/purchase/invoice/upload-temp/${orderId}`,
+    method: 'post',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+/** 查询订单的磁盘票据文件列表 */
+export function getInvoiceDiskFiles(orderId: number) {
+  return request({
+    url: `/purchase/invoice/disk-files/${orderId}`,
+    method: 'get',
+  })
+}
+
+/** 批量确认发票（临时文件落库生成发票记录） */
+export function batchConfirmInvoice(orderId: number, supplierId: number, files: Record<string, unknown>[]) {
+  return request({
+    url: '/purchase/invoice/batch-confirm',
+    method: 'post',
+    data: { orderId, supplierId, files },
+  })
+}
+
+/** 删除临时发票文件 */
+export function deleteInvoiceTempFile(fileUrl: string) {
+  return request({
+    url: '/purchase/invoice/temp-file',
+    method: 'delete',
+    params: { fileUrl },
+  })
+}

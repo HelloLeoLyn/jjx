@@ -43,8 +43,17 @@ public class PurchaseInvoiceController extends BaseController {
     @GetMapping("/list")
     @SaCheckPermission("purchase:invoice:view")
     public Result<PageResult<PurchaseDocument>> page(PurchaseDocumentDTO dto) {
-        documentService.selectDocumentList(dto);
-        return Result.success(null);
+        if (dto == null) {
+            dto = new PurchaseDocumentDTO();
+        }
+        dto.setDocumentType("invoice");
+        List<PurchaseDocument> list = documentService.selectDocumentList(dto);
+        int pageNum = dto.getPageNum() == null || dto.getPageNum() < 1 ? 1 : dto.getPageNum();
+        int pageSize = dto.getPageSize() == null || dto.getPageSize() < 1 ? 10 : dto.getPageSize();
+        int total = list.size();
+        int from = Math.min((pageNum - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return Result.success(PageResult.build(list.subList(from, to), total));
     }
 
     /**
@@ -463,7 +472,7 @@ public class PurchaseInvoiceController extends BaseController {
         Long supplierId = Long.valueOf(params.get("supplierId").toString());
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> files = (List<Map<String, Object>>) params.get("files");
-        documentService.batchConfirmDocuments(orderId, supplierId, files);
+        documentService.batchConfirmDocuments(orderId, supplierId, files, "invoice");
         return Result.success();
     }
 

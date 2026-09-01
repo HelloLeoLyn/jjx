@@ -126,7 +126,7 @@ public interface IPurchaseDocumentService {
      * @param files      文件信息列表 [{fileName, fileUrl, fileSize}]
      * @return 创建的票据数量
      */
-    int batchConfirmDocuments(Long orderId, Long supplierId, List<Map<String, Object>> files);
+    int batchConfirmDocuments(Long orderId, Long supplierId, List<Map<String, Object>> files, String documentType);
 
     /**
      * 删除临时文件

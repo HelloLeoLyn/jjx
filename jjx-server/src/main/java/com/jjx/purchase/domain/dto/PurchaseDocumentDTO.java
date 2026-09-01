@@ -1,5 +1,6 @@
 package com.jjx.purchase.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -99,4 +100,26 @@ public class PurchaseDocumentDTO {
      */
     @Size(max = 500, message = "备注长度不能超过500个字符")
     private String remark;
+
+    /**
+     * 页码（列表分页）
+     */
+    private Integer pageNum = 1;
+
+    /**
+     * 每页大小（列表分页）
+     */
+    private Integer pageSize = 10;
+
+    /**
+     * 开票日期-起始
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private java.time.LocalDate documentDateStart;
+
+    /**
+     * 开票日期-结束
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private java.time.LocalDate documentDateEnd;
 }

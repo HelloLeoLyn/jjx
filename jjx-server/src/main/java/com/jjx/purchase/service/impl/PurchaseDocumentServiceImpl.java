@@ -63,6 +63,12 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             if (dto.getDocumentStatus() != null) {
                 wrapper.eq(PurchaseDocument::getDocumentStatus, dto.getDocumentStatus());
             }
+            if (dto.getDocumentDateStart() != null) {
+                wrapper.ge(PurchaseDocument::getDocumentDate, dto.getDocumentDateStart());
+            }
+            if (dto.getDocumentDateEnd() != null) {
+                wrapper.le(PurchaseDocument::getDocumentDate, dto.getDocumentDateEnd());
+            }
         }
         wrapper.orderByDesc(PurchaseDocument::getCreateTime).orderByDesc(PurchaseDocument::getDocumentId);
         return documentMapper.selectList(wrapper);
@@ -425,7 +431,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int batchConfirmDocuments(Long orderId, Long supplierId, List<Map<String, Object>> files) {
+    public int batchConfirmDocuments(Long orderId, Long supplierId, List<Map<String, Object>> files, String documentType) {
         if (files == null || files.isEmpty()) {
             return 0;
         }
@@ -439,8 +445,8 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             PurchaseDocument document = new PurchaseDocument();
             document.setOrderId(orderId);
             document.setSupplierId(supplierId);
-            document.setDocumentNo(generateDocumentNo("receipt"));
-            document.setDocumentType("receipt");
+            document.setDocumentNo(generateDocumentNo(documentType));
+            document.setDocumentType(documentType);
             document.setDocumentDate(LocalDate.now());
             document.setDocumentAmount(java.math.BigDecimal.ZERO);
             document.setCurrency("CNY");
@@ -453,7 +459,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             count++;
         }
 
-        log.info("批量确认票据成功: orderId={}, count={}", orderId, count);
+        log.info("批量确认票据成功: orderId={}, documentType={}, count={}", orderId, documentType, count);
         return count;
     }
 
