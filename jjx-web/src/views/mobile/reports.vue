@@ -59,6 +59,11 @@
                   · {{ fmtTime(r.reportTime) }}
                 </div>
               </div>
+              <div class="m-report-item-actions">
+                <el-button size="small" type="primary" plain @click="printWorkReport(r)">
+                  打印
+                </el-button>
+              </div>
             </div>
             <el-empty v-if="!loading && !allList.length" description="暂无报工记录" />
           </div>
@@ -139,6 +144,13 @@ async function handleCancel(r: WorkReportVO) {
   } catch (e: any) {
     if (e !== 'cancel' && e?.message) ElMessage.error(e.message)
   }
+}
+
+// 打印工票（DEV-1247）
+function printWorkReport(r: WorkReportVO) {
+  if (!r.reportId) return
+  const { href } = router.resolve(`/production/report/print/${r.reportId}`)
+  window.open(href, '_blank')
 }
 
 watch(activeTab, (tab) => {

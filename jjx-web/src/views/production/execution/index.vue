@@ -751,10 +751,13 @@
                 <el-tag v-else size="small" type="info" effect="plain">待审批</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="90">
+            <el-table-column label="操作" width="130">
               <template #default="{ row }">
                 <el-button link size="small" type="primary" @click="openReportDetail(row)"
                   >详情</el-button
+                >
+                <el-button link size="small" type="primary" @click="printWorkReport(row)"
+                  >打印</el-button
                 >
                 <el-button
                   v-if="canCancelReport(row)"
@@ -1330,8 +1333,25 @@ const handleReset = () => {
 
 // ============ 开始/暂停/恢复/完成 ============
 const handleStart = async (row: OperationExecutionVO) => {
+  // 扫码C：可选扫设备码（不一致后端软校验放行并记录），跳过=不校验
+  let deviceCode: string | undefined
   try {
-    const result = await operationExecutionApi.start(row.executionId!)
+    const { value } = await ElMessageBox.prompt(
+      row.equipmentName ? `指定设备：${row.equipmentName}（${row.equipmentCode || '-'}）` : '该工序未指定设备',
+      '开始工序（可选扫设备码）',
+      {
+        confirmButtonText: '开始',
+        cancelButtonText: '跳过',
+        inputPlaceholder: '扫码枪扫设备码，或直接点开始',
+        closeOnClickModal: false,
+      },
+    )
+    deviceCode = value?.trim() || undefined
+  } catch {
+    return // 用户取消
+  }
+  try {
+    const result = await operationExecutionApi.start(row.executionId!, deviceCode)
     if (result.data !== true) throw new Error(result.msg || '开始工序失败')
     ElMessage.success('已开始')
     getList()
@@ -1484,6 +1504,16 @@ const reportDetail = ref<WorkReportVO | null>(null)
 const openReportDetail = (row: WorkReportVO) => {
   reportDetail.value = row
   reportDetailVisible.value = true
+}
+
+// 打印工票（DEV-1247：报工单打印页）
+const printWorkReport = (row: WorkReportVO) => {
+  if (!row.reportId) {
+    ElMessage.error('报工单ID缺失，无法打印')
+    return
+  }
+  const { href } = router.resolve(`/production/report/print/${row.reportId}`)
+  window.open(href, '_blank')
 }
 
 // 撤销

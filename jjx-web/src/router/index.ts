@@ -249,6 +249,12 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: '质量记录打印', hidden: true },
   },
   {
+    path: '/production/report/print/:id',
+    name: 'ProductionWorkReportPrint',
+    component: () => import('@/views/production/report/print.vue'),
+    meta: { title: '报工单打印', hidden: true },
+  },
+  {
     path: '/production/quality-print/fqc-report', name: 'ProductionFqcReportPrint',
     component: () => import('@/views/production/quality-print/fqc-report.vue'),
     meta: { title: '成品检验报告', hidden: true },
