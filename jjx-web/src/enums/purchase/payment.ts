@@ -1,17 +1,17 @@
-import { createEnum } from '@/enums/base'
+import { createEnum, createNamedEnum } from '@/enums/base'
 
 /**
- * 付款状态枚举
+ * 付款状态枚举（对齐后端 PurchasePaymentStatusEnum）
  * 0=待付款, 1=部分付款, 2=已付款
  */
-export const PaymentStatusEnum = createEnum({
-  items: [
-    { value: 0, label: '待付款', tagProps: { type: 'warning' } },
-    { value: 1, label: '部分付款', tagProps: { type: 'info' } },
-    { value: 2, label: '已付款', tagProps: { type: 'success' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const PaymentStatusEnum = createNamedEnum(
+  {
+    PENDING: { value: 0, label: '待付款', tagProps: { type: 'warning' } },
+    PARTIALLY_PAID: { value: 1, label: '部分付款', tagProps: { type: 'info' } },
+    COMPLETED: { value: 2, label: '已付款', tagProps: { type: 'success' } },
+  },
+  { type: 'info' },
+)
 
 /**
  * 付款方式枚举
