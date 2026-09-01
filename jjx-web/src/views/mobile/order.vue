@@ -48,6 +48,16 @@
               开始
             </el-button>
             <el-button
+              v-if="canPause(ex)"
+              size="small"
+              type="warning"
+              plain
+              :loading="pausingId === ex.executionId"
+              @click="handlePause(ex)"
+            >
+              暂停
+            </el-button>
+            <el-button
               v-if="canReport(ex)"
               size="small"
               type="primary"
@@ -82,6 +92,7 @@ const loading = ref(false)
 const order = ref<ProductionOrderVO | null>(null)
 const executions = ref<MyProductionExecution[]>([])
 const startingId = ref<number | null>(null)
+const pausingId = ref<number | null>(null)
 
 const orderStatusLabel = computed(() => {
   if (!order.value) return '-'
@@ -108,6 +119,11 @@ function canStart(ex: MyProductionExecution): boolean {
     Number(ex.executionStatus) === ExecutionStatusEnum.PENDING.value &&
     Number(ex.orderStatus) === ProductionOrderStatusEnum.IN_PROGRESS.value
   )
+}
+
+/** 执行中 → 可暂停 */
+function canPause(ex: MyProductionExecution): boolean {
+  return Number(ex.executionStatus) === ExecutionStatusEnum.EXECUTING.value
 }
 
 /** 执行中且有可报额度 → 可报工 */
@@ -147,6 +163,20 @@ async function handleStart(ex: MyProductionExecution) {
     ElMessage.error(e?.message || '开始失败')
   } finally {
     startingId.value = null
+  }
+}
+
+async function handlePause(ex: MyProductionExecution) {
+  if (!ex.executionId) return
+  pausingId.value = ex.executionId
+  try {
+    await operationExecutionApi.pause(ex.executionId)
+    ElMessage.success('工序已暂停')
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '暂停失败')
+  } finally {
+    pausingId.value = null
   }
 }
 
