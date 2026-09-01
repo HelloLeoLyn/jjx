@@ -27,6 +27,9 @@ public interface ISalesReturnService {
     /** 审核驳回：申请中 → 申请中（记录驳回原因） */
     void reject(Long returnId, String approverName, String approveRemark);
 
-    /** 收货确认：已审核 → 已收货，联动创建退货入库单 */
+    /** 收货确认：已审核 → 已收货，联动创建退货入库单（含明细） */
     void receive(Long returnId, String receiverName, String remark);
+
+    /** 退款：已收货 → 已退款，回写订单付款状态 */
+    void refund(Long returnId, java.math.BigDecimal refundAmount, String refundName);
 }

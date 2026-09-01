@@ -36,41 +36,52 @@
           <template #default="{ row }"><el-tag :type="SalesReturnStatusEnum.getTagProps(row.returnStatus).type">{{ SalesReturnStatusEnum.getLabel(row.returnStatus) }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="approveTime" label="审核时间" width="150" />
-        <el-table-column label="操作" width="230" fixed="right">
+        <el-table-column label="操作" width="270" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="detail(row)">详情</el-button>
             <el-button v-if="row.returnStatus === SalesReturnStatusEnum.APPLYING.value" v-hasPermi="['sales:return:approve']" link type="success" @click="openApprove(row)">审核</el-button>
             <el-button v-if="row.returnStatus === SalesReturnStatusEnum.APPROVED.value" v-hasPermi="['sales:return:edit']" link type="warning" @click="openReceive(row)">收货</el-button>
+            <el-button v-if="row.returnStatus === SalesReturnStatusEnum.RECEIVED.value" v-hasPermi="['sales:return:edit']" link type="danger" @click="openRefund(row)">退款</el-button>
           </template>
         </el-table-column>
       </el-table>
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @change="load" />
     </el-card>
 
-    <el-dialog v-model="createVisible" title="新增退货单" width="560px" destroy-on-close>
+    <el-dialog v-model="createVisible" title="新增退货单" width="820px" destroy-on-close>
       <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="90px">
         <el-form-item label="销售订单" prop="orderId">
-          <el-select v-model="createForm.orderId" filterable remote reserve-keyword :remote-method="searchOrders" :loading="ordersLoading" placeholder="输入订单号或客户搜索" style="width: 100%">
+          <el-select v-model="createForm.orderId" filterable remote reserve-keyword :remote-method="searchOrders" :loading="ordersLoading" placeholder="输入订单号或客户搜索" style="width: 100%" @change="onOrderChange">
             <el-option v-for="o in orderOptions" :key="o.orderId" :label="`${o.orderNo} - ${o.customerName}`" :value="o.orderId" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="selectedOrder" label="订单信息">
-          <el-descriptions :column="2" border size="small" style="width: 100%">
-            <el-descriptions-item label="客户">{{ selectedOrder.customerName }}</el-descriptions-item>
-            <el-descriptions-item label="金额">{{ money(selectedOrder.finalAmount ?? selectedOrder.totalAmount) }}</el-descriptions-item>
-          </el-descriptions>
-        </el-form-item>
         <el-row :gutter="16">
-          <el-col :span="12"><el-form-item label="退货日期" prop="returnDate"><el-date-picker v-model="createForm.returnDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="退货类型" prop="returnType">
+          <el-col :span="8"><el-form-item label="退货日期" prop="returnDate"><el-date-picker v-model="createForm.returnDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="退货类型" prop="returnType">
             <el-select v-model="createForm.returnType" style="width: 100%">
               <el-option v-for="item in SalesReturnTypeEnum.items" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="数量"><el-input-number v-model="createForm.totalQuantity" :min="0" :controls="false" style="width: 100%" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="金额"><el-input-number v-model="createForm.totalAmount" :min="0" :precision="2" :controls="false" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="合计金额"><el-input :model-value="totalAmountText" disabled /></el-form-item></el-col>
         </el-row>
-        <el-form-item label="退货原因" prop="returnReason"><el-input v-model="createForm.returnReason" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
+        <el-form-item v-if="orderItems.length" label="退货明细">
+          <el-table :data="orderItems" border size="small" max-height="260">
+            <el-table-column type="index" width="46" />
+            <el-table-column prop="materialCode" label="物料编码" min-width="110" />
+            <el-table-column prop="materialName" label="物料名称" min-width="130" />
+            <el-table-column prop="specification" label="规格" min-width="90" />
+            <el-table-column prop="quantity" label="订购数量" width="90" align="right" />
+            <el-table-column label="退货数量" width="130">
+              <template #default="{ row }">
+                <el-input-number v-model="row.returnQty" :min="0" :max="Number(row.quantity) || undefined" :precision="2" :controls="false" size="small" style="width: 100%" @change="recalcTotal" />
+              </template>
+            </el-table-column>
+            <el-table-column prop="unitPrice" label="单价" width="90" align="right">
+              <template #default="{ row }">{{ money(row.unitPrice) }}</template>
+            </el-table-column>
+          </el-table>
+        </el-form-item>
+        <el-form-item label="退货原因" prop="returnReason"><el-input v-model="createForm.returnReason" type="textarea" :rows="2" maxlength="500" show-word-limit /></el-form-item>
         <el-form-item label="备注"><el-input v-model="createForm.remark" type="textarea" :rows="2" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="createVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitCreate">提交退货申请</el-button></template>
@@ -96,7 +107,16 @@
       <template #footer><el-button @click="receiveVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitReceive">确认收货并入库</el-button></template>
     </el-dialog>
 
-    <el-drawer v-model="detailVisible" title="退货单详情" size="560px">
+    <el-dialog v-model="refundVisible" title="退货退款" width="480px">
+      <el-form :model="refundForm" label-width="90px">
+        <el-form-item label="退货金额">{{ money(refundTarget?.totalAmount) }}</el-form-item>
+        <el-form-item label="退款金额"><el-input-number v-model="refundForm.refundAmount" :min="0" :precision="2" :controls="false" style="width: 100%" /></el-form-item>
+        <el-form-item label="退款人"><el-input v-model="refundForm.refundName" placeholder="退款人姓名" /></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="refundVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitRefund">确认退款</el-button></template>
+    </el-dialog>
+
+    <el-drawer v-model="detailVisible" title="退货单详情" size="640px">
       <el-descriptions v-if="current" :column="2" border>
         <el-descriptions-item label="退货单号">{{ current.returnNo }}</el-descriptions-item>
         <el-descriptions-item label="订单ID">{{ current.orderId }}</el-descriptions-item>
@@ -111,18 +131,35 @@
         <el-descriptions-item label="审核意见" :span="2">{{ current.approveRemark || '-' }}</el-descriptions-item>
         <el-descriptions-item label="收货人">{{ current.receiveName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="收货时间">{{ current.receiveTime || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="退款人">{{ current.refundName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="退款时间">{{ current.refundTime || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="退款金额">{{ money(current.refundAmount) }}</el-descriptions-item>
         <el-descriptions-item label="退货原因" :span="2">{{ current.returnReason || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ current.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
+      <h4 class="items-title">退货明细</h4>
+      <el-table :data="detailItems" border size="small">
+        <el-table-column prop="materialCode" label="物料编码" min-width="110" />
+        <el-table-column prop="materialName" label="物料名称" min-width="130" />
+        <el-table-column prop="materialSpec" label="规格" min-width="90" />
+        <el-table-column prop="quantity" label="退货数量" width="90" align="right" />
+        <el-table-column prop="unitPrice" label="单价" width="90" align="right">
+          <template #default="{ row }">{{ money(row.unitPrice) }}</template>
+        </el-table-column>
+        <el-table-column prop="amount" label="金额" width="100" align="right">
+          <template #default="{ row }">{{ money(row.amount) }}</template>
+        </el-table-column>
+      </el-table>
     </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { pageSalesReturn, getSalesReturn, createSalesReturn, approveSalesReturn, rejectSalesReturn, receiveSalesReturn } from '@/api/sales/return'
+import { pageSalesReturn, getSalesReturn, createSalesReturn, approveSalesReturn, rejectSalesReturn, receiveSalesReturn, refundSalesReturn, getSalesReturnItems } from '@/api/sales/return'
 import { orderApi } from '@/api/sales/order'
+import { orderProductApi } from '@/api/sales/orderProduct'
 import { SalesReturnStatusEnum, SalesReturnTypeEnum } from '@/enums/sales'
 
 defineOptions({ name: 'SalesReturn' })
@@ -135,13 +172,16 @@ const dateRange = ref<string[]>([])
 const createVisible = ref(false)
 const approveVisible = ref(false)
 const receiveVisible = ref(false)
+const refundVisible = ref(false)
 const detailVisible = ref(false)
 const current = ref<any>()
+const detailItems = ref<any[]>([])
 const approveTarget = ref<any>()
 const receiveTarget = ref<any>()
+const refundTarget = ref<any>()
 const ordersLoading = ref(false)
 const orderOptions = ref<any[]>([])
-const selectedOrder = ref<any>()
+const orderItems = ref<any[]>([])
 const createFormRef = ref()
 
 const query = reactive<any>({ pageNum: 1, pageSize: 10, returnNo: '', customerName: '', returnStatus: undefined })
@@ -154,8 +194,14 @@ const createRules = {
 }
 const approveForm = reactive({ approverName: '', approveRemark: '' })
 const receiveForm = reactive({ receiverName: '', remark: '' })
+const refundForm = reactive({ refundAmount: undefined as number | undefined, refundName: '' })
 
 const money = (v?: number) => v == null ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 })
+
+const totalAmountText = computed(() => {
+  const sum = orderItems.value.reduce((acc, row) => acc + (Number(row.returnQty) || 0) * (Number(row.unitPrice) || 0), 0)
+  return money(sum)
+})
 
 function today() {
   const now = new Date()
@@ -191,16 +237,40 @@ async function searchOrders(keyword: string) {
 }
 
 function openCreate() {
-  Object.assign(createForm, { orderId: undefined, returnDate: today(), returnType: 1, totalQuantity: 0, totalAmount: undefined, returnReason: '', remark: '' })
-  selectedOrder.value = undefined
+  Object.assign(createForm, { orderId: undefined, returnDate: today(), returnType: 1, returnReason: '', remark: '' })
+  orderItems.value = []
   createVisible.value = true
 }
 
+async function onOrderChange(orderId?: number) {
+  orderItems.value = []
+  if (!orderId) return
+  try {
+    const res: any = await orderProductApi.getListByOrderId(orderId)
+    orderItems.value = (res.data || []).map((row: any) => ({ ...row, returnQty: 0 }))
+  } catch {
+    ElMessage.warning('订单明细加载失败，可手动填写汇总')
+  }
+}
+
+function recalcTotal() { /* 合计金额由 totalAmountText computed 自动计算 */ }
+
 async function submitCreate() {
   if (!createFormRef.value || !await createFormRef.value.validate()) return
+  const items = orderItems.value
+    .filter((row) => Number(row.returnQty) > 0)
+    .map((row) => ({
+      materialId: row.materialId,
+      materialCode: row.materialCode,
+      materialName: row.materialName,
+      materialSpec: row.specification,
+      unit: row.unit,
+      quantity: Number(row.returnQty),
+      unitPrice: Number(row.unitPrice) || undefined,
+    }))
   submitting.value = true
   try {
-    await createSalesReturn(createForm)
+    await createSalesReturn({ ...createForm, items })
     ElMessage.success('退货申请已提交')
     createVisible.value = false
     load()
@@ -256,9 +326,30 @@ async function submitReceive() {
   }
 }
 
+function openRefund(row: any) {
+  refundTarget.value = row
+  Object.assign(refundForm, { refundAmount: Number(row.totalAmount) || undefined, refundName: '' })
+  refundVisible.value = true
+}
+async function submitRefund() {
+  if (!refundTarget.value) return
+  submitting.value = true
+  try {
+    await refundSalesReturn(refundTarget.value.returnId, refundForm.refundAmount, refundForm.refundName)
+    ElMessage.success('退款成功，订单付款状态已回写')
+    refundVisible.value = false
+    load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '退款失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
 async function detail(row: any) {
-  const res: any = await getSalesReturn(row.returnId)
+  const [res, itemsRes]: any[] = await Promise.all([getSalesReturn(row.returnId), getSalesReturnItems(row.returnId)])
   current.value = res.data
+  detailItems.value = itemsRes.data || []
   detailVisible.value = true
 }
 
@@ -268,4 +359,5 @@ onMounted(load)
 <style scoped>
 .search-card { margin-bottom: 16px; }
 .toolbar { margin-bottom: 14px; }
+.items-title { margin: 16px 0 8px; }
 </style>

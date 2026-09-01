@@ -1,11 +1,14 @@
 package com.jjx.sales.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.sales.domain.dto.SalesReturnQueryDTO;
 import com.jjx.sales.domain.entity.SalesReturn;
+import com.jjx.sales.domain.entity.SalesReturnItem;
 import com.jjx.sales.enums.SalesReturnStatusEnum;
+import com.jjx.sales.mapper.SalesReturnItemMapper;
 import com.jjx.sales.service.ISalesReturnService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
@@ -14,6 +17,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @Tag(name = "销售退货管理")
@@ -23,6 +28,7 @@ import java.util.Map;
 public class SalesReturnController {
 
     private final ISalesReturnService returnService;
+    private final SalesReturnItemMapper returnItemMapper;
 
     @Operation(summary = "分页查询退货单")
     @SaCheckPermission("sales:return:view")
@@ -83,5 +89,28 @@ public class SalesReturnController {
                                 @RequestParam(required = false) String remark) {
         returnService.receive(returnId, receiverName, remark);
         return Result.success();
+    }
+
+    @Operation(summary = "退款（回写订单付款状态）")
+    @Log(module = "销售退货管理", businessType = BusinessType.UPDATE,
+            bizType = "'sales_return'", bizId = "#returnId",
+            bizStatus = "T(com.jjx.sales.enums.SalesReturnStatusEnum).REFUNDED.getLabel()")
+    @SaCheckPermission("sales:return:edit")
+    @PutMapping("/{returnId}/refund")
+    public Result<Void> refund(@PathVariable Long returnId,
+                               @RequestParam(required = false) java.math.BigDecimal refundAmount,
+                               @RequestParam(required = false) String refundName) {
+        returnService.refund(returnId, refundAmount, refundName);
+        return Result.success();
+    }
+
+    @Operation(summary = "退货单明细列表")
+    @SaCheckPermission("sales:return:view")
+    @GetMapping("/{returnId}/items")
+    public Result<List<SalesReturnItem>> items(@PathVariable Long returnId) {
+        return Result.success(returnItemMapper.selectList(
+                new LambdaQueryWrapper<SalesReturnItem>()
+                        .eq(SalesReturnItem::getReturnId, returnId)
+                        .orderByAsc(SalesReturnItem::getItemId)));
     }
 }

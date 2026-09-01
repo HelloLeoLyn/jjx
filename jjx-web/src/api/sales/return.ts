@@ -52,3 +52,20 @@ export function receiveSalesReturn(returnId: number, receiverName?: string, rema
     params: { receiverName, remark },
   })
 }
+
+/** 退款（回写订单付款状态） */
+export function refundSalesReturn(returnId: number, refundAmount?: number, refundName?: string) {
+  return request({
+    url: `/sales/returns/${returnId}/refund`,
+    method: 'put',
+    params: { refundAmount, refundName },
+  })
+}
+
+/** 退货单明细列表 */
+export function getSalesReturnItems(returnId: number) {
+  return request({
+    url: `/sales/returns/${returnId}/items`,
+    method: 'get',
+  })
+}

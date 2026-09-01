@@ -10,8 +10,10 @@ import com.jjx.inventory.service.InventoryInboundService;
 import com.jjx.sales.domain.dto.SalesReturnQueryDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesReturn;
+import com.jjx.sales.domain.entity.SalesReturnItem;
 import com.jjx.sales.enums.SalesReturnStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
+import com.jjx.sales.mapper.SalesReturnItemMapper;
 import com.jjx.sales.mapper.SalesReturnMapper;
 import com.jjx.sales.service.ISalesReturnService;
 import com.jjx.system.service.ReviewFlowService;
@@ -35,6 +37,7 @@ import java.util.Map;
 public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, SalesReturn> implements ISalesReturnService {
 
     private final SalesReturnMapper returnMapper;
+    private final SalesReturnItemMapper returnItemMapper;
     private final OrderMapper orderMapper;
     private final RedisSequenceService redisSequenceService;
     private final ReviewFlowService reviewFlowService;
@@ -89,10 +92,39 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
         salesReturn.setReturnReason(params.get("returnReason") == null ? null : params.get("returnReason").toString());
         salesReturn.setReturnType(params.get("returnType") == null ? 5 : Integer.valueOf(params.get("returnType").toString()));
         salesReturn.setReturnStatus(SalesReturnStatusEnum.APPLYING.getValue());
-        salesReturn.setTotalQuantity(params.get("totalQuantity") == null ? 0 : Integer.valueOf(params.get("totalQuantity").toString()));
-        salesReturn.setTotalAmount(params.get("totalAmount") == null ? BigDecimal.ZERO : new BigDecimal(params.get("totalAmount").toString()));
-        salesReturn.setRemark(params.get("remark") == null ? null : params.get("remark").toString());
         returnMapper.insert(salesReturn);
+        // 汇总：优先按明细计算，无明细时用传入值
+        List<Map<String, Object>> items = parseItems(params.get("items"));
+        if (!items.isEmpty()) {
+            BigDecimal totalQty = BigDecimal.ZERO;
+            BigDecimal totalAmt = BigDecimal.ZERO;
+            int sort = 1;
+            for (Map<String, Object> m : items) {
+                BigDecimal qty = m.get("quantity") == null ? BigDecimal.ZERO : new BigDecimal(m.get("quantity").toString());
+                BigDecimal price = m.get("unitPrice") == null ? BigDecimal.ZERO : new BigDecimal(m.get("unitPrice").toString());
+                SalesReturnItem item = new SalesReturnItem();
+                item.setReturnId(salesReturn.getReturnId());
+                if (m.get("materialId") != null) item.setMaterialId(Long.valueOf(m.get("materialId").toString()));
+                item.setMaterialCode((String) m.get("materialCode"));
+                item.setMaterialName((String) m.get("materialName"));
+                item.setMaterialSpec((String) m.get("materialSpec"));
+                item.setUnit((String) m.get("unit"));
+                item.setQuantity(qty);
+                item.setUnitPrice(price);
+                item.setAmount(qty.multiply(price));
+                item.setRemark((String) m.get("remark"));
+                returnItemMapper.insert(item);
+                totalQty = totalQty.add(qty);
+                totalAmt = totalAmt.add(item.getAmount());
+            }
+            salesReturn.setTotalQuantity(totalQty.intValue());
+            salesReturn.setTotalAmount(totalAmt);
+        } else {
+            salesReturn.setTotalQuantity(params.get("totalQuantity") == null ? 0 : Integer.valueOf(params.get("totalQuantity").toString()));
+            salesReturn.setTotalAmount(params.get("totalAmount") == null ? BigDecimal.ZERO : new BigDecimal(params.get("totalAmount").toString()));
+        }
+        salesReturn.setRemark(params.get("remark") == null ? null : params.get("remark").toString());
+        returnMapper.updateById(salesReturn);
 
         reviewFlowService.record("sales_return", salesReturn.getReturnId(), "SUBMIT", "提交退货申请",
                 SalesReturnStatusEnum.APPLYING.getValue(), SalesReturnStatusEnum.APPLYING.getValue(),
@@ -167,15 +199,102 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
             inboundParams.put("inboundDate", salesReturn.getReturnDate() == null
                     ? java.time.LocalDate.now().toString() : new java.text.SimpleDateFormat("yyyy-MM-dd").format(salesReturn.getReturnDate()));
             inboundParams.put("remark", "销售退货自动入库：" + salesReturn.getReturnNo());
+            // 明细行：退货明细 → 入库明细（确认入库时加回库存）
+            List<SalesReturnItem> returnItems = returnItemMapper.selectList(
+                    new LambdaQueryWrapper<SalesReturnItem>().eq(SalesReturnItem::getReturnId, returnId));
+            if (!returnItems.isEmpty()) {
+                List<Map<String, Object>> inboundItems = new java.util.ArrayList<>();
+                for (SalesReturnItem ri : returnItems) {
+                    Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("materialId", ri.getMaterialId());
+                    m.put("materialCode", ri.getMaterialCode());
+                    m.put("materialName", ri.getMaterialName());
+                    m.put("specification", ri.getMaterialSpec());
+                    m.put("unit", ri.getUnit());
+                    m.put("quantity", ri.getQuantity());
+                    m.put("unitPrice", ri.getUnitPrice());
+                    inboundItems.add(m);
+                }
+                inboundParams.put("items", inboundItems);
+            }
             Long inboundId = inboundService.create(inboundParams);
             if (inboundId != null) {
                 inboundService.confirm(inboundId, SecurityUtils.getUserId(), receiverName == null ? "system" : receiverName);
-                log.info("退货入库联动成功: returnNo={}, inboundId={}", salesReturn.getReturnNo(), inboundId);
+                log.info("退货入库联动成功: returnNo={}, inboundId={}, items={}", salesReturn.getReturnNo(), inboundId, returnItems.size());
             }
         } catch (Exception e) {
             log.error("退货入库联动失败: returnId={}, err={}", returnId, e.getMessage());
             throw new BusinessException("退货单已收货，但自动入库失败：" + e.getMessage());
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void refund(Long returnId, BigDecimal refundAmount, String refundName) {
+        SalesReturn salesReturn = getById(returnId);
+        if (!SalesReturnStatusEnum.RECEIVED.getValue().equals(salesReturn.getReturnStatus())) {
+            throw new BusinessException("仅已收货的退货单可退款");
+        }
+        salesReturn.setReturnStatus(SalesReturnStatusEnum.REFUNDED.getValue());
+        salesReturn.setRefundTime(new Date());
+        salesReturn.setRefundBy(SecurityUtils.getUserId());
+        salesReturn.setRefundName(refundName == null || refundName.isBlank()
+                ? SecurityUtils.getRealName() : refundName);
+        if (refundAmount != null) {
+            salesReturn.setRefundAmount(refundAmount);
+        }
+        returnMapper.updateById(salesReturn);
+        reviewFlowService.record("sales_return", returnId, "REFUND", "退款",
+                SalesReturnStatusEnum.RECEIVED.getValue(), SalesReturnStatusEnum.REFUNDED.getValue(),
+                refundAmount == null ? null : "退款金额：" + refundAmount.toPlainString(), null);
+
+        // 回写订单付款状态：已收扣减退款，重算未收与支付状态
+        if (salesReturn.getOrderId() != null) {
+            writebackOrderPayment(salesReturn.getOrderId(), refundAmount == null ? BigDecimal.ZERO : refundAmount);
+        }
+    }
+
+    /** 退款回写订单付款状态（对照收款回写 052 口径：paid_amount 扣减退款） */
+    private void writebackOrderPayment(Long orderId, BigDecimal refundAmount) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null) {
+            log.warn("退货退款回写的订单不存在: orderId={}", orderId);
+            return;
+        }
+        BigDecimal paid = order.getPaidAmount() == null ? BigDecimal.ZERO : order.getPaidAmount();
+        BigDecimal newPaid = paid.subtract(refundAmount).max(BigDecimal.ZERO);
+        BigDecimal target = order.getFinalAmount() != null
+                ? order.getFinalAmount()
+                : (order.getTotalAmountWithTax() != null ? order.getTotalAmountWithTax() : order.getTotalAmount());
+        Integer paymentStatus = newPaid.compareTo(BigDecimal.ZERO) <= 0
+                ? com.jjx.sales.enums.SalesPaymentStatusEnum.UNPAID.getValue()
+                : target != null && newPaid.compareTo(target) >= 0
+                        ? com.jjx.sales.enums.SalesPaymentStatusEnum.PAID.getValue()
+                        : com.jjx.sales.enums.SalesPaymentStatusEnum.PARTIAL_PAID.getValue();
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        update.setPaymentStatus(paymentStatus);
+        update.setPaidAmount(newPaid);
+        if (target != null) {
+            update.setUnpaidAmount(target.subtract(newPaid).max(BigDecimal.ZERO));
+        }
+        orderMapper.updateById(update);
+        log.info("退货退款回写订单付款状态: orderId={}, newPaid={}, paymentStatus={}", orderId, newPaid, paymentStatus);
+    }
+
+    /** 解析 items 参数（List<Map>） */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseItems(Object itemsObj) {
+        if (itemsObj instanceof List<?> list) {
+            List<Map<String, Object>> result = new java.util.ArrayList<>();
+            for (Object obj : list) {
+                if (obj instanceof Map<?, ?> m) {
+                    result.add((Map<String, Object>) m);
+                }
+            }
+            return result;
+        }
+        return new java.util.ArrayList<>();
     }
 
     private java.util.Date parseDate(String value) {
