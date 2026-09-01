@@ -58,6 +58,16 @@
               暂停
             </el-button>
             <el-button
+              v-if="canComplete(ex)"
+              size="small"
+              type="success"
+              plain
+              :loading="completingId === ex.executionId"
+              @click="handleComplete(ex)"
+            >
+              完工
+            </el-button>
+            <el-button
               v-if="canReport(ex)"
               size="small"
               type="primary"
@@ -93,6 +103,7 @@ const order = ref<ProductionOrderVO | null>(null)
 const executions = ref<MyProductionExecution[]>([])
 const startingId = ref<number | null>(null)
 const pausingId = ref<number | null>(null)
+const completingId = ref<number | null>(null)
 
 const orderStatusLabel = computed(() => {
   if (!order.value) return '-'
@@ -123,6 +134,11 @@ function canStart(ex: MyProductionExecution): boolean {
 
 /** 执行中 → 可暂停 */
 function canPause(ex: MyProductionExecution): boolean {
+  return Number(ex.executionStatus) === ExecutionStatusEnum.EXECUTING.value
+}
+
+/** 执行中 → 可完工（后端 assertExecutionCompletable 兜底校验） */
+function canComplete(ex: MyProductionExecution): boolean {
   return Number(ex.executionStatus) === ExecutionStatusEnum.EXECUTING.value
 }
 
@@ -177,6 +193,29 @@ async function handlePause(ex: MyProductionExecution) {
     ElMessage.error(e?.message || '暂停失败')
   } finally {
     pausingId.value = null
+  }
+}
+
+async function handleComplete(ex: MyProductionExecution) {
+  if (!ex.executionId) return
+  try {
+    await ElMessageBox.confirm(
+      `确认完成工序「${ex.processName}」？\n后端将校验：子树完成量、无待审批报工、无剩余责任，不满足会拦截。`,
+      '完工确认',
+      { type: 'warning', confirmButtonText: '确认完工', cancelButtonText: '再想想' },
+    )
+  } catch {
+    return
+  }
+  completingId.value = ex.executionId
+  try {
+    await operationExecutionApi.complete(ex.executionId)
+    ElMessage.success('工序已完成；若为最后工序将自动生成完工检验')
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '完工失败')
+  } finally {
+    completingId.value = null
   }
 }
 
