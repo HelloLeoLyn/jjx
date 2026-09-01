@@ -9,6 +9,9 @@ import type {
   OutboundApproveParams,
   OutboundRejectParams,
   OutboundDashboardData,
+  PickPreviewRow,
+  PickRemainingRow,
+  PickItemPayload,
 } from '@/types/inventory/outbound'
 
 // 出库管理API
@@ -108,6 +111,28 @@ export const outboundApi = {
   createFromProduction(workOrderId: string) {
     return request.post<R<{ outboundId: string }>>(
       `/inventory/outbound/create-from-production/${workOrderId}`,
+    )
+  },
+
+  // 生产领料预览（BOM展开+可用量+替代料）
+  pickPreview(workOrderId: number) {
+    return request.get<R<PickPreviewRow[]>>(
+      `/inventory/outbound/pick-preview/${workOrderId}`,
+    )
+  },
+
+  // 工单剩余可领料量
+  pickRemaining(workOrderId: number) {
+    return request.get<R<PickRemainingRow[]>>(
+      `/inventory/outbound/pick-remaining/${workOrderId}`,
+    )
+  },
+
+  // 追加领料（多次领料）
+  createProductionPick(workOrderId: number, items: PickItemPayload[]) {
+    return request.post<R<{ outboundId: string }>>(
+      `/inventory/outbound/create-production-pick/${workOrderId}`,
+      items,
     )
   },
 

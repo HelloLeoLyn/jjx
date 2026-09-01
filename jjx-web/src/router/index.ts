@@ -98,6 +98,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/m/pick',
+    name: 'MobilePick',
+    component: () => import('@/views/mobile/pick.vue'),
+    meta: {
+      title: '生产领料',
+      hidden: true,
+    },
+  },
+  {
     path: '/demo/a4-print',
     name: 'A4PrintDemo',
     component: () => import('@/views/demo/A4PrintDemo.vue'),

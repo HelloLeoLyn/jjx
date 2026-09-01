@@ -137,3 +137,46 @@ export interface OutboundRejectParams {
   approverName: string
   remark?: string
 }
+
+// ============ 生产领料（pick）类型 ============
+
+/** 生产领料预览行（BOM展开+可用量+替代料） */
+export interface PickPreviewRow {
+  materialId: number
+  materialCode: string
+  materialName: string
+  specification?: string
+  unit: string
+  /** BOM 需求量（含损耗，按计划数展开） */
+  qtyNeeded: number
+  /** 当前可用库存 */
+  available: number
+  /** 建议领料量（= min(需求量, 可用量)） */
+  qtyPick: number
+  /** 是否替代料 */
+  substitute: boolean
+  /** 替代的主料编码 */
+  substituteOf?: string
+  /** 库存是否不足 */
+  insufficient: boolean
+}
+
+/** 工单剩余可领料行 */
+export interface PickRemainingRow {
+  materialId: number
+  materialCode?: string
+  materialName?: string
+  /** BOM 需求量 */
+  required: number
+  /** 已领料 */
+  picked: number
+  /** 剩余可领 */
+  remaining: number
+}
+
+/** 追加领料提交项 */
+export interface PickItemPayload {
+  materialId: number
+  materialCode?: string
+  quantity: number
+}

@@ -30,6 +30,10 @@
         质检判定
       </el-button>
 
+      <el-button size="large" class="m-scan-btn m-scan-btn-secondary" @click="router.push('/m/pick')">
+        生产领料
+      </el-button>
+
       <div class="m-scan-history" v-if="recent.length">
         <div class="m-scan-history-title">最近扫描</div>
         <div
