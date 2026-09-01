@@ -1,17 +1,17 @@
-import { createEnum } from '@/enums/base'
+import { createEnum, createNamedEnum } from '@/enums/base'
 
 /**
- * 收货状态枚举
+ * 收货状态枚举（对齐后端 PurchaseOrderItem.receiptStatus）
  * 0=待收货, 1=部分收货, 2=已收货
  */
-export const ReceiptStatusEnum = createEnum({
-  items: [
-    { value: 0, label: '待收货', tagProps: { type: 'warning' } },
-    { value: 1, label: '部分收货', tagProps: { type: 'info' } },
-    { value: 2, label: '已收货', tagProps: { type: 'success' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const ReceiptStatusEnum = createNamedEnum(
+  {
+    PENDING: { value: 0, label: '待收货', tagProps: { type: 'warning' } },
+    PARTIAL: { value: 1, label: '部分收货', tagProps: { type: 'info' } },
+    RECEIVED: { value: 2, label: '已收货', tagProps: { type: 'success' } },
+  },
+  { type: 'info' },
+)
 
 /**
  * 检验结果枚举
