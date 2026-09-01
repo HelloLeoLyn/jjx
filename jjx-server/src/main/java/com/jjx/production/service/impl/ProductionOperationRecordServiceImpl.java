@@ -14,8 +14,8 @@ import com.jjx.production.domain.vo.ProductionOperationRecordVO;
 import com.jjx.production.mapper.ProductionOperationRecordMapper;
 import com.jjx.production.service.ProductionOperationExecutionService;
 import com.jjx.production.service.ProductionOperationRecordService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,12 +27,17 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ProductionOperationRecordServiceImpl extends ServiceImpl<ProductionOperationRecordMapper, ProductionOperationRecord>
         implements ProductionOperationRecordService {
 
     private final ProductionOperationRecordMapper productionOperationRecordMapper;
     private final ProductionOperationExecutionService productionOperationExecutionService;
+
+    public ProductionOperationRecordServiceImpl(ProductionOperationRecordMapper productionOperationRecordMapper,
+                                                @Lazy ProductionOperationExecutionService productionOperationExecutionService) {
+        this.productionOperationRecordMapper = productionOperationRecordMapper;
+        this.productionOperationExecutionService = productionOperationExecutionService;
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
