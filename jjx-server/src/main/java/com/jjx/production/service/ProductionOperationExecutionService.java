@@ -55,6 +55,11 @@ public interface ProductionOperationExecutionService {
     boolean startExecution(Long executionId);
 
     /**
+     * 开始工序执行（扫码C：支持可选设备码软校验）
+     */
+    boolean startExecution(Long executionId, String scannedDeviceCode);
+
+    /**
      * 暂停工序执行
      */
     boolean pauseExecution(Long executionId);

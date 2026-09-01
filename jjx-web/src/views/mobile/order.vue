@@ -66,7 +66,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getProductionOrderByCode } from '@/api/production/order'
 import { getMyProductionExecutions } from '@/api/production/task'
 import { operationExecutionApi } from '@/api/production/operationExecution'
@@ -120,9 +120,27 @@ function canReport(ex: MyProductionExecution): boolean {
 
 async function handleStart(ex: MyProductionExecution) {
   if (!ex.executionId) return
+  // 扫码C：可选扫设备码（不一致后端软校验放行并记录），跳过=不校验
+  let deviceCode: string | undefined
+  try {
+    const { value } = await ElMessageBox.prompt(
+      ex.equipmentName ? `指定设备：${ex.equipmentName}（${ex.equipmentCode || '-'}）` : '该工序未指定设备',
+      '开始工序（可选扫设备码）',
+      {
+        confirmButtonText: '开始',
+        cancelButtonText: '跳过',
+        inputPlaceholder: '扫码枪扫设备码，或直接点开始',
+        inputValidator: (v: string) => (v && v.trim() ? true : true), // 可空，跳过校验
+        closeOnClickModal: false,
+      },
+    )
+    deviceCode = value?.trim() || undefined
+  } catch {
+    return // 用户取消
+  }
   startingId.value = ex.executionId
   try {
-    await operationExecutionApi.start(ex.executionId)
+    await operationExecutionApi.start(ex.executionId, deviceCode)
     ElMessage.success('工序已开始')
     await loadData()
   } catch (e: any) {

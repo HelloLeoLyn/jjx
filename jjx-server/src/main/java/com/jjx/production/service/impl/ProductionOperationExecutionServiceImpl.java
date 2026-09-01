@@ -44,6 +44,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final com.jjx.production.service.QualityActionService qualityActionService;
     /** P1：工序产生时同步创建 First ProductionTask（统一任务责任树） */
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
+    /** 扫码C：设备码软校验记录（DEVICE_CHECK） */
+    private final com.jjx.production.service.ProductionOperationRecordService productionOperationRecordService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -319,12 +321,27 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean startExecution(Long executionId) {
-        log.info("开始工序执行: {}", executionId);
+        return startExecution(executionId, null);
+    }
+
+    /**
+     * 开始工序执行（扫码C：支持可选设备码软校验）
+     *
+     * @param executionId   工序执行ID
+     * @param scannedDeviceCode 扫码设备码（可空；空=跳过校验，兼容旧调用）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean startExecution(Long executionId, String scannedDeviceCode) {
+        log.info("开始工序执行: {}, scannedDeviceCode={}", executionId, scannedDeviceCode);
 
         ProductionOperationExecution execution = getById(executionId);
         if (execution == null) {
             throw new BusinessException("工序执行记录不存在: " + executionId);
         }
+
+        // 扫码C：设备码软校验（不一致不拦截，记录实际设备后放行）
+        verifyDeviceSoft(execution, scannedDeviceCode);
 
         // 检查记录状态是否可以开始
         if (!canStartExecution(execution)) {
@@ -768,6 +785,39 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private static boolean canStartExecution(ProductionOperationExecution execution) {
         // 只有待执行状态的记录可以开始
         return ExecutionStatusEnum.PENDING.getValue().equals(execution.getExecutionStatus());
+    }
+
+    /**
+     * 扫码C：设备码软校验。
+     * 规则：execution 指定了设备（equipmentCode 非空）且传入了扫码设备码时比对；
+     * 不一致 → 不拦截，写入 DEVICE_CHECK 记录（含期望/实际设备码）后放行；
+     * 一致或未传码 → 直接放行。
+     */
+    private void verifyDeviceSoft(ProductionOperationExecution execution, String scannedDeviceCode) {
+        String expected = execution.getEquipmentCode();
+        if (expected == null || expected.isBlank()) {
+            return; // 未指定设备，无需校验
+        }
+        if (scannedDeviceCode == null || scannedDeviceCode.isBlank()) {
+            return; // 未扫码（PC/旧调用），放行
+        }
+        if (expected.equals(scannedDeviceCode.trim())) {
+            log.info("设备码校验通过: executionId={}, equipmentCode={}", execution.getExecutionId(), expected);
+            return;
+        }
+        // 软校验：记录实际设备后放行
+        log.warn("设备码不一致（软校验放行）: executionId={}, 期望={}, 实际={}",
+                execution.getExecutionId(), expected, scannedDeviceCode);
+        try {
+            com.jjx.production.domain.dto.ProductionOperationRecordCreateDTO record = new com.jjx.production.domain.dto.ProductionOperationRecordCreateDTO();
+            record.setExecutionId(execution.getExecutionId());
+            record.setRecordType("DEVICE_CHECK");
+            record.setRecordTime(LocalDateTime.now());
+            record.setRemark("设备码不一致，软校验放行。期望设备: " + expected + "，实际扫码: " + scannedDeviceCode.trim());
+            productionOperationRecordService.createRecord(record);
+        } catch (Exception e) {
+            log.error("设备码校验记录写入失败（不影响开始）: executionId={}", execution.getExecutionId(), e);
+        }
     }
 
     /**

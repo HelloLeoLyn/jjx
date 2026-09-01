@@ -71,10 +71,12 @@ export const operationExecutionApi = {
   },
 
   /**
-   * 开始工序执行
+   * 开始工序执行（deviceCode 可选：扫码C 设备码软校验，不传则跳过校验）
    */
-  start(executionId: number) {
-    return request.put<R<boolean>>(`/production/operation-execution/${executionId}/start`)
+  start(executionId: number, deviceCode?: string) {
+    return request.put<R<boolean>>(`/production/operation-execution/${executionId}/start`, null, {
+      params: deviceCode ? { deviceCode } : undefined,
+    })
   },
 
   /**

@@ -105,12 +105,13 @@ public class ProductionOperationExecutionController {
         return Result.success(executionPage);
     }
 
-    @Operation(summary = "开始工序执行")
+    @Operation(summary = "开始工序执行（可选设备码，扫码C软校验）")
     @PutMapping("/{executionId}/start")
     @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId")
     @SaCheckPermission("production:operation-execution:edit")
-    public Result<Boolean> startExecution(@PathVariable Long executionId) {
-        boolean success = productionOperationExecutionService.startExecution(executionId);
+    public Result<Boolean> startExecution(@PathVariable Long executionId,
+                                          @RequestParam(required = false) String deviceCode) {
+        boolean success = productionOperationExecutionService.startExecution(executionId, deviceCode);
         return Result.success(success);
     }
 
