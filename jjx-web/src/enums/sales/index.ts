@@ -11,6 +11,7 @@ export * from './SampleEnum'
 export * from './InquiryEnum'
 export * from './FinanceDocumentEnum'
 export * from './DeliveryEnum'
+export * from './ReturnEnum'
 export * from './ReceiptTypeEnum'
 
 // 重新导出统一对象
