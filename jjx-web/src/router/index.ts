@@ -89,6 +89,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/m/quality',
+    name: 'MobileQuality',
+    component: () => import('@/views/mobile/quality.vue'),
+    meta: {
+      title: '质检判定',
+      hidden: true,
+    },
+  },
+  {
     path: '/demo/a4-print',
     name: 'A4PrintDemo',
     component: () => import('@/views/demo/A4PrintDemo.vue'),
