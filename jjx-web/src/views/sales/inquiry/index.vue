@@ -204,7 +204,7 @@
                 >转报价</el-button
               >
             </template>
-            <el-button link type="primary" icon="Printer" @click="handlePrint(scope.row)"
+            <el-button link type="primary" icon="Printer" v-hasPermi="['sales:inquiry:view']" @click="handlePrint(scope.row)"
               >打印</el-button
             >
           </template>
