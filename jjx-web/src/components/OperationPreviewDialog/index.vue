@@ -87,6 +87,8 @@
           :data="uploadData"
           multiple
           :limit="9"
+          :before-upload="onBeforeUpload"
+          :on-change="onUploadChange"
           :on-success="onUploadSuccess"
           :on-remove="onUploadRemove"
           :on-error="onUploadError"
@@ -135,7 +137,12 @@
 
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="submitting" @click="confirm">
+      <el-button
+        type="primary"
+        :disabled="uploadingCount > 0"
+        :loading="submitting || uploadingCount > 0"
+        @click="confirm"
+      >
         {{ operation?.confirmText || `确认${operation?.name || ''}` }}
       </el-button>
     </template>
@@ -177,6 +184,9 @@ const submitting = ref(false)
 const formValues = ref<Record<string, any>>({})
 const evidenceFileList = ref<any[]>([])
 const uploadedIds: number[] = []
+const uploadingCount = ref(0)
+const uploadingFileUids = new Set<number>()
+const failedFiles = new Map<number, string>()
 
 // ===== 状态文本 =====
 function statusText(status: number): string {
@@ -253,18 +263,44 @@ const uploadData = computed(() => ({
   bizId: props.bizId ?? 0,
 }))
 
-function onUploadSuccess(response: any) {
+function onBeforeUpload(file: any) {
+  if (!uploadingFileUids.has(file.uid)) {
+    uploadingFileUids.add(file.uid)
+    uploadingCount.value += 1
+  }
+  failedFiles.delete(file.uid)
+  return true
+}
+function onUploadChange(file: any, fileList: any[]) {
+  evidenceFileList.value = failedFiles.has(file.uid) && !fileList.some((item) => item.uid === file.uid)
+    ? [...fileList, file]
+    : fileList
+}
+function settleUpload(file: any): boolean {
+  if (uploadingFileUids.delete(file.uid)) {
+    uploadingCount.value = Math.max(0, uploadingCount.value - 1)
+    return true
+  }
+  return false
+}
+function onUploadSuccess(response: any, file: any) {
+  if (!settleUpload(file)) return
   if (response?.code === 200 && response?.data) {
     uploadedIds.push(Number(response.data))
   } else {
     ElMessage.warning(response?.msg || '上传响应异常')
   }
 }
-function onUploadRemove(file: any) {
+function onUploadRemove(file: any, fileList: any[]) {
+  settleUpload(file)
+  failedFiles.delete(file.uid)
+  evidenceFileList.value = fileList
   const idx = uploadedIds.indexOf(Number(file.response?.data))
   if (idx > -1) uploadedIds.splice(idx, 1)
 }
-function onUploadError() {
+function onUploadError(_error: Error, file: any) {
+  if (!settleUpload(file)) return
+  failedFiles.set(file.uid, file.name)
   ElMessage.error('证据上传失败')
 }
 
@@ -272,6 +308,19 @@ function onUploadError() {
 async function confirm() {
   const op = props.operation
   if (!op || !props.bizId) return
+
+  if (op.evidence && uploadingCount.value > 0) {
+    ElMessage.warning('文件上传中，请稍候')
+    return
+  }
+  if (op.evidence && failedFiles.size > 0) {
+    ElMessage.warning('存在上传失败的文件，请先移除后重试')
+    return
+  }
+  if (op.evidence && evidenceFileList.value.length !== uploadedIds.length) {
+    ElMessage.warning('存在尚未成功上传的文件，请先移除后重试')
+    return
+  }
 
   // 必填校验
   for (const field of op.fields || []) {
@@ -310,6 +359,9 @@ watch(() => props.modelValue, async (val) => {
     }
     evidenceFileList.value = []
     uploadedIds.length = 0
+    uploadingCount.value = 0
+    uploadingFileUids.clear()
+    failedFiles.clear()
     await loadEventsAndRoles()
   }
 })
