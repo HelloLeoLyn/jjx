@@ -87,8 +87,6 @@
           :data="uploadData"
           multiple
           :limit="9"
-          :before-upload="onBeforeUpload"
-          :on-change="onUploadChange"
           :on-success="onUploadSuccess"
           :on-remove="onUploadRemove"
           :on-error="onUploadError"
@@ -137,12 +135,7 @@
 
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button
-        type="primary"
-        :disabled="uploadingCount > 0"
-        :loading="submitting || uploadingCount > 0"
-        @click="confirm"
-      >
+      <el-button type="primary" :loading="submitting" @click="confirm">
         {{ operation?.confirmText || `确认${operation?.name || ''}` }}
       </el-button>
     </template>
@@ -184,8 +177,6 @@ const submitting = ref(false)
 const formValues = ref<Record<string, any>>({})
 const evidenceFileList = ref<any[]>([])
 const uploadedIds: number[] = []
-const uploadingCount = ref(0)
-const uploadingFileUids = new Set<number>()
 
 // ===== 状态文本 =====
 function statusText(status: number): string {
@@ -262,68 +253,25 @@ const uploadData = computed(() => ({
   bizId: props.bizId ?? 0,
 }))
 
-function onBeforeUpload(file: any) {
-  if (!uploadingFileUids.has(file.uid)) {
-    uploadingFileUids.add(file.uid)
-    uploadingCount.value += 1
-  }
-  return true
-}
-function onUploadChange(file: any, fileList: any[]) {
-  evidenceFileList.value = fileList
-}
-function settleUpload(file: any): boolean {
-  if (uploadingFileUids.delete(file.uid)) {
-    uploadingCount.value = Math.max(0, uploadingCount.value - 1)
-    return true
-  }
-  return false
-}
-function onUploadSuccess(response: any, file: any) {
-  // 成功与否以服务端返回为准：code===200 且有附件 ID 才算成功，不做任何旁路推断
-  settleUpload(file)
-  const id = Number(response?.data)
-  if (response?.code === 200 && Number.isFinite(id) && id > 0) {
-    if (!uploadedIds.includes(id)) {
-      uploadedIds.push(id)
-    }
+function onUploadSuccess(response: any) {
+  if (response?.code === 200 && response?.data) {
+    uploadedIds.push(Number(response.data))
   } else {
-    ElMessage.warning(response?.msg || '上传响应异常，未获取到附件ID，请移除该文件后重试')
+    ElMessage.warning(response?.msg || '上传响应异常')
   }
 }
-function onUploadRemove(file: any, fileList: any[]) {
-  settleUpload(file)
-  evidenceFileList.value = fileList
+function onUploadRemove(file: any) {
   const idx = uploadedIds.indexOf(Number(file.response?.data))
   if (idx > -1) uploadedIds.splice(idx, 1)
 }
-function onUploadError(_error: Error, file: any) {
-  settleUpload(file)
-  ElMessage.error('证据上传失败，请移除失败文件后重试')
+function onUploadError() {
+  ElMessage.error('证据上传失败')
 }
 
 // ===== 确认执行 =====
 async function confirm() {
   const op = props.operation
   if (!op || !props.bizId) return
-
-  if (op.evidence && evidenceFileList.value.length > 0) {
-    // 以 el-upload 文件自身状态为准：ready/uploading 未完成，fail 失败，success 才算上传成功
-    const uploading = evidenceFileList.value.filter((f) => f.status === 'uploading' || f.status === 'ready')
-    const failed = evidenceFileList.value.filter((f) => f.status === 'fail')
-    if (uploading.length > 0 || uploadingCount.value > 0) {
-      ElMessage.warning('文件上传中，请稍候')
-      return
-    }
-    if (failed.length > 0) {
-      ElMessage.warning('存在上传失败的文件，请先移除后重试')
-      return
-    }
-    if (uploadedIds.length !== evidenceFileList.value.length) {
-      ElMessage.warning('附件上传未记录成功，请移除该文件后重新上传')
-      return
-    }
-  }
 
   // 必填校验
   for (const field of op.fields || []) {
@@ -362,8 +310,6 @@ watch(() => props.modelValue, async (val) => {
     }
     evidenceFileList.value = []
     uploadedIds.length = 0
-    uploadingCount.value = 0
-    uploadingFileUids.clear()
     await loadEventsAndRoles()
   }
 })
