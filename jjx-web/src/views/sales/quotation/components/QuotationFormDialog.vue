@@ -171,9 +171,15 @@
 
       <el-row>
         <el-col :span="24" style="text-align: right">
-          <el-button v-if="formData.quotationType === 1" type="primary" icon="Plus" @click="addItem"
+          <el-button
+            v-if="formData.quotationType === 1 || formData.quotationType === 2"
+            type="primary"
+            icon="Plus"
+            :disabled="formData.quotationType === 2 && formData.items.length >= 1"
+            @click="addItem"
             >添加明细</el-button
           >
+          <span v-if="formData.quotationType === 2" class="sample-limit-tip">样品单仅支持一条明细</span>
         </el-col>
       </el-row>
 
@@ -435,6 +441,10 @@ const isStandardProduct = (item: any) => {
 }
 
 const addItem = () => {
+  if (props.formData.quotationType === 2 && props.formData.items.length >= 1) {
+    ElMessage.warning('样品单仅支持一条明细')
+    return
+  }
   props.formData.items.push({
     productId: undefined,
     productCode: '',
@@ -519,5 +529,10 @@ defineExpose({
 }
 .dialog-footer {
   text-align: right;
+}
+.sample-limit-tip {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 8px;
 }
 </style>

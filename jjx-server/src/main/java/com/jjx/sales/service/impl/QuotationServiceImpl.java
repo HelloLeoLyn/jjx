@@ -251,6 +251,11 @@ public class QuotationServiceImpl implements IQuotationService {
 
         SalesQuotation quotation = quotationConverter.toEntity(dto);
         validateCustomerProducts(quotation);
+        // 样品单仅支持一条明细（dev-20260901-1225 需求）
+        if (Integer.valueOf(2).equals(quotation.getQuotationType())
+                && quotation.getItems() != null && quotation.getItems().size() > 1) {
+            throw new BusinessException("样品单仅支持一条明细");
+        }
         // 销售负责人默认当前登录用户（2026-08-08）
         if (quotation.getSalesPersonId() == null) {
             quotation.setSalesPersonId(SecurityUtils.getUserId());
@@ -370,6 +375,11 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("报价单不存在");
         }
         validateCustomerProducts(quotation);
+        // 样品单仅支持一条明细（dev-20260901-1225 需求）
+        if (Integer.valueOf(2).equals(quotation.getQuotationType())
+                && quotation.getItems() != null && quotation.getItems().size() > 1) {
+            throw new BusinessException("样品单仅支持一条明细");
+        }
 
         // 检查报价单号是否唯一（排除自身）
         if (quotation.getQuotationNo() != null && !quotation.getQuotationNo().equals(existingQuotation.getQuotationNo())) {
