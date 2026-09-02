@@ -272,6 +272,57 @@
         v-if="productData.product?.productCode"
         :product-code="productData.product.productCode"
       />
+
+      <el-divider content-position="left">业务流转附件</el-divider>
+      <div v-loading="bizAttachmentsLoading" class="biz-attachments">
+        <el-collapse v-if="bizAttachmentGroups.length">
+          <el-collapse-item
+            v-for="group in bizAttachmentGroups"
+            :key="`${group.sourceType}-${group.sourceId}`"
+            :name="`${group.sourceType}-${group.sourceId}`"
+          >
+            <template #title>
+              <span class="biz-source-title">
+                {{ sourceTypeLabel(group.sourceType) }} {{ group.sourceNo || group.sourceId }}
+              </span>
+              <el-tag size="small" type="info">{{ group.files.length }}</el-tag>
+            </template>
+            <div class="biz-file-list">
+              <div v-for="file in group.files" :key="file.id" class="biz-file-item">
+                <div class="biz-file-info">
+                  <el-icon class="biz-file-icon"><Document /></el-icon>
+                  <div class="biz-file-meta">
+                    <el-link
+                      type="primary"
+                      :href="attachmentApi.downloadUrl(file.id)"
+                      :underline="false"
+                      target="_blank"
+                    >
+                      {{ file.fileName || '-' }}
+                    </el-link>
+                    <div class="biz-file-sub">
+                      <span>{{ formatFileSize(file.fileSize) }}</span>
+                      <span v-if="file.createBy">· {{ file.createBy }}</span>
+                      <span v-if="file.createTime">· {{ formatAttachmentTime(file.createTime) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Download"
+                  @click="openAttachment(file.id)"
+                />
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+        <el-empty
+          v-else-if="!bizAttachmentsLoading"
+          description="暂无业务流转附件"
+          :image-size="60"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -284,6 +335,9 @@ import { ProductEnum, StepTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import { attachmentApi } from '@/api/system/attachment'
+import type { ProductBizAttachmentGroup } from '@/api/product'
+import { Document, Download } from '@element-plus/icons-vue'
 
 // Props
 interface Props {
@@ -305,6 +359,8 @@ const emit = defineEmits<Emits>()
 // 响应式数据
 const loading = ref(false)
 const error = ref<string>('')
+const bizAttachmentsLoading = ref(false)
+const bizAttachmentGroups = ref<ProductBizAttachmentGroup[]>([])
 const productData = ref<ProductFullVO>({
   product: undefined,
   bom: undefined,
@@ -381,6 +437,7 @@ const loadData = async () => {
     const response = await productApi.full(props.productId)
     if (response.data) {
       productData.value = response.data
+      await loadBizAttachments()
 
       // 触发加载完成事件
       emit('loaded', productData.value)
@@ -400,6 +457,39 @@ const loadData = async () => {
   }
 }
 
+const loadBizAttachments = async () => {
+  if (!props.productId) return
+  bizAttachmentsLoading.value = true
+  try {
+    const response = await productApi.bizAttachments(props.productId)
+    bizAttachmentGroups.value = response.data || []
+  } catch (err) {
+    console.error('加载业务流转附件失败:', err)
+    bizAttachmentGroups.value = []
+  } finally {
+    bizAttachmentsLoading.value = false
+  }
+}
+
+const sourceTypeLabel = (sourceType: ProductBizAttachmentGroup['sourceType']): string => ({
+  inquiry: '询价单',
+  quotation: '报价单',
+  order: '订单',
+})[sourceType]
+
+const formatFileSize = (size?: number): string => {
+  if (!size) return ''
+  if (size < 1024) return `${size}B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
+  return `${(size / 1024 / 1024).toFixed(1)}MB`
+}
+
+const formatAttachmentTime = (time: string): string => time.replace('T', ' ').slice(0, 16)
+
+const openAttachment = (id: number) => {
+  window.open(attachmentApi.downloadUrl(id), '_blank')
+}
+
 // 监听productId变化
 watch(
   () => props.productId,
@@ -416,6 +506,7 @@ watch(
         films: [],
       }
       error.value = ''
+      bizAttachmentGroups.value = []
     }
   },
   { immediate: true }
@@ -474,5 +565,49 @@ defineExpose({
 .group-item-tag {
   cursor: default;
   user-select: none;
+}
+
+.biz-source-title {
+  margin-right: 8px;
+  font-weight: 600;
+}
+
+.biz-file-list {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.biz-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.biz-file-item:last-child {
+  border-bottom: none;
+}
+
+.biz-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.biz-file-icon {
+  color: #409eff;
+  flex-shrink: 0;
+}
+
+.biz-file-meta {
+  min-width: 0;
+}
+
+.biz-file-sub {
+  font-size: 12px;
+  color: #909399;
 }
 </style>

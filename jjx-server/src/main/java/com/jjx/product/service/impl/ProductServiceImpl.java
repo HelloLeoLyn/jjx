@@ -20,6 +20,8 @@ import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.*;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.SysAttachment;
+import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.notification.service.NotificationService;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +31,13 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * 产品Service实现
@@ -48,13 +55,116 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final IEngineeringRoutingService routingService;
     private final IProductCategoryService categoryService;
     private final IEngineeringFilmService filmService;
-    private final NotificationService notificationService;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final com.jjx.sales.mapper.SalesQuotationItemMapper quotationItemMapper;
     private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
     private final com.jjx.sales.mapper.CustomerMapper salesCustomerMapper;
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     private final com.jjx.system.service.LogSaveService logSaveService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final ISysAttachmentService attachmentService;
+
+    private static final String INQUIRY_ATTACHMENT_BIZ_TYPE = "inquiry";
+    private static final String QUOTATION_ATTACHMENT_BIZ_TYPE = "quotation";
+    private static final String ORDER_ATTACHMENT_BIZ_TYPE = "order";
+
+    /**
+     * 聚合引用该产品的询价、报价和销售订单附件。
+     * product_id 优先精确匹配，product_code 用于兼容历史未回填 product_id 的记录。
+     */
+    public List<Map<String, Object>> getBizAttachments(Long productId) {
+        Product product = productMapper.selectById(productId);
+        if (product == null) {
+            return List.of();
+        }
+
+        String productCode = product.getProductCode();
+        String sql = """
+                SELECT 'inquiry' AS source_type, i.inquiry_id AS source_id,
+                       i.inquiry_no AS source_no, i.create_time AS source_time
+                  FROM sales_inquiry i
+                 WHERE COALESCE(i.deleted, 0) = 0
+                   AND (i.product_id = ? OR (? IS NOT NULL AND i.product_code = ?))
+                UNION ALL
+                SELECT 'quotation' AS source_type, q.quotation_id AS source_id,
+                       q.quotation_no AS source_no, q.create_time AS source_time
+                  FROM sales_quotation_item qi
+                  JOIN sales_quotation q ON q.quotation_id = qi.quotation_id
+                 WHERE COALESCE(q.deleted, 0) = 0
+                   AND (qi.product_id = ? OR (? IS NOT NULL AND qi.product_code = ?))
+                UNION ALL
+                SELECT 'order' AS source_type, o.order_id AS source_id,
+                       o.order_no AS source_no, o.create_time AS source_time
+                  FROM sales_order_product op
+                  JOIN sales_order o ON o.order_id = op.order_id
+                 WHERE COALESCE(o.deleted, 0) = 0
+                   AND (op.product_id = ? OR (? IS NOT NULL AND op.product_code = ?))
+                 ORDER BY source_time DESC
+                """;
+        List<BizAttachmentSource> sources = jdbcTemplate.query(sql,
+                (rs, rowNum) -> new BizAttachmentSource(
+                        rs.getString("source_type"),
+                        rs.getLong("source_id"),
+                        rs.getString("source_no"),
+                        rs.getTimestamp("source_time") == null
+                                ? null : rs.getTimestamp("source_time").toLocalDateTime()),
+                productId, productCode, productCode,
+                productId, productCode, productCode,
+                productId, productCode, productCode);
+
+        // 同一报价/订单可能有多个命中明细，按来源单据去重并保留 SQL 的时间倒序。
+        Map<String, BizAttachmentSource> uniqueSources = sources.stream().collect(Collectors.toMap(
+                source -> source.sourceType() + ':' + source.sourceId(),
+                source -> source,
+                (first, ignored) -> first,
+                LinkedHashMap::new));
+        if (uniqueSources.isEmpty()) {
+            return List.of();
+        }
+
+        LambdaQueryWrapper<SysAttachment> attachmentQuery = new LambdaQueryWrapper<>();
+        attachmentQuery.and(group -> uniqueSources.values().forEach(source ->
+                group.or(pair -> pair
+                        .eq(SysAttachment::getBizType, attachmentBizType(source.sourceType()))
+                        .eq(SysAttachment::getBizId, source.sourceId()))));
+        attachmentQuery.orderByAsc(SysAttachment::getSortOrder)
+                .orderByAsc(SysAttachment::getCreateTime);
+        Map<String, List<SysAttachment>> filesBySource = attachmentService.list(attachmentQuery).stream()
+                .collect(Collectors.groupingBy(
+                        attachment -> attachment.getBizType() + ':' + attachment.getBizId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (BizAttachmentSource source : uniqueSources.values()) {
+            String bizType = attachmentBizType(source.sourceType());
+            List<SysAttachment> files = filesBySource.get(bizType + ':' + source.sourceId());
+            if (files == null || files.isEmpty()) {
+                continue;
+            }
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("sourceType", source.sourceType());
+            group.put("sourceId", source.sourceId());
+            group.put("sourceNo", source.sourceNo());
+            group.put("files", files);
+            result.add(group);
+        }
+        return result;
+    }
+
+    private String attachmentBizType(String sourceType) {
+        return switch (sourceType) {
+            case "inquiry" -> INQUIRY_ATTACHMENT_BIZ_TYPE;
+            case "quotation" -> QUOTATION_ATTACHMENT_BIZ_TYPE;
+            case "order" -> ORDER_ATTACHMENT_BIZ_TYPE;
+            default -> sourceType;
+        };
+    }
+
+    private record BizAttachmentSource(String sourceType, Long sourceId, String sourceNo,
+                                       LocalDateTime sourceTime) {
+    }
+
     @Override
     public List<ProductVo> getProductList(ProductQuery query) {
         LambdaQueryWrapper<Product> wrapper = buildWrapper(query);
@@ -430,6 +540,25 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
     @Override
     public Long ensureDraftProduct(String productCode, String productName, String unit, String source, Long customerId) {
+        return ensureDraftProductWithSpec(productCode, productName, unit, source, customerId,
+                null, null, null, null, null);
+    }
+
+    /**
+     * 建档草稿产品（带编码参数，2026-09-02）：面板/线路/流水号写入 product.spec_json
+     * 供样品报价建档使用；参数不落报价明细表（已弃用），以产品档案为权威来源
+     */
+    @Override
+    public Long ensureDraftProduct(String productCode, String productName, String unit, String source,
+                                   Long customerId, String serialNo, String panelType,
+                                   String panelFeature, String circuitType, String circuitFeature) {
+        return ensureDraftProductWithSpec(productCode, productName, unit, source, customerId,
+                serialNo, panelType, panelFeature, circuitType, circuitFeature);
+    }
+
+    private Long ensureDraftProductWithSpec(String productCode, String productName, String unit, String source,
+                                            Long customerId, String serialNo, String panelType,
+                                            String panelFeature, String circuitType, String circuitFeature) {
         if (productCode == null || productCode.isBlank()) return null;
         String code = productCode.trim();
         Product exist = productMapper.selectOne(
@@ -447,6 +576,14 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                 customerUpdate.setCustomerId(customerId);
                 productMapper.updateById(customerUpdate);
             }
+            // 已存在但缺编码参数：补写 spec_json（幂等，不覆盖已有规格）
+            if (hasCodeParams(serialNo, panelType, panelFeature, circuitType, circuitFeature)
+                    && (exist.getSpecJson() == null || exist.getSpecJson().isBlank())) {
+                Product specUpdate = new Product();
+                specUpdate.setProductId(exist.getProductId());
+                specUpdate.setSpecJson(buildCodeSpecJson(serialNo, panelType, panelFeature, circuitType, circuitFeature));
+                productMapper.updateById(specUpdate);
+            }
             return exist.getProductId();
         }
         Product p = new Product();
@@ -456,6 +593,9 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         p.setUnit(unit != null && !unit.isBlank() ? unit : "PCS");
         p.setFromSource(source);
         p.setCustomerId(customerId);
+        if (hasCodeParams(serialNo, panelType, panelFeature, circuitType, circuitFeature)) {
+            p.setSpecJson(buildCodeSpecJson(serialNo, panelType, panelFeature, circuitType, circuitFeature));
+        }
         p.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
         productMapper.insert(p);
         // 自动建档也要记产品创建日志（询价/报价流程内触发，无 @Log 包裹）
@@ -571,6 +711,40 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         } catch (Exception e) {
             return String.valueOf(routeId);
         }
+    }
+
+    /** 是否有编码参数（任一项非空） */
+    private boolean hasCodeParams(String serialNo, String panelType, String panelFeature,
+                                  String circuitType, String circuitFeature) {
+        return isNotBlank(serialNo) || isNotBlank(panelType) || isNotBlank(panelFeature)
+                || isNotBlank(circuitType) || isNotBlank(circuitFeature);
+    }
+
+    /** 组装编码参数 spec_json（扁平扩展，不破坏现有规格字段） */
+    private String buildCodeSpecJson(String serialNo, String panelType, String panelFeature,
+                                     String circuitType, String circuitFeature) {
+        java.util.Map<String, Object> spec = new java.util.LinkedHashMap<>();
+        spec.put("unit", "mm");
+        spec.put("width", 0);
+        spec.put("height", 0);
+        spec.put("length", 0);
+        spec.put("ipGrade", "");
+        spec.put("keyCount", 0);
+        spec.put("hasBacklight", false);
+        spec.put("panelType", panelType != null ? panelType : "");
+        spec.put("panelFeature", panelFeature != null ? panelFeature : "");
+        spec.put("circuitType", circuitType != null ? circuitType : "");
+        spec.put("circuitFeature", circuitFeature != null ? circuitFeature : "");
+        spec.put("serialNo", serialNo != null ? serialNo : "");
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(spec);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean isNotBlank(String s) {
+        return s != null && !s.isBlank();
     }
 
 }

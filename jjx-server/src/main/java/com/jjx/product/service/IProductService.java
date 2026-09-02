@@ -105,6 +105,14 @@ public interface IProductService extends IService<Product> {
     Long ensureDraftProduct(String productCode, String productName, String unit, String source, Long customerId);
 
     /**
+     * 建档草稿产品（带编码参数，2026-09-02）：面板/线路/流水号写入 product.spec_json
+     * 供样品报价建档使用；参数不落报价明细表（已弃用），以产品档案为权威来源
+     */
+    Long ensureDraftProduct(String productCode, String productName, String unit, String source,
+                            Long customerId, String serialNo, String panelType,
+                            String panelFeature, String circuitType, String circuitFeature);
+
+    /**
      * 作废联动清理（2026-08-08）：来源匹配+开发中+无单据明细引用 → 置取消(8)
      * @return 是否已置取消
      */

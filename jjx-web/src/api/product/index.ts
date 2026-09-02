@@ -10,6 +10,22 @@ import type {
   ProductFullVO,
 } from '@/types/product'
 import type { PageResult, R } from '@/types'
+
+export interface ProductBizAttachment {
+  id: number
+  fileName?: string
+  fileSize?: number
+  fileType?: string
+  createBy?: string
+  createTime?: string
+}
+
+export interface ProductBizAttachmentGroup {
+  sourceType: 'inquiry' | 'quotation' | 'order'
+  sourceId: number
+  sourceNo?: string
+  files: ProductBizAttachment[]
+}
 // ==================== 产品管理API ====================
 /**
  * 搜索产品
@@ -240,6 +256,10 @@ export function getFullProduct(productId: number) {
   return request.get<R<ProductFullVO>>(`/product/${productId}/full`)
 }
 
+export function getProductBizAttachments(productId: number) {
+  return request.get<R<ProductBizAttachmentGroup[]>>(`/product/${productId}/biz-attachments`)
+}
+
 /**
  * 获取产品总数
  */
@@ -275,6 +295,7 @@ export const productApi = {
   standardProcess: standardProcessApi,
   isUniqueProductCode,
   full: getFullProduct,
+  bizAttachments: getProductBizAttachments,
   configBom: configEngineeringBom,
   configRoute: configProductRoute,
 }

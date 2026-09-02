@@ -13,6 +13,7 @@ import com.jjx.product.domain.vo.ProductFullVO;
 import com.jjx.product.domain.vo.ProductVo;
 import com.jjx.product.service.IProductService;
 import com.jjx.product.service.ProductCodeService;
+import com.jjx.product.service.impl.ProductServiceImpl;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 产品Controller
@@ -31,6 +33,7 @@ public class ProductController extends BaseController {
 
     private final IProductService productService;
     private final ProductCodeService productCodeService;
+    private final ProductServiceImpl productServiceImpl;
 
     /**
      * 获取产品总数
@@ -72,6 +75,12 @@ public class ProductController extends BaseController {
     public Result<ProductFullVO> full(@PathVariable Long productId) {
         ProductFullVO product = productService.getFullProductDetail(productId);
         return Result.success(product);
+    }
+
+    @io.swagger.v3.oas.annotations.Operation(summary = "产品业务流转附件聚合（询价/报价/订单）")
+    @GetMapping("/{productId}/biz-attachments")
+    public Result<List<Map<String, Object>>> bizAttachments(@PathVariable Long productId) {
+        return Result.success(productServiceImpl.getBizAttachments(productId));
     }
 
     /**
