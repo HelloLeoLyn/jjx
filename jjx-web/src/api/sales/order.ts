@@ -137,6 +137,11 @@ export const orderApi = {
     return request.get<R<ReviewRecordVO[]>>(`/sales/orders/${orderId}/review-records`)
   },
 
+  /** 获取订单评审流程记录（按评审时间倒序） */
+  reviewRecords(orderId: number) {
+    return request.get<R<OrderReviewProcessRecord[]>>(`/sales/order/review/records/${orderId}`)
+  },
+
   /** 获取确认记录 */
   getOrderConfirmationRecords(orderId: number) {
     return request.get<R<ConfirmationRecordVO[]>>(`/sales/orders/${orderId}/confirmation-records`)
@@ -297,4 +302,17 @@ export const orderApi = {
   getExchangeRate(currency: string) {
     return request.get<R<number>>('/system/exchange-rate/rate', { params: { currency } })
   },
+}
+
+export interface OrderReviewProcessRecord {
+  recordId: number
+  orderId: number
+  orderNo?: string
+  reviewStage?: number
+  stageName?: string
+  reviewerName?: string
+  reviewComment?: string
+  reviewTime?: string
+  reviewResult?: number
+  resultDescription?: string
 }

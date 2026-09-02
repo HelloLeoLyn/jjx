@@ -200,6 +200,15 @@
               <el-button link type="info" icon="Connection" @click="showTrace(row)"
                 >查看流水</el-button
               >
+              <el-button
+                link
+                type="primary"
+                icon="Printer"
+                v-hasPermi="['sales:order:view']"
+                @click="handleReviewPrint(row)"
+              >
+                评审表打印
+              </el-button>
               <!-- 草稿状态 (1) -->
               <template v-if="row.orderStatus === 1">
                 <el-button
@@ -941,6 +950,13 @@ function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''
   currentBizId.value = row.orderId ? String(row.orderId) : ''
   traceDrawerVisible.value = true
+}
+
+function handleReviewPrint(row: any) {
+  router.push({
+    path: '/sales/order/review-print',
+    query: { orderId: row.orderId, templateId: 47 },
+  })
 }
 </script>
 

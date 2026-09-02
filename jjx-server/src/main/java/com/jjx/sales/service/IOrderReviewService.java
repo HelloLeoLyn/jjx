@@ -119,6 +119,14 @@ public interface IOrderReviewService {
     List<OrderReviewRecord> getOrderReviewRecords(Long orderId);
 
     /**
+     * 按评审时间倒序获取订单评审记录
+     *
+     * @param orderId 订单ID
+     * @return 评审记录列表
+     */
+    List<OrderReviewRecord> listByOrder(Long orderId);
+
+    /**
      * 获取订单审核历史
      *
      * @param orderId 订单ID

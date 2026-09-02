@@ -452,6 +452,13 @@ public class OrderReviewServiceImpl implements IOrderReviewService {
         return reviewRecordMapper.selectByOrderId(orderId);
     }
 
+    @Override
+    public List<OrderReviewRecord> listByOrder(Long orderId) {
+        return reviewRecordMapper.selectList(Wrappers.<OrderReviewRecord>lambdaQuery()
+                .eq(OrderReviewRecord::getOrderId, orderId)
+                .orderByDesc(OrderReviewRecord::getReviewTime));
+    }
+
     /**
      * 获取订单审核历史
      */

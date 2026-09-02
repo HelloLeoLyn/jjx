@@ -160,10 +160,10 @@ public class OrderReviewController extends BaseController {
      * 获取订单审核记录列表
      */
     @GetMapping("/records/{orderId}")
-    @Operation(summary = "获取订单审核记录列表")
+    @Operation(summary = "订单评审记录列表")
     @SaCheckPermission("sales:order:view")
-    public Result<List<OrderReviewRecord>> getOrderReviewRecords(@PathVariable Long orderId) {
-        List<OrderReviewRecord> records = orderReviewService.getOrderReviewRecords(orderId);
+    public Result<List<OrderReviewRecord>> records(@PathVariable Long orderId) {
+        List<OrderReviewRecord> records = orderReviewService.listByOrder(orderId);
         return Result.success(records);
     }
 
