@@ -6,7 +6,7 @@
 INSERT INTO sys_menu
   (menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status,
    perms, icon, ancestors, route_name, requires_auth, sort, create_by, create_time, update_by, remark)
-SELECT '文档管理', 0, 800, 'doc', 'layout/index.vue', '1', '0', 'M', '0', '0',
+SELECT '文档管理', 0, 800, '/doc', 'layout/index.vue', '1', '0', 'M', '0', '0',
        '', 'Folder', '0', 'DocCenter', '1', 800, 'admin', NOW(), 'admin', '文控中心（dev-20260901）'
 WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE route_name = 'DocCenter');
 
