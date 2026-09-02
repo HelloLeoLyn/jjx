@@ -272,9 +272,7 @@ function onBeforeUpload(file: any) {
   return true
 }
 function onUploadChange(file: any, fileList: any[]) {
-  evidenceFileList.value = failedFiles.has(file.uid) && !fileList.some((item) => item.uid === file.uid)
-    ? [...fileList, file]
-    : fileList
+  evidenceFileList.value = fileList
 }
 function settleUpload(file: any): boolean {
   if (uploadingFileUids.delete(file.uid)) {
@@ -284,11 +282,18 @@ function settleUpload(file: any): boolean {
   return false
 }
 function onUploadSuccess(response: any, file: any) {
-  if (!settleUpload(file)) return
-  if (response?.code === 200 && response?.data) {
-    uploadedIds.push(Number(response.data))
+  // 记账（uploadingCount）与记录附件 ID 解耦：即使 uid 不在上传集合（状态不同步），
+  // 只要服务端返回了附件 ID 就必须记下，否则出现"文件传成功但确认被拦/附件丢失"
+  settleUpload(file)
+  const stillInList = evidenceFileList.value.some((item) => item.uid === file.uid)
+  if (response?.code === 200 && response?.data != null && stillInList) {
+    const id = Number(response.data)
+    if (Number.isFinite(id) && id > 0 && !uploadedIds.includes(id)) {
+      uploadedIds.push(id)
+    }
   } else {
-    ElMessage.warning(response?.msg || '上传响应异常')
+    failedFiles.set(file.uid, file.name)
+    ElMessage.warning(response?.msg || '上传响应异常，请移除该文件后重试')
   }
 }
 function onUploadRemove(file: any, fileList: any[]) {
@@ -309,17 +314,22 @@ async function confirm() {
   const op = props.operation
   if (!op || !props.bizId) return
 
-  if (op.evidence && uploadingCount.value > 0) {
-    ElMessage.warning('文件上传中，请稍候')
-    return
-  }
-  if (op.evidence && failedFiles.size > 0) {
-    ElMessage.warning('存在上传失败的文件，请先移除后重试')
-    return
-  }
-  if (op.evidence && evidenceFileList.value.length !== uploadedIds.length) {
-    ElMessage.warning('存在尚未成功上传的文件，请先移除后重试')
-    return
+  if (op.evidence && evidenceFileList.value.length > 0) {
+    // 以 el-upload 文件自身状态为准：ready/uploading 未完成，fail 失败，success 且已记录 ID 才算就绪
+    const uploading = evidenceFileList.value.filter((f) => f.status === 'uploading' || f.status === 'ready')
+    const failed = evidenceFileList.value.filter((f) => f.status === 'fail')
+    if (uploading.length > 0 || uploadingCount.value > 0) {
+      ElMessage.warning('文件上传中，请稍候')
+      return
+    }
+    if (failed.length > 0 || failedFiles.size > 0) {
+      ElMessage.warning('存在上传失败的文件，请先移除后重试')
+      return
+    }
+    if (uploadedIds.length !== evidenceFileList.value.length) {
+      ElMessage.warning('附件上传未记录成功，请移除该文件后重新上传')
+      return
+    }
   }
 
   // 必填校验
