@@ -36,7 +36,6 @@ public class DashboardController {
 
     @GetMapping("/my-stats")
     @Operation(summary = "获取仪表盘统计数据")
-    @Log(module = "仪表盘", businessType = BusinessType.OTHER)
     public Result<Map<String, Object>> getMyStats() {
         Map<String, Object> data = new HashMap<>();
 

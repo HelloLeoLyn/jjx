@@ -1,7 +1,7 @@
 package com.jjx.inventory;
 
 import com.jjx.inventory.domain.*;
-import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.inventory.mapper.*;
 import com.jjx.inventory.service.impl.InventoryTransferServiceImpl;
 import com.jjx.system.utils.SecurityUtils;
@@ -29,8 +29,8 @@ class InventoryTransferInvariantTest {
     @InjectMocks InventoryTransferServiceImpl service;
 
     @Test void alreadyTransferredOutOrderCannotBeTransferredOutAgain() {
-        InventoryTransferOrder order = transfer(OrderStatusEnum.OUT_CONFIRM);
-        order.setApproveStatus(OrderStatusEnum.APPROVED.getValue());
+        InventoryTransferOrder order = transfer(InventoryOrderStatusEnum.OUT_CONFIRM);
+        order.setApproveStatus(InventoryOrderStatusEnum.APPROVED.getValue());
         when(transferOrderMapper.selectById(1L)).thenReturn(order);
         assertFalse(service.confirmOut(1L, 9L, "tester"));
         verify(transferItemMapper, never()).selectByTransferId(any());
@@ -39,14 +39,14 @@ class InventoryTransferInvariantTest {
     }
 
     @Test void transferCannotBeReceivedBeforeTransferOut() {
-        when(transferOrderMapper.selectById(1L)).thenReturn(transfer(OrderStatusEnum.APPROVED));
+        when(transferOrderMapper.selectById(1L)).thenReturn(transfer(InventoryOrderStatusEnum.APPROVED));
         assertFalse(service.confirmIn(1L, 9L, "tester"));
         verify(stockItemMapper, never()).insert(any(InventoryStockItem.class));
         verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
     }
 
     @Test void closedTransferCannotBeCancelled() {
-        when(transferOrderMapper.selectById(1L)).thenReturn(transfer(OrderStatusEnum.CLOSED));
+        when(transferOrderMapper.selectById(1L)).thenReturn(transfer(InventoryOrderStatusEnum.CLOSED));
         assertFalse(service.cancel(1L, "late cancel"));
         verify(stockItemMapper, never()).insert(any(InventoryStockItem.class));
         verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
@@ -54,7 +54,7 @@ class InventoryTransferInvariantTest {
     }
 
     @Test void transferOutCancellationWritesMatchingStockAndTransactionCompensation() {
-        InventoryTransferOrder order = transfer(OrderStatusEnum.OUT_CONFIRM);
+        InventoryTransferOrder order = transfer(InventoryOrderStatusEnum.OUT_CONFIRM);
         order.setFromWarehouseId(10L);
         InventoryTransferItem item = transferItem(new BigDecimal("4"), new BigDecimal("4"));
         when(transferOrderMapper.selectById(1L)).thenReturn(order);
@@ -77,13 +77,13 @@ class InventoryTransferInvariantTest {
 
     @Disabled("WI1-F01: confirmed rule requires COMPLETED transfers to reject cancellation")
     @Test void completedTransferCannotBeCancelled() {
-        when(transferOrderMapper.selectById(1L)).thenReturn(transfer(OrderStatusEnum.COMPLETED));
+        when(transferOrderMapper.selectById(1L)).thenReturn(transfer(InventoryOrderStatusEnum.COMPLETED));
         assertFalse(service.cancel(1L, "late cancel"));
     }
 
     @Disabled("WI1-F02: confirmed rule requires compensation to use outQuantity, not planned quantity")
     @Test void transferCancellationCompensatesActualOutQuantity() {
-        InventoryTransferOrder order = transfer(OrderStatusEnum.OUT_CONFIRM);
+        InventoryTransferOrder order = transfer(InventoryOrderStatusEnum.OUT_CONFIRM);
         InventoryTransferItem item = transferItem(new BigDecimal("10"), new BigDecimal("4"));
         when(transferOrderMapper.selectById(1L)).thenReturn(order);
         when(transferItemMapper.selectByTransferId(1L)).thenReturn(List.of(item));
@@ -95,7 +95,7 @@ class InventoryTransferInvariantTest {
 
     @Disabled("WI1-F03: confirmed rule requires repeated cancellation to be idempotent")
     @Test void repeatedTransferCancellationDoesNotCompensateTwice() {
-        InventoryTransferOrder order = transfer(OrderStatusEnum.OUT_CONFIRM);
+        InventoryTransferOrder order = transfer(InventoryOrderStatusEnum.OUT_CONFIRM);
         InventoryTransferItem item = transferItem(new BigDecimal("4"), new BigDecimal("4"));
         when(transferOrderMapper.selectById(1L)).thenReturn(order);
         when(transferItemMapper.selectByTransferId(1L)).thenReturn(List.of(item));
@@ -104,7 +104,7 @@ class InventoryTransferInvariantTest {
         verify(stockItemMapper, times(1)).insert(any(InventoryStockItem.class));
     }
 
-    private static InventoryTransferOrder transfer(OrderStatusEnum status) {
+    private static InventoryTransferOrder transfer(InventoryOrderStatusEnum status) {
         InventoryTransferOrder order = new InventoryTransferOrder();
         order.setTransferId(1L);
         order.setOrderStatus(status.getValue());

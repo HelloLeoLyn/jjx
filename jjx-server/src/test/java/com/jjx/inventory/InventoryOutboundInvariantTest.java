@@ -2,7 +2,7 @@ package com.jjx.inventory;
 
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.*;
-import com.jjx.inventory.enums.OrderStatusEnum;
+import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.inventory.mapper.*;
 import com.jjx.inventory.service.impl.InventoryOutboundServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,7 @@ class InventoryOutboundInvariantTest {
     @InjectMocks InventoryOutboundServiceImpl service;
 
     @Test void completedOutboundCannotBeConfirmedAgain() {
-        when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(OrderStatusEnum.COMPLETED));
+        when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(InventoryOrderStatusEnum.COMPLETED));
         assertFalse(service.confirm(1L, 9L, "tester"));
         verify(outboundItemMapper, never()).selectByOutboundId(any());
         verify(stockItemMapper, never()).deductStock(any(), any());
@@ -37,7 +37,7 @@ class InventoryOutboundInvariantTest {
     }
 
     @Test void draftOutboundCannotSkipWorkflowAndConfirm() {
-        when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(OrderStatusEnum.DRAFT));
+        when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(InventoryOrderStatusEnum.DRAFT));
         assertFalse(service.confirm(1L, 9L, "tester"));
         verify(stockItemMapper, never()).deductStock(any(), any());
         verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
@@ -52,7 +52,7 @@ class InventoryOutboundInvariantTest {
         batch.setItemId(21L);
         batch.setQuantity(new BigDecimal("3"));
         batch.setReservedQuantity(BigDecimal.ZERO);
-        when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(OrderStatusEnum.APPROVED));
+        when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(InventoryOrderStatusEnum.APPROVED));
         when(outboundItemMapper.selectByOutboundId(1L)).thenReturn(List.of(item));
         when(stockItemMapper.selectFIFOAvailable(11L)).thenReturn(List.of(batch));
         assertThrows(BusinessException.class, () -> service.confirm(1L, 9L, "tester"));
@@ -61,7 +61,7 @@ class InventoryOutboundInvariantTest {
         verify(outboundOrderMapper, never()).updateById(any(InventoryOutboundOrder.class));
     }
 
-    private static InventoryOutboundOrder outbound(OrderStatusEnum status) {
+    private static InventoryOutboundOrder outbound(InventoryOrderStatusEnum status) {
         InventoryOutboundOrder order = new InventoryOutboundOrder();
         order.setOutboundId(1L);
         order.setOrderStatus(status.getValue());

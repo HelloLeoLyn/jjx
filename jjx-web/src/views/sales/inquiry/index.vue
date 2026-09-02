@@ -144,11 +144,16 @@
         <el-table-column label="销售负责人" align="center" prop="salesPersonName" width="120" />
         <el-table-column
           label="操作"
-          align="center"
+          align="left"
           class-name="small-padding fixed-width"
-          width="400"
+          max-width="400"
+          min-width="200"
+          fixed="right"
         >
           <template #default="scope">
+            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
+              >查看流水</el-button
+            >
             <el-button
               link
               type="primary"
@@ -158,11 +163,9 @@
               :disabled="scope.row.inquiryStatus === 3"
               >编辑</el-button
             >
-            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
-              >查看流水</el-button
-            >
+
             <!-- 发送（草稿/待处理 → 已发送） -->
-            <el-button
+            <!-- <el-button
               v-if="[0, 1].includes(scope.row.inquiryStatus)"
               link
               type="warning"
@@ -170,7 +173,7 @@
               v-hasPermi="['sales:inquiry:edit']"
               @click="handleSend(scope.row)"
               >发送</el-button
-            >
+            > -->
             <!-- 客户确认/拒绝（已发送） -->
             <template v-if="scope.row.inquiryStatus === 2">
               <el-button
@@ -190,12 +193,8 @@
                 >拒绝</el-button
               >
             </template>
-            <template v-if="scope.row.inquiryStatus === 3">
-              <el-button link type="success" icon="Link" @click="gotoQuotation(scope.row)"
-                >查看报价</el-button
-              >
-            </template>
-            <template v-else>
+
+            <template v-if="scope.row.inquiryStatus !== 3">
               <el-button
                 link
                 type="primary"
