@@ -15,7 +15,7 @@ INSERT INTO sys_menu
   (menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status,
    perms, icon, ancestors, route_name, requires_auth, sort, create_by, create_time, update_by, remark)
 SELECT '新增退货', menu_id, 1, '', NULL, '1', '0', 'F', '0', '0',
-       'sales:return:add', '', CONCAT('0,', menu_id), NULL, '1', 1, 'admin', NOW(), 'admin', ''
+       'sales:return:add', '', CONCAT('0,13,', menu_id), NULL, '1', 1, 'admin', NOW(), 'admin', ''
 FROM sys_menu WHERE route_name = 'SalesReturn'
   AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE perms = 'sales:return:add');
 
@@ -23,7 +23,7 @@ INSERT INTO sys_menu
   (menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status,
    perms, icon, ancestors, route_name, requires_auth, sort, create_by, create_time, update_by, remark)
 SELECT '审核退货', menu_id, 2, '', NULL, '1', '0', 'F', '0', '0',
-       'sales:return:approve', '', CONCAT('0,', menu_id), NULL, '1', 2, 'admin', NOW(), 'admin', ''
+       'sales:return:approve', '', CONCAT('0,13,', menu_id), NULL, '1', 2, 'admin', NOW(), 'admin', ''
 FROM sys_menu WHERE route_name = 'SalesReturn'
   AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE perms = 'sales:return:approve');
 
@@ -31,7 +31,7 @@ INSERT INTO sys_menu
   (menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status,
    perms, icon, ancestors, route_name, requires_auth, sort, create_by, create_time, update_by, remark)
 SELECT '编辑退货', menu_id, 3, '', NULL, '1', '0', 'F', '0', '0',
-       'sales:return:edit', '', CONCAT('0,', menu_id), NULL, '1', 3, 'admin', NOW(), 'admin', ''
+       'sales:return:edit', '', CONCAT('0,13,', menu_id), NULL, '1', 3, 'admin', NOW(), 'admin', ''
 FROM sys_menu WHERE route_name = 'SalesReturn'
   AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE perms = 'sales:return:edit');
 
