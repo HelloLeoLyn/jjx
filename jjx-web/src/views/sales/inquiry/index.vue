@@ -204,6 +204,9 @@
                 >转报价</el-button
               >
             </template>
+            <el-button link type="primary" icon="Printer" @click="handlePrint(scope.row)"
+              >打印</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
@@ -447,6 +450,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -465,6 +469,8 @@ import type { ProductItem } from '@/types/product'
 defineOptions({
   name: 'SalesInquiry',
 })
+
+const router = useRouter()
 
 // ==================== 数据定义 ====================
 interface CustomerOption {
@@ -853,6 +859,10 @@ function handleUpdate(row?: any) {
 function handleDetail(row: any) {
   inquiryDetailId.value = row.inquiryId as number
   inquiryDetailVisible.value = true
+}
+
+function handlePrint(row: any) {
+  router.push({ path: '/sales/inquiry/print', query: { inquiryId: row.inquiryId } })
 }
 
 // 转报价
