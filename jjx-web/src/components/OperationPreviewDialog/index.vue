@@ -19,7 +19,9 @@
             <el-tag :type="statusTagType(from)" effect="plain">{{ statusText(from) }}</el-tag>
           </template>
           <el-icon class="status-arrow"><Right /></el-icon>
-          <el-tag :type="statusTagType(operation.toStatus)" effect="dark">{{ statusText(operation.toStatus) }}</el-tag>
+          <el-tag :type="statusTagType(operation.toStatus)" effect="dark">{{
+            statusText(operation.toStatus)
+          }}</el-tag>
         </div>
       </div>
 
@@ -69,7 +71,12 @@
               :placeholder="field.placeholder || `请选择${field.label}`"
               style="width: 100%"
             >
-              <el-option v-for="opt in field.options || []" :key="opt.value" :label="opt.label" :value="opt.value" />
+              <el-option
+                v-for="opt in field.options || []"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
             </el-select>
           </el-form-item>
         </el-form>
@@ -111,7 +118,11 @@
             <div class="op-event-head">
               <el-icon class="op-event-icon"><Bell /></el-icon>
               <span class="op-event-name">{{ evt.eventName }}</span>
-              <el-tag size="small" :type="evt.kanbanModule === 'dev' ? 'warning' : 'info'" effect="plain">
+              <el-tag
+                size="small"
+                :type="evt.kanbanModule === 'dev' ? 'warning' : 'info'"
+                effect="plain"
+              >
                 {{ kanbanLabel(evt.kanbanModule) }}
               </el-tag>
             </div>
@@ -119,7 +130,14 @@
               <div class="op-event-row">
                 <span class="op-event-label">通知</span>
                 <template v-if="evt.roleNames.length">
-                  <el-tag v-for="rn in evt.roleNames" :key="rn" size="small" type="success" effect="light">{{ rn }}</el-tag>
+                  <el-tag
+                    v-for="rn in evt.roleNames"
+                    :key="rn"
+                    size="small"
+                    type="success"
+                    effect="light"
+                    >{{ rn }}</el-tag
+                  >
                 </template>
                 <span v-else class="op-event-empty">无角色通知</span>
               </div>
@@ -235,7 +253,12 @@ const previewEvents = computed(() => {
 })
 
 function kanbanLabel(module?: string): string {
-  const map: Record<string, string> = { office: '办公看板', dev: '开发看板', emergency: '紧急看板', production: '生产看板' }
+  const map: Record<string, string> = {
+    office: '办公看板',
+    dev: '开发看板',
+    emergency: '紧急看板',
+    production: '生产看板',
+  }
   return module ? map[module] || module : '看板'
 }
 
@@ -246,7 +269,13 @@ const uploadUrl = computed(() => {
 })
 const uploadHeaders = computed(() => {
   const token = localStorage.getItem('token')
-  return token ? { token } : {}
+  // 2026-09-02 修复：el-upload 原生 XHR 默认 Accept: */* → 后端内容协商返回 YAML，
+  // 导致 onUploadSuccess 拿不到 code/data（1284 附件不进流水根因）；显式要求 JSON
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  }
+  if (token) headers['token'] = token
+  return headers
 })
 const uploadData = computed(() => ({
   bizType: props.operation?.bizType || '',
@@ -302,17 +331,21 @@ async function confirm() {
 }
 
 // 打开时初始化
-watch(() => props.modelValue, async (val) => {
-  if (val) {
-    formValues.value = {}
-    for (const field of props.operation?.fields || []) {
-      formValues.value[field.key] = field.defaultValue ?? (field.type === 'number' ? undefined : '')
+watch(
+  () => props.modelValue,
+  async (val) => {
+    if (val) {
+      formValues.value = {}
+      for (const field of props.operation?.fields || []) {
+        formValues.value[field.key] =
+          field.defaultValue ?? (field.type === 'number' ? undefined : '')
+      }
+      evidenceFileList.value = []
+      uploadedIds.length = 0
+      await loadEventsAndRoles()
     }
-    evidenceFileList.value = []
-    uploadedIds.length = 0
-    await loadEventsAndRoles()
   }
-})
+)
 </script>
 
 <style scoped>

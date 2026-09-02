@@ -44,10 +44,16 @@ public class WebConfig implements WebMvcConfigurer {
      * <p>DEV-306(2026-08-30)：必须移除默认 Jackson 后追加，不能 add(0) 插到最前——
      * 否则 springdoc 的 api-docs 返回 byte[] 时会被 Jackson Base64 化
      * （官方 issue springdoc/springdoc-openapi#2289），ByteArray/String 转换器必须保持优先。
+     * <p>2026-09-02 修复：classpath 含 jackson-dataformat-yaml（springdoc 间接引入），
+     * Spring 自动注册 YAML HttpMessageConverter → 当 Accept 为通配符（如 el-upload 原生 XHR
+     * 默认请求头）时内容协商返回 YAML，前端解析失败（1284 附件不进流水根因）。
+     * 统一清除非 JSON 转换器，所有接口只出 JSON。
      */
     @Override
     public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
-        converters.removeIf(c -> c instanceof MappingJackson2HttpMessageConverter);
+        // 清除自动注册的非 JSON 转换器（YAML 等），避免内容协商出非 JSON 响应
+        converters.removeIf(c -> c instanceof MappingJackson2HttpMessageConverter
+                || c instanceof org.springframework.http.converter.json.AbstractJackson2HttpMessageConverter);
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
         ObjectMapper objectMapper = new ObjectMapper();
 

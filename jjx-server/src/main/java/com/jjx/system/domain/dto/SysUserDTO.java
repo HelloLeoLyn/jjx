@@ -25,7 +25,6 @@ public class SysUserDTO extends SecurityUserDTO implements Serializable {
     /**
      * 部门ID
      */
-    @NotNull(message = "部门ID不能为空")
     private Long deptId;
 
     /**

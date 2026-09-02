@@ -21,6 +21,7 @@ declare module 'vue' {
     DeptSelect: typeof import('./components/system/DeptSelect.vue')['default']
     DialogForm: typeof import('./components/common-ui/DialogForm.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
+    ElAutocomplete: typeof import('element-plus/es')['ElAutocomplete']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElBadge: typeof import('element-plus/es')['ElBadge']
     ElBreadcrumb: typeof import('element-plus/es')['ElBreadcrumb']
