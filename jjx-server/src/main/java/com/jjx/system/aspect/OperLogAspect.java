@@ -199,11 +199,14 @@ public class OperLogAspect {
             // bizStatus 必须落真实状态，放在成功/失败判定之后处理：
             // 操作成功却取不到状态 = 注解写错或方法没把状态带出来，直接抛错，不允许静默落空；
             // 操作本身失败时状态没变，取不到属正常，留空即可。
+            // 强制范围对齐启动校验器 LogBizStatusValidator：只有写了 bizType 的 @Log 才要求
+            // bizStatus（系统管理类无状态机接口如用户/角色/菜单不强制）。
             boolean succeeded = YesNoEnum.YES.getCode().equals(operLog.getStatus());
+            boolean requiresBizStatus = !logAnnotation.bizType().trim().isEmpty();
             try {
                 operLog.setBizStatus(resolveBizStatus(spelCtx, logAnnotation.bizStatus()));
             } catch (Exception e) {
-                if (succeeded) {
+                if (succeeded && requiresBizStatus) {
                     throw new IllegalStateException(String.format(
                             "@Log bizStatus 解析失败: method=%s, expression=%s",
                             point.getSignature().toShortString(), logAnnotation.bizStatus()), e);
@@ -212,7 +215,8 @@ public class OperLogAspect {
                         point.getSignature().toShortString(), logAnnotation.bizStatus());
                 operLog.setBizStatus("");
             }
-            if (succeeded && (operLog.getBizStatus() == null || operLog.getBizStatus().isEmpty())) {
+            if (succeeded && requiresBizStatus
+                    && (operLog.getBizStatus() == null || operLog.getBizStatus().isEmpty())) {
                 throw new IllegalStateException(String.format(
                         "@Log bizStatus 求值为空: method=%s, expression=%s",
                         point.getSignature().toShortString(), logAnnotation.bizStatus()));
