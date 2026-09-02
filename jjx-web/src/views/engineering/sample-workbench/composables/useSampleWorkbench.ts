@@ -1220,12 +1220,19 @@ export function useSampleWorkbench() {
     if (readonlyMode.value) return
     if (!orderId.value) return
     // 前置检测：当前轮次所有工序必须已完成（与后端 markSampleReady 强制校验一致）
+    // 2026-09-02 修复：卡片显示卡内工序名（不用 category 分组名冒充工序名）；
+    // 印刷空行（printName 未填的占位行）不计入未完成（与 savePlan validPrints 语义一致）
     const unfinished: string[] = []
     for (const pc of planList.value) {
-      if (pc.status !== 2) unfinished.push(pc.category || pc.processName || '工序')
+      if (pc.status !== 2) {
+        const names = (pc.items || []).map((it: any) => it.processName).filter(Boolean)
+        unfinished.push(names.length ? names.join('、') : '工序')
+      }
     }
     for (const r of printList.value) {
-      if (r.status !== 2) unfinished.push(r.printName || r.processName || '印刷工序')
+      const pn = (r.printName || '').trim()
+      if (!pn) continue // 空行占位，跳过
+      if (r.status !== 2) unfinished.push(pn || '印刷工序')
     }
     if (unfinished.length) {
       ElMessage.error(`还有 ${unfinished.length} 道工序未完成（${unfinished.slice(0, 3).join('、')}${unfinished.length > 3 ? '…' : ''}），请先完成全部工序`)

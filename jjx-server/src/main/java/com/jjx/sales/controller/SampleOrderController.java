@@ -249,7 +249,7 @@ public class SampleOrderController extends BaseController {
      * 更新打样当前工序
      */
     @Operation(summary = "更新打样当前工序（材料JSON走body，避免长URL，8-03改DTO）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/update-process/{orderId}")
     public Result<SalesOrder> updateProcess(@PathVariable Long orderId,
@@ -278,7 +278,7 @@ public class SampleOrderController extends BaseController {
      * 推进打样工序状态（开始/完成）
      */
     @Operation(summary = "推进打样工序状态（开始/完成，可带耗时/说明/材料）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/processes/{orderId}/item/{processId}/status")
     public Result<com.jjx.sales.domain.entity.SalesSampleProcess> updateProcessItemStatus(
@@ -319,7 +319,7 @@ public class SampleOrderController extends BaseController {
      * 保存打样BOM物料清单
      */
     @Operation(summary = "保存打样BOM物料清单")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/bom/{orderId}")
     public Result<List<com.jjx.sales.domain.entity.SalesSampleBom>> saveBom(@PathVariable Long orderId,
@@ -341,7 +341,7 @@ public class SampleOrderController extends BaseController {
      * 录入打样成本/工时
      */
     @Operation(summary = "录入打样成本/工时")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/record-cost/{orderId}")
     public Result<SalesOrder> recordCost(@PathVariable Long orderId,

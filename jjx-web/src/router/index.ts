@@ -188,6 +188,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/requirement/:id',
+    name: 'RequirementEcnPrint',
+    component: () => import('@/views/biz/requirement/print.vue'),
+    meta: {
+      title: '工程变更通知打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/print/inbound/:id',
     name: 'InboundPrint',
     component: () => import('@/views/inventory/inbound/print.vue'),
