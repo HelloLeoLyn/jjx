@@ -37,22 +37,22 @@ export const toolbarOptions: ToolbarOptions[] = [
 
 // 表格列配置
 export const tableOptions: TableOptions[] = [
-  { label: '用户名称', prop: 'userName', width: 120 },
-  { label: '用户昵称', prop: 'nickName', width: 120 },
-  { label: '部门', prop: 'deptId', width: 120, slot: 'deptId' },
-  { label: '邮箱', prop: 'email' },
-  { label: '手机号码', prop: 'phone', width: 120 },
+  { label: '用户名称', prop: 'userName', minWidth: 120 },
+  { label: '用户昵称', prop: 'nickName', minWidth: 120 },
+  { label: '部门', prop: 'deptId', minWidth: 150, slot: 'deptId' },
+  { label: '邮箱', prop: 'email', minWidth: 180 },
+  { label: '手机号码', prop: 'phone', width: 130 },
   {
     label: '状态',
     prop: 'status',
-    width: 100,
+    width: 90,
     slot: 'status',
     align: 'center',
   },
   {
     label: '创建时间',
     prop: 'createTime',
-    width: 180,
+    width: 170,
     slot: 'createTime',
   },
 ]

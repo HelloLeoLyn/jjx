@@ -46,25 +46,26 @@ export const toolbarOptions: ToolbarOptions[] = [
 ]
 // 表格列配置
 export const tableOptions: TableOptions[] = [
-  { prop: 'roleId', label: '角色编号', width: 120, align: 'center' },
-  { prop: 'roleName', label: '角色名称', width: 180 },
-  { prop: 'roleKey', label: '权限字符', width: 180 },
+  { prop: 'roleId', label: '角色编号', width: 100, align: 'center' },
+  { prop: 'roleName', label: '角色名称', minWidth: 170 },
+  { prop: 'roleKey', label: '权限字符', minWidth: 160 },
   {
     label: '状态',
     prop: 'status',
-    width: 100,
+    width: 90,
     slot: 'status',
     align: 'center',
   },
   {
     label: '备注',
     prop: 'remark',
+    minWidth: 150,
     align: 'center',
   },
   {
     label: '创建时间',
     prop: 'createTime',
-    width: 180,
+    width: 170,
     slot: 'createTime',
     align: 'center',
   },

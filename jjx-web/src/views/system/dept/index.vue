@@ -33,17 +33,17 @@
         <!-- 序号列 -->
         <el-table-column type="index" label="序号" width="60" />
         <!-- 部门名称列 -->
-        <el-table-column prop="deptName" label="部门名称" min-width="180" />
+        <el-table-column prop="deptName" label="部门名称" min-width="180" show-overflow-tooltip />
         <!-- 显示排序列 -->
-        <el-table-column prop="orderNum" label="显示排序" width="120" align="center" />
+        <el-table-column prop="orderNum" label="显示排序" width="80" align="center" />
         <!-- 负责人列 -->
-        <el-table-column prop="leader" label="负责人" width="150" />
+        <el-table-column prop="leader" label="负责人" min-width="110" show-overflow-tooltip />
         <!-- 联系电话列 -->
-        <el-table-column prop="phone" label="联系电话" width="150" />
+        <el-table-column prop="phone" label="联系电话" min-width="130" show-overflow-tooltip />
         <!-- 邮箱列 -->
-        <el-table-column prop="email" label="邮箱" width="200" />
+        <el-table-column prop="email" label="邮箱" min-width="170" show-overflow-tooltip />
         <!-- 状态列 -->
-        <el-table-column prop="status" label="状态" width="100" align="center">
+        <el-table-column prop="status" label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === '0' ? 'success' : 'danger'" size="small">
               {{ row.status === '0' ? '正常' : '停用' }}
@@ -51,13 +51,13 @@
           </template>
         </el-table-column>
         <!-- 创建时间列 -->
-        <el-table-column prop="createTime" label="创建时间" width="180" align="center">
+        <el-table-column prop="createTime" label="创建时间" width="160" align="center">
           <template #default="{ row }">
             <span>{{ parseTime(row.createTime) }}</span>
           </template>
         </el-table-column>
         <!-- 操作列 -->
-        <el-table-column label="操作" width="200" align="center">
+        <el-table-column label="操作" width="200" align="center" fixed="right">
           <template #default="{ row }">
             <el-button
               link

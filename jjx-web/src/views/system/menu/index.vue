@@ -59,8 +59,8 @@
 
           <!-- 排序列 -->
           <el-table-column prop="orderNum" label="排序" width="80" align="center" />
-          <el-table-column prop="path" label="路由地址" min-width="180" />
-          <el-table-column prop="redirect" label="重定向" width="160" align="center" />
+          <el-table-column prop="path" label="路由地址" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="redirect" label="重定向" min-width="140" align="center" show-overflow-tooltip />
           <!-- 权限标识列 -->
           <el-table-column prop="perms" label="权限标识" min-width="150">
             <template #default="{ row }">
