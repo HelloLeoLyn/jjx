@@ -338,13 +338,12 @@
               </el-input>
             </el-form-item>
 
-            <!-- 产品名称（默认与编码一致，可改） -->
-            <el-form-item label="产品名称">
+            <!-- 产品名称（必填，不默认=编码；样品生成编码后由销售填写） -->
+            <el-form-item label="产品名称" prop="productName">
               <el-input
                 v-model="form.productName"
-                placeholder="默认与编码一致，可修改"
+                placeholder="请填写产品名称"
                 maxlength="200"
-                @input="nameEdited = true"
               />
             </el-form-item>
             <!-- 产品描述 -->
@@ -567,6 +566,8 @@ const rules: Record<string, any> = {
       trigger: 'change',
     },
   ],
+  // 2026-09-02：产品名称必填（两种类型都要，不再默认=编码）
+  productName: [{ required: true, message: '请填写产品名称', trigger: 'blur' }],
 }
 
 // 详情数据（已迁移到 InquiryDetailDialog 共享组件内自管理）
@@ -724,7 +725,6 @@ function customerChanged(val: number) {
     form.productId = undefined
     form.productCode = ''
     form.productName = ''
-    nameEdited.value = false
     formRef.value?.validateField('productId').catch(() => {})
   }
 }
@@ -741,20 +741,16 @@ const codeState = ref<ProductCodeState>({
   circuitFeature: '',
 })
 const codeParams = ref<ProductCodeResult | null>(null)
-const nameEdited = ref(false)
 
 const shortNameDisplay = computed(() => {
   const s = form.customerShortName || ''
   return s.substring(0, 3)
 })
 
-// 编码生成回调：填产品编码/名称（nameEdited=产品名手动改过则不覆盖）
+// 编码生成回调：只填产品编码，产品名称不再默认与编码一致（2026-09-02，名称必填由销售填写）
 function onCodeChange(data: string | ProductCodeResult) {
   const code = typeof data === 'string' ? data : data.productCode
   form.productCode = code
-  if (!nameEdited.value) {
-    form.productName = code
-  }
 }
 
 // 类型切换：标准品/样品切换时清掉编码生成状态（切换时清空避免串数据）
@@ -767,7 +763,6 @@ function onTypeChange() {
     circuitFeature: '',
   }
   form.productCode = ''
-  nameEdited.value = false
   if (form.inquiryType === 1) {
     form.productName = ''
   } else {
@@ -787,7 +782,6 @@ function onProductSelect(val: number, product?: any) {
     // 标准品：编码/名称带出产品档案（可改），并反解编码构成要素供查看/修改
     form.productCode = product.productCode
     form.productName = product.productName
-    nameEdited.value = true
     const code = product.productCode || ''
     if (code.length >= 10) {
       form.customerShortName = code.substring(0, 3)
@@ -850,7 +844,6 @@ function handleUpdate(row?: any) {
         circuitType: code.substring(8, 9),
         circuitFeature: code.substring(9, 10),
       }
-      nameEdited.value = form.productName !== code
     }
   })
 }
@@ -990,7 +983,6 @@ function resetForm() {
     circuitFeature: '',
   }
   codeParams.value = null
-  nameEdited.value = false
 }
 
 // 初始化客户选项（首次加载全部）

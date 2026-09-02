@@ -1,35 +1,37 @@
 <template>
   <div class="product-code-generator">
     <el-row :gutter="16">
-      <el-col v-if="!hideShortName" :span="12">
-        <el-form-item label="客户简称">
-          <el-input :model-value="customerShort" readonly placeholder="选择客户后自动带出" />
-        </el-form-item>
-      </el-col>
-      <el-col :span="hideShortName ? 24 : 12">
-        <el-form-item label="流水号">
-          <el-input
-            v-model="state.serialNo"
-            maxlength="3"
-            placeholder="3位，点生成编码自动取号可改"
-            :disabled="disabled"
-          />
-        </el-form-item>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="16">
       <el-col :span="12">
         <el-form-item label="面板结构" required>
-          <el-select v-model="state.panelType" placeholder="面板类型" style="width: 100%" :disabled="disabled">
-            <el-option v-for="o in PANEL_TYPE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+          <el-select
+            v-model="state.panelType"
+            placeholder="面板类型"
+            style="width: 100%"
+            :disabled="disabled"
+          >
+            <el-option
+              v-for="o in PANEL_TYPE_OPTIONS"
+              :key="o.value"
+              :label="o.label"
+              :value="o.value"
+            />
           </el-select>
         </el-form-item>
       </el-col>
       <el-col :span="12">
         <el-form-item label="面板特征" required>
-          <el-select v-model="state.panelFeature" placeholder="面板特征" style="width: 100%" :disabled="disabled">
-            <el-option v-for="o in PANEL_FEATURE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+          <el-select
+            v-model="state.panelFeature"
+            placeholder="面板特征"
+            style="width: 100%"
+            :disabled="disabled"
+          >
+            <el-option
+              v-for="o in PANEL_FEATURE_OPTIONS"
+              :key="o.value"
+              :label="o.label"
+              :value="o.value"
+            />
           </el-select>
         </el-form-item>
       </el-col>
@@ -38,27 +40,39 @@
     <el-row :gutter="16">
       <el-col :span="12">
         <el-form-item label="线路类型" required>
-          <el-select v-model="state.circuitType" placeholder="线路类型" style="width: 100%" :disabled="disabled">
-            <el-option v-for="o in CIRCUIT_TYPE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+          <el-select
+            v-model="state.circuitType"
+            placeholder="线路类型"
+            style="width: 100%"
+            :disabled="disabled"
+          >
+            <el-option
+              v-for="o in CIRCUIT_TYPE_OPTIONS"
+              :key="o.value"
+              :label="o.label"
+              :value="o.value"
+            />
           </el-select>
         </el-form-item>
       </el-col>
       <el-col :span="12">
         <el-form-item label="线路特征" required>
-          <el-select v-model="state.circuitFeature" placeholder="线路特征" style="width: 100%" :disabled="disabled">
-            <el-option v-for="o in CIRCUIT_FEATURE_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
+          <el-select
+            v-model="state.circuitFeature"
+            placeholder="线路特征"
+            style="width: 100%"
+            :disabled="disabled"
+          >
+            <el-option
+              v-for="o in CIRCUIT_FEATURE_OPTIONS"
+              :key="o.value"
+              :label="o.label"
+              :value="o.value"
+            />
           </el-select>
         </el-form-item>
       </el-col>
     </el-row>
-
-    <div class="gen-row" style="margin-bottom: 12px">
-      <el-button type="primary" size="small" :loading="generating" :disabled="disabled" @click="handleGenerate">
-        <el-icon style="margin-right: 4px"><Refresh /></el-icon>生成编码
-      </el-button>
-      <span v-if="preview" class="code-preview">编码：<b>{{ preview.productCode }}</b></span>
-      <span v-else class="code-hint">{{ hint }}</span>
-    </div>
   </div>
 </template>
 
@@ -88,6 +102,8 @@ const props = defineProps<{
   emitParams?: boolean
   /** 是否隐藏客户简称显示（页面已有客户选择时用） */
   hideShortName?: boolean
+  /** 是否隐藏“生成编码”按钮（2026-09-02：四选全选后自动生成场景用） */
+  hideGenerate?: boolean
   /** 禁用 */
   disabled?: boolean
 }>()
@@ -135,7 +151,7 @@ watch(
     state.value.circuitFeature,
   ],
   () => emitResult(),
-  { immediate: true },
+  { immediate: true }
 )
 
 function emitResult() {
@@ -165,7 +181,9 @@ async function handleGenerate() {
   try {
     const fetchSerial = props.fetchSerial ?? defaultFetchSerial
     const no = await fetchSerial(short.value)
-    state.value.serialNo = String(no || '001').padStart(3, '0').slice(0, 3)
+    state.value.serialNo = String(no || '001')
+      .padStart(3, '0')
+      .slice(0, 3)
   } catch (e: any) {
     hint.value = e?.message || '流水号获取失败'
   } finally {

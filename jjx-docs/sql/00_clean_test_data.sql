@@ -66,10 +66,6 @@ TRUNCATE sales_receipt;
 
 TRUNCATE sales_return;
 
-TRUNCATE sales_performance;
-
-TRUNCATE sales_contract;
-
 TRUNCATE sales_quotation;
 
 TRUNCATE sales_quotation_item;

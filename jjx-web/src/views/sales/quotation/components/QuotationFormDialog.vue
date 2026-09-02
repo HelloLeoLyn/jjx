@@ -1,4 +1,7 @@
-<!-- views/sales/quotation/components/QuotationFormDialog.vue -->
+<!-- views/sales/quotation/components/QuotationFormDialog.vue
+  2026-09-02 优化：样品类型允许多条明细；编码生成器下沉明细行操作栏（针对行内产品）；
+  明细行 📎资料 → 产品文件库（按 product_id/编码挂载，保存建档后可用）
+-->
 <template>
   <el-dialog :title="title" v-model="visible" width="1300px" append-to-body @close="handleClose">
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px">
@@ -79,25 +82,14 @@
         </el-col>
       </el-row>
 
-      <!-- 编码生成器 -->
-      <template v-if="formData.quotationType === 2">
-        <ProductCodeGenerator
-          ref="qCodeGenRef"
-          :customer-short="qShortName"
-          v-model:state="qCodeState"
-          :emit-params="true"
-          v-model:params="qCodeParams"
-          @change="onQCodeChange"
-        />
-      </template>
-
       <!-- 报价明细表格 -->
       <el-divider content-position="left">报价明细</el-divider>
       <el-table :data="formData.items" border style="width: 100%; margin-bottom: 10px">
         <el-table-column label="序号" type="index" width="60" align="center" />
-        <el-table-column label="产品编码" prop="productCode" width="140">
+        <el-table-column label="产品编码" prop="productCode" width="150">
           <template #default="scope">
             <el-select
+              v-if="formData.quotationType === 1"
               v-model="scope.row.productCode"
               placeholder="选择产品或输入编码"
               filterable
@@ -116,6 +108,9 @@
                 :value="item.productCode"
               />
             </el-select>
+            <!-- 样品类型：编码由行内生成器生成，只读展示 -->
+            <span v-else-if="scope.row.productCode" class="sample-code">{{ scope.row.productCode }}</span>
+            <span v-else class="sample-code-empty">（点击📝生成编码）</span>
           </template>
         </el-table-column>
         <el-table-column label="产品名称" prop="productName" width="180">
@@ -151,15 +146,30 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="金额" prop="amount" width="120">
+        <el-table-column label="金额" prop="amount" width="110">
           <template #default="scope">
             <span>{{ formatCurrency(scope.row.amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="80" align="center">
+        <el-table-column label="操作" min-width="150" align="center">
           <template #default="scope">
+            <!-- 样品类型：编码生成（针对行内产品） -->
+            <template v-if="formData.quotationType === 2">
+              <el-tooltip content="生成/修改产品编码" placement="top">
+                <el-button link type="primary" icon="EditPen" @click="openCodeGen(scope.row)" />
+              </el-tooltip>
+              <el-tooltip content="产品资料（文件库）" placement="top">
+                <el-button
+                  link
+                  type="warning"
+                  icon="FolderOpened"
+                  :disabled="!scope.row.productCode"
+                  @click="openFileLibrary(scope.row)"
+                />
+              </el-tooltip>
+            </template>
             <el-button
-              v-if="formData.quotationType === 1"
+              v-if="formData.quotationType === 1 || formData.quotationType === 2"
               link
               type="danger"
               icon="Delete"
@@ -171,15 +181,10 @@
 
       <el-row>
         <el-col :span="24" style="text-align: right">
-          <el-button
-            v-if="formData.quotationType === 1 || formData.quotationType === 2"
-            type="primary"
-            icon="Plus"
-            :disabled="formData.quotationType === 2 && formData.items.length >= 1"
-            @click="addItem"
-            >添加明细</el-button
+          <el-button type="primary" icon="Plus" @click="addItem">添加明细</el-button>
+          <span v-if="formData.quotationType === 2" class="sample-limit-tip"
+            >样品明细通过编码生成器添加（可多条）</span
           >
-          <span v-if="formData.quotationType === 2" class="sample-limit-tip">样品单仅支持一条明细</span>
         </el-col>
       </el-row>
 
@@ -274,10 +279,29 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button type="primary" @click="handleSubmit">确 定</el-button>
-        <el-button @click="handleClose">取 消</el-button>
+        <el-button type="primary" @click="handleSubmit">保 存</el-button>
+        <el-button @click="handleClose">关 闭</el-button>
       </div>
     </template>
+
+    <!-- 行内编码生成弹窗（样品类型） -->
+    <QuotationCodeGenDialog
+      v-model="codeGenVisible"
+      :customer-short="qShortName"
+      :init-state="codeGenInitState"
+      :used-serials="usedSerialsForCodeGen"
+      @confirm="onCodeGenConfirm"
+    />
+
+    <!-- 产品文件库弹窗（明细行资料） -->
+    <el-dialog
+      v-model="fileLibVisible"
+      :title="`产品资料【${fileLibProductCode || ''}】`"
+      width="720px"
+      append-to-body
+    >
+      <ProductFileLibrary v-if="fileLibVisible" :product-code="fileLibProductCode" />
+    </el-dialog>
   </el-dialog>
 </template>
 
@@ -287,10 +311,10 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { formatCurrency } from '@/utils/format'
 import { quotationApi } from '@/api/sales/quotation'
-import { customerApi } from '@/api/sales/customer'
 import { listProduct } from '@/api/product'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
-import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
+import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
+import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 
 const props = defineProps<{
@@ -313,16 +337,25 @@ const productOptions = ref<Array<{ productId: number; productCode: string; produ
   []
 )
 
-const qCodeGenRef = ref()
+// 行内编码生成
+const codeGenVisible = ref(false)
+const codeGenRow = ref<any>(null)
+const codeGenInitState = ref<Partial<ProductCodeState>>({})
 const qShortName = ref('')
-const qCodeState = ref<ProductCodeState>({
-  serialNo: '',
-  panelType: '',
-  panelFeature: '',
-  circuitType: '',
-  circuitFeature: '',
+
+/** 本单已占用的流水号（排除当前编辑行自身；新增行 codeGenRow 为 null 时取全部） */
+const usedSerialsForCodeGen = computed(() => {
+  const current = codeGenRow.value
+  return (props.formData.items || [])
+    .filter((item: any) => item !== current)
+    .map((item: any) => item.serialNo)
+    .filter((s: any) => s && String(s).trim())
+    .map((s: any) => String(s).trim().padStart(3, '0'))
 })
-const qCodeParams = ref<ProductCodeResult | null>(null)
+
+// 产品文件库
+const fileLibVisible = ref(false)
+const fileLibProductCode = ref('')
 
 const exchangeRateHint = computed(() => {
   if (!props.formData.currency || props.formData.currency === 'CNY') return ''
@@ -389,15 +422,81 @@ const handleCurrencyChange = async (val: string) => {
   }
 }
 
-const onQCodeChange = (data: string | ProductCodeResult) => {
-  const code = typeof data === 'string' ? data : data.productCode
-  const row = props.formData.items[0]
-  if (!row || !code) return
-  row.productCode = code
-  row.productName = code
-  ElMessage.success('编码与名称已填入明细')
+// ============================================================
+// 行内编码生成（样品类型，针对明细行产品）
+// ============================================================
+const openCodeGen = (row: any) => {
+  codeGenRow.value = row
+  // 编辑回显：行上已有参数直接用；无参数尝试从编码反解
+  codeGenInitState.value = {
+    serialNo: row.serialNo,
+    panelType: row.panelType,
+    panelFeature: row.panelFeature,
+    circuitType: row.circuitType,
+    circuitFeature: row.circuitFeature,
+  }
+  if (!hasAnyCodeParam(codeGenInitState.value) && row.productCode) {
+    codeGenInitState.value = parseCodeFromProductCode(row.productCode)
+  }
+  codeGenVisible.value = true
 }
 
+const onCodeGenConfirm = (params: ProductCodeResult) => {
+  if (codeGenRow.value) {
+    // 编辑已有行：只改编码+参数，保留手改的产品名称（2026-09-02）
+    const row = codeGenRow.value
+    row.productCode = params.productCode
+    // 编码变了 → 清掉旧 productId，提交时后端按新编码重新建档（2026-09-02）
+    row.productId = undefined
+    row.serialNo = params.serialNo
+    row.panelType = params.panelType
+    row.panelFeature = params.panelFeature
+    row.circuitType = params.circuitType
+    row.circuitFeature = params.circuitFeature
+  } else {
+    // 新增行：回填编码；产品名称不默认编码（2026-09-02：必填，由销售在表格填写）
+    props.formData.items.push({
+      productId: undefined,
+      productCode: params.productCode,
+      productName: '',
+      quantity: 1,
+      unitPrice: 0,
+      amount: 0,
+      unit: 'PCS',
+      // 编码参数（样品类型静默携带，提交时后端建档用）
+      serialNo: params.serialNo,
+      panelType: params.panelType,
+      panelFeature: params.panelFeature,
+      circuitType: params.circuitType,
+      circuitFeature: params.circuitFeature,
+    })
+  }
+  calculateTotalAmount()
+  ElMessage.success(`编码已生成：${params.productCode}`)
+}
+
+// ============================================================
+// 产品文件库（明细行资料）
+// 2026-09-02：资料挂产品档案（product_id）。样品行保存报价单后建档才有 product_id；
+// 未建档时提示先保存（产品不存在，文件库挂不上）
+// ============================================================
+const openFileLibrary = (row: any) => {
+  if (!row.productCode) {
+    ElMessage.warning('请先生成产品编码')
+    return
+  }
+  // 标准品行直接可开（产品档案已存在）
+  if (props.formData.quotationType === 2 && !row.productId) {
+    ElMessage.info('请先【保存】报价单，产品建档后即可上传/查看资料')
+    return
+  }
+  fileLibProductCode.value = row.productCode
+  fileLibVisible.value = true
+}
+
+// ============================================================
+// 标准品产品选择
+// ============================================================
 const handleProductChange = (item: any) => {
   const selectedProduct = productOptions.value.find(
     (product) => product.productCode === item.productCode
@@ -441,8 +540,15 @@ const isStandardProduct = (item: any) => {
 }
 
 const addItem = () => {
-  if (props.formData.quotationType === 2 && props.formData.items.length >= 1) {
-    ElMessage.warning('样品单仅支持一条明细')
+  // 样品类型：直接弹出编码生成窗，确定后落行（2026-09-02）
+  if (props.formData.quotationType === 2) {
+    codeGenRow.value = null // null = 新增行模式
+    codeGenInitState.value = {}
+    if (!qShortName.value) {
+      ElMessage.warning('请先选择客户')
+      return
+    }
+    codeGenVisible.value = true
     return
   }
   props.formData.items.push({
@@ -483,27 +589,31 @@ const handleSubmit = () => {
       }
       for (const item of props.formData.items) {
         if (!item.productCode || !item.productName) {
-          ElMessage.warning('请填写完整的产品信息')
+          ElMessage.warning('请填写完整的产品信息（产品名称必填）')
           return
         }
         if (item.quantity <= 0) {
           ElMessage.warning('数量必须大于0')
           return
         }
-        if (item.unitPrice < 0) {
-          ElMessage.warning('单价不能为负数')
+        // 2026-09-02：单价必须大于0（样品明细不得免费/零价）
+        if (item.unitPrice <= 0) {
+          ElMessage.warning('单价必须大于0')
           return
         }
       }
-      if (props.formData.quotationType === 2 && qCodeParams.value && props.formData.items.length) {
-        const p = qCodeParams.value
-        Object.assign(props.formData.items[0], {
-          serialNo: p.serialNo,
-          panelType: p.panelType,
-          panelFeature: p.panelFeature,
-          circuitType: p.circuitType,
-          circuitFeature: p.circuitFeature,
-        })
+      // 2026-09-02：保存防线——样品类型明细编码不得重复（同码会导致两行指向同一草稿产品）
+      if (props.formData.quotationType === 2) {
+        const seen = new Map<string, number>()
+        for (const item of props.formData.items) {
+          const code = (item.productCode || '').trim()
+          if (!code) continue
+          if (seen.has(code)) {
+            ElMessage.error(`明细产品编码重复：${code}（第${seen.get(code)}行与当前行），请重新生成`)
+            return
+          }
+          seen.set(code, props.formData.items.indexOf(item) + 1)
+        }
       }
       emit('submit')
     }
@@ -513,6 +623,37 @@ const handleSubmit = () => {
 const handleClose = () => {
   visible.value = false
   emit('cancel')
+}
+
+// ============================================================
+// 工具：编码参数反解/判断
+// ============================================================
+function hasAnyCodeParam(state: Partial<ProductCodeState>): boolean {
+  return !!(state.serialNo || state.panelType || state.panelFeature || state.circuitType || state.circuitFeature)
+}
+
+/** 从产品编码反解构成要素（编码 = 简称(1-3) + 流水(3) + 面板结构(1) + 面板特征(1) + 线路类型(1) + 线路特征(1)） */
+function parseCodeFromProductCode(code?: string | null): Partial<ProductCodeState> {
+  const empty: Partial<ProductCodeState> = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  if (!code) return empty
+  const c = code.trim()
+  if (c.length < 7 || c.length > 10) return empty
+  const panelType = c.charAt(c.length - 4)
+  const panelFeature = c.charAt(c.length - 3)
+  const circuitType = c.charAt(c.length - 2)
+  const circuitFeature = c.charAt(c.length - 1)
+  const result: Partial<ProductCodeState> = {
+    serialNo: '',
+    panelType: 'MSP'.includes(panelType) ? panelType : '',
+    panelFeature: 'EWHO'.includes(panelFeature) ? panelFeature : '',
+    circuitType: 'OMP'.includes(circuitType) ? circuitType : '',
+    circuitFeature: 'OLCH'.includes(circuitFeature) ? circuitFeature : '',
+  }
+  const serial = c.slice(-7, -4)
+  if (/^\d{3}$/.test(serial)) {
+    result.serialNo = serial
+  }
+  return result
 }
 
 defineExpose({
@@ -530,9 +671,12 @@ defineExpose({
 .dialog-footer {
   text-align: right;
 }
-.sample-limit-tip {
-  color: #909399;
+.sample-code {
+  color: #409eff;
+  font-weight: 500;
+}
+.sample-code-empty {
+  color: #c0c4cc;
   font-size: 12px;
-  margin-left: 8px;
 }
 </style>

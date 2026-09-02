@@ -42,7 +42,7 @@ public interface IQuotationService {
      * @param quotation 销售报价单
      * @return 结果
      */
-    int insertQuotation(SalesQuotationAddDTO quotation);
+    Long insertQuotation(SalesQuotationAddDTO quotation);
 
     /**
      * 修改销售报价单

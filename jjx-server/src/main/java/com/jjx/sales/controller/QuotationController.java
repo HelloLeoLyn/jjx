@@ -70,13 +70,14 @@ public class QuotationController extends BaseController {
 
     /**
      * 新增销售报价单
+     * 2026-09-02：返回新报价单 ID（前端保存后不关弹窗，需凭 ID 续改/挂资料）
      */
     @Operation(summary = "新增销售报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotation.quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).DRAFT.getLabel()")
+    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#result.data", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).DRAFT.getLabel()")
     @SaCheckPermission("sales:quotation:add")
     @PostMapping
-    public Result<Void> add(@Validated @RequestBody SalesQuotationAddDTO quotation) {
-        return toAjax(quotationService.insertQuotation(quotation));
+    public Result<Long> add(@Validated @RequestBody SalesQuotationAddDTO quotation) {
+        return Result.success(quotationService.insertQuotation(quotation));
     }
 
     /**

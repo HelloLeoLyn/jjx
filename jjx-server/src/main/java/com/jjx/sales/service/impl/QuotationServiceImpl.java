@@ -247,15 +247,10 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int insertQuotation(SalesQuotationAddDTO dto) {
+    public Long insertQuotation(SalesQuotationAddDTO dto) {
 
         SalesQuotation quotation = quotationConverter.toEntity(dto);
         validateCustomerProducts(quotation);
-        // 样品单仅支持一条明细（dev-20260901-1225 需求）
-        if (Integer.valueOf(2).equals(quotation.getQuotationType())
-                && quotation.getItems() != null && quotation.getItems().size() > 1) {
-            throw new BusinessException("样品单仅支持一条明细");
-        }
         // 销售负责人默认当前登录用户（2026-08-08）
         if (quotation.getSalesPersonId() == null) {
             quotation.setSalesPersonId(SecurityUtils.getUserId());
@@ -325,12 +320,15 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         int rows = quotationMapper.insert(quotation);
+        // 明细编码重复防线（2026-09-02：同码会导致两行指向同一草稿产品）
+        validateItemCodeUnique(quotation.getItems());
         // 样品报价：编码前置建档草稿产品（2026-08-08）
         ensureSampleDraftProducts(quotation);
         // 保存报价单明细（自动汇总金额：税率百分数÷100 算税额，total=subtotal+tax，final=total-折扣）
         saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
                 quotation.getTaxRate(), quotation.getDiscountAmount());
-        return rows;
+        // 返回新报价单 ID（2026-09-02：前端保存后不关弹窗，需凭 ID 续改/挂资料）
+        return quotation.getQuotationId();
     }
 
     /**
@@ -346,15 +344,34 @@ public class QuotationServiceImpl implements IQuotationService {
         }
     }
 
+    private void validateItemCodeUnique(List<SalesQuotationItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (SalesQuotationItem item : items) {
+            if (item.getProductCode() == null || item.getProductCode().isBlank()) {
+                continue;
+            }
+            String code = item.getProductCode().trim();
+            if (!seen.add(code)) {
+                throw new BusinessException("明细产品编码重复：" + code + "，请重新生成");
+            }
+        }
+    }
+
     private void ensureSampleDraftProducts(SalesQuotation quotation) {
         if (!java.lang.Integer.valueOf(2).equals(quotation.getQuotationType())) return;
         if (quotation.getItems() == null) return;
         for (SalesQuotationItem item : quotation.getItems()) {
             if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
                 try {
+                    // 编码参数（面板/线路/流水号）随建档写入 product.spec_json（2026-09-02：参数落产品档案，报价明细不再存）
                     Long pid = productService.ensureDraftProduct(
                             item.getProductCode(), item.getProductName(), item.getUnit(), "quotation",
-                            quotation.getCustomerId());
+                            quotation.getCustomerId(),
+                            item.getSerialNo(), item.getPanelType(), item.getPanelFeature(),
+                            item.getCircuitType(), item.getCircuitFeature());
                     item.setProductId(pid);
                 } catch (Exception e) {
                     log.warn("样品报价建档草稿产品失败: code={}, err={}", item.getProductCode(), e.getMessage());
@@ -375,11 +392,6 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("报价单不存在");
         }
         validateCustomerProducts(quotation);
-        // 样品单仅支持一条明细（dev-20260901-1225 需求）
-        if (Integer.valueOf(2).equals(quotation.getQuotationType())
-                && quotation.getItems() != null && quotation.getItems().size() > 1) {
-            throw new BusinessException("样品单仅支持一条明细");
-        }
 
         // 检查报价单号是否唯一（排除自身）
         if (quotation.getQuotationNo() != null && !quotation.getQuotationNo().equals(existingQuotation.getQuotationNo())) {
@@ -389,6 +401,8 @@ public class QuotationServiceImpl implements IQuotationService {
         }
 
         int rows = quotationMapper.updateById(quotation);
+        // 明细编码重复防线（2026-09-02：同码会导致两行指向同一草稿产品）
+        validateItemCodeUnique(quotation.getItems());
         // 样品报价：明细建档草稿产品（2026-08-08）
         ensureSampleDraftProducts(quotation);
         // DEV-1116：更新未携带明细时跳过"先删后插"，避免误删明细且表头不重算
@@ -509,6 +523,13 @@ public class QuotationServiceImpl implements IQuotationService {
         for (SalesQuotationItem item : items) {
             item.setItemId(null);
             item.setQuotationId(quotationId);
+            // 2026-09-02：编码参数（serial_no/panel_type/panel_feature/circuit_type/circuit_feature）已弃用不落库
+            // （参数随建档写入 product.spec_json，明细只存 product_id 引用）；置空避免写库
+            item.setSerialNo(null);
+            item.setPanelType(null);
+            item.setPanelFeature(null);
+            item.setCircuitType(null);
+            item.setCircuitFeature(null);
             // 兑底：标准单明细有产品编码但缺 productId 时回填（前端漏传/旧数据）
             if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isEmpty()) {
                 try {

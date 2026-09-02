@@ -60,11 +60,17 @@ public class RouterHelper {
 
     /**
      * 获取路由路径
+     * 2026-09-02 防御：顶层菜单（parentId=0）path 必须以 / 开头，否则 vue-router addRoute 抛错
+     * （历史数据可能存 "doc" 这种无斜杠值）
      */
     private static String getRoutePath(SysMenuVO menu) {
         String path = menu.getPath();
         if (StringUtils.isEmpty(path)) {
             return "";
+        }
+        path = path.trim();
+        if (menu.getParentId() != null && menu.getParentId() == 0 && !path.startsWith("/")) {
+            return "/" + path;
         }
         return path;
     }

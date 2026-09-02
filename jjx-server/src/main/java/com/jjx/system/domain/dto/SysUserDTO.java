@@ -95,8 +95,6 @@ public class SysUserDTO extends SecurityUserDTO implements Serializable {
     /**
      * 角色ID列表
      */
-    @NotEmpty(message = "角色不能为空")
-    @Size(min = 1, message = "至少选择一个角色")
     private List<@NotNull Long> roleIds;
 
     /**

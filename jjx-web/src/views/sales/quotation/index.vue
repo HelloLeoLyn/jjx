@@ -609,6 +609,12 @@ const form = reactive({
     unitPrice: number
     amount: number
     unit: string
+    // 编码参数（样品类型，2026-09-02：静默携带，随报价保存建档写入 product.spec_json）
+    serialNo?: string
+    panelType?: string
+    panelFeature?: string
+    circuitType?: string
+    circuitFeature?: string
   }>,
 })
 
@@ -660,19 +666,31 @@ const resetForm = () => {
   })
 }
 
-const submitForm = () => {
-  if (form.quotationId !== undefined) {
-    quotationApi.edit(form as any).then(() => {
-      ElMessage.success('修改成功')
-      open.value = false
+const submitForm = async () => {
+  try {
+    if (form.quotationId !== undefined && form.quotationId > 0) {
+      // 修改：保存后不关弹窗，重新拉详情回填 product_id（产品资料可挂载）
+      await quotationApi.edit(form as any)
+      const res: any = await quotationApi.getInfo(form.quotationId)
+      Object.assign(form, res.data)
+      title.value = `修改报价单【${res.data?.quotationNo || ''}】`
+      ElMessage.success('保存成功')
       getList()
-    })
-  } else {
-    quotationApi.add(form as any).then(() => {
-      ElMessage.success('新增成功')
-      open.value = false
+    } else {
+      // 新增：保存后拿到新 ID，不关弹窗切到修改态，可继续编辑/挂资料
+      const res: any = await quotationApi.add(form as any)
+      const newId: number | undefined = res?.data
+      if (newId) {
+        form.quotationId = newId
+        const info: any = await quotationApi.getInfo(newId)
+        Object.assign(form, info.data)
+        title.value = `修改报价单【${info.data?.quotationNo || ''}】`
+      }
+      ElMessage.success('保存成功，可继续编辑')
       getList()
-    })
+    }
+  } catch (e: any) {
+    console.error('保存报价单失败:', e)
   }
 }
 
@@ -701,6 +719,7 @@ const handleUpdate = (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   quotationApi.getInfo(quotationId).then((response: any) => {
     Object.assign(form, response.data)
+    form.quotationId = response.data?.quotationId
     open.value = true
     title.value = `修改报价单【${response.data?.quotationNo || ''}】`
   })
@@ -864,7 +883,10 @@ const handleModify = async (row?: any) => {
 const handleCopy = (row?: any) => {
   const quotationId = row?.quotationId || ids.value[0]
   quotationApi.copy(quotationId).then((response: any) => {
+    resetForm()
     Object.assign(form, response.data)
+    // 复制单走新增分支（2026-09-02：submitForm 以 quotationId!==undefined 判修改，复制源无 id 需显式清掉）
+    form.quotationId = undefined
     form.quotationNo = `COPY_${form.quotationNo}`
     open.value = true
     title.value = '复制报价单'
