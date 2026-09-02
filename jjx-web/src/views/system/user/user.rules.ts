@@ -30,18 +30,10 @@ export const formRules: FormRules = {
     },
   ],
   email: [
-    {
-      type: 'email',
-      message: '请输入正确的邮箱地址',
-      trigger: ['blur', 'change'],
-    },
+    { required: true, type: 'email', message: '请输入正确的邮箱地址', trigger: ['blur', 'change'] },
   ],
   phone: [
-    {
-      pattern: /^1[3-9]\d{9}$/,
-      message: '请输入正确的手机号码',
-      trigger: 'blur',
-    },
+    { required: true, pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码', trigger: 'blur' },
   ],
 }
 
