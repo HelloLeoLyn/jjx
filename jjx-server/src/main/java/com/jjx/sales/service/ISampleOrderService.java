@@ -208,4 +208,10 @@ public interface ISampleOrderService {
      * 查询样品单列表（可关联查询报价单信息）
      */
     List<SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId);
+
+    /**
+     * 印刷工序历史输入联想（dev-20260901-1225）
+     * 返回已录入的印刷名称/色号/油墨编号去重列表，供打样工作台 el-autocomplete 使用
+     */
+    java.util.Map<String, java.util.List<String>> processHistory();
 }

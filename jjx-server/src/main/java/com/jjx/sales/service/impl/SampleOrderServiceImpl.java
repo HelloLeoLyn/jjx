@@ -2970,4 +2970,38 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         return result;
     }
+
+    @Override
+    public java.util.Map<String, java.util.List<String>> processHistory() {
+        java.util.List<SalesSampleProcess> all = sampleProcessMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalesSampleProcess>()
+                        .isNotNull(SalesSampleProcess::getProcessName));
+        java.util.LinkedHashSet<String> printNames = new java.util.LinkedHashSet<>();
+        java.util.LinkedHashSet<String> colorNos = new java.util.LinkedHashSet<>();
+        java.util.LinkedHashSet<String> inkNos = new java.util.LinkedHashSet<>();
+        for (SalesSampleProcess p : all) {
+            if (p.getProcessName() != null && !p.getProcessName().isBlank()) {
+                printNames.add(p.getProcessName().trim());
+            }
+            if (p.getCustomProcessParams() != null && !p.getCustomProcessParams().isBlank()) {
+                String colorNo = extractJsonField(p.getCustomProcessParams(), "colorNo");
+                String inkNo = extractJsonField(p.getCustomProcessParams(), "inkNo");
+                if (colorNo != null && !colorNo.isBlank()) colorNos.add(colorNo.trim());
+                if (inkNo != null && !inkNo.isBlank()) inkNos.add(inkNo.trim());
+            }
+        }
+        java.util.Map<String, java.util.List<String>> result = new java.util.HashMap<>();
+        result.put("printNames", new java.util.ArrayList<>(printNames));
+        result.put("colorNos", new java.util.ArrayList<>(colorNos));
+        result.put("inkNos", new java.util.ArrayList<>(inkNos));
+        return result;
+    }
+
+    /** 从 JSON 字符串提取字段值（custom_process_params 为 {printName,colorNo,inkNo,screenNo}） */
+    private String extractJsonField(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"")
+                .matcher(json);
+        return m.find() ? m.group(1) : null;
+    }
 }

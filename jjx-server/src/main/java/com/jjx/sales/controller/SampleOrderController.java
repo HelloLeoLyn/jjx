@@ -103,6 +103,13 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.selectSampleList(customerId, sampleStatus, salesPersonId, hasAcceptor));
     }
 
+    @Operation(summary = "印刷工序历史输入联想（1225：印刷名称/色号/油墨）")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/process/history")
+    public Result<java.util.Map<String, java.util.List<String>>> processHistory() {
+        return Result.success(sampleOrderService.processHistory());
+    }
+
     @Operation(summary = "样品单申请打样")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REQUEST.getLabel()", detail = "#attachmentIds")
     @SaCheckPermission("sales:sample:edit")

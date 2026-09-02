@@ -38,9 +38,12 @@
             </el-table-column>
             <el-table-column label="印刷名称 *" min-width="140">
               <template #default="{ row }">
-                <el-input
+                <el-autocomplete
                   v-model="row.printName"
                   size="small"
+                  :fetch-suggestions="(q, cb) => suggestFrom(q, cb, 'printNames')"
+                  :trigger-on-focus="true"
+                  clearable
                   placeholder="如：丝印/移印/网印"
                   :class="{ 'input-error': !(row.printName || '').trim() }"
                 />
@@ -48,17 +51,38 @@
             </el-table-column>
             <el-table-column label="色号" width="120">
               <template #default="{ row }">
-                <el-input v-model="row.colorNo" size="small" placeholder="如 PANTONE 123C" />
+                <el-autocomplete
+                  v-model="row.colorNo"
+                  size="small"
+                  :fetch-suggestions="(q, cb) => suggestFrom(q, cb, 'colorNos')"
+                  :trigger-on-focus="true"
+                  clearable
+                  placeholder="如 PANTONE 123C"
+                />
               </template>
             </el-table-column>
             <el-table-column label="油墨编号" width="120">
               <template #default="{ row }">
-                <el-input v-model="row.inkNo" size="small" placeholder="油墨编号" />
+                <el-autocomplete
+                  v-model="row.inkNo"
+                  size="small"
+                  :fetch-suggestions="(q, cb) => suggestFrom(q, cb, 'inkNos')"
+                  :trigger-on-focus="true"
+                  clearable
+                  placeholder="油墨编号"
+                />
               </template>
             </el-table-column>
-            <el-table-column label="网框编号" width="120">
+            <el-table-column label="网框编号" width="160">
               <template #default="{ row }">
-                <el-input v-model="row.screenNo" size="small" placeholder="网框编号" />
+                <el-autocomplete
+                  v-model="row.screenNo"
+                  size="small"
+                  :fetch-suggestions="suggestScreen"
+                  :trigger-on-focus="true"
+                  clearable
+                  placeholder="网框编号"
+                />
               </template>
             </el-table-column>
             <el-table-column label="🧾 材料" min-width="180">
@@ -202,6 +226,8 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { ProcessStatusEnum } from '@/enums/product/process'
+import { getProcessHistory } from '@/api/sales/sampleOrder'
+import { suggestScreen as suggestScreenApi } from '@/api/engineering/screen'
 
 /**
  * 印刷工序面板（dev-20260811-009）
@@ -228,6 +254,36 @@ const tabs = [
   { value: '', label: '未分类' },
 ]
 const activeTab = ref('PANEL')
+
+// 印刷历史联想缓存（dev-20260901-1225）：{printNames, colorNos, inkNos}
+const historyCache = ref<Record<string, string[]>>({ printNames: [], colorNos: [], inkNos: [] })
+
+async function loadHistory() {
+  try {
+    const res: any = await getProcessHistory()
+    if (res?.data) historyCache.value = res.data
+  } catch { /* 联想失败不影响录入 */ }
+}
+loadHistory()
+
+// 历史联想：从缓存按关键字过滤，返回 [{value}]
+function suggestFrom(query: string, cb: (items: { value: string }[]) => void, key: string) {
+  const list: string[] = historyCache.value[key] || []
+  const q = (query || '').trim().toLowerCase()
+  const filtered = q ? list.filter((v) => v.toLowerCase().includes(q)) : list
+  cb(filtered.slice(0, 20).map((value) => ({ value })))
+}
+
+// 网框联想：调网版主数据 suggest 接口（编号+内容显示）
+async function suggestScreen(query: string, cb: (items: { value: string }[]) => void) {
+  try {
+    const res: any = await suggestScreenApi(query || undefined, 20)
+    const list = res?.data || []
+    cb(list.map((s: any) => ({ value: `${s.screenNo} ${s.content || ''}`.trim() })))
+  } catch {
+    cb([])
+  }
+}
 
 function filtered(value: string) {
   return props.printList.filter((r) => (r.category || '') === value)

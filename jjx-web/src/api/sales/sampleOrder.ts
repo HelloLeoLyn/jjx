@@ -1,4 +1,13 @@
 import request from '@/utils/request'
+
+/** 印刷工序历史输入联想（1225） */
+export function getProcessHistory() {
+  return request({
+    url: '/sales/sample-order/process/history',
+    method: 'get',
+  })
+}
+
 import type { AxiosPromise } from 'axios'
 
 // 样品单接口
