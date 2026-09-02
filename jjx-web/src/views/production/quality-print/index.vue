@@ -29,12 +29,22 @@
         <el-table-column prop="ownerDept" label="主管部门" width="110" />
         <el-table-column label="保存期限" width="100"><template #default="{ row }">{{ row.retentionYears }} 年</template></el-table-column>
         <el-table-column label="类别" width="105"><template #default="{ row }"><el-tag :type="QualityTemplateCategoryEnum.getTagProps(row.category).type">{{ QualityTemplateCategoryEnum.getLabel(row.category) }}</el-tag></template></el-table-column>
+        <el-table-column label="联动状态" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.category === QualityTemplateCategory.DATA" type="success">已联动</el-tag>
+            <el-tag v-else-if="row.category === QualityTemplateCategory.BLANK && row.bizType" type="warning">规划中</el-tag>
+            <el-tag v-else-if="row.category === QualityTemplateCategory.BLANK" type="info">空白表</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="模板文件" width="120">
           <template #default="{ row }"><el-link v-if="row.hasFile && row.fileId" type="primary" :href="attachmentApi.downloadUrl(row.fileId)" target="_blank">已上传 · 打开</el-link><el-tag v-else type="info">未上传</el-tag></template>
         </el-table-column>
         <el-table-column label="操作" width="210" fixed="right">
           <template #default="{ row }">
-            <el-tag v-if="row.category === QualityTemplateCategory.DATA" type="warning">请到对应业务模块打印</el-tag>
+            <template v-if="row.category === QualityTemplateCategory.DATA">
+              <el-button v-if="row.bizType && BIZ_TYPE_ROUTE[row.bizType]" link type="primary" @click="goBusinessModule(row.bizType)">去业务模块打印</el-button>
+              <el-tag v-else type="warning">请到对应业务模块打印</el-tag>
+            </template>
             <template v-else><el-button link type="primary" @click="openPrint(row)">空白表打印</el-button><el-link v-if="row.fileId" class="download-link" :href="attachmentApi.downloadUrl(row.fileId)" target="_blank">下载</el-link></template>
           </template>
         </el-table-column>
@@ -57,6 +67,20 @@ const rows = ref<QualityTemplate[]>([])
 const total = ref(0)
 const ownerDepts = ref<string[]>([])
 const query = reactive<QualityTemplateQuery>({ pageNum: 1, pageSize: 20, status: QualityTemplateStatus.ACTIVE })
+const BIZ_TYPE_ROUTE: Record<string, string> = {
+  quality_inspection: '/production/quality',
+  operation_execution: '/production/execution',
+  inventory_inbound: '/inventory/inbound',
+  inventory_outbound: '/inventory/outbound',
+  production_order: '/production/order',
+  purchase_order: '/purchase/order',
+  sales_delivery: '/sales/delivery',
+  sales_order_review: '/sales/order',
+  sales_inquiry: '/sales/inquiry',
+  product: '/product/list',
+  production_equipment: '/production/equipment',
+  purchase_supplier: '/purchase/supplier',
+}
 
 async function load() {
   loading.value = true
@@ -70,6 +94,7 @@ async function loadOwnerDepts() { const res: any = await getQualityTemplateOwner
 function search() { query.pageNum = 1; load() }
 function reset() { Object.assign(query, { pageNum: 1, pageSize: query.pageSize, keyword: undefined, ownerDept: undefined, category: undefined, status: QualityTemplateStatus.ACTIVE }); load() }
 function openPrint(row: QualityTemplate) { router.push({ path: '/production/quality-print/print', query: { templateId: row.id } }) }
+function goBusinessModule(bizType: string) { router.push(BIZ_TYPE_ROUTE[bizType]) }
 onMounted(() => { load(); loadOwnerDepts() })
 </script>
 
