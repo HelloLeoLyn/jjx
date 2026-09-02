@@ -6,6 +6,8 @@ import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.annotation.Log;
 import com.jjx.system.domain.entity.SysTask;
 import com.jjx.system.mapper.SysTaskMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -201,6 +203,8 @@ public class BoardTaskController {
     }
 
     @Operation(summary = "更新看板任务（拖拽/编辑）")
+    @Log(module = "看板任务", businessType = BusinessType.UPDATE,
+            bizType = "'kanban_task'", bizId = "#taskId")
     @PatchMapping("/{module}/tasks/{taskId}")
     public Result<Boolean> updateTask(@PathVariable String module, @PathVariable Long taskId,
                                       @RequestBody Map<String, Object> updates) {
