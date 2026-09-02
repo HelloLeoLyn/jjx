@@ -62,7 +62,7 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
 
     @Override
     @Transactional
-    public void recordPrint(Long id) {
+    public void recordPrint(Long id, String bizType, Long bizId) {
         QualityTemplateRegistry template = getById(id);
         if (!Integer.valueOf(QualityTemplateStatusEnum.ACTIVE.getCode()).equals(template.getStatus())) {
             throw new BusinessException("仅生效模板可打印");
@@ -70,6 +70,8 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
         QualityTemplatePrintLog log = new QualityTemplatePrintLog();
         log.setTemplateId(template.getId());
         log.setRecordNo(template.getRecordNo());
+        log.setBizType(bizType);
+        log.setBizId(bizId);
         log.setOperatorId(SecurityUtils.getUserId());
         String realName = SecurityUtils.getRealName();
         log.setOperatorName(StringUtils.isNotBlank(realName) ? realName : SecurityUtils.getUsername());

@@ -32,8 +32,8 @@ export const getQualityTemplate = (id: number) =>
   request({ url: `/production/quality-template/${id}`, method: 'get' })
 export const getQualityTemplateOwnerDepts = () =>
   request({ url: '/production/quality-template/owner-depts', method: 'get' })
-export const createQualityTemplatePrintLog = (id: number) =>
-  request({ url: `/production/quality-template/${id}/print-log`, method: 'post' })
+export const createQualityTemplatePrintLog = (id: number, bizType?: string, bizId?: number) =>
+  request({ url: `/production/quality-template/${id}/print-log`, method: 'post', params: { bizType, bizId } })
 export const createQualityTemplate = (data: QualityTemplate) =>
   request({ url: '/production/quality-template', method: 'post', data })
 export const updateQualityTemplate = (data: QualityTemplate) =>

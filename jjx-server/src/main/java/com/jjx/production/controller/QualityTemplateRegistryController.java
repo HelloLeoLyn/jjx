@@ -44,8 +44,10 @@ public class QualityTemplateRegistryController {
     @PostMapping("/{id}/print-log")
     @Log(module = "质量记录打印", businessType = BusinessType.OTHER,
             bizType = "'quality_template'", bizId = "#id")
-    public Result<Void> printLog(@PathVariable Long id) {
-        service.recordPrint(id);
+    public Result<Void> printLog(@PathVariable Long id,
+                                 @RequestParam(required = false) String bizType,
+                                 @RequestParam(required = false) Long bizId) {
+        service.recordPrint(id, bizType, bizId);
         return Result.success();
     }
 

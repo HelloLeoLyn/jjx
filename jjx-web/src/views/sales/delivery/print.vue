@@ -20,9 +20,10 @@ import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderProductApi } from '@/api/sales/orderProduct'
 import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 const route = useRoute(), router = useRouter(), info = ref<SalesDeliveryVO>(), items = ref<any[]>([])
+const deliveryId = Number(route.query.deliveryId)
 const money = (value?: number) => value == null ? '-' : Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2 })
 const receiveDate = computed(() => info.value?.receiveTime?.slice(0, 10) || '________________')
-async function print() { try { /* 26 = JJX-QR-026 送货单 */ await createQualityTemplatePrintLog(26); window.print() } catch { ElMessage.error('打印留痕失败，请重试') } }
-onMounted(async () => { const deliveryId = Number(route.query.deliveryId); if (!deliveryId) { ElMessage.error('发货单ID缺失'); return } const detail = await deliveryApi.getById(deliveryId); info.value = detail.data || undefined; if (info.value?.orderId) { const products = await orderProductApi.getListByOrderId(info.value.orderId); items.value = products.data || [] } })
+async function print() { try { /* 26 = JJX-QR-026 送货单 */ await createQualityTemplatePrintLog(26, 'sales_delivery', deliveryId); window.print() } catch { ElMessage.error('打印留痕失败，请重试') } }
+onMounted(async () => { if (!deliveryId) { ElMessage.error('发货单ID缺失'); return } const detail = await deliveryApi.getById(deliveryId); info.value = detail.data || undefined; if (info.value?.orderId) { const products = await orderProductApi.getListByOrderId(info.value.orderId); items.value = products.data || [] } })
 </script>
 <style scoped>.print-page{min-height:100vh;background:#eef0f3;padding:20px}.toolbar{max-width:794px;margin:0 auto 16px;display:flex;justify-content:space-between}h1{text-align:center;letter-spacing:12px;border-bottom:2px solid #2b5aa7;padding-bottom:10px}.info{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;margin:14px 0}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #bbb;padding:7px}th{background:#2b5aa7;color:#fff}.right{text-align:right}.center{text-align:center}.amount{text-align:right;margin-top:16px}.sign{display:flex;justify-content:space-between;margin-top:65px;font-size:12px}@media print{.print-page{padding:0;background:#fff}}</style>

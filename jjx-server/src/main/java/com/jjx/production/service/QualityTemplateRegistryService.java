@@ -10,7 +10,7 @@ public interface QualityTemplateRegistryService {
     PageResult<QualityTemplateRegistry> page(QualityTemplateQueryDTO query);
     QualityTemplateRegistry getById(Long id);
     List<String> listOwnerDepts();
-    void recordPrint(Long id);
+    void recordPrint(Long id, String bizType, Long bizId);
     Long create(QualityTemplateRegistry template);
     void update(QualityTemplateRegistry template);
     void changeStatus(Long id, Integer status);
