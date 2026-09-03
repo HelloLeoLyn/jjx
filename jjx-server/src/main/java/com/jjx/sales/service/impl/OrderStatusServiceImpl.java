@@ -526,7 +526,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "order.delivering", bizId = "#orderId", bizType = "'order'")
+    @Event(value = "order.delivering", bizId = "#orderId", bizType = "'order'", params = "salesOrderId=#orderId")
     public void shipOrder(Long orderId, SalesDelivery delivery) {
         // 1. 查询订单
         SalesOrder order = salesOrderMapper.selectById(orderId);

@@ -13,6 +13,7 @@ import com.jjx.system.mapper.SysTaskMapper;
 import com.jjx.system.mapper.SysUserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -30,6 +31,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class LocalEventPublisher implements EventPublisher {
 
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final SysEventConfigMapper eventConfigMapper;
     private final NotificationService notificationService;
     private final SysTaskMapper sysTaskMapper;
@@ -37,6 +39,12 @@ public class LocalEventPublisher implements EventPublisher {
 
     @Override
     public void fire(String eventCode, Map<String, Object> payload) {
+        try {
+            applicationEventPublisher.publishEvent(payload);
+        } catch (Exception e) {
+            log.warn("发布 Spring 本地事件失败，不影响后续通知逻辑: eventCode={}", eventCode, e);
+        }
+
         SysEventConfig event = eventConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysEventConfig>()
                         .eq(SysEventConfig::getEventCode, eventCode)
