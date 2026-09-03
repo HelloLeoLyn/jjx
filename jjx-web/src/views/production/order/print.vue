@@ -88,6 +88,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getProductionOrderDetail } from '@/api/production/order'
+import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import QRCode from 'qrcode'
@@ -130,7 +131,13 @@ async function loadData() {
 }
 
 function handlePrint() {
-  window.print()
+  // 打印留痕（1296）：5 = JJX-QR-005 制造指令单
+  const orderId = route.params.id as string
+  createQualityTemplatePrintLog(5, 'production_order', Number(orderId))
+    .then(() => window.print())
+    .catch(() => {
+      ElMessage.error('打印留痕失败，请重试')
+    })
 }
 
 /** 生成工单二维码（内容=工单号，扫码枪识别后定位工单） */
