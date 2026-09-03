@@ -59,6 +59,18 @@ public class SalesInvoiceController {
         return Result.success(invoiceService.create(invoice));
     }
 
+    @Operation(summary = "修改发票")
+    @Log(module = "销售发票", businessType = BusinessType.UPDATE, bizType = "'invoice'", bizId = "#invoice.invoiceId", bizStatus = "T(com.jjx.sales.enums.SalesInvoiceStatusEnum).getByValue(#invoice.status)?.label")
+    @SaCheckPermission("sales:order:edit")
+    @PutMapping("/{invoiceId}")
+    public Result<Void> update(@PathVariable Long invoiceId, @RequestBody SalesInvoice invoice) {
+        invoice.setInvoiceId(invoiceId);
+        if (!invoiceService.update(invoice)) {
+            return Result.error("修改发票失败");
+        }
+        return Result.success();
+    }
+
     @Operation(summary = "删除发票")
     @Log(module = "销售发票", businessType = BusinessType.DELETE, bizType = "'invoice'")
     @SaCheckPermission("sales:order:delete")
