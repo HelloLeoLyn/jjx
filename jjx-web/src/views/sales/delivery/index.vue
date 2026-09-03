@@ -77,7 +77,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { deliveryApi, type SalesDeliveryQueryDTO, type SalesDeliveryVO } from '@/api/sales/delivery'
-import { orderProductApi } from '@/api/sales/orderProduct'
+import { orderApi } from '@/api/sales/order'
 import { DeliveryStatusEnum } from '@/enums/sales/DeliveryEnum'
 
 defineOptions({ name: 'SalesDelivery' })
@@ -102,9 +102,9 @@ async function load() {
 function search() { query.pageNum = 1; load() }
 function reset() { Object.assign(query, { pageNum: 1, pageSize: 10, deliveryNo: undefined, customerName: undefined, deliveryStatus: undefined, deliveryDateStart: undefined, deliveryDateEnd: undefined }); dateRange.value = []; load() }
 async function showDetail(row: SalesDeliveryVO) {
-  const [detail, productList] = await Promise.all([deliveryApi.getById(row.deliveryId), orderProductApi.getListByOrderId(row.orderId)])
+  const [detail, order] = await Promise.all([deliveryApi.getById(row.deliveryId), orderApi.getOrder(row.orderId)])
   current.value = detail.data || undefined
-  items.value = productList.data || []
+  items.value = order.data?.items || []
   detailVisible.value = true
 }
 function openReceive(row: SalesDeliveryVO) { receiveDeliveryId.value = row.deliveryId; Object.assign(receiveForm, { receiverName: '', receiverPhone: '', receiveRemark: '' }); receiveVisible.value = true }
