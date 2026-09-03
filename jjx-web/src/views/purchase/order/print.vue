@@ -97,6 +97,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getOrder } from '@/api/purchase/order'
+import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 
@@ -142,7 +143,13 @@ async function loadData() {
 }
 
 function handlePrint() {
-  window.print()
+  // 打印留痕（1318）：24 = JJX-QR-024 采购订单
+  const orderId = route.params.id as string
+  createQualityTemplatePrintLog(24, 'purchase_order', Number(orderId))
+    .then(() => window.print())
+    .catch(() => {
+      ElMessage.error('打印留痕失败，请重试')
+    })
 }
 
 onMounted(async () => {
