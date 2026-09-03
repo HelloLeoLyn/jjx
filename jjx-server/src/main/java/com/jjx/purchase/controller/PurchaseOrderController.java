@@ -81,7 +81,7 @@ public class PurchaseOrderController extends BaseController {
      * 新增采购订单
      */
     @PostMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderDTO.orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderDTO.orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).DRAFT.getLabel()")
     @SaCheckPermission("purchase:order:add")
     public Result<Void> add(@RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.insertOrder(orderDTO);
@@ -201,7 +201,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新付款信息
      */
     @PutMapping("/payment")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#result.data")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#result.data", bizStatus = "T(com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum).getByValue(#paymentStatus)?.label")
     @SaCheckPermission("purchase:order:edit")
     public Result<Integer> updatePayment(@RequestParam Long orderId,
                                       @RequestParam(required = false) BigDecimal paidAmount,
