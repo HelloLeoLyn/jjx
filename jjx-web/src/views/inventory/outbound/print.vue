@@ -95,6 +95,7 @@ import { ElMessage } from 'element-plus'
 import { outboundApi } from '@/api/inventory/outbound'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
+import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 
 const route = useRoute()
 const router = useRouter()
@@ -144,7 +145,14 @@ async function loadData() {
 }
 
 function handlePrint() {
-  window.print()
+  // 打印留痕（1319）：领料单 → JJX-QR-031(31)；普通出库单 → JJX-QR-057(57)
+  const outboundId = Number(route.params.id)
+  const registryId = isPick.value ? 31 : 57
+  createQualityTemplatePrintLog(registryId, 'inventory_outbound', outboundId)
+    .then(() => window.print())
+    .catch(() => {
+      ElMessage.error('打印留痕失败，请重试')
+    })
 }
 
 onMounted(async () => {
