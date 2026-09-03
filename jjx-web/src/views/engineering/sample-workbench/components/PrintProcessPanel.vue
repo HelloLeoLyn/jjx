@@ -56,7 +56,9 @@
                   size="small"
                   clearable
                   filterable
-                  placeholder="选择色号"
+                  allow-create
+                  default-first-option
+                  placeholder="选择或手输色号"
                   style="width: 100%"
                   @change="(value: string) => handleColorChange(row, value)"
                 >

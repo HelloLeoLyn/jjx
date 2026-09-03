@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.jjx.sales.domain.entity.SalesQuotationItem;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,6 +18,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SalesQuotationAddDTO {
 
    
@@ -36,7 +38,7 @@ public class SalesQuotationAddDTO {
      * 报价单编号
      */
     @Schema(description = "报价单编号", example = "Q260526001")
-    @NotBlank(message = "报价单编号不能为空")
+    // @NotBlank(message = "报价单编号不能为空")
     @Size(max = 50, message = "报价单编号长度不能超过50个字符")
     private String quotationNo;
 
