@@ -2,6 +2,9 @@ package com.jjx.kanban.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.core.result.Result;
+import com.jjx.kanban.domain.dto.BoardTaskInfoDTO;
+import com.jjx.kanban.domain.dto.BoardTaskStatusDTO;
+import com.jjx.kanban.enums.KanbanTaskStatusEnum;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.mapper.ProductionOrderMapper;
@@ -202,28 +205,57 @@ public class BoardTaskController {
         return Result.success(task.getTaskId());
     }
 
-    @Operation(summary = "更新看板任务（拖拽/编辑）")
+    @Operation(summary = "更新看板任务状态")
     @Log(module = "看板任务", businessType = BusinessType.UPDATE,
-            bizType = "'kanban_task'", bizId = "#taskId")
-    @PatchMapping("/{module}/tasks/{taskId}")
-    public Result<Boolean> updateTask(@PathVariable String module, @PathVariable Long taskId,
-                                      @RequestBody Map<String, Object> updates) {
+            bizType = "'kanban_task'", bizId = "#taskId",
+            bizStatus = "T(com.jjx.kanban.enums.KanbanTaskStatusEnum).getByValue(#dto.status)?.label")
+    @PatchMapping("/{module}/tasks/{taskId}/status")
+    public Result<Boolean> updateTaskStatus(@PathVariable String module, @PathVariable Long taskId,
+                                            @RequestBody BoardTaskStatusDTO dto) {
         if ("production".equals(module)) {
             return Result.error("生产工单不允许在此修改");
         }
-        SysTask task = sysTaskMapper.selectById(taskId);
-        if (task == null || !module.equals(task.getKanbanModule())) {
+        SysTask task = findTask(module, taskId);
+        if (task == null) {
             return Result.error("任务不存在");
         }
-        if (updates.containsKey("title")) task.setTitle(String.valueOf(updates.get("title")));
-        if (updates.containsKey("description")) task.setDescription(updates.get("description") != null ? String.valueOf(updates.get("description")) : null);
-        if (updates.containsKey("priority")) task.setPriority(String.valueOf(updates.get("priority")));
-        if (updates.containsKey("status")) task.setStatus(updates.get("status") != null ? ((Number) updates.get("status")).intValue() : 0);
-        if (updates.containsKey("assigneeName")) task.setAssigneeName(updates.get("assigneeName") != null ? String.valueOf(updates.get("assigneeName")) : null);
-        if (updates.containsKey("deadline")) task.setDeadline(updates.get("deadline") != null ? java.time.LocalDate.parse(String.valueOf(updates.get("deadline"))) : null);
-        if (updates.containsKey("remark")) task.setRemark(updates.get("remark") != null ? String.valueOf(updates.get("remark")) : null);
+        if (KanbanTaskStatusEnum.getByValue(dto.getStatus()) == null) {
+            return Result.error("非法状态");
+        }
+        task.setStatus(dto.getStatus());
         task.setUpdateTime(LocalDateTime.now());
         sysTaskMapper.updateById(task);
         return Result.success(true);
+    }
+
+    @Operation(summary = "更新看板任务内容")
+    @Log(module = "看板任务", businessType = BusinessType.UPDATE,
+            bizType = "'kanban_task'", bizId = "#taskId",
+            bizStatus = "T(com.jjx.kanban.enums.KanbanTaskStatusEnum).getByValue(#result.data)?.label")
+    @PatchMapping("/{module}/tasks/{taskId}/info")
+    public Result<Integer> updateTaskInfo(@PathVariable String module, @PathVariable Long taskId,
+                                          @RequestBody BoardTaskInfoDTO dto) {
+        if ("production".equals(module)) {
+            return Result.error("生产工单不允许在此修改");
+        }
+        SysTask task = findTask(module, taskId);
+        if (task == null) {
+            return Result.error("任务不存在");
+        }
+        if (dto.getTitle() != null) task.setTitle(dto.getTitle());
+        if (dto.getDescription() != null) task.setDescription(dto.getDescription());
+        if (dto.getPriority() != null) task.setPriority(dto.getPriority());
+        if (dto.getAssigneeName() != null) task.setAssigneeName(dto.getAssigneeName());
+        if (dto.getDeadline() != null) task.setDeadline(dto.getDeadline());
+        if (dto.getRemark() != null) task.setRemark(dto.getRemark());
+        task.setUpdateTime(LocalDateTime.now());
+        sysTaskMapper.updateById(task);
+        SysTask updatedTask = sysTaskMapper.selectById(taskId);
+        return Result.success(updatedTask.getStatus());
+    }
+
+    private SysTask findTask(String module, Long taskId) {
+        SysTask task = sysTaskMapper.selectById(taskId);
+        return task != null && module.equals(task.getKanbanModule()) ? task : null;
     }
 }

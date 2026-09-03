@@ -224,7 +224,7 @@ export async function moveCard(
     templateType === 'production'
   ) {
     const taskId = extractTaskId(cardId)
-    const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}`, {
+    const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}/status`, {
       status: mapStatusToSysTask(toColumnId),
     })
     return isOk(res?.code)
@@ -342,10 +342,18 @@ export async function updateCard(
     if (updates.title !== undefined) body.title = updates.title
     if (updates.remark !== undefined) body.description = updates.remark
     if (updates.priority !== undefined) body.priority = updates.priority
-    if (updates.status !== undefined) body.status = mapStatusToSysTask(updates.status)
     if (updates.assignee !== undefined) body.assigneeName = updates.assignee
     if (updates.deadline !== undefined) body.deadline = updates.deadline
-    const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}`, body)
+    if (updates.status !== undefined) {
+      const statusRes = await http.patch(
+        `/kanban/board/${templateType}/tasks/${taskId}/status`,
+        { status: mapStatusToSysTask(updates.status) }
+      )
+      if (!isOk(statusRes?.code)) {
+        return { code: 500, data: null, message: statusRes?.msg || 'update failed' }
+      }
+    }
+    const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}/info`, body)
     return isOk(res?.code)
       ? { code: 200, data: null, message: 'ok' }
       : { code: 500, data: null, message: res?.msg || 'update failed' }
