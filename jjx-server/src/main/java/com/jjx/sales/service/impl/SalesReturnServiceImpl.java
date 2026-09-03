@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
+import com.jjx.inventory.domain.InventoryMaterial;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.service.InventoryInboundService;
 import com.jjx.sales.domain.dto.SalesReturnQueryDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -42,6 +44,7 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
     private final RedisSequenceService redisSequenceService;
     private final ReviewFlowService reviewFlowService;
     private final InventoryInboundService inboundService;
+    private final InventoryMaterialMapper materialMapper;
 
     @Override
     public PageResult<SalesReturn> page(SalesReturnQueryDTO query) {
@@ -104,10 +107,11 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
                 BigDecimal price = m.get("unitPrice") == null ? BigDecimal.ZERO : new BigDecimal(m.get("unitPrice").toString());
                 SalesReturnItem item = new SalesReturnItem();
                 item.setReturnId(salesReturn.getReturnId());
-                if (m.get("materialId") != null) item.setMaterialId(Long.valueOf(m.get("materialId").toString()));
-                item.setMaterialCode((String) m.get("materialCode"));
-                item.setMaterialName((String) m.get("materialName"));
-                item.setMaterialSpec((String) m.get("materialSpec"));
+                // 产品维度（2026-09-03 改造：退货单=销售单据，产品行快照；物料解析在收货入库时进行）
+                if (m.get("productId") != null) item.setProductId(Long.valueOf(m.get("productId").toString()));
+                item.setProductCode((String) m.get("productCode"));
+                item.setProductName((String) m.get("productName"));
+                item.setProductSpec((String) m.get("productSpec"));
                 item.setUnit((String) m.get("unit"));
                 item.setQuantity(qty);
                 item.setUnitPrice(price);
@@ -205,11 +209,21 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
             if (!returnItems.isEmpty()) {
                 List<Map<String, Object>> inboundItems = new java.util.ArrayList<>();
                 for (SalesReturnItem ri : returnItems) {
+                    // 产品→F 成品物料解析（口径唯一处）：库存只有物料，退货入库按物料加回；
+                    // 解析不到说明该产品无成品物料，回滚报错（红线：产品不入库存）
+                    InventoryMaterial mat = ri.getProductId() == null ? null : materialMapper.selectOne(
+                            new LambdaQueryWrapper<InventoryMaterial>()
+                                    .eq(InventoryMaterial::getProductId, ri.getProductId())
+                                    .eq(InventoryMaterial::getMaterialType, "F"));
+                    if (mat == null) {
+                        throw new BusinessException("产品[" + (ri.getProductCode() == null ? ri.getProductId() : ri.getProductCode())
+                                + "]无成品物料(F)，无法自动入库，请先建档成品物料");
+                    }
                     Map<String, Object> m = new java.util.HashMap<>();
-                    m.put("materialId", ri.getMaterialId());
-                    m.put("materialCode", ri.getMaterialCode());
-                    m.put("materialName", ri.getMaterialName());
-                    m.put("specification", ri.getMaterialSpec());
+                    m.put("materialId", mat.getMaterialId());
+                    m.put("materialCode", mat.getMaterialCode());
+                    m.put("materialName", mat.getMaterialName());
+                    m.put("specification", mat.getSpecification());
                     m.put("unit", ri.getUnit());
                     m.put("quantity", ri.getQuantity());
                     m.put("unitPrice", ri.getUnitPrice());

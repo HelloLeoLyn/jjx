@@ -67,8 +67,8 @@
         <el-form-item v-if="orderItems.length" label="退货明细">
           <el-table :data="orderItems" border size="small" max-height="260">
             <el-table-column type="index" width="46" />
-            <el-table-column prop="materialCode" label="物料编码" min-width="110" />
-            <el-table-column prop="materialName" label="物料名称" min-width="130" />
+            <el-table-column prop="productCode" label="产品编码" min-width="110" />
+            <el-table-column prop="productName" label="产品名称" min-width="130" />
             <el-table-column prop="specification" label="规格" min-width="90" />
             <el-table-column prop="quantity" label="订购数量" width="90" align="right" />
             <el-table-column label="退货数量" width="130">
@@ -139,9 +139,9 @@
       </el-descriptions>
       <h4 class="items-title">退货明细</h4>
       <el-table :data="detailItems" border size="small">
-        <el-table-column prop="materialCode" label="物料编码" min-width="110" />
-        <el-table-column prop="materialName" label="物料名称" min-width="130" />
-        <el-table-column prop="materialSpec" label="规格" min-width="90" />
+        <el-table-column prop="productCode" label="产品编码" min-width="110" />
+        <el-table-column prop="productName" label="产品名称" min-width="130" />
+        <el-table-column prop="productSpec" label="规格" min-width="90" />
         <el-table-column prop="quantity" label="退货数量" width="90" align="right" />
         <el-table-column prop="unitPrice" label="单价" width="90" align="right">
           <template #default="{ row }">{{ money(row.unitPrice) }}</template>
@@ -159,7 +159,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { pageSalesReturn, getSalesReturn, createSalesReturn, approveSalesReturn, rejectSalesReturn, receiveSalesReturn, refundSalesReturn, getSalesReturnItems } from '@/api/sales/return'
 import { orderApi } from '@/api/sales/order'
-import { orderProductApi } from '@/api/sales/orderProduct'
 import { SalesReturnStatusEnum, SalesReturnTypeEnum } from '@/enums/sales'
 
 defineOptions({ name: 'SalesReturn' })
@@ -246,8 +245,9 @@ async function onOrderChange(orderId?: number) {
   orderItems.value = []
   if (!orderId) return
   try {
-    const res: any = await orderProductApi.getListByOrderId(orderId)
-    orderItems.value = (res.data || []).map((row: any) => ({ ...row, returnQty: 0 }))
+    // 2026-09-03 改造：改调订单详情（死 API getListByOrderId 作废），退货单=产品维度
+    const res: any = await orderApi.getOrder(orderId)
+    orderItems.value = (res.data?.items || []).map((row: any) => ({ ...row, returnQty: 0 }))
   } catch {
     ElMessage.warning('订单明细加载失败，可手动填写汇总')
   }
@@ -260,10 +260,10 @@ async function submitCreate() {
   const items = orderItems.value
     .filter((row) => Number(row.returnQty) > 0)
     .map((row) => ({
-      materialId: row.materialId,
-      materialCode: row.materialCode,
-      materialName: row.materialName,
-      materialSpec: row.specification,
+      productId: row.productId,
+      productCode: row.productCode,
+      productName: row.productName,
+      productSpec: row.specification,
       unit: row.unit,
       quantity: Number(row.returnQty),
       unitPrice: Number(row.unitPrice) || undefined,

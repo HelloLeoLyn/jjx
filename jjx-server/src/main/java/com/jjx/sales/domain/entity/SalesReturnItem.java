@@ -23,17 +23,17 @@ public class SalesReturnItem extends BaseEntity {
     /** 退货单ID */
     private Long returnId;
 
-    /** 物料ID */
-    private Long materialId;
+    /** 产品ID */
+    private Long productId;
 
-    /** 物料编码 */
-    private String materialCode;
+    /** 产品编码 */
+    private String productCode;
 
-    /** 物料名称 */
-    private String materialName;
+    /** 产品名称 */
+    private String productName;
 
-    /** 规格 */
-    private String materialSpec;
+    /** 产品规格 */
+    private String productSpec;
 
     /** 单位 */
     private String unit;
