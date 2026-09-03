@@ -58,20 +58,6 @@
         <el-empty v-else description="暂无单据ID" :image-size="60" />
       </el-tab-pane>
 
-      <!-- Tab3 操作流水 -->
-      <el-tab-pane label="操作流水" name="ops">
-        <OperationLogPanel
-          v-if="bizId"
-          :biz-type="bizType"
-          :biz-id="bizId"
-          :trace-id="traceId || undefined"
-        />
-      </el-tab-pane>
-
-      <!-- Tab4 事件 -->
-      <el-tab-pane label="事件" name="events">
-        <EventPanel v-if="bizId" :biz-type="bizType" :biz-id="bizId" />
-      </el-tab-pane>
     </el-tabs>
 
     <template #footer>
@@ -91,8 +77,6 @@ import { ElMessage } from 'element-plus'
 import { Right } from '@element-plus/icons-vue'
 import BizDetailPanel, { type DetailItem } from './BizDetailPanel.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
-import OperationLogPanel from './OperationLogPanel.vue'
-import EventPanel from './EventPanel.vue'
 import request from '@/utils/request'
 
 const props = defineProps<{
