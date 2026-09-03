@@ -1,108 +1,144 @@
 <template>
-  <el-dialog
-    v-model="visible"
-    :title="card?.title ?? '卡片详情'"
-    width="1200px"
-    @close="onClose"
-  >
-    <template v-if="card">
-      <el-descriptions :column="2" border size="small">
-        <el-descriptions-item label="编号" :span="2">
-          {{ card.id }}
-        </el-descriptions-item>
-        <el-descriptions-item label="工单号" v-if="card.workOrderNo">
-          {{ card.workOrderNo }}
-        </el-descriptions-item>
-        <el-descriptions-item label="当前工序" v-if="card.currentProcess">
-          <el-tag size="small">{{ card.currentProcess }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="产品名称" v-if="card.productName">
-          {{ card.productName }}
-        </el-descriptions-item>
-        <el-descriptions-item label="数量" v-if="card.quantity">
-          {{ card.quantity.toLocaleString() }} pcs
-        </el-descriptions-item>
-        <el-descriptions-item label="客户" v-if="card.customer">
-          {{ card.customer }}
+  <el-dialog v-model="visible" :title="card?.title ?? '卡片详情'" width="1080px" @close="onClose">
+    <!-- ① dev/office 任务：完整 SysTask 全字段 -->
+    <template v-if="taskDetail">
+      <el-descriptions class="task-desc" :column="2" border size="small" label-width="120px">
+        <el-descriptions-item label="任务ID">{{ taskDetail.taskId ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="任务编码">{{
+          taskDetail.taskCode || '-'
+        }}</el-descriptions-item>
+
+        <el-descriptions-item label="任务类型">{{
+          taskDetail.taskType || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="statusType(taskDetail.status)" size="small">{{
+            statusLabel(taskDetail.status)
+          }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="优先级">
-          <el-tag :type="priorityType" size="small" effect="dark">
-            {{ priorityLabel }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="statusType" size="small">
-            {{ statusLabel }}
-          </el-tag>
+          <el-tag :type="priorityType(taskDetail.priority)" size="small" effect="dark">{{
+            priorityLabel(taskDetail.priority)
+          }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="负责人">
-          {{ card.assignee }}
-        </el-descriptions-item>
-        <el-descriptions-item label="截止日期" :class="{ 'text-danger': isOverdue }">
-          {{ card.deadline }}
-          <el-tag v-if="isOverdue" type="danger" size="small" effect="dark" style="margin-left: 8px">已逾期</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="任务类型" v-if="card.taskType">
-          {{ card.taskType }}
-        </el-descriptions-item>
-        <el-descriptions-item label="部门" v-if="card.department">
-          {{ card.department }}
-        </el-descriptions-item>
-        <el-descriptions-item label="紧急类型" v-if="card.urgencyType">
-          <el-tag type="danger" size="small">{{ card.urgencyType }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="来源单号" v-if="card.sourceOrderNo">
-          {{ card.sourceOrderNo }}
-        </el-descriptions-item>
-        <el-descriptions-item label="原因/备注" :span="2" v-if="card.remark">
-          <div class="detail-remark">{{ card.remark }}</div>
-        </el-descriptions-item>
-        <el-descriptions-item label="创建时间">
-          {{ card.createdAt }}
-        </el-descriptions-item>
-        <el-descriptions-item label="更新时间">
-          {{ card.updatedAt }}
-        </el-descriptions-item>
-        <el-descriptions-item label="物料状态" :span="2" v-if="card.extraData?.materialStatus">
-          <el-tag
-            :type="card.extraData.materialStatus === '齐料' ? 'success' : card.extraData.materialStatus === '待料' ? 'danger' : 'warning'"
-            size="small"
+          {{ taskDetail.assigneeName || '-' }}
+          <span v-if="taskDetail.assigneeId" style="color: #909399"
+            >（#{{ taskDetail.assigneeId }}）</span
           >
-            {{ card.extraData.materialStatus }}
-          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="指派角色">
+          {{ taskDetail.assignRole ? '角色#' + taskDetail.assignRole : '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="业务类型">{{
+          taskDetail.bizType || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="业务ID">{{ taskDetail.bizId ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="来源事件">{{
+          taskDetail.sourceEvent || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="来源ID">{{ taskDetail.sourceId ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="结果类型">{{
+          taskDetail.resultType || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="结果ID">{{ taskDetail.resultId ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="创建人">{{ taskDetail.createBy || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="更新人">{{ taskDetail.updateBy || '-' }}</el-descriptions-item>
+
+        <el-descriptions-item label="开始时间">{{
+          taskDetail.startTime || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="截止日期">
+          <span :class="{ 'text-danger': isOverdue }">{{ taskDetail.deadline || '-' }}</span>
+          <el-tag v-if="isOverdue" type="danger" size="small" effect="dark" style="margin-left: 8px"
+            >已逾期</el-tag
+          >
+        </el-descriptions-item>
+        <el-descriptions-item label="完成时间">{{
+          taskDetail.completedTime || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{
+          fmtTime(taskDetail.createTime)
+        }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{
+          fmtTime(taskDetail.updateTime)
+        }}</el-descriptions-item>
+        <el-descriptions-item label="描述" :span="2">
+          <div class="detail-text">{{ taskDetail.description || '-' }}</div>
+        </el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2">
+          <div class="detail-text">{{ taskDetail.remark || '-' }}</div>
         </el-descriptions-item>
       </el-descriptions>
-
-      <!-- 任务截图 -->
-      <div v-if="screenshots.length > 0" class="detail-screenshots">
-        <div class="screenshot-title">截图（{{ screenshots.length }}）</div>
-        <div class="screenshot-list">
-          <el-image
-            v-for="(img, idx) in screenshots"
-            :key="img.id"
-            :src="img.url"
-            :preview-src-list="screenshots.map(s => s.url)"
-            :initial-index="idx"
-            fit="cover"
-            class="screenshot-thumb"
-            preview-teleported
-          />
-        </div>
-      </div>
-
-      <div class="detail-actions">
-        <el-input
-          v-model="remarkEdit"
-          type="textarea"
-          :rows="8"
-          placeholder="添加备注..."
-          style="margin-top: 12px"
-        />
-        <div class="detail-buttons">
-          <el-button type="primary" @click="onSaveRemark">保存备注</el-button>
-        </div>
-      </div>
     </template>
+
+    <!-- ② 生产工单卡片：保留原字段展示 -->
+    <template v-else-if="card">
+      <el-descriptions class="task-desc" :column="2" border size="small" label-width="120px">
+        <el-descriptions-item label="任务id">{{ card.id }}</el-descriptions-item>
+        <el-descriptions-item label="任务编码">{{ card.taskCode }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.workOrderNo" label="工单号">{{
+          card.workOrderNo
+        }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.currentProcess" label="当前工序">
+          <el-tag size="small">{{ card.currentProcess }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="card.productName" label="产品名称">{{
+          card.productName
+        }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.quantity" label="数量"
+          >{{ card.quantity.toLocaleString() }} pcs</el-descriptions-item
+        >
+        <el-descriptions-item v-if="card.customer" label="客户">{{
+          card.customer
+        }}</el-descriptions-item>
+        <el-descriptions-item label="优先级">
+          <el-tag :type="priorityType(card.priority)" size="small" effect="dark">{{
+            priorityLabel(card.priority)
+          }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="statusType(card.status)" size="small">{{
+            statusLabel(card.status)
+          }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="负责人">{{ card.assignee }}</el-descriptions-item>
+        <el-descriptions-item label="截止日期">{{ card.deadline }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.taskType" label="任务类型">{{
+          card.taskType
+        }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.department" label="部门">{{
+          card.department
+        }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.sourceOrderNo" label="来源单号">{{
+          card.sourceOrderNo
+        }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.reason" label="原因">{{
+          card.reason
+        }}</el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ card.createdAt }}</el-descriptions-item>
+        <el-descriptions-item v-if="card.remark" label="描述/备注" :span="2">
+          <div class="detail-text">{{ card.remark }}</div>
+        </el-descriptions-item>
+      </el-descriptions>
+    </template>
+
+    <!-- 任务截图 -->
+    <div v-if="screenshots.length > 0" class="detail-screenshots">
+      <div class="screenshot-title">截图（{{ screenshots.length }}）</div>
+      <div class="screenshot-list">
+        <el-image
+          v-for="(img, idx) in screenshots"
+          :key="img.id"
+          :src="img.url"
+          :preview-src-list="screenshots.map((s) => s.url)"
+          :initial-index="idx"
+          fit="cover"
+          class="screenshot-thumb"
+          preview-teleported
+        />
+      </div>
+    </div>
   </el-dialog>
 </template>
 
@@ -110,6 +146,7 @@
 import { ref, computed, watch } from 'vue'
 import type { TagType } from '@/types'
 import type { BoardCard } from '@/views/kanban/types/board'
+import http from '@/utils/request'
 
 const props = defineProps<{
   visible: boolean
@@ -118,23 +155,40 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:visible': [value: boolean]
-  save: [cardId: string, updates: Partial<BoardCard>]
 }>()
 
-const remarkEdit = ref('')
+/** 完整任务详情（dev/office 走 /kanban/board/{module}/tasks/{taskId}） */
+const taskDetail = ref<any>(null)
 
-// 任务截图（复用通用附件：bizType=task, bizId=taskId）
+/** 任务截图（复用通用附件：bizType=task, bizId=taskId） */
 const screenshots = ref<{ id: number; url: string; name: string }[]>([])
 
 function extractTaskId(cardId: string): string {
   return cardId.replace(/^TASK-/, '').replace(/^DEV-/, '')
 }
 
-async function loadScreenshots(card: BoardCard | null) {
+function isSysTaskModule(templateType?: string): boolean {
+  return templateType === 'dev' || templateType === 'office'
+}
+
+async function loadDetail(card: BoardCard | null) {
+  taskDetail.value = null
   screenshots.value = []
   if (!card) return
   const taskId = Number(extractTaskId(card.id))
   if (!taskId) return
+  // dev/office：sys_task 全字段详情
+  if (card.templateType && isSysTaskModule(card.templateType)) {
+    try {
+      const res: any = await http.get(`/kanban/board/${card.templateType}/tasks/${taskId}`)
+      if (res?.code === 200 && res.data) {
+        taskDetail.value = res.data
+      }
+    } catch (e) {
+      console.warn('任务详情加载失败', e)
+    }
+  }
+  // 截图（dev/office 与 production 共用）
   try {
     const { attachmentApi } = await import('@/api/system/attachment')
     const res = await attachmentApi.list('task', taskId)
@@ -154,66 +208,107 @@ async function loadScreenshots(card: BoardCard | null) {
   }
 }
 
-watch(() => props.card, (card) => {
-  remarkEdit.value = card?.remark ?? ''
-  loadScreenshots(card)
-}, { immediate: true })
+watch(
+  () => props.card,
+  (card) => {
+    loadDetail(card)
+  },
+  { immediate: true }
+)
 
 const visible = computed({
   get: () => props.visible,
   set: (val: boolean) => emit('update:visible', val),
 })
 
-const priorityLabel = computed(() => {
+function priorityLabel(p?: string): string {
   const map: Record<string, string> = { urgent: '紧急', high: '高', normal: '普通', low: '低' }
-  return map[props.card?.priority ?? ''] ?? ''
-})
+  return map[p ?? ''] ?? p ?? '-'
+}
 
-const priorityType = computed<TagType>(() => {
-  const map: Record<string, TagType> = { urgent: 'danger', high: 'warning', normal: 'info', low: 'info' }
-  return map[props.card?.priority ?? ''] ?? 'info'
-})
-
-const statusLabel = computed(() => {
-  const map: Record<string, string> = {
-    pending: '待开始', in_progress: '进行中', review: '待审核',
-    completed: '已完成', blocked: '阻塞', cancelled: '已取消',
-  }
-  return map[props.card?.status ?? ''] ?? ''
-})
-
-const statusType = computed<TagType>(() => {
+function priorityType(p?: string): TagType {
   const map: Record<string, TagType> = {
-    pending: 'info', in_progress: 'primary', review: 'warning',
-    completed: 'success', blocked: 'danger', cancelled: 'info',
+    urgent: 'danger',
+    high: 'warning',
+    normal: 'info',
+    low: 'info',
   }
-  return map[props.card?.status ?? ''] ?? ''
-})
+  return map[p ?? ''] ?? 'info'
+}
+
+function statusLabel(s?: number | string): string {
+  const map: Record<string, string> = {
+    '0': '待开始',
+    '1': '进行中',
+    '2': '待审核',
+    '3': '阻塞',
+    '4': '已废弃',
+    '10': '已完成',
+    pending: '待开始',
+    in_progress: '进行中',
+    review: '待审核',
+    completed: '已完成',
+    blocked: '阻塞',
+    cancelled: '已取消',
+  }
+  return map[String(s ?? '')] ?? String(s ?? '-')
+}
+
+function statusType(s?: number | string): TagType {
+  const map: Record<string, TagType> = {
+    '0': 'info',
+    '1': 'primary',
+    '2': 'warning',
+    '3': 'danger',
+    '4': 'info',
+    '10': 'success',
+    pending: 'info',
+    in_progress: 'primary',
+    review: 'warning',
+    completed: 'success',
+    blocked: 'danger',
+    cancelled: 'info',
+  }
+  return map[String(s ?? '')] ?? 'info'
+}
 
 const isOverdue = computed(() => {
-  if (!props.card?.deadline) return false
-  return props.card.deadline < new Date().toISOString().slice(0, 10)
+  const d = taskDetail.value?.deadline || props.card?.deadline
+  if (!d) return false
+  return String(d) < new Date().toISOString().slice(0, 10)
 })
+
+function fmtTime(v?: string | number): string {
+  if (v === null || v === undefined || v === '') return '-'
+  return String(v).replace('T', ' ').slice(0, 19)
+}
 
 function onClose() {
   visible.value = false
 }
-
-function onSaveRemark() {
-  if (props.card) {
-    emit('save', props.card.id, { remark: remarkEdit.value })
-  }
-}
 </script>
 
 <style scoped>
-.detail-remark {
-  white-space: pre-wrap;
-  color: #606266;
+/* 等宽布局：每行两列平均分配（label 固定宽，内容列等宽），描述/备注 span=2 独占整行 */
+.task-desc :deep(.el-descriptions__table) {
+  table-layout: fixed;
+  width: 100%;
+}
+.task-desc :deep(.el-descriptions__label) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-desc :deep(.el-descriptions__content) {
+  word-break: break-all;
 }
 
-.detail-actions {
-  margin-top: 8px;
+.detail-text {
+  white-space: pre-wrap;
+  color: #303133;
+  max-height: 200px;
+  overflow-y: auto;
+  width: 100%;
 }
 
 .detail-screenshots {
@@ -239,12 +334,6 @@ function onSaveRemark() {
   border-radius: 6px;
   border: 1px solid #e4e7ed;
   cursor: zoom-in;
-}
-
-.detail-buttons {
-  margin-top: 8px;
-  display: flex;
-  justify-content: flex-end;
 }
 
 .text-danger {
