@@ -48,7 +48,7 @@
 
     <!-- 表格 -->
     <el-card class="table-card" shadow="never">
-      <el-table v-loading="loading" :data="sampleList" style="width: 100%">
+      <el-table v-loading="loading" :data="sampleList" style="width: 100%" border stripe>
         <el-table-column label="样品单号" prop="orderNo" width="180" />
         <el-table-column label="客户" prop="customerName" width="160" />
         <el-table-column label="样品状态" width="130">
