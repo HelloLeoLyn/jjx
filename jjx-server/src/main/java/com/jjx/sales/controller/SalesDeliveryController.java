@@ -52,7 +52,7 @@ public class SalesDeliveryController {
     @Operation(summary = "签收发货单")
     @SaCheckPermission("sales:delivery:view")
     @Log(module = "销售发货", businessType = BusinessType.UPDATE,
-            bizType = "'sales_delivery'", bizId = "#deliveryId")
+            bizType = "'sales_delivery'", bizId = "#deliveryId", bizStatus = "'RECEIVED'")
     @PutMapping("/{deliveryId}/receive")
     public Result<Void> receive(@PathVariable Long deliveryId,
                                 @RequestBody(required = false) SalesDelivery receiveInfo) {

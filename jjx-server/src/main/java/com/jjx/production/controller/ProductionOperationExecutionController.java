@@ -107,7 +107,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "开始工序执行（可选设备码，扫码C软校验）")
     @PutMapping("/{executionId}/start")
-    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId")
+@Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).EXECUTING.getLabel()")
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> startExecution(@PathVariable Long executionId,
                                           @RequestParam(required = false) String deviceCode) {
@@ -140,7 +140,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "完成工序执行")
     @PutMapping("/{executionId}/complete")
-    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId")
+@Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).COMPLETED.getLabel()")
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> completeExecution(@PathVariable Long executionId) {
         boolean success = productionOperationExecutionService.completeExecution(executionId);

@@ -9,7 +9,6 @@ public class SalesReceipt {
     @TableId(type = IdType.AUTO)
     private Long receiptId;
     private String receiptNo;
-    private Long invoiceId;
     private Long orderId;
     private Long customerId;
     private String customerName;
@@ -20,6 +19,7 @@ public class SalesReceipt {
     // DEV-934修复：实体补 actualAmount（表列 actual_amount NOT NULL 无默认值，前端不传时服务端默认=receiptAmount）
     private BigDecimal actualAmount;
     private String currency;
+    @TableField("receipt_status")
     private Integer status;
     private String remark;
     private LocalDateTime createTime;

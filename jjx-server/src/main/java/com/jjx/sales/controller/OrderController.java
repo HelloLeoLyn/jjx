@@ -198,7 +198,7 @@ public class OrderController extends BaseController {
      * 更新付款信息
      */
     @Operation(summary = "更新付款信息")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+@Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesPaymentStatusEnum).PAID.getLabel()")
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/payment/{orderId}")
     public Result<Void> updateOrderPayment(@PathVariable Long orderId,

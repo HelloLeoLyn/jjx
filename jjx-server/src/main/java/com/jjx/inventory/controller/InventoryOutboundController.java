@@ -140,7 +140,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create-from-sales/{salesOrderId}")
     @Operation(summary = "从销售订单创建出库单")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#salesOrderId")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#salesOrderId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).COMPLETED.getLabel()")
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createFromSales(@PathVariable Long salesOrderId) {
         return Result.success(outboundService.createFromSales(salesOrderId));

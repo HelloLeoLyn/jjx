@@ -293,7 +293,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "计划转工单")
     @PostMapping("/convert-plan-to-work-orders")
-    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#dto.planId")
+    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#dto.planId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).PLANNED.getLabel()")
     @SaCheckPermission("production:order:add")
     public Result<List<Long>> convertPlanToWorkOrders(@Validated @RequestBody ConvertPlanToWorkOrdersDTO dto) {
         List<Long> orderIds = productionOrderService.convertPlanToWorkOrders(dto);
@@ -302,7 +302,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "更新订单状态")
     @PutMapping("/status")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", detail = "#attachmentIds")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).getByValue(#orderStatus)?.label", detail = "#attachmentIds")
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> updateOrderStatus(@RequestParam Long orderId,
                                               @RequestParam Integer orderStatus,
