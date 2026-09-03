@@ -701,6 +701,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
+    @Event(value = "sample.started", bizId = "#orderId", bizType = "'sample'", params = {"orderNo = #result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder startEngineering(Long orderId, String engineeringNote) {
         // 只有 ENGINEERING 状态能设置工程备注
@@ -980,6 +981,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 工程接单确认
      */
     @Override
+    @Event(value = "sample.accepted", bizId = "#orderId", bizType = "'sample'", params = {"orderNo = #result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder acceptEngineering(Long orderId) {
         SalesOrder current = orderMapper.selectById(orderId);
@@ -1019,6 +1021,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 工程拒单（回退到待审核，销售可改单重提）
      */
     @Override
+    @Event(value = "sample.rejected_by_engineering", bizId = "#orderId", bizType = "'sample'", params = {"orderNo = #result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder rejectEngineering(Long orderId, String rejectReason) {
         SalesOrder current = orderMapper.selectById(orderId);
@@ -2243,16 +2246,22 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
-     * 样品转量产-资料转移提醒（DEV-1228）
+     * 样品转量产-资料转移提醒（DEV-1228，2026-09-03 改走事件配置）
      * 转量产就绪检查处置栏：不再直接转移，改为发布任务提醒工程执行资料转移（建档产品/BOM/工艺路线）
+     * 任务+通知统一走事件 sample.transfer.remind（sys_event_config id=159，both，收件角色 17/18），
+     * 本方法只做防重复 + 幂等返回（duplicated=true 时 @Event condition 拦掉不再发布）
      */
     @Override
+    @Event(value = "sample.transfer.remind", bizId = "#orderId", bizType = "'sample'",
+            params = {"orderNo = #result.orderNo"},
+            condition = "!#result.duplicated")
     @Transactional(rollbackFor = Exception.class)
     public java.util.Map<String, Object> remindTransfer(Long orderId) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
         // 防重复：同一单未完成的提醒任务只发一次（status=10 已完成允许再次提醒）
         Long existCount = sysTaskMapper.selectCount(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.system.domain.entity.SysTask>()
@@ -2262,36 +2271,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         .eq(com.jjx.system.domain.entity.SysTask::getBizId, orderId)
                         .ne(com.jjx.system.domain.entity.SysTask::getStatus, 10));
         if (existCount != null && existCount > 0) {
-            java.util.Map<String, Object> dup = new java.util.LinkedHashMap<>();
-            dup.put("reminded", true);
-            dup.put("duplicated", true);
-            dup.put("message", "该样品单已提醒过工程处理资料转移，请勿重复提醒");
-            return dup;
+            result.put("reminded", true);
+            result.put("duplicated", true);
+            result.put("message", "该样品单已提醒过工程处理资料转移，请勿重复提醒");
+            return result; // duplicated=true → @Event condition 拦掉，不再发任务/通知
         }
-
-        com.jjx.system.domain.entity.SysTask task = new com.jjx.system.domain.entity.SysTask();
-        task.setTaskCode("sample.transfer.remind-" + System.currentTimeMillis());
-        task.setTaskType("general");
-        task.setTitle("样品单【" + sampleOrder.getOrderNo() + "】待工程资料转移（建档产品/BOM/工艺路线）");
-        task.setDescription("转量产就绪检查发现该样品单尚未执行资料转移。\n"
-                + "请到打样平台执行资料转移（一键建档产品/BOM/工艺路线）。\n"
-                + "样品单号：" + sampleOrder.getOrderNo());
-        task.setKanbanModule("office");
-        task.setAssignRole(16L);
-        task.setSourceEvent("sample.transfer.remind");
-        task.setBizType("sample");
-        task.setBizId(orderId);
-        task.setPriority("normal");
-        task.setStatus(0);
-        task.setStartTime(java.time.LocalDateTime.now());
-        task.setCreateBy(SecurityUtils.getUsername());
-        sysTaskMapper.insert(task);
-        log.info("样品单[{}] 资料转移提醒已发布任务[{}]给工程(role=16)", sampleOrder.getOrderNo(), task.getTaskId());
-
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("reminded", true);
         result.put("duplicated", false);
-        result.put("taskId", task.getTaskId());
         result.put("orderNo", sampleOrder.getOrderNo());
         return result;
     }

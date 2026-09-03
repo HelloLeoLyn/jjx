@@ -145,6 +145,7 @@
               </el-button>
               <el-button
                 v-if="canAccept(scope.row)"
+                v-hasPermi="['sales:sample:engineering', 'engineering:sample:workbench']"
                 type="primary"
                 link
                 size="small"

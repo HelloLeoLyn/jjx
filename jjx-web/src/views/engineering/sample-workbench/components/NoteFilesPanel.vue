@@ -14,6 +14,7 @@
       type="primary"
       size="small"
       style="margin-top: 8px"
+      v-hasPermi="['sales:sample:engineering', 'engineering:sample:workbench']"
       :disabled="readonly"
       @click="$emit('save')"
       :loading="saving"
