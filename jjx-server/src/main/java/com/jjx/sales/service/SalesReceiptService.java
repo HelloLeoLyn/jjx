@@ -8,4 +8,6 @@ public interface SalesReceiptService {
                                   java.time.LocalDate startDate, java.time.LocalDate endDate, Integer status);
     SalesReceipt getById(Long id);
     Long create(SalesReceipt receipt);
+    boolean update(SalesReceipt receipt);
+    boolean delete(Long id);
 }

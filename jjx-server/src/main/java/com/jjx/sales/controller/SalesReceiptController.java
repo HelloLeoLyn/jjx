@@ -59,6 +59,29 @@ public class SalesReceiptController {
         return Result.success(receiptService.create(receipt));
     }
 
+    @Operation(summary = "修改收款")
+    @Log(module = "销售收款", businessType = BusinessType.UPDATE, bizType = "'receipt'", bizId = "#receipt.receiptId", bizStatus = "T(com.jjx.sales.enums.SalesReceiptStatusEnum).getByValue(#receipt.status)?.label")
+    @SaCheckPermission("sales:order:edit")
+    @PutMapping("/{receiptId}")
+    public Result<Void> update(@PathVariable Long receiptId, @RequestBody SalesReceipt receipt) {
+        receipt.setReceiptId(receiptId);
+        if (!receiptService.update(receipt)) {
+            return Result.error("修改收款失败");
+        }
+        return Result.success();
+    }
+
+    @Operation(summary = "删除收款")
+    @Log(module = "销售收款", businessType = BusinessType.DELETE)
+    @SaCheckPermission("sales:order:delete")
+    @DeleteMapping("/{receiptId}")
+    public Result<Void> delete(@PathVariable Long receiptId) {
+        if (!receiptService.delete(receiptId)) {
+            return Result.error("删除收款失败");
+        }
+        return Result.success();
+    }
+
     /**
      * 导出销售收款单（DEV-720：Excel）
      */

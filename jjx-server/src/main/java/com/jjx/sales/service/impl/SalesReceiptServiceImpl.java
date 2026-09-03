@@ -7,6 +7,7 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesReceipt;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.enums.SalesPaymentStatusEnum;
+import com.jjx.sales.enums.SalesReceiptStatusEnum;
 import com.jjx.sales.mapper.SalesReceiptMapper;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.service.SalesReceiptService;
@@ -22,8 +23,8 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, SalesReceipt> implements SalesReceiptService {
-    private static final Integer VOID_RECEIPT_STATUS = 0;
-    private static final Integer NORMAL_RECEIPT_STATUS = 1;
+    private static final Integer VOID_RECEIPT_STATUS = SalesReceiptStatusEnum.VOID.getValue();
+    private static final Integer NORMAL_RECEIPT_STATUS = SalesReceiptStatusEnum.NORMAL.getValue();
 
     private final SalesReceiptMapper receiptMapper;
     private final OrderMapper orderMapper;
@@ -54,6 +55,49 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
             updateOrderPaymentStatus(receipt.getOrderId());
         }
         return receipt.getReceiptId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean update(SalesReceipt receipt) {
+        SalesReceipt oldReceipt = receiptMapper.selectById(receipt.getReceiptId());
+        if (oldReceipt == null) {
+            return false;
+        }
+        if (receipt.getActualAmount() == null) {
+            receipt.setActualAmount(receipt.getReceiptAmount());
+        }
+        if (receipt.getStatus() == null) {
+            receipt.setStatus(oldReceipt.getStatus());
+        }
+        boolean updated = receiptMapper.updateById(receipt) > 0;
+        if (!updated) {
+            return false;
+        }
+        if (receipt.getOrderId() != null && !VOID_RECEIPT_STATUS.equals(receipt.getStatus())) {
+            updateOrderPaymentStatus(receipt.getOrderId());
+        }
+        if (oldReceipt.getOrderId() != null && !oldReceipt.getOrderId().equals(receipt.getOrderId())) {
+            updateOrderPaymentStatus(oldReceipt.getOrderId());
+        }
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean delete(Long id) {
+        SalesReceipt oldReceipt = receiptMapper.selectById(id);
+        if (oldReceipt == null) {
+            return false;
+        }
+        boolean deleted = receiptMapper.deleteById(id) > 0;
+        if (!deleted) {
+            return false;
+        }
+        if (oldReceipt.getOrderId() != null) {
+            updateOrderPaymentStatus(oldReceipt.getOrderId());
+        }
+        return true;
     }
 
     private void updateOrderPaymentStatus(Long orderId) {
