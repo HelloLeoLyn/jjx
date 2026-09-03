@@ -62,4 +62,6 @@ public class SysTask {
     private LocalDateTime updateTime;
 
     private String remark;
+    /** 验收用例 TC 列表（逗号分隔，如 TC-588,TC-591）——任务1320 */
+    private String testCases;
 }

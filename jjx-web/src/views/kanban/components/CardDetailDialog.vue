@@ -63,6 +63,18 @@
         <el-descriptions-item label="更新时间">{{
           fmtTime(taskDetail.updateTime)
         }}</el-descriptions-item>
+        <el-descriptions-item label="验收用例" :span="2" v-if="tcList.length">
+          <el-tag
+            v-for="tc in tcList"
+            :key="tc"
+            size="small"
+            type="success"
+            class="tc-tag"
+            @click="openTestBench(tc)"
+            >{{ tc }}</el-tag
+          >
+          <span style="color: #909399; font-size: 12px; margin-left: 4px">（点标签去测试工作台）</span>
+        </el-descriptions-item>
         <el-descriptions-item label="描述" :span="2">
           <div class="detail-text">{{ taskDetail.description || '-' }}</div>
         </el-descriptions-item>
@@ -278,6 +290,19 @@ const isOverdue = computed(() => {
   return String(d) < new Date().toISOString().slice(0, 10)
 })
 
+/** 验收用例 TC 列表（sys_task.test_cases，逗号分隔） */
+const tcList = computed<string[]>(() => {
+  const raw = taskDetail.value?.testCases || ''
+  return String(raw)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+})
+
+function openTestBench(tc: string) {
+  window.open(`http://localhost:8899/test/#tc-${tc.toLowerCase()}`, '_blank')
+}
+
 function fmtTime(v?: string | number): string {
   if (v === null || v === undefined || v === '') return '-'
   return String(v).replace('T', ' ').slice(0, 19)
@@ -301,6 +326,10 @@ function onClose() {
 }
 .task-desc :deep(.el-descriptions__content) {
   word-break: break-all;
+}
+
+.tc-tag {
+  cursor: pointer;
 }
 
 .detail-text {
