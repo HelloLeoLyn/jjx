@@ -80,6 +80,14 @@ public class BizRequirement {
     private String reviewerName;
     private LocalDateTime reviewTime;
     private String reviewRemark;
+    /** 执行人（开始执行时记录） */
+    private String executeBy;
+    /** 开始执行时间 */
+    private LocalDateTime executeTime;
+    /** 执行结果（关闭时登记） */
+    private String executeResult;
+    /** 当前会签轮次（submit 时 +1） */
+    private Integer currentRound;
     private LocalDateTime closeTime;
     private String remark;
 

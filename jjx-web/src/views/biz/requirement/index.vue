@@ -76,12 +76,13 @@
         </el-table-column>
         <el-table-column label="申请人" prop="applicantName" width="90" align="center" />
         <el-table-column label="创建时间" prop="createTime" width="160" align="center" />
-        <el-table-column label="操作" width="210" align="center" fixed="right">
+        <el-table-column label="操作" width="290" align="center" fixed="right">
           <template #default="{ row }">
             <el-button v-if="canEdit(row)" link type="primary" icon="Edit" @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="row.requirementStatus === 1" link type="warning" icon="Upload" @click="handleSubmit(row)">提交</el-button>
-            <el-button v-if="row.requirementStatus === 2" link type="success" icon="CircleCheck" @click="handleReview(row, true)">通过</el-button>
-            <el-button v-if="row.requirementStatus === 2" link type="danger" icon="CircleClose" @click="handleReview(row, false)">驳回</el-button>
+            <el-button v-if="row.requirementStatus === 2" link type="warning" icon="Stamp" @click="openApproval(row)">会签</el-button>
+            <el-button v-if="row.requirementStatus === 3" link type="primary" icon="CaretRight" @click="handleExecute(row)">执行</el-button>
+            <el-button v-if="row.requirementStatus === 4" link type="info" icon="Finished" @click="handleClose(row)">关闭</el-button>
             <el-button v-if="canDelete(row)" link type="danger" icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -145,8 +146,20 @@
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="关联业务">
-                <el-input v-model="form.bizNo" placeholder="如产品编码/BOM编码，选填" style="width: 100%" />
+              <el-form-item label="关联产品">
+                <el-select
+                  v-model="form.bizId"
+                  filterable
+                  clearable
+                  placeholder="选择变更影响的产品（升版 BOM/工艺用）"
+                  style="width: 100%"
+                  @change="onProductChange"
+                >
+                  <el-option v-for="p in productOptions" :key="p.productId" :label="p.productCode" :value="p.productId">
+                    <span>{{ p.productCode }}</span>
+                    <span style="float: right; color: #909399">{{ p.productName }}</span>
+                  </el-option>
+                </el-select>
               </el-form-item>
             </el-col>
           </el-row>
@@ -211,13 +224,27 @@
         <el-descriptions-item label="申请人">{{ detail.applicantName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="期望完成">{{ detail.expectDate || '-' }}</el-descriptions-item>
         <el-descriptions-item label="审批意见" :span="2">{{ detail.reviewRemark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="执行人">{{ detail.executeBy || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="开始执行">{{ detail.executeTime || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="执行结果" :span="2">{{ detail.executeResult || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="关闭时间">{{ detail.closeTime || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ detail.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
       <template #footer>
         <el-button v-if="detail?.requirementType === 'CHANGE'" type="primary" icon="Printer" @click="handlePrint(detail)">打印变更通知</el-button>
+        <el-button
+          v-if="canUpgrade(detail)"
+          type="warning"
+          icon="RefreshRight"
+          @click="handleUpgrade(detail)"
+          >升版 BOM/工艺</el-button
+        >
         <el-button @click="detailVisible = false">关 闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 四部门会签弹窗 -->
+    <ApprovalDialog v-model:visible="approvalVisible" :requirement="approvalRow" @signed="getList" />
   </div>
 </template>
 
@@ -227,11 +254,13 @@ defineOptions({ name: 'Requirement' })
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import ApprovalDialog from './components/ApprovalDialog.vue'
 import {
   pageRequirement, getRequirement, createRequirement, updateRequirement,
-  removeRequirement, submitRequirement, reviewRequirement,
+  removeRequirement, submitRequirement, executeRequirement, closeRequirement, upgradeRequirement,
   listRequirementTypes, listRequirementStatuses,
 } from '@/api/biz/requirement'
+import { listProduct } from '@/api/product'
 
 // ===== 状态选项 =====
 const typeOptions = ref<{ value: string; label: string }[]>([])
@@ -376,28 +405,34 @@ function handleSubmit(row: any) {
   ElMessageBox.confirm(`确认提交需求「${row.requirementNo}」进入评审？`, '提交确认', { type: 'warning' })
     .then(async () => {
       await submitRequirement(row.requirementId)
-      ElMessage.success('已提交评审')
+      ElMessage.success('已提交评审，等待四部门会签')
       getList()
     }).catch(() => {})
 }
 
-function handleReview(row: any, approved: boolean) {
-  const fn = () => {
-    reviewRequirement(row.requirementId, approved, '')
-      .then(() => {
-        ElMessage.success(approved ? '已通过' : '已驳回')
-        getList()
-      }).catch((e: any) => ElMessage.error(e?.message || '操作失败'))
-  }
-  if (!approved) {
-    ElMessageBox.prompt('请输入驳回原因', '驳回', { inputPlaceholder: '驳回原因' })
-      .then(({ value }) => reviewRequirement(row.requirementId, false, value))
-      .then(() => { ElMessage.success('已驳回'); getList() })
-      .catch(() => {})
-  } else {
-    ElMessageBox.confirm(`确认通过「${row.requirementNo}」？`, '通过确认', { type: 'success' })
-      .then(fn).catch(() => {})
-  }
+// ===== 四部门会签 =====
+const approvalVisible = ref(false)
+const approvalRow = ref<any>(null)
+function openApproval(row: any) {
+  approvalRow.value = row
+  approvalVisible.value = true
+}
+
+function handleExecute(row: any) {
+  ElMessageBox.confirm(`确认开始执行「${row.requirementNo}」？`, '开始执行', { type: 'warning' })
+    .then(() => executeRequirement(row.requirementId))
+    .then(() => { ElMessage.success('已开始执行'); getList() })
+    .catch(() => {})
+}
+
+function handleClose(row: any) {
+  ElMessageBox.prompt('请输入执行结果（可留空）', '关闭需求单', {
+    inputPlaceholder: '执行结果/完成情况',
+    inputValidator: () => true,
+  })
+    .then(({ value }) => closeRequirement(row.requirementId, value || undefined))
+    .then(() => { ElMessage.success('已关闭'); getList() })
+    .catch(() => {})
 }
 
 function handleDelete(row: any) {
@@ -412,10 +447,59 @@ function handlePrint(row: any) {
   window.open(`/print/requirement/${row.requirementId}`, '_blank')
 }
 
+// ===== 关联产品（变更升版用） =====
+const productOptions = ref<any[]>([])
+async function loadProducts() {
+  if (productOptions.value.length > 0) return
+  try {
+    const res: any = await listProduct({ pageNum: 1, pageSize: 500 })
+    productOptions.value = Array.isArray(res?.data) ? res.data : []
+  } catch {
+    productOptions.value = []
+  }
+}
+function onProductChange(id?: number) {
+  const p = productOptions.value.find((x) => x.productId === id)
+  if (p) {
+    form.bizType = 'product'
+    form.bizNo = p.productCode
+  } else {
+    form.bizType = ''
+    form.bizNo = ''
+  }
+}
+
+// ===== 变更升版（复制 BOM/工艺路线新版本） =====
+function canUpgrade(d: any) {
+  return (
+    d?.requirementType === 'CHANGE' &&
+    (d.requirementStatus === 3 || d.requirementStatus === 4) &&
+    d.bizType === 'product' &&
+    !!d.bizId
+  )
+}
+function handleUpgrade(d: any) {
+  ElMessageBox.prompt('请输入新版本号（如 V2.0，不能与现有版本重复）', '变更升版', {
+    inputPlaceholder: '新版本号，如 V2.0',
+    inputValidator: (v: string) => (v && v.trim() ? true : '版本号不能为空'),
+  })
+    .then(async ({ value }) => {
+      const res: any = await upgradeRequirement(d.requirementId, value.trim())
+      const logs: string[] = res?.data?.logs || []
+      ElMessageBox.alert(
+        `<div style="text-align:left;line-height:1.9">${logs.map((l) => '· ' + l).join('<br>')}</div>`,
+        '升版结果',
+        { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' },
+      )
+    })
+    .catch(() => {})
+}
+
 onMounted(async () => {
   const [t, s] = await Promise.all([listRequirementTypes(), listRequirementStatuses()])
   typeOptions.value = (t as any).data || []
   statusOptions.value = (s as any).data || []
+  loadProducts()
   getList()
 })
 </script>

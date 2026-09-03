@@ -85,14 +85,49 @@ public class BizRequirementController extends BaseController {
         return Result.success();
     }
 
-    @Operation(summary = "审核（通过/驳回）")
-    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#approved ? '通过' : '驳回'")
+    @Operation(summary = "四部门会签（同意/不同意+意见）")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#approved ? '同意' : '不同意'")
+    @SaCheckPermission("biz:requirement:approve")
+    @PutMapping("/approval/{requirementId}")
+    public Result<com.jjx.biz.domain.entity.BizRequirement> approval(@PathVariable Long requirementId,
+                                                                     @RequestParam String role,
+                                                                     @RequestParam Boolean approved,
+                                                                     @RequestParam(required = false) String comment) {
+        return Result.success(requirementService.signApproval(requirementId, role, approved, comment));
+    }
+
+    @Operation(summary = "会签记录（全部轮次）")
+    @SaCheckPermission("biz:requirement:view")
+    @GetMapping("/approvals/{requirementId}")
+    public Result<java.util.List<com.jjx.biz.domain.entity.BizRequirementApproval>> approvals(@PathVariable Long requirementId) {
+        return Result.success(requirementService.listApprovals(requirementId));
+    }
+
+    @Operation(summary = "变更升版（关联产品→复制 BOM/工艺路线新版本）")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#newVersion")
     @SaCheckPermission("biz:requirement:edit")
-    @PutMapping("/review/{requirementId}")
-    public Result<Void> review(@PathVariable Long requirementId,
-                               @RequestParam Boolean approved,
-                               @RequestParam(required = false) String remark) {
-        requirementService.review(requirementId, approved, remark);
+    @PutMapping("/upgrade/{requirementId}")
+    public Result<java.util.Map<String, Object>> upgrade(@PathVariable Long requirementId,
+                                                        @RequestParam String newVersion) {
+        return Result.success(requirementService.upgradeRelated(requirementId, newVersion));
+    }
+
+    @Operation(summary = "开始执行（审核通过后）")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId")
+    @SaCheckPermission("biz:requirement:edit")
+    @PutMapping("/execute/{requirementId}")
+    public Result<Void> execute(@PathVariable Long requirementId) {
+        requirementService.startExecute(requirementId);
+        return Result.success();
+    }
+
+    @Operation(summary = "关闭（登记执行结果）")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#result")
+    @SaCheckPermission("biz:requirement:edit")
+    @PutMapping("/close/{requirementId}")
+    public Result<Void> close(@PathVariable Long requirementId,
+                              @RequestParam(required = false) String result) {
+        requirementService.closeRequirement(requirementId, result);
         return Result.success();
     }
 

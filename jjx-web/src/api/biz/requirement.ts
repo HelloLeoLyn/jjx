@@ -51,12 +51,46 @@ export function submitRequirement(requirementId: number) {
   })
 }
 
-/** 审核（通过/驳回） */
-export function reviewRequirement(requirementId: number, approved: boolean, remark?: string) {
+/** 四部门会签（同意/不同意+意见） */
+export function signApproval(requirementId: number, role: string, approved: boolean, comment?: string) {
   return request({
-    url: `/biz/requirement/review/${requirementId}`,
+    url: `/biz/requirement/approval/${requirementId}`,
     method: 'put',
-    params: { approved, remark },
+    params: { role, approved, comment },
+  })
+}
+
+/** 会签记录（全部轮次） */
+export function listApprovals(requirementId: number) {
+  return request({
+    url: `/biz/requirement/approvals/${requirementId}`,
+    method: 'get',
+  })
+}
+
+/** 开始执行（审核通过后） */
+export function executeRequirement(requirementId: number) {
+  return request({
+    url: `/biz/requirement/execute/${requirementId}`,
+    method: 'put',
+  })
+}
+
+/** 关闭（登记执行结果） */
+export function closeRequirement(requirementId: number, result?: string) {
+  return request({
+    url: `/biz/requirement/close/${requirementId}`,
+    method: 'put',
+    params: { result },
+  })
+}
+
+/** 变更升版（关联产品 → 复制 BOM/工艺路线新版本） */
+export function upgradeRequirement(requirementId: number, newVersion: string) {
+  return request({
+    url: `/biz/requirement/upgrade/${requirementId}`,
+    method: 'put',
+    params: { newVersion },
   })
 }
 
