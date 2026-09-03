@@ -48,7 +48,10 @@ const props = defineProps<{
 
 // 印刷行 → 时间线条目
 function toTimelineItem(r: any) {
-  const noteParts = [r.colorNo ? `色号：${r.colorNo}` : '', r.inkNo ? `油墨：${r.inkNo}` : '', r.screenNo ? `网框：${r.screenNo}` : ''].filter(Boolean)
+  const colorText = r.colorNoLabel
+    ? `${r.colorNoLabel}${r.colorNo && r.colorNo !== r.colorNoLabel ? `（${r.colorNo}）` : ''}`
+    : r.colorNo
+  const noteParts = [colorText ? `色号：${colorText}` : '', r.inkNo ? `油墨：${r.inkNo}` : '', r.screenNo ? `网框：${r.screenNo}` : ''].filter(Boolean)
   return {
     uid: `print-${r.uid || r.processId || Math.random()}`,
     items: [{ processName: r.printName || '未命名印刷' }],

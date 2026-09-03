@@ -50,6 +50,7 @@ export interface MaterialQueryDTO extends PageQuery {
   materialName?: string
   specification?: string
   supplierId?: number
+  categoryId?: number
 }
 // 物料保存DTO
 export interface MaterialSaveDTO {

@@ -449,7 +449,9 @@ export function useSampleWorkbench() {
       endTime: src.endTime || null,
       operator: src.operator || '',
       printName: params.printName || src.processName || '',
-      colorNo: params.colorNo || '',
+      colorNo: params.colorNo ?? '',
+      colorNoLabel: params.colorNoLabel ?? '',
+      inkMaterialId: params.inkMaterialId ?? null,
       inkNo: params.inkNo || '',
       screenNo: params.screenNo || '',
       saveState: 'synced',
@@ -539,6 +541,8 @@ export function useSampleWorkbench() {
       validPrints.forEach((r, i) => {
         const params: any = { printName: r.printName }
         if (r.colorNo) params.colorNo = r.colorNo
+        if (r.colorNoLabel) params.colorNoLabel = r.colorNoLabel
+        if (r.inkMaterialId != null) params.inkMaterialId = r.inkMaterialId
         if (r.inkNo) params.inkNo = r.inkNo
         if (r.screenNo) params.screenNo = r.screenNo
         items.push({
@@ -1019,7 +1023,7 @@ export function useSampleWorkbench() {
           : row.customProcessParams
       const out: Record<string, string> = {}
       if (obj.printName) out['印刷名称'] = obj.printName
-      if (obj.colorNo) out['色号'] = obj.colorNo
+      if (obj.colorNo) out['色号'] = obj.colorNoLabel || obj.colorNo
       if (obj.inkNo) out['油墨编号'] = obj.inkNo
       if (obj.screenNo) out['网框编号'] = obj.screenNo
       return out

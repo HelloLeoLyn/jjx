@@ -51,26 +51,48 @@
             </el-table-column>
             <el-table-column label="色号" width="120">
               <template #default="{ row }">
-                <el-autocomplete
+                <el-select
                   v-model="row.colorNo"
                   size="small"
-                  :fetch-suggestions="(q, cb) => suggestFrom(q, cb, 'colorNos')"
-                  :trigger-on-focus="true"
                   clearable
-                  placeholder="如 PANTONE 123C"
-                />
+                  filterable
+                  placeholder="选择色号"
+                  style="width: 100%"
+                  @change="(value: string) => handleColorChange(row, value)"
+                >
+                  <el-option
+                    v-for="item in colorOptions"
+                    :key="item.itemKey"
+                    :label="item.label || item.itemValue"
+                    :value="item.itemKey"
+                  />
+                </el-select>
               </template>
             </el-table-column>
-            <el-table-column label="油墨编号" width="120">
+            <el-table-column label="油墨" min-width="210">
               <template #default="{ row }">
-                <el-autocomplete
+                <el-select
                   v-model="row.inkNo"
                   size="small"
-                  :fetch-suggestions="(q, cb) => suggestFrom(q, cb, 'inkNos')"
-                  :trigger-on-focus="true"
                   clearable
-                  placeholder="油墨编号"
-                />
+                  filterable
+                  remote
+                  allow-create
+                  default-first-option
+                  :remote-method="searchInkMaterials"
+                  :loading="inkLoading"
+                  placeholder="选择 INK 物料，或直接手输"
+                  style="width: 100%"
+                  @change="(value: string) => handleInkChange(row, value)"
+                  @visible-change="(visible: boolean) => visible && searchInkMaterials('')"
+                >
+                  <el-option
+                    v-for="opt in inkOptions"
+                    :key="opt.materialId"
+                    :label="materialOptionLabel(opt)"
+                    :value="inkStoredText(opt)"
+                  />
+                </el-select>
               </template>
             </el-table-column>
             <el-table-column label="网框编号" width="160">
@@ -225,6 +247,8 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
+import { dictApi } from '@/api/system/dict'
+import type { SysDictItem } from '@/types/system/dict'
 import { ProcessStatusEnum } from '@/enums/product/process'
 import { getProcessHistory } from '@/api/sales/sampleOrder'
 import { suggestScreen as suggestScreenApi } from '@/api/engineering/screen'
@@ -255,8 +279,56 @@ const tabs = [
 ]
 const activeTab = ref('PANEL')
 
-// 印刷历史联想缓存（dev-20260901-1225）：{printNames, colorNos, inkNos}
+// 印刷历史联想缓存（印刷名称仍沿用历史联想）
 const historyCache = ref<Record<string, string[]>>({ printNames: [], colorNos: [], inkNos: [] })
+
+const colorOptions = ref<SysDictItem[]>([])
+const inkOptions = ref<any[]>([])
+const inkLoading = ref(false)
+
+async function loadColorOptions() {
+  try {
+    const res = await dictApi.getItems('engineering_color')
+    colorOptions.value = (res.data || []).filter((item) => item.isActive !== 0)
+  } catch {
+    colorOptions.value = []
+  }
+}
+
+function handleColorChange(row: any, value: string) {
+  const item = colorOptions.value.find((option) => option.itemKey === value)
+  row.colorNoLabel = item ? item.label || item.itemValue : ''
+}
+
+function materialOptionLabel(material: any) {
+  const spec = material.specification ? ` ${material.specification}` : ''
+  const code = material.materialCode ? ` (${material.materialCode})` : ''
+  return `${material.materialName || ''}${spec}${code}`
+}
+
+function inkStoredText(material: any) {
+  const code = material.materialCode ? ` (${material.materialCode})` : ''
+  return `${material.materialName || ''}${code}`
+}
+
+async function searchInkMaterials(query: string) {
+  inkLoading.value = true
+  try {
+    const params: any = { pageNum: 1, pageSize: 20, categoryId: 1 }
+    if ((query || '').trim()) params.materialName = query.trim()
+    const res: any = await materialApi.search(params)
+    inkOptions.value = res?.data?.records || res?.data || []
+  } catch {
+    inkOptions.value = []
+  } finally {
+    inkLoading.value = false
+  }
+}
+
+function handleInkChange(row: any, value: string) {
+  const material = inkOptions.value.find((option) => inkStoredText(option) === value)
+  row.inkMaterialId = material?.materialId ?? null
+}
 
 async function loadHistory() {
   try {
@@ -265,6 +337,7 @@ async function loadHistory() {
   } catch { /* 联想失败不影响录入 */ }
 }
 loadHistory()
+loadColorOptions()
 
 // 历史联想：从缓存按关键字过滤，返回 [{value}]
 function suggestFrom(query: string, cb: (items: { value: string }[]) => void, key: string) {
@@ -296,6 +369,8 @@ function isEmptyRow(r: any) {
     String(r.uid || '').startsWith('new-') &&
     !(r.printName || '').trim() &&
     !(r.colorNo || '').trim() &&
+    !(r.colorNoLabel || '').trim() &&
+    r.inkMaterialId == null &&
     !(r.inkNo || '').trim() &&
     !(r.screenNo || '').trim()
   )
@@ -332,7 +407,7 @@ watch(
     props.printList
       .map(
         (r) =>
-          `${r.uid}:${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
+          `${r.uid}:${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.colorNoLabel || '').trim()}|${r.inkMaterialId ?? ''}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
       )
       .join('|'),
   () => {

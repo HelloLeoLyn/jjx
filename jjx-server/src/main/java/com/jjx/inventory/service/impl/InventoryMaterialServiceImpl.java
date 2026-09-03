@@ -244,6 +244,9 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                         .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialNameEn, name);
             });
         }
+        if (queryDTO.getCategoryId() != null) {
+            wrapper.eq(InventoryMaterial::getCategoryId, queryDTO.getCategoryId());
+        }
         IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize())
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
