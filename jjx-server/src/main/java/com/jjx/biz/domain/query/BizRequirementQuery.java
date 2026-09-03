@@ -2,6 +2,8 @@ package com.jjx.biz.domain.query;
 
 import lombok.Data;
 
+import java.time.LocalDate;
+
 /**
  * 需求单查询参数
  */
@@ -12,4 +14,8 @@ public class BizRequirementQuery {
     private Integer requirementStatus;
     private String title;
     private String source;
+    private String bizNo;
+    private String changeType;
+    private LocalDate startDate;
+    private LocalDate endDate;
 }

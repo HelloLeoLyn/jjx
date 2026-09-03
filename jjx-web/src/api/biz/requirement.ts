@@ -9,6 +9,16 @@ export function pageRequirement(params?: Record<string, unknown>) {
   })
 }
 
+/** 导出变更记录表 */
+export function changesExport(params?: Record<string, unknown>) {
+  return request({
+    url: '/biz/requirement/export',
+    method: 'get',
+    params,
+    responseType: 'blob',
+  })
+}
+
 /** 需求单详情 */
 export function getRequirement(requirementId: number) {
   return request({

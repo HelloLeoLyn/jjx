@@ -9,14 +9,27 @@ import com.jjx.biz.enums.RequirementTypeEnum;
 import com.jjx.biz.service.IBizRequirementService;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.ByteArrayOutputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -41,6 +54,69 @@ public class BizRequirementController extends BaseController {
         pr.setRecords(p.getRecords());
         pr.setTotal(p.getTotal());
         return Result.success(pr);
+    }
+
+    @Operation(summary = "导出变更记录表")
+    @SaCheckPermission("biz:requirement:view")
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export(BizRequirementQuery query) {
+        query.setRequirementType(RequirementTypeEnum.CHANGE.getValue());
+        List<BizRequirement> list = requirementService.page(query, 1, Integer.MAX_VALUE).getRecords();
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("变更记录表");
+            String[] headers = {"变更日期", "单号", "变更机种", "变更内容", "变更类型", "版本", "状态", "申请人"};
+            Row header = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            int rowIndex = 1;
+            for (BizRequirement requirement : list) {
+                Row row = sheet.createRow(rowIndex++);
+                row.createCell(0).setCellValue(requirement.getApplyTime() == null ? "" : requirement.getApplyTime().format(DateTimeFormatter.ISO_LOCAL_DATE));
+                row.createCell(1).setCellValue(value(requirement.getRequirementNo()));
+                row.createCell(2).setCellValue(value(requirement.getBizNo()));
+                row.createCell(3).setCellValue(value(requirement.getDescription()));
+                row.createCell(4).setCellValue(changeTypeLabel(requirement.getChangeType()));
+                row.createCell(5).setCellValue(versionLabel(requirement));
+                RequirementStatusEnum status = RequirementStatusEnum.getByValue(requirement.getRequirementStatus());
+                row.createCell(6).setCellValue(status == null ? "" : status.getLabel());
+                row.createCell(7).setCellValue(value(requirement.getApplicantName()));
+            }
+            for (int i = 0; i < headers.length; i++) {
+                sheet.setColumnWidth(i, (i == 3 ? 36 : 16) * 256);
+            }
+            wb.write(out);
+            String fileName = URLEncoder.encode("变更记录表-" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE) + ".xlsx", StandardCharsets.UTF_8)
+                    .replaceAll("\\+", "%20");
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + fileName)
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(out.toByteArray());
+        } catch (Exception e) {
+            throw new BusinessException("变更记录表导出失败: " + e.getMessage(), e);
+        }
+    }
+
+    private static String value(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String versionLabel(BizRequirement requirement) {
+        String before = value(requirement.getVersionBefore());
+        String after = value(requirement.getVersionAfter());
+        return before.isEmpty() && after.isEmpty() ? "" : before + "→" + after;
+    }
+
+    private static String changeTypeLabel(String changeType) {
+        if (changeType == null) return "";
+        return switch (changeType) {
+            case "DESIGN" -> "设计改版";
+            case "PROCESS" -> "工艺调整";
+            case "MATERIAL" -> "材料变更";
+            case "DRAWING" -> "图纸更新";
+            case "OTHER" -> "其他";
+            default -> changeType;
+        };
     }
 
     @Operation(summary = "需求单详情")

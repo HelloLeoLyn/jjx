@@ -73,6 +73,17 @@ public class BizRequirementServiceImpl implements IBizRequirementService {
             wrapper.eq(query.getRequirementStatus() != null, BizRequirement::getRequirementStatus, query.getRequirementStatus());
             wrapper.like(StringUtils.isNotBlank(query.getTitle()), BizRequirement::getTitle, query.getTitle());
             wrapper.eq(StringUtils.isNotBlank(query.getSource()), BizRequirement::getSource, query.getSource());
+            wrapper.eq(StringUtils.isNotBlank(query.getChangeType()), BizRequirement::getChangeType, query.getChangeType());
+            if (StringUtils.isNotBlank(query.getBizNo())) {
+                wrapper.and(w -> w.like(BizRequirement::getBizNo, query.getBizNo())
+                        .or().like(BizRequirement::getRequirementNo, query.getBizNo()));
+            }
+            if (query.getStartDate() != null) {
+                wrapper.ge(BizRequirement::getApplyTime, query.getStartDate().atStartOfDay());
+            }
+            if (query.getEndDate() != null) {
+                wrapper.lt(BizRequirement::getApplyTime, query.getEndDate().plusDays(1).atStartOfDay());
+            }
         }
         wrapper.orderByDesc(BizRequirement::getRequirementId);
         return requirementMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
