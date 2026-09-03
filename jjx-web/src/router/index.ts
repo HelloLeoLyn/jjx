@@ -125,6 +125,12 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/sales/reconcile/print',
+    name: 'SalesReconcilePrint',
+    component: () => import('@/views/sales/reconcile/print.vue'),
+    meta: { title: '业务对账单打印', hidden: true },
+  },
+  {
     path: '/sales/receipt/print/:id',
     name: 'SalesReceiptPrint',
     component: () => import('@/views/sales/receipt/print.vue'),
