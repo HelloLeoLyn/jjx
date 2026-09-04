@@ -521,7 +521,7 @@ onMounted(async () => {
 
 .sign-item {
   width: 30%;
-  text-align: center;
+  text-align: left;
   font-size: 11px;
 }
 
