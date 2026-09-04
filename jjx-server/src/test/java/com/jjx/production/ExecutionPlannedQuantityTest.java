@@ -56,8 +56,7 @@ class ExecutionPlannedQuantityTest {
         service = (ProductionOrderServiceImpl) ctor.newInstance(
                 orderMapper, converter, executionMapper, routingItemMapper, eventPublisher,
                 qualityInspectionService, qualityInspectionMapper, inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader,
-                productionTaskService);
+                stockReserveService, materialReserveService, salesOrderMapper, productionTaskService);
 
         genMethod = ProductionOrderServiceImpl.class.getDeclaredMethod(
                 "generateOperationExecutions",

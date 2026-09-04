@@ -68,7 +68,6 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
-    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.inventory.service.ProductStockService productStockService;
 
     @Override

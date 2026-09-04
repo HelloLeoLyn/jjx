@@ -179,13 +179,6 @@ public interface IOrderService {
     byte[] exportExcel(Long orderId);
 
     /**
-     * 导出订单确认书PDF（DEV-343/314）
-     *
-     * @return PDF字节数组
-     */
-    byte[] exportConfirmationPdf(Long orderId);
-
-    /**
      * 导出订单列表
      *
      * @param order 查询条件

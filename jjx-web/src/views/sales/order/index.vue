@@ -103,16 +103,6 @@
         </el-col>
         <el-col :span="1.5">
           <el-button
-            type="info"
-            plain
-            icon="Document"
-            v-hasPermi="['sales:order:export']"
-            @click="handleExportPdf"
-            >导出PDF</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
             type="success"
             plain
             icon="DocumentCopy"
@@ -258,21 +248,6 @@
                 <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
                   生成生产计划
                 </el-button>
-                <!-- 打印确认书（2026-08-13：直接打开打印预览，不下载；确认前确认人显示-，生成生产计划后打印带确认人） -->
-                <el-tooltip
-                  content="订单尚未确认，确认人显示为 -；生成生产计划（=确认）后打印将带确认人信息"
-                  placement="top"
-                >
-                  <el-button
-                    type="info"
-                    size="small"
-                    plain
-                    v-hasPermi="['sales:order:export']"
-                    @click="handleExportConfirmPdf(row)"
-                  >
-                    打印确认书
-                  </el-button>
-                </el-tooltip>
               </template>
 
               <!-- 已驳回状态 (5) -->
@@ -298,20 +273,6 @@
                 >
                   齐套检查
                 </el-button>
-                <el-tooltip
-                  :content="`确认人：${row.confirmBy || '-'}｜方式：${row.confirmMethod || '-'}｜时间：${row.confirmTime || '-'}`"
-                  placement="top"
-                >
-                  <el-button
-                    type="success"
-                    size="small"
-                    plain
-                    v-hasPermi="['sales:order:export']"
-                    @click="handleExportConfirmPdf(row)"
-                  >
-                    打印确认书
-                  </el-button>
-                </el-tooltip>
                 <el-button
                   type="info"
                   size="small"
@@ -667,18 +628,6 @@ const handleExport = () => {
     .catch(() => {})
 }
 
-// 导出PDF（单张订单表单，需选中一行）
-const handleExportPdf = () => {
-  const orderId = ids.value[0]
-  if (!orderId) {
-    ElMessage.warning('请先选中一行订单')
-    return
-  }
-  orderApi.exportOrderPdf(orderId).then((response: any) => {
-    download(response, `销售订单_${orderId}.pdf`)
-  })
-}
-
 // 导出Excel（单张订单表单，需选中一行）
 const handleExportExcel = () => {
   const orderId = ids.value[0]
@@ -785,23 +734,6 @@ const submitShip = async () => {
     ElMessage.error(e?.message || '发货失败')
   } finally {
     shipSubmitting.value = false
-  }
-}
-
-// 打印确认书（2026-08-13：打开新窗口预览 PDF 直接打印，不再下载文件；弹窗被拦截则降级下载）
-const handleExportConfirmPdf = async (row: any) => {
-  try {
-    const res: any = await orderApi.exportConfirmationPdf(row.orderId)
-    const blob = res instanceof Blob ? res : new Blob([res], { type: 'application/pdf' })
-    const url = URL.createObjectURL(blob)
-    const win = window.open(url, '_blank')
-    if (!win) {
-      download(blob, `确认书_${row.orderNo}.pdf`)
-    } else {
-      win.focus()
-    }
-  } catch {
-    ElMessage.error('确认书生成失败')
   }
 }
 

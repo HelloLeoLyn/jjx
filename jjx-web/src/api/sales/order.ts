@@ -167,23 +167,9 @@ export const orderApi = {
     })
   },
 
-  /** 导出订单PDF */
-  exportOrderPdf(orderId: number) {
-    return request.get(`/sales/orders/export-pdf/${orderId}`, {
-      responseType: 'blob',
-    })
-  },
-
   /** 导出订单Excel（单张表单） */
   exportOrderExcel(orderId: number) {
     return request.get(`/sales/orders/export-excel/${orderId}`, {
-      responseType: 'blob',
-    })
-  },
-
-  /** 导出订单确认书PDF（DEV-343/314） */
-  exportConfirmationPdf(orderId: number) {
-    return request.get(`/sales/orders/${orderId}/confirmation/pdf`, {
       responseType: 'blob',
     })
   },

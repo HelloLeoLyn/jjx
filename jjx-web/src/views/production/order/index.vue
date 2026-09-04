@@ -24,7 +24,6 @@
       @create="handleCreate"
       @refresh="refreshData"
       @export="handleExport"
-      @export-pdf="handleExportPdf"
       @batch-delete="handleBatchDelete"
       @batch-command="handleBatchCommand"
     />
@@ -247,7 +246,6 @@ import { useProductionOrder } from './composables/useProductionOrder'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
 import {
-  exportProductionOrderPdf,
   exportProductionOrder,
   batchUpdateOrderStatus,
   convertPlanToWorkOrders,
@@ -422,18 +420,6 @@ const handleExport = async () => {
     console.error('导出失败:', error)
     ElMessage.error('导出失败')
   }
-}
-
-// 导出PDF（单张工单表单，需选中一行）
-const handleExportPdf = () => {
-  const row = selectedRows.value[0]
-  if (!row?.orderId) {
-    ElMessage.warning('请先选中一行工单')
-    return
-  }
-  exportProductionOrderPdf(Number(row.orderId)).then((response: any) => {
-    download(response, `生产工单_${row.orderNo || row.orderId}.pdf`)
-  })
 }
 
 // 打印当前页勾选的工单；首个 ID 保持既有单工单路由兼容，完整集合由 query 传递。

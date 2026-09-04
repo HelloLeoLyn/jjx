@@ -42,7 +42,6 @@ class WorkOrderNoGenerationTest {
         var stockReserveService = mock(com.jjx.inventory.service.OrderStockReserveService.class);
         var materialReserveService = mock(com.jjx.inventory.service.OrderMaterialReserveService.class);
         var salesOrderMapper = mock(com.jjx.sales.mapper.OrderMapper.class);
-        var pdfConfigLoader = mock(com.jjx.common.utils.pdf.PdfConfigLoader.class);
 
         Constructor<?> ctor = ProductionOrderServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
@@ -51,8 +50,7 @@ class WorkOrderNoGenerationTest {
                 qualityInspectionService,
                 mock(com.jjx.production.mapper.ProductionQualityInspectionMapper.class),
                 inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, pdfConfigLoader,
-                mock(com.jjx.production.service.ProductionTaskService.class));
+                stockReserveService, materialReserveService, salesOrderMapper, mock(com.jjx.production.service.ProductionTaskService.class));
 
         genMethod = ProductionOrderServiceImpl.class.getDeclaredMethod("generateWorkOrderNo", ProductionOrder.class);
         genMethod.setAccessible(true);

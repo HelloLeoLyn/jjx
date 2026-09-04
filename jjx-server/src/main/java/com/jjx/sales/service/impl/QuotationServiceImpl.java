@@ -30,7 +30,6 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import com.jjx.common.utils.pdf.PdfDocBuilder;
 import com.jjx.sales.enums.QuotationStatus;
 import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
@@ -72,7 +71,6 @@ public class QuotationServiceImpl implements IQuotationService {
     private final com.jjx.sales.mapper.OrderMapper orderMapper;
     private final ISysAttachmentService sysAttachmentService;
     private final RedisSequenceService redisSequenceService;
-    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final OperLogChangeRecorder changeRecorder;
     private final SysAttachmentMapper attachmentMapper;
     private final SalesQuotationConverter quotationConverter;

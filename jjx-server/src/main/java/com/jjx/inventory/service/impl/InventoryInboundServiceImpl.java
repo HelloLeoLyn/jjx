@@ -70,7 +70,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final EventPublisher eventPublisher;
     private final InventoryAlertService alertService;
-    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final ProductStockService productStockService;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
 

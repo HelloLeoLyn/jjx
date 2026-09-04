@@ -34,7 +34,6 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
 
     private final ProductionQualityInspectionMapper inspectionMapper;
     private final ProductionQualityInspectionItemMapper itemMapper;
-    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     /** P3-B：关联一致性校验用 */
     private final com.jjx.production.mapper.ProductionWorkReportMapper workReportMapper;

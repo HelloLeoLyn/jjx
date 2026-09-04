@@ -31,7 +31,6 @@ import com.jjx.sales.domain.vo.CustomerVO;
 import com.jjx.sales.domain.vo.OrderReferValidationVO;
 import com.jjx.sales.domain.vo.SalesOrderProductVO;
 import com.jjx.sales.domain.vo.SalesOrderVO;
-import com.jjx.common.utils.pdf.PdfDocBuilder;
 import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.service.ICustomerService;
@@ -75,7 +74,6 @@ public class OrderServiceImpl implements IOrderService {
     private final ProductionOrderService productionOrderService;
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
-    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final LogSaveService logSaveService;
     private final OperLogChangeRecorder changeRecorder;
 
@@ -806,60 +804,7 @@ public class OrderServiceImpl implements IOrderService {
         }
     }
 
-    /**
-     * 导出订单确认书PDF（DEV-343/314：确认声明 + 签字区）
-     */
-    @Override
-    public byte[] exportConfirmationPdf(Long orderId) {
-        SalesOrder order = orderMapper.selectById(orderId);
-        if (order == null) {
-            throw new BusinessException("订单不存在");
-        }
-        List<SalesOrderProductVO> items = orderProductService.getListByOrderId(orderId);
-        DecimalFormat df = new DecimalFormat("#,##0.00");
-        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
-
-        Map<String, String> info = new LinkedHashMap<>();
-        info.put("订单号", order.getOrderNo());
-        info.put("下单日期", order.getOrderDate() == null ? "" : new java.text.SimpleDateFormat("yyyy-MM-dd").format(order.getOrderDate()));
-        info.put("客户名称", order.getCustomerName());
-        info.put("币种", order.getCurrency() == null ? "CNY" : order.getCurrency());
-        info.put("确认人", order.getConfirmBy() == null ? "-" : order.getConfirmBy());
-        info.put("确认方式", order.getConfirmMethod() == null ? "-" : order.getConfirmMethod());
-        info.put("确认时间", order.getConfirmTime() == null ? "-" : sdf.format(java.sql.Timestamp.valueOf(order.getConfirmTime())));
-        info.put("销售负责人", order.getCreateBy() == null ? "-" : order.getCreateBy());
-
-        java.util.List<String[]> rows = new ArrayList<>();
-        for (SalesOrderProductVO item : items) {
-            String spec = item.getProductName() == null ? "" : item.getProductName();
-            if (item.getSpecification() != null && !item.getSpecification().isBlank()) {
-                spec = spec.isBlank() ? item.getSpecification() : spec + " / " + item.getSpecification();
-            }
-            rows.add(new String[]{
-                    String.valueOf(rows.size() + 1),
-                    item.getProductCode(),
-                    spec,
-                    item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
-                    item.getUnit(),
-                    item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
-                    item.getAmount() == null ? "" : df.format(item.getAmount()),
-            });
-        }
-
-        PdfDocBuilder builder = PdfDocBuilder.create()
-                .withConfig(pdfConfigLoader.load())
-                .title("订  单  确  认  书")
-                .info(info)
-                .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)
-                .amounts(new String[][]{
-                        {"小计(未税)", fmt(order.getTotalAmount(), df)},
-                        {"税额", fmt(order.getTaxAmount(), df)},
-                        {"合计(含税)", fmt(order.getFinalAmount(), df)},
-                })
-                .remark(order.getRemark())
-                .signatures("客户签字：", "确认日期：");
-        return builder.toBytes();
-    }
+    
 
     private String joinContact(String person, String phone) {
         if (person == null || person.isBlank()) {

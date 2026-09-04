@@ -62,7 +62,6 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
-    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
     @Override
     @Transactional(rollbackFor = Exception.class)

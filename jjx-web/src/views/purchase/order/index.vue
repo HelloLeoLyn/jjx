@@ -456,7 +456,6 @@ import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import {
   copyOrder,
   exportOrder as apiExportOrder,
-  exportOrderPdf,
   cancleOrder,
 } from '@/api/purchase/order'
 import { download } from '@/utils/format'
@@ -649,18 +648,6 @@ const handleExport = () => {
       console.error('导出失败:', error)
       ElMessage.error('导出失败')
     }
-  })
-}
-
-// 导出PDF（单张表单，需选中一行）
-const handleExportPdf = () => {
-  const row = selectedRows.value[0]
-  if (!row?.orderId) {
-    ElMessage.warning('请先选中一行采购订单')
-    return
-  }
-  exportOrderPdf(Number(row.orderId)).then((response: any) => {
-    download(response, `采购订单_${row.orderNo || row.orderId}.pdf`)
   })
 }
 

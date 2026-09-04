@@ -59,7 +59,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
     private final com.jjx.inventory.service.InventoryInboundService inboundService;
     private final com.jjx.inventory.service.InventoryAlertService alertService;
-    private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.system.service.LogSaveService logSaveService;
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     private final ReviewFlowService reviewFlowService;

@@ -149,23 +149,7 @@ public class OrderController extends BaseController {
         response.getOutputStream().write(bytes);
     }
 
-    /**
-     * 导出订单确认书PDF（DEV-343/314）
-     */
-    @Operation(summary = "导出订单确认书PDF")
-    @SaCheckPermission("sales:order:export")
-    @GetMapping("/{orderId}/confirmation/pdf")
-    public void exportConfirmationPdf(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
-        SalesOrderVO order = orderService.selectOrderById(orderId);
-        if (order == null) {
-            throw new BusinessException("订单不存在");
-        }
-        byte[] bytes = orderService.exportConfirmationPdf(orderId);
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode("确认书_" + order.getOrderNo() + ".pdf", StandardCharsets.UTF_8));
-        response.getOutputStream().write(bytes);
-    }
-
+    
     /**
      * 创建产品实例
      */
