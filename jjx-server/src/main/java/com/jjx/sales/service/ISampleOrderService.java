@@ -214,4 +214,12 @@ public interface ISampleOrderService {
      * 返回已录入的印刷名称/色号/油墨编号去重列表，供打样工作台 el-autocomplete 使用
      */
     java.util.Map<String, java.util.List<String>> processHistory();
+
+    /**
+     * 色号联想（2026-09-04 打样印刷搜索式下拉）：
+     * 空输入 → 返回常用 TOP N（历史印刷 colorNo 频次降序，不足用字典排序补足）；
+     * 有输入 → 字典模糊搜索（label/itemKey/itemValue/remark），返回最多 limit 条。
+     * 返回统一为 "PANTONE xxx" 展示文本。
+     */
+    java.util.List<String> suggestColors(String keyword, Integer limit);
 }

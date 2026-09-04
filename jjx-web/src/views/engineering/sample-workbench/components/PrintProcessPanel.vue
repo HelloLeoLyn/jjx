@@ -49,26 +49,16 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column label="色号" width="120">
+            <el-table-column label="色号" width="140">
               <template #default="{ row }">
-                <el-select
+                <el-autocomplete
                   v-model="row.colorNo"
                   size="small"
+                  :fetch-suggestions="suggestColors"
+                  :trigger-on-focus="true"
                   clearable
-                  filterable
-                  allow-create
-                  default-first-option
                   placeholder="选择或手输色号"
-                  style="width: 100%"
-                  @change="(value: string) => handleColorChange(row, value)"
-                >
-                  <el-option
-                    v-for="item in colorOptions"
-                    :key="item.itemKey"
-                    :label="item.label || item.itemValue"
-                    :value="item.itemKey"
-                  />
-                </el-select>
+                />
               </template>
             </el-table-column>
             <el-table-column label="油墨" min-width="210">
@@ -249,10 +239,8 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
-import { dictApi } from '@/api/system/dict'
-import type { SysDictItem } from '@/types/system/dict'
+import { getProcessHistory, suggestSampleColors } from '@/api/sales/sampleOrder'
 import { ProcessStatusEnum } from '@/enums/product/process'
-import { getProcessHistory } from '@/api/sales/sampleOrder'
 import { suggestScreen as suggestScreenApi } from '@/api/engineering/screen'
 
 /**
@@ -284,22 +272,19 @@ const activeTab = ref('PANEL')
 // 印刷历史联想缓存（印刷名称仍沿用历史联想）
 const historyCache = ref<Record<string, string[]>>({ printNames: [], colorNos: [], inkNos: [] })
 
-const colorOptions = ref<SysDictItem[]>([])
 const inkOptions = ref<any[]>([])
 const inkLoading = ref(false)
 
-async function loadColorOptions() {
+// 色号联想（2026-09-04 搜索式下拉）：空输入 → 后端返回常用 TOP10（历史频次）；
+// 有输入 → 后端按关键字搜 engineering_color 字典刷新提示。不再一次性拉全量。
+async function suggestColors(query: string, cb: (items: { value: string }[]) => void) {
   try {
-    const res = await dictApi.getItems('engineering_color')
-    colorOptions.value = (res.data || []).filter((item) => item.isActive !== 0)
+    const res: any = await suggestSampleColors(query || undefined, 10)
+    const list: string[] = res?.data || []
+    cb(list.map((value) => ({ value })))
   } catch {
-    colorOptions.value = []
+    cb([])
   }
-}
-
-function handleColorChange(row: any, value: string) {
-  const item = colorOptions.value.find((option) => option.itemKey === value)
-  row.colorNoLabel = item ? item.label || item.itemValue : ''
 }
 
 function materialOptionLabel(material: any) {
@@ -339,7 +324,6 @@ async function loadHistory() {
   } catch { /* 联想失败不影响录入 */ }
 }
 loadHistory()
-loadColorOptions()
 
 // 历史联想：从缓存按关键字过滤，返回 [{value}]
 function suggestFrom(query: string, cb: (items: { value: string }[]) => void, key: string) {

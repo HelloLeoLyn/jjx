@@ -18,12 +18,15 @@ import com.jjx.sales.mapper.SalesSampleBomMapper;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.SysDictItem;
 import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.mapper.SysDictItemMapper;
 import com.jjx.system.service.LogSaveService;
 import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
 
 import cn.hutool.db.sql.Order;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,7 +37,12 @@ import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 样品单服务实现类
@@ -58,6 +66,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final ISalesOrderProductService orderProductService;
     private final SalesSampleRoundMapper sampleRoundMapper;
     private final SalesSampleProcessMapper sampleProcessMapper;
+    private final SysDictItemMapper sysDictItemMapper;
     private final SalesSampleBomMapper sampleBomMapper;
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
     private final com.jjx.product.service.IEngineeringBomService bomService;
@@ -2981,6 +2990,116 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         result.put("colorNos", new java.util.ArrayList<>(colorNos));
         result.put("inkNos", new java.util.ArrayList<>(inkNos));
         return result;
+    }
+
+    /**
+     * 色号联想（2026-09-04 打样印刷搜索式下拉）：
+     * 空输入 → 常用 TOP（历史印刷 colorNo 频次降序，不足用字典排序补足）；
+     * 有输入 → 字典模糊搜索（label/itemKey/itemValue/remark）。
+     * 返回统一 "PANTONE xxx" 展示文本。
+     * 注：当前数据量小，历史频次全表扫描（同 processHistory 模式）；量大后应改 SQL/JSON 统计。
+     */
+    @Override
+    public java.util.List<String> suggestColors(String keyword, Integer limit) {
+        int max = (limit == null || limit < 1) ? 10 : Math.min(limit, 20);
+        // engineering_color 启用字典项（按 sort_order）
+        java.util.List<SysDictItem> dict = sysDictItemMapper.selectList(
+                new LambdaQueryWrapper<SysDictItem>()
+                        .eq(SysDictItem::getDictCode, "engineering_color")
+                        .eq(SysDictItem::getIsActive, 1)
+                        .eq(SysDictItem::getDeleted, 0)
+                        .orderByAsc(SysDictItem::getSortOrder));
+        String kw = keyword == null ? "" : keyword.trim();
+
+        if (!kw.isEmpty()) {
+            // 有输入：字典模糊搜（大小写不敏感）
+            String lower = kw.toLowerCase();
+            return dict.stream()
+                    .filter(i -> containsIgnoreCase(i.getLabel(), lower)
+                            || containsIgnoreCase(i.getItemKey(), lower)
+                            || containsIgnoreCase(i.getItemValue(), lower)
+                            || containsIgnoreCase(i.getRemark(), lower))
+                    .limit(max)
+                    .map(this::dictLabelText)
+                    .collect(Collectors.toList());
+        }
+
+        // 空输入：历史频次 TOP → 不足补字典序
+        Map<String, Integer> freq = new LinkedHashMap<>();
+        java.util.List<SalesSampleProcess> all = sampleProcessMapper.selectList(
+                new LambdaQueryWrapper<SalesSampleProcess>()
+                        .isNotNull(SalesSampleProcess::getProcessName));
+        for (SalesSampleProcess p : all) {
+            if (p.getCustomProcessParams() == null || p.getCustomProcessParams().isBlank()) {
+                continue;
+            }
+            String colorNo = extractJsonField(p.getCustomProcessParams(), "colorNo");
+            if (colorNo == null || colorNo.isBlank()) {
+                continue;
+            }
+            String norm = normalizeColorText(colorNo);
+            if (!norm.isEmpty()) {
+                freq.merge(norm, 1, Integer::sum);
+            }
+        }
+        java.util.List<String> hotCodes = freq.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+
+        java.util.List<String> result = new ArrayList<>();
+        Set<String> added = new LinkedHashSet<>();
+        for (String code : hotCodes) {
+            if (result.size() >= max) {
+                break;
+            }
+            String text = findDictLabelByCode(dict, code);
+            if (added.add(text)) {
+                result.add(text);
+            }
+        }
+        for (SysDictItem item : dict) {
+            if (result.size() >= max) {
+                break;
+            }
+            String text = dictLabelText(item);
+            if (text != null && !text.isEmpty() && added.add(text)) {
+                result.add(text);
+            }
+        }
+        return result;
+    }
+
+    /** 字典项展示文本：label 优先，回退 itemValue */
+    private String dictLabelText(SysDictItem item) {
+        String label = item.getLabel();
+        if (label == null || label.isBlank()) {
+            label = item.getItemValue();
+        }
+        return label == null ? "" : label.trim();
+    }
+
+    /** 是否包含（大小写不敏感，s 可能为 null） */
+    private boolean containsIgnoreCase(String s, String lowerKeyword) {
+        return s != null && s.toLowerCase().contains(lowerKeyword);
+    }
+
+    /** 归一化：剥离 PANTONE 前缀/空格后的大写短号（185C） */
+    private String normalizeColorText(String raw) {
+        String s = raw == null ? "" : raw.trim().toUpperCase();
+        return s.replace("PANTONE", "").replaceAll("\\s+", "").trim();
+    }
+
+    /** 按归一化短号找字典展示文本；字典无此色号则补 "PANTONE " 前缀 */
+    private String findDictLabelByCode(java.util.List<SysDictItem> dict, String code) {
+        for (SysDictItem item : dict) {
+            String keyNorm = normalizeColorText(item.getItemKey());
+            String valNorm = normalizeColorText(item.getItemValue());
+            if (code.equals(keyNorm) || code.equals(valNorm)) {
+                return dictLabelText(item);
+            }
+        }
+        return "PANTONE " + code;
     }
 
     /** 从 JSON 字符串提取字段值（custom_process_params 为 {printName,colorNo,inkNo,screenNo}） */

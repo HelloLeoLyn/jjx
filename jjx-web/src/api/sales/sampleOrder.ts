@@ -8,6 +8,15 @@ export function getProcessHistory() {
   })
 }
 
+/** 色号联想（2026-09-04：空=常用TOP10，有输入=字典模糊搜） */
+export function suggestSampleColors(keyword?: string, limit?: number) {
+  return request({
+    url: '/sales/sample-order/process/color-suggest',
+    method: 'get',
+    params: { keyword, limit },
+  })
+}
+
 import type { AxiosPromise } from 'axios'
 
 // 样品单接口
