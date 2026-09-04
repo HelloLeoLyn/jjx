@@ -9,6 +9,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.Expression;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
@@ -67,6 +68,9 @@ public class EventAspect {
 
         // SpEL 上下文（供 bizId / params 共用）
         StandardEvaluationContext spelCtx = new StandardEvaluationContext();
+        // 2026-09-04 修复：方法返回 Map（如 remindTransfer 的 duplicated/orderNo）时，
+        // 默认 ReflectivePropertyAccessor 不支持 Map 属性访问（EL1008E），注册 MapAccessor 支持 #result.key
+        spelCtx.addPropertyAccessor(new MapAccessor());
         if (paramNames != null) {
             for (int i = 0; i < paramNames.length && i < paramValues.length; i++) {
                 spelCtx.setVariable(paramNames[i], paramValues[i]);
@@ -75,10 +79,17 @@ public class EventAspect {
         spelCtx.setVariable("result", result);
 
         // 可选发布条件，用于成功但无需重复发布的幂等返回。
+        // 2026-09-04：条件表达式出错不应让业务接口 500——记录日志并按不满足处理（跳过发布）
         if (!eventAnnotation.condition().isEmpty()) {
-            Boolean shouldPublish = spelParser.parseExpression(eventAnnotation.condition())
-                    .getValue(spelCtx, Boolean.class);
-            if (!Boolean.TRUE.equals(shouldPublish)) {
+            try {
+                Boolean shouldPublish = spelParser.parseExpression(eventAnnotation.condition())
+                        .getValue(spelCtx, Boolean.class);
+                if (!Boolean.TRUE.equals(shouldPublish)) {
+                    return result;
+                }
+            } catch (Exception e) {
+                log.error("事件发布条件求值失败，跳过发布: event={}, condition={}, err={}",
+                        eventCode, eventAnnotation.condition(), e.getMessage());
                 return result;
             }
         }
