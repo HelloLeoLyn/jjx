@@ -144,6 +144,14 @@
       </template>
 
       <section v-else class="qr024-layout">
+        <img
+          v-if="qrDataUrl"
+          :src="qrDataUrl"
+          class="qr024-order-qrcode"
+          alt="采购订单二维码"
+          title="扫码识别订单号"
+        />
+
         <header class="qr024-company-header">
           <div class="qr024-company-name">{{ company.name || '深圳市精捷信科技有限公司' }}</div>
           <div v-if="company.address">地址：{{ company.address }}</div>
@@ -534,9 +542,22 @@ onMounted(async () => {
 }
 
 .qr024-layout {
+  position: relative;
   color: #000;
   font-family: SimSun, '宋体', serif;
   font-size: 11px;
+}
+
+.qr024-order-qrcode {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 64px;
+  height: 64px;
+  padding: 2px;
+  border: 1px solid #000;
+  background: #fff;
+  box-sizing: border-box;
 }
 
 .qr024-company-header {
