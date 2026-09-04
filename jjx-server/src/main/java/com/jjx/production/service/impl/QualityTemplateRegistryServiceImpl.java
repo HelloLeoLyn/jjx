@@ -112,6 +112,9 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
         update.setBizType(input.getBizType());
         update.setFileId(input.getFileId());
         update.setRemark(input.getRemark());
+        update.setPrintComponent(input.getPrintComponent());
+        update.setBizModule(input.getBizModule());
+        update.setPrintMode(input.getPrintMode());
         validate(update, false);
         update.setUpdateBy(SecurityUtils.getUsername());
         mapper.updateById(update);

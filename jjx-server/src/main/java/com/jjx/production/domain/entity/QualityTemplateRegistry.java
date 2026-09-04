@@ -25,6 +25,9 @@ public class QualityTemplateRegistry {
     private Boolean hasFile;
     private Integer status;
     private String remark;
+    private String printComponent;
+    private String bizModule;
+    private String printMode;
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;
