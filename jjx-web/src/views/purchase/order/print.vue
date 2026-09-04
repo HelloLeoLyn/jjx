@@ -418,7 +418,7 @@ onMounted(async () => {
 
 .qr024-company-header {
   line-height: 1.55;
-  text-align: left;
+  text-align: center;
 }
 
 .qr024-company-name {
