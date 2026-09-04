@@ -210,9 +210,16 @@ function canTransfer(row: any): boolean {
 function isTransferred(row: any): boolean {
   return row?.sampleStatus === SampleOrderStatus.TRANSFERRED.value
 }
-// 已接单：进入打样平台
+// 已接单：进入打样平台（终态不可进——已取消/已关闭/已转量产，2026-09-04 Leo 提出）
 function canEnterWorkbench(row: any): boolean {
-  return !!row?.engineeringAcceptor
+  return (
+    !!row?.engineeringAcceptor &&
+    ![
+      SampleOrderStatus.CANCELLED.value,
+      SampleOrderStatus.CLOSED.value,
+      SampleOrderStatus.TRANSFERRED.value,
+    ].includes(row?.sampleStatus)
+  )
 }
 // 接单打样：待打样(2)或打样中(3)且未接单可接单（新模型：无审核环节，工程直接接单）
 function canAccept(row: any): boolean {
