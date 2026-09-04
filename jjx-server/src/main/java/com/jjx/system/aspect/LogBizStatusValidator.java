@@ -2,11 +2,11 @@ package com.jjx.system.aspect;
 
 import com.jjx.system.annotation.Log;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.stereotype.Component;
+import org.springframework.util.ClassUtils;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -16,8 +16,14 @@ import java.util.regex.Pattern;
 /**
  * 启动期校验所有 @Log 的 bizStatus：注解本身没有必填语法，只能靠启动扫描做 fail-fast。
  *
- * <p>不合规就直接让应用起不来，避免"必填"变成一句空话（历史上解析失败只 warn 一句、
- * bizStatus 落 0，错了照样静默写库）。三条规则：
+ * <p>2026-09-04 修复：原实现 AopUtils.getTargetClass(type) 传入的是 Class 对象而非 bean 实例，
+ * 永远返回 Class.class 自身，getDeclaredMethods 扫不到任何 @Log（checked 恒为 0），校验器从未生效。
+ * 改为 ClassUtils.getUserClass(type) 剥掉 CGLIB 代理后缀后扫描真实类。
+ *
+ * <p>2026-09-04 止血：存量 174 处 @Log 缺 bizStatus 尚未治理，此处暂以 log.error 告警而非抛异常
+ * （否则存量未清前应用无法启动）。存量清零后恢复 fail-fast（throw IllegalStateException）。
+ *
+ * <p>三条规则（存量治理后生效）：
  * <ol>
  *   <li>写了 bizType 就必须写 bizStatus —— 有业务对象却不记状态没有意义；</li>
  *   <li>bizStatus 不能是裸数字（"3"）—— 各模块同一个数字含义不同，必须走枚举；</li>
@@ -51,7 +57,9 @@ public class LogBizStatusValidator implements SmartInitializingSingleton {
             if (type == null || !type.getName().startsWith("com.jjx")) {
                 continue;
             }
-            Class<?> target = AopUtils.getTargetClass(type);
+            Class<?> target = ClassUtils.getUserClass(type);
+            // getUserClass 剥 CGLIB 代理后缀（$$EnhancerBySpringCGLIB$$...）后拿到真实类，
+            // 才能扫到方法上的 @Log（原 AopUtils.getTargetClass(Class) 用法有误，恒扫不到）。
             for (Method method : target.getDeclaredMethods()) {
                 Log logAnnotation = AnnotationUtils.findAnnotation(method, Log.class);
                 if (logAnnotation == null) {
@@ -81,12 +89,14 @@ public class LogBizStatusValidator implements SmartInitializingSingleton {
         }
 
         if (!violations.isEmpty()) {
+            // 2026-09-04 止血：存量违规未清零前不阻断启动，改 error 告警；治理完成后恢复 throw。
             StringBuilder sb = new StringBuilder("@Log bizStatus 校验未通过（共 ")
-                    .append(violations.size()).append(" 处）：");
+                    .append(violations.size()).append(" 处，存量治理完成前仅告警不阻断）：");
             for (String v : violations) {
                 sb.append("\n  - ").append(v);
             }
-            throw new IllegalStateException(sb.toString());
+            log.error(sb.toString());
+            return;
         }
         log.info("@Log bizStatus 校验通过，共检查 {} 个方法", checked);
     }

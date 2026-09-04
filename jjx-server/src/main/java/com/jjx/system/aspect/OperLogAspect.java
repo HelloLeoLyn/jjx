@@ -196,30 +196,20 @@ public class OperLogAspect {
                 operLog.setStatus(3);
             }
 
-            // bizStatus 必须落真实状态，放在成功/失败判定之后处理：
-            // 操作成功却取不到状态 = 注解写错或方法没把状态带出来，直接抛错，不允许静默落空；
-            // 操作本身失败时状态没变，取不到属正常，留空即可。
-            // 强制范围对齐启动校验器 LogBizStatusValidator：只有写了 bizType 的 @Log 才要求
-            // bizStatus（系统管理类无状态机接口如用户/角色/菜单不强制）。
-            boolean succeeded = YesNoEnum.YES.getCode().equals(operLog.getStatus());
-            boolean requiresBizStatus = !logAnnotation.bizType().trim().isEmpty();
+            // bizStatus 记录真实状态；表达式取不到/为空时只告警留空，不阻断接口。
+            // 背景（2026-09-04 止血）：存量大量 @Log 只写了 bizType 未写 bizStatus（全量扫描 174 处），
+            // 且启动校验器 LogBizStatusValidator 长期失效未拦截，强制抛错会让这些接口
+            // "业务成功但返回 500"（前端误判失败+可能重复提交）。存量治理完成后可再收紧。
             try {
                 operLog.setBizStatus(resolveBizStatus(spelCtx, logAnnotation.bizStatus()));
             } catch (Exception e) {
-                if (succeeded && requiresBizStatus) {
-                    throw new IllegalStateException(String.format(
-                            "@Log bizStatus 解析失败: method=%s, expression=%s",
-                            point.getSignature().toShortString(), logAnnotation.bizStatus()), e);
-                }
-                log.warn("操作失败且 bizStatus 取不到，留空: method={}, expression={}",
+                log.warn("@Log bizStatus 解析失败，留空记录: method={}, expression={}",
                         point.getSignature().toShortString(), logAnnotation.bizStatus());
                 operLog.setBizStatus("");
             }
-            if (succeeded && requiresBizStatus
-                    && (operLog.getBizStatus() == null || operLog.getBizStatus().isEmpty())) {
-                throw new IllegalStateException(String.format(
-                        "@Log bizStatus 求值为空: method=%s, expression=%s",
-                        point.getSignature().toShortString(), logAnnotation.bizStatus()));
+            if (operLog.getBizStatus() == null || operLog.getBizStatus().isEmpty()) {
+                log.debug("@Log bizStatus 为空，留空记录: method={}, expression={}",
+                        point.getSignature().toShortString(), logAnnotation.bizStatus());
             }
             return result;
 
