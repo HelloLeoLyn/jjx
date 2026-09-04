@@ -17,6 +17,15 @@ export function suggestSampleColors(keyword?: string, limit?: number) {
   })
 }
 
+/** 油墨联想（2026-09-04：空=常用TOP10，有输入=INK物料+历史模糊搜；返回 [{text, materialId}]） */
+export function suggestSampleInks(keyword?: string, limit?: number) {
+  return request({
+    url: '/sales/sample-order/process/ink-suggest',
+    method: 'get',
+    params: { keyword, limit },
+  })
+}
+
 import type { AxiosPromise } from 'axios'
 
 // 样品单接口

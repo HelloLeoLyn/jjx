@@ -55,7 +55,6 @@
               :parse-materials="parseMaterials"
               :readonly="readonly"
               @toggle-select="(v: boolean) => toggleBatchSelect(pc, v)"
-              @advance="advancePlan(pc)"
               @remove-item="(i: number) => removeCardItem(pc, i)"
               @update-index="(it: any, n: number) => onUpdateIndex(pc, it, n)"
               @open-picker="openCardPicker(pc)"
@@ -130,7 +129,6 @@ const props = defineProps<{
   onCardDragLeave: (pc: any) => void
   removeCardItem: (pc: any, idx: number) => void
   removePlanCard: (pc: any) => void
-  advancePlan: (pc: any) => void
   saveCard: (pc: any) => void
   addMaterialRow: (pc: any) => void
   startEdit: (pc: any) => void

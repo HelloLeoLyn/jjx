@@ -22,14 +22,6 @@
         <el-tag v-if="pc.status === 2" size="small" type="success">✓ 已完成</el-tag>
         <el-tag v-else-if="pc.status === 1" size="small" type="warning">⏳ 进行中</el-tag>
         <el-tag v-else size="small" type="info">待做</el-tag>
-        <el-button
-          v-if="!readonly && pc.status !== 2"
-          type="primary"
-          size="small"
-          @click="$emit('advance')"
-          :loading="pc.advancing"
-          >{{ pc.status === 1 ? '✓ 完成' : '▶ 开始' }}</el-button
-        >
         <span v-if="pc.status === 2 && pc.durationMinutes" style="color: #909399; font-size: 12px"
           >⏱ {{ pc.durationMinutes }}分钟</span
         >
@@ -245,7 +237,6 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'toggle-select', v: boolean): void
-  (e: 'advance'): void
   (e: 'remove-item', idx: number): void
   (e: 'update-index', item: any, n: number): void
   (e: 'open-picker'): void

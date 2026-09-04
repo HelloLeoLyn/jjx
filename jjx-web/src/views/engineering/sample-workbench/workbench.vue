@@ -57,7 +57,6 @@
             :on-card-drag-leave="onCardDragLeave"
             :remove-card-item="removeCardItem"
             :remove-plan-card="removePlanCard"
-            :advance-plan="advancePlan"
             :save-card="saveCard"
             :add-material-row="addMaterialRow"
             :start-edit="startEdit"
@@ -185,7 +184,6 @@
             :add-print-row="addPrintRow"
             :remove-print-row="removePrintRow"
             :move-print-row="movePrintRow"
-            :advance-print="advancePrint"
             :save-plan="savePlan"
           />
         </template>
@@ -260,6 +258,9 @@
           :round="card.sampleRound || 1"
           :format-time="formatTime"
           :parse-materials="parseMaterials"
+          :advance-print="advancePrint"
+          :advance-plan="advancePlan"
+          :readonly="readonlyMode"
         />
         <BomPanel :readonly="readonlyMode" :bom-list="bomList" @transfer="handleTransfer" />
       </div>

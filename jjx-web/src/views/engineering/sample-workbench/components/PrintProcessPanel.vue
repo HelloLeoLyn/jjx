@@ -61,30 +61,19 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column label="油墨" min-width="210">
+            <el-table-column label="油墨" min-width="230">
               <template #default="{ row }">
-                <el-select
+                <el-autocomplete
                   v-model="row.inkNo"
                   size="small"
+                  :fetch-suggestions="suggestInks"
+                  :trigger-on-focus="true"
                   clearable
-                  filterable
-                  remote
-                  allow-create
-                  default-first-option
-                  :remote-method="searchInkMaterials"
-                  :loading="inkLoading"
                   placeholder="选择 INK 物料，或直接手输"
-                  style="width: 100%"
-                  @change="(value: string) => handleInkChange(row, value)"
-                  @visible-change="(visible: boolean) => visible && searchInkMaterials('')"
-                >
-                  <el-option
-                    v-for="opt in inkOptions"
-                    :key="opt.materialId"
-                    :label="materialOptionLabel(opt)"
-                    :value="inkStoredText(opt)"
-                  />
-                </el-select>
+                  @select="(item: any) => onInkSelect(row, item)"
+                  @input="(val: string | number) => onInkInput(row, String(val ?? ''))"
+                  @clear="() => onInkClear(row)"
+                />
               </template>
             </el-table-column>
             <el-table-column label="网框编号" width="160">
@@ -144,19 +133,10 @@
                         : '待做'
                   }}
                 </el-tag>
-                <el-button
-                  v-if="row.status !== ProcessStatusEnum.DONE.value && !isEmptyRow(row)"
-                  size="small"
-                  link
-                  type="primary"
-                  :loading="row.advancing"
-                  @click="advancePrint(row)"
-                  >{{ row.status === ProcessStatusEnum.DOING.value ? '完成' : '开始' }}</el-button
-                >
               </template>
             </el-table-column>
             <el-table-column label="操作" min-width="200" align="center">
-              <template #default="{ row }">
+              <template #default="{ row, $index }">
                 <template v-if="!isEmptyRow(row)">
                   <el-button
                     v-if="row.saveState === 'dirty'"
@@ -165,35 +145,41 @@
                     type="primary"
                     :loading="savingPlan"
                     @click="handleRowSave(row)"
-                    >保存</el-button
-                  >
-                  <el-button v-else size="small" link disabled>✓ 已存</el-button>
+                  ></el-button>
+                  <!-- <el-button v-else size="small" link disabled>✓ 已存</el-button> -->
                   <el-button
                     size="small"
                     link
                     icon="Top"
                     :disabled="readonly || isFirst(row)"
                     @click="movePrintRow(row, -1)"
-                    >上移</el-button
-                  >
+                  ></el-button>
                   <el-button
                     size="small"
                     link
                     icon="Bottom"
                     :disabled="readonly || isLast(row)"
                     @click="movePrintRow(row, 1)"
-                    >下移</el-button
-                  >
+                  ></el-button>
                   <el-button
                     size="small"
                     link
                     type="danger"
                     icon="Delete"
                     :disabled="readonly"
-                    @click="removePrintRow(row)"
-                    >删</el-button
-                  >
+                    @click="handleDeleteRow(row)"
+                  ></el-button>
                 </template>
+                <!-- 空行（待录入占位行）也提供删除：防止手动新增多行空行后无法清理（2026-09-04） -->
+                <el-button
+                  v-else
+                  size="small"
+                  link
+                  type="danger"
+                  icon="Delete"
+                  :disabled="readonly"
+                  @click="handleDeleteRow(row, $index)"
+                ></el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -239,7 +225,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
-import { getProcessHistory, suggestSampleColors } from '@/api/sales/sampleOrder'
+import { getProcessHistory, suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
 import { ProcessStatusEnum } from '@/enums/product/process'
 import { suggestScreen as suggestScreenApi } from '@/api/engineering/screen'
 
@@ -255,7 +241,6 @@ const props = defineProps<{
   addPrintRow: (category?: string) => void
   removePrintRow: (row: any) => void
   movePrintRow: (row: any, dir: number) => void
-  advancePrint: (row: any) => void
   savePlan: () => void
   readonly?: boolean
 }>()
@@ -272,11 +257,7 @@ const activeTab = ref('PANEL')
 // 印刷历史联想缓存（印刷名称仍沿用历史联想）
 const historyCache = ref<Record<string, string[]>>({ printNames: [], colorNos: [], inkNos: [] })
 
-const inkOptions = ref<any[]>([])
-const inkLoading = ref(false)
-
-// 色号联想（2026-09-04 搜索式下拉）：空输入 → 后端返回常用 TOP10（历史频次）；
-// 有输入 → 后端按关键字搜 engineering_color 字典刷新提示。不再一次性拉全量。
+// 色号联想（2026-09-04 搜索式下拉）：空输入 → 后端常用 TOP10；有输入 → 字典模糊搜
 async function suggestColors(query: string, cb: (items: { value: string }[]) => void) {
   try {
     const res: any = await suggestSampleColors(query || undefined, 10)
@@ -287,41 +268,44 @@ async function suggestColors(query: string, cb: (items: { value: string }[]) => 
   }
 }
 
-function materialOptionLabel(material: any) {
-  const spec = material.specification ? ` ${material.specification}` : ''
-  const code = material.materialCode ? ` (${material.materialCode})` : ''
-  return `${material.materialName || ''}${spec}${code}`
-}
-
-function inkStoredText(material: any) {
-  const code = material.materialCode ? ` (${material.materialCode})` : ''
-  return `${material.materialName || ''}${code}`
-}
-
-async function searchInkMaterials(query: string) {
-  inkLoading.value = true
+// 油墨联想（2026-09-04 搜索式下拉，参考色号方案）：
+// 空输入 → 后端常用 TOP10（历史 inkNo 频次 + INK 物料补足）；有输入 → INK 物料+历史模糊搜。
+// 返回项带 materialId：点选物料自动关联；手输文本自动解除关联防错位。
+async function suggestInks(query: string, cb: (items: any[]) => void) {
   try {
-    const params: any = { pageNum: 1, pageSize: 20, categoryId: 1 }
-    if ((query || '').trim()) params.materialName = query.trim()
-    const res: any = await materialApi.search(params)
-    inkOptions.value = res?.data?.records || res?.data || []
+    const res: any = await suggestSampleInks(query || undefined, 10)
+    const list: any[] = res?.data || []
+    cb(list.map((x) => ({ value: x.text, materialId: x.materialId ?? null })))
   } catch {
-    inkOptions.value = []
-  } finally {
-    inkLoading.value = false
+    cb([])
   }
 }
 
-function handleInkChange(row: any, value: string) {
-  const material = inkOptions.value.find((option) => inkStoredText(option) === value)
-  row.inkMaterialId = material?.materialId ?? null
+function onInkSelect(row: any, item: any) {
+  // 点选联想项：文本 + 物料关联（若该文本命中 INK 物料）
+  row._inkPickedText = item.value
+  row.inkMaterialId = item.materialId ?? null
+}
+
+function onInkInput(row: any, val: string) {
+  // 手输修改（不是刚点选的文本）→ 解除物料关联，防止“文本改了物料 id 还是旧的”错位
+  if (row._inkPickedText !== val) {
+    row.inkMaterialId = null
+  }
+}
+
+function onInkClear(row: any) {
+  row._inkPickedText = ''
+  row.inkMaterialId = null
 }
 
 async function loadHistory() {
   try {
     const res: any = await getProcessHistory()
     if (res?.data) historyCache.value = res.data
-  } catch { /* 联想失败不影响录入 */ }
+  } catch {
+    /* 联想失败不影响录入 */
+  }
 }
 loadHistory()
 
@@ -362,15 +346,45 @@ function isEmptyRow(r: any) {
   )
 }
 
+/** 行内容串（dirty 比对用，不含 uid） */
+function rowContent(r: any) {
+  return `${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.colorNoLabel || '').trim()}|${r.inkMaterialId ?? ''}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
+}
+
+// 删除行（2026-09-04）：空行直接删除——若删后该分类无行则抑制一次自动补行（显示空态）；
+// 内容行删除同父级语义（本地移除，保存后后端生效）
+function handleDeleteRow(row: any, $index?: number) {
+  console.log('handleDeleteRow', row, $index)
+  if (props.readonly) return
+  const isEmpty = isEmptyRow(row)
+  const rows = filtered(activeTab.value)
+  const willEmpty = isEmpty && rows.length === 1
+  const i = props.printList.indexOf(row)
+  if (i < 0) return
+  props.printList.splice(i, 1)
+  if (isEmpty) {
+    if (willEmpty) suppressEnsureOnce = true
+    ElMessage.success('已删除空行')
+  } else {
+    ElMessage.success('已删除该印刷工序（保存后生效）')
+  }
+}
+
 // 行级保存（2026-08-12）：编辑不再自动补行，点“保存”才提交并触发新行/材料/执行时间线
 
 // 结构变化（加载/删除/保存重建）→ 确保当前 tab 末尾有一行空行；输入内容变化不触发
+// 2026-09-04：手动删除最后一个空行后抑制一次自动补行，允许分类显示空态（空态有“添加印刷工序”入口）
+let suppressEnsureOnce = false
 const uidSnapshot = ref('')
 watch(
   () => props.printList.map((r) => String(r.uid)).join('|'),
   (uids) => {
     if (uids === uidSnapshot.value) return
     uidSnapshot.value = uids
+    if (suppressEnsureOnce) {
+      suppressEnsureOnce = false
+      return
+    }
     ensureEmptyRow()
   },
   { immediate: true }
@@ -387,22 +401,29 @@ function ensureEmptyRow() {
   }
 }
 
-// 行内容变化 → 标记 dirty（非空行，编辑后显示“保存”按钮）
+// 行内容变化 → 标记 dirty：逐行比对 uid→内容快照，仅真正编辑过的行标 dirty
+// （2026-09-04 修复：删除/自动补行属于结构变化，不应把其它行误标 dirty 而弹出“保存”按钮）
+const rowContentSnapshot = ref<Record<string, string>>({})
 watch(
-  () =>
-    props.printList
-      .map(
-        (r) =>
-          `${r.uid}:${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.colorNoLabel || '').trim()}|${r.inkMaterialId ?? ''}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
-      )
-      .join('|'),
+  () => props.printList.map((r) => `${r.uid}::${rowContent(r)}`).join('|'),
   () => {
+    const snap = rowContentSnapshot.value
     props.printList.forEach((r) => {
       if (isEmptyRow(r)) return
       if (r.saveState === 'saving') return
-      r.saveState = 'dirty'
+      const uid = String(r.uid)
+      const content = rowContent(r)
+      if (snap[uid] !== undefined && snap[uid] !== content) {
+        r.saveState = 'dirty'
+      }
     })
-  }
+    const next: Record<string, string> = {}
+    props.printList.forEach((r) => {
+      next[String(r.uid)] = rowContent(r)
+    })
+    rowContentSnapshot.value = next
+  },
+  { immediate: true }
 )
 
 // 行保存：提交整单（父组件 savePlan 内含 loadPlan+loadBom），成功后自动补空行/刷新时间线
