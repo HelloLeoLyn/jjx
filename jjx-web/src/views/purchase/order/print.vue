@@ -19,81 +19,100 @@
     <!-- A4 画布（干净页面） -->
     <A4Canvas :padding-mm="15" v-if="info">
       <template v-if="printLayout === 'a4'">
-      <!-- 公司抬头 -->
-      <PrintCompanyHeader variant="center" />
+        <!-- 公司抬头 -->
+        <PrintCompanyHeader variant="center" />
 
-      <!-- 单据标题 -->
-      <div class="doc-title">采 购 订 单</div>
+        <!-- 单据标题 -->
+        <div class="doc-title">采 购 订 单</div>
 
-      <!-- 信息区 -->
-      <div class="doc-info">
-        <div class="info-item"><span class="info-label">订单号</span>{{ info.orderNo }}</div>
-        <div class="info-item"><span class="info-label">订单日期</span>{{ info.orderDate || '-' }}</div>
-        <div class="info-item"><span class="info-label">供应商</span>{{ info.supplierName || '-' }}</div>
-        <div class="info-item"><span class="info-label">交货日期</span>{{ info.expectedDeliveryDate || '-' }}</div>
-        <div class="info-item"><span class="info-label">币种</span>{{ info.currency || '-' }}</div>
-        <div class="info-item"><span class="info-label">合同号</span>{{ info.contractNo || '-' }}</div>
-        <div class="info-item"><span class="info-label">交货方式</span>{{ info.deliveryMethod || '-' }}</div>
-        <div class="info-item"><span class="info-label">交货地址</span>{{ info.deliveryAddress || '-' }}</div>
-        <div class="info-item"><span class="info-label">审批状态</span>{{ info.approvalStatusName || info.approvalStatus || '-' }}</div>
-        <div class="info-item"><span class="info-label">创建时间</span>{{ info.createTime || '-' }}</div>
-      </div>
-
-      <!-- 明细表格 -->
-      <table class="doc-items">
-        <thead>
-          <tr>
-            <th style="width: 5%">序号</th>
-            <th style="width: 12%">物料编码</th>
-            <th>物料名称</th>
-            <th style="width: 10%">规格</th>
-            <th style="width: 6%">单位</th>
-            <th style="width: 10%">数量</th>
-            <th style="width: 12%">单价</th>
-            <th style="width: 13%">金额</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(item, idx) in itemsList" :key="idx">
-            <td class="col-center">{{ idx + 1 }}</td>
-            <td>{{ item.materialCode }}</td>
-            <td>{{ item.materialName }}</td>
-            <td>{{ item.materialSpec || '-' }}</td>
-            <td class="col-center">{{ item.unit || '-' }}</td>
-            <td class="col-right">{{ fmtNum(item.quantity) }}</td>
-            <td class="col-right">{{ fmtMoney(item.unitPrice) }}</td>
-            <td class="col-right">{{ fmtMoney(item.amount) }}</td>
-          </tr>
-          <tr v-if="!itemsList.length">
-            <td colspan="8" class="col-center">无明细</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- 合计 -->
-      <div class="doc-total-row">
-        <span>物料种类：{{ itemsList.length }} 项</span>
-        <span>订单总金额：{{ fmtMoney(info.orderTotalAmount) }}</span>
-      </div>
-
-      <!-- 备注 -->
-      <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
-
-      <!-- 签名区 -->
-      <div class="doc-signs">
-        <div class="sign-item">
-          <div class="sign-line">供应商确认：</div>
-          <div class="sign-underline"></div>
+        <!-- 信息区 -->
+        <div class="doc-info">
+          <div class="info-item"><span class="info-label">订单号</span>{{ info.orderNo }}</div>
+          <div class="info-item">
+            <span class="info-label">订单日期</span>{{ info.orderDate || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">供应商</span>{{ info.supplierName || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">交货日期</span>{{ info.expectedDeliveryDate || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">币种</span>{{ info.currency || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">合同号</span>{{ info.contractNo || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">交货方式</span>{{ info.deliveryMethod || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">交货地址</span>{{ info.deliveryAddress || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">审批状态</span
+            >{{ info.approvalStatusName || info.approvalStatus || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">创建时间</span>{{ info.createTime || '-' }}
+          </div>
         </div>
-        <div class="sign-item">
-          <div class="sign-line">采购员：</div>
-          <div class="sign-underline"></div>
+
+        <!-- 明细表格 -->
+        <table class="doc-items">
+          <thead>
+            <tr>
+              <th style="width: 5%">序号</th>
+              <th style="width: 12%">物料编码</th>
+              <th>物料名称</th>
+              <th style="width: 10%">规格</th>
+              <th style="width: 6%">单位</th>
+              <th style="width: 10%">数量</th>
+              <th style="width: 12%">单价</th>
+              <th style="width: 13%">金额</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(item, idx) in itemsList" :key="idx">
+              <td class="col-center">{{ idx + 1 }}</td>
+              <td>{{ item.materialCode }}</td>
+              <td>{{ item.materialName }}</td>
+              <td>{{ item.materialSpec || '-' }}</td>
+              <td class="col-center">{{ item.unit || '-' }}</td>
+              <td class="col-right">{{ fmtNum(item.quantity) }}</td>
+              <td class="col-right">{{ fmtMoney(item.unitPrice) }}</td>
+              <td class="col-right">{{ fmtMoney(item.amount) }}</td>
+            </tr>
+            <tr v-if="!itemsList.length">
+              <td colspan="8" class="col-center">无明细</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 合计 -->
+        <div class="doc-total-row">
+          <span>物料种类：{{ itemsList.length }} 项</span>
+          <span>订单总金额：{{ fmtMoney(info.orderTotalAmount) }}</span>
         </div>
-        <div class="sign-item">
-          <div class="sign-line">日期：</div>
-          <div class="sign-underline"></div>
+
+        <!-- 备注 -->
+        <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
+
+        <!-- 签名区 -->
+        <div class="doc-signs">
+          <div class="sign-item">
+            <div class="sign-line">供应商确认：</div>
+            <div class="sign-underline"></div>
+          </div>
+          <div class="sign-item">
+            <div class="sign-line">采购员：</div>
+            <div class="sign-underline"></div>
+          </div>
+          <div class="sign-item">
+            <div class="sign-line">日期：</div>
+            <div class="sign-underline"></div>
+          </div>
         </div>
-      </div>
       </template>
 
       <section v-else class="qr024-layout">
@@ -108,17 +127,21 @@
 
         <div class="qr024-title">订&nbsp;&nbsp;购&nbsp;&nbsp;单</div>
 
-        <div class="qr024-order-no">订单号码：{{ info.orderNo }}</div>
+        <!-- <div class="qr024-order-no">订单号码：{{ info.orderNo }}</div> -->
         <div class="qr024-info-grid">
+          <div><span class="qr024-label"></span></div>
+          <div><span class="qr024-label">订单号码：</span>{{ info.orderNo || '-' }}</div>
           <div><span class="qr024-label">厂商：</span>{{ info.supplierName || '-' }}</div>
           <div><span class="qr024-label">订货时间：</span>{{ info.orderDate || '-' }}</div>
           <div><span class="qr024-label">联系人：</span>{{ supplier?.contactPerson || '-' }}</div>
-          <div><span class="qr024-label">交货时间：</span>{{ info.expectedDeliveryDate || '-' }}</div>
+          <div>
+            <span class="qr024-label">交货时间：</span>{{ info.expectedDeliveryDate || '-' }}
+          </div>
           <div>
             <span class="qr024-label">TEL：</span>{{ supplier?.phone || '-' }}
             <span class="qr024-fax">FAX：</span>
           </div>
-          <div><span class="qr024-label">交易方式：</span>{{ supplier?.paymentTerms || '-' }}</div>
+          <div><span class="qr024-label">交易方式：</span>{{ paymentTermsLabel }}</div>
         </div>
 
         <table class="qr024-items">
@@ -159,15 +182,17 @@
         </table>
 
         <div class="qr024-terms">
-          <div>交易条款：</div>
+          <div><span style="font: 16px sans-serif">交易条款：</span></div>
           <div v-for="term in tradeTerms" :key="term">{{ term }}</div>
         </div>
 
         <div class="qr024-code">JJX-QR-024</div>
         <div class="qr024-signatures">
-          <div>供应商回签：<span class="qr024-sign-line"></span></div>
-          <div>经理审核：<span class="qr024-sign-line"></span></div>
-          <div>制表人：<span class="qr024-maker">{{ makerName }}</span></div>
+          <div>供应商回签：<span class="qr024-sign-line2"></span></div>
+          <div>经理审核：<span class="qr024-sign-line2"></span></div>
+          <div>
+            制表人：<span class="qr024-maker2">{{ makerName }}</span>
+          </div>
         </div>
       </section>
     </A4Canvas>
@@ -187,7 +212,9 @@ import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import { useCompanyConfig } from '@/composables/useCompanyConfig'
 import { useUserStore } from '@/store/modules/user'
+import { dictApi } from '@/api/system/dict'
 import type { PurchaseSupplier } from '@/types/purchase'
+import type { SysDictItem } from '@/types/system/dict'
 
 const route = useRoute()
 const router = useRouter()
@@ -202,10 +229,19 @@ const printLayout = ref<PrintLayout>(storedLayout === 'qr024' ? 'qr024' : 'a4')
 
 const info = ref<any>(null)
 const supplier = ref<PurchaseSupplier | null>(null)
+const paymentTermsOptions = ref<SysDictItem[]>([])
 const loading = ref(false)
 
 const itemsList = computed<any[]>(() => info.value?.items || [])
-const makerName = computed(() => info.value?.createBy || userStore.nickName || userStore.userName || '-')
+const makerName = computed(
+  () => info.value?.createBy || userStore.nickName || userStore.userName || '-'
+)
+const paymentTermsLabel = computed(() => {
+  const paymentTerms = supplier.value?.paymentTerms
+  if (!paymentTerms) return '-'
+  const option = paymentTermsOptions.value.find((item) => item.itemKey === paymentTerms)
+  return option?.label || option?.itemValue || paymentTerms
+})
 
 const tradeTerms = [
   '1. 供方如无法遵守本订单交期，需及时通知需方调整；若延误交期给需方造成的直接经济损失将由供方负责，若因供方交货延时而导致需方客户退货，需方将无条件退回供方。',
@@ -231,7 +267,9 @@ const fmtNum = (v?: number | string | null): string => {
 const fmtMoney = (v?: number | string | null): string => {
   if (v === null || v === undefined || v === '') return '-'
   const n = Number(v)
-  return Number.isNaN(n) ? String(v) : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return Number.isNaN(n)
+    ? String(v)
+    : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 async function loadData() {
@@ -263,6 +301,15 @@ async function loadData() {
   }
 }
 
+async function loadPaymentTermsOptions() {
+  try {
+    const res = await dictApi.getItems('payment_terms')
+    paymentTermsOptions.value = res.data || []
+  } catch {
+    paymentTermsOptions.value = []
+  }
+}
+
 function handlePrint() {
   // 打印留痕（1318）：24 = JJX-QR-024 采购订单
   const orderId = route.params.id as string
@@ -274,7 +321,7 @@ function handlePrint() {
 }
 
 onMounted(async () => {
-  await loadData()
+  await Promise.all([loadData(), loadPaymentTermsOptions()])
 })
 </script>
 

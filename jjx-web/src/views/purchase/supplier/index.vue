@@ -260,7 +260,19 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="付款条件" prop="paymentTerms">
-              <el-input v-model="form.paymentTerms" placeholder="请输入付款条件" maxlength="100" />
+              <el-select
+                v-model="form.paymentTerms"
+                placeholder="请选择付款条件"
+                filterable
+                clearable
+              >
+                <el-option
+                  v-for="item in paymentTermsOptions"
+                  :key="item.itemKey"
+                  :label="item.label || item.itemValue"
+                  :value="item.itemKey"
+                />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -324,7 +336,7 @@
         <el-descriptions-item label="邮箱">{{ detail.email || '-' }}</el-descriptions-item>
         <el-descriptions-item label="地址">{{ detail.address || '-' }}</el-descriptions-item>
         <el-descriptions-item label="付款条件">{{
-          detail.paymentTerms || '-'
+          getPaymentTermsLabel(detail.paymentTerms)
         }}</el-descriptions-item>
         <el-descriptions-item label="银行账户">{{
           detail.bankAccount || '-'
@@ -466,6 +478,8 @@ import {
 } from '@/api/purchase/supplier'
 import { parseTime, download } from '@/utils/format'
 import { SupplierTypeEnum, SupplierStatusEnum } from '@/enums/purchase'
+import { dictApi } from '@/api/system/dict'
+import type { SysDictItem } from '@/types/system/dict'
 
 // 查询参数
 const queryParams = reactive({
@@ -625,6 +639,16 @@ const supplierList = ref<any[]>([])
 // 字典选项
 const supplierTypeOptions = SupplierTypeEnum.items
 const statusOptions = SupplierStatusEnum.items
+const paymentTermsOptions = ref<SysDictItem[]>([])
+
+const loadPaymentTermsOptions = async () => {
+  try {
+    const response = await dictApi.getItems('payment_terms')
+    paymentTermsOptions.value = response.data || []
+  } catch (error) {
+    console.error('获取付款条件字典失败:', error)
+  }
+}
 
 // 获取供应商列表
 const getList = async () => {
@@ -648,6 +672,12 @@ const getSupplierTypeLabel = (type: string) => {
     (opt: { value: string; label: string }) => opt.value === type
   )
   return option ? option.label : '未知'
+}
+
+const getPaymentTermsLabel = (paymentTerms: string) => {
+  if (!paymentTerms) return '-'
+  const option = paymentTermsOptions.value.find((item) => item.itemKey === paymentTerms)
+  return option?.label || option?.itemValue || paymentTerms
 }
 
 // 搜索按钮操作
@@ -890,5 +920,6 @@ watch(
 // 组件挂载时获取数据
 onMounted(() => {
   getList()
+  loadPaymentTermsOptions()
 })
 </script>
