@@ -9,7 +9,13 @@
           </el-select>
         </el-form-item>
         <el-form-item label="版本" style="margin-bottom: 0">
-          <el-input v-model="version" placeholder="如 Rev003" style="width: 120px" size="small" clearable />
+          <el-input
+            v-model="version"
+            placeholder="如 Rev003"
+            style="width: 120px"
+            size="small"
+            clearable
+          />
         </el-form-item>
         <el-form-item style="margin-bottom: 0">
           <el-upload
@@ -45,13 +51,20 @@
                 <el-link
                   v-if="isImage(att)"
                   type="primary"
-                  :underline="false"
+                  underline="never"
                   class="file-name"
                   @click="previewImage(att)"
                 >
                   {{ att.fileName || '-' }}
                 </el-link>
-                <el-link v-else type="primary" :href="downloadUrl(att.id)" :underline="false" target="_blank" class="file-name">
+                <el-link
+                  v-else
+                  type="primary"
+                  :href="downloadUrl(att.id)"
+                  underline="never"
+                  target="_blank"
+                  class="file-name"
+                >
                   {{ att.fileName || '-' }}
                 </el-link>
                 <div class="file-sub">
@@ -65,7 +78,12 @@
             </div>
             <div class="file-actions">
               <el-tooltip content="下载" placement="top">
-                <el-button link type="primary" :icon="Download" @click="windowOpen(downloadUrl(att.id))" />
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Download"
+                  @click="windowOpen(downloadUrl(att.id))"
+                />
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
                 <el-button link type="danger" :icon="Delete" @click="onDelete(att)" />
@@ -97,6 +115,10 @@ const CATEGORIES = ['客供稿', '承认书', '模具', '确认图', '菲林', '
 
 const props = defineProps<{
   productCode: string
+}>()
+
+const emit = defineEmits<{
+  success: [id: number]
 }>()
 
 const category = ref('客供稿')
@@ -160,9 +182,13 @@ async function loadFiles() {
   }
 }
 
-watch(() => props.productCode, () => {
-  if (props.productCode) loadFiles()
-}, { immediate: true })
+watch(
+  () => props.productCode,
+  () => {
+    if (props.productCode) loadFiles()
+  },
+  { immediate: true }
+)
 
 function beforeUpload(file: File) {
   if (file.size > 50 * 1024 * 1024) {
@@ -188,6 +214,7 @@ async function doUpload(options: any) {
     )
     if (res?.code === 200) {
       ElMessage.success('上传成功')
+      emit('success', Number(res.data))
       version.value = ''
       options.onSuccess(res.data)
       loadFiles()

@@ -35,6 +35,7 @@ export interface QuotationBase {
   salesPersonId?: number
   salesPersonName?: string
   remark?: string
+  attachmentIds?: number[]
 }
 
 // 报价单明细

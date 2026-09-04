@@ -198,6 +198,10 @@ public class SalesQuotation extends BaseEntity {
     @TableField(exist = false)
     private List<SalesQuotationItem> items;
 
+    /** 本次修改关联的附件ID（非表字段） */
+    @TableField(exist = false)
+    private List<Long> attachmentIds;
+
     /**
      * 删除标志 (0: 正常, 1: 删除)
      */

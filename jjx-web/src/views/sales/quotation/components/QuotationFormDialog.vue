@@ -300,7 +300,11 @@
       width="720px"
       append-to-body
     >
-      <ProductFileLibrary v-if="fileLibVisible" :product-code="fileLibProductCode" />
+      <ProductFileLibrary
+        v-if="fileLibVisible"
+        :product-code="fileLibProductCode"
+        @success="onFileLibUpload"
+      />
     </el-dialog>
   </el-dialog>
 </template>
@@ -356,6 +360,13 @@ const usedSerialsForCodeGen = computed(() => {
 // 产品文件库
 const fileLibVisible = ref(false)
 const fileLibProductCode = ref('')
+const uploadedAttachmentIds = ref<number[]>([])
+
+const onFileLibUpload = (id: number) => {
+  if (!uploadedAttachmentIds.value.includes(id)) {
+    uploadedAttachmentIds.value.push(id)
+  }
+}
 
 const exchangeRateHint = computed(() => {
   if (!props.formData.currency || props.formData.currency === 'CNY') return ''
@@ -383,6 +394,7 @@ const rules = reactive<FormRules>({
 watch(
   () => props.modelValue,
   (val) => {
+    uploadedAttachmentIds.value = []
     visible.value = val
   }
 )
@@ -615,12 +627,16 @@ const handleSubmit = () => {
           seen.set(code, props.formData.items.indexOf(item) + 1)
         }
       }
+      if (props.formData.quotationId !== undefined && props.formData.quotationId > 0) {
+        props.formData.attachmentIds = [...uploadedAttachmentIds.value]
+      }
       emit('submit')
     }
   })
 }
 
 const handleClose = () => {
+  uploadedAttachmentIds.value = []
   visible.value = false
   emit('cancel')
 }

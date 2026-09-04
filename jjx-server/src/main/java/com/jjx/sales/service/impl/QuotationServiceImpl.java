@@ -15,6 +15,7 @@ import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.system.service.ISysAttachmentService;
+import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.sales.domain.converter.SalesQuotationConverter;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesQuotationAddDTO;
@@ -22,6 +23,7 @@ import com.jjx.sales.service.IOrderService;
 import com.jjx.sales.service.IQuotationService;
 import com.jjx.sales.domain.vo.SalesQuotationEditVO;
 import com.jjx.system.service.OperLogChangeRecorder;
+import com.jjx.system.utils.OperLogDetailBuilder;
 import com.jjx.system.utils.SecurityUtils;
 import com.jjx.framework.common.RedisSequenceService;
 import org.apache.poi.ss.usermodel.Row;
@@ -72,6 +74,7 @@ public class QuotationServiceImpl implements IQuotationService {
     private final RedisSequenceService redisSequenceService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final OperLogChangeRecorder changeRecorder;
+    private final SysAttachmentMapper attachmentMapper;
     private final SalesQuotationConverter quotationConverter;
     /**
      * 查询销售报价单列表
@@ -420,7 +423,19 @@ public class QuotationServiceImpl implements IQuotationService {
         List<String> changes = buildQuotationChanges(existingQuotation, updatedQuotation);
         SalesQuotationEditVO result = new SalesQuotationEditVO();
         result.setRows(rows);
-        result.setDetailMessage(changeRecorder.toDetailJson(changes));
+        if (quotation.getAttachmentIds() != null && !quotation.getAttachmentIds().isEmpty()) {
+            List<Map<String, Object>> attList = attachmentMapper.selectByIds(quotation.getAttachmentIds()).stream()
+                .map(attachment -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("id", attachment.getId());
+                    item.put("fileName", attachment.getFileName());
+                    return item;
+                })
+                .toList();
+            result.setDetailMessage(OperLogDetailBuilder.build(changes, attList));
+        } else {
+            result.setDetailMessage(changeRecorder.toDetailJson(changes));
+        }
         QuotationStatus updatedStatus = QuotationStatus.getByValue(updatedQuotation.getQuotationStatus());
         result.setBizStatus(updatedStatus != null ? updatedStatus.getLabel() : null);
         result.setTraceId(updatedQuotation.getTraceId());
