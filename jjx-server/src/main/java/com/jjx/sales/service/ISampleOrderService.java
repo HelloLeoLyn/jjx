@@ -222,4 +222,12 @@ public interface ISampleOrderService {
      * 返回统一为 "PANTONE xxx" 展示文本。
      */
     java.util.List<String> suggestColors(String keyword, Integer limit);
+
+    /**
+     * 油墨联想（2026-09-04 打样印刷搜索式下拉，参考色号方案）：
+     * 空输入 → 常用 TOP N（历史印刷 inkNo 频次降序，不足用 INK 物料档案补足）；
+     * 有输入 → INK 物料模糊搜（编码/名称/规格）+ 历史 inkNo 模糊，合并去重。
+     * 返回 [{text, materialId}]：text 为展示/存储文本"物料名 (编码)"，历史文本项 materialId 为 null。
+     */
+    java.util.List<java.util.Map<String, Object>> suggestInks(String keyword, Integer limit);
 }

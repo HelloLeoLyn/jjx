@@ -119,6 +119,14 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.suggestColors(keyword, limit));
     }
 
+    @Operation(summary = "油墨联想（2026-09-04：空输入=常用TOP10，有输入=INK物料+历史模糊搜）")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/process/ink-suggest")
+    public Result<java.util.List<java.util.Map<String, Object>>> suggestInks(@RequestParam(required = false) String keyword,
+                                                                             @RequestParam(required = false) Integer limit) {
+        return Result.success(sampleOrderService.suggestInks(keyword, limit));
+    }
+
     @Operation(summary = "样品单申请打样")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REQUEST.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_SUBMIT)
     @SaCheckPermission("sales:sample:edit")

@@ -67,6 +67,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final SalesSampleRoundMapper sampleRoundMapper;
     private final SalesSampleProcessMapper sampleProcessMapper;
     private final SysDictItemMapper sysDictItemMapper;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final SalesSampleBomMapper sampleBomMapper;
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
     private final com.jjx.product.service.IEngineeringBomService bomService;
@@ -795,7 +796,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                             if (a.getId() != null) ids.add(a.getId());
                         }
                         if (!ids.isEmpty()) {
-                            round.setAttachmentIds(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(ids));
+                            round.setAttachmentIds(objectMapper.writeValueAsString(ids));
                         }
                     }
                 } catch (Exception ae) {
@@ -827,7 +828,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     }
                 }
                 if (!aggMats.isEmpty()) {
-                    round.setBomSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(aggMats));
+                    round.setBomSnapshot(objectMapper.writeValueAsString(aggMats));
                 }
             } catch (Exception be) {
                 log.warn("归档BOM快照失败: {}", be.getMessage());
@@ -837,7 +838,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             try {
                 java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procs = sampleProcessMapper.selectByOrderId(orderId);
                 if (procs != null && !procs.isEmpty()) {
-                    round.setProcessSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(procs));
+                    round.setProcessSnapshot(objectMapper.writeValueAsString(procs));
                 }
             } catch (Exception pe) {
                 log.warn("归档工序快照失败: {}", pe.getMessage());
@@ -3100,6 +3101,141 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
         return "PANTONE " + code;
+    }
+
+    /**
+     * 油墨联想（2026-09-04，参考色号方案）：
+     * 空输入 → 历史 inkNo 频次 TOP + INK 物料补足；有输入 → INK 物料（编码/名称/规格）模糊搜 + 历史 inkNo 模糊。
+     * 返回 [{text, materialId}]，text="物料名 (编码)" 或历史原文；命中物料时带 materialId。
+     */
+    @Override
+    public java.util.List<java.util.Map<String, Object>> suggestInks(String keyword, Integer limit) {
+        int max = (limit == null || limit < 1) ? 10 : Math.min(limit, 20);
+        java.util.List<java.util.Map<String, Object>> result = new ArrayList<>();
+        Set<String> added = new LinkedHashSet<>();
+        String kw = keyword == null ? "" : keyword.trim();
+
+        // 有输入：① INK 物料模糊搜（油墨印刷分类）② 历史 inkNo 模糊
+        if (!kw.isEmpty()) {
+            String lower = kw.toLowerCase();
+            java.util.List<com.jjx.inventory.domain.InventoryMaterial> mats =
+                    inventoryMaterialMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                            .eq(com.jjx.inventory.domain.InventoryMaterial::getCategoryId, INK_CATEGORY_ID)
+                            .eq(com.jjx.inventory.domain.InventoryMaterial::getStatus, 1)
+                            .and(w -> w.like(com.jjx.inventory.domain.InventoryMaterial::getMaterialCode, kw)
+                                    .or().like(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, kw)
+                                    .or().like(com.jjx.inventory.domain.InventoryMaterial::getSpecification, kw))
+                            .orderByDesc(com.jjx.inventory.domain.InventoryMaterial::getMaterialId)
+                            .last("LIMIT " + max));
+            for (com.jjx.inventory.domain.InventoryMaterial m : mats) {
+                String text = inkMaterialText(m);
+                if (text != null && !text.isEmpty() && added.add(text)) {
+                    result.add(inkEntry(text, m.getMaterialId()));
+                }
+            }
+            // ② 历史 inkNo 模糊补充
+            for (String h : scanInkHistory().keySet()) {
+                if (result.size() >= max) break;
+                if (h.toLowerCase().contains(lower) && added.add(h)) {
+                    result.add(inkEntry(h, matchInkMaterialId(h)));
+                }
+            }
+            return result;
+        }
+
+        // 空输入：历史 inkNo 频次 TOP → 不足用 INK 物料（最新建档）补足
+        Map<String, Integer> freq = scanInkHistory();
+        for (Map.Entry<String, Integer> e : freq.entrySet()) {
+            if (result.size() >= max) break;
+            String text = e.getKey();
+            if (added.add(text)) {
+                result.add(inkEntry(text, matchInkMaterialId(text)));
+            }
+        }
+        if (result.size() < max) {
+            java.util.List<com.jjx.inventory.domain.InventoryMaterial> mats =
+                    inventoryMaterialMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                            .eq(com.jjx.inventory.domain.InventoryMaterial::getCategoryId, INK_CATEGORY_ID)
+                            .eq(com.jjx.inventory.domain.InventoryMaterial::getStatus, 1)
+                            .orderByDesc(com.jjx.inventory.domain.InventoryMaterial::getMaterialId)
+                            .last("LIMIT " + (max - result.size())));
+            for (com.jjx.inventory.domain.InventoryMaterial m : mats) {
+                String text = inkMaterialText(m);
+                if (text != null && !text.isEmpty() && added.add(text)) {
+                    result.add(inkEntry(text, m.getMaterialId()));
+                }
+            }
+        }
+        return result;
+    }
+
+    /** 油墨物料分类（油墨印刷） */
+    private static final Long INK_CATEGORY_ID = 1L;
+
+    /** 物料展示文本："物料名 (编码)"，与前端 inkStoredText 一致 */
+    private String inkMaterialText(com.jjx.inventory.domain.InventoryMaterial m) {
+        String name = m.getMaterialName() == null ? "" : m.getMaterialName().trim();
+        if (m.getMaterialCode() != null && !m.getMaterialCode().isBlank()) {
+            return name.isEmpty() ? m.getMaterialCode().trim() : name + " (" + m.getMaterialCode().trim() + ")";
+        }
+        return name;
+    }
+
+    private java.util.Map<String, Object> inkEntry(String text, Long materialId) {
+        java.util.Map<String, Object> m = new java.util.HashMap<>();
+        m.put("text", text);
+        m.put("materialId", materialId);
+        return m;
+    }
+
+    /** 扫描全部印刷历史 inkNo（原文 trim 频次统计） */
+    private Map<String, Integer> scanInkHistory() {
+        Map<String, Integer> freq = new LinkedHashMap<>();
+        java.util.List<SalesSampleProcess> all = sampleProcessMapper.selectList(
+                new LambdaQueryWrapper<SalesSampleProcess>()
+                        .isNotNull(SalesSampleProcess::getProcessName));
+        for (SalesSampleProcess p : all) {
+            if (p.getCustomProcessParams() == null || p.getCustomProcessParams().isBlank()) {
+                continue;
+            }
+            String inkNo = extractJsonField(p.getCustomProcessParams(), "inkNo");
+            if (inkNo == null || inkNo.isBlank()) {
+                continue;
+            }
+            freq.merge(inkNo.trim(), 1, Integer::sum);
+        }
+        // 频次降序（保持首次出现顺序）
+        return freq.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                        (a, b) -> a, LinkedHashMap::new));
+    }
+
+    /** 历史 inkNo 文本 → 命中物料 id（名称/编码一致）；否则 null */
+    private Long matchInkMaterialId(String text) {
+        if (text == null || text.isBlank()) return null;
+        String namePart = text;
+        String codePart = null;
+        int p = text.lastIndexOf('(');
+        if (p > 0 && text.endsWith(")")) {
+            namePart = text.substring(0, p).trim();
+            codePart = text.substring(p + 1, text.length() - 1).trim();
+        }
+        final String n = namePart;
+        final String c = codePart;
+        java.util.List<com.jjx.inventory.domain.InventoryMaterial> mats =
+                inventoryMaterialMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                        .eq(com.jjx.inventory.domain.InventoryMaterial::getCategoryId, INK_CATEGORY_ID)
+                        .eq(com.jjx.inventory.domain.InventoryMaterial::getStatus, 1)
+                        .and(w -> {
+                            if (c != null && !c.isEmpty()) {
+                                w.eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialCode, c);
+                            } else {
+                                w.eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, n);
+                            }
+                        })
+                        .last("LIMIT 1"));
+        return mats.isEmpty() ? null : mats.get(0).getMaterialId();
     }
 
     /** 从 JSON 字符串提取字段值（custom_process_params 为 {printName,colorNo,inkNo,screenNo}） */
