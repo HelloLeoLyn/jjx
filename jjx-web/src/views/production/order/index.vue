@@ -12,6 +12,9 @@
     <OrderStatsCards :stats="stats" :loading="loading" @refresh="loadStats" />
 
     <!-- 批量操作 -->
+    <div class="batch-print-action">
+      <el-button icon="Printer" @click="handleBatchPrint">打印指令单</el-button>
+    </div>
     <OrderBatchActions
       :selected-rows="selectedRows"
       :view-type="activeView"
@@ -98,7 +101,8 @@
       <template v-if="convertPlan">
         <el-alert type="info" :closable="false" style="margin-bottom: 12px">
           计划 {{ convertPlan.orderNo }}｜产品 {{ convertPlan.productName }}｜计划数量
-          {{ convertPlan.plannedQuantity }}｜剩余可下达 {{ convertRemaining }}——本次拆分合计不得超过剩余可下达
+          {{ convertPlan.plannedQuantity }}｜剩余可下达
+          {{ convertRemaining }}——本次拆分合计不得超过剩余可下达
         </el-alert>
         <el-table :data="convertRows" border size="small">
           <el-table-column label="数量" width="150">
@@ -148,7 +152,12 @@
           </el-table-column>
         </el-table>
         <div
-          style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center"
+          style="
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          "
         >
           <span :style="{ color: convertTotalQty > convertRemaining ? '#f56c6c' : '#303133' }">
             合计：{{ convertTotalQty }} / 剩余可下达 {{ convertRemaining }}
@@ -184,18 +193,10 @@
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
     <!-- P4-C：生产履历（只读时间线） -->
-    <ProductionTraceDrawer
-      v-model:visible="prodTraceVisible"
-      :order-id="prodTraceOrderId"
-    />
+    <ProductionTraceDrawer v-model:visible="prodTraceVisible" :order-id="prodTraceOrderId" />
 
     <!-- 生产随工单详情抽屉（2026-08-11） -->
-    <el-drawer
-      v-model="workCardVisible"
-      title="生产随工单"
-      size="860px"
-      destroy-on-close
-    >
+    <el-drawer v-model="workCardVisible" title="生产随工单" size="860px" destroy-on-close>
       <ProductionWorkCard v-if="workCardOrderId" :order-id="workCardOrderId" />
     </el-drawer>
 
@@ -245,7 +246,13 @@ import { OrderType, OrderStatus } from '@/types/production/order'
 import { useProductionOrder } from './composables/useProductionOrder'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
-import { exportProductionOrderPdf, exportProductionOrder, batchUpdateOrderStatus, convertPlanToWorkOrders, completeExecution } from '@/api/production/order'
+import {
+  exportProductionOrderPdf,
+  exportProductionOrder,
+  batchUpdateOrderStatus,
+  convertPlanToWorkOrders,
+  completeExecution,
+} from '@/api/production/order'
 import { download } from '@/utils/format'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -402,9 +409,8 @@ watch(
       loadData(activeView.value === 'all' ? 'all' : activeView.value)
     }
   },
-  { immediate: true },
+  { immediate: true }
 )
-
 
 // 导出功能
 const handleExport = async () => {
@@ -428,6 +434,21 @@ const handleExportPdf = () => {
   exportProductionOrderPdf(Number(row.orderId)).then((response: any) => {
     download(response, `生产工单_${row.orderNo || row.orderId}.pdf`)
   })
+}
+
+// 打印当前页勾选的工单；首个 ID 保持既有单工单路由兼容，完整集合由 query 传递。
+const handleBatchPrint = () => {
+  const orderIds = selectedRows.value.map((row) => row.orderId).filter(Boolean)
+  if (orderIds.length === 0) {
+    ElMessage.warning('请先勾选要打印的工单')
+    return
+  }
+  const routeData = router.resolve({
+    name: 'ProductionOrderPrint',
+    params: { id: orderIds[0] },
+    query: { ids: orderIds.join(',') },
+  })
+  window.open(routeData.href, '_blank')
 }
 
 // 批量操作
@@ -610,7 +631,7 @@ const convertPlan = ref<any>(null)
 const convertRows = ref<any[]>([])
 const converting = ref(false)
 const convertTotalQty = computed(() =>
-  convertRows.value.reduce((s, r) => s + (Number(r.plannedQuantity) || 0), 0),
+  convertRows.value.reduce((s, r) => s + (Number(r.plannedQuantity) || 0), 0)
 )
 
 // V1 Fix Pack FIX-3：剩余可下达数量（计划 remaining_quantity；兼容旧数据无字段时回落 planned）
@@ -624,9 +645,10 @@ const handleConvertOrder = (order: any) => {
   convertPlan.value = order
   const today = new Date()
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
-  const remaining = order.remainingQuantity != null && Number(order.remainingQuantity) >= 0
-    ? Number(order.remainingQuantity)
-    : Number(order.plannedQuantity || 0)
+  const remaining =
+    order.remainingQuantity != null && Number(order.remainingQuantity) >= 0
+      ? Number(order.remainingQuantity)
+      : Number(order.plannedQuantity || 0)
   convertRows.value = [
     {
       productId: String(order.productId),
@@ -691,11 +713,15 @@ const handleStartOrder = (order: any) => {
 
 const handleCompleteOrder = async (order: any) => {
   // V1 Release Fix：订单正式完成必须走 completeOrder（后端 FQC/工序/数量 gate），不走通用状态更新
-  const confirm = await ElMessageBox.confirm(`确定要完成工单 ${order.orderNo} 吗？`, '完成工单确认', {
-    confirmButtonText: '确认完成',
-    cancelButtonText: '取消',
-    type: 'warning',
-  }).catch(() => null)
+  const confirm = await ElMessageBox.confirm(
+    `确定要完成工单 ${order.orderNo} 吗？`,
+    '完成工单确认',
+    {
+      confirmButtonText: '确认完成',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).catch(() => null)
   if (!confirm) return
   try {
     await completeExecution(String(order.orderId), { completedQuantity: 0 })
@@ -703,7 +729,12 @@ const handleCompleteOrder = async (order: any) => {
     refreshData()
   } catch (e: any) {
     const msg = e?.msg || e?.message || '完成工单失败'
-    if (msg.includes('FQC') || msg.includes('质检') || msg.includes('完工检验') || msg.includes('校验不通过')) {
+    if (
+      msg.includes('FQC') ||
+      msg.includes('质检') ||
+      msg.includes('完工检验') ||
+      msg.includes('校验不通过')
+    ) {
       ElMessage.error('完工校验未通过，订单暂不能完成：' + msg)
     } else {
       ElMessage.error(msg)
@@ -866,7 +897,13 @@ const handleStatusSubmit = async (data: OrderStatusUpdateDTO) => {
   } catch (error: any) {
     console.error('更新状态失败:', error)
     const msg = error?.msg || error?.message || '更新状态失败'
-    if (msg.includes('FQC') || msg.includes('质检') || msg.includes('完工检验') || msg.includes('校验不通过') || msg.includes('完成操作')) {
+    if (
+      msg.includes('FQC') ||
+      msg.includes('质检') ||
+      msg.includes('完工检验') ||
+      msg.includes('校验不通过') ||
+      msg.includes('完成操作')
+    ) {
       ElMessage.error('完工校验未通过，订单暂不能完成：' + msg)
     } else {
       ElMessage.error(msg)
@@ -922,6 +959,10 @@ const handleDeleteClose = () => {
   font-size: 24px;
   font-weight: 500;
   color: #303133;
+}
+
+.batch-print-action {
+  margin-bottom: 8px;
 }
 
 .gantt-view {

@@ -1,46 +1,47 @@
-# 生产工单打印双版式：系统版 + QR-005 制造指令单纸版复刻（dev-20260904-016，任务1417）
+# 生产工单打印（列表批量+列勾选，内容对齐 QR-005）双版式（dev-20260904-016，任务1417）
 
-状态：⏳待实施（样板参照：任务1414/采购订单双版式，commit b2fa955 起的系列）
+状态：⏳待实施（2026-09-04 需求更正：打印针对【列表】勾选，非单详情；内容严格对齐模板，不得自造字段）
 
-## 模板纸版结构（已读 jjx-docs/print_template/QR-005生产指令单.xlsx，Sheet2024）
+## 需求（用户复述确认 2026-09-04）
 
-1. 公司名行：深圳市精捷信塑胶五金电子制品厂（注意：与系统 pdf_template 配置公司名可能不同，
-   纸版复刻用系统配置 company 名称/地址做数据源，差异作为观察项报告给用户）
-2. 标题：制造指令单
-3. 右上：编号 JJX-QR-005 ｜ 日期：____
-4. 表头 8 列：NO｜品名｜订单数量｜交期｜机种号｜订单号｜生产批号｜库存
-5. 数据行（单行/多行）+ 备注区
+1. 入口在生产工单【列表】页：勾选 N 行 → 点"打印指令单"→ 选几行打几行（每勾选工单占一行）；
+2. 打印页可【勾选列】：列集=QR-005 模板表头（NO/品名/订单数量/交期/机种号/订单号/生产批号/库存），
+   勾了哪些打哪些，默认全选，选择记忆（localStorage）；
+3. 输出"制造指令单"：双版式（系统版/纸版 QR-005）都输出同一套模板内容——系统版内容也必须
+   严格对齐模板（8 列表格），不许自造字段/自造版块；
+4. 单工单详情打印保留（单 id 进入 = 一行）。
 
-## 数据映射（数据源 getProductionOrderDetail 现字段）
+## 模板纸版结构（已读 jjx-docs/print_template/QR-005生产指令单.xlsx）
 
-| 纸版 | ERP 来源 |
+公司名行｜制造指令单｜右上 编号 JJX-QR-005 + 日期｜表头 8 列（NO 品名 订单数量 交期 机种号
+订单号 生产批号 库存）｜多行数据｜备注区
+
+## 数据映射（每行=一个工单）
+
+| 纸版列 | ERP 来源 |
 |----|----|
-| 编号 | 固定 JJX-QR-005 |
-| 日期 | info.planStartDate 或今天（取 planStartDate，空取当前日期） |
-| NO | 1（单产品工单） |
+| NO | 序号（1..N） |
 | 品名 | info.productName |
 | 订单数量 | info.plannedQuantity |
 | 交期 | info.planEndDate |
 | 机种号 | info.productCode |
 | 订单号 | info.salesOrderNo（空 '-'） |
-| 生产批号 | 无数据源 → '-'（观察项：批号字段不存在，向用户说明） |
-| 库存 | 无数据源 → '-'（观察项同上） |
-| 备注 | info.remark |
+| 生产批号 | 无数据源 → '-'（观察项待用户口径） |
+| 库存 | 无数据源 → '-'（观察项待用户口径） |
+| 备注区 | info.remark（仅第一个工单或汇总？— 默认取所勾选工单 remark 非空的拼接，Codex 以最简单合理实现并报告） |
 
-## 改动（jjx-web/src/views/production/order/print.vue，参照 purchase/order/print.vue 双版式结构）
+## 改动
 
-1. 工具栏加版式选择（el-radio-button：系统版 / 纸版(QR-005)），localStorage key
-   `production-order-print-layout`（'system'/'qr005'，默认 system），切换即时重渲染；
-2. A 分支 = 现有系统版模板原样包进 v-if（结构/class 不动）；
-3. B 分支 = 新增纸版复刻：宋体风格区（参照采购 QR-024 分支样式.qr024-*），公司头居中、
-   标题"制造指令单"、右上 JJX-QR-005+日期、8 列细线表（生产批号/库存列显示 '-'）、备注、
-   右上角加工单二维码（复用现有 qrDataUrl/genQr，qr 已在系统版标题行，B 分支再放一个 top-right）；
-4. A4Canvas + window.print + createQualityTemplatePrintLog(5,...) 两版式共用；
-5. 不 git commit；不动其它文件；文件换行保持原样；npx vue-tsc --noEmit 报告。
+1. jjx-web/src/views/production/order/index.vue：列表操作栏加"打印指令单"按钮（批量区），
+   未勾选点击提示先勾选；勾选后跳打印路由（多 id，如 query ids=1,2,3 或批量参数，Codex 按现有路由最简方式）；
+2. jjx-web/src/views/production/order/print.vue：支持多工单（single :id 兼容 = 一行）；
+   工具栏（no-print）加：①版式选择（系统版/纸版 QR-005，localStorage production-order-print-layout）
+   ②列勾选 checkbox 组（8 列，默认全选，localStorage production-order-print-cols）；
+   系统版与纸版分支渲染【同一列集】的行式表格，只换样式风格（纸版=宋体细线仿原版；系统版=现有简洁风），
+   内容与列 = 模板 8 列，不多不少；多行场景顶部大二维码去掉（无单一编码对象），纸版右上角保留
+   JJX-QR-005+日期；打印留痕 createQualityTemplatePrintLog(5,...)；
+3. 不 git commit；不动其它文件；npx vue-tsc --noEmit 报告。
 
-## 收尾（agent 侧）
+## 收尾
 
-- 提交后把 quality_template_registry QR-005 行 print_mode 改 dual（print_component 已是
-  views/production/order/print.vue）；任务 1417 → status=2 待审核；
-- 交付报告列出观察项：①公司抬头名称差异（模板印厂名 vs 系统配置公司名）
-  ②生产批号/库存列无数据源。
+QR-005 行 print_mode=dual 已置；1417 → status=2 待审核；观察项（公司头名称差异/生产批号/库存列无源）
