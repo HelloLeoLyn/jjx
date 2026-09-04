@@ -13,6 +13,7 @@ public class UnifiedTraceEventVO {
     private String eventId;
     private LocalDateTime time;
     private String bizStatus;
+    private String action;
     private String operatorName;
     private Integer result;
     private String traceId;

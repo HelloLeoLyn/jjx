@@ -188,6 +188,7 @@ interface TraceEvent {
   eventId: string
   time?: string
   bizStatus?: string
+  action?: string
   actionTitle?: string
   operatorName?: string
   result?: number
@@ -339,6 +340,8 @@ function enrichEvent(row: any): TraceEvent {
 
 /** 流水标题：module（去"管理"后缀）+ 业务类型枚举，如「产品BOM - 修改」 */
 function buildActionTitle(row: any): string {
+  const action = (row.action || '').trim()
+  if (action) return action
   const module = (row.module || '').replace(/管理$/, '')
   const bizLabel = BusinessTypeEnum.getLabel(row.businessType)
   if (module && bizLabel) return `${module} - ${bizLabel}`

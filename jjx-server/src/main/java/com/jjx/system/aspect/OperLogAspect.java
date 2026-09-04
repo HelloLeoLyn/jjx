@@ -244,6 +244,7 @@ public class OperLogAspect {
 
         // 注解信息
         operLog.setModule(logAnnotation.module());
+        operLog.setAction(logAnnotation.action());
         operLog.setBusinessType(logAnnotation.businessType().getCode());
 
         // 请求信息

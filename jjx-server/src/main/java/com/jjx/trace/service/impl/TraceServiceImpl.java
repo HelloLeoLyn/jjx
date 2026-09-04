@@ -132,6 +132,7 @@ public class TraceServiceImpl implements TraceService {
         event.setEventId("oper-" + log.getId());
         event.setTime(log.getCreateTime());
         event.setBizStatus(log.getBizStatus());
+        event.setAction(log.getAction());
         event.setOperatorName(log.getRealName() != null && !log.getRealName().isBlank()
                 ? log.getRealName() : log.getUsername());
         event.setResult(log.getStatus());

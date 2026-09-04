@@ -9,6 +9,8 @@ export interface SysOperLog {
   tenantId?: number
   /** 模块名称 */
   module?: string
+  /** 操作动作中文文案 */
+  action?: string
   /** 业务类型 0其它 1新增 2修改 3删除 4授权 5导出 6导入 7强退 8生成代码 9清空数据 */
   businessType?: number
   /** 请求URL */

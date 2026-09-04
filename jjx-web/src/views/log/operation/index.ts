@@ -177,6 +177,12 @@ const tableOptions: TableOptions[] = [
       return mod + ' - ' + bt
     },
   },
+  {
+    label: '动作',
+    prop: 'action',
+    width: 160,
+    formatter: (row: any) => row.action || '-',
+  },
   { label: '操作人员', prop: 'username', width: 100 },
   { label: '请求IP', prop: 'operIp', width: 120 },
   {

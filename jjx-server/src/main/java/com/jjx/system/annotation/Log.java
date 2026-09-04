@@ -9,6 +9,12 @@ import java.lang.annotation.*;
 public @interface Log {
     String module() default "";
 
+    /**
+     * 操作动作中文文案（面向人阅读的快照，与 bizStatus 思路一致）。
+     * 仅接受字面量，不支持 SpEL，与事件编码体系无关。
+     */
+    String action() default "";
+
     BusinessType businessType() default BusinessType.OTHER;
 
     boolean saveParam() default true;
