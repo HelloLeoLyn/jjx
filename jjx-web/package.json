@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "VITE_APP_BRANCH=$(git rev-parse --abbrev-ref HEAD) vite",
+    "dev": "cross-env VITE_APP_BRANCH=dev vite",
     "dev:win": "for /f %i in ('git rev-parse --abbrev-ref HEAD') do set VITE_APP_BRANCH=%i && vite",
     "build": "npm run check:status-enums && VITE_APP_BRANCH=$(git rev-parse --abbrev-ref HEAD) vue-tsc && vite build",
     "preview": "vite preview",
@@ -49,6 +49,7 @@
     "@typescript-eslint/parser": "^8.57.1",
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/tsconfig": "^0.5.1",
+    "cross-env": "^10.1.0",
     "eslint": "^8.57.1",
     "eslint-plugin-vue": "^9.33.0",
     "fast-glob": "^3.3.3",
