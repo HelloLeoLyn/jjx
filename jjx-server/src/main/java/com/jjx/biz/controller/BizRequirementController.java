@@ -1,5 +1,6 @@
 package com.jjx.biz.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.biz.domain.entity.BizRequirement;
@@ -127,7 +128,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "新增需求单")
-    @Log(module = "业务需求管理", businessType = BusinessType.INSERT, bizId = "#result.data")
+    @Log(module = "业务需求管理", businessType = BusinessType.INSERT, bizId = "#result.data", action = LogActions.REQ_CREATE)
     @SaCheckPermission("biz:requirement:add")
     @PostMapping
     public Result<Long> add(@RequestBody BizRequirement requirement) {
@@ -135,7 +136,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "修改需求单")
-    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirement.requirementId")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirement.requirementId", action = LogActions.REQ_EDIT)
     @SaCheckPermission("biz:requirement:edit")
     @PutMapping
     public Result<Void> edit(@RequestBody BizRequirement requirement) {
@@ -144,7 +145,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "删除需求单")
-    @Log(module = "业务需求管理", businessType = BusinessType.DELETE, bizId = "#requirementIds")
+    @Log(module = "业务需求管理", businessType = BusinessType.DELETE, bizId = "#requirementIds", action = LogActions.REQ_DELETE)
     @SaCheckPermission("biz:requirement:remove")
     @DeleteMapping("/{requirementIds}")
     public Result<Void> remove(@PathVariable Long[] requirementIds) {
@@ -153,7 +154,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "提交评审")
-    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", action = LogActions.REQ_SUBMIT)
     @SaCheckPermission("biz:requirement:edit")
     @PutMapping("/submit/{requirementId}")
     public Result<Void> submit(@PathVariable Long requirementId) {
@@ -162,7 +163,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "四部门会签（同意/不同意+意见）")
-    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#approved ? '同意' : '不同意'")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#approved ? '同意' : '不同意'", action = LogActions.REQ_COUNTERSIGN)
     @SaCheckPermission("biz:requirement:approve")
     @PutMapping("/approval/{requirementId}")
     public Result<com.jjx.biz.domain.entity.BizRequirement> approval(@PathVariable Long requirementId,
@@ -180,7 +181,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "变更升版（关联产品→复制 BOM/工艺路线新版本）")
-    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#newVersion")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#newVersion", action = LogActions.REQ_UPGRADE)
     @SaCheckPermission("biz:requirement:edit")
     @PutMapping("/upgrade/{requirementId}")
     public Result<java.util.Map<String, Object>> upgrade(@PathVariable Long requirementId,
@@ -189,7 +190,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "开始执行（审核通过后）")
-    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", action = LogActions.REQ_EXECUTE)
     @SaCheckPermission("biz:requirement:edit")
     @PutMapping("/execute/{requirementId}")
     public Result<Void> execute(@PathVariable Long requirementId) {
@@ -198,7 +199,7 @@ public class BizRequirementController extends BaseController {
     }
 
     @Operation(summary = "关闭（登记执行结果）")
-    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#result")
+    @Log(module = "业务需求管理", businessType = BusinessType.UPDATE, bizId = "#requirementId", detail = "#result", action = LogActions.REQ_CLOSE)
     @SaCheckPermission("biz:requirement:edit")
     @PutMapping("/close/{requirementId}")
     public Result<Void> close(@PathVariable Long requirementId,

@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.core.page.PageResult;
@@ -46,7 +47,7 @@ public class SalesReturnController {
 
     @Operation(summary = "创建退货单（申请中）")
     @Log(module = "销售退货管理", businessType = BusinessType.INSERT,
-            bizType = "'sales_return'", bizId = "#result.data")
+            bizType = "'sales_return'", bizId = "#result.data", action = LogActions.SALES_RETURN_CREATE)
     @SaCheckPermission("sales:return:add")
     @PostMapping
     public Result<Long> create(@RequestBody Map<String, Object> params) {
@@ -56,7 +57,7 @@ public class SalesReturnController {
     @Operation(summary = "审核通过")
     @Log(module = "销售退货管理", businessType = BusinessType.APPROVE,
             bizType = "'sales_return'", bizId = "#returnId",
-            bizStatus = "T(com.jjx.sales.enums.SalesReturnStatusEnum).APPROVED.getLabel()")
+            bizStatus = "T(com.jjx.sales.enums.SalesReturnStatusEnum).APPROVED.getLabel()", action = LogActions.SALES_RETURN_APPROVE)
     @SaCheckPermission("sales:return:approve")
     @PutMapping("/{returnId}/approve")
     public Result<Void> approve(@PathVariable Long returnId,
@@ -68,7 +69,7 @@ public class SalesReturnController {
 
     @Operation(summary = "审核驳回")
     @Log(module = "销售退货管理", businessType = BusinessType.APPROVE,
-            bizType = "'sales_return'", bizId = "#returnId")
+            bizType = "'sales_return'", bizId = "#returnId", action = LogActions.SALES_RETURN_REJECT)
     @SaCheckPermission("sales:return:approve")
     @PutMapping("/{returnId}/reject")
     public Result<Void> reject(@PathVariable Long returnId,
@@ -81,7 +82,7 @@ public class SalesReturnController {
     @Operation(summary = "收货确认（联动退货入库）")
     @Log(module = "销售退货管理", businessType = BusinessType.UPDATE,
             bizType = "'sales_return'", bizId = "#returnId",
-            bizStatus = "T(com.jjx.sales.enums.SalesReturnStatusEnum).RECEIVED.getLabel()")
+            bizStatus = "T(com.jjx.sales.enums.SalesReturnStatusEnum).RECEIVED.getLabel()", action = LogActions.SALES_RETURN_RECEIVE)
     @SaCheckPermission("sales:return:edit")
     @PutMapping("/{returnId}/receive")
     public Result<Void> receive(@PathVariable Long returnId,
@@ -94,7 +95,7 @@ public class SalesReturnController {
     @Operation(summary = "退款（回写订单付款状态）")
     @Log(module = "销售退货管理", businessType = BusinessType.UPDATE,
             bizType = "'sales_return'", bizId = "#returnId",
-            bizStatus = "T(com.jjx.sales.enums.SalesReturnStatusEnum).REFUNDED.getLabel()")
+            bizStatus = "T(com.jjx.sales.enums.SalesReturnStatusEnum).REFUNDED.getLabel()", action = LogActions.SALES_RETURN_REFUND)
     @SaCheckPermission("sales:return:edit")
     @PutMapping("/{returnId}/refund")
     public Result<Void> refund(@PathVariable Long returnId,

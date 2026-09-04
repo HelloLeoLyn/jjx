@@ -1,5 +1,6 @@
 package com.jjx.production.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.result.Result;
@@ -37,7 +38,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "创建工序执行记录")
     @PostMapping
-    @Log(module = "工序执行管理", businessType = BusinessType.INSERT, bizType = "'production_execution'", bizId = "#result.data")
+    @Log(module = "工序执行管理", businessType = BusinessType.INSERT, bizType = "'production_execution'", bizId = "#result.data", action = LogActions.OP_EXEC_CREATE)
     @SaCheckPermission("production:operation-execution:add")
     public Result<Long> createExecution(@Validated @RequestBody ProductionOperationExecutionCreateDTO createDTO) {
         Long executionId = productionOperationExecutionService.createExecution(createDTO);
@@ -46,7 +47,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "更新工序执行记录")
     @PutMapping
-    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#updateDTO.executionId")
+    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#updateDTO.executionId", action = LogActions.OP_EXEC_EDIT)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> updateExecution(@Validated @RequestBody ProductionOperationExecutionUpdateDTO updateDTO) {
         boolean success = productionOperationExecutionService.updateExecution(updateDTO);
@@ -55,7 +56,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "删除工序执行记录")
     @DeleteMapping("/{executionId}")
-    @Log(module = "工序执行管理", businessType = BusinessType.DELETE, bizType = "'production_execution'", bizId = "#executionId")
+    @Log(module = "工序执行管理", businessType = BusinessType.DELETE, bizType = "'production_execution'", bizId = "#executionId", action = LogActions.OP_EXEC_DELETE)
     @SaCheckPermission("production:operation-execution:delete")
     public Result<Boolean> deleteExecution(@PathVariable Long executionId) {
         boolean success = productionOperationExecutionService.deleteExecution(executionId);
@@ -64,7 +65,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "批量删除工序执行记录")
     @DeleteMapping("/batch")
-    @Log(module = "工序执行管理", businessType = BusinessType.DELETE, bizType = "'production_execution'", bizId = "#executionIds[0]")
+    @Log(module = "工序执行管理", businessType = BusinessType.DELETE, bizType = "'production_execution'", bizId = "#executionIds[0]", action = LogActions.OP_EXEC_BATCH_DELETE)
     @SaCheckPermission("production:operation-execution:delete")
     public Result<Boolean> batchDeleteExecution(@RequestBody List<Long> executionIds) {
         boolean success = productionOperationExecutionService.batchDeleteExecution(executionIds);
@@ -107,7 +108,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "开始工序执行（可选设备码，扫码C软校验）")
     @PutMapping("/{executionId}/start")
-@Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).EXECUTING.getLabel()")
+@Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).EXECUTING.getLabel()", action = LogActions.OP_EXEC_START)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> startExecution(@PathVariable Long executionId,
                                           @RequestParam(required = false) String deviceCode) {
@@ -117,7 +118,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "暂停工序执行")
     @PutMapping("/{executionId}/pause")
-    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId")
+    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", action = LogActions.OP_EXEC_PAUSE)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> pauseExecution(@PathVariable Long executionId) {
         boolean success = productionOperationExecutionService.pauseExecution(executionId);
@@ -126,7 +127,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "工序首检/巡检（DEV-371）")
     @PutMapping("/{executionId}/quality-check")
-    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId")
+    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", action = LogActions.OP_EXEC_QUALITY_CHECK)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> qualityCheck(@PathVariable Long executionId,
                                         @RequestParam String checkType,
@@ -140,7 +141,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "完成工序执行")
     @PutMapping("/{executionId}/complete")
-@Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).COMPLETED.getLabel()")
+@Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).COMPLETED.getLabel()", action = LogActions.OP_EXEC_COMPLETE)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> completeExecution(@PathVariable Long executionId) {
         boolean success = productionOperationExecutionService.completeExecution(executionId);
@@ -149,7 +150,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "取消工序执行")
     @PutMapping("/{executionId}/cancel")
-    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId")
+    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", action = LogActions.OP_EXEC_CANCEL)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> cancelExecution(@PathVariable Long executionId) {
         boolean success = productionOperationExecutionService.cancelExecution(executionId);
@@ -174,7 +175,7 @@ public class ProductionOperationExecutionController {
 
     @Operation(summary = "导入工序执行数据")
     @PostMapping("/import")
-    @Log(module = "工序执行管理", businessType = BusinessType.IMPORT, bizType = "'production_execution'", bizId = "#importData[0].orderId")
+    @Log(module = "工序执行管理", businessType = BusinessType.IMPORT, bizType = "'production_execution'", bizId = "#importData[0].orderId", action = LogActions.OP_EXEC_IMPORT)
     @SaCheckPermission("production:operation-execution:import")
     public Result<String> importExecutionData(@RequestBody List<ProductionOperationExecutionCreateDTO> importData) {
         productionOperationExecutionService.importExecutionData(importData);

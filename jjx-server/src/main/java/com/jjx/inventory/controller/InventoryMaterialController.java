@@ -1,5 +1,6 @@
 package com.jjx.inventory.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
@@ -86,7 +87,7 @@ public class InventoryMaterialController extends BaseController {
      * 新增物料
      */
     @PostMapping
-    @Log(module = "物料管理", businessType = BusinessType.INSERT, bizType = "'material'", bizId = "#dto.materialId")
+    @Log(module = "物料管理", businessType = BusinessType.INSERT, bizType = "'material'", bizId = "#dto.materialId", action = LogActions.MATERIAL_CREATE)
     @SaCheckPermission("inventory:material:add")
     public Result<Void> add(@RequestBody MaterialSaveDTO dto) {
         // 检查物料编码是否已存在
@@ -107,7 +108,7 @@ public class InventoryMaterialController extends BaseController {
      * 修改物料
      */
     @PutMapping
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#dto.materialId")
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#dto.materialId", action = LogActions.MATERIAL_EDIT)
     @SaCheckPermission("inventory:material:edit")
     public Result<Void> update(@RequestBody MaterialUpdateDTO dto) {
         if (dto.getMaterialId() == null) {
@@ -127,7 +128,7 @@ public class InventoryMaterialController extends BaseController {
      * 删除物料
      */
     @DeleteMapping("/{id}")
-    @Log(module = "物料管理", businessType = BusinessType.DELETE, bizType = "'material'", bizId = "#id")
+    @Log(module = "物料管理", businessType = BusinessType.DELETE, bizType = "'material'", bizId = "#id", action = LogActions.MATERIAL_DELETE)
     @SaCheckPermission("inventory:material:delete")
     public Result<Void> delete(@PathVariable Long id) {
         materialService.deleteWithCheck(id);
@@ -138,7 +139,7 @@ public class InventoryMaterialController extends BaseController {
      * 更新物料状态
      */
     @PutMapping("/{id}/status")
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#id")
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#id", action = LogActions.MATERIAL_STATUS)
     @SaCheckPermission("inventory:material:edit")
     public Result<Void> updateStatus(@PathVariable Long id, @RequestParam Integer status) {
         // 调用Service更新状态
@@ -150,7 +151,7 @@ public class InventoryMaterialController extends BaseController {
      * 批量更新物料状态
      */
     @PutMapping("/batch-status")
-    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#ids[0]")
+    @Log(module = "物料管理", businessType = BusinessType.UPDATE, bizType = "'material'", bizId = "#ids[0]", action = LogActions.MATERIAL_BATCH_STATUS)
     @SaCheckPermission("inventory:material:edit")
     public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam Integer status) {
         if (ids == null || ids.isEmpty()) {
@@ -196,7 +197,7 @@ public class InventoryMaterialController extends BaseController {
      * 导入物料数据
      */
     @PostMapping("/import")
-    @Log(module = "物料管理", businessType = BusinessType.IMPORT, bizType = "'material'", bizId = "'batch'")
+    @Log(module = "物料管理", businessType = BusinessType.IMPORT, bizType = "'material'", bizId = "'batch'", action = LogActions.MATERIAL_IMPORT)
     @SaCheckPermission("inventory:material:add")
     public Result<com.jjx.inventory.dto.vo.MaterialImportResultVO> importMaterial(MultipartFile file) {
         List<MaterialImportDTO> importList = ExcelUtils.importExcel(file, MaterialImportDTO.class);

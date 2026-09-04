@@ -1,5 +1,6 @@
 package com.jjx.production.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.dto.ConvertPlanToWorkOrdersDTO;
@@ -40,7 +41,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "创建生产工单")
     @PostMapping
-    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#result.data")
+    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#result.data", action = LogActions.PROD_ORDER_CREATE)
     @SaCheckPermission("production:order:add")
     public Result<Long> createOrder(@Validated @RequestBody ProductionOrderCreateDTO createDTO) {
         Long orderId = productionOrderService.createOrder(createDTO);
@@ -49,7 +50,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "更新生产工单")
     @PutMapping
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#updateDTO.orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#updateDTO.orderId", action = LogActions.PROD_ORDER_EDIT)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> updateOrder(@Validated @RequestBody ProductionOrderUpdateDTO updateDTO) {
         boolean success = productionOrderService.updateOrder(updateDTO);
@@ -58,7 +59,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "删除生产工单")
     @DeleteMapping("/{orderId}")
-    @Log(module = "生产工单管理", businessType = BusinessType.DELETE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.DELETE, bizType = "'production_order'", bizId = "#orderId", action = LogActions.PROD_ORDER_DELETE)
     @SaCheckPermission("production:order:delete")
     public Result<Boolean> deleteOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.deleteOrder(orderId);
@@ -67,7 +68,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "批量删除生产工单")
     @DeleteMapping("/batch")
-    @Log(module = "生产工单管理", businessType = BusinessType.DELETE, bizType = "'production_order'", bizId = "#orderIds[0]")
+    @Log(module = "生产工单管理", businessType = BusinessType.DELETE, bizType = "'production_order'", bizId = "#orderIds[0]", action = LogActions.PROD_ORDER_BATCH_DELETE)
     @SaCheckPermission("production:order:delete")
     public Result<Boolean> batchDeleteOrder(@RequestBody List<Long> orderIds) {
         boolean success = productionOrderService.batchDeleteOrder(orderIds);
@@ -104,7 +105,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "启动生产工单")
     @PutMapping("/{orderId}/start")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).IN_PROGRESS.getLabel()", detail = "#attachmentIds")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).IN_PROGRESS.getLabel()", detail = "#attachmentIds", action = LogActions.PROD_ORDER_START)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> startOrder(@PathVariable Long orderId,
                                       // 仅供 @Log SpEL 取值，业务方法无需使用
@@ -115,7 +116,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "暂停生产工单")
     @PutMapping("/{orderId}/pause")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).PAUSED.getLabel()")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).PAUSED.getLabel()", action = LogActions.PROD_ORDER_PAUSE)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> pauseOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.pauseOrder(orderId);
@@ -124,7 +125,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "完成生产工单")
     @PutMapping("/{orderId}/complete")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).COMPLETED.getLabel()", detail = "#attachmentIds")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).COMPLETED.getLabel()", detail = "#attachmentIds", action = LogActions.PROD_ORDER_COMPLETE)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> completeOrder(@PathVariable Long orderId,
                                          // 仅供 @Log SpEL 取值，业务方法无需使用
@@ -135,7 +136,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "重试完工入库（056：入库失败打标后重试，成功清除标记）")
     @PutMapping("/{orderId}/retry-inbound")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", action = LogActions.PROD_ORDER_RETRY_INBOUND)
     @SaCheckPermission("production:order:edit")
     public Result<Long> retryInbound(@PathVariable Long orderId) {
         return Result.success(productionOrderService.retryInbound(orderId));
@@ -143,7 +144,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "取消生产工单")
     @PutMapping("/{orderId}/cancel")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).CANCELLED.getLabel()")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).CANCELLED.getLabel()", action = LogActions.PROD_ORDER_CANCEL)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> cancelOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.cancelOrder(orderId);
@@ -152,7 +153,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "关闭生产工单")
     @PutMapping("/{orderId}/close")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).CLOSED.getLabel()")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).CLOSED.getLabel()", action = LogActions.PROD_ORDER_CLOSE)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> closeOrder(@PathVariable Long orderId) {
         boolean success = productionOrderService.closeOrder(orderId);
@@ -182,7 +183,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "复制生产工单")
     @PostMapping("/copy")
-    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#result.data")
+    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#result.data", action = LogActions.PROD_ORDER_COPY)
     @SaCheckPermission("production:order:add")
     public Result<Long> copyOrder(@RequestParam Long sourceOrderId,
                                   @RequestParam String targetOrderCode,
@@ -193,7 +194,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "导入生产工单数据")
     @PostMapping("/import")
-    @Log(module = "生产工单管理", businessType = BusinessType.IMPORT, bizType = "'production_order'", bizId = "#importData[0].orderNo")
+    @Log(module = "生产工单管理", businessType = BusinessType.IMPORT, bizType = "'production_order'", bizId = "#importData[0].orderNo", action = LogActions.PROD_ORDER_IMPORT)
     @SaCheckPermission("production:order:add")
     public Result importOrderData(@RequestBody List<ProductionOrderCreateDTO> importData) {
         return productionOrderService.importOrderData(importData);
@@ -201,7 +202,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "导出生产工单数据(Excel)")
     @GetMapping("/export")
-    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "'export'")
+    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "'export'", action = LogActions.PROD_ORDER_EXPORT)
     @SaCheckPermission("production:order:export")
     public void exportOrderData(ProductionOrderQueryDTO queryDTO, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
         List<ProductionOrderVO> exportData = productionOrderService.exportOrderData(queryDTO);
@@ -238,7 +239,7 @@ public class ProductionOrderController {
     }
 
     @Operation(summary = "导出生产工单PDF（单张表单）")
-    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "#orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "#orderId", action = LogActions.PROD_ORDER_EXPORT_PDF)
     @SaCheckPermission("production:order:export")
     @GetMapping("/export-pdf/{orderId}")
     public void exportPdf(@PathVariable Long orderId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
@@ -269,7 +270,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "更新甘特图排期")
     @PutMapping("/schedule/gantt")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#dto.orderId")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#dto.orderId", action = LogActions.PROD_ORDER_GANTT)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> updateGanttData(@RequestBody GanttUpdateDTO dto) {
         boolean success = productionOrderService.updateOrderPlanDate(dto.getOrderId(), dto.getPlanStartDate(), dto.getPlanEndDate());
@@ -293,7 +294,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "计划转工单")
     @PostMapping("/convert-plan-to-work-orders")
-    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#dto.planId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).PLANNED.getLabel()")
+    @Log(module = "生产工单管理", businessType = BusinessType.INSERT, bizType = "'production_order'", bizId = "#dto.planId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).PLANNED.getLabel()", action = LogActions.PROD_ORDER_PLAN_CONVERT)
     @SaCheckPermission("production:order:add")
     public Result<List<Long>> convertPlanToWorkOrders(@Validated @RequestBody ConvertPlanToWorkOrdersDTO dto) {
         List<Long> orderIds = productionOrderService.convertPlanToWorkOrders(dto);
@@ -302,7 +303,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "更新订单状态")
     @PutMapping("/status")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).getByValue(#orderStatus)?.label", detail = "#attachmentIds")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", bizStatus = "T(com.jjx.production.enums.ProductionOrderStatusEnum).getByValue(#orderStatus)?.label", detail = "#attachmentIds", action = LogActions.PROD_ORDER_STATUS)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> updateOrderStatus(@RequestParam Long orderId,
                                               @RequestParam Integer orderStatus,
@@ -315,7 +316,7 @@ public class ProductionOrderController {
 
     @Operation(summary = "批量更新订单状态")
     @PutMapping("/batch-status")
-    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#dto.orderIds[0]")
+    @Log(module = "生产工单管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#dto.orderIds[0]", action = LogActions.PROD_ORDER_BATCH_STATUS)
     @SaCheckPermission("production:order:edit")
     public Result<Boolean> batchUpdateOrderStatus(@RequestBody BatchStatusUpdateDTO dto) {
         boolean success = productionOrderService.batchUpdateOrderStatus(dto.getOrderIds(), dto.getOrderStatus(), dto.getRemark());

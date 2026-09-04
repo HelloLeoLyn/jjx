@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.annotation.ValidationGroups;
 import com.jjx.common.core.page.PageResult;
@@ -111,7 +112,7 @@ public class OrderController extends BaseController {
      * 删除销售订单
      */
     @Operation(summary = "删除销售订单")
-    @Log(module = "销售订单管理", businessType = BusinessType.DELETE, bizType = "'order'", bizId = "#orderIds[0]")
+    @Log(module = "销售订单管理", businessType = BusinessType.DELETE, bizType = "'order'", bizId = "#orderIds[0]", action = LogActions.ORDER_DELETE)
     @SaCheckPermission("sales:order:delete")
     @DeleteMapping("/{orderIds}")
     public Result<Void> deleteOrders(@PathVariable Long[] orderIds) {
@@ -187,7 +188,7 @@ public class OrderController extends BaseController {
      * 创建产品实例
      */
     @Operation(summary = "创建产品实例")
-    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_CREATE_INSTANCES)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/create-instances/{orderId}")
     public Result<Void> createOrderInstances(@PathVariable Long orderId) {
@@ -198,7 +199,7 @@ public class OrderController extends BaseController {
      * 更新付款信息
      */
     @Operation(summary = "更新付款信息")
-@Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesPaymentStatusEnum).PAID.getLabel()")
+@Log(module = "销售订单管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesPaymentStatusEnum).PAID.getLabel()", action = LogActions.ORDER_PAYMENT)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/payment/{orderId}")
     public Result<Void> updateOrderPayment(@PathVariable Long orderId,

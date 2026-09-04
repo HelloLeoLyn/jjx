@@ -1,5 +1,6 @@
 package com.jjx.engineering.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
@@ -35,7 +36,7 @@ public class EngineeringController {
     }
 
     @Operation(summary = "新增工程记录")
-    @Log(module = "工程管理", businessType = BusinessType.INSERT, bizType = "'engineering'", bizId = "#entity.id")
+    @Log(module = "工程管理", businessType = BusinessType.INSERT, bizType = "'engineering'", bizId = "#entity.id", action = LogActions.ENGINEERING_CREATE)
     @SaCheckPermission("engineering:add")
     @PostMapping
     public Result<Void> save(@Validated @RequestBody EngineeringBase entity) {
@@ -44,7 +45,7 @@ public class EngineeringController {
     }
 
     @Operation(summary = "更新工程记录")
-    @Log(module = "工程管理", businessType = BusinessType.UPDATE, bizType = "'engineering'", bizId = "#entity.id")
+    @Log(module = "工程管理", businessType = BusinessType.UPDATE, bizType = "'engineering'", bizId = "#entity.id", action = LogActions.ENGINEERING_EDIT)
     @SaCheckPermission("engineering:edit")
     @PutMapping
     public Result<Void> update(@Validated @RequestBody EngineeringBase entity) {
@@ -53,7 +54,7 @@ public class EngineeringController {
     }
 
     @Operation(summary = "删除工程记录")
-    @Log(module = "工程管理", businessType = BusinessType.DELETE, bizType = "'engineering'", bizId = "#id")
+    @Log(module = "工程管理", businessType = BusinessType.DELETE, bizType = "'engineering'", bizId = "#id", action = LogActions.ENGINEERING_DELETE)
     @SaCheckPermission("engineering:delete")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {

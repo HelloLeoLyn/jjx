@@ -1,5 +1,6 @@
 package com.jjx.purchase.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
@@ -54,7 +55,7 @@ public class PurchasePaymentController extends BaseController {
      * 新增采购付款
      */
     @PostMapping
-    @Log(module = "采购付款管理", businessType = BusinessType.INSERT, bizType = "'purchase_payment'", bizId = "#dto.paymentId")
+    @Log(module = "采购付款管理", businessType = BusinessType.INSERT, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_CREATE)
     @SaCheckPermission("purchase:payment:add")
     public Result<Void> add(@Valid @RequestBody PurchasePaymentDTO dto) {
         paymentService.insertPayment(dto);
@@ -65,7 +66,7 @@ public class PurchasePaymentController extends BaseController {
      * 修改采购付款
      */
     @PutMapping
-    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId")
+    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_EDIT)
     @SaCheckPermission("purchase:payment:edit")
     public Result<Void> edit(@Valid @RequestBody PurchasePaymentDTO dto) {
         paymentService.updatePayment(dto);
@@ -76,7 +77,7 @@ public class PurchasePaymentController extends BaseController {
      * 删除采购付款
      */
     @DeleteMapping("/{paymentIds}")
-    @Log(module = "采购付款管理", businessType = BusinessType.DELETE, bizType = "'purchase_payment'", bizId = "#paymentIds[0]")
+    @Log(module = "采购付款管理", businessType = BusinessType.DELETE, bizType = "'purchase_payment'", bizId = "#paymentIds[0]", action = LogActions.PUR_PAYMENT_DELETE)
     @SaCheckPermission("purchase:payment:delete")
     public Result<Void> remove(@PathVariable Long[] paymentIds) {
         paymentService.deletePaymentByIds(paymentIds);
@@ -96,7 +97,7 @@ public class PurchasePaymentController extends BaseController {
      * 审批付款
      */
     @PutMapping("/approve/{paymentId}")
-    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'", bizId = "#paymentId")
+    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'", bizId = "#paymentId", action = LogActions.PUR_PAYMENT_APPROVE)
     @SaCheckPermission("purchase:payment:approve")
     public Result<Void> approve(@PathVariable Long paymentId,
                                 @RequestParam String approvalStatus,
@@ -110,7 +111,7 @@ public class PurchasePaymentController extends BaseController {
      * 确认付款
      */
     @PostMapping("/confirm")
-    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId")
+    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_CONFIRM)
     @SaCheckPermission("purchase:payment:edit")
     public Result<Void> confirm(@Valid PurchasePaymentDTO dto) {
         paymentService.confirmPayment(dto);
@@ -121,7 +122,7 @@ public class PurchasePaymentController extends BaseController {
      * 上传凭证
      */
     @PostMapping("/upload-voucher")
-    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId")
+    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_UPLOAD_VOUCHER)
     @SaCheckPermission("purchase:payment:edit")
     public Result<Void> uploadVoucher(@Valid PurchasePaymentDTO dto) {
         paymentService.confirmPayment(dto);
@@ -213,7 +214,7 @@ public class PurchasePaymentController extends BaseController {
      * 批量付款
      */
     @PostMapping("/batch")
-    @Log(module = "采购付款管理", businessType = BusinessType.INSERT, bizType = "'purchase_payment'", bizId = "#batchData[0].paymentId")
+    @Log(module = "采购付款管理", businessType = BusinessType.INSERT, bizType = "'purchase_payment'", bizId = "#batchData[0].paymentId", action = LogActions.PUR_PAYMENT_BATCH)
     @SaCheckPermission("purchase:payment:add")
     public Result<Void> batchPayment(@RequestBody List<PurchasePaymentDTO> batchData) {
         for (PurchasePaymentDTO dto : batchData) {
@@ -226,7 +227,7 @@ public class PurchasePaymentController extends BaseController {
      * 批量审批
      */
     @PostMapping("/batch-approve")
-    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'", bizId = "#batchData[0]['paymentId']")
+    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'", bizId = "#batchData[0]['paymentId']", action = LogActions.PUR_PAYMENT_BATCH_APPROVE)
     @SaCheckPermission("purchase:payment:approve")
     public Result<Void> batchApprove(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -243,7 +244,7 @@ public class PurchasePaymentController extends BaseController {
      * 导入付款数据
      */
     @PostMapping("/import")
-    @Log(module = "采购付款管理", businessType = BusinessType.IMPORT, bizType = "'purchase_payment'", bizId = "#importData[0].paymentId")
+    @Log(module = "采购付款管理", businessType = BusinessType.IMPORT, bizType = "'purchase_payment'", bizId = "#importData[0].paymentId", action = LogActions.PUR_PAYMENT_IMPORT)
     @SaCheckPermission("purchase:payment:import")
     public Result<Void> importPayment(@RequestBody List<PurchasePaymentDTO> importData) {
         for (PurchasePaymentDTO dto : importData) {

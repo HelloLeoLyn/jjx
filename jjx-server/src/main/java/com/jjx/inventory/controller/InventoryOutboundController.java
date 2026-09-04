@@ -1,5 +1,6 @@
 package com.jjx.inventory.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.OutboundQueryDTO;
@@ -43,7 +44,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create")
     @Operation(summary = "创建出库单")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#result.data")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#result.data", action = LogActions.OUTBOUND_CREATE)
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> create(@RequestBody Map<String, Object> params) {
         return Result.success(outboundService.create(params));
@@ -51,7 +52,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/confirm/{outboundId}")
     @Operation(summary = "确认出库")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).COMPLETED.getLabel()")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).COMPLETED.getLabel()", action = LogActions.OUTBOUND_CONFIRM)
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> confirm(@PathVariable Long outboundId,
                                    @RequestParam Long operatorId,
@@ -61,7 +62,7 @@ public class InventoryOutboundController {
 
     @PutMapping("/update")
     @Operation(summary = "更新出库单（含明细）")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#params.outboundId")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#params.outboundId", action = LogActions.OUTBOUND_EDIT)
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> update(@RequestBody Map<String, Object> params) {
         return Result.success(outboundService.update(params));
@@ -69,7 +70,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/cancel/{outboundId}")
     @Operation(summary = "取消出库单")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CANCELLED.getLabel()")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CANCELLED.getLabel()", action = LogActions.OUTBOUND_CANCEL)
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> cancel(@PathVariable Long outboundId,
                                   @RequestParam String reason) {
@@ -78,7 +79,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/submit-approve/{outboundId}")
     @Operation(summary = "提交审批")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()", action = LogActions.OUTBOUND_SUBMIT)
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> submitApprove(@PathVariable Long outboundId) {
         return Result.success(outboundService.submitApprove(outboundId));
@@ -86,7 +87,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/approve/{outboundId}")
     @Operation(summary = "审批通过")
-    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).APPROVED.getLabel()")
+    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).APPROVED.getLabel()", action = LogActions.OUTBOUND_APPROVE)
     @SaCheckPermission("inventory:outbound:approve")
     public Result<Boolean> approve(@PathVariable Long outboundId,
                                    @RequestParam Long approverId,
@@ -97,7 +98,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/reject/{outboundId}")
     @Operation(summary = "审批驳回")
-    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).REJECTED.getLabel()")
+    @Log(module = "出库管理", businessType = BusinessType.APPROVE, bizType = "'outbound'", bizId = "#outboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).REJECTED.getLabel()", action = LogActions.OUTBOUND_REJECT)
     @SaCheckPermission("inventory:outbound:approve")
     public Result<Boolean> reject(@PathVariable Long outboundId,
                                   @RequestParam Long approverId,
@@ -108,7 +109,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create-from-production/{workOrderId}")
     @Operation(summary = "从生产工单创建出库单")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_FROM_PRODUCTION)
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createFromProduction(@PathVariable Long workOrderId,
                                              @RequestBody(required = false) java.util.List<java.util.Map<String, Object>> adjustedItems) {
@@ -124,7 +125,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create-production-pick/{workOrderId}")
     @Operation(summary = "追加领料（033多次领料：Σ累计领料≤BOM需求量，剩余量校验）")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_PRODUCTION_PICK)
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createProductionPick(@PathVariable Long workOrderId,
                                              @RequestBody java.util.List<java.util.Map<String, Object>> items) {
@@ -140,7 +141,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create-from-sales/{salesOrderId}")
     @Operation(summary = "从销售订单创建出库单")
-    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#salesOrderId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).COMPLETED.getLabel()")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#salesOrderId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).COMPLETED.getLabel()", action = LogActions.OUTBOUND_FROM_SALES)
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createFromSales(@PathVariable Long salesOrderId) {
         return Result.success(outboundService.createFromSales(salesOrderId));
@@ -171,7 +172,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/update-status/{outboundId}")
     @Operation(summary = "更新出库单状态")
-    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId")
+    @Log(module = "出库管理", businessType = BusinessType.UPDATE, bizType = "'outbound'", bizId = "#outboundId", action = LogActions.OUTBOUND_UPDATE_STATUS)
     @SaCheckPermission("inventory:outbound:edit")
     public Result<Boolean> updateStatus(@PathVariable Long outboundId,
                                         @RequestParam Integer status) {
@@ -180,7 +181,7 @@ public class InventoryOutboundController {
 
     @GetMapping("/export-pdf/{outboundId}")
     @Operation(summary = "导出出库单PDF（单张表单）")
-    @Log(module = "出库管理", businessType = BusinessType.EXPORT, bizType = "'outbound'", bizId = "#outboundId")
+    @Log(module = "出库管理", businessType = BusinessType.EXPORT, bizType = "'outbound'", bizId = "#outboundId", action = LogActions.OUTBOUND_EXPORT_PDF)
     @SaCheckPermission("inventory:outbound:view")
     public void exportPdf(@PathVariable Long outboundId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
         byte[] bytes = outboundService.exportPdf(outboundId);

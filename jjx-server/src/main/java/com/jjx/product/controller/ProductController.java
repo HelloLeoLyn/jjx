@@ -1,5 +1,6 @@
 package com.jjx.product.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
@@ -87,7 +88,7 @@ public class ProductController extends BaseController {
      * 停产
      */
     @PutMapping("/obsolete/{id}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id", action = LogActions.PRODUCT_OBSOLETE)
     @SaCheckPermission("product:product:obsolete")
     public Result<Void> obsolete(@PathVariable Long id) {
         return toAjax(productService.obsoleteProduct(id));
@@ -97,7 +98,7 @@ public class ProductController extends BaseController {
      * 取消（取消审核/取消发布）
      */
     @PutMapping("/cancel/{id}")
-    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id")
+    @Log(module = "产品管理", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#id", action = LogActions.PRODUCT_CANCEL)
     @SaCheckPermission("product:product:edit")
     public Result<Void> cancel(@PathVariable Long id) {
         return toAjax(productService.cancelProduct(id));
@@ -108,7 +109,7 @@ public class ProductController extends BaseController {
      */
     @PostMapping
     @Log(module = "产品管理", businessType = BusinessType.INSERT,
-         bizId = "#result.data", bizType = "'product'")
+         bizId = "#result.data", bizType = "'product'", action = LogActions.PRODUCT_CREATE)
     @SaCheckPermission("product:create")
     public Result<Long> add(@Validated @RequestBody ProductDTO productDTO) {
         Long productId = productService.addProduct(productDTO);
@@ -121,7 +122,7 @@ public class ProductController extends BaseController {
     @PutMapping
     @Log(module = "产品管理", businessType = BusinessType.UPDATE,
          bizId = "#productDTO.productId", bizType = "'product'",
-         detail = "#result.data.detailMessage")
+         detail = "#result.data.detailMessage", action = LogActions.PRODUCT_EDIT)
     @SaCheckPermission("product:edit")
     public Result<ProductEditVO> edit(@Validated @RequestBody ProductDTO productDTO) {
         if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
@@ -152,7 +153,7 @@ public class ProductController extends BaseController {
      */
     @DeleteMapping("/{productId}")
     @Log(module = "产品管理", businessType = BusinessType.DELETE,
-         bizId = "#productId", bizType = "'product'")
+         bizId = "#productId", bizType = "'product'", action = LogActions.PRODUCT_DELETE)
     @SaCheckPermission("product:delete")
     public Result<Void> remove(@PathVariable Long productId) {
         boolean result = productService.removeById(productId);
@@ -164,7 +165,7 @@ public class ProductController extends BaseController {
      */
     @PutMapping("/release/{productId}")
     @Log(module = "产品管理", businessType = BusinessType.UPDATE,
-         bizId = "#productId", bizType = "'product'")
+         bizId = "#productId", bizType = "'product'", action = LogActions.PRODUCT_RELEASE)
     @SaCheckPermission("product:status:release")
     public Result<Void> release(@PathVariable Long productId) {
         // 执行发布，验证逻辑在service层处理
@@ -176,7 +177,7 @@ public class ProductController extends BaseController {
      */
     @PutMapping("/submit/{productId}")
     @Log(module = "产品管理", businessType = BusinessType.UPDATE,
-         bizId = "#productId", bizType = "'product'")
+         bizId = "#productId", bizType = "'product'", action = LogActions.PRODUCT_SUBMIT)
     @SaCheckPermission("product:status:submit")
     public Result<Void> submit(@PathVariable Long productId) {
         // 执行发布，验证逻辑在service层处理
@@ -189,7 +190,7 @@ public class ProductController extends BaseController {
      */
     @PutMapping("/approve/{productId}")
     @Log(module = "产品管理", businessType = BusinessType.UPDATE,
-         bizId = "#productId", bizType = "'product'")
+         bizId = "#productId", bizType = "'product'", action = LogActions.PRODUCT_APPROVE)
     @SaCheckPermission("product:status:approve")
     public Result<Void> approve(@PathVariable Long productId, ProductUpdateDTO dto) {
         // 执行发布，验证逻辑在service层处理
@@ -201,7 +202,7 @@ public class ProductController extends BaseController {
      */
     @PutMapping("/reject/{productId}")
     @Log(module = "产品管理", businessType = BusinessType.UPDATE,
-         bizId = "#productId", bizType = "'product'")
+         bizId = "#productId", bizType = "'product'", action = LogActions.PRODUCT_REJECT)
     @SaCheckPermission("product:status:reject")
     public Result<Void> reject(@PathVariable Long productId, ProductUpdateDTO dto) {
         // 执行发布，验证逻辑在service层处理

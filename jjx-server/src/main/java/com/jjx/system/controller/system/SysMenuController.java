@@ -1,5 +1,6 @@
 package com.jjx.system.controller.system;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.stp.StpUtil;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
@@ -68,7 +69,7 @@ public class SysMenuController extends BaseController {
      * 新增菜单
      */
     @PostMapping
-    @Log(module = "菜单管理", businessType = BusinessType.INSERT, bizStatus = "新增菜单")
+    @Log(module = "菜单管理", businessType = BusinessType.INSERT, bizStatus = "新增菜单", action = LogActions.MENU_CREATE)
     @SaCheckPermission("system:menu:add")
     public Result<Void> add(@Validated @RequestBody SysMenuDTO menuDTO) {
         SysMenu entity = menuConverter.toEntity(menuDTO);
@@ -82,7 +83,7 @@ public class SysMenuController extends BaseController {
      * 修改菜单
      */
     @PutMapping
-    @Log(module = "菜单管理", businessType = BusinessType.UPDATE, bizStatus = "修改菜单")
+    @Log(module = "菜单管理", businessType = BusinessType.UPDATE, bizStatus = "修改菜单", action = LogActions.MENU_EDIT)
     @SaCheckPermission("system:menu:edit")
     public Result<Void> edit(@Validated @RequestBody SysMenuDTO dto) {
         SysMenu entity = menuConverter.toEntity(dto);
@@ -96,7 +97,7 @@ public class SysMenuController extends BaseController {
      * 删除菜单
      */
     @DeleteMapping("/{menuId}")
-    @Log(module = "菜单管理", businessType = BusinessType.DELETE, bizStatus = "删除菜单")
+    @Log(module = "菜单管理", businessType = BusinessType.DELETE, bizStatus = "删除菜单", action = LogActions.MENU_DELETE)
     @SaCheckPermission("system:menu:delete")
     public Result<Void> remove(@PathVariable Long menuId) {
         if (menuService.hasChildByMenuId(menuId)) {
@@ -140,7 +141,7 @@ public class SysMenuController extends BaseController {
      * 为菜单分配角色
      */
     @PutMapping("/authRole/selectAll")
-    @Log(module = "菜单管理", businessType = BusinessType.UPDATE, bizStatus = "为菜单分配角色")
+    @Log(module = "菜单管理", businessType = BusinessType.UPDATE, bizStatus = "为菜单分配角色", action = LogActions.MENU_AUTH_ROLES)
     @SaCheckPermission("system:menu:edit")
     public Result<Void> addAuthRoles(@Validated @RequestParam("menuId") Long menuId,
                                      @RequestParam(value = "roleIds", required = false) Long[] roleIds) {

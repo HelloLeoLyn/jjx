@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
@@ -46,13 +47,13 @@ public class SalesReceiptController {
     }
 
     @Operation(summary = "记录收款单打印")
-    @Log(module = "销售收款", businessType = BusinessType.OTHER, bizType = "'receipt_print'", bizId = "#id")
+    @Log(module = "销售收款", businessType = BusinessType.OTHER, bizType = "'receipt_print'", bizId = "#id", action = LogActions.SALES_RECEIPT_PRINT_LOG)
     @SaCheckPermission("sales:order:view")
     @PostMapping("/{id}/print-log")
     public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }
 
     @Operation(summary = "新增收款")
-    @Log(module = "销售收款", businessType = BusinessType.INSERT, bizType = "'receipt'")
+    @Log(module = "销售收款", businessType = BusinessType.INSERT, bizType = "'receipt'", action = LogActions.SALES_RECEIPT_CREATE)
     @SaCheckPermission("sales:order:edit")
     @PostMapping
     public Result<Long> create(@RequestBody SalesReceipt receipt) {
@@ -60,7 +61,7 @@ public class SalesReceiptController {
     }
 
     @Operation(summary = "修改收款")
-    @Log(module = "销售收款", businessType = BusinessType.UPDATE, bizType = "'receipt'", bizId = "#receipt.receiptId", bizStatus = "T(com.jjx.sales.enums.SalesReceiptStatusEnum).getByValue(#receipt.status)?.label")
+    @Log(module = "销售收款", businessType = BusinessType.UPDATE, bizType = "'receipt'", bizId = "#receipt.receiptId", bizStatus = "T(com.jjx.sales.enums.SalesReceiptStatusEnum).getByValue(#receipt.status)?.label", action = LogActions.SALES_RECEIPT_EDIT)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{receiptId}")
     public Result<Void> update(@PathVariable Long receiptId, @RequestBody SalesReceipt receipt) {
@@ -72,7 +73,7 @@ public class SalesReceiptController {
     }
 
     @Operation(summary = "删除收款")
-    @Log(module = "销售收款", businessType = BusinessType.DELETE)
+    @Log(module = "销售收款", businessType = BusinessType.DELETE, action = LogActions.SALES_RECEIPT_DELETE)
     @SaCheckPermission("sales:order:delete")
     @DeleteMapping("/{receiptId}")
     public Result<Void> delete(@PathVariable Long receiptId) {

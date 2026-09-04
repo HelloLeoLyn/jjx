@@ -1,5 +1,6 @@
 package com.jjx.inventory.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.StocktakeQueryDTO;
@@ -43,7 +44,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/create")
     @Operation(summary = "创建盘点单")
-    @Log(module = "盘点管理", businessType = BusinessType.INSERT, bizType = "'stocktake'", bizId = "#result.data", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).DRAFT.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.INSERT, bizType = "'stocktake'", bizId = "#result.data", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).DRAFT.getLabel()", action = LogActions.STOCKTAKE_CREATE)
     @SaCheckPermission("inventory:stocktake:add")
     public Result<Long> create(@RequestBody Map<String, Object> params) {
         return Result.success(stocktakeService.create(params));
@@ -51,7 +52,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/start/{stocktakeId}")
     @Operation(summary = "开始盘点")
-    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PROCESSING.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PROCESSING.getLabel()", action = LogActions.STOCKTAKE_START)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> startStocktake(@PathVariable Long stocktakeId) {
         return Result.success(stocktakeService.startStocktake(stocktakeId));
@@ -59,7 +60,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/input-data/{stocktakeId}")
     @Operation(summary = "录入盘点数据")
-    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PROCESSING.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PROCESSING.getLabel()", action = LogActions.STOCKTAKE_INPUT)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> inputStocktakeData(@PathVariable Long stocktakeId,
                                               @RequestBody List<Map<String, Object>> items) {
@@ -75,7 +76,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/confirm-result/{stocktakeId}")
     @Operation(summary = "确认盘点结果")
-    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CONFIRMED.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CONFIRMED.getLabel()", action = LogActions.STOCKTAKE_CONFIRM)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> confirmResult(@PathVariable Long stocktakeId) {
         return Result.success(stocktakeService.confirmResult(stocktakeId));
@@ -83,7 +84,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/process-diff/{stocktakeId}")
     @Operation(summary = "处理盈亏")
-    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PROCESSED.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PROCESSED.getLabel()", action = LogActions.STOCKTAKE_PROCESS_DIFF)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> processDiff(@PathVariable Long stocktakeId,
                                        @RequestParam Long operatorId,
@@ -93,7 +94,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/close/{stocktakeId}")
     @Operation(summary = "关闭盘点单")
-    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CLOSED.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CLOSED.getLabel()", action = LogActions.STOCKTAKE_CLOSE)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> closeStocktake(@PathVariable Long stocktakeId) {
         return Result.success(stocktakeService.closeStocktake(stocktakeId));
@@ -101,7 +102,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/submit-approve/{stocktakeId}")
     @Operation(summary = "提交审批")
-    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()", action = LogActions.STOCKTAKE_SUBMIT)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> submitApprove(@PathVariable Long stocktakeId) {
         return Result.success(stocktakeService.submitApprove(stocktakeId));
@@ -109,7 +110,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/approve/{stocktakeId}")
     @Operation(summary = "审批通过")
-    @Log(module = "盘点管理", businessType = BusinessType.APPROVE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).APPROVED.getLabel()")
+    @Log(module = "盘点管理", businessType = BusinessType.APPROVE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).APPROVED.getLabel()", action = LogActions.STOCKTAKE_APPROVE)
     @SaCheckPermission("inventory:stocktake:approve")
     public Result<Boolean> approve(@PathVariable Long stocktakeId,
                                    @RequestParam Long approverId,
@@ -134,7 +135,7 @@ public class InventoryStocktakeController {
 
     @PostMapping("/update-status/{stocktakeId}")
     @Operation(summary = "更新盘点单状态")
-    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).getByValue(#status)?.label")
+    @Log(module = "盘点管理", businessType = BusinessType.UPDATE, bizType = "'stocktake'", bizId = "#stocktakeId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).getByValue(#status)?.label", action = LogActions.STOCKTAKE_UPDATE_STATUS)
     @SaCheckPermission("inventory:stocktake:edit")
     public Result<Boolean> updateStatus(@PathVariable Long stocktakeId,
                                         @RequestParam Integer status) {

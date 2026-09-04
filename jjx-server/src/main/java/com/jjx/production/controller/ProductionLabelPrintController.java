@@ -1,5 +1,6 @@
 package com.jjx.production.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.result.Result;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
@@ -18,7 +19,7 @@ public class ProductionLabelPrintController {
     @Operation(summary = "记录标签打印留痕")
     @PostMapping("/log")
     @Log(module = "标签打印", businessType = BusinessType.OTHER,
-            bizType = "'label_print'", bizId = "#bizId")
+            bizType = "'label_print'", bizId = "#bizId", action = LogActions.LABEL_PRINT_LOG)
     public Result<Void> printLog(@RequestParam String bizId) {
         return Result.success();
     }

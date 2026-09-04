@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
@@ -34,7 +35,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/submit/{orderId}")
     @Operation(summary = "提交订单审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_SUBMIT)
     @SaCheckPermission("sales:order:submit")
     public Result<Long> submitOrderForReview(@PathVariable Long orderId,
                                              @RequestParam Long submitterId,
@@ -49,7 +50,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/start/{orderId}")
     @Operation(summary = "开始审核订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_START)
     @SaCheckPermission("sales:order:review")
     public Result<Long> startOrderReview(@PathVariable Long orderId,
                                          @RequestParam Long reviewerId,
@@ -64,7 +65,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/approve/{orderId}")
     @Operation(summary = "审核通过订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_APPROVE)
     @SaCheckPermission("sales:order:approve")
     public Result<Long> approveOrder(@PathVariable Long orderId,
                                      @RequestParam Long reviewerId,
@@ -80,7 +81,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/reject/{orderId}")
     @Operation(summary = "审核驳回订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_REJECT)
     @SaCheckPermission("sales:order:approve")
     public Result<Long> rejectOrder(@PathVariable Long orderId,
                                     @RequestParam Long reviewerId,
@@ -97,7 +98,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/return/{orderId}")
     @Operation(summary = "退回订单修改")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_RETURN)
     @SaCheckPermission("sales:order:review")
     public Result<Long> returnOrderForModification(@PathVariable Long orderId,
                                                    @RequestParam Long reviewerId,
@@ -114,7 +115,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/transfer/{orderId}")
     @Operation(summary = "转交审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_TRANSFER)
     @SaCheckPermission("sales:order:review")
     public Result<Long> transferOrderReview(@PathVariable Long orderId,
                                             @RequestParam Long currentReviewerId,
@@ -130,7 +131,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/customer/confirm/{orderId}")
     @Operation(summary = "客户确认订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_CUSTOMER_CONFIRM)
     @SaCheckPermission("sales:order:review")
     public Result<Long> confirmOrderByCustomer(@PathVariable Long orderId,
                                                @RequestParam Long customerId,
@@ -146,7 +147,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/cancel/{orderId}")
     @Operation(summary = "取消订单审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_CANCEL)
     @SaCheckPermission("sales:order:review")
     public Result<Long> cancelOrderReview(@PathVariable Long orderId,
                                           @RequestParam Long cancellerId,
@@ -259,7 +260,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/batch/submit")
     @Operation(summary = "批量提交审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_BATCH_SUBMIT)
     @SaCheckPermission("sales:order:submit")
     public Result<Object> batchSubmitForReview(@RequestParam List<Long> orderIds,
                                                @RequestParam Long submitterId,
@@ -273,7 +274,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/batch/approve")
     @Operation(summary = "批量审核通过")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_BATCH_APPROVE)
     @SaCheckPermission("sales:order:approve")
     public Result<Object> batchApproveOrders(@RequestParam List<Long> orderIds,
                                              @RequestParam Long reviewerId,
@@ -287,7 +288,7 @@ public class OrderReviewController extends BaseController {
      */
     @PostMapping("/batch/reject")
     @Operation(summary = "批量审核驳回")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId")
+    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_BATCH_REJECT)
     @SaCheckPermission("sales:order:approve")
     public Result<Object> batchRejectOrders(@RequestParam List<Long> orderIds,
                                             @RequestParam Long reviewerId,

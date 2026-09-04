@@ -1,5 +1,6 @@
 package com.jjx.inventory.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.AlertQueryDTO;
@@ -36,7 +37,7 @@ public class InventoryAlertController {
 
     @PostMapping("/execute-check")
     @Operation(summary = "执行预警检查")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'", action = LogActions.ALERT_EXECUTE_CHECK)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> executeAlertCheck() {
         alertService.executeAlertCheck();
@@ -45,7 +46,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-safe-stock")
     @Operation(summary = "检查安全库存预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'", action = LogActions.ALERT_CHECK_SAFE_STOCK)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkSafeStockAlert() {
         alertService.checkSafeStockAlert();
@@ -54,7 +55,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-max-stock")
     @Operation(summary = "检查最高库存预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'", action = LogActions.ALERT_CHECK_MAX_STOCK)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkMaxStockAlert() {
         alertService.checkMaxStockAlert();
@@ -63,7 +64,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-expiry")
     @Operation(summary = "检查保质期预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'", action = LogActions.ALERT_CHECK_EXPIRY)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkExpiryAlert() {
         alertService.checkExpiryAlert();
@@ -72,7 +73,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-obsolete")
     @Operation(summary = "检查呆滞料预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'", action = LogActions.ALERT_CHECK_OBSOLETE)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkObsoleteAlert() {
         alertService.checkObsoleteAlert();
@@ -81,7 +82,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-order-shortage/{orderId}")
     @Operation(summary = "订单齐套检查（按BOM算料缺料预警，返回缺料明细含在途/实际缺口）")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#orderId")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#orderId", action = LogActions.ALERT_CHECK_ORDER_SHORTAGE)
     @SaCheckPermission("inventory:alert:edit")
     public Result<java.util.List<java.util.Map<String, Object>>> checkOrderShortage(@PathVariable Long orderId) {
         return Result.success(alertService.checkOrderShortageWithDetail(orderId));
@@ -89,7 +90,7 @@ public class InventoryAlertController {
 
     @PostMapping("/check-global-shortage")
     @Operation(summary = "全局汇总缺料检查（082：在途订单BOM汇总→物料缺口预警，手动触发）")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", action = LogActions.ALERT_CHECK_GLOBAL_SHORTAGE)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Void> checkGlobalShortage() {
         alertService.checkGlobalShortage();
@@ -104,7 +105,7 @@ public class InventoryAlertController {
 
     @PostMapping("/mark-read/{alertId}")
     @Operation(summary = "标记预警已读")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertId")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertId", action = LogActions.ALERT_MARK_READ)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Boolean> markRead(@PathVariable Long alertId) {
         return Result.success(alertService.markRead(alertId));
@@ -112,7 +113,7 @@ public class InventoryAlertController {
 
     @PostMapping("/batch-mark-read")
     @Operation(summary = "批量标记已读")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertIds[0]")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertIds[0]", action = LogActions.ALERT_BATCH_MARK_READ)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Boolean> batchMarkRead(@RequestBody List<Long> alertIds) {
         return Result.success(alertService.batchMarkRead(alertIds));
@@ -120,7 +121,7 @@ public class InventoryAlertController {
 
     @PostMapping("/process/{alertId}")
     @Operation(summary = "处理预警")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertId")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertId", action = LogActions.ALERT_PROCESS)
     @SaCheckPermission("inventory:alert:edit")
     public Result<Boolean> processAlert(@PathVariable Long alertId,
                                         @RequestParam String processedBy,
@@ -130,7 +131,7 @@ public class InventoryAlertController {
 
     @PostMapping("/batch-process")
     @Operation(summary = "批量处理预警（采购计划确认后回写，关联采购订单号）")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#dto.alertIds[0]")
+    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#dto.alertIds[0]", action = LogActions.ALERT_BATCH_PROCESS)
     // 2026-08-18：调用方为采购计划工作台（采购角色），权限从 inventory:alert:edit 改为 purchase:order:add
     @SaCheckPermission("purchase:order:add")
     public Result<Boolean> batchProcessAlert(@RequestBody com.jjx.inventory.domain.dto.AlertBatchProcessDTO dto) {

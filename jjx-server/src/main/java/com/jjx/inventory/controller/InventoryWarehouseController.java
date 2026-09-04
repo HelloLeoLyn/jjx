@@ -1,5 +1,6 @@
 package com.jjx.inventory.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -85,7 +86,7 @@ public class InventoryWarehouseController extends BaseController {
      * 新增仓库
      */
     @PostMapping
-    @Log(module = "仓库管理", businessType = BusinessType.INSERT, bizType = "'warehouse'", bizId = "#dto.warehouseId")
+    @Log(module = "仓库管理", businessType = BusinessType.INSERT, bizType = "'warehouse'", bizId = "#dto.warehouseId", action = LogActions.WAREHOUSE_CREATE)
     @SaCheckPermission("inventory:warehouse:add")
     public Result<Void> add(@RequestBody WarehouseSaveDTO dto) {
         // 检查仓库编码是否已存在
@@ -106,7 +107,7 @@ public class InventoryWarehouseController extends BaseController {
      * 修改仓库
      */
     @PutMapping
-    @Log(module = "仓库管理", businessType = BusinessType.UPDATE, bizType = "'warehouse'", bizId = "#dto.warehouseId")
+    @Log(module = "仓库管理", businessType = BusinessType.UPDATE, bizType = "'warehouse'", bizId = "#dto.warehouseId", action = LogActions.WAREHOUSE_EDIT)
     @SaCheckPermission("inventory:warehouse:edit")
     public Result<Void> update(@RequestBody WarehouseUpdateDTO dto) {
         if (dto.getWarehouseId() == null) {
@@ -132,7 +133,7 @@ public class InventoryWarehouseController extends BaseController {
      * 删除仓库
      */
     @DeleteMapping("/{id}")
-    @Log(module = "仓库管理", businessType = BusinessType.DELETE, bizType = "'warehouse'", bizId = "#id")
+    @Log(module = "仓库管理", businessType = BusinessType.DELETE, bizType = "'warehouse'", bizId = "#id", action = LogActions.WAREHOUSE_DELETE)
     @SaCheckPermission("inventory:warehouse:delete")
     public Result<Void> delete(@PathVariable Long id) {
         warehouseService.deleteWithCheck(id);
@@ -143,7 +144,7 @@ public class InventoryWarehouseController extends BaseController {
      * 更新仓库状态
      */
     @PutMapping("/{id}/status")
-    @Log(module = "仓库管理", businessType = BusinessType.UPDATE, bizType = "'warehouse'", bizId = "#id")
+    @Log(module = "仓库管理", businessType = BusinessType.UPDATE, bizType = "'warehouse'", bizId = "#id", action = LogActions.WAREHOUSE_STATUS)
     @SaCheckPermission("inventory:warehouse:edit")
     public Result<Void> updateStatus(@PathVariable Long id, @RequestParam String status) {
         // 验证状态值
@@ -160,7 +161,7 @@ public class InventoryWarehouseController extends BaseController {
      * 批量更新仓库状态
      */
     @PutMapping("/batch-status")
-    @Log(module = "仓库管理", businessType = BusinessType.UPDATE, bizType = "'warehouse'", bizId = "#ids[0]")
+    @Log(module = "仓库管理", businessType = BusinessType.UPDATE, bizType = "'warehouse'", bizId = "#ids[0]", action = LogActions.WAREHOUSE_BATCH_STATUS)
     @SaCheckPermission("inventory:warehouse:edit")
     public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam String status) {
         // 验证状态值

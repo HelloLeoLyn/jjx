@@ -1,5 +1,6 @@
 package com.jjx.system.controller.system;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
@@ -73,7 +74,7 @@ public class EventConfigController extends BaseController {
      * 新增
      */
     @PostMapping
-    @Log(module = "事件配置", businessType = BusinessType.INSERT)
+    @Log(module = "事件配置", businessType = BusinessType.INSERT, action = LogActions.EVENT_CONFIG_CREATE)
     @SaCheckPermission("system:eventConfig:add")
     public Result<Void> add(@Validated @RequestBody SysEventConfig config) {
         if (config.getIsEnabled() == null) config.setIsEnabled(1);
@@ -85,7 +86,7 @@ public class EventConfigController extends BaseController {
      * 编辑
      */
     @PutMapping
-    @Log(module = "事件配置", businessType = BusinessType.UPDATE)
+    @Log(module = "事件配置", businessType = BusinessType.UPDATE, action = LogActions.EVENT_CONFIG_EDIT)
     @SaCheckPermission("system:eventConfig:edit")
     public Result<Void> edit(@Validated @RequestBody SysEventConfig config) {
         return toAjax(eventConfigMapper.updateById(config));
@@ -95,7 +96,7 @@ public class EventConfigController extends BaseController {
      * 删除
      */
     @DeleteMapping("/{eventIds}")
-    @Log(module = "事件配置", businessType = BusinessType.DELETE)
+    @Log(module = "事件配置", businessType = BusinessType.DELETE, action = LogActions.EVENT_CONFIG_DELETE)
     @SaCheckPermission("system:eventConfig:delete")
     public Result<Void> remove(@PathVariable List<Long> eventIds) {
         return toAjax(eventConfigMapper.deleteBatchIds(eventIds));

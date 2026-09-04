@@ -1,5 +1,6 @@
 package com.jjx.purchase.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.enums.StatusEnum;
@@ -60,7 +61,7 @@ public class PurchaseSupplierController extends BaseController {
      * 新增供应商
      */
     @Operation(summary = "新增供应商")
-    @Log(module = "供应商管理", businessType = BusinessType.INSERT, bizType = "'purchase_supplier'", bizId = "#supplierDTO.supplierId")
+    @Log(module = "供应商管理", businessType = BusinessType.INSERT, bizType = "'purchase_supplier'", bizId = "#supplierDTO.supplierId", action = LogActions.SUPPLIER_CREATE)
     @SaCheckPermission("purchase:supplier:add")
     @PostMapping
     public Result<Void> add(@Validated @RequestBody PurchaseSupplierDTO supplierDTO) {
@@ -71,7 +72,7 @@ public class PurchaseSupplierController extends BaseController {
      * 修改供应商
      */
     @Operation(summary = "修改供应商")
-    @Log(module = "供应商管理", businessType = BusinessType.UPDATE, bizType = "'purchase_supplier'", bizId = "#supplierDTO.supplierId")
+    @Log(module = "供应商管理", businessType = BusinessType.UPDATE, bizType = "'purchase_supplier'", bizId = "#supplierDTO.supplierId", action = LogActions.SUPPLIER_EDIT)
     @SaCheckPermission("purchase:supplier:edit")
     @PutMapping
     public Result<Void> edit(@Validated @RequestBody PurchaseSupplierDTO supplierDTO) {
@@ -82,7 +83,7 @@ public class PurchaseSupplierController extends BaseController {
      * 删除供应商
      */
     @Operation(summary = "删除供应商")
-    @Log(module = "供应商管理", businessType = BusinessType.DELETE, bizType = "'purchase_supplier'", bizId = "#supplierIds[0]")
+    @Log(module = "供应商管理", businessType = BusinessType.DELETE, bizType = "'purchase_supplier'", bizId = "#supplierIds[0]", action = LogActions.SUPPLIER_DELETE)
     @SaCheckPermission("purchase:supplier:delete")
     @DeleteMapping("/{supplierIds}")
     public Result<Void> remove(@PathVariable Long[] supplierIds) {
@@ -104,7 +105,7 @@ public class PurchaseSupplierController extends BaseController {
      * 更新供应商状态
      */
     @Operation(summary = "更新供应商状态")
-    @Log(module = "供应商管理", businessType = BusinessType.UPDATE, bizType = "'purchase_supplier'", bizId = "#supplierId")
+    @Log(module = "供应商管理", businessType = BusinessType.UPDATE, bizType = "'purchase_supplier'", bizId = "#supplierId", action = LogActions.SUPPLIER_STATUS)
     @SaCheckPermission("purchase:supplier:edit")
     @PutMapping("/status/{supplierId}")
     public Result<Void> changeStatus(@PathVariable Long supplierId,
@@ -119,7 +120,7 @@ public class PurchaseSupplierController extends BaseController {
      * 更新供应商评估信息
      */
     @Operation(summary = "更新供应商评估信息")
-    @Log(module = "供应商管理", businessType = BusinessType.UPDATE, bizType = "'purchase_supplier'", bizId = "#evaluationDTO.supplierId")
+    @Log(module = "供应商管理", businessType = BusinessType.UPDATE, bizType = "'purchase_supplier'", bizId = "#evaluationDTO.supplierId", action = LogActions.SUPPLIER_EVALUATION)
     @SaCheckPermission("purchase:supplier:edit")
     @PutMapping("/evaluation/{supplierId}")
     public Result<Void> updateEvaluation(@Validated @RequestBody SupplierEvaluationDTO evaluationDTO) {
@@ -191,7 +192,7 @@ public class PurchaseSupplierController extends BaseController {
      * 导入供应商数据
      */
     @Operation(summary = "导入供应商数据")
-    @Log(module = "供应商管理", businessType = BusinessType.IMPORT, bizType = "'purchase_supplier'", bizId = "'batch'")
+    @Log(module = "供应商管理", businessType = BusinessType.IMPORT, bizType = "'purchase_supplier'", bizId = "'batch'", action = LogActions.SUPPLIER_IMPORT)
     @SaCheckPermission("purchase:supplier:import")
     @PostMapping("/import")
     public Result<String> importSuppliers(MultipartFile file) throws Exception {

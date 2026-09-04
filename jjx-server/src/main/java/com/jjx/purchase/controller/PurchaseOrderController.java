@@ -1,5 +1,6 @@
 package com.jjx.purchase.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
@@ -81,7 +82,7 @@ public class PurchaseOrderController extends BaseController {
      * 新增采购订单
      */
     @PostMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderDTO.orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).DRAFT.getLabel()")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderDTO.orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).DRAFT.getLabel()", action = LogActions.PUR_ORDER_CREATE)
     @SaCheckPermission("purchase:order:add")
     public Result<Void> add(@RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.insertOrder(orderDTO);
@@ -92,7 +93,7 @@ public class PurchaseOrderController extends BaseController {
      * 修改采购订单
      */
     @PutMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderDTO.orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderDTO.orderId", action = LogActions.PUR_ORDER_EDIT)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> edit(@Valid @RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.updateOrder(orderDTO);
@@ -103,7 +104,7 @@ public class PurchaseOrderController extends BaseController {
      * 取消采购订单
      */
     @PutMapping("/cancel/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).CANCELLED.getLabel()", detail = "#attachmentIds")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).CANCELLED.getLabel()", detail = "#attachmentIds", action = LogActions.PUR_ORDER_CANCEL)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> cancel(@PathVariable Long orderId,
                                // 仅供 @Log SpEL 取值，业务方法无需使用
@@ -116,7 +117,7 @@ public class PurchaseOrderController extends BaseController {
      * 采购退货
      */
     @Operation(summary = "采购退货")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", action = LogActions.PUR_ORDER_RETURN)
     @SaCheckPermission("purchase:order:edit")
     @PostMapping("/return/{orderId}")
     public Result<Void> returnGoods(@PathVariable Long orderId,
@@ -131,7 +132,7 @@ public class PurchaseOrderController extends BaseController {
      * 提交审批
      */
     @PutMapping("/submit/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).PENDING.getLabel()")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).PENDING.getLabel()", action = LogActions.PUR_ORDER_SUBMIT)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> submit(@PathVariable Long orderId) {
         purchaseOrderService.submitOrder(orderId);
@@ -142,7 +143,7 @@ public class PurchaseOrderController extends BaseController {
      * 批量提交审批
      */
     @PutMapping("/batch-submit")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderIds[0]", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).PENDING.getLabel()")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderIds[0]", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).PENDING.getLabel()", action = LogActions.PUR_ORDER_BATCH_SUBMIT)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> batchSubmit(@RequestBody List<Long> orderIds) {
         purchaseOrderService.batchSubmitOrders(orderIds);
@@ -153,7 +154,7 @@ public class PurchaseOrderController extends BaseController {
      * 审批订单
      */
     @PutMapping("/approve")
-    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE, bizType = "'purchase_order'", bizId = "#dto.orderId", bizStatus = "#result.data.label", detail = "#attachmentIds")
+    @Log(module = "采购订单管理", businessType = BusinessType.APPROVE, bizType = "'purchase_order'", bizId = "#dto.orderId", bizStatus = "#result.data.label", detail = "#attachmentIds", action = LogActions.PUR_ORDER_APPROVE)
     @SaCheckPermission("purchase:order:approve")
     public Result<com.jjx.common.enums.ApproveStatusEnum> approve(@Valid @RequestBody PurchaseOrderApprovalDTO dto,
                                 // 仅供 @Log SpEL 取值，业务方法无需使用
@@ -166,7 +167,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新订单审批状态
      */
     @PutMapping("/status")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).getByValue(#approvalStatus)?.label")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).getByValue(#approvalStatus)?.label", action = LogActions.PUR_ORDER_STATUS)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> updateStatus(@RequestParam Long orderId, @RequestParam Integer approvalStatus) {
         purchaseOrderService.updateOrderStatus(orderId, approvalStatus);
@@ -178,7 +179,7 @@ public class PurchaseOrderController extends BaseController {
      * 使用DTO模式，一次请求可同时收货多个明细项
      */
     @PostMapping("/{orderId}/receive")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).APPROVED.getLabel()")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.common.enums.ApproveStatusEnum).APPROVED.getLabel()", action = LogActions.PUR_ORDER_RECEIVE)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> receive(@PathVariable Long orderId, @Valid @RequestBody PurchaseOrderReceiveDTO dto) {
         dto.setOrderId(orderId);
@@ -190,7 +191,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新收货状态
      */
     @PutMapping("/receiptStatus")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.purchase.domain.enums.ReceiptStatusEnum).getByValue(#receiptStatus)?.label")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", bizStatus = "T(com.jjx.purchase.domain.enums.ReceiptStatusEnum).getByValue(#receiptStatus)?.label", action = LogActions.PUR_ORDER_RECEIPT_STATUS)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> updateReceiptStatus(@RequestParam Long orderId, @RequestParam Integer receiptStatus) {
         purchaseOrderService.updateReceiptStatus(orderId, receiptStatus);
@@ -201,7 +202,7 @@ public class PurchaseOrderController extends BaseController {
      * 更新付款信息
      */
     @PutMapping("/payment")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#result.data", bizStatus = "T(com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum).getByValue(#paymentStatus)?.label")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#result.data", bizStatus = "T(com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum).getByValue(#paymentStatus)?.label", action = LogActions.PUR_ORDER_PAYMENT)
     @SaCheckPermission("purchase:order:edit")
     public Result<Integer> updatePayment(@RequestParam Long orderId,
                                       @RequestParam(required = false) BigDecimal paidAmount,
@@ -236,7 +237,7 @@ public class PurchaseOrderController extends BaseController {
      */
     @Deprecated
     @Operation(summary = "确认计划单转正式采购单（已弃用）")
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderId", action = LogActions.PUR_ORDER_CONFIRM_PLAN)
     @SaCheckPermission("purchase:plan:confirm")
     @PutMapping("/{orderId}/confirm-plan")
     public Result<Void> confirmPlan(@PathVariable Long orderId,
@@ -257,7 +258,7 @@ public class PurchaseOrderController extends BaseController {
     }
 
     @Operation(summary = "记录采购计划打印")
-    @Log(module = "采购计划", businessType = BusinessType.OTHER, bizType = "'plan_print'", bizId = "'suggestions'")
+    @Log(module = "采购计划", businessType = BusinessType.OTHER, bizType = "'plan_print'", bizId = "'suggestions'", action = LogActions.PUR_PLAN_PRINT_LOG)
     @SaCheckPermission("purchase:plan:view")
     @PostMapping("/plan-suggestions/print-log")
     public Result<Void> planPrintLog() { return Result.success(); }
@@ -269,7 +270,7 @@ public class PurchaseOrderController extends BaseController {
      */
     @Deprecated
     @Operation(summary = "缺料预警一键生成采购计划单（已弃用）")
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", action = LogActions.PUR_PLAN_FROM_SUGGESTIONS)
     @SaCheckPermission("purchase:plan:add")
     @PostMapping("/create-plan-from-suggestions")
     public Result<Long> createPlanFromSuggestions() {
@@ -284,7 +285,7 @@ public class PurchaseOrderController extends BaseController {
      */
     @Deprecated
     @Operation(summary = "选中预警一键生成采购计划单（已弃用）")
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", action = LogActions.PUR_PLAN_FROM_ALERTS)
     @SaCheckPermission("purchase:plan:add")
     @PostMapping("/create-plan-from-alerts")
     public Result<Long> createPlanFromAlerts(@RequestBody java.util.List<Long> alertIds) {
@@ -295,7 +296,7 @@ public class PurchaseOrderController extends BaseController {
      * 复制订单
      */
     @PostMapping("/copy/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.INSERT, bizType = "'purchase_order'", bizId = "#orderId", action = LogActions.PUR_ORDER_COPY)
     @SaCheckPermission("purchase:order:add")
     public Result<Long> copy(@PathVariable Long orderId) {
         return Result.success(purchaseOrderService.copyOrder(orderId));
@@ -305,7 +306,7 @@ public class PurchaseOrderController extends BaseController {
      * 导出采购订单列表
      */
     @PostMapping("/export")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "'export'")
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "'export'", action = LogActions.PUR_ORDER_EXPORT)
     @SaCheckPermission("purchase:order:export")
     public Result<String> export(@RequestBody PurchaseOrderQueryDTO queryVO) {
         return Result.success(purchaseOrderService.exportOrderList(queryVO));
@@ -315,7 +316,7 @@ public class PurchaseOrderController extends BaseController {
      * 导出采购订单详情
      */
     @PostMapping("/export/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId", action = LogActions.PUR_ORDER_EXPORT_DETAIL)
     @SaCheckPermission("purchase:order:export")
     public Result<String> exportDetail(@PathVariable Long orderId) {
         return Result.success(purchaseOrderService.exportOrderDetail(orderId));
@@ -325,7 +326,7 @@ public class PurchaseOrderController extends BaseController {
      * 导出采购订单PDF（单张表单）
      */
     @Operation(summary = "导出采购订单PDF")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId", action = LogActions.PUR_ORDER_EXPORT_PDF)
     @SaCheckPermission("purchase:order:export")
     @GetMapping("/export-pdf/{orderId}")
     public void exportPdf(@PathVariable Long orderId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
@@ -343,7 +344,7 @@ public class PurchaseOrderController extends BaseController {
      * 删除采购订单
      */
     @DeleteMapping("/{orderId}")
-    @Log(module = "采购订单管理", businessType = BusinessType.DELETE, bizType = "'purchase_order'", bizId = "#orderId")
+    @Log(module = "采购订单管理", businessType = BusinessType.DELETE, bizType = "'purchase_order'", bizId = "#orderId", action = LogActions.PUR_ORDER_DELETE)
     @SaCheckPermission("purchase:order:delete")
     public Result<Void> deleteOrder(@PathVariable Long orderId) {
         com.jjx.purchase.domain.entity.PurchaseOrder order = purchaseOrderService.getById(orderId);

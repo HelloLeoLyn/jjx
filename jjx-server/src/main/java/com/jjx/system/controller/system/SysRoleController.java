@@ -1,5 +1,6 @@
 package com.jjx.system.controller.system;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
@@ -63,7 +64,7 @@ public class SysRoleController extends BaseController {
      * 新增角色
      */
     @PostMapping
-    @Log(module = "角色管理", businessType = BusinessType.INSERT)
+    @Log(module = "角色管理", businessType = BusinessType.INSERT, action = LogActions.ROLE_CREATE)
     @SaCheckPermission("system:role:add")
     public Result<Void> add(@Validated @RequestBody SysRoleDTO roleDTO) {
         SysRole role = new SysRole();
@@ -84,7 +85,7 @@ public class SysRoleController extends BaseController {
      * 修改保存角色
      */
     @PutMapping
-    @Log(module = "角色管理", businessType = BusinessType.UPDATE)
+    @Log(module = "角色管理", businessType = BusinessType.UPDATE, action = LogActions.ROLE_EDIT)
     @SaCheckPermission("system:role:edit")
     public Result<Void> edit(@Validated @RequestBody SysRoleDTO roleDTO) {
         SysRole role = new SysRole();
@@ -108,7 +109,7 @@ public class SysRoleController extends BaseController {
      * 修改保存数据权限
      */
     @PutMapping("/dataScope")
-    @Log(module = "角色管理", businessType = BusinessType.UPDATE)
+    @Log(module = "角色管理", businessType = BusinessType.UPDATE, action = LogActions.ROLE_DATA_SCOPE)
     @SaCheckPermission("system:role:edit")
     public Result<Void> dataScope(@Validated @RequestBody SysRoleDataScopeDTO dataScopeDTO) {
         SysRole role = new SysRole();
@@ -123,7 +124,7 @@ public class SysRoleController extends BaseController {
      * 状态修改
      */
     @PutMapping("/changeStatus")
-    @Log(module = "角色管理", businessType = BusinessType.UPDATE)
+    @Log(module = "角色管理", businessType = BusinessType.UPDATE, action = LogActions.ROLE_STATUS)
     @SaCheckPermission("system:role:edit")
     public Result<Void> changeStatus(@Validated @RequestBody SysRoleStatusDTO statusDTO) {
         SysRole role = new SysRole();
@@ -138,7 +139,7 @@ public class SysRoleController extends BaseController {
      * 删除角色
      */
     @DeleteMapping("/{roleIds}")
-    @Log(module = "角色管理", businessType = BusinessType.DELETE)
+    @Log(module = "角色管理", businessType = BusinessType.DELETE, action = LogActions.ROLE_DELETE)
     @SaCheckPermission("system:role:delete")
     public Result<Void> remove(@PathVariable List<Long> roleIds) {
         return toAjax(roleService.deleteRoleByIds(roleIds));
@@ -174,7 +175,7 @@ public class SysRoleController extends BaseController {
      * 取消授权用户
      */
     @PutMapping("/authUser/cancel")
-    @Log(module = "角色管理", businessType = BusinessType.UPDATE)
+    @Log(module = "角色管理", businessType = BusinessType.UPDATE, action = LogActions.ROLE_CANCEL_USER)
     @SaCheckPermission("system:role:edit")
     public Result<Void> cancelAuthUser(@Validated @RequestBody SysUserRoleDTO userRoleDTO) {
         SysUserRole userRole = new SysUserRole();
@@ -187,7 +188,7 @@ public class SysRoleController extends BaseController {
      * 批量取消授权用户
      */
     @PutMapping("/authUser/cancelAll")
-    @Log(module = "角色管理", businessType = BusinessType.UPDATE)
+    @Log(module = "角色管理", businessType = BusinessType.UPDATE, action = LogActions.ROLE_CANCEL_USER_ALL)
     @SaCheckPermission("system:role:edit")
     public Result<Void> cancelAuthUserAll(@RequestParam("roleId") Long roleId, @RequestParam(value = "userIds", required = false) Long[] userIds) {
         return toAjax(roleService.deleteAuthUsers(roleId, userIds));
@@ -197,7 +198,7 @@ public class SysRoleController extends BaseController {
      * 批量选择用户授权
      */
     @PutMapping("/authUser/selectAll")
-    @Log(module = "角色管理", businessType = BusinessType.UPDATE)
+    @Log(module = "角色管理", businessType = BusinessType.UPDATE, action = LogActions.ROLE_AUTH_USER_ALL)
     @SaCheckPermission("system:role:edit")
     public Result<Void> selectAuthUserAll(@Validated @RequestParam("roleId") Long roleId, @RequestParam(value = "userIds", required = false) Long[] userIds) {
         roleService.checkRoleDataScope(roleId);
@@ -217,7 +218,7 @@ public class SysRoleController extends BaseController {
      * 批量选择授权菜单角色
      */
     @PutMapping("/authMenu/selectAll")
-    @Log(module = "角色管理", businessType = BusinessType.UPDATE)
+    @Log(module = "角色管理", businessType = BusinessType.UPDATE, action = LogActions.ROLE_AUTH_MENU_ALL)
     @SaCheckPermission("system:role:edit")
     public Result<Void> selectAuthMenuAll(@RequestParam("roleId") Long roleId, @RequestParam(value = "menuIds", required = false) Long[] menuIds) {
         roleService.checkRoleDataScope(roleId);

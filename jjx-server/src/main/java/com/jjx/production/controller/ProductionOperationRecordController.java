@@ -1,5 +1,6 @@
 package com.jjx.production.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.result.Result;
@@ -33,7 +34,7 @@ public class ProductionOperationRecordController {
 
     @Operation(summary = "创建工序记录")
     @PostMapping
-    @Log(module = "工序记录管理", businessType = BusinessType.INSERT, bizType = "'production_record'", bizId = "#result.data")
+    @Log(module = "工序记录管理", businessType = BusinessType.INSERT, bizType = "'production_record'", bizId = "#result.data", action = LogActions.OP_RECORD_CREATE)
     @SaCheckPermission("production:operation-record:add")
     public Result<Long> createRecord(@Validated @RequestBody ProductionOperationRecordCreateDTO createDTO) {
         Long recordId = productionOperationRecordService.createRecord(createDTO);
@@ -42,7 +43,7 @@ public class ProductionOperationRecordController {
 
     @Operation(summary = "更新工序记录")
     @PutMapping
-    @Log(module = "工序记录管理", businessType = BusinessType.UPDATE, bizType = "'production_record'", bizId = "#updateDTO.recordId")
+    @Log(module = "工序记录管理", businessType = BusinessType.UPDATE, bizType = "'production_record'", bizId = "#updateDTO.recordId", action = LogActions.OP_RECORD_EDIT)
     @SaCheckPermission("production:operation-record:edit")
     public Result<Boolean> updateRecord(@Validated @RequestBody ProductionOperationRecordUpdateDTO updateDTO) {
         boolean success = productionOperationRecordService.updateRecord(updateDTO);
@@ -51,7 +52,7 @@ public class ProductionOperationRecordController {
 
     @Operation(summary = "删除工序记录")
     @DeleteMapping("/{recordId}")
-    @Log(module = "工序记录管理", businessType = BusinessType.DELETE, bizType = "'production_record'", bizId = "#recordId")
+    @Log(module = "工序记录管理", businessType = BusinessType.DELETE, bizType = "'production_record'", bizId = "#recordId", action = LogActions.OP_RECORD_DELETE)
     @SaCheckPermission("production:operation-record:delete")
     public Result<Boolean> deleteRecord(@PathVariable Long recordId) {
         boolean success = productionOperationRecordService.deleteRecord(recordId);
@@ -60,7 +61,7 @@ public class ProductionOperationRecordController {
 
     @Operation(summary = "批量删除工序记录")
     @DeleteMapping("/batch")
-    @Log(module = "工序记录管理", businessType = BusinessType.DELETE, bizType = "'production_record'", bizId = "#recordIds[0]")
+    @Log(module = "工序记录管理", businessType = BusinessType.DELETE, bizType = "'production_record'", bizId = "#recordIds[0]", action = LogActions.OP_RECORD_BATCH_DELETE)
     @SaCheckPermission("production:operation-record:delete")
     public Result<Boolean> batchDeleteRecord(@RequestBody List<Long> recordIds) {
         boolean success = productionOperationRecordService.batchDeleteRecord(recordIds);
@@ -117,7 +118,7 @@ public class ProductionOperationRecordController {
 
     @Operation(summary = "导入工序记录数据")
     @PostMapping("/import")
-    @Log(module = "工序记录管理", businessType = BusinessType.IMPORT, bizType = "'production_record'", bizId = "#importData[0].executionId")
+    @Log(module = "工序记录管理", businessType = BusinessType.IMPORT, bizType = "'production_record'", bizId = "#importData[0].executionId", action = LogActions.OP_RECORD_IMPORT)
     @SaCheckPermission("production:operation-record:import")
     public Result<String> importRecordData(@RequestBody List<ProductionOperationRecordCreateDTO> importData) {
         productionOperationRecordService.importRecordData(importData);

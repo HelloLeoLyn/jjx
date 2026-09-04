@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
@@ -86,7 +87,7 @@ public class CustomerController extends BaseController {
      * 新增客户
      */
     @Operation(summary = "新增客户")
-    @Log(module = "客户管理", businessType = BusinessType.INSERT, bizType = "'custom'", bizId = "#dto.customerId")
+    @Log(module = "客户管理", businessType = BusinessType.INSERT, bizType = "'custom'", bizId = "#dto.customerId", action = LogActions.CUSTOMER_CREATE)
     @SaCheckPermission("sales:customer:add")
     @PostMapping
     public Result<Void> addCustomer(@Validated @RequestBody CustomerAddDTO dto) {
@@ -107,7 +108,7 @@ public class CustomerController extends BaseController {
      * 修改客户
      */
     @Operation(summary = "修改客户")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId", action = LogActions.CUSTOMER_EDIT)
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}")
     public Result<Void> updateCustomer(@PathVariable Long customerId, @Validated @RequestBody CustomerEditDTO dto) {
@@ -119,7 +120,7 @@ public class CustomerController extends BaseController {
      * 删除客户
      */
     @Operation(summary = "删除客户")
-    @Log(module = "客户管理", businessType = BusinessType.DELETE, bizType = "'custom'")
+    @Log(module = "客户管理", businessType = BusinessType.DELETE, bizType = "'custom'", action = LogActions.CUSTOMER_DELETE)
     @SaCheckPermission("sales:customer:delete")
     @DeleteMapping("/{customerIds}")
     public Result<Void> deleteCustomers(@PathVariable Long[] customerIds) {
@@ -145,7 +146,7 @@ public class CustomerController extends BaseController {
      * 导入客户（DEV-662）
      */
     @Operation(summary = "导入客户")
-    @Log(module = "客户管理", businessType = BusinessType.IMPORT, bizType = "'custom'")
+    @Log(module = "客户管理", businessType = BusinessType.IMPORT, bizType = "'custom'", action = LogActions.CUSTOMER_IMPORT)
     @SaCheckPermission("sales:customer:import")
     @PostMapping("/import")
     public Result<String> importCustomers(MultipartFile file) throws Exception {
@@ -178,7 +179,7 @@ public class CustomerController extends BaseController {
      * 变更客户状态
      */
     @Operation(summary = "变更客户状态")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId", action = LogActions.CUSTOMER_STATUS)
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/status")
     public Result<Void> changeCustomerStatus(@PathVariable Long customerId, @RequestParam Integer status) {
@@ -189,7 +190,7 @@ public class CustomerController extends BaseController {
      * 批量审核客户
      */
     @Operation(summary = "批量审核客户")
-    @Log(module = "客户管理", businessType = BusinessType.APPROVE, bizType = "'custom'")
+    @Log(module = "客户管理", businessType = BusinessType.APPROVE, bizType = "'custom'", action = LogActions.CUSTOMER_APPROVE)
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/approve")
     public Result<Void> approveCustomers(@RequestBody Long[] customerIds) {
@@ -212,7 +213,7 @@ public class CustomerController extends BaseController {
      * 更新客户信用额度
      */
     @Operation(summary = "更新客户信用额度")
-    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId")
+    @Log(module = "客户管理", businessType = BusinessType.UPDATE, bizType = "'custom'", bizId = "#customerId", action = LogActions.CUSTOMER_CREDIT_LIMIT)
     @SaCheckPermission("sales:customer:edit")
     @PutMapping("/{customerId}/credit")
     public Result<Void> updateCustomerCreditLimit(@PathVariable Long customerId, @RequestParam Double creditLimit) {

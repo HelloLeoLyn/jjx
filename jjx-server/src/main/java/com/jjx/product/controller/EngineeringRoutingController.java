@@ -1,5 +1,6 @@
 package com.jjx.product.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.EngineeringRoutingDTO;
@@ -54,7 +55,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "创建工艺路线")
     @PostMapping
     @Log(module = "工艺路线管理", businessType = BusinessType.INSERT, bizType = "'routing'",
-         bizId = "#result.data.routingId")
+         bizId = "#result.data.routingId", action = LogActions.ROUTING_CREATE)
     @SaCheckPermission("engineering:routing:add")
     public Result<EngineeringRoutingVO> create(@Valid @RequestBody EngineeringRoutingDTO dto) {
         EngineeringRoutingVO vo = routingService.createRouting(dto);
@@ -64,7 +65,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "更新工艺路线")
     @PutMapping("/{routingId}")
     @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'",
-         bizId = "#routingId")
+         bizId = "#routingId", action = LogActions.ROUTING_EDIT)
     @SaCheckPermission("engineering:routing:edit")
     public Result<EngineeringRoutingVO> update(
             @Parameter(description = "路线ID", required = true)
@@ -78,7 +79,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "删除工艺路线")
     @DeleteMapping("/{routingId}")
     @Log(module = "工艺路线管理", businessType = BusinessType.DELETE, bizType = "'routing'",
-         bizId = "#routingId")
+         bizId = "#routingId", action = LogActions.ROUTING_DELETE)
     @SaCheckPermission("engineering:routing:delete")
     public Result<Void> delete(
             @Parameter(description = "路线ID", required = true)
@@ -92,7 +93,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "复制为新版本")
     @PostMapping("/{routingId}/copy")
     @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'",
-         bizId = "#result.data.routingId")
+         bizId = "#result.data.routingId", action = LogActions.ROUTING_COPY_VERSION)
     @SaCheckPermission("engineering:routing:add")
     public Result<EngineeringRoutingVO> copyAsNewVersion(
             @Parameter(description = "路线ID", required = true)
@@ -106,7 +107,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "设置当前版本")
     @PutMapping("/{routingId}/set-current")
     @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'",
-         bizId = "#routingId")
+         bizId = "#routingId", action = LogActions.ROUTING_SET_CURRENT)
     @SaCheckPermission("engineering:routing:edit")
     public Result<Void> setCurrentVersion(
             @Parameter(description = "路线ID", required = true)
@@ -151,7 +152,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "提交审批")
     @PostMapping("/{routingId}/submit")
     @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'",
-         bizId = "#routingId")
+         bizId = "#routingId", action = LogActions.ROUTING_SUBMIT)
     @SaCheckPermission("engineering:routing:edit")
     public Result<Void> submitApprove(
             @Parameter(description = "路线ID", required = true)
@@ -163,7 +164,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "审批通过")
     @PutMapping("/{routingId}/approve")
     @Log(module = "工艺路线管理", businessType = BusinessType.APPROVE, bizType = "'routing'",
-         bizId = "#routingId")
+         bizId = "#routingId", action = LogActions.ROUTING_APPROVE)
     @SaCheckPermission("engineering:routing:approve")
     public Result<Void> approve(
             @Parameter(description = "路线ID", required = true)
@@ -177,7 +178,7 @@ public class EngineeringRoutingController {
     @Operation(summary = "审批驳回")
     @PutMapping("/{routingId}/reject")
     @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'",
-         bizId = "#routingId")
+         bizId = "#routingId", action = LogActions.ROUTING_REJECT)
     @SaCheckPermission("engineering:routing:reject")
     public Result<Void> reject(
             @Parameter(description = "路线ID", required = true)

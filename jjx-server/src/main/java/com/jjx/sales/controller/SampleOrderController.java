@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.result.Result;
@@ -31,7 +32,7 @@ public class SampleOrderController extends BaseController {
     private final com.jjx.sales.service.ISalesOrderProductService orderProductService;
 
     @Operation(summary = "新增样品单（直接选客户+产品明细，报价单可选）")
-    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", action = LogActions.SAMPLE_CREATE)
     @SaCheckPermission("sales:sample:add")
     @PostMapping
     public Result<SalesOrder> create(@Valid @RequestBody com.jjx.sales.domain.dto.SampleOrderCreateDTO dto) {
@@ -39,7 +40,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "更新样品单（驳回后编辑：仅样品需求已创建状态可编辑，明细全量替换）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", detail = "#result.data.detailMessage")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", detail = "#result.data.detailMessage", action = LogActions.SAMPLE_EDIT)
     @SaCheckPermission("sales:sample:edit")
     @PutMapping("/{orderId}")
     public Result<SalesOrder> update(@PathVariable Long orderId,
@@ -48,7 +49,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "从报价单创建样品单")
-    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", action = LogActions.SAMPLE_FROM_QUOTATION)
     @SaCheckPermission("sales:sample:add")
     @PostMapping("/create-from-quotation/{quotationId}")
     public Result<SalesOrder> createFromQuotation(
@@ -64,7 +65,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "复制样品单（仅已完成/已取消终态单，一键生成新草稿单）")
-    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", action = LogActions.SAMPLE_COPY)
     @SaCheckPermission("sales:sample:add")
     @PostMapping("/copy/{orderId}")
     public Result<SalesOrder> copy(@PathVariable Long orderId) {
@@ -110,8 +111,16 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.processHistory());
     }
 
+    @Operation(summary = "色号联想（2026-09-04：空输入=常用TOP10，有输入=字典模糊搜）")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/process/color-suggest")
+    public Result<java.util.List<String>> suggestColors(@RequestParam(required = false) String keyword,
+                                                        @RequestParam(required = false) Integer limit) {
+        return Result.success(sampleOrderService.suggestColors(keyword, limit));
+    }
+
     @Operation(summary = "样品单申请打样")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REQUEST.getLabel()", detail = "#attachmentIds")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REQUEST.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_SUBMIT)
     @SaCheckPermission("sales:sample:edit")
     @PutMapping("/submit-request/{orderId}")
     public Result<SalesOrder> submitRequest(@PathVariable Long orderId,
@@ -120,7 +129,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品单审核通过（进入工程打样）")
-    @Log(module = "样品单管理", businessType = BusinessType.APPROVE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()", detail = "#attachmentIds")
+    @Log(module = "样品单管理", businessType = BusinessType.APPROVE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_APPROVE)
     @SaCheckPermission("sales:sample:approve")
     @PutMapping("/approve/{orderId}")
     public Result<SalesOrder> approve(@PathVariable Long orderId,
@@ -130,7 +139,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品单审核驳回")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REJECTED.getLabel()", detail = "#attachmentIds")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REJECTED.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_REJECT)
     @SaCheckPermission("sales:sample:approve")
     @PutMapping("/reject-review/{orderId}")
     public Result<SalesOrder> rejectReview(@PathVariable Long orderId,
@@ -140,7 +149,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "工程接单（记录工程备注）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()", action = LogActions.SAMPLE_ENG_START)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/start-engineering/{orderId}")
     public Result<SalesOrder> startEngineering(@PathVariable Long orderId,
@@ -149,7 +158,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "工程标记样品完成（待送样）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).SAMPLE_READY.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).SAMPLE_READY.getLabel()", action = LogActions.SAMPLE_ENG_READY)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/mark-ready/{orderId}")
     public Result<SalesOrder> markReady(@PathVariable Long orderId,
@@ -158,7 +167,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "销售送样登记")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).SAMPLE_SENT.getLabel()", detail = "#attachmentIds")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).SAMPLE_SENT.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_SEND)
     @SaCheckPermission("sales:sample:deliver")
     @PutMapping("/send-sample/{orderId}")
     public Result<SalesOrder> sendSample(@PathVariable Long orderId,
@@ -169,7 +178,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "客户确认样品OK")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CONFIRMED.getLabel()", detail = "#attachmentIds")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CONFIRMED.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_CONFIRM)
     @SaCheckPermission("sales:sample:confirm")
     @PutMapping("/confirm/{orderId}")
     public Result<SalesOrder> confirm(@PathVariable Long orderId,
@@ -180,7 +189,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "客户退回样品（多轮迭代）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REJECTED.getLabel()", detail = "#attachmentIds")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REJECTED.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_CUSTOMER_REJECT)
     @SaCheckPermission("sales:sample:confirm")
     @PutMapping("/reject-sample/{orderId}")
     public Result<SalesOrder> rejectSample(@PathVariable Long orderId,
@@ -191,7 +200,7 @@ public class SampleOrderController extends BaseController {
     }
 
     @Operation(summary = "样品转量产（生成标准订单，可传产品标准化items）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).TRANSFERRED.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).TRANSFERRED.getLabel()", action = LogActions.SAMPLE_TO_PRODUCTION)
     @SaCheckPermission("sales:sample:convert")
     @PutMapping("/convert-to-production/{orderId}")
     public Result<SalesOrder> convertToProduction(@PathVariable Long orderId,
@@ -203,7 +212,7 @@ public class SampleOrderController extends BaseController {
      * 样品单作废
      */
     @Operation(summary = "样品单作废")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CANCELLED.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CANCELLED.getLabel()", action = LogActions.SAMPLE_CANCEL)
     @SaCheckPermission("sales:sample:edit")
     @PutMapping("/cancel/{orderId}")
     public Result<SalesOrder> cancel(@PathVariable Long orderId,
@@ -215,7 +224,7 @@ public class SampleOrderController extends BaseController {
      * 退回后重新打样（REJECTED → ENGINEERING）
      */
     @Operation(summary = "退回后重新打样")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()", action = LogActions.SAMPLE_ENG_RESTART)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/restart-engineering/{orderId}")
     public Result<SalesOrder> restartEngineering(@PathVariable Long orderId) {
@@ -226,7 +235,7 @@ public class SampleOrderController extends BaseController {
      * 工程接单确认
      */
     @Operation(summary = "工程接单确认")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).ENGINEERING.getLabel()", action = LogActions.SAMPLE_ENG_ACCEPT)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/accept-engineering/{orderId}")
     public Result<SalesOrder> acceptEngineering(@PathVariable Long orderId) {
@@ -237,7 +246,7 @@ public class SampleOrderController extends BaseController {
      * 工程拒单
      */
     @Operation(summary = "工程拒单")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REQUEST.getLabel()", detail = "#attachmentIds")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).REQUEST.getLabel()", detail = "#attachmentIds", action = LogActions.SAMPLE_ENG_REJECT)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/reject-engineering/{orderId}")
     public Result<SalesOrder> rejectEngineering(@PathVariable Long orderId,
@@ -249,7 +258,7 @@ public class SampleOrderController extends BaseController {
      * 更新打样当前工序
      */
     @Operation(summary = "更新打样当前工序（材料JSON走body，避免长URL，8-03改DTO）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId", action = LogActions.SAMPLE_PROCESS_UPDATE)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/update-process/{orderId}")
     public Result<SalesOrder> updateProcess(@PathVariable Long orderId,
@@ -265,7 +274,7 @@ public class SampleOrderController extends BaseController {
      * 保存打样工序计划（方案A：多选作业项目形成计划，整单覆盖当前轮次）
      */
     @Operation(summary = "保存打样工序计划（多选作业项目，整单覆盖当前轮次）")
-    // @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId")
+    // @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", action = LogActions.SAMPLE_PROCESS_PLAN)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/processes/{orderId}/plan")
     public Result<List<com.jjx.sales.domain.entity.SalesSampleProcess>> saveProcessPlan(
@@ -278,7 +287,7 @@ public class SampleOrderController extends BaseController {
      * 推进打样工序状态（开始/完成）
      */
     @Operation(summary = "推进打样工序状态（开始/完成，可带耗时/说明/材料）")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId", action = LogActions.SAMPLE_PROCESS_ITEM_STATUS)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/processes/{orderId}/item/{processId}/status")
     public Result<com.jjx.sales.domain.entity.SalesSampleProcess> updateProcessItemStatus(
@@ -319,7 +328,7 @@ public class SampleOrderController extends BaseController {
      * 保存打样BOM物料清单
      */
     @Operation(summary = "保存打样BOM物料清单")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId", action = LogActions.SAMPLE_BOM_SAVE)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/bom/{orderId}")
     public Result<List<com.jjx.sales.domain.entity.SalesSampleBom>> saveBom(@PathVariable Long orderId,
@@ -341,7 +350,7 @@ public class SampleOrderController extends BaseController {
      * 录入打样成本/工时
      */
     @Operation(summary = "录入打样成本/工时")
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId", action = LogActions.SAMPLE_COST)
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/record-cost/{orderId}")
     public Result<SalesOrder> recordCost(@PathVariable Long orderId,
@@ -355,7 +364,7 @@ public class SampleOrderController extends BaseController {
      */
     @Operation(summary = "产品资料转移（DEV-505：建档产品/BOM/工艺路线，状态初始化，事件通知+派任务）")
     @Deprecated // 2026-08-10 DEV-764：资料转移统一入口已改为 /sample/transfer/*（轻量版弹窗+对照版），此接口保留兼容，二期移除
-    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CONFIRMED.getLabel()")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CONFIRMED.getLabel()", action = LogActions.SAMPLE_TRANSFER)
     @SaCheckPermission("sales:sample:convert")
     @PostMapping("/transfer/{orderId}")
     public Result<java.util.Map<String, Object>> transfer(@PathVariable Long orderId) {

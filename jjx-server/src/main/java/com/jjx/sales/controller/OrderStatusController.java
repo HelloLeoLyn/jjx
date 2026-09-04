@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.sales.domain.dto.ReviewDTO;
@@ -34,7 +35,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "提交审核")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).PENDING_REVIEW.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：草稿/已驳回 → 待审核'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：草稿/已驳回 → 待审核'))", action = LogActions.ORDER_STATUS_SUBMIT)
     @SaCheckPermission("sales:order:submit")
     @PutMapping("/{orderId}/status/submissions")
     public Result<Void> submitReview(
@@ -49,7 +50,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "开始审核")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).REVIEWING.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：待审核 → 审核中'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：待审核 → 审核中'))", action = LogActions.ORDER_STATUS_START)
     @SaCheckPermission("sales:order:review")
     @PutMapping("/{orderId}/status/review")
     public Result<Void> startReview(
@@ -64,7 +65,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "审核通过")
     @Log(module = "订单状态管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).APPROVED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：审核中 → 已审核'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：审核中 → 已审核'))", action = LogActions.ORDER_STATUS_APPROVE)
     @SaCheckPermission("sales:order:approve")
     @PutMapping("/{orderId}/status/approval")
     public Result<Void> approveOrder(
@@ -81,7 +82,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "审核驳回")
     @Log(module = "订单状态管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).REJECTED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：审核中 → 已驳回'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：审核中 → 已驳回'))", action = LogActions.ORDER_STATUS_REJECT)
     @SaCheckPermission("sales:order:approve")
     @PutMapping("/{orderId}/status/rejection")
     public Result<Void> rejectOrder(
@@ -98,7 +99,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "重新提交审核（驳回后）")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).PENDING_REVIEW.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：已驳回 → 待审核'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：已驳回 → 待审核'))", action = LogActions.ORDER_STATUS_RESUBMIT)
     @SaCheckPermission("sales:order:submit")
     @PutMapping("/{orderId}/status/resubmissions")
     public Result<Void> resubmit(
@@ -113,7 +114,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "取消订单")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).CANCELLED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：可取消状态 → 已取消','关联生产工单按规则联动取消'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：可取消状态 → 已取消','关联生产工单按规则联动取消'))", action = LogActions.ORDER_STATUS_CANCEL)
     @SaCheckPermission("sales:order:edit")
     @DeleteMapping("/{orderId}/status")
     public Result<Void> cancelOrder(
@@ -156,7 +157,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "生成生产计划（标准模式：SO→PLAN→审批→转工单）")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).CONFIRMED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('生成生产计划；已审核订单同步 → 已确认'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('生成生产计划；已审核订单同步 → 已确认'))", action = LogActions.ORDER_STATUS_GENERATE_PLAN)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/generate-plan")
     public Result<Void> generatePlan(
@@ -171,7 +172,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "发货（生产中→已发货，联动创建销售出库单并扣产品库存）")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).SHIPPED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：生产中 → 已发货'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：生产中 → 已发货'))", action = LogActions.ORDER_STATUS_SHIP)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/ship")
     public Result<Void> shipOrder(
@@ -187,7 +188,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "完成订单")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).COMPLETED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：已发货 → 已完成'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：已发货 → 已完成'))", action = LogActions.ORDER_STATUS_COMPLETE)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/complete")
     public Result<Void> completeOrder(
@@ -202,7 +203,7 @@ public class OrderStatusController {
      */
     @Operation(summary = "客户确认订单")
     @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizId = "#orderId", bizType = "'order'", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).CONFIRMED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：已审核 → 已确认'))")
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：已审核 → 已确认'))", action = LogActions.ORDER_STATUS_CONFIRM)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/confirm")
     public Result<Void> confirmOrder(@PathVariable Long orderId,

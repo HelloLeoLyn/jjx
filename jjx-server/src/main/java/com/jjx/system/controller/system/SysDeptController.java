@@ -1,5 +1,6 @@
 package com.jjx.system.controller.system;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.tree.TreeUtils;
@@ -74,7 +75,7 @@ public class SysDeptController extends BaseController {
      * 新增部门
      */
     @PostMapping
-    @Log(module = "部门管理", businessType = BusinessType.INSERT)
+    @Log(module = "部门管理", businessType = BusinessType.INSERT, action = LogActions.DEPT_CREATE)
     @SaCheckPermission("system:dept:add")
     public Result<Void> add(@Validated @RequestBody SysDeptDTO deptDTO) {
         SysDept dept = new SysDept();
@@ -95,7 +96,7 @@ public class SysDeptController extends BaseController {
      * 修改部门
      */
     @PutMapping
-    @Log(module = "部门管理", businessType = BusinessType.UPDATE)
+    @Log(module = "部门管理", businessType = BusinessType.UPDATE, action = LogActions.DEPT_EDIT)
     @SaCheckPermission("system:dept:edit")
     public Result<Void> edit(@Validated @RequestBody SysDeptDTO deptDTO) {
         SysDept dept = new SysDept();
@@ -123,7 +124,7 @@ public class SysDeptController extends BaseController {
      * 删除部门
      */
     @DeleteMapping("/{deptId}")
-    @Log(module = "部门管理", businessType = BusinessType.DELETE)
+    @Log(module = "部门管理", businessType = BusinessType.DELETE, action = LogActions.DEPT_DELETE)
     @SaCheckPermission("system:dept:delete")
     public Result<Void> remove(@PathVariable Long deptId) {
         if (deptService.hasChildByDeptId(deptId)) {

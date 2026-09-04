@@ -1,5 +1,6 @@
 package com.jjx.inventory.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.StockCheckDTO;
@@ -120,7 +121,7 @@ public class InventoryStockController {
 
     @PostMapping("/batch-import")
     @Operation(summary = "批量导入库存")
-    @Log(module = "库存管理", businessType = BusinessType.IMPORT, bizType = "'stock'", bizId = "#list[0].materialCode")
+    @Log(module = "库存管理", businessType = BusinessType.IMPORT, bizType = "'stock'", bizId = "#list[0].materialCode", action = LogActions.STOCK_BATCH_IMPORT)
     @SaCheckPermission("inventory:stock:import")
     public Result<StockImportResultVO> batchImport(@RequestBody List<StockImportDTO> list) {
         return Result.success(stockService.batchImport(list));

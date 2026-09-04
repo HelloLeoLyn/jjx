@@ -1,5 +1,6 @@
 package com.jjx.inventory.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.TransferQueryDTO;
@@ -43,7 +44,7 @@ public class InventoryTransferController {
 
     @PostMapping("/create")
     @Operation(summary = "创建调拨单")
-    @Log(module = "调拨管理", businessType = BusinessType.INSERT, bizType = "'transfer'", bizId = "#result.data")
+    @Log(module = "调拨管理", businessType = BusinessType.INSERT, bizType = "'transfer'", bizId = "#result.data", action = LogActions.TRANSFER_CREATE)
     @SaCheckPermission("inventory:transfer:add")
     public Result<Long> create(@RequestBody Map<String, Object> params) {
         return Result.success(transferService.create(params));
@@ -51,7 +52,7 @@ public class InventoryTransferController {
 
     @PostMapping("/submit-approve/{transferId}")
     @Operation(summary = "提交审批")
-    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId")
+    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId", action = LogActions.TRANSFER_SUBMIT)
     @SaCheckPermission("inventory:transfer:edit")
     public Result<Boolean> submitApprove(@PathVariable Long transferId) {
         return Result.success(transferService.submitApprove(transferId));
@@ -59,7 +60,7 @@ public class InventoryTransferController {
 
     @PostMapping("/approve/{transferId}")
     @Operation(summary = "审批通过")
-    @Log(module = "调拨管理", businessType = BusinessType.APPROVE, bizType = "'transfer'", bizId = "#transferId")
+    @Log(module = "调拨管理", businessType = BusinessType.APPROVE, bizType = "'transfer'", bizId = "#transferId", action = LogActions.TRANSFER_APPROVE)
     @SaCheckPermission("inventory:transfer:approve")
     public Result<Boolean> approve(@PathVariable Long transferId,
                                    @RequestParam Long approverId,
@@ -70,7 +71,7 @@ public class InventoryTransferController {
 
     @PostMapping("/reject/{transferId}")
     @Operation(summary = "审批驳回")
-    @Log(module = "调拨管理", businessType = BusinessType.APPROVE, bizType = "'transfer'", bizId = "#transferId")
+    @Log(module = "调拨管理", businessType = BusinessType.APPROVE, bizType = "'transfer'", bizId = "#transferId", action = LogActions.TRANSFER_REJECT)
     @SaCheckPermission("inventory:transfer:approve")
     public Result<Boolean> reject(@PathVariable Long transferId,
                                   @RequestParam Long approverId,
@@ -81,7 +82,7 @@ public class InventoryTransferController {
 
     @PostMapping("/confirm-out/{transferId}")
     @Operation(summary = "调出确认")
-    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId")
+    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId", action = LogActions.TRANSFER_CONFIRM_OUT)
     @SaCheckPermission("inventory:transfer:edit")
     public Result<Boolean> confirmOut(@PathVariable Long transferId,
                                       @RequestParam Long operatorId,
@@ -91,7 +92,7 @@ public class InventoryTransferController {
 
     @PostMapping("/confirm-in/{transferId}")
     @Operation(summary = "调入确认")
-    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId")
+    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId", action = LogActions.TRANSFER_CONFIRM_IN)
     @SaCheckPermission("inventory:transfer:edit")
     public Result<Boolean> confirmIn(@PathVariable Long transferId,
                                      @RequestParam Long operatorId,
@@ -101,7 +102,7 @@ public class InventoryTransferController {
 
     @PostMapping("/cancel/{transferId}")
     @Operation(summary = "取消调拨单")
-    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId")
+    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId", action = LogActions.TRANSFER_CANCEL)
     @SaCheckPermission("inventory:transfer:edit")
     public Result<Boolean> cancel(@PathVariable Long transferId,
                                   @RequestParam String reason) {
@@ -124,7 +125,7 @@ public class InventoryTransferController {
 
     @PostMapping("/update-status/{transferId}")
     @Operation(summary = "更新调拨单状态")
-    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId")
+    @Log(module = "调拨管理", businessType = BusinessType.UPDATE, bizType = "'transfer'", bizId = "#transferId", action = LogActions.TRANSFER_UPDATE_STATUS)
     @SaCheckPermission("inventory:transfer:edit")
     public Result<Boolean> updateStatus(@PathVariable Long transferId,
                                         @RequestParam Integer status) {

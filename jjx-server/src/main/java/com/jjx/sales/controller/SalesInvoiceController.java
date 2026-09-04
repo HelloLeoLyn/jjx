@@ -1,5 +1,6 @@
 package com.jjx.sales.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
@@ -46,13 +47,13 @@ public class SalesInvoiceController {
     }
 
     @Operation(summary = "记录发票打印")
-    @Log(module = "销售发票", businessType = BusinessType.OTHER, bizType = "'invoice_print'", bizId = "#id")
+    @Log(module = "销售发票", businessType = BusinessType.OTHER, bizType = "'invoice_print'", bizId = "#id", action = LogActions.SALES_INVOICE_PRINT_LOG)
     @SaCheckPermission("sales:order:view")
     @PostMapping("/{id}/print-log")
     public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }
 
     @Operation(summary = "新增发票")
-    @Log(module = "销售发票", businessType = BusinessType.INSERT, bizType = "'invoice'")
+    @Log(module = "销售发票", businessType = BusinessType.INSERT, bizType = "'invoice'", action = LogActions.SALES_INVOICE_CREATE)
     @SaCheckPermission("sales:order:edit")
     @PostMapping
     public Result<Long> create(@RequestBody SalesInvoice invoice) {
@@ -60,7 +61,7 @@ public class SalesInvoiceController {
     }
 
     @Operation(summary = "修改发票")
-    @Log(module = "销售发票", businessType = BusinessType.UPDATE, bizType = "'invoice'", bizId = "#invoice.invoiceId", bizStatus = "T(com.jjx.sales.enums.SalesInvoiceStatusEnum).getByValue(#invoice.status)?.label")
+    @Log(module = "销售发票", businessType = BusinessType.UPDATE, bizType = "'invoice'", bizId = "#invoice.invoiceId", bizStatus = "T(com.jjx.sales.enums.SalesInvoiceStatusEnum).getByValue(#invoice.status)?.label", action = LogActions.SALES_INVOICE_EDIT)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{invoiceId}")
     public Result<Void> update(@PathVariable Long invoiceId, @RequestBody SalesInvoice invoice) {
@@ -72,7 +73,7 @@ public class SalesInvoiceController {
     }
 
     @Operation(summary = "删除发票")
-    @Log(module = "销售发票", businessType = BusinessType.DELETE, bizType = "'invoice'")
+    @Log(module = "销售发票", businessType = BusinessType.DELETE, bizType = "'invoice'", action = LogActions.SALES_INVOICE_DELETE)
     @SaCheckPermission("sales:order:delete")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {

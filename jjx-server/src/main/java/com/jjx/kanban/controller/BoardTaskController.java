@@ -1,5 +1,6 @@
 package com.jjx.kanban.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.core.result.Result;
 import com.jjx.kanban.domain.dto.BoardTaskInfoDTO;
@@ -208,7 +209,7 @@ public class BoardTaskController {
     @Operation(summary = "更新看板任务状态")
     @Log(module = "看板任务", businessType = BusinessType.UPDATE,
             bizType = "'kanban_task'", bizId = "#taskId",
-            bizStatus = "T(com.jjx.kanban.enums.KanbanTaskStatusEnum).getByValue(#dto.status)?.label")
+            bizStatus = "T(com.jjx.kanban.enums.KanbanTaskStatusEnum).getByValue(#dto.status)?.label", action = LogActions.KANBAN_TASK_STATUS)
     @PatchMapping("/{module}/tasks/{taskId}/status")
     public Result<Boolean> updateTaskStatus(@PathVariable String module, @PathVariable Long taskId,
                                             @RequestBody BoardTaskStatusDTO dto) {
@@ -231,7 +232,7 @@ public class BoardTaskController {
     @Operation(summary = "更新看板任务内容")
     @Log(module = "看板任务", businessType = BusinessType.UPDATE,
             bizType = "'kanban_task'", bizId = "#taskId",
-            bizStatus = "T(com.jjx.kanban.enums.KanbanTaskStatusEnum).getByValue(#result.data)?.label")
+            bizStatus = "T(com.jjx.kanban.enums.KanbanTaskStatusEnum).getByValue(#result.data)?.label", action = LogActions.KANBAN_TASK_INFO)
     @PatchMapping("/{module}/tasks/{taskId}/info")
     public Result<Integer> updateTaskInfo(@PathVariable String module, @PathVariable Long taskId,
                                           @RequestBody BoardTaskInfoDTO dto) {

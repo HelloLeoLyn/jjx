@@ -1,5 +1,6 @@
 package com.jjx.purchase.controller;
 
+import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
@@ -63,7 +64,7 @@ public class PurchaseReceiptController extends BaseController {
      * 新增采购收货（确认收货）
      */
     @PostMapping
-    @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'", bizId = "#orderId")
+    @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'", bizId = "#orderId", action = LogActions.PUR_RECEIPT_CREATE)
     @SaCheckPermission("purchase:receipt:add")
     public Result<Void> add(@RequestParam Long orderId,
                             @RequestParam Long itemId,
@@ -78,7 +79,7 @@ public class PurchaseReceiptController extends BaseController {
      * 修改采购收货
      */
     @PutMapping
-    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#orderId")
+    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#orderId", action = LogActions.PUR_RECEIPT_EDIT)
     @SaCheckPermission("purchase:receipt:edit")
     public Result<Void> edit(@RequestParam Long orderId,
                              @RequestParam Long itemId,
@@ -93,7 +94,7 @@ public class PurchaseReceiptController extends BaseController {
      * 删除采购收货
      */
     @DeleteMapping("/{receiptIds}")
-    @Log(module = "采购收货管理", businessType = BusinessType.DELETE, bizType = "'purchase_receipt'", bizId = "#receiptIds[0]")
+    @Log(module = "采购收货管理", businessType = BusinessType.DELETE, bizType = "'purchase_receipt'", bizId = "#receiptIds[0]", action = LogActions.PUR_RECEIPT_DELETE)
     @SaCheckPermission("purchase:receipt:delete")
     public Result<Void> remove(@PathVariable Long[] receiptIds) {
         throw new BusinessException("收货记录不可删除");
@@ -112,7 +113,7 @@ public class PurchaseReceiptController extends BaseController {
      * 检验收货
      */
     @PutMapping("/inspect/{receiptId}")
-    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#receiptId")
+    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#receiptId", action = LogActions.PUR_RECEIPT_INSPECT)
     @SaCheckPermission("purchase:receipt:edit")
     public Result<Void> inspect(@PathVariable Long receiptId,
                                 @RequestParam String inspectionResult,
@@ -132,7 +133,7 @@ public class PurchaseReceiptController extends BaseController {
      * 确认收货
      */
     @PutMapping("/confirm/{receiptId}")
-    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#receiptId")
+    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#receiptId", action = LogActions.PUR_RECEIPT_CONFIRM)
     @SaCheckPermission("purchase:receipt:edit")
     public Result<Void> confirm(@PathVariable Long receiptId,
                                 @RequestParam BigDecimal receivedQuantity,
@@ -273,7 +274,7 @@ public class PurchaseReceiptController extends BaseController {
      * 批量收货
      */
     @PostMapping("/batch")
-    @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'", bizId = "#batchData[0]['orderId']")
+    @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'", bizId = "#batchData[0]['orderId']", action = LogActions.PUR_RECEIPT_BATCH_RECEIVE)
     @SaCheckPermission("purchase:receipt:add")
     public Result<Void> batchReceive(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -291,7 +292,7 @@ public class PurchaseReceiptController extends BaseController {
      * 批量检验
      */
     @PostMapping("/batch-inspect")
-    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#batchData[0]['itemId']")
+    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#batchData[0]['itemId']", action = LogActions.PUR_RECEIPT_BATCH_INSPECT)
     @SaCheckPermission("purchase:receipt:edit")
     public Result<Void> batchInspect(@RequestBody List<Map<String, Object>> batchData) {
         for (Map<String, Object> data : batchData) {
@@ -313,7 +314,7 @@ public class PurchaseReceiptController extends BaseController {
      * 导入收货数据
      */
     @PostMapping("/import")
-    @Log(module = "采购收货管理", businessType = BusinessType.IMPORT, bizType = "'purchase_receipt'", bizId = "#importData[0]['orderId']")
+    @Log(module = "采购收货管理", businessType = BusinessType.IMPORT, bizType = "'purchase_receipt'", bizId = "#importData[0]['orderId']", action = LogActions.PUR_RECEIPT_IMPORT)
     @SaCheckPermission("purchase:receipt:import")
     public Result<Void> importReceipt(@RequestBody List<Map<String, Object>> importData) {
         for (Map<String, Object> data : importData) {

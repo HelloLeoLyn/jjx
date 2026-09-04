@@ -1,5 +1,6 @@
 package com.jjx.product.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.ProductStandardProcessQueryDTO;
@@ -142,7 +143,7 @@ public class ProductStandardProcessController {
     // ==================== 编码生成 ====================
 
     @Operation(summary = "标准工序导入（2026-08-08，照物料导入模式：模板/校验/失败明细）")
-    @Log(module = "标准工序管理", businessType = BusinessType.IMPORT, bizType = "'standard_process'", bizId = "'batch'")
+    @Log(module = "标准工序管理", businessType = BusinessType.IMPORT, bizType = "'standard_process'", bizId = "'batch'", action = LogActions.PROCESS_IMPORT)
     @SaCheckPermission("engineering:standardProcess:add")
     @PostMapping("/import")
     public Result<com.jjx.inventory.dto.vo.MaterialImportResultVO> importProcesses(

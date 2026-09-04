@@ -1,5 +1,6 @@
 package com.jjx.engineering.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.utils.ExcelUtils;
@@ -141,7 +142,7 @@ public class BomController extends BaseController {
     @PostMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.INSERT, bizType = "'bom'",
          bizId = "#result.data",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).DRAFT.getLabel()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).DRAFT.getLabel()", action = LogActions.BOM_CREATE)
     @SaCheckPermission("engineering:bom:add")
     public Result<Long> add(@Validated @RequestBody EngineeringBomDTO dto) {
         Long bomId = productBomService.createBomReturnId(dto);
@@ -153,7 +154,7 @@ public class BomController extends BaseController {
      */
     @PutMapping
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#dto.bomId",
-         bizStatus = "#result.data.bizStatus", detail = "#result.data.detailMessage")
+         bizStatus = "#result.data.bizStatus", detail = "#result.data.detailMessage", action = LogActions.BOM_EDIT)
     @SaCheckPermission("engineering:bom:edit")
     public Result<EngineeringBomEditVO> edit(@Validated @RequestBody EngineeringBomDTO dto) {
         EngineeringBomEditVO vo = productBomService.updateBomWithDetail(dto);
@@ -165,7 +166,7 @@ public class BomController extends BaseController {
      */
     @DeleteMapping("/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.DELETE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "#result.data.label")
+         bizStatus = "#result.data.label", action = LogActions.BOM_DELETE)
     @SaCheckPermission("engineering:bom:delete")
     public Result<ProductEnums.BomStatus> remove(@PathVariable Long bomId) {
         ProductEnums.BomStatus statusBeforeDelete = productBomService.removeBomWithItems(bomId);
@@ -177,7 +178,7 @@ public class BomController extends BaseController {
      */
     @PutMapping("/submit/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REVIEWING.getLabel()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REVIEWING.getLabel()", action = LogActions.BOM_SUBMIT)
     @SaCheckPermission("engineering:bom:edit")
     public Result<Void> submit(@PathVariable Long bomId) {
         return productBomService.submitApprove(bomId) ? Result.success() : Result.error();
@@ -188,7 +189,7 @@ public class BomController extends BaseController {
      */
     @PutMapping("/approve/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).APPROVED.getLabel()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).APPROVED.getLabel()", action = LogActions.BOM_APPROVE)
     @SaCheckPermission("engineering:bom:approve")
     public Result<Void> approve(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.approve(dto) ? Result.success() : Result.error();
@@ -199,7 +200,7 @@ public class BomController extends BaseController {
      */
     @PutMapping("/reject/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REJECT.getLabel()")
+         bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REJECT.getLabel()", action = LogActions.BOM_REJECT)
     @SaCheckPermission("engineering:bom:reject")
     public Result<Void> reject(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
         return productBomService.reject(dto) ? Result.success() : Result.error();
@@ -210,7 +211,7 @@ public class BomController extends BaseController {
      */
     @PutMapping("/setDefault/{bomId}")
     @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "#result.data.label")
+         bizStatus = "#result.data.label", action = LogActions.BOM_SET_DEFAULT)
     @SaCheckPermission("engineering:bom:edit")
     public Result<ProductEnums.BomStatus> setDefault(@PathVariable Long bomId) {
         ProductEnums.BomStatus currentStatus = productBomService.setDefaultBom(bomId);

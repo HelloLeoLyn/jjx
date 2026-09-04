@@ -1,5 +1,6 @@
 package com.jjx.system.controller.system;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
@@ -138,7 +139,7 @@ public class SysUserController extends BaseController {
      * 新增用户
      */
     @PostMapping
-    @Log(module = "用户管理", businessType = BusinessType.INSERT)
+    @Log(module = "用户管理", businessType = BusinessType.INSERT, action = LogActions.USER_CREATE)
     @SaCheckPermission("system:user:add")
     public Result<Void> add(@Validated @RequestBody SysUserDTO userDTO) {
         return toAjax(userService.insertUser(userDTO));
@@ -148,7 +149,7 @@ public class SysUserController extends BaseController {
      * 修改用户
      */
     @PutMapping
-    @Log(module = "用户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "用户管理", businessType = BusinessType.UPDATE, action = LogActions.USER_EDIT)
     @SaCheckPermission("system:user:edit")
     public Result<Void> edit(@Validated @RequestBody SysUserDTO userDTO) {
 
@@ -159,7 +160,7 @@ public class SysUserController extends BaseController {
      * 删除用户
      */
     @DeleteMapping("/{userIds}")
-    @Log(module = "用户管理", businessType = BusinessType.DELETE)
+    @Log(module = "用户管理", businessType = BusinessType.DELETE, action = LogActions.USER_DELETE)
     @SaCheckPermission("system:user:delete")
     public Result<Void> remove(@PathVariable List<Long> userIds) {
         return toAjax(userService.deleteUserByIds(userIds));
@@ -169,7 +170,7 @@ public class SysUserController extends BaseController {
      * 重置密码
      */
     @PutMapping("/resetPwd")
-    @Log(module = "用户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "用户管理", businessType = BusinessType.UPDATE, action = LogActions.USER_RESET_PWD)
     @SaCheckPermission("system:user:resetPwd")
     public Result<Void> resetPwd(@Validated @RequestBody SysUserStatusDTO statusDTO) {
         return toAjax(userService.resetPwd(statusDTO));
@@ -179,7 +180,7 @@ public class SysUserController extends BaseController {
      * 状态修改
      */
     @PutMapping("/changeStatus")
-    @Log(module = "用户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "用户管理", businessType = BusinessType.UPDATE, action = LogActions.USER_STATUS)
     @SaCheckPermission("system:user:edit")
     public Result<Void> changeStatus(@Validated @RequestBody SysUserStatusDTO statusDTO) {
         return toAjax(userService.updateUserStatus(statusDTO));
@@ -198,7 +199,7 @@ public class SysUserController extends BaseController {
      * 用户授权角色
      */
     @PutMapping("/authRole")
-    @Log(module = "用户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "用户管理", businessType = BusinessType.UPDATE, action = LogActions.USER_AUTH_ROLE)
     @SaCheckPermission("system:user:edit")
     public Result<Void> insertAuthRole(Long userId, Long[] roleIds) {
         userService.checkUserDataScope(userId);
@@ -218,7 +219,7 @@ public class SysUserController extends BaseController {
      * 修改用户个人信息
      */
     @PutMapping("/profile")
-    @Log(module = "用户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "用户管理", businessType = BusinessType.UPDATE, action = LogActions.USER_PROFILE)
     public Result<Void> profile(@Validated @RequestBody SysUserProfileDTO profileDTO) {
         profileDTO.setUserId(getUserId());
         return toAjax(userService.updateUserProfile(profileDTO));
@@ -228,7 +229,7 @@ public class SysUserController extends BaseController {
      * 重置密码
      */
     @PutMapping("/profile/updatePwd")
-    @Log(module = "用户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "用户管理", businessType = BusinessType.UPDATE, action = LogActions.USER_UPDATE_PWD)
     public Result<Void> updatePwd(@Validated @RequestBody ResetPasswordDTO dto) {
 
         return toAjax(userService.resetUserPwd(dto));
@@ -238,7 +239,7 @@ public class SysUserController extends BaseController {
      * 修改头像
      */
     @PostMapping("/profile/avatar")
-    @Log(module = "用户管理", businessType = BusinessType.UPDATE)
+    @Log(module = "用户管理", businessType = BusinessType.UPDATE, action = LogActions.USER_AVATAR)
     public Result<Void> avatar(String avatar) {
         return toAjax(userService.updateUserAvatar(getUsername(), avatar));
     }

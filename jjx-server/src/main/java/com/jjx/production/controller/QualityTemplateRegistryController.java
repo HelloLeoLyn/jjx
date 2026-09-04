@@ -1,5 +1,6 @@
 package com.jjx.production.controller;
 
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.dto.QualityTemplateQueryDTO;
@@ -43,7 +44,7 @@ public class QualityTemplateRegistryController {
     @Operation(summary = "记录打印留痕")
     @PostMapping("/{id}/print-log")
     @Log(module = "质量记录打印", businessType = BusinessType.OTHER,
-            bizType = "'quality_template'", bizId = "#id")
+            bizType = "'quality_template'", bizId = "#id", action = LogActions.QUALITY_TEMPLATE_PRINT_LOG)
     public Result<Void> printLog(@PathVariable Long id,
                                  @RequestParam(required = false) String bizType,
                                  @RequestParam(required = false) Long bizId) {
