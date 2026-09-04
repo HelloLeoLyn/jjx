@@ -293,6 +293,19 @@ public class OrderServiceImpl implements IOrderService {
                 if (!java.util.Objects.equals(oi.getUnitPrice(), ni.getUnitPrice())) {
                     changes.add("明细" + label + " 单价:" + oi.getUnitPrice() + "→" + ni.getUnitPrice());
                 }
+                // 2026-09-04：补 规格/客户物料号/行备注/单位（dev-1404 同类排查，原只比数量/单价）
+                if (!java.util.Objects.equals(oi.getSpecification(), ni.getSpecification())) {
+                    changes.add("明细" + label + " 规格:" + oi.getSpecification() + "→" + ni.getSpecification());
+                }
+                if (!java.util.Objects.equals(oi.getCustomerMaterialNo(), ni.getCustomerMaterialNo())) {
+                    changes.add("明细" + label + " 客户物料号:" + oi.getCustomerMaterialNo() + "→" + ni.getCustomerMaterialNo());
+                }
+                if (!java.util.Objects.equals(oi.getLineRemark(), ni.getLineRemark())) {
+                    changes.add("明细" + label + " 行备注:" + oi.getLineRemark() + "→" + ni.getLineRemark());
+                }
+                if (!java.util.Objects.equals(oi.getUnit(), ni.getUnit())) {
+                    changes.add("明细" + label + " 单位:" + oi.getUnit() + "→" + ni.getUnit());
+                }
             }
         }
         for (SalesOrderProductVO oi : oldItems) {

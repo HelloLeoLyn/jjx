@@ -653,6 +653,10 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             List<String> changes = new java.util.ArrayList<>();
             changeRecorder.diff(changes, "产品名称", old.getProductName(), dto.getProductName());
             changeRecorder.diff(changes, "产品编码", old.getProductCode(), dto.getProductCode());
+            // 2026-09-04：补产品类型/规格明细/单位（dev-1404 同类排查）
+            changeRecorder.diff(changes, "产品类型", old.getProductType(), dto.getProductType());
+            changeRecorder.diff(changes, "规格明细", old.getSpecJson(), dto.getSpecJson());
+            changeRecorder.diff(changes, "单位", old.getUnit(), dto.getUnit());
             changeRecorder.diff(changes, "分类",
                     categoryName(old.getCategoryId()), categoryName(dto.getCategoryId()));
             changeRecorder.diff(changes, "客户", old.getCustomerName(), dto.getCustomerName());

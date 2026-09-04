@@ -61,6 +61,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.service.InventoryAlertService alertService;
     private final com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader;
     private final com.jjx.system.service.LogSaveService logSaveService;
+    private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     private final ReviewFlowService reviewFlowService;
     private final RedisSequenceService redisSequenceService;
 
@@ -247,6 +248,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             throw new BusinessException(PurchaseExceptionEnum.ORDER_UPDATE_FAILED);
         }
 
+        // 2026-09-04：字段级变更流水（改前快照在删明细前取）
+        java.util.List<PurchaseOrderItem> oldItems = orderItemMapper.selectList(
+                new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getOrderId, order.getOrderId()));
+        java.util.List<String> changes = new java.util.ArrayList<>();
+        diffMainFields(changes, existingOrder, orderDTO);
+        diffItemFields(changes, oldItems, orderDTO.getItems());
+
         // 删除原有明细
         LambdaQueryWrapper<PurchaseOrderItem> deleteWrapper = Wrappers.lambdaQuery();
         deleteWrapper.eq(PurchaseOrderItem::getOrderId, order.getOrderId());
@@ -255,7 +263,82 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 保存新的订单明细
         saveOrderItems(order.getOrderId(), orderDTO.getItems());
 
+        // 记录变更日志（同销售订单/询价模式：operParam=人读摘要，detail=changes JSON）
+        try {
+            String bizStatus = existingOrder.getApprovalStatus() == null ? null
+                    : ApproveStatusEnum.getByValue(existingOrder.getApprovalStatus()).getLabel();
+            changeRecorder.recordUpdate("采购订单管理", "purchase_order.update", "purchase_order",
+                    String.valueOf(order.getOrderId()), existingOrder.getTraceId(), bizStatus, changes);
+        } catch (Exception e) {
+            log.warn("记录采购订单修改变更日志失败: orderId={}, err={}", order.getOrderId(), e.getMessage());
+        }
+
         return result;
+    }
+
+    /** 主表字段对比（白名单，旧实体 vs 编辑 DTO） */
+    private void diffMainFields(java.util.List<String> changes, PurchaseOrder oldOrder, PurchaseOrderDTO dto) {
+        changeRecorder.diff(changes, "供应商", oldOrder.getSupplierName(), dto.getSupplierName());
+        changeRecorder.diff(changes, "订单类型", oldOrder.getOrderType(), dto.getOrderType());
+        changeRecorder.diff(changes, "采购日期",
+                changeRecorder.fmtDate(oldOrder.getOrderDate()), changeRecorder.fmtDate(dto.getOrderDate()));
+        changeRecorder.diff(changes, "预计到货",
+                changeRecorder.fmtDate(oldOrder.getExpectedDeliveryDate()),
+                changeRecorder.fmtDate(dto.getExpectedDeliveryDate()));
+        changeRecorder.diff(changes, "币种", oldOrder.getCurrency(), dto.getCurrency());
+        changeRecorder.diff(changes, "交货方式", oldOrder.getDeliveryMethod(), dto.getDeliveryMethod());
+        changeRecorder.diff(changes, "合同号", oldOrder.getContractNo(), dto.getContractNo());
+        changeRecorder.diff(changes, "交货地址", oldOrder.getDeliveryAddress(), dto.getDeliveryAddress());
+        changeRecorder.diff(changes, "加急", oldOrder.getUrgentFlag(), dto.getUrgentFlag());
+        changeRecorder.diff(changes, "加急原因", oldOrder.getUrgentReason(), dto.getUrgentReason());
+        changeRecorder.diff(changes, "备注", oldOrder.getRemark(), dto.getRemark());
+    }
+
+    /** 明细对比：按 物料ID+规格 匹配，记录 新增/删除/修改（数量/单价/税率） */
+    private void diffItemFields(java.util.List<String> changes,
+                                java.util.List<PurchaseOrderItem> oldItems,
+                                java.util.List<com.jjx.purchase.domain.dto.PurchaseOrderItemDTO> newItems) {
+        java.util.List<PurchaseOrderItem> olds = oldItems == null ? java.util.List.of() : oldItems;
+        java.util.List<com.jjx.purchase.domain.dto.PurchaseOrderItemDTO> news = newItems == null ? java.util.List.of() : newItems;
+        java.util.List<com.jjx.purchase.domain.dto.PurchaseOrderItemDTO> matchedNew = new java.util.ArrayList<>();
+        for (PurchaseOrderItem old : olds) {
+            String oldKey = itemKey(old.getMaterialId(), old.getMaterialCode(), old.getMaterialSpec());
+            com.jjx.purchase.domain.dto.PurchaseOrderItemDTO hit = null;
+            for (com.jjx.purchase.domain.dto.PurchaseOrderItemDTO n : news) {
+                if (matchedNew.contains(n)) continue;
+                String newKey = itemKey(n.getMaterialId(), n.getMaterialCode(), n.getMaterialSpec());
+                if (newKey.equals(oldKey)) { hit = n; break; }
+            }
+            if (hit == null) {
+                changes.add("明细删除:" + itemDesc(old.getMaterialName(), old.getMaterialCode()));
+            } else {
+                matchedNew.add(hit);
+                String desc = itemDesc(hit.getMaterialName(), hit.getMaterialCode());
+                changeRecorder.diffDecimal(changes, "明细[" + desc + "]数量",
+                        old.getQuantity(), hit.getQuantity());
+                changeRecorder.diffDecimal(changes, "明细[" + desc + "]单价",
+                        old.getUnitPrice(), hit.getUnitPrice());
+                // 2026-09-04：补 单位/询价信息（dev-1404 同类排查；taxRate 明细不落库无需比）
+                changeRecorder.diff(changes, "明细[" + desc + "]单位", old.getUnit(), hit.getUnit());
+                changeRecorder.diff(changes, "明细[" + desc + "]询价信息",
+                        old.getInquiryInfo(), hit.getInquiryInfo());
+            }
+        }
+        for (com.jjx.purchase.domain.dto.PurchaseOrderItemDTO n : news) {
+            if (!matchedNew.contains(n)) {
+                changes.add("明细新增:" + itemDesc(n.getMaterialName(), n.getMaterialCode()));
+            }
+        }
+    }
+
+    private String itemKey(Long materialId, String materialCode, String materialSpec) {
+        return (materialId == null ? "" : materialId) + "|" + (materialCode == null ? "" : materialCode)
+                + "|" + (materialSpec == null ? "" : materialSpec);
+    }
+
+    private String itemDesc(String materialName, String materialCode) {
+        return (materialName == null ? "" : materialName) + (materialCode == null || materialCode.isBlank()
+                ? "" : "(" + materialCode + ")");
     }
 
     @Override

@@ -329,8 +329,15 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             if (oldIt == null) {
                 changes.add("新增物料:" + matLabel(e.getValue()));
             } else {
-                changeRecorder.diff(changes, "用量(" + matLabel(e.getValue()) + ")",
+                // 2026-09-04 修复（dev-1404）：明细 diff 补 基数(base_qty)/模数(module_qty)，
+                // 原只比 quantity 导致改模数/基数（含空→值、值→空）流水无记录；统一 diffDecimal 防 BigDecimal scale 误报
+                String label = matLabel(e.getValue());
+                changeRecorder.diffDecimal(changes, "用量(" + label + ")",
                         oldIt.getQuantity(), e.getValue().getQuantity());
+                changeRecorder.diffDecimal(changes, "基数(" + label + ")",
+                        oldIt.getBaseQty(), e.getValue().getBaseQty());
+                changeRecorder.diffDecimal(changes, "模数(" + label + ")",
+                        oldIt.getModuleQty(), e.getValue().getModuleQty());
             }
         }
         for (EngineeringBomItem oldIt : oldItems) {
