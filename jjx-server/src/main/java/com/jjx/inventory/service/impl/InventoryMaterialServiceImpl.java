@@ -1,8 +1,6 @@
 package com.jjx.inventory.service.impl;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,12 +20,14 @@ import com.jjx.common.enums.StatusEnum;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.inventory.converter.MaterialConverter;
 import com.jjx.inventory.domain.InventoryMaterial;
+import com.jjx.inventory.domain.InventoryMaterialCategory;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.dto.imports.MaterialImportDTO;
 import com.jjx.inventory.dto.query.MaterialCheckDTO;
 import com.jjx.inventory.dto.query.MaterialQueryDTO;
 import com.jjx.inventory.dto.vo.MaterialVO;
 import com.jjx.inventory.enums.ProcessGroup;
+import com.jjx.inventory.mapper.InventoryMaterialCategoryMapper;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.service.InventoryMaterialService;
@@ -49,6 +49,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         implements InventoryMaterialService {
 
     private final InventoryMaterialMapper materialMapper;
+    private final InventoryMaterialCategoryMapper materialCategoryMapper;
     private final InventoryStockMapper stockMapper;
     private final RedisSequenceService redisSequenceService;
     private final MaterialConverter materialConverter;
@@ -272,8 +273,6 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                     + "|" + (dto.getSupplierName() == null ? "" : dto.getSupplierName().trim());
             dupCountMap.merge(k, 1, Integer::sum);
         }
-        String dateKey = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-
         for (int i = 0; i < importList.size(); i++) {
             MaterialImportDTO dto = importList.get(i);
             int excelRow = i + 2; // 第1行表头，数据从第2行开始
@@ -310,7 +309,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 }
 
                 // 生成物料编码
-                String materialCode = generateMaterialCode(dateKey);
+                String materialCode = generateMaterialCode(null);
 
                 // 创建物料实体
                 InventoryMaterial material = new InventoryMaterial();
@@ -354,8 +353,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     @Override
     public String generateCode() {
-        String dateKey = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        return generateMaterialCode(dateKey);
+        return generateMaterialCode(null);
     }
 
     @Override
@@ -392,11 +390,25 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     /**
      * 生成物料编码
-     * 格式：MTR + 日期(yyyyMMdd) + 序列号(4位)
-     * 例如：MTR202604280001
+     * 格式：分类编码前缀（无分类时为 MTR）+ 6 位自增码，从 100001 开始
+     * 例如：MTR100001、INK100001（具体数字由全局流水决定）
      */
-    private String generateMaterialCode(String dateKey) {
-        Long sequence = redisSequenceService.getNextSequence("material:" + dateKey);
-        return "MTR" + dateKey + String.format("%04d", sequence);
+    private String generateMaterialCode(Long categoryId) {
+        String prefix = resolveMaterialCodePrefix(categoryId);
+        Long sequence = redisSequenceService.getNextSequence("material:code");
+        return prefix + String.format("%06d", 100000L + sequence);
+    }
+
+    /**
+     * 按分类解析物料编码前缀；未传分类或分类编码不存在时使用 MTR。
+     */
+    private String resolveMaterialCodePrefix(Long categoryId) {
+        if (categoryId == null) {
+            return "MTR";
+        }
+        InventoryMaterialCategory category = materialCategoryMapper.selectById(categoryId);
+        return category != null && StringUtils.isNotBlank(category.getCategoryCode())
+                ? category.getCategoryCode()
+                : "MTR";
     }
 }
