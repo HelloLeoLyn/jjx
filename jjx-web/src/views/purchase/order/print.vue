@@ -35,6 +35,15 @@
             <span class="info-label">供应商</span>{{ info.supplierName || '-' }}
           </div>
           <div class="info-item">
+            <span class="info-label">厂商联系人</span>{{ supplier?.contactPerson || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">TEL</span>{{ supplier?.phone || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">交易方式</span>{{ paymentTermsLabel }}
+          </div>
+          <div class="info-item">
             <span class="info-label">交货日期</span>{{ info.expectedDeliveryDate || '-' }}
           </div>
           <div class="info-item">
@@ -70,6 +79,7 @@
               <th style="width: 10%">数量</th>
               <th style="width: 12%">单价</th>
               <th style="width: 13%">金额</th>
+              <th style="width: 9%">备注</th>
             </tr>
           </thead>
           <tbody>
@@ -82,9 +92,10 @@
               <td class="col-right">{{ fmtNum(item.quantity) }}</td>
               <td class="col-right">{{ fmtMoney(item.unitPrice) }}</td>
               <td class="col-right">{{ fmtMoney(item.amount) }}</td>
+              <td></td>
             </tr>
             <tr v-if="!itemsList.length">
-              <td colspan="8" class="col-center">无明细</td>
+              <td colspan="9" class="col-center">无明细</td>
             </tr>
           </tbody>
         </table>
@@ -98,18 +109,26 @@
         <!-- 备注 -->
         <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
 
+        <!-- 交易条款 -->
+        <div class="doc-terms">
+          <div class="doc-terms-title">交易条款：</div>
+          <div v-for="term in tradeTerms" :key="term">{{ term }}</div>
+        </div>
+
+        <div class="doc-control-code">JJX-QR-024</div>
+
         <!-- 签名区 -->
         <div class="doc-signs">
           <div class="sign-item">
-            <div class="sign-line">供应商确认：</div>
+            <div class="sign-line">供应商回签：</div>
             <div class="sign-underline"></div>
           </div>
           <div class="sign-item">
-            <div class="sign-line">采购员：</div>
+            <div class="sign-line">经理审核：</div>
             <div class="sign-underline"></div>
           </div>
           <div class="sign-item">
-            <div class="sign-line">日期：</div>
+            <div class="sign-line">制表人：{{ makerName }}</div>
             <div class="sign-underline"></div>
           </div>
         </div>
@@ -433,13 +452,32 @@ onMounted(async () => {
 .doc-remark {
   font-size: 10px;
   color: #555;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+}
+
+.doc-terms {
+  color: #555;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.doc-terms-title {
+  color: #303133;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.doc-control-code {
+  margin-top: 8px;
+  text-align: right;
+  color: #606266;
+  font-size: 10px;
 }
 
 .doc-signs {
   display: flex;
   justify-content: space-between;
-  margin-top: 40px;
+  margin-top: 16px;
   padding: 0 20px;
 }
 
