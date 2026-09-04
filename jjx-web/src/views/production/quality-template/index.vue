@@ -32,6 +32,15 @@
         <el-table-column prop="ownerDept" label="主管部门" width="110" />
         <el-table-column label="保存期限" width="90"><template #default="{ row }">{{ row.retentionYears }}年</template></el-table-column>
         <el-table-column label="类别" width="100"><template #default="{ row }">{{ QualityTemplateCategoryEnum.getLabel(row.category) }}</template></el-table-column>
+        <el-table-column prop="printComponent" label="前端打印实现组件/页面路径" min-width="230" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.printComponent || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="bizModule" label="相关业务归属" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.bizModule || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="打印实现程度" width="120">
+          <template #default="{ row }">{{ getPrintModeLabel(row.printMode) }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }"><el-tag :type="QualityTemplateStatusEnum.getTagProps(row.status).type">{{ QualityTemplateStatusEnum.getLabel(row.status) }}</el-tag></template>
         </el-table-column>
@@ -61,6 +70,13 @@
         <el-form-item label="保存期限"><el-input-number v-model="form.retentionYears" :min="1" /> 年</el-form-item>
         <el-form-item label="类别"><el-select v-model="form.category"><el-option v-for="item in QualityTemplateCategoryEnum.items" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
         <el-form-item v-if="form.category === QualityTemplateCategory.DATA" label="业务类型"><el-input v-model="form.bizType" /></el-form-item>
+        <el-form-item label="打印组件" label-width="110px"><el-input v-model="form.printComponent" placeholder="前端打印实现组件/页面路径" /></el-form-item>
+        <el-form-item label="业务归属" label-width="110px"><el-input v-model="form.bizModule" placeholder="相关业务归属" /></el-form-item>
+        <el-form-item label="打印程度" label-width="110px">
+          <el-select v-model="form.printMode" clearable placeholder="请选择" style="width: 100%">
+            <el-option v-for="item in printModeItems" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="formVisible = false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
@@ -82,23 +98,43 @@ import { attachmentApi } from '@/api/system/attachment'
 import { changeQualityTemplateStatus, createQualityTemplate, deleteQualityTemplate, getQualityTemplatePage, updateQualityTemplate, type QualityTemplate, type QualityTemplateQuery } from '@/api/production/qualityTemplate'
 import { QualityTemplateCategory, QualityTemplateCategoryEnum, QualityTemplateStatus, QualityTemplateStatusEnum } from '@/enums/production/QualityTemplateEnum'
 
-const loading = ref(false), rows = ref<QualityTemplate[]>([]), total = ref(0), formVisible = ref(false), uploadVisible = ref(false), isRevision = ref(false)
+enum PrintMode {
+  BLANK = 'blank',
+  SYSTEM = 'system',
+  DUAL = 'dual'
+}
+
+interface QualityTemplateView extends QualityTemplate {
+  printComponent?: string
+  bizModule?: string
+  printMode?: PrintMode
+}
+
+const printModeItems = [
+  { value: PrintMode.BLANK, label: '未实现' },
+  { value: PrintMode.SYSTEM, label: '系统版' },
+  { value: PrintMode.DUAL, label: '双版式' }
+]
+
+const loading = ref(false), rows = ref<QualityTemplateView[]>([]), total = ref(0), formVisible = ref(false), uploadVisible = ref(false), isRevision = ref(false)
 const query = reactive<QualityTemplateQuery>({ pageNum: 1, pageSize: 20 })
-const emptyForm = (): QualityTemplate => ({ recordNo: '', recordName: '', version: 'A', ownerDept: '', retentionYears: 2, category: QualityTemplateCategory.BLANK, bizType: '', remark: '' })
-const form = reactive<QualityTemplate>(emptyForm())
-const uploadRow = ref<QualityTemplate | null>(null), uploadVersion = ref('A')
+const emptyForm = (): QualityTemplateView => ({ recordNo: '', recordName: '', version: 'A', ownerDept: '', retentionYears: 2, category: QualityTemplateCategory.BLANK, bizType: '', printComponent: '', bizModule: '', printMode: undefined, remark: '' })
+const form = reactive<QualityTemplateView>(emptyForm())
+const uploadRow = ref<QualityTemplateView | null>(null), uploadVersion = ref('A')
+
+function getPrintModeLabel(value?: PrintMode) { return printModeItems.find(item => item.value === value)?.label || '-' }
 
 async function load() { loading.value = true; try { const res: any = await getQualityTemplatePage(query); rows.value = res.data?.records || []; total.value = res.data?.total || 0 } finally { loading.value = false } }
 function search() { query.pageNum = 1; load() }
 function reset() { Object.assign(query, { pageNum: 1, pageSize: query.pageSize, recordNo: undefined, recordName: undefined, ownerDept: undefined, category: undefined, status: undefined }); load() }
 function openCreate() { Object.assign(form, emptyForm()); formVisible.value = true }
-function openEdit(row: QualityTemplate) { Object.assign(form, emptyForm(), row); formVisible.value = true }
+function openEdit(row: QualityTemplateView) { Object.assign(form, emptyForm(), row); formVisible.value = true }
 async function save() { if (!form.recordNo.trim() || !form.recordName.trim() || !form.version.trim()) return ElMessage.warning('请填写编号、名称和版次'); form.id ? await updateQualityTemplate(form) : await createQualityTemplate(form); ElMessage.success('保存成功'); formVisible.value = false; load() }
 function nextVersion(version: string) { const value = version.trim().toUpperCase(); return /^[A-Z]$/.test(value) ? String.fromCharCode(value.charCodeAt(0) + 1) : `${version}-1` }
-function openUpload(row: QualityTemplate, revision: boolean) { uploadRow.value = row; isRevision.value = revision; uploadVersion.value = revision ? nextVersion(row.version) : row.version; uploadVisible.value = true }
+function openUpload(row: QualityTemplateView, revision: boolean) { uploadRow.value = row; isRevision.value = revision; uploadVersion.value = revision ? nextVersion(row.version) : row.version; uploadVisible.value = true }
 async function fileUploaded(fileId: number) { if (!uploadRow.value) return; await updateQualityTemplate({ ...uploadRow.value, fileId, version: uploadVersion.value }); ElMessage.success(isRevision.value ? '换版成功' : '模板文件已更新'); uploadVisible.value = false; load() }
-async function changeStatus(row: QualityTemplate, status: number) { await changeQualityTemplateStatus(row.id!, status); ElMessage.success('状态已更新'); load() }
-async function remove(row: QualityTemplate) { await ElMessageBox.confirm(`确认删除 ${row.recordNo}？`, '提示', { type: 'warning' }); await deleteQualityTemplate(row.id!); ElMessage.success('删除成功'); load() }
+async function changeStatus(row: QualityTemplateView, status: number) { await changeQualityTemplateStatus(row.id!, status); ElMessage.success('状态已更新'); load() }
+async function remove(row: QualityTemplateView) { await ElMessageBox.confirm(`确认删除 ${row.recordNo}？`, '提示', { type: 'warning' }); await deleteQualityTemplate(row.id!); ElMessage.success('删除成功'); load() }
 onMounted(load)
 </script>
 
