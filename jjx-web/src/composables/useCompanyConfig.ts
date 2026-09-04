@@ -45,10 +45,10 @@ export function useCompanyConfig() {
   async function loadCompanyConfig() {
     loading.value = true
     try {
-      const res = await sysConfigApi.listByGroup('pdf_template')
-      const configMap = new Map(
-        (res.data || []).map((item) => [item.configKey, item.configValue || ''])
-      )
+      // 2026-09-04：改走开放通道 /config/module/pdf_template（登录即可），
+      // 敏感开票资料（税号/开户行/账号等）后端已过滤不下发，打印页不再展示
+      const res = await sysConfigApi.module('pdf_template')
+      const configMap = new Map(Object.entries((res.data as Record<string, string>) || {}))
       for (const key of Object.keys(configKeys) as (keyof CompanyConfig)[]) {
         company[key] = configMap.get(configKeys[key]) || ''
       }

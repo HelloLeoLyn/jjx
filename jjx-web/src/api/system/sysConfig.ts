@@ -24,6 +24,11 @@ export const sysConfigApi = {
     return request.get<R<SysConfigItem[]>>(`/system/config/group/${group}`)
   },
 
+  /** 运行态配置模块（登录即可，敏感键已过滤；打印页公司抬头用，2026-09-04） */
+  module(group: string) {
+    return request.get<R<Record<string, string>>>(`/config/module/${group}`)
+  },
+
   // 获取配置值
   getValue(key: string) {
     return request.get<R<string>>(`/system/config/value/${key}`)
