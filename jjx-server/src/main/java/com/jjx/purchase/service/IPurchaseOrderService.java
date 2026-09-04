@@ -257,7 +257,6 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
     /**
      * 导出采购订单PDF（单张表单）
      */
-    byte[] exportPdf(Long orderId);
 
     /**
      * 确认计划单转正式采购单（DEV-664）

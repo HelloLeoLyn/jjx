@@ -77,10 +77,4 @@ export const deliveryApi = {
     return request.put<R<void>>(`/sales/deliveries/${deliveryId}/receive`, data)
   },
 
-  /** 导出送货单PDF（单张表单） */
-  exportPdf(deliveryId: number) {
-    return request.get(`/sales/deliveries/export-pdf/${deliveryId}`, {
-      responseType: 'blob',
-    })
-  },
 }

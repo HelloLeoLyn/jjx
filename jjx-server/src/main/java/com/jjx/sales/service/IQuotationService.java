@@ -135,7 +135,6 @@ public interface IQuotationService {
      * @param quotationId 报价单ID
      * @return PDF字节数组
      */
-    byte[] exportPdf(Long quotationId);
 
     /**
      * 导出报价单Excel（单张表单）

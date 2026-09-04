@@ -93,11 +93,6 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button :disabled="single" @click="handleExportPdf">
-            <el-icon><Document /></el-icon>导出PDF
-          </el-button>
-        </el-col>
-        <el-col :span="1.5">
           <el-button @click="handleRefresh">
             <el-icon><Refresh /></el-icon>刷新
           </el-button>
@@ -339,17 +334,6 @@ const handleExport = () => {
   ElMessage.info('导出功能开发中')
 }
 
-// 导出PDF（单张表单，需选中一行）
-const handleExportPdf = () => {
-  const id = ids.value[0]
-  if (!id) {
-    ElMessage.warning('请先选中一行入库单')
-    return
-  }
-  inboundApi.exportPdf(Number(id)).then((response: any) => {
-    download(response, `入库单_${id}.pdf`)
-  })
-}
 
 // 刷新
 const handleRefresh = () => {

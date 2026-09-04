@@ -323,24 +323,6 @@ public class PurchaseOrderController extends BaseController {
     }
 
     /**
-     * 导出采购订单PDF（单张表单）
-     */
-    @Operation(summary = "导出采购订单PDF")
-    @Log(module = "采购订单管理", businessType = BusinessType.EXPORT, bizType = "'purchase_order'", bizId = "#orderId", action = LogActions.PUR_ORDER_EXPORT_PDF)
-    @SaCheckPermission("purchase:order:export")
-    @GetMapping("/export-pdf/{orderId}")
-    public void exportPdf(@PathVariable Long orderId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
-        com.jjx.purchase.domain.entity.PurchaseOrder order = purchaseOrderService.getById(orderId);
-        if (order == null) {
-            throw new BusinessException("采购订单不存在");
-        }
-        byte[] bytes = purchaseOrderService.exportPdf(orderId);
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=" + java.net.URLEncoder.encode(order.getOrderNo() + ".pdf", java.nio.charset.StandardCharsets.UTF_8));
-        response.getOutputStream().write(bytes);
-    }
-
-    /**
      * 删除采购订单
      */
     @DeleteMapping("/{orderId}")

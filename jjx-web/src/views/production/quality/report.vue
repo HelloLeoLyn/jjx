@@ -145,7 +145,6 @@
         <el-table-column label="操作" width="160" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="info" size="small" @click="handlePrint(row)">打印</el-button>
-            <el-button link type="primary" size="small" @click="handleExportPdf(row)">PDF</el-button>
             <el-button link type="success" size="small" @click="handleExportExcel(row)">Excel</el-button>
           </template>
         </el-table-column>
@@ -229,15 +228,6 @@ function handlePrint(row: any) {
     return
   }
   window.open(`/print/quality/${row.inspectionId}`, '_blank')
-}
-const handleExportPdf = (row: any) => {
-  if (!row?.inspectionId) {
-    ElMessage.warning('检验单ID缺失')
-    return
-  }
-  qualityApi.exportPdf(Number(row.inspectionId)).then((response: any) => {
-    download(response, `质检报告_${row.inspectionNo || row.inspectionId}.pdf`)
-  })
 }
 
 // 导出质检报告Excel

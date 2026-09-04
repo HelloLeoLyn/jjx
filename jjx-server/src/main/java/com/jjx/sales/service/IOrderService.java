@@ -170,7 +170,6 @@ public interface IOrderService {
      * @param orderId 订单ID
      * @return PDF字节数组
      */
-    byte[] exportPdf(Long orderId);
 
     /**
      * 导出销售订单Excel（单张表单）

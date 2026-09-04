@@ -33,5 +33,4 @@ public interface ISalesDeliveryService {
     /**
      * 导出送货单PDF（单张表单）
      */
-    byte[] exportPdf(Long deliveryId);
 }

@@ -904,60 +904,6 @@ public class QuotationServiceImpl implements IQuotationService {
         return orderId;
     }
 
-    /**
-     * 导出报价单PDF
-     */
-    @Override
-    public byte[] exportPdf(Long quotationId) {
-        SalesQuotation quotation = selectQuotationById(quotationId);
-        if (quotation == null) {
-            throw new BusinessException("报价单不存在");
-        }
-        List<SalesQuotationItem> items = quotationItemMapper.selectList(
-                new LambdaQueryWrapper<SalesQuotationItem>().eq(SalesQuotationItem::getQuotationId, quotationId));
-        DecimalFormat df = new DecimalFormat("#,##0.00");
-
-        Map<String, String> info = new LinkedHashMap<>();
-        info.put("报价单号", quotation.getQuotationNo());
-        info.put("报价日期", quotation.getQuotationDate() == null ? "" : quotation.getQuotationDate().toString());
-        info.put("客户名称", quotation.getCustomerName());
-        info.put("有效期至", quotation.getValidUntil() == null ? "" : quotation.getValidUntil().toString());
-        info.put("联系人", joinContact(quotation.getContactPerson(), quotation.getContactPhone()));
-        info.put("币种", buildCurrency(quotation));
-        info.put("来源询价", quotation.getInquiryNo() == null ? "-" : quotation.getInquiryNo());
-        info.put("销售负责人", quotation.getSalesPersonName() == null ? "-" : quotation.getSalesPersonName());
-
-        java.util.List<String[]> rows = new ArrayList<>();
-        for (SalesQuotationItem item : items) {
-            rows.add(new String[]{
-                    String.valueOf(rows.size() + 1),
-                    item.getProductCode(),
-                    buildItemSpec(item),
-                    item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
-                    item.getUnit(),
-                    item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
-                    item.getAmount() == null ? "" : df.format(item.getAmount()),
-            });
-        }
-
-        PdfDocBuilder builder = PdfDocBuilder.create()
-                .withConfig(pdfConfigLoader.load())
-                .title("报  价  单")
-                .info(info)
-                .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)
-                .amounts(new String[][]{
-                        {"小计", fmt(quotation.getSubtotalAmount(), df)},
-                        {"税率(%)", quotation.getTaxRate() == null ? "" : df.format(quotation.getTaxRate())},
-                        {"税额", fmt(quotation.getTaxAmount(), df)},
-                        {"折扣", fmt(quotation.getDiscountAmount(), df)},
-                        {"合计", fmt(quotation.getFinalAmount(), df)},
-                })
-                .remark(quotation.getRemark())
-                .signatures("销售负责人：" + (quotation.getSalesPersonName() == null ? "" : quotation.getSalesPersonName()),
-                        "客户确认：", "日期：");
-        return builder.toBytes();
-    }
-
     @Override
     public byte[] exportExcel(Long quotationId) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -1101,7 +1047,6 @@ public class QuotationServiceImpl implements IQuotationService {
         return s == null ? "" : s;
     }
 
-
     /**
      * 复制报价单
      */
@@ -1139,7 +1084,6 @@ public class QuotationServiceImpl implements IQuotationService {
         this.quotationMapper.insert(copy);
         return copy;
     }
-
 
     /**
      * 提交审核（DEV-1116：校验前按当前明细兑底重算表头金额，避免明细有金额但表头未汇总误报）

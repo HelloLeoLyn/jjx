@@ -103,6 +103,5 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     /**
      * 导出入库单PDF（单张表单）
      */
-    byte[] exportPdf(Long inboundId);
 
 }

@@ -61,14 +61,4 @@ public class SalesDeliveryController {
         return Result.success();
     }
 
-    @Operation(summary = "导出送货单PDF（单张表单）")
-    @SaCheckPermission("sales:delivery:view")
-    @GetMapping("/export-pdf/{deliveryId}")
-    public void exportPdf(@PathVariable Long deliveryId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
-        SalesDeliveryVO vo = salesDeliveryService.getById(deliveryId);
-        byte[] bytes = salesDeliveryService.exportPdf(deliveryId);
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=" + java.net.URLEncoder.encode(vo.getDeliveryNo() + ".pdf", java.nio.charset.StandardCharsets.UTF_8));
-        response.getOutputStream().write(bytes);
-    }
 }

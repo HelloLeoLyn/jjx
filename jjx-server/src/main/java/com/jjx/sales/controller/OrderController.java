@@ -130,22 +130,7 @@ public class OrderController extends BaseController {
         return Result.success(filePath);
     }
 
-    /**
-     * 导出销售订单PDF（单张表单）
-     */
-    @Operation(summary = "导出销售订单PDF")
-    @SaCheckPermission("sales:order:export")
-    @GetMapping("/export-pdf/{orderId}")
-    public void exportPdf(@PathVariable Long orderId, HttpServletResponse response) throws IOException {
-        SalesOrderVO order = orderService.selectOrderById(orderId);
-        if (order == null) {
-            throw new BusinessException("订单不存在");
-        }
-        byte[] bytes = orderService.exportPdf(orderId);
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(order.getOrderNo() + ".pdf", StandardCharsets.UTF_8));
-        response.getOutputStream().write(bytes);
-    }
+
 
     /**
      * 导出销售订单Excel（单张表单）
@@ -180,9 +165,6 @@ public class OrderController extends BaseController {
         response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode("确认书_" + order.getOrderNo() + ".pdf", StandardCharsets.UTF_8));
         response.getOutputStream().write(bytes);
     }
-
-
-
 
     /**
      * 创建产品实例

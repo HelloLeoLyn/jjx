@@ -143,22 +143,6 @@ public class QuotationController extends BaseController {
         return Result.success(quotationService.convertToOrder(quotationId));
     }
 
-    /**
-     * 导出报价单PDF
-     */
-    @Operation(summary = "导出报价单PDF")
-    @SaCheckPermission("sales:quotation:export")
-    @GetMapping("/export-pdf/{quotationId}")
-    public void exportPdf(@PathVariable Long quotationId, HttpServletResponse response) throws IOException {
-        SalesQuotation quotation = quotationService.selectQuotationById(quotationId);
-        if (quotation == null) {
-            throw new BusinessException("报价单不存在");
-        }
-        byte[] bytes = quotationService.exportPdf(quotationId);
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=" + URLEncoder.encode(quotation.getQuotationNo() + ".pdf", StandardCharsets.UTF_8));
-        response.getOutputStream().write(bytes);
-    }
 
     /**
      * 导出报价单Excel（单张表单）

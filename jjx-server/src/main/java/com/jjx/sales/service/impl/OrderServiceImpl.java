@@ -484,8 +484,6 @@ public class OrderServiceImpl implements IOrderService {
         return count == 0;
     }
 
-
-
     /**
      * 更新订单状态
      */
@@ -717,63 +715,6 @@ public class OrderServiceImpl implements IOrderService {
         return orderMapper.updateById(order);
     }
 
-    /**
-     * 导出PDF
-     */
-    @Override
-    public byte[] exportPdf(Long orderId) {
-        SalesOrder order = orderMapper.selectById(orderId);
-        if (order == null) {
-            throw new BusinessException("订单不存在");
-        }
-        List<SalesOrderProductVO> items = orderProductService.getListByOrderId(orderId);
-        DecimalFormat df = new DecimalFormat("#,##0.00");
-        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
-
-        Map<String, String> info = new LinkedHashMap<>();
-        info.put("订单号", order.getOrderNo());
-        info.put("下单日期", order.getOrderDate() == null ? "" : sdf.format(order.getOrderDate()));
-        info.put("客户名称", order.getCustomerName());
-        info.put("交货日期", order.getDeliveryDate() == null ? "" : sdf.format(order.getDeliveryDate()));
-        info.put("联系人", order.getContactPerson());
-        info.put("币种", order.getCurrency() == null ? "CNY" : order.getCurrency());
-        info.put("来源报价", order.getQuotationId() == null ? "-" : String.valueOf(order.getQuotationId()));
-        info.put("销售负责人", order.getCreateBy() == null ? "-" : order.getCreateBy());
-
-        java.util.List<String[]> rows = new ArrayList<>();
-        for (SalesOrderProductVO item : items) {
-            String spec = item.getProductName() == null ? "" : item.getProductName();
-            if (item.getSpecification() != null && !item.getSpecification().isBlank()) {
-                spec = spec.isBlank() ? item.getSpecification() : spec + " / " + item.getSpecification();
-            }
-            rows.add(new String[]{
-                    String.valueOf(rows.size() + 1),
-                    item.getProductCode(),
-                    spec,
-                    item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
-                    item.getUnit(),
-                    item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
-                    item.getAmount() == null ? "" : df.format(item.getAmount()),
-            });
-        }
-
-        PdfDocBuilder builder = PdfDocBuilder.create()
-                .withConfig(pdfConfigLoader.load())
-                .title("销  售  订  单")
-                .info(info)
-                .items(new String[]{"序号", "产品编码", "产品名称/规格", "数量", "单位", "单价", "金额"}, rows)
-                .amounts(new String[][]{
-                        {"小计(未税)", fmt(order.getTotalAmount(), df)},
-                        {"税率(%)", order.getTaxRate() == null ? "" : df.format(order.getTaxRate().multiply(BigDecimal.valueOf(100)).stripTrailingZeros())},
-                        {"税额", fmt(order.getTaxAmount(), df)},
-                        {"折扣", fmt(order.getDiscountAmount(), df)},
-                        {"合计(含税)", fmt(order.getFinalAmount(), df)},
-                })
-                .remark(order.getRemark())
-                .signatures("销售负责人：" + (order.getCreateBy() == null ? "" : order.getCreateBy()),
-                        "客户确认：", "日期：");
-        return builder.toBytes();
-    }
 
     @Override
     public byte[] exportExcel(Long orderId) {
@@ -921,7 +862,6 @@ public class OrderServiceImpl implements IOrderService {
     private String safe(String s) {
         return s == null ? "" : s;
     }
-
 
     /**
      * 导出订单列表

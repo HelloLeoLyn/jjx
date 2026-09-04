@@ -222,15 +222,6 @@ export const quotationApi = {
     })
   },
 
-  // 导出报价单PDF
-  exportPdf(quotationId: number): AxiosPromise<Blob> {
-    return request({
-      url: `/sales/quotation/export-pdf/${quotationId}`,
-      method: 'get',
-      responseType: 'blob',
-    })
-  },
-
   // 导出报价单Excel（单张表单）
   exportExcel(quotationId: number): AxiosPromise<Blob> {
     return request({

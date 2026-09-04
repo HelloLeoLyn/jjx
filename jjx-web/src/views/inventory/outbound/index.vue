@@ -76,11 +76,6 @@
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button :disabled="selectedRows.length !== 1" @click="handleExportPdf">
-            <el-icon><Document /></el-icon>导出PDF
-          </el-button>
-        </el-col>
-        <el-col :span="1.5">
           <el-button :disabled="selectedRows.length !== 1" @click="handlePrintLabel">
             <el-icon><Printer /></el-icon>打印标签
           </el-button>
@@ -226,7 +221,6 @@
     />
 
     <!-- 打印对话框（DEV-662：PDF 预览 + 打印 + 下载） -->
-    <PrintDialog v-model="printDialogVisible" :pdf-blob="printPdfBlob" :file-name="printFileName" />
 
   </div>
 </template>
@@ -244,7 +238,6 @@ import { outboundApi } from '@/api/inventory/outbound'
 import { getTransactionsByDocNo } from '@/api/inventory/transaction'
 import type { TransactionVO } from '@/api/inventory/transaction'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
-import PrintDialog from '@/components/PrintDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -324,23 +317,6 @@ const handleSelectionChange = (selection: any[]) => {
   selectedRows.value = selection
 }
 
-// 导出PDF（单张表单，需选中一行）——DEV-662：改为预览+打印+下载（PrintDialog）
-const printDialogVisible = ref(false)
-const printPdfBlob = ref<Blob | null>(null)
-const printFileName = ref('')
-
-const handleExportPdf = () => {
-  const row = selectedRows.value[0]
-  if (!row?.outboundId) {
-    ElMessage.warning('请先选中一行出库单')
-    return
-  }
-  outboundApi.exportPdf(row.outboundId).then((response: any) => {
-    printPdfBlob.value = response as Blob
-    printFileName.value = `出库单_${row.outboundNo || row.outboundId}.pdf`
-    printDialogVisible.value = true
-  })
-}
 
 const handlePrintLabel = () => {
   const row = selectedRows.value[0] as OutboundVO | undefined

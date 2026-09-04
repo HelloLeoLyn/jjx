@@ -158,5 +158,4 @@ public interface ProductionOrderService {
     /**
      * 导出生产工单PDF（单张表单）
      */
-    byte[] exportPdf(Long orderId);
 }

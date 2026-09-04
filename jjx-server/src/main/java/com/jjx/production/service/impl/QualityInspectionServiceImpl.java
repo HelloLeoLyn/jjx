@@ -343,53 +343,6 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         return stats;
     }
 
-    @Override
-    public byte[] exportPdf(Long id) {
-        QualityInspectionVO vo = getById(id);
-        java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0");
-        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
-
-        java.util.Map<String, String> info = new java.util.LinkedHashMap<>();
-        info.put("检验单号", vo.getInspectionNo());
-        info.put("检验类型", vo.getInspectionTypeName() == null ? (vo.getInspectionType() == null ? "-" : vo.getInspectionType()) : vo.getInspectionTypeName());
-        info.put("关联订单", vo.getOrderNo() == null ? "-" : vo.getOrderNo());
-        info.put("产品", vo.getProductName() == null ? "-" : vo.getProductName());
-        info.put("物料", vo.getMaterialName() == null ? "-" : vo.getMaterialName());
-        info.put("检验员", vo.getInspector() == null ? "-" : vo.getInspector());
-        info.put("检验时间", vo.getInspectTime() == null ? "" : vo.getInspectTime().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
-        info.put("检验结果", vo.getResultName() == null ? (vo.getResult() == null ? "-" : vo.getResult()) : vo.getResultName());
-        info.put("总数/合格/不合格",
-                df.format(vo.getTotalQty() == null ? java.math.BigDecimal.ZERO : vo.getTotalQty()) + " / "
-                        + df.format(vo.getPassQty() == null ? java.math.BigDecimal.ZERO : vo.getPassQty()) + " / "
-                        + df.format(vo.getFailQty() == null ? java.math.BigDecimal.ZERO : vo.getFailQty()));
-
-        java.util.List<String[]> rows = new java.util.ArrayList<>();
-        if (vo.getItems() != null) {
-            for (com.jjx.production.domain.vo.InspectionItemVO item : vo.getItems()) {
-                rows.add(new String[]{
-                        String.valueOf(rows.size() + 1),
-                        item.getCheckItem() == null ? "" : item.getCheckItem(),
-                        item.getStandard() == null ? "" : item.getStandard(),
-                        item.getActualValue() == null ? "" : item.getActualValue(),
-                        item.getResult() == null ? "" : item.getResult(),
-                        item.getRemark() == null ? "" : item.getRemark(),
-                });
-            }
-        }
-
-        return com.jjx.common.utils.pdf.PdfDocBuilder.create()
-                .withConfig(pdfConfigLoader.load())
-                .title("质  检  报  告")
-                .info(info)
-                .items(new String[]{"序号", "检验项目", "标准要求", "实测值", "结果", "备注"}, rows)
-                .amounts(new String[][]{{"合格率", (vo.getTotalQty() != null && vo.getTotalQty().compareTo(java.math.BigDecimal.ZERO) > 0 && vo.getPassQty() != null)
-                        ? Math.round(vo.getPassQty().doubleValue() * 1000.0 / vo.getTotalQty().doubleValue()) / 10.0 + "%" : "-"}})
-                .remark(vo.getDefectDesc() == null ? vo.getRemark()
-                        : (vo.getRemark() == null ? "缺陷说明：" + vo.getDefectDesc() : "缺陷说明：" + vo.getDefectDesc() + "；" + vo.getRemark()))
-                .signatures("检验员：" + (vo.getInspector() == null ? "" : vo.getInspector()),
-                        "客户确认：", "日期：")
-                .toBytes();
-    }
 
     @Override
     public byte[] exportExcel(Long id) {

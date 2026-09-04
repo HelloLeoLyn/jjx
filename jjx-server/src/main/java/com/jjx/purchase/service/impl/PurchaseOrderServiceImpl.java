@@ -39,7 +39,6 @@ import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -258,8 +257,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         return result;
     }
-
-
 
     @Override
     public boolean checkOrderNoUnique(String orderNo) {
@@ -575,8 +572,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         return purchaseConverter.toVOList(orders);
     }
 
-
-
     @Override
     public List<PurchaseOrderVO> selectPendingReceiptOrders() {
         List<PurchaseOrder> orders = orderMapper.selectPendingReceiptOrders();
@@ -588,7 +583,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         List<PurchaseOrder> orders = orderMapper.selectPendingPaymentOrders();
         return purchaseConverter.toVOList(orders);
     }
-
 
     @Override
     public List<PurchaseOrderVO> selectOrdersByDateRange(LocalDate startDate, LocalDate endDate) {
@@ -1287,58 +1281,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         log.info("采购退货成功: orderId={}", orderId);
     }
 
-    @Override
-    public byte[] exportPdf(Long orderId) {
-        PurchaseOrderVO order = selectOrderById(orderId);
-        java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.00");
-        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
-
-        java.util.Map<String, String> info = new java.util.LinkedHashMap<>();
-        info.put("采购单号", order.getOrderNo());
-        info.put("下单日期", order.getOrderDate() == null ? "" : order.getOrderDate().toString());
-        info.put("供应商", order.getSupplierName());
-        info.put("预计到货", order.getExpectedDeliveryDate() == null ? "" : order.getExpectedDeliveryDate().toString());
-        info.put("币种", order.getCurrency() == null ? "CNY" : order.getCurrency());
-        info.put("交货方式", order.getDeliveryMethod() == null ? "-" : order.getDeliveryMethod());
-        info.put("合同号", order.getContractNo() == null ? "-" : order.getContractNo());
-        info.put("审核人", order.getApproverName() == null ? "-" : order.getApproverName());
-        info.put("创建人", order.getCreateBy() == null ? "-" : order.getCreateBy());
-
-        java.util.List<String[]> rows = new java.util.ArrayList<>();
-        if (order.getItems() != null) {
-            for (PurchaseOrderItemVO item : order.getItems()) {
-                String spec = item.getMaterialName() == null ? "" : item.getMaterialName();
-                if (item.getMaterialSpec() != null && !item.getMaterialSpec().isBlank()) {
-                    spec = spec.isBlank() ? item.getMaterialSpec() : spec + " / " + item.getMaterialSpec();
-                }
-                rows.add(new String[]{
-                        String.valueOf(rows.size() + 1),
-                        item.getMaterialCode() == null ? "" : item.getMaterialCode(),
-                        spec,
-                        item.getQuantity() == null ? "" : String.valueOf(item.getQuantity()),
-                        item.getUnit() == null ? "" : item.getUnit(),
-                        item.getUnitPrice() == null ? "" : df.format(item.getUnitPrice()),
-                        item.getAmount() == null ? "" : df.format(item.getAmount()),
-                });
-            }
-        }
-
-        return com.jjx.common.utils.pdf.PdfDocBuilder.create()
-                .withConfig(pdfConfigLoader.load())
-                .withConfig(pdfConfigLoader.load())
-                .title("采  购  订  单")
-                .info(info)
-                .items(new String[]{"序号", "物料编码", "物料名称/规格", "数量", "单位", "单价", "金额"}, rows)
-                .amounts(new String[][]{
-                        {"订单金额(未税)", order.getOrderAmount() == null ? "" : df.format(order.getOrderAmount())},
-                        {"税额", order.getOrderTax() == null ? "" : df.format(order.getOrderTax())},
-                        {"订单总金额", order.getOrderTotalAmount() == null ? "" : df.format(order.getOrderTotalAmount())},
-                })
-                .remark(order.getRemark())
-                .signatures("采购负责人：" + (order.getCreateBy() == null ? "" : order.getCreateBy()),
-                        "供应商确认：", "日期：")
-                .toBytes();
-    }
 
     // ==================== DEV-664 采购计划 ====================
 

@@ -26,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-
 /**
  * 生产工单控制器
  */
@@ -238,17 +237,6 @@ public class ProductionOrderController {
         com.jjx.common.utils.ExcelUtils.export(response, rows, com.jjx.production.domain.vo.ProductionOrderExportVO.class, "生产订单");
     }
 
-    @Operation(summary = "导出生产工单PDF（单张表单）")
-    @Log(module = "生产工单管理", businessType = BusinessType.EXPORT, bizType = "'production_order'", bizId = "#orderId", action = LogActions.PROD_ORDER_EXPORT_PDF)
-    @SaCheckPermission("production:order:export")
-    @GetMapping("/export-pdf/{orderId}")
-    public void exportPdf(@PathVariable Long orderId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
-        ProductionOrderVO vo = productionOrderService.getOrderById(orderId);
-        byte[] bytes = productionOrderService.exportPdf(orderId);
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=" + java.net.URLEncoder.encode(vo.getOrderNo() + ".pdf", java.nio.charset.StandardCharsets.UTF_8));
-        response.getOutputStream().write(bytes);
-    }
 
     @Operation(summary = "获取生产工单统计信息")
     @GetMapping("/statistics")

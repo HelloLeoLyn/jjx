@@ -83,16 +83,7 @@ public class QualityInspectionController {
         return Result.success(qualityService.getStatistics());
     }
 
-    @Operation(summary = "导出质检报告PDF（给客户看）")
-    @SaCheckPermission("production:quality:view")
-    @GetMapping("/export-pdf/{id}")
-    public void exportPdf(@PathVariable Long id, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
-        QualityInspectionVO vo = qualityService.getById(id);
-        byte[] bytes = qualityService.exportPdf(id);
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=" + java.net.URLEncoder.encode("质检报告_" + vo.getInspectionNo() + ".pdf", java.nio.charset.StandardCharsets.UTF_8));
-        response.getOutputStream().write(bytes);
-    }
+
 
     @Operation(summary = "导出质检报告Excel（给客户看）")
     @SaCheckPermission("production:quality:view")
