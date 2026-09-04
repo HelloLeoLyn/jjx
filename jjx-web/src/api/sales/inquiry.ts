@@ -45,6 +45,7 @@ export interface InquiryBase {
   remark?: string
   salesPersonId?: number
   salesPersonName?: string
+  attachmentIds?: number[]
 }
 
 // 询价单列表响应

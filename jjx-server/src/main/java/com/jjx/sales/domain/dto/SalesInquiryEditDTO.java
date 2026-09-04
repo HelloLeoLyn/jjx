@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 询价单修改DTO
@@ -78,4 +79,7 @@ public class SalesInquiryEditDTO extends BaseEditDTO {
 
     @Schema(description = "销售员名称")
     private String salesPersonName;
+
+    @Schema(description = "本次修改会话内上传的附件ID")
+    private List<Long> attachmentIds;
 }

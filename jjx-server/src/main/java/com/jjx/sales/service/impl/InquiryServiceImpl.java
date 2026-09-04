@@ -24,8 +24,10 @@ import com.jjx.sales.service.IInquiryService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.system.service.LogSaveService;
 import com.jjx.system.service.OperLogChangeRecorder;
+import com.jjx.system.utils.OperLogDetailBuilder;
 import com.jjx.system.utils.SecurityUtils;
 
 import cn.hutool.json.JSONUtil;
@@ -66,6 +68,7 @@ public class InquiryServiceImpl implements IInquiryService {
     private final IQuotationService quotationService;
     private final OperLogChangeRecorder changeRecorder;
     private final LogSaveService logSaveService;
+    private final SysAttachmentMapper attachmentMapper;
 
     /**
      * 分页查询询价单列表
@@ -252,7 +255,20 @@ public class InquiryServiceImpl implements IInquiryService {
         if (rows > 0) {
             List<String> changes = new ArrayList<>();
             diffMainFields(changes, oldInquiry, dto);
-            String detailString = changeRecorder.toDetailJson(changes);
+            String detailString;
+            if (dto.getAttachmentIds() != null && !dto.getAttachmentIds().isEmpty()) {
+                List<Map<String, Object>> attList = attachmentMapper.selectByIds(dto.getAttachmentIds()).stream()
+                    .map(attachment -> {
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("id", attachment.getId());
+                        item.put("fileName", attachment.getFileName());
+                        return item;
+                    })
+                    .toList();
+                detailString = OperLogDetailBuilder.build(changes, attList);
+            } else {
+                detailString = changeRecorder.toDetailJson(changes);
+            }
             vo.setDetailMessage(detailString);
         }
         vo.setRows(rows);

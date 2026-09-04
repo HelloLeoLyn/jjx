@@ -13,6 +13,7 @@ import com.jjx.sales.mapper.SalesQuotationItemMapper;
 import com.jjx.sales.service.IQuotationService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.system.service.LogSaveService;
 import com.jjx.system.service.OperLogChangeRecorder;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,8 @@ class InquiryConversionOperLogTest {
             mock(SalesQuotationItemMapper.class), mock(RedisSequenceService.class),
             mock(ProductMapper.class), mock(ProductCustomerValidator.class), mock(IProductService.class),
             mock(ProductCodeService.class), mock(IQuotationService.class),
-            mock(OperLogChangeRecorder.class), mock(LogSaveService.class));
+            mock(OperLogChangeRecorder.class), mock(LogSaveService.class),
+            mock(SysAttachmentMapper.class));
         SalesInquiry inquiry = new SalesInquiry();
         inquiry.setInquiryId(3L);
         inquiry.setInquiryNo("INQ2608260001");

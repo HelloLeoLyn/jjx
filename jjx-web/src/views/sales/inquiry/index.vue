@@ -410,6 +410,7 @@
               ]"
               button-text="上传客户资料"
               tip="支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传"
+              @success="onUploadSuccess"
             />
           </el-col>
         </el-row>
@@ -632,6 +633,13 @@ function handleOpSuccess() {
 
 // ==================== 附件管理（DEV-733 统一组件） ====================
 const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
+const uploadedAttachmentIds = ref<number[]>([])
+
+function onUploadSuccess(id: number) {
+  if (!uploadedAttachmentIds.value.includes(id)) {
+    uploadedAttachmentIds.value.push(id)
+  }
+}
 
 // ==================== 状态映射 ====================
 const statusMap: Record<number, { label: string; type: string }> = {
@@ -808,6 +816,7 @@ function handleUpdate(row?: any) {
   const id = row?.inquiryId || ids.value[0]
   if (!id) return
 
+  uploadedAttachmentIds.value = []
   dialogTitle.value = '修改询价单'
   dialogVisible.value = true
 
@@ -1002,7 +1011,7 @@ async function submitForm() {
   submitting.value = true
   try {
     if (form.inquiryId) {
-      await inquiryApi.edit(form as any)
+      await inquiryApi.edit({ ...form, attachmentIds: uploadedAttachmentIds.value } as any)
       ElMessage.success('修改成功')
     } else {
       const res = await inquiryApi.add(form as any)
@@ -1029,6 +1038,7 @@ function cancel() {
 // 关闭对话框后重置附件状态
 function handleClose() {
   uploaderRef.value?.clearPending()
+  uploadedAttachmentIds.value = []
 }
 
 // ==================== 初始化 ====================

@@ -73,6 +73,12 @@ public class OperLogChangeRecorder {
 
     /** 追加一条字段级变更（值不同才记录） */
     public void diff(List<String> changes, String label, Object oldValue, Object newValue) {
+        if (oldValue instanceof BigDecimal oldDecimal && newValue instanceof BigDecimal newDecimal) {
+            if (oldDecimal.compareTo(newDecimal) != 0) {
+                changes.add(label + ":" + fmt(oldValue) + "→" + fmt(newValue));
+            }
+            return;
+        }
         if (!Objects.equals(oldValue, newValue)) {
             changes.add(label + ":" + fmt(oldValue) + "→" + fmt(newValue));
         }
