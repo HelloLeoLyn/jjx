@@ -48,7 +48,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="6" v-if="hasPermi('inventory:stock:view')">
         <el-card shadow="never" class="stat-card">
           <div class="stat-body">
             <div class="stat-icon" style="background:#f0f9eb;color:#67c23a">
@@ -74,7 +74,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="6" v-if="hasPermi('inventory:stock:view')">
         <el-card shadow="never" class="stat-card">
           <div class="stat-body">
             <div class="stat-icon" style="background:#fef0f0;color:#f56c6c">
@@ -187,7 +187,7 @@
     </el-row>
 
     <el-row :gutter="16" class="mt-16">
-      <el-col :span="12">
+      <el-col :span="12" v-if="hasPermi('inventory:stock:view')">
         <el-card shadow="never">
           <template #header>
             <div class="card-header">
@@ -359,13 +359,14 @@ onMounted(async () => {
     loadSalesWB()
   }
 
+  const canViewStock = hasPermi('inventory:stock:view')
   try {
     const [matRes, stkRes, orderRes, prodRes, alertRes] = await Promise.allSettled([
       materialApi.getCount(),
-      stockApi.summary(),
+      canViewStock ? stockApi.summary() : Promise.resolve(null),
       getOrderCount(),
       getProductCount(),
-      stockApi.getLowStock(),
+      canViewStock ? stockApi.getLowStock() : Promise.resolve(null),
     ])
 
     clearTimeout(timeout)
@@ -406,7 +407,7 @@ onMounted(async () => {
 
 function fillDefaults() {
   if (!stats.materialCount) stats.materialCount = 823
-  if (!stats.stockCount) stats.stockCount = 204
+  if (hasPermi('inventory:stock:view') && !stats.stockCount) stats.stockCount = 204
   if (!stats.orderCount) stats.orderCount = 5
   if (!stats.productCount) stats.productCount = 1
   stats.userCount = 3

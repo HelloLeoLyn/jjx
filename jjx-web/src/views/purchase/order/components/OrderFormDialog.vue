@@ -150,11 +150,8 @@
         <el-table-column label="数量" prop="quantity" width="100">
           <template #default="scope">
             <el-input
+              v-model="scope.row.quantity"
               type="number"
-              v-model.number="scope.row.quantity"
-              :min="0"
-              :precision="2"
-              :step="1"
               style="width: 100%"
               @change="calculateRowTotal(scope.$index)"
             />
@@ -164,10 +161,7 @@
           <template #default="scope">
             <el-input
               type="number"
-              v-model.number="scope.row.unitPrice"
-              :min="0"
-              :precision="2"
-              :step="0.01"
+              v-model="scope.row.unitPrice"
               style="width: 100%"
               @change="calculateRowTotal(scope.$index)"
             />

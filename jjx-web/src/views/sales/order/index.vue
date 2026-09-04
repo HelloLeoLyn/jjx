@@ -200,7 +200,7 @@
               <el-button link type="info" icon="Connection" @click="showTrace(row)"
                 >查看流水</el-button
               >
-              <el-button
+              <!-- <el-button
                 link
                 type="primary"
                 icon="Printer"
@@ -208,7 +208,7 @@
                 @click="handleReviewPrint(row)"
               >
                 评审表打印
-              </el-button>
+              </el-button> -->
               <!-- 草稿状态 (1) -->
               <template v-if="row.orderStatus === 1">
                 <el-button
@@ -432,17 +432,47 @@
     <el-dialog v-model="shipDialogVisible" title="订单发货" width="620px">
       <el-form :model="shipForm" label-width="90px">
         <el-row :gutter="16">
-          <el-col :span="12"><el-form-item label="交货方式"><el-input v-model="shipForm.deliveryMethod" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="发货日期"><el-date-picker v-model="shipForm.deliveryDate" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="收货人"><el-input v-model="shipForm.contactPerson" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="收货电话"><el-input v-model="shipForm.contactPhone" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="收货地址"><el-input v-model="shipForm.deliveryAddress" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="承运商"><el-input v-model="shipForm.carrier" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="物流单号"><el-input v-model="shipForm.trackingNo" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="备注"><el-input v-model="shipForm.remark" type="textarea" :rows="3" /></el-form-item></el-col>
+          <el-col :span="12"
+            ><el-form-item label="交货方式"
+              ><el-input v-model="shipForm.deliveryMethod" /></el-form-item
+          ></el-col>
+          <el-col :span="12"
+            ><el-form-item label="发货日期"
+              ><el-date-picker
+                v-model="shipForm.deliveryDate"
+                value-format="YYYY-MM-DD"
+                style="width: 100%" /></el-form-item
+          ></el-col>
+          <el-col :span="12"
+            ><el-form-item label="收货人"
+              ><el-input v-model="shipForm.contactPerson" /></el-form-item
+          ></el-col>
+          <el-col :span="12"
+            ><el-form-item label="收货电话"
+              ><el-input v-model="shipForm.contactPhone" /></el-form-item
+          ></el-col>
+          <el-col :span="24"
+            ><el-form-item label="收货地址"
+              ><el-input v-model="shipForm.deliveryAddress" /></el-form-item
+          ></el-col>
+          <el-col :span="12"
+            ><el-form-item label="承运商"><el-input v-model="shipForm.carrier" /></el-form-item
+          ></el-col>
+          <el-col :span="12"
+            ><el-form-item label="物流单号"><el-input v-model="shipForm.trackingNo" /></el-form-item
+          ></el-col>
+          <el-col :span="24"
+            ><el-form-item label="备注"
+              ><el-input v-model="shipForm.remark" type="textarea" :rows="3" /></el-form-item
+          ></el-col>
         </el-row>
       </el-form>
-      <template #footer><el-button @click="shipDialogVisible = false">取消</el-button><el-button type="primary" :loading="shipSubmitting" @click="submitShip">确认发货</el-button></template>
+      <template #footer
+        ><el-button @click="shipDialogVisible = false">取消</el-button
+        ><el-button type="primary" :loading="shipSubmitting" @click="submitShip"
+          >确认发货</el-button
+        ></template
+      >
     </el-dialog>
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
   </div>
@@ -731,8 +761,13 @@ const handleResubmit = async (row: any) => {
 const handleShip = async (row: any) => {
   shipOrderId.value = row.orderId
   Object.assign(shipForm, {
-    deliveryMethod: '', contactPerson: row.contactPerson || '', contactPhone: row.contactPhone || '',
-    deliveryAddress: row.deliveryAddress || '', carrier: '', trackingNo: '', remark: '',
+    deliveryMethod: '',
+    contactPerson: row.contactPerson || '',
+    contactPhone: row.contactPhone || '',
+    deliveryAddress: row.deliveryAddress || '',
+    carrier: '',
+    trackingNo: '',
+    remark: '',
     deliveryDate: new Date().toISOString().slice(0, 10),
   })
   shipDialogVisible.value = true

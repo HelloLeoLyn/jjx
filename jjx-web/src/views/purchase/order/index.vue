@@ -32,7 +32,14 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" v-hasPermi="['purchase:order:add']" @click="handleAdd">新增</el-button>
+          <el-button
+            type="primary"
+            plain
+            icon="Plus"
+            v-hasPermi="['purchase:order:add']"
+            @click="handleAdd"
+            >新增</el-button
+          >
         </el-col>
         <el-col :span="1.5">
           <el-button
@@ -46,11 +53,16 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" v-hasPermi="['purchase:order:export']" @click="handleExport">导出</el-button>
+          <el-button
+            type="warning"
+            plain
+            icon="Download"
+            v-hasPermi="['purchase:order:export']"
+            @click="handleExport"
+            >导出</el-button
+          >
         </el-col>
-        <el-col :span="1.5">
-          <el-button type="info" plain icon="Document" v-hasPermi="['purchase:order:export']" :disabled="!single" @click="handleExportPdf">导出PDF</el-button>
-        </el-col>
+
         <el-col :span="1.5">
           <el-button
             type="info"
@@ -164,7 +176,6 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="订单号" align="center" prop="orderNo" width="160">
           <template #default="scope">
-
             <el-tooltip content="详情" placement="top">
               <el-button link type="primary" @click="() => handleView(scope.row)">{{
                 scope.row.orderNo
@@ -229,7 +240,12 @@
         >
           <template #default="scope">
             <el-tooltip content="打印" placement="top">
-              <el-button link type="info" icon="Printer" @click="handlePrint(scope.row)">打印</el-button>
+              <el-button
+                link
+                type="info"
+                icon="Printer"
+                @click="handlePrint(scope.row)"
+              ></el-button>
             </el-tooltip>
             <!-- 修改按钮（草稿和已拒绝可修改） -->
             <el-tooltip
@@ -288,11 +304,7 @@
               ></el-button>
             </el-tooltip>
             <!-- 提交审核按钮（草稿可提交） -->
-            <el-tooltip
-              v-if="scope.row.approvalStatus === 1"
-              content="提交审核"
-              placement="top"
-            >
+            <el-tooltip v-if="scope.row.approvalStatus === 1" content="提交审核" placement="top">
               <el-button
                 link
                 type="primary"
@@ -441,7 +453,12 @@ import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
-import { copyOrder, exportOrder as apiExportOrder, exportOrderPdf, cancleOrder } from '@/api/purchase/order'
+import {
+  copyOrder,
+  exportOrder as apiExportOrder,
+  exportOrderPdf,
+  cancleOrder,
+} from '@/api/purchase/order'
 import { download } from '@/utils/format'
 
 // 使用Composables

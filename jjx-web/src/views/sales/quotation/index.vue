@@ -117,16 +117,16 @@
           </el-table-column>
           <el-table-column
             label="操作"
-            align="center"
+            align="left"
             class-name="small-padding fixed-width"
             min-width="250"
           >
             <template #default="{ row }">
-              <el-tooltip content="修改" placement="top" v-if="canEdit(row)">
-                <el-button link type="primary" icon="Edit" @click="handleUpdate(row)" />
-              </el-tooltip>
               <el-tooltip content="查看流水" placement="top">
                 <el-button link type="info" icon="Connection" @click="showTrace(row)" />
+              </el-tooltip>
+              <el-tooltip content="修改" placement="top" v-if="canEdit(row)">
+                <el-button link type="primary" icon="Edit" @click="handleUpdate(row)" />
               </el-tooltip>
               <el-tooltip content="删除" placement="top" v-if="canDelete(row)">
                 <el-button link type="danger" icon="Delete" @click="handleDelete(row)" />
