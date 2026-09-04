@@ -20,6 +20,9 @@ importers:
       element-plus:
         specifier: ^2.13.5
         version: 2.13.7(typescript@5.3.3)(vue@3.5.32(typescript@5.3.3))
+      html5-qrcode:
+        specifier: ^2.3.8
+        version: 2.3.8
       js-cookie:
         specifier: ^3.0.5
         version: 3.0.8
@@ -1392,6 +1395,9 @@ packages:
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
+
+  html5-qrcode@2.3.8:
+    resolution: {integrity: sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==}
 
   htmlparser2@3.10.1:
     resolution: {integrity: sha512-IgieNijUMbkDovyoKObU1DUhm1iwNYE/fuifEoEHfd1oZKZDaONBSkal7Y01shxsM49R4XaMdGez3WnF9UfiCQ==}
@@ -4023,6 +4029,8 @@ snapshots:
       function-bind: 1.1.2
 
   he@1.2.0: {}
+
+  html5-qrcode@2.3.8: {}
 
   htmlparser2@3.10.1:
     dependencies:
