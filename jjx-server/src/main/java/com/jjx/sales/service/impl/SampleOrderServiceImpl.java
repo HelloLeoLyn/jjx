@@ -804,10 +804,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 }
             }
 
-            // ② BOM 物料快照（从工序单元材料聚合）
+            // ② BOM 物料快照（从工序单元材料聚合，仅当前轮次——避免旧轮次材料混入）
             try {
                 java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procs =
-                        sampleProcessMapper.selectByOrderId(orderId);
+                        sampleProcessMapper.selectByOrderAndRound(orderId, round.getRoundNo());
                 java.util.List<java.util.Map<String, Object>> aggMats = new java.util.ArrayList<>();
                 if (procs != null) {
                     for (com.jjx.sales.domain.entity.SalesSampleProcess sp : procs) {
@@ -834,9 +834,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 log.warn("归档BOM快照失败: {}", be.getMessage());
             }
 
-            // ③ 工序记录快照
+            // ③ 工序记录快照（仅当前轮次——selectByOrderId 会把旧轮次工序一并烤入，见 2026-09-04 round2 快照=5 条实据）
             try {
-                java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procs = sampleProcessMapper.selectByOrderId(orderId);
+                java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procs =
+                        sampleProcessMapper.selectByOrderAndRound(orderId, round.getRoundNo());
                 if (procs != null && !procs.isEmpty()) {
                     round.setProcessSnapshot(objectMapper.writeValueAsString(procs));
                 }
