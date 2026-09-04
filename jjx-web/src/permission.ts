@@ -137,6 +137,20 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
+  // ── 移动端 /m/*（2026-09-04）：未登录跳 /m/login；已登录直接放行（不走 PC 动态路由/菜单权限）──
+  if (to.path.startsWith('/m/')) {
+    if (to.path === '/m/login') {
+      next()
+      return
+    }
+    if (!hasToken) {
+      next(`/m/login?redirect=${encodeURIComponent(to.fullPath)}`)
+      return
+    }
+    next()
+    return
+  }
+
   // ── 白名单 ──
   if (whiteList.includes(to.path)) {
     next()

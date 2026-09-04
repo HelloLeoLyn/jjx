@@ -1,11 +1,5 @@
 <template>
   <div class="m-quality">
-    <header class="m-header">
-      <el-button link @click="router.back()">← 返回</el-button>
-      <span class="m-header-title">质检判定</span>
-      <el-button link type="primary" @click="loadData">刷新</el-button>
-    </header>
-
     <div class="m-quality-body">
       <el-tabs v-model="activeTab" class="m-quality-tabs">
         <el-tab-pane label="待判定" name="pending">

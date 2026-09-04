@@ -1,13 +1,7 @@
 <template>
   <div class="m-order">
-    <header class="m-header">
-      <el-button link @click="router.back()">← 返回</el-button>
-      <span class="m-header-title">工单 {{ orderNo }}</span>
-      <el-button link type="primary" @click="router.push('/m/scan')">扫码</el-button>
-    </header>
-
     <div v-loading="loading" class="m-order-body">
-      <!-- 工单信息 -->
+      <!-- 工单信息（扫码/输入定位后显示；直进我的任务时无） -->
       <div v-if="order" class="m-order-card">
         <div class="m-order-card-title">{{ order.productName }}</div>
         <div class="m-order-card-meta">
@@ -231,19 +225,19 @@ function goReport(ex: MyProductionExecution) {
 }
 
 async function loadData() {
-  if (!orderNo.value) return
   loading.value = true
   try {
-    // 1. 工单信息（orderNo → orderId）
-    const orderRes: any = await getProductionOrderByCode(orderNo.value)
-    order.value = orderRes?.data || null
+    // 2026-09-04：支持无工单号直进——显示“我的全部任务”（扫码/输入定位只是筛选特定工单）
+    if (orderNo.value) {
+      // 1. 工单信息（orderNo → orderId）
+      const orderRes: any = await getProductionOrderByCode(orderNo.value)
+      order.value = orderRes?.data || null
+    }
 
-    // 2. 我的工序执行（按工单号聚合）
-    const res: any = await getMyProductionExecutions({
-      orderNo: orderNo.value,
-      pageNum: 1,
-      pageSize: 100,
-    })
+    // 2. 我的工序执行（无工单号=全量我的任务；带工单号=按工单聚合）
+    const params: any = { pageNum: 1, pageSize: 100 }
+    if (orderNo.value) params.orderNo = orderNo.value
+    const res: any = await getMyProductionExecutions(params)
     executions.value = res?.data?.records || []
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')

@@ -1,11 +1,5 @@
 <template>
   <div class="m-pick">
-    <header class="m-header">
-      <el-button link @click="router.back()">← 返回</el-button>
-      <span class="m-header-title">生产领料</span>
-      <el-button link type="primary" :disabled="!orderId" @click="loadData">刷新</el-button>
-    </header>
-
     <div class="m-pick-body">
       <!-- 工单定位 -->
       <div class="m-pick-locate">

@@ -1,11 +1,5 @@
 <template>
   <div class="m-report">
-    <header class="m-header">
-      <el-button link @click="router.back()">← 返回</el-button>
-      <span class="m-header-title">报工</span>
-      <span class="m-header-spacer"></span>
-    </header>
-
     <div v-loading="loading" class="m-report-body">
       <!-- 工序信息 -->
       <div class="m-report-card">

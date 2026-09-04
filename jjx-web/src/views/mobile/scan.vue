@@ -1,66 +1,43 @@
 <template>
   <div class="m-scan">
-    <header class="m-header">
-      <span class="m-header-user">{{ nickName || userName }}</span>
-      <el-button link type="primary" @click="handleLogout">退出登录</el-button>
-    </header>
+    <!-- 摄像头扫码 -->
+    <div class="m-scan-card">
+      <button v-if="!scanning" class="m-scan-cam-btn" @click="startCameraScan">
+        <span class="cam-icon">📷</span>
+        <span class="cam-text">
+          <b>摄像头扫码</b>
+          <small>对准工单二维码自动识别</small>
+        </span>
+      </button>
 
-    <div class="m-scan-body">
-      <div class="m-scan-icon">📷</div>
-      <h3 class="m-scan-title">扫码定位工单</h3>
-      <p class="m-scan-tip">扫码枪/PDA 扫描纸质工单二维码，手机可用摄像头扫，或手动输入工单号</p>
-
-      <el-button
-        v-if="!scanning"
-        size="large"
-        type="success"
-        class="m-scan-btn m-scan-cam"
-        plain
-        @click="startCameraScan"
-      >
-        📷 摄像头扫码
-      </el-button>
-
-      <!-- 摄像头扫码区（2026-09-04：手机扫码；需 HTTPS/localhost 或浏览器允许不安全源摄像头） -->
       <div v-if="scanning" class="m-cam-wrap">
         <div id="m-qr-reader" class="m-qr-reader"></div>
-        <el-button size="large" class="m-scan-btn" @click="stopCameraScan">取消扫码</el-button>
+        <button class="m-scan-cancel" @click="stopCameraScan">取消扫码</button>
       </div>
+    </div>
 
-      <el-input
+    <!-- 或手动输入 -->
+    <div class="m-divider"><span>或手动输入工单号</span></div>
+
+    <div class="m-scan-input-row">
+      <input
         v-model="orderNo"
         class="m-scan-input"
-        placeholder="工单号（如 WPO2608120001）"
-        size="large"
-        clearable
+        placeholder="如 WO-PL2609040002-01"
+        enterkeyhint="go"
         @keyup.enter="handleGo"
       />
-      <el-button type="primary" size="large" class="m-scan-btn" @click="handleGo">
-        定位工单
-      </el-button>
+      <button class="m-scan-go-btn" @click="handleGo">定位</button>
+    </div>
 
-      <el-button size="large" class="m-scan-btn m-scan-btn-secondary" @click="router.push('/m/reports')">
-        我的报工记录
-      </el-button>
+    <p class="m-scan-tip">💡 也支持 PDA 扫描键 / 扫码枪：光标在输入框时直接扫</p>
 
-      <el-button size="large" class="m-scan-btn m-scan-btn-secondary" @click="router.push('/m/quality')">
-        质检判定
-      </el-button>
-
-      <el-button size="large" class="m-scan-btn m-scan-btn-secondary" @click="router.push('/m/pick')">
-        生产领料
-      </el-button>
-
-      <div class="m-scan-history" v-if="recent.length">
-        <div class="m-scan-history-title">最近扫描</div>
-        <div
-          v-for="no in recent"
-          :key="no"
-          class="m-scan-history-item"
-          @click="goOrder(no)"
-        >
-          {{ no }}
-        </div>
+    <!-- 最近扫描 -->
+    <div v-if="recent.length" class="m-recent">
+      <div class="m-recent-title">最近扫描</div>
+      <div v-for="no in recent" :key="no" class="m-recent-item" @click="goOrder(no)">
+        <span class="m-recent-no">{{ no }}</span>
+        <span class="m-recent-arrow">›</span>
       </div>
     </div>
   </div>
@@ -70,32 +47,27 @@
 import { ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useUserStore } from '@/store/modules/user'
 import { useScanner, isWorkOrderNo } from '@/composables/useScanner'
 import { Html5Qrcode } from 'html5-qrcode'
 
 const router = useRouter()
-const userStore = useUserStore()
 
 const orderNo = ref('')
 const recent = ref<string[]>(JSON.parse(localStorage.getItem('m_recent_order') || '[]'))
-const userName = userStore.userName || ''
-const nickName = userStore.nickName || ''
 
-// ===== 手机摄像头扫码（2026-09-04）=====
+// ===== 手机摄像头扫码 =====
 const scanning = ref(false)
 let cameraScanner: Html5Qrcode | null = null
 
 async function startCameraScan() {
   if (scanning.value) return
-  // 摄像头需要安全上下文（HTTPS 或 localhost）；http://内网IP 会被浏览器拒绝，给明确提示
   if (!window.isSecureContext) {
     ElMessage.warning('当前为非 HTTPS 环境，浏览器禁止调摄像头；请用 PDA 扫描键/扫码枪，或手机 Chrome 将该地址加入不安全源白名单后重试')
     return
   }
   try {
-    // 等 DOM 渲染出容器再启动
-    await new Promise((r) => setTimeout(r, 100))
+    scanning.value = true
+    await new Promise((r) => setTimeout(r, 150))
     cameraScanner = new Html5Qrcode('m-qr-reader')
     await cameraScanner.start(
       { facingMode: 'environment' },
@@ -109,10 +81,9 @@ async function startCameraScan() {
         }
       },
       () => {
-        // 单帧解码失败忽略（持续扫）
+        // 单帧解码失败忽略
       }
     )
-    scanning.value = true
   } catch (e: any) {
     scanning.value = false
     const name = e?.name || ''
@@ -133,7 +104,7 @@ async function stopCameraScan() {
       await cameraScanner.stop()
       cameraScanner.clear()
     } catch {
-      // 未启动/已停止时忽略
+      // ignore
     }
     cameraScanner = null
   }
@@ -174,101 +145,155 @@ function handleGo() {
   }
   goOrder(no)
 }
-
-function handleLogout() {
-  userStore.resetToken()
-  router.replace('/m/login')
-}
 </script>
 
 <style scoped>
 .m-scan {
-  min-height: 100vh;
-  background: #f5f7fa;
+  padding: 16px 16px 24px;
 }
-.m-header {
+.m-scan-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.06);
+}
+.m-scan-cam-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
-}
-.m-header-user {
-  font-size: 15px;
-  color: #303133;
-}
-.m-scan-body {
-  padding: 48px 24px;
-  text-align: center;
-}
-.m-scan-icon {
-  font-size: 56px;
-}
-.m-scan-title {
-  margin: 16px 0 8px;
-  font-size: 20px;
-  color: #303133;
-}
-.m-scan-tip {
-  margin: 0 0 32px;
-  font-size: 13px;
-  color: #909399;
-}
-.m-scan-input {
-  max-width: 420px;
-  margin: 0 auto 16px;
-}
-.m-scan-btn {
-  max-width: 420px;
+  gap: 14px;
   width: 100%;
-  height: 48px;
-  font-size: 16px;
+  border: none;
+  background: linear-gradient(135deg, #2b5aa7, #3f7bd6);
+  color: #fff;
+  border-radius: 12px;
+  padding: 18px 20px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.m-scan-btn-secondary {
-  margin-top: 12px;
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  color: #606266;
+.m-scan-cam-btn:active {
+  opacity: 0.9;
 }
-.m-scan-cam {
-  margin-bottom: 14px;
+.cam-icon {
+  font-size: 30px;
+}
+.cam-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 3px;
+}
+.cam-text b {
+  font-size: 17px;
+}
+.cam-text small {
+  font-size: 12px;
+  opacity: 0.85;
 }
 .m-cam-wrap {
-  max-width: 420px;
-  margin: 0 auto 16px;
+  text-align: center;
 }
 .m-qr-reader {
   width: 100%;
   border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 12px;
   background: #000;
+  margin-bottom: 10px;
 }
 .m-qr-reader video {
   width: 100%;
   display: block;
 }
-.m-scan-history {
-  margin-top: 40px;
-  text-align: left;
-  max-width: 420px;
-  margin-left: auto;
-  margin-right: auto;
+.m-scan-cancel {
+  border: 1px solid #dcdfe6;
+  background: #fff;
+  color: #606266;
+  border-radius: 10px;
+  padding: 10px 0;
+  width: 100%;
+  font-size: 15px;
+  cursor: pointer;
 }
-.m-scan-history-title {
+.m-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #c0c4cc;
+  font-size: 12px;
+  margin: 18px 0;
+}
+.m-divider::before,
+.m-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e4e7ed;
+}
+.m-scan-input-row {
+  display: flex;
+  gap: 10px;
+}
+.m-scan-input {
+  flex: 1;
+  height: 50px;
+  border: 1px solid #dcdfe6;
+  border-radius: 12px;
+  padding: 0 16px;
+  font-size: 16px;
+  background: #fff;
+  outline: none;
+  min-width: 0;
+}
+.m-scan-input:focus {
+  border-color: #2b5aa7;
+}
+.m-scan-go-btn {
+  width: 88px;
+  border: none;
+  background: #fff;
+  color: #2b5aa7;
+  border: 1px solid #2b5aa7;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.m-scan-go-btn:active {
+  background: #ecf2fc;
+}
+.m-scan-tip {
+  margin: 12px 2px 0;
+  font-size: 12px;
+  color: #909399;
+}
+.m-recent {
+  margin-top: 22px;
+}
+.m-recent-title {
   font-size: 13px;
   color: #909399;
   margin-bottom: 8px;
+  padding-left: 4px;
 }
-.m-scan-history-item {
-  padding: 10px 14px;
+.m-recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   background: #fff;
-  border-radius: 8px;
+  border-radius: 10px;
+  padding: 13px 16px;
   margin-bottom: 8px;
   font-size: 14px;
-  color: #409eff;
+  color: #303133;
   cursor: pointer;
-  border: 1px solid #ebeef5;
+  border: 1px solid #f0f2f5;
+}
+.m-recent-no {
+  font-family: ui-monospace, monospace;
+  color: #2b5aa7;
+}
+.m-recent-arrow {
+  color: #c0c4cc;
+  font-size: 18px;
 }
 </style>

@@ -1,11 +1,5 @@
 <template>
   <div class="m-reports">
-    <header class="m-header">
-      <el-button link @click="router.back()">← 返回</el-button>
-      <span class="m-header-title">我的报工</span>
-      <span class="m-header-spacer"></span>
-    </header>
-
     <div class="m-reports-body">
       <el-tabs v-model="activeTab" class="m-reports-tabs">
         <el-tab-pane label="待审批" name="pending">

@@ -63,7 +63,7 @@ async function handleLogin() {
     ElMessage.success('登录成功')
     // 登录成功：优先回跳原目标页，否则进扫码入口
     const redirect = String(route.query.redirect || '')
-    router.replace(redirect && redirect.startsWith('/m/') ? redirect : '/m/scan')
+    router.replace(redirect && redirect.startsWith('/m/') ? redirect : '/m/home')
   } catch (e: any) {
     ElMessage.error(e?.message || '登录失败')
   } finally {

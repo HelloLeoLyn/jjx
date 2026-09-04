@@ -2,6 +2,20 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import router from '@/router'
+
+/** 401 跳登录：移动端 /m/* 回 /m/login，PC 回 /login（2026-09-04） */
+function redirectToLogin() {
+  try {
+    const cur = router.currentRoute.value
+    if (cur.path.startsWith('/m/')) {
+      router.replace({ path: '/m/login', query: { redirect: cur.fullPath } })
+    } else {
+      router.replace('/login')
+    }
+  } catch {
+    router.replace('/login')
+  }
+}
 import { useUserStore } from '@/store/modules/user'
 
 // 创建 axios 实例
@@ -78,7 +92,8 @@ service.interceptors.response.use(
         // 使用 userStore 的 resetToken 方法，确保状态一致性
         const userStore = useUserStore()
         userStore.resetToken()
-        router.push('/login')
+        // 2026-09-04：移动端 /m/* 401 回移动登录页，不再被踢到 PC /login
+        redirectToLogin()
       }
 
       return Promise.reject(new Error(res.msg || 'Error'))
@@ -98,7 +113,7 @@ service.interceptors.response.use(
           // 使用 userStore 的 resetToken 方法，确保状态一致性
           const userStore = useUserStore()
           userStore.resetToken()
-          router.push('/login')
+          redirectToLogin()
           break
         case 403:
           message = '拒绝访问'

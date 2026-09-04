@@ -52,7 +52,40 @@ export const constantRoutes: RouteRecordRaw[] = [
       hidden: true,
     },
   },
+  // ============ 移动端 H5（2026-09-04 应用化：MobileLayout 壳 + TabBar）============
   {
+    path: '/m',
+    component: () => import('@/layouts/MobileLayout.vue'),
+    redirect: '/m/home',
+    children: [
+      {
+        path: '/m/home',
+        name: 'MobileHome',
+        component: () => import('@/views/mobile/home.vue'),
+        meta: {
+          title: '首页',
+          hidden: true,
+        },
+      },
+      {
+        path: '/m/report-approvals',
+        name: 'MobileReportApprovals',
+        component: () => import('@/views/mobile/report-approvals.vue'),
+        meta: {
+          title: '报工审批',
+          hidden: true,
+        },
+      },
+      {
+        path: '/m/notices',
+        name: 'MobileNotices',
+        component: () => import('@/views/mobile/notices.vue'),
+        meta: {
+          title: '通知',
+          hidden: true,
+        },
+      },
+{
     path: '/m/scan',
     name: 'MobileScan',
     component: () => import('@/views/mobile/scan.vue'),
@@ -61,7 +94,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       hidden: true,
     },
   },
-  {
+{
     path: '/m/order',
     name: 'MobileOrder',
     component: () => import('@/views/mobile/order.vue'),
@@ -70,7 +103,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       hidden: true,
     },
   },
-  {
+{
     path: '/m/report',
     name: 'MobileReport',
     component: () => import('@/views/mobile/report.vue'),
@@ -79,7 +112,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       hidden: true,
     },
   },
-  {
+{
     path: '/m/reports',
     name: 'MobileReports',
     component: () => import('@/views/mobile/reports.vue'),
@@ -88,7 +121,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       hidden: true,
     },
   },
-  {
+{
     path: '/m/quality',
     name: 'MobileQuality',
     component: () => import('@/views/mobile/quality.vue'),
@@ -97,7 +130,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       hidden: true,
     },
   },
-  {
+{
     path: '/m/pick',
     name: 'MobilePick',
     component: () => import('@/views/mobile/pick.vue'),
@@ -105,6 +138,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       title: '生产领料',
       hidden: true,
     },
+  },    ],
   },
   {
     path: '/demo/a4-print',
