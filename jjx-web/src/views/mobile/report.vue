@@ -1,13 +1,12 @@
 <template>
   <div class="m-report">
     <div v-loading="loading" class="m-report-body">
-      <!-- 工序信息 -->
+      <!-- 工序信息（渐变卡） -->
       <div class="m-report-card">
-        <div class="m-report-order">{{ orderNo }}</div>
-        <div class="m-report-process">{{ processName }}</div>
+        <div class="m-report-order">🏷 {{ orderNo }}</div>
+        <div class="m-report-process">{{ processName || '未命名工序' }}</div>
       </div>
 
-      <!-- 我的任务选择 -->
       <template v-if="tasks.length">
         <div class="m-section-title">我的任务</div>
         <div
@@ -19,11 +18,12 @@
         >
           <div class="m-task-head">
             <span class="m-task-no">{{ t.taskNo || `任务#${t.taskId}` }}</span>
-            <el-tag size="small">{{ t.statusLabel || t.status }}</el-tag>
+            <span class="m-task-check">{{ selectedTaskId === t.taskId ? '✓' : '' }}</span>
           </div>
           <div class="m-task-qty">
-            任务量 {{ fmtQty(t.taskQuantity) }} · 已完成 {{ fmtQty(t.completedQuantity) }} · 剩余
-            {{ fmtQty(t.remainingQuantity) }}
+            任务量 <b>{{ fmtQty(t.taskQuantity) }}</b> · 已完成
+            <b class="done">{{ fmtQty(t.completedQuantity) }}</b> · 剩余
+            <b class="left">{{ fmtQty(t.remainingQuantity) }}</b>
           </div>
         </div>
 
@@ -61,27 +61,29 @@
               clearable
             />
           </div>
-          <div class="m-form-item">
-            <label>人工工时 (h)</label>
-            <el-input-number
-              v-model="reportForm.laborHours"
-              :min="0"
-              :precision="2"
-              controls-position="right"
-              class="m-form-input"
-              placeholder="可空"
-            />
-          </div>
-          <div class="m-form-item">
-            <label>机器工时 (h)</label>
-            <el-input-number
-              v-model="reportForm.machineHours"
-              :min="0"
-              :precision="2"
-              controls-position="right"
-              class="m-form-input"
-              placeholder="可空"
-            />
+          <div class="m-form-row">
+            <div class="m-form-item half">
+              <label>人工工时 (h)</label>
+              <el-input-number
+                v-model="reportForm.laborHours"
+                :min="0"
+                :precision="2"
+                controls-position="right"
+                class="m-form-input"
+                placeholder="可空"
+              />
+            </div>
+            <div class="m-form-item half">
+              <label>机器工时 (h)</label>
+              <el-input-number
+                v-model="reportForm.machineHours"
+                :min="0"
+                :precision="2"
+                controls-position="right"
+                class="m-form-input"
+                placeholder="可空"
+              />
+            </div>
           </div>
           <div class="m-form-item">
             <label>备注</label>
@@ -95,17 +97,11 @@
           </div>
         </div>
 
-        <el-button
-          type="primary"
-          size="large"
-          class="m-report-btn"
-          :loading="submitting"
-          @click="handleSubmit"
-        >
-          提交报工
-        </el-button>
+        <button class="m-report-btn" :disabled="submitting" @click="handleSubmit">
+          {{ submitting ? '提交中…' : '提交报工' }}
+        </button>
       </template>
-      <el-empty v-else-if="!loading" description="该工序暂无我的任务，无法报工" />
+      <div v-else-if="!loading" class="m-empty">该工序暂无我的任务，无法报工</div>
     </div>
   </div>
 </template>
@@ -215,62 +211,44 @@ loadTasks()
 .m-report {
   min-height: 100vh;
   background: #f5f7fa;
-}
-.m-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.m-header-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-.m-header-spacer {
-  width: 48px;
-}
-.m-report-body {
-  padding: 12px;
+  padding: 12px 12px 70px;
 }
 .m-report-card {
-  background: #fff;
-  border-radius: 10px;
-  padding: 14px;
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  border-radius: 14px;
+  padding: 14px 16px;
   margin-bottom: 12px;
-  border: 1px solid #ebeef5;
+  color: #fff;
 }
 .m-report-order {
-  font-size: 13px;
-  color: #909399;
+  font-size: 12px;
+  opacity: 0.9;
   margin-bottom: 4px;
+  font-family: ui-monospace, monospace;
 }
 .m-report-process {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 17px;
+  font-weight: 700;
 }
 .m-section-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #606266;
+  color: #909399;
   margin: 4px 0 10px;
 }
 .m-task-card {
   background: #fff;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.05);
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
 }
 .m-task-card.active {
-  border-color: #409eff;
-  box-shadow: 0 0 0 1px #409eff;
+  border-color: #2b5aa7;
+  box-shadow: 0 2px 12px rgba(43, 90, 167, 0.18);
 }
 .m-task-head {
   display: flex;
@@ -282,19 +260,43 @@ loadTasks()
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+  font-family: ui-monospace, monospace;
+}
+.m-task-check {
+  color: #2b5aa7;
+  font-size: 16px;
+  font-weight: 700;
 }
 .m-task-qty {
   font-size: 13px;
   color: #606266;
 }
+.m-task-qty b {
+  color: #303133;
+}
+.m-task-qty b.done {
+  color: #67c23a;
+}
+.m-task-qty b.left {
+  color: #e6a23c;
+}
 .m-report-form {
   background: #fff;
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 14px;
-  border: 1px solid #ebeef5;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.05);
+}
+.m-form-row {
+  display: flex;
+  gap: 10px;
 }
 .m-form-item {
   margin-bottom: 14px;
+}
+.m-form-item.half {
+  flex: 1;
+  min-width: 0;
 }
 .m-form-item label {
   display: block;
@@ -311,7 +313,21 @@ loadTasks()
 .m-report-btn {
   width: 100%;
   height: 48px;
+  border: none;
+  border-radius: 12px;
   font-size: 16px;
-  margin-top: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  cursor: pointer;
+}
+.m-report-btn:disabled {
+  opacity: 0.6;
+}
+.m-empty {
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 13px;
+  padding: 70px 0;
 }
 </style>
