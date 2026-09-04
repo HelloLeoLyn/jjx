@@ -1,81 +1,79 @@
 <template>
   <div class="m-order">
-    <div v-loading="loading" class="m-order-body">
-      <!-- 工单信息（扫码/输入定位后显示；直进我的任务时无） -->
-      <div v-if="order" class="m-order-card">
-        <div class="m-order-card-title">{{ order.productName }}</div>
-        <div class="m-order-card-meta">
-          <span>规格：{{ order.productSpec || '-' }}</span>
-          <span>计划：{{ fmtQty(order.plannedQuantity) }} {{ order.productUnit || '' }}</span>
-          <span>状态：{{ orderStatusLabel }}</span>
+    <!-- 工单信息（扫码/输入定位后显示） -->
+    <div v-if="order" class="m-order-card">
+      <div class="m-order-card-title">{{ order.productName }}</div>
+      <div class="m-order-card-meta">
+        <span>单号 {{ order.orderNo }} · 规格 {{ order.productSpec || '-' }}</span>
+        <span>计划 {{ fmtQty(order.plannedQuantity) }} {{ order.productUnit || '' }} · {{ orderStatusLabel }}</span>
+      </div>
+    </div>
+
+    <!-- 状态筛选 + 刷新 -->
+    <div class="m-filter">
+      <div class="m-chips">
+        <span
+          v-for="f in filters"
+          :key="f.value"
+          class="m-chip"
+          :class="{ active: statusFilter === f.value }"
+          @click="statusFilter = f.value"
+          >{{ f.label }}<i v-if="f.count != null" class="m-chip-count">{{ f.count }}</i></span
+        >
+      </div>
+      <button class="m-refresh" :disabled="loading" @click="loadData">⟳</button>
+    </div>
+
+    <!-- 任务列表 -->
+    <div v-if="filteredExecs.length" class="m-list">
+      <div v-for="ex in filteredExecs" :key="ex.executionId" class="m-exec-card">
+        <div class="m-exec-head">
+          <span class="m-exec-process">{{ ex.processName || '未命名工序' }}</span>
+          <span class="m-tag" :class="'s-' + (Number(ex.executionStatus) || 0)">{{
+            execStatusLabel(ex.executionStatus)
+          }}</span>
+        </div>
+        <div v-if="!orderNo && ex.orderNo" class="m-exec-order">🏷 {{ ex.orderNo }}</div>
+        <div class="m-exec-qty">
+          责任 <b>{{ fmtQty(ex.myResponsibilityQuantity) }}</b> · 已报
+          <b>{{ fmtQty(ex.myCompletedQuantity) }}</b>
+          <span v-if="Number(ex.myPendingReviewQuantity || 0) > 0" class="pending"
+            >· 待审 {{ fmtQty(ex.myPendingReviewQuantity) }}</span
+          >
+          <span v-if="Number(ex.myProcessableQuantity || 0) > 0" class="can-report"
+            >· 可报 {{ fmtQty(ex.myProcessableQuantity) }}</span
+          >
+        </div>
+        <div class="m-progress">
+          <div
+            class="m-progress-bar"
+            :style="{ width: progressPct(ex) }"
+            :class="progressDone(ex) ? 'full' : ''"
+          ></div>
+        </div>
+        <div class="m-exec-actions">
+          <button v-if="canStart(ex)" class="m-act m-act-primary" :disabled="startingId === ex.executionId" @click="handleStart(ex)">
+            ▶ 开始
+          </button>
+          <button v-if="canPause(ex)" class="m-act m-act-warn" :disabled="pausingId === ex.executionId" @click="handlePause(ex)">
+            ⏸ 暂停
+          </button>
+          <button v-if="canComplete(ex)" class="m-act m-act-ok" :disabled="completingId === ex.executionId" @click="handleComplete(ex)">
+            ✓ 完工
+          </button>
+          <button v-if="canReport(ex)" class="m-act m-act-primary" @click="goReport(ex)">
+            报工
+          </button>
         </div>
       </div>
-
-      <!-- 我的工序执行 -->
-      <template v-if="executions.length">
-        <div class="m-section-title">我的工序任务</div>
-        <div v-for="ex in executions" :key="ex.executionId" class="m-exec-card">
-          <div class="m-exec-head">
-            <span class="m-exec-process">{{ ex.processName }}</span>
-            <el-tag size="small" :type="execStatusTag(ex.executionStatus)">
-              {{ execStatusLabel(ex.executionStatus) }}
-            </el-tag>
-          </div>
-          <div class="m-exec-qty">
-            责任 {{ fmtQty(ex.myResponsibilityQuantity) }} · 已报 {{ fmtQty(ex.myCompletedQuantity) }}
-            <span v-if="Number(ex.myPendingReviewQuantity || 0) > 0">
-              · 待审 {{ fmtQty(ex.myPendingReviewQuantity) }}
-            </span>
-            <span v-if="Number(ex.myProcessableQuantity || 0) > 0">
-              · 可报 {{ fmtQty(ex.myProcessableQuantity) }}
-            </span>
-          </div>
-          <div class="m-exec-actions">
-            <el-button
-              v-if="canStart(ex)"
-              size="small"
-              type="primary"
-              plain
-              :loading="startingId === ex.executionId"
-              @click="handleStart(ex)"
-            >
-              开始
-            </el-button>
-            <el-button
-              v-if="canPause(ex)"
-              size="small"
-              type="warning"
-              plain
-              :loading="pausingId === ex.executionId"
-              @click="handlePause(ex)"
-            >
-              暂停
-            </el-button>
-            <el-button
-              v-if="canComplete(ex)"
-              size="small"
-              type="success"
-              plain
-              :loading="completingId === ex.executionId"
-              @click="handleComplete(ex)"
-            >
-              完工
-            </el-button>
-            <el-button
-              v-if="canReport(ex)"
-              size="small"
-              type="primary"
-              @click="goReport(ex)"
-            >
-              报工
-            </el-button>
-          </div>
-        </div>
-      </template>
-      <el-empty v-else-if="!loading" description="该工单暂无我的任务" />
+    </div>
+    <div v-else-if="!loading" class="m-empty">
+      {{ statusFilter === 'all' ? '当前没有我的任务' : '该状态下没有任务' }}
     </div>
   </div>
 </template>
+
+
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
@@ -224,6 +222,47 @@ function goReport(ex: MyProductionExecution) {
   })
 }
 
+const statusFilter = ref<'all' | 'todo' | 'doing' | 'done'>('all')
+
+function execBucket(v: number): 'todo' | 'doing' | 'done' {
+  if (v === ExecutionStatusEnum.PENDING.value) return 'todo'
+  if (v === ExecutionStatusEnum.COMPLETED.value || v === ExecutionStatusEnum.SKIPPED.value) return 'done'
+  return 'doing'
+}
+
+const filterCounts = computed(() => {
+  const c = { all: executions.value.length, todo: 0, doing: 0, done: 0 }
+  executions.value.forEach((ex) => {
+    c[execBucket(Number(ex.executionStatus))]++
+  })
+  return c
+})
+
+type FilterValue = 'all' | 'todo' | 'doing' | 'done'
+const filters = computed<{ value: FilterValue; label: string; count: number }[]>(() => [
+  { value: 'all', label: '全部', count: filterCounts.value.all },
+  { value: 'todo', label: '待做', count: filterCounts.value.todo },
+  { value: 'doing', label: '进行中', count: filterCounts.value.doing },
+  { value: 'done', label: '已完成', count: filterCounts.value.done },
+])
+
+const filteredExecs = computed(() => {
+  if (statusFilter.value === 'all') return executions.value
+  return executions.value.filter((ex) => execBucket(Number(ex.executionStatus)) === statusFilter.value)
+})
+
+function progressPct(ex: MyProductionExecution): string {
+  const total = Number(ex.myResponsibilityQuantity || 0)
+  const done = Number(ex.myCompletedQuantity || 0)
+  if (!total) return '0%'
+  const p = Math.min(100, Math.round((done / total) * 100))
+  return p + '%'
+}
+function progressDone(ex: MyProductionExecution): boolean {
+  const total = Number(ex.myResponsibilityQuantity || 0)
+  return total > 0 && Number(ex.myCompletedQuantity || 0) >= total
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -253,77 +292,194 @@ loadData()
 .m-order {
   min-height: 100vh;
   background: #f5f7fa;
-}
-.m-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 12px;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.m-header-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-.m-order-body {
-  padding: 12px;
+  padding: 12px 12px 70px;
 }
 .m-order-card {
-  background: #fff;
-  border-radius: 10px;
-  padding: 14px;
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  border-radius: 14px;
+  padding: 14px 16px;
   margin-bottom: 12px;
-  border: 1px solid #ebeef5;
+  color: #fff;
 }
 .m-order-card-title {
   font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 700;
   margin-bottom: 6px;
 }
 .m-order-card-meta {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 13px;
-  color: #606266;
+  font-size: 12px;
+  opacity: 0.92;
 }
-.m-section-title {
-  font-size: 14px;
-  font-weight: 600;
+.m-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.m-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.m-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fff;
   color: #606266;
-  margin: 4px 0 10px;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(43, 90, 167, 0.06);
+}
+.m-chip.active {
+  background: #2b5aa7;
+  color: #fff;
+  font-weight: 600;
+}
+.m-chip-count {
+  font-style: normal;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 0 5px;
+  line-height: 15px;
+}
+.m-chip.active .m-chip-count {
+  background: rgba(255, 255, 255, 0.25);
+}
+.m-refresh {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  margin-left: 8px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  color: #2b5aa7;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(43, 90, 167, 0.1);
+}
+.m-refresh:disabled {
+  opacity: 0.5;
 }
 .m-exec-card {
   background: #fff;
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 14px;
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.05);
 }
 .m-exec-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .m-exec-process {
   font-size: 15px;
   font-weight: 600;
   color: #303133;
 }
+.m-exec-order {
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 4px;
+  font-family: ui-monospace, monospace;
+}
+.m-tag {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.m-tag.s-0 {
+  color: #e6a23c;
+  background: #fdf6ec;
+}
+.m-tag.s-2 {
+  color: #2b5aa7;
+  background: #ecf3ff;
+}
+.m-tag.s-4 {
+  color: #67c23a;
+  background: #f0f9eb;
+}
+.m-tag.s-3 {
+  color: #909399;
+  background: #f4f4f5;
+}
 .m-exec-qty {
   font-size: 13px;
   color: #606266;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+}
+.m-exec-qty b {
+  color: #303133;
+  font-size: 15px;
+}
+.m-exec-qty .pending {
+  color: #e6a23c;
+}
+.m-exec-qty .can-report {
+  color: #2b5aa7;
+}
+.m-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: #ebeef5;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.m-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #4a7fd4, #2b5aa7);
+  transition: width 0.3s;
+}
+.m-progress-bar.full {
+  background: #67c23a;
 }
 .m-exec-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+}
+.m-act {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.m-act-primary {
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  color: #fff;
+}
+.m-act-ok {
+  background: #67c23a;
+  color: #fff;
+}
+.m-act-warn {
+  background: #fff;
+  color: #e6a23c;
+  border: 1px solid #e6a23c;
+}
+.m-act:disabled {
+  opacity: 0.6;
+}
+.m-empty {
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 13px;
+  padding: 70px 0;
 }
 </style>
