@@ -1,75 +1,73 @@
 <template>
   <div class="m-pick">
-    <div class="m-pick-body">
-      <!-- 工单定位 -->
-      <div class="m-pick-locate">
-        <el-input
-          v-model="orderNo"
-          placeholder="扫码/输入工单号（如 WPO2608120001）"
-          size="large"
-          clearable
-          @keyup.enter="handleLocate"
-        />
-        <el-button type="primary" size="large" :loading="locating" class="m-pick-locate-btn" @click="handleLocate">
-          定位工单
-        </el-button>
+    <!-- 工单定位 -->
+    <div class="m-pick-locate">
+      <el-input
+        v-model="orderNo"
+        placeholder="扫码/输入工单号（如 WPO2608120001）"
+        size="large"
+        clearable
+        @keyup.enter="handleLocate"
+      />
+      <button class="m-locate-btn" :disabled="locating" @click="handleLocate">
+        {{ locating ? '定位中…' : '🔍 定位工单' }}
+      </button>
+    </div>
+
+    <template v-if="orderId">
+      <div class="m-pick-card" v-if="order">
+        <div class="m-pick-card-title">{{ order.productName }}</div>
+        <div class="m-pick-card-meta">
+          <span>🏷 {{ order.orderNo }}</span>
+          <span>计划 {{ fmtQty(order.plannedQuantity) }} {{ order.productUnit || '' }}</span>
+        </div>
+        <div v-if="insufficientCount > 0" class="m-insuff-banner">⚠ {{ insufficientCount }} 项库存不足</div>
       </div>
 
-      <template v-if="orderId">
-        <div class="m-pick-card" v-if="order">
-          <div class="m-pick-card-title">{{ order.productName }}</div>
-          <div class="m-pick-card-meta">
-            <span>{{ order.orderNo }}</span>
-            <span>计划 {{ fmtQty(order.plannedQuantity) }} {{ order.productUnit || '' }}</span>
-            <el-tag size="small" type="warning" v-if="insufficientCount > 0">
-              {{ insufficientCount }} 项库存不足
-            </el-tag>
+      <div v-loading="loading" class="m-pick-list">
+        <div class="m-section-title">领料明细（剩余可领量）</div>
+        <div v-for="row in rows" :key="`${row.materialId}-${row.substitute ? 's' : 'm'}`" class="m-pick-item">
+          <div class="m-pick-item-head">
+            <span class="m-pick-item-name">
+              {{ row.materialName }}
+              <span v-if="row.substitute" class="m-tag st-sub">替代</span>
+            </span>
+            <span v-if="row.insufficient" class="m-tag st-insuff">库存不足</span>
+          </div>
+          <div class="m-pick-item-meta">
+            <span>{{ row.materialCode }}</span>
+            <span v-if="row.specification">{{ row.specification }}</span>
+          </div>
+          <div class="m-pick-item-qty">
+            <span>需求 <b>{{ fmtQty(row.qtyNeeded) }}</b> {{ row.unit }}</span>
+            <span>可用 {{ fmtQty(row.available) }}</span>
+            <span>剩可领 <b class="hl">{{ fmtQty(row.remaining ?? row.qtyPick) }}</b></span>
+          </div>
+          <div class="m-pick-item-input">
+            <span class="m-pick-item-input-label">本次领料</span>
+            <el-input-number
+              v-model="pickMap[row.materialId]"
+              :min="0"
+              :max="Number(row.remaining ?? row.qtyPick)"
+              :precision="4"
+              :step="1"
+              style="flex: 1"
+            />
+            <span class="m-pick-item-unit">{{ row.unit }}</span>
           </div>
         </div>
-
-        <div v-loading="loading" class="m-pick-list">
-          <div class="m-section-title">领料明细（剩余可领量）</div>
-          <div v-for="row in rows" :key="`${row.materialId}-${row.substitute ? 's' : 'm'}`" class="m-pick-item">
-            <div class="m-pick-item-head">
-              <span class="m-pick-item-name">
-                {{ row.materialName }}
-                <el-tag v-if="row.substitute" size="small" type="warning" effect="plain">替代</el-tag>
-              </span>
-              <el-tag v-if="row.insufficient" size="small" type="danger" effect="plain">库存不足</el-tag>
-            </div>
-            <div class="m-pick-item-meta">
-              <span>{{ row.materialCode }}</span>
-              <span v-if="row.specification">{{ row.specification }}</span>
-            </div>
-            <div class="m-pick-item-qty">
-              <span>需求 {{ fmtQty(row.qtyNeeded) }} {{ row.unit }}</span>
-              <span>可用 {{ fmtQty(row.available) }}</span>
-              <span>剩余可领 <b>{{ fmtQty(row.remaining ?? row.qtyPick) }}</b></span>
-            </div>
-            <div class="m-pick-item-input">
-              <span class="m-pick-item-input-label">本次领料</span>
-              <el-input-number
-                v-model="pickMap[row.materialId]"
-                :min="0"
-                :max="Number(row.remaining ?? row.qtyPick)"
-                :precision="4"
-                :step="1"
-                style="flex: 1"
-              />
-              <span class="m-pick-item-unit">{{ row.unit }}</span>
-            </div>
-          </div>
-          <el-empty v-if="!loading && !rows.length" description="无领料物料（BOM 无 buy 类明细或工单无已审批 BOM）" />
-
-          <div v-if="rows.length" class="m-pick-submit">
-            <el-button type="primary" size="large" :loading="submitting" class="m-pick-submit-btn" @click="handleSubmit">
-              提交领料
-            </el-button>
-            <div class="m-pick-submit-tip">已领 {{ pickedCount }} 项 · 本次 {{ submitCount }} 项</div>
-          </div>
+        <div v-if="!loading && !rows.length" class="m-empty">
+          无领料物料（BOM 无 buy 类明细或工单无已审批 BOM）
         </div>
-      </template>
-    </div>
+
+        <div v-if="rows.length" class="m-pick-submit">
+          <button class="m-submit-btn" :disabled="submitting" @click="handleSubmit">
+            {{ submitting ? '提交中…' : '提交领料' }}
+          </button>
+          <div class="m-pick-submit-tip">已领 {{ pickedCount }} 项 · 本次 {{ submitCount }} 项</div>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -192,97 +190,124 @@ async function handleSubmit() {
 .m-pick {
   min-height: 100vh;
   background: #f5f7fa;
-}
-.m-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.m-header-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-.m-pick-body {
-  padding: 12px;
+  padding: 12px 12px 70px;
 }
 .m-pick-locate {
   background: #fff;
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.05);
 }
-.m-pick-locate-btn {
+.m-locate-btn {
   width: 100%;
+  height: 44px;
   margin-top: 10px;
-}
-.m-pick-card {
-  background: #fff;
+  border: none;
   border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
-}
-.m-pick-card-title {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
-  margin-bottom: 4px;
+  color: #fff;
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  cursor: pointer;
+}
+.m-locate-btn:disabled {
+  opacity: 0.6;
+}
+.m-pick-card {
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  color: #fff;
+}
+.m-pick-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
 }
 .m-pick-card-meta {
-  font-size: 13px;
-  color: #606266;
+  font-size: 12px;
+  opacity: 0.92;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 3px;
+}
+.m-insuff-banner {
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #ffe1a8;
 }
 .m-section-title {
   font-size: 13px;
   font-weight: 600;
   color: #909399;
-  margin: 8px 0;
+  margin: 4px 0 10px;
 }
 .m-pick-item {
   background: #fff;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.05);
 }
 .m-pick-item-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 4px;
+  gap: 8px;
 }
 .m-pick-item-name {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.m-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+.m-tag.st-sub {
+  color: #2b5aa7;
+  background: #ecf3ff;
+}
+.m-tag.st-insuff {
+  color: #f56c6c;
+  background: #fef0f0;
 }
 .m-pick-item-meta {
   font-size: 12px;
   color: #909399;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   display: flex;
   gap: 8px;
+  font-family: ui-monospace, monospace;
 }
 .m-pick-item-qty {
   font-size: 13px;
   color: #606266;
   display: flex;
   gap: 12px;
-  margin-bottom: 8px;
+  flex-wrap: wrap;
+  background: #f7f9fc;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
 }
 .m-pick-item-qty b {
+  color: #303133;
+}
+.m-pick-item-qty b.hl {
   color: #e6a23c;
 }
 .m-pick-item-input {
@@ -301,16 +326,33 @@ async function handleSubmit() {
   white-space: nowrap;
 }
 .m-pick-submit {
-  margin-top: 12px;
+  margin-top: 14px;
   padding-bottom: 24px;
 }
-.m-pick-submit-btn {
+.m-submit-btn {
   width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  cursor: pointer;
+}
+.m-submit-btn:disabled {
+  opacity: 0.6;
 }
 .m-pick-submit-tip {
   text-align: center;
   font-size: 12px;
   color: #909399;
   margin-top: 6px;
+}
+.m-empty {
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 13px;
+  padding: 60px 0;
 }
 </style>

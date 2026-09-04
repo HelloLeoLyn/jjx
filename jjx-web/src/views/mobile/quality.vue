@@ -1,49 +1,59 @@
 <template>
   <div class="m-quality">
-    <div class="m-quality-body">
-      <el-tabs v-model="activeTab" class="m-quality-tabs">
-        <el-tab-pane label="待判定" name="pending">
-          <div v-loading="loading" class="m-quality-list">
-            <div v-for="q in pendingList" :key="q.inspectionId" class="m-quality-item">
-              <div class="m-quality-item-head">
-                <span class="m-quality-item-no">{{ q.inspectionNo }}</span>
-                <el-tag size="small" :type="typeTag(q.inspectionType)">
-                  {{ q.inspectionTypeName || q.inspectionType }}
-                </el-tag>
-              </div>
-              <div class="m-quality-item-meta">
-                <div>工单：{{ q.orderNo || '-' }}<span v-if="q.processName"> · {{ q.processName }}</span></div>
-                <div>产品：{{ q.productName || q.materialName || '-' }}</div>
-                <div>检验数：{{ fmtQty(q.totalQty) }} · 创建：{{ fmtTime(q.createTime) }}</div>
-              </div>
-              <div class="m-quality-item-actions">
-                <el-button size="small" type="primary" @click="openJudge(q)">判定</el-button>
-              </div>
-            </div>
-            <el-empty v-if="!loading && !pendingList.length" description="暂无待判定检验单" />
+    <div class="m-filter">
+      <div class="m-chips">
+        <span
+          v-for="t in tabs"
+          :key="t.value"
+          class="m-chip"
+          :class="{ active: activeTab === t.value }"
+          @click="activeTab = t.value"
+          >{{ t.label }}</span
+        >
+      </div>
+    </div>
+
+    <div v-loading="loading" class="m-list">
+      <!-- 待判定 -->
+      <template v-if="activeTab === 'pending'">
+        <div v-for="q in pendingList" :key="q.inspectionId" class="m-quality-item">
+          <div class="m-quality-item-head">
+            <span class="m-quality-item-no">{{ q.inspectionNo }}</span>
+            <span class="m-tag" :class="typeTag(q.inspectionType)">{{
+              q.inspectionTypeName || q.inspectionType
+            }}</span>
           </div>
-        </el-tab-pane>
-        <el-tab-pane label="已判定" name="done">
-          <div v-loading="loading" class="m-quality-list">
-            <div v-for="q in doneList" :key="q.inspectionId" class="m-quality-item">
-              <div class="m-quality-item-head">
-                <span class="m-quality-item-no">{{ q.inspectionNo }}</span>
-                <el-tag size="small" :type="resultTag(q.result)">{{ q.resultName || q.result }}</el-tag>
-              </div>
-              <div class="m-quality-item-meta">
-                <div>工单：{{ q.orderNo || '-' }}<span v-if="q.processName"> · {{ q.processName }}</span></div>
-                <div>
-                  合格 {{ fmtQty(q.passQty) }}
-                  <span v-if="Number(q.failQty || 0) > 0" class="m-fail"> · 不合格 {{ fmtQty(q.failQty) }}</span>
-                  <span v-if="q.defectDesc"> · {{ q.defectDesc }}</span>
-                </div>
-                <div>判定：{{ fmtTime(q.inspectTime) }} · {{ q.inspector || '-' }}</div>
-              </div>
-            </div>
-            <el-empty v-if="!loading && !doneList.length" description="暂无已判定记录" />
+          <div class="m-quality-item-meta">
+            <div class="m-line">🏷 {{ q.orderNo || '-' }}<span v-if="q.processName"> · {{ q.processName }}</span></div>
+            <div class="m-line">📦 {{ q.productName || q.materialName || '-' }}</div>
+            <div class="m-line sub">检验数 {{ fmtQty(q.totalQty) }} · 创建 {{ fmtTime(q.createTime) }}</div>
           </div>
-        </el-tab-pane>
-      </el-tabs>
+          <div class="m-quality-item-actions">
+            <button class="m-act m-act-primary" @click="openJudge(q)">判定</button>
+          </div>
+        </div>
+        <div v-if="!loading && !pendingList.length" class="m-empty">暂无待判定检验单</div>
+      </template>
+
+      <!-- 已判定 -->
+      <template v-else>
+        <div v-for="q in doneList" :key="q.inspectionId" class="m-quality-item">
+          <div class="m-quality-item-head">
+            <span class="m-quality-item-no">{{ q.inspectionNo }}</span>
+            <span class="m-tag" :class="resultTag(q.result)">{{ q.resultName || q.result }}</span>
+          </div>
+          <div class="m-quality-item-meta">
+            <div class="m-line">🏷 {{ q.orderNo || '-' }}<span v-if="q.processName"> · {{ q.processName }}</span></div>
+            <div class="m-line qty">
+              合格 <b class="ok">{{ fmtQty(q.passQty) }}</b>
+              <span v-if="Number(q.failQty || 0) > 0" class="bad"> · 不合格 {{ fmtQty(q.failQty) }}</span>
+              <span v-if="q.defectDesc" class="desc"> · {{ q.defectDesc }}</span>
+            </div>
+            <div class="m-line sub">判定 {{ fmtTime(q.inspectTime) }} · {{ q.inspector || '-' }}</div>
+          </div>
+        </div>
+        <div v-if="!loading && !doneList.length" class="m-empty">暂无已判定记录</div>
+      </template>
     </div>
 
     <!-- 判定表单 -->
@@ -100,6 +110,11 @@ const route = useRoute()
 const router = useRouter()
 
 const activeTab = ref<'pending' | 'done'>('pending')
+
+const tabs = [
+  { value: 'pending', label: '待判定' },
+  { value: 'done', label: '已判定' },
+] as const
 const loading = ref(false)
 const pendingList = ref<QualityVO[]>([])
 const doneList = ref<QualityVO[]>([])
@@ -124,11 +139,11 @@ function fmtTime(t?: string): string {
   if (!t) return '-'
   return t.replace('T', ' ').slice(5, 16)
 }
-function typeTag(t?: string): any {
-  return t === 'FQC' ? 'success' : 'warning'
+function typeTag(t?: string): string {
+  return t === 'FQC' ? 'st-fqc' : 'st-iqc'
 }
-function resultTag(r?: string): any {
-  return r === 'pass' ? 'success' : 'danger'
+function resultTag(r?: string): string {
+  return r === 'pass' ? 'st-pass' : 'st-fail'
 }
 
 async function loadData() {
@@ -200,57 +215,129 @@ onMounted(() => loadData())
 .m-quality {
   min-height: 100vh;
   background: #f5f7fa;
+  padding: 12px 12px 70px;
 }
-.m-header {
+.m-filter {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px;
+  margin-bottom: 10px;
+}
+.m-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.m-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: #fff;
-  border-bottom: 1px solid #ebeef5;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  color: #606266;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(43, 90, 167, 0.06);
 }
-.m-header-title {
-  font-size: 15px;
+.m-chip.active {
+  background: #2b5aa7;
+  color: #fff;
   font-weight: 600;
-  color: #303133;
-}
-.m-quality-body {
-  padding: 8px 12px;
-}
-.m-quality-tabs :deep(.el-tabs__item) {
-  font-size: 14px;
 }
 .m-quality-item {
   background: #fff;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.05);
 }
 .m-quality-item-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .m-quality-item-no {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #303133;
+  font-family: ui-monospace, monospace;
+}
+.m-tag {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.m-tag.st-fqc {
+  color: #67c23a;
+  background: #f0f9eb;
+}
+.m-tag.st-iqc {
+  color: #2b5aa7;
+  background: #ecf3ff;
+}
+.m-tag.st-pass {
+  color: #67c23a;
+  background: #f0f9eb;
+}
+.m-tag.st-fail {
+  color: #f56c6c;
+  background: #fef0f0;
 }
 .m-quality-item-meta {
-  font-size: 13px;
-  color: #606266;
-  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #f7f9fc;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
 }
-.m-fail {
+.m-line {
+  font-size: 13px;
+  color: #303133;
+}
+.m-line .ok {
+  color: #67c23a;
+  font-size: 16px;
+}
+.m-line .bad {
   color: #f56c6c;
+  font-size: 16px;
+}
+.m-line .desc {
+  color: #909399;
+}
+.m-line.sub {
+  color: #c0c4cc;
+  font-size: 12px;
 }
 .m-quality-item-actions {
-  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+}
+.m-act {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.m-act-primary {
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  color: #fff;
+}
+.m-empty {
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 13px;
+  padding: 70px 0;
 }
 .m-judge-info {
   font-size: 14px;

@@ -1,74 +1,57 @@
 <template>
   <div class="m-reports">
-    <div class="m-reports-body">
-      <el-tabs v-model="activeTab" class="m-reports-tabs">
-        <el-tab-pane label="待审批" name="pending">
-          <div v-loading="loading" class="m-reports-list">
-            <div v-for="r in pendingList" :key="r.reportId" class="m-report-item">
-              <div class="m-report-item-head">
-                <span class="m-report-item-no">{{ r.reportNo || `报工#${r.reportId}` }}</span>
-                <el-tag size="small" type="warning">{{ r.reportStatusLabel || '待审批' }}</el-tag>
-              </div>
-              <div class="m-report-item-meta">
-                <div>{{ r.orderNo || '-' }}</div>
-                <div>
-                  合格 {{ fmtQty(r.qualifiedQuantity) }}
-                  <span v-if="Number(r.defectiveQuantity || 0) > 0" class="m-defective">
-                    · 不良 {{ fmtQty(r.defectiveQuantity) }}
-                  </span>
-                  · {{ fmtTime(r.reportTime) }}
-                </div>
-              </div>
-              <div class="m-report-item-actions">
-                <el-button
-                  v-if="r.reportStatus === 'PENDING'"
-                  size="small"
-                  type="danger"
-                  plain
-                  @click="handleCancel(r)"
-                >
-                  撤销
-                </el-button>
-              </div>
-            </div>
-            <el-empty v-if="!loading && !pendingList.length" description="暂无待审批报工" />
+    <div class="m-filter">
+      <div class="m-chips">
+        <span
+          v-for="t in tabs"
+          :key="t.value"
+          class="m-chip"
+          :class="{ active: activeTab === t.value }"
+          @click="activeTab = t.value"
+          >{{ t.label }}</span
+        >
+      </div>
+    </div>
+
+    <div v-loading="loading" class="m-list">
+      <div v-for="r in currentList" :key="r.reportId" class="m-report-item">
+        <div class="m-report-item-head">
+          <span class="m-report-item-no">{{ r.reportNo || `报工#${r.reportId}` }}</span>
+          <span class="m-tag" :class="'st-' + (r.reportStatus || 'PENDING')">{{
+            r.reportStatusLabel || r.reportStatus || '待审批'
+          }}</span>
+        </div>
+        <div class="m-report-item-meta">
+          <div class="m-line">🏷 {{ r.orderNo || '-' }}</div>
+          <div class="m-line qty">
+            合格 <b class="ok">{{ fmtQty(r.qualifiedQuantity) }}</b>
+            <span v-if="Number(r.defectiveQuantity || 0) > 0" class="bad">
+              · 不良 {{ fmtQty(r.defectiveQuantity) }}
+            </span>
+            <span v-if="Number(r.laborHours)" class="hours"> · ⏱ {{ r.laborHours }}h</span>
+            <span class="time">{{ fmtTime(r.reportTime) }}</span>
           </div>
-        </el-tab-pane>
-        <el-tab-pane label="全部记录" name="all">
-          <div v-loading="loading" class="m-reports-list">
-            <div v-for="r in allList" :key="r.reportId" class="m-report-item">
-              <div class="m-report-item-head">
-                <span class="m-report-item-no">{{ r.reportNo || `报工#${r.reportId}` }}</span>
-                <el-tag size="small" :type="statusTag(r.reportStatus)">
-                  {{ r.reportStatusLabel || r.reportStatus }}
-                </el-tag>
-              </div>
-              <div class="m-report-item-meta">
-                <div>{{ r.orderNo || '-' }}</div>
-                <div>
-                  合格 {{ fmtQty(r.qualifiedQuantity) }}
-                  <span v-if="Number(r.defectiveQuantity || 0) > 0" class="m-defective">
-                    · 不良 {{ fmtQty(r.defectiveQuantity) }}
-                  </span>
-                  · {{ fmtTime(r.reportTime) }}
-                </div>
-              </div>
-              <div class="m-report-item-actions">
-                <el-button size="small" type="primary" plain @click="printWorkReport(r)">
-                  打印
-                </el-button>
-              </div>
-            </div>
-            <el-empty v-if="!loading && !allList.length" description="暂无报工记录" />
-          </div>
-        </el-tab-pane>
-      </el-tabs>
+        </div>
+        <div class="m-report-item-actions">
+          <button
+            v-if="r.reportStatus === 'PENDING'"
+            class="m-act m-act-bad"
+            @click="handleCancel(r)"
+          >
+            撤销
+          </button>
+          <button class="m-act m-act-primary" @click="printWorkReport(r)">🖨 打印</button>
+        </div>
+      </div>
+      <div v-if="!loading && !currentList.length" class="m-empty">
+        {{ activeTab === 'pending' ? '暂无待审批报工' : '暂无报工记录' }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMyWorkReports, cancelWorkReport } from '@/api/production/workReport'
@@ -77,6 +60,13 @@ import type { WorkReportVO, WorkReportStatus } from '@/api/production/workReport
 const router = useRouter()
 
 const activeTab = ref<'pending' | 'all'>('pending')
+
+const tabs = [
+  { value: 'pending', label: '待审批' },
+  { value: 'all', label: '全部记录' },
+] as const
+
+const currentList = computed(() => (activeTab.value === 'pending' ? pendingList.value : allList.value))
 const loading = ref(false)
 const pendingList = ref<WorkReportVO[]>([])
 const allList = ref<WorkReportVO[]>([])
@@ -159,59 +149,145 @@ onMounted(() => loadPending())
 .m-reports {
   min-height: 100vh;
   background: #f5f7fa;
+  padding: 12px 12px 70px;
 }
-.m-header {
+.m-filter {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px;
+  margin-bottom: 10px;
+}
+.m-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.m-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: #fff;
-  border-bottom: 1px solid #ebeef5;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  color: #606266;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(43, 90, 167, 0.06);
 }
-.m-header-title {
-  font-size: 15px;
+.m-chip.active {
+  background: #2b5aa7;
+  color: #fff;
   font-weight: 600;
-  color: #303133;
 }
-.m-header-spacer {
-  width: 48px;
+.m-chip-count {
+  font-style: normal;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 0 5px;
+  line-height: 15px;
 }
-.m-reports-body {
-  padding: 8px 12px;
-}
-.m-reports-tabs :deep(.el-tabs__item) {
-  font-size: 14px;
+.m-chip.active .m-chip-count {
+  background: rgba(255, 255, 255, 0.25);
 }
 .m-report-item {
   background: #fff;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid #ebeef5;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 10px rgba(43, 90, 167, 0.05);
 }
 .m-report-item-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .m-report-item-no {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #303133;
+  font-family: ui-monospace, monospace;
+}
+.m-tag {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.m-tag.st-PENDING {
+  color: #e6a23c;
+  background: #fdf6ec;
+}
+.m-tag.st-APPROVED {
+  color: #67c23a;
+  background: #f0f9eb;
+}
+.m-tag.st-REJECTED {
+  color: #f56c6c;
+  background: #fef0f0;
+}
+.m-tag.st-CANCELLED {
+  color: #909399;
+  background: #f4f4f5;
 }
 .m-report-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #f7f9fc;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.m-line {
   font-size: 13px;
   color: #606266;
-  line-height: 1.6;
 }
-.m-defective {
+.m-line .ok {
+  color: #67c23a;
+  font-size: 16px;
+}
+.m-line .bad {
   color: #f56c6c;
+  font-size: 16px;
+}
+.m-line .hours {
+  color: #2b5aa7;
+}
+.m-line .time {
+  color: #c0c4cc;
+  font-size: 11px;
+  margin-left: 6px;
 }
 .m-report-item-actions {
-  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+}
+.m-act {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.m-act-primary {
+  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  color: #fff;
+}
+.m-act-bad {
+  background: #fff;
+  color: #f56c6c;
+  border: 1px solid #f56c6c;
+}
+.m-empty {
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 13px;
+  padding: 70px 0;
 }
 </style>
