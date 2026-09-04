@@ -20,7 +20,16 @@
     <A4Canvas :padding-mm="15" v-if="info">
       <template v-if="printLayout === 'a4'">
         <!-- 公司抬头 -->
-        <PrintCompanyHeader variant="center" />
+        <div class="a4-company-header">
+          <PrintCompanyHeader variant="center" />
+          <img
+            v-if="qrDataUrl"
+            :src="qrDataUrl"
+            class="a4-order-qrcode"
+            alt="采购订单二维码"
+            title="扫码识别订单号"
+          />
+        </div>
 
         <!-- 单据标题 -->
         <div class="doc-title">采 购 订 单</div>
@@ -49,7 +58,7 @@
           <div class="info-item">
             <span class="info-label">币种</span>{{ info.currency || '-' }}
           </div>
-          <div class="info-item">
+          <!-- <div class="info-item">
             <span class="info-label">合同号</span>{{ info.contractNo || '-' }}
           </div>
           <div class="info-item">
@@ -61,7 +70,7 @@
           <div class="info-item">
             <span class="info-label">审批状态</span
             >{{ info.approvalStatusName || info.approvalStatus || '-' }}
-          </div>
+          </div> -->
           <div class="info-item">
             <span class="info-label">创建时间</span>{{ info.createTime || '-' }}
           </div>
@@ -234,6 +243,7 @@ import { useUserStore } from '@/store/modules/user'
 import { dictApi } from '@/api/system/dict'
 import type { PurchaseSupplier } from '@/types/purchase'
 import type { SysDictItem } from '@/types/system/dict'
+import QRCode from 'qrcode'
 
 const route = useRoute()
 const router = useRouter()
@@ -250,6 +260,7 @@ const info = ref<any>(null)
 const supplier = ref<PurchaseSupplier | null>(null)
 const paymentTermsOptions = ref<SysDictItem[]>([])
 const loading = ref(false)
+const qrDataUrl = ref('')
 
 const itemsList = computed<any[]>(() => info.value?.items || [])
 const makerName = computed(
@@ -329,6 +340,16 @@ async function loadPaymentTermsOptions() {
   }
 }
 
+/** 生成采购订单二维码；使用高分辨率源图保证纸张打印清晰度 */
+async function genQr() {
+  if (!info.value?.orderNo) return
+  try {
+    qrDataUrl.value = await QRCode.toDataURL(info.value.orderNo, { width: 256, margin: 1 })
+  } catch {
+    qrDataUrl.value = ''
+  }
+}
+
 function handlePrint() {
   // 打印留痕（1318）：24 = JJX-QR-024 采购订单
   const orderId = route.params.id as string
@@ -341,6 +362,7 @@ function handlePrint() {
 
 onMounted(async () => {
   await Promise.all([loadData(), loadPaymentTermsOptions()])
+  await genQr()
 })
 </script>
 
@@ -379,6 +401,22 @@ onMounted(async () => {
 }
 
 /* 画布内容样式 */
+.a4-company-header {
+  position: relative;
+}
+
+.a4-order-qrcode {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 72px;
+  height: 72px;
+  padding: 3px;
+  border: 1px solid #dcdfe6;
+  background: #fff;
+  box-sizing: border-box;
+}
+
 .doc-title {
   text-align: center;
   font-size: 18px;
