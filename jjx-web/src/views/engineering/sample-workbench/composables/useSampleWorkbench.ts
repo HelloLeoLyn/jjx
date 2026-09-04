@@ -518,6 +518,23 @@ export function useSampleWorkbench() {
     planList.value.forEach((pc) => (pc.saveState = 'saving'))
     savingPlan.value = true
     try {
+      // 2026-09-04 修复：编辑态卡片挂的材料暂存在 materialRows，未点卡片内“保存”时需先同步到
+      // pc.materials，否则直接点“保存工序计划”会丢掉新挂材料（SP2609040006 现场：工序存上材料 NULL）
+      planList.value.forEach((pc) => {
+        if (pc.editing && Array.isArray(pc.materialRows)) {
+          const validMats = (pc.materialRows as any[])
+            .filter((m: any) => m.name && m.name.trim())
+            .map((m: any) => ({
+              name: m.name,
+              spec: m.spec || '',
+              qty: m.qty ?? 1,
+              unit: m.unit || 'PCS',
+              materialId: m.materialId,
+              materialCode: m.materialCode || '',
+            }))
+          pc.materials = validMats.length ? JSON.stringify(validMats) : null
+        }
+      })
       const items: any[] = []
       planList.value.forEach((pc, i) => {
         const order = i + 1
