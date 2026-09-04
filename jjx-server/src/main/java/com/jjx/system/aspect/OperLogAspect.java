@@ -198,8 +198,8 @@ public class OperLogAspect {
 
             // bizStatus 记录真实状态；表达式取不到/为空时只告警留空，不阻断接口。
             // 背景（2026-09-04 止血）：存量大量 @Log 只写了 bizType 未写 bizStatus（全量扫描 174 处），
-            // 且启动校验器 LogBizStatusValidator 长期失效未拦截，强制抛错会让这些接口
-            // "业务成功但返回 500"（前端误判失败+可能重复提交）。存量治理完成后可再收紧。
+            // 且启动校验器长期失效未拦截，强制抛错会让这些接口"业务成功但返回 500"。
+            // 2026-09-05 决策：bizStatus 不要求必填（治理任务 1351~1356 已关闭），启动校验器已删除。
             try {
                 operLog.setBizStatus(resolveBizStatus(spelCtx, logAnnotation.bizStatus()));
             } catch (Exception e) {
