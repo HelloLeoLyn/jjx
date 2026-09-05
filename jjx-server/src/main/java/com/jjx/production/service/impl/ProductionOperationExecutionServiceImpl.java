@@ -325,7 +325,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     }
 
     /**
-     * 开始工序执行（扫码C：支持可选设备码软校验）
+     * 开始或恢复工序执行（扫码C：支持可选设备码软校验）
      *
      * @param executionId   工序执行ID
      * @param scannedDeviceCode 扫码设备码（可空；空=跳过校验，兼容旧调用）
@@ -343,9 +343,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         // 扫码C：设备码软校验（不一致不拦截，记录实际设备后放行）
         verifyDeviceSoft(execution, scannedDeviceCode);
 
-        // 检查记录状态是否可以开始
+        // 检查记录状态是否可以开始或继续
         if (!canStartExecution(execution)) {
-            throw new BusinessException("记录状态不允许开始");
+            throw new BusinessException("仅待开始或已暂停的工序可开始/继续");
         }
 
         ProductionOrder order = productionOrderMapper.selectById(execution.getOrderId());
@@ -359,9 +359,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                     + (current == null ? String.valueOf(order.getOrderStatus()) : current.getLabel()) + "）");
         }
 
-        // 更新状态为进行中
+        // 恢复时保留首次实际开始时间。当前字段模型没有暂停时长分段，
+        // 完工后仍沿用 actualStartTime 到 actualEndTime 的现有工时口径。
         execution.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getValue());
-        execution.setActualStartTime(LocalDateTime.now());
+        if (execution.getActualStartTime() == null) {
+            execution.setActualStartTime(LocalDateTime.now());
+        }
 
         boolean success = updateById(execution);
         if (!success) {
@@ -780,11 +783,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     }
 
     /**
-     * 检查记录是否可以开始
+     * 检查记录是否可以开始或继续
      */
     private static boolean canStartExecution(ProductionOperationExecution execution) {
-        // 只有待执行状态的记录可以开始
-        return ExecutionStatusEnum.PENDING.getValue().equals(execution.getExecutionStatus());
+        Integer status = execution.getExecutionStatus();
+        return ExecutionStatusEnum.PENDING.getValue().equals(status)
+                || ExecutionStatusEnum.PAUSED.getValue().equals(status);
     }
 
     /**

@@ -58,6 +58,9 @@
           <button v-if="canPause(ex)" class="m-act m-act-warn" :disabled="pausingId === ex.executionId" @click="handlePause(ex)">
             ⏸ 暂停
           </button>
+          <button v-if="canResume(ex)" class="m-act m-act-primary" :disabled="startingId === ex.executionId" @click="handleStart(ex)">
+            ▶ 继续
+          </button>
           <button v-if="canComplete(ex)" class="m-act m-act-ok" :disabled="completingId === ex.executionId" @click="handleComplete(ex)">
             ✓ 完工
           </button>
@@ -129,6 +132,11 @@ function canPause(ex: MyProductionExecution): boolean {
   return Number(ex.executionStatus) === ExecutionStatusEnum.EXECUTING.value
 }
 
+/** 已暂停 → 可继续 */
+function canResume(ex: MyProductionExecution): boolean {
+  return Number(ex.executionStatus) === ExecutionStatusEnum.PAUSED.value
+}
+
 /** 执行中 → 可完工（后端 assertExecutionCompletable 兜底校验） */
 function canComplete(ex: MyProductionExecution): boolean {
   return Number(ex.executionStatus) === ExecutionStatusEnum.EXECUTING.value
@@ -144,14 +152,15 @@ function canReport(ex: MyProductionExecution): boolean {
 
 async function handleStart(ex: MyProductionExecution) {
   if (!ex.executionId) return
+  const isResume = canResume(ex)
   // 扫码C：可选扫设备码（不一致后端软校验放行并记录），跳过=不校验
   let deviceCode: string | undefined
   try {
     const { value } = await ElMessageBox.prompt(
       ex.equipmentName ? `指定设备：${ex.equipmentName}（${ex.equipmentCode || '-'}）` : '该工序未指定设备',
-      '开始工序（可选扫设备码）',
+      `${isResume ? '继续' : '开始'}工序（可选扫设备码）`,
       {
-        confirmButtonText: '开始',
+        confirmButtonText: isResume ? '继续' : '开始',
         cancelButtonText: '跳过',
         inputPlaceholder: '扫码枪扫设备码，或直接点开始',
         inputValidator: (v: string) => (v && v.trim() ? true : true), // 可空，跳过校验
@@ -165,10 +174,10 @@ async function handleStart(ex: MyProductionExecution) {
   startingId.value = ex.executionId
   try {
     await operationExecutionApi.start(ex.executionId, deviceCode)
-    ElMessage.success('工序已开始')
+    ElMessage.success(isResume ? '工序已继续' : '工序已开始')
     await loadData()
   } catch (e: any) {
-    ElMessage.error(e?.message || '开始失败')
+    ElMessage.error(e?.message || (isResume ? '继续失败' : '开始失败'))
   } finally {
     startingId.value = null
   }
