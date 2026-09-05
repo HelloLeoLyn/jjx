@@ -128,6 +128,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
     }
 
+    private void validateProductionWorkOrder(
+            com.jjx.production.domain.entity.ProductionOrder productionOrder) {
+        if (!productionOrder.isWorkOrder()) {
+            throw new BusinessException("仅生产工单可生成或预览领料单，计划单请先转为工单");
+        }
+    }
+
     @Override
     public OutboundVO getDetail(Long outboundId) {
         InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
@@ -590,6 +597,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (prodOrder == null) {
             throw new BusinessException("生产工单不存在: " + workOrderId);
         }
+        validateProductionWorkOrder(prodOrder);
         // 2. 查生效BOM
         com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(
                 new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
@@ -714,6 +722,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (prodOrder == null) {
             throw new BusinessException("生产工单不存在: " + workOrderId);
         }
+        validateProductionWorkOrder(prodOrder);
 
         // 2. 查询当前生效BOM
         LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom> bomWrapper =
@@ -996,6 +1005,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (prodOrder == null) {
             throw new BusinessException("生产工单不存在: " + workOrderId);
         }
+        validateProductionWorkOrder(prodOrder);
         if (items == null || items.isEmpty()) {
             throw new BusinessException("本次领料明细不能为空");
         }

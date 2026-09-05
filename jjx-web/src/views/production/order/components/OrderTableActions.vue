@@ -33,15 +33,20 @@
 
       <!-- 生成领料单（2026-08-18：从下拉菜单提为行内按钮，高频操作） -->
       <el-tooltip
-        :content="order.materialStatus === 1 ? '已生成领料单（待确认发料）' : '生成领料单'"
+        :content="order.materialStatus === ProductionMaterialStatusEnum.PENDING_ISSUE.value ? '已生成领料单（待确认发料）' : '生成领料单'"
         placement="top"
-        v-if="[2, 6].includes(order.orderStatus) && order.materialStatus !== 2"
+        v-if="
+          order.orderType === OrderType.WORK_ORDER &&
+          (order.orderStatus === ProductionOrderStatusEnum.APPROVED.value ||
+            order.orderStatus === ProductionOrderStatusEnum.IN_PROGRESS.value) &&
+          order.materialStatus !== ProductionMaterialStatusEnum.PICKED.value
+        "
       >
         <el-button
           type="warning"
           size="small"
           icon="Box"
-          :disabled="order.materialStatus === 1"
+          :disabled="order.materialStatus === ProductionMaterialStatusEnum.PENDING_ISSUE.value"
           v-hasPermi="['production:order:edit']"
           circle
           @click="handlePickMaterial"
@@ -123,8 +128,8 @@ import { ElMessage } from 'element-plus'
 import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, Tickets } from '@element-plus/icons-vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
-import { ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'
-import type { ProductionOrderVO } from '@/types/production/order'
+import { ProductionMaterialStatusEnum, ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'
+import { OrderType, type ProductionOrderVO } from '@/types/production/order'
 
 interface Props {
   order: ProductionOrderVO
