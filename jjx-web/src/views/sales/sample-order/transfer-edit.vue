@@ -24,7 +24,7 @@
           type="warning"
           show-icon
           :closable="false"
-          :title="`还有 ${store.unmatchedProcessCount} 道工序、${store.unmatchedMaterialCount} 项物料未选择标准项`"
+          :title="`还有 ${store.unmatchedProcessCount} 道组合工序未选择标准项、${store.unmatchedMaterialCount} 项物料未选择标准项`"
           style="margin-bottom: 12px"
         />
 
@@ -34,18 +34,36 @@
           <div class="col-sample">
             <div class="col-title">打样数据（只读）</div>
 
-            <div class="block-title">工序（{{ store.preview.sampleProcesses.length }}）</div>
-            <div v-for="(sp, i) in store.preview.sampleProcesses" :key="sp.processId" class="sample-item">
-              <span class="idx">{{ i + 1 }}</span>
+            <div class="block-title">工序（{{ store.sampleProcessCount }}）</div>
+            <div v-for="group in store.sampleProcessGroups" :key="group.groupOrder" class="sample-item">
+              <span class="idx">{{ group.groupOrder }}</span>
               <div class="sample-item-main">
                 <div>
-                  {{ sp.processName }}
-                  <el-tag v-if="sp.customProcessParams" size="small" type="warning" style="margin-left: 6px">印刷</el-tag>
+                  {{ group.processName }}
+                  <el-tag v-if="group.itemCount > 1" size="small" type="info" style="margin-left: 6px">
+                    组合 · {{ group.itemCount }} 项
+                  </el-tag>
+                  <el-tag v-if="group.hasCustomProcessParams" size="small" type="warning" style="margin-left: 6px">印刷</el-tag>
                 </div>
-                <div v-if="printParamsText(sp.customProcessParams)" class="sub print-params">🖨️ {{ printParamsText(sp.customProcessParams) }}</div>
-                <div v-if="sp.processNote" class="sub">{{ sp.processNote }}</div>
+                <template v-for="item in group.items" :key="item.processId">
+                  <div v-if="printParamsText(item.customProcessParams)" class="sub print-params">
+                    🖨️ {{ group.itemCount > 1 ? `${item.processName}：` : '' }}{{ printParamsText(item.customProcessParams) }}
+                  </div>
+                  <div v-if="item.processNote" class="sub">
+                    {{ group.itemCount > 1 ? `${item.processName}：` : '' }}{{ item.processNote }}
+                  </div>
+                </template>
               </div>
-              <el-tag v-if="sp.processCategory" size="small" type="info">{{ categoryText(sp.processCategory) }}</el-tag>
+              <div class="sample-item-tags">
+                <el-tag
+                  v-for="(category, ci) in [...new Set(group.items.map((item) => item.processCategory).filter(Boolean))]"
+                  :key="ci"
+                  size="small"
+                  type="info"
+                >
+                  {{ categoryText(category as string) }}
+                </el-tag>
+              </div>
             </div>
 
             <div class="block-title">物料（{{ store.preview.sampleMaterials.length }}）</div>
@@ -529,6 +547,12 @@ onMounted(async () => {
   flex: 1;
   min-width: 0;
   font-size: 13px;
+}
+
+.sample-item-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .sub {

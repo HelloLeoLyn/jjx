@@ -26,7 +26,7 @@
           type="warning"
           show-icon
           :closable="false"
-          :title="`还有 ${store.unmatchedProcessCount} 道工序、${store.unmatchedMaterialCount} 项物料未选择标准项，请手动选择后再确认转移`"
+          :title="`还有 ${store.unmatchedProcessCount} 道组合工序未选择标准项、${store.unmatchedMaterialCount} 项物料未选择标准项，请手动选择后再确认转移`"
           style="margin-bottom: 12px"
         />
         <el-alert
@@ -39,7 +39,7 @@
         />
 
         <!-- 工序映射列表（2026-08-12：按子结构 Tabs 分，与打样/路线一致） -->
-        <div class="section-title">① 工序映射（{{ store.processMappings.length }} 道）</div>
+        <div class="section-title">① 工序映射（{{ store.processMappings.length }} 项）</div>
         <el-tabs v-model="processTab" type="border-card" style="margin-bottom: 16px">
           <el-tab-pane
             v-for="tab in PROCESS_TABS"

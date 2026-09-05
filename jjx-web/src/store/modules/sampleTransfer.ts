@@ -60,10 +60,52 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     return !!(p.customProcessParams && p.customProcessParams.trim())
   }
 
-  /** 未匹配的工序数量（标红提示用，印刷工序豁免） */
-  const unmatchedProcessCount = computed(
-    () => processMappings.value.filter((p) => p.stdProcessId == null && !hasCustomParams(p)).length
-  )
+  /**
+   * 打样工序分组（左侧只读数据用）
+   * 同一正数 processOrder 归为一组；无有效 processOrder 的作业项各自独立成组
+   */
+  const sampleProcessGroups = computed(() => {
+    const groups: {
+      processOrder: number | null
+      groupOrder: number
+      items: SampleProcessItem[]
+      processName: string
+      itemCount: number
+      hasCustomProcessParams: boolean
+    }[] = []
+    const indexMap = new Map<number, number>()
+
+    for (const process of preview.value?.sampleProcesses || []) {
+      const processOrder = process.processOrder
+      let groupIndex: number | undefined
+      if (processOrder != null && processOrder > 0) {
+        groupIndex = indexMap.get(processOrder)
+      }
+      if (groupIndex === undefined) {
+        groupIndex = groups.length
+        if (processOrder != null && processOrder > 0) indexMap.set(processOrder, groupIndex)
+        groups.push({
+          processOrder,
+          groupOrder: groupIndex + 1,
+          items: [],
+          processName: '',
+          itemCount: 0,
+          hasCustomProcessParams: false,
+        })
+      }
+      groups[groupIndex].items.push(process)
+    }
+
+    return groups.map((group) => ({
+      ...group,
+      processName: group.items.map((item) => item.processName).join(' + '),
+      itemCount: group.items.length,
+      hasCustomProcessParams: group.items.some(hasCustomParams),
+    }))
+  })
+
+  /** 打样工序道数（组合按一计算） */
+  const sampleProcessCount = computed(() => sampleProcessGroups.value.length)
 
   /** 未匹配的物料数量（标红提示用） */
   const unmatchedMaterialCount = computed(
@@ -93,6 +135,14 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     }
     return groups
   })
+
+  /** 未匹配的组合工序数量（组合内任一非印刷豁免项未匹配，该组合计一） */
+  const unmatchedProcessCount = computed(
+    () =>
+      groupedProcesses.value.filter((group) =>
+        group.items.some((p) => p.stdProcessId == null && !hasCustomParams(p))
+      ).length
+  )
 
   // ==================== actions ====================
 
@@ -340,7 +390,7 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     if (orderId.value == null) return null
     if (!allMatched.value) {
       ElMessage.warning(
-        `还有 ${unmatchedProcessCount.value} 道工序、${unmatchedMaterialCount.value} 项物料未选择标准项`
+        `还有 ${unmatchedProcessCount.value} 道组合工序、${unmatchedMaterialCount.value} 项物料未选择标准项`
       )
       return null
     }
@@ -379,6 +429,8 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     standardProcesses,
     standardMaterials,
     allMatched,
+    sampleProcessGroups,
+    sampleProcessCount,
     unmatchedProcessCount,
     unmatchedMaterialCount,
     groupedProcesses,
