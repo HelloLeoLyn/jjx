@@ -1142,9 +1142,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 : (current.getSampleRound() != null ? current.getSampleRound() : 1);
 
         // 覆盖式保存：删除该轮次旧计划后整单重插
-        sampleProcessMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalesSampleProcess>()
+        LambdaQueryWrapper<SalesSampleProcess> planWrapper = new LambdaQueryWrapper<SalesSampleProcess>()
                 .eq(SalesSampleProcess::getOrderId, orderId)
-                .eq(SalesSampleProcess::getRoundNo, roundNo));
+                .eq(SalesSampleProcess::getRoundNo, roundNo);
+        List<SalesSampleProcess> oldPlan = sampleProcessMapper.selectList(planWrapper);
+        Map<Long, SalesSampleProcess> oldProcessMap = oldPlan.stream()
+                .filter(process -> process.getProcessId() != null)
+                .collect(Collectors.toMap(SalesSampleProcess::getProcessId, process -> process));
+        sampleProcessMapper.delete(planWrapper);
 
         if (dto.getItems() != null) {
             int order = 1;
@@ -1180,6 +1185,21 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 // 卡片项目结构（卡片级主结构）
                 record.setProcessCategory(item.getProcessCategory());
                 record.setStatus(item.getStatus() != null ? item.getStatus() : 0);
+                SalesSampleProcess oldProcess = item.getProcessId() != null
+                        ? oldProcessMap.get(item.getProcessId()) : null;
+                if (oldProcess != null) {
+                    // 执行字段迁移：进行中转为进行中/完成时保留开始时间；已完成记录保留完整耗时信息。
+                    if (oldProcess.getStatus() != null && oldProcess.getStatus() == 1
+                            && oldProcess.getStartTime() != null
+                            && item.getStatus() != null
+                            && (item.getStatus() == 1 || item.getStatus() == 2)) {
+                        record.setStartTime(oldProcess.getStartTime());
+                    } else if (oldProcess.getStatus() != null && oldProcess.getStatus() == 2) {
+                        record.setStartTime(oldProcess.getStartTime());
+                        record.setEndTime(oldProcess.getEndTime());
+                        record.setDurationMinutes(oldProcess.getDurationMinutes());
+                    }
+                }
                 record.setMaterials(item.getMaterials());
                 record.setProcessNote(item.getProcessNote());
                 record.setOperator(SecurityUtils.getUsername());
@@ -1220,14 +1240,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             record.setStartTime(LocalDateTime.now());
         }
         if (status == 2) {
-            if (record.getStartTime() == null) {
-                record.setStartTime(LocalDateTime.now());
-            }
-            record.setEndTime(LocalDateTime.now());
+            LocalDateTime endTime = LocalDateTime.now();
+            record.setEndTime(endTime);
             if (dto.getDurationMinutes() != null) {
                 record.setDurationMinutes(dto.getDurationMinutes());
-            } else if (record.getDurationMinutes() == null) {
-                long mins = java.time.Duration.between(record.getStartTime(), LocalDateTime.now()).toMinutes();
+            } else if (record.getStartTime() != null && record.getDurationMinutes() == null) {
+                long mins = java.time.Duration.between(record.getStartTime(), endTime).toMinutes();
                 record.setDurationMinutes((int) Math.max(1, mins));
             }
         }
