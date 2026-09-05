@@ -248,6 +248,14 @@
                 <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
                   生成生产计划
                 </el-button>
+                <el-button
+                  type="info"
+                  size="small"
+                  v-hasPermi="['sales:order:view']"
+                  @click="handleConfirmPrint(row)"
+                >
+                  打印确认书
+                </el-button>
               </template>
 
               <!-- 已驳回状态 (5) -->
@@ -791,6 +799,10 @@ const generatePlanOrder = ref<any>()
 const handleGeneratePlan = (row: any) => {
   generatePlanOrder.value = row
   generatePlanVisible.value = true
+}
+
+const handleConfirmPrint = (row: any) => {
+  window.open(`/print/sales-order-confirm/${row.orderId}`, '_blank')
 }
 
 // 完成订单

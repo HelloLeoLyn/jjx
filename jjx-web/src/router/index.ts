@@ -228,6 +228,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/sales-order-confirm/:orderId',
+    name: 'SalesOrderConfirmPrint',
+    component: () => import('@/views/sales/order/confirm-print.vue'),
+    meta: {
+      title: '销售订单确认书打印',
+      hidden: true,
+    },
+  },
+  {
     path: '/print/requirement/:id',
     name: 'RequirementEcnPrint',
     component: () => import('@/views/biz/requirement/print.vue'),
