@@ -51,6 +51,10 @@ export const alertApi = {
   checkOrderShortage: (orderId: number) =>
     request.post(`/inventory/alert/check-order-shortage/${orderId}`),
 
+  // 订单齐套检查只读预览（不生成预警）
+  orderShortagePreview: (orderId: number) =>
+    request.get(`/inventory/alert/order-shortage-preview/${orderId}`),
+
   // 查询订单未处理缺料预警数（DEV-583）
   countUnprocessedShortage: (orderId: number) =>
     request.get(`/inventory/alert/count-unprocessed-shortage/${orderId}`),

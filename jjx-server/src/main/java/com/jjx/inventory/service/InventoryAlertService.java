@@ -31,6 +31,11 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     void checkOrderShortage(Long orderId);
 
     /**
+     * 订单齐套检查只读预览：两步算料并返回成品、物料及汇总信息，不生成预警
+     */
+    Map<String, Object> previewOrderShortage(Long orderId);
+
+    /**
      * 订单齐套检查（扣在途采购量），返回缺料明细（含在途/实际缺口）
      */
     java.util.List<java.util.Map<String, Object>> checkOrderShortageWithDetail(Long orderId);

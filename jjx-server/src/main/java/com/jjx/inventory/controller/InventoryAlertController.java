@@ -88,6 +88,12 @@ public class InventoryAlertController {
         return Result.success(alertService.checkOrderShortageWithDetail(orderId));
     }
 
+    @GetMapping("/order-shortage-preview/{orderId}")
+    @Operation(summary = "订单齐套检查预览（只读试算，不生成预警）")
+    public Result<Map<String, Object>> orderShortagePreview(@PathVariable Long orderId) {
+        return Result.success(alertService.previewOrderShortage(orderId));
+    }
+
     @PostMapping("/check-global-shortage")
     @Operation(summary = "全局汇总缺料检查（082：在途订单BOM汇总→物料缺口预警，手动触发）")
     @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", action = LogActions.ALERT_CHECK_GLOBAL_SHORTAGE)

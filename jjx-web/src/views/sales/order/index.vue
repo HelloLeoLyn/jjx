@@ -436,6 +436,12 @@
       >
     </el-dialog>
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
+    <ShortageCheckDialog
+      v-model="shortageCheckVisible"
+      :order-id="shortageCheckOrderId"
+      :order-no="shortageCheckOrderNo"
+      @success="handleShortageCheckSuccess"
+    />
   </div>
 </template>
 
@@ -444,7 +450,7 @@ defineOptions({
   name: 'SalesOrder',
 })
 
-import { ref, reactive, onMounted, h } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 
@@ -452,13 +458,13 @@ const router = useRouter()
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
-import { alertApi } from '@/api/inventory/alert'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
 import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import ValidationDialog from './components/ValidationDialog.vue'
+import ShortageCheckDialog from './components/ShortageCheckDialog.vue'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
 import type { SalesDeliveryCreateDTO } from '@/api/sales/delivery'
 import { SalesOrderStatusEnum, PaymentStatusEnum, ProdStatusEnum } from '@/enums/sales/OrderEnum'
@@ -747,61 +753,34 @@ const openConfirmAttachment = (row: any) => {
   confirmAttachmentVisible.value = true
 }
 
-// 订单齐套检查（手动重新检查，DEV-572 8-04）
-const handleRecheckShortage = async (row: any) => {
+// 订单齐套检查：打开只读试算预览，确认后才生成预警
+const shortageCheckVisible = ref(false)
+const shortageCheckOrderId = ref(0)
+const shortageCheckOrderNo = ref('')
+const handleRecheckShortage = (row: any) => {
+  shortageCheckOrderId.value = row.orderId
+  shortageCheckOrderNo.value = row.orderNo || ''
+  shortageCheckVisible.value = true
+}
+
+const handleShortageCheckSuccess = async (summary: { shortageCount: number }) => {
+  if (summary.shortageCount === 0) {
+    ElMessage.success('齐套检查完成：无缺料（含在途已覆盖），未生成缺料预警')
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `确定要对订单【${row.orderNo}】重新执行齐套检查（按BOM算料，缺口扣除在途采购量）吗？`,
-      '齐套检查',
+      `缺料预警已生成（${summary.shortageCount} 种物料），是否前往【库存预警】查看？`,
+      '齐套检查完成',
       {
-        confirmButtonText: '确定',
+        confirmButtonText: '前往查看',
         cancelButtonText: '取消',
         type: 'warning',
       }
     )
-    const res: any = await alertApi.checkOrderShortage(row.orderId)
-    const items: any[] = res?.data || []
-    if (items.length === 0) {
-      ElMessage.success('齐套检查完成：无缺料（含在途已覆盖），未生成缺料预警')
-      return
-    }
-    // 弹窗展示缺料明细（含在途采购量，销售可见采购在途情况）
-    const thStyle = 'padding:6px 8px;border:1px solid #ebeef5;background:#f5f7fa;text-align:left'
-    const tdStyle = 'padding:6px 8px;border:1px solid #ebeef5'
-    const fmt = (v: any) => (v === null || v === undefined ? '-' : String(v))
-    ElMessageBox.alert(
-      h('div', null, [
-        h(
-          'p',
-          { style: 'margin-bottom:10px;color:#f56c6c;font-weight:600' },
-          `发现 ${items.length} 种物料缺料（已扣除在途采购量），缺料预警已生成：`
-        ),
-        h('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' }, [
-          h('tr', null, [
-            h('th', { style: thStyle }, '物料'),
-            h('th', { style: thStyle }, '需求'),
-            h('th', { style: thStyle }, '可用'),
-            h('th', { style: thStyle }, '在途'),
-            h('th', { style: thStyle }, '实际缺口'),
-          ]),
-          ...items.map((it) =>
-            h('tr', null, [
-              h('td', { style: tdStyle }, `${it.materialCode} ${it.materialName}`),
-              h('td', { style: tdStyle }, fmt(it.demand)),
-              h('td', { style: tdStyle }, fmt(it.available)),
-              h('td', { style: tdStyle }, Number(it.inTransit) > 0 ? fmt(it.inTransit) : '-'),
-              h('td', { style: tdStyle, color: '#f56c6c', fontWeight: 600 }, fmt(it.actualGap)),
-            ])
-          ),
-        ]),
-      ]),
-      '齐套检查缺料明细',
-      { confirmButtonText: '知道了', type: 'warning' }
-    )
+    router.push('/inventory/alert')
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('齐套检查失败', error)
-    }
+    // 取消后留在当前页面
   }
 }
 
