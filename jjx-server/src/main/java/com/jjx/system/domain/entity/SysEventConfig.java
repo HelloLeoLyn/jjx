@@ -27,6 +27,8 @@ public class SysEventConfig {
     private String content;
     /** 排除触发者（任务侧） */
     private Integer excludeTrigger;
+    /** 触发时关闭的source_event列表，逗号分隔 */
+    private String closeSourceEvents;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

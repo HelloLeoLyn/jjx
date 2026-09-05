@@ -2,8 +2,12 @@ package com.jjx.event.impl;
 
 import cn.hutool.json.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.jjx.event.EventPublisher;
+import com.jjx.kanban.enums.KanbanTaskStatusEnum;
 import com.jjx.notification.domain.dto.NotificationCreateDTO;
+import com.jjx.notification.domain.entity.Notification;
+import com.jjx.notification.mapper.NotificationMapper;
 import com.jjx.notification.service.NotificationService;
 import com.jjx.system.domain.entity.SysEventConfig;
 import com.jjx.system.domain.entity.SysTask;
@@ -16,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -34,6 +39,7 @@ public class LocalEventPublisher implements EventPublisher {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final SysEventConfigMapper eventConfigMapper;
     private final NotificationService notificationService;
+    private final NotificationMapper notificationMapper;
     private final SysTaskMapper sysTaskMapper;
     private final SysUserRoleMapper userRoleMapper;
 
@@ -137,6 +143,43 @@ public class LocalEventPublisher implements EventPublisher {
                     log.error("   ❌ 创建任务失败: {}", e.getMessage());
                 }
             }
+        }
+
+        // 办结事件按配置关闭同一业务的 office 待办任务，并将同源未读通知置为已读。
+        try {
+            String closeSourceEvents = event.getCloseSourceEvents();
+            Object payloadBizId = payload == null ? null : payload.get("bizId");
+            String bizIdText = payloadBizId == null ? null : String.valueOf(payloadBizId).trim();
+            if (closeSourceEvents != null && !closeSourceEvents.trim().isEmpty()
+                    && bizIdText != null && !bizIdText.isEmpty()) {
+                Long taskBizId = payloadLong(payload, "bizId");
+                LocalDateTime now = LocalDateTime.now();
+                for (String sourceEventValue : closeSourceEvents.split(",")) {
+                    String sourceEvent = sourceEventValue.trim();
+                    if (sourceEvent.isEmpty()) {
+                        continue;
+                    }
+                    if (taskBizId != null) {
+                        sysTaskMapper.update(null, new LambdaUpdateWrapper<SysTask>()
+                                .eq(SysTask::getKanbanModule, "office")
+                                .eq(SysTask::getSourceEvent, sourceEvent)
+                                .eq(SysTask::getBizId, taskBizId)
+                                .in(SysTask::getStatus,
+                                        KanbanTaskStatusEnum.PENDING.getValue(),
+                                        KanbanTaskStatusEnum.IN_PROGRESS.getValue())
+                                .set(SysTask::getStatus, KanbanTaskStatusEnum.COMPLETED.getValue())
+                                .set(SysTask::getCompletedTime, now));
+                    }
+                    notificationMapper.update(null, new LambdaUpdateWrapper<Notification>()
+                            .eq(Notification::getBizType, sourceEvent)
+                            .eq(Notification::getBizId, bizIdText)
+                            .eq(Notification::getIsRead, 0)
+                            .set(Notification::getIsRead, 1)
+                            .set(Notification::getReadTime, now));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("办结关闭 office 任务/通知失败，不影响事件主流程: eventCode={}", eventCode, e);
         }
 
         log.info("✅ 事件[{}]处理完成", eventCode);
