@@ -9,7 +9,8 @@
       :summary="summary"
       :saving="saving"
       :eng-file-list="engFileList"
-      @history-copy="openHistoryCopy"
+      :customer-file-list="customerFileList"
+      @history-copy="handleOpenCopy"
       @back="goBack"
       @reject="handleReject"
       @view-inquiry="openInquiryDetail"
@@ -278,6 +279,25 @@
       <!-- 标记完成 -->
       <div style="text-align: center; margin: 12px 0 4px">
         <el-button
+          v-if="!readonlyMode"
+          type="danger"
+          plain
+          size="large"
+          style="width: 220px; margin-right: 12px"
+          @click="handleClearCurrentRound"
+          >🗑 清空当前轮内容</el-button
+        >
+        <el-button
+          v-if="!readonlyMode && (Number(card.sampleRound || 1)) > 1"
+          type="primary"
+          plain
+          size="large"
+          :loading="copyPrevLoading"
+          style="width: 220px; margin-right: 12px"
+          @click="copyPreviousRound"
+          >📋 复制上一轮（Round {{ (Number(card.sampleRound || 1)) - 1 }}）工艺</el-button
+        >
+        <el-button
           type="success"
           size="large"
           @click="handleMarkReady"
@@ -348,40 +368,121 @@
       @success="onTransferSuccess"
     />
 
-    <!-- 从历史打样复制弹窗 -->
-    <el-dialog v-model="historyCopyVisible" title="📋 从历史打样复制" width="640px" append-to-body>
+    <!-- 复制打样方案弹窗（2026-09-05：本单历史轮 / 其他样品单 两源统一） -->
+    <el-dialog
+      v-model="historyCopyVisible"
+      title="📋 复制打样方案"
+      width="680px"
+      append-to-body
+    >
       <el-alert
         type="info"
         :closable="false"
         show-icon
-        title="选择已转标准的样品单，复制其工序计划（工序/分组/材料）到当前打样单，追加到现有卡片后面"
+        title="复制工序计划（工序/分组/材料/印刷参数）到当前轮，追加到现有卡片后面，保存后生效"
         style="margin-bottom: 12px"
       />
-      <el-table
-        v-loading="historyLoading"
-        :data="historyOrders"
-        size="small"
-        border
-        stripe
-        max-height="360"
-        highlight-current-row
-        @current-change="(row: any) => (historySelected = row)"
-      >
-        <el-table-column prop="orderNo" label="样品单号" width="150" />
-        <el-table-column prop="customerName" label="客户" min-width="130" />
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">
-            <el-tag size="small" :type="sampleStatusTag(row.sampleStatus)">
-              {{ sampleStatusText(row.sampleStatus) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="sampleRound" label="轮次" width="70" align="center" />
-        <el-table-column prop="orderDate" label="日期" width="110" />
-      </el-table>
+      <el-tabs v-model="copySourceTab">
+        <!-- 来源1：本单历史轮次（退回重做迭代：可任选历史某轮） -->
+        <el-tab-pane
+          v-if="(Number(card.sampleRound || 1)) > 1"
+          label="本单历史轮"
+          name="round"
+        >
+          <el-table
+            :data="roundList.filter((r: any) => Number(r.roundNo) < (Number(card.sampleRound || 1)))"
+            size="small"
+            border
+            stripe
+            max-height="300"
+            highlight-current-row
+            @current-change="(row: any) => (historySelectedRound = row)"
+          >
+            <el-table-column width="46" align="center">
+              <template #default="{ row }">
+                <el-radio
+                  :model-value="historySelectedRound?.roundNo"
+                  :value="row.roundNo"
+                  @change="historySelectedRound = row"
+                  ><span /></el-radio
+                >
+              </template>
+            </el-table-column>
+            <el-table-column prop="roundNo" label="轮次" width="80" align="center" />
+            <el-table-column label="结果" width="120">
+              <template #default="{ row }">
+                <el-tag
+                  v-if="row.result === 'rejected'"
+                  size="small"
+                  type="danger"
+                  >⛔ 已退回</el-tag
+                >
+                <el-tag
+                  v-else-if="row.result === 'confirmed'"
+                  size="small"
+                  type="success"
+                  >✅ 已确认</el-tag
+                >
+                <el-tag v-else size="small" type="info">进行中</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column
+              prop="rejectReason"
+              label="退回原因"
+              min-width="200"
+              show-overflow-tooltip
+            />
+          </el-table>
+        </el-tab-pane>
+        <!-- 来源2：其他样品单（跨单借鉴，原名"从历史打样复制"） -->
+        <el-tab-pane label="其他样品单" name="order">
+          <el-table
+            v-loading="historyLoading"
+            :data="historyOrders"
+            size="small"
+            border
+            stripe
+            max-height="300"
+            highlight-current-row
+            @current-change="(row: any) => (historySelected = row)"
+          >
+            <el-table-column width="46" align="center">
+              <template #default="{ row }">
+                <el-radio
+                  :model-value="historySelected?.orderId"
+                  :value="row.orderId"
+                  @change="historySelected = row"
+                  ><span /></el-radio
+                >
+              </template>
+            </el-table-column>
+            <el-table-column prop="orderNo" label="样品单号" width="150" />
+            <el-table-column prop="customerName" label="客户" min-width="130" />
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag size="small" :type="sampleStatusTag(row.sampleStatus)">
+                  {{ sampleStatusText(row.sampleStatus) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="sampleRound" label="轮次" width="70" align="center" />
+            <el-table-column prop="orderDate" label="日期" width="110" />
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
       <template #footer>
         <el-button @click="historyCopyVisible = false">取消</el-button>
         <el-button
+          v-if="copySourceTab === 'round' && (Number(card.sampleRound || 1)) > 1"
+          type="primary"
+          :disabled="!historySelectedRound"
+          :loading="copyPrevLoading"
+          @click="copyRoundFrom(Number(historySelectedRound?.roundNo))"
+        >
+          复制选中轮到当前
+        </el-button>
+        <el-button
+          v-else
           type="primary"
           :disabled="!historySelected"
           :loading="historyCopying"
@@ -425,6 +526,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useSampleWorkbench } from './composables/useSampleWorkbench'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
@@ -491,6 +593,11 @@ const {
   historyCopying,
   openHistoryCopy,
   confirmHistoryCopy,
+  copyPreviousRound,
+  copyRoundFrom,
+  copyPrevLoading,
+  historySelectedRound,
+  clearCurrentRound,
   loadFrequentMaterials,
   addFrequentMaterial,
   planTabs,
@@ -556,6 +663,7 @@ const {
   bomList,
   engUploadRef,
   engFileList,
+  customerFileList,
   goBack,
   loadDetail,
   formatTime,
@@ -575,6 +683,28 @@ const {
   refreshCard,
   readonlyMode,
 } = useSampleWorkbench()
+
+// 复制打样方案弹窗：来源 tab（本单历史轮/其他样品单）
+const copySourceTab = ref<'round' | 'order'>('order')
+function handleOpenCopy() {
+  // 当前轮>1（多轮迭代）默认进"本单历史轮"，单轮场景默认"其他样品单"
+  copySourceTab.value = (Number(card.value?.sampleRound || 1)) > 1 ? 'round' : 'order'
+  openHistoryCopy()
+}
+
+// 清空当前轮内容（确认后清编辑区，保存后同步后端）
+async function handleClearCurrentRound() {
+  try {
+    await ElMessageBox.confirm('确定清空当前轮次的全部工序/印刷内容？清空后需点保存才生效。', '清空当前轮', {
+      confirmButtonText: '清空',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    clearCurrentRound()
+  } catch {
+    // 用户取消
+  }
+}
 
 // 来源单据查看（工作台：复用询价/报价详情共享组件，弹窗查看不离开工作台）
 const quotationDetailVisible = ref(false)

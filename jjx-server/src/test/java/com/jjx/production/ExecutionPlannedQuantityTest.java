@@ -47,7 +47,6 @@ class ExecutionPlannedQuantityTest {
         var materialReserveService = mock(com.jjx.inventory.service.OrderMaterialReserveService.class);
         var salesOrderMapper = mock(com.jjx.sales.mapper.OrderMapper.class);
         // PdfConfigLoader 类层次无法被 Mockito 内联 mock（Java 25 环境），且本测试不触达，传 null
-        com.jjx.common.utils.pdf.PdfConfigLoader pdfConfigLoader = null;
         var eventPublisher = mock(com.jjx.event.EventPublisher.class);
         productionTaskService = mock(com.jjx.production.service.ProductionTaskService.class);
 

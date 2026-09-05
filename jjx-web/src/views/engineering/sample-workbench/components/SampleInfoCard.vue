@@ -9,7 +9,7 @@
           icon="CopyDocument"
           :disabled="readonly"
           @click="$emit('historyCopy')"
-          >📋 从历史打样复制</el-button
+          >📋 复制打样方案</el-button
         >
         <el-button link type="primary" style="margin-left: 8px" @click="$emit('back')"
           >← 返回打样平台</el-button
@@ -115,6 +115,34 @@
         菲林图 / 丝印图 / 模切图 / 规格书（≤10MB）
       </div>
     </div>
+
+    <!-- 往来附件（客户/销售上传：退回修改/送样登记等；2026-09-05 轻量版只读展示） -->
+    <div class="eng-files">
+      <div class="eng-files-label">📎 往来附件（客户/销售上传）</div>
+      <div v-if="customerFileList.length > 0">
+        <div
+          v-for="f in customerFileList"
+          :key="f.id"
+          style="
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #f0f0f0;
+          "
+        >
+          <el-link :href="f.url" target="_blank" type="primary" underline="never"
+            >📎 {{ f.name }}</el-link
+          >
+          <span style="color: #909399; font-size: 12px"
+            >{{ f.createBy || '' }}{{ f.time ? ' · ' + f.time : '' }}</span
+          >
+        </div>
+      </div>
+      <div v-else style="color: #999; font-size: 12px; margin-top: 6px">
+        客户退回/送样等上传的附件（暂空）
+      </div>
+    </div>
   </el-card>
 </template>
 
@@ -132,6 +160,7 @@ defineProps<{
   summary: any
   saving: boolean
   engFileList: any[]
+  customerFileList: any[]
   readonly?: boolean
 }>()
 

@@ -620,6 +620,26 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             throw new BusinessException("任务已被其他操作修改，请刷新后重试");
         }
 
+        // ===== 2026-09-05 Leo 定：审批链闭环（谁派单谁负责） =====
+        // 1) 分配留痕：task 行记录本次派单人（此前分配不落审计字段，"谁派的单"无法追溯）
+        String loginUserName;
+        try {
+            loginUserName = SecurityUtils.getUsername();
+        } catch (Exception e) {
+            loginUserName = null;
+        }
+        productionTaskMapper.traceAssign(taskId, loginUserName == null ? String.valueOf(loginUserId) : loginUserName);
+        // 2) 父任务无负责人（典型：一级任务跨级直派，assignee 恒 NULL）→ 派单人自动补位为负责人：
+        //    子任务报工提交时 pending_reviewer 快照=派单人，审批链不悬空（不再只能 production:all 兜底）
+        if (task.getAssigneeId() == null) {
+            if (productionTaskMapper.claimUnassignedParent(taskId, loginUserId,
+                    loginUserName == null ? String.valueOf(loginUserId) : loginUserName) == 1) {
+                task.setAssigneeId(loginUserId);
+                log.info("父任务 {} 无负责人，自动补位为派单人: userId={} userName={}",
+                        taskId, loginUserId, loginUserName);
+            }
+        }
+
         for (TaskAssignItemDTO item : dto.getItems()) {
             ProductionTask child = new ProductionTask();
             child.setTaskNo(nextTaskNo(task.getExecutionId(), false));

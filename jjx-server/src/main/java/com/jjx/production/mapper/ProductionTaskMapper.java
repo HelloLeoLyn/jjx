@@ -80,6 +80,24 @@ public interface ProductionTaskMapper extends BaseMapper<ProductionTask> {
             + "WHERE task_id = #{taskId} AND status = 'PENDING' AND version = #{version}")
     int activateIfPending(@Param("taskId") Long taskId, @Param("version") Integer version);
 
+    /**
+     * 2026-09-05 Leo 定（审批链闭环）：父任务无负责人时自动补位为派单人。
+     * 条件 assignee_id IS NULL 防并发抢注（调用方已 FOR UPDATE 锁行，双保险）。
+     * 典型场景：一级任务(First Task)跨级直派——原来 T001.assignee 永远为空，
+     * 子任务报工的 pending_reviewer 快照为空 → 无人能审（仅 production:all 兜底）。
+     * 补位后：谁派单谁就是默认一级负责人，子任务报工由他审批，审批链不再悬空。
+     */
+    @Update("UPDATE production_task SET assignee_id = #{assigneeId}, update_by = #{updateBy}, "
+            + "update_time = NOW() "
+            + "WHERE task_id = #{taskId} AND assignee_id IS NULL")
+    int claimUnassignedParent(@Param("taskId") Long taskId, @Param("assigneeId") Long assigneeId,
+                              @Param("updateBy") String updateBy);
+
+    /** 2026-09-05 分配留痕：task 行记录本次派单人（此前分配不改 create_by/update_by，历史无法追溯谁派的单） */
+    @Update("UPDATE production_task SET update_by = #{updateBy}, update_time = NOW() "
+            + "WHERE task_id = #{taskId}")
+    int traceAssign(@Param("taskId") Long taskId, @Param("updateBy") String updateBy);
+
     /** 人工确认完成：ACTIVE → COMPLETED（自底向上确认链；前置条件由 service 校验） */
     @Update("UPDATE production_task SET status = 'COMPLETED', version = version + 1 "
             + "WHERE task_id = #{taskId} AND status = 'ACTIVE' AND version = #{version}")

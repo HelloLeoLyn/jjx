@@ -23,6 +23,9 @@
         </div>
         <div class="m-report-item-meta">
           <div class="m-line">🏷 {{ r.orderNo || '-' }}</div>
+          <div v-if="r.reportStatus === 'PENDING'" class="m-line reviewer">
+            ✋ {{ r.pendingReviewerName ? '待 ' + r.pendingReviewerName + ' 审批' : '待生产管理审批' }}
+          </div>
           <div class="m-line qty">
             合格 <b class="ok">{{ fmtQty(r.qualifiedQuantity) }}</b>
             <span v-if="Number(r.defectiveQuantity || 0) > 0" class="bad">
@@ -245,6 +248,14 @@ onMounted(() => loadPending())
 .m-line {
   font-size: 13px;
   color: #606266;
+}
+.m-line.reviewer {
+  color: #b88230;
+  font-size: 12px;
+  background: rgba(184, 130, 48, 0.08);
+  border-radius: 6px;
+  padding: 2px 6px;
+  align-self: flex-start;
 }
 .m-line .ok {
   color: #67c23a;
