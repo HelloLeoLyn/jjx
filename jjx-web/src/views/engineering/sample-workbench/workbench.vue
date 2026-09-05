@@ -289,13 +289,18 @@
       </div>
     </template>
 
-    <!-- 来源单据查看弹窗（复用询价/报价单列表页同一套详情组件，不新建第二套，不离开工作台） -->
+    <!-- 来源单据查看弹窗：有销售查看权限 → 复用询价/报价单列表页同一套详情组件；无权限（工程角色）→ 收敛摘要弹窗（任务1438，不离开工作台） -->
     <QuotationDetailDialog
       v-model="quotationDetailVisible"
       :quotation-id="quotationDetailId"
       :is-sensitive="false"
     />
     <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
+    <SourceDocSummaryDialog
+      v-model="sourceDocVisible"
+      :doc-type="sourceDocType"
+      :order-id="orderId"
+    />
 
     <!-- 卡片标准工序追加选择器（多选，任意结构） -->
     <el-dialog
@@ -427,6 +432,8 @@ import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTr
 import SampleInfoCard from './components/SampleInfoCard.vue'
 import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationDetailDialog.vue'
 import InquiryDetailDialog from '@/views/sales/inquiry/components/InquiryDetailDialog.vue'
+import SourceDocSummaryDialog from './components/SourceDocSummaryDialog.vue'
+import { hasPermi } from '@/directives'
 import PlanBoard from './components/PlanBoard.vue'
 import ExecutionTimeline from './components/ExecutionTimeline.vue'
 import BomPanel from './components/BomPanel.vue'
@@ -569,18 +576,31 @@ const {
   readonlyMode,
 } = useSampleWorkbench()
 
-// 来源单据查看（工作台第一步：复用询价/报价详情共享组件，弹窗查看不离开工作台）
+// 来源单据查看（工作台：复用询价/报价详情共享组件，弹窗查看不离开工作台）
 const quotationDetailVisible = ref(false)
 const quotationDetailId = ref<number>(0)
 const inquiryDetailVisible = ref(false)
 const inquiryDetailId = ref<number>()
+// 任务1438：无 sales:quotation:view / sales:inquiry:view（工程角色）→ 走按样品单收敛的来源单据摘要弹窗（服务端已剔敏感数据）
+const sourceDocVisible = ref(false)
+const sourceDocType = ref<'quotation' | 'inquiry'>('quotation')
 function openQuotationDetail() {
-  quotationDetailId.value = card.value?.quotationId
-  quotationDetailVisible.value = true
+  if (hasPermi('sales:quotation:view')) {
+    quotationDetailId.value = card.value?.quotationId
+    quotationDetailVisible.value = true
+  } else {
+    sourceDocType.value = 'quotation'
+    sourceDocVisible.value = true
+  }
 }
 function openInquiryDetail() {
-  inquiryDetailId.value = card.value?.inquiryId
-  inquiryDetailVisible.value = true
+  if (hasPermi('sales:inquiry:view')) {
+    inquiryDetailId.value = card.value?.inquiryId
+    inquiryDetailVisible.value = true
+  } else {
+    sourceDocType.value = 'inquiry'
+    sourceDocVisible.value = true
+  }
 }
 
 // 加载（页面打开即载入）

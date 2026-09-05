@@ -137,6 +137,21 @@ export const sampleOrderApi = {
     })
   },
 
+  // 打样工作台「来源单据」摘要（任务1438）：按样品单关联链收敛，服务端已剔除价格等敏感数据
+  // 无来源单据时 data=null
+  getSourceQuotationSummary(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/${orderId}/source-quotation`,
+      method: 'get',
+    })
+  },
+  getSourceInquirySummary(orderId: number): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/${orderId}/source-inquiry`,
+      method: 'get',
+    })
+  },
+
   // 提交审核
   submitRequest(orderId: number, attachmentIds?: string): AxiosPromise<any> {
     return request({

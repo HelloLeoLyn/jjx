@@ -93,6 +93,30 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.checkConvertReady(orderId));
     }
 
+    /**
+     * 打样工作台「来源单据」报价单摘要（任务1438 / dev-20260905-004）
+     * 工程角色无 sales:quotation:view：按样品单关联的 quotation_id 收敛，服务端剔除价格/金额/销售/审批敏感字段；
+     * 无来源报价单返回 data=null（前端隐藏查看入口）。
+     */
+    @Operation(summary = "打样工作台-来源报价单摘要（按样品单收敛，无价格）")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/{orderId}/source-quotation")
+    public Result<com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationSummary> sourceQuotationSummary(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.getSourceQuotationSummary(orderId));
+    }
+
+    /**
+     * 打样工作台「来源单据」询价单摘要（任务1438 / dev-20260905-004）
+     * 经 样品单.quotation_id → 询价单(converted_quotation_id) 反查收敛，服务端剔除单价/联系人电话/销售负责人；
+     * 无来源询价单返回 data=null（前端隐藏查看入口）。
+     */
+    @Operation(summary = "打样工作台-来源询价单摘要（按样品单收敛，无敏感数据）")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/{orderId}/source-inquiry")
+    public Result<com.jjx.sales.domain.vo.SampleSourceDocVO.InquirySummary> sourceInquirySummary(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.getSourceInquirySummary(orderId));
+    }
+
     @Operation(summary = "样品单列表")
     @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/list")

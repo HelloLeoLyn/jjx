@@ -2948,10 +2948,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 return;
             }
             order.setQuotationNo(quotation.getQuotationNo());
-            com.jjx.sales.domain.entity.SalesInquiry inquiry = inquiryMapper.selectOne(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesInquiry>()
-                            .eq(com.jjx.sales.domain.entity.SalesInquiry::getConvertedQuotationId, order.getQuotationId())
-                            .last("LIMIT 1"));
+            com.jjx.sales.domain.entity.SalesInquiry inquiry = findSourceInquiry(order.getQuotationId());
             if (inquiry != null) {
                 order.setInquiryId(inquiry.getInquiryId());
                 order.setInquiryNo(inquiry.getInquiryNo());
@@ -2959,6 +2956,123 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         } catch (Exception e) {
             log.warn("补充样品单来源单据信息失败: {}", e.getMessage());
         }
+    }
+
+    /**
+     * 按报价单ID反查来源询价单（询价单.converted_quotation_id = 报价单ID），无则返回 null
+     */
+    private com.jjx.sales.domain.entity.SalesInquiry findSourceInquiry(Long quotationId) {
+        if (quotationId == null) {
+            return null;
+        }
+        try {
+            return inquiryMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesInquiry>()
+                            .eq(com.jjx.sales.domain.entity.SalesInquiry::getConvertedQuotationId, quotationId)
+                            .last("LIMIT 1"));
+        } catch (Exception e) {
+            log.warn("反查来源询价单失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationSummary getSourceQuotationSummary(Long orderId) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null || order.getDeleted() == 1 || order.getQuotationId() == null) {
+            return null;
+        }
+        com.jjx.sales.domain.entity.SalesQuotation quotation = quotationMapper.selectById(order.getQuotationId());
+        if (quotation == null) {
+            return null;
+        }
+        com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationSummary vo =
+                new com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationSummary();
+        vo.setQuotationId(quotation.getQuotationId());
+        vo.setQuotationNo(quotation.getQuotationNo());
+        vo.setQuotationType(quotation.getQuotationType());
+        vo.setCustomerName(quotation.getCustomerName());
+        vo.setQuotationDate(quotation.getQuotationDate());
+        vo.setValidUntil(quotation.getValidUntil());
+        vo.setQuotationStatus(quotation.getQuotationStatus());
+        vo.setRemark(quotation.getRemark());
+        // 来源询价单号（同链路反查，可空）
+        com.jjx.sales.domain.entity.SalesInquiry sourceInquiry = findSourceInquiry(order.getQuotationId());
+        if (sourceInquiry != null) {
+            vo.setSourceInquiryNo(sourceInquiry.getInquiryNo());
+        }
+        // 明细：保留全部技术/规格字段，单价/金额不入VO
+        java.util.List<com.jjx.sales.domain.entity.SalesQuotationItem> items = quotationItemMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesQuotationItem>()
+                        .eq(com.jjx.sales.domain.entity.SalesQuotationItem::getQuotationId, quotation.getQuotationId())
+                        .orderByAsc(com.jjx.sales.domain.entity.SalesQuotationItem::getItemOrder));
+        if (items != null && !items.isEmpty()) {
+            java.util.List<com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationItem> itemVOs = new java.util.ArrayList<>();
+            for (com.jjx.sales.domain.entity.SalesQuotationItem it : items) {
+                com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationItem item =
+                        new com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationItem();
+                item.setProductCode(it.getProductCode());
+                item.setProductName(it.getProductName());
+                item.setKeyCount(it.getKeyCount());
+                item.setWidth(it.getWidth());
+                item.setHeight(it.getHeight());
+                item.setThickness(it.getThickness());
+                item.setMaterialType(it.getMaterialType());
+                item.setColor(it.getColor());
+                item.setCircuitType(it.getCircuitType());
+                item.setSerialNo(it.getSerialNo());
+                item.setPanelType(it.getPanelType());
+                item.setPanelFeature(it.getPanelFeature());
+                item.setCircuitFeature(it.getCircuitFeature());
+                item.setConnectorType(it.getConnectorType());
+                item.setQuantity(it.getQuantity());
+                item.setUnit(it.getUnit());
+                item.setDeliveryDays(it.getDeliveryDays());
+                item.setEstimatedDeliveryDate(it.getEstimatedDeliveryDate());
+                item.setCustomRequirements(it.getCustomRequirements());
+                item.setLogoRequirement(it.getLogoRequirement());
+                item.setCertificationRequirement(it.getCertificationRequirement());
+                itemVOs.add(item);
+            }
+            vo.setItems(itemVOs);
+        }
+        return vo;
+    }
+
+    @Override
+    public com.jjx.sales.domain.vo.SampleSourceDocVO.InquirySummary getSourceInquirySummary(Long orderId) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null || order.getDeleted() == 1 || order.getQuotationId() == null) {
+            return null;
+        }
+        com.jjx.sales.domain.entity.SalesInquiry inquiry = findSourceInquiry(order.getQuotationId());
+        if (inquiry == null) {
+            return null;
+        }
+        com.jjx.sales.domain.vo.SampleSourceDocVO.InquirySummary vo =
+                new com.jjx.sales.domain.vo.SampleSourceDocVO.InquirySummary();
+        vo.setInquiryId(inquiry.getInquiryId());
+        vo.setInquiryNo(inquiry.getInquiryNo());
+        vo.setCustomerName(inquiry.getCustomerName());
+        vo.setContactPerson(inquiry.getContactPerson());
+        vo.setInquiryDate(inquiry.getInquiryDate());
+        vo.setExpectedQuantity(inquiry.getExpectedQuantity());
+        vo.setProductCode(inquiry.getProductCode());
+        vo.setProductName(inquiry.getProductName());
+        vo.setKeyCount(inquiry.getKeyCount());
+        vo.setSizeDescription(inquiry.getSizeDescription());
+        vo.setMaterialRequirements(inquiry.getMaterialRequirements());
+        vo.setCircuitRequirements(inquiry.getCircuitRequirements());
+        vo.setConnectorRequirements(inquiry.getConnectorRequirements());
+        vo.setSpecialRequirements(inquiry.getSpecialRequirements());
+        vo.setProductDescription(inquiry.getProductDescription());
+        vo.setHasDrawing(inquiry.getHasDrawing());
+        vo.setInquiryType(inquiry.getInquiryType());
+        vo.setInquiryStatus(inquiry.getInquiryStatus());
+        vo.setStartDate(inquiry.getStartDate());
+        vo.setEndDate(inquiry.getEndDate());
+        vo.setRemark(inquiry.getRemark());
+        return vo;
     }
 
     @Override

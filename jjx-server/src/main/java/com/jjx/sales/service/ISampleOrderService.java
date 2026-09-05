@@ -230,4 +230,18 @@ public interface ISampleOrderService {
      * 返回 [{text, materialId}]：text 为展示/存储文本"物料名 (编码)"，历史文本项 materialId 为 null。
      */
     java.util.List<java.util.Map<String, Object>> suggestInks(String keyword, Integer limit);
+
+    /**
+     * 打样工作台「来源单据」报价单摘要（任务1438 / dev-20260905-004）
+     * 工程角色无 sales:quotation:view：按样品单关联的 quotation_id 收敛，仅返回打样参考字段（不含价格/金额/销售/审批信息）。
+     * 无来源报价单返回 null。
+     */
+    com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationSummary getSourceQuotationSummary(Long orderId);
+
+    /**
+     * 打样工作台「来源单据」询价单摘要（任务1438 / dev-20260905-004）
+     * 经 样品单.quotation_id → 询价单(converted_quotation_id) 反查收敛，仅返回打样参考字段（不含单价/联系人电话/销售负责人）。
+     * 无来源询价单返回 null。
+     */
+    com.jjx.sales.domain.vo.SampleSourceDocVO.InquirySummary getSourceInquirySummary(Long orderId);
 }
