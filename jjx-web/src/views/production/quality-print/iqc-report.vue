@@ -170,28 +170,51 @@
             </tr>
             <tr>
               <th rowspan="2">外观</th>
-              <td>将抽取样板置于正常环境下，目视样板并比较标准及限度样板，不应有以下现象</td>
-              <td rowspan="2">目视</td>
-              <td rowspan="2"></td>
-              <td rowspan="2"></td>
-              <td rowspan="2"></td>
-              <td rowspan="2"></td>
+              <td>
+                将抽取样板置于正常环境下，以30cm之距离目视样板并比较标准及限度样板，不应有以下现象
+              </td>
+              <td>目视</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
             </tr>
             <tr>
               <td>脏污、黑点、变形、折伤、刮伤、混料、晶点、毛边等</td>
-            </tr>
-            <tr>
-              <th>尺寸</th>
-              <td>长度：±____mm；宽度：±____mm<br />厚度：±____mm</td>
-              <td>钢直尺/卡尺<br />千分尺</td>
+              <td></td>
               <td></td>
               <td></td>
               <td></td>
               <td></td>
             </tr>
             <tr>
-              <th>特性</th>
-              <td>1.附着力测试<br />2.其它</td>
+              <th rowspan="3">尺寸</th>
+              <td>长度：±　mm</td>
+              <td>钢直尺/卡尺</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>宽度：±　mm</td>
+              <td>钢直尺/卡尺</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>厚度：±　mm</td>
+              <td>千分尺</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <th rowspan="2">特性</th>
+              <td>1.附着力测试</td>
               <td>3M600胶</td>
               <td></td>
               <td></td>
@@ -199,10 +222,40 @@
               <td></td>
             </tr>
             <tr>
-              <th>包装、标识</th>
-              <td>
-                不应有散乱、变形；标识应与实物及采购订单相符；不应有混料或明显短缺；应符合环保标识
-              </td>
+              <td>2.其它</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <th rowspan="4">包装、标识</th>
+              <td>不应有散乱、变形</td>
+              <td>目视</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>标识应与实物及采购订单相符合</td>
+              <td>目视</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>不应有混料或明显短缺</td>
+              <td>目视</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>应符合环保标识</td>
               <td>目视</td>
               <td></td>
               <td></td>
