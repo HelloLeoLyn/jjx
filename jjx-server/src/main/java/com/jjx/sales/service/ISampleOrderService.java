@@ -163,6 +163,13 @@ public interface ISampleOrderService {
     SalesOrder convertToProduction(Long orderId, java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items);
 
     /**
+     * 样品转量产（可补充生成的标准订单付款及收货信息）
+     */
+    SalesOrder convertToProduction(Long orderId,
+                                   java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items,
+                                   com.jjx.sales.domain.dto.SampleConvertExtrasDTO extras);
+
+    /**
      * 转量产就绪检查（产品/BOM/工艺路线/菲林/资料转移清单）
      */
     com.jjx.sales.domain.vo.SampleConvertCheckVO checkConvertReady(Long orderId);

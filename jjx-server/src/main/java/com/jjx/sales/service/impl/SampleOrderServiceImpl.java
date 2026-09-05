@@ -2738,6 +2738,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder convertToProduction(Long orderId,
                                           java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items) {
+        return convertToProduction(orderId, items, null);
+    }
+
+    @Override
+    @Event(value = "sample.converted", bizId = "#orderId", bizType = "'sample'")
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder convertToProduction(Long orderId,
+                                          java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items,
+                                          com.jjx.sales.domain.dto.SampleConvertExtrasDTO extras) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
@@ -2808,6 +2817,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         standardOrder.setCustomerName(sampleOrder.getCustomerName());
         standardOrder.setContactPerson(sampleOrder.getContactPerson());
         standardOrder.setContactPhone(sampleOrder.getContactPhone());
+        if (extras != null) {
+            standardOrder.setPaymentTerms(extras.getPaymentTerms());
+            standardOrder.setDeliveryTerms(extras.getDeliveryTerms());
+            standardOrder.setDeliveryAddress(extras.getDeliveryAddress());
+            if (extras.getContactPerson() != null && !extras.getContactPerson().isEmpty()) {
+                standardOrder.setContactPerson(extras.getContactPerson());
+            }
+            if (extras.getContactPhone() != null && !extras.getContactPhone().isEmpty()) {
+                standardOrder.setContactPhone(extras.getContactPhone());
+            }
+        }
         standardOrder.setOrderDate(new Date());
         standardOrder.setDeliveryDate(sampleOrder.getDeliveryDate());
         standardOrder.setOrderType(SalesOrderTypeEnum.STANDARD.getCode());

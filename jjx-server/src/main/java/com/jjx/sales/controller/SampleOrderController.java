@@ -236,8 +236,26 @@ public class SampleOrderController extends BaseController {
     @SaCheckPermission("sales:sample:convert")
     @PutMapping("/convert-to-production/{orderId}")
     public Result<SalesOrder> convertToProduction(@PathVariable Long orderId,
-            @RequestBody(required = false) java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items) {
-        return Result.success(sampleOrderService.convertToProduction(orderId, items));
+            @RequestBody(required = false) java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items,
+            @RequestParam(required = false) String paymentTerms,
+            @RequestParam(required = false) String deliveryTerms,
+            @RequestParam(required = false) String deliveryAddress,
+            @RequestParam(required = false) String contactPerson,
+            @RequestParam(required = false) String contactPhone) {
+        com.jjx.sales.domain.dto.SampleConvertExtrasDTO extras = null;
+        if ((paymentTerms != null && !paymentTerms.isEmpty())
+                || (deliveryTerms != null && !deliveryTerms.isEmpty())
+                || (deliveryAddress != null && !deliveryAddress.isEmpty())
+                || (contactPerson != null && !contactPerson.isEmpty())
+                || (contactPhone != null && !contactPhone.isEmpty())) {
+            extras = new com.jjx.sales.domain.dto.SampleConvertExtrasDTO();
+            extras.setPaymentTerms(paymentTerms);
+            extras.setDeliveryTerms(deliveryTerms);
+            extras.setDeliveryAddress(deliveryAddress);
+            extras.setContactPerson(contactPerson);
+            extras.setContactPhone(contactPhone);
+        }
+        return Result.success(sampleOrderService.convertToProduction(orderId, items, extras));
     }
 
     /**

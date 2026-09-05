@@ -227,12 +227,23 @@ export const sampleOrderApi = {
   // 转量产
   convertToProduction(
     orderId: number,
-    items?: Array<{ orderProductId: number; productId: number }>
+    items?: Array<{ orderProductId: number; productId: number }>,
+    extras?: {
+      paymentTerms?: string
+      deliveryTerms?: string
+      deliveryAddress?: string
+      contactPerson?: string
+      contactPhone?: string
+    }
   ): AxiosPromise<any> {
+    const params = extras
+      ? Object.fromEntries(Object.entries(extras).filter(([, value]) => value != null && value !== ''))
+      : undefined
     return request({
       url: `/sales/sample-order/convert-to-production/${orderId}`,
       method: 'put',
-      data: items || [],
+      data: items ?? null,
+      params,
     })
   },
 

@@ -80,6 +80,46 @@
       </el-table-column>
     </el-table>
 
+    <el-form :model="extrasForm" label-width="90px" style="margin-top: 16px">
+      <el-divider content-position="left">付款条件</el-divider>
+      <el-form-item label="付款条件">
+        <el-select
+          v-model="extrasForm.paymentTerms"
+          placeholder="请选择付款条件"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="dict in paymentTermsOptions"
+            :key="dict.value"
+            :label="dict.label"
+            :value="dict.value"
+          />
+        </el-select>
+      </el-form-item>
+
+      <el-divider content-position="left">收货信息</el-divider>
+      <el-row :gutter="16">
+        <el-col :span="12">
+          <el-form-item label="收货人">
+            <el-input v-model="extrasForm.contactPerson" placeholder="请输入联系人" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="收货电话">
+            <el-input v-model="extrasForm.contactPhone" placeholder="请输入联系电话" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="24">
+          <InternationalAddressEditor v-model="extrasForm.deliveryAddress" prop-path="address" />
+        </el-col>
+        <el-col :span="24">
+          <el-form-item label="收货条款">
+            <el-input v-model="extrasForm.deliveryTerms" placeholder="请输入收货条款" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+    </el-form>
+
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="submitting" :disabled="!allPass" @click="submit">
@@ -93,12 +133,17 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 
 const props = withDefaults(
   defineProps<{
     modelValue: boolean
     orderId?: number | null
     orderNo?: string
+    sampleContact?: {
+      contactPerson?: string
+      contactPhone?: string
+    }
   }>(),
   {
     orderId: null,
@@ -119,6 +164,19 @@ const items = ref<any[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 const reminding = ref(false)
+const paymentTermsOptions = [
+  { value: 'prepaid', label: '预付' },
+  { value: 'cod', label: '货到付款' },
+  { value: 'net30', label: '月结30天' },
+  { value: 'net60', label: '月结60天' },
+]
+const extrasForm = ref({
+  paymentTerms: '',
+  deliveryTerms: '',
+  deliveryAddress: '',
+  contactPerson: '',
+  contactPhone: '',
+})
 
 const allPass = computed(
   () => items.value.length > 0 && items.value.every((i) => i.pass || i.level !== 'required')
@@ -133,7 +191,16 @@ const missingNames = computed(() =>
 watch(
   () => props.modelValue,
   async (v) => {
-    if (v && props.orderId) await load()
+    if (v && props.orderId) {
+      extrasForm.value = {
+        paymentTerms: '',
+        deliveryTerms: '',
+        deliveryAddress: '',
+        contactPerson: props.sampleContact?.contactPerson || '',
+        contactPhone: props.sampleContact?.contactPhone || '',
+      }
+      await load()
+    }
   }
 )
 
@@ -200,7 +267,11 @@ async function remindTransfer(row: any) {
 async function submit() {
   submitting.value = true
   try {
-    const res: any = await sampleOrderApi.convertToProduction(props.orderId as number, [])
+    const res: any = await sampleOrderApi.convertToProduction(
+      props.orderId as number,
+      [],
+      extrasForm.value
+    )
     if (res?.code === 200) {
       ElMessage.success('转量产成功，标准订单已生成')
       visible.value = false

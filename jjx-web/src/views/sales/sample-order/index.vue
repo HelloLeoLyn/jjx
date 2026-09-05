@@ -523,6 +523,11 @@
       v-model="convertDialogVisible"
       :order-id="convertRow?.orderId ?? null"
       :order-no="convertRow?.orderNo"
+      :sample-contact="
+        convertRow
+          ? { contactPerson: convertRow.contactPerson, contactPhone: convertRow.contactPhone }
+          : undefined
+      "
       @success="getList"
     />
   </div>
