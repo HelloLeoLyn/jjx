@@ -8,6 +8,7 @@ import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.entity.SalesSampleProcess;
 import com.jjx.sales.domain.entity.SalesSampleBom;
+import com.jjx.sales.domain.entity.SalesSampleTransfer;
 import com.jjx.sales.enums.SalesOrderTypeEnum;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
@@ -3221,7 +3222,58 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             result = result.stream().filter(o -> o.getEngineeringAcceptor() != null && !o.getEngineeringAcceptor().isEmpty())
                     .collect(java.util.stream.Collectors.toList());
         }
+        fillSampleTransferSummary(result);
         return result;
+    }
+
+    /**
+     * 批量回填样品单资料转移次数及最近一次转移信息，避免列表逐行查询。
+     */
+    private void fillSampleTransferSummary(List<SalesOrder> orders) {
+        List<Long> orderIds = orders.stream()
+                .map(SalesOrder::getOrderId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (orderIds.isEmpty()) {
+            return;
+        }
+
+        List<Map<String, Object>> summaries = sampleTransferMapper.selectMaps(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SalesSampleTransfer>()
+                        .select("order_id AS orderId", "COUNT(*) AS transferCount",
+                                "MAX(transfer_id) AS lastTransferId")
+                        .in("order_id", orderIds)
+                        .groupBy("order_id"));
+
+        Map<Long, Integer> countByOrderId = new java.util.HashMap<>();
+        Map<Long, Long> latestTransferIdByOrderId = new java.util.HashMap<>();
+        for (Map<String, Object> summary : summaries) {
+            Number orderId = (Number) summary.get("orderId");
+            Number transferCount = (Number) summary.get("transferCount");
+            Number lastTransferId = (Number) summary.get("lastTransferId");
+            if (orderId != null && transferCount != null && lastTransferId != null) {
+                countByOrderId.put(orderId.longValue(), transferCount.intValue());
+                latestTransferIdByOrderId.put(orderId.longValue(), lastTransferId.longValue());
+            }
+        }
+
+        Map<Long, SalesSampleTransfer> latestByOrderId = new java.util.HashMap<>();
+        if (!latestTransferIdByOrderId.isEmpty()) {
+            sampleTransferMapper.selectList(new LambdaQueryWrapper<SalesSampleTransfer>()
+                            .select(SalesSampleTransfer::getTransferId, SalesSampleTransfer::getOrderId,
+                                    SalesSampleTransfer::getTransferNo, SalesSampleTransfer::getCreateTime)
+                            .in(SalesSampleTransfer::getTransferId, latestTransferIdByOrderId.values()))
+                    .forEach(transfer -> latestByOrderId.put(transfer.getOrderId(), transfer));
+        }
+
+        orders.forEach(order -> {
+            order.setTransferCount(countByOrderId.getOrDefault(order.getOrderId(), 0));
+            SalesSampleTransfer latest = latestByOrderId.get(order.getOrderId());
+            if (latest != null) {
+                order.setLastTransferNo(latest.getTransferNo());
+                order.setLastTransferTime(latest.getCreateTime());
+            }
+        });
     }
 
     @Override

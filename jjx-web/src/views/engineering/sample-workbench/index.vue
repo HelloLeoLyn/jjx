@@ -74,6 +74,18 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="转移标志" width="120" align="center">
+          <template #default="scope">
+            <el-tooltip
+              v-if="scope.row.transferCount > 0"
+              :content="`最近转移单：${scope.row.lastTransferNo || '-'} · ${formatTransferTime(scope.row.lastTransferTime)}`"
+              placement="top"
+            >
+              <el-tag type="success" size="small">已转移 ×{{ scope.row.transferCount }}</el-tag>
+            </el-tooltip>
+            <el-tag v-else type="info" size="small">未转移</el-tag>
+          </template>
+        </el-table-column>
         <!-- 进度可视化 -->
         <el-table-column label="当前工序" width="110" align="center">
           <template #default="scope">{{ scope.row.currentProcess || '-' }}</template>
@@ -128,9 +140,6 @@
                 @click="handleTransfer(scope.row)"
                 >资料转移</el-button
               >
-            </template>
-            <template v-else-if="isTransferred(scope.row)">
-              <el-tag size="small" type="success">已转量产</el-tag>
             </template>
             <template v-else>
               <el-button
@@ -202,13 +211,11 @@ function sampleStatusTag(status: number | undefined | null): any {
 }
 
 // ===== 操作谓词（canXXX）：状态机判断统一入口，仅引用枚举成员 =====
-// 资料转移：仅样品确认(6)可转移
+// 资料转移：样品确认或已转量产均可转移/补转移
 function canTransfer(row: any): boolean {
-  return row?.sampleStatus === SampleOrderStatus.CONFIRMED.value
-}
-// 已转量产展示
-function isTransferred(row: any): boolean {
-  return row?.sampleStatus === SampleOrderStatus.TRANSFERRED.value
+  return [SampleOrderStatus.CONFIRMED.value, SampleOrderStatus.TRANSFERRED.value].includes(
+    row?.sampleStatus
+  )
 }
 // 已接单：进入打样平台（终态不可进——已取消/已关闭/已转量产，2026-09-04 Leo 提出）
 function canEnterWorkbench(row: any): boolean {
@@ -233,10 +240,25 @@ function canAccept(row: any): boolean {
 // 资料转移（轻量版弹窗，2026-08-12 入口移至打样平台）
 const transferDialogVisible = ref(false)
 const transferRow = ref<any>(null)
-function handleTransfer(row: any) {
+async function handleTransfer(row: any) {
   if (!row?.orderId) return
+  const count = Number(row.transferCount || 0)
+  if (count > 0) {
+    try {
+      await ElMessageBox.confirm(
+        `该样品已转移过资料（${count} 次，最近转移单 ${row.lastTransferNo || '-'}），再次转移将生成新的 BOM/工艺路线版本，确认继续？`,
+        '再次转移确认',
+        { type: 'warning' }
+      )
+    } catch {
+      return
+    }
+  }
   transferRow.value = row
   transferDialogVisible.value = true
+}
+function formatTransferTime(value?: string): string {
+  return value ? value.replace('T', ' ') : '-'
 }
 function onTransferSuccess() {
   getList()
