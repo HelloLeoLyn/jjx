@@ -48,6 +48,10 @@
         />
       </el-tooltip>
 
+      <el-tooltip content="打印领料单（最近一张）" placement="top" v-if="order.materialOutboundId">
+        <el-button type="info" size="small" icon="Printer" circle @click="handlePrintMaterial" />
+      </el-tooltip>
+
       <!-- 更多操作 -->
       <el-dropdown @command="handleMoreActionCommand">
         <el-button size="small" circle>
@@ -205,6 +209,10 @@ const handleCancel = () => {
 // 2026-08-18：生成领料单提为行内按钮（原下拉菜单）
 const handlePickMaterial = () => {
   emit('more-action', 'pick-material')
+}
+
+const handlePrintMaterial = () => {
+  window.open(`/print/outbound/${props.order.materialOutboundId}`, '_blank')
 }
 
 const handleDelete = () => {

@@ -20,6 +20,7 @@ import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.domain.dto.ProductionOrderQueryDTO;
 import com.jjx.production.domain.dto.ProductionOrderUpdateDTO;
 import com.jjx.production.domain.entity.ProductionOrder;
+import com.jjx.inventory.domain.InventoryOutboundOrder;
 import com.jjx.production.domain.vo.OrderStatisticsVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.enums.ProductionOrderStatusEnum;
@@ -39,6 +40,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.HashMap;
 
 /**
  * 生产工单服务实现类
@@ -252,9 +254,44 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         Page<ProductionOrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         List<ProductionOrderVO> voList = productionOrderConverter.toVOList(orderPage.getRecords());
         fillPlanRemainingQuota(voList);
+        fillLatestMaterialOutbound(voList);
         voPage.setRecords(voList);
 
         return voPage;
+    }
+
+    /**
+     * 回填每个工单最近一张生产领料出库单；历史多张领料单请到出库管理打印。
+     */
+    private void fillLatestMaterialOutbound(List<ProductionOrderVO> vos) {
+        List<Long> orderIds = vos.stream()
+                .map(ProductionOrderVO::getOrderId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (orderIds.isEmpty()) {
+            return;
+        }
+
+        List<InventoryOutboundOrder> outboundOrders = inventoryOutboundService.lambdaQuery()
+                .select(InventoryOutboundOrder::getOutboundId,
+                        InventoryOutboundOrder::getOutboundNo,
+                        InventoryOutboundOrder::getSourceId)
+                .eq(InventoryOutboundOrder::getSourceType, "work_order")
+                .eq(InventoryOutboundOrder::getOutboundType, "production")
+                .in(InventoryOutboundOrder::getSourceId, orderIds)
+                .orderByDesc(InventoryOutboundOrder::getOutboundId)
+                .list();
+
+        Map<Long, InventoryOutboundOrder> latestByOrderId = new HashMap<>();
+        outboundOrders.forEach(outbound ->
+                latestByOrderId.putIfAbsent(outbound.getSourceId(), outbound));
+        vos.forEach(vo -> {
+            InventoryOutboundOrder outbound = latestByOrderId.get(vo.getOrderId());
+            if (outbound != null) {
+                vo.setMaterialOutboundId(outbound.getOutboundId());
+                vo.setMaterialOutboundNo(outbound.getOutboundNo());
+            }
+        });
     }
 
     @Override

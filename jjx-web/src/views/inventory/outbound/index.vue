@@ -220,6 +220,13 @@
       @success="getList"
     />
 
+    <PickIssueDialog
+      v-model="pickIssueVisible"
+      :row="pickIssueRow"
+      :status-tag="getStatusTag"
+      @success="getList"
+    />
+
     <!-- 打印对话框（DEV-662：PDF 预览 + 打印 + 下载） -->
 
   </div>
@@ -238,6 +245,7 @@ import { outboundApi } from '@/api/inventory/outbound'
 import { getTransactionsByDocNo } from '@/api/inventory/transaction'
 import type { TransactionVO } from '@/api/inventory/transaction'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import PickIssueDialog from './components/PickIssueDialog.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -392,7 +400,16 @@ function openPreview(opKey: string, row: OutboundVO) {
   previewVisible.value = true
 }
 
-const handleConfirm = (row: OutboundVO) => openPreview('outbound.confirm', row)
+const pickIssueVisible = ref(false)
+const pickIssueRow = ref<OutboundVO | null>(null)
+const handleConfirm = (row: OutboundVO) => {
+  if (row.outboundType === 'production') {
+    pickIssueRow.value = row
+    pickIssueVisible.value = true
+    return
+  }
+  openPreview('outbound.confirm', row)
+}
 // 获取出库类型标签样式
 const getOutboundTypeTag = (
   type: string

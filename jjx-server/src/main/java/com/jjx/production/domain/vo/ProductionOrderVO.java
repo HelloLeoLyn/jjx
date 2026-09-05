@@ -134,6 +134,12 @@ public class ProductionOrderVO {
     @Schema(description = "领料状态描述")
     private String materialStatusDesc;
 
+    @Schema(description = "最近一张生产领料出库单ID（历史多张请到出库管理查看）")
+    private Long materialOutboundId;
+
+    @Schema(description = "最近一张生产领料出库单号（历史多张请到出库管理查看）")
+    private String materialOutboundNo;
+
     @Schema(description = "材料成本")
     private BigDecimal materialCost;
 
