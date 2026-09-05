@@ -531,9 +531,9 @@
         </el-descriptions>
         <el-table v-if="childProcessingDetail" :data="childProcessingDetail.records" size="small" style="margin-top: 16px">
           <el-table-column label="任务号" prop="taskNo" min-width="245" show-overflow-tooltip />
-          <el-table-column label="下级责任人" prop="assigneeName" min-width="110" />
+          <el-table-column label="下属执行人" prop="assigneeName" min-width="110" />
           <el-table-column label="部门" prop="departmentName" min-width="110" />
-          <el-table-column label="责任数量" width="90" align="right"><template #default="{ row }">{{ fmtQty(row.taskQuantity) }}</template></el-table-column>
+          <el-table-column label="任务数量" width="90" align="right"><template #default="{ row }">{{ fmtQty(row.taskQuantity) }}</template></el-table-column>
           <el-table-column label="已完成" width="80" align="right"><template #default="{ row }">{{ fmtQty(row.completedQuantity) }}</template></el-table-column>
           <el-table-column label="待审批" width="80" align="right"><template #default="{ row }"><span class="approval-value">{{ fmtQty(row.pendingApprovalQuantity) }}</span></template></el-table-column>
           <el-table-column label="处理中" width="80" align="right"><template #default="{ row }"><span class="child-value">{{ fmtQty(row.processingQuantity) }}</span></template></el-table-column>
@@ -599,7 +599,7 @@
         </template>
         <div v-if="detailRootTask" class="root-summary">
           <div>
-            First Task #{{ detailRootTask.taskId }} ·
+            主任务 #{{ detailRootTask.taskId }} ·
             {{ detailRootTask.statusLabel || detailRootTask.status }}
           </div>
           <div class="text-muted">
@@ -674,7 +674,7 @@
         <el-tab-pane :label="`我的任务 (${detailMyTasks.length})`" name="mine">
           <el-table :data="detailMyTasks" size="small">
             <el-table-column label="责任来源" min-width="130">
-              <template #default="{ row }">{{ row.parentAssigneeName || 'First Task' }}</template>
+              <template #default="{ row }">{{ row.parentAssigneeName || '主任务' }}</template>
             </el-table-column>
             <el-table-column label="任务数量" width="90" align="right"
               ><template #default="{ row }">{{
@@ -950,7 +950,7 @@
               />
             </el-select>
             <div class="text-muted tip">
-              报工必须绑定本人持有且处于责任执行中的任务；数量上限 = 任务剩余。
+              报工必须选择由本人执行且正在进行的任务；报工数量不能超过任务剩余数量。
             </div>
           </el-form-item>
           <el-form-item label="合格数量" required>
@@ -1381,9 +1381,9 @@ const handleComplete = async (row: OperationExecutionVO) => {
   if (Number(detailRootTask.value?.pendingQuantity || 0) > 0)
     blockers.push(`还有 ${fmtQty(detailRootTask.value?.pendingQuantity)} 件报工待审批`)
   if (Number(detailRootTask.value?.remainingQuantity || 0) > 0)
-    blockers.push(`还有 ${fmtQty(detailRootTask.value?.remainingQuantity)} 件责任未分配/未完成`)
+    blockers.push(`还有 ${fmtQty(detailRootTask.value?.remainingQuantity)} 件任务未分配或未完成`)
   if (Number(detailRootTask.value?.assignedQuantity || 0) > 0)
-    blockers.push(`还有 ${fmtQty(detailRootTask.value?.assignedQuantity)} 件下游责任未完成`)
+    blockers.push(`已派出的任务还有 ${fmtQty(detailRootTask.value?.assignedQuantity)} 件未完成`)
   if (planned > 0 && qualified < planned)
     blockers.push(`合格数量 ${qualified}，未达到计划数量 ${planned}`)
   if (blockers.length) {
@@ -1679,7 +1679,7 @@ const openReportDialog = async (row: OperationExecutionVO, preferredTaskId?: num
     if (preferredTaskId && reportTasks.value.some((t) => t.taskId === preferredTaskId))
       reportTaskId.value = preferredTaskId
     if (!reportTasks.value.length) {
-      ElMessage.warning('当前工序没有你持有的可报工任务（须为任务执行人且处于责任执行中）')
+      ElMessage.warning('当前工序没有可报工的任务，请确认任务已分配给您且正在进行中')
     }
   } catch (e: any) {
     ElMessage.error(e?.message || '我的任务加载失败')

@@ -441,11 +441,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
         Long firstTaskId = findFirstTask(executionId);
         if (firstTaskId == null) {
-            throw new BusinessException("工序尚未创建 First Task，不能完成");
+            throw new BusinessException("该工序尚未生成生产任务，不能完工，请刷新后重试或联系管理员");
         }
         ProductionTask firstTask = productionTaskMapper.selectById(firstTaskId);
         if (firstTask == null || !STATUS_COMPLETED.equals(firstTask.getStatus())) {
-            throw new BusinessException("请先完成 First Task 及其全部下级责任（含报工审批）");
+            throw new BusinessException("该工序还有未完成事项，不能完工：请完成所有任务并处理待审批报工后再试");
         }
     }
 
@@ -691,7 +691,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             cursor = p.getParentTaskId();
         }
         if (cursor == null) {
-            throw new BusinessException("只能从本任务的下级任务收回，禁止跨树");
+            throw new BusinessException("只能收回由当前任务派出的任务，请选择正确的任务");
         }
         // 自顶向下加锁：直接子任务 → … → 目标子任务
         List<ProductionTask> chain = new ArrayList<>();
@@ -802,7 +802,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             throw new BusinessException("任务已完成，无需重复完成");
         }
         if (!STATUS_ACTIVE.equals(task.getStatus())) {
-            throw new BusinessException("任务未进入责任执行，不能完成");
+            throw new BusinessException("任务尚未开始，不能完成");
         }
         // P5 完成前置（人工确认链，全部满足才允许）：
         // subtreeCompleted == taskQuantity && subtreePending == 0 && remaining == 0
@@ -821,19 +821,24 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 .subtract(subtreePending.subtract(ownPending)));
         Long incompleteChildren = productionTaskMapper.countIncompleteChildren(taskId);
         if (!withinCompletionTolerance(subtreeCompleted, task.getTaskQuantity())) {
-            throw new BusinessException("有效完成量未达到任务数量，不能完成");
+            BigDecimal incompleteQuantity = floorZero(task.getTaskQuantity().subtract(subtreeCompleted));
+            throw new BusinessException("该任务还有 " + incompleteQuantity.stripTrailingZeros().toPlainString()
+                    + " 件未完成，请完成后再试");
         }
         if (subtreePending.signum() > 0) {
-            throw new BusinessException("存在待审批报工，不能完成");
+            throw new BusinessException("该任务还有 " + subtreePending.stripTrailingZeros().toPlainString()
+                    + " 件报工待审批，请处理后再试");
         }
         if (remaining.signum() > 0) {
-            throw new BusinessException("存在剩余数量，不能完成");
+            throw new BusinessException("该任务还有 " + remaining.stripTrailingZeros().toPlainString()
+                    + " 件未分配或未完成，请处理后再试");
         }
         if (assignedOutstanding.signum() > 0) {
-            throw new BusinessException("存在未完成的下发责任，不能完成");
+            throw new BusinessException("已派出的任务还有 " + assignedOutstanding.stripTrailingZeros().toPlainString()
+                    + " 件未完成，请处理后再试");
         }
         if (incompleteChildren != null && incompleteChildren > 0) {
-            throw new BusinessException("存在未完成（非 COMPLETED）的直接子任务，须全部完成后父任务才能完成");
+            throw new BusinessException("还有 " + incompleteChildren + " 项已派任务未完成，请处理后再试");
         }
         int affected = productionTaskMapper.markCompleted(taskId, task.getVersion());
         if (affected != 1) {

@@ -446,7 +446,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             return;
         }
         // 无快照（历史记录或父任务无执行人）仅允许 production:all 兜底。
-        throw new BusinessException("该报工由生产管理审批；请在 系统管理→基础配置→系统参数→生产配置 中配置 production_global_scope 名单");
+        throw new BusinessException("该报工需要生产管理员审批，当前未找到可审批人员，请让管理员在 系统管理→基础配置→系统参数→生产配置 中为相关人员开通全部工序的操作范围");
     }
 
     /** 状态条件更新：PENDING → target（affectedRows=1 才成功；approve/reject 并发只有一个成功，无需 version） */

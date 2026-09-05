@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <h1 class="page-title">派工管理</h1>
-      <span class="page-subtitle">生产任务责任树 · ProductionTask（第一层与各级完全同构）</span>
+      <span class="page-subtitle">查看任务分配情况并逐级安排执行人员</span>
     </div>
 
     <!-- 顶部统计（当前页 First Task 数据） -->
@@ -189,7 +189,7 @@
         />
       </div>
       <div class="qty-invariant-tip">
-        数量口径（P4）：任务数量 = 已完成 + 待审批 + 已分配 + 剩余，均为后端投影，前端不重算。
+        任务数量 = 已完成 + 待审批 + 已分配 + 剩余，数据由系统自动汇总。
       </div>
     </el-card>
 

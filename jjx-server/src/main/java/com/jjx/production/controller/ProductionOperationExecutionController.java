@@ -93,7 +93,7 @@ public class ProductionOperationExecutionController {
     @SaCheckPermission("production:operation-execution:view")
     public Result<List<ProductionOperationExecutionVO>> queryGlobalExecutionList(ProductionOperationExecutionQueryDTO queryDTO) {
         if (!productionRoleResolver.isGlobalProductionScope()) {
-            throw new BusinessException("无全部工序数据范围：请在 系统管理→基础配置→系统参数→生产配置 中配置 production_global_scope 名单");
+            throw new BusinessException("您没有全部工序的操作范围，请让管理员在 系统管理→基础配置→系统参数→生产配置 中为您开通");
         }
         return Result.success(productionOperationExecutionService.queryExecutionList(queryDTO));
     }

@@ -24,6 +24,19 @@ export const ProductionOrderStatusEnum = createNamedEnum(
 )
 
 /**
+ * 生产工单领料状态
+ * 对应后端 production_order.material_status
+ */
+export const ProductionMaterialStatusEnum = createNamedEnum(
+  {
+    NOT_PICKED: { value: 0, label: '未领料', tagProps: { type: 'info' } },
+    PENDING_ISSUE: { value: 1, label: '待发料', tagProps: { type: 'warning' } },
+    PICKED: { value: 2, label: '已领料', tagProps: { type: 'success' } },
+  },
+  { type: 'info' }
+)
+
+/**
  * 工序执行状态枚举
  * 对应后端 ExecutionStatusEnum
  */
@@ -66,6 +79,7 @@ export const RecordTypeEnum = createEnum<string>({
 /** 兼容旧引用：占位符对象保留导出 */
 export const WorkOrderEnum = {
   orderStatus: ProductionOrderStatusEnum,
+  materialStatus: ProductionMaterialStatusEnum,
   executionStatus: ExecutionStatusEnum,
   recordType: RecordTypeEnum,
 }
