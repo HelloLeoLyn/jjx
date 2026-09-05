@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import type { ProductionOrderVO, OrderType } from '@/types/production/order'
-import { completeExecution } from '@/api/production/order'
+import { completeExecution, startExecution } from '@/api/production/order'
 import { checkBatchOperationPermission } from '../utils/orderPermissions'
 
 /**
@@ -92,14 +92,23 @@ export function useProductionOrderCRUD(orderData: {
       return
     }
 
-    ElMessageBox.confirm(`确定要开始执行工单 "${order.orderNo}" 吗？`, '开始执行', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-      .then(() => {
-        // 调用API开始执行
-        ElMessage.success('开始执行功能开发中...')
+    ElMessageBox.confirm(
+      '确认开始执行工单？自动尝试领料，库存不足可在开工后手工领料',
+      '开始执行',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+      .then(async () => {
+        try {
+          await startExecution(String(order.orderId))
+          ElMessage.success('开工成功')
+          orderData.loadData()
+        } catch (e: any) {
+          ElMessage.error(e?.message || '开工失败')
+        }
       })
       .catch(() => {
         // 用户取消
