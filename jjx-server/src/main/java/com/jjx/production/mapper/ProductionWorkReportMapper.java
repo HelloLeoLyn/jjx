@@ -25,4 +25,10 @@ public interface ProductionWorkReportMapper extends BaseMapper<ProductionWorkRep
     @Select("SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) "
             + "FROM production_work_report WHERE task_id = #{taskId} AND report_status = #{status}")
     BigDecimal sumTaskQuantityByStatus(@Param("taskId") Long taskId, @Param("status") String status);
+
+    /** 当前 Task 自己指定状态报工的合格数量（任务自动达标完成口径，不含不良数量）。 */
+    @Select("SELECT COALESCE(SUM(qualified_quantity), 0) "
+            + "FROM production_work_report WHERE task_id = #{taskId} AND report_status = #{status}")
+    BigDecimal sumTaskQualifiedQuantityByStatus(@Param("taskId") Long taskId,
+                                                @Param("status") String status);
 }

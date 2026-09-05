@@ -103,6 +103,19 @@ public interface ProductionTaskMapper extends BaseMapper<ProductionTask> {
             + "WHERE task_id = #{taskId} AND status = 'ACTIVE' AND version = #{version}")
     int markCompleted(@Param("taskId") Long taskId, @Param("version") Integer version);
 
+    /** 报工达标自动完成；状态条件保证重复审批或并发审批仅一次生效。 */
+    @Update("UPDATE production_task SET status = #{completedStatus}, version = version + 1, "
+            + "update_by = #{updateBy}, update_time = NOW() "
+            + "WHERE task_id = #{taskId} AND status IN (#{pendingStatus}, #{activeStatus}) "
+            + "AND task_quantity <= (SELECT COALESCE(SUM(qualified_quantity), 0) "
+            + "FROM production_work_report WHERE task_id = #{taskId} AND report_status = #{approvedStatus})")
+    int markCompletedByApprovedReports(@Param("taskId") Long taskId,
+                                       @Param("pendingStatus") String pendingStatus,
+                                       @Param("activeStatus") String activeStatus,
+                                       @Param("completedStatus") String completedStatus,
+                                       @Param("approvedStatus") String approvedStatus,
+                                       @Param("updateBy") String updateBy);
+
     // ==================== P2 活动树投影（排除 CANCELLED） ====================
 
     /** Σ直接有效子节点 task_quantity（assignedQuantity 投影） */
