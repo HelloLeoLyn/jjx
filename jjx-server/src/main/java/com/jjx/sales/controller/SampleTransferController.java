@@ -36,7 +36,7 @@ public class SampleTransferController extends BaseController {
      * 读取打样数据（工序+物料JSON），自动匹配标准工序/物料，返回带匹配推荐的预览数据
      */
     @Operation(summary = "打样转标准-预览（读取打样数据+自动匹配推荐）")
-    @SaCheckPermission(value = {"sales:sample:convert", "sales:sample:view", "engineering:sample:workbench"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
+    @SaCheckPermission(value = {"sales:sample:convert", "sales:sample:view", "engineering:sample:workbench", "engineering:sample:transfer"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
     @GetMapping("/preview/{orderId}")
     public Result<SampleTransferPreviewVO> preview(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.previewTransfer(orderId));
@@ -49,7 +49,7 @@ public class SampleTransferController extends BaseController {
     @Operation(summary = "打样转标准-确认转移（接收前端编辑后的标准数据落库）")
     @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'",
             bizId = "#dto.orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).TRANSFERRED.getLabel()", detail = "#result.data.transferNo", action = LogActions.SAMPLE_TRANSFER_CONFIRM)
-    @SaCheckPermission(value = {"sales:sample:convert", "engineering:sample:workbench"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
+    @SaCheckPermission(value = {"sales:sample:convert", "engineering:sample:workbench", "engineering:sample:transfer"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
     @PostMapping("/confirm")
     public Result<java.util.Map<String, Object>> confirm(@RequestBody SampleTransferConfirmDTO dto) {
         return Result.success(sampleOrderService.confirmTransfer(dto));
@@ -60,7 +60,7 @@ public class SampleTransferController extends BaseController {
      * 转量产就绪检查处置栏：不再直接转移，改为发布任务提醒工程执行资料转移
      */
     @Operation(summary = "资料转移提醒（发布任务给工程执行资料转移）")
-    @SaCheckPermission(value = {"sales:sample:convert", "sales:sample:view", "engineering:sample:workbench"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
+    @SaCheckPermission(value = {"sales:sample:convert", "sales:sample:view", "engineering:sample:workbench", "engineering:sample:transfer"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
     @PostMapping("/remind/{orderId}")
     public Result<java.util.Map<String, Object>> remind(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.remindTransfer(orderId));

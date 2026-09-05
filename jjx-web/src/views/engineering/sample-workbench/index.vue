@@ -121,7 +121,7 @@
           <template #default="scope">
             <template v-if="canTransfer(scope.row)">
               <el-button
-                v-hasPermi="['sales:sample:convert']"
+                v-hasPermi="['engineering:sample:transfer']"
                 type="warning"
                 link
                 size="small"
