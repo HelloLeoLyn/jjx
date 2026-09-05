@@ -79,10 +79,10 @@
         <el-table-column label="操作" width="290" align="center" fixed="right">
           <template #default="{ row }">
             <el-button v-if="canEdit(row)" link type="primary" icon="Edit" @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="row.requirementStatus === 1" link type="warning" icon="Upload" @click="handleSubmit(row)">提交</el-button>
-            <el-button v-if="row.requirementStatus === 2" link type="warning" icon="Stamp" @click="openApproval(row)">会签</el-button>
-            <el-button v-if="row.requirementStatus === 3" link type="primary" icon="CaretRight" @click="handleExecute(row)">执行</el-button>
-            <el-button v-if="row.requirementStatus === 4" link type="info" icon="Finished" @click="handleClose(row)">关闭</el-button>
+            <el-button v-if="row.requirementStatus === RequirementStatusEnum.DRAFT.value" link type="warning" icon="Upload" @click="handleSubmit(row)">提交</el-button>
+            <el-button v-if="row.requirementStatus === RequirementStatusEnum.REVIEWING.value" link type="warning" icon="Stamp" @click="openApproval(row)">会签</el-button>
+            <el-button v-if="row.requirementStatus === RequirementStatusEnum.APPROVED.value" link type="primary" icon="CaretRight" @click="handleExecute(row)">执行</el-button>
+            <el-button v-if="row.requirementStatus === RequirementStatusEnum.EXECUTING.value" link type="info" icon="Finished" @click="handleClose(row)">关闭</el-button>
             <el-button v-if="canDelete(row)" link type="danger" icon="Delete" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -255,6 +255,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import ApprovalDialog from './components/ApprovalDialog.vue'
+import { RequirementStatusEnum } from '@/enums/biz/RequirementEnum'
 import {
   pageRequirement, getRequirement, createRequirement, updateRequirement,
   removeRequirement, submitRequirement, executeRequirement, closeRequirement, upgradeRequirement,
@@ -398,8 +399,8 @@ async function handleView(row: any) {
 }
 
 // ===== 操作 =====
-function canEdit(row: any) { return row.requirementStatus === 1 || row.requirementStatus === 6 }
-function canDelete(row: any) { return row.requirementStatus === 1 }
+function canEdit(row: any) { return row.requirementStatus === RequirementStatusEnum.DRAFT.value || row.requirementStatus === RequirementStatusEnum.REJECTED.value }
+function canDelete(row: any) { return row.requirementStatus === RequirementStatusEnum.DRAFT.value }
 
 function handleSubmit(row: any) {
   ElMessageBox.confirm(`确认提交需求「${row.requirementNo}」进入评审？`, '提交确认', { type: 'warning' })
@@ -473,7 +474,7 @@ function onProductChange(id?: number) {
 function canUpgrade(d: any) {
   return (
     d?.requirementType === 'CHANGE' &&
-    (d.requirementStatus === 3 || d.requirementStatus === 4) &&
+    (d.requirementStatus === RequirementStatusEnum.APPROVED.value || d.requirementStatus === RequirementStatusEnum.EXECUTING.value) &&
     d.bizType === 'product' &&
     !!d.bizId
   )

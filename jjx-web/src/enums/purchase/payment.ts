@@ -43,13 +43,13 @@ export const CurrencyEnum = createEnum({
  * 审批状态枚举
  * 1=草稿, 2=待审批, 3=已批准, 4=已拒绝, 5=已取消
  */
-export const ApprovalStatusEnum = createEnum({
-  items: [
-    { value: 1, label: '草稿', tagProps: { type: 'info' } },
-    { value: 2, label: '待审批', tagProps: { type: 'warning' } },
-    { value: 3, label: '已批准', tagProps: { type: 'success' } },
-    { value: 4, label: '已拒绝', tagProps: { type: 'danger' } },
-    { value: 5, label: '已取消', tagProps: { type: 'danger' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const ApprovalStatusEnum = createNamedEnum(
+  {
+    DRAFT: { value: 1, label: '草稿', tagProps: { type: 'info' } },
+    PENDING: { value: 2, label: '待审批', tagProps: { type: 'warning' } },
+    APPROVED: { value: 3, label: '已批准', tagProps: { type: 'success' } },
+    REJECTED: { value: 4, label: '已拒绝', tagProps: { type: 'danger' } },
+    CANCELLED: { value: 5, label: '已取消', tagProps: { type: 'danger' } },
+  },
+  { type: 'info' },
+)

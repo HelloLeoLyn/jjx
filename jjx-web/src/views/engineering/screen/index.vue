@@ -31,13 +31,13 @@
         <el-table-column prop="content" label="网版内容记录" min-width="320" show-overflow-tooltip />
         <el-table-column prop="mesh" label="目数" width="80" />
         <el-table-column label="状态" width="80">
-          <template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '在用' : '停用' }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="row.status === CommonStatusEnum.NORMAL.value ? 'success' : 'info'">{{ row.status === CommonStatusEnum.NORMAL.value ? '在用' : '停用' }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="160" />
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-button v-hasPermi="['engineering:screen:edit']" link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button v-hasPermi="['engineering:screen:edit']" link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">{{ row.status === 1 ? '停用' : '启用' }}</el-button>
+            <el-button v-hasPermi="['engineering:screen:edit']" link :type="row.status === CommonStatusEnum.NORMAL.value ? 'warning' : 'success'" @click="toggleStatus(row)">{{ row.status === CommonStatusEnum.NORMAL.value ? '停用' : '启用' }}</el-button>
             <el-button v-hasPermi="['engineering:screen:delete']" link type="danger" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -76,6 +76,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { pageScreen, getScreen, addScreen, updateScreen, changeScreenStatus, delScreen } from '@/api/engineering/screen'
+import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 
 defineOptions({ name: 'ScreenMaster' })
 
@@ -143,7 +144,7 @@ async function submitForm() {
   }
 }
 async function toggleStatus(row: any) {
-  const target = row.status === 1 ? 0 : 1
+  const target = row.status === CommonStatusEnum.NORMAL.value ? CommonStatusEnum.DISABLED.value : CommonStatusEnum.NORMAL.value
   await ElMessageBox.confirm(`确认${target === 1 ? '启用' : '停用'}网版【${row.screenNo}】？`, '状态确认', { type: 'warning' })
   try {
     await changeScreenStatus(row.screenId, target)

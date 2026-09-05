@@ -194,7 +194,7 @@
               >
             </template>
 
-            <template v-if="scope.row.inquiryStatus !== 3">
+            <template v-if="scope.row.inquiryStatus !== InquiryStatusEnum.CONVERTED.value">
               <el-button
                 link
                 type="primary"
@@ -462,6 +462,7 @@ import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
+import { InquiryStatusEnum } from '@/enums/sales'
 import { customerApi } from '@/api/sales/customer'
 import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'

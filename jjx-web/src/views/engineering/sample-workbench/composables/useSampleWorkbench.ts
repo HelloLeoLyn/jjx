@@ -7,6 +7,7 @@ import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
 import { useDict } from '@/composables/useDict'
+import { SampleProcessStatusEnum } from '@/enums/sales'
 
 /**
  * 打样工作台组合式函数（dev-20260811-008 组件化第 1 步）
@@ -846,7 +847,7 @@ export function useSampleWorkbench() {
   async function advancePlan(pc: any) {
     if (readonlyMode.value) return
     if (!orderId.value) return
-    const next = pc.status === 1 ? 2 : 1
+    const next = pc.status === SampleProcessStatusEnum.DOING.value ? SampleProcessStatusEnum.DONE.value : SampleProcessStatusEnum.DOING.value
     pc.advancing = true
     try {
       const targetIds = pc.items.map((i: any) => i.processId).filter(Boolean)
@@ -1072,8 +1073,8 @@ export function useSampleWorkbench() {
   // 完成进度 = 组装卡片 + 印刷行（dev-1788002406240：展示用，与后端校验口径对齐）
   const doneCount = computed(
     () =>
-      planList.value.filter((p) => p.status === 2).length +
-      printList.value.filter((r) => r.status === 2).length
+      planList.value.filter((p) => p.status === SampleProcessStatusEnum.DONE.value).length +
+      printList.value.filter((r) => r.status === SampleProcessStatusEnum.DONE.value).length
   )
   const totalCount = computed(() => planList.value.length + printList.value.length)
   const summary = ref<any>({})
@@ -1356,7 +1357,7 @@ export function useSampleWorkbench() {
     // 印刷空行（printName 未填的占位行）不计入未完成（与 savePlan validPrints 语义一致）
     const unfinished: string[] = []
     for (const pc of planList.value) {
-      if (pc.status !== 2) {
+      if (pc.status !== SampleProcessStatusEnum.DONE.value) {
         const names = (pc.items || []).map((it: any) => it.processName).filter(Boolean)
         unfinished.push(names.length ? names.join('、') : '工序')
       }
@@ -1364,7 +1365,7 @@ export function useSampleWorkbench() {
     for (const r of printList.value) {
       const pn = (r.printName || '').trim()
       if (!pn) continue // 空行占位，跳过
-      if (r.status !== 2) unfinished.push(pn || '印刷工序')
+      if (r.status !== SampleProcessStatusEnum.DONE.value) unfinished.push(pn || '印刷工序')
     }
     if (unfinished.length) {
       ElMessage.error(`还有 ${unfinished.length} 道工序未完成（${unfinished.slice(0, 3).join('、')}${unfinished.length > 3 ? '…' : ''}），请先完成全部工序`)

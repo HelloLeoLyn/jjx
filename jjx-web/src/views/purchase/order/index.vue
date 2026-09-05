@@ -304,7 +304,7 @@
               ></el-button>
             </el-tooltip>
             <!-- 提交审核按钮（草稿可提交） -->
-            <el-tooltip v-if="scope.row.approvalStatus === 1" content="提交审核" placement="top">
+            <el-tooltip v-if="scope.row.approvalStatus === ApprovalStatusEnum.DRAFT.value" content="提交审核" placement="top">
               <el-button
                 link
                 type="primary"
@@ -426,7 +426,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { FormInstance } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { PurchaseOrderVO, PurchaseOrderQuery } from '@/types/purchase/order'
-import { PurchaseEnum } from '@/enums/purchase'
+import { PurchaseEnum, ApprovalStatusEnum } from '@/enums/purchase'
 import { formatCurrency, formatDate } from './utils/orderFormatters'
 import {
   isOrderEditable,
@@ -799,7 +799,7 @@ const handleCancle = async (row: PurchaseOrderVO) => {
  * 判断订单是否可删除（草稿和已拒绝可删除）
  */
 function isOrderDeletable(approvalStatus: number): boolean {
-  return approvalStatus === 1 || approvalStatus === 4
+  return approvalStatus === ApprovalStatusEnum.DRAFT.value || approvalStatus === ApprovalStatusEnum.REJECTED.value
 }
 
 // ===== 操作预览器 =====

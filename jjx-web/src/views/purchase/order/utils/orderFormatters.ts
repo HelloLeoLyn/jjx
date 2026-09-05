@@ -1,6 +1,7 @@
 /**
  * 采购订单格式化工具函数
  */
+import { ApprovalStatusEnum, ReceiptStatusEnum, PaymentStatusEnum } from '@/enums/purchase'
 
 /**
  * 格式化货币金额
@@ -119,33 +120,46 @@ export function getStatusColor(status: string): string {
  * 已取消(5)和已批准(3)的订单不可取消（DEV-1230 对齐 common ApproveStatusEnum）
  */
 export function isOrderCancellable(approvalStatus: number): boolean {
-  return approvalStatus === 1 || approvalStatus === 2 || approvalStatus === 4
+  return (
+    approvalStatus === ApprovalStatusEnum.DRAFT.value ||
+    approvalStatus === ApprovalStatusEnum.PENDING.value ||
+    approvalStatus === ApprovalStatusEnum.REJECTED.value
+  )
 }
 
 /**
  * 检查订单是否可编辑（草稿和已拒绝可编辑）
  */
 export function isOrderEditable(approvalStatus: number): boolean {
-  return approvalStatus === 1 || approvalStatus === 4
+  return (
+    approvalStatus === ApprovalStatusEnum.DRAFT.value ||
+    approvalStatus === ApprovalStatusEnum.REJECTED.value
+  )
 }
 
 /**
  * 检查订单是否可审批（待审批可审批）
  */
 export function isOrderApprovable(approvalStatus: number): boolean {
-  return approvalStatus === 2
+  return approvalStatus === ApprovalStatusEnum.PENDING.value
 }
 
 /**
  * 检查订单是否可收货（已批准且未完全收货）
  */
 export function isOrderReceivable(approvalStatus: number, receiptStatus: number): boolean {
-  return approvalStatus === 3 && (receiptStatus === 0 || receiptStatus === 1)
+  return (
+    approvalStatus === ApprovalStatusEnum.APPROVED.value &&
+    (receiptStatus === ReceiptStatusEnum.PENDING.value || receiptStatus === ReceiptStatusEnum.PARTIAL.value)
+  )
 }
 
 /**
  * 检查订单是否可付款（已批准且未完全付款）
  */
 export function isOrderPayable(approvalStatus: number, paymentStatus: number): boolean {
-  return approvalStatus === 3 && (paymentStatus === 0 || paymentStatus === 1)
+  return (
+    approvalStatus === ApprovalStatusEnum.APPROVED.value &&
+    (paymentStatus === PaymentStatusEnum.PENDING.value || paymentStatus === PaymentStatusEnum.PARTIALLY_PAID.value)
+  )
 }

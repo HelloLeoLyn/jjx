@@ -9,13 +9,13 @@
         v-for="pc in merged"
         :key="pc.uid"
         class="tl-item"
-        :class="pc.status === 2 ? 'done' : pc.status === 1 ? 'doing' : ''"
+        :class="pc.status === SampleProcessStatusEnum.DONE.value ? 'done' : pc.status === SampleProcessStatusEnum.DOING.value ? 'doing' : ''"
       >
         <div class="t">
           {{ pc.items.map((i: any) => i.processName).join(' + ') || '未命名工序' }}
           <el-tag v-if="pc.isPrint" size="small" type="warning" effect="plain">印刷</el-tag>
-          <el-tag v-if="pc.status === 2" size="small" type="success">完成</el-tag>
-          <el-tag v-else-if="pc.status === 1" size="small" type="warning">进行中</el-tag>
+          <el-tag v-if="pc.status === SampleProcessStatusEnum.DONE.value" size="small" type="success">完成</el-tag>
+          <el-tag v-else-if="pc.status === SampleProcessStatusEnum.DOING.value" size="small" type="warning">进行中</el-tag>
           <el-tag v-else size="small" type="info">待做</el-tag>
         </div>
         <div class="s">
@@ -23,7 +23,7 @@
           <template v-if="pc.startTime">{{ formatTime(pc.startTime) }}</template>
           <template v-if="pc.endTime"> - {{ formatTime(pc.endTime) }}</template>
           <template v-if="pc.durationMinutes"> · {{ pc.durationMinutes }}分钟</template>
-          <template v-if="!pc.startTime && pc.status === 0">—</template>
+          <template v-if="!pc.startTime && pc.status === SampleProcessStatusEnum.TODO.value">—</template>
         </div>
         <div v-if="pc.processNote" class="n">🔧 {{ pc.processNote }}</div>
         <div v-if="parseMaterials(pc.materials).length" class="n" style="margin-top:2px">
@@ -37,13 +37,13 @@
           >
         </div>
         <!-- 开始/完成操作（2026-09-04：从表格行统一收口到执行时间线） -->
-        <div v-if="!readonly && pc.status !== 2" class="ops">
+        <div v-if="!readonly && pc.status !== SampleProcessStatusEnum.DONE.value" class="ops">
           <el-button
             size="small"
             type="primary"
             :loading="pc.advancing"
             @click="onAdvance(pc)"
-            >{{ pc.status === 1 ? '✓ 完成' : '▶ 开始' }}</el-button
+            >{{ pc.status === SampleProcessStatusEnum.DOING.value ? '✓ 完成' : '▶ 开始' }}</el-button
           >
         </div>
       </div>
@@ -54,6 +54,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { SampleProcessStatusEnum } from '@/enums/sales'
 
 /**
  * 执行时间线（dev-20260811-008 组件化）

@@ -3,10 +3,10 @@
     <div v-if="req" class="req-head">
       <el-tag size="small" type="info">{{ req.requirementNo }}</el-tag>
       <span style="margin-left: 8px; font-weight: 600">{{ req.title }}</span>
-      <el-tag v-if="req.requirementStatus !== 2" :type="req.requirementStatus === 3 ? 'success' : 'danger'" size="small" style="margin-left: 8px">
-        {{ req.requirementStatus === 3 ? '已通过（全部同意）' : '已驳回' }}
+      <el-tag v-if="req.requirementStatus !== RequirementStatusEnum.REVIEWING.value" :type="req.requirementStatus === RequirementStatusEnum.APPROVED.value ? 'success' : 'danger'" size="small" style="margin-left: 8px">
+        {{ req.requirementStatus === RequirementStatusEnum.APPROVED.value ? '已通过（全部同意）' : '已驳回' }}
       </el-tag>
-      <div v-if="req.requirementStatus === 2" class="req-tip">等待四部门会签：全部同意后自动生效，任一不同意即驳回</div>
+      <div v-if="req.requirementStatus === RequirementStatusEnum.REVIEWING.value" class="req-tip">等待四部门会签：全部同意后自动生效，任一不同意即驳回</div>
     </div>
 
     <div class="dept-grid">
@@ -24,7 +24,7 @@
           </div>
           <div v-if="recordOf(d)!.comment" class="dept-comment">意见：{{ recordOf(d)!.comment }}</div>
         </template>
-        <template v-if="req && req.requirementStatus === 2 && canSign(d)">
+        <template v-if="req && req.requirementStatus === RequirementStatusEnum.REVIEWING.value && canSign(d)">
           <el-input
             v-model="commentMap[d.role]"
             type="textarea"
@@ -52,6 +52,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { signApproval, listApprovals } from '@/api/biz/requirement'
+import { RequirementStatusEnum } from '@/enums/biz/RequirementEnum'
 import { hasPermi } from '@/directives'
 
 const props = defineProps<{ visible: boolean; requirement: any }>()
@@ -124,7 +125,7 @@ async function sign(d: any, approved: boolean) {
     const res: any = await signApproval(req.value.requirementId, d.role, approved, commentMap.value[d.role]?.trim() || '')
     if (res?.code === 200) {
       ElMessage.success(approved ? '已同意' : '已驳回（需求退回）')
-      if (res.data?.requirementStatus === 3) {
+      if (res.data?.requirementStatus === RequirementStatusEnum.APPROVED.value) {
         ElMessage.success('四部门会签全部通过，需求已生效')
       }
       commentMap.value[d.role] = ''

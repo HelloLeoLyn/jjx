@@ -19,10 +19,10 @@
         saveStateText(pc)
       }}</span>
       <div class="pc-head-right">
-        <el-tag v-if="pc.status === 2" size="small" type="success">✓ 已完成</el-tag>
-        <el-tag v-else-if="pc.status === 1" size="small" type="warning">⏳ 进行中</el-tag>
+        <el-tag v-if="pc.status === SampleProcessStatusEnum.DONE.value" size="small" type="success">✓ 已完成</el-tag>
+        <el-tag v-else-if="pc.status === SampleProcessStatusEnum.DOING.value" size="small" type="warning">⏳ 进行中</el-tag>
         <el-tag v-else size="small" type="info">待做</el-tag>
-        <span v-if="pc.status === 2 && pc.durationMinutes" style="color: #909399; font-size: 12px"
+        <span v-if="pc.status === SampleProcessStatusEnum.DONE.value && pc.durationMinutes" style="color: #909399; font-size: 12px"
           >⏱ {{ pc.durationMinutes }}分钟</span
         >
       </div>
@@ -219,6 +219,7 @@
 <script setup lang="ts">
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
+import { SampleProcessStatusEnum } from '@/enums/sales'
 
 /**
  * 工序卡片（dev-20260811-008 组件化核心）
