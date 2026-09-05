@@ -36,7 +36,7 @@
         :data="eventList"
         :loading="loading"
         :total="total"
-        :columns="uiConfig.tableOptions"
+        :columns="tableOptions"
         :show-action="true"
         :action-width="250"
         @selection-change="handleSelectionChange"
@@ -227,6 +227,15 @@
           />
         </el-form-item>
 
+        <el-form-item label="办结关闭事件" prop="closeSourceEvents">
+          <el-input
+            v-model="form.closeSourceEvents"
+            type="textarea"
+            :rows="2"
+            placeholder="办结时关闭的任务来源事件，逗号分隔；示例：order.submitted,order.review_started"
+          />
+        </el-form-item>
+
         <el-form-item label="排除触发者">
           <el-switch
             v-model="form.excludeTrigger"
@@ -254,6 +263,7 @@ import type { SysEventConfig } from '@/types/system'
 import * as uiConfig from './index'
 import { assignExisting } from '@/utils/object'
 import { parseTime } from '@/utils/format'
+import type { TableOptions } from '@/components/common-ui/type'
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -263,6 +273,20 @@ const eventList = ref<SysEventConfig[]>([])
 const ids = ref<number[]>([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增事件配置')
+
+const tableOptions: TableOptions[] = uiConfig.tableOptions.flatMap(column =>
+  column.prop === 'title'
+    ? [
+        {
+          prop: 'closeSourceEvents',
+          label: '办结关闭事件',
+          minWidth: 220,
+          formatter: (row: SysEventConfig) => row.closeSourceEvents || '-',
+        },
+        column,
+      ]
+    : [column],
+)
 
 const queryParams = reactive({
   pageNum: 1,
@@ -286,6 +310,7 @@ const form = reactive({
   targetRoleList: [] as number[],
   title: '',
   content: '',
+  closeSourceEvents: '',
   excludeTrigger: 0,
 })
 
@@ -362,7 +387,7 @@ function handleToolbarClick(key: string) {
 // 新增
 function handleAdd() {
   dialogTitle.value = '新增事件配置'
-  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'office', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', excludeTrigger: 0 })
+  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'office', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', closeSourceEvents: '', excludeTrigger: 0 })
   dialogVisible.value = true
 }
 

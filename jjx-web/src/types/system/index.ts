@@ -401,6 +401,7 @@ export interface SysEventConfig {
   targetRole?: string
   title?: string
   content?: string
+  closeSourceEvents?: string // 办结时关闭的 source_event 列表（逗号分隔）
   excludeTrigger?: number
   createTime?: string
   updateTime?: string
