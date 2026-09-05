@@ -23,10 +23,9 @@
           <div class="att-meta">
             <el-link
               type="primary"
-              :href="downloadUrl(att.id)"
               :underline="false"
-              target="_blank"
               class="att-name"
+              @click.prevent="onPreview(att)"
             >
               {{ att.fileName || '-' }}
             </el-link>
@@ -145,7 +144,9 @@ const previewIndex = ref(0)
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
 
 function isImage(att: any): boolean {
-  return IMAGE_TYPES.includes(att.fileType)
+  if (IMAGE_TYPES.includes(att.fileType)) return true
+  const fileName = String(att.fileName || '').toLowerCase()
+  return ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'].some((ext) => fileName.endsWith(ext))
 }
 
 function onPreview(att: any) {

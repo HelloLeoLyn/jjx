@@ -32,7 +32,7 @@
       <div v-for="att in attachments" :key="att.id" class="att-item">
         <div class="att-info">
           <el-icon><Document /></el-icon>
-          <el-link type="primary" :href="downloadUrl(att.id)" :underline="false" target="_blank">
+          <el-link type="primary" :underline="false" @click.prevent="onPreview(att)">
             {{ att.fileName }}
           </el-link>
           <span class="att-size">{{ formatSize(att.fileSize) }}</span>
@@ -41,6 +41,14 @@
       </div>
     </div>
     <el-empty v-else-if="!fileList.length" description="暂无附件" :image-size="60" />
+
+    <!-- 图片预览（支持左右切换上一张/下一张） -->
+    <el-image-viewer
+      v-if="previewVisible"
+      :url-list="previewImageList"
+      :initial-index="previewIndex"
+      @close="previewVisible = false"
+    />
   </el-dialog>
 </template>
 
@@ -97,6 +105,32 @@ const uploadData = computed(() => ({
 
 function downloadUrl(id: number): string {
   return attachmentApi.downloadUrl(id)
+}
+
+// ==================== 图片预览（左右切换） ====================
+const previewVisible = ref(false)
+const previewImageList = ref<string[]>([])
+const previewIndex = ref(0)
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp']
+
+function isImage(att: any): boolean {
+  if (IMAGE_TYPES.includes(att.fileType)) return true
+  const fileName = String(att.fileName || '').toLowerCase()
+  return ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'].some((ext) => fileName.endsWith(ext))
+}
+
+function onPreview(att: any) {
+  if (isImage(att)) {
+    const images = attachments.value.filter((a) => isImage(a))
+    if (images.length === 0) return
+    previewImageList.value = images.map((a) => downloadUrl(a.id))
+    const idx = images.findIndex((a) => a.id === att.id)
+    previewIndex.value = idx >= 0 ? idx : 0
+    previewVisible.value = true
+    return
+  }
+  window.open(downloadUrl(att.id), '_blank')
 }
 
 async function loadAttachments() {
