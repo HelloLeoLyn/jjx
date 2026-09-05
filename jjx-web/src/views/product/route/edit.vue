@@ -179,6 +179,8 @@ const nextVersionHint = computed(() => {
 
 /** 是否有内容变更（工序增删改） */
 const hasChanges = ref(false)
+// 2026-09-05：当前版本审核状态（1草稿/2待审批/3已批准/4已拒绝）——决定保存是否自动升版
+const currentApproveStatus = ref<number>(1)
 
 /** 后端明细 → 编辑器行（2026-09-05 支持父子：children 递归映射） */
 function mapRouteItem(item: any): any {
@@ -289,6 +291,8 @@ const loadRouteDetail = async () => {
       items,
     })
 
+    currentApproveStatus.value = detail.approveStatus ?? 1
+
     // 初始快照（用于变更检测）
     initialItemsSnapshot = snapshotItems(items)
     hasChanges.value = false
@@ -331,8 +335,9 @@ const handleSubmit = async () => {
 
     submitLoading.value = true
     const payload: any = { ...formData, items }
-    if (changed) {
-      // 有变更 → 自动升版
+    // 2026-09-05：已批准(3)版本有变更才自动升版（审批留痕）；草稿(1)/已拒绝(4)原地直接改，避免版本号暴涨
+    const isApproved = currentApproveStatus.value === 3
+    if (changed && isApproved) {
       payload.bumpVersion = true
       payload.changeNote = changeNote.value?.trim() || ''
     } else {
@@ -340,7 +345,7 @@ const handleSubmit = async () => {
     }
     const res = await productRouteApi.editProductRoute(routingId, payload)
     const newVersion = res?.data?.version || res?.data?.routingVersion
-    if (changed) {
+    if (changed && isApproved) {
       ElMessage.success(`保存成功，已升级为 ${newVersion}（旧版本失效）`)
       // 刷新为新版本
       if (res?.data?.routingId) {
