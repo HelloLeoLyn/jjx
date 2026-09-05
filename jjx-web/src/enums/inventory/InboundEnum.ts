@@ -1,5 +1,5 @@
 // src/enums/inventory/InboundEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 入库类型枚举
@@ -18,27 +18,36 @@ export const InboundTypeEnum = createEnum({
 /**
  * 检验结果枚举
  */
-export const InspectionResultEnum = createEnum({
-  items: [
-    { value: 'pass', label: '合格', tagProps: { type: 'success' } },
-    { value: 'fail', label: '不合格', tagProps: { type: 'danger' } },
-    { value: 'partial', label: '部分合格', tagProps: { type: 'warning' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const InspectionResultEnum = createNamedEnum(
+  {
+    PASS: { value: 'PASS', label: '合格', tagProps: { type: 'success' } },
+    FAIL: { value: 'FAIL', label: '不合格', tagProps: { type: 'danger' } },
+    OTHER: { value: 'OTHER', label: '其它', tagProps: { type: 'warning' } },
+  },
+  { type: 'info' },
+)
 
 /**
  * 入库单状态枚举
  */
-export const InboundOrderStatusEnum = createEnum({
-  items: [
-    { value: 'draft', label: '草稿', tagProps: { type: 'info' } },
-    { value: 'confirmed', label: '已确认', tagProps: { type: 'primary' } },
-    { value: 'closed', label: '已关闭', tagProps: { type: 'success' } },
-    { value: 'cancelled', label: '已取消', tagProps: { type: 'danger' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const InboundOrderStatusEnum = createNamedEnum(
+  {
+    DRAFT: { value: 0, label: '草稿', tagProps: { type: 'info' } },
+    PENDING: { value: 1, label: '待审批', tagProps: { type: 'warning' } },
+    APPROVED: { value: 2, label: '已批准', tagProps: { type: 'success' } },
+    REJECTED: { value: 3, label: '已驳回', tagProps: { type: 'danger' } },
+    PROCESSING: { value: 4, label: '处理中', tagProps: { type: 'warning' } },
+    CONFIRMED: { value: 5, label: '已确认', tagProps: { type: 'success' } },
+    OUT_CONFIRM: { value: 6, label: '已出库', tagProps: { type: 'success' } },
+    IN_CONFIRM: { value: 7, label: '已入库', tagProps: { type: 'success' } },
+    CLOSED: { value: 8, label: '已关闭', tagProps: { type: 'info' } },
+    CANCELLED: { value: 9, label: '已取消', tagProps: { type: 'danger' } },
+    COMPLETED: { value: 10, label: '已完成', tagProps: { type: 'success' } },
+    PROCESSED: { value: 11, label: '已处理', tagProps: { type: 'success' } },
+    IN_PROGRESS: { value: 12, label: '调拨中', tagProps: { type: 'warning' } },
+  },
+  { type: 'info' },
+)
 
 /**
  * 审批状态枚举

@@ -173,3 +173,15 @@ export interface InboundDashboardData {
     totalAmount: number
   }>
 }
+
+export interface InboundInspectionSubmitParams {
+  inspectionResult: string
+  inspectionRemark?: string
+  items: Array<{
+    itemId: string
+    sampledQuantity?: number
+    qualifiedQuantity: number
+    rejectedQuantity: number
+    rejectReason?: string
+  }>
+}

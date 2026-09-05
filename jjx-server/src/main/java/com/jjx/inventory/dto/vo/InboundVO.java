@@ -34,6 +34,7 @@ public class InboundVO {
     private Long inspectorId;
     private String inspectorName;
     private String inspectionResult;
+    private LocalDateTime inspectionTime;
     private String inspectionRemark;
     private BigDecimal totalQuantity;
     private BigDecimal totalAmount;

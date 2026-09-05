@@ -9,6 +9,7 @@ import type {
   InboundApproveParams,
   InboundRejectParams,
   InboundDashboardData,
+  InboundInspectionSubmitParams,
 } from '@/types/inventory/inbound'
 
 // 入库管理API
@@ -61,9 +62,10 @@ export const inboundApi = {
   },
 
   // 提交审批
-  submitApprove(inboundId: string) {
+  submitApprove(inboundId: string, data?: InboundInspectionSubmitParams) {
     return request.post<R<boolean>>(
       `/inventory/inbound/submit-approve/${inboundId}`,
+      data,
     )
   },
 

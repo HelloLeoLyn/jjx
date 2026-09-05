@@ -18,6 +18,16 @@
         <el-descriptions-item label="备注" :span="3">{{ inbound.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
 
+      <template v-if="isPurchaseSource && inbound.inspectionResult">
+        <el-divider content-position="left">来料检验</el-divider>
+        <el-descriptions :column="3" border>
+          <el-descriptions-item label="检验员">{{ inbound.inspectorName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="检验时间">{{ inbound.inspectionTime || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="判定">{{ inspectionResultLabel(inbound.inspectionResult) }}</el-descriptions-item>
+          <el-descriptions-item label="检验备注" :span="3">{{ inbound.inspectionRemark || '-' }}</el-descriptions-item>
+        </el-descriptions>
+      </template>
+
       <!-- 入库明细 -->
       <el-divider content-position="left">入库明细</el-divider>
       <el-table :data="inbound.items || []" border style="width: 100%">
@@ -29,6 +39,9 @@
         <el-table-column label="数量" prop="quantity" width="100" align="right">
           <template #default="{ row }">{{ formatNumber(row.quantity) }}</template>
         </el-table-column>
+        <el-table-column v-if="isPurchaseSource" label="合格" prop="qualifiedQuantity" width="90" align="right" />
+        <el-table-column v-if="isPurchaseSource" label="不良" prop="rejectedQuantity" width="90" align="right" />
+        <el-table-column v-if="isPurchaseSource" label="不良/备注原因" prop="rejectReason" min-width="140" show-overflow-tooltip />
         <el-table-column label="库位" prop="locationCode" width="100" />
         <el-table-column label="生产日期" prop="productionDate" width="110" align="center" />
         <el-table-column label="到期日期" prop="expiryDate" width="110" align="center" />
@@ -62,6 +75,7 @@ import { inboundApi } from '@/api/inventory/inbound'
 import { getDiskReceiptFiles } from '@/api/purchase/order'
 import { formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
+import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
 
 const props = defineProps<{
   inboundId: number | string
@@ -71,8 +85,15 @@ const loading = ref(false)
 const inbound = ref<InboundVO | null>(null)
 const images = ref<Array<{ fileName: string; storageName: string; fileUrl: string; fileSize: number }>>([])
 
-const isPurchaseSource = computed(() => inbound.value?.sourceType === 'PURCHASE')
+const isPurchaseSource = computed(() => !!inbound.value?.sourceId && (
+  ['PURCHASE', 'PURCHASE_ORDER'].includes(inbound.value.sourceType?.toUpperCase() || '')
+  || inbound.value.inboundType?.toUpperCase() === 'PURCHASE'
+))
 const previewList = computed(() => images.value.map((i) => i.fileUrl))
+const inspectionResultLabel = (result: string) => {
+  const normalized = result.toUpperCase()
+  return InspectionResultEnum.canDo(normalized) ? InspectionResultEnum.getLabel(normalized) : result
+}
 
 // 状态文本（后端 statusName 缺失时兜底）
 const inboundStatusTextMap: Record<number, string> = {

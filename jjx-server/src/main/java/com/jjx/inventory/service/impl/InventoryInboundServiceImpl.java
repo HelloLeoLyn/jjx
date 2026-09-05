@@ -13,6 +13,7 @@ import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
+import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.inventory.dto.vo.InboundItemVO;
 import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.common.exception.BusinessException;
@@ -273,9 +274,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // 2026-08-11 业务定稿：审核不能跳过——只有“已批准”才能确认入库，待审批必须先走审批
-        if (!InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus())) {
-            log.error("入库单状态不正确，无法确认（需先审批通过）: inboundId={}, status={}", inboundId, order.getOrderStatus());
+        // 手工入库保持 confirm 直接过账；采购来源必须走检验提交 + 品质主管 approve。
+        boolean manualConfirmable = !isPurchaseInbound(order)
+                && (InventoryOrderStatusEnum.DRAFT.getValue().equals(order.getOrderStatus())
+                || InventoryOrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus())
+                || InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus()));
+        if (!manualConfirmable) {
+            log.error("入库单状态或来源不允许直接确认: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
@@ -317,8 +322,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.submitted", bizId = "#inboundId", bizType = "'inventory'")
-    public boolean submitApprove(Long inboundId) {
+    @Event(value = "inventory.inbound.submitted", bizId = "#inboundId", bizType = "'inventory'",
+            condition = "#inspection == null || #inspection.inspectionResult == null || !#inspection.inspectionResult.equalsIgnoreCase('FAIL')")
+    public boolean submitApprove(Long inboundId, InboundInspectionSubmitDTO inspection) {
         // DEV-651 方案A：行锁
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) {
@@ -326,17 +332,77 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // DEV-651：只有草稿/已驳回/已取消状态的单才能提交审批
+        // 采购收货单创建即处于 PENDING；inspection_result 为空表示“待检验”，有值表示“待主管复核”。
         Integer status = order.getOrderStatus();
-        if (!InventoryOrderStatusEnum.DRAFT.getValue().equals(status)
+        boolean pendingPurchaseInspection = isPurchaseInbound(order)
+                && InventoryOrderStatusEnum.PENDING.getValue().equals(status)
+                && order.getInspectionResult() == null;
+        if (!pendingPurchaseInspection
+                && !InventoryOrderStatusEnum.DRAFT.getValue().equals(status)
                 && !InventoryOrderStatusEnum.REJECTED.getValue().equals(status)
                 && !InventoryOrderStatusEnum.CANCELLED.getValue().equals(status)) {
             log.error("入库单状态不允许提交审批: inboundId={}, status={}", inboundId, status);
             return false;
         }
 
+        if (isPurchaseInbound(order)) {
+            saveInspection(order, inspection);
+            if ("FAIL".equalsIgnoreCase(order.getInspectionResult())) {
+                order.setOrderStatus(InventoryOrderStatusEnum.REJECTED.getValue());
+                order.setRemark(order.getInspectionRemark());
+                boolean updated = inboundOrderMapper.updateById(order) > 0;
+                if (updated) {
+                    eventPublisher.fire("inventory.inbound.rejected", Map.of("inboundId", String.valueOf(inboundId)));
+                }
+                return updated;
+            }
+        }
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    private void saveInspection(InventoryInboundOrder order, InboundInspectionSubmitDTO inspection) {
+        if (inspection == null || inspection.getInspectionResult() == null) {
+            throw new BusinessException("采购入库单必须填写来料检验结果");
+        }
+        String result = inspection.getInspectionResult().toUpperCase();
+        if (!List.of("PASS", "FAIL", "OTHER").contains(result)) {
+            throw new BusinessException("检验判定仅支持 PASS、FAIL、OTHER");
+        }
+        Map<Long, InventoryInboundItem> existing = inboundItemMapper.selectByInboundId(order.getInboundId()).stream()
+                .collect(Collectors.toMap(InventoryInboundItem::getItemId, item -> item));
+        if (inspection.getItems() != null) {
+            for (InboundInspectionSubmitDTO.Item submitted : inspection.getItems()) {
+                InventoryInboundItem item = existing.get(submitted.getItemId());
+                if (item == null) throw new BusinessException("入库明细不存在: " + submitted.getItemId());
+                BigDecimal qualified = submitted.getQualifiedQuantity() == null ? BigDecimal.ZERO : submitted.getQualifiedQuantity();
+                BigDecimal rejected = submitted.getRejectedQuantity() == null ? BigDecimal.ZERO : submitted.getRejectedQuantity();
+                BigDecimal checked = qualified.add(rejected);
+                if (qualified.signum() < 0 || rejected.signum() < 0) throw new BusinessException("合格数量和不良数量不能为负数");
+                if (checked.compareTo(item.getQuantity()) > 0) throw new BusinessException("物料" + item.getMaterialCode() + "检验数量不能超过收货数量");
+                if (submitted.getSampledQuantity() != null
+                        && (submitted.getSampledQuantity().signum() < 0 || submitted.getSampledQuantity().compareTo(item.getQuantity()) > 0
+                        || submitted.getSampledQuantity().compareTo(checked) != 0)) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "抽检数量须等于合格与不良数量之和，且不能超过收货数量");
+                }
+                item.setQualifiedQuantity(qualified);
+                item.setRejectedQuantity(rejected);
+                item.setRejectReason(submitted.getRejectReason());
+                inboundItemMapper.updateById(item);
+            }
+        }
+        order.setInspectionResult(result);
+        order.setInspectionRemark(inspection.getInspectionRemark());
+        order.setInspectorId(SecurityUtils.getUserId());
+        order.setInspectorName(SecurityUtils.getUsername());
+        order.setInspectionTime(LocalDateTime.now());
+    }
+
+    private boolean isPurchaseInbound(InventoryInboundOrder order) {
+        return order.getSourceId() != null
+                && ("PURCHASE".equalsIgnoreCase(order.getSourceType())
+                || "PURCHASE_ORDER".equalsIgnoreCase(order.getSourceType())
+                || "PURCHASE".equalsIgnoreCase(order.getInboundType()));
     }
 
     @Override
@@ -355,7 +421,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // 2026-08-11 业务定稿：审批通过 = 确认入库（一步到位）——直接加库存+流水+置完成，不再需要单独的"确认入库"环节
+        if (isPurchaseInbound(order) && order.getInspectionResult() == null) {
+            throw new BusinessException("采购入库单尚未完成来料检验，不能审批");
+        }
+
+        // 行锁 + PENDING 状态守卫保证只有首次审批能执行过账；事务失败时库存、流水和状态一并回滚。
         addStock(order, approverId, approverName, "审批通过入库");
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         // 安全库存检查
@@ -560,10 +630,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setTotalAmount(totalAmt);
         inboundOrderMapper.updateById(order);
 
-        // 6. 提交审批并自动审批
+        // 6. 创建后进入待检验（复用 PENDING，inspection_result 为空）；不自动审批、不入库存。
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         inboundOrderMapper.updateById(order);
-        approve(order.getInboundId(), null, null, "采购到货入库");
 
         try { eventPublisher.fire("purchase.arrived", Map.of("sourceNo", order.getSourceNo(), "inboundId", String.valueOf(order.getInboundId()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("采购入库完成: purchaseOrderId={}, inboundId={}", purchaseOrderId, order.getInboundId());
@@ -629,7 +698,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setTraceId(po.getTraceId());
         order.setWarehouseId(resolvePurchaseWarehouseId(toInItems, toInQtys));
         order.setInboundDate(LocalDate.now());
-        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue()); // 待审批：收货后需仓库审批→确认入库才加库存（2026-08-11 业务定稿：收货≠入库）
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue()); // 同一待审批态：inspection_result 为空时表示待检验
         order.setRemark("采购收货自动入库（DEV-624）批次" + existingList.size());
         // 供应商/创建人从采购单带过来，避免列表页数据空白
         order.setSupplierId(po.getSupplierId());

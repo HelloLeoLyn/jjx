@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
+import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.inventory.dto.vo.InboundVO;
 
 import java.util.List;
@@ -42,7 +43,7 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     /**
      * 提交审批
      */
-    boolean submitApprove(Long inboundId);
+    boolean submitApprove(Long inboundId, InboundInspectionSubmitDTO inspection);
 
     /**
      * 审批通过

@@ -7,6 +7,8 @@ import com.jjx.inventory.dto.query.InboundQueryDTO;
 import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.inventory.service.InventoryInboundService;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
+import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
@@ -72,9 +74,10 @@ public class InventoryInboundController {
     @PostMapping("/submit-approve/{inboundId}")
     @Operation(summary = "提交审批")
     @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()", action = LogActions.INBOUND_SUBMIT)
-    @SaCheckPermission("inventory:inbound:edit")
-    public Result<Boolean> submitApprove(@PathVariable Long inboundId) {
-        return Result.success(inboundService.submitApprove(inboundId));
+    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:inspector"}, mode = SaMode.OR)
+    public Result<Boolean> submitApprove(@PathVariable Long inboundId,
+                                         @RequestBody(required = false) InboundInspectionSubmitDTO inspection) {
+        return Result.success(inboundService.submitApprove(inboundId, inspection));
     }
 
     @PostMapping("/approve/{inboundId}")

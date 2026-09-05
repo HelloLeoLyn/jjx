@@ -68,10 +68,8 @@ public class PurchaseReceiptController extends BaseController {
     @SaCheckPermission("purchase:receipt:add")
     public Result<Void> add(@RequestParam Long orderId,
                             @RequestParam Long itemId,
-                            @RequestParam BigDecimal receivedQuantity,
-                            @RequestParam(required = false) String inspectionResult,
-                            @RequestParam(required = false) String inspectionRemark) {
-        purchaseOrderService.receiveOrderItem(orderId, itemId, receivedQuantity, inspectionResult, inspectionRemark);
+                            @RequestParam BigDecimal receivedQuantity) {
+        purchaseOrderService.receiveOrderItem(orderId, itemId, receivedQuantity);
         return Result.success();
     }
 
@@ -83,10 +81,8 @@ public class PurchaseReceiptController extends BaseController {
     @SaCheckPermission("purchase:receipt:edit")
     public Result<Void> edit(@RequestParam Long orderId,
                              @RequestParam Long itemId,
-                             @RequestParam BigDecimal receivedQuantity,
-                             @RequestParam(required = false) String inspectionResult,
-                             @RequestParam(required = false) String inspectionRemark) {
-        purchaseOrderService.receiveOrderItem(orderId, itemId, receivedQuantity, inspectionResult, inspectionRemark);
+                             @RequestParam BigDecimal receivedQuantity) {
+        purchaseOrderService.receiveOrderItem(orderId, itemId, receivedQuantity);
         return Result.success();
     }
 
@@ -110,26 +106,6 @@ public class PurchaseReceiptController extends BaseController {
     }
 
     /**
-     * 检验收货
-     */
-    @PutMapping("/inspect/{receiptId}")
-    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#receiptId", action = LogActions.PUR_RECEIPT_INSPECT)
-    @SaCheckPermission("purchase:receipt:edit")
-    public Result<Void> inspect(@PathVariable Long receiptId,
-                                @RequestParam String inspectionResult,
-                                @RequestParam String inspectorName,
-                                @RequestParam String inspectionDate,
-                                @RequestParam(required = false) String inspectionRemark) {
-        PurchaseOrderItem item = orderItemMapper.selectById(receiptId);
-        if (item != null) {
-            item.setInspectionResult(inspectionResult);
-            item.setInspectionRemark(inspectionRemark);
-            orderItemMapper.updateById(item);
-        }
-        return Result.success();
-    }
-
-    /**
      * 确认收货
      */
     @PutMapping("/confirm/{receiptId}")
@@ -144,7 +120,7 @@ public class PurchaseReceiptController extends BaseController {
         if (item == null) {
             throw new BusinessException("订单明细不存在");
         }
-        purchaseOrderService.receiveOrderItem(item.getOrderId(), receiptId, receivedQuantity, null, remark);
+        purchaseOrderService.receiveOrderItem(item.getOrderId(), receiptId, receivedQuantity);
         return Result.success();
     }
 
@@ -281,31 +257,7 @@ public class PurchaseReceiptController extends BaseController {
             Long orderId = Long.valueOf(data.get("orderId").toString());
             Long itemId = Long.valueOf(data.get("itemId").toString());
             BigDecimal quantity = new BigDecimal(data.get("receivedQuantity").toString());
-            String inspectionResult = (String) data.get("inspectionResult");
-            String inspectionRemark = (String) data.get("inspectionRemark");
-            purchaseOrderService.receiveOrderItem(orderId, itemId, quantity, inspectionResult, inspectionRemark);
-        }
-        return Result.success();
-    }
-
-    /**
-     * 批量检验
-     */
-    @PostMapping("/batch-inspect")
-    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#batchData[0]['itemId']", action = LogActions.PUR_RECEIPT_BATCH_INSPECT)
-    @SaCheckPermission("purchase:receipt:edit")
-    public Result<Void> batchInspect(@RequestBody List<Map<String, Object>> batchData) {
-        for (Map<String, Object> data : batchData) {
-            Long itemId = Long.valueOf(data.get("itemId").toString());
-            String inspectionResult = (String) data.get("inspectionResult");
-            String inspectionRemark = (String) data.get("inspectionRemark");
-
-            PurchaseOrderItem item = orderItemMapper.selectById(itemId);
-            if (item != null) {
-                item.setInspectionResult(inspectionResult);
-                item.setInspectionRemark(inspectionRemark);
-                orderItemMapper.updateById(item);
-            }
+            purchaseOrderService.receiveOrderItem(orderId, itemId, quantity);
         }
         return Result.success();
     }
@@ -321,7 +273,7 @@ public class PurchaseReceiptController extends BaseController {
             Long orderId = Long.valueOf(data.get("orderId").toString());
             Long itemId = Long.valueOf(data.get("itemId").toString());
             BigDecimal quantity = new BigDecimal(data.get("receivedQuantity").toString());
-            purchaseOrderService.receiveOrderItem(orderId, itemId, quantity, null, null);
+            purchaseOrderService.receiveOrderItem(orderId, itemId, quantity);
         }
         return Result.success();
     }

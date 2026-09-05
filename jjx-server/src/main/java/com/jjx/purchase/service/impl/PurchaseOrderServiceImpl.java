@@ -463,7 +463,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     @Override
     @Event(value = "purchase.item_received", bizId = "#orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
-    public int receiveOrderItem(Long orderId, Long itemId, BigDecimal receivedQuantity, String inspectionResult, String inspectionRemark) {
+    public int receiveOrderItem(Long orderId, Long itemId, BigDecimal receivedQuantity) {
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
@@ -497,14 +497,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
         item.setReceivedQuantity(newReceivedQuantity);
 
-        // 更新检验结果
-        if (StringUtils.isNotEmpty(inspectionResult)) {
-            item.setInspectionResult(inspectionResult);
-        }
-        if (StringUtils.isNotEmpty(inspectionRemark)) {
-            item.setInspectionRemark(inspectionRemark);
-        }
-
         // 更新收货状态
         if (newReceivedQuantity.compareTo(item.getQuantity()) >= 0) {
             item.setReceiptStatus(ReceiptStatusEnum.COMPLETED.getValue());
@@ -523,16 +515,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         inboundService.createInboundRecordFromPurchase(orderId);
 
         return result;
-    }
-
-    /**
-     * 是否增加良品库存（单条/批量收货共用）：
-     * 未检验(空)、PASS、合格 → 入库；不合格/FAIL、部分合格 → 不入
-     */
-    private boolean shouldIncreaseStock(String inspectionResult) {
-        return StringUtils.isEmpty(inspectionResult)
-                || "PASS".equalsIgnoreCase(inspectionResult)
-                || "合格".equals(inspectionResult);
     }
 
     /**
@@ -1235,14 +1217,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                         + ", 本次" + itemDTO.getReceivedQuantity().stripTrailingZeros().toPlainString() + "）");
             }
             item.setReceivedQuantity(newReceivedQuantity);
-
-            // 更新检验结果
-            if (StringUtils.isNotEmpty(itemDTO.getInspectionResult())) {
-                item.setInspectionResult(itemDTO.getInspectionResult());
-            }
-            if (StringUtils.isNotEmpty(itemDTO.getInspectionRemark())) {
-                item.setInspectionRemark(itemDTO.getInspectionRemark());
-            }
 
             // 更新收货状态
             if (newReceivedQuantity.compareTo(item.getQuantity()) >= 0) {

@@ -50,14 +50,5 @@ public class PurchaseOrderReceiveDTO {
         @Positive(message = "收货数量必须大于0")
         private BigDecimal receivedQuantity;
 
-        /**
-         * 检验结果（合格/不合格/部分合格）
-         */
-        private String inspectionResult;
-
-        /**
-         * 检验备注
-         */
-        private String inspectionRemark;
     }
 }

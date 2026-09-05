@@ -117,11 +117,9 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
      * @param orderId 订单ID
      * @param itemId 明细ID
      * @param receivedQuantity 收货数量
-     * @param inspectionResult 检验结果
-     * @param inspectionRemark 检验备注
      * @return 结果
      */
-    int receiveOrderItem(Long orderId, Long itemId, BigDecimal receivedQuantity, String inspectionResult, String inspectionRemark);
+    int receiveOrderItem(Long orderId, Long itemId, BigDecimal receivedQuantity);
 
     /**
      * 批量收货操作
