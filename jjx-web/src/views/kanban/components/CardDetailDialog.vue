@@ -151,6 +151,10 @@
         />
       </div>
     </div>
+    <template #footer>
+      <el-button @click="onClose">关闭</el-button>
+      <el-button v-if="jumpTarget" type="primary" @click="goToBiz">去处理</el-button>
+    </template>
   </el-dialog>
 </template>
 
@@ -159,6 +163,8 @@ import { ref, computed, watch } from 'vue'
 import type { TagType } from '@/types'
 import type { BoardCard } from '@/views/kanban/types/board'
 import http from '@/utils/request'
+import { useRouter } from 'vue-router'
+import { resolveJump, resolveModulePage } from '@/utils/bizJump'
 
 const props = defineProps<{
   visible: boolean
@@ -168,6 +174,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:visible': [value: boolean]
 }>()
+const router = useRouter()
 
 /** 完整任务详情（dev/office 走 /kanban/board/{module}/tasks/{taskId}） */
 const taskDetail = ref<any>(null)
@@ -232,6 +239,26 @@ const visible = computed({
   get: () => props.visible,
   set: (val: boolean) => emit('update:visible', val),
 })
+
+const jumpTarget = computed(() => {
+  // dev/emergency 是开发需求/紧急事项卡，无业务单据可跳（方案确认范围）
+  if (props.card?.templateType === 'dev' || props.card?.templateType === 'emergency') return null
+  if (taskDetail.value) {
+    return (
+      resolveJump(taskDetail.value.sourceEvent || '', taskDetail.value.bizId) ||
+      (resolveModulePage(taskDetail.value.bizType || '')
+        ? { path: resolveModulePage(taskDetail.value.bizType || '') as string }
+        : null)
+    )
+  }
+  return props.card?.templateType === 'production' ? { path: '/production/order' } : null
+})
+
+function goToBiz() {
+  if (!jumpTarget.value) return
+  visible.value = false
+  router.push(jumpTarget.value)
+}
 
 function priorityLabel(p?: string): string {
   const map: Record<string, string> = { urgent: '紧急', high: '高', normal: '普通', low: '低' }

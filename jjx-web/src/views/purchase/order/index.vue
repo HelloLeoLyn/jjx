@@ -422,6 +422,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import type { FormInstance } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { PurchaseOrderVO, PurchaseOrderQuery } from '@/types/purchase/order'
@@ -454,6 +455,7 @@ import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import {
+  getOrder,
   copyOrder,
   exportOrder as apiExportOrder,
   cancleOrder,
@@ -462,6 +464,8 @@ import { download } from '@/utils/format'
 
 // 使用Composables
 const { orderList, total, loading, loadData } = usePurchaseOrder()
+const route = useRoute()
+const router = useRouter()
 const { stats, loadStats } = usePurchaseOrderStats()
 const { submitForApproval, batchSubmitForApproval } = usePurchaseOrderOperations()
 
@@ -567,9 +571,20 @@ const statCards = computed(() => {
 })
 
 // 生命周期
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await loadData(queryParams)
   loadStats()
+  const bizId = Number(route.query.bizId)
+  if (!bizId) return
+  try {
+    const res = await getOrder(bizId)
+    if (!res?.data) return
+    handleView(res.data)
+    const { bizId: _bizId, ...query } = route.query
+    router.replace({ path: route.path, query })
+  } catch {
+    // 目标不存在或无权限时保持正常列表
+  }
 })
 
 // 获取列表数据

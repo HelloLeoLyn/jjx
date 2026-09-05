@@ -5,6 +5,15 @@
         {{ priorityLabel }}
       </el-tag>
       <span class="card-id">{{ card.id }}-{{ card.taskCode }}</span>
+      <el-button
+        v-if="jumpTarget"
+        class="jump-btn"
+        link
+        type="primary"
+        :icon="Position"
+        title="去处理"
+        @click.stop="goToBiz"
+      />
     </div>
 
     <div class="card-title">{{ card.title }}</div>
@@ -57,11 +66,20 @@
 import { computed } from 'vue'
 import type { TagType } from '@/types'
 import type { BoardCard } from '@/views/kanban/types/board'
-import { Goods, Ticket, UserFilled, Warning, Clock, OfficeBuilding } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import { resolveJump } from '@/utils/bizJump'
+import { Goods, Ticket, UserFilled, Warning, Clock, OfficeBuilding, Position } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   card: BoardCard
 }>()
+const router = useRouter()
+
+const jumpTarget = computed(() =>
+  props.card.templateType === 'office'
+    ? resolveJump(String(props.card.extraData?.sourceEvent || ''), props.card.extraData?.bizId as string | number | null)
+    : null
+)
 
 const emit = defineEmits<{
   click: [cardId: string]
@@ -93,6 +111,10 @@ const isOverdue = computed(() => {
 
 function onClick() {
   emit('click', props.card.id)
+}
+
+function goToBiz() {
+  if (jumpTarget.value) router.push(jumpTarget.value)
 }
 </script>
 
@@ -155,6 +177,10 @@ function onClick() {
   color: #909399;
   font-size: 11px;
   font-family: monospace;
+}
+
+.jump-btn {
+  margin-left: auto;
 }
 
 .card-title {

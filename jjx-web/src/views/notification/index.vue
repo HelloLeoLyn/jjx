@@ -81,10 +81,16 @@
         </el-table-column>
         <el-table-column prop="senderName" label="发送人" width="120" />
         <el-table-column prop="sendTime" label="时间" width="180" />
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" v-if="!row.isRead" @click.stop="handleRead(row)">
-              标为已读
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :disabled="!resolveJump(row.bizType || '', row.bizId)"
+              @click.stop="handleRead(row)"
+            >
+              去处理
             </el-button>
             <el-button link type="danger" size="small" @click.stop="handleDelete(row)">
               删除
@@ -111,8 +117,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getNotificationPage, getUnreadCount, markAsRead, markAllAsRead, deleteNotification } from '@/api/notification'
 import type { NotificationVO, NotificationQuery } from '@/api/notification'
 import { useUserStore } from '@/store/modules/user'
+import { useRouter } from 'vue-router'
+import { resolveJump } from '@/utils/bizJump'
 
 const userStore = useUserStore()
+const router = useRouter()
 const currentUserId = computed(() => userStore.userId)
 
 const loading = ref(false)
@@ -165,8 +174,12 @@ function resetQuery() {
 
 async function handleRead(row: NotificationVO) {
   await markAsRead(row.notificationId)
-  ElMessage.success('已标为已读')
-  loadData()
+  const target = resolveJump(row.bizType || '', row.bizId)
+  if (target) {
+    router.push(target)
+  } else {
+    loadData()
+  }
 }
 
 async function handleMarkAllRead() {
@@ -184,7 +197,7 @@ async function handleDelete(row: NotificationVO) {
 }
 
 function handleRowClick(row: NotificationVO) {
-  if (!row.isRead) handleRead(row)
+  handleRead(row)
 }
 
 function handleRefresh() {

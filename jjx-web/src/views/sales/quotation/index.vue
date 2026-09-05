@@ -342,6 +342,7 @@ defineOptions({
 // 1. 基础导入
 // ============================================================
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { useTable } from '@/composables/useTable'
@@ -363,6 +364,8 @@ import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vu
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
+const route = useRoute()
+const router = useRouter()
 // ============================================================
 // 3. 状态选项
 // ============================================================
@@ -977,10 +980,21 @@ const handleReset = () => {
 // ============================================================
 // 19. 初始化
 // ============================================================
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await getList()
   loadStatistics()
   loadSalesPersons()
+  const bizId = Number(route.query.bizId)
+  if (!bizId) return
+  try {
+    const res = await quotationApi.getInfo(bizId)
+    if (!res?.data) return
+    handleView(res.data)
+    const { bizId: _bizId, ...query } = route.query
+    router.replace({ path: route.path, query })
+  } catch {
+    // 目标不存在或无权限时保持正常列表
+  }
 })
 </script>
 

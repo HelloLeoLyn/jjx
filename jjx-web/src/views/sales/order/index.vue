@@ -451,10 +451,11 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
@@ -885,8 +886,19 @@ const handleValidationCancel = () => {
 }
 
 // 组件挂载时获取数据
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await getList()
+  const bizId = Number(route.query.bizId)
+  if (!bizId) return
+  try {
+    const res = await orderApi.getOrder(bizId)
+    if (!res?.data) return
+    handleView(res.data)
+    const { bizId: _bizId, ...query } = route.query
+    router.replace({ path: route.path, query })
+  } catch {
+    // 目标不存在或无权限时保持正常列表
+  }
 })
 // 链路追踪抽屉
 const traceDrawerVisible = ref(false)

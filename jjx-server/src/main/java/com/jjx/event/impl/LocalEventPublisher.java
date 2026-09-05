@@ -112,6 +112,10 @@ public class LocalEventPublisher implements EventPublisher {
                     task.setTaskType(eventCode.contains("sample") ? "sample" : "general");
                     task.setStartTime(java.time.LocalDateTime.now());
                     task.setSourceEvent(eventCode);
+                    Long bizId = payloadLong(payload, "bizId");
+                    if (bizId != null) {
+                        task.setBizId(bizId);
+                    }
                     task.setAssignRole(assignRole);
                     // 业务类型：优先用事件配置的 biz_module（如 sales/purchase），回退 payload
                     Object bizTypeVal = payload != null ? payload.get("bizType") : null;

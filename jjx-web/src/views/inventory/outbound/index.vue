@@ -231,7 +231,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Refresh, Printer } from '@element-plus/icons-vue'
 import { outboundApi } from '@/api/inventory/outbound'
@@ -253,6 +253,7 @@ function showTrace(row: OutboundVO) {
 }
 
 const router = useRouter()
+const route = useRoute()
 
 // 2026-08-18：统一出库管理视图（含生产领料单，按出库类型筛选/标签区分）
 // 查询参数
@@ -420,8 +421,19 @@ const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger'
   return statusMap[status]
 }
 
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await getList()
+  const bizId = Number(route.query.bizId)
+  if (!bizId) return
+  try {
+    const res = await outboundApi.getById(String(bizId))
+    if (!res?.data) return
+    await handleView(res.data)
+    const { bizId: _bizId, ...query } = route.query
+    router.replace({ path: route.path, query })
+  } catch {
+    // 目标不存在或无权限时保持正常列表
+  }
 })
 </script>
 

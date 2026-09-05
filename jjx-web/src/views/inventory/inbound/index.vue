@@ -220,7 +220,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Download, Refresh } from '@element-plus/icons-vue'
 import { inboundApi } from '@/api/inventory/inbound'
@@ -233,6 +233,7 @@ import InboundApproveDialog from './components/InboundApproveDialog.vue'
 import type { InboundQueryParams, InboundVO } from '@/types/inventory/inbound'
 
 const router = useRouter()
+const route = useRoute()
 
 // 查询参数
 const queryParams = reactive<InboundQueryParams>({
@@ -451,8 +452,19 @@ const getStatusTag = (status?: number): 'success' | 'warning' | 'info' | 'danger
   return status === undefined || status === null ? undefined : statusMap[status]
 }
 
-onMounted(() => {
-  getList()
+onMounted(async () => {
+  await getList()
+  const bizId = Number(route.query.bizId)
+  if (!bizId) return
+  try {
+    const res = await inboundApi.getById(String(bizId))
+    if (!res?.data) return
+    handleView(res.data)
+    const { bizId: _bizId, ...query } = route.query
+    router.replace({ path: route.path, query })
+  } catch {
+    // 目标不存在或无权限时保持正常列表
+  }
 })
 </script>
 
