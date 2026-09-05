@@ -503,6 +503,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             qualityActionService.createFqcForExecution(executionId);
         }
 
+        // 聚合重算工单进度；与工序完工/FQC 保持同一事务，失败时统一回滚，避免状态与数量断链。
+        updateOrderCompletedQuantity(execution.getOrderId());
+
         log.info("工序执行完成成功, ID: {}, 是否最后有效工序: {}", executionId, unfinishedOtherExecutions == 0);
         return true;
     }
