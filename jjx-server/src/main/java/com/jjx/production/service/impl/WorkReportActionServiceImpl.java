@@ -14,6 +14,7 @@ import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.QualityInspectionVO;
 import com.jjx.production.domain.vo.WorkReportVO;
 import com.jjx.production.enums.ExecutionStatusEnum;
+import com.jjx.production.enums.ProductionTaskStatus;
 import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
@@ -288,11 +289,46 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             throw new BusinessException("报工状态已变化，请刷新后重试");
         }
         projectionService.recalculate(r.getExecutionId());
+        completeTaskWhenQualified(r, operatorName);
         compareProjectionAndWarn(r);
         log.info("审批通过 reportId={}, executionId={}, reviewer={}", reportId, r.getExecutionId(), operatorName);
         WorkReportVO result = readService.getById(reportId);
         result.setEventPublished(true);
         return result;
+    }
+
+    /** 审批事务内按报工 task_id 直达任务；自动完成失败只告警，不改变报工审批语义。 */
+    private void completeTaskWhenQualified(ProductionWorkReport report, String operatorName) {
+        if (report.getTaskId() == null) {
+            log.warn("报工审批后无法自动完成任务：reportId={} 缺少 taskId", report.getReportId());
+            return;
+        }
+        try {
+            ProductionTask task = productionTaskMapper.selectById(report.getTaskId());
+            if (task == null || ProductionTaskStatus.COMPLETED.getCode().equals(task.getStatus())) {
+                return;
+            }
+            BigDecimal approvedQualified = workReportMapper.sumTaskQualifiedQuantityByStatus(
+                    report.getTaskId(), WorkReportStatusEnum.APPROVED.getCode());
+            approvedQualified = approvedQualified == null ? BigDecimal.ZERO : approvedQualified;
+            if (task.getTaskQuantity() == null || approvedQualified.compareTo(task.getTaskQuantity()) < 0) {
+                return;
+            }
+            int affected = productionTaskMapper.markCompletedByApprovedReports(report.getTaskId(),
+                    ProductionTaskStatus.PENDING.getCode(), ProductionTaskStatus.ACTIVE.getCode(),
+                    ProductionTaskStatus.COMPLETED.getCode(),
+                    WorkReportStatusEnum.APPROVED.getCode(), operatorName);
+            if (affected == 1) {
+                log.info("报工合格量达标，任务自动完成: reportId={}, taskId={}, approvedQualified={}, taskQuantity={}",
+                        report.getReportId(), report.getTaskId(), approvedQualified, task.getTaskQuantity());
+            } else {
+                log.info("任务自动完成未命中（已完成或状态并发变化）: reportId={}, taskId={}",
+                        report.getReportId(), report.getTaskId());
+            }
+        } catch (Exception e) {
+            log.error("报工审批后自动完成任务失败: reportId={}, taskId={}",
+                    report.getReportId(), report.getTaskId(), e);
+        }
     }
 
     /** 审批重算后立即对账；异常告警不阻断已经成功的审批事务。 */

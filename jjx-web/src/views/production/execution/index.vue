@@ -1386,6 +1386,12 @@ const handleComplete = async (row: OperationExecutionVO) => {
     blockers.push(`已派出的任务还有 ${fmtQty(detailRootTask.value?.assignedQuantity)} 件未完成`)
   if (planned > 0 && qualified < planned)
     blockers.push(`合格数量 ${qualified}，未达到计划数量 ${planned}`)
+  if (blockers.length && detailRootTask.value?.allowedActions?.includes('COMPLETE'))
+    blockers.push(
+      `父级任务需负责人在电脑端任务管理中确认${
+        detailRootTask.value?.assigneeName ? `（负责人：${detailRootTask.value.assigneeName}）` : ''
+      }`
+    )
   if (blockers.length) {
     await ElMessageBox.alert(blockers.map((v) => `✗ ${v}`).join('\n'), '暂不能完成该工序', {
       type: 'warning',

@@ -444,9 +444,34 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             throw new BusinessException("该工序尚未生成生产任务，不能完工，请刷新后重试或联系管理员");
         }
         ProductionTask firstTask = productionTaskMapper.selectById(firstTaskId);
-        if (firstTask == null || !STATUS_COMPLETED.equals(firstTask.getStatus())) {
-            throw new BusinessException("该工序还有未完成事项，不能完工：请完成所有任务并处理待审批报工后再试");
+        if (firstTask == null) {
+            throw new BusinessException("该工序任务不存在，不能完工，请刷新后重试或联系管理员");
         }
+        if (!STATUS_COMPLETED.equals(firstTask.getStatus())) {
+            TaskTreeRowVO root = getDetail(firstTaskId);
+            List<String> blockers = new ArrayList<>();
+            if (root.getPendingQuantity() != null && root.getPendingQuantity().signum() > 0) {
+                blockers.add("还有 " + quantityText(root.getPendingQuantity()) + " 件报工待审批");
+            }
+            if (root.getRemainingQuantity() != null && root.getRemainingQuantity().signum() > 0) {
+                blockers.add("还有 " + quantityText(root.getRemainingQuantity()) + " 件任务未分配或未完成");
+            }
+            if (root.getAssignedQuantity() != null && root.getAssignedQuantity().signum() > 0) {
+                blockers.add("已派出的任务还有 " + quantityText(root.getAssignedQuantity()) + " 件未完成");
+            }
+            if (!withinCompletionTolerance(root.getCompletedQuantity(), root.getTaskQuantity())) {
+                blockers.add("合格数量 " + quantityText(root.getCompletedQuantity())
+                        + "，未达到计划数量 " + quantityText(root.getTaskQuantity()));
+            }
+            String owner = root.getAssigneeName();
+            blockers.add("父级任务需负责人在电脑端任务管理中确认"
+                    + (owner == null || owner.isBlank() ? "" : "（负责人：" + owner + "）"));
+            throw new BusinessException("该工序暂不能完工：\n✗ " + String.join("\n✗ ", blockers));
+        }
+    }
+
+    private static String quantityText(BigDecimal quantity) {
+        return (quantity == null ? BigDecimal.ZERO : quantity).stripTrailingZeros().toPlainString();
     }
 
     @Override
