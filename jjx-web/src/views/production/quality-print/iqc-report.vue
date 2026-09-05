@@ -17,9 +17,12 @@
         <div class="linked-print-title">进料检验报告</div>
         <div class="linked-print-meta">
           <div>记录编号：JJX-QR-037</div>
-          <div>收货单：{{ display(info.inboundNo) }}</div>
+          <div>验收单号：{{ display(info.inboundNo) }}</div>
+          <div>报告编号：{{ display(info.inboundNo) }}</div>
           <div>收货日期：{{ display(reportDate) }}</div>
-          <div>供应商：{{ display(info.supplierName) }}</div>
+          <div>供应厂商：{{ display(info.supplierName) }}</div>
+          <div>来料批量：{{ display(incomingQuantity) }}</div>
+          <div>抽检数量：{{ display(sampledQuantity) }}</div>
           <div>来源单号：{{ display(info.sourceNo) }}</div>
           <div>检验结果：{{ inspectionLabel }}</div>
         </div>
@@ -51,6 +54,14 @@
               <td>{{ display(item.rejectedQuantity) }}</td>
             </tr>
           </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="5">合计</th>
+              <td>{{ display(incomingQuantity) }}</td>
+              <td>{{ display(qualifiedTotal) }}</td>
+              <td>{{ display(rejectedTotal) }}</td>
+            </tr>
+          </tfoot>
         </table>
         <div class="linked-print-note">
           检验说明：当前系统无独立 IQC 单，本报告依据采购入库/收货单的检验字段与物料明细生成。<br />
@@ -323,6 +334,7 @@ const sampledQuantity = computed(() => {
     rejected = sumItems('rejectedQuantity')
   return qualified === undefined && rejected === undefined ? '' : (qualified || 0) + (rejected || 0)
 })
+const qualifiedTotal = computed(() => sumItems('qualifiedQuantity') ?? '')
 const rejectedTotal = computed(() => sumItems('rejectedQuantity') ?? '')
 const materialDescriptions = computed(() =>
   compactItemText((item) => [item.materialName, item.specification].filter(Boolean).join(' / '))
