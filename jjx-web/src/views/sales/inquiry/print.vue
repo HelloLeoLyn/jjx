@@ -11,8 +11,17 @@
     </div>
 
     <A4Canvas v-if="info" :padding-mm="15">
-      <PrintCompanyHeader variant="center" />
-      <div class="doc-title">样 品 需 求 单</div>
+      <div class="inquiry-company-header">
+        <PrintCompanyHeader variant="center" />
+        <img
+          v-if="qrDataUrl"
+          :src="qrDataUrl"
+          class="inquiry-qrcode"
+          alt="询价单二维码"
+          title="扫码识别询价单号"
+        />
+      </div>
+      <div class="doc-title">询价单</div>
 
       <div class="doc-info">
         <div><span class="info-label">询价单号</span>{{ info.inquiryNo || '-' }}</div>
@@ -69,12 +78,14 @@ import { inquiryApi, type InquiryBase } from '@/api/sales/inquiry'
 import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
+import QRCode from 'qrcode'
 
 const route = useRoute()
 const router = useRouter()
 const inquiryId = Number(route.query.inquiryId)
 const info = ref<InquiryBase>()
 const loading = ref(false)
+const qrDataUrl = ref('')
 
 const contactText = computed(() => {
   const person = info.value?.contactPerson || ''
@@ -83,6 +94,16 @@ const contactText = computed(() => {
 })
 
 const drawingText = computed(() => (info.value?.hasDrawing ? '有图纸' : '无图纸'))
+
+/** 生成询价单二维码；使用高分辨率源图保证纸张打印清晰度 */
+async function genQr() {
+  if (!info.value?.inquiryNo) return
+  try {
+    qrDataUrl.value = await QRCode.toDataURL(info.value.inquiryNo, { width: 256, margin: 1 })
+  } catch {
+    qrDataUrl.value = ''
+  }
+}
 
 async function handlePrint() {
   if (!info.value) return
@@ -104,6 +125,7 @@ async function loadData() {
   try {
     const response = await inquiryApi.getInfo(inquiryId)
     info.value = response.data || undefined
+    await genQr()
   } catch {
     ElMessage.error('询价单打印数据加载失败')
   } finally {
@@ -138,6 +160,22 @@ onMounted(loadData)
 .toolbar-tip {
   color: #606266;
   font-size: 14px;
+}
+
+.inquiry-company-header {
+  position: relative;
+}
+
+.inquiry-qrcode {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 72px;
+  height: 72px;
+  padding: 3px;
+  border: 1px solid #dcdfe6;
+  background: #fff;
+  box-sizing: border-box;
 }
 
 .doc-title {
