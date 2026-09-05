@@ -485,7 +485,7 @@
               >完成</el-button
             >
             <el-button
-              v-if="[ExecutionStatusEnum.EXECUTING.value, ExecutionStatusEnum.COMPLETED.value].includes(row.executionStatus)"
+              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
               type="warning"
               link
               icon="WarningFilled"
