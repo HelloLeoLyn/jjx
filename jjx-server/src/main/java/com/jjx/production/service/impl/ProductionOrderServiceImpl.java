@@ -1428,13 +1428,29 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             return;
         }
 
+        // 2026-09-05 父子结构：父行 = 工序（1 父行 → 1 execution）；子行 = 组合作业项（合并进 jobs 快照）
+        // 兼容：纯平铺旧数据（无任何子行）回退按行生成
+        boolean hasChildRows = routingItems.stream().anyMatch(i -> i.getParentId() != null);
+        java.util.List<EngineeringRoutingItem> opRows = hasChildRows
+                ? routingItems.stream().filter(i -> i.getParentId() == null)
+                .collect(java.util.stream.Collectors.toList())
+                : routingItems;
+        if (opRows.isEmpty()) {
+            log.warn("工艺路线 {} 只有子行无父行（数据异常），跳过工序生成", routingId);
+            return;
+        }
+        java.util.Map<Long, java.util.List<EngineeringRoutingItem>> jobMap = hasChildRows
+                ? routingItems.stream().filter(i -> i.getParentId() != null)
+                .collect(java.util.stream.Collectors.groupingBy(EngineeringRoutingItem::getParentId))
+                : java.util.Collections.emptyMap();
+
         long daySpan = planStartDate != null && planEndDate != null ?
                 java.time.temporal.ChronoUnit.DAYS.between(planStartDate, planEndDate) : 0;
-        long totalSteps = routingItems.size();
+        long totalSteps = opRows.size();
         long daysPerStep = totalSteps > 0 ? Math.max(1, daySpan / totalSteps) : 1;
 
-        for (int i = 0; i < routingItems.size(); i++) {
-            EngineeringRoutingItem item = routingItems.get(i);
+        for (int i = 0; i < opRows.size(); i++) {
+            EngineeringRoutingItem item = opRows.get(i);
 
             ProductionOperationExecution execution = new ProductionOperationExecution();
             execution.setOrderId(orderId);
@@ -1442,7 +1458,38 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             // 2026-08-12：印刷等自定义工序透传 大类/名称/计划参数（生产侧接入）
             execution.setMajorCategory(item.getMajorCategory() != null ? item.getMajorCategory() : "ASSEMBLY");
             execution.setProcessName(item.getProcessName());
-            execution.setCustomProcessParams(item.getCustomProcessParams());
+            // 组合工序：父行 params 保留，子作业合并为 jobs 快照（2026-09-05）
+            java.util.List<EngineeringRoutingItem> jobs = jobMap.get(item.getItemId());
+            String params = item.getCustomProcessParams();
+            if (jobs != null && !jobs.isEmpty()) {
+                cn.hutool.json.JSONObject merged = new cn.hutool.json.JSONObject();
+                if (params != null && !params.isBlank()) {
+                    try {
+                        merged = new cn.hutool.json.JSONObject(params);
+                    } catch (Exception ignored) {
+                        // 非法 JSON 忽略，用空对象重建
+                    }
+                }
+                cn.hutool.json.JSONArray jobArr = new cn.hutool.json.JSONArray();
+                for (EngineeringRoutingItem j : jobs) {
+                    cn.hutool.json.JSONObject jo = new cn.hutool.json.JSONObject();
+                    jo.set("processId", j.getProcessId());
+                    jo.set("name", j.getProcessName());
+                    if (j.getCustomLaborHours() != null) {
+                        jo.set("laborHours", j.getCustomLaborHours());
+                    }
+                    if (j.getCustomMachineHours() != null) {
+                        jo.set("machineHours", j.getCustomMachineHours());
+                    }
+                    if (j.getCustomProcessParams() != null) {
+                        jo.set("params", j.getCustomProcessParams());
+                    }
+                    jobArr.add(jo);
+                }
+                merged.set("jobs", jobArr);
+                params = merged.toString();
+            }
+            execution.setCustomProcessParams(params);
             execution.setProcessOrder(item.getProcessOrder());
 
             // WP-E2E-BUG-01 修复：转工单生成的所有 Execution 一律 PENDING/待执行
@@ -1452,7 +1499,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             // 按工序分配时间
             if (planStartDate != null && planEndDate != null) {
                 LocalDate stepStart = planStartDate.plusDays(i * daysPerStep);
-                LocalDate stepEnd = i == routingItems.size() - 1 ?
+                LocalDate stepEnd = i == opRows.size() - 1 ?
                         planEndDate : planStartDate.plusDays((i + 1) * daysPerStep - 1);
                 execution.setPlannedStartTime(stepStart.atStartOfDay());
                 execution.setPlannedEndTime(stepEnd.atTime(23, 59, 59));
@@ -1476,7 +1523,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             productionTaskService.createFirstTask(execution.getExecutionId(), execution.getInputQuantity());
         }
 
-        log.info("已为工单 {} 生成 {} 个工序执行记录", orderId, routingItems.size());
+        log.info("已为工单 {} 生成 {} 个工序执行记录", orderId, opRows.size());
     }
 
     @Override

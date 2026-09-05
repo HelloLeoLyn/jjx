@@ -100,4 +100,10 @@ public class EngineeringRoutingItemDTO {
      * 可选工序：0-必做,1-可选
      */
     private Integer isOptional;
+
+    /** 2026-09-05 父子结构：子行挂父行（父行 parentId=null） */
+    private Long parentId;
+
+    /** 2026-09-05 父子结构：父行的组合作业项（保存时后端展开落子行） */
+    private java.util.List<EngineeringRoutingItemDTO> children;
 }

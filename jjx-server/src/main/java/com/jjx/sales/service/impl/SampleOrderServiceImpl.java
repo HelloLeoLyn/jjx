@@ -959,6 +959,97 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return orderMapper.selectById(orderId);
     }
 
+    // ==================== 组合工序父子结构（2026-09-05 Leo 定稿 逻辑2） ====================
+
+    /** 转标准行数据载体：group_id 非空且同组多行 = 组合工序；否则独立工序（父行直接带作业） */
+    private static class RoutingRowData {
+        Long processId;
+        String majorCategory;
+        String processName;
+        java.math.BigDecimal laborHours;
+        java.math.BigDecimal machineHours;
+        String processParams;
+        String description;
+        String processCategory;
+        Long groupId;
+        String groupName;
+        Integer groupOrder;
+        Integer indexNumber;
+
+        RoutingRowData(Long processId, String majorCategory, String processName,
+                       java.math.BigDecimal laborHours, java.math.BigDecimal machineHours,
+                       String processParams, String description, String processCategory,
+                       Long groupId, String groupName, Integer groupOrder, Integer indexNumber) {
+            this.processId = processId;
+            this.majorCategory = majorCategory;
+            this.processName = processName;
+            this.laborHours = laborHours;
+            this.machineHours = machineHours;
+            this.processParams = processParams;
+            this.description = description;
+            this.processCategory = processCategory;
+            this.groupId = groupId;
+            this.groupName = groupName;
+            this.groupOrder = groupOrder;
+            this.indexNumber = indexNumber;
+        }
+    }
+
+    /**
+     * 按组合分组写入工艺明细（父子结构，2026-09-05）：
+     * - 独立行（groupId=null）：父行直接带作业（process_id/参数/工时），无子行
+     * - 组合（同 groupId 多行）：父行=壳（process_id 空、名=作业连接名如"冲孔+面板"、工时=组内和），作业项全部落子行(parent_id)
+     * 返回父行数（=工序数）；子行 process_order 置空、group 字段置空
+     */
+    private int insertRoutingRowsGrouped(Long routingId, java.util.List<RoutingRowData> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return 0;
+        }
+        java.util.LinkedHashMap<Long, java.util.List<RoutingRowData>> groups = new java.util.LinkedHashMap<>();
+        long soloSeq = java.lang.Long.MIN_VALUE;
+        for (RoutingRowData r : rows) {
+            Long key = r.groupId != null ? r.groupId : soloSeq++;
+            groups.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(r);
+        }
+        int step = 1;
+        for (java.util.List<RoutingRowData> g : groups.values()) {
+            boolean combo = g.get(0).groupId != null && g.size() > 1;
+            RoutingRowData first = g.get(0);
+            java.math.BigDecimal labor = g.stream().map(x -> x.laborHours).filter(java.util.Objects::nonNull)
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+            java.math.BigDecimal machine = g.stream().map(x -> x.machineHours).filter(java.util.Objects::nonNull)
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+            String opName = combo
+                    ? g.stream().map(x -> x.processName).filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining("+"))
+                    : first.processName;
+            routingItemMapper.insertItem(routingId,
+                    combo ? null : first.processId,
+                    first.majorCategory != null ? first.majorCategory : "ASSEMBLY",
+                    opName,
+                    step++,
+                    labor, machine,
+                    combo ? null : first.processParams,
+                    combo ? "打样传承组合: " + opName : first.description,
+                    first.processCategory,
+                    // 2026-09-05 组合语义由父子行表达，group_* 字段退役不再落库
+                    null, null, null,
+                    combo ? null : first.indexNumber,
+                    null);
+            if (combo) {
+                Long parentId = routingItemMapper.selectLastInsertId();
+                for (RoutingRowData j : g) {
+                    // 子行 process_order 置空（列已允许 NULL；组合语义由 parent_id 表达）
+                    routingItemMapper.insertItem(routingId, j.processId,
+                            j.majorCategory != null ? j.majorCategory : "ASSEMBLY",
+                            j.processName, null, j.laborHours, j.machineHours, j.processParams,
+                            j.description, j.processCategory, null, null, null, j.indexNumber, parentId);
+                }
+            }
+        }
+        return step - 1;
+    }
+
     /**
      * 退回后重新打样（REJECTED → ENGINEERING，轮次已+1）
      */
@@ -1690,6 +1781,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         java.util.Map<Integer, Long> orderGroupMap = new java.util.HashMap<>();
                         // 组合顺序号（2026-08-11：修复转移后编辑页组合排序）
                         java.util.Map<Integer, Integer> orderGroupSeqMap = new java.util.HashMap<>();
+                        // 2026-09-05 父子结构：先收集行，循环后统一按组合分组插父+子
+                        java.util.List<RoutingRowData> routingRows = new java.util.ArrayList<>();
                         for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
                             // 方案A适配：优先用 std_process_id 精确关联作业项目，无则按名称匹配兑底（兼容旧数据/自定义工序）
                             com.jjx.product.domain.entity.ProductStandardProcess std = null;
@@ -1730,24 +1823,24 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                             String processParams = (sp.getCustomProcessParams() != null && !sp.getCustomProcessParams().isEmpty())
                                     ? sp.getCustomProcessParams()
                                     : sp.getProcessNote();
-                            routingItemMapper.insertItem(newRouting.getRoutingId(),
+                            routingRows.add(new RoutingRowData(
                                     stdProcessId != null ? stdProcessId : null,
-                                    // 2026-08-12：大类透传（PRINT印刷/ASSEMBLY组装）
                                     sp.getMajorCategory() != null ? sp.getMajorCategory() : "ASSEMBLY",
                                     sp.getProcessName(),
-                                    stepOrder++, laborHours, machineHours,
+                                    laborHours, machineHours,
                                     processParams,
                                     "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
                                     category, groupId, groupName, groupOrder,
-                                    sp.getIndexNumber()); // DEV-777：打样下标透传到工艺路线
+                                    sp.getIndexNumber())); // DEV-777：打样下标透传到工艺路线
                         }
+                        int processCnt = insertRoutingRowsGrouped(newRouting.getRoutingId(), routingRows);
                         newRouting.setTotalLaborHours(totalLabor);
                         newRouting.setTotalMachineHours(totalMachine);
-                        newRouting.setProcessCount(processes.size());
+                        newRouting.setProcessCount(processCnt);
                         routingService.updateById(newRouting);
                         builtRoutingId = newRouting.getRoutingId();
                         routingAction = "CREATE";
-                        details.add("工艺路线[" + newRouting.getRoutingCode() + "]生成草稿(" + processes.size() + "道工序)");
+                        details.add("工艺路线[" + newRouting.getRoutingCode() + "]生成草稿(" + processCnt + "道工序)");
                         // 回填产品当前Routing版本号
                         if (pid != null) {
                             com.jjx.product.domain.entity.Product routingVerUpdate = new com.jjx.product.domain.entity.Product();
@@ -2151,6 +2244,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     java.util.Map<Long, Long> tempToRealGroupId = new java.util.HashMap<>();
                     // 组合顺序号（2026-08-11：修复转移后编辑页组合排序）
                     java.util.Map<Long, Integer> tempGroupSeqMap = new java.util.HashMap<>();
+                        // 2026-09-05 父子结构：收集行，循环后统一按组合分组插父+子（替换逐行 insertItem）
+                        java.util.List<RoutingRowData> routingRows = new java.util.ArrayList<>();
                     for (com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping pm : processMappings) {
                         // 2026-08-12：印刷工序（无标准工序但有自定义参数）也写入路线，参数原样保留
                         boolean hasCustomParams = pm.getCustomProcessParams() != null && !pm.getCustomProcessParams().isBlank();
@@ -2178,12 +2273,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     : processCategoryToGroupName(category);
                             groupOrder = tempGroupSeqMap.computeIfAbsent(pm.getGroupId(), k -> tempGroupSeqMap.size() + 1);
                         }
-                        routingItemMapper.insertItem(newRouting.getRoutingId(),
+                        routingRows.add(new RoutingRowData(
                                 stdProcessId,
                                 // 2026-08-12：大类透传（印刷工序=PRINT，其余组装）
                                 hasCustomParams ? "PRINT" : "ASSEMBLY",
                                 pm.getProcessName(),
-                                stepOrder++,
                                 laborHours,
                                 machineHours,
                                 // 2026-08-12：透传印刷自定义参数（色号/油墨/网框）到工艺路线
@@ -2193,15 +2287,16 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 groupId,
                                 groupName,
                                 groupOrder,
-                                pm.getIndexNumber()); // DEV-777：对照版下标透传到工艺路线
+                                pm.getIndexNumber())); // DEV-777：对照版下标透传到工艺路线
                     }
+                    int processCnt = insertRoutingRowsGrouped(newRouting.getRoutingId(), routingRows);
                     newRouting.setTotalLaborHours(totalLabor);
                     newRouting.setTotalMachineHours(totalMachine);
-                    newRouting.setProcessCount(processMappings.size());
+                    newRouting.setProcessCount(processCnt);
                     routingService.updateById(newRouting);
                     builtRoutingId = newRouting.getRoutingId();
                     routingAction = "CREATE";
-                    details.add("工艺路线[" + newRouting.getRoutingCode() + "]生成草稿(" + processMappings.size() + "道工序)");
+                    details.add("工艺路线[" + newRouting.getRoutingCode() + "]生成草稿(" + processCnt + "道工序)");
                     if (pid != null) {
                         com.jjx.product.domain.entity.Product routingVerUpdate = new com.jjx.product.domain.entity.Product();
                         routingVerUpdate.setProductId(pid);

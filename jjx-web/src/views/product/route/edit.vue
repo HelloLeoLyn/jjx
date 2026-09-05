@@ -180,7 +180,38 @@ const nextVersionHint = computed(() => {
 /** 是否有内容变更（工序增删改） */
 const hasChanges = ref(false)
 
-/** 生成 items 快照（忽略 itemId/groupId 等易变字段，只比工序构成业务字段） */
+/** 后端明细 → 编辑器行（2026-09-05 支持父子：children 递归映射） */
+function mapRouteItem(item: any): any {
+  return {
+    itemId: item.itemId || 0,
+    routingId: item.routingId || 0,
+    parentId: item.parentId ?? null,
+    groupId: item.groupId || undefined,
+    groupOrder: item.groupOrder || 0,
+    groupName: item.groupName || '',
+    processId: item.processId ?? undefined,
+    processOrder: item.processOrder || 0,
+    customLaborHours: item.customLaborHours || 0,
+    customMachineHours: item.customMachineHours || 0,
+    customProcessParams: item.customProcessParams || '',
+    description: item.description || '',
+    processCategory: item.processCategory || '',
+    majorCategory: item.majorCategory || 'ASSEMBLY',
+    // 2026-08-12：印刷行名称兜底（customProcessParams.printName）
+    processName:
+      item.processName ||
+      (item.majorCategory === 'PRINT' ? printNameFromParams(item.customProcessParams) : '') ||
+      '',
+    // 2026-08-11 修复：补齐显示字段（否则编辑页图标/文字/下标全丢）
+    processCode: item.processCode || '',
+    icon: item.icon || '',
+    hasIndex: item.hasIndex ?? 0,
+    indexNumber: item.indexNumber ?? null,
+    children: (item.children || []).map(mapRouteItem),
+  }
+}
+
+/** 生成 items 快照（忽略 itemId/groupId 等易变字段，只比工序构成业务字段；2026-09-05 含 children） */
 function snapshotItems(items: any[]): string {
   return JSON.stringify((items || []).map((it) => ({
     processId: it.processId,
@@ -192,6 +223,12 @@ function snapshotItems(items: any[]): string {
     customMachineHours: it.customMachineHours,
     isOptional: it.isOptional,
     indexNumber: it.indexNumber,
+    children: (it.children || []).map((c: any) => ({
+      processId: c.processId,
+      processName: c.processName,
+      customLaborHours: c.customLaborHours,
+      customMachineHours: c.customMachineHours,
+    })),
   })))
 }
 
@@ -234,28 +271,7 @@ const loadRouteDetail = async () => {
       return
     }
 
-    const items = (detail.items || []).map((item: any) => ({
-      itemId: item.itemId || 0,
-      routingId: item.routingId || 0,
-      groupId: item.groupId || undefined,
-      groupOrder: item.groupOrder || 0,
-      groupName: item.groupName || '',
-      processId: item.processId ?? undefined,
-      processOrder: item.processOrder || 0,
-      customLaborHours: item.customLaborHours || 0,
-      customMachineHours: item.customMachineHours || 0,
-      customProcessParams: item.customProcessParams || '',
-      description: item.description || '',
-      processCategory: item.processCategory || '',
-      majorCategory: item.majorCategory || 'ASSEMBLY',
-      // 2026-08-12：印刷行名称兜底（customProcessParams.printName）
-      processName: item.processName || (item.majorCategory === 'PRINT' ? printNameFromParams(item.customProcessParams) : '') || '',
-      // 2026-08-11 修复：补齐显示字段（否则编辑页图标/文字/下标全丢）
-      processCode: item.processCode || '',
-      icon: item.icon || '',
-      hasIndex: item.hasIndex ?? 0,
-      indexNumber: item.indexNumber ?? null,
-    }))
+    const items = (detail.items || []).map(mapRouteItem)
 
     Object.assign(formData, {
       routingId: detail.routingId,

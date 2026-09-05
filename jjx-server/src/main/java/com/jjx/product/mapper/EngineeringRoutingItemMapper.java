@@ -25,6 +25,7 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
             "i.create_time, i.update_time, " +
             "i.major_category, " +
             "i.group_id, i.group_order, i.group_name, " +
+            "i.parent_id, " +
             "i.index_number, i.precondition, i.precondition_display, i.is_optional, " +
             // 2026-08-12：印刷等自定义工序名称冗余在 i.process_name（COALESCE 兑底）
             "p.process_id, p.process_code, COALESCE(p.process_name, i.process_name) AS process_name, " +

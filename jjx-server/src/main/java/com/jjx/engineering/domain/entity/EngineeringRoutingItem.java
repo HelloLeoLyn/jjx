@@ -34,6 +34,9 @@ public class EngineeringRoutingItem {
      */
     private Integer groupOrder;
 
+    /** 2026-09-05 父子结构：组合工序的作业项挂父行（父行 parent_id=null）；独立工序仅父行 */
+    private Long parentId;
+
     /**
      * 组合名称
      */

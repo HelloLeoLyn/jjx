@@ -25,6 +25,11 @@ public class EngineeringRoutingItemVO {
     private Long groupId;
     private Integer groupOrder;
     private String groupName;
+    /** 2026-09-05 父子结构：父行 parentId=null；组合作业项挂父行 */
+    private Long parentId;
+
+    /** 2026-09-05 父子结构：父行的组合作业项（回显组树） */
+    private java.util.List<EngineeringRoutingItemVO> children;
 
     // ====================================================
 

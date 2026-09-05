@@ -167,6 +167,10 @@ export interface EngineeringRoutingItemVO {
   isOptional?: number
   /** 标准工序是否带下标 */
   hasIndex?: number
+  /** 2026-09-05 父子结构：子行挂父行 */
+  parentId?: number | null
+  /** 2026-09-05 父子结构：组合工序的作业项（父行 children，any[] 避免自引用类型进 FormRules 深度遍历报 TS2615） */
+  children?: any[]
 }
 
 /**

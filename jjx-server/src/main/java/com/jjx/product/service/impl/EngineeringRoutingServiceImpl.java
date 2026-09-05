@@ -322,7 +322,24 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         vo.setIsCurrentName(routing.getIsCurrent() == 1 ? "是" : "否");
 
         // 获取明细（按 group_order, process_order 排序）
-        List<EngineeringRoutingItemVO> items = routingDetailMapper.selectVOsByRoutingId(routingId);
+        List<EngineeringRoutingItemVO> allItems = routingDetailMapper.selectVOsByRoutingId(routingId);
+        // 2026-09-05 父子结构：父行 = 工序；子行挂父行 children 组树；纯平铺旧数据（无子行）原样返回
+        boolean hasChildRows = allItems.stream().anyMatch(i -> i.getParentId() != null);
+        List<EngineeringRoutingItemVO> items;
+        if (hasChildRows) {
+            Map<Long, List<EngineeringRoutingItemVO>> childMap = allItems.stream()
+                .filter(i -> i.getParentId() != null)
+                .collect(Collectors.groupingBy(EngineeringRoutingItemVO::getParentId));
+            items = allItems.stream().filter(i -> i.getParentId() == null).collect(Collectors.toList());
+            for (EngineeringRoutingItemVO parent : items) {
+                List<EngineeringRoutingItemVO> children = childMap.get(parent.getItemId());
+                if (children != null) {
+                    parent.setChildren(children);
+                }
+            }
+        } else {
+            items = allItems;
+        }
         vo.setItems(items);
 
         // 计算组合汇总信息
@@ -452,52 +469,58 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     private void saveItems(Long routingId, List<EngineeringRoutingItemDTO> itemDTOs) {
         if (itemDTOs == null || itemDTOs.isEmpty()) return;
 
-        // 第一步：收集所有有组合的工序，按临时 groupId 分组
-        Map<Long, List<EngineeringRoutingItemDTO>> groupMap = itemDTOs.stream()
-            .filter(item -> item.getGroupId() != null)
-            .collect(Collectors.groupingBy(EngineeringRoutingItemDTO::getGroupId));
-
-        // 第二步：为每个组合生成一个真实的 groupId
-        Map<Long, Long> tempToRealGroupId = new HashMap<>();
-        for (Long tempGroupId : groupMap.keySet()) {
-            tempToRealGroupId.put(tempGroupId, generateGroupId());
-        }
-
-        // 第三步：DTO 转 Entity 并统一保存
+        // 2026-09-05 父子结构落库：每个 dto = 一道工序（父行），children = 组合作业项（子行）
+        // 兼容旧平铺数据：无 children 的行作为单作业父行直接落（process_id 自带）
         int order = 1;
         for (EngineeringRoutingItemDTO dto : itemDTOs) {
-            EngineeringRoutingItem item = new EngineeringRoutingItem();
-            BeanUtil.copyProperties(dto, item);
-            item.setItemId(null);       // 新增模式
-            item.setRoutingId(routingId);
-            item.setProcessOrder(order++);  // 重新生成全局顺序
+            // 父行（工序）
+            EngineeringRoutingItem parent = buildItem(dto, routingId);
+            parent.setProcessOrder(order++); // 工序顺序 1..N
+            parent.setParentId(null);
+            parent.setGroupId(null);
+            parent.setGroupName(null);
+            parent.setGroupOrder(null);
+            routingDetailMapper.insert(parent); // MP 回填 itemId
 
-            // processId 无效(0/null)时置 null, 避免外键约束失败(fk_routing_detail_process)
-            if (item.getProcessId() != null && item.getProcessId() <= 0) {
-                item.setProcessId(null);
+            // 子行（组合作业项）：挂刚插入的父行
+            if (dto.getChildren() != null && !dto.getChildren().isEmpty()) {
+                for (EngineeringRoutingItemDTO childDto : dto.getChildren()) {
+                    EngineeringRoutingItem child = buildItem(childDto, routingId);
+                    child.setProcessOrder(null); // 子行无工序序号（列已允许 NULL）
+                    child.setParentId(parent.getItemId());
+                    child.setGroupId(null);
+                    child.setGroupName(null);
+                    child.setGroupOrder(null);
+                    routingDetailMapper.insert(child);
+                }
             }
-
-            // 空字符串转 null，避免数据库约束问题
-            if (item.getCustomProcessParams() != null && item.getCustomProcessParams().isBlank()) {
-                item.setCustomProcessParams(null);
-            }
-            if (item.getDescription() != null && item.getDescription().isBlank()) {
-                item.setDescription(null);
-            }
-            // 工序类别：空/无效时默认 MAIN（表 NOT NULL）
-            if (item.getProcessCategory() == null || item.getProcessCategory().isBlank()) {
-                item.setProcessCategory("MAIN");
-            }
-
-            // 如果有组合，替换临时 groupId 为真实 groupId
-            if (item.getGroupId() != null) {
-                Long realGroupId = tempToRealGroupId.get(item.getGroupId());
-                item.setGroupId(realGroupId);
-            }
-            // 没有组合的，groupId 保持 null
-
-            routingDetailMapper.insert(item);
         }
+    }
+
+    /** DTO → Entity 公共字段处理（2026-09-05 从原 saveItems 提取） */
+    private EngineeringRoutingItem buildItem(EngineeringRoutingItemDTO dto, Long routingId) {
+        EngineeringRoutingItem item = new EngineeringRoutingItem();
+        BeanUtil.copyProperties(dto, item);
+        item.setItemId(null);       // 新增模式
+        item.setRoutingId(routingId);
+        item.setProcessOrder(null); // 由调用方决定
+
+        // processId 无效(0/null)时置 null, 避免外键约束失败(fk_routing_detail_process)
+        if (item.getProcessId() != null && item.getProcessId() <= 0) {
+            item.setProcessId(null);
+        }
+        // 空字符串转 null，避免数据库约束问题
+        if (item.getCustomProcessParams() != null && item.getCustomProcessParams().isBlank()) {
+            item.setCustomProcessParams(null);
+        }
+        if (item.getDescription() != null && item.getDescription().isBlank()) {
+            item.setDescription(null);
+        }
+        // 工序类别：空/无效时默认 MAIN（表 NOT NULL）
+        if (item.getProcessCategory() == null || item.getProcessCategory().isBlank()) {
+            item.setProcessCategory("MAIN");
+        }
+        return item;
     }
 
     /**
