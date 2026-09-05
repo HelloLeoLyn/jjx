@@ -299,19 +299,51 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     public boolean startOrder(Long orderId) {
         log.info("启动生产工单: {}", orderId);
 
-        // 两段式事务门面：阶段一必须经独立 Bean 的 Spring 代理提交，不能使用本类自调用。
-        // 提交后再自动领料，确保 REQUIRES_NEW 回写 materialStatus 时不存在开工事务持有的工单行锁。
-        productionOrderStartTransactionService.startOrder(orderId);
-
-        // 生产领料自动出库（DEV-625）：开工时按 BOM 自动生成领料出库单，幂等（已存在跳过）
+        // 1514 用户定稿：1508 曾允许“领料失败仍开工”，现收紧为“零领料禁止开工、部分领料允许”。
+        // 自动领料及阶段一开工仍各自使用独立事务；先领料再开工，不会产生开工后的回滚补偿。
+        Exception materialOutboundFailure = null;
         try {
             inventoryOutboundService.createFromProduction(orderId);
         } catch (Exception e) {
-            log.warn("生产领料自动出库失败（开工已成功，可到生产领料页手工领料）: {}", e.getMessage());
+            materialOutboundFailure = e;
+            log.warn("生产领料自动出库失败，待检查最新领料状态决定是否允许开工: orderId={}", orderId, e);
         }
+
+        // 必须重新查询：自动领料在 REQUIRES_NEW 中回写 materialStatus，旧对象不能反映最新结果。
+        ProductionOrder latestOrder = getById(orderId);
+        if (latestOrder == null) {
+            throw new BusinessException("生产工单不存在: " + orderId);
+        }
+        if (hasNoMaterialPicked(latestOrder.getMaterialStatus())) {
+            String reason = getMaterialOutboundFailureReason(materialOutboundFailure);
+            throw new BusinessException("该工单未领到任何物料（自动领料失败：" + reason
+                    + "），请先补货并在领料页完成领料后再开始生产");
+        }
+
+        // materialStatus=1（部分/待发料）或 2（已领料）均可开工；已有领料单会在自动领料侧幂等跳过。
+        // 033 的追加领料仍由原入口处理，不受此处门槛影响。
+        productionOrderStartTransactionService.startOrder(orderId);
 
         log.info("生产工单启动成功, ID: {}", orderId);
         return true;
+    }
+
+    private static boolean hasNoMaterialPicked(Integer materialStatus) {
+        // 本领域当前既有约定：0=未领料、1=部分/待发料、2=已领料；暂无对应枚举。
+        return materialStatus == null || materialStatus <= 0;
+    }
+
+    private static String getMaterialOutboundFailureReason(Exception failure) {
+        if (failure == null) {
+            return "未生成领料单，请检查库存和物料配置";
+        }
+        if (failure instanceof BusinessException && StringUtils.isNotBlank(failure.getMessage())) {
+            // 业务异常可面向用户展示，但将实现术语换成业务表达；完整异常仅保留在日志中。
+            return failure.getMessage()
+                    .replaceAll("(?i)First Task", "首道生产任务")
+                    .replaceAll("(?i)BOM", "物料清单");
+        }
+        return "领料处理未成功，请检查库存和物料配置";
     }
 
     @Override
