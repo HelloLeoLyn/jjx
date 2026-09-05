@@ -187,6 +187,7 @@ export function useSampleWorkbench() {
   async function openHistoryCopy() {
     historyCopyVisible.value = true
     historySelected.value = null
+    historySelectedRound.value = null
     historyLoading.value = true
     try {
       // 2026-08-12 DEV-988：不再限已转量产(7)——查全部样品单（排除当前单），有工序即可复制
@@ -248,10 +249,13 @@ export function useSampleWorkbench() {
         planList.value.push(pc)
         added++
       }
-      // 印刷行追加到 printList（参数色号/油墨/网框随行）
+      // 印刷行追加到 printList（参数色号/油墨/网框随行；重置待做状态 + uid 防 key 冲突）
       let addedPrint = 0
       for (const r of printRows) {
-        printList.value.push(makePrintRow(r, printList.value.length + 1))
+        const row = makePrintRow(r, printList.value.length + 1)
+        row.status = 0
+        row.uid = `new-${genUid()}`
+        printList.value.push(row)
         addedPrint++
       }
       historyCopyVisible.value = false
@@ -263,6 +267,92 @@ export function useSampleWorkbench() {
     } finally {
       historyCopying.value = false
     }
+  }
+
+  // 复制本单指定历史轮工艺（同单多轮：Round N→任意历史轮，客户退回重做场景；追加到当前轮编辑区，保存后生效，DEV-20260905-007）
+  const copyPrevLoading = ref(false)
+  const historySelectedRound = ref<any>(null)
+  async function copyRoundFrom(roundNo: number) {
+    if (readonlyMode.value) return
+    if (!roundNo || roundNo <= 0) return
+    copyPrevLoading.value = true
+    try {
+      const res: any = await sampleOrderApi.listProcesses(orderId.value, roundNo)
+      const list: any[] = (res.data || []).sort(
+        (a: any, b: any) =>
+          (a.processOrder || 999) - (b.processOrder || 999) ||
+          (a.processId || 0) - (b.processId || 0)
+      )
+      if (!list.length) {
+        ElMessage.warning(`Round ${roundNo} 没有工序计划，无法复制`)
+        return
+      }
+      // 与跨单复制同语义：PRINT→印刷表，其余→按 processOrder 分组为卡片，追加不覆盖
+      const printRows = list.filter((p: any) => p.majorCategory === 'PRINT')
+      const assemblyRows = list.filter((p: any) => p.majorCategory !== 'PRINT')
+      const groups = new Map<number, any[]>()
+      for (const p of assemblyRows) {
+        const k = p.processOrder || 999
+        if (!groups.has(k)) groups.set(k, [])
+        groups.get(k)!.push(p)
+      }
+      let added = 0
+      for (const [, rows] of groups) {
+        const first = rows[0]
+        const enriched = rows.map((r: any) => {
+          const src2 = allProcesses.value.find((x: any) => x.processId === r.stdProcessId)
+          return src2
+            ? {
+                ...r,
+                processType: src2.processType,
+                processCategory: src2.processCategory,
+                icon: src2.icon,
+              }
+            : r
+        })
+        const pc = makeCard(enriched, {
+          processOrder: 0, // 追加，保存时重新编号
+          category: first.processCategory || '',
+          status: 0,
+          processNote: first.processNote || '',
+          materials: first.materials || null,
+        })
+        planList.value.push(pc)
+        added++
+      }
+      let addedPrint = 0
+      for (const r of printRows) {
+        const row = makePrintRow(r, printList.value.length + 1)
+        // 复制到新轮：重置为待做（源轮可能已完成/进行中）+ uid 重新生成（防跨轮重复复制 key 冲突）
+        row.status = 0
+        row.uid = `new-${genUid()}`
+        printList.value.push(row)
+        addedPrint++
+      }
+      ElMessage.success(
+        `已从 Round ${roundNo} 复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（追加到当前轮，保存后生效）`
+      )
+      historyCopyVisible.value = false
+    } catch (e: any) {
+      ElMessage.error(e?.message || '复制失败')
+    } finally {
+      copyPrevLoading.value = false
+    }
+  }
+
+  // 快捷入口：复制上一轮（同单 Round N→N+1）
+  async function copyPreviousRound() {
+    const cur = card.value?.sampleRound || 1
+    if (cur <= 1) return
+    await copyRoundFrom(cur - 1)
+  }
+
+  // 清空当前轮次编辑区（未保存内容丢弃；需再次保存才同步后端覆盖，2026-09-05 用户提出）
+  function clearCurrentRound() {
+    if (readonlyMode.value) return
+    planList.value = []
+    printList.value = []
+    ElMessage.success('已清空当前轮次内容（保存后生效）')
   }
 
   // 常用物料统计：优先产品线历史（同产品），不足则客户历史
@@ -1103,6 +1193,7 @@ export function useSampleWorkbench() {
         loadPlan(),
         loadBom(),
         loadEngFiles(),
+        loadCustomerFiles(),
         loadSummary(),
         loadAllProcesses(),
         loadFrequentMaterials(),
@@ -1236,6 +1327,26 @@ export function useSampleWorkbench() {
     }
   }
 
+  // 往来附件（客户/销售上传：退回修改/送样登记等，bizType=sample_order；2026-09-05 轻量版只读展示）
+  const customerFileList = ref<any[]>([])
+  async function loadCustomerFiles() {
+    if (!orderId.value) return
+    try {
+      const res = await request.get(
+        `/system/attachment/list?bizType=sample_order&bizId=${orderId.value}`
+      )
+      customerFileList.value = (res.data || []).map((a: any) => ({
+        id: a.id,
+        name: a.fileName,
+        url: a.filePath,
+        createBy: a.createBy || a.create_by || '',
+        time: a.createTime ? String(a.createTime).replace('T', ' ').slice(0, 16) : '',
+      }))
+    } catch {
+      customerFileList.value = []
+    }
+  }
+
   // 标记完成（dev-1788002406240：全部工序完成后才允许）
   async function handleMarkReady() {
     if (readonlyMode.value) return
@@ -1333,10 +1444,21 @@ export function useSampleWorkbench() {
   async function loadBom() {
     if (!orderId.value) return
     try {
-      const res = await sampleOrderApi.listProcesses(orderId.value)
+      const res = await sampleOrderApi.listProcesses(
+        orderId.value,
+        card.value?.sampleRound || undefined
+      )
       const procs = res.data || []
       const agg: any[] = []
-      for (const p of procs) {
+      const groups = new Map<string, any[]>()
+      for (const [index, p] of procs.entries()) {
+        const order = Number(p.processOrder)
+        const k = order > 0 ? `order-${order}` : `row-${index}`
+        if (!groups.has(k)) groups.set(k, [])
+        groups.get(k)!.push(p)
+      }
+      for (const rows of groups.values()) {
+        const p = rows[0]
         if (!p.materials) continue
         try {
           const mats = JSON.parse(p.materials)
@@ -1429,6 +1551,11 @@ export function useSampleWorkbench() {
     historyCopying,
     openHistoryCopy,
     confirmHistoryCopy,
+    copyPreviousRound,
+    copyRoundFrom,
+    copyPrevLoading,
+    historySelectedRound,
+    clearCurrentRound,
     loadFrequentMaterials,
     addFrequentMaterial,
     planTabs,
@@ -1494,6 +1621,7 @@ export function useSampleWorkbench() {
     bomList,
     engUploadRef,
     engFileList,
+    customerFileList,
     goBack,
     loadDetail,
     formatTime,
@@ -1507,6 +1635,7 @@ export function useSampleWorkbench() {
     engUploadFile,
     engRemoveFile,
     loadEngFiles,
+    loadCustomerFiles,
     handleMarkReady,
     loadPlan,
     loadBom,
