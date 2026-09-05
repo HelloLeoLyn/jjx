@@ -65,6 +65,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
+    private final ProductionOrderStartTransactionService productionOrderStartTransactionService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -295,53 +296,18 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    @Event(value = "production.started", bizId = "#orderId", bizType = "'production'")
     public boolean startOrder(Long orderId) {
         log.info("启动生产工单: {}", orderId);
 
-        ProductionOrder order = getById(orderId);
-        if (order == null) {
-            throw new BusinessException("生产工单不存在: " + orderId);
-        }
-
-        // 检查工单状态是否可以启动
-        if (!canStartOrder(order)) {
-            throw new BusinessException("工单状态不允许启动");
-        }
-
-        // 更新状态为进行中
-        order.setOrderStatus(ProductionOrderStatusEnum.IN_PROGRESS.getValue());
-        order.setActualStartTime(LocalDateTime.now());
-
-        boolean success = updateById(order);
-        if (!success) {
-            throw new BusinessException("启动生产工单失败");
-        }
+        // 两段式事务门面：阶段一必须经独立 Bean 的 Spring 代理提交，不能使用本类自调用。
+        // 提交后再自动领料，确保 REQUIRES_NEW 回写 materialStatus 时不存在开工事务持有的工单行锁。
+        productionOrderStartTransactionService.startOrder(orderId);
 
         // 生产领料自动出库（DEV-625）：开工时按 BOM 自动生成领料出库单，幂等（已存在跳过）
         try {
             inventoryOutboundService.createFromProduction(orderId);
         } catch (Exception e) {
-            log.error("生产领料自动出库失败（不影响开工主流程）: {}", e.getMessage());
-        }
-
-        // 状态联动（2026-08-13：B方案去掉确认环节，SO 已审核(4)或已确认(6，历史订单) → 生产中(7)）
-        try {
-            if (order.getSalesOrderId() != null) {
-                com.jjx.sales.domain.entity.SalesOrder so = salesOrderMapper.selectById(order.getSalesOrderId());
-                if (so != null && (com.jjx.sales.enums.SalesOrderStatusEnum.APPROVED.getValue().equals(so.getOrderStatus())
-                        || com.jjx.sales.enums.SalesOrderStatusEnum.CONFIRMED.getValue().equals(so.getOrderStatus()))) {
-                    int up = salesOrderMapper.updateStatusWithCheck(order.getSalesOrderId(),
-                            com.jjx.sales.enums.SalesOrderStatusEnum.IN_PRODUCTION.getValue(),
-                            so.getOrderStatus());
-                    if (up > 0) {
-                        log.info("工单{}启动，销售订单{} 已审核/已确认(4/6)→生产中(7)", orderId, order.getSalesOrderNo());
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("工单启动回写销售订单状态失败: {}", e.getMessage());
+            log.warn("生产领料自动出库失败（开工已成功，可到生产领料页手工领料）: {}", e.getMessage());
         }
 
         log.info("生产工单启动成功, ID: {}", orderId);
@@ -894,15 +860,6 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 只有草稿和已取消状态的工单可以删除
         Integer status = order.getOrderStatus();
         return ProductionOrderStatusEnum.DRAFT.getValue().equals(status) || ProductionOrderStatusEnum.CANCELLED.getValue().equals(status);
-    }
-
-    /**
-     * 检查工单是否可以开始
-     */
-    private static boolean canStartOrder(ProductionOrder order) {
-        // 只有已批准和已排程状态的工单可以开始
-        Integer status = order.getOrderStatus();
-        return ProductionOrderStatusEnum.APPROVED.getValue().equals(status) || ProductionOrderStatusEnum.PLANNED.getValue().equals(status);
     }
 
     /**
