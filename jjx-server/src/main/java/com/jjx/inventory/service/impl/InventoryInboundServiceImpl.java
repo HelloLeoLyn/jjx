@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.inventory.domain.InventoryInboundOrder;
+import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryTransaction;
@@ -22,6 +23,7 @@ import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.inventory.enums.InventoryOrderStatusEnum;
+import com.jjx.inventory.enums.MaterialEnums;
 import com.jjx.inventory.mapper.InventoryInboundItemMapper;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
@@ -47,6 +49,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import com.jjx.system.annotation.Event;
 
 /**
@@ -477,7 +480,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         // 2. 检查是否已生成入库单
-        String inboundNo = "PO-" + po.getOrderNo();
+        // 保留采购单/收货次数与批次号的可读追踪关系；这里只去重 PO 前缀，不改为无业务含义的随机序列。
+        String inboundNo = buildPurchaseInboundNo(po.getOrderNo());
         LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()
                 .eq(InventoryInboundOrder::getInboundNo, inboundNo);
         if (inboundOrderMapper.selectCount(existCheck) > 0) {
@@ -499,7 +503,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceId(purchaseOrderId);
         order.setSourceNo(po.getOrderNo());
         order.setTraceId(po.getTraceId()); // 链路追踪（DEV-568）：采购到货→入库单继承
-        order.setWarehouseId(1L); // 默认仓库
+        List<BigDecimal> receiveQtys = new ArrayList<>();
+        for (PurchaseOrderItem item : items) {
+            BigDecimal receiveQty = item.getQuantity();
+            if (receiveQty != null && item.getReceivedQuantity() != null) {
+                receiveQty = receiveQty.subtract(item.getReceivedQuantity());
+            }
+            receiveQtys.add(receiveQty);
+        }
+        order.setWarehouseId(resolvePurchaseWarehouseId(items, receiveQtys));
         order.setInboundDate(LocalDate.now());
         order.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
         // 供应商/创建人从采购单带过来，避免列表页数据空白
@@ -569,7 +581,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         // 2026-08-18：每次收货生成独立入库单（批次），不再删除重建——
         // 采购单详情「入库凭证」按时间线区分每次收货（第1次收500、第2次收500各自一张单）
-        String baseInboundNo = "PO-" + po.getOrderNo();
+        // 入库单号同时是批次号前缀，且需关联采购单及收货次数；不改随机序列，仅避免 PO-PO- 双前缀。
+        String baseInboundNo = buildPurchaseInboundNo(po.getOrderNo());
         List<InventoryInboundOrder> existingList = inboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryInboundOrder>().likeRight(InventoryInboundOrder::getInboundNo, baseInboundNo));
         // 已生成入库单明细量（含待确认——待确认单也占用了收货量，防下一张重复入；驳回/删除后自动重新计入）
@@ -614,7 +627,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setSourceId(purchaseOrderId);
         order.setSourceNo(po.getOrderNo());
         order.setTraceId(po.getTraceId());
-        order.setWarehouseId(1L);
+        order.setWarehouseId(resolvePurchaseWarehouseId(toInItems, toInQtys));
         order.setInboundDate(LocalDate.now());
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue()); // 待审批：收货后需仓库审批→确认入库才加库存（2026-08-11 业务定稿：收货≠入库）
         order.setRemark("采购收货自动入库（DEV-624）批次" + existingList.size());
@@ -660,6 +673,69 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         try { eventPublisher.fire("purchase.arrived", Map.of("sourceNo", order.getSourceNo(), "inboundId", String.valueOf(order.getInboundId()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("采购收货自动入库单生成/更新: purchaseOrderId={}, inboundId={}, qty={}", purchaseOrderId, order.getInboundId(), totalQty);
         return order.getInboundId();
+    }
+
+    private String buildPurchaseInboundNo(String purchaseOrderNo) {
+        return purchaseOrderNo != null && purchaseOrderNo.startsWith("PO")
+                ? purchaseOrderNo
+                : "PO-" + purchaseOrderNo;
+    }
+
+    /**
+     * 按待入库数量决定采购入库单默认仓：R 原料与 F 成品分别汇总，数量相同按 R 优先。
+     * 仓库表没有原料专用 warehouse_type，因此 R 按启用仓名称“原料”匹配；F 优先按 finished 类型，
+     * 再按名称“成品”匹配。查询异常、物料类型无法判定或目标仓不存在时均回退历史默认仓 1L。
+     */
+    private Long resolvePurchaseWarehouseId(List<PurchaseOrderItem> items, List<BigDecimal> quantities) {
+        final Long fallbackWarehouseId = 1L;
+        try {
+            List<Long> materialIds = items.stream()
+                    .map(PurchaseOrderItem::getMaterialId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (materialIds.isEmpty()) {
+                return fallbackWarehouseId;
+            }
+
+            Map<Long, String> materialTypes = inventoryMaterialMapper.selectBatchIds(materialIds).stream()
+                    .collect(Collectors.toMap(InventoryMaterial::getMaterialId, InventoryMaterial::getMaterialType));
+            BigDecimal rawQuantity = BigDecimal.ZERO;
+            BigDecimal finishedQuantity = BigDecimal.ZERO;
+            for (int i = 0; i < items.size(); i++) {
+                BigDecimal quantity = i < quantities.size() ? quantities.get(i) : null;
+                if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) continue;
+                String materialType = materialTypes.get(items.get(i).getMaterialId());
+                if (MaterialEnums.Type.RAW.getValue().equals(materialType)) {
+                    rawQuantity = rawQuantity.add(quantity);
+                } else if (MaterialEnums.Type.FINISHED.getValue().equals(materialType)) {
+                    finishedQuantity = finishedQuantity.add(quantity);
+                }
+            }
+            if (rawQuantity.signum() == 0 && finishedQuantity.signum() == 0) {
+                return fallbackWarehouseId;
+            }
+
+            boolean useRawWarehouse = rawQuantity.compareTo(finishedQuantity) >= 0;
+            List<InventoryWarehouse> enabledWarehouses = warehouseMapper.selectAllEnabled();
+            InventoryWarehouse matched = enabledWarehouses.stream()
+                    .filter(warehouse -> useRawWarehouse
+                            ? warehouse.getWarehouseName() != null && warehouse.getWarehouseName().contains("原料")
+                            : "finished".equalsIgnoreCase(warehouse.getWarehouseType()))
+                    .findFirst()
+                    .orElse(null);
+            if (!useRawWarehouse && matched == null) {
+                matched = enabledWarehouses.stream()
+                        .filter(warehouse -> warehouse.getWarehouseName() != null
+                                && warehouse.getWarehouseName().contains("成品"))
+                        .findFirst()
+                        .orElse(null);
+            }
+            return matched != null ? matched.getWarehouseId() : fallbackWarehouseId;
+        } catch (Exception e) {
+            log.warn("采购入库默认仓映射失败，回退仓库{}: {}", fallbackWarehouseId, e.getMessage());
+            return fallbackWarehouseId;
+        }
     }
 
     @Override
