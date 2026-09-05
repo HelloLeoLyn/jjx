@@ -1840,7 +1840,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     .thenComparing(p -> p.getProcessId() != null ? p.getProcessId() : 0L));
         }
 
-        // ===== 标准工序库（启用）+ 标准物料库（启用）=====
+        // ===== 标准库仅用于服务端名称兜底匹配，不再作为下拉选项返回 =====
         java.util.List<com.jjx.product.domain.entity.ProductStandardProcess> stdProcesses =
                 standardProcessMapper.selectEnabledProcesses();
         java.util.List<com.jjx.inventory.domain.InventoryMaterial> stdMaterials =
@@ -1892,7 +1892,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 new java.util.ArrayList<>();
         if (processes != null) {
             com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.Set<Integer> expandedProcessOrders = new java.util.HashSet<>();
             for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
+                // 组合卡内的材料 JSON 是同一份产物：同 processOrder 只展开首行。
+                Integer processOrder = sp.getProcessOrder();
+                if (processOrder != null && processOrder > 0 && !expandedProcessOrders.add(processOrder)) continue;
                 if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
                 try {
                     java.util.List<java.util.Map<String, Object>> mats = om.readValue(sp.getMaterials(),
@@ -1941,34 +1945,6 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         vo.setSampleMaterials(materialItems);
 
-        // ===== 标准工序库 / 标准物料库（下拉选项）=====
-        if (stdProcesses != null) {
-            vo.setStandardProcesses(stdProcesses.stream().map(p -> {
-                com.jjx.sales.domain.vo.SampleTransferPreviewVO.StandardProcessOption opt =
-                        new com.jjx.sales.domain.vo.SampleTransferPreviewVO.StandardProcessOption();
-                opt.setProcessId(p.getProcessId());
-                opt.setProcessCode(p.getProcessCode());
-                opt.setProcessName(p.getProcessName());
-                opt.setProcessType(p.getProcessType());
-                opt.setProcessCategory(p.getProcessCategory());
-                opt.setIcon(p.getIcon());
-                opt.setHasIndex(p.getHasIndex() != null ? p.getHasIndex() : 0);
-                return opt;
-            }).collect(java.util.stream.Collectors.toList()));
-        }
-        if (stdMaterials != null) {
-            vo.setStandardMaterials(stdMaterials.stream().map(m -> {
-                com.jjx.sales.domain.vo.SampleTransferPreviewVO.StandardMaterialOption opt =
-                        new com.jjx.sales.domain.vo.SampleTransferPreviewVO.StandardMaterialOption();
-                opt.setMaterialId(m.getMaterialId());
-                opt.setMaterialCode(m.getMaterialCode());
-                opt.setMaterialName(m.getMaterialName());
-                opt.setSpecification(m.getSpecification());
-                opt.setUnit(m.getUnit());
-                return opt;
-            }).collect(java.util.stream.Collectors.toList()));
-        }
-
         log.info("样品单[{}] 打样转标准预览：工序{}道 物料{}行", orderId, processItems.size(), materialItems.size());
         return vo;
     }
@@ -1996,7 +1972,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 dto.getProcessMappings();
         java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping> materialMappings =
                 dto.getMaterialMappings();
-        if (processMappings == null || processMappings.isEmpty()) {
+        boolean automaticMode = (processMappings == null || processMappings.isEmpty())
+                && (materialMappings == null || materialMappings.isEmpty());
+        if (automaticMode) {
+            com.jjx.sales.dto.transfer.SampleTransferConfirmDTO automaticMappings =
+                    buildAutomaticTransferMappings(orderId);
+            processMappings = automaticMappings.getProcessMappings();
+            materialMappings = automaticMappings.getMaterialMappings();
+        } else if (processMappings == null || processMappings.isEmpty()) {
             throw new BusinessException("工序映射不能为空");
         }
         // 必填校验：工序必须选择标准工序（2026-08-12 豁免：带自定义参数的印刷工序可不选，原样转入路线）
@@ -2271,6 +2254,147 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         result.put("detail", details);
         log.info("样品单[{}] 打样转标准确认完成[{}] 产品={} BOM={} 路线={} 版本={}",
                 sampleOrder.getOrderNo(), transferNo, productAction, bomAction, routingAction, transferredVersion);
+        return result;
+    }
+
+    /**
+     * 直接转移模式：从最新轮次打样数据构建与旧显式入参一致的映射结构。
+     * 全部匹配校验在建档/版本化之前完成，避免部分落库。
+     */
+    private com.jjx.sales.dto.transfer.SampleTransferConfirmDTO buildAutomaticTransferMappings(Long orderId) {
+        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> allProcesses =
+                sampleProcessMapper.selectByOrderId(orderId);
+        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes = allProcesses;
+        if (allProcesses != null && !allProcesses.isEmpty()) {
+            Integer latestRound = allProcesses.stream()
+                    .map(com.jjx.sales.domain.entity.SalesSampleProcess::getRoundNo)
+                    .filter(java.util.Objects::nonNull)
+                    .max(Integer::compareTo).orElse(null);
+            if (latestRound != null) {
+                processes = allProcesses.stream()
+                        .filter(p -> latestRound.equals(p.getRoundNo()))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+            processes.sort(java.util.Comparator.comparing(
+                            (com.jjx.sales.domain.entity.SalesSampleProcess p) ->
+                                    p.getProcessOrder() != null && p.getProcessOrder() > 0 ? p.getProcessOrder() : 999999)
+                    .thenComparing(p -> p.getProcessId() != null ? p.getProcessId() : 0L));
+        }
+
+        java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping> processMappings =
+                new java.util.ArrayList<>();
+        java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping> materialMappings =
+                new java.util.ArrayList<>();
+        java.util.Set<String> unmatchedProcesses = new java.util.LinkedHashSet<>();
+        java.util.Set<String> unmatchedMaterials = new java.util.LinkedHashSet<>();
+        java.util.List<com.jjx.product.domain.entity.ProductStandardProcess> stdProcesses = null;
+        java.util.List<com.jjx.inventory.domain.InventoryMaterial> stdMaterials = null;
+
+        if (processes != null) {
+            for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
+                Long stdProcessId = sp.getStdProcessId();
+                boolean hasCustomParams = sp.getCustomProcessParams() != null
+                        && !sp.getCustomProcessParams().isBlank();
+                if (stdProcessId == null && !hasCustomParams) {
+                    if (stdProcesses == null) stdProcesses = standardProcessMapper.selectEnabledProcesses();
+                    com.jjx.product.domain.entity.ProductStandardProcess match =
+                            matchStandardProcess(sp.getProcessName(), stdProcesses);
+                    if (match != null) stdProcessId = match.getProcessId();
+                }
+                if (stdProcessId == null && !hasCustomParams) {
+                    unmatchedProcesses.add(sp.getProcessName());
+                    continue;
+                }
+
+                com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping pm =
+                        new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping();
+                pm.setSampleProcessId(sp.getProcessId());
+                pm.setStdProcessId(stdProcessId);
+                pm.setProcessName(sp.getProcessName());
+                pm.setProcessOrder(sp.getProcessOrder());
+                if (sp.getProcessOrder() != null && sp.getProcessOrder() > 0) {
+                    pm.setGroupId(sp.getProcessOrder().longValue());
+                    pm.setGroupName(processCategoryToGroupName(sp.getProcessCategory()));
+                }
+                pm.setProcessCategory(sp.getProcessCategory());
+                pm.setProcessNote(sp.getProcessNote());
+                pm.setCustomProcessParams(sp.getCustomProcessParams());
+                pm.setDurationMinutes(sp.getDurationMinutes());
+                pm.setIndexNumber(sp.getIndexNumber());
+                processMappings.add(pm);
+            }
+
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.Set<Integer> expandedProcessOrders = new java.util.HashSet<>();
+            for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
+                Integer processOrder = sp.getProcessOrder();
+                if (processOrder != null && processOrder > 0 && !expandedProcessOrders.add(processOrder)) continue;
+                if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
+                try {
+                    java.util.List<java.util.Map<String, Object>> mats = om.readValue(sp.getMaterials(),
+                            new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
+                    for (int i = 0; i < mats.size(); i++) {
+                        java.util.Map<String, Object> m = mats.get(i);
+                        String materialName = m.get("name") != null ? m.get("name").toString() : null;
+                        Long materialId = null;
+                        if (m.get("materialId") != null) {
+                            try { materialId = Long.valueOf(m.get("materialId").toString()); }
+                            catch (Exception ignored) { }
+                        }
+                        com.jjx.inventory.domain.InventoryMaterial match = null;
+                        if (materialId == null) {
+                            if (stdMaterials == null) {
+                                stdMaterials = inventoryMaterialMapper.selectList(
+                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                                                .eq(com.jjx.inventory.domain.InventoryMaterial::getStatus, 1));
+                            }
+                            match = matchStandardMaterial(materialName, stdMaterials);
+                            if (match != null) materialId = match.getMaterialId();
+                        }
+                        if (materialId == null) {
+                            unmatchedMaterials.add(materialName);
+                            continue;
+                        }
+
+                        com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping mm =
+                                new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping();
+                        mm.setRowKey(sp.getProcessId() + "_" + i);
+                        mm.setSourceProcessId(sp.getProcessId());
+                        mm.setSourceProcessName(sp.getProcessName());
+                        mm.setMaterialId(materialId);
+                        mm.setMaterialName(match != null ? match.getMaterialName() : materialName);
+                        mm.setSpec(m.get("spec") != null ? m.get("spec").toString() : null);
+                        if (m.get("qty") != null) {
+                            try { mm.setQty(new java.math.BigDecimal(m.get("qty").toString())); }
+                            catch (Exception ignored) { }
+                        }
+                        mm.setUnit(m.get("unit") != null ? m.get("unit").toString() : null);
+                        materialMappings.add(mm);
+                    }
+                } catch (Exception pe) {
+                    log.warn("解析打样工序材料失败: {}", pe.getMessage());
+                }
+            }
+        }
+
+        if (!unmatchedProcesses.isEmpty() || !unmatchedMaterials.isEmpty()) {
+            java.util.List<String> messages = new java.util.ArrayList<>();
+            if (!unmatchedProcesses.isEmpty()) {
+                messages.add("以下打样工序未匹配到标准工序，请先在标准工序库建档后再转移："
+                        + String.join("、", unmatchedProcesses));
+            }
+            if (!unmatchedMaterials.isEmpty()) {
+                messages.add("以下打样物料未匹配到标准物料，请先在标准物料库建档后再转移："
+                        + String.join("、", unmatchedMaterials));
+            }
+            throw new BusinessException(String.join("；", messages));
+        }
+
+        com.jjx.sales.dto.transfer.SampleTransferConfirmDTO result =
+                new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO();
+        result.setOrderId(orderId);
+        result.setProcessMappings(processMappings);
+        result.setMaterialMappings(materialMappings);
         return result;
     }
 

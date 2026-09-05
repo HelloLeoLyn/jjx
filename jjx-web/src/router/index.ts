@@ -533,20 +533,6 @@ export const constantRoutes: RouteRecordRaw[] = [
       },
     ],
   },
-  // 打样转标准·对照版全屏页（隐藏路由：轻量版弹窗「进入标准编辑」跳转，侧边栏不显示）
-  {
-    path: '/sample/transfer',
-    component: () => import('@/layout/index.vue'),
-    meta: { hidden: true },
-    children: [
-      {
-        path: 'edit',
-        name: 'SampleTransferEdit',
-        component: () => import('@/views/sales/sample-order/transfer-edit.vue'),
-        meta: { hidden: true, title: '打样转标准·对照编辑', permission: 'sales:sample:convert' },
-      },
-    ],
-  },
 ]
 
 const router = createRouter({
