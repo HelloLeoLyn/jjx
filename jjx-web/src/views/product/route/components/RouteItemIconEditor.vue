@@ -562,60 +562,74 @@ watch(
  * 根据后端返回的 items（含 groupId）重新组装为 groups
  */
 const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
-  // 2026-08-12：按大类拆分——PRINT 进印刷表格，其余组装组合
+  // 2026-09-05：父子结构优先（父行=工序/children=作业项）；旧平铺数据按 groupId 分组兼容
   const printItems = (data || []).filter((i) => i.majorCategory === 'PRINT')
   const assemblyItems = (data || []).filter((i) => i.majorCategory !== 'PRINT')
 
   // 印刷行直接进表格（保留参数 JSON）
   printRows.value = printItems.map((i) => ({ ...i }))
 
-  // 按 groupId 分组：有 groupId 的按组合分组，没有的各自独立
-  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
+  const built: any[] = []
+  const hasParentStruct = assemblyItems.some(
+    (i) => i.parentId != null || (i.children && i.children.length > 0)
+  )
 
-  assemblyItems.forEach((item) => {
-    // 有 groupId 的按组合分组，没有的各自独立（用 itemId 或 index 作为key）
-    const key = item.groupId
-      ? `group_${item.groupId}`
-      : `independent_${item.itemId || Math.random()}`
-    if (!groupMap.has(key)) {
-      groupMap.set(key, [])
-    }
-    groupMap.get(key)!.push(item)
-  })
+  if (hasParentStruct) {
+    // 父子结构：父行 = 工序（组合），children = 作业项
+    assemblyItems
+      .filter((i) => i.parentId == null)
+      .forEach((parent) => {
+        const kids = parent.children && parent.children.length ? parent.children : []
+        if (!parent.processId && !kids.length) return // 空壳忽略
+        const groupItems = kids.length ? kids.map((k) => ({ ...k })) : [{ ...parent }]
+        built.push({
+          items: groupItems,
+          totalLaborHours: groupItems.reduce(
+            (s, i) => s + (i.customLaborHours || i.standardLaborHours || 0),
+            0
+          ),
+          totalMachineHours: groupItems.reduce(
+            (s, i) => s + (i.customMachineHours || i.standardMachineHours || 0),
+            0
+          ),
+          // 组合备注/类别取父行
+          remark: parent.description || '',
+          processCategory: parent.processCategory || '',
+        })
+      })
+  } else {
+    // 旧格式：按 groupId 分组（无 groupId 各自独立成组）
+    const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
+    assemblyItems.forEach((item) => {
+      const key = item.groupId
+        ? `group_${item.groupId}`
+        : `independent_${item.itemId || Math.random()}`
+      if (!groupMap.has(key)) {
+        groupMap.set(key, [])
+      }
+      groupMap.get(key)!.push(item)
+    })
+    Array.from(groupMap.entries())
+      .sort((a, b) => (a[1][0].groupOrder || 0) - (b[1][0].groupOrder || 0))
+      .forEach(([, items]) => {
+        built.push({
+          items: items.map((i) => ({ ...i })),
+          totalLaborHours: items.reduce(
+            (s, i) => s + (i.customLaborHours || i.standardLaborHours || 0),
+            0
+          ),
+          totalMachineHours: items.reduce(
+            (s, i) => s + (i.customMachineHours || i.standardMachineHours || 0),
+            0
+          ),
+          remark: items[0]?.description || '',
+          processCategory: items[0]?.processCategory || '',
+        })
+      })
+  }
 
-  // 转换为 groups，按 groupOrder 排序
-  const sortedEntries = Array.from(groupMap.entries()).sort((a, b) => {
-    const orderA = a[1][0].groupOrder || 0
-    const orderB = b[1][0].groupOrder || 0
-    return orderA - orderB
-  })
-
-  groups.value = sortedEntries.map(([, items], index) => ({
-    groupOrder: items[0].groupOrder || index + 1,
-    items: items,
-    totalLaborHours: items.reduce(
-      (sum, i) => sum + (i.customLaborHours || i.standardLaborHours || 0),
-      0
-    ),
-    totalMachineHours: items.reduce(
-      (sum, i) => sum + (i.customMachineHours || i.standardMachineHours || 0),
-      0
-    ),
-    // 从第一条工序的 description 读取组合备注
-    remark: items[0]?.description || '',
-    // 从第一条工序的 processCategory 读取工序类别
-    processCategory: items[0]?.processCategory || '',
-  }))
-
+  groups.value = built
   updateGroupOrder()
-}
-
-/**
- * 生成临时 groupId（负数，用于前端标识同一组合）
- */
-const generateTempGroupId = (): number => {
-  tempGroupIdCounter++
-  return -(Date.now() + tempGroupIdCounter)
 }
 
 // ==================== 拖拽事件 ====================
@@ -912,50 +926,90 @@ const handleProcessCategoryChange = (groupIndex: number, category: string) => {
   syncToParent()
 }
 
+// ==================== 父子结构输出（2026-09-05 组合工序模型统一） ====================
+
+/** groups + printRows → 父子结构 items：父行=工序（单作业父行自带作业；组合父行壳+children） */
+const toParentItems = (): any[] => {
+  const out: any[] = []
+  const sumHours = (items: any[], key: string) =>
+    items.reduce((s: number, i: any) => s + Number(i[key] || 0), 0)
+  groups.value.forEach((group: any) => {
+    const items = group.items || []
+    if (!items.length) return
+    const order = out.length + 1
+    if (items.length === 1) {
+      // 单作业工序：父行直接带作业
+      const p = { ...items[0] }
+      p.itemId = p.itemId || 0
+      p.routingId = p.routingId || 0
+      p.parentId = null
+      p.processOrder = order
+      p.groupId = null
+      p.groupOrder = null
+      p.groupName = null
+      p.majorCategory = p.majorCategory || 'ASSEMBLY'
+      if (group.processCategory) p.processCategory = group.processCategory
+      if (group.remark && !p.description) p.description = group.remark
+      p.children = []
+      out.push(p)
+    } else {
+      // 组合工序：父行壳（无 processId、名=作业连接名、工时=Σ 作业项）+ children
+      const parent: any = { ...items[0] }
+      parent.itemId = parent.itemId || 0
+      parent.routingId = parent.routingId || 0
+      parent.processId = undefined
+      parent.processCode = ''
+      parent.processName =
+        items.map((i: any) => i.processName).filter(Boolean).join('+') || '组合工序'
+      parent.parentId = null
+      parent.processOrder = order
+      parent.groupId = null
+      parent.groupOrder = null
+      parent.groupName = null
+      parent.majorCategory = 'ASSEMBLY'
+      parent.customLaborHours = sumHours(items, 'customLaborHours')
+      parent.customMachineHours = sumHours(items, 'customMachineHours')
+      if (group.processCategory) parent.processCategory = group.processCategory
+      if (group.remark && !parent.description) parent.description = group.remark
+      parent.children = items.map((it: any) => {
+        const c: any = { ...it }
+        c.itemId = c.itemId || 0
+        c.routingId = c.routingId || 0
+        c.parentId = 0 // 占位，落库由后端回填
+        c.processOrder = null
+        c.groupId = null
+        c.groupOrder = null
+        c.groupName = null
+        c.majorCategory = 'ASSEMBLY'
+        delete c.children
+        return c
+      })
+      out.push(parent)
+    }
+  })
+  // 印刷工序（独立父行，PRINT）
+  printRows.value.forEach((row: any) => {
+    const p = { ...row }
+    p.itemId = p.itemId || 0
+    p.routingId = p.routingId || 0
+    p.parentId = null
+    p.processOrder = out.length + 1
+    p.groupId = null
+    p.groupOrder = null
+    p.groupName = null
+    p.majorCategory = 'PRINT'
+    p.children = []
+    out.push(p)
+  })
+  return out
+}
+
 // ==================== 同步数据 ====================
 
 // 同步数据到父组件（保留组合结构 + 印刷行，2026-08-12 合并两大类的工序）
 const syncToParent = () => {
-  const flatItems: EngineeringRoutingItemVO[] = []
-
-  // 组装组合（ASSEMBLY）
-  groups.value.forEach((group) => {
-    // 生成一个临时 groupId（负数，同一组合的工序共享）
-    const tempGroupId = generateTempGroupId()
-
-    group.items.forEach((item, idx) => {
-      // 深拷贝，避免引用问题
-      const newItem = { ...item }
-      newItem.processOrder = flatItems.length + 1
-      newItem.groupId = tempGroupId // 同一组合的工序共享同一 groupId
-      newItem.groupOrder = group.groupOrder
-      newItem.groupName = `组合${group.groupOrder}`
-      newItem.majorCategory = 'ASSEMBLY'
-      // 组合备注存到第一条工序的 description
-      if (idx === 0 && group.remark) {
-        newItem.description = group.remark
-      }
-      // 工序类别同步到所有工序
-      if (group.processCategory) {
-        newItem.processCategory = group.processCategory
-      }
-      flatItems.push(newItem)
-    })
-  })
-
-  // 印刷工序（PRINT，独立行）
-  printRows.value.forEach((row) => {
-    const newItem = { ...row }
-    newItem.processOrder = flatItems.length + 1
-    newItem.groupId = null
-    newItem.groupOrder = null
-    newItem.groupName = null
-    newItem.majorCategory = 'PRINT'
-    flatItems.push(newItem)
-  })
-
   setTimeout(() => {
-    emit('update:modelValue', JSON.parse(JSON.stringify(flatItems)))
+    emit('update:modelValue', JSON.parse(JSON.stringify(toParentItems())))
   }, 0)
 }
 
@@ -965,40 +1019,7 @@ defineExpose({
   setGroups: (data: RouteItemGroup[]) => {
     groups.value = JSON.parse(JSON.stringify(data))
   },
-  getItems: () => {
-    const flatItems: EngineeringRoutingItemVO[] = []
-    groups.value.forEach((group) => {
-      const tempGroupId = generateTempGroupId()
-      group.items.forEach((item, idx) => {
-        const newItem = { ...item }
-        newItem.processOrder = flatItems.length + 1
-        newItem.groupId = tempGroupId
-        newItem.groupOrder = group.groupOrder
-        newItem.groupName = `组合${group.groupOrder}`
-        newItem.majorCategory = 'ASSEMBLY'
-        // 组合备注存到第一条工序的 description
-        if (idx === 0 && group.remark) {
-          newItem.description = group.remark
-        }
-        // 工序类别同步到所有工序
-        if (group.processCategory) {
-          newItem.processCategory = group.processCategory
-        }
-        flatItems.push(newItem)
-      })
-    })
-    // 印刷工序（2026-08-12）
-    printRows.value.forEach((row) => {
-      const newItem = { ...row }
-      newItem.processOrder = flatItems.length + 1
-      newItem.groupId = null
-      newItem.groupOrder = null
-      newItem.groupName = null
-      newItem.majorCategory = 'PRINT'
-      flatItems.push(newItem)
-    })
-    return JSON.parse(JSON.stringify(flatItems))
-  },
+  getItems: () => JSON.parse(JSON.stringify(toParentItems())),
   setItems: (data: EngineeringRoutingItemVO[]) => {
     setItemsFromData(data)
   },
