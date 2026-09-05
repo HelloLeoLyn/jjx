@@ -483,7 +483,7 @@ public class OrderServiceImpl implements IOrderService {
      */
     @Override
     public String generateOrderNo() {
-        return redisSequenceService.generateBusinessNumberByType("sales_order", "SO", "yyMMdd", 3);
+        return redisSequenceService.generateBusinessNumberByType("sales_order", "SO", "yyMMdd", 4);
     }
 
     /**
