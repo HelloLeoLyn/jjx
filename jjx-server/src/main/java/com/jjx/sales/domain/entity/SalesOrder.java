@@ -97,11 +97,6 @@ public class SalesOrder extends BaseEntity {
     @TableField(exist = false)
     private String lastTransferNo;
 
-    /** 最近一次资料转移时间（列表展示字段，不落库） */
-    @TableField(exist = false)
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private LocalDateTime lastTransferTime;
-
     /**
      * 样品迭代轮次
      */
