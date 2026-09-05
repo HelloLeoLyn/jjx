@@ -61,7 +61,7 @@
           <button v-if="canResume(ex)" class="m-act m-act-primary" :disabled="startingId === ex.executionId" @click="handleStart(ex)">
             ▶ 继续
           </button>
-          <button v-if="canComplete(ex)" class="m-act m-act-ok" :disabled="completingId === ex.executionId" @click="handleComplete(ex)">
+          <button v-if="!isProductionWorker && canComplete(ex)" class="m-act m-act-ok" :disabled="completingId === ex.executionId" @click="handleComplete(ex)">
             ✓ 完工
           </button>
           <button v-if="canReport(ex)" class="m-act m-act-primary" @click="goReport(ex)">
@@ -82,6 +82,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/store/modules/user'
 import { getProductionOrderByCode } from '@/api/production/order'
 import { getMyProductionExecutions } from '@/api/production/task'
 import { operationExecutionApi } from '@/api/production/operationExecution'
@@ -91,6 +92,9 @@ import { ExecutionStatusEnum, ProductionOrderStatusEnum } from '@/enums/producti
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+
+const isProductionWorker = computed(() => userStore.getRoles.includes('production:worker'))
 
 const orderNo = computed(() => String(route.query.orderNo || ''))
 const loading = ref(false)
