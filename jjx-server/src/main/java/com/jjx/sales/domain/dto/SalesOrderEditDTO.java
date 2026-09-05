@@ -94,8 +94,8 @@ public class SalesOrderEditDTO {
     private BigDecimal totalAmount;
 
     @DecimalMin(value = "0", message = "税率不能为负数")
-    @DecimalMax(value = "1", message = "税率不能大于1")
-    @Schema(description = "税率", example = "0.13")
+    @DecimalMax(value = "100", message = "税率不能大于100")
+    @Schema(description = "税率(百分比，如 13 表示 13%)", example = "13")
     private BigDecimal taxRate;
 
     @DecimalMin(value = "0", message = "折扣率不能为负数")

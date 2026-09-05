@@ -81,7 +81,7 @@
               </strong>
             </el-descriptions-item>
             <el-descriptions-item label="税率">
-              {{ (orderDetail.taxRate * 100).toFixed(2) }}%
+              {{ (Number(orderDetail.taxRate) || 0).toFixed(2) }}%
             </el-descriptions-item>
             <el-descriptions-item label="税额">
               {{ formatCurrency(orderDetail.taxAmount) }} {{ orderDetail.currency }}
