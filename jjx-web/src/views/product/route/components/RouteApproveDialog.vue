@@ -13,8 +13,8 @@
         <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
           <el-form-item label="审批结果">
             <el-radio-group v-model="form.action">
-              <el-radio value="approve">通过</el-radio>
-              <el-radio value="reject">驳回</el-radio>
+              <el-radio value="approve" :disabled="!canApprove">通过</el-radio>
+              <el-radio value="reject" :disabled="!canReject">驳回</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="审批意见" prop="remark">
@@ -32,7 +32,14 @@
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit"> 确定 </el-button>
+        <el-button
+          type="primary"
+          :loading="submitLoading"
+          :disabled="!canApprove && !canReject"
+          @click="handleSubmit"
+        >
+          确定
+        </el-button>
       </span>
     </template>
   </el-dialog>
@@ -41,6 +48,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
+import { hasPermi } from '@/directives'
 import RouteDetailView from './RouteDetailView.vue'
 
 const props = defineProps<{
@@ -62,6 +70,8 @@ const visible = computed({
 const formRef = ref<FormInstance>()
 const submitLoading = ref(false)
 const detailViewRef = ref<InstanceType<typeof RouteDetailView>>()
+const canApprove = computed(() => hasPermi('engineering:routing:approve'))
+const canReject = computed(() => hasPermi('engineering:routing:reject'))
 
 const form = reactive({
   action: 'approve' as 'approve' | 'reject',
@@ -84,6 +94,12 @@ const rules = reactive<FormRules<typeof form>>({
 })
 
 const handleOpened = () => {
+  if (form.action === 'approve' && !canApprove.value && canReject.value) {
+    form.action = 'reject'
+  } else if (form.action === 'reject' && !canReject.value && canApprove.value) {
+    form.action = 'approve'
+  }
+
   if (props.routingId) {
     nextTick(() => {
       detailViewRef.value?.loadDetail(props.routingId!)

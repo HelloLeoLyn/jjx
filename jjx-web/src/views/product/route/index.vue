@@ -6,14 +6,34 @@
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
-        <el-button v-hasPermi="['engineering:routing:add']" type="primary" icon="Plus" @click="handleAdd">新增工艺路线</el-button>
-        <el-button type="warning" plain icon="CopyDocument" :disabled="!single" @click="handleCopySelected">复制版本</el-button>
+        <el-button
+          v-hasPermi="['engineering:routing:add']"
+          type="primary"
+          icon="Plus"
+          @click="handleAdd"
+          >新增工艺路线</el-button
+        >
+        <el-button
+          type="warning"
+          plain
+          icon="CopyDocument"
+          :disabled="!single"
+          @click="handleCopySelected"
+          >复制版本</el-button
+        >
       </div>
     </el-card>
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
-      <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%" @selection-change="handleSelectionChange">
+      <el-table
+        :data="tableData"
+        v-loading="loading"
+        border
+        stripe
+        style="width: 100%"
+        @selection-change="handleSelectionChange"
+      >
         <el-table-column type="selection" width="50" align="center" />
         <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="routingCode" label="路线编码" width="140">
@@ -51,65 +71,69 @@
         </el-table-column>
         <el-table-column prop="createBy" label="创建人" width="100" />
         <el-table-column prop="createTime" label="创建时间" width="170" />
-        <el-table-column label="操作" min-width="280" fixed="right">
+        <el-table-column label="操作" min-width="250" fixed="right">
           <template #default="scope">
-            <el-button
-              v-hasPermi="['engineering:routing:edit']"
-              link
-              type="primary"
-              size="small"
-              :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.EDIT)"
-              @click="handleEdit(scope.row)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              link
-              type="warning"
-              size="small"
-              @click="handleVersionCompare(scope.row)"
-            >
-              版本对比
-            </el-button>
-            <el-button
-              link
-              type="primary"
-              size="small"
-              :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.SUBMIT)"
-              @click="handleSubmitApprove(scope.row)"
-            >
-              提交审批
-            </el-button>
-            <el-button
-              link
-              type="primary"
-              size="small"
-              :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.APPROVE)"
-              @click="handleApprove(scope.row)"
-            >
-              审批
-            </el-button>
+            <el-tooltip content="编辑" placement="top">
+              <el-button
+                v-hasPermi="['engineering:routing:edit']"
+                link
+                type="primary"
+                icon="Edit"
+                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.EDIT)"
+                @click="handleEdit(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip content="版本对比" placement="top">
+              <el-button
+                link
+                type="warning"
+                icon="CopyDocument"
+                @click="handleVersionCompare(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip content="提交审批" placement="top">
+              <el-button
+                link
+                type="warning"
+                icon="Promotion"
+                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.SUBMIT)"
+                @click="handleSubmitApprove(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip content="审批" placement="top">
+              <el-button
+                v-hasPermi="['engineering:routing:approve', 'engineering:routing:reject']"
+                link
+                type="warning"
+                icon="View"
+                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.APPROVE)"
+                @click="handleApprove(scope.row)"
+              ></el-button>
+            </el-tooltip>
             <!-- 2026-08-18：审批通过后需手动设为当前版本（生成计划/领料依赖 is_current=1） -->
-            <el-button
+            <el-tooltip
+              content="设为默认"
+              placement="top"
               v-if="scope.row.approveStatus === 3 && scope.row.isCurrent !== 1"
-              v-hasPermi="['engineering:routing:edit']"
-              link
-              type="success"
-              size="small"
-              @click="handleSetCurrentRoute(scope.row)"
             >
-              设为默认
-            </el-button>
-            <el-button
-              link
-              type="danger"
-              size="small"
-              v-hasPermi="['engineering:routing:delete']"
-              :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.DELETE)"
-              @click="handleDelete(scope.row)"
-            >
-              删除
-            </el-button>
+              <el-button
+                v-hasPermi="['engineering:routing:edit']"
+                link
+                type="success"
+                icon="Star"
+                @click="handleSetCurrentRoute(scope.row)"
+              ></el-button>
+            </el-tooltip>
+            <el-tooltip content="删除" placement="top">
+              <el-button
+                link
+                type="danger"
+                icon="Delete"
+                v-hasPermi="['engineering:routing:delete']"
+                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.DELETE)"
+                @click="handleDelete(scope.row)"
+              ></el-button>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -370,9 +394,13 @@ const handleApprove = (row: EngineeringRoutingVO) => {
 
 // 设为当前版本（2026-08-18：审批通过后需手动设为当前生效，生成计划/领料依赖）
 const handleSetCurrentRoute = (row: EngineeringRoutingVO) => {
-  ElMessageBox.confirm(`将工艺路线【${row.routingCode}】设为当前版本？（同产品其它路线将取消当前标记）`, '设为默认', {
-    type: 'warning',
-  })
+  ElMessageBox.confirm(
+    `将工艺路线【${row.routingCode}】设为当前版本？（同产品其它路线将取消当前标记）`,
+    '设为默认',
+    {
+      type: 'warning',
+    }
+  )
     .then(async () => {
       await productRouteApi.setCurrentProductRoute(row.routingId)
       ElMessage.success('已设为当前版本')
