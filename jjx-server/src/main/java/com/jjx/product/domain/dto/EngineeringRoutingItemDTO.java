@@ -47,6 +47,11 @@ public class EngineeringRoutingItemDTO {
     private Long processId;
 
     /**
+     * 工序名称（2026-09-05 补：父子结构组合壳/印刷自定义行依赖 process_name 落库，转工单 execution 名取自父行）
+     */
+    private String processName;
+
+    /**
      * 大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）
      */
     private String majorCategory;

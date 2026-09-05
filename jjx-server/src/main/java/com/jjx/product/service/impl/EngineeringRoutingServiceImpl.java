@@ -375,11 +375,18 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @Transactional(rollbackFor = Exception.class)
     public void calculateHours(Long routingId) {
         List<EngineeringRoutingItem> details = routingDetailMapper.selectByRoutingId(routingId);
+        // 2026-09-05 父子结构：工时/工序数只统计父行（组合父行工时已含子作业和，子行不重复计）
+        List<EngineeringRoutingItem> parents = details.stream()
+                .filter(d -> d.getParentId() == null)
+                .collect(java.util.stream.Collectors.toList());
+        if (parents.isEmpty()) {
+            parents = details; // 纯平铺旧数据兑底
+        }
 
         BigDecimal totalLabor = BigDecimal.ZERO;
         BigDecimal totalMachine = BigDecimal.ZERO;
 
-        for (EngineeringRoutingItem detail : details) {
+        for (EngineeringRoutingItem detail : parents) {
             if (detail.getCustomLaborHours() != null) {
                 totalLabor = totalLabor.add(detail.getCustomLaborHours());
             }
@@ -391,7 +398,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         EngineeringRouting routing = getById(routingId);
         routing.setTotalLaborHours(totalLabor);
         routing.setTotalMachineHours(totalMachine);
-        routing.setProcessCount(details.size());
+        routing.setProcessCount(parents.size());
         updateById(routing);
     }
 
