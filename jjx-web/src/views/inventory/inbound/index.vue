@@ -127,28 +127,29 @@
           <template #default="{ row }">
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
-            <el-button v-if="row.supplierId" link type="primary" @click="handleIqcPrint(row)"
-              >打印进料检验报告</el-button
-            >
             <el-button
-              v-if="isPurchase(row) && row.status === InboundOrderStatusEnum.PENDING.value && !row.inspectionResult && canInspect"
+              v-if="isPurchase(row) && row.status === InboundOrderStatusEnum.APPROVED.value"
               link
               type="primary"
-              @click="handleInspect(row)"
-              >确认入库/检验</el-button
+              v-hasPermi="['inventory:inbound:edit']"
+              @click="handleIqcPosting(row)"
+              >确认入库</el-button
             >
             <el-button
-              v-if="isPurchase(row) && row.status === InboundOrderStatusEnum.PENDING.value && !!row.inspectionResult"
+              v-if="
+                !isPurchase(row) &&
+                [
+                  InboundOrderStatusEnum.DRAFT.value,
+                  InboundOrderStatusEnum.PENDING.value,
+                  InboundOrderStatusEnum.APPROVED.value,
+                ].includes(row.status)
+              "
               link
-              type="success"
-              v-hasPermi="['inventory:inbound:approve']"
-              @click="handleApprove(row)"
-              >审批</el-button
+              type="primary"
+              v-hasPermi="['inventory:inbound:edit']"
+              @click="handleManualConfirm(row)"
+              >确认入库</el-button
             >
-            <el-button
-              v-if="!isPurchase(row) && [InboundOrderStatusEnum.DRAFT.value, InboundOrderStatusEnum.PENDING.value, InboundOrderStatusEnum.APPROVED.value].includes(row.status)"
-              link type="primary" v-hasPermi="['inventory:inbound:edit']" @click="handleManualConfirm(row)"
-            >确认入库</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -179,16 +180,10 @@
       </template>
     </el-dialog>
 
-    <!-- 审核弹窗（公共详情 + 审核操作） -->
-    <InboundApproveDialog
-      v-model:visible="approveDialogVisible"
-      :inbound-id="approveInboundId"
-      :inbound-no="approveInboundNo"
-      @success="getList"
-    />
-    <InboundInspectionDialog
-      v-model:visible="inspectionDialogVisible"
-      :inbound-id="inspectionInboundId"
+    <IqcPostingDialog
+      v-model:visible="postingDialogVisible"
+      :inbound-id="postingInboundId"
+      :inbound-no="postingInboundNo"
       @success="getList"
     />
     <!-- 操作预览器 -->
@@ -208,7 +203,7 @@ defineOptions({
   name: 'InboundList',
 })
 
-import { computed, ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Download, Refresh } from '@element-plus/icons-vue'
@@ -218,9 +213,7 @@ import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import InboundDetail from './components/InboundDetail.vue'
-import InboundApproveDialog from './components/InboundApproveDialog.vue'
-import InboundInspectionDialog from './components/InboundInspectionDialog.vue'
-import { useUserStore } from '@/store/modules/user'
+import IqcPostingDialog from './components/IqcPostingDialog.vue'
 import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
 import type { InboundQueryParams, InboundVO } from '@/types/inventory/inbound'
 
@@ -248,14 +241,9 @@ const detailDialogVisible = ref(false)
 const detailInboundId = ref<number | null>(null)
 const dialogTitle = ref('')
 
-// 审核弹窗状态
-const approveDialogVisible = ref(false)
-const approveInboundId = ref<number | undefined>(undefined)
-const approveInboundNo = ref('')
-const inspectionDialogVisible = ref(false)
-const inspectionInboundId = ref<number>()
-const userStore = useUserStore()
-const canInspect = computed(() => userStore.hasAnyPermission(['inventory:inbound:edit', 'quality:inspector']))
+const postingDialogVisible = ref(false)
+const postingInboundId = ref<number>()
+const postingInboundNo = ref('')
 
 // 获取入库单列表
 const getList = async () => {
@@ -328,15 +316,6 @@ const handleRefresh = () => {
 function handlePrint(row: InboundVO) {
   window.open(`/print/inbound/${row.inboundId}`, '_blank')
 }
-function handleIqcPrint(row: InboundVO) {
-  window.open(
-    router.resolve({
-      path: '/production/quality-print/iqc-report',
-      query: { inboundId: row.inboundId },
-    }).href,
-    '_blank'
-  )
-}
 // 查看详情
 // 查看详情（公共组件弹窗）
 const handleView = (row: InboundVO) => {
@@ -351,7 +330,9 @@ const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
-const inboundStatusTextMap = Object.fromEntries(InboundOrderStatusEnum.items.map(item => [item.value, item.label]))
+const inboundStatusTextMap = Object.fromEntries(
+  InboundOrderStatusEnum.items.map((item) => [item.value, item.label])
+)
 const inboundStatusText = (status?: number) =>
   status === undefined || status === null ? '-' : inboundStatusTextMap[status] || String(status)
 const inboundTypeText = (type?: string) => {
@@ -379,23 +360,16 @@ function openPreview(opKey: string, row: InboundVO) {
   previewVisible.value = true
 }
 
-const isPurchase = (row: InboundVO) => !!row.sourceId && (
-  ['PURCHASE', 'PURCHASE_ORDER'].includes(row.sourceType?.toUpperCase() || '')
-  || row.inboundType?.toUpperCase() === 'PURCHASE'
-)
-const handleInspect = (row: InboundVO) => {
-  inspectionInboundId.value = Number(row.inboundId)
-  inspectionDialogVisible.value = true
-}
+const isPurchase = (row: InboundVO) =>
+  !!row.sourceId &&
+  (['PURCHASE', 'PURCHASE_ORDER'].includes(row.sourceType?.toUpperCase() || '') ||
+    row.inboundType?.toUpperCase() === 'PURCHASE')
 const handleManualConfirm = (row: InboundVO) => openPreview('inbound.confirm', row)
-
-// 审批（打开审核弹窗：公共详情 + 通过/驳回）
-const handleApprove = async (row: InboundVO) => {
-  approveInboundId.value = Number(row.inboundId)
-  approveInboundNo.value = row.inboundNo || ''
-  approveDialogVisible.value = true
+const handleIqcPosting = (row: InboundVO) => {
+  postingInboundId.value = Number(row.inboundId)
+  postingInboundNo.value = row.inboundNo || ''
+  postingDialogVisible.value = true
 }
-
 // 取消入库单
 const handleCancel = async (row: InboundVO) => openPreview('inbound.cancel', row)
 // 查看流水（DEV-569）
@@ -410,7 +384,12 @@ function showTrace(row: InboundVO) {
 const getStatusTag = (status?: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
   return status === undefined || status === null
     ? undefined
-    : InboundOrderStatusEnum.getTagProps(status).type as 'success' | 'warning' | 'info' | 'danger' | undefined
+    : (InboundOrderStatusEnum.getTagProps(status).type as
+        | 'success'
+        | 'warning'
+        | 'info'
+        | 'danger'
+        | undefined)
 }
 
 onMounted(async () => {

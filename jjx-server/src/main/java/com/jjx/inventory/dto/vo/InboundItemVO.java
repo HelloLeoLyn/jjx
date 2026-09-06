@@ -18,6 +18,10 @@ public class InboundItemVO {
     private String specification;
     private String unit;
     private BigDecimal quantity;
+    private BigDecimal sampledQuantity;
+    private Long inspectionId;
+    private String inspectionResult;
+    private String disposition;
     private BigDecimal unitPrice;
     private BigDecimal amount;
     private String batchNo;
@@ -27,6 +31,8 @@ public class InboundItemVO {
     private String locationName;
     private BigDecimal qualifiedQuantity;
     private BigDecimal rejectedQuantity;
+    private BigDecimal acceptedQuantity;
+    private BigDecimal postedQuantity;
     private String rejectReason;
     private Integer sortOrder;
     private String remark;

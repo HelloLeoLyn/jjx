@@ -6,6 +6,9 @@ export interface QualityQuery {
   pageSize: number
   inspectionNo?: string
   inspectionType?: string
+  sourceType?: string
+  sourceId?: number
+  sourceItemId?: number
   orderId?: number
   /** P3-B：按工序执行过滤 */
   executionId?: number
@@ -18,8 +21,13 @@ export interface InspectionItemVO {
   itemId?: number
   checkItem: string
   standard?: string
+  inspectionMethod?: string
+  equipment?: string
   actualValue?: string
   result?: string
+  crQuantity?: number
+  maQuantity?: number
+  miQuantity?: number
   remark?: string
 }
 
@@ -28,6 +36,13 @@ export interface QualityVO {
   inspectionNo: string
   inspectionType: string
   inspectionTypeName: string
+  sourceType?: string
+  sourceId?: number
+  sourceItemId?: number
+  batchNo?: string
+  previousInspectionId?: number
+  inspectionVersion?: number
+  disposition?: string
   orderId?: number
   orderNo?: string
   /** P3-B：关联工序执行 */
@@ -48,6 +63,11 @@ export interface QualityVO {
   failQty?: number
   defectDesc?: string
   remark?: string
+  reviewerId?: number
+  reviewerName?: string
+  reviewTime?: string
+  reviewStatus?: string
+  reviewRemark?: string
   createTime?: string
   items?: InspectionItemVO[]
 }

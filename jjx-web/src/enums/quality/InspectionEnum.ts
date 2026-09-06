@@ -32,7 +32,25 @@ export const InspectionResultEnum = createEnum<string>({
   defaultTag: { type: 'info' },
 })
 
+export const QualityReviewStatus = {
+  DRAFT: 'DRAFT',
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const
+
+export const QualityReviewStatusEnum = createEnum<string>({
+  items: [
+    { value: QualityReviewStatus.DRAFT, label: '待提交', tagProps: { type: 'info' } },
+    { value: QualityReviewStatus.PENDING, label: '待审核', tagProps: { type: 'warning' } },
+    { value: QualityReviewStatus.APPROVED, label: '已审核', tagProps: { type: 'success' } },
+    { value: QualityReviewStatus.REJECTED, label: '已驳回', tagProps: { type: 'danger' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
 export const InspectionEnum = {
   type: InspectionTypeEnum,
   result: InspectionResultEnum,
+  reviewStatus: QualityReviewStatusEnum,
 }

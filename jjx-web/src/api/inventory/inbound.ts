@@ -28,10 +28,7 @@ export const inboundApi = {
 
   // 创建入库单
   create(data: InboundCreateParams) {
-    return request.post<R<{ inboundId: string }>>(
-      '/inventory/inbound/create',
-      data,
-    )
+    return request.post<R<{ inboundId: string }>>('/inventory/inbound/create', data)
   },
 
   // 更新入库单
@@ -41,75 +38,89 @@ export const inboundApi = {
 
   // 确认入库
   confirm(inboundId: string, operatorId: string, operatorName: string) {
-    return request.post<R<boolean>>(
-      `/inventory/inbound/confirm/${inboundId}`,
-      null,
-      {
-        params: { operatorId, operatorName },
-      },
-    )
+    return request.post<R<boolean>>(`/inventory/inbound/confirm/${inboundId}`, null, {
+      params: { operatorId, operatorName },
+    })
   },
 
   // 取消入库单
   cancel(inboundId: string, reason: string) {
-    return request.post<R<boolean>>(
-      `/inventory/inbound/cancel/${inboundId}`,
-      null,
-      {
-        params: { reason },
-      },
-    )
+    return request.post<R<boolean>>(`/inventory/inbound/cancel/${inboundId}`, null, {
+      params: { reason },
+    })
   },
 
   // 提交审批
   submitApprove(inboundId: string, data?: InboundInspectionSubmitParams) {
-    return request.post<R<boolean>>(
-      `/inventory/inbound/submit-approve/${inboundId}`,
-      data,
-    )
+    return request.post<R<boolean>>(`/inventory/inbound/submit-approve/${inboundId}`, data)
+  },
+
+  approveInspectionItem(itemId: string, data: Omit<InboundApproveParams, 'inboundId'>) {
+    return request.post<R<boolean>>(`/inventory/inbound/inspection-item/${itemId}/approve`, data)
+  },
+
+  rejectInspectionItem(itemId: string, data: Omit<InboundRejectParams, 'inboundId'>) {
+    return request.post<R<boolean>>(`/inventory/inbound/inspection-item/${itemId}/reject`, data)
+  },
+
+  reinspectItem(itemId: string) {
+    return request.post<R<number>>(`/inventory/inbound/inspection-item/${itemId}/reinspect`)
+  },
+  listQuarantine(inboundId: string) {
+    return request.get<R<any[]>>(`/inventory/inbound/${inboundId}/iqc-quarantine`)
+  },
+  handleQuarantine(quarantineId: string, data: any) {
+    return request.post<R<boolean>>(`/inventory/inbound/iqc-quarantine/${quarantineId}/action`, data)
+  },
+  listDispositionOrders(inboundId: string) {
+    return request.get<R<any[]>>(`/inventory/inbound/${inboundId}/iqc-disposition-orders`)
+  },
+  listAllQuarantine(status?: string) {
+    return request.get<R<any[]>>('/inventory/inbound/iqc-quarantine/list', { params: { status } })
+  },
+  listAllDispositionOrders(action?: string) {
+    return request.get<R<any[]>>('/inventory/inbound/iqc-disposition-orders/list', { params: { action } })
+  },
+  getDispositionOrder(dispositionId: string) {
+    return request.get<R<any>>(`/inventory/inbound/iqc-disposition-orders/${dispositionId}`)
+  },
+  listIqcReturnOrders(inboundId: string) {
+    return request.get<R<any[]>>(`/inventory/inbound/${inboundId}/iqc-return-orders`)
   },
 
   // 审批通过
   approve(data: InboundApproveParams) {
-    return request.post<R<boolean>>(
-      `/inventory/inbound/approve/${data.inboundId}`,
-      null,
-      {
-        params: {
-          approverId: data.approverId,
-          approverName: data.approverName,
-          remark: data.remark,
-        },
+    return request.post<R<boolean>>(`/inventory/inbound/approve/${data.inboundId}`, null, {
+      params: {
+        approverId: data.approverId,
+        approverName: data.approverName,
+        remark: data.remark,
       },
-    )
+    })
   },
 
   // 审批驳回
   reject(data: InboundRejectParams) {
-    return request.post<R<boolean>>(
-      `/inventory/inbound/reject/${data.inboundId}`,
-      null,
-      {
-        params: {
-          approverId: data.approverId,
-          approverName: data.approverName,
-          remark: data.remark,
-        },
+    return request.post<R<boolean>>(`/inventory/inbound/reject/${data.inboundId}`, null, {
+      params: {
+        approverId: data.approverId,
+        approverName: data.approverName,
+        remark: data.remark,
       },
-    )
+    })
   },
 
   // 从采购订单创建入库单
   createFromPurchase(purchaseOrderId: string) {
     return request.post<R<{ inboundId: string }>>(
-      `/inventory/inbound/create-from-purchase/${purchaseOrderId}`,
+      `/inventory/inbound/create-from-purchase/${purchaseOrderId}`
     )
   },
 
   // 从生产工单创建入库单
   createFromProduction(workOrderId: string) {
     return request.post<R<{ inboundId: string }>>(
-      `/inventory/inbound/create-from-production/${workOrderId}`,
+      `/inventory/inbound/create-from-production/${workOrderId}`
     )
   },
 
@@ -134,13 +145,9 @@ export const inboundApi = {
 
   // 更新入库单状态
   updateStatus(data: InboundStatusUpdateParams) {
-    return request.post<R<boolean>>(
-      `/inventory/inbound/update-status/${data.inboundId}`,
-      null,
-      {
-        params: { status: data.status },
-      },
-    )
+    return request.post<R<boolean>>(`/inventory/inbound/update-status/${data.inboundId}`, null, {
+      params: { status: data.status },
+    })
   },
 
   // 获取入库仪表板数据

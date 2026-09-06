@@ -55,6 +55,18 @@ public class InventoryInboundItem extends BaseEntity {
     /** 入库数量 */
     private BigDecimal quantity;
 
+    /** 抽检数量 */
+    private BigDecimal sampledQuantity;
+
+    /** 当前生效的统一质量检验记录 */
+    private Long inspectionId;
+
+    /** 当前明细检验结论 */
+    private String inspectionResult;
+
+    /** 不合格处置方式 */
+    private String disposition;
+
     /** 单价 */
     private BigDecimal unitPrice;
 
@@ -80,6 +92,12 @@ public class InventoryInboundItem extends BaseEntity {
 
     /** 不合格数量 */
     private BigDecimal rejectedQuantity;
+
+    /** 品质最终允收数量（正常合格 + 让步接收） */
+    private BigDecimal acceptedQuantity;
+
+    /** 已进入可用库存的数量，用于幂等部分过账 */
+    private BigDecimal postedQuantity;
 
     /** 不合格原因 */
     private String rejectReason;

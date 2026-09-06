@@ -8,31 +8,44 @@ let progressEl: HTMLElement | null = null
 function startProgress() {
   // 如果已有进度条，重置
   if (progressEl) progressEl.remove()
-  
+
   progressEl = document.createElement('div')
   progressEl.className = 'route-progress'
-  progressEl.style.cssText = 'position:fixed;top:0;left:0;width:0;height:2px;background:#409eff;z-index:99999;transition:width 0.2s ease;'
+  progressEl.style.cssText =
+    'position:fixed;top:0;left:0;width:0;height:2px;background:#409eff;z-index:99999;transition:width 0.2s ease;'
   document.body.appendChild(progressEl)
-  
+
   // 动画推进到 80%
   requestAnimationFrame(() => {
     if (progressEl) progressEl.style.width = '80%'
   })
-  
+
   // 超时保护：5 秒后强制完成
   progressTimer = setTimeout(() => endProgress(), 5000)
 }
 
 function endProgress() {
-  if (progressTimer) { clearTimeout(progressTimer); progressTimer = null }
+  if (progressTimer) {
+    clearTimeout(progressTimer)
+    progressTimer = null
+  }
   if (progressEl) {
     progressEl.style.width = '100%'
     setTimeout(() => {
-      if (progressEl) { progressEl.remove(); progressEl = null }
+      if (progressEl) {
+        progressEl.remove()
+        progressEl = null
+      }
     }, 300)
   }
 }
 export const constantRoutes: RouteRecordRaw[] = [
+  {
+    path: '/inventory/iqc-quarantine',
+    name: 'InventoryIqcQuarantine',
+    component: () => import('@/views/inventory/iqc-quarantine/index.vue'),
+    meta: { title: 'IQC隔离台账', hidden: true },
+  },
   {
     path: '/login',
     name: 'Login',
@@ -85,60 +98,61 @@ export const constantRoutes: RouteRecordRaw[] = [
           hidden: true,
         },
       },
-{
-    path: '/m/scan',
-    name: 'MobileScan',
-    component: () => import('@/views/mobile/scan.vue'),
-    meta: {
-      title: '扫码定位',
-      hidden: true,
-    },
-  },
-{
-    path: '/m/order',
-    name: 'MobileOrder',
-    component: () => import('@/views/mobile/order.vue'),
-    meta: {
-      title: '工单任务',
-      hidden: true,
-    },
-  },
-{
-    path: '/m/report',
-    name: 'MobileReport',
-    component: () => import('@/views/mobile/report.vue'),
-    meta: {
-      title: '报工',
-      hidden: true,
-    },
-  },
-{
-    path: '/m/reports',
-    name: 'MobileReports',
-    component: () => import('@/views/mobile/reports.vue'),
-    meta: {
-      title: '我的报工',
-      hidden: true,
-    },
-  },
-{
-    path: '/m/quality',
-    name: 'MobileQuality',
-    component: () => import('@/views/mobile/quality.vue'),
-    meta: {
-      title: '质检判定',
-      hidden: true,
-    },
-  },
-{
-    path: '/m/pick',
-    name: 'MobilePick',
-    component: () => import('@/views/mobile/pick.vue'),
-    meta: {
-      title: '生产领料',
-      hidden: true,
-    },
-  },    ],
+      {
+        path: '/m/scan',
+        name: 'MobileScan',
+        component: () => import('@/views/mobile/scan.vue'),
+        meta: {
+          title: '扫码定位',
+          hidden: true,
+        },
+      },
+      {
+        path: '/m/order',
+        name: 'MobileOrder',
+        component: () => import('@/views/mobile/order.vue'),
+        meta: {
+          title: '工单任务',
+          hidden: true,
+        },
+      },
+      {
+        path: '/m/report',
+        name: 'MobileReport',
+        component: () => import('@/views/mobile/report.vue'),
+        meta: {
+          title: '报工',
+          hidden: true,
+        },
+      },
+      {
+        path: '/m/reports',
+        name: 'MobileReports',
+        component: () => import('@/views/mobile/reports.vue'),
+        meta: {
+          title: '我的报工',
+          hidden: true,
+        },
+      },
+      {
+        path: '/m/quality',
+        name: 'MobileQuality',
+        component: () => import('@/views/mobile/quality.vue'),
+        meta: {
+          title: '质检判定',
+          hidden: true,
+        },
+      },
+      {
+        path: '/m/pick',
+        name: 'MobilePick',
+        component: () => import('@/views/mobile/pick.vue'),
+        meta: {
+          title: '生产领料',
+          hidden: true,
+        },
+      },
+    ],
   },
   {
     path: '/demo/a4-print',
@@ -343,27 +357,32 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: '报工单打印', hidden: true },
   },
   {
-    path: '/production/quality-print/fqc-report', name: 'ProductionFqcReportPrint',
+    path: '/production/quality-print/fqc-report',
+    name: 'ProductionFqcReportPrint',
     component: () => import('@/views/production/quality-print/fqc-report.vue'),
     meta: { title: '成品检验报告', hidden: true },
   },
   {
-    path: '/production/quality-print/iqc-report', name: 'ProductionIqcReportPrint',
+    path: '/production/quality-print/iqc-report',
+    name: 'ProductionIqcReportPrint',
     component: () => import('@/views/production/quality-print/iqc-report.vue'),
     meta: { title: '进料检验报告', hidden: true },
   },
   {
-    path: '/production/quality-print/daily-report', name: 'ProductionDailyReportPrint',
+    path: '/production/quality-print/daily-report',
+    name: 'ProductionDailyReportPrint',
     component: () => import('@/views/production/quality-print/daily-report.vue'),
     meta: { title: '生产日报表', hidden: true },
   },
   {
-    path: '/production/quality-print/first-piece', name: 'ProductionFirstPiecePrint',
+    path: '/production/quality-print/first-piece',
+    name: 'ProductionFirstPiecePrint',
     component: () => import('@/views/production/quality-print/first-piece.vue'),
     meta: { title: '首件检查表', hidden: true },
   },
   {
-    path: '/production/quality-print/rework-form', name: 'ProductionReworkFormPrint',
+    path: '/production/quality-print/rework-form',
+    name: 'ProductionReworkFormPrint',
     component: () => import('@/views/production/quality-print/rework-form.vue'),
     meta: { title: '返工返修单', hidden: true },
   },
@@ -518,13 +537,21 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'standard-process/add',
         name: 'StandardProcessAdd',
         component: () => import('@/views/product/standard-process/add.vue'),
-        meta: { hidden: true, title: '新增标准工序', permission: 'engineering:standard-process:add' },
+        meta: {
+          hidden: true,
+          title: '新增标准工序',
+          permission: 'engineering:standard-process:add',
+        },
       },
       {
         path: 'standard-process/edit/:processId',
         name: 'StandardProcessEdit',
         component: () => import('@/views/product/standard-process/edit.vue'),
-        meta: { hidden: true, title: '编辑标准工序', permission: 'engineering:standard-process:edit' },
+        meta: {
+          hidden: true,
+          title: '编辑标准工序',
+          permission: 'engineering:standard-process:edit',
+        },
       },
     ],
   },

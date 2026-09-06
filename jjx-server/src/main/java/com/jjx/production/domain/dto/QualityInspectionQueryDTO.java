@@ -7,6 +7,9 @@ import lombok.EqualsAndHashCode;
 public class QualityInspectionQueryDTO extends PageQuery {
     private String inspectionNo;
     private String inspectionType;
+    private String sourceType;
+    private Long sourceId;
+    private Long sourceItemId;
     private Long orderId;
     /** P3-B：按工序执行过滤 */
     private Long executionId;

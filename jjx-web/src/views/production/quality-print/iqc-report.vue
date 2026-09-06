@@ -2,86 +2,26 @@
   <div class="linked-print-page iqc-print-page">
     <div class="linked-print-toolbar no-print">
       <el-button @click="router.back()">返回</el-button>
-      <el-radio-group :model-value="mode" size="small" @change="changeMode">
-        <el-radio-button value="system">系统版</el-radio-button>
-        <el-radio-button value="paper">纸版(QR-037)</el-radio-button>
-      </el-radio-group>
-      <el-button type="primary" :loading="printing" :disabled="!info" @click="print"
-        >打印</el-button
+      <el-tag v-if="selectedItem" type="info">{{ selectedItem.materialCode }} {{ selectedItem.materialName }}</el-tag>
+      <el-tag
+        v-if="inspection"
+        :type="QualityReviewStatusEnum.getTagProps(inspection.reviewStatus || '').type"
+      >
+        {{ QualityReviewStatusEnum.getLabel(inspection.reviewStatus || '') }}
+      </el-tag>
+      <el-button type="primary" :loading="printing" :disabled="!isOfficial" @click="print"
+        >打印正式版</el-button
       >
     </div>
 
-    <A4Canvas v-if="info" :padding-mm="mode === 'paper' ? 11 : 14">
-      <section v-if="mode === 'system'" class="system-sheet">
-        <PrintCompanyHeader variant="center" />
-        <div class="linked-print-title">进料检验报告</div>
-        <div class="linked-print-meta">
-          <div>记录编号：JJX-QR-037</div>
-          <div>验收单号：{{ display(info.inboundNo) }}</div>
-          <div>报告编号：{{ display(info.inboundNo) }}</div>
-          <div>收货日期：{{ display(reportDate) }}</div>
-          <div>供应厂商：{{ display(info.supplierName) }}</div>
-          <div>来料批量：{{ display(incomingQuantity) }}</div>
-          <div>抽检数量：{{ display(sampledQuantity) }}</div>
-          <div>来源单号：{{ display(info.sourceNo) }}</div>
-          <div>检验结果：{{ inspectionLabel }}</div>
-        </div>
-        <table class="linked-print-table">
-          <thead>
-            <tr>
-              <th style="width: 42px">序号</th>
-              <th>物料编码</th>
-              <th>物料名称</th>
-              <th>规格</th>
-              <th>批次</th>
-              <th>收货数</th>
-              <th>合格数</th>
-              <th>拒收数</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(item, index) in info.items || []"
-              :key="item.inboundItemId || item.itemId || index"
-            >
-              <td>{{ index + 1 }}</td>
-              <td>{{ display(item.materialCode) }}</td>
-              <td>{{ display(item.materialName) }}</td>
-              <td>{{ display(item.specification) }}</td>
-              <td>{{ display(item.batchNo) }}</td>
-              <td>{{ display(item.quantity) }} {{ item.unit || '' }}</td>
-              <td>{{ display(item.qualifiedQuantity) }}</td>
-              <td>{{ display(item.rejectedQuantity) }}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <th colspan="5">合计</th>
-              <td>{{ display(incomingQuantity) }}</td>
-              <td>{{ display(qualifiedTotal) }}</td>
-              <td>{{ display(rejectedTotal) }}</td>
-            </tr>
-          </tfoot>
-        </table>
-        <div class="linked-print-note">
-          检验说明：当前系统无独立 IQC 单，本报告依据采购入库/收货单的检验字段与物料明细生成。<br />
-          检验备注：{{ display(info.inspectionRemark || info.remark) }}
-        </div>
-        <div class="linked-print-signs">
-          <div>
-            检验员：<span>{{ info.inspectorName }}</span>
-          </div>
-          <div>采购：<span></span></div>
-          <div>审核：<span></span></div>
-        </div>
-      </section>
-
-      <section v-else class="qr037-sheet">
+    <A4Canvas v-if="info" :padding-mm="11">
+      <section class="qr037-sheet">
+        <div v-if="!isOfficial" class="draft-watermark">非正式版·待审核</div>
         <header class="qr037-header">
           <div class="qr037-company">深圳市精捷信科技有限公司</div>
           <div class="qr037-title">进料检验报告</div>
           <div class="qr037-subtitle">Incoming Quality Report</div>
-          <div class="qr037-rn">R.N：{{ info.inboundNo || '________' }}</div>
+          <div class="qr037-rn">R.N：{{ inspection?.inspectionNo || '________' }}</div>
         </header>
         <table class="qr037-info-table">
           <tbody>
@@ -97,7 +37,7 @@
               <th>验收单号</th>
               <td>{{ info.inboundNo || '' }}</td>
               <th>产品编号</th>
-              <td>{{ materialCodes }}</td>
+              <td>{{ selectedItem?.materialCode || '' }}</td>
               <th>抽检数量</th>
               <td>{{ sampledQuantity }}</td>
             </tr>
@@ -161,123 +101,26 @@
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <th>规格</th>
-              <td>核对《采购订单》应与实物一致</td>
-              <td>目视</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <th>颜色</th>
-              <td>比较样板或限度样板不应有明显偏差</td>
-              <td>目视/样板</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <th rowspan="2">外观</th>
+            <tr v-for="check in inspection?.items || []" :key="check.itemId || check.checkItem">
+              <th>{{ check.checkItem }}</th>
               <td>
-                将抽取样板置于正常环境下，以30cm之距离目视样板并比较标准及限度样板，不应有以下现象
+                {{ check.standard || '' }}
+                <small v-if="check.inspectionMethod">（{{ check.inspectionMethod }}）</small>
               </td>
-              <td>目视</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
+              <td>{{ check.equipment || '' }}</td>
+              <td>{{ check.actualValue || check.remark || '' }}</td>
+              <td>{{ defectValue(check.crQuantity) }}</td>
+              <td>{{ defectValue(check.maQuantity) }}</td>
+              <td>{{ defectValue(check.miQuantity) }}</td>
             </tr>
-            <tr>
-              <td>脏污、黑点、变形、折伤、刮伤、混料、晶点、毛边等</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <th rowspan="3">尺寸</th>
-              <td>长度：±　mm</td>
-              <td>钢直尺/卡尺</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <td>宽度：±　mm</td>
-              <td>钢直尺/卡尺</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <td>厚度：±　mm</td>
-              <td>千分尺</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <th rowspan="2">特性</th>
-              <td>1.附着力测试</td>
-              <td>3M600胶</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <td>2.其它</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <th rowspan="4">包装、标识</th>
-              <td>不应有散乱、变形</td>
-              <td>目视</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <td>标识应与实物及采购订单相符合</td>
-              <td>目视</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <td>不应有混料或明显短缺</td>
-              <td>目视</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-            <tr>
-              <td>应符合环保标识</td>
-              <td>目视</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
+            <tr v-if="!inspection?.items?.length">
+              <td colspan="7">暂无结构化检验项目</td>
             </tr>
             <tr class="total-row">
               <th colspan="4">TOTAL</th>
-              <td></td>
-              <td></td>
-              <td>{{ rejectedTotal }}</td>
+              <td>{{ defectValue(crTotal) }}</td>
+              <td>{{ defectValue(maTotal) }}</td>
+              <td>{{ defectValue(miTotal) }}</td>
             </tr>
           </tbody>
         </table>
@@ -287,12 +130,15 @@
           <span>{{ checkbox('other') }}Other(其它）</span>
         </div>
         <div class="qr037-remark">
-          <strong>Remark（备注）：</strong>{{ info.inspectionRemark || info.remark || '' }}
+          <strong>Remark（备注）：</strong
+          >{{ inspection?.remark || inspection?.defectDesc || info.inspectionRemark || '' }}
         </div>
         <div class="qr037-signatures">
           <span
-            >检验员：<em>{{ info.inspectorName || '' }}</em></span
-          ><span>品质主管：<em></em></span>
+            >检验员：<em>{{ inspection?.inspector || info.inspectorName || '' }}</em></span
+          ><span
+            >品质主管：<em>{{ inspection?.reviewerName || '' }}</em></span
+          >
         </div>
         <footer class="qr037-footer">JJX-QR-037</footer>
       </section>
@@ -306,55 +152,56 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import A4Canvas from '@/components/A4Canvas/index.vue'
-import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { InboundVO } from '@/types/inventory/inbound'
-import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
-import { InspectionResult } from '@/enums/quality/InspectionEnum'
-import { display, logTemplatePrint } from './shared'
+import { qualityApi, type QualityVO } from '@/api/production/quality'
+import {
+  InspectionResult,
+  InspectionResultEnum as QualityInspectionResultEnum,
+  QualityReviewStatus,
+  QualityReviewStatusEnum,
+} from '@/enums/quality/InspectionEnum'
+import { logTemplatePrint } from './shared'
 import './print-common.css'
 
-type PrintMode = 'system' | 'paper'
 type Decision = 'pass' | 'fail' | 'other'
 const route = useRoute(),
   router = useRouter()
 const info = ref<InboundVO | null>(null),
+  inspection = ref<QualityVO | null>(null),
   loading = ref(false),
   printing = ref(false)
-const mode = computed<PrintMode>(() => (route.query.mode === 'paper' ? 'paper' : 'system'))
 const reportDate = computed(
   () => info.value?.inboundDate || info.value?.createTime?.slice(0, 10) || ''
 )
-const inspectionLabel = computed(() =>
-  info.value?.inspectionResult ? InspectionResultEnum.getLabel(info.value.inspectionResult) : '-'
+const selectedItem = computed(() =>
+  (info.value?.items || []).find((item) => Number(item.inboundItemId || item.itemId) === Number(inspection.value?.sourceItemId))
 )
-const incomingQuantity = computed(() => sumItems('quantity') ?? '')
-const sampledQuantity = computed(() => {
-  const qualified = sumItems('qualifiedQuantity'),
-    rejected = sumItems('rejectedQuantity')
-  return qualified === undefined && rejected === undefined ? '' : (qualified || 0) + (rejected || 0)
-})
-const qualifiedTotal = computed(() => sumItems('qualifiedQuantity') ?? '')
-const rejectedTotal = computed(() => sumItems('rejectedQuantity') ?? '')
+const incomingQuantity = computed(() => selectedItem.value?.quantity ?? '')
+const sampledQuantity = computed(
+  () => inspection.value?.totalQty ?? selectedItem.value?.sampledQuantity ?? ''
+)
+const isOfficial = computed(() => inspection.value?.reviewStatus === QualityReviewStatus.APPROVED)
+const rejectedTotal = computed(
+  () => inspection.value?.failQty ?? selectedItem.value?.rejectedQuantity ?? ''
+)
+const crTotal = computed(() => sumDefects('crQuantity'))
+const maTotal = computed(() => sumDefects('maQuantity'))
+const miTotal = computed(() => sumDefects('miQuantity'))
 const materialDescriptions = computed(() =>
-  compactItemText((item) => [item.materialName, item.specification].filter(Boolean).join(' / '))
+  [selectedItem.value?.materialName, selectedItem.value?.specification].filter(Boolean).join(' / ')
 )
-const materialCodes = computed(() => compactItemText((item) => item.materialCode || ''))
 
-function sumItems(field: 'quantity' | 'qualifiedQuantity' | 'rejectedQuantity') {
-  const values = (info.value?.items || [])
-    .map((item) => item[field])
-    .filter((value): value is number => value !== null && value !== undefined)
-  return values.length ? values.reduce((sum, value) => sum + Number(value), 0) : undefined
+function sumDefects(field: 'crQuantity' | 'maQuantity' | 'miQuantity') {
+  return (inspection.value?.items || []).reduce((sum, item) => sum + Number(item[field] || 0), 0)
 }
-function compactItemText(getText: (item: InboundVO['items'][number]) => string) {
-  const texts = (info.value?.items || []).map(getText).filter(Boolean),
-    shown = texts.slice(0, 3)
-  return texts.length > 3 ? `${shown.join('；')}；等${texts.length}项` : shown.join('；')
+function defectValue(value?: number) {
+  return Number(value || 0) || ''
 }
+
 function checkbox(decision: Decision) {
-  const result = info.value?.inspectionResult
-  if (!result || !InspectionResultEnum.canDo(result)) return '□'
+  const result = inspection.value?.result
+  if (!result || !QualityInspectionResultEnum.canDo(result)) return '□'
   const checked =
     decision === 'pass'
       ? result === InspectionResult.PASS
@@ -363,25 +210,24 @@ function checkbox(decision: Decision) {
         : result !== InspectionResult.PASS && result !== InspectionResult.FAIL
   return checked ? '☑' : '□'
 }
-function changeMode(value: string | number | boolean | undefined) {
-  const nextMode: PrintMode = value === 'paper' ? 'paper' : 'system'
-  if (nextMode !== mode.value) router.replace({ query: { ...route.query, mode: nextMode } })
-}
 onMounted(async () => {
-  if (route.query.mode !== 'system' && route.query.mode !== 'paper') {
-    await router.replace({ query: { ...route.query, mode: 'system' } })
-  }
   const id = String(route.query.inboundId || '')
   if (!id) return ElMessage.error('缺少有效的采购收货单ID')
   loading.value = true
   try {
     info.value = (await inboundApi.getById(id)).data
+    const requestedId = Number(route.query.inspectionId)
+    if (requestedId) await loadInspection(requestedId)
+    else ElMessage.warning('当前未指定单项 IQC 检验单')
   } catch (error: any) {
     ElMessage.error(error?.message || '加载失败')
   } finally {
     loading.value = false
   }
 })
+async function loadInspection(id: number) {
+  inspection.value = (await qualityApi.getById(id)).data
+}
 async function print() {
   printing.value = true
   try {
@@ -399,16 +245,20 @@ async function print() {
 .iqc-print-page :deep(.a4-canvas) {
   position: relative;
 }
-.linked-print-toolbar {
-  gap: 14px;
-}
-.linked-print-toolbar > :nth-child(2) {
-  margin-left: auto;
-}
-.system-sheet,
 .qr037-sheet {
   min-height: 270mm;
   box-sizing: border-box;
+}
+.draft-watermark {
+  position: absolute;
+  top: 45%;
+  left: 18%;
+  z-index: 2;
+  transform: rotate(-28deg);
+  color: rgb(180 0 0 / 16%);
+  font-size: 54px;
+  font-weight: 700;
+  pointer-events: none;
 }
 .qr037-sheet {
   position: relative;

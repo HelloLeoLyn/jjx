@@ -24,7 +24,33 @@ export const InspectionResultEnum = createNamedEnum(
     FAIL: { value: 'FAIL', label: '不合格', tagProps: { type: 'danger' } },
     OTHER: { value: 'OTHER', label: '其它', tagProps: { type: 'warning' } },
   },
-  { type: 'info' },
+  { type: 'info' }
+)
+
+export const IqcDispositionEnum = createNamedEnum(
+  {
+    RETURN: { value: 'RETURN', label: '退货', tagProps: { type: 'danger' } },
+    SUPPLIER_REWORK: {
+      value: 'SUPPLIER_REWORK',
+      label: '供应商来厂重工',
+      tagProps: { type: 'warning' },
+    },
+    INTERNAL_SORT: {
+      value: 'INTERNAL_SORT',
+      label: '内部挑选/返工',
+      tagProps: { type: 'warning' },
+    },
+    PARTIAL_ACCEPT: {
+      value: 'PARTIAL_ACCEPT',
+      label: '部分接收',
+      tagProps: { type: 'warning' },
+    },
+    CONCESSION: { value: 'CONCESSION', label: '让步接收', tagProps: { type: 'success' } },
+    SCRAP: { value: 'SCRAP', label: '报废', tagProps: { type: 'danger' } },
+    REINSPECT: { value: 'REINSPECT', label: '待复检', tagProps: { type: 'info' } },
+    HOLD: { value: 'HOLD', label: '待定/隔离', tagProps: { type: 'info' } },
+  },
+  { type: 'info' }
 )
 
 /**
@@ -46,7 +72,7 @@ export const InboundOrderStatusEnum = createNamedEnum(
     PROCESSED: { value: 11, label: '已处理', tagProps: { type: 'success' } },
     IN_PROGRESS: { value: 12, label: '调拨中', tagProps: { type: 'warning' } },
   },
-  { type: 'info' },
+  { type: 'info' }
 )
 
 /**
@@ -78,6 +104,7 @@ export const InboundSourceTypeEnum = createEnum({
 export const InboundEnum = {
   type: InboundTypeEnum,
   inspectionResult: InspectionResultEnum,
+  iqcDisposition: IqcDispositionEnum,
   orderStatus: InboundOrderStatusEnum,
   approveStatus: ApproveStatusEnum,
   sourceType: InboundSourceTypeEnum,

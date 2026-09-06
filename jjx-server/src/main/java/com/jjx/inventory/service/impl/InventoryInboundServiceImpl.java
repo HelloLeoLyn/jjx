@@ -76,6 +76,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryAlertService alertService;
     private final ProductStockService productStockService;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
+    private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
+    private final com.jjx.production.service.QualityActionService qualityActionService;
+    private final com.jjx.production.mapper.ProductionQualityInspectionMapper qualityInspectionMapper;
+    private final com.jjx.inventory.mapper.InventoryIqcQuarantineMapper iqcQuarantineMapper;
+    private final com.jjx.inventory.mapper.InventoryIqcDispositionOrderMapper iqcDispositionOrderMapper;
+    private final com.jjx.inventory.mapper.InventoryIqcReturnOrderMapper iqcReturnOrderMapper;
+    private final com.jjx.inventory.mapper.InventoryIqcReworkOrderMapper iqcReworkOrderMapper;
+    private final com.jjx.inventory.mapper.InventoryIqcScrapOrderMapper iqcScrapOrderMapper;
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {
@@ -275,17 +283,21 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         // 手工入库保持 confirm 直接过账；采购来源必须走检验提交 + 品质主管 approve。
+        boolean purchaseConfirmable = isPurchaseInbound(order)
+                && InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus());
         boolean manualConfirmable = !isPurchaseInbound(order)
                 && (InventoryOrderStatusEnum.DRAFT.getValue().equals(order.getOrderStatus())
                 || InventoryOrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus())
                 || InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus()));
-        if (!manualConfirmable) {
+        if (!manualConfirmable && !purchaseConfirmable) {
             log.error("入库单状态或来源不允许直接确认: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
         }
 
         // 库存操作统一发生在 confirm：加库存+流水+置完成
+        if (purchaseConfirmable) validateAllIqcApproved(inboundId);
         addStock(order, operatorId, operatorName, "确认入库");
+        if (purchaseConfirmable) createIqcQuarantine(order, operatorId, operatorName);
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         // 安全库存检查
         try {
@@ -297,6 +309,294 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             log.warn("安全库存检查失败: {}", e.getMessage());
         }
         return inboundOrderMapper.updateById(order) > 0;
+    }
+
+    private void validateAllIqcApproved(Long inboundId) {
+        for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(inboundId)) {
+            com.jjx.production.domain.entity.ProductionQualityInspection quality = item.getInspectionId() == null
+                    ? null : qualityInspectionMapper.selectById(item.getInspectionId());
+            if (quality == null || !com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode()
+                    .equals(quality.getReviewStatus())) {
+                throw new BusinessException("物料" + item.getMaterialCode() + " IQC 尚未审核通过");
+            }
+        }
+    }
+
+    private void createIqcQuarantine(InventoryInboundOrder order, Long operatorId, String operatorName) {
+        for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
+            BigDecimal accepted = Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO);
+            BigDecimal quarantineQty = item.getQuantity().subtract(accepted);
+            if (quarantineQty.signum() <= 0) continue;
+            Long count = iqcQuarantineMapper.selectCount(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>()
+                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getInboundItemId, item.getItemId())
+                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getInspectionId, item.getInspectionId()));
+            if (count != null && count > 0) continue;
+            com.jjx.inventory.domain.InventoryIqcQuarantine quarantine = new com.jjx.inventory.domain.InventoryIqcQuarantine();
+            quarantine.setInboundId(order.getInboundId());
+            quarantine.setInboundItemId(item.getItemId());
+            quarantine.setInspectionId(item.getInspectionId());
+            quarantine.setMaterialId(item.getMaterialId());
+            quarantine.setMaterialCode(item.getMaterialCode());
+            quarantine.setMaterialName(item.getMaterialName());
+            quarantine.setBatchNo(item.getBatchNo());
+            quarantine.setQuantity(quarantineQty);
+            quarantine.setRemainingQuantity(quarantineQty);
+            quarantine.setDisposition(item.getDisposition());
+            quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode());
+            quarantine.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
+            quarantine.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+            iqcQuarantineMapper.insert(quarantine);
+
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setMaterialId(item.getMaterialId());
+            tx.setMaterialCode(item.getMaterialCode());
+            tx.setMaterialName(item.getMaterialName());
+            tx.setWarehouseId(order.getWarehouseId());
+            tx.setLocationId(item.getLocationId());
+            tx.setTransactionType("IQC_QUARANTINE");
+            tx.setSourceType("INBOUND_IQC");
+            tx.setSourceId(order.getInboundId());
+            tx.setSourceNo(order.getInboundNo());
+            tx.setBatchNo(item.getBatchNo());
+            tx.setQuantity(quarantineQty);
+            tx.setBeforeQuantity(BigDecimal.ZERO);
+            tx.setAfterQuantity(quarantineQty);
+            tx.setUnitCost(item.getUnitPrice());
+            tx.setAmount(item.getUnitPrice() == null ? null : item.getUnitPrice().multiply(quarantineQty));
+            tx.setTransactionTime(LocalDateTime.now());
+            tx.setOperatorId(quarantine.getOperatorId());
+            tx.setOperatorName(quarantine.getOperatorName());
+            tx.setRemark("IQC 不合格品隔离");
+            transactionMapper.insert(tx);
+        }
+    }
+
+    @Override
+    public List<com.jjx.inventory.domain.InventoryIqcQuarantine> listQuarantine(Long inboundId) {
+        return iqcQuarantineMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>()
+                .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getInboundId, inboundId)
+                .orderByAsc(com.jjx.inventory.domain.InventoryIqcQuarantine::getQuarantineId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean handleQuarantine(Long quarantineId, com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
+        var quarantine = iqcQuarantineMapper.selectById(quarantineId);
+        if (quarantine == null) throw new BusinessException("隔离记录不存在");
+        if (!com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode().equals(quarantine.getStatus())) {
+            throw new BusinessException("该隔离记录已完成处置");
+        }
+        BigDecimal quantity = action == null || action.getQuantity() == null ? BigDecimal.ZERO : action.getQuantity();
+        if (quantity.signum() <= 0 || quantity.compareTo(quarantine.getRemainingQuantity()) > 0) {
+            throw new BusinessException("处置数量必须大于 0 且不能超过隔离剩余数量");
+        }
+        String actionCode = action.getAction();
+        String status;
+        boolean release = "RELEASE".equals(actionCode);
+        if (release) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.RELEASED.getCode();
+        else if ("RETURN".equals(actionCode)) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.RETURNED.getCode();
+        else if ("REWORK".equals(actionCode)) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.REWORKED.getCode();
+        else if ("SCRAP".equals(actionCode)) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.SCRAPPED.getCode();
+        else throw new BusinessException("不支持的隔离处置方式");
+
+        if (release) addReleasedQuarantineStock(quarantine, quantity, action);
+        var dispositionOrder = new com.jjx.inventory.domain.InventoryIqcDispositionOrder();
+        dispositionOrder.setDispositionNo("IQD" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
+                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        dispositionOrder.setQuarantineId(quarantine.getQuarantineId());
+        dispositionOrder.setInboundId(quarantine.getInboundId());
+        dispositionOrder.setInboundItemId(quarantine.getInboundItemId());
+        dispositionOrder.setInspectionId(quarantine.getInspectionId());
+        dispositionOrder.setAction(actionCode);
+        dispositionOrder.setQuantity(quantity);
+        dispositionOrder.setMaterialCode(quarantine.getMaterialCode());
+        dispositionOrder.setMaterialName(quarantine.getMaterialName());
+        dispositionOrder.setBatchNo(quarantine.getBatchNo());
+        dispositionOrder.setRemark(action.getRemark());
+        dispositionOrder.setStatus("COMPLETED");
+        dispositionOrder.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
+        dispositionOrder.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getUsername());
+        iqcDispositionOrderMapper.insert(dispositionOrder);
+        if ("RETURN".equals(actionCode)) createIqcReturnOrder(quarantine, dispositionOrder, action);
+        if ("REWORK".equals(actionCode)) createIqcReworkOrder(quarantine, dispositionOrder, action);
+        if ("SCRAP".equals(actionCode)) createIqcScrapOrder(quarantine, dispositionOrder, action);
+        quarantine.setRemainingQuantity(quarantine.getRemainingQuantity().subtract(quantity));
+        if (quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
+        iqcQuarantineMapper.updateById(quarantine);
+
+        InventoryTransaction tx = new InventoryTransaction();
+        InventoryInboundItem inboundItem = inboundItemMapper.selectById(quarantine.getInboundItemId());
+        InventoryInboundOrder inboundOrder = inboundOrderMapper.selectById(quarantine.getInboundId());
+        tx.setMaterialId(quarantine.getMaterialId()); tx.setMaterialCode(quarantine.getMaterialCode());
+        tx.setMaterialName(quarantine.getMaterialName()); tx.setTransactionType("IQC_" + actionCode);
+        tx.setWarehouseId(inboundOrder == null ? null : inboundOrder.getWarehouseId());
+        tx.setLocationId(inboundItem == null ? null : inboundItem.getLocationId());
+        tx.setSourceType("INBOUND_IQC"); tx.setSourceId(quarantine.getInboundId());
+        tx.setBatchNo(quarantine.getBatchNo()); tx.setQuantity(quantity);
+        tx.setBeforeQuantity(quarantine.getRemainingQuantity().add(quantity));
+        tx.setAfterQuantity(quarantine.getRemainingQuantity());
+        tx.setTransactionTime(LocalDateTime.now());
+        tx.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
+        tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getUsername());
+        tx.setRemark(action.getRemark()); transactionMapper.insert(tx);
+        return true;
+    }
+
+    private void createIqcReturnOrder(com.jjx.inventory.domain.InventoryIqcQuarantine quarantine,
+                                      com.jjx.inventory.domain.InventoryIqcDispositionOrder disposition,
+                                      com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
+        var item = inboundItemMapper.selectById(quarantine.getInboundItemId());
+        var inbound = inboundOrderMapper.selectById(quarantine.getInboundId());
+        var order = new com.jjx.inventory.domain.InventoryIqcReturnOrder();
+        order.setReturnNo("IQR" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
+                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        order.setDispositionId(disposition.getDispositionId()); order.setQuarantineId(quarantine.getQuarantineId());
+        order.setInboundId(quarantine.getInboundId()); order.setInboundItemId(quarantine.getInboundItemId());
+        order.setInspectionId(quarantine.getInspectionId()); order.setMaterialId(quarantine.getMaterialId());
+        order.setMaterialCode(quarantine.getMaterialCode()); order.setMaterialName(quarantine.getMaterialName());
+        order.setBatchNo(quarantine.getBatchNo()); order.setQuantity(disposition.getQuantity());
+        order.setSupplierId(inbound == null ? null : inbound.getSupplierId());
+        order.setSupplierName(inbound == null ? null : inbound.getSupplierName());
+        order.setReason(action.getRemark()); order.setStatus("CREATED");
+        order.setOperatorId(disposition.getOperatorId()); order.setOperatorName(disposition.getOperatorName());
+        iqcReturnOrderMapper.insert(order);
+    }
+
+    private void createIqcReworkOrder(com.jjx.inventory.domain.InventoryIqcQuarantine quarantine,
+                                      com.jjx.inventory.domain.InventoryIqcDispositionOrder disposition,
+                                      com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
+        var inbound = inboundOrderMapper.selectById(quarantine.getInboundId());
+        var order = new com.jjx.inventory.domain.InventoryIqcReworkOrder();
+        order.setReworkNo("IQW" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
+                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        order.setDispositionId(disposition.getDispositionId()); order.setQuarantineId(quarantine.getQuarantineId());
+        order.setInboundId(quarantine.getInboundId()); order.setInboundItemId(quarantine.getInboundItemId());
+        order.setInspectionId(quarantine.getInspectionId()); order.setMaterialId(quarantine.getMaterialId());
+        order.setMaterialCode(quarantine.getMaterialCode()); order.setMaterialName(quarantine.getMaterialName());
+        order.setBatchNo(quarantine.getBatchNo()); order.setQuantity(disposition.getQuantity());
+        order.setSupplierId(inbound == null ? null : inbound.getSupplierId());
+        order.setSupplierName(inbound == null ? null : inbound.getSupplierName());
+        order.setReason(action.getRemark()); order.setStatus("CREATED");
+        order.setOperatorId(disposition.getOperatorId()); order.setOperatorName(disposition.getOperatorName());
+        iqcReworkOrderMapper.insert(order);
+    }
+
+    private void createIqcScrapOrder(com.jjx.inventory.domain.InventoryIqcQuarantine quarantine,
+                                     com.jjx.inventory.domain.InventoryIqcDispositionOrder disposition,
+                                     com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
+        var order = new com.jjx.inventory.domain.InventoryIqcScrapOrder();
+        order.setScrapNo("IQS" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
+                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        order.setDispositionId(disposition.getDispositionId()); order.setQuarantineId(quarantine.getQuarantineId());
+        order.setInboundId(quarantine.getInboundId()); order.setInboundItemId(quarantine.getInboundItemId());
+        order.setInspectionId(quarantine.getInspectionId()); order.setMaterialId(quarantine.getMaterialId());
+        order.setMaterialCode(quarantine.getMaterialCode()); order.setMaterialName(quarantine.getMaterialName());
+        order.setBatchNo(quarantine.getBatchNo()); order.setQuantity(disposition.getQuantity());
+        order.setReason(action.getRemark()); order.setStatus("PENDING_APPROVAL");
+        order.setApplicantId(disposition.getOperatorId()); order.setApplicantName(disposition.getOperatorName());
+        iqcScrapOrderMapper.insert(order);
+    }
+
+    @Override
+    public List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listDispositionOrders(Long inboundId) {
+        return iqcDispositionOrderMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcDispositionOrder>()
+                .eq(com.jjx.inventory.domain.InventoryIqcDispositionOrder::getInboundId, inboundId)
+                .orderByDesc(com.jjx.inventory.domain.InventoryIqcDispositionOrder::getDispositionId));
+    }
+
+    @Override
+    public List<com.jjx.inventory.domain.InventoryIqcQuarantine> listAllQuarantine(String status) {
+        var wrapper = new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>();
+        if (status != null && !status.isBlank()) wrapper.eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getStatus, status);
+        return iqcQuarantineMapper.selectList(wrapper.orderByDesc(com.jjx.inventory.domain.InventoryIqcQuarantine::getQuarantineId));
+    }
+
+    @Override
+    public List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listAllDispositionOrders(String action) {
+        var wrapper = new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcDispositionOrder>();
+        if (action != null && !action.isBlank()) wrapper.eq(com.jjx.inventory.domain.InventoryIqcDispositionOrder::getAction, action);
+        return iqcDispositionOrderMapper.selectList(wrapper.orderByDesc(com.jjx.inventory.domain.InventoryIqcDispositionOrder::getDispositionId));
+    }
+
+    @Override
+    public com.jjx.inventory.domain.InventoryIqcDispositionOrder getDispositionOrder(Long dispositionId) {
+        var order = iqcDispositionOrderMapper.selectById(dispositionId);
+        if (order == null) throw new BusinessException("IQC 处置单不存在");
+        return order;
+    }
+
+    @Override
+    public List<com.jjx.inventory.domain.InventoryIqcReturnOrder> listIqcReturnOrders(Long inboundId) {
+        return iqcReturnOrderMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcReturnOrder>()
+                .eq(com.jjx.inventory.domain.InventoryIqcReturnOrder::getInboundId, inboundId)
+                .orderByDesc(com.jjx.inventory.domain.InventoryIqcReturnOrder::getReturnId));
+    }
+
+    @Override
+    public List<com.jjx.inventory.domain.InventoryIqcReworkOrder> listIqcReworkOrders(Long inboundId) {
+        return iqcReworkOrderMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcReworkOrder>()
+                .eq(com.jjx.inventory.domain.InventoryIqcReworkOrder::getInboundId, inboundId)
+                .orderByDesc(com.jjx.inventory.domain.InventoryIqcReworkOrder::getReworkId));
+    }
+
+    @Override
+    public List<com.jjx.inventory.domain.InventoryIqcScrapOrder> listIqcScrapOrders(Long inboundId) {
+        return iqcScrapOrderMapper.selectList(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcScrapOrder>()
+                .eq(com.jjx.inventory.domain.InventoryIqcScrapOrder::getInboundId, inboundId)
+                .orderByDesc(com.jjx.inventory.domain.InventoryIqcScrapOrder::getScrapId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean approveIqcScrap(Long scrapId, com.jjx.inventory.dto.save.IqcScrapApproveDTO approval) {
+        var scrap = iqcScrapOrderMapper.selectById(scrapId);
+        if (scrap == null) throw new BusinessException("IQC 报废单不存在");
+        if (!"PENDING_APPROVAL".equals(scrap.getStatus())) throw new BusinessException("该报废单已处理");
+        if (approval == null || !approval.isApproved()) {
+            scrap.setStatus("REJECTED");
+        } else {
+            scrap.setStatus("APPROVED");
+        }
+        scrap.setApproverId(approval == null ? SecurityUtils.getUserId() : approval.getApproverId());
+        scrap.setApproverName(approval == null ? SecurityUtils.getUsername() : approval.getApproverName());
+        iqcScrapOrderMapper.updateById(scrap);
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long completeIqcRework(Long reworkId) {
+        var rework = iqcReworkOrderMapper.selectById(reworkId);
+        if (rework == null) throw new BusinessException("IQC 返工单不存在");
+        if (!"CREATED".equals(rework.getStatus())) throw new BusinessException("该返工单已完成或已发起复检");
+        var item = inboundItemMapper.selectById(rework.getInboundItemId());
+        if (item == null || item.getInspectionId() == null) throw new BusinessException("找不到原 IQC 检验记录");
+        Long newInspectionId = qualityActionService.reinspect(item.getInspectionId());
+        var fresh = qualityInspectionMapper.selectById(newInspectionId);
+        fresh.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.DRAFT.getCode());
+        qualityInspectionMapper.updateById(fresh);
+        item.setInspectionId(newInspectionId);
+        item.setInspectionResult(null);
+        item.setDisposition(null);
+        item.setAcceptedQuantity(BigDecimal.ZERO);
+        inboundItemMapper.updateById(item);
+        rework.setStatus("PENDING_REINSPECTION");
+        iqcReworkOrderMapper.updateById(rework);
+        return newInspectionId;
+    }
+
+    private void addReleasedQuarantineStock(com.jjx.inventory.domain.InventoryIqcQuarantine quarantine,
+                                             BigDecimal quantity,
+                                             com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
+        LambdaQueryWrapper<InventoryStockItem> wrapper = new LambdaQueryWrapper<InventoryStockItem>()
+                .eq(InventoryStockItem::getMaterialId, quarantine.getMaterialId())
+                .eq(InventoryStockItem::getBatchNo, quarantine.getBatchNo())
+                .eq(InventoryStockItem::getStatus, 1);
+        InventoryStockItem stock = stockItemMapper.selectOne(wrapper);
+        if (stock == null) throw new BusinessException("找不到原批次可用库存记录，无法释放隔离数量");
+        stock.setQuantity(stock.getQuantity().add(quantity));
+        stockItemMapper.updateById(stock);
+        stockMapper.refreshSummary(quarantine.getMaterialId());
     }
 
     @Override
@@ -322,8 +622,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.submitted", bizId = "#inboundId", bizType = "'inventory'",
-            condition = "#inspection == null || #inspection.inspectionResult == null || !#inspection.inspectionResult.equalsIgnoreCase('FAIL')")
+    @Event(value = "inventory.inbound.submitted", bizId = "#inboundId", bizType = "'inventory'")
     public boolean submitApprove(Long inboundId, InboundInspectionSubmitDTO inspection) {
         // DEV-651 方案A：行锁
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -335,9 +634,23 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 采购收货单创建即处于 PENDING；inspection_result 为空表示“待检验”，有值表示“待主管复核”。
         Integer status = order.getOrderStatus();
         boolean pendingPurchaseInspection = isPurchaseInbound(order)
-                && InventoryOrderStatusEnum.PENDING.getValue().equals(status)
-                && order.getInspectionResult() == null;
+                && InventoryOrderStatusEnum.PENDING.getValue().equals(status);
+        // 已完成入库单发生供应商返工后，需要允许提交新生成的 IQC 复检单；
+        // 仅当明细当前指向一张待检草稿时放行，避免普通已完成入库单被重复提交。
+        boolean pendingReinspection = isPurchaseInbound(order)
+                && InventoryOrderStatusEnum.COMPLETED.getValue().equals(status)
+                && inboundItemMapper.selectByInboundId(inboundId).stream().anyMatch(item -> {
+                    if (item.getInspectionId() == null) return false;
+                    com.jjx.production.domain.entity.ProductionQualityInspection current =
+                            qualityInspectionMapper.selectById(item.getInspectionId());
+                    return current != null
+                            && com.jjx.production.enums.QualityInspectionResultEnum.PENDING.getCode()
+                            .equals(current.getResult())
+                            && com.jjx.production.enums.QualityReviewStatusEnum.DRAFT.getCode()
+                            .equals(current.getReviewStatus());
+                });
         if (!pendingPurchaseInspection
+                && !pendingReinspection
                 && !InventoryOrderStatusEnum.DRAFT.getValue().equals(status)
                 && !InventoryOrderStatusEnum.REJECTED.getValue().equals(status)
                 && !InventoryOrderStatusEnum.CANCELLED.getValue().equals(status)) {
@@ -347,34 +660,28 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         if (isPurchaseInbound(order)) {
             saveInspection(order, inspection);
-            if ("FAIL".equalsIgnoreCase(order.getInspectionResult())) {
-                order.setOrderStatus(InventoryOrderStatusEnum.REJECTED.getValue());
-                order.setRemark(order.getInspectionRemark());
-                boolean updated = inboundOrderMapper.updateById(order) > 0;
-                if (updated) {
-                    eventPublisher.fire("inventory.inbound.rejected", Map.of("inboundId", String.valueOf(inboundId)));
-                }
-                return updated;
-            }
         }
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         return inboundOrderMapper.updateById(order) > 0;
     }
 
     private void saveInspection(InventoryInboundOrder order, InboundInspectionSubmitDTO inspection) {
-        if (inspection == null || inspection.getInspectionResult() == null) {
+        if (inspection == null) {
             throw new BusinessException("采购入库单必须填写来料检验结果");
-        }
-        String result = inspection.getInspectionResult().toUpperCase();
-        if (!List.of("PASS", "FAIL", "OTHER").contains(result)) {
-            throw new BusinessException("检验判定仅支持 PASS、FAIL、OTHER");
         }
         Map<Long, InventoryInboundItem> existing = inboundItemMapper.selectByInboundId(order.getInboundId()).stream()
                 .collect(Collectors.toMap(InventoryInboundItem::getItemId, item -> item));
-        if (inspection.getItems() != null) {
-            for (InboundInspectionSubmitDTO.Item submitted : inspection.getItems()) {
+        if (inspection.getItems() == null || inspection.getItems().size() != existing.size()) {
+            throw new BusinessException("必须逐项完成本次入库单的来料检验");
+        }
+        boolean allPass = true;
+        for (InboundInspectionSubmitDTO.Item submitted : inspection.getItems()) {
                 InventoryInboundItem item = existing.get(submitted.getItemId());
                 if (item == null) throw new BusinessException("入库明细不存在: " + submitted.getItemId());
+                String itemResult = submitted.getInspectionResult() == null ? "" : submitted.getInspectionResult().toUpperCase();
+                if (!List.of("PASS", "FAIL").contains(itemResult)) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "检验判定仅支持 PASS、FAIL");
+                }
                 BigDecimal qualified = submitted.getQualifiedQuantity() == null ? BigDecimal.ZERO : submitted.getQualifiedQuantity();
                 BigDecimal rejected = submitted.getRejectedQuantity() == null ? BigDecimal.ZERO : submitted.getRejectedQuantity();
                 BigDecimal checked = qualified.add(rejected);
@@ -385,17 +692,181 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                         || submitted.getSampledQuantity().compareTo(checked) != 0)) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "抽检数量须等于合格与不良数量之和，且不能超过收货数量");
                 }
+                com.jjx.production.enums.QualityDispositionEnum disposition =
+                        com.jjx.production.enums.QualityDispositionEnum.fromCode(submitted.getDisposition());
+                if ("FAIL".equals(itemResult) && disposition == null) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "不合格时必须选择处置方式");
+                }
+                BigDecimal accepted = submitted.getAcceptedQuantity() == null ? BigDecimal.ZERO : submitted.getAcceptedQuantity();
+                if (accepted.signum() < 0 || accepted.compareTo(item.getQuantity()) > 0) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "允收入库数量必须在收货数量范围内");
+                }
+
+                com.jjx.production.domain.entity.ProductionQualityInspection previous = item.getInspectionId() == null
+                        ? null : qualityInspectionMapper.selectById(item.getInspectionId());
+                if (previous != null
+                        && com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode()
+                        .equals(previous.getReviewStatus())) {
+                    // 同一张收货单中其它项目驳回重提时，已审核项目保持锁定，禁止隐式生成新版本。
+                    allPass = allPass && "PASS".equalsIgnoreCase(item.getInspectionResult());
+                    continue;
+                }
+                boolean editablePending = previous != null
+                        && com.jjx.production.enums.QualityInspectionResultEnum.PENDING.getCode()
+                        .equals(previous.getResult());
+                Long inspectionId;
+                if (editablePending) {
+                    inspectionId = previous.getInspectionId();
+                    previous.setDisposition(disposition == null ? null : disposition.getCode());
+                    previous.setRemark(inspection.getInspectionRemark());
+                    previous.setInspector(SecurityUtils.getUsername());
+                    previous.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.PENDING.getCode());
+                    previous.setReviewRemark(null);
+                    previous.setReviewerId(null);
+                    previous.setReviewerName(null);
+                    previous.setReviewTime(null);
+                    qualityInspectionMapper.updateById(previous);
+                } else {
+                    com.jjx.production.domain.dto.QualityInspectionCreateDTO create =
+                            new com.jjx.production.domain.dto.QualityInspectionCreateDTO();
+                    create.setInspectionType(com.jjx.production.enums.QualityInspectionTypeEnum.IQC.getCode());
+                    create.setSourceType(com.jjx.production.enums.QualitySourceTypeEnum.INBOUND.getCode());
+                    create.setSourceId(order.getInboundId());
+                    create.setSourceItemId(item.getItemId());
+                    create.setMaterialId(item.getMaterialId());
+                    create.setBatchNo(item.getBatchNo());
+                    if (previous != null) {
+                        create.setPreviousInspectionId(previous.getInspectionId());
+                        create.setInspectionVersion(previous.getInspectionVersion() == null
+                                ? 2 : previous.getInspectionVersion() + 1);
+                    }
+                    create.setDisposition(disposition == null ? null : disposition.getCode());
+                    create.setInspector(SecurityUtils.getUsername());
+                    create.setRemark(inspection.getInspectionRemark());
+                    create.setItems(submitted.getInspectionItems());
+                    inspectionId = qualityInspectionService.create(create);
+                }
+                com.jjx.production.domain.dto.QualityInspectionUpdateDTO update =
+                        new com.jjx.production.domain.dto.QualityInspectionUpdateDTO();
+                update.setInspectionId(inspectionId);
+                update.setTotalQty(submitted.getSampledQuantity());
+                update.setPassQty(qualified);
+                update.setFailQty(rejected);
+                update.setDefectDesc(submitted.getRejectReason());
+                if (editablePending) update.setItems(submitted.getInspectionItems());
+                qualityInspectionService.update(update);
+
+                com.jjx.production.domain.entity.ProductionQualityInspection submittedInspection =
+                        qualityInspectionMapper.selectById(inspectionId);
+                submittedInspection.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.PENDING.getCode());
+                qualityInspectionMapper.updateById(submittedInspection);
+
+                item.setSampledQuantity(submitted.getSampledQuantity());
+                item.setInspectionId(inspectionId);
+                item.setInspectionResult(itemResult);
+                item.setDisposition(disposition == null ? null : disposition.getCode());
                 item.setQualifiedQuantity(qualified);
                 item.setRejectedQuantity(rejected);
+                item.setAcceptedQuantity(accepted);
                 item.setRejectReason(submitted.getRejectReason());
                 inboundItemMapper.updateById(item);
-            }
+                allPass = allPass && "PASS".equals(itemResult);
         }
-        order.setInspectionResult(result);
+        order.setInspectionResult(allPass ? "PASS" : "OTHER");
         order.setInspectionRemark(inspection.getInspectionRemark());
         order.setInspectorId(SecurityUtils.getUserId());
         order.setInspectorName(SecurityUtils.getUsername());
         order.setInspectionTime(LocalDateTime.now());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean approveInspectionItem(Long itemId,
+            com.jjx.inventory.dto.save.InboundInspectionReviewDTO review) {
+        InventoryInboundItem item = inboundItemMapper.selectById(itemId);
+        if (item == null || item.getInspectionId() == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
+        com.jjx.production.domain.entity.ProductionQualityInspection quality = qualityInspectionMapper.selectById(item.getInspectionId());
+        if (quality == null) throw new BusinessException("IQC 检验记录不存在");
+        if (!com.jjx.production.enums.QualityReviewStatusEnum.PENDING.getCode().equals(quality.getReviewStatus())) {
+            throw new BusinessException("仅待审核的 IQC 记录可以审核");
+        }
+        com.jjx.production.domain.dto.QualityJudgeDTO judge = new com.jjx.production.domain.dto.QualityJudgeDTO();
+        judge.setResult("PASS".equalsIgnoreCase(item.getInspectionResult())
+                ? com.jjx.production.enums.QualityInspectionResultEnum.PASS.getCode()
+                : com.jjx.production.enums.QualityInspectionResultEnum.FAIL.getCode());
+        judge.setTotalQty(item.getSampledQuantity());
+        judge.setPassQty(item.getQualifiedQuantity());
+        judge.setFailQty(item.getRejectedQuantity());
+        judge.setDefectDesc(item.getRejectReason());
+        judge.setRemark(quality.getRemark());
+        qualityActionService.judge(quality.getInspectionId(), judge);
+        quality = qualityInspectionMapper.selectById(quality.getInspectionId());
+        quality.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode());
+        quality.setReviewRemark(review == null ? null : review.getRemark());
+        quality.setReviewerId(review == null ? SecurityUtils.getUserId() : review.getApproverId());
+        quality.setReviewerName(review == null || review.getApproverName() == null
+                ? SecurityUtils.getUsername() : review.getApproverName());
+        quality.setReviewTime(LocalDateTime.now());
+        qualityInspectionMapper.updateById(quality);
+        updateInboundReviewStatus(item.getInboundId());
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean rejectInspectionItem(Long itemId,
+            com.jjx.inventory.dto.save.InboundInspectionReviewDTO review) {
+        if (review == null || org.apache.commons.lang3.StringUtils.isBlank(review.getRemark())) {
+            throw new BusinessException("驳回时必须填写审核意见");
+        }
+        InventoryInboundItem item = inboundItemMapper.selectById(itemId);
+        if (item == null || item.getInspectionId() == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
+        com.jjx.production.domain.entity.ProductionQualityInspection quality = qualityInspectionMapper.selectById(item.getInspectionId());
+        if (quality == null || !com.jjx.production.enums.QualityReviewStatusEnum.PENDING.getCode().equals(quality.getReviewStatus())) {
+            throw new BusinessException("仅待审核的 IQC 记录可以驳回");
+        }
+        quality.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.REJECTED.getCode());
+        quality.setReviewRemark(review.getRemark());
+        quality.setReviewerId(review.getApproverId());
+        quality.setReviewerName(review.getApproverName());
+        quality.setReviewTime(LocalDateTime.now());
+        qualityInspectionMapper.updateById(quality);
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long reinspectItem(Long itemId) {
+        InventoryInboundItem item = inboundItemMapper.selectById(itemId);
+        if (item == null || item.getInspectionId() == null) throw new BusinessException("入库明细尚无可复检的 IQC 记录");
+        com.jjx.production.domain.entity.ProductionQualityInspection old = qualityInspectionMapper.selectById(item.getInspectionId());
+        if (old == null || !com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode().equals(old.getReviewStatus())) {
+            throw new BusinessException("只有已审核的 IQC 记录可以发起复检");
+        }
+        Long newId = qualityActionService.reinspect(old.getInspectionId());
+        com.jjx.production.domain.entity.ProductionQualityInspection fresh = qualityInspectionMapper.selectById(newId);
+        fresh.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.DRAFT.getCode());
+        qualityInspectionMapper.updateById(fresh);
+        item.setInspectionId(newId);
+        inboundItemMapper.updateById(item);
+        InventoryInboundOrder order = inboundOrderMapper.selectById(item.getInboundId());
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        inboundOrderMapper.updateById(order);
+        return newId;
+    }
+
+    private void updateInboundReviewStatus(Long inboundId) {
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+        boolean allApproved = !items.isEmpty() && items.stream().allMatch(item -> {
+            if (item.getInspectionId() == null) return false;
+            com.jjx.production.domain.entity.ProductionQualityInspection quality = qualityInspectionMapper.selectById(item.getInspectionId());
+            return quality != null && com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode().equals(quality.getReviewStatus());
+        });
+        if (allApproved) {
+            InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
+            order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
+            inboundOrderMapper.updateById(order);
+        }
     }
 
     private boolean isPurchaseInbound(InventoryInboundOrder order) {
@@ -425,6 +896,36 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             throw new BusinessException("采购入库单尚未完成来料检验，不能审批");
         }
 
+        if (isPurchaseInbound(order)) {
+            throw new BusinessException("采购入库请使用单项 IQC 审核；库存过账将在确认入库阶段执行");
+        }
+
+        if (isPurchaseInbound(order)) {
+            List<InventoryInboundItem> inspectionItems = inboundItemMapper.selectByInboundId(inboundId);
+            for (InventoryInboundItem item : inspectionItems) {
+                if (item.getInspectionId() == null || item.getInspectionResult() == null) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "尚未完成来料检验");
+                }
+                com.jjx.production.domain.dto.QualityJudgeDTO judge =
+                        new com.jjx.production.domain.dto.QualityJudgeDTO();
+                judge.setResult("PASS".equalsIgnoreCase(item.getInspectionResult())
+                        ? com.jjx.production.enums.QualityInspectionResultEnum.PASS.getCode()
+                        : com.jjx.production.enums.QualityInspectionResultEnum.FAIL.getCode());
+                judge.setTotalQty(item.getSampledQuantity());
+                judge.setPassQty(item.getQualifiedQuantity());
+                judge.setFailQty(item.getRejectedQuantity());
+                judge.setDefectDesc(item.getRejectReason());
+                judge.setRemark(remark);
+                qualityActionService.judge(item.getInspectionId(), judge);
+                com.jjx.production.domain.entity.ProductionQualityInspection quality =
+                        qualityInspectionMapper.selectById(item.getInspectionId());
+                quality.setReviewerId(approverId);
+                quality.setReviewerName(approverName);
+                quality.setReviewTime(LocalDateTime.now());
+                qualityInspectionMapper.updateById(quality);
+            }
+        }
+
         // 行锁 + PENDING 状态守卫保证只有首次审批能执行过账；事务失败时库存、流水和状态一并回滚。
         addStock(order, approverId, approverName, "审批通过入库");
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
@@ -451,6 +952,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
+
+        if (isPurchaseInbound(order)) {
+            throw new BusinessException("采购入库请在 IQC 审核窗口逐项驳回");
+        }
+
         if (!InventoryOrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus())) {
             log.error("入库单状态不正确，无法驳回: inboundId={}, status={}", inboundId, order.getOrderStatus());
             return false;
@@ -468,7 +974,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private void addStock(InventoryInboundOrder order, Long operatorId, String operatorName, String remark) {
         List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(order.getInboundId());
         for (InventoryInboundItem item : items) {
-            if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal targetQuantity = isPurchaseInbound(order)
+                    ? Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO)
+                    : item.getQuantity();
+            BigDecimal postedQuantity = Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO);
+            BigDecimal quantityToPost = targetQuantity == null ? BigDecimal.ZERO : targetQuantity.subtract(postedQuantity);
+            if (quantityToPost.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             // 查找现有批次库存
             LambdaQueryWrapper<InventoryStockItem> wrapper = new LambdaQueryWrapper<InventoryStockItem>()
@@ -482,7 +993,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
             if (existing != null) {
                 // 已有批次，增加数量
-                existing.setQuantity(existing.getQuantity().add(item.getQuantity()));
+                existing.setQuantity(existing.getQuantity().add(quantityToPost));
                 existing.setLastInboundTime(LocalDateTime.now());
                 stockItemMapper.updateById(existing);
             } else {
@@ -496,13 +1007,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 newItem.setBatchNo(item.getBatchNo());
                 newItem.setProductionDate(item.getProductionDate());
                 newItem.setExpiryDate(item.getExpiryDate());
-                newItem.setQuantity(item.getQuantity());
+                newItem.setQuantity(quantityToPost);
                 newItem.setReservedQuantity(BigDecimal.ZERO);
                 newItem.setUnitCost(item.getUnitPrice());
                 newItem.setStatus(1);
                 newItem.setLastInboundTime(LocalDateTime.now());
                 stockItemMapper.insert(newItem);
             }
+            item.setPostedQuantity(postedQuantity.add(quantityToPost));
+            inboundItemMapper.updateById(item);
 
             // 刷新库存汇总
             stockMapper.refreshSummary(item.getMaterialId());
@@ -524,11 +1037,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setSourceId(order.getInboundId());
             tx.setSourceNo(order.getInboundNo());
             tx.setBatchNo(item.getBatchNo());
-            tx.setQuantity(item.getQuantity());
-            tx.setBeforeQuantity(currentTotal.subtract(item.getQuantity()));
+            tx.setQuantity(quantityToPost);
+            tx.setBeforeQuantity(currentTotal.subtract(quantityToPost));
             tx.setAfterQuantity(currentTotal);
             tx.setUnitCost(item.getUnitPrice());
-            tx.setAmount(item.getAmount());
+            tx.setAmount(item.getUnitPrice() == null ? null : item.getUnitPrice().multiply(quantityToPost));
             tx.setTransactionTime(LocalDateTime.now());
             tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
             tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
@@ -1090,6 +1603,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setSpecification(item.getSpecification());
         vo.setUnit(item.getUnit());
         vo.setQuantity(item.getQuantity());
+        vo.setSampledQuantity(item.getSampledQuantity());
+        vo.setInspectionId(item.getInspectionId());
+        vo.setInspectionResult(item.getInspectionResult());
+        vo.setDisposition(item.getDisposition());
         vo.setUnitPrice(item.getUnitPrice());
         vo.setAmount(item.getAmount());
         vo.setBatchNo(item.getBatchNo());
@@ -1098,6 +1615,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setLocationId(item.getLocationId());
         vo.setQualifiedQuantity(item.getQualifiedQuantity());
         vo.setRejectedQuantity(item.getRejectedQuantity());
+        vo.setAcceptedQuantity(item.getAcceptedQuantity());
+        vo.setPostedQuantity(item.getPostedQuantity());
         vo.setRejectReason(item.getRejectReason());
         vo.setSortOrder(item.getSortOrder());
         vo.setRemark(item.getRemark());

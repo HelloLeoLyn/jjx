@@ -47,6 +47,12 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
             wrapper.like(ProductionQualityInspection::getInspectionNo, query.getInspectionNo());
         if (StringUtils.isNotBlank(query.getInspectionType()))
             wrapper.eq(ProductionQualityInspection::getInspectionType, query.getInspectionType());
+        if (StringUtils.isNotBlank(query.getSourceType()))
+            wrapper.eq(ProductionQualityInspection::getSourceType, query.getSourceType());
+        if (query.getSourceId() != null)
+            wrapper.eq(ProductionQualityInspection::getSourceId, query.getSourceId());
+        if (query.getSourceItemId() != null)
+            wrapper.eq(ProductionQualityInspection::getSourceItemId, query.getSourceItemId());
         if (query.getOrderId() != null)
             wrapper.eq(ProductionQualityInspection::getOrderId, query.getOrderId());
         // P3-B：按工序/报工过滤
@@ -90,6 +96,13 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         ProductionQualityInspection entity = new ProductionQualityInspection();
         entity.setInspectionNo(generateInspectionNo());
         entity.setInspectionType(dto.getInspectionType());
+        entity.setSourceType(dto.getSourceType());
+        entity.setSourceId(dto.getSourceId());
+        entity.setSourceItemId(dto.getSourceItemId());
+        entity.setBatchNo(dto.getBatchNo());
+        entity.setPreviousInspectionId(dto.getPreviousInspectionId());
+        entity.setInspectionVersion(dto.getInspectionVersion() == null ? 1 : dto.getInspectionVersion());
+        entity.setDisposition(dto.getDisposition());
         entity.setOrderId(dto.getOrderId());
         // P3-B：写入工序/报工关联（可空）
         entity.setExecutionId(dto.getExecutionId());
@@ -98,6 +111,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         entity.setProductId(dto.getProductId());
         entity.setInspector(dto.getInspector());
         entity.setResult(QualityInspectionResultEnum.PENDING.getCode());
+        entity.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.DRAFT.getCode());
         entity.setRemark(dto.getRemark());
         inspectionMapper.insert(entity);
 
@@ -107,8 +121,14 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
                 ei.setInspectionId(entity.getInspectionId());
                 ei.setCheckItem(item.getCheckItem());
                 ei.setStandard(item.getStandard());
+                ei.setInspectionMethod(item.getInspectionMethod());
+                ei.setEquipment(item.getEquipment());
                 ei.setActualValue(item.getActualValue());
-                ei.setResult(QualityInspectionResultEnum.PENDING.getCode());
+                ei.setResult(item.getResult() == null ? QualityInspectionResultEnum.PENDING.getCode() : item.getResult());
+                ei.setCrQuantity(item.getCrQuantity());
+                ei.setMaQuantity(item.getMaQuantity());
+                ei.setMiQuantity(item.getMiQuantity());
+                ei.setRemark(item.getRemark());
                 itemMapper.insert(ei);
             }
         }
@@ -154,8 +174,14 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
                 ei.setInspectionId(dto.getInspectionId());
                 ei.setCheckItem(item.getCheckItem());
                 ei.setStandard(item.getStandard());
+                ei.setInspectionMethod(item.getInspectionMethod());
+                ei.setEquipment(item.getEquipment());
                 ei.setActualValue(item.getActualValue());
                 ei.setResult(item.getResult());
+                ei.setCrQuantity(item.getCrQuantity());
+                ei.setMaQuantity(item.getMaQuantity());
+                ei.setMiQuantity(item.getMiQuantity());
+                ei.setRemark(item.getRemark());
                 itemMapper.insert(ei);
             }
         }
@@ -246,6 +272,13 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         vo.setInspectionId(e.getInspectionId());
         vo.setInspectionNo(e.getInspectionNo());
         vo.setInspectionType(e.getInspectionType());
+        vo.setSourceType(e.getSourceType());
+        vo.setSourceId(e.getSourceId());
+        vo.setSourceItemId(e.getSourceItemId());
+        vo.setBatchNo(e.getBatchNo());
+        vo.setPreviousInspectionId(e.getPreviousInspectionId());
+        vo.setInspectionVersion(e.getInspectionVersion());
+        vo.setDisposition(e.getDisposition());
         vo.setInspectionTypeName(getTypeName(e.getInspectionType()));
         vo.setOrderId(e.getOrderId());
         // P3-B：工序/报工关联映射
@@ -262,6 +295,11 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         vo.setFailQty(e.getFailQty());
         vo.setDefectDesc(e.getDefectDesc());
         vo.setRemark(e.getRemark());
+        vo.setReviewerId(e.getReviewerId());
+        vo.setReviewerName(e.getReviewerName());
+        vo.setReviewTime(e.getReviewTime());
+        vo.setReviewStatus(e.getReviewStatus());
+        vo.setReviewRemark(e.getReviewRemark());
         vo.setCreateTime(e.getCreateTime());
         return vo;
     }
@@ -302,8 +340,13 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         vo.setItemId(e.getItemId());
         vo.setCheckItem(e.getCheckItem());
         vo.setStandard(e.getStandard());
+        vo.setInspectionMethod(e.getInspectionMethod());
+        vo.setEquipment(e.getEquipment());
         vo.setActualValue(e.getActualValue());
         vo.setResult(e.getResult());
+        vo.setCrQuantity(e.getCrQuantity());
+        vo.setMaQuantity(e.getMaQuantity());
+        vo.setMiQuantity(e.getMiQuantity());
         vo.setRemark(e.getRemark());
         return vo;
     }

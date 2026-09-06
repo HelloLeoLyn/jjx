@@ -173,6 +173,13 @@ public class QualityActionServiceImpl implements QualityActionService {
         // 复制上下文新建 PENDING（不覆盖历史；不需要 previousInspectionId）
         QualityInspectionCreateDTO dto = new QualityInspectionCreateDTO();
         dto.setInspectionType(old.getInspectionType());
+        dto.setSourceType(old.getSourceType());
+        dto.setSourceId(old.getSourceId());
+        dto.setSourceItemId(old.getSourceItemId());
+        dto.setBatchNo(old.getBatchNo());
+        dto.setPreviousInspectionId(old.getInspectionId());
+        dto.setInspectionVersion(old.getInspectionVersion() == null ? 2 : old.getInspectionVersion() + 1);
+        dto.setDisposition(old.getDisposition());
         dto.setOrderId(old.getOrderId());
         dto.setExecutionId(old.getExecutionId());
         dto.setWorkReportId(old.getWorkReportId());
@@ -180,6 +187,25 @@ public class QualityActionServiceImpl implements QualityActionService {
         dto.setProductId(old.getProductId());
         dto.setInspector(com.jjx.system.utils.SecurityUtils.getUsername());
         dto.setRemark("复检（源自 " + old.getInspectionNo() + "）");
+        java.util.List<com.jjx.production.domain.vo.InspectionItemVO> oldItems =
+                qualityInspectionService.getById(inspectionId).getItems();
+        if (oldItems != null) {
+            dto.setItems(oldItems.stream().map(item -> {
+                com.jjx.production.domain.dto.InspectionItemDTO copy =
+                        new com.jjx.production.domain.dto.InspectionItemDTO();
+                copy.setCheckItem(item.getCheckItem());
+                copy.setStandard(item.getStandard());
+                copy.setInspectionMethod(item.getInspectionMethod());
+                copy.setEquipment(item.getEquipment());
+                copy.setActualValue(item.getActualValue());
+                copy.setResult(item.getResult());
+                copy.setCrQuantity(item.getCrQuantity());
+                copy.setMaQuantity(item.getMaQuantity());
+                copy.setMiQuantity(item.getMiQuantity());
+                copy.setRemark(item.getRemark());
+                return copy;
+            }).collect(java.util.stream.Collectors.toList()));
+        }
         Long newId = qualityInspectionService.create(dto);
         log.info("质检复检：{} → 新单 {}", old.getInspectionNo(), newId);
         return newId;

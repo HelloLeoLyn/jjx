@@ -10,6 +10,13 @@ public class QualityInspectionVO {
     private Long inspectionId;
     private String inspectionNo;
     private String inspectionType;
+    private String sourceType;
+    private Long sourceId;
+    private Long sourceItemId;
+    private String batchNo;
+    private Long previousInspectionId;
+    private Integer inspectionVersion;
+    private String disposition;
     private String inspectionTypeName;
     private Long orderId;
     private String orderNo;
@@ -33,6 +40,11 @@ public class QualityInspectionVO {
     private BigDecimal failQty;
     private String defectDesc;
     private String remark;
+    private Long reviewerId;
+    private String reviewerName;
+    private LocalDateTime reviewTime;
+    private String reviewStatus;
+    private String reviewRemark;
     private LocalDateTime createTime;
     private List<InspectionItemVO> items;
 }

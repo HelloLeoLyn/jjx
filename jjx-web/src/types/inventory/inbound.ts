@@ -65,8 +65,14 @@ export interface InboundItemVO {
   unit: string
   batchNo?: string
   quantity: number
+  sampledQuantity?: number
+  inspectionId?: string
+  inspectionResult?: string
+  disposition?: string
   qualifiedQuantity?: number
   rejectedQuantity?: number
+  acceptedQuantity?: number
+  postedQuantity?: number
   rejectReason?: string
   unitPrice: number
   amount: number
@@ -175,13 +181,27 @@ export interface InboundDashboardData {
 }
 
 export interface InboundInspectionSubmitParams {
-  inspectionResult: string
   inspectionRemark?: string
   items: Array<{
     itemId: string
     sampledQuantity?: number
+    inspectionResult: string
+    disposition?: string
     qualifiedQuantity: number
     rejectedQuantity: number
+    acceptedQuantity: number
     rejectReason?: string
+    inspectionItems: Array<{
+      checkItem: string
+      standard?: string
+      inspectionMethod?: string
+      equipment?: string
+      actualValue?: string
+      result?: string
+      crQuantity?: number
+      maQuantity?: number
+      miQuantity?: number
+      remark?: string
+    }>
   }>
 }

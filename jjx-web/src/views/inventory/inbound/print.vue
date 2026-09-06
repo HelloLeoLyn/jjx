@@ -1,292 +1,159 @@
 <template>
-  <div class="inbound-print-page">
-    <!-- 工具栏（打印时隐藏） -->
-    <div class="print-toolbar no-print">
-      <div class="toolbar-left">
-        <el-button @click="router.back()">返回</el-button>
-        <span class="toolbar-tip">打印预览 - {{ info?.inboundNo || '' }}</span>
-      </div>
-      <el-button type="primary" icon="Printer" @click="handlePrint">打印</el-button>
+  <div class="linked-print-page inbound-print-page">
+    <div class="linked-print-toolbar no-print">
+      <el-button @click="router.back()">返回</el-button>
+      <span class="toolbar-tip">打印预览 - {{ info?.inboundNo || '' }}</span>
+      <el-button type="primary" :loading="printing" :disabled="!info" @click="print"
+        >打印</el-button
+      >
     </div>
 
-    <!-- A4 画布（干净页面） -->
-    <A4Canvas :padding-mm="15" v-if="info">
-      <!-- 公司抬头 -->
-      <PrintCompanyHeader variant="center" />
-
-      <!-- 单据标题 -->
-      <div class="doc-title">入 库 单</div>
-
-      <!-- 信息区 -->
-      <div class="doc-info">
-        <div class="info-item"><span class="info-label">入库单号</span>{{ info.inboundNo }}</div>
-        <div class="info-item"><span class="info-label">入库类型</span>{{ info.inboundTypeName || '-' }}</div>
-        <div class="info-item"><span class="info-label">仓库</span>{{ info.warehouseName || '-' }}</div>
-        <div class="info-item"><span class="info-label">供应商</span>{{ info.supplierName || '-' }}</div>
-        <div class="info-item"><span class="info-label">入库日期</span>{{ info.inboundDate || '-' }}</div>
-        <div class="info-item"><span class="info-label">单据状态</span>{{ info.statusName || statusName }}</div>
-        <div class="info-item"><span class="info-label">创建人</span>{{ info.createBy || '-' }}</div>
-        <div class="info-item"><span class="info-label">创建时间</span>{{ info.createTime || '-' }}</div>
-      </div>
-
-      <!-- 明细表格 -->
-      <table class="doc-items">
-        <thead>
-          <tr>
-            <th style="width: 5%">序号</th>
-            <th style="width: 12%">物料编码</th>
-            <th>物料名称</th>
-            <th style="width: 10%">规格</th>
-            <th style="width: 7%">单位</th>
-            <th style="width: 10%">批次</th>
-            <th style="width: 10%">数量</th>
-            <th style="width: 12%">单价</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(item, idx) in itemsList" :key="idx">
-            <td class="col-center">{{ idx + 1 }}</td>
-            <td>{{ item.materialCode }}</td>
-            <td>{{ item.materialName }}</td>
-            <td>{{ item.specification || '-' }}</td>
-            <td class="col-center">{{ item.unit || '-' }}</td>
-            <td>{{ item.batchNo || '-' }}</td>
-            <td class="col-right">{{ fmtNum(item.quantity) }}</td>
-            <td class="col-right">{{ fmtMoney(item.unitPrice) }}</td>
-          </tr>
-          <tr v-if="!itemsList.length">
-            <td colspan="8" class="col-center">无明细</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- 合计 -->
-      <div class="doc-total-row">
-        <span>物料种类：{{ itemsList.length }} 项</span>
-        <span>总数量：{{ fmtNum(info.totalQuantity) }}</span>
-        <span>总金额：{{ fmtMoney(info.totalAmount) }}</span>
-      </div>
-
-      <!-- 备注 -->
-      <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
-
-      <!-- 签名区 -->
-      <div class="doc-signs">
-        <div class="sign-item">
-          <div class="sign-line">仓库验收：</div>
-          <div class="sign-underline"></div>
+    <A4Canvas v-if="info" :padding-mm="14">
+      <section class="system-sheet">
+        <PrintCompanyHeader variant="center" />
+        <div class="linked-print-title">入库明细</div>
+        <div class="linked-print-meta">
+          <div>记录编号：JJX-QR-037</div>
+          <div>验收单号：{{ display(info.inboundNo) }}</div>
+          <div>报告编号：{{ display(info.inboundNo) }}</div>
+          <div>收货日期：{{ display(reportDate) }}</div>
+          <div>供应厂商：{{ display(info.supplierName) }}</div>
+          <div>来料批量：{{ display(incomingQuantity) }}</div>
+          <div>抽检数量：{{ display(sampledQuantity) }}</div>
+          <div>来源单号：{{ display(info.sourceNo) }}</div>
+          <div>检验结果：{{ inspectionLabel }}</div>
         </div>
-        <div class="sign-item">
-          <div class="sign-line">制单人：</div>
-          <div class="sign-underline"></div>
+        <table class="linked-print-table">
+          <thead>
+            <tr>
+              <th style="width: 42px">序号</th>
+              <th>物料编码</th>
+              <th>物料名称</th>
+              <th>规格</th>
+              <th>批次</th>
+              <th>收货数</th>
+              <th>合格数</th>
+              <th>拒收数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(item, index) in info.items || []"
+              :key="item.inboundItemId || item.itemId || index"
+            >
+              <td>{{ index + 1 }}</td>
+              <td>{{ display(item.materialCode) }}</td>
+              <td>{{ display(item.materialName) }}</td>
+              <td>{{ display(item.specification) }}</td>
+              <td>{{ display(item.batchNo) }}</td>
+              <td>{{ display(item.quantity) }} {{ item.unit || '' }}</td>
+              <td>{{ display(item.qualifiedQuantity) }}</td>
+              <td>{{ display(item.rejectedQuantity) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="5">合计</th>
+              <td>{{ display(incomingQuantity) }}</td>
+              <td>{{ display(qualifiedTotal) }}</td>
+              <td>{{ display(rejectedTotal) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="linked-print-note">
+          检验说明：当前系统无独立 IQC 单，本报告依据采购入库/收货单的检验字段与物料明细生成。<br />
+          检验备注：{{ display(info.inspectionRemark || info.remark) }}
         </div>
-        <div class="sign-item">
-          <div class="sign-line">日期：</div>
-          <div class="sign-underline"></div>
+        <div class="linked-print-signs">
+          <div>
+            检验员：<span>{{ info.inspectorName }}</span>
+          </div>
+          <div>采购：<span></span></div>
+          <div>审核：<span></span></div>
         </div>
-      </div>
+      </section>
     </A4Canvas>
-
-    <div v-else v-loading="true" style="height: 400px"></div>
+    <div v-else v-loading="loading" class="linked-print-loading" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { inboundApi } from '@/api/inventory/inbound'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
+import { inboundApi } from '@/api/inventory/inbound'
+import type { InboundVO } from '@/types/inventory/inbound'
+import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
+import { display, logTemplatePrint } from '@/views/production/quality-print/shared'
+import '@/views/production/quality-print/print-common.css'
 
 const route = useRoute()
 const router = useRouter()
-
-const info = ref<any>(null)
+const info = ref<InboundVO | null>(null)
 const loading = ref(false)
-
-const itemsList = computed<any[]>(() => info.value?.items || [])
-
-const STATUS_NAMES: Record<number, string> = {
-  0: '待处理', 1: '待审批', 2: '已审批', 3: '已驳回', 4: '已入库', 5: '已取消',
-}
-
-const statusName = computed(() => {
-  const s = info.value?.status
-  return s !== undefined && s !== null ? STATUS_NAMES[Number(s)] || String(s) : '-'
+const printing = ref(false)
+const reportDate = computed(
+  () => info.value?.inboundDate || info.value?.createTime?.slice(0, 10) || ''
+)
+const inspectionLabel = computed(() =>
+  info.value?.inspectionResult ? InspectionResultEnum.getLabel(info.value.inspectionResult) : '-'
+)
+const incomingQuantity = computed(() => sumItems('quantity') ?? '')
+const sampledQuantity = computed(() => {
+  const qualified = sumItems('qualifiedQuantity'),
+    rejected = sumItems('rejectedQuantity')
+  return qualified === undefined && rejected === undefined ? '' : (qualified || 0) + (rejected || 0)
 })
+const qualifiedTotal = computed(() => sumItems('qualifiedQuantity') ?? '')
+const rejectedTotal = computed(() => sumItems('rejectedQuantity') ?? '')
 
-const fmtNum = (v?: number | string | null): string => {
-  if (v === null || v === undefined || v === '') return '-'
-  const n = Number(v)
-  return Number.isNaN(n) ? String(v) : n.toLocaleString('zh-CN')
+function sumItems(field: 'quantity' | 'qualifiedQuantity' | 'rejectedQuantity') {
+  const values = (info.value?.items || [])
+    .map((item) => item[field])
+    .filter((value): value is number => value !== null && value !== undefined)
+  return values.length ? values.reduce((sum, value) => sum + Number(value), 0) : undefined
 }
-
-const fmtMoney = (v?: number | string | null): string => {
-  if (v === null || v === undefined || v === '') return '-'
-  const n = Number(v)
-  return Number.isNaN(n) ? String(v) : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-async function loadData() {
-  const inboundId = route.params.id as string
-  if (!inboundId) {
-    ElMessage.error('缺少入库单ID')
-    return
-  }
+onMounted(async () => {
+  const inboundId = String(route.params.id || '')
+  if (!inboundId) return ElMessage.error('缺少有效的入库单ID')
   loading.value = true
   try {
-    const res: any = await inboundApi.getById(inboundId)
-    if (res.code === 200 && res.data) {
-      info.value = res.data
-    } else {
-      ElMessage.error(res.msg || '加载入库单失败')
-    }
-  } catch {
-    ElMessage.error('加载入库单失败')
+    info.value = (await inboundApi.getById(inboundId)).data
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载入库单失败')
   } finally {
     loading.value = false
   }
-}
-
-function handlePrint() {
-  window.print()
-}
-
-onMounted(async () => {
-  await loadData()
 })
+async function print() {
+  printing.value = true
+  try {
+    await logTemplatePrint('JJX-QR-037')
+    window.print()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '打印留痕失败')
+  } finally {
+    printing.value = false
+  }
+}
 </script>
 
 <style scoped>
-.inbound-print-page {
-  min-height: 100vh;
-  background: #eef0f3;
-  padding: 20px;
+.linked-print-toolbar {
+  gap: 14px;
 }
-
-.print-toolbar {
-  max-width: 794px;
-  margin: 0 auto 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .toolbar-tip {
+  margin-right: auto;
   font-size: 14px;
   color: #606266;
 }
-
-/* 画布内容样式 */
-.doc-title {
-  text-align: center;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 8px;
-  margin: 14px 0;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #2b5aa7;
+.system-sheet {
+  min-height: 270mm;
+  box-sizing: border-box;
 }
-
-.doc-info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 24px;
-  margin-bottom: 12px;
-  font-size: 11px;
-}
-
-.info-item {
-  display: flex;
-}
-
-.info-label {
-  width: 70px;
-  color: #888;
-  flex-shrink: 0;
-}
-
-.doc-items {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-  margin-bottom: 10px;
-}
-
-.doc-items th {
-  background: #2b5aa7;
-  color: #fff;
-  padding: 6px 4px;
-  font-weight: 600;
-  border: 1px solid #2b5aa7;
-}
-
-.doc-items td {
-  border: 1px solid #dcdfe6;
-  padding: 5px 4px;
-}
-
-.doc-items tr:nth-child(even) td {
-  background: #f7f9fc;
-}
-
-.col-center {
-  text-align: center;
-}
-
-.col-right {
-  text-align: right;
-}
-
-.doc-total-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 12px;
-  background: #f5f7fa;
-  border: 1px solid #dcdfe6;
-  font-size: 11px;
-  margin-bottom: 12px;
-}
-
-.doc-remark {
-  font-size: 10px;
-  color: #555;
-  margin-bottom: 20px;
-}
-
-.doc-signs {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 40px;
-  padding: 0 20px;
-}
-
-.sign-item {
-  width: 30%;
-  text-align: center;
-  font-size: 11px;
-}
-
-.sign-line {
-  padding-bottom: 4px;
-}
-
-.sign-underline {
-  border-bottom: 1px solid #999;
-}
-
 @media print {
-  .no-print {
-    display: none !important;
-  }
-
   .inbound-print-page {
     padding: 0;
     background: #fff;

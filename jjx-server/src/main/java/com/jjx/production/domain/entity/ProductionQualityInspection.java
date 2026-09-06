@@ -12,6 +12,16 @@ public class ProductionQualityInspection {
     private Long inspectionId;
     private String inspectionNo;
     private String inspectionType;
+    /** 通用业务来源：INBOUND、PRODUCTION_ORDER、OPERATION_EXECUTION、OUTBOUND。 */
+    private String sourceType;
+    private Long sourceId;
+    private Long sourceItemId;
+    private String batchNo;
+    /** 复检链：新记录指向上一次检验，历史记录不可覆盖。 */
+    private Long previousInspectionId;
+    private Integer inspectionVersion;
+    /** 不合格处置方式。 */
+    private String disposition;
     private Long orderId;
     /** P3-B：关联工序执行（IPQC/FQC 必填；IQC/OQC 可空） */
     private Long executionId;
@@ -30,6 +40,12 @@ public class ProductionQualityInspection {
     private BigDecimal failQty;
     private String defectDesc;
     private String remark;
+    private Long reviewerId;
+    private String reviewerName;
+    private LocalDateTime reviewTime;
+    /** IQC 审核状态：DRAFT/PENDING/APPROVED/REJECTED。 */
+    private String reviewStatus;
+    private String reviewRemark;
     @TableLogic
     private String delFlag;
     private String createBy;

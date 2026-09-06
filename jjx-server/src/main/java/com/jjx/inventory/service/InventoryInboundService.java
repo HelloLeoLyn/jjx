@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
 import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
+import com.jjx.inventory.dto.save.InboundInspectionReviewDTO;
+import com.jjx.inventory.dto.save.IqcQuarantineActionDTO;
+import com.jjx.inventory.domain.InventoryIqcQuarantine;
 import com.jjx.inventory.dto.vo.InboundVO;
 
 import java.util.List;
@@ -44,6 +47,28 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      * 提交审批
      */
     boolean submitApprove(Long inboundId, InboundInspectionSubmitDTO inspection);
+
+    /** 单项 IQC 审核通过，只锁定质量结论，不执行库存过账。 */
+    boolean approveInspectionItem(Long itemId, InboundInspectionReviewDTO review);
+
+    /** 单项 IQC 驳回，保留原检验记录供检验员修改后重新提交。 */
+    boolean rejectInspectionItem(Long itemId, InboundInspectionReviewDTO review);
+
+    /** 对已审核的单项 IQC 发起新版本复检。 */
+    Long reinspectItem(Long itemId);
+
+    List<InventoryIqcQuarantine> listQuarantine(Long inboundId);
+
+    boolean handleQuarantine(Long quarantineId, IqcQuarantineActionDTO action);
+    List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listDispositionOrders(Long inboundId);
+    List<com.jjx.inventory.domain.InventoryIqcQuarantine> listAllQuarantine(String status);
+    List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listAllDispositionOrders(String action);
+    com.jjx.inventory.domain.InventoryIqcDispositionOrder getDispositionOrder(Long dispositionId);
+    List<com.jjx.inventory.domain.InventoryIqcReturnOrder> listIqcReturnOrders(Long inboundId);
+    List<com.jjx.inventory.domain.InventoryIqcReworkOrder> listIqcReworkOrders(Long inboundId);
+    List<com.jjx.inventory.domain.InventoryIqcScrapOrder> listIqcScrapOrders(Long inboundId);
+    boolean approveIqcScrap(Long scrapId, com.jjx.inventory.dto.save.IqcScrapApproveDTO approval);
+    Long completeIqcRework(Long reworkId);
 
     /**
      * 审批通过
