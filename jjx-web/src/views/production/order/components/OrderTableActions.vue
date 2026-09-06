@@ -8,32 +8,71 @@
 
       <!-- 生产履历（P4-C：只读时间线） -->
       <el-tooltip content="生产履历" placement="top">
-        <el-button type="primary" size="small" icon="Tickets" v-hasPermi="['production:order:view']" circle @click="handleProductionTrace" />
+        <el-button
+          type="primary"
+          size="small"
+          icon="Tickets"
+          v-hasPermi="['production:order:view']"
+          circle
+          @click="handleProductionTrace"
+        />
       </el-tooltip>
 
       <!-- 编辑按钮 -->
       <el-tooltip content="编辑订单" placement="top" v-if="order.canEdit">
-        <el-button type="primary" size="small" icon="Edit" v-hasPermi="['production:order:edit']" circle @click="handleEdit" />
+        <el-button
+          type="primary"
+          size="small"
+          icon="Edit"
+          v-hasPermi="['production:order:edit']"
+          circle
+          @click="handleEdit"
+        />
       </el-tooltip>
 
       <!-- 转为工单按钮 -->
       <el-tooltip content="转为工单" placement="top" v-if="order.canConvertToWorkOrder">
-        <el-button type="success" size="small" icon="RefreshRight" v-hasPermi="['production:order:edit']" circle @click="handleConvert" />
+        <el-button
+          type="success"
+          size="small"
+          icon="RefreshRight"
+          v-hasPermi="['production:order:edit']"
+          circle
+          @click="handleConvert"
+        />
       </el-tooltip>
 
       <!-- 开始执行按钮 -->
       <el-tooltip content="开始执行" placement="top" v-if="order.canStart">
-        <el-button type="warning" size="small" icon="VideoPlay" v-hasPermi="['production:operation-execution:edit']" circle @click="handleStart" />
+        <el-button
+          type="warning"
+          size="small"
+          icon="VideoPlay"
+          v-hasPermi="['production:operation-execution:edit']"
+          circle
+          @click="handleStart"
+        />
       </el-tooltip>
 
       <!-- 完成按钮 -->
       <el-tooltip content="完成工单" placement="top" v-if="order.canComplete">
-        <el-button type="success" size="small" icon="CircleCheck" v-hasPermi="['production:operation-execution:edit']" circle @click="handleComplete" />
+        <el-button
+          type="success"
+          size="small"
+          icon="CircleCheck"
+          v-hasPermi="['production:operation-execution:edit']"
+          circle
+          @click="handleComplete"
+        />
       </el-tooltip>
 
       <!-- 生成领料单（2026-08-18：从下拉菜单提为行内按钮，高频操作） -->
       <el-tooltip
-        :content="order.materialStatus === ProductionMaterialStatusEnum.PENDING_ISSUE.value ? '已生成领料单（待确认发料）' : '生成领料单'"
+        :content="
+          order.materialStatus === ProductionMaterialStatusEnum.PENDING_ISSUE.value
+            ? '已生成领料单（待确认发料）'
+            : '生成领料单'
+        "
         placement="top"
         v-if="
           order.orderType === OrderType.WORK_ORDER &&
@@ -64,15 +103,24 @@
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="submit-review" v-if="order.orderStatus === 0 && hasPermi(['production:order:edit'])">
+            <el-dropdown-item
+              command="submit-review"
+              v-if="order.orderStatus === 0 && hasPermi(['production:order:edit'])"
+            >
               <el-icon><Promotion /></el-icon>
               提交审核
             </el-dropdown-item>
-            <el-dropdown-item command="approve" v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])">
+            <el-dropdown-item
+              command="approve"
+              v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])"
+            >
               <el-icon><Check /></el-icon>
               审核通过
             </el-dropdown-item>
-            <el-dropdown-item command="reject" v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])">
+            <el-dropdown-item
+              command="reject"
+              v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])"
+            >
               <el-icon><CloseBold /></el-icon>
               审核驳回
             </el-dropdown-item>
@@ -80,7 +128,10 @@
               <el-icon><CopyDocument /></el-icon>
               复制订单
             </el-dropdown-item>
-            <el-dropdown-item command="cancel" v-if="order.canCancel && hasPermi(['production:order:edit'])">
+            <el-dropdown-item
+              command="cancel"
+              v-if="order.canCancel && hasPermi(['production:order:edit'])"
+            >
               <el-icon><CircleClose /></el-icon>
               取消订单
             </el-dropdown-item>
@@ -92,15 +143,16 @@
               <el-icon><Printer /></el-icon>
               打印订单
             </el-dropdown-item>
-            <el-dropdown-item command="history">
-              <el-icon><Clock /></el-icon>
-              操作历史
-            </el-dropdown-item>
             <el-dropdown-item command="trace">
               <el-icon><Connection /></el-icon>
               查看流水
             </el-dropdown-item>
-            <el-dropdown-item divided command="delete" v-if="canDelete" v-hasPermi="['production:order:delete']">
+            <el-dropdown-item
+              divided
+              command="delete"
+              v-if="canDelete"
+              v-hasPermi="['production:order:delete']"
+            >
               <el-icon><Delete /></el-icon>
               删除订单
             </el-dropdown-item>
@@ -125,10 +177,24 @@
 import { computed, ref } from 'vue'
 import { hasPermi } from '@/directives'
 import { ElMessage } from 'element-plus'
-import { More, CopyDocument, Download, Printer, Clock, Box, Promotion, Check, CloseBold, Tickets } from '@element-plus/icons-vue'
+import {
+  More,
+  CopyDocument,
+  Download,
+  Printer,
+  Clock,
+  Box,
+  Promotion,
+  Check,
+  CloseBold,
+  Tickets,
+} from '@element-plus/icons-vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
-import { ProductionMaterialStatusEnum, ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'
+import {
+  ProductionMaterialStatusEnum,
+  ProductionOrderStatusEnum,
+} from '@/enums/production/WorkOrderEnum'
 import { OrderType, type ProductionOrderVO } from '@/types/production/order'
 
 interface Props {

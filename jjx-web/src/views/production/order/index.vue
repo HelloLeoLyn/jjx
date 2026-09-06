@@ -765,9 +765,6 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
     case 'print':
       handlePrintOrder(order)
       break
-    case 'history':
-      handleViewHistory(order)
-      break
     case 'pick-material':
       handlePickMaterial(order)
       break
@@ -809,10 +806,6 @@ const handleExportOrder = (order: any) => {
 
 const handlePrintOrder = (order: any) => {
   window.open(`/print/production-order/${order.orderId}`, '_blank')
-}
-
-const handleViewHistory = (order: any) => {
-  ElMessage.info(`查看订单 ${order.orderNo} 的操作历史`)
 }
 
 // 查看流水（DEV-569）

@@ -37,7 +37,6 @@
     "src/views/inventory/inbound/index.vue|status-comparison|<el-button v-if=\"row.status === 0\" link type=\"primary\" v-hasPermi=\"['inventory:inbound:edit']\" @click=\"handleSubmit(row)\"": 1,
     "src/views/inventory/inbound/index.vue|status-comparison|v-if=\"row.status === 0 || row.status === 1\"": 1,
     "src/views/inventory/inbound/index.vue|status-comparison|v-if=\"row.status === 1\"": 1,
-    "src/views/inventory/inbound/print.vue|local-status-map|const STATUS_NAMES: Record<number, string> = {": 1,
     "src/views/inventory/outbound/index.vue|local-status-map|const statusMap: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {": 1,
     "src/views/inventory/outbound/index.vue|status-comparison|<el-button v-if=\"row.status === 0\" link type=\"primary\" v-hasPermi=\"['inventory:outbound:edit']\" @click=\"handleEdit(row)\"": 1,
     "src/views/inventory/outbound/index.vue|status-comparison|v-if=\"row.status === 1 || row.status === 2\"": 1,
