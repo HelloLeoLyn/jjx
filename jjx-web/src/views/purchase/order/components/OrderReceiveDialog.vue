@@ -35,31 +35,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="检验结果" width="100">
-          <template #default="scope">
-            <el-select
-              v-model="scope.row.inspectionResult"
-              placeholder="请选择"
-              style="width: 100%"
-            >
-              <el-option label="合格" value="合格" />
-              <el-option label="不合格" value="不合格" />
-              <el-option label="部分合格" value="部分合格" />
-            </el-select>
-          </template>
-        </el-table-column>
       </el-table>
-
-      <el-form-item label="检验备注" prop="inspectionRemark">
-        <el-input
-          v-model="form.inspectionRemark"
-          type="textarea"
-          :rows="3"
-          placeholder="请输入检验备注"
-          maxlength="500"
-          show-word-limit
-        />
-      </el-form-item>
 
       <el-divider content-position="left">票据图片</el-divider>
 
@@ -122,7 +98,6 @@ interface ReceiveItem {
   quantity: number
   receivedQuantity: number
   receiveQuantity: number
-  inspectionResult: string
 }
 
 interface DiskFileInfo {
@@ -151,7 +126,6 @@ const submitting = ref(false)
 
 const form = reactive({
   items: [] as ReceiveItem[],
-  inspectionRemark: '',
 })
 
 // 图片相关
@@ -189,7 +163,6 @@ const loadItems = async () => {
       quantity: item.quantity,
       receivedQuantity: item.receivedQuantity || 0,
       receiveQuantity: 0,
-      inspectionResult: '合格',
     }))
   } catch (error) {
     console.error('加载订单明细失败:', error)
@@ -278,8 +251,6 @@ const handleSubmit = async () => {
       .map((item) => ({
         itemId: Number(item.itemId),
         receivedQuantity: item.receiveQuantity,
-        inspectionResult: item.inspectionResult,
-        inspectionRemark: form.inspectionRemark || undefined,
       }))
 
     if (receiveItems.length === 0) {
@@ -302,7 +273,6 @@ const handleSubmit = async () => {
 // 关闭
 const handleClose = () => {
   form.items = []
-  form.inspectionRemark = ''
   imageList.value = []
   emit('update:visible', false)
 }
