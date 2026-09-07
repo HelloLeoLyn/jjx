@@ -10,8 +10,9 @@
 | 场景 | 固定位置 | 说明 |
 |---|---|---|
 | DB 全量备份 | `sql/backups/` | 改库前必做；随仓库提交 |
-| DB 迁移/上线脚本 | `jjx-docs/sql/` | 可重复执行、幂等优先 |
-| 分析/方案/测试计划/报告 | `jjx-docs/analysis/` | 用户可读，UTF-8 **带 BOM** |
+| DB 表级/行级 guard 备份 | `sql/backups/` | 清理/修复特定表前；命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql` |
+| DB 迁移/上线脚本 | `jjx-docs/sql/migrations/` | 序号 `NN_<描述>.sql` 递增；幂等优先 |
+| 分析/方案/测试计划/报告 | `jjx-docs/analysis/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 INDEX.md；UTF-8 **带 BOM** |
 | 打印模板/素材 | `jjx-docs/assets/` `jjx-docs/print_template/` | |
 | 需求/参考归档 | `jjx-docs/requirements/` `jjx-docs/reference/` `jjx-docs/archive/` | |
 | 每日工作记录（OpenClaw） | workspace `memory/YYYY-MM-DD.md` | 其他 agent 可选 |
@@ -39,6 +40,7 @@ md5sum /home/administrator/jjx/sql/backups/jjx_erp_db_backup_*.sql
 - 文件头第 1~3 行注释写明：备份人（agent 名）、原因、关联任务码（若有）。
 
 **验证**：执行后必须 `md5sum` + `grep -c "CREATE TABLE"` 抽查，并在汇报里给出 md5。
+**表级/行级 guard 备份**（清理 sys_task 等特定表/行前）：同样落 `sql/backups/`，命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`（如 `sys_task_cleanup_20260907-0930.sql`），md5 照验。
 **保留**：默认随仓库提交（跨机器一致）；单文件 > 20MB 先 gzip（`.sql.gz`）再入库；超 100MB 不入库，放共享盘并在文件位置留 `.gitkeep`+README 说明。
 **禁止**：备份写到各自 workspace 的任意目录（如 `memory/*.sql`、`/tmp/backup.sql`）。
 
@@ -46,8 +48,9 @@ md5sum /home/administrator/jjx/sql/backups/jjx_erp_db_backup_*.sql
 
 ## 3. 迁移/上线 SQL 规范
 
-- 位置：`jjx-docs/sql/`
-- 命名：`YYYYMMDD_<域>_<用途>.sql`（如 `20260906_unified_iqc_phase1.sql`）；同批次多阶段用 `_phase1/2/3` 后缀
+- 位置：`jjx-docs/sql/migrations/`
+- 命名：`NN_<描述>.sql`，NN 取目录现存最大序号 +1（如 `67_xxx.sql`）；同批多阶段可 `NN_a_<desc>.sql / NN_b_<desc>.sql`（2026-09-07 决议 C1）
+- 存量平铺 dated 文件（`jjx-docs/sql/2026*.sql`，含 20260906_unified_iqc_*）为历史遗留：不迁移、不重复；新迁移一律进 migrations/
 - 内容要求：
   - 幂等优先（`ADD COLUMN IF NOT EXISTS` 不可用时，先查 information_schema 或 `WHERE NOT EXISTS` 守卫）
   - 破坏性语句（DROP/TRUNCATE/DELETE）必须显式注释原因，单独文件，禁止与建表混在一个"安全"文件里
@@ -58,7 +61,8 @@ md5sum /home/administrator/jjx/sql/backups/jjx_erp_db_backup_*.sql
 
 ## 4. 分析/方案/测试计划文档
 
-- 位置：`jjx-docs/analysis/`；命名 `YYYYMMDD-<英文短横线主题>.md`
+- 位置：`jjx-docs/analysis/`；命名 `<主题>-dev-YYYYMMDD-NNN.md`（无任务码可退化为 `-YYYYMMDD.md`；存量 90 篇以现状为准，2026-09-07 决议 C2）
+- 新文档**登记 `analysis/INDEX.md`**（或跑其再生命令）后随代码提交
 - **UTF-8 带 BOM**（手机阅读不乱码），验证：
   ```bash
   python3 -c "d=open('文件','rb').read(); assert d[:3]==b'\xef\xbb\xbf'; d.decode('utf-8')"
