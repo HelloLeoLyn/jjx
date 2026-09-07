@@ -71,7 +71,7 @@
         </el-table-column>
         <el-table-column prop="createBy" label="创建人" width="100" />
         <el-table-column prop="createTime" label="创建时间" width="170" />
-        <el-table-column label="操作" min-width="250" fixed="right">
+        <el-table-column label="操作" min-width="290" fixed="right">
           <template #default="scope">
             <el-tooltip content="编辑" placement="top">
               <el-button
@@ -134,6 +134,14 @@
                 @click="handleDelete(scope.row)"
               ></el-button>
             </el-tooltip>
+            <el-tooltip content="流水" placement="top">
+              <el-button
+                link
+                type="primary"
+                icon="Clock"
+                @click="handleOpenTrace(scope.row)"
+              ></el-button>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -175,6 +183,9 @@
       @approve="handleApprovePass"
       @reject="handleApproveReject"
     />
+
+    <!-- 流水抽屉（bizType=routing，按 bizId 聚合该路线全部操作） -->
+    <TraceTimeline v-model="traceVisible" :biz-type="'routing'" :biz-id="String(traceRoutingId || '')" />
   </div>
 </template>
 
@@ -196,6 +207,7 @@ import RouteDetailDialog from './components/RouteDetailDialog.vue'
 import RouteCopyDialog from './components/RouteCopyDialog.vue'
 import RouteApproveDialog from './components/RouteApproveDialog.vue'
 import RouteVersionCompareDialog from './components/RouteVersionCompareDialog.vue'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { useRouter } from 'vue-router'
 import { RouteStatusEnum, ProductActions } from '@/enums/product'
 const router = useRouter()
@@ -345,6 +357,14 @@ const handleDelete = (row: EngineeringRoutingVO) => {
 const handleDetail = (row: EngineeringRoutingVO) => {
   currentRoutingId.value = row.routingId
   detailDialogVisible.value = true
+}
+
+// ==================== 流水抽屉 ====================
+const traceVisible = ref(false)
+const traceRoutingId = ref<number | undefined>(undefined)
+const handleOpenTrace = (row: EngineeringRoutingVO) => {
+  traceRoutingId.value = row.routingId
+  traceVisible.value = true
 }
 
 // 版本对比（DEV-768）
