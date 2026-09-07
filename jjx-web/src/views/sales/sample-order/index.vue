@@ -524,6 +524,15 @@
       :order-id="convertRow?.orderId ?? null"
       :order-no="convertRow?.orderNo"
     />
+
+    <!-- 转量产 · 预填标准订单表单弹窗（2026-09-07 复用销售订单新增表单） -->
+    <SalesOrderFormDialog
+      v-model="convertFormVisible"
+      mode="convert"
+      :order-id="convertRow?.orderId ?? null"
+      :order-no="convertRow?.orderNo"
+      @success="getList"
+    />
   </div>
 </template>
 
@@ -537,6 +546,7 @@ import request from '@/utils/request'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
+import SalesOrderFormDialog from '@/views/sales/order/components/SalesOrderFormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { quotationApi } from '@/api/sales/quotation'
@@ -1331,13 +1341,13 @@ async function handleRejectSample(row: any) {
 // 产品资料转移入口已移至打样平台（2026-08-12），样品单管理仅保留转量产
 
 async function handleConvert(row: any) {
-  // 转量产（2026-09-07 复用标准订单新增表单）：先就绪检查，通过→进预填表单；不齐→弹检查明细
+  // 转量产（2026-09-07 复用标准订单新增表单）：先就绪检查，通过→弹预填表单；不齐→弹检查明细
   convertRow.value = row
   try {
     const res: any = await sampleOrderApi.convertCheck(row.orderId)
     const check: any = res?.data
     if (check?.allPass) {
-      router.push(`/sales/sample-order/convert/${row.orderId}`)
+      convertFormVisible.value = true
     } else {
       convertDialogVisible.value = true
     }
@@ -1356,6 +1366,7 @@ const currentTraceBizId = ref('')
 
 // 转量产标准化窗口
 const convertDialogVisible = ref(false)
+const convertFormVisible = ref(false)
 const convertRow = ref<any>(null)
 function showTrace(row: any) {
   currentTraceId.value = row.traceId || ''

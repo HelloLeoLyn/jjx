@@ -242,17 +242,6 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
-    // 样品转量产（2026-09-07 复用标准销售订单新增表单，预填样品数据）
-    path: '/sales/sample-order/convert/:sampleId',
-    name: 'SalesSampleConvert',
-    component: () => import('@/views/sales/order/sample-convert.vue'),
-    meta: {
-      title: '转量产（来自样品单）',
-      hidden: true,
-      activeMenu: '/sales/sample-order',
-    },
-  },
-  {
     path: '/print/sales-order-confirm/:orderId',
     name: 'SalesOrderConfirmPrint',
     component: () => import('@/views/sales/order/confirm-print.vue'),
