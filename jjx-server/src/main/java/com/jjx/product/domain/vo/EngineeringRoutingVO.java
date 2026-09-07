@@ -34,6 +34,11 @@ public class EngineeringRoutingVO {
     private LocalDateTime updateTime;
     private String remark;
 
+    /** 修改接口变更明细 JSON（供 @Log detail，仅 update 链路填充） */
+    private String detailMessage;
+    /** 当前状态文案（供 @Log bizStatus，如 草稿/已批准） */
+    private String bizStatus;
+
     private List<EngineeringRoutingItemVO> items;
 
     /**

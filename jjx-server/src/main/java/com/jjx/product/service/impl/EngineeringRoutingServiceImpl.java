@@ -19,6 +19,7 @@ import com.jjx.product.domain.vo.EngineeringRoutingVO;
 import com.jjx.product.mapper.EngineeringRoutingItemMapper;
 import com.jjx.product.mapper.EngineeringRoutingMapper;
 import com.jjx.product.service.IEngineeringRoutingService;
+import com.jjx.system.service.OperLogChangeRecorder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     private final EngineeringRoutingItemMapper routingDetailMapper;
     private final EngineeringRoutingConverter routingConverter;
     private final com.jjx.product.mapper.ProductMapper productMapper;
+    private final OperLogChangeRecorder changeRecorder;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -89,24 +91,158 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_CANNOT_EDIT);
         }
 
-        // ===== 自动升版：内容有变更时生成新版本，旧版本失效 =====
+        // 变更明细：保存前采集（此时库里还是旧值）
+        String detailMessage = null;
+        try {
+            List<String> changes = new ArrayList<>();
+            buildRoutingDiff(changes, routing, dto);
+            if (!changes.isEmpty()) {
+                detailMessage = changeRecorder.toDetailJson(changes);
+            }
+        } catch (Exception e) {
+            log.warn("工艺路线变更明细生成失败: {}", e.getMessage());
+        }
+
+        EngineeringRoutingVO vo;
         if (Boolean.TRUE.equals(dto.getBumpVersion())) {
-            return saveAsNewVersion(routing, dto);
+            vo = saveAsNewVersion(routing, dto);
+        } else {
+            BeanUtil.copyProperties(dto, routing);
+            routing.setUpdateTime(LocalDateTime.now());
+            updateById(routing);
+            routingDetailMapper.deleteByRoutingId(routing.getRoutingId());
+            if (dto.getItems() != null && !dto.getItems().isEmpty()) {
+                saveItems(routing.getRoutingId(), dto.getItems());
+                calculateHours(routing.getRoutingId());
+            }
+            log.info("更新工艺路线成功: {}", routing.getRoutingCode());
+            vo = getRoutingItems(routing.getRoutingId());
+        }
+        vo.setDetailMessage(detailMessage);
+        vo.setBizStatus(ApproveStatusEnum.getByValue(vo.getApproveStatus()).getLabel());
+        return vo;
+    }
+
+    /**
+     * 工艺路线变更对比：主档字段 + 工序级增删/工时 diff（明细为全量替换，按工序键对比）。
+     * 键：processId != null → "p"+processId；组合壳/自定义行（processId 空）→ "n"+processName。
+     */
+    private void buildRoutingDiff(List<String> changes, EngineeringRouting oldRouting, EngineeringRoutingDTO dto) {
+        changeRecorder.diff(changes, "路线名称", oldRouting.getRoutingName(), dto.getRoutingName());
+        changeRecorder.diff(changes, "路线编码", oldRouting.getRoutingCode(), dto.getRoutingCode());
+        changeRecorder.diff(changes, "说明", oldRouting.getDescription(), dto.getDescription());
+        changeRecorder.diff(changes, "备注", oldRouting.getRemark(), dto.getRemark());
+
+        List<EngineeringRoutingItem> oldFlat = routingDetailMapper.selectByRoutingId(oldRouting.getRoutingId());
+        Map<String, EngineeringRoutingItem> oldParentByKey = new HashMap<>();
+        Map<Long, List<EngineeringRoutingItem>> oldChildByParent = new HashMap<>();
+        for (EngineeringRoutingItem it : oldFlat) {
+            if (it.getParentId() == null) {
+                oldParentByKey.put(parentKey(it), it);
+            } else {
+                oldChildByParent.computeIfAbsent(it.getParentId(), k -> new ArrayList<>()).add(it);
+            }
+        }
+        Map<String, EngineeringRoutingItemDTO> newParentByKey = new HashMap<>();
+        if (dto.getItems() != null) {
+            for (EngineeringRoutingItemDTO it : dto.getItems()) {
+                newParentByKey.put(parentKeyDto(it), it);
+            }
         }
 
-        BeanUtil.copyProperties(dto, routing);
-        routing.setUpdateTime(LocalDateTime.now());
-        updateById(routing);
-
-        // 更新明细
-        routingDetailMapper.deleteByRoutingId(routing.getRoutingId());
-        if (dto.getItems() != null && !dto.getItems().isEmpty()) {
-            saveItems(routing.getRoutingId(), dto.getItems());
-            calculateHours(routing.getRoutingId());
+        if (dto.getItems() != null) {
+            for (EngineeringRoutingItemDTO np : dto.getItems()) {
+                String key = parentKeyDto(np);
+                if (!oldParentByKey.containsKey(key)) {
+                    changes.add("新增工序:" + itemName(np) + hoursSuffix(np));
+                }
+            }
         }
+        for (Map.Entry<String, EngineeringRoutingItem> e : oldParentByKey.entrySet()) {
+            if (!newParentByKey.containsKey(e.getKey())) {
+                changes.add("移除工序:" + itemName(e.getValue()));
+            }
+        }
+        for (Map.Entry<String, EngineeringRoutingItemDTO> e : newParentByKey.entrySet()) {
+            EngineeringRoutingItemDTO np = e.getValue();
+            EngineeringRoutingItem op = oldParentByKey.get(e.getKey());
+            if (op == null) continue;
+            String parentName = itemName(np);
+            boolean newHasChildren = np.getChildren() != null && !np.getChildren().isEmpty();
+            List<EngineeringRoutingItem> oldChildren = oldChildByParent.get(op.getItemId());
+            if (newHasChildren || (oldChildren != null && !oldChildren.isEmpty())) {
+                Map<String, EngineeringRoutingItemDTO> newChildByKey = new HashMap<>();
+                for (EngineeringRoutingItemDTO c : np.getChildren() == null
+                        ? Collections.<EngineeringRoutingItemDTO>emptyList() : np.getChildren()) {
+                    newChildByKey.put(childKey(c), c);
+                }
+                Map<String, EngineeringRoutingItem> oldChildByKey = new HashMap<>();
+                for (EngineeringRoutingItem oc : oldChildren == null
+                        ? Collections.<EngineeringRoutingItem>emptyList() : oldChildren) {
+                    oldChildByKey.put(childKey(oc), oc);
+                }
+                for (Map.Entry<String, EngineeringRoutingItemDTO> ce : newChildByKey.entrySet()) {
+                    if (!oldChildByKey.containsKey(ce.getKey())) {
+                        changes.add("工序:" + parentName + " 新增作业项:" + itemName(ce.getValue()));
+                    } else {
+                        EngineeringRoutingItem oc = oldChildByKey.get(ce.getKey());
+                        changeRecorder.diffDecimal(changes, "工序:" + parentName + " 作业项:"
+                                + itemName(ce.getValue()) + " 人工工时",
+                                oc.getCustomLaborHours(), ce.getValue().getCustomLaborHours());
+                        changeRecorder.diffDecimal(changes, "工序:" + parentName + " 作业项:"
+                                + itemName(ce.getValue()) + " 机器工时",
+                                oc.getCustomMachineHours(), ce.getValue().getCustomMachineHours());
+                    }
+                }
+                for (String oldKey : oldChildByKey.keySet()) {
+                    if (!newChildByKey.containsKey(oldKey)) {
+                        changes.add("工序:" + parentName + " 移除作业项:" + itemName(oldChildByKey.get(oldKey)));
+                    }
+                }
+            } else {
+                changeRecorder.diffDecimal(changes, "工序:" + parentName + " 人工工时",
+                        op.getCustomLaborHours(), np.getCustomLaborHours());
+                changeRecorder.diffDecimal(changes, "工序:" + parentName + " 机器工时",
+                        op.getCustomMachineHours(), np.getCustomMachineHours());
+            }
+        }
+    }
 
-        log.info("更新工艺路线成功: {}", routing.getRoutingCode());
-        return getRoutingItems(routing.getRoutingId());
+    private String parentKey(EngineeringRoutingItem it) {
+        return it.getProcessId() != null ? "p" + it.getProcessId() : "n" + it.getProcessName();
+    }
+
+    private String parentKeyDto(EngineeringRoutingItemDTO it) {
+        return it.getProcessId() != null ? "p" + it.getProcessId() : "n" + it.getProcessName();
+    }
+
+    private String childKey(EngineeringRoutingItem it) {
+        return parentKey(it);
+    }
+
+    private String childKey(EngineeringRoutingItemDTO it) {
+        return parentKeyDto(it);
+    }
+
+    private String itemName(EngineeringRoutingItemDTO it) {
+        return it.getProcessName() != null && !it.getProcessName().isEmpty() ? it.getProcessName() : "工序";
+    }
+
+    private String itemName(EngineeringRoutingItem it) {
+        return it.getProcessName() != null && !it.getProcessName().isEmpty() ? it.getProcessName() : "工序";
+    }
+
+    /** 新增工序后缀：custom 工时非空时带 （人工X/机器Y），否则空串 */
+    private String hoursSuffix(EngineeringRoutingItemDTO it) {
+        String suffix = "";
+        if (it.getCustomLaborHours() != null) {
+            suffix += "人工" + it.getCustomLaborHours().stripTrailingZeros().toPlainString();
+        }
+        if (it.getCustomMachineHours() != null) {
+            suffix += (suffix.isEmpty() ? "" : "/") + "机器"
+                    + it.getCustomMachineHours().stripTrailingZeros().toPlainString();
+        }
+        return suffix.isEmpty() ? "" : "（" + suffix + "）";
     }
 
     /**

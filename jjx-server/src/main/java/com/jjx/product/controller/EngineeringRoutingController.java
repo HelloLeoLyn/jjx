@@ -65,7 +65,8 @@ public class EngineeringRoutingController {
     @Operation(summary = "更新工艺路线")
     @PutMapping("/{routingId}")
     @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'",
-         bizId = "#routingId", action = LogActions.ROUTING_EDIT)
+         bizId = "#result.data.routingId", bizStatus = "#result.data.bizStatus",
+         detail = "#result.data.detailMessage", action = LogActions.ROUTING_EDIT)
     @SaCheckPermission("engineering:routing:edit")
     public Result<EngineeringRoutingVO> update(
             @Parameter(description = "路线ID", required = true)
