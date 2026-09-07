@@ -106,6 +106,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public int insertOrder(PurchaseOrderDTO orderDTO) {
         // DEV-664：计划单模式（saveAsPlan=true）——跳过供应商/明细强校验，plan_status=1
         boolean isPlan = Boolean.TRUE.equals(orderDTO.getSaveAsPlan());
+        // 单号统一后端规则生成：前端漏传/自造一律兜底（2026-09-07 杜绝 PO-时间戳脏单）
+        if (!isPlan && (orderDTO.getOrderNo() == null || orderDTO.getOrderNo().trim().isEmpty())) {
+            orderDTO.setOrderNo(generateOrderNo());
+        }
         if (!isPlan) {
             // 检查订单号是否唯一
             if (checkOrderNoUnique(orderDTO.getOrderNo())) {

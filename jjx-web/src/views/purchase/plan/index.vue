@@ -132,7 +132,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
-import { getPlanSuggestions, confirmPlan, addOrder, inTransit as orderInTransit } from '@/api/purchase/order'
+import { getPlanSuggestions, confirmPlan, addOrder, generateOrderNo, inTransit as orderInTransit } from '@/api/purchase/order'
 import { alertApi } from '@/api/inventory/alert'
 import { listSupplier } from '@/api/purchase/supplier'
 import { materialApi } from '@/api/inventory/material'
@@ -319,7 +319,8 @@ const doConfirmPlan = async () => {
   try {
     const toConfirm = selectedRows.value
     // 勾选物料合并为一张采购订单（同一供应商）
-    const orderNo = `PO-${Date.now()}`
+    const response = await generateOrderNo()
+    const orderNo = response.data || ''
     await addOrder({
       orderNo,
       supplierId: Number(supplier.supplierId),
