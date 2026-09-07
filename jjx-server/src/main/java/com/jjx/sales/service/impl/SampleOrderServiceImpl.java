@@ -124,7 +124,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 生成订单编号
-        String orderNo = redisSequenceService.generateBusinessNumber("SP", "样品单号");
+        String orderNo = redisSequenceService.generateBusinessNumberByType("sample_order", "SP", "yyMMdd", 3);
 
         SalesOrder order = new SalesOrder();
         order.setOrderNo(orderNo);
@@ -229,7 +229,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 生成新样品单号
-        String orderNo = redisSequenceService.generateBusinessNumber("SP", "样品单号");
+        String orderNo = redisSequenceService.generateBusinessNumberByType("sample_order", "SP", "yyMMdd", 3);
 
         SalesOrder copy = new SalesOrder();
         copy.setOrderNo(orderNo);
@@ -549,7 +549,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 生成样品单号
-        String orderNo = redisSequenceService.generateBusinessNumber("SP", "样品单号");
+        String orderNo = redisSequenceService.generateBusinessNumberByType("sample_order", "SP", "yyMMdd", 3);
 
         SalesOrder order = new SalesOrder();
         order.setOrderNo(orderNo);
