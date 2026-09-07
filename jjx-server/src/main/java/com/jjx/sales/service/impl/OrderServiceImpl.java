@@ -125,13 +125,14 @@ public class OrderServiceImpl implements IOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long insertOrder(SalesOrderAddDTO dto) {
-        // 自动生成订单编号（使用Redis）
-//        String orderNo = redisSequenceService.generateSalesOrderNumber();
-//        log.info("使用Redis生成订单编号：{}", orderNo);
+        // 2026-09-07：取号时机后移到提交落库——不再由前端弹窗预取，取消/失败不烧号（根治跳号）
+        String orderNo = dto.getOrderNo();
+        if (orderNo == null || orderNo.trim().isEmpty()) {
+            orderNo = generateOrderNo();
+            dto.setOrderNo(orderNo);
+        }
 
         // 检查订单号是否唯一（理论上不会重复，但做双重检查）
-        String orderNo = dto.getOrderNo();
-
         if (!checkOrderNoUnique(orderNo)) {
             log.error("订单号重复异常：{}，Redis生成的编号应该唯一", orderNo);
             throw new BusinessException(BusinessExceptionEnum.ORDER_ALREADY_CANCELLED);
@@ -483,7 +484,8 @@ public class OrderServiceImpl implements IOrderService {
      */
     @Override
     public String generateOrderNo() {
-        return redisSequenceService.generateBusinessNumberByType("sales_order", "SO", "yyMMdd", 4);
+        // 统一：yyMMdd + 3位序号（2026-09-07 定稿；与 sys_config biz_no_rule.sales_order 一致）
+        return redisSequenceService.generateBusinessNumberByType("sales_order", "SO", "yyMMdd", 3);
     }
 
     /**

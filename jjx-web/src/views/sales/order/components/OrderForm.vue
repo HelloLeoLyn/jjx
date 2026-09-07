@@ -7,7 +7,7 @@
         <el-form-item label="订单号" prop="orderNo">
           <el-input
             v-model="form.orderNo"
-            placeholder="系统自动生成"
+            placeholder="提交时自动生成"
             maxlength="50"
             :readonly="true"
           />
@@ -660,9 +660,7 @@ async function prefillFromSample(sampleId: number) {
 onMounted(() => {
   resetForm()
   loadSalesPersons()
-  if (!props.isEdit) {
-    generateOrderNo()
-  }
+  // 2026-09-07：不再预取单号（取消/失败会烧号导致跳号），改由后端提交落库时生成
   if (props.sampleOrderId) {
     prefillFromSample(props.sampleOrderId)
   }

@@ -2904,7 +2904,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 生成标准订单
-        String standardOrderNo = redisSequenceService.generateBusinessNumber("SO", "标准订单号");
+        String standardOrderNo = redisSequenceService.generateBusinessNumberByType("sales_order", "SO", "yyMMdd", 3);
 
         SalesOrder standardOrder = new SalesOrder();
         standardOrder.setOrderNo(standardOrderNo);

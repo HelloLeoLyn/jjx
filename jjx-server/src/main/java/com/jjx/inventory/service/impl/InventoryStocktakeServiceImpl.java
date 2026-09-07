@@ -598,7 +598,8 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
 
         // 2. 盘亏 → 创建出库单
         if (!lossItems.isEmpty()) {
-            String outboundNo = redisSequenceService.generateBusinessNumber("SO", "盘亏出库");
+            // 2026-09-07：前缀改为 SKL，独立计数器——原 SO 前缀与销售订单共用 Redis 计数导致销售单跳号
+            String outboundNo = redisSequenceService.generateBusinessNumber("SKL", "盘亏出库");
             InventoryOutboundOrder outboundOrder = new InventoryOutboundOrder();
             outboundOrder.setOutboundNo(outboundNo);
             outboundOrder.setOutboundType("adjust");
