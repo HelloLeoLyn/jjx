@@ -149,6 +149,7 @@
               size="small"
               controls-position="right"
               style="width: 100px"
+              @change="(val: number | undefined) => handleGroupTotalChange(scope.$index, 'labor', val)"
             />
           </template>
         </el-table-column>
@@ -163,6 +164,7 @@
               size="small"
               controls-position="right"
               style="width: 100px"
+              @change="(val: number | undefined) => handleGroupTotalChange(scope.$index, 'machine', val)"
             />
           </template>
         </el-table-column>
@@ -892,6 +894,57 @@ const recalculateGroupHours = (groupIndex: number) => {
     (sum, item) => sum + (item.customMachineHours || item.standardMachineHours || 0),
     0
   )
+}
+
+/**
+ * 组合行"总工时"直接修改：按组内各作业项现有工时占比分摊写回 custom 字段。
+ * kind: 'labor' | 'machine'（对应 customLaborHours / customMachineHours）
+ */
+const handleGroupTotalChange = (
+  groupIndex: number,
+  kind: 'labor' | 'machine',
+  target: number | undefined
+) => {
+  const group = groups.value[groupIndex]
+  if (!group || !Array.isArray(group.items) || group.items.length === 0) return
+  const targetVal = Number(target || 0)
+  if (targetVal < 0) return
+  const field = kind === 'labor' ? 'customLaborHours' : 'customMachineHours'
+  const fallbackField = kind === 'labor' ? 'standardLaborHours' : 'standardMachineHours'
+
+  // 分摊基准：作业项现值（custom 优先，无 custom 用 standard 兜底）
+  const bases = group.items.map((it: any) => Number(it[field] ?? it[fallbackField] ?? 0))
+  const oldSum = bases.reduce((s: number, b: number) => s + b, 0)
+
+  // 无变化直接返回（不触发 sync、不产生脏数据）
+  if (Math.abs(oldSum - targetVal) < 0.005) {
+    group[field === 'customLaborHours' ? 'totalLaborHours' : 'totalMachineHours'] = oldSum
+    return
+  }
+
+  let next: number[]
+  if (oldSum > 0) {
+    // 按占比分摊，保留 2 位小数
+    next = bases.map((b) => Math.round((b / oldSum) * targetVal * 100) / 100)
+  } else {
+    // 旧值全 0：均分，2 位小数
+    const each = Math.floor((targetVal / bases.length) * 100) / 100
+    next = bases.map(() => each)
+  }
+  // 尾差吸收到最后一项，保证合计恰好 = targetVal（2 位精度内）
+  const sumNext = next.reduce((s, n) => s + n, 0)
+  const diff = Math.round((targetVal - sumNext) * 100) / 100
+  if (bases.length > 0) {
+    next[next.length - 1] = Math.round((next[next.length - 1] + diff) * 100) / 100
+  }
+
+  // 写回作业项 custom 字段（reactive 对象直接改属性即可）
+  group.items.forEach((it: any, idx: number) => {
+    it[field] = next[idx]
+  })
+  // 组合合计按写回值重算（与 recalculateGroupHours 同口径），再同步父组件
+  recalculateGroupHours(groupIndex)
+  syncToParent()
 }
 
 // 更新组合序号
