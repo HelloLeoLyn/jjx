@@ -75,7 +75,8 @@ md5sum /home/administrator/jjx/sql/backups/jjx_erp_db_backup_*.sql
   - type: `feat` `fix` `refactor` `docs` `style` `chore` `perf` `test`
   - 例：`fix(order-no): 销售订单单号统一 yyMMdd+3位（dev-20260907-012）`
 - 一个提交只做一件事；**不混入无关文件**（提交前 `git status` 核对，只 add 自己的文件）
-- 严禁：`git reset --hard` / `git clean` / `git checkout .` 等会吞掉他人未提交改动的操作；确需回退先 `git stash` 并告知他人
+- 严禁：`git reset --hard` / `git clean` / `git checkout .` / `git push -f`（force push 会从远端抹掉别人的提交）等会吞掉他人改动或历史的操作；确需回退先 `git stash` 并告知他人，恢复远端用正常 push 补回
+- **禁止删除/移动共享目录**（`jjx-docs/sql/`、`sql/backups/`、`jjx-docs/standards/`）里的任何文件——疑似冗余先问，不直接删；误删用 `git ls-files -d | xargs git restore` 恢复
 - 推送：push 前先 fetch 确认无冲突；GitHub 走 `ssh://git@github.com/HelloLeoLyn/jjx.git dev`（本机 https 被全局改写，勿用默认 push）
 
 ---

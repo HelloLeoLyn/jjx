@@ -18,4 +18,5 @@ Quick rules:
 - Migration scripts: `jjx-docs/sql/YYYYMMDD_<domain>_<purpose>.sql`.
 - Analysis / test-plan / design reports: `jjx-docs/analysis/YYYYMMDD-<topic>.md`.
 - Commit message: `type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`; never mix unrelated files.
+- NEVER `git reset --hard` / `git clean` / `git push -f` / delete files under `jjx-docs/sql`, `sql/backups`, `jjx-docs/standards` (restore: `git ls-files -d | xargs git restore`).
 - Scratch/temp files: `/tmp` or repo `.tmp/` (gitignored), clean same day.
