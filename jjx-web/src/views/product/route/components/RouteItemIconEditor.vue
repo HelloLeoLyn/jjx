@@ -96,22 +96,12 @@
                 @dragover.prevent="handleItemDragOver($event, scope.$index, Number(itemIndex))"
                 @drop="handleItemDrop($event, scope.$index, Number(itemIndex))"
               >
-                <!-- 有下标（hasIndex=1）：IconStepBadge 显示图标+红底数字 -->
-                <IconStepBadge
-                  v-if="item.hasIndex === 1"
-                  :icon="item.icon || ''"
-                  :size="18"
-                  :index="item.indexNumber ?? null"
+                <EngineeringRoutingItem
+                  mode="edit"
+                  :item="item"
                   @update:index="(n: number) => onUpdateIndex(scope.row, item, n)"
+                  @remove="removeItemFromGroup(scope.$index, Number(itemIndex))"
                 />
-                <!-- 无下标：只显示工序名称 -->
-                <span v-else class="item-name">
-                  <el-tag v-if="item.customProcessParams" size="small" type="warning" style="margin-right: 4px">印刷</el-tag>
-                  {{ item.processName }}
-                </span>
-                <el-icon class="item-close" @click="removeItemFromGroup(scope.$index, Number(itemIndex))">
-                  <Close />
-                </el-icon>
               </div>
               <span class="drop-hint">拖拽图标到此处加入组</span>
             </div>
@@ -313,11 +303,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Close } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
-import IconStepBadge from '@/components/IconStepBadge/index.vue'
+import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
 
 // ==================== 类型定义 ====================
 
@@ -1128,19 +1118,9 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 6px;
   margin-bottom: 4px;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  background: #fafafa;
   cursor: grab;
   user-select: none;
-  transition: all 0.2s ease;
-}
-
-.group-item-row:hover {
-  border-color: #409eff;
-  background: #ecf5ff;
 }
 
 .group-item-row:active {
