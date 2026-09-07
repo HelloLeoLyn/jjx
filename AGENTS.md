@@ -14,10 +14,10 @@ Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
 - **DB change first** (any migration / bulk DML / risky fix): back up BEFORE touching data →
-  `sql/backups/jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql` (mysql root/123456, utf8mb4).
+  `jjx-docs/sql/backups/jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql` (mysql root/123456, utf8mb4).
 - Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql` (next max NN+1).
 - Analysis / test-plan / design reports: `jjx-docs/analysis/<topic>-dev-YYYYMMDD-NNN.md`, register in INDEX.md, UTF-8 BOM.
-- Table-level guard backups before row cleanups: `sql/backups/<table>_<topic>_YYYYMMDD-HHmm.sql`.
+- Table-level guard backups before row cleanups: `jjx-docs/sql/backups/<table>_<topic>_YYYYMMDD-HHmm.sql`.
 - Commit message: `type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`; never mix unrelated files.
-- NEVER `git reset --hard` / `git clean` / `git push -f` / delete files under `jjx-docs/sql`, `sql/backups`, `jjx-docs/standards` (restore: `git ls-files -d | xargs git restore`).
+- NEVER `git reset --hard` / `git clean` / `git push -f` / delete files under `jjx-docs/sql`, `jjx-docs/sql/backups`, `jjx-docs/standards` (restore: `git ls-files -d | xargs git restore`).
 - Scratch/temp files: `/tmp` or repo `.tmp/` (gitignored), clean same day.

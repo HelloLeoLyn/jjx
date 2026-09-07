@@ -9,8 +9,8 @@
 
 | 场景 | 固定位置 | 说明 |
 |---|---|---|
-| DB 全量备份 | `sql/backups/` | 改库前必做；随仓库提交 |
-| DB 表级/行级 guard 备份 | `sql/backups/` | 清理/修复特定表前；命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql` |
+| DB 全量备份 | `jjx-docs/sql/backups/` | 改库前必做；随仓库提交 |
+| DB 表级/行级 guard 备份 | `jjx-docs/sql/backups/` | 清理/修复特定表前；命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql` |
 | DB 迁移/上线脚本 | `jjx-docs/sql/migrations/` | 序号 `NN_<描述>.sql` 递增；幂等优先 |
 | 分析/方案/测试计划/报告 | `jjx-docs/analysis/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 INDEX.md；UTF-8 **带 BOM** |
 | 打印模板/素材 | `jjx-docs/assets/` `jjx-docs/print_template/` | |
@@ -28,11 +28,11 @@
 **统一命令**（固定参数，不用花式选项）：
 
 ```bash
-mkdir -p /home/administrator/jjx/sql/backups
+mkdir -p /home/administrator/jjx/jjx-docs/sql/backups
 mysqldump -u root -p123456 --default-character-set=utf8mb4 \
   --single-transaction --set-gtid-purged=OFF --no-tablespaces \
-  jjx_erp_db > /home/administrator/jjx/sql/backups/jjx_erp_db_backup_$(date +%Y%m%d-%H%M)_<tag>.sql
-md5sum /home/administrator/jjx/sql/backups/jjx_erp_db_backup_*.sql
+  jjx_erp_db > /home/administrator/jjx/jjx-docs/sql/backups/jjx_erp_db_backup_$(date +%Y%m%d-%H%M)_<tag>.sql
+md5sum /home/administrator/jjx/jjx-docs/sql/backups/jjx_erp_db_backup_*.sql
 ```
 
 **命名**：`jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql`
@@ -40,7 +40,7 @@ md5sum /home/administrator/jjx/sql/backups/jjx_erp_db_backup_*.sql
 - 文件头第 1~3 行注释写明：备份人（agent 名）、原因、关联任务码（若有）。
 
 **验证**：执行后必须 `md5sum` + `grep -c "CREATE TABLE"` 抽查，并在汇报里给出 md5。
-**表级/行级 guard 备份**（清理 sys_task 等特定表/行前）：同样落 `sql/backups/`，命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`（如 `sys_task_cleanup_20260907-0930.sql`），md5 照验。
+**表级/行级 guard 备份**（清理 sys_task 等特定表/行前）：同样落 `jjx-docs/sql/backups/`，命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`（如 `sys_task_cleanup_20260907-0930.sql`），md5 照验。
 **保留**：默认随仓库提交（跨机器一致）；单文件 > 20MB 先 gzip（`.sql.gz`）再入库；超 100MB 不入库，放共享盘并在文件位置留 `.gitkeep`+README 说明。
 **禁止**：备份写到各自 workspace 的任意目录（如 `memory/*.sql`、`/tmp/backup.sql`）。
 
