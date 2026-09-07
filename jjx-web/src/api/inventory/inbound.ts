@@ -10,10 +10,16 @@ import type {
   InboundRejectParams,
   InboundDashboardData,
   InboundInspectionSubmitParams,
+  IqcPendingVO,
 } from '@/types/inventory/inbound'
 
 // 入库管理API
 export const inboundApi = {
+  // IQC 待检采购收货单（分页）
+  iqcPending(params: { pageNum: number; pageSize: number; inboundNo?: string }) {
+    return request.get<R<PageResult<IqcPendingVO>>>('/inventory/inbound/iqc-pending', { params })
+  },
+
   // 分页查询入库单列表
   list(params: InboundQueryParams) {
     return request.get<R<PageResult<InboundVO>>>('/inventory/inbound/list', {
@@ -70,7 +76,10 @@ export const inboundApi = {
     return request.get<R<any[]>>(`/inventory/inbound/${inboundId}/iqc-quarantine`)
   },
   handleQuarantine(quarantineId: string, data: any) {
-    return request.post<R<boolean>>(`/inventory/inbound/iqc-quarantine/${quarantineId}/action`, data)
+    return request.post<R<boolean>>(
+      `/inventory/inbound/iqc-quarantine/${quarantineId}/action`,
+      data
+    )
   },
   listDispositionOrders(inboundId: string) {
     return request.get<R<any[]>>(`/inventory/inbound/${inboundId}/iqc-disposition-orders`)
@@ -79,7 +88,9 @@ export const inboundApi = {
     return request.get<R<any[]>>('/inventory/inbound/iqc-quarantine/list', { params: { status } })
   },
   listAllDispositionOrders(action?: string) {
-    return request.get<R<any[]>>('/inventory/inbound/iqc-disposition-orders/list', { params: { action } })
+    return request.get<R<any[]>>('/inventory/inbound/iqc-disposition-orders/list', {
+      params: { action },
+    })
   },
   getDispositionOrder(dispositionId: string) {
     return request.get<R<any>>(`/inventory/inbound/iqc-disposition-orders/${dispositionId}`)

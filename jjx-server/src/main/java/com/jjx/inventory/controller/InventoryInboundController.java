@@ -4,7 +4,9 @@ import com.jjx.common.constant.LogActions;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
+import com.jjx.inventory.dto.query.IqcPendingQueryDTO;
 import com.jjx.inventory.dto.vo.InboundVO;
+import com.jjx.inventory.dto.vo.IqcPendingVO;
 import com.jjx.inventory.service.InventoryInboundService;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
@@ -38,6 +40,13 @@ public class InventoryInboundController {
     @SaCheckPermission("inventory:inbound:view")
     public Result<IPage<InboundVO>> list(InboundQueryDTO query) {
         return Result.success(inboundService.page(query));
+    }
+
+    @GetMapping("/iqc-pending")
+    @Operation(summary = "分页查询 IQC 待检采购收货单")
+    @SaCheckPermission("inventory:inbound:view")
+    public Result<IPage<IqcPendingVO>> iqcPending(IqcPendingQueryDTO query) {
+        return Result.success(inboundService.pageIqcPending(query));
     }
 
     @GetMapping("/{inboundId}")

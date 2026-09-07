@@ -1,7 +1,10 @@
 package com.jjx.inventory.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.inventory.domain.InventoryInboundOrder;
+import com.jjx.inventory.dto.vo.IqcPendingVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -15,6 +18,23 @@ import java.util.List;
  */
 @Mapper
 public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInboundOrder> {
+
+    @Select("<script>" +
+            "SELECT o.inbound_id, o.inbound_no, o.supplier_name, o.total_quantity, " +
+            "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id) AS material_count, " +
+            "o.create_time " +
+            "FROM inventory_inbound_order o " +
+            "WHERE o.source_type = #{sourceType} AND o.order_status = #{orderStatus} " +
+            "AND (o.inspection_result IS NULL OR o.inspection_result = '') " +
+            "<if test='inboundNo != null and inboundNo != &quot;&quot;'>" +
+            "AND o.inbound_no LIKE CONCAT('%', #{inboundNo}, '%') " +
+            "</if>" +
+            "ORDER BY o.create_time DESC" +
+            "</script>")
+    IPage<IqcPendingVO> selectIqcPendingPage(Page<IqcPendingVO> page,
+                                              @Param("sourceType") String sourceType,
+                                              @Param("orderStatus") Integer orderStatus,
+                                              @Param("inboundNo") String inboundNo);
 
     /**
      * 根据来源单据查询入库单

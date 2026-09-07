@@ -21,6 +21,15 @@ export interface InboundQueryParams {
   inboundTimeEnd?: string
 }
 
+export interface IqcPendingVO {
+  inboundId: string
+  inboundNo: string
+  supplierName?: string
+  totalQuantity: number
+  materialCount: number
+  createTime: string
+}
+
 // 入库单VO
 export interface InboundVO {
   inboundId: string

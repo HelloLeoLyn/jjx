@@ -13,9 +13,11 @@ import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
+import com.jjx.inventory.dto.query.IqcPendingQueryDTO;
 import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.inventory.dto.vo.InboundItemVO;
 import com.jjx.inventory.dto.vo.InboundVO;
+import com.jjx.inventory.dto.vo.IqcPendingVO;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.domain.entity.ProductionOrder;
@@ -84,6 +86,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final com.jjx.inventory.mapper.InventoryIqcReturnOrderMapper iqcReturnOrderMapper;
     private final com.jjx.inventory.mapper.InventoryIqcReworkOrderMapper iqcReworkOrderMapper;
     private final com.jjx.inventory.mapper.InventoryIqcScrapOrderMapper iqcScrapOrderMapper;
+
+    @Override
+    public IPage<IqcPendingVO> pageIqcPending(IqcPendingQueryDTO query) {
+        Page<IqcPendingVO> page = new Page<>(query.getPageNum(), query.getPageSize());
+        return inboundOrderMapper.selectIqcPendingPage(
+                page,
+                "PURCHASE",
+                InventoryOrderStatusEnum.PENDING.getValue(),
+                query.getInboundNo());
+    }
 
     @Override
     public IPage<InboundVO> page(InboundQueryDTO query) {

@@ -4,11 +4,13 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
+import com.jjx.inventory.dto.query.IqcPendingQueryDTO;
 import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.inventory.dto.save.InboundInspectionReviewDTO;
 import com.jjx.inventory.dto.save.IqcQuarantineActionDTO;
 import com.jjx.inventory.domain.InventoryIqcQuarantine;
 import com.jjx.inventory.dto.vo.InboundVO;
+import com.jjx.inventory.dto.vo.IqcPendingVO;
 
 import java.util.List;
 import java.util.Map;
@@ -22,6 +24,9 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      * 分页查询入库单
      */
     IPage<InboundVO> page(InboundQueryDTO query);
+
+    /** 分页查询尚未提交 IQC 检验的采购收货单。 */
+    IPage<IqcPendingVO> pageIqcPending(IqcPendingQueryDTO query);
 
     /**
      * 获取入库单详情
