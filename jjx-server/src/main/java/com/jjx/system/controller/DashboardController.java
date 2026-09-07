@@ -7,6 +7,9 @@ import com.jjx.common.core.result.Result;
 import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
+import com.jjx.kanban.enums.KanbanTaskStatusEnum;
+import com.jjx.notification.domain.entity.Notification;
+import com.jjx.notification.mapper.NotificationMapper;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.enums.ProductionOrderStatusEnum;
@@ -19,6 +22,8 @@ import com.jjx.sales.mapper.SalesWorkbenchMapper;
 import com.jjx.system.annotation.Log;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.vo.SalesWorkbenchVO;
+import com.jjx.system.domain.entity.SysTask;
+import com.jjx.system.mapper.SysTaskMapper;
 import com.jjx.system.mapper.SysUserMapper;
 import com.jjx.system.utils.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,7 +38,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -54,6 +62,11 @@ public class DashboardController {
     private final ProductionOrderMapper productionOrderMapper;
     private final OrderMapper orderMapper;
     private final SalesWorkbenchMapper salesWorkbenchMapper;
+    private final NotificationMapper notificationMapper;
+    private final SysTaskMapper taskMapper;
+
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @GetMapping("/my-stats")
     @Operation(summary = "获取仪表盘统计数据")
@@ -67,6 +80,56 @@ public class DashboardController {
         data.put("customerCount", customerMapper.selectCount(null));
         data.put("userCount", userMapper.selectCount(null));
 
+        return Result.success(data);
+    }
+
+    @GetMapping("/my-todos")
+    @Operation(summary = "获取我的待办任务与未读通知")
+    public Result<Map<String, Object>> getMyTodos() {
+        Long userId = SecurityUtils.getUserId();
+
+        // sys_notification.status：0=待发送，1=已发送；首页只统计已送达且未读的通知。
+        Long unreadNotice = notificationMapper.selectCount(new LambdaQueryWrapper<Notification>()
+                .eq(Notification::getReceiverId, userId)
+                .eq(Notification::getIsRead, NotificationReadStatus.UNREAD.getValue())
+                .eq(Notification::getStatus, NotificationDeliveryStatus.SENT.getValue()));
+
+        LambdaQueryWrapper<SysTask> todoCondition = new LambdaQueryWrapper<SysTask>()
+                .eq(SysTask::getAssigneeId, userId)
+                .in(SysTask::getStatus, KanbanTaskStatusEnum.PENDING.getValue(),
+                        KanbanTaskStatusEnum.IN_PROGRESS.getValue())
+                .ne(SysTask::getTaskType, "DEV")
+                .ne(SysTask::getKanbanModule, "dev");
+        Long todoTotal = taskMapper.selectCount(todoCondition);
+
+        List<Map<String, Object>> todos = taskMapper.selectList(new LambdaQueryWrapper<SysTask>()
+                        .eq(SysTask::getAssigneeId, userId)
+                        .in(SysTask::getStatus, KanbanTaskStatusEnum.PENDING.getValue(),
+                                KanbanTaskStatusEnum.IN_PROGRESS.getValue())
+                        .ne(SysTask::getTaskType, "DEV")
+                        .ne(SysTask::getKanbanModule, "dev")
+                        .orderByDesc(SysTask::getCreateTime)
+                        .last("LIMIT 10"))
+                .stream()
+                .map(task -> {
+                    Map<String, Object> todo = new LinkedHashMap<>();
+                    todo.put("taskId", task.getTaskId());
+                    todo.put("title", task.getTitle());
+                    todo.put("taskType", task.getTaskType());
+                    todo.put("bizType", task.getBizType());
+                    todo.put("bizId", task.getBizId());
+                    todo.put("sourceEvent", task.getSourceEvent());
+                    todo.put("deadline", task.getDeadline() == null ? null : task.getDeadline().format(DATE_FORMATTER));
+                    todo.put("createTime", task.getCreateTime() == null ? null
+                            : task.getCreateTime().format(DATE_TIME_FORMATTER));
+                    return todo;
+                })
+                .toList();
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("unreadNotice", unreadNotice);
+        data.put("todoTotal", todoTotal);
+        data.put("todos", todos);
         return Result.success(data);
     }
 
@@ -162,5 +225,33 @@ public class DashboardController {
 
     private BigDecimal nvl(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
+    }
+
+    private enum NotificationReadStatus {
+        UNREAD(0);
+
+        private final int value;
+
+        NotificationReadStatus(int value) {
+            this.value = value;
+        }
+
+        public int getValue() {
+            return value;
+        }
+    }
+
+    private enum NotificationDeliveryStatus {
+        SENT(1);
+
+        private final int value;
+
+        NotificationDeliveryStatus(int value) {
+            this.value = value;
+        }
+
+        public int getValue() {
+            return value;
+        }
     }
 }
