@@ -518,17 +518,11 @@
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
 
-    <!-- 转量产 · 就绪检查（DEV-xxx） -->
+    <!-- 转量产 · 就绪检查（资料未齐时展示） -->
     <SampleConvertCheckDialog
       v-model="convertDialogVisible"
       :order-id="convertRow?.orderId ?? null"
       :order-no="convertRow?.orderNo"
-      :sample-contact="
-        convertRow
-          ? { contactPerson: convertRow.contactPerson, contactPhone: convertRow.contactPhone }
-          : undefined
-      "
-      @success="getList"
     />
   </div>
 </template>
@@ -1337,9 +1331,20 @@ async function handleRejectSample(row: any) {
 // 产品资料转移入口已移至打样平台（2026-08-12），样品单管理仅保留转量产
 
 async function handleConvert(row: any) {
-  // 转量产：就绪检查（产品/BOM/工艺路线/菲林清单）
+  // 转量产（2026-09-07 复用标准订单新增表单）：先就绪检查，通过→进预填表单；不齐→弹检查明细
   convertRow.value = row
-  convertDialogVisible.value = true
+  try {
+    const res: any = await sampleOrderApi.convertCheck(row.orderId)
+    const check: any = res?.data
+    if (check?.allPass) {
+      router.push(`/sales/sample-order/convert/${row.orderId}`)
+    } else {
+      convertDialogVisible.value = true
+    }
+  } catch {
+    // 校验接口异常时仍展示检查弹窗，不阻断排查
+    convertDialogVisible.value = true
+  }
 }
 
 // 查看流水

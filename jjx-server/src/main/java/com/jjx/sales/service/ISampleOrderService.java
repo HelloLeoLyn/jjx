@@ -170,6 +170,11 @@ public interface ISampleOrderService {
                                    com.jjx.sales.domain.dto.SampleConvertExtrasDTO extras);
 
     /**
+     * 样品转量产（2026-09-07 复用标准订单新增：预填样品数据，数量/单价由操作员确认）
+     */
+    SalesOrder convertSampleToProduction(Long orderId, com.jjx.sales.domain.dto.SalesOrderAddDTO dto);
+
+    /**
      * 转量产就绪检查（产品/BOM/工艺路线/菲林/资料转移清单）
      */
     com.jjx.sales.domain.vo.SampleConvertCheckVO checkConvertReady(Long orderId);

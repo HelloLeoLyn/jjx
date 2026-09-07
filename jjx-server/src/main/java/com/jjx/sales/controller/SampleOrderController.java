@@ -259,6 +259,18 @@ public class SampleOrderController extends BaseController {
     }
 
     /**
+     * 样品转量产（2026-09-07 复用标准订单新增表单：预填样品数据，可改数量/单价）
+     */
+    @Operation(summary = "样品转量产（复用标准订单新增）")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizType = "'sample'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).TRANSFERRED.getLabel()", action = LogActions.SAMPLE_TO_PRODUCTION)
+    @SaCheckPermission("sales:sample:convert")
+    @PostMapping("/{orderId}/convert")
+    public Result<SalesOrder> convertSample(@PathVariable Long orderId,
+            @RequestBody(required = false) com.jjx.sales.domain.dto.SalesOrderAddDTO dto) {
+        return Result.success(sampleOrderService.convertSampleToProduction(orderId, dto));
+    }
+
+    /**
      * 样品单作废
      */
     @Operation(summary = "样品单作废")

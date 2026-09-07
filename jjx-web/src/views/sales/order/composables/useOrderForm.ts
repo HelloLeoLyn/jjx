@@ -182,12 +182,14 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     })
     productOptions.value = []
     productSearchCache.value.clear()
-    // 覆盖策略：订单已填写过联系人/电话/收货地址，且客户确实发生变更 → 确认后才覆盖
-    const hasManualInfo = !!(form.contactPerson || form.contactPhone || form.shippingAddress)
+    // 覆盖策略：订单已填写过联系人/电话/收货地址/付款条件，且客户确实发生变更 → 确认后才覆盖
+    const hasManualInfo = !!(
+      form.contactPerson || form.contactPhone || form.shippingAddress || form.paymentTerms
+    )
     let syncCustomerInfo = true
     if (hasManualInfo && form.customerId && form.customerId !== customerId) {
       try {
-        await ElMessageBox.confirm('客户已变更，是否同步更新联系人/电话/收货地址？', '提示', {
+        await ElMessageBox.confirm('客户已变更，是否同步更新联系人/电话/收货地址/付款条件？', '提示', {
           type: 'warning',
           confirmButtonText: '同步更新',
           cancelButtonText: '保留原值',
@@ -211,6 +213,11 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     form.shippingAddress = Object.values(address).some((v) => v)
       ? JSON.stringify(address)
       : ''
+    // 2026-09-07：付款条件随客户带入（客户档案 payment_method 1预付/2货到付款/3月结30天/4月结60天）
+    const paymentMap: Record<number, string> = { 1: 'prepaid', 2: 'cod', 3: 'net30', 4: 'net60' }
+    if (selectedCustomer.paymentMethod != null && paymentMap[selectedCustomer.paymentMethod]) {
+      form.paymentTerms = paymentMap[selectedCustomer.paymentMethod]
+    }
 
   }
 

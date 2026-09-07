@@ -247,6 +247,15 @@ export const sampleOrderApi = {
     })
   },
 
+  // 转量产（2026-09-07 复用标准订单新增表单：整单预填样品数据提交，数量/单价可改）
+  convertSample(orderId: number, dto: Record<string, any>): AxiosPromise<any> {
+    return request({
+      url: `/sales/sample-order/${orderId}/convert`,
+      method: 'post',
+      data: dto,
+    })
+  },
+
   // 转量产 · 产品标准化窗口（DEV-xxx）
   convertCheck(orderId: number): AxiosPromise<any> {
     return request({

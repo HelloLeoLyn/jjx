@@ -208,8 +208,14 @@
           <el-button type="primary" plain icon="Plus" @click="addItem">添加行</el-button>
         </el-col>
         <el-col :span="12" style="text-align: right">
-          <span style="font-size: 16px; font-weight: bold">
-            合计金额：{{ totalAmount.toFixed(2) }}
+          <span style="font-size: 16px; font-weight: bold; margin-right: 16px">
+            合计金额(不含税)：{{ totalAmount.toFixed(2) }}
+          </span>
+          <span style="font-size: 16px; font-weight: bold; margin-right: 16px">
+            税额：{{ totalTax.toFixed(2) }}
+          </span>
+          <span style="font-size: 16px; font-weight: bold; color: #f56c6c">
+            价税合计：{{ totalWithTax.toFixed(2) }}
           </span>
         </el-col>
       </el-row>
@@ -336,6 +342,13 @@ const title = computed(() => (props.orderId ? '修改采购订单' : '新增采�
 const totalAmount = computed(() => {
   return form.items.reduce((sum, item) => sum + (item.amount || 0), 0)
 })
+
+// 2026-09-07：税额/价税合计随行税率即时联动展示（行金额保持不含税口径，税在单头汇总）
+const totalTax = computed(() => {
+  return form.items.reduce((sum, item) => sum + (item.amount || 0) * ((item.taxRate || 0) / 100), 0)
+})
+
+const totalWithTax = computed(() => totalAmount.value + totalTax.value)
 
 const rules = reactive<FormRules>({
   supplierId: [{ required: true, message: '请选择供应商', trigger: 'change' }],

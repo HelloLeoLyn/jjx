@@ -65,6 +65,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.system.mapper.SysTaskMapper sysTaskMapper;
     private final RedisSequenceService redisSequenceService;
     private final ISalesOrderProductService orderProductService;
+    private final com.jjx.sales.service.IOrderService orderService;
     private final SalesSampleRoundMapper sampleRoundMapper;
     private final SalesSampleProcessMapper sampleProcessMapper;
     private final SysDictItemMapper sysDictItemMapper;
@@ -3016,6 +3017,62 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         log.info("样品单[{}] 转量产成功，生成标准订单[{}] (orderId={})",
                 sampleOrder.getOrderNo(), standardOrderNo, standardOrder.getOrderId());
         return orderMapper.selectById(orderId);
+    }
+
+    /**
+     * 样品转量产（2026-09-07 复用标准订单新增：以样品单为底稿预填，数量/单价由操作员确认后创建）
+     */
+    @Override
+    @Event(value = "sample.converted", bizId = "#orderId", bizType = "'sample'")
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder convertSampleToProduction(Long orderId,
+                                                com.jjx.sales.domain.dto.SalesOrderAddDTO dto) {
+        SalesOrder sampleOrder = orderMapper.selectById(orderId);
+        if (sampleOrder == null || Boolean.TRUE.equals(sampleOrder.getDeleted())) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(sampleOrder.getSampleStatus())) {
+            throw new BusinessException("当前样品单状态不允许转量产（仅客户确认后的样品单可转量产）");
+        }
+        if (dto == null) {
+            throw new BusinessException("缺少标准订单数据，请从转量产页提交");
+        }
+        // 固定为标准订单；报价单/链路默认继承样品单（前端未带时）
+        dto.setOrderType(SalesOrderTypeEnum.STANDARD.getCode());
+        if (dto.getQuotationId() == null) {
+            dto.setQuotationId(sampleOrder.getQuotationId());
+        }
+        dto.setTraceId(sampleOrder.getTraceId());
+        String prefix = "由样品单[" + sampleOrder.getOrderNo() + "]转量产生成";
+        dto.setRemark(dto.getRemark() != null && !dto.getRemark().isEmpty()
+                ? prefix + "\n" + dto.getRemark() : prefix);
+        // 复用标准订单新增核心（编号唯一校验/明细校验/金额/明细落库/创建日志）
+        Long newOrderId = orderService.insertOrder(dto);
+
+        // 回写样品单（状态/关联）
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        update.setSampleStatus(SampleOrderStatusEnum.TRANSFERRED.getValue());
+        update.setConvertedOrderId(newOrderId);
+        update.setConvertOrderTime(new Date());
+        orderMapper.updateById(update);
+
+        // 报价单回写转换信息
+        if (sampleOrder.getQuotationId() != null) {
+            try {
+                SalesQuotation quotation = quotationMapper.selectById(sampleOrder.getQuotationId());
+                if (quotation != null) {
+                    quotation.setConvertedOrderId(newOrderId);
+                    quotation.setConvertTime(java.time.LocalDateTime.now());
+                    quotationMapper.updateById(quotation);
+                }
+            } catch (Exception e) {
+                log.warn("更新报价单转换信息失败: {}", e.getMessage());
+            }
+        }
+        log.info("样品单[{}] 转量产成功（复用标准订单新增），生成标准订单[{}] (orderId={})",
+                sampleOrder.getOrderNo(), dto.getOrderNo(), newOrderId);
+        return orderMapper.selectById(newOrderId);
     }
 
     /**

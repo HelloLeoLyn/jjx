@@ -392,6 +392,9 @@ import { ElMessage } from 'element-plus'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
 import { orderApi } from '@/api/sales/order'
+import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { customerApi } from '@/api/sales/customer'
+import { serializeAddress } from '@/types/sales/address'
 import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
@@ -403,12 +406,15 @@ interface Props {
   isEdit?: boolean
   orderId?: number
   initialData?: Record<string, any>
+  /** 从样品单转量产：进入后预填样品数据，提交走转量产接口（2026-09-07） */
+  sampleOrderId?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isEdit: false,
   orderId: undefined,
   initialData: () => ({}),
+  sampleOrderId: undefined,
 })
 
 const emit = defineEmits<{
@@ -552,12 +558,113 @@ const handleCurrencyChange = async (val: string) => {
 // ===== 附件上传（DEV-733 统一组件） =====
 const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
 
+/** 客户档案 payment_method(1预付/2货到付款/3月结30天/4月结60天) → 订单同值域枚举 */
+const PAYMENT_METHOD_TO_TERMS: Record<number, string> = {
+  1: 'prepaid',
+  2: 'cod',
+  3: 'net30',
+  4: 'net60',
+}
+
+function fmtDate(d: any): string {
+  if (!d) return ''
+  return String(d).slice(0, 10)
+}
+
+function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * 样品转量产预填（2026-09-07）：样品单头 + 明细带入标准单表单，数量/单价可改；
+ * 付款条件/收货地址默认取客户档案（样品单无则客户兜底）。
+ */
+async function prefillFromSample(sampleId: number) {
+  try {
+    const sampleRes: any = await sampleOrderApi.getInfo(sampleId)
+    const s = sampleRes?.data
+    if (!s) {
+      ElMessage.error('加载样品单失败，请重试')
+      return
+    }
+    const prodRes: any = await sampleOrderApi.getProducts(sampleId)
+    const prods: any[] = prodRes?.data || []
+    form.items = prods.map((p: any) => ({
+      productId: p.productId ?? null,
+      productCode: p.productCode || '',
+      productName: p.productName || '',
+      specification: p.specification || '',
+      unit: p.unit || 'PCS',
+      quantity: Number(p.quantity ?? 0),
+      unitPrice: Number(p.unitPrice ?? 0),
+      amount: Number((p.quantity ?? 0) * (p.unitPrice ?? 0)),
+      deliveryDays: 0,
+      customRequirements: '',
+      customerMaterialNo: p.customerMaterialNo || '',
+      lineRemark: p.lineRemark || '',
+    }))
+    Object.assign(form, {
+      customerId: s.customerId,
+      customerName: s.customerName || '',
+      contactPerson: s.contactPerson || '',
+      contactPhone: s.contactPhone || '',
+      orderDate: fmtDate(s.orderDate) || localToday(),
+      deliveryDate: fmtDate(s.deliveryDate),
+      currency: s.currency || 'CNY',
+      exchangeRate: Number(s.exchangeRate ?? 1),
+      salesPersonId: s.salesManagerId ?? undefined,
+      salesPersonName: s.salesManagerName || '',
+      remark: '',
+    })
+    if (s.deliveryAddress) {
+      form.shippingAddress = s.deliveryAddress
+    }
+    // 客户兜底：付款条件（客户 payment_method 映射）+ 收货地址（样品单未带时）
+    try {
+      const cusRes: any = await customerApi.getCustomer(s.customerId)
+      const c = cusRes?.data
+      if (c) {
+        if (c.paymentMethod != null && PAYMENT_METHOD_TO_TERMS[c.paymentMethod]) {
+          form.paymentTerms = PAYMENT_METHOD_TO_TERMS[c.paymentMethod]
+        }
+        if (!form.shippingAddress) {
+          const addr: Record<string, string> = {
+            country: c.country || '',
+            province: c.province || '',
+            city: c.city || '',
+            street: c.address || '',
+            zipCode: c.postalCode || '',
+          }
+          if (Object.values(addr).some((v) => v)) {
+            form.shippingAddress = serializeAddress(addr as any)
+          }
+        }
+        if (!form.contactPerson) {
+          form.contactPerson = c.contactPerson || ''
+          form.contactPhone = c.contactPhone || ''
+        }
+      }
+    } catch {
+      // 客户信息拉取失败不阻断预填
+    }
+    calculateTotalAmount()
+    ElMessage.success('已带入样品单数据，请确认数量/单价后提交')
+  } catch (e) {
+    console.error('样品转量产预填失败:', e)
+    ElMessage.error('样品数据预填失败，请重试或手动填写')
+  }
+}
+
 // 初始化
 onMounted(() => {
   resetForm()
   loadSalesPersons()
   if (!props.isEdit) {
     generateOrderNo()
+  }
+  if (props.sampleOrderId) {
+    prefillFromSample(props.sampleOrderId)
   }
 })
 
@@ -609,10 +716,14 @@ const submitForm = async (): Promise<boolean> => {
   }
 
   try {
-    // 1. 保存订单，获取新订单ID
-    const orderResponse = await orderApi.addOrder(submitData as any)
+    // 1. 保存订单（转量产模式走样品转量产接口：建标准单 + 回写样品单状态，事务内完成）
+    const isSampleConvert = !!props.sampleOrderId
+    // 两个接口响应均已解包为 { code, msg, data }，类型统一按 any 处理
+    const orderResponse: any = isSampleConvert
+      ? await sampleOrderApi.convertSample(props.sampleOrderId as number, submitData as any)
+      : await orderApi.addOrder(submitData as any)
     if (orderResponse.code !== 200) {
-      ElMessage.error('新增订单失败')
+      ElMessage.error(isSampleConvert ? '转量产失败' : '新增订单失败')
       return false
     }
     const data = orderResponse.data!
@@ -622,7 +733,7 @@ const submitForm = async (): Promise<boolean> => {
     // 2. 上传待处理的附件
     await uploaderRef.value?.flushPending(newOrderId, newTraceId)
 
-    ElMessage.success('新增成功')
+    ElMessage.success(isSampleConvert ? '转量产成功，标准订单已生成' : '新增成功')
     emit('success')
     return true
   } catch (error) {
