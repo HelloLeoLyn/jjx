@@ -1,11 +1,20 @@
 package com.jjx.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.product.mapper.ProductMapper;
+import com.jjx.production.domain.entity.ProductionOrder;
+import com.jjx.production.enums.ProductionOrderStatusEnum;
+import com.jjx.production.mapper.ProductionOrderMapper;
+import com.jjx.sales.domain.entity.SalesOrder;
+import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.mapper.CustomerMapper;
+import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.SalesWorkbenchMapper;
 import com.jjx.system.annotation.Log;
 import com.jjx.system.annotation.BusinessType;
@@ -20,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -41,6 +51,8 @@ public class DashboardController {
     private final ProductMapper productMapper;
     private final CustomerMapper customerMapper;
     private final SysUserMapper userMapper;
+    private final ProductionOrderMapper productionOrderMapper;
+    private final OrderMapper orderMapper;
     private final SalesWorkbenchMapper salesWorkbenchMapper;
 
     @GetMapping("/my-stats")
@@ -55,30 +67,62 @@ public class DashboardController {
         data.put("customerCount", customerMapper.selectCount(null));
         data.put("userCount", userMapper.selectCount(null));
 
-        // 销售数据（v-hasPermi="sales:dashboard" 控制）
-        Map<String, Object> sales = new HashMap<>();
-        sales.put("monthlySales", 128500);
-        sales.put("orderCount", 12);
-        sales.put("completionRate", 78);
-        sales.put("paymentRate", 65);
-        data.put("sales", sales);
+        return Result.success(data);
+    }
 
-        // 生产数据（v-hasPermi="production:dashboard" 控制）
-        Map<String, Object> production = new HashMap<>();
-        production.put("activeOrders", 8);
-        production.put("todayCompleted", 3);
-        production.put("progress", 65);
-        production.put("alerts", 1);
-        data.put("production", production);
+    /**
+     * 生产概况：按 production_order 工单状态统计；今日完工以完工回写的 actual_end_time 为准。
+     */
+    @GetMapping("/production-overview")
+    @Operation(summary = "获取生产概况")
+    @SaCheckPermission("production:dashboard")
+    public Result<Map<String, Long>> productionOverview() {
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime tomorrowStart = todayStart.plusDays(1);
+        Map<String, Long> data = new HashMap<>();
+        data.put("activeOrders", productionOrderMapper.selectCount(new LambdaQueryWrapper<ProductionOrder>()
+                .eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.IN_PROGRESS.getValue())));
+        data.put("pendingOrders", productionOrderMapper.selectCount(new LambdaQueryWrapper<ProductionOrder>()
+                .eq(ProductionOrder::getApprovalStatus, ApproveStatusEnum.APPROVED.getValue())
+                .eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.PENDING_START.getValue())));
+        data.put("todayCompleted", productionOrderMapper.selectCount(new LambdaQueryWrapper<ProductionOrder>()
+                .eq(ProductionOrder::getOrderStatus, ProductionOrderStatusEnum.COMPLETED.getValue())
+                .ge(ProductionOrder::getActualEndTime, todayStart)
+                .lt(ProductionOrder::getActualEndTime, tomorrowStart)));
+        data.put("totalOrders", productionOrderMapper.selectCount(null));
+        return Result.success(data);
+    }
 
-        // 管理数据（v-hasPermi="admin:dashboard" 控制）
-        Map<String, Object> admin = new HashMap<>();
-        admin.put("totalSales", 385200);
-        admin.put("totalCost", 256800);
-        admin.put("profitRate", 33);
-        admin.put("employeeCount", 28);
-        data.put("admin", admin);
+    /**
+     * 公司总览：本月销售按 order_date，统计已确认至已完成的有效订单（状态6-9），金额取 final_amount。
+     */
+    @GetMapping("/admin-overview")
+    @Operation(summary = "获取公司总览")
+    @SaCheckPermission("admin:dashboard")
+    public Result<Map<String, Object>> adminOverview() {
+        LocalDate monthStart = YearMonth.now().atDay(1);
+        LocalDate nextMonthStart = monthStart.plusMonths(1);
+        LambdaQueryWrapper<SalesOrder> effectiveOrders = new LambdaQueryWrapper<SalesOrder>()
+                .ge(SalesOrder::getOrderDate, monthStart)
+                .lt(SalesOrder::getOrderDate, nextMonthStart)
+                .between(SalesOrder::getOrderStatus, SalesOrderStatusEnum.CONFIRMED.getValue(),
+                        SalesOrderStatusEnum.COMPLETED.getValue());
+        Long monthOrderCount = orderMapper.selectCount(effectiveOrders);
 
+        QueryWrapper<SalesOrder> amountQuery = new QueryWrapper<>();
+        amountQuery.select("COALESCE(SUM(final_amount), 0)")
+                .ge("order_date", monthStart)
+                .lt("order_date", nextMonthStart)
+                .between("order_status", SalesOrderStatusEnum.CONFIRMED.getValue(),
+                        SalesOrderStatusEnum.COMPLETED.getValue());
+        Object amountValue = orderMapper.selectObjs(amountQuery).stream().findFirst().orElse(BigDecimal.ZERO);
+        BigDecimal monthSalesAmount = new BigDecimal(amountValue.toString()).setScale(2, RoundingMode.HALF_UP);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("monthSalesAmount", monthSalesAmount);
+        data.put("monthOrderCount", monthOrderCount);
+        data.put("materialCount", materialMapper.selectCount(null));
+        data.put("userCount", userMapper.selectCount(null));
         return Result.success(data);
     }
 
