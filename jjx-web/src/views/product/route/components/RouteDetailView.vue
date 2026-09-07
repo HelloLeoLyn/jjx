@@ -56,31 +56,11 @@
       <el-table-column label="组合工序" min-width="300">
         <template #default="scope">
           <div class="group-items">
-            <el-tag
-              v-for="item in scope.row.items"
-              :key="item.processId"
-              size="small"
-              class="group-item-tag"
-            >
-              <!-- 有下标（hasIndex=1）：图标+红底数字（只读） -->
-              <IconStepBadge
-                v-if="item.hasIndex === 1"
-                :icon="item.icon || ''"
-                :size="14"
-                :index="item.indexNumber ?? null"
-              />
-              <!-- 无下标：原样图标+名称（印刷工序带标识，2026-08-12） -->
-              <template v-else>
-                <SvgIcon
-                  v-if="item.icon"
-                  :name="item.icon"
-                  :size="14"
-                  style="margin-right: 4px; vertical-align: middle"
-                />
-                <el-tag v-if="item.majorCategory === 'PRINT'" size="small" type="warning" effect="plain" style="margin-right: 4px">印刷</el-tag>
-                <span>{{ item.processName }}</span>
-              </template>
-            </el-tag>
+            <EngineeringRoutingItem
+              v-for="(item, index) in scope.row.items"
+              :key="item.itemId ?? item.processId ?? index"
+              :item="item"
+            />
           </div>
         </template>
       </el-table-column>
@@ -121,7 +101,7 @@ import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/pro
 import { RouteStatusEnum } from '@/enums/product'
 import { getDictLabel } from '@/utils/dict'
 import { useDict } from '@/composables/useDict'
-import IconStepBadge from '@/components/IconStepBadge/index.vue'
+import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
 
 /** 工序类别字典（process_category：PANEL/UP_LINE/DOWN_LINE/OTHER） */
 const { options: categoryOptions } = useDict('process_category')
@@ -186,34 +166,61 @@ const buildGroups = (items: EngineeringRoutingItemVO[]) => {
     groups.value = []
     return
   }
-  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
-  items.forEach((item) => {
-    const key = item.groupId
-      ? 'group_' + item.groupId
-      : 'independent_' + (item.itemId || Math.random())
-    if (!groupMap.has(key)) {
-      groupMap.set(key, [])
-    }
-    groupMap.get(key)!.push(item)
-  })
-  const sortedEntries = Array.from(groupMap.entries()).sort((a, b) => {
-    return (a[1][0].groupOrder || 0) - (b[1][0].groupOrder || 0)
-  })
-  groups.value = sortedEntries.map(([, items]) => ({
-    groupOrder: items[0].groupOrder || 0,
-    groupName: items[0].groupName || '组合' + (items[0].groupOrder || ''),
-    items: items,
-    totalLaborHours: items.reduce(
-      (sum, i) => sum + (i.customLaborHours || i.standardLaborHours || 0),
-      0
-    ),
-    totalMachineHours: items.reduce(
-      (sum, i) => sum + (i.customMachineHours || i.standardMachineHours || 0),
-      0
-    ),
-    remark: items[0]?.description || '',
-    processCategoryName: getDictLabel(categoryOptions.value, items[0]?.processCategory) || '',
-  }))
+  const hasParentStruct = items.some((item) => Array.isArray(item.children))
+
+  if (hasParentStruct) {
+    groups.value = items
+      .map((parent) => {
+        const groupItems = parent.children?.length
+          ? (parent.children as EngineeringRoutingItemVO[])
+          : [parent]
+        return {
+          groupOrder: parent.processOrder || 0,
+          groupName: parent.processName || '',
+          items: groupItems,
+          totalLaborHours: groupItems.reduce(
+            (sum, item) => sum + (item.customLaborHours || item.standardLaborHours || 0),
+            0
+          ),
+          totalMachineHours: groupItems.reduce(
+            (sum, item) => sum + (item.customMachineHours || item.standardMachineHours || 0),
+            0
+          ),
+          remark: parent.description || '',
+          processCategoryName: groupItems[0]?.processCategoryName || '',
+        }
+      })
+      .sort((a, b) => a.groupOrder - b.groupOrder)
+  } else {
+    const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
+    items.forEach((item) => {
+      const key = item.groupId
+        ? 'group_' + item.groupId
+        : 'independent_' + (item.itemId || Math.random())
+      if (!groupMap.has(key)) {
+        groupMap.set(key, [])
+      }
+      groupMap.get(key)!.push(item)
+    })
+    const sortedEntries = Array.from(groupMap.entries()).sort((a, b) => {
+      return (a[1][0].groupOrder || 0) - (b[1][0].groupOrder || 0)
+    })
+    groups.value = sortedEntries.map(([, items]) => ({
+      groupOrder: items[0].groupOrder || 0,
+      groupName: items[0].groupName || '组合' + (items[0].groupOrder || ''),
+      items: items,
+      totalLaborHours: items.reduce(
+        (sum, i) => sum + (i.customLaborHours || i.standardLaborHours || 0),
+        0
+      ),
+      totalMachineHours: items.reduce(
+        (sum, i) => sum + (i.customMachineHours || i.standardMachineHours || 0),
+        0
+      ),
+      remark: items[0]?.description || '',
+      processCategoryName: getDictLabel(categoryOptions.value, items[0]?.processCategory) || '',
+    }))
+  }
 }
 
 const loadDetail = async (routingId: number) => {
@@ -266,9 +273,5 @@ defineExpose({ loadDetail, resetDetail })
   flex-wrap: wrap;
   gap: 6px;
   padding: 4px;
-}
-.group-item-tag {
-  cursor: default;
-  user-select: none;
 }
 </style>
