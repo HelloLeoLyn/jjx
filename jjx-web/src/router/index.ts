@@ -41,12 +41,6 @@ function endProgress() {
 }
 export const constantRoutes: RouteRecordRaw[] = [
   {
-    path: '/inventory/iqc-quarantine',
-    name: 'InventoryIqcQuarantine',
-    component: () => import('@/views/inventory/iqc-quarantine/index.vue'),
-    meta: { title: 'IQC隔离台账', hidden: true },
-  },
-  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
