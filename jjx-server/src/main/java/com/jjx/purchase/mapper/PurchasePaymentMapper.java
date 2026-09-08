@@ -37,13 +37,13 @@ public interface PurchasePaymentMapper extends BaseMapper<PurchasePayment> {
     /**
      * 查询待审批的付款列表
      */
-    @Select("SELECT * FROM purchase_payment WHERE payment_status = 'pending' ORDER BY payment_date ASC")
+    @Select("SELECT * FROM purchase_payment WHERE approval_status = 'PENDING' ORDER BY payment_date ASC")
     List<PurchasePayment> selectPendingApproval();
 
     /**
      * 查询已审批的付款列表
      */
-    @Select("SELECT * FROM purchase_payment WHERE payment_status = 'approved' ORDER BY payment_date DESC")
+    @Select("SELECT * FROM purchase_payment WHERE approval_status = 'APPROVED' ORDER BY payment_date DESC")
     List<PurchasePayment> selectApproved();
 
     /**

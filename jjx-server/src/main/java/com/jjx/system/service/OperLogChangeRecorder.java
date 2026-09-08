@@ -42,6 +42,12 @@ public class OperLogChangeRecorder {
      */
     public void recordUpdate(String module, String operUrl, String bizType, String bizId,
                              String traceId, String bizStatus, List<String> changes) {
+        recordUpdate(module, operUrl, bizType, bizId, traceId, bizStatus, null, changes);
+    }
+
+    /** 记录一次带明确动作标题的“修改”操作日志。 */
+    public void recordUpdate(String module, String operUrl, String bizType, String bizId,
+                             String traceId, String bizStatus, String action, List<String> changes) {
         try {
             List<String> safe = changes == null ? List.of() : changes;
             String summary = safe.isEmpty() ? "无字段变更" : String.join("；", safe);
@@ -54,6 +60,7 @@ public class OperLogChangeRecorder {
             operLog.setBizId(bizId);
             operLog.setTraceId(traceId);
             operLog.setBizStatus(bizStatus);
+            operLog.setAction(action);
             operLog.setOperParam(summary);
             operLog.setDetail(OperLogDetailBuilder.changes(safe));
             operLog.setStatus(1);

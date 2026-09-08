@@ -16,4 +16,5 @@ public class QualityInspectionQueryDTO extends PageQuery {
     /** P3-B：按报工过滤 */
     private Long workReportId;
     private String result;
+    private String reviewStatus;
 }

@@ -39,6 +39,8 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
     private final com.jjx.production.mapper.ProductionWorkReportMapper workReportMapper;
     /** P3-D：展示字段（工序名）用 */
     private final com.jjx.production.mapper.ProductionOperationExecutionMapper executionMapper;
+    /** IQC 展示字段（材料编码/名称）用。 */
+    private final com.jjx.inventory.mapper.InventoryInboundItemMapper inboundItemMapper;
 
     @Override
     public PageResult<QualityInspectionVO> page(QualityInspectionQueryDTO query) {
@@ -62,6 +64,8 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
             wrapper.eq(ProductionQualityInspection::getWorkReportId, query.getWorkReportId());
         if (StringUtils.isNotBlank(query.getResult()))
             wrapper.eq(ProductionQualityInspection::getResult, query.getResult());
+        if (StringUtils.isNotBlank(query.getReviewStatus()))
+            wrapper.eq(ProductionQualityInspection::getReviewStatus, query.getReviewStatus());
         wrapper.orderByDesc(ProductionQualityInspection::getCreateTime);
 
         Page<ProductionQualityInspection> page = new Page<>(query.getPageNum(), query.getPageSize());
@@ -309,6 +313,21 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
      * 仅用于列表/详情展示，不影响质量事实；查不到时保持 null（前端显示 -）。
      */
     private void fillDisplayFields(QualityInspectionVO vo) {
+        if (com.jjx.production.enums.QualitySourceTypeEnum.INBOUND.getCode().equals(vo.getSourceType())
+                && vo.getSourceItemId() != null) {
+            try {
+                com.jjx.inventory.domain.InventoryInboundItem item =
+                        inboundItemMapper.selectById(vo.getSourceItemId());
+                if (item != null) {
+                    vo.setMaterialCode(item.getMaterialCode());
+                    vo.setMaterialName(item.getMaterialName());
+                    if (vo.getBatchNo() == null) vo.setBatchNo(item.getBatchNo());
+                }
+            } catch (Exception ex) {
+                log.debug("填充 IQC 材料展示字段失败 sourceItemId={}: {}",
+                        vo.getSourceItemId(), ex.getMessage());
+            }
+        }
         if (vo.getOrderId() != null) {
             try {
                 com.jjx.production.domain.entity.ProductionOrder o = productionOrderMapper.selectById(vo.getOrderId());

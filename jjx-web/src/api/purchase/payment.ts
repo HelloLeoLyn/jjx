@@ -1,11 +1,10 @@
 import request from '@/utils/request'
 import type { PurchasePayment } from '@/types/purchase'
+import type { PageResult, R } from '@/types'
 
 // 查询采购付款列表
 export function listPayment(params?: Record<string, unknown>) {
-  return request({
-    url: '/purchase/payment/list',
-    method: 'get',
+  return request.get<R<PageResult<PurchasePayment>>>('/purchase/payment/list', {
     params,
   })
 }
@@ -59,7 +58,7 @@ export function approvePayment(
   paymentId: number,
   approvalStatus: string,
   approverName: string,
-  approvalComment?: string,
+  approvalComment?: string
 ) {
   return request({
     url: `/purchase/payment/approve/${paymentId}`,
@@ -174,7 +173,9 @@ export function batchPayment(data: PurchasePayment[]) {
 }
 
 // 批量审批
-export function batchApprove(data: { paymentId: number; approvalStatus: string; approverName: string }[]) {
+export function batchApprove(
+  data: { paymentId: number; approvalStatus: string; approverName: string }[]
+) {
   return request({
     url: '/purchase/payment/batch-approve',
     method: 'post',

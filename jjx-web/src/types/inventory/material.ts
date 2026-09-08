@@ -47,6 +47,8 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   orderDirection?: string
 }
 export interface MaterialQueryDTO extends PageQuery {
+  keyword?: string
+  materialCode?: string
   materialName?: string
   specification?: string
   supplierId?: number

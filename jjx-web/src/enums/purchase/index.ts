@@ -4,7 +4,14 @@ import { SupplierTypeEnum, SupplierStatusEnum } from './supplier'
 import { InvoiceTypeEnum, InvoiceStatusEnum } from './invoice'
 import { ReceiptStatusEnum, InspectionResultEnum } from './receipt'
 import { DocumentTypeEnum } from './document'
-import { PaymentStatusEnum, PaymentMethodEnum, CurrencyEnum, ApprovalStatusEnum } from './payment'
+import {
+  PaymentStatusEnum,
+  PaymentApprovalStatus,
+  PaymentApprovalStatusEnum,
+  PaymentMethodEnum,
+  CurrencyEnum,
+  ApprovalStatusEnum,
+} from './payment'
 import { InquiryStatusEnum } from './inquiry'
 import { DeliveryMethodEnum } from './delivery'
 
@@ -20,6 +27,8 @@ export {
   InspectionResultEnum,
   DocumentTypeEnum,
   PaymentStatusEnum,
+  PaymentApprovalStatus,
+  PaymentApprovalStatusEnum,
   PaymentMethodEnum,
   CurrencyEnum,
   ApprovalStatusEnum,
@@ -36,6 +45,7 @@ export const PurchaseEnum = {
   approvalStatus: ApprovalStatusEnum,
   receiptStatus: ReceiptStatusEnum,
   paymentStatus: PaymentStatusEnum,
+  paymentApprovalStatus: PaymentApprovalStatusEnum,
   supplierType: SupplierTypeEnum,
   supplierStatus: SupplierStatusEnum,
   invoiceType: InvoiceTypeEnum,

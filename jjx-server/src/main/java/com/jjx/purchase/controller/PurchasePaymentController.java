@@ -38,7 +38,7 @@ public class PurchasePaymentController extends BaseController {
      */
     @GetMapping("/list")
     @SaCheckPermission("purchase:payment:view")
-    public Result<?> list(PurchasePaymentDTO dto) {
+    public Result<com.jjx.common.core.page.PageResult<PurchasePayment>> list(PurchasePaymentDTO dto) {
         return Result.success(paymentService.selectPaymentList(dto));
     }
 
@@ -113,7 +113,7 @@ public class PurchasePaymentController extends BaseController {
     @PostMapping("/confirm")
     @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_CONFIRM)
     @SaCheckPermission("purchase:payment:edit")
-    public Result<Void> confirm(@Valid PurchasePaymentDTO dto) {
+    public Result<Void> confirm(PurchasePaymentDTO dto) {
         paymentService.confirmPayment(dto);
         return Result.success();
     }
@@ -124,7 +124,7 @@ public class PurchasePaymentController extends BaseController {
     @PostMapping("/upload-voucher")
     @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_UPLOAD_VOUCHER)
     @SaCheckPermission("purchase:payment:edit")
-    public Result<Void> uploadVoucher(@Valid PurchasePaymentDTO dto) {
+    public Result<Void> uploadVoucher(PurchasePaymentDTO dto) {
         paymentService.confirmPayment(dto);
         return Result.success();
     }

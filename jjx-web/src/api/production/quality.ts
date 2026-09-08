@@ -15,6 +15,7 @@ export interface QualityQuery {
   /** P3-B：按报工过滤 */
   workReportId?: number
   result?: string
+  reviewStatus?: string
 }
 
 export interface InspectionItemVO {
@@ -51,6 +52,7 @@ export interface QualityVO {
   processName?: string
   /** P3-B：关联报工 */
   workReportId?: number
+  materialCode?: string
   materialName?: string
   productName?: string
   inspector?: string

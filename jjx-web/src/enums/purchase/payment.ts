@@ -10,8 +10,23 @@ export const PaymentStatusEnum = createNamedEnum(
     PARTIALLY_PAID: { value: 1, label: '部分付款', tagProps: { type: 'info' } },
     COMPLETED: { value: 2, label: '已付款', tagProps: { type: 'success' } },
   },
-  { type: 'info' },
+  { type: 'info' }
 )
+
+export const PaymentApprovalStatus = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const
+
+export const PaymentApprovalStatusEnum = createEnum({
+  items: [
+    { value: PaymentApprovalStatus.PENDING, label: '待审批', tagProps: { type: 'warning' } },
+    { value: PaymentApprovalStatus.APPROVED, label: '已批准', tagProps: { type: 'success' } },
+    { value: PaymentApprovalStatus.REJECTED, label: '已拒绝', tagProps: { type: 'danger' } },
+  ],
+  defaultTag: { type: 'info' },
+})
 
 /**
  * 付款方式枚举
@@ -51,5 +66,5 @@ export const ApprovalStatusEnum = createNamedEnum(
     REJECTED: { value: 4, label: '已拒绝', tagProps: { type: 'danger' } },
     CANCELLED: { value: 5, label: '已取消', tagProps: { type: 'danger' } },
   },
-  { type: 'info' },
+  { type: 'info' }
 )

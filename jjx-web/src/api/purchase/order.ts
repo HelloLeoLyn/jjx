@@ -168,9 +168,9 @@ export function batchReceiveOrderItems(
 // 更新付款信息
 export function updatePaymentInfo(orderId: number, paidAmount: number, paymentStatus: number) {
   return request({
-    url: `/purchase/order/payment/${orderId}`,
+    url: '/purchase/order/payment',
     method: 'put',
-    params: { paidAmount, paymentStatus },
+    params: { orderId, paidAmount, paymentStatus },
   })
 }
 
@@ -331,7 +331,11 @@ export function getDiskReceiptFiles(orderId: number) {
  * @param supplierId 供应商ID
  * @param files 文件信息列表 [{fileName, fileUrl, fileSize}]
  */
-export function confirmReceiptDocuments(orderId: number, supplierId: number, files: Pick<PurchaseDocument, 'fileName' | 'fileUrl' | 'fileSize'>[]) {
+export function confirmReceiptDocuments(
+  orderId: number,
+  supplierId: number,
+  files: Pick<PurchaseDocument, 'fileName' | 'fileUrl' | 'fileSize'>[]
+) {
   return request({
     url: '/purchase/invoice/batch-confirm',
     method: 'post',

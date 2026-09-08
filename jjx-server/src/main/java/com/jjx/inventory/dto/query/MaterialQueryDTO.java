@@ -13,6 +13,8 @@ public class MaterialQueryDTO extends PageQuery{
 
     private Long materialId;
 
+    private String keyword;
+
     private String materialCode;
 
     private String materialName;

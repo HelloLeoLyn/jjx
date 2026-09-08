@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.annotation.ExcelColumn;
+import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
@@ -273,7 +274,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             String bizStatus = existingOrder.getApprovalStatus() == null ? null
                     : ApproveStatusEnum.getByValue(existingOrder.getApprovalStatus()).getLabel();
             changeRecorder.recordUpdate("采购订单管理", "purchase_order.update", "purchase_order",
-                    String.valueOf(order.getOrderId()), existingOrder.getTraceId(), bizStatus, changes);
+                    String.valueOf(order.getOrderId()), existingOrder.getTraceId(), bizStatus,
+                    LogActions.PUR_ORDER_EDIT, changes);
         } catch (Exception e) {
             log.warn("记录采购订单修改变更日志失败: orderId={}, err={}", order.getOrderId(), e.getMessage());
         }

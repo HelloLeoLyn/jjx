@@ -232,13 +232,18 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     @Override
     public PageResult<MaterialVO> search(MaterialQueryDTO queryDTO) {
-        // 按编码/名称/英文名模糊匹配（8-03 修复：原条件错位导致搜不到）
+        // 按编码/名称/英文名/规格模糊匹配（采购订单物料选择等远程搜索共用）
         // 8-08 修复：无任何查询条件时不再拼 and() 空括号（SQL: WHERE () 语法错误），直接查全部
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
+        String keyword = StringUtils.trimToNull(queryDTO.getKeyword());
         String code = queryDTO.getMaterialCode();
         String name = queryDTO.getMaterialName();
-        boolean hasCondition = StringUtils.isNotBlank(code) || StringUtils.isNotBlank(name);
-        if (hasCondition) {
+        if (keyword != null) {
+            wrapper.and(w -> w.like(InventoryMaterial::getMaterialCode, keyword)
+                    .or().like(InventoryMaterial::getMaterialName, keyword)
+                    .or().like(InventoryMaterial::getMaterialNameEn, keyword)
+                    .or().like(InventoryMaterial::getSpecification, keyword));
+        } else if (StringUtils.isNotBlank(code) || StringUtils.isNotBlank(name)) {
             wrapper.and(w -> {
                 w.like(StringUtils.isNotBlank(code), InventoryMaterial::getMaterialCode, code)
                         .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name)
@@ -248,6 +253,12 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (queryDTO.getCategoryId() != null) {
             wrapper.eq(InventoryMaterial::getCategoryId, queryDTO.getCategoryId());
         }
+        if (queryDTO.getSupplierId() != null) {
+            wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());
+        }
+        wrapper.eq(InventoryMaterial::getStatus, StatusEnum.NORMAL.getCode())
+                .orderByDesc(InventoryMaterial::getCreateTime)
+                .orderByDesc(InventoryMaterial::getMaterialId);
         IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize())
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);

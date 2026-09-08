@@ -26,6 +26,7 @@ public class QualityInspectionVO {
     private String processName;
     /** P3-B：关联报工（IPQC 可空/推荐；FQC=NULL；IQC/OQC=NULL） */
     private Long workReportId;
+    private String materialCode;
     private String materialName;
     private String productName;
     private String inspector;

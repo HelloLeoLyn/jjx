@@ -91,9 +91,9 @@ public class PurchaseOrderController extends BaseController {
 
     /**
      * 修改采购订单
+     * 日志由 Service 写入字段级变更明细，不使用 @Log，避免同一次修改产生两条流水。
      */
     @PutMapping
-    @Log(module = "采购订单管理", businessType = BusinessType.UPDATE, bizType = "'purchase_order'", bizId = "#orderDTO.orderId", action = LogActions.PUR_ORDER_EDIT)
     @SaCheckPermission("purchase:order:edit")
     public Result<Void> edit(@Valid @RequestBody PurchaseOrderDTO orderDTO) {
         purchaseOrderService.updateOrder(orderDTO);

@@ -63,6 +63,11 @@ public class PurchasePayment {
      */
     private Integer paymentStatus;
 
+    /** 审批状态与付款执行状态独立。 */
+    private String approvalStatus;
+    private String approverName;
+    private String approvalComment;
+
     /**
      * 批准时间
      */

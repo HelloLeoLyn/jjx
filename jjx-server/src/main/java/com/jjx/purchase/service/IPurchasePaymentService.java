@@ -14,7 +14,7 @@ public interface IPurchasePaymentService {
     /**
      * 查询付款列表
      */
-    List<PurchasePayment> selectPaymentList(PurchasePaymentDTO dto);
+    com.jjx.common.core.page.PageResult<PurchasePayment> selectPaymentList(PurchasePaymentDTO dto);
 
     /**
      * 查询付款详情

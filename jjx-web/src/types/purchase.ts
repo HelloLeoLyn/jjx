@@ -50,7 +50,7 @@ export interface PurchaseOrder {
   approverName?: string
   approvalTime?: string
   approvalComment?: string
-  paymentStatus?: string
+  paymentStatus?: number
   paidAmount?: number
   contractNo?: string
   deliveryMethod?: string
@@ -120,7 +120,10 @@ export interface PurchasePayment {
   paymentAmount: number
   paymentMethod: string
   bankAccount?: string
-  paymentStatus?: string
+  paymentStatus?: number
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'
+  approverName?: string
+  approvalComment?: string
   approvalTime?: string
   actualPaymentDate?: string
   voucherNo?: string

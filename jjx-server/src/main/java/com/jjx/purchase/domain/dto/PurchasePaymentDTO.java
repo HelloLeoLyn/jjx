@@ -63,10 +63,16 @@ public class PurchasePaymentDTO {
     private String bankAccount;
 
     /**
-     * 付款状态（pending待付款/approved已批准/paid已付款）
+     * 付款执行状态（0待付款/1部分付款/2已付款）
      */
-    @NotNull(message = "付款状态不能为空")
     private Integer paymentStatus;
+
+    private String approvalStatus;
+    private String approverName;
+    private String approvalComment;
+
+    private Integer pageNum = 1;
+    private Integer pageSize = 10;
 
     /**
      * 批准时间

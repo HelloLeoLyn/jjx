@@ -7,7 +7,6 @@ import type {
   OrderStatusUpdateDTO,
   ApprovalStatusUpdateDTO,
   ReceiptStatusUpdateDTO,
-  PaymentStatusUpdateDTO,
 } from '@/types/purchase/order'
 import {
   addOrder,
@@ -17,7 +16,6 @@ import {
   approveOrder,
   changeOrderStatus,
   changeReceiptStatus,
-  updatePaymentInfo,
   copyOrder as apiCopyOrder,
   exportOrder as apiExportOrder,
   cancleOrder as apiCancleOrder,
@@ -121,24 +119,6 @@ export function usePurchaseOrderOperations() {
     } catch (error) {
       console.error('更新收货状态失败:', error)
       ElMessage.error('更新收货状态失败')
-      return false
-    } finally {
-      saving.value = false
-    }
-  }
-
-  /**
-   * 更新付款状态
-   */
-  const updatePaymentStatus = async (data: PaymentStatusUpdateDTO): Promise<boolean> => {
-    saving.value = true
-    try {
-      await updatePaymentInfo(Number(data.orderId), data.paymentAmount || 0, data.paymentStatus as any)
-      ElMessage.success('更新付款状态成功')
-      return true
-    } catch (error) {
-      console.error('更新付款状态失败:', error)
-      ElMessage.error('更新付款状态失败')
       return false
     } finally {
       saving.value = false
@@ -273,7 +253,6 @@ export function usePurchaseOrderOperations() {
     updateOrderStatus,
     updateApprovalStatus,
     updateReceiptStatus,
-    updatePaymentStatus,
     submitForApproval,
     batchSubmitForApproval,
     cancleOrder,

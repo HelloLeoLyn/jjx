@@ -22,7 +22,24 @@
           <template #append>{{ currency }}</template>
         </el-input>
       </el-form-item>
-      <el-form-item label="付款金额" prop="paymentAmount">
+      <el-alert
+        title="提交后生成正式付款单，需在付款管理中审批并确认付款；订单已付金额将自动汇总。"
+        type="info"
+        :closable="false"
+        show-icon
+      />
+      <el-form-item label="付款单号" prop="paymentNo">
+        <el-input v-model="form.paymentNo" disabled />
+      </el-form-item>
+      <el-form-item label="计划付款日" prop="paymentDate">
+        <el-date-picker
+          v-model="form.paymentDate"
+          type="date"
+          value-format="YYYY-MM-DD"
+          style="width: 100%"
+        />
+      </el-form-item>
+      <el-form-item label="申请金额" prop="paymentAmount">
         <el-input-number
           v-model="form.paymentAmount"
           :min="0"
@@ -32,19 +49,22 @@
           style="width: 100%"
         />
       </el-form-item>
-      <el-form-item label="付款状态" prop="paymentStatus">
-        <el-select v-model="form.paymentStatus" placeholder="请选择" style="width: 100%">
+      <el-form-item label="付款方式" prop="paymentMethod">
+        <el-select v-model="form.paymentMethod" placeholder="请选择" style="width: 100%">
           <el-option
-            v-for="dict in PaymentStatusEnum.items"
+            v-for="dict in PaymentMethodEnum.items"
             :key="dict.value"
             :label="dict.label"
             :value="dict.value"
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="付款备注" prop="paymentComment">
+      <el-form-item label="银行账户">
+        <el-input v-model="form.bankAccount" maxlength="100" />
+      </el-form-item>
+      <el-form-item label="付款备注" prop="remark">
         <el-input
-          v-model="form.paymentComment"
+          v-model="form.remark"
           type="textarea"
           :rows="3"
           placeholder="请输入付款备注"
@@ -96,9 +116,10 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, UploadProps, UploadUserFile } from 'element-plus'
-import { PaymentStatusEnum } from '@/enums/purchase'
+import { PaymentMethodEnum, PaymentStatusEnum } from '@/enums/purchase'
+import { addPayment, generatePaymentNo } from '@/api/purchase/payment'
+import type { PurchasePayment } from '@/types/purchase'
 import {
-  updatePaymentInfo,
   uploadTempReceiptFile,
   getDiskReceiptFiles,
   deleteTempReceiptFile,
@@ -124,9 +145,12 @@ const uploadRef = ref()
 const submitting = ref(false)
 
 const form = reactive({
+  paymentNo: '',
+  paymentDate: '',
   paymentAmount: 0,
-  paymentStatus: 0,
-  paymentComment: '',
+  paymentMethod: 'bank',
+  bankAccount: '',
+  remark: '',
 })
 
 // 图片相关
@@ -137,8 +161,10 @@ const previewUrl = ref('')
 const title = computed(() => `付款 - ${props.orderNo}`)
 
 const rules = reactive<FormRules>({
+  paymentNo: [{ required: true, message: '付款单号生成失败，请关闭后重试', trigger: 'blur' }],
+  paymentDate: [{ required: true, message: '请选择计划付款日期', trigger: 'change' }],
   paymentAmount: [{ required: true, message: '请输入付款金额', trigger: 'blur' }],
-  paymentStatus: [{ required: true, message: '请选择付款状态', trigger: 'change' }],
+  paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }],
 })
 
 // 监听 visible 变化，打开时加载磁盘上的票据文件
@@ -146,7 +172,10 @@ watch(
   () => props.visible,
   async (val) => {
     if (val) {
-      await loadImages()
+      form.paymentDate = today()
+      form.paymentAmount = Math.max(0, props.orderTotalAmount - props.paidAmount)
+      const [numberResult] = await Promise.all([generatePaymentNo(), loadImages()])
+      form.paymentNo = numberResult.data || ''
     }
   }
 )
@@ -229,9 +258,19 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
-    // 1. 更新付款信息
-    await updatePaymentInfo(Number(props.orderId), form.paymentAmount, form.paymentStatus)
-    ElMessage.success('更新付款信息成功')
+    if (!props.orderId) return
+    const payment: PurchasePayment = {
+      paymentNo: form.paymentNo,
+      orderId: Number(props.orderId),
+      paymentDate: form.paymentDate,
+      paymentAmount: form.paymentAmount,
+      paymentMethod: form.paymentMethod,
+      bankAccount: form.bankAccount || undefined,
+      paymentStatus: PaymentStatusEnum.PENDING.value,
+      remark: form.remark || undefined,
+    }
+    await addPayment(payment)
+    ElMessage.success('付款单已创建，等待审批')
 
     // 2. 如果有上传的票据文件，确认插入数据库
     if (imageList.value.length > 0) {
@@ -246,8 +285,8 @@ const handleSubmit = async () => {
     emit('success')
     handleClose()
   } catch (error) {
-    console.error('更新付款信息失败:', error)
-    ElMessage.error('更新付款信息失败')
+    console.error('创建付款单失败:', error)
+    ElMessage.error(error instanceof Error ? error.message : '创建付款单失败')
   } finally {
     submitting.value = false
   }
@@ -257,10 +296,19 @@ const handleClose = () => {
   if (formRef.value) {
     formRef.value.resetFields()
   }
+  form.paymentNo = ''
+  form.paymentDate = ''
   form.paymentAmount = 0
-  form.paymentStatus = 0
-  form.paymentComment = ''
+  form.paymentMethod = PaymentMethodEnum.items[0]?.value || 'bank'
+  form.bankAccount = ''
+  form.remark = ''
   imageList.value = []
   emit('update:visible', false)
+}
+
+function today() {
+  const now = new Date()
+  const offset = now.getTimezoneOffset() * 60_000
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10)
 }
 </script>

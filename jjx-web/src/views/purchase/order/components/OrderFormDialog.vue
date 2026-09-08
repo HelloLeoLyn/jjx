@@ -123,18 +123,41 @@
         <el-table-column label="序号" type="index" width="60" align="center" />
         <el-table-column label="物料编码" prop="materialCode" width="180">
           <template #default="scope">
-            <MaterialSelector
-              v-model="scope.row.materialCode"
-              value-type="materialCode"
-              placeholder="搜索并选择材料"
-              :options="supplierMaterials"
-              @change="(a, b) => handleMaterialChange(a, b, scope.$index)"
-            />
+            <el-input v-model="scope.row.materialCode" placeholder="选择物料后自动填充" readonly />
           </template>
         </el-table-column>
-        <el-table-column label="物料名称" prop="materialName" width="180">
+        <el-table-column label="物料名称" prop="materialName" min-width="220">
           <template #default="scope">
-            <el-input v-model="scope.row.materialName" placeholder="自动填充" readonly />
+            <el-select
+              v-model="scope.row.materialId"
+              filterable
+              remote
+              clearable
+              :disabled="!form.supplierId"
+              :loading="materialLoading"
+              :remote-method="searchSupplierMaterials"
+              :placeholder="form.supplierId ? '输入名称/编码/规格搜索' : '请先选择供应商'"
+              style="width: 100%"
+              @visible-change="(visible: boolean) => handleMaterialDropdownVisible(visible)"
+              @change="
+                (materialId: number | undefined) => handleMaterialChange(materialId, scope.$index)
+              "
+            >
+              <el-option
+                v-for="material in supplierMaterials"
+                :key="material.materialId"
+                :label="material.materialName"
+                :value="material.materialId"
+              >
+                <div class="material-option">
+                  <span>{{ material.materialName }}</span>
+                  <small
+                    >{{ material.materialCode
+                    }}{{ material.specification ? ` · ${material.specification}` : '' }}</small
+                  >
+                </div>
+              </el-option>
+            </el-select>
           </template>
         </el-table-column>
         <el-table-column label="规格型号" prop="materialSpec" width="120">
@@ -252,7 +275,6 @@ import { materialApi } from '@/api/inventory/material'
 import { addOrder, updateOrder, generateOrderNo, getOrder } from '@/api/purchase/order'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
-import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import { Search } from '@element-plus/icons-vue'
 
 // 订单明细项
@@ -305,6 +327,9 @@ const submitting = ref(false)
 
 // 当前供应商对应的物料列表
 const supplierMaterials = ref<InventoryMaterial[]>([])
+const materialLoading = ref(false)
+let materialSearchTimer: ReturnType<typeof setTimeout> | undefined
+let materialSupplierId: string | undefined
 
 const defaultForm: OrderForm = {
   orderNo: '',
@@ -375,6 +400,7 @@ const initForm = async () => {
     // 重置表单
     Object.assign(form, JSON.parse(JSON.stringify(defaultForm)))
     supplierMaterials.value = []
+    materialSupplierId = undefined
 
     if (props.orderId) {
       // 编辑模式：加载订单数据
@@ -412,7 +438,8 @@ const initForm = async () => {
 
         // 编辑模式也加载供应商物料
         if (data.supplierId) {
-          await loadSupplierMaterials(data.supplierId)
+          materialSupplierId = String(data.supplierId)
+          await loadSupplierMaterials(String(data.supplierId), '', form.items)
         }
       }
     } else {
@@ -441,24 +468,79 @@ const getOrderNo = async () => {
 }
 
 // 根据供应商加载物料列表
-const loadSupplierMaterials = async (supplierId: string) => {
+const loadSupplierMaterials = async (
+  supplierId: string,
+  keyword = '',
+  selectedItems: OrderItem[] = []
+) => {
+  materialLoading.value = true
   try {
-    const res = await materialApi.list({
+    const res = await materialApi.search({
       supplierId: Number(supplierId),
       pageNum: 1,
-      pageSize: 999,
+      pageSize: 10,
+      keyword: keyword.trim() || undefined,
     })
     if (res.code === 200 && res.data) {
-      supplierMaterials.value = res.data
+      const selectedMaterials = selectedItems
+        .filter((item) => item.materialId)
+        .map(
+          (item) =>
+            ({
+              materialId: Number(item.materialId),
+              materialCode: item.materialCode,
+              materialName: item.materialName,
+              specification: item.materialSpec,
+              unit: item.unit,
+            }) as InventoryMaterial
+        )
+      const merged = [...selectedMaterials, ...(res.data.records || [])]
+      supplierMaterials.value = merged.filter(
+        (material, index, list) =>
+          list.findIndex((item) => item.materialId === material.materialId) === index
+      )
     }
   } catch {
     supplierMaterials.value = []
+  } finally {
+    materialLoading.value = false
+  }
+}
+
+const searchSupplierMaterials = (keyword: string) => {
+  if (!form.supplierId) return
+  if (materialSearchTimer) clearTimeout(materialSearchTimer)
+  materialSearchTimer = setTimeout(() => {
+    loadSupplierMaterials(String(form.supplierId), keyword, form.items)
+  }, 300)
+}
+
+const handleMaterialDropdownVisible = (visible: boolean) => {
+  if (visible && form.supplierId) {
+    loadSupplierMaterials(String(form.supplierId), '', form.items)
   }
 }
 
 // 供应商选择变化
 const handleSupplierChange = (supplier: any) => {
   const supplierId = supplier?.supplierId
+  const nextSupplierId = supplierId ? String(supplierId) : undefined
+  if (materialSupplierId && materialSupplierId !== nextSupplierId) {
+    const hasSelectedMaterial = form.items.some((item) => item.materialId)
+    form.items.forEach((item) => {
+      Object.assign(item, {
+        materialId: undefined,
+        materialCode: '',
+        materialName: '',
+        materialSpec: '',
+        unit: '',
+      })
+    })
+    if (hasSelectedMaterial) {
+      ElMessage.warning('供应商已变更，请重新选择订单物料')
+    }
+  }
+  materialSupplierId = nextSupplierId
   if (supplierId) {
     loadSupplierMaterials(String(supplierId))
     form.supplierName = supplier.supplierName
@@ -468,8 +550,20 @@ const handleSupplierChange = (supplier: any) => {
 }
 
 // 物料选择变化
-const handleMaterialChange = (materialCode: string, material: any, index: number) => {
+const handleMaterialChange = (materialId: number | undefined, index: number) => {
+  if (!materialId) {
+    Object.assign(form.items[index], {
+      materialId: undefined,
+      materialCode: '',
+      materialName: '',
+      materialSpec: '',
+      unit: '',
+    })
+    return
+  }
+  const material = supplierMaterials.value.find((item) => item.materialId === materialId)
   if (!material) return
+  const materialCode = material.materialCode
 
   // 检查是否已在其他行中选择了该物料（排除当前行）
   const duplicate = form.items.some((item, i) => i !== index && item.materialCode === materialCode)
@@ -480,6 +574,7 @@ const handleMaterialChange = (materialCode: string, material: any, index: number
     form.items[index].materialName = ''
     form.items[index].materialSpec = ''
     form.items[index].unit = ''
+    form.items[index].materialId = undefined
     return
   }
 
@@ -604,6 +699,7 @@ const handleSubmit = async () => {
 
 // 关闭
 const handleClose = () => {
+  if (materialSearchTimer) clearTimeout(materialSearchTimer)
   if (formRef.value) {
     formRef.value.resetFields()
   }
@@ -652,6 +748,16 @@ const handleClose = () => {
   // 表格单元格内边距压缩
   :deep(.el-table__cell) {
     padding: 4px 2px;
+  }
+}
+
+.material-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+
+  small {
+    color: var(--el-text-color-secondary);
   }
 }
 </style>
