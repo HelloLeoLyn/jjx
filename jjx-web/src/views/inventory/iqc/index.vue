@@ -205,6 +205,21 @@
             ><span v-else>-</span></template
           ></el-table-column
         >
+        <el-table-column label="接收数量（整批）" width="155"
+          ><template #default="{ row }"
+            ><el-input-number
+              v-if="
+                rowCanEdit(row) &&
+                row.inspectionResult === InboundInspectionResultEnum.FAIL.value
+              "
+              v-model="row.acceptedQuantity"
+              :min="acceptedQuantityCanEdit(row) ? 1 : 0"
+              :max="row.quantity"
+              :disabled="!acceptedQuantityCanEdit(row)"
+              controls-position="right"
+            /><span v-else>{{ row.acceptedQuantity }}</span></template
+          ></el-table-column
+        >
         <el-table-column label="检测项目" width="125"
           ><template #default="{ row }"
             ><el-button link type="primary" @click="openMaterialChecks(row)">检测项目</el-button>
@@ -585,21 +600,31 @@ function handleResultChange(row: WorkRow) {
   if (row.inspectionResult === InboundInspectionResultEnum.PASS.value) {
     row.disposition = undefined
     row.acceptedQuantity = Number(row.quantity || 0)
-  } else if (row.inspectionResult === InboundInspectionResultEnum.FAIL.value)
-    row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
+  } else if (row.inspectionResult === InboundInspectionResultEnum.FAIL.value) syncDisposition(row)
+}
+function acceptedQuantityCanEdit(row: WorkRow) {
+  return (
+    row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
+    (row.disposition === IqcDispositionEnum.CONCESSION.value ||
+      row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value)
+  )
+}
+function dispositionRejectsWholeBatch(disposition?: string) {
+  return (
+    disposition === IqcDispositionEnum.RETURN.value ||
+    disposition === IqcDispositionEnum.SCRAP.value ||
+    disposition === IqcDispositionEnum.REINSPECT.value ||
+    disposition === IqcDispositionEnum.HOLD.value ||
+    disposition === IqcDispositionEnum.SUPPLIER_REWORK.value
+  )
 }
 function syncDisposition(row: WorkRow) {
-  if (row.disposition === IqcDispositionEnum.CONCESSION.value)
-    row.acceptedQuantity = Number(row.quantity || 0)
-  else if (
-    row.disposition === IqcDispositionEnum.RETURN.value ||
-    row.disposition === IqcDispositionEnum.SCRAP.value ||
-    row.disposition === IqcDispositionEnum.REINSPECT.value ||
-    row.disposition === IqcDispositionEnum.HOLD.value ||
-    row.disposition === IqcDispositionEnum.SUPPLIER_REWORK.value
+  if (
+    row.disposition === IqcDispositionEnum.CONCESSION.value ||
+    row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value
   )
-    row.acceptedQuantity = 0
-  else row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
+    row.acceptedQuantity = Number(row.quantity || 0)
+  else row.acceptedQuantity = 0
 }
 function recalRow(row: WorkRow) {
   row.qualifiedQuantity = Number(row.qualifiedQuantity || 0)
@@ -667,8 +692,33 @@ async function submitInspection() {
       ElMessage.warning(`${item.materialCode}：抽检数量须等于合格与不良数量之和`)
       return
     }
-    if (Number(item.acceptedQuantity) > Number(item.quantity)) {
-      ElMessage.warning(`${item.materialCode}：允收入库数量不能超过收货数量`)
+    if (
+      Number(item.acceptedQuantity) < 0 ||
+      Number(item.acceptedQuantity) > Number(item.quantity)
+    ) {
+      ElMessage.warning(`${item.materialCode}：接收数量必须在收货数量范围内`)
+      return
+    }
+    if (
+      item.inspectionResult === InboundInspectionResultEnum.PASS.value &&
+      Number(item.acceptedQuantity) !== Number(item.quantity)
+    ) {
+      ElMessage.warning(`${item.materialCode}：整批判定合格时接收数量须等于收货数量`)
+      return
+    }
+    if (
+      item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
+      !item.disposition
+    ) {
+      ElMessage.warning(`${item.materialCode}：整批判定不合格时必须选择处置方式`)
+      return
+    }
+    if (dispositionRejectsWholeBatch(item.disposition) && Number(item.acceptedQuantity) !== 0) {
+      ElMessage.warning(`${item.materialCode}：当前处置整批不接收，接收数量须为 0`)
+      return
+    }
+    if (acceptedQuantityCanEdit(item) && Number(item.acceptedQuantity) <= 0) {
+      ElMessage.warning(`${item.materialCode}：特采或部分接收时接收数量必须大于 0`)
       return
     }
     if (
@@ -694,16 +744,13 @@ async function submitInspection() {
   const undecided = workRows.value.filter(
       (item) => rowCanEdit(item) && !item.inspectionResult
     ).length,
-    missingDisposition = workRows.value.filter(
-      (item) =>
-        rowCanEdit(item) &&
-        item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-        !item.disposition
+    unaccepted = workRows.value.filter(
+      (item) => rowCanEdit(item) && Number(item.acceptedQuantity) < Number(item.quantity)
     ).length
-  if (undecided || missingDisposition) {
+  if (undecided || unaccepted) {
     try {
       await ElMessageBox.confirm(
-        `还有 ${undecided} 行未判定、${missingDisposition} 行不合格未选处置，确认提交？`,
+        `还有 ${undecided} 行未判定、${unaccepted} 行部分或全部未接收，确认后未接收数量将进入隔离处置，是否继续？`,
         '提示',
         { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
       )

@@ -89,17 +89,12 @@ const checkResultOptions = QualityInspectionResultEnum.items.filter(
 )
 
 function syncDisposition(row: any) {
-  if (row.disposition === IqcDispositionEnum.CONCESSION.value)
-    row.acceptedQuantity = Number(row.quantity || 0)
-  else if (
-    row.disposition === IqcDispositionEnum.RETURN.value ||
-    row.disposition === IqcDispositionEnum.SCRAP.value ||
-    row.disposition === IqcDispositionEnum.REINSPECT.value ||
-    row.disposition === IqcDispositionEnum.HOLD.value ||
-    row.disposition === IqcDispositionEnum.SUPPLIER_REWORK.value
+  if (
+    row.disposition === IqcDispositionEnum.CONCESSION.value ||
+    row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value
   )
-    row.acceptedQuantity = 0
-  else row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
+    row.acceptedQuantity = Number(row.quantity || 0)
+  else row.acceptedQuantity = 0
 }
 function syncRow() {
   const row = props.row

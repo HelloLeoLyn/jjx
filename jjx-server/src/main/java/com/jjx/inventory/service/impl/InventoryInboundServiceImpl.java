@@ -20,6 +20,7 @@ import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.inventory.dto.vo.IqcPendingVO;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.production.mapper.ProductionOrderMapper;
+import com.jjx.production.enums.QualityDispositionEnum;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
@@ -718,8 +719,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                         || submitted.getSampledQuantity().compareTo(checked) != 0)) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "抽检数量须等于合格与不良数量之和，且不能超过收货数量");
                 }
-                com.jjx.production.enums.QualityDispositionEnum disposition =
-                        com.jjx.production.enums.QualityDispositionEnum.fromCode(submitted.getDisposition());
+                QualityDispositionEnum disposition = QualityDispositionEnum.fromCode(submitted.getDisposition());
                 if ("FAIL".equals(itemResult) && disposition == null) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "不合格时必须选择处置方式");
                 }
@@ -737,6 +737,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 BigDecimal accepted = submitted.getAcceptedQuantity() == null ? BigDecimal.ZERO : submitted.getAcceptedQuantity();
                 if (accepted.signum() < 0 || accepted.compareTo(item.getQuantity()) > 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "允收入库数量必须在收货数量范围内");
+                }
+                if ("FAIL".equals(itemResult)
+                        && List.of(QualityDispositionEnum.RETURN, QualityDispositionEnum.SCRAP,
+                        QualityDispositionEnum.REINSPECT, QualityDispositionEnum.HOLD,
+                        QualityDispositionEnum.SUPPLIER_REWORK).contains(disposition)
+                        && accepted.signum() != 0) {
+                    throw new BusinessException("退货/报废/返工等处置整批不接收，接收数量须为 0");
                 }
 
                 boolean editablePending = previous != null
