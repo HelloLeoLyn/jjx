@@ -62,6 +62,17 @@
       <el-table-column label="备注" min-width="140"
         ><template #default="{ row: check }"><el-input v-model="check.remark" /></template
       ></el-table-column>
+      <el-table-column v-if="!row.locked" label="操作" width="70" fixed="right"
+        ><template #default="{ row: check }"
+          ><el-button
+            link
+            type="danger"
+            :disabled="row.inspectionItems.length <= 1"
+            @click="removeCheck(check)"
+            >删除</el-button
+          ></template
+        ></el-table-column
+      >
     </el-table>
     <template #footer
       ><el-button @click="opened = false">取消</el-button
@@ -72,6 +83,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ElMessage } from 'element-plus'
 import {
   InspectionResultEnum as InboundInspectionResultEnum,
   IqcDispositionEnum,
@@ -124,6 +136,18 @@ function syncRow() {
     row.disposition = undefined
     row.acceptedQuantity = Number(row.quantity || 0)
   } else syncDisposition(row)
+}
+function removeCheck(check: any) {
+  const row = props.row
+  if (!row) return
+  if (row.inspectionItems.length <= 1) {
+    ElMessage.warning('至少保留一项检测项目')
+    return
+  }
+  const index = row.inspectionItems.indexOf(check)
+  if (index < 0) return
+  row.inspectionItems.splice(index, 1)
+  syncRow()
 }
 function save() {
   syncRow()

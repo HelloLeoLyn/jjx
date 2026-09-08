@@ -723,10 +723,9 @@ async function submitInspection() {
     }
     if (
       item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-      Number(item.rejectedQuantity || 0) > 0 &&
       !String(item.rejectReason || '').trim()
     ) {
-      ElMessage.warning(`${item.materialCode}：存在不良数量时必须填写不合格原因`)
+      ElMessage.warning(`${item.materialCode}：不合格必须填写不合格原因`)
       return
     }
     const incompleteCheck = item.inspectionItems.find(

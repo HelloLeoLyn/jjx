@@ -723,15 +723,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 if ("FAIL".equals(itemResult) && disposition == null) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "不合格时必须选择处置方式");
                 }
+                // dev-20260908-019（合并 1568+1591）：可删除本批不检项目；保留项目仍校验，物料判定不合格须说明原因。
+                if ("FAIL".equals(itemResult)
+                        && org.apache.commons.lang3.StringUtils.isBlank(submitted.getRejectReason())) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "不合格必须填写不合格原因");
+                }
                 if ("FAIL".equals(itemResult) && rejected.signum() <= 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "判定不合格时不良数量必须大于0");
                 }
                 if ("PASS".equals(itemResult) && rejected.signum() > 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "存在不良数量时不能判定合格");
-                }
-                if (rejected.signum() > 0
-                        && org.apache.commons.lang3.StringUtils.isBlank(submitted.getRejectReason())) {
-                    throw new BusinessException("物料" + item.getMaterialCode() + "存在不良数量时必须填写不合格原因");
                 }
                 validateIqcInspectionItems(item, submitted.getInspectionItems());
                 BigDecimal accepted = submitted.getAcceptedQuantity() == null ? BigDecimal.ZERO : submitted.getAcceptedQuantity();
