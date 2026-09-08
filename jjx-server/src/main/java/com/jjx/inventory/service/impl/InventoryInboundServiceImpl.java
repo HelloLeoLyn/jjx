@@ -306,9 +306,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // 库存操作统一发生在 confirm：加库存+流水+置完成
+        // 采购单 confirm 仅负责合格/允收数量过账：加库存+流水+置完成；不合格品隔离台账已在全部行审核通过时创建
         if (purchaseConfirmable) validateAllIqcApproved(inboundId);
         addStock(order, operatorId, operatorName, "确认入库");
+        // 幂等兜底：审核通过时已建，此处跳过重复，兼容历史数据及边界场景
         if (purchaseConfirmable) createIqcQuarantine(order, operatorId, operatorName);
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         // 安全库存检查
@@ -901,6 +902,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return newId;
     }
 
+    /**
+     * 全部行审核通过即建隔离台账，使不合格品处置与确认入库动作解耦。
+     */
     private void updateInboundReviewStatus(Long inboundId) {
         List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
         boolean allApproved = !items.isEmpty() && items.stream().allMatch(item -> {
@@ -912,6 +916,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
             order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
             inboundOrderMapper.updateById(order);
+            createIqcQuarantine(order, SecurityUtils.getUserId(), SecurityUtils.getUsername());
         }
     }
 
