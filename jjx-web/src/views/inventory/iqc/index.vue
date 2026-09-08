@@ -3,7 +3,7 @@
     <el-card>
       <template #header
         ><div class="header">
-          <span>IQC 进料检测</span
+          <span>来料检验单据</span
           ><el-button :loading="listLoading" @click="refreshAll">刷新</el-button>
         </div></template
       >
@@ -94,7 +94,7 @@
     </el-card>
 
     <el-card v-if="selectedInbound" v-loading="detailLoading" class="detail-card">
-      <template #header><span>材料处理流水</span></template>
+      <template #header><span>材料检验处理</span></template>
       <el-descriptions :column="4" border>
         <el-descriptions-item label="入库单号">{{ selectedInbound.inboundNo }}</el-descriptions-item
         ><el-descriptions-item label="供应商">{{
