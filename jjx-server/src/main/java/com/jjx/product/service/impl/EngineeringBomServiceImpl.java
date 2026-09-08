@@ -609,10 +609,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Transactional(rollbackFor = Exception.class)
     public boolean reject(UpdateBomStatusDTO dto) {
         EngineeringBom productBom = productBomMapper.selectById(dto.getBomId());
-        if (!Objects.equals(productBom.getApproveStatus(), ProductEnums.BomStatus.DRAFT.getValue())) {
-            return false;
+        if (productBom == null) {
+            throw new BusinessException("BOM不存在");
         }
-        dto.setCurrent(ProductEnums.BomStatus.DRAFT.getValue());
+        if (!Objects.equals(productBom.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
+            throw new BusinessException("只有审核中的BOM才能驳回");
+        }
+        dto.setCurrent(ProductEnums.BomStatus.REVIEWING.getValue());
         dto.setTarget(ProductEnums.BomStatus.REJECT.getValue());
         boolean updated = updateStatus(dto);
         if (updated) {

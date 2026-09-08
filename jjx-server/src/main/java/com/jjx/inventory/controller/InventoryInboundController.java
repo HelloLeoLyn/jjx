@@ -49,7 +49,7 @@ public class InventoryInboundController {
         return Result.success(inboundService.pageIqcPending(query));
     }
 
-    @GetMapping("/{inboundId}")
+    @GetMapping("/{inboundId:\\d+}")
     @Operation(summary = "获取入库单详情")
     @SaCheckPermission("inventory:inbound:view")
     public Result<InboundVO> getById(@PathVariable Long inboundId) {

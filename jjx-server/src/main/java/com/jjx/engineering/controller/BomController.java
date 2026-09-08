@@ -192,6 +192,7 @@ public class BomController extends BaseController {
          bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).APPROVED.getLabel()", action = LogActions.BOM_APPROVE)
     @SaCheckPermission("engineering:bom:approve")
     public Result<Void> approve(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
+        dto.setBomId(bomId);
         return productBomService.approve(dto) ? Result.success() : Result.error();
     }
 
@@ -203,6 +204,7 @@ public class BomController extends BaseController {
          bizStatus = "T(com.jjx.product.enums.ProductEnums.BomStatus).REJECT.getLabel()", action = LogActions.BOM_REJECT)
     @SaCheckPermission("engineering:bom:reject")
     public Result<Void> reject(@PathVariable Long bomId, @Validated @RequestBody UpdateBomStatusDTO dto) {
+        dto.setBomId(bomId);
         return productBomService.reject(dto) ? Result.success() : Result.error();
     }
 
