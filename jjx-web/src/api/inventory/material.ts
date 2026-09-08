@@ -71,9 +71,14 @@ export const materialApi = {
     return request.put<R<boolean>>('/inventory/material', data)
   },
 
-  // 删除物料
+  // 删除物料（后端为 DELETE /{id} 单删；批量逐个删除）
   delete(ids: string[]) {
-    return request.delete<R<boolean>>('/inventory/material', { data: ids })
+    const list = Array.isArray(ids) ? ids : [ids]
+    if (list.length === 0) return Promise.resolve(true as unknown as R<boolean>)
+    if (list.length === 1) return request.delete<R<boolean>>(`/inventory/material/${list[0]}`)
+    return Promise.all(list.map((id) => request.delete<R<boolean>>(`/inventory/material/${id}`))).then(
+      () => true as unknown as R<boolean>
+    )
   },
 
   // 更新物料状态
