@@ -5,12 +5,14 @@ import com.jjx.production.domain.dto.QualityInspectionCreateDTO;
 import com.jjx.production.domain.dto.QualityInspectionQueryDTO;
 import com.jjx.production.domain.dto.QualityInspectionUpdateDTO;
 import com.jjx.production.domain.vo.QualityInspectionVO;
+import com.jjx.production.domain.vo.FqcReportPrintVO;
 
 import java.util.List;
 
 public interface QualityInspectionService {
     PageResult<QualityInspectionVO> page(QualityInspectionQueryDTO query);
     QualityInspectionVO getById(Long id);
+    FqcReportPrintVO getFqcReportPrint(Long id);
     Long create(QualityInspectionCreateDTO dto);
     void update(QualityInspectionUpdateDTO dto);
     void delete(Long id);

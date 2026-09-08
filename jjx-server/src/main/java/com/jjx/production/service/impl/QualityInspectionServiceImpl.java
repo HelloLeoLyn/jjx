@@ -10,6 +10,7 @@ import com.jjx.production.domain.entity.ProductionQualityInspection;
 import com.jjx.production.domain.entity.ProductionQualityInspectionItem;
 import com.jjx.production.domain.vo.QualityInspectionVO;
 import com.jjx.production.domain.vo.InspectionItemVO;
+import com.jjx.production.domain.vo.FqcReportPrintVO;
 import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.mapper.ProductionQualityInspectionMapper;
@@ -41,6 +42,9 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
     private final com.jjx.production.mapper.ProductionOperationExecutionMapper executionMapper;
     /** IQC 展示字段（材料编码/名称）用。 */
     private final com.jjx.inventory.mapper.InventoryInboundItemMapper inboundItemMapper;
+    /** JJX-QR-039 打印抬头数据。 */
+    private final com.jjx.product.mapper.ProductMapper productMapper;
+    private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
 
     @Override
     public PageResult<QualityInspectionVO> page(QualityInspectionQueryDTO query) {
@@ -83,6 +87,62 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         LambdaQueryWrapper<ProductionQualityInspectionItem> iw = Wrappers.lambdaQuery();
         iw.eq(ProductionQualityInspectionItem::getInspectionId, id);
         List<InspectionItemVO> items = itemMapper.selectList(iw).stream().map(this::toItemVO).collect(Collectors.toList());
+        vo.setItems(items);
+        return vo;
+    }
+
+    @Override
+    public FqcReportPrintVO getFqcReportPrint(Long id) {
+        ProductionQualityInspection inspection = inspectionMapper.selectById(id);
+        if (inspection == null) throw new BusinessException("检验单不存在");
+        if (!QualityInspectionTypeEnum.FQC.getCode().equals(inspection.getInspectionType())) {
+            throw new BusinessException("仅 FQC 完工检验可打印成品检验报告");
+        }
+
+        com.jjx.production.domain.entity.ProductionOrder productionOrder = inspection.getOrderId() == null
+                ? null : productionOrderMapper.selectById(inspection.getOrderId());
+        com.jjx.product.domain.entity.Product product = null;
+        Long productId = inspection.getProductId() != null
+                ? inspection.getProductId()
+                : (productionOrder == null ? null : productionOrder.getProductId());
+        if (productId != null) product = productMapper.selectById(productId);
+
+        com.jjx.sales.domain.entity.SalesOrder salesOrder = null;
+        if (productionOrder != null && productionOrder.getSalesOrderId() != null) {
+            salesOrder = salesOrderMapper.selectById(productionOrder.getSalesOrderId());
+        }
+
+        List<InspectionItemVO> items = itemMapper.selectList(
+                        Wrappers.<ProductionQualityInspectionItem>lambdaQuery()
+                                .eq(ProductionQualityInspectionItem::getInspectionId, id)
+                                .orderByAsc(ProductionQualityInspectionItem::getItemId))
+                .stream().map(this::toItemVO).collect(Collectors.toList());
+
+        FqcReportPrintVO vo = new FqcReportPrintVO();
+        vo.setInspectionId(inspection.getInspectionId());
+        vo.setInspectionNo(inspection.getInspectionNo());
+        vo.setCustomerName(salesOrder != null && StringUtils.isNotBlank(salesOrder.getCustomerName())
+                ? salesOrder.getCustomerName() : (product == null ? null : product.getCustomerName()));
+        vo.setOrderQuantity(productionOrder == null ? null : productionOrder.getPlannedQuantity());
+        vo.setSampleQuantity(inspection.getTotalQty());
+        vo.setVersion(salesOrder == null ? null : salesOrder.getFormalVersion());
+        vo.setProductName(productionOrder != null && StringUtils.isNotBlank(productionOrder.getProductName())
+                ? productionOrder.getProductName() : (product == null ? null : product.getProductName()));
+        vo.setSalesOrderNo(salesOrder != null ? salesOrder.getOrderNo()
+                : (productionOrder == null ? null : productionOrder.getSalesOrderNo()));
+        vo.setProductionBatchNo(StringUtils.defaultIfBlank(inspection.getBatchNo(),
+                productionOrder == null ? null : productionOrder.getOrderNo()));
+        vo.setProductCode(productionOrder != null && StringUtils.isNotBlank(productionOrder.getProductCode())
+                ? productionOrder.getProductCode() : (product == null ? null : product.getProductCode()));
+        vo.setMachineModel(vo.getProductCode());
+        vo.setInspectionTime(inspection.getInspectTime() != null ? inspection.getInspectTime() : inspection.getCreateTime());
+        vo.setFailQuantity(inspection.getFailQty());
+        vo.setResult(inspection.getResult());
+        vo.setResultName(QualityInspectionResultEnum.labelOf(inspection.getResult()));
+        vo.setInspector(inspection.getInspector());
+        vo.setQualitySupervisor(inspection.getReviewerName());
+        vo.setDefectDescription(StringUtils.defaultIfBlank(inspection.getDefectDesc(), inspection.getRemark()));
+        vo.setRecordNo("JJX-QR-039");
         vo.setItems(items);
         return vo;
     }

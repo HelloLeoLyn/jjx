@@ -7,6 +7,7 @@ import com.jjx.production.domain.dto.QualityInspectionCreateDTO;
 import com.jjx.production.domain.dto.QualityInspectionQueryDTO;
 import com.jjx.production.domain.dto.QualityInspectionUpdateDTO;
 import com.jjx.production.domain.vo.QualityInspectionVO;
+import com.jjx.production.domain.vo.FqcReportPrintVO;
 import com.jjx.production.service.QualityInspectionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,6 +34,13 @@ public class QualityInspectionController {
     @GetMapping("/{id}")
     public Result<QualityInspectionVO> getById(@PathVariable Long id) {
         return Result.success(qualityService.getById(id));
+    }
+
+    @Operation(summary = "获取 JJX-QR-039 成品检验报告打印数据")
+    @SaCheckPermission("production:quality:view")
+    @GetMapping("/{id}/fqc-report-print")
+    public Result<FqcReportPrintVO> getFqcReportPrint(@PathVariable Long id) {
+        return Result.success(qualityService.getFqcReportPrint(id));
     }
 
     @Operation(summary = "创建检验单")
