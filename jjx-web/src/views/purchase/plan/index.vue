@@ -347,7 +347,7 @@ const doConfirmPlan = async () => {
       })),
       saveAsPlan: false,
     } as any)
-    ElMessage.success(`已生成采购订单（${toConfirm.length} 个物料），请到「采购订单」列表提交审批`)
+    ElMessage.success(`已生成采购订单（${toConfirm.length} 个物料，0 价草稿），请到「采购订单」补采购单价后再提交审批`)
     // 预警闭环：勾选行来源预警 + 勾选物料全部未处理预警 一并回写（2026-08-18 P0-A/P1-A：按物料回写，修手动行/低库存复燃）
     const alertIds = toConfirm.map((r) => r.sourceAlertId).filter((id): id is number => !!id)
     const materialIds = toConfirm.map((r) => r.materialId).filter((id): id is number => !!id)

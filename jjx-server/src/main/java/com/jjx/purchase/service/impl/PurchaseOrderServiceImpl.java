@@ -126,8 +126,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
                 throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
             }
-            validateOrderItemPrices(orderDTO.getItems());
-
             // 计算订单金额
             calculateOrderAmount(orderDTO);
         }
@@ -240,8 +238,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
         }
-        validateOrderItemPrices(orderDTO.getItems());
-
         // 计算订单金额
         calculateOrderAmount(orderDTO);
 
@@ -355,6 +351,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     public int updateOrderStatus(Long orderId, Integer approvalStatus) {
+        if (Objects.equals(ApproveStatusEnum.PENDING.getValue(), approvalStatus)
+                || Objects.equals(ApproveStatusEnum.APPROVED.getValue(), approvalStatus)) {
+            validateOrderItemPrices(selectOrderItemEntities(orderId));
+        }
         return orderMapper.updateApprovalStatus(orderId, approvalStatus);
     }
 
@@ -375,12 +375,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
 
         // 检查订单明细
-        LambdaQueryWrapper<PurchaseOrderItem> itemWrapper = Wrappers.lambdaQuery();
-        itemWrapper.eq(PurchaseOrderItem::getOrderId, orderId);
-        long itemCount = orderItemMapper.selectCount(itemWrapper);
-        if (itemCount == 0) {
+        List<PurchaseOrderItem> items = selectOrderItemEntities(orderId);
+        if (items.isEmpty()) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
         }
+        validateOrderItemPrices(items);
 
         // 更新订单状态为待审批
         Integer fromStatus = order.getApprovalStatus();
@@ -443,6 +442,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
         Integer targetStatus = Objects.equals(ApproveStatusEnum.APPROVED.getValue(), dto.getApprovalStatus()) ?ApproveStatusEnum.APPROVED.getValue():
                 ApproveStatusEnum.REJECTED.getValue();
+        if (Objects.equals(ApproveStatusEnum.APPROVED.getValue(), targetStatus)) {
+            validateOrderItemPrices(selectOrderItemEntities(dto.getOrderId()));
+        }
         // 更新审批信息
         LambdaUpdateWrapper<PurchaseOrder> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.set(PurchaseOrder::getApprovalStatus, targetStatus)
@@ -947,6 +949,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     public void updateOrderStatus(POrderStatusDTO dto) {
+        if (Objects.equals(ApproveStatusEnum.PENDING.getValue(), dto.getTargetStatus())
+                || Objects.equals(ApproveStatusEnum.APPROVED.getValue(), dto.getTargetStatus())) {
+            validateOrderItemPrices(selectOrderItemEntities(dto.getOrderId()));
+        }
         LambdaUpdateWrapper<PurchaseOrder> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.set(PurchaseOrder::getApprovalStatus,dto.getTargetStatus())
                 .eq(PurchaseOrder::getOrderId,dto.getOrderId())
@@ -985,16 +991,23 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     /**
-     * 普通采购单禁止静默零价。赠品/零价采购必须先建立显式业务类型与授权流程，
-     * 不能沿用普通采购绕过成本控制。
+     * 草稿允许零价暂存（采购计划转单等）；提交审批及审批通过前统一校验，
+     * 零价明细不可进入审批流。
      */
-    private static void validateOrderItemPrices(List<PurchaseOrderItemDTO> items) {
-        for (PurchaseOrderItemDTO item : items) {
+    private static void validateOrderItemPrices(List<PurchaseOrderItem> items) {
+        for (PurchaseOrderItem item : items) {
             if (item.getUnitPrice() == null || item.getUnitPrice().compareTo(BigDecimal.ZERO) <= 0) {
                 String material = StringUtils.defaultIfBlank(item.getMaterialCode(), "未选择物料");
-                throw new BusinessException("物料" + material + "的采购单价必须大于0");
+                throw new BusinessException("物料" + material + "的采购单价必须大于0，请先在编辑页补价后提交");
             }
         }
+    }
+
+    private List<PurchaseOrderItem> selectOrderItemEntities(Long orderId) {
+        LambdaQueryWrapper<PurchaseOrderItem> itemWrapper = Wrappers.lambdaQuery();
+        itemWrapper.eq(PurchaseOrderItem::getOrderId, orderId);
+        itemWrapper.orderByAsc(PurchaseOrderItem::getItemOrder);
+        return orderItemMapper.selectList(itemWrapper);
     }
 
     /**
