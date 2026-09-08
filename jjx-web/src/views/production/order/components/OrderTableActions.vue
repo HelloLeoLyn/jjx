@@ -69,23 +69,20 @@
       <!-- 生成领料单（2026-08-18：从下拉菜单提为行内按钮，高频操作） -->
       <el-tooltip
         :content="
-          order.materialStatus === ProductionMaterialStatusEnum.PENDING_ISSUE.value
-            ? '已生成领料单（待确认发料）'
+          order.materialStatus !== ProductionMaterialStatusEnum.NOT_PICKED.value
+            ? '生成/追加领料单'
             : '生成领料单'
         "
         placement="top"
         v-if="
           order.orderType === OrderType.WORK_ORDER &&
-          (order.orderStatus === ProductionOrderStatusEnum.APPROVED.value ||
-            order.orderStatus === ProductionOrderStatusEnum.IN_PROGRESS.value) &&
-          order.materialStatus !== ProductionMaterialStatusEnum.PICKED.value
+          materialPickOrderStatuses.includes(Number(order.orderStatus))
         "
       >
         <el-button
           type="warning"
           size="small"
           icon="Box"
-          :disabled="order.materialStatus === ProductionMaterialStatusEnum.PENDING_ISSUE.value"
           v-hasPermi="['production:order:edit']"
           circle
           @click="handlePickMaterial"
@@ -105,21 +102,30 @@
           <el-dropdown-menu>
             <el-dropdown-item
               command="submit-review"
-              v-if="order.orderStatus === 0 && hasPermi(['production:order:edit'])"
+              v-if="
+                order.orderStatus === ProductionOrderStatusEnum.DRAFT.value &&
+                hasPermi(['production:order:edit'])
+              "
             >
               <el-icon><Promotion /></el-icon>
               提交审核
             </el-dropdown-item>
             <el-dropdown-item
               command="approve"
-              v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])"
+              v-if="
+                order.orderStatus === ProductionOrderStatusEnum.PENDING_APPROVAL.value &&
+                hasPermi(['production:order:edit'])
+              "
             >
               <el-icon><Check /></el-icon>
               审核通过
             </el-dropdown-item>
             <el-dropdown-item
               command="reject"
-              v-if="order.orderStatus === 1 && hasPermi(['production:order:edit'])"
+              v-if="
+                order.orderStatus === ProductionOrderStatusEnum.PENDING_APPROVAL.value &&
+                hasPermi(['production:order:edit'])
+              "
             >
               <el-icon><CloseBold /></el-icon>
               审核驳回
@@ -176,7 +182,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { hasPermi } from '@/directives'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   More,
   CopyDocument,
@@ -202,6 +208,13 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const materialPickOrderStatuses: number[] = [
+  ProductionOrderStatusEnum.APPROVED.value,
+  ProductionOrderStatusEnum.PLANNED.value,
+  ProductionOrderStatusEnum.PENDING_START.value,
+  ProductionOrderStatusEnum.IN_PROGRESS.value,
+  ProductionOrderStatusEnum.PAUSED.value,
+]
 const emit = defineEmits<{
   view: []
   edit: []
@@ -218,7 +231,10 @@ const emit = defineEmits<{
 
 // 计算属性
 const canDelete = computed(() => {
-  return props.order.orderStatus === 0 || props.order.orderStatus === 9
+  return (
+    props.order.orderStatus === ProductionOrderStatusEnum.DRAFT.value ||
+    props.order.orderStatus === ProductionOrderStatusEnum.CANCELLED.value
+  )
 })
 
 // 操作预览器状态
@@ -265,7 +281,15 @@ const handleConvert = () => {
   emit('convert')
 }
 
-const handleStart = () => {
+const handleStart = async () => {
+  if (props.order.materialStatus === ProductionMaterialStatusEnum.NOT_PICKED.value) {
+    const confirmed = await ElMessageBox.confirm('该工单尚未生成领料单，确认直接开工？', '开始执行', {
+      confirmButtonText: '确认开工',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }).catch(() => false)
+    if (!confirmed) return
+  }
   openPreview('production.start')
 }
 
