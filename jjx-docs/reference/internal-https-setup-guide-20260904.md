@@ -181,3 +181,20 @@ curl -s -I http://127.0.0.1/ | head -1 # 期望 301
 # 一句话流程
 gen certs (IP) -> save nginx.conf -> docker run -> 每台设备装 ca.crt -> https://IP 访问
 ```
+
+
+## 7. 2026-09-08 运维补记（排查实录）
+
+> 现象：手机访问 `https://192.168.1.176/m/login` 打不开。排查结论：容器 jjx-nginx 处于 Exited(127)（Docker Desktop 重启后未自拉起），80/443 无监听，与 nginx/https 配置本身无关。
+
+- **容器现状**：`docker start jjx-nginx` 即恢复；restart 策略现为 **unless-stopped**（已执行 `docker update --restart unless-stopped jjx-nginx`），此后 Docker Desktop/系统重启会自动拉起，不再手动干预。
+- **恢复后验证**：`curl -sk -o /dev/null -w "%{http_code}" https://192.168.1.176/` → 200 ✅
+- **容器操作速查**
+  ```bash
+  docker start jjx-nginx          # 停了拉起（Exited 状态最常见恢复手段）
+  docker logs --tail 50 jjx-nginx # 排障（可看到此前 iPhone 实际访问记录）
+  docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' jjx-nginx
+  ```
+- **手机 CA 分发副本**：`/mnt/d/openclaw-workspace/docs/certs/JJX-CA.crt`（= ~/nginx-certs/ca.crt，可作附件直接发给手机安装）
+- **验收用例**：测试工作台 TC 620/621「内网HTTPS访问」（docs/test/index.html）——TC620 已装 CA 应无警告+摄像头可用；TC621 未装 CA 应提示不受信任（预期行为）
+- **教训**：https 打不开先查容器状态（`docker ps -a` 看 jjx-nginx 是否 Up），别先怀疑 nginx 配置/证书
