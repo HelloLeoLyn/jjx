@@ -25,7 +25,7 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      */
     IPage<InboundVO> page(InboundQueryDTO query);
 
-    /** 分页查询尚未提交 IQC 检验的采购收货单。 */
+    /** 分页查询 IQC 采购收货单及检验进度。 */
     IPage<IqcPendingVO> pageIqcPending(IqcPendingQueryDTO query);
 
     /**

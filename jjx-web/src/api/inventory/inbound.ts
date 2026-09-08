@@ -15,9 +15,15 @@ import type {
 
 // 入库管理API
 export const inboundApi = {
-  // IQC 待检采购收货单（分页）
-  iqcPending(params: { pageNum: number; pageSize: number; inboundNo?: string }) {
-    return request.get<R<PageResult<IqcPendingVO>>>('/inventory/inbound/iqc-pending', { params })
+  // IQC 采购收货单及检验进度（分页）
+  iqcList(params: {
+    pageNum: number
+    pageSize: number
+    inboundNo?: string
+    orderStatus?: number
+    fillInspection?: boolean
+  }) {
+    return request.get<R<PageResult<IqcPendingVO>>>('/inventory/inbound/iqc-list', { params })
   },
 
   // 分页查询入库单列表

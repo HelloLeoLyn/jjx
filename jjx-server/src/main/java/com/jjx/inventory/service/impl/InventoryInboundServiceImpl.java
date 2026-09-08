@@ -94,6 +94,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 page,
                 "PURCHASE",
                 InventoryOrderStatusEnum.PENDING.getValue(),
+                InventoryOrderStatusEnum.APPROVED.getValue(),
+                InventoryOrderStatusEnum.COMPLETED.getValue(),
+                query.getOrderStatus(),
+                query.getFillInspection(),
                 query.getInboundNo());
     }
 

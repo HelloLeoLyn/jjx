@@ -42,10 +42,10 @@ public class InventoryInboundController {
         return Result.success(inboundService.page(query));
     }
 
-    @GetMapping("/iqc-pending")
-    @Operation(summary = "分页查询 IQC 待检采购收货单")
+    @GetMapping("/iqc-list")
+    @Operation(summary = "分页查询 IQC 采购收货单及检验进度")
     @SaCheckPermission("inventory:inbound:view")
-    public Result<IPage<IqcPendingVO>> iqcPending(IqcPendingQueryDTO query) {
+    public Result<IPage<IqcPendingVO>> iqcList(IqcPendingQueryDTO query) {
         return Result.success(inboundService.pageIqcPending(query));
     }
 

@@ -1,399 +1,386 @@
 <template>
   <div class="iqc-page">
-    <el-tabs v-model="activeTab">
-      <el-tab-pane label="待检检验" name="pending">
-        <el-card>
-          <template #header
-            ><div class="header">
-              <span>待检采购入库单</span
-              ><el-button :loading="pendingLoading" @click="loadPending">刷新</el-button>
-            </div></template
-          >
-          <el-form inline>
-            <el-form-item
-              ><el-input
-                v-model="pendingQuery.inboundNo"
-                clearable
-                placeholder="入库单号"
-                @keyup.enter="searchPending"
-            /></el-form-item>
-            <el-form-item
-              ><el-button type="primary" @click="searchPending">查询</el-button></el-form-item
-            >
-          </el-form>
-          <div class="pending-tip">勾选一张待检采购入库单，在下方完成来料检验录入</div>
-          <el-table
-            v-loading="pendingLoading"
-            :data="pendingRows"
-            border
-            highlight-current-row
-            @current-change="handlePendingSelect"
-          >
-            <template #empty><el-empty description="暂无待检采购入库单" /></template>
-            <el-table-column width="50"
-              ><template #default="{ row }"
-                ><div class="radio-cell" @click.stop="handlePendingSelect(row)">
-                  <el-radio
-                    :model-value="selectedInboundId"
-                    :value="row.inboundId"
-                    @change="handlePendingSelect(row)"
-                    ><span
-                  /></el-radio></div></template
-            ></el-table-column>
-            <el-table-column prop="inboundNo" label="入库单号" min-width="180" />
-            <el-table-column prop="supplierName" label="供应商" min-width="160" />
-            <el-table-column prop="totalQuantity" label="来料批量" width="120" />
-            <el-table-column prop="materialCount" label="材料数" width="100" />
-            <el-table-column prop="createTime" label="到货时间" width="180" />
-          </el-table>
-          <div class="pager">
-            <el-pagination
-              v-model:current-page="pendingQuery.pageNum"
-              :page-size="pendingQuery.pageSize"
-              :total="pendingTotal"
-              layout="total, prev, pager, next"
-              @current-change="loadPending"
-            />
-          </div>
-        </el-card>
-        <el-card class="detail-card">
-          <template #header><span>来料明细</span></template>
-          <div v-if="selectedInbound" v-loading="detailLoading">
-            <el-descriptions :column="4" border>
-              <el-descriptions-item label="入库单号">{{
-                selectedInbound.inboundNo
-              }}</el-descriptions-item>
-              <el-descriptions-item label="供应商">{{
-                selectedInbound.supplierName || '-'
-              }}</el-descriptions-item>
-              <el-descriptions-item label="来料批量">{{
-                selectedInbound.totalQuantity
-              }}</el-descriptions-item>
-              <el-descriptions-item label="材料数">{{
-                selectedInbound.materialCount
-              }}</el-descriptions-item>
-            </el-descriptions>
-            <div :class="['summary-bar', { complete: isAllDecided }]">
-              共 {{ workRows.length }} 个材料 · 已判定 {{ decidedCount }} · 通过 {{ passCount }} ·
-              不良 {{ failCount }}<span v-if="isAllDecided"> · 全部材料已判定，可提交检验</span>
-            </div>
-            <el-table :data="workRows" border class="material-table">
-              <el-table-column prop="materialCode" label="材料编码" min-width="130" />
-              <el-table-column prop="materialName" label="材料名称" min-width="170" />
-              <el-table-column prop="quantity" label="收货数量" width="100" />
-              <el-table-column label="抽检数量" width="110"
-                ><template #default="{ row }"
-                  ><el-tooltip content="=合格+不良"
-                    ><span>{{ row.sampledQuantity }}</span></el-tooltip
-                  ></template
-                ></el-table-column
-              >
-              <el-table-column label="合格数量" width="140"
-                ><template #default="{ row }"
-                  ><el-input-number
-                    v-model="row.qualifiedQuantity"
-                    :min="0"
-                    :max="row.quantity"
-                    :disabled="row.locked"
-                    controls-position="right"
-                    @change="recalRow(row)" /></template
-              ></el-table-column>
-              <el-table-column label="不良数量" width="140"
-                ><template #default="{ row }"
-                  ><el-input-number
-                    v-model="row.rejectedQuantity"
-                    :min="0"
-                    :max="row.quantity"
-                    :disabled="row.locked"
-                    controls-position="right"
-                    @change="recalRow(row)" /></template
-              ></el-table-column>
-              <el-table-column label="判定" width="130"
-                ><template #default="{ row }"
-                  ><el-select
-                    v-model="row.inspectionResult"
-                    :disabled="row.locked"
-                    placeholder="待判定"
-                    @change="handleResultChange(row)"
-                    ><el-option
-                      v-for="option in rowResultOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value" /></el-select></template
-              ></el-table-column>
-              <el-table-column label="处置方式" width="180"
-                ><template #default="{ row }"
-                  ><template v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
-                    ><el-select
-                      v-model="row.disposition"
-                      :disabled="row.locked"
-                      placeholder="请选择"
-                      @change="syncDisposition(row)"
-                      ><el-option
-                        v-for="option in IqcDispositionEnum.items"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value" /></el-select
-                    ><span v-if="!row.disposition" class="required-tip">必选</span></template
-                  ><span v-else>-</span></template
-                ></el-table-column
-              >
-              <el-table-column label="不合格原因" min-width="190">
-                <template #default="{ row }">
-                  <el-input
-                    v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
-                    v-model="row.rejectReason"
-                    :disabled="row.locked"
-                    maxlength="500"
-                    placeholder="存在不良时必填"
-                  />
-                  <span v-else>-</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="检测项目" width="145" fixed="right"
-                ><template #default="{ row }"
-                  ><el-button link type="primary" @click="openMaterialChecks(row)"
-                    >检测项目</el-button
-                  ><span class="check-progress">{{
-                    checkProgress(row)
-                      ? `已录 ${checkProgress(row)}/${row.inspectionItems.length}`
-                      : '未录'
-                  }}</span></template
-                ></el-table-column
-              >
-              <el-table-column label="IQC 状态" width="100" fixed="right"
-                ><template #default="{ row }"
-                  ><el-tag
-                    v-if="row.reviewStatus"
-                    :type="QualityReviewStatusEnum.getTagProps(row.reviewStatus).type"
-                    >{{ QualityReviewStatusEnum.getLabel(row.reviewStatus) }}</el-tag
-                  ><span v-else>-</span></template
-                ></el-table-column
-              >
-            </el-table>
-            <el-form label-width="90px" class="remark-form"
-              ><el-form-item label="整单备注"
-                ><el-input
-                  v-model="inspectionRemark"
-                  type="textarea"
-                  :rows="3"
-                  maxlength="500"
-                  show-word-limit /></el-form-item
-            ></el-form>
-            <div class="detail-actions">
-              <el-button type="primary" :loading="submitting" @click="submitInspection"
-                >提交检验</el-button
-              >
-            </div>
-          </div>
-          <el-empty v-else description="请先勾选上方一张待检单" />
-        </el-card>
-      </el-tab-pane>
-      <el-tab-pane label="材料检验记录" name="records">
-        <el-card>
-          <template #header
-            ><div class="header">
-              <span>IQC 材料/批次检验记录</span
-              ><el-button :loading="loading" @click="load">刷新</el-button>
-            </div></template
-          >
-          <el-form inline>
-            <el-form-item label="检验状态"
-              ><el-select v-model="query.result" clearable style="width: 130px" @change="load"
+    <el-card>
+      <template #header
+        ><div class="header">
+          <span>IQC 进料检测</span
+          ><el-button :loading="listLoading" @click="refreshAll">刷新</el-button>
+        </div></template
+      >
+      <el-form inline>
+        <el-form-item label="流程状态"
+          ><el-select v-model="listQuery.flowStatus" style="width: 150px" @change="searchList"
+            ><el-option
+              v-for="option in flowOptions"
+              :key="option.key"
+              :label="option.label"
+              :value="option.key" /></el-select
+        ></el-form-item>
+        <el-form-item
+          ><el-input
+            v-model="listQuery.inboundNo"
+            clearable
+            placeholder="入库单号"
+            @keyup.enter="searchList"
+        /></el-form-item>
+        <el-form-item><el-button type="primary" @click="searchList">查询</el-button></el-form-item>
+      </el-form>
+      <div class="list-tip">选择一张采购入库单，在下方按材料行继续处理</div>
+      <el-table
+        v-loading="listLoading"
+        :data="inboundRows"
+        border
+        highlight-current-row
+        @current-change="selectInbound"
+      >
+        <template #empty><el-empty description="暂无 IQC 采购入库单" /></template>
+        <el-table-column width="50"
+          ><template #default="{ row }"
+            ><div class="radio-cell" @click.stop="selectInbound(row)">
+              <el-radio
+                :model-value="selectedInboundId"
+                :value="row.inboundId"
+                @change="selectInbound(row)"
+                ><span
+              /></el-radio></div></template
+        ></el-table-column>
+        <el-table-column prop="inboundNo" label="入库单号" min-width="180" /><el-table-column
+          prop="supplierName"
+          label="供应商"
+          min-width="150"
+        /><el-table-column prop="createTime" label="到货时间" width="180" /><el-table-column
+          prop="totalQuantity"
+          label="来料批量"
+          width="105"
+        /><el-table-column prop="materialCount" label="材料数" width="85" />
+        <el-table-column label="状态" width="105"
+          ><template #default="{ row }"
+            ><el-tag :type="InboundOrderStatusEnum.getTagProps(row.orderStatus).type">{{
+              orderStatusLabel(row)
+            }}</el-tag></template
+          ></el-table-column
+        >
+        <el-table-column label="检验进度" min-width="210"
+          ><template #default="{ row }"
+            ><span>已检 {{ row.inspectedCount }}/{{ row.materialCount }}</span
+            ><span class="progress-part">待审 {{ row.pendingReviewCount }}</span
+            ><span class="progress-part">已审 {{ row.approvedCount }}</span></template
+          ></el-table-column
+        >
+        <el-table-column label="FAIL 行" width="90" align="center"
+          ><template #default="{ row }"
+            ><el-tag v-if="row.failRowCount" type="danger">{{ row.failRowCount }}</el-tag
+            ><span v-else>-</span></template
+          ></el-table-column
+        >
+        <el-table-column label="操作" width="100" fixed="right"
+          ><template #default="{ row }"
+            ><el-button link type="primary" @click.stop="selectInbound(row)"
+              >查看处理</el-button
+            ></template
+          ></el-table-column
+        >
+      </el-table>
+      <div class="pager">
+        <el-pagination
+          v-model:current-page="listQuery.pageNum"
+          v-model:page-size="listQuery.pageSize"
+          :total="listTotal"
+          layout="total, sizes, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="handlePageChange"
+        />
+      </div>
+    </el-card>
+
+    <el-card v-if="selectedInbound" v-loading="detailLoading" class="detail-card">
+      <template #header><span>材料处理流水</span></template>
+      <el-descriptions :column="4" border>
+        <el-descriptions-item label="入库单号">{{ selectedInbound.inboundNo }}</el-descriptions-item
+        ><el-descriptions-item label="供应商">{{
+          selectedInbound.supplierName || '-'
+        }}</el-descriptions-item
+        ><el-descriptions-item label="来料批量">{{
+          selectedInbound.totalQuantity
+        }}</el-descriptions-item>
+        <el-descriptions-item label="状态"
+          ><el-tag :type="InboundOrderStatusEnum.getTagProps(selectedInbound.orderStatus).type">{{
+            orderStatusLabel(selectedInbound)
+          }}</el-tag></el-descriptions-item
+        >
+      </el-descriptions>
+      <el-alert v-if="isApproved" type="success" :closable="false" show-icon class="posting-guide"
+        ><template #title
+          ><div class="guide-content">
+            <span
+              >检验已全部通过，请到【库存管理 → 入库管理】对入库单
+              {{ selectedInbound.inboundNo }} 执行确认入库</span
+            ><el-button type="success" size="small" @click="goPosting">去确认入库</el-button>
+          </div></template
+        ></el-alert
+      >
+      <div :class="['summary-bar', { complete: isAllDecided }]">
+        共 {{ workRows.length }} 个材料 · 已判定 {{ decidedCount }} · 通过 {{ passCount }} · 不良
+        {{ failCount }}<span v-if="hasEditableRows"> · 请完成可编辑材料后提交</span
+        ><span v-else-if="hasPendingRows"> · 等待品质主管审核</span
+        ><span v-else-if="isApproved"> · 检验已批准，待确认入库</span
+        ><span v-else-if="isCompleted"> · 入库流程已完成</span>
+      </div>
+      <el-table :data="workRows" border class="material-table">
+        <el-table-column prop="materialCode" label="材料编码" min-width="125" /><el-table-column
+          prop="materialName"
+          label="材料名称"
+          min-width="150"
+        /><el-table-column prop="quantity" label="收货数量" width="90" /><el-table-column
+          label="抽检"
+          width="90"
+          ><template #default="{ row }">{{ row.sampledQuantity }}</template></el-table-column
+        >
+        <el-table-column label="合格" width="130"
+          ><template #default="{ row }"
+            ><el-input-number
+              v-if="rowCanEdit(row)"
+              v-model="row.qualifiedQuantity"
+              :min="0"
+              :max="row.quantity"
+              controls-position="right"
+              @change="recalRow(row)"
+            /><span v-else>{{ row.qualifiedQuantity }}</span></template
+          ></el-table-column
+        >
+        <el-table-column label="不良" width="130"
+          ><template #default="{ row }"
+            ><el-input-number
+              v-if="rowCanEdit(row)"
+              v-model="row.rejectedQuantity"
+              :min="0"
+              :max="row.quantity"
+              controls-position="right"
+              @change="recalRow(row)"
+            /><span v-else>{{ row.rejectedQuantity }}</span></template
+          ></el-table-column
+        >
+        <el-table-column label="判定" width="115"
+          ><template #default="{ row }"
+            ><el-select
+              v-if="rowCanEdit(row)"
+              v-model="row.inspectionResult"
+              placeholder="待判定"
+              @change="handleResultChange(row)"
+              ><el-option
+                v-for="option in rowResultOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value" /></el-select
+            ><el-tag
+              v-else-if="row.inspectionResult"
+              :type="InboundInspectionResultEnum.getTagProps(row.inspectionResult).type"
+              >{{ InboundInspectionResultEnum.getLabel(row.inspectionResult) }}</el-tag
+            ><span v-else>未检</span></template
+          ></el-table-column
+        >
+        <el-table-column label="处置/原因" min-width="190"
+          ><template #default="{ row }"
+            ><template
+              v-if="
+                rowCanEdit(row) && row.inspectionResult === InboundInspectionResultEnum.FAIL.value
+              "
+              ><el-select
+                v-model="row.disposition"
+                placeholder="处置方式（必选）"
+                @change="syncDisposition(row)"
                 ><el-option
-                  v-for="item in QualityInspectionResultEnum.items"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value" /></el-select
-            ></el-form-item>
-            <el-form-item label="审核状态"
-              ><el-select v-model="query.reviewStatus" clearable style="width: 130px" @change="load"
-                ><el-option
-                  v-for="item in QualityReviewStatusEnum.items"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value" /></el-select
-            ></el-form-item>
-            <el-form-item
+                  v-for="option in IqcDispositionEnum.items"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value" /></el-select
               ><el-input
-                v-model="query.inspectionNo"
-                clearable
-                placeholder="检验单号"
-                @keyup.enter="load"
-            /></el-form-item>
-            <el-form-item><el-button type="primary" @click="load">查询</el-button></el-form-item>
-          </el-form>
-          <el-alert
-            title="一张采购入库单可包含多种材料；每个材料批次单独生成一条检验记录。"
-            type="info"
-            :closable="false"
-            show-icon
-            class="records-tip"
-          />
-          <el-table v-loading="loading" :data="rows" border>
-            <el-table-column prop="inspectionNo" label="检验单号" min-width="190" />
-            <el-table-column label="入库单" width="130"
-              ><template #default="{ row }">{{
-                inboundNames[row.sourceId] || `入库#${row.sourceId || '-'}`
-              }}</template></el-table-column
-            >
-            <el-table-column prop="materialCode" label="材料编码" min-width="130">
-              <template #default="{ row }">{{ row.materialCode || '-' }}</template>
-            </el-table-column>
-            <el-table-column prop="materialName" label="材料名称" min-width="160">
-              <template #default="{ row }">{{ row.materialName || '-' }}</template>
-            </el-table-column>
-            <el-table-column prop="batchNo" label="批次号" min-width="120">
-              <template #default="{ row }">{{ row.batchNo || '-' }}</template>
-            </el-table-column>
-            <el-table-column label="版本" width="70"
-              ><template #default="{ row }"
-                >V{{ row.inspectionVersion || 1 }}</template
-              ></el-table-column
-            >
-            <el-table-column label="检验结果" width="100"
-              ><template #default="{ row }"
-                ><el-tag :type="QualityInspectionResultEnum.getTagProps(row.result).type">{{
-                  QualityInspectionResultEnum.getLabel(row.result)
-                }}</el-tag></template
-              ></el-table-column
-            >
-            <el-table-column label="审核状态" width="100"
-              ><template #default="{ row }"
-                ><el-tag :type="QualityReviewStatusEnum.getTagProps(row.reviewStatus).type">{{
-                  QualityReviewStatusEnum.getLabel(row.reviewStatus)
-                }}</el-tag></template
-              ></el-table-column
-            >
-            <el-table-column prop="inspectTime" label="检验时间" width="170" />
-            <el-table-column label="操作" fixed="right" width="300"
-              ><template #default="{ row }"
-                ><el-button
-                  v-if="
-                    row.sourceId &&
-                    (row.result === QualityInspectionResult.PENDING ||
-                      row.reviewStatus === QualityReviewStatus.REJECTED)
-                  "
-                  link
-                  type="primary"
-                  @click="openInspection(row)"
-                  >检验</el-button
-                ><el-button
-                  v-if="row.sourceId && row.reviewStatus === QualityReviewStatus.PENDING"
-                  link
-                  type="success"
-                  @click="openReview(row)"
-                  >审核</el-button
-                ><el-button
-                  v-if="row.sourceId && row.inspectionId"
-                  link
-                  type="primary"
-                  @click="print(row)"
-                  >打印报告</el-button
-                ><el-button v-if="row.sourceId" link type="warning" @click="openQuarantine(row)"
-                  >隔离/处置</el-button
-                ></template
-              ></el-table-column
-            >
-          </el-table>
-          <div class="pager">
-            <el-pagination
-              v-model:current-page="query.pageNum"
-              v-model:page-size="query.pageSize"
-              :total="total"
-              layout="total, sizes, prev, pager, next"
-              @current-change="load"
-              @size-change="load"
-            />
-          </div>
-        </el-card>
-      </el-tab-pane>
-    </el-tabs>
+                v-model="row.rejectReason"
+                maxlength="500"
+                placeholder="不合格原因（必填）"
+                class="reason-input" /></template
+            ><template v-else-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
+              ><div>{{ IqcDispositionEnum.getLabel(row.disposition) }}</div>
+              <small>{{ row.rejectReason || '-' }}</small></template
+            ><span v-else>-</span></template
+          ></el-table-column
+        >
+        <el-table-column label="检测项目" width="125"
+          ><template #default="{ row }"
+            ><el-button link type="primary" @click="openMaterialChecks(row)">检测项目</el-button>
+            <div class="check-progress">
+              已录 {{ checkProgress(row) }}/{{ row.inspectionItems.length }}
+            </div></template
+          ></el-table-column
+        >
+        <el-table-column label="行状态" width="105"
+          ><template #default="{ row }"
+            ><el-tag
+              v-if="row.reviewStatus"
+              :type="QualityReviewStatusEnum.getTagProps(row.reviewStatus).type"
+              >{{ QualityReviewStatusEnum.getLabel(row.reviewStatus) }}</el-tag
+            ><el-tag v-else type="info">未检</el-tag></template
+          ></el-table-column
+        >
+        <el-table-column label="操作" width="205" fixed="right"
+          ><template #default="{ row }"
+            ><el-button v-if="rowCanEdit(row)" link type="primary" @click="openMaterialChecks(row)"
+              >检验录入</el-button
+            ><el-button
+              v-if="row.reviewStatus === QualityReviewStatus.PENDING"
+              link
+              type="success"
+              @click="openReview"
+              >审核/驳回</el-button
+            ><el-button v-if="row.inspectionId" link type="primary" @click="printRow(row)"
+              >打印</el-button
+            ><el-button
+              v-if="
+                row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
+                (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
+              "
+              link
+              type="warning"
+              @click="openQuarantine"
+              >隔离/处置</el-button
+            ></template
+          ></el-table-column
+        >
+      </el-table>
+      <template v-if="hasEditableRows"
+        ><el-form label-width="90px" class="remark-form"
+          ><el-form-item label="整单备注"
+            ><el-input
+              v-model="inspectionRemark"
+              type="textarea"
+              :rows="3"
+              maxlength="500"
+              show-word-limit /></el-form-item
+        ></el-form>
+        <div class="detail-actions">
+          <el-button type="primary" :loading="submitting" @click="submitInspection"
+            >提交检验</el-button
+          >
+        </div></template
+      >
+    </el-card>
+    <el-empty v-else description="请选择上方一张采购入库单" />
     <MaterialChecksDialog
       v-model:visible="checksVisible"
       :row="activeWorkRow"
       @saved="handleChecksSaved"
     />
-    <InboundInspectionDialog
-      v-model:visible="inspectionVisible"
-      :inbound-id="activeInboundId"
-      :item-id="activeItemId"
-      @success="handleInspectionSuccess"
-    />
     <IqcReviewDialog
       v-model:visible="reviewVisible"
       :inbound-id="activeInboundId"
       :inbound-no="activeInboundNo"
-      @success="load"
+      @success="handleFlowSuccess"
     />
     <IqcQuarantineDialog
       v-model:visible="quarantineVisible"
       :inbound-id="activeInboundId"
       :inbound-no="activeInboundNo"
-      @success="load"
+      @success="handleFlowSuccess"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRoute, useRouter } from 'vue-router'
-import { qualityApi, type QualityVO } from '@/api/production/quality'
+import { useRouter } from 'vue-router'
+import { qualityApi } from '@/api/production/quality'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
-import InboundInspectionDialog from '@/views/inventory/inbound/components/InboundInspectionDialog.vue'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
 import {
+  InboundOrderStatusEnum,
   InspectionResultEnum as InboundInspectionResultEnum,
   IqcDispositionEnum,
 } from '@/enums/inventory/InboundEnum'
 import {
   InspectionResult as QualityInspectionResult,
-  InspectionResultEnum as QualityInspectionResultEnum,
   QualityReviewStatus,
   QualityReviewStatusEnum,
 } from '@/enums/quality/InspectionEnum'
 
+type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
+type WorkRow = {
+  itemId: string
+  inspectionId?: number
+  materialCode: string
+  materialName: string
+  quantity: number
+  sampledQuantity: number
+  qualifiedQuantity: number
+  rejectedQuantity: number
+  acceptedQuantity: number
+  inspectionResult: string
+  disposition?: string
+  rejectReason: string
+  reviewStatus?: string
+  locked: boolean
+  inspectionItems: any[]
+}
 const router = useRouter()
-const route = useRoute()
-const activeTab = ref('pending')
-const pendingRows = ref<IqcPendingVO[]>([])
-const pendingLoading = ref(false)
-const pendingTotal = ref(0)
-const selectedInboundId = ref<string | number>('')
-const selectedInbound = ref<IqcPendingVO>()
-const detailLoading = ref(false)
-const inspectionRemark = ref('')
-const workRows = ref<any[]>([])
-const submitting = ref(false)
-const checksVisible = ref(false)
-const activeWorkRow = ref<any>()
-const pendingQuery = reactive({ pageNum: 1, pageSize: 10, inboundNo: '' })
-const rows = ref<QualityVO[]>([])
-const total = ref(0)
-const loading = ref(false)
-const inboundNames = reactive<Record<string, string>>({})
-const query = reactive({
+const flowOptions: Array<{
+  key: FlowKey
+  label: string
+  orderStatus?: number
+  fillInspection?: boolean
+}> = [
+  { key: 'ALL', label: '全部' },
+  {
+    key: 'UNINSPECTED',
+    label: '待检验',
+    orderStatus: InboundOrderStatusEnum.PENDING.value,
+    fillInspection: false,
+  },
+  {
+    key: 'REVIEW',
+    label: '待审核',
+    orderStatus: InboundOrderStatusEnum.PENDING.value,
+    fillInspection: true,
+  },
+  { key: 'APPROVED', label: '已批准', orderStatus: InboundOrderStatusEnum.APPROVED.value },
+  { key: 'COMPLETED', label: '已完成', orderStatus: InboundOrderStatusEnum.COMPLETED.value },
+]
+const listQuery = reactive({
   pageNum: 1,
-  pageSize: 20,
-  inspectionType: 'IQC',
-  inspectionNo: '',
-  sourceId: undefined as number | undefined,
-  result: '',
-  reviewStatus: '',
+  pageSize: 10,
+  inboundNo: '',
+  flowStatus: 'ALL' as FlowKey,
 })
-const inspectionVisible = ref(false)
-const reviewVisible = ref(false)
-const quarantineVisible = ref(false)
-const activeInboundId = ref<number>()
-const activeItemId = ref<number>()
-const activeInboundNo = ref('')
+const inboundRows = ref<IqcPendingVO[]>([]),
+  listTotal = ref(0),
+  listLoading = ref(false),
+  detailLoading = ref(false)
+const selectedInboundId = ref<string | number>(''),
+  selectedInbound = ref<IqcPendingVO>(),
+  workRows = ref<WorkRow[]>([])
+const inspectionRemark = ref(''),
+  submitting = ref(false),
+  checksVisible = ref(false),
+  reviewVisible = ref(false),
+  quarantineVisible = ref(false)
+const activeWorkRow = ref<WorkRow>(),
+  activeInboundId = ref<number>(),
+  activeInboundNo = ref('')
 const rowResultOptions = InboundInspectionResultEnum.items.filter(
   (item) => item.value !== InboundInspectionResultEnum.OTHER.value
 )
+const isApproved = computed(
+  () => selectedInbound.value?.orderStatus === InboundOrderStatusEnum.APPROVED.value
+)
+const isCompleted = computed(
+  () => selectedInbound.value?.orderStatus === InboundOrderStatusEnum.COMPLETED.value
+)
+const hasPendingRows = computed(() =>
+  workRows.value.some((row) => row.reviewStatus === QualityReviewStatus.PENDING)
+)
+const hasEditableRows = computed(() => workRows.value.some(rowCanEdit))
 const decidedCount = computed(
   () => workRows.value.filter((row) => Boolean(row.inspectionResult)).length
 )
@@ -411,16 +398,28 @@ const isAllDecided = computed(
   () => workRows.value.length > 0 && decidedCount.value === workRows.value.length
 )
 
-const defaultInspectionItems = () => [
-  createCheck('规格', '与采购订单及实物一致', '核对', '目视'),
-  createCheck('颜色', '与标准样板无明显偏差', '比较样板', '目视/样板'),
-  createCheck('外观', '无脏污、黑点、变形、折伤、刮伤、混料、晶点、毛边', '目视', '目视'),
-  createCheck('长度', '符合图纸或采购要求', '测量', '钢直尺/卡尺'),
-  createCheck('宽度', '符合图纸或采购要求', '测量', '钢直尺/卡尺'),
-  createCheck('厚度', '符合图纸或采购要求', '测量', '千分尺'),
-  createCheck('特性', '附着力及其他特性符合要求', '测试', '3M600胶'),
-  createCheck('包装、标识', '包装完整，标识与订单及实物一致并符合环保要求', '目视', '目视'),
-]
+function selectedFlowOption() {
+  return flowOptions.find((option) => option.key === listQuery.flowStatus) || flowOptions[0]
+}
+function orderStatusLabel(row: IqcPendingVO) {
+  return row.orderStatus === InboundOrderStatusEnum.PENDING.value
+    ? row.inspectionResult
+      ? '待审核'
+      : '待检验'
+    : InboundOrderStatusEnum.getLabel(row.orderStatus)
+}
+function rowCanEdit(row: WorkRow) {
+  if (
+    row.reviewStatus === QualityReviewStatus.APPROVED ||
+    row.reviewStatus === QualityReviewStatus.PENDING
+  )
+    return false
+  return (
+    selectedInbound.value?.orderStatus === InboundOrderStatusEnum.PENDING.value ||
+    (selectedInbound.value?.orderStatus === InboundOrderStatusEnum.COMPLETED.value &&
+      row.reviewStatus === QualityReviewStatus.DRAFT)
+  )
+}
 function createCheck(
   checkItem: string,
   standard: string,
@@ -439,6 +438,18 @@ function createCheck(
     miQuantity: 0,
     remark: '',
   }
+}
+function defaultInspectionItems() {
+  return [
+    createCheck('规格', '与采购订单及实物一致', '核对', '目视'),
+    createCheck('颜色', '与标准样板无明显偏差', '比较样板', '目视/样板'),
+    createCheck('外观', '无脏污、黑点、变形、折伤、刮伤、混料、晶点、毛边', '目视', '目视'),
+    createCheck('长度', '符合图纸或采购要求', '测量', '钢直尺/卡尺'),
+    createCheck('宽度', '符合图纸或采购要求', '测量', '钢直尺/卡尺'),
+    createCheck('厚度', '符合图纸或采购要求', '测量', '千分尺'),
+    createCheck('特性', '附着力及其他特性符合要求', '测试', '3M600胶'),
+    createCheck('包装、标识', '包装完整，标识与订单及实物一致并符合环保要求', '目视', '目视'),
+  ]
 }
 function normalizeInspectionItem(check: any) {
   return {
@@ -459,45 +470,71 @@ function clearSelection() {
   selectedInbound.value = undefined
   workRows.value = []
   inspectionRemark.value = ''
+  activeWorkRow.value = undefined
 }
-async function loadPending() {
-  pendingLoading.value = true
+async function loadList(preserveSelection = false) {
+  listLoading.value = true
   try {
-    const result = await inboundApi.iqcPending(pendingQuery)
-    pendingRows.value = result.data?.records || []
-    pendingTotal.value = result.data?.total || 0
-    clearSelection()
+    const filter = selectedFlowOption()
+    const result = await inboundApi.iqcList({
+      pageNum: listQuery.pageNum,
+      pageSize: listQuery.pageSize,
+      inboundNo: listQuery.inboundNo || undefined,
+      orderStatus: filter.orderStatus,
+      fillInspection: filter.fillInspection,
+    })
+    inboundRows.value = result.data?.records || []
+    listTotal.value = result.data?.total || 0
+    if (!preserveSelection) clearSelection()
+    else if (selectedInbound.value)
+      selectedInbound.value =
+        inboundRows.value.find((row) => row.inboundId === selectedInboundId.value) ||
+        selectedInbound.value
   } finally {
-    pendingLoading.value = false
+    listLoading.value = false
   }
 }
-function searchPending() {
-  pendingQuery.pageNum = 1
-  loadPending()
+function searchList() {
+  listQuery.pageNum = 1
+  loadList()
 }
-async function handlePendingSelect(row?: IqcPendingVO) {
-  if (!row || (selectedInbound.value?.inboundId === row.inboundId && workRows.value.length)) return
+function handlePageChange() {
+  loadList()
+}
+async function refreshAll() {
+  const id = selectedInboundId.value
+  await loadList(Boolean(id))
+  if (id && selectedInbound.value) await loadInboundDetail(selectedInbound.value)
+}
+async function selectInbound(row?: IqcPendingVO) {
+  if (!row || (selectedInboundId.value === row.inboundId && workRows.value.length)) return
   selectedInbound.value = row
   selectedInboundId.value = row.inboundId
+  await loadInboundDetail(row)
+}
+async function loadInboundDetail(row: IqcPendingVO) {
+  const requestedId = row.inboundId
   workRows.value = []
   inspectionRemark.value = ''
   detailLoading.value = true
   try {
-    const { data } = await inboundApi.getById(String(row.inboundId))
+    const { data } = await inboundApi.getById(String(requestedId))
     const loadedRows = await Promise.all(
-      (data?.items || []).map(async (item: any) => {
+      (data?.items || []).map(async (item: any): Promise<WorkRow> => {
         const quality = item.inspectionId
           ? (await qualityApi.getById(Number(item.inspectionId))).data
           : undefined
         const previousQuality = quality?.previousInspectionId
           ? (await qualityApi.getById(Number(quality.previousInspectionId))).data
           : undefined
-        const isReinspection =
-          quality?.previousInspectionId && quality?.result === QualityInspectionResult.PENDING
-        const reinspectionQuantity = Number(previousQuality?.failQty || 0)
-        const fresh = !quality
+        const isReinspection = Boolean(
+            quality?.previousInspectionId && quality?.result === QualityInspectionResult.PENDING
+          ),
+          reinspectionQuantity = Number(previousQuality?.failQty || 0),
+          fresh = !quality
         return {
-          itemId: item.inboundItemId || item.itemId,
+          itemId: String(item.inboundItemId || item.itemId),
+          inspectionId: quality?.inspectionId,
           materialCode: item.materialCode,
           materialName: item.materialName,
           quantity: Number(item.quantity || 0),
@@ -525,26 +562,31 @@ async function handlePendingSelect(row?: IqcPendingVO) {
           disposition: isReinspection ? undefined : item.disposition,
           rejectReason: isReinspection ? '' : item.rejectReason || '',
           reviewStatus: quality?.reviewStatus,
-          locked: quality?.reviewStatus === QualityReviewStatus.APPROVED,
+          locked:
+            quality?.reviewStatus === QualityReviewStatus.PENDING ||
+            quality?.reviewStatus === QualityReviewStatus.APPROVED,
           inspectionItems: quality?.items?.length
             ? quality.items.map(normalizeInspectionItem)
             : defaultInspectionItems(),
         }
       })
     )
-    if (selectedInboundId.value === row.inboundId) workRows.value = loadedRows
+    if (selectedInboundId.value === requestedId) {
+      workRows.value = loadedRows
+      inspectionRemark.value = data?.inspectionRemark || ''
+    }
   } finally {
     detailLoading.value = false
   }
 }
-function handleResultChange(row: any) {
+function handleResultChange(row: WorkRow) {
   if (row.inspectionResult === InboundInspectionResultEnum.PASS.value) {
     row.disposition = undefined
     row.acceptedQuantity = Number(row.quantity || 0)
   } else if (row.inspectionResult === InboundInspectionResultEnum.FAIL.value)
     row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
 }
-function syncDisposition(row: any) {
+function syncDisposition(row: WorkRow) {
   if (row.disposition === IqcDispositionEnum.CONCESSION.value)
     row.acceptedQuantity = Number(row.quantity || 0)
   else if (
@@ -557,17 +599,20 @@ function syncDisposition(row: any) {
     row.acceptedQuantity = 0
   else row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
 }
-function recalRow(row: any) {
+function recalRow(row: WorkRow) {
   row.qualifiedQuantity = Number(row.qualifiedQuantity || 0)
   row.rejectedQuantity = Number(row.rejectedQuantity || 0)
   row.sampledQuantity = row.qualifiedQuantity + row.rejectedQuantity
-  if (row.rejectedQuantity > 0) row.inspectionResult = InboundInspectionResultEnum.FAIL.value
-  else if (row.qualifiedQuantity > 0) row.inspectionResult = InboundInspectionResultEnum.PASS.value
-  else row.inspectionResult = ''
+  row.inspectionResult =
+    row.rejectedQuantity > 0
+      ? InboundInspectionResultEnum.FAIL.value
+      : row.qualifiedQuantity > 0
+        ? InboundInspectionResultEnum.PASS.value
+        : ''
   handleResultChange(row)
   if (row.inspectionResult === InboundInspectionResultEnum.FAIL.value) syncDisposition(row)
 }
-function checkProgress(row: any) {
+function checkProgress(row: WorkRow) {
   return row.inspectionItems.filter(
     (check: any) =>
       String(check.actualValue || '').trim() ||
@@ -577,18 +622,41 @@ function checkProgress(row: any) {
       String(check.remark || '').trim()
   ).length
 }
-function openMaterialChecks(row: any) {
+function openMaterialChecks(row: WorkRow) {
   activeWorkRow.value = row
   checksVisible.value = true
 }
 function handleChecksSaved() {
-  if (activeWorkRow.value) recalRow(activeWorkRow.value)
+  if (activeWorkRow.value && rowCanEdit(activeWorkRow.value)) recalRow(activeWorkRow.value)
+}
+function activateSelected() {
+  activeInboundId.value = Number(selectedInbound.value?.inboundId)
+  activeInboundNo.value = selectedInbound.value?.inboundNo || ''
+}
+function openReview() {
+  activateSelected()
+  reviewVisible.value = true
+}
+function openQuarantine() {
+  activateSelected()
+  quarantineVisible.value = true
+}
+function printRow(row: WorkRow) {
+  router.push({
+    path: '/production/quality-print/iqc-report',
+    query: { inboundId: selectedInbound.value?.inboundId, inspectionId: row.inspectionId },
+  })
+}
+function goPosting() {
+  router.push({ path: '/inventory/inbound', query: { bizId: selectedInbound.value?.inboundId } })
+}
+async function handleFlowSuccess() {
+  await refreshAll()
 }
 async function submitInspection() {
   if (!selectedInbound.value) return
   for (const item of workRows.value) {
-    // 整批重提时已审核材料只作为上下文回传，后端以已锁定的质量事实为准。
-    if (item.locked) continue
+    if (!rowCanEdit(item)) continue
     if (
       Number(item.sampledQuantity) !==
       Number(item.qualifiedQuantity) + Number(item.rejectedQuantity)
@@ -620,10 +688,15 @@ async function submitInspection() {
       return
     }
   }
-  const undecided = workRows.value.filter((item) => !item.inspectionResult).length
-  const missingDisposition = workRows.value.filter(
-    (item) => item.inspectionResult === InboundInspectionResultEnum.FAIL.value && !item.disposition
-  ).length
+  const undecided = workRows.value.filter(
+      (item) => rowCanEdit(item) && !item.inspectionResult
+    ).length,
+    missingDisposition = workRows.value.filter(
+      (item) =>
+        rowCanEdit(item) &&
+        item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
+        !item.disposition
+    ).length
   if (undecided || missingDisposition) {
     try {
       await ElMessageBox.confirm(
@@ -665,106 +738,48 @@ async function submitInspection() {
     })
     if (data) {
       ElMessage.success('检验已逐项提交，等待品质主管复核')
-      await Promise.all([loadPending(), load()])
+      await refreshAll()
     } else ElMessage.error('检验提交未生效，请检查入库单状态或刷新后重试')
   } finally {
     submitting.value = false
   }
 }
-async function handleInspectionSuccess() {
-  await Promise.all([loadPending(), load()])
-}
-async function load() {
-  loading.value = true
-  try {
-    query.sourceId = route.query.inboundId ? Number(route.query.inboundId) : undefined
-    const result = await qualityApi.page(query)
-    rows.value = result.data?.records || []
-    total.value = result.data?.total || 0
-    await Promise.all(
-      [...new Set(rows.value.map((row) => row.sourceId).filter(Boolean))].map(async (id) => {
-        if (!inboundNames[String(id)]) {
-          const inbound = await inboundApi.getById(String(id))
-          inboundNames[String(id)] = inbound.data?.inboundNo || `入库#${id}`
-        }
-      })
-    )
-  } finally {
-    loading.value = false
-  }
-}
-function activate(row: QualityVO) {
-  activeInboundId.value = row.sourceId
-  activeItemId.value = row.sourceItemId
-  activeInboundNo.value = inboundNames[String(row.sourceId)] || ''
-}
-async function openInspection(row: QualityVO) {
-  activate(row)
-  if (!row.sourceId) return
-  const { data } = await inboundApi.getById(String(row.sourceId))
-  if (!data) return
-  activeTab.value = 'pending'
-  clearSelection()
-  await handlePendingSelect({
-    inboundId: String(data.inboundId),
-    inboundNo: data.inboundNo,
-    supplierName: data.supplierName,
-    totalQuantity: Number(data.totalQuantity || 0),
-    materialCount: data.items?.length || 0,
-    createTime: data.createTime || '',
-  })
-  ElMessage.info('已加载整张入库批次；已审核材料保持锁定，请修改被驳回材料后整单重提')
-}
-function openReview(row: QualityVO) {
-  activate(row)
-  reviewVisible.value = true
-}
-function openQuarantine(row: QualityVO) {
-  activate(row)
-  quarantineVisible.value = true
-}
-function print(row: QualityVO) {
-  router.push({
-    path: '/production/quality-print/iqc-report',
-    query: { inboundId: row.sourceId, inspectionId: row.inspectionId },
-  })
-}
-onMounted(() => {
-  load()
-  loadPending()
-})
+onMounted(() => loadList())
+onBeforeUnmount(clearSelection)
 </script>
 
 <style scoped>
 .iqc-page {
   padding: 20px;
 }
-.header {
+.header,
+.guide-content {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   font-weight: 600;
 }
-.pending-tip {
-  margin-bottom: 10px;
+.list-tip,
+.check-progress {
   color: #909399;
   font-size: 12px;
 }
+.list-tip {
+  margin-bottom: 10px;
+}
+.progress-part {
+  margin-left: 10px;
+  color: #606266;
+}
 .radio-cell {
   display: flex;
-  width: 100%;
   min-height: 24px;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
-.radio-cell :deep(.el-radio) {
-  width: 100%;
-  margin-right: 0;
-  justify-content: center;
-}
-.pager,
-.detail-actions {
+.pager {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
@@ -772,33 +787,34 @@ onMounted(() => {
 .detail-card {
   margin-top: 16px;
 }
-.summary-bar {
+.posting-guide {
   margin-top: 16px;
+}
+.guide-content {
+  width: 100%;
+}
+.summary-bar {
+  margin: 16px 0 10px;
   padding: 10px 14px;
   color: #606266;
-  background: #f5f7fa;
+  background: #f4f4f5;
+  border-radius: 4px;
 }
 .summary-bar.complete {
-  color: var(--el-color-success);
-  background: var(--el-color-success-light-9);
+  color: #529b2e;
+  background: #f0f9eb;
 }
-.material-table {
-  margin-top: 12px;
+.material-table :deep(.el-input-number) {
+  width: 112px;
 }
-.pending-tag {
-  margin-top: 4px;
-}
-.required-tip {
-  margin-left: 6px;
-  color: var(--el-color-danger);
-  font-size: 12px;
-}
-.check-progress {
-  margin-left: 4px;
-  color: #909399;
-  font-size: 12px;
+.reason-input {
+  margin-top: 6px;
 }
 .remark-form {
   margin-top: 16px;
+}
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

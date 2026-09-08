@@ -22,10 +22,17 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
     @Select("<script>" +
             "SELECT o.inbound_id, o.inbound_no, o.supplier_name, o.total_quantity, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id) AS material_count, " +
-            "o.create_time " +
+            "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.inspection_id IS NOT NULL) AS inspected_count, " +
+            "(SELECT COUNT(*) FROM inventory_inbound_item i JOIN production_quality_inspection q ON q.inspection_id = i.inspection_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'PENDING') AS pending_review_count, " +
+            "(SELECT COUNT(*) FROM inventory_inbound_item i JOIN production_quality_inspection q ON q.inspection_id = i.inspection_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'APPROVED') AS approved_count, " +
+            "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.inspection_result = 'FAIL') AS fail_row_count, " +
+            "o.order_status, o.inspection_result, o.create_time " +
             "FROM inventory_inbound_order o " +
-            "WHERE o.source_type = #{sourceType} AND o.order_status = #{orderStatus} " +
-            "AND (o.inspection_result IS NULL OR o.inspection_result = '') " +
+            "WHERE o.source_type = #{sourceType} " +
+            "<choose><when test='orderStatus != null'>AND o.order_status = #{orderStatus} </when>" +
+            "<otherwise>AND o.order_status IN (#{pendingStatus}, #{approvedStatus}, #{completedStatus}) </otherwise></choose>" +
+            "<if test='fillInspection != null and fillInspection'>AND o.inspection_result IS NOT NULL AND o.inspection_result != '' </if>" +
+            "<if test='fillInspection != null and !fillInspection'>AND (o.inspection_result IS NULL OR o.inspection_result = '') </if>" +
             "<if test='inboundNo != null and inboundNo != &quot;&quot;'>" +
             "AND o.inbound_no LIKE CONCAT('%', #{inboundNo}, '%') " +
             "</if>" +
@@ -33,7 +40,11 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
             "</script>")
     IPage<IqcPendingVO> selectIqcPendingPage(Page<IqcPendingVO> page,
                                               @Param("sourceType") String sourceType,
+                                              @Param("pendingStatus") Integer pendingStatus,
+                                              @Param("approvedStatus") Integer approvedStatus,
+                                              @Param("completedStatus") Integer completedStatus,
                                               @Param("orderStatus") Integer orderStatus,
+                                              @Param("fillInspection") Boolean fillInspection,
                                               @Param("inboundNo") String inboundNo);
 
     /**

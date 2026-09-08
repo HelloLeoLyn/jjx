@@ -27,6 +27,18 @@ export interface IqcPendingVO {
   supplierName?: string
   totalQuantity: number
   materialCount: number
+  /** 已关联检验记录的材料行数 */
+  inspectedCount: number
+  /** 待主管审核的材料行数 */
+  pendingReviewCount: number
+  /** 已审核通过的材料行数 */
+  approvedCount: number
+  /** 检验结论为不合格的材料行数 */
+  failRowCount: number
+  /** 入库单流程状态 */
+  orderStatus: number
+  /** 单据级检验结论 */
+  inspectionResult?: string
   createTime: string
 }
 
