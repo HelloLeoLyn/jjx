@@ -194,7 +194,7 @@
             <span>{{ formatDate(scope.row.expectedDeliveryDate) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="审批状态" prop="approvalStatus" width="100">
+        <el-table-column label="采购审批" prop="approvalStatus" width="100">
           <template #default="scope">
             <el-tag :type="PurchaseEnum.approvalStatus.getTagProps(scope.row.approvalStatus).type">
               {{ PurchaseEnum.approvalStatus.getLabel(scope.row.approvalStatus) }}

@@ -125,6 +125,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
                 throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
             }
+            validateOrderItemPrices(orderDTO.getItems());
 
             // 计算订单金额
             calculateOrderAmount(orderDTO);
@@ -238,6 +239,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (orderDTO.getItems() == null || orderDTO.getItems().isEmpty()) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
         }
+        validateOrderItemPrices(orderDTO.getItems());
 
         // 计算订单金额
         calculateOrderAmount(orderDTO);
@@ -978,6 +980,19 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         orderDTO.setOrderAmount(orderAmount);
         orderDTO.setOrderTax(orderTax);
         orderDTO.setOrderTotalAmount(orderAmount.add(orderTax));
+    }
+
+    /**
+     * 普通采购单禁止静默零价。赠品/零价采购必须先建立显式业务类型与授权流程，
+     * 不能沿用普通采购绕过成本控制。
+     */
+    private static void validateOrderItemPrices(List<PurchaseOrderItemDTO> items) {
+        for (PurchaseOrderItemDTO item : items) {
+            if (item.getUnitPrice() == null || item.getUnitPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                String material = StringUtils.defaultIfBlank(item.getMaterialCode(), "未选择物料");
+                throw new BusinessException("物料" + material + "的采购单价必须大于0");
+            }
+        }
     }
 
     /**

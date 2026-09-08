@@ -534,6 +534,13 @@ const handleSubmit = async () => {
     ElMessage.warning('请完善订单明细信息')
     return
   }
+  const invalidPriceItem = form.items.find((item) => !item.unitPrice || item.unitPrice <= 0)
+  if (invalidPriceItem) {
+    ElMessage.warning(
+      `物料 ${invalidPriceItem.materialCode || invalidPriceItem.materialName || ''} 的采购单价必须大于0`
+    )
+    return
+  }
 
   submitting.value = true
   try {

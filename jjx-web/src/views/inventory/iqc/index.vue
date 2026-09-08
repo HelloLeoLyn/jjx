@@ -119,12 +119,8 @@
                       v-for="option in rowResultOptions"
                       :key="option.value"
                       :label="option.label"
-                      :value="option.value" /></el-select
-                  ><el-tag v-if="!row.inspectionResult" type="info" size="small" class="pending-tag"
-                    >待判定</el-tag
-                  ></template
-                ></el-table-column
-              >
+                      :value="option.value" /></el-select></template
+              ></el-table-column>
               <el-table-column label="处置方式" width="180"
                 ><template #default="{ row }"
                   ><template v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
@@ -142,6 +138,18 @@
                   ><span v-else>-</span></template
                 ></el-table-column
               >
+              <el-table-column label="不合格原因" min-width="190">
+                <template #default="{ row }">
+                  <el-input
+                    v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
+                    v-model="row.rejectReason"
+                    :disabled="row.locked"
+                    maxlength="500"
+                    placeholder="存在不良时必填"
+                  />
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
               <el-table-column label="检测项目" width="145" fixed="right"
                 ><template #default="{ row }"
                   ><el-button link type="primary" @click="openMaterialChecks(row)"
@@ -181,11 +189,12 @@
           <el-empty v-else description="请先勾选上方一张待检单" />
         </el-card>
       </el-tab-pane>
-      <el-tab-pane label="检验记录" name="records">
+      <el-tab-pane label="材料检验记录" name="records">
         <el-card>
           <template #header
             ><div class="header">
-              <span>IQC进料检测</span><el-button :loading="loading" @click="load">刷新</el-button>
+              <span>IQC 材料/批次检验记录</span
+              ><el-button :loading="loading" @click="load">刷新</el-button>
             </div></template
           >
           <el-form inline>
@@ -214,6 +223,13 @@
             /></el-form-item>
             <el-form-item><el-button type="primary" @click="load">查询</el-button></el-form-item>
           </el-form>
+          <el-alert
+            title="一张采购入库单可包含多种材料；每个材料批次单独生成一条检验记录。"
+            type="info"
+            :closable="false"
+            show-icon
+            class="records-tip"
+          />
           <el-table v-loading="loading" :data="rows" border>
             <el-table-column prop="inspectionNo" label="检验单号" min-width="190" />
             <el-table-column label="入库单" width="130"
@@ -221,7 +237,15 @@
                 inboundNames[row.sourceId] || `入库#${row.sourceId || '-'}`
               }}</template></el-table-column
             >
-            <el-table-column prop="materialName" label="材料" min-width="160" />
+            <el-table-column prop="materialCode" label="材料编码" min-width="130">
+              <template #default="{ row }">{{ row.materialCode || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="materialName" label="材料名称" min-width="160">
+              <template #default="{ row }">{{ row.materialName || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="batchNo" label="批次号" min-width="120">
+              <template #default="{ row }">{{ row.batchNo || '-' }}</template>
+            </el-table-column>
             <el-table-column label="版本" width="70"
               ><template #default="{ row }"
                 >V{{ row.inspectionVersion || 1 }}</template
@@ -563,6 +587,8 @@ function handleChecksSaved() {
 async function submitInspection() {
   if (!selectedInbound.value) return
   for (const item of workRows.value) {
+    // 整批重提时已审核材料只作为上下文回传，后端以已锁定的质量事实为准。
+    if (item.locked) continue
     if (
       Number(item.sampledQuantity) !==
       Number(item.qualifiedQuantity) + Number(item.rejectedQuantity)
@@ -572,6 +598,25 @@ async function submitInspection() {
     }
     if (Number(item.acceptedQuantity) > Number(item.quantity)) {
       ElMessage.warning(`${item.materialCode}：允收入库数量不能超过收货数量`)
+      return
+    }
+    if (
+      item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
+      Number(item.rejectedQuantity || 0) > 0 &&
+      !String(item.rejectReason || '').trim()
+    ) {
+      ElMessage.warning(`${item.materialCode}：存在不良数量时必须填写不合格原因`)
+      return
+    }
+    const incompleteCheck = item.inspectionItems.find(
+      (check: any) =>
+        !String(check.actualValue || '').trim() ||
+        ![QualityInspectionResult.PASS, QualityInspectionResult.FAIL].includes(check.result)
+    )
+    if (incompleteCheck) {
+      ElMessage.warning(
+        `${item.materialCode}：请完成检测项目“${incompleteCheck.checkItem}”的实测记录与判定`
+      )
       return
     }
   }
@@ -653,9 +698,22 @@ function activate(row: QualityVO) {
   activeItemId.value = row.sourceItemId
   activeInboundNo.value = inboundNames[String(row.sourceId)] || ''
 }
-function openInspection(row: QualityVO) {
+async function openInspection(row: QualityVO) {
   activate(row)
-  inspectionVisible.value = true
+  if (!row.sourceId) return
+  const { data } = await inboundApi.getById(String(row.sourceId))
+  if (!data) return
+  activeTab.value = 'pending'
+  clearSelection()
+  await handlePendingSelect({
+    inboundId: String(data.inboundId),
+    inboundNo: data.inboundNo,
+    supplierName: data.supplierName,
+    totalQuantity: Number(data.totalQuantity || 0),
+    materialCount: data.items?.length || 0,
+    createTime: data.createTime || '',
+  })
+  ElMessage.info('已加载整张入库批次；已审核材料保持锁定，请修改被驳回材料后整单重提')
 }
 function openReview(row: QualityVO) {
   activate(row)

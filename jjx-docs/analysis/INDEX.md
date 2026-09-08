@@ -4,6 +4,7 @@
 
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-07 | purchase-to-iqc-test-report-20260907.md | 库存采购到 IQC 实测报告（2026-09-07） |
 | 2026-09-03 (dev-108) | sales-return-order-items-dev-20260903-108.md | 退货来源订单明细加载断链修复方案（任务 1315 / dev-20260903-108） |
 | 2026-09-03 | sales-return-product-dimension-refactor-20260903.md | 销售退货单产品化改造方案（1235 设计修正，承接 1315） |
 | 2026-09-03 | quality-template-file-mapping-20260903.md | 质量记录模板文件 ↔ 台账对照表（print_template ↔ quality_template_registry） |
@@ -94,3 +95,4 @@
 | ---- | db-audit-report.md | 数据库表结构审计报告 |
 | ---- | approval-matrix.md | 生产报工审批矩阵（2026-08-28 定稿） |
 | ---- | analysis-report.md | 项目分析报告 |
+| dev-20260908-001 | purchase-iqc-six-fixes-dev-20260908-001.md | 采购至 IQC 六项问题修复方案与验证记录（覆盖 dev-20260908-001～006） |

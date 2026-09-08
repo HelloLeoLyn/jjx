@@ -690,6 +690,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         for (InboundInspectionSubmitDTO.Item submitted : inspection.getItems()) {
                 InventoryInboundItem item = existing.get(submitted.getItemId());
                 if (item == null) throw new BusinessException("入库明细不存在: " + submitted.getItemId());
+                com.jjx.production.domain.entity.ProductionQualityInspection previous = item.getInspectionId() == null
+                        ? null : qualityInspectionMapper.selectById(item.getInspectionId());
+                if (previous != null
+                        && com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode()
+                        .equals(previous.getReviewStatus())) {
+                    // 整单重提时，已审核项目以数据库事实为准，既不要求客户端重复填写，也禁止覆盖。
+                    allPass = allPass && "PASS".equalsIgnoreCase(item.getInspectionResult());
+                    continue;
+                }
                 String itemResult = submitted.getInspectionResult() == null ? "" : submitted.getInspectionResult().toUpperCase();
                 if (!List.of("PASS", "FAIL").contains(itemResult)) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "检验判定仅支持 PASS、FAIL");
@@ -709,20 +718,22 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 if ("FAIL".equals(itemResult) && disposition == null) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "不合格时必须选择处置方式");
                 }
+                if ("FAIL".equals(itemResult) && rejected.signum() <= 0) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "判定不合格时不良数量必须大于0");
+                }
+                if ("PASS".equals(itemResult) && rejected.signum() > 0) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "存在不良数量时不能判定合格");
+                }
+                if (rejected.signum() > 0
+                        && org.apache.commons.lang3.StringUtils.isBlank(submitted.getRejectReason())) {
+                    throw new BusinessException("物料" + item.getMaterialCode() + "存在不良数量时必须填写不合格原因");
+                }
+                validateIqcInspectionItems(item, submitted.getInspectionItems());
                 BigDecimal accepted = submitted.getAcceptedQuantity() == null ? BigDecimal.ZERO : submitted.getAcceptedQuantity();
                 if (accepted.signum() < 0 || accepted.compareTo(item.getQuantity()) > 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "允收入库数量必须在收货数量范围内");
                 }
 
-                com.jjx.production.domain.entity.ProductionQualityInspection previous = item.getInspectionId() == null
-                        ? null : qualityInspectionMapper.selectById(item.getInspectionId());
-                if (previous != null
-                        && com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode()
-                        .equals(previous.getReviewStatus())) {
-                    // 同一张收货单中其它项目驳回重提时，已审核项目保持锁定，禁止隐式生成新版本。
-                    allPass = allPass && "PASS".equalsIgnoreCase(item.getInspectionResult());
-                    continue;
-                }
                 boolean editablePending = previous != null
                         && com.jjx.production.enums.QualityInspectionResultEnum.PENDING.getCode()
                         .equals(previous.getResult());
@@ -789,6 +800,29 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setInspectorId(SecurityUtils.getUserId());
         order.setInspectorName(SecurityUtils.getUsername());
         order.setInspectionTime(LocalDateTime.now());
+    }
+
+    private static void validateIqcInspectionItems(InventoryInboundItem inboundItem,
+            List<com.jjx.production.domain.dto.InspectionItemDTO> inspectionItems) {
+        if (inspectionItems == null || inspectionItems.isEmpty()) {
+            throw new BusinessException("物料" + inboundItem.getMaterialCode() + "必须录入检测项目");
+        }
+        for (com.jjx.production.domain.dto.InspectionItemDTO check : inspectionItems) {
+            if (check == null || org.apache.commons.lang3.StringUtils.isBlank(check.getCheckItem())) {
+                throw new BusinessException("物料" + inboundItem.getMaterialCode() + "存在未命名的检测项目");
+            }
+            if (org.apache.commons.lang3.StringUtils.isBlank(check.getActualValue())) {
+                throw new BusinessException("物料" + inboundItem.getMaterialCode() + "的检测项目“"
+                        + check.getCheckItem() + "”必须填写实测记录");
+            }
+            String result = check.getResult() == null ? "" : check.getResult().toLowerCase();
+            if (!List.of(
+                    com.jjx.production.enums.QualityInspectionResultEnum.PASS.getCode(),
+                    com.jjx.production.enums.QualityInspectionResultEnum.FAIL.getCode()).contains(result)) {
+                throw new BusinessException("物料" + inboundItem.getMaterialCode() + "的检测项目“"
+                        + check.getCheckItem() + "”必须判定合格或不合格");
+            }
+        }
     }
 
     @Override

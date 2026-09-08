@@ -161,13 +161,18 @@ function reviewer(remark?: string) {
 }
 
 async function approve(row: (typeof rows.value)[number]) {
-  await ElMessageBox.confirm(
+  const { value } = await ElMessageBox.prompt(
     `确认通过 ${row.materialCode} 的 IQC 审核？通过后报告将锁定。`,
-    '单项 IQC 审核'
+    '单项 IQC 审核',
+    {
+      inputPlaceholder: '审核意见（选填）',
+      confirmButtonText: '审核通过',
+      cancelButtonText: '取消',
+    }
   )
   submittingId.value = row.itemId
   try {
-    await inboundApi.approveInspectionItem(row.itemId, reviewer())
+    await inboundApi.approveInspectionItem(row.itemId, reviewer(value?.trim() || undefined))
     ElMessage.success('审核通过')
     await load()
     emit('success')
