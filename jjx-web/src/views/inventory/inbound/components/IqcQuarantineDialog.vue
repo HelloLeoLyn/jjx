@@ -63,7 +63,12 @@ import {
   IqcQuarantineStatus,
   IqcQuarantineStatusEnum,
 } from '@/enums/inventory/IqcQuarantineEnum'
-const props = defineProps<{ visible: boolean; inboundId?: number; inboundNo?: string }>()
+const props = defineProps<{
+  visible: boolean
+  inboundId?: number
+  inboundNo?: string
+  itemId?: string
+}>()
 const emit = defineEmits<{
   (event: 'update:visible', value: boolean): void
   (event: 'success'): void
@@ -74,7 +79,7 @@ const loading = ref(false)
 const ordersLoading = ref(false)
 const user = useUserStore()
 watch(
-  () => [props.visible, props.inboundId] as const,
+  () => [props.visible, props.inboundId, props.itemId] as const,
   ([visible]) => {
     if (visible) load()
   },
@@ -89,12 +94,16 @@ async function load() {
       inboundApi.listQuarantine(String(props.inboundId)),
       inboundApi.listDispositionOrders(String(props.inboundId)),
     ])
-    rows.value = (quarantine.data || []).map((row) => ({
-      ...row,
-      action: IqcQuarantineAction.RELEASE,
-      actionQuantity: Number(row.remainingQuantity),
-    }))
-    orders.value = dispositionOrders.data || []
+    rows.value = (quarantine.data || [])
+      .filter((row) => !props.itemId || String(row.inboundItemId) === props.itemId)
+      .map((row) => ({
+        ...row,
+        action: IqcQuarantineAction.RELEASE,
+        actionQuantity: Number(row.remainingQuantity),
+      }))
+    orders.value = (dispositionOrders.data || []).filter(
+      (row) => !props.itemId || String(row.inboundItemId) === props.itemId
+    )
   } finally {
     loading.value = false
     ordersLoading.value = false

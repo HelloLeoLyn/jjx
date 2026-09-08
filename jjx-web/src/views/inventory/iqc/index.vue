@@ -241,7 +241,7 @@
               "
               link
               type="warning"
-              @click="openQuarantine"
+              @click="openQuarantine(row)"
               >隔离/处置</el-button
             ></template
           ></el-table-column
@@ -280,6 +280,7 @@
       v-model:visible="quarantineVisible"
       :inbound-id="activeInboundId"
       :inbound-no="activeInboundNo"
+      :item-id="activeItemId"
       @success="handleFlowSuccess"
     />
   </div>
@@ -367,7 +368,8 @@ const inspectionRemark = ref(''),
   quarantineVisible = ref(false)
 const activeWorkRow = ref<WorkRow>(),
   activeInboundId = ref<number>(),
-  activeInboundNo = ref('')
+  activeInboundNo = ref(''),
+  activeItemId = ref<string>()
 const rowResultOptions = InboundInspectionResultEnum.items.filter(
   (item) => item.value !== InboundInspectionResultEnum.OTHER.value
 )
@@ -637,8 +639,9 @@ function openReview() {
   activateSelected()
   reviewVisible.value = true
 }
-function openQuarantine() {
+function openQuarantine(row: WorkRow) {
   activateSelected()
+  activeItemId.value = row.itemId
   quarantineVisible.value = true
 }
 function printRow(row: WorkRow) {
