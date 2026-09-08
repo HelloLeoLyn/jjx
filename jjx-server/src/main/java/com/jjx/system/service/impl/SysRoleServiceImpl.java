@@ -479,4 +479,14 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
         List<SysRole> sysRoles = baseMapper.selectList(queryWrapper);
         return sysRoles.stream().map(SysRole::getRoleName).toList();
     }
+
+    @Override
+    public List<String> selectRoleKeyByUsrId(Long userId) {
+        LambdaQueryWrapper<SysRole> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.select(SysRole::getRoleKey)
+                .inSql(SysRole::getRoleId,
+                        "select role_id from sys_user_role where user_id = " + userId);
+        List<SysRole> sysRoles = baseMapper.selectList(queryWrapper);
+        return sysRoles.stream().map(SysRole::getRoleKey).toList();
+    }
 }

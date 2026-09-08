@@ -115,7 +115,7 @@ public class AuthService{
         }
     }
     private List<String> getRoles(Long userId) {
-        return roleService.selectRoleNameByUsrId(userId);
+        return roleService.selectRoleKeyByUsrId(userId);
     }
 
     private LoginVO buildLoginVO(SysUser user) {

@@ -211,6 +211,11 @@ public interface ISysRoleService extends IService<SysRole> {
     List<String> selectRoleNameByUsrId(Long userId);
 
     /**
+     * 根据用户id获取角色标识
+     */
+    List<String> selectRoleKeyByUsrId(Long userId);
+
+    /**
      * 查询角色列表（全量，返回VO）
      *
      * @param role 查询条件
