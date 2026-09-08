@@ -579,6 +579,7 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
   }
 
   form.items[index].materialId = material.materialId
+  form.items[index].materialCode = material.materialCode || ''
   form.items[index].materialName = material.materialName || ''
   form.items[index].materialSpec = material.specification || ''
   form.items[index].unit = material.unit || ''
