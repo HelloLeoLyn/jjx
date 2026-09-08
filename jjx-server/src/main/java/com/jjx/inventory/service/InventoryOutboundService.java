@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.inventory.domain.InventoryOutboundOrder;
 import com.jjx.inventory.dto.query.OutboundQueryDTO;
 import com.jjx.inventory.dto.vo.OutboundVO;
+import com.jjx.inventory.dto.vo.PickOrderPrintVO;
 
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,8 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      * 获取出库单详情
      */
     OutboundVO getDetail(Long outboundId);
+
+    PickOrderPrintVO getPickOrderPrint(Long outboundId);
 
     /**
      * 创建出库单

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.OutboundQueryDTO;
 import com.jjx.inventory.dto.vo.OutboundVO;
+import com.jjx.inventory.dto.vo.PickOrderPrintVO;
 import com.jjx.inventory.service.InventoryOutboundService;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.system.annotation.BusinessType;
@@ -40,6 +41,13 @@ public class InventoryOutboundController {
     @SaCheckPermission("inventory:outbound:view")
     public Result<OutboundVO> getById(@PathVariable Long outboundId) {
         return Result.success(outboundService.getDetail(outboundId));
+    }
+
+    @GetMapping("/{outboundId}/pick-print")
+    @Operation(summary = "获取 JJX-QR-031 领料单纸版打印数据")
+    @SaCheckPermission("inventory:outbound:view")
+    public Result<PickOrderPrintVO> getPickOrderPrint(@PathVariable Long outboundId) {
+        return Result.success(outboundService.getPickOrderPrint(outboundId));
     }
 
     @PostMapping("/create")

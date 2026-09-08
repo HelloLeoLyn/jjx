@@ -63,6 +63,31 @@ export interface OutboundItemVO {
   remark?: string
 }
 
+export interface PickOrderPrintItemVO {
+  sequence: number
+  materialName?: string
+  projectName?: string
+  specification?: string
+  unit?: string
+  moduleQty?: number
+  issuedQuantity?: number
+  stockQuantity?: number
+  remark?: string
+}
+
+export interface PickOrderPrintVO {
+  outboundId: string
+  outboundNo: string
+  machineModel?: string
+  productName?: string
+  orderQuantity?: number
+  deliveryDate?: string
+  preparedDate?: string
+  preparedBy?: string
+  recordNo: string
+  items: PickOrderPrintItemVO[]
+}
+
 // 出库单创建参数
 export interface OutboundCreateParams {
   outboundType: string

@@ -12,6 +12,7 @@ import type {
   PickPreviewRow,
   PickRemainingRow,
   PickItemPayload,
+  PickOrderPrintVO,
 } from '@/types/inventory/outbound'
 
 // 出库管理API
@@ -28,12 +29,13 @@ export const outboundApi = {
     return request.get<R<OutboundVO>>(`/inventory/outbound/${outboundId}`)
   },
 
+  getPickPrint(outboundId: string) {
+    return request.get<R<PickOrderPrintVO>>(`/inventory/outbound/${outboundId}/pick-print`)
+  },
+
   // 创建出库单
   create(data: OutboundCreateParams) {
-    return request.post<R<{ outboundId: string }>>(
-      '/inventory/outbound/create',
-      data,
-    )
+    return request.post<R<{ outboundId: string }>>('/inventory/outbound/create', data)
   },
 
   // 更新出库单
@@ -43,96 +45,74 @@ export const outboundApi = {
 
   // 确认出库
   confirm(outboundId: string, operatorId: string, operatorName: string) {
-    return request.post<R<boolean>>(
-      `/inventory/outbound/confirm/${outboundId}`,
-      null,
-      {
-        params: { operatorId, operatorName },
-      },
-    )
+    return request.post<R<boolean>>(`/inventory/outbound/confirm/${outboundId}`, null, {
+      params: { operatorId, operatorName },
+    })
   },
 
   // 取消出库单
   cancel(outboundId: string, reason: string) {
-    return request.post<R<boolean>>(
-      `/inventory/outbound/cancel/${outboundId}`,
-      null,
-      {
-        params: { reason },
-      },
-    )
+    return request.post<R<boolean>>(`/inventory/outbound/cancel/${outboundId}`, null, {
+      params: { reason },
+    })
   },
 
   // 提交审批
   submitApprove(outboundId: string) {
-    return request.post<R<boolean>>(
-      `/inventory/outbound/submit-approve/${outboundId}`,
-    )
+    return request.post<R<boolean>>(`/inventory/outbound/submit-approve/${outboundId}`)
   },
 
   // 审批通过
   approve(data: OutboundApproveParams) {
-    return request.post<R<boolean>>(
-      `/inventory/outbound/approve/${data.outboundId}`,
-      null,
-      {
-        params: {
-          approverId: data.approverId,
-          approverName: data.approverName,
-          remark: data.remark,
-        },
+    return request.post<R<boolean>>(`/inventory/outbound/approve/${data.outboundId}`, null, {
+      params: {
+        approverId: data.approverId,
+        approverName: data.approverName,
+        remark: data.remark,
       },
-    )
+    })
   },
 
   // 审批驳回
   reject(data: OutboundRejectParams) {
-    return request.post<R<boolean>>(
-      `/inventory/outbound/reject/${data.outboundId}`,
-      null,
-      {
-        params: {
-          approverId: data.approverId,
-          approverName: data.approverName,
-          remark: data.remark,
-        },
+    return request.post<R<boolean>>(`/inventory/outbound/reject/${data.outboundId}`, null, {
+      params: {
+        approverId: data.approverId,
+        approverName: data.approverName,
+        remark: data.remark,
       },
-    )
+    })
   },
 
   // 从销售订单创建出库单
   createFromSales(salesOrderId: string) {
     return request.post<R<{ outboundId: string }>>(
-      `/inventory/outbound/create-from-sales/${salesOrderId}`,
+      `/inventory/outbound/create-from-sales/${salesOrderId}`
     )
   },
 
   // 从生产工单创建出库单
   createFromProduction(workOrderId: string) {
     return request.post<R<{ outboundId: string }>>(
-      `/inventory/outbound/create-from-production/${workOrderId}`,
+      `/inventory/outbound/create-from-production/${workOrderId}`
     )
   },
 
   // 生产领料预览（BOM展开+可用量+替代料）
   pickPreview(workOrderId: number) {
-    return request.get<R<PickPreviewRow[]>>(
-      `/inventory/outbound/pick-preview/${workOrderId}`,
-    )
+    return request.get<R<PickPreviewRow[]>>(`/inventory/outbound/pick-preview/${workOrderId}`)
   },
 
   // 工单剩余可领料量
   pickRemaining(workOrderId: number) {
-    return request.get<R<PickRemainingRow[]>>(
-      `/inventory/outbound/pick-remaining/${workOrderId}`,
-    )
+    return request.get<R<PickRemainingRow[]>>(`/inventory/outbound/pick-remaining/${workOrderId}`)
   },
 
   // 追加领料（多次领料）
   createProductionPick(workOrderId: number, items: PickItemPayload[]) {
     return request.post<R<{ outboundId: string }>>(
       `/inventory/outbound/create-production-pick/${workOrderId}`,
-      items,
+      items
     )
   },
 
@@ -157,20 +137,14 @@ export const outboundApi = {
 
   // 更新出库单状态
   updateStatus(data: OutboundStatusUpdateParams) {
-    return request.post<R<boolean>>(
-      `/inventory/outbound/update-status/${data.outboundId}`,
-      null,
-      {
-        params: { status: data.status },
-      },
-    )
+    return request.post<R<boolean>>(`/inventory/outbound/update-status/${data.outboundId}`, null, {
+      params: { status: data.status },
+    })
   },
 
   // 获取出库仪表板数据
   getDashboard() {
-    return request.get<R<OutboundDashboardData>>(
-      '/inventory/outbound/dashboard',
-    )
+    return request.get<R<OutboundDashboardData>>('/inventory/outbound/dashboard')
   },
 
   // 导出出库单

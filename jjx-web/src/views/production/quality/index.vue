@@ -224,8 +224,8 @@
       </template>
       <template #footer>
         <el-button @click="judgeVisible = false">取消</el-button>
-        <el-button type="danger" :loading="judging" @click="submitJudge('FAIL')">判定不合格</el-button>
-        <el-button type="success" :loading="judging" @click="submitJudge('PASS')">判定合格</el-button>
+        <el-button type="danger" :loading="judging" @click="submitJudge(InspectionResult.FAIL)">判定不合格</el-button>
+        <el-button type="success" :loading="judging" @click="submitJudge(InspectionResult.PASS)">判定合格</el-button>
       </template>
     </el-dialog>
 
@@ -430,15 +430,15 @@ async function submitCreate() {
 const judgeVisible = ref(false)
 const judging = ref(false)
 const judgeRow = ref<QualityVO | null>(null)
-const judgeForm = reactive<QualityJudgePayload>({ result: 'PASS', totalQty: 0, passQty: 0, failQty: 0, defectDesc: '', remark: '' })
+const judgeForm = reactive<QualityJudgePayload>({ result: InspectionResult.PASS, totalQty: 0, passQty: 0, failQty: 0, defectDesc: '', remark: '' })
 
 function openJudge(row: QualityVO) {
   judgeRow.value = row
-  Object.assign(judgeForm, { result: 'PASS', totalQty: 0, passQty: 0, failQty: 0, defectDesc: '', remark: '' })
+  Object.assign(judgeForm, { result: InspectionResult.PASS, totalQty: 0, passQty: 0, failQty: 0, defectDesc: '', remark: '' })
   judgeVisible.value = true
 }
 
-async function submitJudge(result: 'PASS' | 'FAIL') {
+async function submitJudge(result: typeof InspectionResult.PASS | typeof InspectionResult.FAIL) {
   const row = judgeRow.value
   if (!row) return
   const t = Number(judgeForm.totalQty || 0)
@@ -446,11 +446,11 @@ async function submitJudge(result: 'PASS' | 'FAIL') {
   const f = Number(judgeForm.failQty || 0)
   if (t < 0 || p < 0 || f < 0) { ElMessage.warning('数量不能为负数'); return }
   if (p + f > t) { ElMessage.warning('合格+不合格数量不能超过检验数量'); return }
-  if (result === 'PASS' && p <= 0) { ElMessage.warning('判定合格时合格数量必须大于 0'); return }
+  if (result === InspectionResult.PASS && p <= 0) { ElMessage.warning('判定合格时合格数量必须大于 0'); return }
   judging.value = true
   try {
     await qualityApi.judge(row.inspectionId, { ...judgeForm, result })
-    ElMessage.success(result === 'PASS' ? '判定合格' : '判定不合格')
+    ElMessage.success(result === InspectionResult.PASS ? '判定合格' : '判定不合格')
     judgeVisible.value = false
     loadPage()
     loadStats()

@@ -67,8 +67,8 @@
         <el-form label-width="88px" label-position="left">
           <el-form-item label="判定结果" required>
             <el-radio-group v-model="judgeForm.result">
-              <el-radio-button value="PASS">合格</el-radio-button>
-              <el-radio-button value="FAIL">不合格</el-radio-button>
+              <el-radio-button :value="InspectionResult.PASS">合格</el-radio-button>
+              <el-radio-button :value="InspectionResult.FAIL">不合格</el-radio-button>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="检验数量">
@@ -80,7 +80,7 @@
           <el-form-item label="不合格数">
             <el-input-number v-model="judgeForm.failQty" :min="0" :precision="4" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="缺陷描述" v-if="judgeForm.result === 'FAIL'">
+          <el-form-item label="缺陷描述" v-if="judgeForm.result === InspectionResult.FAIL">
             <el-input v-model="judgeForm.defectDesc" type="textarea" :rows="2" placeholder="不合格原因（建议填写）" />
           </el-form-item>
           <el-form-item label="备注">
@@ -105,6 +105,7 @@ import {
   qualityApi,
   type QualityVO,
 } from '@/api/production/quality'
+import { InspectionResult } from '@/enums/quality'
 
 const route = useRoute()
 const router = useRouter()
@@ -123,7 +124,7 @@ const judgeVisible = ref(false)
 const judging = ref(false)
 const judgeRow = ref<QualityVO | null>(null)
 const judgeForm = ref({
-  result: 'PASS' as 'PASS' | 'FAIL',
+  result: InspectionResult.PASS as typeof InspectionResult.PASS | typeof InspectionResult.FAIL,
   totalQty: undefined as number | undefined,
   passQty: undefined as number | undefined,
   failQty: undefined as number | undefined,
@@ -143,19 +144,19 @@ function typeTag(t?: string): string {
   return t === 'FQC' ? 'st-fqc' : 'st-iqc'
 }
 function resultTag(r?: string): string {
-  return r === 'pass' ? 'st-pass' : 'st-fail'
+  return r === InspectionResult.PASS ? 'st-pass' : 'st-fail'
 }
 
 async function loadData() {
   loading.value = true
   try {
     const [pendingRes, doneRes]: any = await Promise.all([
-      qualityApi.page({ pageNum: 1, pageSize: 50, result: 'pending' }),
+      qualityApi.page({ pageNum: 1, pageSize: 50, result: InspectionResult.PENDING }),
       qualityApi.page({ pageNum: 1, pageSize: 50 }),
     ])
     const all = doneRes?.data?.records || []
     pendingList.value = pendingRes?.data?.records || []
-    doneList.value = all.filter((q: QualityVO) => q.result !== 'pending').slice(0, 50)
+    doneList.value = all.filter((q: QualityVO) => q.result !== InspectionResult.PENDING).slice(0, 50)
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
@@ -166,7 +167,7 @@ async function loadData() {
 function openJudge(q: QualityVO) {
   judgeRow.value = q
   judgeForm.value = {
-    result: 'PASS',
+    result: InspectionResult.PASS,
     totalQty: Number(q.totalQty ?? 0) || undefined,
     passQty: undefined,
     failQty: undefined,
@@ -179,11 +180,11 @@ function openJudge(q: QualityVO) {
 async function submitJudge() {
   if (!judgeRow.value?.inspectionId) return
   const f = judgeForm.value
-  if (f.result === 'PASS' && Number(f.passQty || 0) <= 0) {
+  if (f.result === InspectionResult.PASS && Number(f.passQty || 0) <= 0) {
     ElMessage.warning('判定合格时合格数量必须 > 0')
     return
   }
-  if (f.result === 'FAIL' && !f.defectDesc?.trim()) {
+  if (f.result === InspectionResult.FAIL && !f.defectDesc?.trim()) {
     ElMessage.warning('判定不合格请填写缺陷描述')
     return
   }

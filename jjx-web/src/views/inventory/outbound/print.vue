@@ -10,78 +10,95 @@
     </div>
 
     <!-- A4 画布（干净页面） -->
-    <A4Canvas :padding-mm="15" v-if="info">
-      <!-- 公司抬头 -->
-      <PrintCompanyHeader variant="center" />
+    <A4Canvas :padding-mm="15" v-if="info && (!isPick || pickInfo)">
+      <PickOrderQr031Print v-if="isPick" :data="pickInfo!" />
+      <template v-else>
+        <!-- 公司抬头 -->
+        <PrintCompanyHeader variant="center" />
 
-      <!-- 单据标题 -->
-      <div class="doc-title">{{ isPick ? '领 料 单' : '出 库 单' }}</div>
+        <!-- 单据标题 -->
+        <div class="doc-title">{{ isPick ? '领 料 单' : '出 库 单' }}</div>
 
-      <!-- 信息区 -->
-      <div class="doc-info">
-        <div class="info-item"><span class="info-label">单据号</span>{{ info.outboundNo }}</div>
-        <div class="info-item"><span class="info-label">类型</span>{{ info.outboundTypeName || '-' }}</div>
-        <div class="info-item"><span class="info-label">仓库</span>{{ info.warehouseName || '-' }}</div>
-        <div class="info-item"><span class="info-label">单据状态</span>{{ info.statusName || '-' }}</div>
-        <div class="info-item"><span class="info-label">总数量</span>{{ fmtNum(info.totalQuantity) }}</div>
-        <div class="info-item"><span class="info-label">总金额</span>{{ fmtMoney(info.totalAmount) }}</div>
-        <div class="info-item"><span class="info-label">创建人</span>{{ info.createBy || '-' }}</div>
-        <div class="info-item"><span class="info-label">创建时间</span>{{ info.createTime || '-' }}</div>
-      </div>
-
-      <!-- 明细表格 -->
-      <table class="doc-items">
-        <thead>
-          <tr>
-            <th style="width: 5%">序号</th>
-            <th style="width: 12%">物料编码</th>
-            <th>物料名称</th>
-            <th style="width: 8%">单位</th>
-            <th style="width: 10%">批次</th>
-            <th style="width: 10%">库位</th>
-            <th style="width: 10%">数量</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(item, idx) in itemsList" :key="idx">
-            <td class="col-center">{{ idx + 1 }}</td>
-            <td>{{ item.materialCode }}</td>
-            <td>{{ item.materialName }}</td>
-            <td class="col-center">{{ item.unit || '-' }}</td>
-            <td>{{ item.batchNo || '-' }}</td>
-            <td>{{ item.locationName || '-' }}</td>
-            <td class="col-right">{{ fmtNum(item.quantity) }}</td>
-          </tr>
-          <tr v-if="!itemsList.length">
-            <td colspan="7" class="col-center">无明细</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- 合计 -->
-      <div class="doc-total-row">
-        <span>物料种类：{{ itemsList.length }} 项</span>
-        <span>总数量：{{ fmtNum(info.totalQuantity) }}</span>
-      </div>
-
-      <!-- 备注 -->
-      <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
-
-      <!-- 签名区 -->
-      <div class="doc-signs">
-        <div class="sign-item">
-          <div class="sign-line">领料人：</div>
-          <div class="sign-underline"></div>
+        <!-- 信息区 -->
+        <div class="doc-info">
+          <div class="info-item"><span class="info-label">单据号</span>{{ info.outboundNo }}</div>
+          <div class="info-item">
+            <span class="info-label">类型</span>{{ info.outboundTypeName || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">仓库</span>{{ info.warehouseName || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">单据状态</span>{{ info.statusName || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">总数量</span>{{ fmtNum(info.totalQuantity) }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">总金额</span>{{ fmtMoney(info.totalAmount) }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">创建人</span>{{ info.createBy || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">创建时间</span>{{ info.createTime || '-' }}
+          </div>
         </div>
-        <div class="sign-item">
-          <div class="sign-line">仓管员：</div>
-          <div class="sign-underline"></div>
+
+        <!-- 明细表格 -->
+        <table class="doc-items">
+          <thead>
+            <tr>
+              <th style="width: 5%">序号</th>
+              <th style="width: 12%">物料编码</th>
+              <th>物料名称</th>
+              <th style="width: 8%">单位</th>
+              <th style="width: 10%">批次</th>
+              <th style="width: 10%">库位</th>
+              <th style="width: 10%">数量</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(item, idx) in itemsList" :key="idx">
+              <td class="col-center">{{ idx + 1 }}</td>
+              <td>{{ item.materialCode }}</td>
+              <td>{{ item.materialName }}</td>
+              <td class="col-center">{{ item.unit || '-' }}</td>
+              <td>{{ item.batchNo || '-' }}</td>
+              <td>{{ item.locationName || '-' }}</td>
+              <td class="col-right">{{ fmtNum(item.quantity) }}</td>
+            </tr>
+            <tr v-if="!itemsList.length">
+              <td colspan="7" class="col-center">无明细</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 合计 -->
+        <div class="doc-total-row">
+          <span>物料种类：{{ itemsList.length }} 项</span>
+          <span>总数量：{{ fmtNum(info.totalQuantity) }}</span>
         </div>
-        <div class="sign-item">
-          <div class="sign-line">日期：</div>
-          <div class="sign-underline"></div>
+
+        <!-- 备注 -->
+        <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
+
+        <!-- 签名区 -->
+        <div class="doc-signs">
+          <div class="sign-item">
+            <div class="sign-line">领料人：</div>
+            <div class="sign-underline"></div>
+          </div>
+          <div class="sign-item">
+            <div class="sign-line">仓管员：</div>
+            <div class="sign-underline"></div>
+          </div>
+          <div class="sign-item">
+            <div class="sign-line">日期：</div>
+            <div class="sign-underline"></div>
+          </div>
         </div>
-      </div>
+      </template>
     </A4Canvas>
 
     <div v-else v-loading="true" style="height: 400px"></div>
@@ -96,12 +113,15 @@ import { outboundApi } from '@/api/inventory/outbound'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
+import PickOrderQr031Print from './components/PickOrderQr031Print.vue'
+import type { PickOrderPrintVO } from '@/types/inventory/outbound'
 
 const route = useRoute()
 const router = useRouter()
 
 const info = ref<any>(null)
 const loading = ref(false)
+const pickInfo = ref<PickOrderPrintVO | null>(null)
 
 // 领料单（URL 带 pick=1 或类型为 production 时显示领料单标题）
 const isPick = computed(() => {
@@ -120,7 +140,9 @@ const fmtNum = (v?: number | string | null): string => {
 const fmtMoney = (v?: number | string | null): string => {
   if (v === null || v === undefined || v === '') return '-'
   const n = Number(v)
-  return Number.isNaN(n) ? String(v) : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return Number.isNaN(n)
+    ? String(v)
+    : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 async function loadData() {
@@ -134,6 +156,10 @@ async function loadData() {
     const res: any = await outboundApi.getById(outboundId)
     if (res.code === 200 && res.data) {
       info.value = res.data
+      if (res.data.outboundType === 'production') {
+        const pickRes = await outboundApi.getPickPrint(outboundId)
+        pickInfo.value = pickRes.data || null
+      }
     } else {
       ElMessage.error(res.msg || '加载出库单失败')
     }

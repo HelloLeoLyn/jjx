@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
+import { InspectionResult } from '@/enums/quality'
 
 export interface QualityQuery {
   pageNum: number
@@ -76,7 +77,7 @@ export interface QualityVO {
 
 /** P3-C：判定入参（正式质量动作，不走 legacy PUT） */
 export interface QualityJudgePayload {
-  result: 'PASS' | 'FAIL'
+  result: typeof InspectionResult.PASS | typeof InspectionResult.FAIL
   totalQty?: number
   passQty?: number
   failQty?: number

@@ -13,6 +13,8 @@ import com.jjx.inventory.domain.InventoryStorageLocation;
 import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.dto.query.OutboundQueryDTO;
 import com.jjx.inventory.dto.vo.OutboundVO;
+import com.jjx.inventory.dto.vo.PickOrderPrintItemVO;
+import com.jjx.inventory.dto.vo.PickOrderPrintVO;
 import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.inventory.enums.OutboundTypeEnum;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
@@ -40,6 +42,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Objects;
 
 import com.jjx.common.exception.BusinessException;
 import com.jjx.system.annotation.Event;
@@ -148,6 +152,68 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             vo.setItems(convertToItemVOList(items, storageLocationMapper));
         }
         return vo;
+    }
+
+    @Override
+    public PickOrderPrintVO getPickOrderPrint(Long outboundId) {
+        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        if (order == null) throw new BusinessException("出库单不存在");
+        if (!OutboundTypeEnum.PRODUCTION.getCode().equals(order.getOutboundType())) {
+            throw new BusinessException("只有生产领料出库单可以打印JJX-QR-031领料单");
+        }
+        if (order.getSourceId() == null) throw new BusinessException("领料单未关联生产工单");
+
+        com.jjx.production.domain.entity.ProductionOrder productionOrder = productionOrderMapper.selectById(order.getSourceId());
+        if (productionOrder == null) throw new BusinessException("关联生产工单不存在");
+
+        Map<Long, com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = new HashMap<>();
+        if (productionOrder.getBomId() != null) {
+            productBomItemMapper.selectList(new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                            .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, productionOrder.getBomId()))
+                    .forEach(item -> bomItems.putIfAbsent(item.getMaterialId(), item));
+        }
+
+        Map<Long, BigDecimal> stockSnapshots = new HashMap<>();
+        transactionMapper.selectList(new LambdaQueryWrapper<InventoryTransaction>()
+                        .eq(InventoryTransaction::getSourceId, outboundId)
+                        .eq(InventoryTransaction::getTransactionType, "OUTBOUND")
+                        .orderByAsc(InventoryTransaction::getTransactionId))
+                .forEach(tx -> stockSnapshots.put(tx.getMaterialId(), tx.getAfterQuantity()));
+
+        List<PickOrderPrintItemVO> printItems = new ArrayList<>();
+        int sequence = 1;
+        for (InventoryOutboundItem outboundItem : outboundItemMapper.selectByOutboundId(outboundId)) {
+            com.jjx.engineering.domain.entity.EngineeringBomItem bomItem = bomItems.get(outboundItem.getMaterialId());
+            PickOrderPrintItemVO item = new PickOrderPrintItemVO();
+            item.setSequence(sequence++);
+            item.setMaterialName(outboundItem.getMaterialName());
+            item.setProjectName(bomItem == null ? null : bomItem.getPositionNo());
+            item.setSpecification(outboundItem.getSpecification());
+            item.setUnit(outboundItem.getUnit());
+            item.setModuleQty(bomItem == null ? null : bomItem.getModuleQty());
+            item.setIssuedQuantity(outboundItem.getQuantity());
+            BigDecimal snapshot = stockSnapshots.get(outboundItem.getMaterialId());
+            if (snapshot == null) {
+                InventoryStock stock = stockMapper.selectByMaterialId(outboundItem.getMaterialId());
+                snapshot = stock == null ? BigDecimal.ZERO : stock.getTotalQuantity();
+            }
+            item.setStockQuantity(Objects.requireNonNullElse(snapshot, BigDecimal.ZERO));
+            item.setRemark(outboundItem.getRemark());
+            printItems.add(item);
+        }
+
+        PickOrderPrintVO result = new PickOrderPrintVO();
+        result.setOutboundId(order.getOutboundId());
+        result.setOutboundNo(order.getOutboundNo());
+        result.setMachineModel(productionOrder.getProductCode());
+        result.setProductName(productionOrder.getProductName());
+        result.setOrderQuantity(productionOrder.getPlannedQuantity());
+        result.setDeliveryDate(productionOrder.getPlanEndDate());
+        result.setPreparedDate(order.getOutboundDate() == null ? LocalDate.now() : order.getOutboundDate());
+        result.setPreparedBy(order.getCreateBy());
+        result.setRecordNo("JJX-QR-031");
+        result.setItems(printItems);
+        return result;
     }
 
     @Override
