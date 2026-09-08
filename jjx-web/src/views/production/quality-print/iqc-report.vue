@@ -231,7 +231,7 @@ async function loadInspection(id: number) {
 async function print() {
   printing.value = true
   try {
-    await logTemplatePrint('JJX-QR-037')
+    await logTemplatePrint('JJX-QR-037', 'quality_inspection', inspection.value?.inspectionId)
     window.print()
   } catch (error: any) {
     ElMessage.error(error?.message || '打印留痕失败')
