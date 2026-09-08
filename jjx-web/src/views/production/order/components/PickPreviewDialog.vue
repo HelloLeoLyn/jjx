@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="生成领料单 - 预览确认"
+    :title="dialogTitle"
     width="860px"
     append-to-body
     class="pick-preview-dialog"
@@ -86,7 +86,7 @@
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">取消</el-button>
       <el-button type="primary" :loading="submitting" :disabled="!!errorMsg" @click="handleConfirm">
-        确认生成领料单
+        {{ isAppend ? '确认追加领料单' : '确认生成领料单' }}
       </el-button>
     </template>
   </el-dialog>
@@ -96,19 +96,29 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
-const props = defineProps<{
-  modelValue: boolean
-  workOrderId: number
-  orderNo: string
-  productCode?: string
-  productName?: string
-  plannedQuantity?: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    workOrderId: number
+    orderNo: string
+    productCode?: string
+    productName?: string
+    plannedQuantity?: number
+    // 2026-09-08 部分领料修正：first=首张领料单(createFromProduction)；append=追加补领(createProductionPick，按剩余需求)
+    mode?: 'first' | 'append'
+  }>(),
+  { mode: 'first' },
+)
 
 const emit = defineEmits<{
   'update:modelValue': [v: boolean]
   success: [outboundId: number]
 }>()
+
+const isAppend = computed(() => props.mode === 'append')
+const dialogTitle = computed(() =>
+  isAppend.value ? '追加领料单 - 按剩余需求补领（预览确认）' : '生成领料单 - 预览确认',
+)
 
 const loading = ref(false)
 const submitting = ref(false)
@@ -161,17 +171,38 @@ watch(
 async function handleConfirm() {
   submitting.value = true
   try {
-    // 仅传有调整的主料行（数量 ≠ 默认实领）
+    const { materialPickApi } = await import('@/api/inventory/materialPick')
+    if (isAppend) {
+      // 追加：按剩余需求提交（0 < 实领 ≤ 剩余可领量），后端 createProductionPick 会二次校验
+      const items = mainRows.value
+        .filter((r) => Number(r.qtyPick) > 0)
+        .map((r) => ({
+          materialId: Number(r.materialId),
+          quantity: Number(r.qtyPick),
+          materialCode: r.materialCode,
+          materialName: r.materialName,
+        }))
+      if (items.length === 0) {
+        ElMessage.warning('剩余可领数量均为 0，无需追加领料')
+        submitting.value = false
+        return
+      }
+      const res: any = await materialPickApi.createProductionPick(props.workOrderId, items)
+      ElMessage.success(`追加领料单已生成（出库单 ${res?.data}）`)
+      emit('update:modelValue', false)
+      emit('success', res?.data)
+      return
+    }
+    // 首张领料单：仅传有调整的主料行（数量 ≠ 默认实领）
     const adjusted = mainRows.value
       .filter((r) => Number(r.qtyPick) !== Number(r.qtyPickMax))
       .map((r) => ({ materialId: Number(r.materialId), quantity: Number(r.qtyPick) }))
-    const { materialPickApi } = await import('@/api/inventory/materialPick')
     const res: any = await materialPickApi.createFromProduction(props.workOrderId, adjusted)
     ElMessage.success(`领料单已生成（出库单 ${res?.data}）`)
     emit('update:modelValue', false)
     emit('success', res?.data)
   } catch (e: any) {
-    ElMessage.error(e?.message || '生成领料单失败')
+    ElMessage.error(e?.message || (isAppend ? '追加领料失败' : '生成领料单失败'))
   } finally {
     submitting.value = false
   }

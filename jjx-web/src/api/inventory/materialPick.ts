@@ -36,4 +36,12 @@ export const materialPickApi = {
       method: 'get',
     })
   },
+
+  // 2026-09-08：统计工单已有领料单数（0=首领，>0=追加补领）
+  pickCount(workOrderId: number): AxiosPromise<number> {
+    return request({
+      url: `/inventory/outbound/pick-count/${workOrderId}`,
+      method: 'get',
+    })
+  },
 }

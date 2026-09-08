@@ -396,21 +396,61 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if ("work_order".equals(order.getSourceType()) && order.getSourceId() != null) {
                 com.jjx.production.domain.entity.ProductionOrder prodOrder =
                         productionOrderMapper.selectById(order.getSourceId());
-                if (prodOrder != null && prodOrder.getMaterialStatus() != null
-                        && prodOrder.getMaterialStatus() < 2) {
-                    Long remaining = outboundOrderMapper.selectCount(
+                if (prodOrder != null && (prodOrder.getMaterialStatus() == null
+                        || prodOrder.getMaterialStatus() < 2)) {
+                    // 2026-09-08 部分领料修正：不能仅凭"无待发料单"就置已领料——
+                    // BOM 仍有剩余需求（缺口）或存在未完成(待审批)领料单 → 领料中(1)；全部领足且无在途单 → 已领料(2)
+                    Long unfinishedCnt = outboundOrderMapper.selectCount(
                             new LambdaQueryWrapper<InventoryOutboundOrder>()
                                     .eq(InventoryOutboundOrder::getSourceType, "work_order")
                                     .eq(InventoryOutboundOrder::getSourceId, order.getSourceId())
                                     .in(InventoryOutboundOrder::getOrderStatus,
                                             InventoryOrderStatusEnum.PENDING.getValue(),
-                                            InventoryOrderStatusEnum.APPROVED.getValue(),
-                                            InventoryOrderStatusEnum.CONFIRMED.getValue()));
-                    if (remaining != null && remaining > 0) {
-                        prodOrder.setMaterialStatus(1); // 仍有待发料领料单：领料中
-                        log.info("工单{}仍有{}张领料单待发料，状态保持领料中", order.getSourceId(), remaining);
+                                            InventoryOrderStatusEnum.APPROVED.getValue()));
+                    boolean hasUnfinished = unfinishedCnt != null && unfinishedCnt > 0;
+                    boolean hasGap = false;
+                    try {
+                        LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom> bomWrapper =
+                                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
+                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
+                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, 1)
+                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getApproveStatus, 3)
+                                        .orderByDesc(com.jjx.engineering.domain.entity.EngineeringBom::getCreateTime)
+                                        .last("LIMIT 1");
+                        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(bomWrapper);
+                        if (bom != null) {
+                            List<com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = productBomItemMapper.selectList(
+                                    new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                                            .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bom.getBomId()));
+                            java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(order.getSourceId());
+                            for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
+                                if (!"buy".equals(bomItem.getSourceType())) continue;
+                                BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
+                                        ? bomItem.getBaseQty() : BigDecimal.ONE;
+                                BigDecimal demand = bomItem.getQuantity()
+                                        .multiply(prodOrder.getPlannedQuantity())
+                                        .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
+                                        .multiply(BigDecimal.ONE.add(bomItem.getLossRate() != null
+                                                ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
+                                                : BigDecimal.ZERO))
+                                        .setScale(0, java.math.RoundingMode.UP);
+                                BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+                                if (demand.subtract(picked).compareTo(BigDecimal.ZERO) > 0) {
+                                    hasGap = true;
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("确认发料后计算 BOM 剩余缺口失败: {}", e.getMessage());
+                    }
+                    if (hasGap || hasUnfinished) {
+                        prodOrder.setMaterialStatus(1); // 仍有缺口或待发料单：领料中/部分领料
+                        log.info("工单{}确认发料后 hasGap={} hasUnfinished={} → 领料中(1)",
+                                order.getSourceId(), hasGap, hasUnfinished);
                     } else {
-                        prodOrder.setMaterialStatus(2); // 全部发完：已领料
+                        prodOrder.setMaterialStatus(2); // BOM 全部领足且无在途单：已领料
+                        log.info("工单{} BOM 已全部领足 → 已领料(2)", order.getSourceId());
                     }
                     productionOrderMapper.updateById(prodOrder);
                 }
@@ -632,17 +672,27 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             availableMap.put(bomItem.getMaterialId(), available);
         }
         // 5. 逐物料生成预览行（主料 + 替代料）
+        // 2026-09-08 部分领料修正：预览按剩余需求（BOM需求 − 该工单已开领料量合计），支持分批/追加领料；
+        // demand/picked 一并返回供前端展示"整单需求/已领/本次需领"
+        java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(prodOrder.getOrderId());
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
             BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
                     ? bomItem.getBaseQty() : BigDecimal.ONE;
-            BigDecimal qtyNeeded = bomItem.getQuantity()
+            BigDecimal demand = bomItem.getQuantity()
                     .multiply(prodOrder.getPlannedQuantity())
                     .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
                     .multiply(BigDecimal.ONE.add(bomItem.getLossRate() != null
                             ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
                             : BigDecimal.ZERO))
                     .setScale(0, java.math.RoundingMode.UP);
+            BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+            BigDecimal remaining = demand.subtract(picked);
+            if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                continue; // 该物料已领足：剩余需求为 0，不再出现在预览中
+            }
+            BigDecimal qtyNeeded = remaining; // 需求列=剩余需求（首张领料单时=整单需求）
             BigDecimal available = availableMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
             BigDecimal qtyPick = qtyNeeded.min(available);
             boolean insufficient = qtyPick.compareTo(qtyNeeded) < 0;
@@ -653,6 +703,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             row.put("materialName", bomItem.getMaterialName());
             row.put("specification", bomItem.getSpecification() != null ? bomItem.getSpecification() : "");
             row.put("unit", bomItem.getUnit() != null ? bomItem.getUnit() : "PCS");
+            row.put("demand", demand);
+            row.put("picked", picked);
             row.put("qtyNeeded", qtyNeeded);
             row.put("available", available);
             row.put("qtyPick", qtyPick);
@@ -667,7 +719,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     java.util.List<java.util.Map<String, Object>> subs = new com.fasterxml.jackson.databind.ObjectMapper()
                             .readValue(bomItem.getSubstituteJson(),
                                     new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
-                    BigDecimal shortage = qtyNeeded.subtract(qtyPick);
+                    BigDecimal shortage = qtyNeeded.subtract(qtyPick); // qtyNeeded 已是剩余需求
                     for (java.util.Map<String, Object> sub : subs) {
                         Object subId = sub.get("materialId");
                         if (subId == null) continue;
@@ -755,7 +807,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 .eq(InventoryOutboundOrder::getOutboundNo, outboundNo);
         if (outboundOrderMapper.selectCount(existCheck) > 0) {
             log.warn("生产工单{}的领料单已存在", workOrderId);
-            return null;
+            throw new BusinessException("该工单已生成过领料单（" + outboundNo + "），如需补领请使用「追加领料」（再次点击生成领料单按钮）");
         }
 
         InventoryOutboundOrder order = new InventoryOutboundOrder();
@@ -995,6 +1047,31 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             result.add(row);
         }
         return result;
+    }
+
+    /**
+     * 2026-09-08 部分领料修正：统计工单全部领料出库单（不区分单据状态）已开明细数量，按物料聚合。
+     * 口径与 getPickRemaining 保持一致。
+     */
+    private java.util.Map<Long, BigDecimal> sumPickedByMaterial(Long workOrderId) {
+        java.util.Map<Long, BigDecimal> pickedMap = new java.util.HashMap<>();
+        try {
+            List<InventoryOutboundOrder> pickOrders = outboundOrderMapper.selectList(
+                    new LambdaQueryWrapper<InventoryOutboundOrder>()
+                            .eq(InventoryOutboundOrder::getSourceType, "work_order")
+                            .eq(InventoryOutboundOrder::getSourceId, workOrderId));
+            for (InventoryOutboundOrder po : pickOrders) {
+                List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(po.getOutboundId());
+                for (InventoryOutboundItem it : items) {
+                    if (it.getQuantity() != null) {
+                        pickedMap.merge(it.getMaterialId(), it.getQuantity(), BigDecimal::add);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询已领料量失败: {}", e.getMessage());
+        }
+        return pickedMap;
     }
 
     @Override
@@ -1248,6 +1325,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 .eq(InventoryOutboundOrder::getSourceId, sourceId);
         InventoryOutboundOrder order = outboundOrderMapper.selectOne(wrapper);
         return convertToVO(order);
+    }
+
+    @Override
+    public long countPickOrders(Long workOrderId) {
+        return outboundOrderMapper.selectCount(
+                new LambdaQueryWrapper<InventoryOutboundOrder>()
+                        .eq(InventoryOutboundOrder::getSourceType, "work_order")
+                        .eq(InventoryOutboundOrder::getSourceId, workOrderId));
     }
 
     @Override

@@ -208,6 +208,7 @@
       :product-code="pickPreviewOrder.productCode"
       :product-name="pickPreviewOrder.productName"
       :planned-quantity="pickPreviewOrder.plannedQuantity"
+      :mode="pickMode"
       @success="handlePickCreated"
     />
   </div>
@@ -776,8 +777,18 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
 // 生成领料单（2026-08-18：先预览确认——A4打印样式弹窗展示BOM展开/可用量/替代料，可调实领数量）
 const pickPreviewVisible = ref(false)
 const pickPreviewOrder = ref<any>(null)
+// 2026-09-08 部分领料修正：工单已有领料单 → 追加补领模式；没有 → 首张领料单模式
+const pickMode = ref<'first' | 'append'>('first')
 
 async function handlePickMaterial(order: any) {
+  pickMode.value = 'first'
+  try {
+    const { materialPickApi } = await import('@/api/inventory/materialPick')
+    const res: any = await materialPickApi.pickCount(order.orderId)
+    if ((res?.data ?? 0) > 0) pickMode.value = 'append'
+  } catch {
+    // 查不到按首领处理，后端首领接口兜底报错
+  }
   pickPreviewOrder.value = order
   pickPreviewVisible.value = true
 }

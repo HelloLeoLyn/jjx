@@ -116,6 +116,11 @@ public class InventoryOutboundController {
         return Result.success(outboundService.createFromProduction(workOrderId, adjustedItems));
     }
 
+    @GetMapping("/pick-count/{workOrderId}")
+    public Result<Long> countPickOrders(@PathVariable Long workOrderId) {
+        return Result.success(outboundService.countPickOrders(workOrderId));
+    }
+
     @GetMapping("/pick-preview/{workOrderId}")
     @Operation(summary = "生产领料预览（BOM展开+可用量+替代料，8-18）")
     @SaCheckPermission("inventory:outbound:view")
