@@ -63,7 +63,7 @@ import { fmtQty } from '../utils'
 type WorkOrderTab = 'current' | 'history'
 type WorkOrderScope = 'mine' | 'all'
 
-defineProps<{ canViewAll: boolean }>()
+const props = defineProps<{ canViewAll: boolean }>()
 const emit = defineEmits<{
   select: [order: ProductionOrderVO | null, scope: WorkOrderScope, tab: WorkOrderTab]
 }>()
@@ -73,7 +73,8 @@ const loading = ref(false)
 const orders = ref<ProductionOrderVO[]>([])
 const total = ref(0)
 const activeTab = ref<WorkOrderTab>('current')
-const scope = ref<WorkOrderScope>('mine')
+// 有全部权限（管理/中心主任）默认看全部，否则默认我的
+const scope = ref<WorkOrderScope>(props.canViewAll ? 'all' : 'mine')
 const pageNum = ref(1)
 const pageSize = 10
 const scopeOptions = [

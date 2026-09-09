@@ -20,7 +20,11 @@
       </div>
     </div>
 
-    <WorkOrderPanel :can-view-all="canViewAll" @select="handleOrderSelect" />
+    <WorkOrderPanel
+      v-if="scopeReady"
+      :can-view-all="canViewAll"
+      @select="handleOrderSelect"
+    />
 
     <TaskTreePanel
       v-if="selectedOrder"
@@ -750,6 +754,7 @@ type AllTaskRow = TaskTreeRow
 const taskList = ref<AllTaskRow[]>([])
 const myTaskExecutionIds = ref<Set<number>>(new Set())
 const canViewAll = ref(false)
+const scopeReady = ref(false)
 const selectedOrder = ref<ProductionOrderVO | null>(null)
 const selectedScope = ref<'mine' | 'all'>('mine')
 const selectedTab = ref<'current' | 'history'>('current')
@@ -1337,6 +1342,8 @@ onMounted(async () => {
     canViewAll.value = Boolean(scope?.data?.global)
   } catch {
     canViewAll.value = false
+  } finally {
+    scopeReady.value = true
   }
 })
 </script>
