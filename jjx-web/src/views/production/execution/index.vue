@@ -38,270 +38,28 @@
       </button>
     </div>
 
-    <!-- 筛选区 -->
-    <el-card class="filter-card" shadow="never">
-      <div v-if="viewMode === 'mine'" class="filter-bar">
-        <el-input
-          v-model="mineFilterForm.keyword"
-          placeholder="工单号 / 工序 / 任务号"
-          clearable
-          style="width: 210px"
-          @keyup.enter="handleQuery"
-          @clear="handleQuery"
-        />
-        <el-select
-          v-model="mineFilterForm.status"
-          placeholder="任务状态"
-          clearable
-          style="width: 120px"
-          @change="handleQuery"
-        >
-          <el-option label="未分配" value="PENDING" />
-          <el-option label="进行中" value="ACTIVE" />
-          <el-option label="已完成" value="COMPLETED" />
-          <el-option label="已取消" value="CANCELLED" />
-        </el-select>
-        <el-button type="primary" icon="Search" @click="handleQuery">查询</el-button>
-        <el-button icon="Refresh" @click="handleReset">重置</el-button>
-      </div>
-      <div v-else class="filter-bar">
-        <el-input
-          v-model="allFilterForm.keyword"
-          placeholder="工单号 / 工序 / 任务号"
-          clearable
-          style="width: 210px"
-          @keyup.enter="handleQuery"
-          @clear="handleQuery"
-        />
-        <el-select
-          v-model="allFilterForm.status"
-          placeholder="任务状态"
-          clearable
-          style="width: 120px"
-          @change="handleQuery"
-        >
-          <el-option label="未分配" value="PENDING" />
-          <el-option label="进行中" value="ACTIVE" />
-          <el-option label="已完成" value="COMPLETED" />
-          <el-option label="已取消" value="CANCELLED" />
-        </el-select>
-        <el-button type="primary" icon="Search" @click="handleQuery">查询</el-button>
-        <el-button icon="Refresh" @click="handleReset">重置</el-button>
-      </div>
-    </el-card>
-
-    <!-- 当前工单：本人任务全量，子任务按层懒加载 -->
-    <el-card v-if="viewMode === 'mine'" class="list-card" shadow="never">
-      <el-table
-        v-loading="loading"
-        :data="myTaskList"
-        row-key="taskId"
-        :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
-        :lazy="true"
-        :load="loadTaskChildren"
-        style="width: 100%"
-      >
-        <el-table-column label="工序单号" min-width="200">
-          <template #default="{ row }">
-            <span class="task-sub">任务号：{{ row.taskNo || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="工序" min-width="180">
-          <template #default="{ row }">
-            <span class="task-sub">{{ row.processName || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="执行人" prop="assigneeName" width="120" align="right">
-          <template #default="{ row }">
-            <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
-            <el-text v-else-if="row.hasChildren" type="primary">-</el-text>
-            <span v-else class="text-muted">未分配</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="任务数量" width="100" align="right">
-          <template #default="{ row }">{{ fmtQty(row.taskQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="已完成" width="110" align="right">
-          <template #default="{ row }">
-            <el-link
-              v-if="Number(row.completedQuantity || 0) > 0"
-              type="primary"
-              underline
-              @click="openTaskCompletionDetails(row)"
-              >{{ fmtQty(row.completedQuantity) }}</el-link
-            >
-            <span v-else class="text-muted">0</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="待审批" width="100" align="right">
-          <template #default="{ row }">
-            <el-tag
-              v-if="Number(row.pendingQuantity || 0) > 0"
-              size="small"
-              type="warning"
-              effect="plain"
-              >{{ fmtQty(row.pendingQuantity) }}</el-tag
-            >
-            <span v-else class="text-muted">0</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="已分配" width="100" align="right">
-          <template #default="{ row }">{{ fmtQty(row.assignedQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="剩余" width="100" align="right">
-          <template #default="{ row }">{{ fmtQty(row.remainingQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="90"
-          ><template #default="{ row }"
-            ><el-tag size="small" :type="taskStatusTag(row.status)">{{
-              taskStatusLabel(row)
-            }}</el-tag></template
-          ></el-table-column
-        >
-        <el-table-column label="操作" min-width="300" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="Number(row.pendingQuantity || 0) > 0"
-              type="warning"
-              link
-              @click="openPendingApproval"
-              >去审批</el-button
-            >
-            <el-button
-              v-if="canReportInAllView(row)"
-              type="primary"
-              link
-              icon="EditPen"
-              v-hasPermi="['production:work-report:add']"
-              @click="openReportDialog(taskAsExecution(row), row.taskId)"
-              >报工</el-button
-            >
-            <el-button type="primary" link icon="View" @click="handleView(taskAsExecution(row))"
-              >详情</el-button
-            >
-            <el-button
-              v-if="Number(row.completedQuantity || 0) > 0"
-              type="info"
-              link
-              @click="openTaskCompletionDetails(row)"
-              >完成明细</el-button
-            >
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 历史工单：根任务分页（全量含历史），子任务按层懒加载 -->
-    <el-card v-if="viewMode === 'all'" class="list-card" shadow="never">
-      <el-table
-        v-loading="loading"
-        :data="allTaskList"
-        row-key="taskId"
-        :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
-        :lazy="true"
-        :load="loadTaskChildren"
-        style="width: 100%"
-      >
-        <el-table-column label="工序单号" min-width="200">
-          <template #default="{ row }">
-            <span class="task-sub">任务号：{{ row.taskNo || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="工序" min-width="180">
-          <template #default="{ row }">
-            <span class="task-sub">{{ row.processName || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="执行人" prop="assigneeName" width="120" align="right">
-          <template #default="{ row }">
-            <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
-            <el-text v-else-if="row.hasChildren" type="primary">-</el-text>
-            <span v-else class="text-muted">未分配</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="任务数量" width="100" align="right">
-          <template #default="{ row }">{{ fmtQty(row.taskQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="已完成" width="110" align="right">
-          <template #default="{ row }">
-            <el-link
-              v-if="Number(row.completedQuantity || 0) > 0"
-              type="primary"
-              underline
-              @click="openTaskCompletionDetails(row)"
-              >{{ fmtQty(row.completedQuantity) }}</el-link
-            >
-            <span v-else class="text-muted">0</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="待审批" width="100" align="right">
-          <template #default="{ row }">
-            <el-tag
-              v-if="Number(row.pendingQuantity || 0) > 0"
-              size="small"
-              type="warning"
-              effect="plain"
-              >{{ fmtQty(row.pendingQuantity) }}</el-tag
-            >
-            <span v-else class="text-muted">0</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="已分配" width="100" align="right">
-          <template #default="{ row }">{{ fmtQty(row.assignedQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="剩余" width="100" align="right">
-          <template #default="{ row }">{{ fmtQty(row.remainingQuantity) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag size="small" :type="taskStatusTag(row.status)">{{
-              taskStatusLabel(row)
-            }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" min-width="300" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="Number(row.pendingQuantity || 0) > 0"
-              type="warning"
-              link
-              @click="openPendingApproval"
-              >去审批</el-button
-            >
-            <el-button
-              v-if="canReportInAllView(row)"
-              type="primary"
-              link
-              icon="EditPen"
-              v-hasPermi="['production:work-report:add']"
-              @click="openReportDialog(taskAsExecution(row), row.taskId)"
-              >报工</el-button
-            >
-            <el-button type="primary" link icon="View" @click="handleView(taskAsExecution(row))"
-              >详情</el-button
-            >
-            <el-button
-              v-if="Number(row.completedQuantity || 0) > 0"
-              type="info"
-              link
-              @click="openTaskCompletionDetails(row)"
-              >完成明细</el-button
-            >
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="allQueryParams.pageNum"
-          v-model:page-size="allQueryParams.pageSize"
-          :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="getList"
-          @current-change="getList"
-        />
-      </div>
-    </el-card>
+    <TaskTreePanel
+      :key="viewMode"
+      :rows="currentTaskList"
+      :loading="loading"
+      :query="currentFilterForm"
+      :load-root="getList"
+      :load-children="loadTaskChildren"
+      :can-report="canReportInAllView"
+      :paginated="viewMode === 'all'"
+      :page-num="allQueryParams.pageNum"
+      :page-size="allQueryParams.pageSize"
+      :total="total"
+      @update:query="updateCurrentFilter"
+      @update:page-num="allQueryParams.pageNum = $event"
+      @update:page-size="allQueryParams.pageSize = $event"
+      @query="handleQuery"
+      @reset="handleReset"
+      @approval="openPendingApproval"
+      @report="handleTaskReport"
+      @detail="handleTaskView"
+      @completion="openTaskCompletionDetails"
+    />
 
     <el-dialog
       v-model="taskCompletionVisible"
@@ -361,7 +119,9 @@
         </div>
         <div class="metric-card warning">
           <span>待审批</span
-          ><strong>{{ fmtQty(detailRootTask?.pendingQuantity ?? detailForm.pendingApprovalQuantity) }}</strong>
+          ><strong>{{
+            fmtQty(detailRootTask?.pendingQuantity ?? detailForm.pendingApprovalQuantity)
+          }}</strong>
         </div>
         <div class="metric-card success">
           <span>已完成（仅已审批报工）</span
@@ -447,8 +207,12 @@
             }}</el-descriptions-item>
           </el-descriptions>
           <div class="detail-print-actions">
-            <el-button type="primary" icon="Printer" @click="openExecutionPrint('daily-report')">打印生产日报</el-button>
-            <el-button type="warning" icon="Printer" @click="openExecutionPrint('first-piece')">打印首件检查表</el-button>
+            <el-button type="primary" icon="Printer" @click="openExecutionPrint('daily-report')"
+              >打印生产日报</el-button
+            >
+            <el-button type="warning" icon="Printer" @click="openExecutionPrint('first-piece')"
+              >打印首件检查表</el-button
+            >
           </div>
           <div style="color: #909399; font-size: 12px; margin-top: 8px">
             数量/工时由报工记录自动汇总，不可直接编辑。
@@ -579,7 +343,9 @@
     <!-- 报工详情弹窗 -->
     <el-dialog v-model="reportDetailVisible" title="报工详情" width="460px" append-to-body>
       <el-descriptions v-if="reportDetail" :column="1" border size="small">
-        <el-descriptions-item label="报工单号">{{ reportDetail.reportNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="报工单号">{{
+          reportDetail.reportNo || '-'
+        }}</el-descriptions-item>
         <el-descriptions-item label="报工人">{{ reportDetail.reporterName }}</el-descriptions-item>
         <el-descriptions-item label="合格数量">{{
           fmtQty(reportDetail.qualifiedQuantity)
@@ -967,16 +733,11 @@ import {
   type TaskTreeQuery,
 } from '@/api/production/task'
 import { qualityApi, type QualityVO } from '@/api/production/quality'
-import type {
-  TaskTreeRow,
-  TaskCompletionDetail,
-} from '@/types/production/task'
+import type { TaskTreeRow, TaskCompletionDetail } from '@/types/production/task'
 import type { OperationExecutionVO } from '@/types/production/operationExecution'
 import { ExecutionStatusEnum } from '@/enums/production'
-import {
-  statusLabel as taskStatusLabel,
-  statusTag as taskStatusTag,
-} from '@/views/production/dispatch/utils/taskFormatters'
+import TaskTreePanel from './components/TaskTreePanel.vue'
+import { fmtQty } from './utils'
 
 defineOptions({ name: 'ProductionExecutionList' })
 
@@ -987,10 +748,6 @@ function statusLabel(s?: number): string {
 }
 function statusTag(s?: number) {
   return s === undefined ? 'info' : ExecutionStatusEnum.getTagProps(s).type
-}
-function fmtQty(v?: number | string | null): string {
-  if (v === null || v === undefined || v === '') return '0'
-  return String(Number(v))
 }
 function fmtTime(t?: string | null): string {
   if (!t) return '-'
@@ -1009,6 +766,15 @@ const total = ref(0)
 const allQueryParams = reactive<TaskTreeQuery>({ pageNum: 1, pageSize: 10 })
 const mineFilterForm = reactive({ keyword: '', status: '' })
 const allFilterForm = reactive({ keyword: '', status: '' })
+const currentTaskList = computed(() =>
+  viewMode.value === 'mine' ? myTaskList.value : allTaskList.value
+)
+const currentFilterForm = computed(() =>
+  viewMode.value === 'mine' ? mineFilterForm : allFilterForm
+)
+const updateCurrentFilter = (query: { keyword: string; status: string }) => {
+  Object.assign(currentFilterForm.value, query)
+}
 
 const getList = async () => {
   loading.value = true
@@ -1019,14 +785,16 @@ const getList = async () => {
       myTaskExecutionIds.value = new Set(
         tasks
           .filter((task) => Number(task.remainingQuantity || 0) > 0)
-          .map((task) => task.executionId),
+          .map((task) => task.executionId)
       )
       const keyword = mineFilterForm.keyword.trim().toLowerCase()
       myTaskList.value = tasks.filter((task) => {
         const matchesKeyword =
           !keyword ||
           [task.orderNo, task.processName, task.taskNo].some((value) =>
-            String(value || '').toLowerCase().includes(keyword),
+            String(value || '')
+              .toLowerCase()
+              .includes(keyword)
           )
         return matchesKeyword && (!mineFilterForm.status || task.status === mineFilterForm.status)
       })
@@ -1045,7 +813,7 @@ const getList = async () => {
       myTaskExecutionIds.value = new Set(
         (myTasksResult?.data || [])
           .filter((task: TaskTreeRow) => Number(task.remainingQuantity || 0) > 0)
-          .map((task: TaskTreeRow) => task.executionId),
+          .map((task: TaskTreeRow) => task.executionId)
       )
     } catch {
       myTaskExecutionIds.value = new Set()
@@ -1068,7 +836,7 @@ const switchView = (mode: 'mine' | 'all') => {
 const loadTaskChildren = async (
   row: AllTaskRow,
   _treeNode: unknown,
-  resolve: (children: AllTaskRow[]) => void,
+  resolve: (children: AllTaskRow[]) => void
 ) => {
   try {
     const result: any = await getTaskChildren(row.taskId)
@@ -1098,21 +866,19 @@ const openTaskCompletionDetails = async (row: AllTaskRow) => {
   }
 }
 const canReportInAllView = (row: AllTaskRow) =>
-  row.status === 'ACTIVE' &&
-  !!row.executionId &&
-  myTaskExecutionIds.value.has(row.executionId)
+  row.status === 'ACTIVE' && !!row.executionId && myTaskExecutionIds.value.has(row.executionId)
 const taskAsExecution = (row: AllTaskRow): OperationExecutionVO => ({
   executionId: row.executionId,
   orderNo: row.orderNo,
   processName: row.processName,
   processOrder: row.processOrder,
-  executionStatus:
-    row.status === 'ACTIVE' ? ExecutionStatusEnum.EXECUTING.value : undefined,
+  executionStatus: row.status === 'ACTIVE' ? ExecutionStatusEnum.EXECUTING.value : undefined,
   inputQuantity: row.taskQuantity,
 })
+const handleTaskReport = (row: AllTaskRow) => openReportDialog(taskAsExecution(row), row.taskId)
+const handleTaskView = (row: AllTaskRow) => handleView(taskAsExecution(row))
 const handleQuery = () => {
   if (viewMode.value === 'all') allQueryParams.pageNum = 1
-  getList()
 }
 const handleReset = () => {
   if (viewMode.value === 'all') {
@@ -1121,7 +887,6 @@ const handleReset = () => {
   } else {
     Object.assign(mineFilterForm, { keyword: '', status: '' })
   }
-  getList()
 }
 
 // ============ 详情 Drawer ============
@@ -1184,7 +949,13 @@ const goDispatchManagement = () => {
 
 const openExecutionPrint = (page: 'daily-report' | 'first-piece') => {
   if (!detailForm.executionId) return
-  window.open(router.resolve({ path: `/production/quality-print/${page}`, query: { executionId: detailForm.executionId } }).href, '_blank')
+  window.open(
+    router.resolve({
+      path: `/production/quality-print/${page}`,
+      query: { executionId: detailForm.executionId },
+    }).href,
+    '_blank'
+  )
 }
 
 // ============ 报工历史 ============
@@ -1590,16 +1361,6 @@ onMounted(async () => {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-}
-.filter-card {
-  margin-bottom: 16px;
-}
-.filter-bar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding-bottom: 8px;
-  flex-wrap: wrap;
 }
 .pagination-wrap {
   margin-top: 16px;

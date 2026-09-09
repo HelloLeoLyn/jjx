@@ -4,6 +4,7 @@
 
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-09 (dev-004) | production-execution-workbench-dev-20260909-004.md | 工序执行页工作台化+组件化（任务 1666，Step1 重构/Step2 主从壳） |
 | 2026-09-09 (dev-004) | production-execution-all-tree-dev-20260909-004.md | 工序执行「全部工序」树化试点 + 责任汇总移除（任务 1666，dev-20260909-004） |
 | 2026-09-09 (dev-002) | login-user-info-structure-dev-20260909-002.md | 登录用户信息结构理顺 + isLeader（A+B+isLeader 数据层） |
 | 2026-09-08 (dev-022) | mobile-worker-complete-role-key-fix-dev-20260908-022.md | 完工按钮角色校验失效修复（任务 1633 / dev-20260908-022） |
