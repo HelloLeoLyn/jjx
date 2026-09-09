@@ -26,7 +26,7 @@
         :class="['scope-card', { active: viewMode === 'mine' }]"
         @click="switchView('mine')"
       >
-        <strong>我的生产任务</strong><span>默认只显示与本人有效任务有关的工序</span>
+        <strong>当前生产任务</strong><span>本人持有的任务与下级展开</span>
       </button>
       <button
         v-if="canViewAll"
@@ -34,7 +34,7 @@
         :class="['scope-card', { active: viewMode === 'all' }]"
         @click="switchView('all')"
       >
-        <strong>全部工序</strong><span>查看全部工序（仅管理权限可用）</span>
+        <strong>全部工序</strong><span>全部任务与历史（仅管理权限可用）</span>
       </button>
     </div>
 

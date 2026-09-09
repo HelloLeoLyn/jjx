@@ -50,6 +50,10 @@
 - 保留 canViewAll/all 视图不动、移动端/dispatch/后端不动
 - 完成后 npx vue-tsc --noEmit 零错误 + 人工用 prod_manager 与 punch_op1 各看一遍 mine 视图
 
+## V4（2026-09-09 用户即时改向：V4 未执行）
+- 原拟删除全部工序——用户改口：全部工序保留，定位为历史（全部任务与历史记录，管理视角）；我的生产任务改名「当前生产任务」（当前工作视角）。仅文案改动 commit xxx（按钮标题与副标题），结构维持 V3（两视图同构派工树，范围不同）。
+- 后续如需：全部工序可加"仅看已结束/含已完成"过滤增强历史定位，另行评估。
+
 ## 明确不做 / 禁碰
-- 不改后端、不新增接口（复用 getMyTasks/getTaskTreePage/getTaskChildren）
+- 不改后端、不新增接口（复用 getMyTasks/getTaskChildren）
 - 不 git commit；不动工作区无关脏文件；不要顺手重构其他区块
