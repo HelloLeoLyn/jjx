@@ -158,14 +158,6 @@
               >收回</el-button
             >
             <el-button
-              v-if="allowedActions(row, 'COMPLETE')"
-              type="success"
-              link
-              icon="CircleCheck"
-              @click="handleComplete(row)"
-              >完成</el-button
-            >
-            <el-button
               v-if="allowedActions(row, 'FLOW')"
               type="info"
               link
@@ -493,7 +485,6 @@ const {
   tableRef,
   loadTreeChildren,
   refreshRowChain,
-  handleComplete,
 } = useDispatchList()
 
 // ============ 分配 Dialog（统一多选 + 拆量） ============

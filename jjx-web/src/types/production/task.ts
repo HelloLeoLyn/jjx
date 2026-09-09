@@ -29,6 +29,8 @@ export interface MyProductionExecution {
   childPendingQuantity?: number
   childProcessingQuantity: number
   pendingMyApprovalQuantity: number
+  /** 2026-09-09：是否可点「完工」（EXECUTING 且当前用户=根任务负责人或超管；服务端计算） */
+  canComplete?: boolean
 }
 
 export interface ChildProcessingRecord {

@@ -321,6 +321,9 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             if (affected == 1) {
                 log.info("报工合格量达标，任务自动完成: reportId={}, taskId={}, approvedQualified={}, taskQuantity={}",
                         report.getReportId(), report.getTaskId(), approvedQualified, task.getTaskQuantity());
+                // 2026-09-09 完成链简化（Leo 定）：中间节点自动完成——任务完成后再向上传导父链
+                // （直到根任务为止；根任务留给工序「完工」按钮收口）。失败仅告警，由完工收口兑底。
+                productionTaskService.autoCompleteAncestors(report.getTaskId());
             } else {
                 log.info("任务自动完成未命中（已完成或状态并发变化）: reportId={}, taskId={}",
                         report.getReportId(), report.getTaskId());

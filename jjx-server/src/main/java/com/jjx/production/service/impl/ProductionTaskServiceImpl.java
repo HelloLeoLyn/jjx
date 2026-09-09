@@ -21,6 +21,7 @@ import com.jjx.production.domain.vo.TaskTreeRowVO;
 import com.jjx.production.domain.vo.MyProductionExecutionVO;
 import com.jjx.production.domain.vo.ChildProcessingDetailVO;
 import com.jjx.production.enums.ProductionTaskStatus;
+import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.mapper.ProductionTaskEventMapper;
 import com.jjx.production.mapper.ProductionTaskMapper;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
@@ -288,6 +289,21 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             vo.setPendingMyApprovalQuantity(vo.getPendingMyApprovalQuantity()
                     .add(childPending.getOrDefault(child.getTaskId(), BigDecimal.ZERO)));
         }
+        // 2026-09-09 完工按钮显隐（Leo 定）：仅该工序一级负责人（根任务负责人）或超级管理员可完工
+        boolean isSuperAdmin = SecurityUtils.hasRole("admin");
+        Map<Long, Long> rootAssigneeByExecution = new HashMap<>();
+        if (!executionIds.isEmpty()) {
+            productionTaskMapper.selectList(Wrappers.<ProductionTask>lambdaQuery()
+                            .isNull(ProductionTask::getParentTaskId)
+                            .in(ProductionTask::getExecutionId, executionIds))
+                    .forEach(t -> rootAssigneeByExecution.put(t.getExecutionId(), t.getAssigneeId()));
+        }
+        Integer executingValue = ExecutionStatusEnum.EXECUTING.getValue();
+        for (MyProductionExecutionVO vo : byExecution.values()) {
+            Long rootAssigneeId = rootAssigneeByExecution.get(vo.getExecutionId());
+            boolean rootOwner = rootAssigneeId != null && rootAssigneeId.equals(userId);
+            vo.setCanComplete(executingValue.equals(vo.getExecutionStatus()) && (rootOwner || isSuperAdmin));
+        }
         result.setRecords(executionIds.stream().map(byExecution::get).filter(Objects::nonNull).toList());
         return result;
     }
@@ -454,26 +470,15 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         if (firstTask == null) {
             throw new BusinessException("该工序任务不存在，不能完工，请刷新后重试或联系管理员");
         }
-        if (!STATUS_COMPLETED.equals(firstTask.getStatus())) {
-            TaskTreeRowVO root = getDetail(firstTaskId);
-            List<String> blockers = new ArrayList<>();
-            if (root.getPendingQuantity() != null && root.getPendingQuantity().signum() > 0) {
-                blockers.add("还有 " + quantityText(root.getPendingQuantity()) + " 件报工待审批");
-            }
-            if (root.getRemainingQuantity() != null && root.getRemainingQuantity().signum() > 0) {
-                blockers.add("还有 " + quantityText(root.getRemainingQuantity()) + " 件任务未分配或未完成");
-            }
-            if (root.getAssignedQuantity() != null && root.getAssignedQuantity().signum() > 0) {
-                blockers.add("已派出的任务还有 " + quantityText(root.getAssignedQuantity()) + " 件未完成");
-            }
-            if (!withinCompletionTolerance(root.getCompletedQuantity(), root.getTaskQuantity())) {
-                blockers.add("合格数量 " + quantityText(root.getCompletedQuantity())
-                        + "，未达到计划数量 " + quantityText(root.getTaskQuantity()));
-            }
-            String owner = root.getAssigneeName();
-            blockers.add("父级任务需负责人在电脑端任务管理中确认"
-                    + (owner == null || owner.isBlank() ? "" : "（负责人：" + owner + "）"));
-            throw new BusinessException("该工序暂不能完工：\n✗ " + String.join("\n✗ ", blockers));
+        if (STATUS_COMPLETED.equals(firstTask.getStatus())) {
+            return; // 根任务已收口（历史已完成），直接放行
+        }
+        // 2026-09-09 完成链简化：不再要求「根任务已被人工 COMPLETED」，
+        // 改为校验整棵子树就绪（完成前置口径），就绪即允许工序「完工」按钮收口根任务。
+        List<String> blockers = completionBlockers(firstTask);
+        if (!blockers.isEmpty()) {
+            throw new BusinessException("该工序暂不能完工：\n✗ " + String.join("\n✗ ", blockers)
+                    + "\n（待全部完成后，由该工序一级负责人点击「完工」收口）");
         }
     }
 
@@ -836,9 +841,30 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         if (!STATUS_ACTIVE.equals(task.getStatus())) {
             throw new BusinessException("任务尚未开始，不能完成");
         }
-        // P5 完成前置（人工确认链，全部满足才允许）：
-        // subtreeCompleted == taskQuantity && subtreePending == 0 && remaining == 0
-        // && assigned 未完成责任 == 0 && 所有有效直接 Child 均已 COMPLETED
+        // P5 完成前置（人工确认链，全部满足才允许）——统一收敛到 completionBlockers()
+        List<String> blockers = completionBlockers(task);
+        if (!blockers.isEmpty()) {
+            throw new BusinessException(blockers.get(0));
+        }
+        int affected = productionTaskMapper.markCompleted(taskId, task.getVersion());
+        if (affected != 1) {
+            throw new BusinessException("任务已被其他操作修改，请刷新后重试");
+        }
+        recordEvent(taskId, null, ACTION_COMPLETE, task.getAssigneeId(), task.getAssigneeId(),
+                BigDecimal.ZERO, task.getTaskQuantity(), task.getTaskQuantity(),
+                dto == null ? null : dto.getRemark());
+    }
+
+    // ============ 2026-09-09 完成链简化（Leo 定）：中间节点自动完成 + 工序完工收口根任务 ============
+
+    /**
+     * 完成前置校验（P5 人工确认链口径，返回全部未满足项；空=可完成）。
+     * complete() / assertExecutionCompletable() / autoCompleteAncestors() / completeRootForExecution() 共用。
+     * 顺序与原 complete() 逐个 throw 一致：数量不足 → 待审批 → 未分配/未完成 → 派出未完成 → 已派任务项未完成。
+     */
+    private List<String> completionBlockers(ProductionTask task) {
+        List<String> blockers = new ArrayList<>();
+        Long taskId = task.getTaskId();
         BigDecimal childAssigned = effectiveChildSum(taskId);
         BigDecimal ownPending = pendingQuantity(task);
         BigDecimal ownCompleted = completedQuantity(task);
@@ -854,31 +880,127 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         Long incompleteChildren = productionTaskMapper.countIncompleteChildren(taskId);
         if (!withinCompletionTolerance(subtreeCompleted, task.getTaskQuantity())) {
             BigDecimal incompleteQuantity = floorZero(task.getTaskQuantity().subtract(subtreeCompleted));
-            throw new BusinessException("该任务还有 " + incompleteQuantity.stripTrailingZeros().toPlainString()
-                    + " 件未完成，请完成后再试");
+            blockers.add("还有 " + incompleteQuantity.stripTrailingZeros().toPlainString()
+                    + " 件未完成（计划 " + task.getTaskQuantity().stripTrailingZeros().toPlainString() + " 件）");
         }
         if (subtreePending.signum() > 0) {
-            throw new BusinessException("该任务还有 " + subtreePending.stripTrailingZeros().toPlainString()
-                    + " 件报工待审批，请处理后再试");
+            blockers.add("还有 " + subtreePending.stripTrailingZeros().toPlainString()
+                    + " 件报工待审批");
         }
         if (remaining.signum() > 0) {
-            throw new BusinessException("该任务还有 " + remaining.stripTrailingZeros().toPlainString()
-                    + " 件未分配或未完成，请处理后再试");
+            blockers.add("还有 " + remaining.stripTrailingZeros().toPlainString()
+                    + " 件任务未分配或未完成");
         }
         if (assignedOutstanding.signum() > 0) {
-            throw new BusinessException("已派出的任务还有 " + assignedOutstanding.stripTrailingZeros().toPlainString()
-                    + " 件未完成，请处理后再试");
+            blockers.add("已派出的任务还有 " + assignedOutstanding.stripTrailingZeros().toPlainString()
+                    + " 件未完成");
         }
         if (incompleteChildren != null && incompleteChildren > 0) {
-            throw new BusinessException("还有 " + incompleteChildren + " 项已派任务未完成，请处理后再试");
+            blockers.add("还有 " + incompleteChildren + " 项已派任务未完成");
         }
-        int affected = productionTaskMapper.markCompleted(taskId, task.getVersion());
+        return blockers;
+    }
+
+    @Override
+    public Long getRootAssigneeId(Long executionId) {
+        if (executionId == null) {
+            return null;
+        }
+        Long firstTaskId = findFirstTask(executionId);
+        if (firstTaskId == null) {
+            return null;
+        }
+        ProductionTask firstTask = productionTaskMapper.selectById(firstTaskId);
+        return firstTask == null ? null : firstTask.getAssigneeId();
+    }
+
+    /**
+     * 报工审批后向上自动完成中间节点（2026-09-09 Leo 定：中间节点自动完成，根任务等完工按钮收口）。
+     * 自底向上逐级：父任务满足完成前置（子任务全完成/达标/无待审/无剩余）→ 自动 COMPLETED，
+     * 直到根任务（parent_task_id IS NULL）为止——根任务不自动，由工序「完工」按钮收口。
+     * 乐观并发：条件 UPDATE（version + status）失败即放弃本层并停止，不阻塞审批，不抛错。
+     * 注意：本方法不声明 @Transactional——它在审批事务内被调用，内部异常由调用方 catch（只告警），
+     * 若带事务注解则异常会标记 rollback-only 导致整个审批回滚，违背"传导失败不阻断审批"的语义。
+     */
+    @Override
+    public void autoCompleteAncestors(Long taskId) {
+        if (taskId == null) {
+            return;
+        }
+        Set<Long> visited = new HashSet<>();
+        Long cursor = taskId;
+        while (cursor != null) {
+            ProductionTask cur = productionTaskMapper.selectById(cursor);
+            if (cur == null || cur.getParentTaskId() == null) {
+                break; // 无父：已是根任务或其上，不自动完成
+            }
+            Long parentId = cur.getParentTaskId();
+            if (!visited.add(parentId)) {
+                log.warn("任务链出现环，停止自动完成传导 taskId={}", taskId);
+                break;
+            }
+            ProductionTask parent = productionTaskMapper.selectById(parentId);
+            if (parent == null) {
+                break;
+            }
+            if (STATUS_COMPLETED.equals(parent.getStatus()) || STATUS_CANCELLED.equals(parent.getStatus())) {
+                cursor = parentId; // 父已终态：继续看更上层
+                continue;
+            }
+            if (parent.getParentTaskId() == null) {
+                break; // 直接父即根任务：根任务留给工序「完工」按钮收口
+            }
+            List<String> blockers = completionBlockers(parent);
+            if (!blockers.isEmpty()) {
+                break; // 父未就绪，更上层必然未就绪
+            }
+            int affected = productionTaskMapper.markCompleted(parentId, parent.getVersion());
+            if (affected != 1) {
+                log.warn("中间任务自动完成未命中（并发或状态变化）taskId={}，交由工序完工收口兜底", parentId);
+                break;
+            }
+            recordEvent(parentId, null, ACTION_COMPLETE, parent.getAssigneeId(), parent.getAssigneeId(),
+                    BigDecimal.ZERO, parent.getTaskQuantity(), parent.getTaskQuantity(),
+                    "子任务全部完成后自动完成（系统传导）");
+            cursor = parentId;
+        }
+    }
+
+    /**
+     * 工序「完工」收口根任务（2026-09-09 Leo 定）：完整校验通过后把根任务置 COMPLETED 并留痕。
+     * 幂等：根任务已终态直接返回；未就绪则抛错（调用方应先用 assertExecutionCompletable 校验）。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void completeRootForExecution(Long executionId) {
+        if (executionId == null) {
+            throw new BusinessException("executionId 不能为空");
+        }
+        Long firstTaskId = findFirstTask(executionId);
+        if (firstTaskId == null) {
+            return; // 无根任务（理论上已被 assertExecutionCompletable 拦截）
+        }
+        ProductionTask root = productionTaskMapper.selectById(firstTaskId);
+        if (root == null) {
+            return;
+        }
+        if (STATUS_COMPLETED.equals(root.getStatus()) || STATUS_CANCELLED.equals(root.getStatus())) {
+            return;
+        }
+        if (!STATUS_ACTIVE.equals(root.getStatus()) && !STATUS_PENDING.equals(root.getStatus())) {
+            return;
+        }
+        List<String> blockers = completionBlockers(root);
+        if (!blockers.isEmpty()) {
+            throw new BusinessException("根任务尚未满足完成前置：\n✗ " + String.join("\n✗ ", blockers));
+        }
+        int affected = productionTaskMapper.markCompleted(firstTaskId, root.getVersion());
         if (affected != 1) {
-            throw new BusinessException("任务已被其他操作修改，请刷新后重试");
+            throw new BusinessException("根任务状态已变化，请刷新后重试");
         }
-        recordEvent(taskId, null, ACTION_COMPLETE, task.getAssigneeId(), task.getAssigneeId(),
-                BigDecimal.ZERO, task.getTaskQuantity(), task.getTaskQuantity(),
-                dto == null ? null : dto.getRemark());
+        recordEvent(firstTaskId, null, ACTION_COMPLETE, root.getAssigneeId(), root.getAssigneeId(),
+                BigDecimal.ZERO, root.getTaskQuantity(), root.getTaskQuantity(),
+                "工序完工收口（一级负责人确认，子树全部完成）");
     }
 
     // ============ 私有方法 ============
@@ -1334,19 +1456,9 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         if (childAssigned.signum() > 0) {
             actions.add("RECALL");
         }
-        // COMPLETE：人工确认链（有效完成量达标 + 无 PENDING + 无剩余 + 无未完成下发责任 + 所有有效直接 Child 已 COMPLETED）
-        BigDecimal assignedOutstanding = floorZero(childAssigned
-                .subtract(subtreeCompleted.subtract(ownCompleted))
-                .subtract(subtreePending.subtract(ownPending)));
-        BigDecimal taskQuantity = t.getTaskQuantity() == null ? BigDecimal.ZERO : t.getTaskQuantity();
-        if (STATUS_ACTIVE.equals(t.getStatus())
-                && withinCompletionTolerance(subtreeCompleted, taskQuantity)
-                && subtreePending.signum() == 0
-                && remaining.signum() == 0
-                && assignedOutstanding.signum() == 0
-                && incompleteChildren == 0) {
-            actions.add("COMPLETE");
-        }
+        // 2026-09-09 完成链简化（Leo 定）：任务级完成动作从派工/任务列表移除——
+        // 中间节点报工后自动完成，根任务由工序执行「完工」按钮收口，COMPLETE 不再投影。
+        // （complete API 仍保留作后端兑底，但不再作为任何界面业务入口）
         return actions;
     }
 

@@ -217,7 +217,7 @@
                 >开始</el-button
               >
               <el-button
-                v-if="scope.row.operationStatus === 1"
+                v-if="scope.row.canComplete"
                 type="warning"
                 link
                 icon="Check"
@@ -402,6 +402,8 @@ interface OperationItem {
   plannedQuantity: number
   completedQuantity: number
   operationStatus: number
+  /** 2026-09-09：是否可点「完工」（服务端计算：EXECUTING 且根任务负责人/超管） */
+  canComplete?: boolean
   startTime: string
   endTime: string
   parameters: string
@@ -529,6 +531,7 @@ const getList = async () => {
         plannedQuantity: t.inputQuantity ?? 0,
         completedQuantity: t.outputQuantity ?? 0,
         operationStatus: t.executionStatus ?? 0,
+        canComplete: Boolean(t.canComplete),
         startTime: t.actualStartTime ? String(t.actualStartTime).replace('T', ' ').slice(0, 19) : '',
         endTime: t.actualEndTime ? String(t.actualEndTime).replace('T', ' ').slice(0, 19) : '',
         parameters: t.parameters || '',

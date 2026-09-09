@@ -459,7 +459,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 095：取消工单部分完工入库（产品维度，入 product_stock 表）
-        // 已完工合格品（最后一道工序合格数 finishedQuantity>0）→ 自动部分完工入库，产品库存+
+        // 已完工合格品（2026-09-09 口径Y：FQC PASS passQty，见 handleFqcPass）→ 自动部分完工入库，产品库存+
         try {
             BigDecimal finishedQty = order.getFinishedQuantity() != null ? order.getFinishedQuantity() : BigDecimal.ZERO;
             if (finishedQty.compareTo(BigDecimal.ZERO) > 0) {
@@ -879,7 +879,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
      * ① 工单状态=进行中
      * ② 全部工序已完成（执行状态=COMPLETED/SKIPPED）
      * ③ FQC质检通过（存在 result=pass 的完工质检）
-     * ④ 成品完工数量达标（finishedQuantity>0，以最后工序合格数为准，052口径）
+     * ④ 成品完工数量达标（finishedQuantity>0；2026-09-09 口径Y：成品=最新 FQC PASS 的 passQty）
      * 任一不满足拒绝完工；调用方拿失败原因提示用户
      */
     private void validateOrderCompletion(ProductionOrder order) {

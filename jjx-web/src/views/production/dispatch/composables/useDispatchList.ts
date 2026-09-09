@@ -1,21 +1,15 @@
 import { computed, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  completeTask,
-  getTaskChildren,
-  getTaskDetail,
-  getTaskTreePage,
-  type TaskTreeQuery,
-} from '@/api/production/task'
+import { ElMessage } from 'element-plus'
+import { getTaskChildren, getTaskDetail, getTaskTreePage, type TaskTreeQuery } from '@/api/production/task'
 import type { TaskTreeRow } from '@/types/production/task'
 import type { PageResult } from '@/types'
 import type { TreeRow } from '../types'
 import { useTaskTree } from './useTaskTree'
-import { orderProcessLabel } from '../utils/taskFormatters'
 
 /**
- * 第一层分页 + 筛选 + 统计 + 树懒加载 + 行刷新 + 完成操作
+ * 第一层分页 + 筛选 + 统计 + 树懒加载 + 行刷新
+ * 2026-09-09：完成操作移除——中间节点自动完成，根任务由工序执行「完工」按钮收口
  */
 export function useDispatchList() {
   const route = useRoute()
@@ -111,25 +105,6 @@ export function useDispatchList() {
     }
   }
 
-  const handleComplete = async (row: TreeRow) => {
-    try {
-      await ElMessageBox.confirm(
-        `确认完成「${orderProcessLabel(row)}」？完成后将禁止分配/退回/收回/报工。`,
-        '完成确认',
-        { type: 'warning' }
-      )
-    } catch {
-      return
-    }
-    try {
-      await completeTask(row.taskId)
-      ElMessage.success('任务已完成')
-      await refreshRowChain(row.taskId)
-    } catch (e: any) {
-      ElMessage.error(e?.message || '完成失败')
-    }
-  }
-
   return {
     loading,
     firstLevelRows,
@@ -145,6 +120,5 @@ export function useDispatchList() {
     tableRef,
     loadTreeChildren,
     refreshRowChain,
-    handleComplete,
   }
 }

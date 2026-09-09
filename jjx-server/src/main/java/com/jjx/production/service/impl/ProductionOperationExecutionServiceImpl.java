@@ -282,6 +282,27 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                         }
                     }
                 }
+            // 2026-09-09 完工按钮权限（Leo 定）：仅 EXECUTING 且当前用户=该工序根任务负责人（一级负责人）或超管可完工
+            if (!executionIds.isEmpty()) {
+                String execIdStr = executionIds.stream().map(String::valueOf)
+                        .collect(Collectors.joining(","));
+                java.util.Map<Long, Long> rootAssigneeMap = new java.util.HashMap<>();
+                try {
+                    jdbcTemplate.query("SELECT execution_id, assignee_id FROM production_task "
+                                    + "WHERE execution_id IN (" + execIdStr + ") AND parent_task_id IS NULL",
+                            rs -> rootAssigneeMap.put(rs.getLong("execution_id"),
+                                    rs.getObject("assignee_id") == null ? null : rs.getLong("assignee_id")));
+                } catch (Exception e) {
+                    log.warn("查询根任务负责人失败: {}", e.getMessage());
+                }
+                Long loginUserId = com.jjx.system.utils.SecurityUtils.getUserId();
+                boolean isSuperAdmin = com.jjx.system.utils.SecurityUtils.hasRole("admin");
+                Integer executingValue = ExecutionStatusEnum.EXECUTING.getValue();
+                for (ProductionOperationExecutionVO vo : vos) {
+                    Long owner = rootAssigneeMap.get(vo.getExecutionId());
+                    vo.setCanComplete(executingValue.equals(vo.getExecutionStatus())
+                            && ((owner != null && owner.equals(loginUserId)) || isSuperAdmin));
+                }
             }
         } catch (Exception e) {
 
@@ -478,9 +499,20 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("只有执行中的工序可以完成");
         }
 
-        // First Task COMPLETED 已由 ProductionTaskService.complete 统一保证：
-        // 整棵有效子树完成量=任务量、无 PENDING 报工、无剩余及未完成责任。
+        // 2026-09-09 完工权限（Leo 定）：仅该工序一级负责人（根任务负责人，production:all 下具体某人）或超级管理员可完工
+        Long userId = com.jjx.system.utils.SecurityUtils.getUserId();
+        Long rootAssigneeId = productionTaskService.getRootAssigneeId(executionId);
+        boolean isSuperAdmin = com.jjx.system.utils.SecurityUtils.hasRole("admin");
+        boolean isRootOwner = rootAssigneeId != null && rootAssigneeId.equals(userId);
+        if (!isRootOwner && !isSuperAdmin) {
+            throw new BusinessException(rootAssigneeId == null
+                    ? "该工序暂无一级负责人，仅超级管理员可完成工序"
+                    : "仅该工序一级负责人（或超级管理员）可完成工序，请由负责人在界面点击完工");
+        }
+
+        // 2026-09-09 完成链简化：整棵子树就绪（无待审/达标/无剩余/无未完成责任）后，由完工动作一并收口根任务（幂等）
         productionTaskService.assertExecutionCompletable(executionId);
+        productionTaskService.completeRootForExecution(executionId);
 
         LocalDateTime completedAt = LocalDateTime.now();
         boolean success = update(Wrappers.<ProductionOperationExecution>lambdaUpdate()
@@ -503,8 +535,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             qualityActionService.createFqcForExecution(executionId);
         }
 
-        // 聚合重算工单进度；与工序完工/FQC 保持同一事务，失败时统一回滚，避免状态与数量断链。
-        updateOrderCompletedQuantity(execution.getOrderId());
+        // 2026-09-09 口径Y（Leo 定）：工单成品数量（completed/finished/remaining）不再在工序完工时写入，
+        // 统一由 FQC 判定 PASS 写入（QualityActionServiceImpl.handleFqcPass，成品=质检通过数）。
+        // 此前 updateOrderCompletedQuantity 把“Σ 各工序合格数”当完成量，多工序工单被重复累加（如 5×100=500），
+        // 且 remaining=计划-Σ 出现负数——该写点已删除。
 
         log.info("工序执行完成成功, ID: {}, 是否最后有效工序: {}", executionId, unfinishedOtherExecutions == 0);
         return true;
@@ -668,43 +702,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     // ============ 私有方法 ============
 
     /**
-     * 更新生产工单的完成数量（052口径修正）
-     * completedQuantity = 各工序合格汇总（仅作进度展示，避免中间环节虚高）
-     * finishedQuantity = 成品完工数量（最后一道工序/完工检验合格数，用于完工判断/入库/订单回写）
+     * 2026-09-09 已删除：updateOrderCompletedQuantity（052 口径）——
+     * 原逻辑把“Σ 各已完成工序合格数”写入 completedQuantity，多工序工单被重复累加（5×100=500），
+     * remainingQuantity=计划-Σ 出现负数（100-500=-400），与工卡“计划/完成/剩余”展示严重背离。
+     * 成品口径已收敛（口径Y，Leo 定）：工单 completed/finished/remaining 统一由
+     * FQC 判定 PASS 写入（QualityActionServiceImpl.handleFqcPass，成品=质检通过数 passQty）。
      */
-    private void updateOrderCompletedQuantity(Long orderId) {
-        // 查询该工单下所有已完成工序的合格数量总和
-        LambdaQueryWrapper<ProductionOperationExecution> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ProductionOperationExecution::getOrderId, orderId)
-                .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getValue());
-
-        List<ProductionOperationExecution> completedExecutions = list(wrapper);
-        BigDecimal totalQualified = completedExecutions.stream()
-                .map(e -> e.getQualifiedQuantity() != null ? e.getQualifiedQuantity() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // 成品完工数量 = 最后一道工序（process_order 最大）的合格数
-        BigDecimal finishedQty = BigDecimal.ZERO;
-        ProductionOperationExecution lastOp = completedExecutions.stream()
-                .filter(e -> e.getProcessOrder() != null)
-                .max(java.util.Comparator.comparingInt(e -> e.getProcessOrder() == null ? 0 : e.getProcessOrder()))
-                .orElse(null);
-        if (lastOp != null && lastOp.getQualifiedQuantity() != null) {
-            finishedQty = lastOp.getQualifiedQuantity();
-        }
-
-        // 更新工单的完成数量
-        ProductionOrder order = productionOrderMapper.selectById(orderId);
-        if (order != null) {
-            order.setCompletedQuantity(totalQualified);
-            order.setFinishedQuantity(finishedQty);
-            if (order.getPlannedQuantity() != null) {
-                order.setRemainingQuantity(order.getPlannedQuantity().subtract(totalQualified));
-            }
-            productionOrderMapper.updateById(order);
-            log.info("更新工单 {} 完成数量: 工序汇总={}, 成品完工={}", orderId, totalQualified, finishedQty);
-        }
-    }
 
     /**
      * 构建查询条件

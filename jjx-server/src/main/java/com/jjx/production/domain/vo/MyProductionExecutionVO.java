@@ -31,4 +31,6 @@ public class MyProductionExecutionVO {
     private BigDecimal childPendingQuantity;
     private BigDecimal childProcessingQuantity;
     private BigDecimal pendingMyApprovalQuantity;
+    /** 2026-09-09：是否可点「完工」（EXECUTING 且当前用户=根任务负责人或超管；服务端计算） */
+    private Boolean canComplete;
 }

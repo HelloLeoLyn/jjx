@@ -122,6 +122,9 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "执行状态描述")
     private String executionStatusDesc;
 
+    /** 2026-09-09：是否可点「完工」（EXECUTING 且当前用户=根任务负责人或超管；服务端计算） */
+    private Boolean canComplete;
+
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
 

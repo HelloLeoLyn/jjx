@@ -55,11 +55,22 @@ public interface ProductionTaskService {
     TaskTreeRowVO getFirstTaskByExecution(Long executionId);
 
     /**
-     * 校验工序对应的 First Task 已完成。
-     * First Task 只有在整棵有效子树完成、无待审批报工、无剩余及未完成责任时才能置为 COMPLETED，
-     * 因而它是工序完成动作的统一任务树 gate。
+     * 校验工序任务树就绪（2026-09-09 简化口径：整棵子树满足完成前置即可，不再要求根任务已人工 COMPLETED）。
+     * 就绪后由工序「完工」按钮收口根任务（completeRootForExecution）。
      */
     void assertExecutionCompletable(Long executionId);
+
+    /** 工序根任务（First Task）负责人 assignee_id；无根任务/无负责人返回 null（完工权限用） */
+    Long getRootAssigneeId(Long executionId);
+
+    /**
+     * 报工审批后向上自动完成中间节点（中间节点自动完成，根任务留给工序「完工」收口）。
+     * 乐观并发：条件更新失败即停，不抛错；最终由工序完工收口兑底。
+     */
+    void autoCompleteAncestors(Long taskId);
+
+    /** 工序「完工」收口根任务：完整完成前置校验通过后置根任务 COMPLETED 并留痕（幂等） */
+    void completeRootForExecution(Long executionId);
 
     /**
      * 直接子任务（真懒加载：只查询 parent_task_id = taskId；活动树排除 CANCELLED）

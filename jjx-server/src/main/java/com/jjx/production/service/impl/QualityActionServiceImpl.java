@@ -113,22 +113,34 @@ public class QualityActionServiceImpl implements QualityActionService {
         return qualityInspectionService.getById(inspectionId);
     }
 
-    /** FQC PASS：finishedQuantity = passQty（PASS=解锁 Order complete，不自动完成） */
+    /**
+     * FQC PASS：成品口径统一写点（2026-09-09 Leo 定，口径Y）——
+     * completedQuantity = finishedQuantity = passQty（质检通过数）；
+     * remainingQuantity = max(0, plannedQuantity - passQty)。
+     * 工序完工不再直接写这三列（updateOrderCompletedQuantity 已移除），避免“Σ工序合格数”污染成品口径。
+     */
     private void handleFqcPass(ProductionQualityInspection entity, BigDecimal passQty) {
         if (entity.getOrderId() == null) return;
         try {
             ProductionOrder order = productionOrderMapper.selectById(entity.getOrderId());
             if (order != null) {
-                order.setFinishedQuantity(passQty);
+                BigDecimal pass = passQty == null ? BigDecimal.ZERO : passQty;
+                order.setFinishedQuantity(pass);
+                order.setCompletedQuantity(pass);
+                if (order.getPlannedQuantity() != null) {
+                    BigDecimal remain = order.getPlannedQuantity().subtract(pass);
+                    order.setRemainingQuantity(remain.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remain);
+                }
                 // 通过 → 清除返工标记
                 if (order.getReworkFlag() != null && order.getReworkFlag() == 1) {
                     order.setReworkFlag(0);
                 }
                 productionOrderMapper.updateById(order);
-                log.info("FQC PASS：order={} finishedQuantity={}", entity.getOrderId(), passQty);
+                log.info("FQC PASS：order={} passQty={}（成品口径：完成={}，剩余={}）",
+                        entity.getOrderId(), pass, pass, order.getRemainingQuantity());
             }
         } catch (Exception e) {
-            log.warn("FQC PASS 更新 finishedQuantity 失败: {}", e.getMessage());
+            log.warn("FQC PASS 更新成品数量失败: {}", e.getMessage());
         }
     }
 
