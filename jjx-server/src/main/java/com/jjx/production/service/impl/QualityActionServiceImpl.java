@@ -8,6 +8,7 @@ import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionQualityInspection;
 import com.jjx.production.domain.vo.QualityInspectionVO;
 import com.jjx.production.enums.ExecutionStatusEnum;
+import com.jjx.production.enums.ExecutionTypeEnum;
 import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
@@ -15,6 +16,7 @@ import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionQualityInspectionMapper;
 import com.jjx.production.service.QualityActionService;
 import com.jjx.production.service.QualityInspectionService;
+import com.jjx.production.service.ProductionTaskService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,8 @@ public class QualityActionServiceImpl implements QualityActionService {
     private final ProductionOperationExecutionMapper executionMapper;
     private final ProductionOrderMapper productionOrderMapper;
     private final QualityInspectionService qualityInspectionService;
+    private final ProductionTaskService productionTaskService;
+    private final org.springframework.beans.factory.ObjectProvider<com.jjx.inventory.service.InventoryInboundService> inventoryInboundServiceProvider;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -82,8 +86,8 @@ public class QualityActionServiceImpl implements QualityActionService {
         if (total.signum() < 0 || passQty.signum() < 0 || failQty.signum() < 0) {
             throw new BusinessException("检验/合格/不合格数量不能为负数");
         }
-        if (passQty.add(failQty).compareTo(total) > 0) {
-            throw new BusinessException("合格+不合格数量不能超过检验数量");
+        if (passQty.add(failQty).compareTo(total) != 0) {
+            throw new BusinessException("合格+不合格数量必须等于检验数量");
         }
         if (pass && passQty.signum() <= 0) {
             throw new BusinessException("判定合格时合格数量必须大于 0");
@@ -94,6 +98,10 @@ public class QualityActionServiceImpl implements QualityActionService {
         entity.setTotalQty(total);
         entity.setPassQty(passQty);
         entity.setFailQty(failQty);
+        entity.setRemainingFailQty(failQty);
+        if (failQty.signum() > 0 && entity.getDisposition() == null) {
+            entity.setDisposition(com.jjx.production.enums.QualityDispositionEnum.INTERNAL_SORT.getCode());
+        }
         entity.setDefectDesc(dto.getDefectDesc());
         entity.setRemark(dto.getRemark());
         entity.setInspector(com.jjx.system.utils.SecurityUtils.getUsername());
@@ -102,9 +110,10 @@ public class QualityActionServiceImpl implements QualityActionService {
 
         // FQC 生产联动（仅完工质检；IPQC/IQC/OQC 只记录质量事实）
         if (QualityInspectionTypeEnum.FQC.getCode().equals(entity.getInspectionType())) {
-            if (pass) {
+            if (passQty.signum() > 0) {
                 handleFqcPass(entity, passQty);
-            } else {
+            }
+            if (failQty.signum() > 0) {
                 handleFqcFail(entity);
             }
         }
@@ -125,10 +134,13 @@ public class QualityActionServiceImpl implements QualityActionService {
             ProductionOrder order = productionOrderMapper.selectById(entity.getOrderId());
             if (order != null) {
                 BigDecimal pass = passQty == null ? BigDecimal.ZERO : passQty;
-                order.setFinishedQuantity(pass);
-                order.setCompletedQuantity(pass);
+                BigDecimal finished = order.getFinishedQuantity() == null
+                        ? BigDecimal.ZERO : order.getFinishedQuantity();
+                finished = finished.add(pass);
+                order.setFinishedQuantity(finished);
+                order.setCompletedQuantity(finished);
                 if (order.getPlannedQuantity() != null) {
-                    BigDecimal remain = order.getPlannedQuantity().subtract(pass);
+                    BigDecimal remain = order.getPlannedQuantity().subtract(finished);
                     order.setRemainingQuantity(remain.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remain);
                 }
                 // 通过 → 清除返工标记
@@ -136,8 +148,12 @@ public class QualityActionServiceImpl implements QualityActionService {
                     order.setReworkFlag(0);
                 }
                 productionOrderMapper.updateById(order);
+                com.jjx.inventory.service.InventoryInboundService inboundService = inventoryInboundServiceProvider.getIfAvailable();
+                if (inboundService != null && pass.signum() > 0) {
+                    inboundService.createFromProduction(order.getOrderId(), entity.getInspectionId(), pass);
+                }
                 log.info("FQC PASS：order={} passQty={}（成品口径：完成={}，剩余={}）",
-                        entity.getOrderId(), pass, pass, order.getRemainingQuantity());
+                        entity.getOrderId(), pass, finished, order.getRemainingQuantity());
             }
         } catch (Exception e) {
             log.warn("FQC PASS 更新成品数量失败: {}", e.getMessage());
@@ -161,20 +177,7 @@ public class QualityActionServiceImpl implements QualityActionService {
                 log.warn("FQC FAIL 标记返工失败: {}", e.getMessage());
             }
         }
-        // 恢复最后有效 Execution 为 EXECUTING（报工允许 EXECUTING/PAUSED，complete 仅 EXECUTING）
-        if (entity.getExecutionId() != null) {
-            try {
-                ProductionOperationExecution exec = executionMapper.selectById(entity.getExecutionId());
-                if (exec != null && ExecutionStatusEnum.COMPLETED.getValue().equals(exec.getExecutionStatus())) {
-                    exec.setExecutionStatus(ExecutionStatusEnum.EXECUTING.getValue());
-                    exec.setActualEndTime(null);
-                    executionMapper.updateById(exec);
-                    log.warn("FQC FAIL：execution={} 恢复 EXECUTING（可继续生产/报工）", entity.getExecutionId());
-                }
-            } catch (Exception e) {
-                log.warn("FQC FAIL 恢复 execution 失败: {}", e.getMessage());
-            }
-        }
+        // 原执行保持完成，不良通过独立 REWORK 执行返工，避免污染原报工事实。
     }
 
     @Override
@@ -237,6 +240,10 @@ public class QualityActionServiceImpl implements QualityActionService {
         dto.setInspectionType(QualityInspectionTypeEnum.FQC.getCode());
         dto.setOrderId(exec.getOrderId());
         dto.setExecutionId(executionId);
+        if (ExecutionTypeEnum.REWORK.getCode().equals(exec.getExecutionType())) {
+            dto.setPreviousInspectionId(exec.getSourceInspectionId());
+            dto.setInspectionVersion(2);
+        }
         dto.setWorkReportId(null); // FQC：不绑定报工
         // productId 从订单带出（如存在）
         try {
@@ -249,5 +256,65 @@ public class QualityActionServiceImpl implements QualityActionService {
         Long fqcId = qualityInspectionService.create(dto);
         log.info("最后工序 execution={} 完成，自动创建 FQC={}", executionId, fqcId);
         return fqcId;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long disposeFqcFailure(Long inspectionId,
+            com.jjx.production.domain.dto.FqcDispositionDTO dto) {
+        ProductionQualityInspection inspection = inspectionMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionQualityInspection>()
+                        .eq(ProductionQualityInspection::getInspectionId, inspectionId)
+                        .last("FOR UPDATE"));
+        if (inspection == null || !QualityInspectionTypeEnum.FQC.getCode().equals(inspection.getInspectionType())) {
+            throw new BusinessException("FQC检验单不存在");
+        }
+        if (!QualityInspectionResultEnum.FAIL.getCode().equals(inspection.getResult())) {
+            throw new BusinessException("只有不合格FQC可执行处置");
+        }
+        BigDecimal remaining = inspection.getRemainingFailQty() == null
+                ? BigDecimal.ZERO : inspection.getRemainingFailQty();
+        if (dto.getQuantity().compareTo(remaining) > 0) {
+            throw new BusinessException("处置数量不能超过待处置不良余量" + remaining);
+        }
+        com.jjx.production.enums.QualityDispositionEnum action =
+                com.jjx.production.enums.QualityDispositionEnum.fromCode(dto.getAction());
+        if (action != com.jjx.production.enums.QualityDispositionEnum.INTERNAL_SORT
+                && action != com.jjx.production.enums.QualityDispositionEnum.SCRAP) {
+            throw new BusinessException("FQC不良仅支持内部返工或报废");
+        }
+
+        inspection.setDisposition(action.getCode());
+        inspection.setRemainingFailQty(remaining.subtract(dto.getQuantity()));
+        if (dto.getRemark() != null && !dto.getRemark().isBlank()) inspection.setRemark(dto.getRemark());
+        inspectionMapper.updateById(inspection);
+        if (action == com.jjx.production.enums.QualityDispositionEnum.SCRAP) return null;
+
+        ProductionOperationExecution source = executionMapper.selectById(inspection.getExecutionId());
+        if (source == null) throw new BusinessException("FQC未关联有效工序执行");
+        Integer maxOrder = executionMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionOperationExecution>()
+                        .eq(ProductionOperationExecution::getOrderId, inspection.getOrderId()))
+                .stream().map(ProductionOperationExecution::getProcessOrder)
+                .filter(java.util.Objects::nonNull).max(Integer::compareTo).orElse(0);
+        ProductionOperationExecution rework = new ProductionOperationExecution();
+        rework.setExecutionType(ExecutionTypeEnum.REWORK.getCode());
+        rework.setSourceInspectionId(inspectionId);
+        rework.setOrderId(source.getOrderId());
+        rework.setProcessId(source.getProcessId());
+        rework.setProcessName(source.getProcessName());
+        rework.setMajorCategory(source.getMajorCategory());
+        rework.setProcessOrder(maxOrder + 1);
+        rework.setTaskSeq(0L);
+        rework.setInputQuantity(dto.getQuantity());
+        rework.setOutputQuantity(BigDecimal.ZERO);
+        rework.setQualifiedQuantity(BigDecimal.ZERO);
+        rework.setDefectiveQuantity(BigDecimal.ZERO);
+        rework.setExecutionStatus(ExecutionStatusEnum.PENDING.getValue());
+        executionMapper.insert(rework);
+        productionTaskService.createFirstTask(rework.getExecutionId(), dto.getQuantity());
+        log.info("FQC不良返工: inspectionId={}, executionId={}, quantity={}",
+                inspectionId, rework.getExecutionId(), dto.getQuantity());
+        return rework.getExecutionId();
     }
 }

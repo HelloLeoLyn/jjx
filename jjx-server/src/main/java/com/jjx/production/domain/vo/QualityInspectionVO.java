@@ -39,6 +39,7 @@ public class QualityInspectionVO {
     private BigDecimal passQty;
     /** P3-B：质量判定不合格数量（DECIMAL(18,4)） */
     private BigDecimal failQty;
+    private BigDecimal remainingFailQty;
     private String defectDesc;
     private String remark;
     private Long reviewerId;

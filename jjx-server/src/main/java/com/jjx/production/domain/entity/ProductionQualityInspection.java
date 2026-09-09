@@ -38,6 +38,8 @@ public class ProductionQualityInspection {
     private BigDecimal passQty;
     /** P3-B：质量判定不合格数量（DECIMAL(18,4)） */
     private BigDecimal failQty;
+    /** FQC 待处置不良余量 */
+    private BigDecimal remainingFailQty;
     private String defectDesc;
     private String remark;
     private Long reviewerId;

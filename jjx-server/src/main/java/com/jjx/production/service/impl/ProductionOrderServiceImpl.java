@@ -910,29 +910,30 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // ③ FQC质检通过（P3-C 重构：取最新一张 FQC，result 必须为 pass；消除 P3-A 死锁时序）
         //    死锁源已移除：completeOrder 不再创建 FQC，FQC 由最后 Execution 完成时自动创建（P3-C）
         try {
-            com.jjx.production.domain.entity.ProductionQualityInspection latestFqc =
-                    qualityInspectionMapper.selectOne(
+            java.util.List<com.jjx.production.domain.entity.ProductionQualityInspection> fqcs =
+                    qualityInspectionMapper.selectList(
                             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionQualityInspection>()
                                     .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getOrderId, order.getOrderId())
-                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode())
-                                    .orderByDesc(com.jjx.production.domain.entity.ProductionQualityInspection::getCreateTime)
-                                    .orderByDesc(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionId)
-                                    .last("LIMIT 1"));
-            if (latestFqc == null || !QualityInspectionResultEnum.PASS.getCode().equals(latestFqc.getResult())) {
-                log.warn("完工质检门[3/4]失败：工单{}无最新FQC PASS记录（最新FQC={}）",
-                        order.getOrderId(), latestFqc == null ? "无" : latestFqc.getResult());
-                blockers.add(latestFqc == null
-                        ? "尚未生成完工检验（FQC）"
-                        : "最新完工检验未通过，当前为" + QualityInspectionResultEnum.labelOf(latestFqc.getResult()));
+                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode()));
+            long pendingFqc = fqcs.stream().filter(f -> QualityInspectionResultEnum.PENDING.getCode().equals(f.getResult())).count();
+            java.math.BigDecimal unresolved = fqcs.stream()
+                    .map(com.jjx.production.domain.entity.ProductionQualityInspection::getRemainingFailQty)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+            if (fqcs.isEmpty()) blockers.add("尚未生成完工检验（FQC）");
+            if (pendingFqc > 0) blockers.add("还有" + pendingFqc + "张FQC待检");
+            if (unresolved.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                blockers.add("还有" + unresolved.stripTrailingZeros().toPlainString() + "件FQC不良未处置");
             }
         } catch (Exception e) {
             log.error("完工质检门[3/4]查询质检失败", e);
             throw new BusinessException("完工校验失败：无法读取完工检验结果，请稍后重试");
         }
         // ④ 成品完工数量达标（finishedQuantity>0）
-        if (order.getFinishedQuantity() == null || order.getFinishedQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+        if (order.getFinishedQuantity() == null || order.getPlannedQuantity() == null
+                || order.getFinishedQuantity().compareTo(order.getPlannedQuantity()) < 0) {
             log.warn("完工质检门[4/4]失败：工单{}成品完工数量为0", order.getOrderId());
-            blockers.add("成品完工数量须大于0（由FQC合格数量回写）");
+            blockers.add("成品FQC累计合格数量未达计划数量");
         }
         if (!blockers.isEmpty()) {
             throw new BusinessException("完工校验不通过：" + String.join("；", blockers));

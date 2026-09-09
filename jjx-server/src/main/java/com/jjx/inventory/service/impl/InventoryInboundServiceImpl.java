@@ -1399,6 +1399,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Transactional(rollbackFor = Exception.class)
     @Event(value = "inventory.inbound.created_from_production", bizId = "#workOrderId", bizType = "'inventory'")
     public Long createFromProduction(Long workOrderId) {
+        return createFromProduction(workOrderId, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFromProduction(Long workOrderId, Long inspectionId, BigDecimal inspectedPassQty) {
         log.info("从生产工单创建入库单: workOrderId={}", workOrderId);
 
         // 1. 查询生产工单
@@ -1409,7 +1415,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // DEV-936（2026-08-12）：工单未完工禁止生成完工入库单（与 DEV-053 完工质检门一致），
         // 否则 finishedQuantity=0 导致入库数量记 0、库存不入账
-        if (!com.jjx.production.enums.ProductionOrderStatusEnum.COMPLETED.getValue().equals(prodOrder.getOrderStatus())) {
+        if (inspectionId == null && !com.jjx.production.enums.ProductionOrderStatusEnum.COMPLETED.getValue().equals(prodOrder.getOrderStatus())) {
             String statusName = "状态码" + prodOrder.getOrderStatus();
             try {
                 var pe = com.jjx.production.enums.ProductionOrderStatusEnum.getByValue(prodOrder.getOrderStatus());
@@ -1419,7 +1425,20 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         // 2. 创建入库单
-        String inboundNo = "FINISH-" + prodOrder.getOrderNo();
+        if (inspectionId == null) {
+            Long partialCount = inboundOrderMapper.selectCount(
+                    new LambdaQueryWrapper<InventoryInboundOrder>()
+                            .eq(InventoryInboundOrder::getSourceType, "PRODUCTION")
+                            .eq(InventoryInboundOrder::getSourceId, workOrderId)
+                            .likeRight(InventoryInboundOrder::getInboundNo, "FINISH-" + prodOrder.getOrderNo() + "-FQC-"));
+            if (partialCount != null && partialCount > 0) {
+                log.info("工单{}已按FQC分批入库，完工时不再重复入库", workOrderId);
+                return null;
+            }
+        }
+        String inboundNo = inspectionId == null
+                ? "FINISH-" + prodOrder.getOrderNo()
+                : "FINISH-" + prodOrder.getOrderNo() + "-FQC-" + inspectionId;
         LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()
                 .eq(InventoryInboundOrder::getInboundNo, inboundNo);
         if (inboundOrderMapper.selectCount(existCheck) > 0) {
@@ -1463,7 +1482,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundItem.setMaterialCode(materialCode);
         inboundItem.setMaterialName(materialName);
         // 068定稿：入库产品数量=最后一道工序/完工检验合格数（052口径 finishedQuantity，非工序汇总 completedQuantity）
-        BigDecimal inboundQty = (prodOrder.getFinishedQuantity() != null && prodOrder.getFinishedQuantity().compareTo(BigDecimal.ZERO) > 0)
+        BigDecimal inboundQty = inspectedPassQty != null ? inspectedPassQty
+                : (prodOrder.getFinishedQuantity() != null && prodOrder.getFinishedQuantity().compareTo(BigDecimal.ZERO) > 0)
                 ? prodOrder.getFinishedQuantity()
                 : (prodOrder.getCompletedQuantity() != null ? prodOrder.getCompletedQuantity() : prodOrder.getPlannedQuantity());
         inboundItem.setQuantity(inboundQty);

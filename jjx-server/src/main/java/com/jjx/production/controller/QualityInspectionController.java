@@ -78,6 +78,14 @@ public class QualityInspectionController {
         return Result.success(qualityActionService.reinspect(id));
     }
 
+    @Operation(summary = "处置FQC不良：返工或报废")
+    @SaCheckPermission("production:quality:judge")
+    @PostMapping("/{id}/disposition")
+    public Result<Long> disposeFailure(@PathVariable Long id,
+            @jakarta.validation.Valid @RequestBody com.jjx.production.domain.dto.FqcDispositionDTO dto) {
+        return Result.success(qualityActionService.disposeFqcFailure(id, dto));
+    }
+
     @Operation(summary = "创建质检（IPQC 可带 workReportId，P3-C；后端反查校验一致性）")
     @PostMapping("/inspection")
     public Result<Long> createInspection(@RequestBody QualityInspectionCreateDTO dto) {

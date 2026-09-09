@@ -124,6 +124,9 @@
           <el-table-column label="不合格" width="90" align="right">
             <template #default="{ row }">{{ fmtQty(row.failQty) }}</template>
           </el-table-column>
+          <el-table-column label="待处置不良" width="110" align="right">
+            <template #default="{ row }">{{ fmtQty(row.remainingFailQty) }}</template>
+          </el-table-column>
           <el-table-column label="结果" width="90">
             <template #default="{ row }">
               <el-tag size="small" :type="resultTag(row.result)">{{ resultLabel(row.result) }}</el-tag>
@@ -139,6 +142,8 @@
             <template #default="{ row }">
               <el-button v-if="row.result === 'pending'" v-hasPermi="['production:quality:judge']" link type="primary" size="small" @click="openJudge(row)">判定</el-button>
               <el-button v-if="row.result === 'pass' || row.result === 'fail'" v-hasPermi="['production:quality:judge']" link type="warning" size="small" @click="openReinspect(row)">复检</el-button>
+              <el-button v-if="row.inspectionType === InspectionType.FQC && Number(row.remainingFailQty || 0) > 0" v-hasPermi="['production:quality:judge']" link type="warning" size="small" @click="disposeFailure(row, QualityDisposition.INTERNAL_SORT)">返工</el-button>
+              <el-button v-if="row.inspectionType === InspectionType.FQC && Number(row.remainingFailQty || 0) > 0" v-hasPermi="['production:quality:judge']" link type="danger" size="small" @click="disposeFailure(row, QualityDisposition.SCRAP)">报废</el-button>
               <el-button link type="info" size="small" @click="openDetail(row)">详情</el-button>
               <el-button v-if="row.inspectionType === InspectionType.FQC" link type="primary" size="small" @click="openLinkedPrint('fqc-report', row)">打印成品检验报告</el-button>
               <el-button v-if="row.inspectionType === InspectionType.FQC && row.result === InspectionResult.FAIL" link type="danger" size="small" @click="openLinkedPrint('rework-form', row)">打印返工返修单</el-button>
@@ -245,6 +250,8 @@
           <el-descriptions-item label="检验数量">{{ fmtQty(detailRow.totalQty) }}</el-descriptions-item>
           <el-descriptions-item label="合格数量">{{ fmtQty(detailRow.passQty) }}</el-descriptions-item>
           <el-descriptions-item label="不合格数量">{{ fmtQty(detailRow.failQty) }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailRow.inspectionType === InspectionType.FQC" label="待处置不良">{{ fmtQty(detailRow.remainingFailQty) }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailRow.inspectionType === InspectionType.FQC" label="处置方式">{{ detailRow.disposition || '-' }}</el-descriptions-item>
           <el-descriptions-item label="结果">
             <el-tag size="small" :type="resultTag(detailRow.result)">{{ resultLabel(detailRow.result) }}</el-tag>
           </el-descriptions-item>
@@ -291,7 +298,7 @@ import { qualityApi, type QualityVO, type QualityJudgePayload } from '@/api/prod
 import { getProductionOrderList } from '@/api/production/order'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import { getWorkReportsByExecution } from '@/api/production/workReport'
-import { InspectionResult, InspectionResultEnum, InspectionType, InspectionTypeEnum } from '@/enums/quality'
+import { InspectionResult, InspectionResultEnum, InspectionType, InspectionTypeEnum, QualityDisposition, type FqcDisposition } from '@/enums/quality'
 
 const trendTimeRange = ref('week')
 const inspectionData = ref<QualityVO[]>([])
@@ -445,7 +452,7 @@ async function submitJudge(result: typeof InspectionResult.PASS | typeof Inspect
   const p = Number(judgeForm.passQty || 0)
   const f = Number(judgeForm.failQty || 0)
   if (t < 0 || p < 0 || f < 0) { ElMessage.warning('数量不能为负数'); return }
-  if (p + f > t) { ElMessage.warning('合格+不合格数量不能超过检验数量'); return }
+  if (p + f !== t) { ElMessage.warning('合格数量与不合格数量之和必须等于检验数量'); return }
   if (result === InspectionResult.PASS && p <= 0) { ElMessage.warning('判定合格时合格数量必须大于 0'); return }
   judging.value = true
   try {
@@ -477,6 +484,35 @@ async function openReinspect(row: QualityVO) {
     loadStats()
   } catch (e: any) {
     ElMessage.error(e?.message || '复检失败')
+  }
+}
+
+async function disposeFailure(row: QualityVO, action: FqcDisposition) {
+  const remaining = Number(row.remainingFailQty || 0)
+  const actionLabel = action === QualityDisposition.INTERNAL_SORT ? '返工' : '报废'
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `当前待处置不良数量为 ${fmtQty(remaining)}，请输入本次${actionLabel}数量`,
+      `${actionLabel}处置`,
+      {
+        inputValue: String(remaining),
+        inputPattern: /^\d+(\.\d{1,4})?$/,
+        inputErrorMessage: '请输入大于 0、最多 4 位小数的数量',
+        confirmButtonText: `确认${actionLabel}`,
+        type: action === QualityDisposition.SCRAP ? 'error' : 'warning',
+      },
+    )
+    const quantity = Number(value)
+    if (quantity <= 0 || quantity > remaining) {
+      ElMessage.warning(`处置数量必须大于 0 且不超过 ${fmtQty(remaining)}`)
+      return
+    }
+    await qualityApi.disposeFailure(row.inspectionId, { action, quantity })
+    ElMessage.success(`${actionLabel}处置成功`)
+    await Promise.all([loadPage(), loadStats()])
+  } catch (e: any) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error(e?.message || `${actionLabel}处置失败`)
   }
 }
 

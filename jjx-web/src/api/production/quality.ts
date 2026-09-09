@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
-import { InspectionResult } from '@/enums/quality'
+import { InspectionResult, type FqcDisposition } from '@/enums/quality'
 
 export interface QualityQuery {
   pageNum: number
@@ -64,6 +64,7 @@ export interface QualityVO {
   totalQty?: number
   passQty?: number
   failQty?: number
+  remainingFailQty?: number
   defectDesc?: string
   remark?: string
   reviewerId?: number
@@ -146,6 +147,9 @@ export const qualityApi = {
   /** P3-C：复检（新建 PENDING 记录，不覆盖历史） */
   reinspect(id: number) {
     return request.post<R<number>>(`/production/quality/${id}/reinspect`)
+  },
+  disposeFailure(id: number, data: { action: FqcDisposition; quantity: number; remark?: string }) {
+    return request.post<R<number | null>>(`/production/quality/${id}/disposition`, data)
   },
   update(data: any) {
     return request.put<R<void>>('/production/quality', data)

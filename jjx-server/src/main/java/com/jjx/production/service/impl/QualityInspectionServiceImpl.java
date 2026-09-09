@@ -357,6 +357,7 @@ public class QualityInspectionServiceImpl implements QualityInspectionService {
         vo.setTotalQty(e.getTotalQty());
         vo.setPassQty(e.getPassQty());
         vo.setFailQty(e.getFailQty());
+        vo.setRemainingFailQty(e.getRemainingFailQty());
         vo.setDefectDesc(e.getDefectDesc());
         vo.setRemark(e.getRemark());
         vo.setReviewerId(e.getReviewerId());

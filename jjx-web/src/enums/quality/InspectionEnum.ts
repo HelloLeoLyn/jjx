@@ -32,6 +32,21 @@ export const InspectionResultEnum = createEnum<string>({
   defaultTag: { type: 'info' },
 })
 
+export const QualityDisposition = {
+  INTERNAL_SORT: 'INTERNAL_SORT',
+  SCRAP: 'SCRAP',
+} as const
+
+export type FqcDisposition = typeof QualityDisposition[keyof typeof QualityDisposition]
+
+export const QualityDispositionEnum = createEnum<string>({
+  items: [
+    { value: QualityDisposition.INTERNAL_SORT, label: '内部返工', tagProps: { type: 'warning' } },
+    { value: QualityDisposition.SCRAP, label: '报废', tagProps: { type: 'danger' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
 export const QualityReviewStatus = {
   DRAFT: 'DRAFT',
   PENDING: 'PENDING',
@@ -52,5 +67,6 @@ export const QualityReviewStatusEnum = createEnum<string>({
 export const InspectionEnum = {
   type: InspectionTypeEnum,
   result: InspectionResultEnum,
+  disposition: QualityDispositionEnum,
   reviewStatus: QualityReviewStatusEnum,
 }

@@ -25,6 +25,12 @@ public class ProductionOperationExecution {
     @TableId(type = IdType.AUTO)
     private Long executionId;
 
+    @Schema(description = "执行类型：NORMAL/REWORK")
+    private String executionType;
+
+    @Schema(description = "返工来源FQC检验ID")
+    private Long sourceInspectionId;
+
     @Schema(description = "生产订单ID")
     private Long orderId;
 

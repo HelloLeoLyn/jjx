@@ -38,4 +38,7 @@ public interface QualityActionService {
      * @return 新质检单ID；已有 PENDING 时返回 null
      */
     Long createFqcForExecution(Long executionId);
+
+    /** 处置 FQC 不良余量：INTERNAL_SORT 创建返工执行，SCRAP 直接销账。 */
+    Long disposeFqcFailure(Long inspectionId, com.jjx.production.domain.dto.FqcDispositionDTO dto);
 }

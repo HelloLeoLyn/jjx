@@ -101,6 +101,9 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      */
     Long createFromProduction(Long workOrderId);
 
+    /** FQC单次合格数量分批完工入库。 */
+    Long createFromProduction(Long workOrderId, Long inspectionId, java.math.BigDecimal quantity);
+
     /**
      * 查询待审批的入库单
      */
