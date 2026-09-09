@@ -25,6 +25,21 @@
 - 人工：全部工序(管理账号 prod_manager)→树形展开工序→任务逐层懒加载；责任汇总按钮与视图消失；我的生产任务视图原样
 - 后端不编译（无 java 改动）
 
+## V2（用户 2026-09-09 定稿：全部工序直接参考派工管理，字段同款，操作不同）
+在第一版基础上把「全部工序」视图再收敛成派工同款：
+- 第一层数据源从 operationExecutionApi.globalList(executionList) 换成 getTaskTreePage（api/production/task.ts:37，根任务分页 parent_task_id IS NULL），行即 TaskTreeRow，不再有工序分组行；children 沿用 getTaskChildren 真懒加载（与 dispatch/index.vue 完全同构）
+- 列照抄派工管理（dispatch/index.vue 71-133 行）：任务号(工序单号)/工序/执行人/任务数量/已完成(可点完成明细)/待审批/已分配/剩余/状态 —— 列宽与对齐同派工，任务状态标签映射参照 dispatch 的 statusLabel/statusTag（PENDING/ACTIVE/COMPLETED/CANCELLED 等）
+- 操作列（与派工不同，用执行页自身操作）：
+  - 去审批（行待审批 pendingQuantity>0 或存在待审批报工时）
+  - 报工（该任务 executionId 在 myTaskExecutionIds 且工序执行中——沿用现有 canReportInAllView 思路）
+  - 详情（executionId → 打开现有执行详情弹窗 handleView 同款）
+  - 完成明细（已完成>0 时，沿用 v1 已接的完成明细弹窗）
+  - 不做：分配/退回/收回（那是派工管理的活）
+- 筛选与分页适配任务查询：全部工序视图下用 keyword（工单号/工序/任务号）+ 任务状态 + 分页（仿派工 queryParams），我的生产任务视图筛选不变；若两视图筛选控件冲突，按 viewMode 条件渲染各自控件
+- 删除全部工序视图下不再使用的执行汇总列与逻辑（设备/计划/累计合格/累计不良/累计产出等，仅在该视图使用的部分），globalList 若仅全部工序用则一并移除 import/调用
+- 保留 canViewAll 权限 gate；我的生产任务视图/移动端/dispatch 页/后端均不动
+- 完成后自跑 npx vue-tsc --noEmit 确认零错误
+
 ## 明确不做 / 禁碰
-- 不改后端、不新增接口（复用 getExecutionRootTask/getTaskChildren）
+- 不改后端、不新增接口（复用 getTaskTreePage/getTaskChildren）
 - 不 git commit；不动工作区无关脏文件；不要顺手重构其他区块
