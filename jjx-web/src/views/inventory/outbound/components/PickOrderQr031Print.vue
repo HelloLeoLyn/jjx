@@ -55,11 +55,8 @@ import { computed } from 'vue'
 import type { PickOrderPrintItemVO, PickOrderPrintVO } from '@/types/inventory/outbound'
 
 const props = defineProps<{ data: PickOrderPrintVO }>()
-const displayRows = computed<Array<PickOrderPrintItemVO | null>>(() => {
-  const rows: Array<PickOrderPrintItemVO | null> = [...(props.data.items || [])]
-  while (rows.length < 14) rows.push(null)
-  return rows
-})
+// 按实际领料明细生成行（不补空行）：实际几项材料就渲染几行
+const displayRows = computed<PickOrderPrintItemVO[]>(() => props.data.items || [])
 
 function formatNumber(value?: number, empty = '-') {
   if (value === undefined || value === null) return empty
