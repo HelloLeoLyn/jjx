@@ -4,6 +4,7 @@
 
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-09 (dev-001) | login-user-info-structure-dev-20260909-002.md | 登录用户信息结构理顺 + isLeader（A+B+isLeader 数据层） |
 | 2026-09-08 (dev-022) | mobile-worker-complete-role-key-fix-dev-20260908-022.md | 完工按钮角色校验失效修复（任务 1633 / dev-20260908-022） |
 | 2026-09-07 | purchase-to-iqc-test-report-20260907.md | 库存采购到 IQC 实测报告（2026-09-07） |
 | 2026-09-03 (dev-108) | sales-return-order-items-dev-20260903-108.md | 退货来源订单明细加载断链修复方案（任务 1315 / dev-20260903-108） |

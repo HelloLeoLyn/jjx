@@ -10,7 +10,9 @@ import java.util.Set;
 public class LoginUser {
     private Long userId;
     private String userName;
+    private String nickName;
     private String realName;
+    private String avatar;
     private Long tenantId;
     private String token;
     private String tokenName;

@@ -15,12 +15,16 @@ import com.jjx.system.domain.dto.ResetPasswordDTO;
 import com.jjx.system.domain.dto.SysUserDTO;
 import com.jjx.system.domain.dto.SysUserProfileDTO;
 import com.jjx.system.domain.dto.SysUserStatusDTO;
+import com.jjx.system.domain.entity.SysDept;
+import com.jjx.system.domain.entity.SysRole;
 import com.jjx.system.domain.entity.SysUser;
 import com.jjx.system.domain.entity.SysUserRole;
 import com.jjx.system.domain.vo.SysUserVO;
 import com.jjx.system.mapper.SysUserMapper;
 import com.jjx.system.mapper.SysUserRoleMapper;
 import com.jjx.system.service.ISysUserRoleService;
+import com.jjx.system.service.ISysDeptService;
+import com.jjx.system.service.ISysRoleService;
 import com.jjx.system.service.ISysUserService;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -39,6 +43,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     private final SysUserMapper userMapper;
     private final SysUserRoleMapper userRoleMapper;
     private final ISysUserRoleService userRoleService;
+    private final ISysDeptService deptService;
+    private final ISysRoleService roleService;
     private final SysUserConverter sysUserConverter;
 
     @Override
@@ -111,6 +117,15 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         SysUserVO userVO = sysUserConverter.toUserVO(sysUser);
         List<SysUserRole> sysUserRoles = userRoleService.selectByUserId(userId);
         userVO.setRoleIds(sysUserRoles.stream().map(SysUserRole::getRoleId).toList());
+        if (sysUser.getDeptId() != null) {
+            SysDept dept = deptService.selectDeptById(sysUser.getDeptId());
+            if (dept != null) {
+                userVO.setDeptName(dept.getDeptName());
+            }
+        }
+        userVO.setRoleNames(roleService.selectRolesByUserId(userId).stream()
+                .map(SysRole::getRoleName)
+                .toList());
         return userVO;
     }
 

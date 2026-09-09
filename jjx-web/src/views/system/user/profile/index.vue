@@ -298,8 +298,6 @@ import {
 import 'vue-cropper/dist/index.css'
 import { VueCropper } from 'vue-cropper'
 import { userApi } from '@/api/system/user'
-import { deptApi } from '@/api/system/dept'
-import { roleApi } from '@/api/system/role'
 import { useUserStore } from '@/store/modules/user'
 
 const route = useRoute()
@@ -309,62 +307,27 @@ const userStore = useUserStore()
 // ─────────── 基础数据 ───────────
 const loading = ref(true)
 const user = ref<any>({})
-const deptMap = ref<Map<number, string>>(new Map())
-const roleMap = ref<Map<number, string>>(new Map())
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 const avatarSrc = computed(() => user.value.avatar || defaultAvatar)
 
-const deptName = computed(() => {
-  if (!user.value.deptId) return ''
-  return deptMap.value.get(user.value.deptId) || ''
-})
+const deptName = computed(() => user.value.deptName || '')
 
-const roleNames = computed(() => {
-  if (!Array.isArray(user.value.roleIds)) return []
-  return user.value.roleIds
-    .map((id: number) => roleMap.value.get(id))
-    .filter((name: string | undefined): name is string => !!name)
-})
+const roleNames = computed(() => user.value.roleNames || [])
 
 const sexText = computed(() => {
   const map: Record<string, string> = { '0': '男', '1': '女', '2': '未知' }
   return map[String(user.value.sex)] || '未知'
 })
 
-// 部门树 → Map
-const convertDeptToMap = (depts: any[]): Map<number, string> => {
-  const map = new Map<number, string>()
-  const traverse = (items: any[]) => {
-    for (const item of items) {
-      if (item.id && item.deptName) map.set(item.id, item.deptName)
-      if (item.children?.length) traverse(item.children)
-    }
-  }
-  traverse(depts)
-  return map
-}
-
 // ─────────── 数据加载 ───────────
 const loadData = async () => {
   loading.value = true
   try {
-    const [userRes, deptRes, roleRes] = await Promise.all([
-      userApi.getCurrentInfo(),
-      deptApi.treeselect({}),
-      roleApi.optionselect(),
-    ])
+    const userRes = await userApi.getCurrentInfo()
     if (userRes.code === 200 && userRes.data) {
       user.value = userRes.data
       fillInfoForm()
-    }
-    if (deptRes.code === 200) {
-      deptMap.value = convertDeptToMap(deptRes.data || [])
-    }
-    if (roleRes.code === 200) {
-      roleMap.value = new Map(
-        (roleRes.data || []).map((role: any) => [role.roleId, role.roleName])
-      )
     }
   } catch (error) {
     console.error('加载个人信息失败:', error)

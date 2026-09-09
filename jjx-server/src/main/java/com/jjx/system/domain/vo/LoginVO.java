@@ -19,6 +19,7 @@ public class LoginVO {
     private Boolean isLogin;
     private List<String> roles;
     private Set<String> permissions;
+    private Boolean isLeader;
     private Long loginTime;
     private LoginUser userInfo;
 }

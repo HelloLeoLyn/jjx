@@ -3,10 +3,12 @@ package com.jjx.system.service;
 import cn.dev33.satoken.stp.SaLoginModel;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.crypto.digest.BCrypt;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.system.converter.SysUserConverter;
 import com.jjx.system.domain.dto.LoginDTO;
 import com.jjx.system.domain.dto.SmsLoginDTO;
+import com.jjx.system.domain.entity.SysDept;
 import com.jjx.system.domain.entity.SysUser;
 import com.jjx.system.domain.vo.LoginUser;
 import com.jjx.system.domain.vo.LoginVO;
@@ -24,6 +26,7 @@ public class AuthService{
     private final ISysUserService userService;
     private final ISysRoleService roleService;
     private final ISysMenuService menuService;
+    private final ISysDeptService deptService;
     private final SmsService smsService;
     private final SysUserConverter userConverter;
     public LoginVO login(LoginDTO dto) {
@@ -133,6 +136,9 @@ public class AuthService{
         vo.setToken(StpUtil.getTokenValue());
         vo.setRoles(roles);
         vo.setPermissions(permissions);
+        vo.setIsLeader(deptService.count(new LambdaQueryWrapper<SysDept>()
+                .eq(SysDept::getLeaderUserId, user.getUserId())
+                .eq(SysDept::getDelFlag, "0")) > 0);
         vo.setLoginTime(System.currentTimeMillis());
         return vo;
     }

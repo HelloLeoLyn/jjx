@@ -8,6 +8,7 @@ export interface LoginResponse {
   roles: string[]
   permissions: string[]
   isLogin: boolean
+  isLeader: boolean
 }
 export interface LoginUser {
   userId: number
@@ -36,6 +37,7 @@ export interface UserState {
   permissions: string[]
   sidebarCollapsed: boolean
   isLogin: boolean
+  isLeader: boolean
 }
 
 // 路由配置接口
@@ -123,6 +125,7 @@ export interface UserStoreReturn {
 export interface SysUser {
   userId?: number
   deptId?: number
+  deptName?: string
   userName: string
   nickName?: string
   userType?: string
@@ -201,6 +204,7 @@ export interface SysUserVO {
   avatar?: string
   status?: number
   roleIds?: number[]
+  roleNames?: string[]
 }
 
 // 角色用户查询DTO

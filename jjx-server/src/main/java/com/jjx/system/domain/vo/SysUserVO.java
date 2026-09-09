@@ -39,4 +39,7 @@ public class SysUserVO {
     private Integer status;
 
     private List<Long> roleIds;
+
+    /** 角色名称列表（展示字段） */
+    private List<String> roleNames;
 }

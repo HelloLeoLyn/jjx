@@ -11,6 +11,7 @@ export const useUserStore = defineStore('user', {
     permissions: [],
     sidebarCollapsed: false, // 侧边栏折叠状态
     isLogin: false, // 登录状态
+    isLeader: false,
   }),
 
   getters: {
@@ -94,11 +95,12 @@ export const useUserStore = defineStore('user', {
         const res = await authApi.login(loginForm)
 
         if (res.code === 200 && res.data) {
-          const { token, userInfo, roles, permissions, isLogin } = res.data
+          const { token, userInfo, roles, permissions, isLogin, isLeader } = res.data
 
           this.setToken(token)
           this.setUserInfo(userInfo)
           this.isLogin = isLogin
+          this.isLeader = !!isLeader
 
           // 优先使用登录响应中的权限
           if (permissions && Array.isArray(permissions) && permissions.length > 0) {
@@ -121,7 +123,7 @@ export const useUserStore = defineStore('user', {
           if (roles) {
             this.setRoles(roles)
           }
-          return { token, userInfo, roles, permissions, isLogin }
+          return { token, userInfo, roles, permissions, isLogin, isLeader }
         }
         return Promise.reject(new Error('登录失败'))
       } catch (error) {
@@ -142,6 +144,11 @@ export const useUserStore = defineStore('user', {
 
           // 保存用户信息
           this.setUserInfo(userInfo)
+
+          if (res.data.roles) {
+            this.setRoles(res.data.roles)
+          }
+          this.isLeader = !!res.data.isLeader
 
           // DEV-1018：刷新后从 /sessions/current 恢复权限（LoginVO 含 permissions），
           // 避免 permission.ts 恢复失败后兑底 '*' 导致权限指令全部放行
@@ -190,6 +197,7 @@ export const useUserStore = defineStore('user', {
       this.userInfo = null
       this.roles = []
       this.permissions = []
+      this.isLeader = false
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
     },
