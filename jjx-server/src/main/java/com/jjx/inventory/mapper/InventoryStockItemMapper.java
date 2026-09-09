@@ -81,4 +81,16 @@ public interface InventoryStockItemMapper extends BaseMapper<InventoryStockItem>
      */
     @Update("UPDATE inventory_stock_item SET reserved_quantity = reserved_quantity - #{quantity} WHERE item_id = #{itemId} AND reserved_quantity >= #{quantity}")
     int releaseReserved(@Param("itemId") Long itemId, @Param("quantity") BigDecimal quantity);
+
+    /**
+     * 2026-09-09 dev-20260909-001 方案A：FIFO 可用批次（行锁，领料单生成预占用，防并发超占）
+     */
+    @Select("SELECT * FROM inventory_stock_item WHERE material_id = #{materialId} AND status = 1 AND quantity - reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC FOR UPDATE")
+    List<InventoryStockItem> selectFIFOAvailableForUpdate(@Param("materialId") Long materialId);
+
+    /**
+     * 2026-09-09 dev-20260909-001 方案A：FIFO 有预占批次（行锁，取消/驳回/确认发料释放预占用）
+     */
+    @Select("SELECT * FROM inventory_stock_item WHERE material_id = #{materialId} AND status = 1 AND reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC FOR UPDATE")
+    List<InventoryStockItem> selectFIFOReservedForUpdate(@Param("materialId") Long materialId);
 }

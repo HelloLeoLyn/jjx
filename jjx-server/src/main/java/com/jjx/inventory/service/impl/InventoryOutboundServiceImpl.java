@@ -380,6 +380,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         for (InventoryOutboundItem item : outItems) {
             if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
 
+            // DEV-20260909-001 方案A：生产领料确认发料 = 预占转实扣——先释放本单预占，后续 FIFO 扣减才能扣到
+            if ("work_order".equals(order.getSourceType())) {
+                releasePickStock(item.getMaterialId(), item.getQuantity());
+            }
+
             BigDecimal remaining = item.getQuantity();
             // DEV-693：明细指定了库位 → 先按该库位 FIFO 扣减，不足再从全局 FIFO 补齐
             if (item.getLocationId() != null) {
@@ -607,6 +612,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
+        // DEV-20260909-001 方案A：取消领料单释放预占
+        if ("work_order".equals(order.getSourceType())) {
+            releasePickItems(outboundId);
+        }
+
         order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
         order.setRemark(reason);
         return outboundOrderMapper.updateById(order) > 0;
@@ -632,6 +642,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
+        // DEV-20260909-001 方案A：已驳回/已取消的领料单重新提交 → 重新预占（与生成时口径一致）
+        if ("work_order".equals(order.getSourceType())
+                && (InventoryOrderStatusEnum.REJECTED.getValue().equals(status)
+                    || InventoryOrderStatusEnum.CANCELLED.getValue().equals(status))) {
+            reservePickItems(outboundId);
+        }
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         return outboundOrderMapper.updateById(order) > 0;
     }
@@ -675,6 +691,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (!InventoryOrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus())) {
             log.error("出库单状态不正确，无法驳回: outboundId={}, status={}", outboundId, order.getOrderStatus());
             return false;
+        }
+
+        // DEV-20260909-001 方案A：驳回领料单释放预占（库存还给可用池）
+        if ("work_order".equals(order.getSourceType())) {
+            releasePickItems(outboundId);
         }
 
         order.setOrderStatus(InventoryOrderStatusEnum.REJECTED.getValue());
@@ -1045,6 +1066,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         prodOrder.setMaterialStatus(1);
         productionOrderMapper.updateById(prodOrder);
 
+        // DEV-20260909-001 方案A：生成领料单即按 FIFO 预占库存（PENDING 阶段锁货，追加预览/跨单可见已占）
+        reservePickItems(order.getOutboundId());
+
         log.info("生产领料单已生成(待发料): workOrderId={}, outboundId={}", workOrderId, order.getOutboundId());
         return order.getOutboundId();
     }
@@ -1140,6 +1164,78 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return pickedMap;
     }
 
+    /**
+     * 2026-09-09 dev-20260909-001 方案A：生成领料单（PENDING）即按 FIFO 预占库存，确认发料转实扣、取消/驳回释放。
+     * 行锁（FOR UPDATE）串行化，防并发超占；预占不足直接抛错回滚（单据不落库）。
+     */
+    private void reservePickStock(Long materialId, BigDecimal qty) {
+        if (materialId == null || qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal remaining = qty;
+        List<InventoryStockItem> fifo = stockItemMapper.selectFIFOAvailableForUpdate(materialId);
+        for (InventoryStockItem si : fifo) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+            BigDecimal batchAvail = si.getQuantity().subtract(si.getReservedQuantity());
+            if (batchAvail.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            BigDecimal reserveQty = remaining.min(batchAvail);
+            stockItemMapper.addReserved(si.getItemId(), reserveQty);
+            remaining = remaining.subtract(reserveQty);
+        }
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            throw new BusinessException("物料库存不足，预占失败，缺少: " + remaining);
+        }
+        stockMapper.refreshSummary(materialId);
+    }
+
+    /**
+     * 2026-09-09 dev-20260909-001 方案A：按 FIFO 释放本单预占并刷新汇总。
+     * 释放不足额仅告警不阻断（兼容修复前历史 PENDING 领料单无预占：确认/取消时找不到预占属正常）。
+     */
+    private void releasePickStock(Long materialId, BigDecimal qty) {
+        if (materialId == null || qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal remaining = qty;
+        List<InventoryStockItem> reservedItems = stockItemMapper.selectFIFOReservedForUpdate(materialId);
+        for (InventoryStockItem si : reservedItems) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+            BigDecimal releaseQty = remaining.min(si.getReservedQuantity());
+            if (releaseQty.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            stockItemMapper.releaseReserved(si.getItemId(), releaseQty);
+            remaining = remaining.subtract(releaseQty);
+        }
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            log.warn("释放预占不足额：materialId={}, 需释放 {}, 实际找到 {}（历史无预占单属正常）",
+                    materialId, qty, qty.subtract(remaining));
+        }
+        stockMapper.refreshSummary(materialId);
+    }
+
+    /** 单据级预占（按明细逐料） */
+    private void reservePickItems(Long outboundId) {
+        List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
+        for (InventoryOutboundItem it : items) {
+            reservePickStock(it.getMaterialId(), it.getQuantity());
+        }
+    }
+
+    /** 单据级释放预占（按明细逐料） */
+    private void releasePickItems(Long outboundId) {
+        List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
+        for (InventoryOutboundItem it : items) {
+            releasePickStock(it.getMaterialId(), it.getQuantity());
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items) {
@@ -1220,6 +1316,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         outboundOrderMapper.updateById(order);
         prodOrder.setMaterialStatus(1);
         productionOrderMapper.updateById(prodOrder);
+        // DEV-20260909-001 方案A：追加领料单生成即按 FIFO 预占库存
+        reservePickItems(order.getOutboundId());
         log.info("追加领料单已生成(待发料): workOrderId={}, outboundId={}, no={}", workOrderId, order.getOutboundId(), outboundNo);
         return order.getOutboundId();
     }
