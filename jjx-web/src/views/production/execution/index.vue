@@ -29,13 +29,6 @@
         <strong>我的生产任务</strong><span>默认只显示与本人有效任务有关的工序</span>
       </button>
       <button
-        type="button"
-        :class="['scope-card', { active: viewMode === 'responsibility' }]"
-        @click="switchView('responsibility')"
-      >
-        <strong>责任汇总</strong><span>我负责范围内含下级</span>
-      </button>
-      <button
         v-if="canViewAll"
         type="button"
         :class="['scope-card', { active: viewMode === 'all' }]"
@@ -220,158 +213,157 @@
       </div>
     </el-card>
 
-    <!-- 责任汇总：本人责任范围内包含整棵下级子树 -->
-    <el-card v-if="viewMode === 'responsibility'" class="list-card" shadow="never">
-      <el-table v-loading="loading" :data="myExecutionList" style="width: 100%">
-        <el-table-column label="工单号 / 工序" min-width="180">
-          <template #default="{ row }"
-            ><strong>{{ row.orderNo || '-' }}</strong>
-            <div>
-              {{ row.processName || '-'
-              }}<span v-if="row.processOrder"> · 序 {{ row.processOrder }}</span>
-            </div></template
-          >
-        </el-table-column>
-        <el-table-column label="工序计划数量" width="144" align="right"
-          ><template #default="{ row }">{{
-            fmtQty(row.plannedQuantity)
-          }}</template></el-table-column
-        >
-        <el-table-column width="105" align="right">
-          <template #header>
-            <el-tooltip :content="RESPONSIBILITY_CONSERVATION" placement="top">
-              <span class="summary-header"
-                >我的责任 <el-icon><QuestionFilled /></el-icon
-              ></span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }"
-            ><strong>{{ fmtQty(row.myResponsibilityQuantity) }}</strong></template
-          >
-        </el-table-column>
-        <el-table-column width="145" align="right">
-          <template #header>
-            <el-tooltip :content="RESPONSIBILITY_CONSERVATION" placement="top">
-              <span class="summary-header"
-                >已完成(含下级) <el-icon><QuestionFilled /></el-icon
-              ></span>
-            </el-tooltip>
-          </template>
+    <!-- 全部工序：工序分页，任务树按层懒加载 -->
+    <el-card v-if="viewMode === 'all'" class="list-card" shadow="never">
+      <el-table
+        v-loading="loading"
+        :data="executionList"
+        :row-key="allRowKey"
+        :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
+        :lazy="true"
+        :load="loadAllChildren"
+        style="width: 100%"
+      >
+        <el-table-column label="工单号 / 工序 / 任务号" min-width="220">
           <template #default="{ row }">
-            <span class="completed-value">{{
-              fmtQty(Number(row.myCompletedQuantity || 0) + Number(row.childCompletedQuantity || 0))
+            <template v-if="isExecutionRow(row)">
+              <strong>{{ row.orderNo || '-' }}</strong>
+              <div>
+                {{ row.processName || '-'
+                }}<span v-if="row.processOrder"> · 序 {{ row.processOrder }}</span>
+              </div>
+            </template>
+            <span v-else>{{ row.taskNo || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="设备 / 执行人" width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="isExecutionRow(row)">
+              <span v-if="row.equipmentName">{{ row.equipmentName }}</span>
+              <span v-else class="text-muted">不限</span>
+            </template>
+            <span v-else>{{ row.assigneeName || '未分配' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="计划 / 任务数量" width="120" align="right">
+          <template #default="{ row }">{{
+            fmtQty(isExecutionRow(row) ? row.inputQuantity : row.taskQuantity)
+          }}</template>
+        </el-table-column>
+        <el-table-column label="累计合格 / 已完成" width="140" align="right">
+          <template #default="{ row }">{{
+            fmtQty(isExecutionRow(row) ? row.qualifiedQuantity : row.completedQuantity)
+          }}</template>
+        </el-table-column>
+        <el-table-column label="累计不良（已审批）" width="135" align="right">
+          <template #default="{ row }">
+            <span v-if="isExecutionRow(row)">{{ fmtQty(row.defectiveQuantity) }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="累计产出 / 剩余" width="135" align="right">
+          <template #default="{ row }">{{
+            fmtQty(isExecutionRow(row) ? row.outputQuantity : row.remainingQuantity)
+          }}</template>
+        </el-table-column>
+        <el-table-column label="待审批" width="90" align="right">
+          <template #default="{ row }">
+            <span class="approval-value">{{
+              fmtQty(isExecutionRow(row) ? row.pendingApprovalQuantity : row.pendingQuantity)
             }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column width="145" align="right">
-          <template #header>
-            <el-tooltip :content="RESPONSIBILITY_CONSERVATION" placement="top">
-              <span class="summary-header"
-                >待审批(含下级) <el-icon><QuestionFilled /></el-icon
-              ></span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <span class="pending-value">{{
-              fmtQty(
-                Number(row.myPendingReviewQuantity || 0) + Number(row.childPendingQuantity || 0)
-              )
-            }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column width="120" align="right">
-          <template #header>
-            <el-tooltip :content="RESPONSIBILITY_CONSERVATION" placement="top">
-              <span class="summary-header"
-                >我的可处理 <el-icon><QuestionFilled /></el-icon
-              ></span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <span class="processable-value">{{ fmtQty(row.myProcessableQuantity) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column width="130" align="right">
-          <template #header>
-            <el-tooltip :content="RESPONSIBILITY_CONSERVATION" placement="top">
-              <span class="summary-header"
-                >下级未完成 <el-icon><QuestionFilled /></el-icon
-              ></span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <el-button
-              v-if="
-                Number(row.childProcessingQuantity || 0) - Number(row.childPendingQuantity || 0) > 0
-              "
-              class="child-link"
-              type="primary"
-              link
-              @click="openChildProcessing(row)"
-              >{{
-                fmtQty(
-                  Number(row.childProcessingQuantity || 0) - Number(row.childPendingQuantity || 0)
-                )
-              }}</el-button
-            ><span v-else class="child-value">0</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag size="small" :type="statusTag(row.executionStatus)">{{
-              statusLabel(row.executionStatus)
+            <el-tag
+              v-if="isExecutionRow(row)"
+              size="small"
+              :type="statusTag(row.executionStatus)"
+              >{{ statusLabel(row.executionStatus) }}</el-tag
+            >
+            <el-tag v-else size="small" :type="taskStatusTag(row.status)">{{
+              taskStatusLabel(row)
             }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="190" fixed="right">
+        <el-table-column label="操作" min-width="300" fixed="right">
           <template #default="{ row }">
-            <el-button
-              v-if="
-                row.executionStatus === ExecutionStatusEnum.PENDING.value &&
-                row.orderStatus === ProductionOrderStatusEnum.IN_PROGRESS.value
-              "
-              type="success"
-              link
-              icon="PlayCircle"
-              v-hasPermi="['production:operation-execution:edit']"
-              @click="handleStart(asExecution(row))"
-              >开始生产</el-button
+            <template v-if="isExecutionRow(row)">
+              <el-button
+                v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value"
+                type="success"
+                link
+                icon="PlayCircle"
+                v-hasPermi="['production:operation-execution:edit']"
+                @click="handleStart(row)"
+                >开始</el-button
+              >
+              <el-button
+                v-if="canReportInAllView(row)"
+                type="primary"
+                link
+                icon="EditPen"
+                v-hasPermi="['production:work-report:add']"
+                @click="openReportDialog(row)"
+                >报工</el-button
+              >
+              <el-button
+                v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value && !canReportInAllView(row)"
+                type="info"
+                link
+                @click="switchView('mine')"
+                >请到我的任务报工</el-button
+              >
+              <el-button
+                v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
+                type="warning"
+                link
+                icon="Pause"
+                v-hasPermi="['production:operation-execution:edit']"
+                @click="handlePause(row)"
+                >暂停</el-button
+              >
+              <el-button
+                v-if="Number(row.pendingApprovalQuantity || 0) > 0"
+                type="warning"
+                link
+                @click="openPendingApproval"
+                >去审批</el-button
+              >
+              <el-button type="primary" link icon="View" @click="handleView(row)"
+                >详情</el-button
+              >
+              <el-button
+                v-if="canCompleteExecution(row)"
+                type="success"
+                link
+                icon="Check"
+                v-hasPermi="['production:operation-execution:edit']"
+                @click="handleComplete(row)"
+                >完成</el-button
+              >
+              <el-button
+                v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
+                type="warning"
+                link
+                icon="WarningFilled"
+                v-hasPermi="['production:quality:view']"
+                @click="handleQualityCheck(row)"
+                >首检/巡检</el-button
+              >
+              <el-button
+                v-if="row.executionId"
+                type="info"
+                link
+                icon="List"
+                v-hasPermi="['production:quality:view']"
+                @click="goQualityRecords(row)"
+                >质检记录</el-button
+              >
+            </template>
+            <el-button v-else type="info" link @click="openTaskCompletionDetails(row)"
+              >完成明细</el-button
             >
-            <el-button
-              v-if="
-                row.executionStatus === ExecutionStatusEnum.PENDING.value &&
-                row.orderStatus !== ProductionOrderStatusEnum.IN_PROGRESS.value
-              "
-              type="info"
-              link
-              @click="goProductionOrder(row)"
-              >请先启动工单</el-button
-            >
-            <el-button
-              v-if="
-                Number(row.myProcessableQuantity || 0) > 0 &&
-                row.executionStatus === ExecutionStatusEnum.EXECUTING.value
-              "
-              type="primary"
-              link
-              @click="openReportDialog(asExecution(row))"
-              >报工</el-button
-            >
-            <el-button
-              v-if="Number(row.myProcessableQuantity || 0) > 0"
-              type="primary"
-              link
-              @click="goDispatchForRow(row)"
-              >分配</el-button
-            >
-            <el-button
-              v-if="Number(row.pendingMyApprovalQuantity || 0) > 0"
-              type="warning"
-              link
-              @click="openPendingApproval"
-              >去审批</el-button
-            >
-            <el-button type="info" link @click="handleView(asExecution(row))">详情</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -388,135 +380,35 @@
       </div>
     </el-card>
 
-    <!-- 全部工序：保留原 OperationExecution 视角 -->
-    <el-card v-if="viewMode === 'all'" class="list-card" shadow="never">
-      <el-table v-loading="loading" :data="executionList" style="width: 100%">
-        <el-table-column prop="orderNo" label="工单编号" width="180" show-overflow-tooltip />
-        <el-table-column label="工序" min-width="130">
-          <template #default="{ row }">
-            <span>{{ row.processName || '-' }}</span>
-            <div v-if="row.processOrder" style="font-size: 12px; color: #909399">
-              序 {{ row.processOrder }}
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="设备" width="110" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span v-if="row.equipmentName">{{ row.equipmentName }}</span>
-            <span v-else style="color: #c0c4cc">不限</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="计划数量" width="90" align="right">
-          <template #default="{ row }">{{ fmtQty(row.inputQuantity) }}</template>
-        </el-table-column>
-        <!-- 累计投影（WorkReport projection，后端提供） -->
-        <el-table-column label="累计合格（已审批）" width="135" align="right">
+    <el-dialog
+      v-model="taskCompletionVisible"
+      :title="`${taskCompletionTarget?.taskNo || '任务'} · 完成明细`"
+      width="760px"
+      append-to-body
+    >
+      <el-table v-loading="taskCompletionLoading" :data="taskCompletionList" size="small">
+        <el-table-column prop="reporterName" label="报工人" width="100" />
+        <el-table-column prop="taskAssigneeName" label="任务执行人" width="110" />
+        <el-table-column label="合格" width="80" align="right">
           <template #default="{ row }">{{ fmtQty(row.qualifiedQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="累计不良（已审批）" width="135" align="right">
+        <el-table-column label="不良" width="80" align="right">
           <template #default="{ row }">{{ fmtQty(row.defectiveQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="累计产出（已审批）" width="135" align="right">
-          <template #default="{ row }">{{ fmtQty(row.outputQuantity) }}</template>
+        <el-table-column label="完成数量" width="95" align="right">
+          <template #default="{ row }">{{ fmtQty(row.reportQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="待审批" width="90" align="right">
-          <template #default="{ row }">
-            <span class="approval-value">{{ fmtQty(row.pendingApprovalQuantity) }}</span>
-          </template>
+        <el-table-column label="报工时间" width="150">
+          <template #default="{ row }">{{ fmtTime(row.reportTime) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag size="small" :type="statusTag(row.executionStatus)">{{
-              statusLabel(row.executionStatus)
-            }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" min-width="300" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value"
-              type="success"
-              link
-              icon="PlayCircle"
-              v-hasPermi="['production:operation-execution:edit']"
-              @click="handleStart(row)"
-              >开始</el-button
-            >
-            <el-button
-              v-if="canReportInAllView(row)"
-              type="primary"
-              link
-              icon="EditPen"
-              v-hasPermi="['production:work-report:add']"
-              @click="openReportDialog(row)"
-              >报工</el-button
-            >
-            <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value && !canReportInAllView(row)"
-              type="info"
-              link
-              @click="switchView('mine')"
-              >请到我的任务报工</el-button
-            >
-            <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
-              type="warning"
-              link
-              icon="Pause"
-              v-hasPermi="['production:operation-execution:edit']"
-              @click="handlePause(row)"
-              >暂停</el-button
-            >
-            <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
-              type="primary"
-              link
-              icon="View"
-              @click="handleView(row)"
-              >详情</el-button
-            >
-            <el-button
-              v-if="[ExecutionStatusEnum.EXECUTING.value, ExecutionStatusEnum.PAUSED.value].includes(row.executionStatus)"
-              type="success"
-              link
-              icon="Check"
-              v-hasPermi="['production:operation-execution:edit']"
-              @click="handleComplete(row)"
-              >完成</el-button
-            >
-            <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
-              type="warning"
-              link
-              icon="WarningFilled"
-              v-hasPermi="['production:quality:view']"
-              @click="handleQualityCheck(row)"
-              >首检/巡检</el-button
-            >
-            <el-button
-              v-if="row.executionId"
-              type="info"
-              link
-              icon="List"
-              v-hasPermi="['production:quality:view']"
-              @click="goQualityRecords(row)"
-              >质检记录</el-button
-            >
-          </template>
-        </el-table-column>
+        <el-table-column prop="reviewerName" label="审批人" width="100" />
       </el-table>
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="queryParams.pageNum"
-          v-model:page-size="queryParams.pageSize"
-          :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="getList"
-          @current-change="getList"
-        />
-      </div>
-    </el-card>
+      <el-empty
+        v-if="!taskCompletionLoading && !taskCompletionList.length"
+        description="暂无已审批完成明细"
+        :image-size="50"
+      />
+    </el-dialog>
 
     <el-drawer v-model="childProcessingOpen" title="下级处理明细" size="760px" append-to-body>
       <div v-loading="childProcessingLoading">
@@ -1177,6 +1069,7 @@ import {
   getExecutionRootTask,
   getMyTasks,
   getTaskChildren,
+  getTaskCompletionDetails,
   getMyProductionExecutions,
   getProductionExecutionScope,
   getMyChildProcessingDetail,
@@ -1184,6 +1077,7 @@ import {
 import { qualityApi, type QualityVO } from '@/api/production/quality'
 import type {
   TaskTreeRow,
+  TaskCompletionDetail,
   MyProductionExecution,
   ChildProcessingDetail,
 } from '@/types/production/task'
@@ -1192,14 +1086,16 @@ import type {
   OperationExecutionQuery,
 } from '@/types/production/operationExecution'
 import { ExecutionStatusEnum, ProductionOrderStatusEnum } from '@/enums/production'
+import {
+  statusLabel as taskStatusLabel,
+  statusTag as taskStatusTag,
+} from '@/views/production/dispatch/utils/taskFormatters'
 
 defineOptions({ name: 'ProductionExecutionList' })
 
 const router = useRouter()
 
 const STATUS_ITEMS = ExecutionStatusEnum.items
-const RESPONSIBILITY_CONSERVATION = '责任 = 已完成 + 待审批 + 可处理 + 下级未完成'
-
 function statusLabel(s?: number): string {
   return s === undefined ? '未知' : ExecutionStatusEnum.getLabel(s)
 }
@@ -1216,10 +1112,17 @@ function fmtTime(t?: string | null): string {
 }
 
 const loading = ref(false)
-const executionList = ref<OperationExecutionVO[]>([])
+type AllExecutionRow = OperationExecutionVO & {
+  taskId?: never
+  hasChildren: true
+}
+type AllTaskRow = TaskTreeRow
+type AllTreeRow = AllExecutionRow | AllTaskRow
+
+const executionList = ref<AllExecutionRow[]>([])
 const myTaskExecutionIds = ref<Set<number>>(new Set())
 const myExecutionList = ref<MyProductionExecution[]>([])
-const viewMode = ref<'mine' | 'responsibility' | 'all'>('mine')
+const viewMode = ref<'mine' | 'all'>('mine')
 const canViewAll = ref(false)
 const childProcessingOpen = ref(false)
 const childProcessingLoading = ref(false)
@@ -1245,7 +1148,8 @@ const getList = async () => {
     const data = res?.data
     if (viewMode.value !== 'all') myExecutionList.value = data?.records || []
     else {
-      executionList.value = Array.isArray(data) ? data : data?.records || []
+      const records: OperationExecutionVO[] = Array.isArray(data) ? data : data?.records || []
+      executionList.value = records.map((row) => ({ ...row, hasChildren: true }))
       try {
         const myTasksResult: any = await getMyTasks()
         myTaskExecutionIds.value = new Set(
@@ -1264,16 +1168,59 @@ const getList = async () => {
     loading.value = false
   }
 }
-const switchView = (mode: 'mine' | 'responsibility' | 'all') => {
+const switchView = (mode: 'mine' | 'all') => {
   if (mode === 'all' && !canViewAll.value) return
   viewMode.value = mode
   queryParams.pageNum = 1
   getList()
 }
+const isExecutionRow = (row: AllTreeRow): row is AllExecutionRow => !row.taskId
+const allRowKey = (row: AllTreeRow): string =>
+  String(isExecutionRow(row) ? row.executionId : row.taskId)
+const loadAllChildren = async (
+  row: AllTreeRow,
+  _treeNode: unknown,
+  resolve: (children: AllTaskRow[]) => void,
+) => {
+  try {
+    if (isExecutionRow(row)) {
+      if (!row.executionId) return resolve([])
+      const result: any = await getExecutionRootTask(row.executionId)
+      return resolve(result?.data ? [result.data] : [])
+    }
+    const result: any = await getTaskChildren(row.taskId)
+    resolve(result?.data || [])
+  } catch (e: any) {
+    ElMessage.error(e?.message || '任务加载失败')
+    resolve([])
+  }
+}
+
+const taskCompletionVisible = ref(false)
+const taskCompletionLoading = ref(false)
+const taskCompletionTarget = ref<AllTaskRow | null>(null)
+const taskCompletionList = ref<TaskCompletionDetail[]>([])
+const openTaskCompletionDetails = async (row: AllTaskRow) => {
+  taskCompletionTarget.value = row
+  taskCompletionList.value = []
+  taskCompletionVisible.value = true
+  taskCompletionLoading.value = true
+  try {
+    const result: any = await getTaskCompletionDetails(row.taskId)
+    taskCompletionList.value = result?.data || []
+  } catch (e: any) {
+    ElMessage.error(e?.message || '完成明细加载失败')
+  } finally {
+    taskCompletionLoading.value = false
+  }
+}
 const canReportInAllView = (row: OperationExecutionVO) =>
   row.executionStatus === ExecutionStatusEnum.EXECUTING.value &&
   !!row.executionId &&
   myTaskExecutionIds.value.has(row.executionId)
+const canCompleteExecution = (row: OperationExecutionVO) =>
+  row.executionStatus === ExecutionStatusEnum.EXECUTING.value ||
+  row.executionStatus === ExecutionStatusEnum.PAUSED.value
 const asExecution = (row: MyProductionExecution): OperationExecutionVO => ({
   executionId: row.executionId,
   orderId: row.orderId,
@@ -1294,8 +1241,32 @@ const goDispatchForRow = (row: MyProductionExecution) => {
     query: { executionId: String(row.executionId), keyword: row.orderNo || '' },
   })
 }
-const goProductionOrder = (row: MyProductionExecution) => {
-  router.push({ path: '/production/order', query: { orderNo: row.orderNo || '' } })
+const goProductionOrder = async (row: MyProductionExecution) => {
+  // 2026-09-09 dev-20260909-002：点击提示通知上级（生产管理）启动工单/开始任务——
+  // 调通用接口 /common/notify-task：后端按角色发站内信 + 建待办任务（原跳转生产订单页行为已移除）
+  try {
+    await ElMessageBox.confirm(
+      `工单 ${row.orderNo}（工序：${row.processName || '-'}）尚未启动。\n确认通知上级（生产管理）启动工单并开始任务？`,
+      '请先启动工单',
+      { confirmButtonText: '通知上级', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
+    const { createNotifyTask } = await import('@/api/notification')
+    await createNotifyTask({
+      title: `【催办】请启动工单 ${row.orderNo}`,
+      content: `操作工申请启动工单 ${row.orderNo}（工序：${row.processName || '-'}），请到生产管理启动工单并开始任务。`,
+      bizType: 'production_order',
+      bizId: row.orderId,
+      priority: 'urgent',
+      // roleKeys 不传：取系统参数 notify_task_default_roles（默认 production:all,admin，可在系统设置改）
+    })
+    ElMessage.success('已通知上级，请等待生产管理启动工单')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '通知上级失败')
+  }
 }
 const openChildProcessing = async (row: MyProductionExecution) => {
   if (Number(row.childProcessingQuantity || 0) <= 0) return
@@ -1928,12 +1899,6 @@ onMounted(async () => {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
-}
-.summary-header {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  cursor: help;
 }
 .pending-value {
   color: var(--el-color-danger);
