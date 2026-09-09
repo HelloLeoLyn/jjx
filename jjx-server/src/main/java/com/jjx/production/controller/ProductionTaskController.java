@@ -113,8 +113,9 @@ public class ProductionTaskController {
     @Operation(summary = "我的任务（assignee_id = 当前登录人；可空 executionId 收窄；报工入口解析 taskId）")
     @GetMapping("/mine")
     @SaCheckPermission("production:work-report:add")
-    public Result<List<TaskTreeRowVO>> mine(@RequestParam(required = false) Long executionId) {
-        return Result.success(productionTaskService.listMyTasks(executionId));
+    public Result<List<TaskTreeRowVO>> mine(@RequestParam(required = false) Long executionId,
+                                            @RequestParam(required = false) Boolean includeCompleted) {
+        return Result.success(productionTaskService.listMyTasks(executionId, Boolean.TRUE.equals(includeCompleted)));
     }
 
     @Operation(summary = "直接子任务（懒加载：每次只查 parent_task_id = taskId 的一层，排除 CANCELLED）")

@@ -83,6 +83,11 @@ public interface ProductionTaskService {
     List<TaskTreeRowVO> listMyTasks(Long executionId);
 
     /**
+     * 我的任务（扩展）：includeCompleted=true 时保留 COMPLETED（一级负责人查看整单工序含已完工用）
+     */
+    List<TaskTreeRowVO> listMyTasks(Long executionId, boolean includeCompleted);
+
+    /**
      * 当前 Task 自身剩余数量（P3 WorkReport 接入后真实投影）：
      * remaining = taskQuantity - assignedQuantity - pendingQuantity - completedQuantity（下限 0）
      * 唯一额度边界：报工/分配/收回/退回共用。

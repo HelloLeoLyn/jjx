@@ -63,10 +63,13 @@ export function getTaskEvents(taskId: number) {
   return request.get<R<TaskEvent[]>>(`/production/tasks/${taskId}/events`)
 }
 
-// 我的任务（P6 报工入口：assignee_id = 当前登录人；可空 executionId 收窄）
-export function getMyTasks(executionId?: number) {
+// 我的任务（P6 报工入口：assignee_id = 当前登录人；可空 executionId 收窄；includeCompleted=true 保留已完工）
+export function getMyTasks(executionId?: number, includeCompleted?: boolean) {
   return request.get<R<TaskTreeRow[]>>('/production/tasks/mine', {
-    params: executionId ? { executionId } : undefined,
+    params: {
+      ...(executionId ? { executionId } : {}),
+      ...(includeCompleted ? { includeCompleted } : {}),
+    },
   })
 }
 

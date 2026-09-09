@@ -782,7 +782,7 @@ const getList = async () => {
   loading.value = true
   try {
     if (selectedScope.value === 'mine') {
-      const res: any = await getMyTasks()
+      const res: any = await getMyTasks(undefined, true)
       const tasks: AllTaskRow[] = res?.data || []
       myTaskExecutionIds.value = new Set(
         tasks

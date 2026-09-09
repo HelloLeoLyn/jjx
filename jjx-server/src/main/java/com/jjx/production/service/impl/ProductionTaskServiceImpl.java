@@ -129,7 +129,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     public Page<TaskTreeRowVO> pageAccessibleTasks(TaskTreeQueryDTO queryDTO) {
         int pageNum = queryDTO == null || queryDTO.getPageNum() == null ? 1 : queryDTO.getPageNum();
         int pageSize = queryDTO == null || queryDTO.getPageSize() == null ? 10 : queryDTO.getPageSize();
-        
+
         LambdaQueryWrapper<ProductionTask> wrapper = Wrappers.lambdaQuery();
 
         if (productionRoleResolver.isGlobalProductionScope()) {
@@ -395,6 +395,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
 
     @Override
     public List<TaskTreeRowVO> listMyTasks(Long executionId) {
+        return listMyTasks(executionId, false);
+    }
+
+    @Override
+    public List<TaskTreeRowVO> listMyTasks(Long executionId, boolean includeCompleted) {
         Long userId;
         try {
             userId = SecurityUtils.getUserId();
@@ -407,8 +412,10 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         LambdaQueryWrapper<ProductionTask> wrapper = Wrappers.<ProductionTask>lambdaQuery()
                 .eq(ProductionTask::getAssigneeId, userId)
                 .ne(ProductionTask::getStatus, STATUS_CANCELLED)
-                .ne(ProductionTask::getStatus, STATUS_COMPLETED)
                 .orderByDesc(ProductionTask::getTaskId);
+        if (!includeCompleted) {
+            wrapper.ne(ProductionTask::getStatus, STATUS_COMPLETED);
+        }
         if (executionId != null) {
             wrapper.eq(ProductionTask::getExecutionId, executionId);
         }
