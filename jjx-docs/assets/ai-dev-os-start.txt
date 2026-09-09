@@ -1,0 +1,105 @@
+你以后建议固定成这一套：
+
+cd ~/workspace/ai-dev-os
+
+
+docker compose up -d postgres orchestrator
+./services/orchestrator/scripts/start-frontend.sh
+
+然后检查：
+
+docker compose ps
+curl http://127.0.0.1:18080/api/health/readiness
+
+浏览器继续访问：
+
+http://127.0.0.1:15174
+
+这套很适合你现在日常使用。 
+
+另外记住一个红线：
+
+docker compose down
+
+可以，卷还在。
+
+但是不要随便执行：
+
+docker compose down -v
+
+因为 -v 会把 postgres-data 一起删掉，Backlog、Task、Audit 等持久化数据就可能没了。
+
+这里还有一个你需要提前知道的小问题：PostgreSQL 密码从哪里来。
+
+先看当前 Compose 里实际配置的值，不要猜。你可以执行：
+
+grep -n -A20 "postgres:" docker-compose.yml
+
+如果实际文件不是 docker-compose.yml，可以：
+
+ls | grep -E 'compose|docker'
+
+我们最终日常启动就会非常简单：
+
+cd ~/workspace/ai-dev-os
+
+
+docker compose up -d postgres
+
+
+AI_DEV_OS_POSTGRES_PASSWORD='你的密码' \
+./services/orchestrator/scripts/start-backend-postgres.sh
+
+另一个终端：
+
+./services/orchestrator/scripts/start-frontend.sh
+
+这样以后你更新 AI Dev OS 源码、重启后端，都不会因为 in-memory 把 Backlog 和 Task 清掉。
+
+
+
+按你当前采用的混合开发模式重新部署即可：
+
+  ### 1. 保持 PostgreSQL 运行
+
+  cd /home/administrator/workspace/ai-dev-os
+  docker compose up -d postgres
+
+  不要执行 docker compose down -v，数据卷 ai-dev-os_postgres-data 会保存 Backlog、Task 等数据。
+
+  ### 2. 重启后端
+lsof -ti:18080 | xargs kill -9
+  先停止旧后端进程（运行后端的终端按 Ctrl+C），再执行：
+
+  cd /home/administrator/workspace/ai-dev-os
+  AI_DEV_OS_POSTGRES_PASSWORD='ai_dev_os' \
+  ./services/orchestrator/scripts/start-backend-postgres.sh
+
+  后端地址：
+
+  http://127.0.0.1:18080
+
+  检查：
+
+  curl http://127.0.0.1:18080/api/health/readiness
+
+  ### 3. 启动或重启前端
+
+  cd /home/administrator/workspace/ai-dev-os
+  ./services/orchestrator/scripts/start-frontend.sh
+
+  前端地址：
+
+  http://127.0.0.1:15174
+
+  Vite 开发模式通常会自动加载前端修改；如果依赖或配置变化，再重启前端。
+
+  ### 4. 若本次包含数据库相关升级
+
+  建议先备份：
+
+  POSTGRES_PASSWORD='ai_dev_os' \
+  ./services/orchestrator/scripts/database/upgrade-preflight.sh \
+    --backup-dir /tmp/ai-dev-os-backups
+
+  日常后端代码更新通常只需停止并重新运行后端脚本，不需要重建 PostgreSQL，也不会丢失正式数据。

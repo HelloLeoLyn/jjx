@@ -112,13 +112,6 @@
             >报工</el-button
           >
           <el-button type="primary" link icon="View" @click="emit('detail', row)">详情</el-button>
-          <el-button
-            v-if="Number(row.completedQuantity || 0) > 0"
-            type="info"
-            link
-            @click="emit('completion', row)"
-            >完成明细</el-button
-          >
         </template>
       </el-table-column>
     </el-table>

@@ -1,0 +1,159 @@
+ Worked for 14m 22s ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+› 请检查当前 AI Dev OS 仓库的实际启动方式。
+
+  目标：
+  我要启动 AI Dev OS 后端和前端，
+  然后通过浏览器进入刚完成的 Backlog Center。
+
+  请只根据当前仓库真实配置告诉我：
+
+  1. 后端启动命令
+  2. 前端启动命令
+  3. 是否需要 PostgreSQL / Docker 等依赖
+  4. 后端实际端口
+  5. 前端实际端口
+  6. 浏览器访问地址
+  7. Backlog Center 的实际路由
+
+  先不要修改任何文件，也不要替我启动服务。
+
+
+• 我会只读检查仓库的启动脚本、Spring 配置、前端 package/Vite 配置和路由，确认真实命令与依赖；不会启动服务或修改文件。相关命令仅用于搜索和读取配置，不会产生运行时影响。
+
+• Ran pwd && rg --files -g 'README*' -g 'pom.xml' -g 'package.json' -g 'vite.config.*' -g 'application*.yml' -g 'application*.yaml' -g 'application*.properties' -g 'docker-compose*.yml' -g 'docker-compose*.yaml' -g 'compose*.yml' -g 'compose*.yaml' -g 'start*.sh' -g '!
+  │ **/target/**' -g '!**/node_modules/**' | sort
+  └ /home/administrator/workspace/ai-dev-os
+    README.md
+    … +13 lines (ctrl + t to view transcript)
+    services/orchestrator/src/main/resources/application.properties
+    services/orchestrator/src/test/resources/application-test.properties
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• 已找到仓库提供的统一启动脚本和分别启动脚本。接下来核对脚本默认参数、数据库 profile、Vite 监听端口及 /backlog 路由，避免仅依据 README 推断。读取这些文件不会启动任何进程。
+
+• Explored
+  └ Read README.md
+    Read docker-compose.yml
+    Read start-all.sh
+    Read start-backend.sh
+    Read start-frontend.sh
+    Read application.properties
+    Read application-local.properties
+    Read package.json
+    Read vite.config.ts
+    Search backlog|createWebHistory|server.port|spring.datasource|profiles.active|postgres in router
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• 当前仓库推荐的本地开发启动方式是分别运行现有脚本。
+
+  1. 后端启动命令
+
+  在仓库根目录执行：
+
+  ./services/orchestrator/scripts/start-backend.sh
+
+  该脚本实际执行 Maven Wrapper：
+
+  ./mvnw spring-boot:run \
+    -Dspring-boot.run.arguments="--server.port=18080 --spring.profiles.active=local"
+
+  配置见 services/orchestrator/scripts/start-backend.sh。
+
+  2. 前端启动命令
+
+  另开一个终端，在仓库根目录执行：
+
+  ./services/orchestrator/scripts/start-frontend.sh
+
+  该脚本实际执行：
+
+  npm run dev -- --host 127.0.0.1 --port 15174 --strictPort
+
+  如果尚未安装前端依赖，需要先执行：
+
+  cd services/orchestrator/frontend
+  npm install
+
+  配置见 services/orchestrator/scripts/start-frontend.sh 和 services/orchestrator/frontend/package.json。
+
+  也可以用仓库提供的统一命令同时启动：
+
+  ./services/orchestrator/scripts/start-all.sh
+
+  3. PostgreSQL / Docker 依赖
+
+  本地开发脚本使用：
+
+  spring.profiles.active=local
+  aidevos.persistence.type=in-memory
+
+  因此：
+
+  - 查看和操作 Backlog Center 不强制需要 PostgreSQL
+  - 不需要 Docker
+  - 数据仅保存在内存中，后端重启后消失
+  - OpenClaw 不影响 Backlog Center 基本访问
+
+  本地启动需要：
+
+  - Java 21
+  - 仓库内 Maven Wrapper
+  - Node.js
+  - npm
+  - 已安装的前端依赖
+
+  如果使用：
+
+  docker compose up --build
+
+  则会启动 PostgreSQL 17、后端和生产前端；这种方式需要 Docker。Docker 模式端口与开发模式前端端口不同。
+
+  4. 后端实际端口
+
+  18080
+
+  后端地址：
+
+  http://127.0.0.1:18080
+
+  5. 前端实际端口
+
+  本地开发脚本：
+
+  15174
+
+  Docker Compose 生产前端：
+
+  8080
+
+  6. 浏览器访问地址
+
+  使用本地开发脚本时：
+
+  http://127.0.0.1:15174
+
+  使用 Docker Compose 时：
+
+  http://127.0.0.1:8080
+
+  Vite 会把 /api 请求代理到后端 http://localhost:18080，见 services/orchestrator/frontend/vite.config.ts。
+
+  7. Backlog Center 实际路由
+
+  /backlog
+
+  本地开发完整地址：
+
+  http://127.0.0.1:15174/backlog
+
+  Docker Compose 完整地址：
+
+  http://127.0.0.1:8080/backlog
+
+  路由定义见 services/orchestrator/frontend/src/router/index.ts。
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────
