@@ -64,3 +64,21 @@ export function markAllAsRead(receiverId: number) {
 export function deleteNotification(id: number) {
   return request({ url: `/notification/${id}`, method: 'delete' })
 }
+
+// ============ 通用催办（2026-09-09 dev-20260909-002） ============
+
+export interface NotifyTaskDTO {
+  title: string
+  content?: string
+  // 目标角色 role_key 列表；不传时后端取系统参数 notify_task_default_roles（默认 production:all,admin）
+  roleKeys?: string[]
+  bizType?: string
+  bizId?: number
+  priority?: string
+  kanbanModule?: string
+}
+
+// 通用：按角色发通知 + 建待办任务（供"请先启动工单"等催办场景及其他业务复用）
+export function createNotifyTask(data: NotifyTaskDTO) {
+  return request({ url: '/common/notify-task', method: 'post', data })
+}
