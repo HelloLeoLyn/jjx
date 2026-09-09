@@ -24,12 +24,14 @@ import com.jjx.inventory.domain.InventoryOutboundOrder;
 import com.jjx.production.domain.vo.OrderStatisticsVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.enums.ProductionOrderStatusEnum;
+import com.jjx.production.enums.ProductionTaskStatus;
 import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.ProductionOrderService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -796,6 +798,16 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
         if (queryDTO.getOrderStatus() != null) {
             wrapper.eq(ProductionOrder::getOrderStatus, queryDTO.getOrderStatus());
+        }
+        if (queryDTO.getOrderStatuses() != null && !queryDTO.getOrderStatuses().isEmpty()) {
+            wrapper.in(ProductionOrder::getOrderStatus, queryDTO.getOrderStatuses());
+        }
+        if (Boolean.TRUE.equals(queryDTO.getMyAssigned())) {
+            wrapper.exists("SELECT 1 FROM production_task t "
+                    + "JOIN production_operation_execution e ON e.execution_id = t.execution_id "
+                    + "WHERE e.order_id = production_order.order_id "
+                    + "AND t.assignee_id = {0} AND t.status <> {1}", SecurityUtils.getUserId(),
+                    ProductionTaskStatus.CANCELLED.getCode());
         }
         // 2026-08-11 修复：orderType=all 表示"全部"，不得作为过滤值（否则全部视图永远查不到数据）
         if (StringUtils.isNotBlank(queryDTO.getOrderType()) && !"all".equalsIgnoreCase(queryDTO.getOrderType())) {

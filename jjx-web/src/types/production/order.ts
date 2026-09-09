@@ -184,11 +184,13 @@ export interface ProductionOrderQuery {
   productCode?: string
 
   // 类型筛选
-  orderType?: OrderType | 'all' // 订单类型
+  orderType?: OrderType | 'PLAN' | 'WORK_ORDER' | 'all' // 订单类型
   planType?: PlanType // 计划类型（计划特有）
 
   // 状态筛选
   orderStatus?: OrderStatus | '' // 统一状态
+  orderStatuses?: number[] // 多状态 IN 查询
+  myAssigned?: boolean // 仅查询当前登录人已分配任务的工单
   approvalStatus?: ApprovalStatus | '' // 审批状态
   executionStatus?: ExecutionStatus | '' // 执行状态
 

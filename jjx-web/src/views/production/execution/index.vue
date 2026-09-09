@@ -20,37 +20,22 @@
       </div>
     </div>
 
-    <div class="scope-switch" aria-label="工序执行视图">
-      <button
-        type="button"
-        :class="['scope-card', { active: viewMode === 'mine' }]"
-        @click="switchView('mine')"
-      >
-        <strong>当前工单</strong><span>本人当前工单的任务与下级展开</span>
-      </button>
-      <button
-        v-if="canViewAll"
-        type="button"
-        :class="['scope-card', { active: viewMode === 'all' }]"
-        @click="switchView('all')"
-      >
-        <strong>历史工单</strong><span>全部任务与历史（仅管理权限可用）</span>
-      </button>
-    </div>
+    <WorkOrderPanel :can-view-all="canViewAll" @select="handleOrderSelect" />
 
     <TaskTreePanel
-      :key="viewMode"
-      :rows="currentTaskList"
+      v-if="selectedOrder"
+      :key="`${selectedOrder.orderId}-${selectedScope}-${selectedTab}`"
+      :rows="taskList"
       :loading="loading"
-      :query="currentFilterForm"
+      :query="taskFilterForm"
       :load-root="getList"
       :load-children="loadTaskChildren"
       :can-report="canReportInAllView"
-      :paginated="viewMode === 'all'"
+      :paginated="selectedScope === 'all'"
       :page-num="allQueryParams.pageNum"
       :page-size="allQueryParams.pageSize"
       :total="total"
-      @update:query="updateCurrentFilter"
+      @update:query="Object.assign(taskFilterForm, $event)"
       @update:page-num="allQueryParams.pageNum = $event"
       @update:page-size="allQueryParams.pageSize = $event"
       @query="handleQuery"
@@ -60,6 +45,9 @@
       @detail="handleTaskView"
       @completion="openTaskCompletionDetails"
     />
+    <el-card v-else shadow="never">
+      <el-empty description="请选择上方工单" />
+    </el-card>
 
     <el-dialog
       v-model="taskCompletionVisible"
@@ -735,8 +723,10 @@ import {
 import { qualityApi, type QualityVO } from '@/api/production/quality'
 import type { TaskTreeRow, TaskCompletionDetail } from '@/types/production/task'
 import type { OperationExecutionVO } from '@/types/production/operationExecution'
+import type { ProductionOrderVO } from '@/types/production/order'
 import { ExecutionStatusEnum } from '@/enums/production'
 import TaskTreePanel from './components/TaskTreePanel.vue'
+import WorkOrderPanel from './components/WorkOrderPanel.vue'
 import { fmtQty } from './utils'
 
 defineOptions({ name: 'ProductionExecutionList' })
@@ -757,29 +747,36 @@ function fmtTime(t?: string | null): string {
 const loading = ref(false)
 type AllTaskRow = TaskTreeRow
 
-const allTaskList = ref<AllTaskRow[]>([])
-const myTaskList = ref<AllTaskRow[]>([])
+const taskList = ref<AllTaskRow[]>([])
 const myTaskExecutionIds = ref<Set<number>>(new Set())
-const viewMode = ref<'mine' | 'all'>('mine')
 const canViewAll = ref(false)
+const selectedOrder = ref<ProductionOrderVO | null>(null)
+const selectedScope = ref<'mine' | 'all'>('mine')
+const selectedTab = ref<'current' | 'history'>('current')
 const total = ref(0)
 const allQueryParams = reactive<TaskTreeQuery>({ pageNum: 1, pageSize: 10 })
-const mineFilterForm = reactive({ keyword: '', status: '' })
-const allFilterForm = reactive({ keyword: '', status: '' })
-const currentTaskList = computed(() =>
-  viewMode.value === 'mine' ? myTaskList.value : allTaskList.value
-)
-const currentFilterForm = computed(() =>
-  viewMode.value === 'mine' ? mineFilterForm : allFilterForm
-)
-const updateCurrentFilter = (query: { keyword: string; status: string }) => {
-  Object.assign(currentFilterForm.value, query)
+const taskFilterForm = reactive({ keyword: '', status: '' })
+
+const handleOrderSelect = (
+  order: ProductionOrderVO | null,
+  scope: 'mine' | 'all',
+  tab: 'current' | 'history'
+) => {
+  selectedOrder.value = order
+  selectedScope.value = scope
+  selectedTab.value = tab
+  allQueryParams.pageNum = 1
+  Object.assign(taskFilterForm, { keyword: '', status: '' })
+  taskList.value = []
+  total.value = 0
+  if (order) getList()
 }
 
 const getList = async () => {
+  if (!selectedOrder.value) return
   loading.value = true
   try {
-    if (viewMode.value === 'mine') {
+    if (selectedScope.value === 'mine') {
       const res: any = await getMyTasks()
       const tasks: AllTaskRow[] = res?.data || []
       myTaskExecutionIds.value = new Set(
@@ -787,8 +784,8 @@ const getList = async () => {
           .filter((task) => Number(task.remainingQuantity || 0) > 0)
           .map((task) => task.executionId)
       )
-      const keyword = mineFilterForm.keyword.trim().toLowerCase()
-      myTaskList.value = tasks.filter((task) => {
+      const keyword = taskFilterForm.keyword.trim().toLowerCase()
+      taskList.value = tasks.filter((task) => {
         const matchesKeyword =
           !keyword ||
           [task.orderNo, task.processName, task.taskNo].some((value) =>
@@ -796,18 +793,31 @@ const getList = async () => {
               .toLowerCase()
               .includes(keyword)
           )
-        return matchesKeyword && (!mineFilterForm.status || task.status === mineFilterForm.status)
+        return (
+          task.orderNo === selectedOrder.value?.orderNo &&
+          matchesKeyword &&
+          (!taskFilterForm.status || task.status === taskFilterForm.status)
+        )
       })
-      total.value = myTaskList.value.length
+      total.value = taskList.value.length
       return
     }
     const res: any = await getTaskTreePage({
       ...allQueryParams,
-      keyword: allFilterForm.keyword.trim() || undefined,
-      status: allFilterForm.status || undefined,
+      keyword: selectedOrder.value.orderNo,
+      status: taskFilterForm.status || undefined,
     })
     const data = res?.data
-    allTaskList.value = data?.records || []
+    const filterKeyword = taskFilterForm.keyword.trim().toLowerCase()
+    taskList.value = (data?.records || []).filter(
+      (task: TaskTreeRow) =>
+        !filterKeyword ||
+        [task.orderNo, task.processName, task.taskNo].some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(filterKeyword)
+        )
+    )
     try {
       const myTasksResult: any = await getMyTasks()
       myTaskExecutionIds.value = new Set(
@@ -820,18 +830,11 @@ const getList = async () => {
     }
     total.value = data?.total || 0
   } catch {
-    if (viewMode.value === 'all') allTaskList.value = []
-    else myTaskList.value = []
+    taskList.value = []
     total.value = 0
   } finally {
     loading.value = false
   }
-}
-const switchView = (mode: 'mine' | 'all') => {
-  if (mode === 'all' && !canViewAll.value) return
-  viewMode.value = mode
-  if (mode === 'all') allQueryParams.pageNum = 1
-  getList()
 }
 const loadTaskChildren = async (
   row: AllTaskRow,
@@ -878,15 +881,11 @@ const taskAsExecution = (row: AllTaskRow): OperationExecutionVO => ({
 const handleTaskReport = (row: AllTaskRow) => openReportDialog(taskAsExecution(row), row.taskId)
 const handleTaskView = (row: AllTaskRow) => handleView(taskAsExecution(row))
 const handleQuery = () => {
-  if (viewMode.value === 'all') allQueryParams.pageNum = 1
+  if (selectedScope.value === 'all') allQueryParams.pageNum = 1
 }
 const handleReset = () => {
-  if (viewMode.value === 'all') {
-    Object.assign(allFilterForm, { keyword: '', status: '' })
-    allQueryParams.pageNum = 1
-  } else {
-    Object.assign(mineFilterForm, { keyword: '', status: '' })
-  }
+  Object.assign(taskFilterForm, { keyword: '', status: '' })
+  if (selectedScope.value === 'all') allQueryParams.pageNum = 1
 }
 
 // ============ 详情 Drawer ============
@@ -1339,7 +1338,6 @@ onMounted(async () => {
   } catch {
     canViewAll.value = false
   }
-  getList()
 })
 </script>
 
@@ -1366,34 +1364,6 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
-}
-.scope-switch {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.scope-card {
-  width: 255px;
-  padding: 12px 14px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 7px;
-  background: var(--el-bg-color);
-  text-align: left;
-  cursor: pointer;
-}
-.scope-card strong,
-.scope-card span {
-  display: block;
-}
-.scope-card span {
-  margin-top: 4px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-.scope-card.active {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
 }
 .detail-header {
   display: flex;

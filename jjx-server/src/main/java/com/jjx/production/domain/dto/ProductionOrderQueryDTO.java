@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 生产订单查询DTO
@@ -44,6 +45,12 @@ public class ProductionOrderQueryDTO {
 
     @Schema(description = "订单状态：0草稿/1待审核/2已审核/3已驳回/4已计划/5待开始/6进行中/7已暂停/8已完成/9已取消/10已关闭/11已超期", example = "0")
     private Integer orderStatus;
+
+    @Schema(description = "订单状态列表（IN 查询）")
+    private List<Integer> orderStatuses;
+
+    @Schema(description = "是否仅查询当前登录人已分配任务的工单", example = "true")
+    private Boolean myAssigned;
 
     @Schema(description = "审批状态：PENDING待审批/APPROVED已批准/REJECTED已拒绝/CANCELLED已取消", example = "APPROVED")
     private Integer approvalStatus;

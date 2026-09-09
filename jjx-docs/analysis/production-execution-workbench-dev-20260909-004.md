@@ -17,8 +17,31 @@
 4. 完成后行为与现在逐像素一致：两个视图切换、筛选、懒加载、操作全部照旧
 5. 验证：npx vue-tsc --noEmit 零错误；git diff --check；人工 prod_manager/punch_op1 各过一遍两视图
 
-## Step2：上区工单主从壳（Step1 验收后再做，另行 spec 或本文件续 V2）
-- WorkOrderPanel 上区（新组件）等细节 Step2 时定稿（工单状态口径用现成枚举，不得写死数字；管理"全部"范围；我的范围工单数据源若现成接口不足，允许最小后端补充并在 spec 注明）
+## Step2：上区工单主从壳（工作台化）
+用户定稿：上区工单列表（tab 当前工单=在制 / 历史工单=已完工；范围 我的=默认 / 全部=管理 canViewAll），点工单 → 下区 TaskTreePanel 展示该工单的任务树（现有组件复用，mine 语义=我的工序含子任务）。Step1 组件继续复用。
+
+### 后端最小支持（仅加可选参数，不影响现有调用）
+1. `ProductionOrderQueryDTO`（/production/order/list 用）新增两个可选过滤，服务/Mapper 动态 SQL：
+   - `List<Integer> orderStatuses`：order_status IN 列表（多个状态一次查，现单值 orderStatus 保留不动）
+   - `Boolean myAssigned`：为 true 时限定"我有分配任务的工单"——EXISTS(SELECT 1 FROM production_task t JOIN production_operation_execution e ON e.execution_id=t.execution_id JOIN production_order o ON o.order_id=e.order_id WHERE o.order_id = 主表.order_id AND t.assignee_id = 当前登录人 AND t.status <> 'CANCELLED')，当前登录人取自安全上下文
+   - 类型仅 WORK_ORDER（order_type='WORK_ORDER' 或按现有查询默认类型逻辑，保持与订单页一致）
+2. 现有生产订单页/其他调用零影响（可选参数缺省不生效）
+
+### 前端
+3. 新建 `components/WorkOrderPanel.vue`（execution/components/）：
+   - tab：当前工单（order_status ∈ {ProductionOrderStatusEnum.PENDING_START, IN_PROGRESS, PAUSED}.value，禁止写死数字）、历史工单（∈ {COMPLETED, CANCELLED, CLOSED}.value）
+   - 范围切换：我的（默认）/ 全部（仅 canViewAll 显示，沿用现有权限判断）
+   - 查询走 getProductionOrderList 带 orderStatuses + (myAssigned: scope==='我的')，分页 10/页，列：工单号/产品名称/计划数量/完工数量/计划交期(plan_end_date)/状态(ProductionOrderStatusEnum label+tag)；行点击 emit select(order)，选中高亮，数据变化后自动选中第一行
+4. `index.vue` 工作台化：
+   - 顶部 <WorkOrderPanel>，下方 <TaskTreePanel :key="selectedOrder+scope+tab">
+   - 下区数据按选中工单收敛：我的范围 = getMyTasks() 结果按 row.orderNo===选中工单号客户端过滤（本人任务量小）；全部范围 = getTaskTreePage({...allQueryParams, keyword: 选中工单号})（后端 keyword 已支持工单号）；子任务懒加载不变
+   - 移除原 viewMode 双视图切换/currentFilterForm/视图相关 query 装配，保留对话框/权限/报工装配与 myTaskExecutionIds 计算（从 getMyTasks 全量算，与工单无关）
+   - 空态：未选工单时下区提示"请选择上方工单"；我的范围无工单时提示
+5. 约束：状态一律用 ProductionOrderStatusEnum 具名成员，不得出现数字字面量；行为只做加法与重组，报工/审批/详情/完成明细对话框逻辑不动
+
+### 验证
+- 后端 mvn -o clean compile；前端 npx vue-tsc --noEmit 零错误、npm run check:status-enums 通过、git diff --check
+- 人工（用户统一验证）：punch_op1 上区只见我的工单（在制/历史），点开下区出该单我的任务树可报工；prod_manager 我的+全部可切，历史 tab 点完工单可看任务/完成明细复盘
 
 ## 禁碰
 - 后端、移动端 /m、dispatch 页、其他页面；不 git commit；不动无关脏文件

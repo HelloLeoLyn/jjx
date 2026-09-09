@@ -20,7 +20,22 @@ export function getProductionOrderList(params: ProductionOrderQuery) {
   return request({
     url: '/production/order/list',
     method: 'get',
-    params,
+    params: {
+      ...params,
+      orderStatuses: params.orderStatuses?.join(','),
+    },
+  })
+}
+
+// 获取生产订单分页（records/total）
+export function getProductionOrderPage(params: ProductionOrderQuery) {
+  return request({
+    url: '/production/order/page',
+    method: 'get',
+    params: {
+      ...params,
+      orderStatuses: params.orderStatuses?.join(','),
+    },
   })
 }
 

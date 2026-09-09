@@ -1,0 +1,157 @@
+<template>
+  <el-card class="work-order-panel" shadow="never">
+    <div class="panel-toolbar">
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <el-tab-pane label="当前工单" name="current" />
+        <el-tab-pane label="历史工单" name="history" />
+      </el-tabs>
+      <el-segmented
+        v-if="canViewAll"
+        v-model="scope"
+        :options="scopeOptions"
+        @change="handleScopeChange"
+      />
+    </div>
+
+    <el-table
+      ref="tableRef"
+      v-loading="loading"
+      :data="orders"
+      row-key="orderId"
+      highlight-current-row
+      @row-click="selectOrder"
+    >
+      <el-table-column prop="orderNo" label="工单号" min-width="180" />
+      <el-table-column prop="productName" label="产品名称" min-width="180" />
+      <el-table-column label="计划数量" width="120" align="right">
+        <template #default="{ row }">{{ fmtQty(row.plannedQuantity) }}</template>
+      </el-table-column>
+      <el-table-column label="完工数量" width="120" align="right">
+        <template #default="{ row }">{{ fmtQty(row.completedQuantity) }}</template>
+      </el-table-column>
+      <el-table-column prop="planEndDate" label="计划交期" width="130" />
+      <el-table-column label="状态" width="110">
+        <template #default="{ row }">
+          <el-tag :type="statusTag(row.orderStatus)">{{ statusLabel(row.orderStatus) }}</el-tag>
+        </template>
+      </el-table-column>
+      <template #empty>
+        <el-empty :description="scope === 'mine' ? '我的范围暂无工单' : '暂无工单'" />
+      </template>
+    </el-table>
+
+    <div class="pagination-wrap">
+      <el-pagination
+        v-model:current-page="pageNum"
+        :page-size="pageSize"
+        :total="total"
+        layout="total, prev, pager, next"
+        @current-change="loadOrders"
+      />
+    </div>
+  </el-card>
+</template>
+
+<script setup lang="ts">
+import { nextTick, onMounted, ref } from 'vue'
+import type { TabsPaneContext } from 'element-plus'
+import { getProductionOrderPage } from '@/api/production/order'
+import { ProductionOrderStatusEnum } from '@/enums/production'
+import type { ProductionOrderVO } from '@/types/production/order'
+import { fmtQty } from '../utils'
+
+type WorkOrderTab = 'current' | 'history'
+type WorkOrderScope = 'mine' | 'all'
+
+defineProps<{ canViewAll: boolean }>()
+const emit = defineEmits<{
+  select: [order: ProductionOrderVO | null, scope: WorkOrderScope, tab: WorkOrderTab]
+}>()
+
+const tableRef = ref()
+const loading = ref(false)
+const orders = ref<ProductionOrderVO[]>([])
+const total = ref(0)
+const activeTab = ref<WorkOrderTab>('current')
+const scope = ref<WorkOrderScope>('mine')
+const pageNum = ref(1)
+const pageSize = 10
+const scopeOptions = [
+  { label: '我的', value: 'mine' },
+  { label: '全部', value: 'all' },
+]
+const currentStatuses = [
+  ProductionOrderStatusEnum.PENDING_START.value,
+  ProductionOrderStatusEnum.IN_PROGRESS.value,
+  ProductionOrderStatusEnum.PAUSED.value,
+]
+const historyStatuses = [
+  ProductionOrderStatusEnum.COMPLETED.value,
+  ProductionOrderStatusEnum.CANCELLED.value,
+  ProductionOrderStatusEnum.CLOSED.value,
+]
+
+const statusLabel = (status?: number) =>
+  status === undefined ? '未知' : ProductionOrderStatusEnum.getLabel(status)
+const statusTag = (status?: number) =>
+  status === undefined ? 'info' : ProductionOrderStatusEnum.getTagProps(status).type
+
+const selectOrder = (order: ProductionOrderVO | null) => {
+  tableRef.value?.setCurrentRow(order)
+  emit('select', order, scope.value, activeTab.value)
+}
+const selectFirstOrder = async () => {
+  await nextTick()
+  selectOrder(orders.value[0] || null)
+}
+const loadOrders = async () => {
+  loading.value = true
+  try {
+    const result: any = await getProductionOrderPage({
+      orderType: 'WORK_ORDER',
+      orderStatuses: activeTab.value === 'current' ? currentStatuses : historyStatuses,
+      myAssigned: scope.value === 'mine',
+      pageNum: pageNum.value,
+      pageSize,
+    })
+    const data = result?.data
+    orders.value = data?.records || []
+    total.value = data?.total || 0
+  } catch {
+    orders.value = []
+    total.value = 0
+  } finally {
+    loading.value = false
+  }
+  await selectFirstOrder()
+}
+const handleTabChange = (_tab: TabsPaneContext['paneName']) => {
+  pageNum.value = 1
+  loadOrders()
+}
+const handleScopeChange = () => {
+  pageNum.value = 1
+  loadOrders()
+}
+
+onMounted(loadOrders)
+</script>
+
+<style scoped>
+.work-order-panel {
+  margin-bottom: 16px;
+}
+.panel-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.panel-toolbar :deep(.el-tabs__header) {
+  margin-bottom: 12px;
+}
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+</style>
