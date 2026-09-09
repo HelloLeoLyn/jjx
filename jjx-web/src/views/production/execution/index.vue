@@ -42,34 +42,24 @@
     <el-card class="filter-card" shadow="never">
       <div v-if="viewMode === 'mine'" class="filter-bar">
         <el-input
-          v-model="queryParams.orderNo"
-          placeholder="工单编号"
+          v-model="mineFilterForm.keyword"
+          placeholder="工单号 / 工序 / 任务号"
           clearable
-          style="width: 150px"
-          @keyup.enter="handleQuery"
-          @clear="handleQuery"
-        />
-        <el-input
-          v-model="queryParams.processName"
-          placeholder="工序"
-          clearable
-          style="width: 120px"
+          style="width: 210px"
           @keyup.enter="handleQuery"
           @clear="handleQuery"
         />
         <el-select
-          v-model="queryParams.executionStatus"
-          placeholder="状态"
+          v-model="mineFilterForm.status"
+          placeholder="任务状态"
           clearable
           style="width: 120px"
           @change="handleQuery"
         >
-          <el-option
-            v-for="s in STATUS_ITEMS"
-            :key="s.value"
-            :label="s.label"
-            :value="String(s.value)"
-          />
+          <el-option label="未分配" value="PENDING" />
+          <el-option label="进行中" value="ACTIVE" />
+          <el-option label="已完成" value="COMPLETED" />
+          <el-option label="已取消" value="CANCELLED" />
         </el-select>
         <el-button type="primary" icon="Search" @click="handleQuery">查询</el-button>
         <el-button icon="Refresh" @click="handleReset">重置</el-button>
@@ -100,141 +90,105 @@
       </div>
     </el-card>
 
-    <!-- 我的生产任务：从本人有效 ProductionTask 起查，按 execution 聚合 -->
+    <!-- 我的生产任务：本人任务全量，子任务按层懒加载 -->
     <el-card v-if="viewMode === 'mine'" class="list-card" shadow="never">
-      <el-table v-loading="loading" :data="myExecutionList" style="width: 100%">
-        <el-table-column label="工单号 / 工序" min-width="180">
-          <template #default="{ row }"
-            ><strong>{{ row.orderNo || '-' }}</strong>
-            <div>
-              {{ row.processName || '-'
-              }}<span v-if="row.processOrder"> · 序 {{ row.processOrder }}</span>
-            </div>
-            <div v-if="Number(row.taskCount || 0) === 1" class="text-muted">
-              任务号：{{ row.taskNo || '-' }}
-            </div>
-            <div v-else-if="Number(row.taskCount || 0) > 1" class="text-muted">
-              我的任务：{{ row.taskCount }}条
-            </div></template
-          >
+      <el-table
+        v-loading="loading"
+        :data="myTaskList"
+        row-key="taskId"
+        :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
+        :lazy="true"
+        :load="loadTaskChildren"
+        style="width: 100%"
+      >
+        <el-table-column label="工序单号" min-width="200">
+          <template #default="{ row }">
+            <span class="task-sub">任务号：{{ row.taskNo || '-' }}</span>
+          </template>
         </el-table-column>
-        <el-table-column label="设备" width="105"
-          ><template #default="{ row }">{{
-            row.equipmentName || '不限'
-          }}</template></el-table-column
-        >
-        <el-table-column label="工序计划数量" width="144" align="right"
-          ><template #default="{ row }">{{
-            fmtQty(row.plannedQuantity)
-          }}</template></el-table-column
-        >
-        <el-table-column label="我的责任" width="95" align="right"
-          ><template #default="{ row }"
-            ><strong>{{ fmtQty(row.myResponsibilityQuantity) }}</strong></template
-          ></el-table-column
-        >
-        <el-table-column label="我的已完成" width="100" align="right"
-          ><template #default="{ row }">{{
-            fmtQty(row.myCompletedQuantity)
-          }}</template></el-table-column
-        >
-        <el-table-column label="我的待审核" width="100" align="right"
-          ><template #default="{ row }"
-            ><span class="pending-value">{{ fmtQty(row.myPendingReviewQuantity) }}</span></template
-          ></el-table-column
-        >
-        <el-table-column label="我的可处理" width="100" align="right"
-          ><template #default="{ row }"
-            ><span class="processable-value">{{
-              fmtQty(row.myProcessableQuantity)
-            }}</span></template
-          ></el-table-column
-        >
-        <el-table-column label="下级已完成" width="100" align="right"
-          ><template #default="{ row }"
-            ><span class="completed-value">{{ fmtQty(row.childCompletedQuantity) }}</span></template
-          ></el-table-column
-        >
-        <el-table-column label="下级处理中" width="100" align="right"
-          ><template #default="{ row }"
-            ><el-button
-              v-if="Number(row.childProcessingQuantity || 0) > 0"
-              class="child-link"
+        <el-table-column label="工序" min-width="180">
+          <template #default="{ row }">
+            <span class="task-sub">{{ row.processName || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="执行人" prop="assigneeName" width="120" align="right">
+          <template #default="{ row }">
+            <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
+            <el-text v-else-if="row.hasChildren" type="primary">-</el-text>
+            <span v-else class="text-muted">未分配</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="任务数量" width="100" align="right">
+          <template #default="{ row }">{{ fmtQty(row.taskQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="已完成" width="110" align="right">
+          <template #default="{ row }">
+            <el-link
+              v-if="Number(row.completedQuantity || 0) > 0"
               type="primary"
-              link
-              @click="openChildProcessing(row)"
-              >{{ fmtQty(row.childProcessingQuantity) }}</el-button
-            ><span v-else class="child-value">0</span></template
-          ></el-table-column
-        >
-        <el-table-column label="待我审批" width="90" align="right"
-          ><template #default="{ row }"
-            ><span class="approval-value">{{
-              fmtQty(row.pendingMyApprovalQuantity)
-            }}</span></template
-          ></el-table-column
-        >
+              underline
+              @click="openTaskCompletionDetails(row)"
+              >{{ fmtQty(row.completedQuantity) }}</el-link
+            >
+            <span v-else class="text-muted">0</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="待审批" width="100" align="right">
+          <template #default="{ row }">
+            <el-tag
+              v-if="Number(row.pendingQuantity || 0) > 0"
+              size="small"
+              type="warning"
+              effect="plain"
+              >{{ fmtQty(row.pendingQuantity) }}</el-tag
+            >
+            <span v-else class="text-muted">0</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="已分配" width="100" align="right">
+          <template #default="{ row }">{{ fmtQty(row.assignedQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="剩余" width="100" align="right">
+          <template #default="{ row }">{{ fmtQty(row.remainingQuantity) }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="90"
           ><template #default="{ row }"
-            ><el-tag size="small" :type="statusTag(row.executionStatus)">{{
-              statusLabel(row.executionStatus)
+            ><el-tag size="small" :type="taskStatusTag(row.status)">{{
+              taskStatusLabel(row)
             }}</el-tag></template
           ></el-table-column
         >
-        <el-table-column label="操作" min-width="190" fixed="right">
+        <el-table-column label="操作" min-width="300" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value && row.orderStatus === ProductionOrderStatusEnum.IN_PROGRESS.value"
-              type="success"
-              link
-              icon="PlayCircle"
-              v-hasPermi="['production:operation-execution:edit']"
-              @click="handleStart(asExecution(row))"
-              >开始生产</el-button
-            >
-            <el-button
-              v-if="row.executionStatus === ExecutionStatusEnum.PENDING.value && row.orderStatus !== ProductionOrderStatusEnum.IN_PROGRESS.value"
-              type="info"
-              link
-              @click="goProductionOrder(row)"
-              >请先启动工单</el-button
-            >
-            <el-button
-              v-if="Number(row.myProcessableQuantity || 0) > 0 && row.executionStatus === ExecutionStatusEnum.EXECUTING.value"
-              type="primary"
-              link
-              @click="openReportDialog(asExecution(row))"
-              >报工</el-button
-            >
-            <el-button
-              v-if="Number(row.myProcessableQuantity || 0) > 0"
-              type="primary"
-              link
-              @click="goDispatchForRow(row)"
-              >分配</el-button
-            >
-            <el-button
-              v-if="Number(row.pendingMyApprovalQuantity || 0) > 0"
+              v-if="Number(row.pendingQuantity || 0) > 0"
               type="warning"
               link
               @click="openPendingApproval"
               >去审批</el-button
             >
-            <el-button type="info" link @click="handleView(asExecution(row))">详情</el-button>
+            <el-button
+              v-if="canReportInAllView(row)"
+              type="primary"
+              link
+              icon="EditPen"
+              v-hasPermi="['production:work-report:add']"
+              @click="openReportDialog(taskAsExecution(row), row.taskId)"
+              >报工</el-button
+            >
+            <el-button type="primary" link icon="View" @click="handleView(taskAsExecution(row))"
+              >详情</el-button
+            >
+            <el-button
+              v-if="Number(row.completedQuantity || 0) > 0"
+              type="info"
+              link
+              @click="openTaskCompletionDetails(row)"
+              >完成明细</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="queryParams.pageNum"
-          v-model:page-size="queryParams.pageSize"
-          :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="getList"
-          @current-change="getList"
-        />
-      </div>
     </el-card>
 
     <!-- 全部工序：根任务分页，子任务按层懒加载 -->
@@ -245,7 +199,7 @@
         row-key="taskId"
         :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
         :lazy="true"
-        :load="loadAllTaskChildren"
+        :load="loadTaskChildren"
         style="width: 100%"
       >
         <el-table-column label="工序单号" min-width="200">
@@ -378,37 +332,6 @@
         :image-size="50"
       />
     </el-dialog>
-
-    <el-drawer v-model="childProcessingOpen" title="下级处理明细" size="760px" append-to-body>
-      <div v-loading="childProcessingLoading">
-        <el-descriptions v-if="childProcessingDetail" :column="2" border size="small">
-          <el-descriptions-item label="工单号">{{ childProcessingDetail.orderNo || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="工序">{{ childProcessingDetail.processName || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="工序状态">{{ statusLabel(childProcessingDetail.executionStatus) }}</el-descriptions-item>
-          <el-descriptions-item label="我的责任">{{ fmtQty(childProcessingDetail.myResponsibilityQuantity) }}</el-descriptions-item>
-          <el-descriptions-item label="下级已完成">{{ fmtQty(childProcessingDetail.childCompletedQuantity) }}</el-descriptions-item>
-          <el-descriptions-item label="下级处理中">{{ fmtQty(childProcessingDetail.childProcessingQuantity) }}</el-descriptions-item>
-          <el-descriptions-item label="待我审批">{{ fmtQty(childProcessingDetail.pendingMyApprovalQuantity) }}</el-descriptions-item>
-        </el-descriptions>
-        <el-table v-if="childProcessingDetail" :data="childProcessingDetail.records" size="small" style="margin-top: 16px">
-          <el-table-column label="任务号" prop="taskNo" min-width="245" show-overflow-tooltip />
-          <el-table-column label="下属执行人" prop="assigneeName" min-width="110" />
-          <el-table-column label="部门" prop="departmentName" min-width="110" />
-          <el-table-column label="任务数量" width="90" align="right"><template #default="{ row }">{{ fmtQty(row.taskQuantity) }}</template></el-table-column>
-          <el-table-column label="已完成" width="80" align="right"><template #default="{ row }">{{ fmtQty(row.completedQuantity) }}</template></el-table-column>
-          <el-table-column label="待审批" width="80" align="right"><template #default="{ row }"><span class="approval-value">{{ fmtQty(row.pendingApprovalQuantity) }}</span></template></el-table-column>
-          <el-table-column label="处理中" width="80" align="right"><template #default="{ row }"><span class="child-value">{{ fmtQty(row.processingQuantity) }}</span></template></el-table-column>
-          <el-table-column label="Task状态" width="90"><template #default="{ row }"><el-tag size="small">{{ row.statusLabel || row.status }}</el-tag></template></el-table-column>
-          <el-table-column label="操作" width="145" fixed="right">
-            <template #default="{ row }">
-              <el-button v-if="Number(row.pendingApprovalQuantity || 0) > 0" type="warning" link @click="openApprovalFromChild">去审批</el-button>
-              <el-button type="primary" link @click="viewReportsFromChild">查看报工</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-empty v-if="!childProcessingLoading && childProcessingDetail && !childProcessingDetail.records.length" description="暂无直接下级处理任务" />
-      </div>
-    </el-drawer>
 
     <!-- ============ 详情 Drawer（Tabs） ============ -->
     <el-drawer v-model="detailOpen" size="760px" append-to-body>
@@ -1040,23 +963,16 @@ import {
   getTaskChildren,
   getTaskCompletionDetails,
   getTaskTreePage,
-  getMyProductionExecutions,
   getProductionExecutionScope,
-  getMyChildProcessingDetail,
   type TaskTreeQuery,
 } from '@/api/production/task'
 import { qualityApi, type QualityVO } from '@/api/production/quality'
 import type {
   TaskTreeRow,
   TaskCompletionDetail,
-  MyProductionExecution,
-  ChildProcessingDetail,
 } from '@/types/production/task'
-import type {
-  OperationExecutionVO,
-  OperationExecutionQuery,
-} from '@/types/production/operationExecution'
-import { ExecutionStatusEnum, ProductionOrderStatusEnum } from '@/enums/production'
+import type { OperationExecutionVO } from '@/types/production/operationExecution'
+import { ExecutionStatusEnum } from '@/enums/production'
 import {
   statusLabel as taskStatusLabel,
   statusTag as taskStatusTag,
@@ -1066,7 +982,6 @@ defineOptions({ name: 'ProductionExecutionList' })
 
 const router = useRouter()
 
-const STATUS_ITEMS = ExecutionStatusEnum.items
 function statusLabel(s?: number): string {
   return s === undefined ? '未知' : ExecutionStatusEnum.getLabel(s)
 }
@@ -1086,55 +1001,59 @@ const loading = ref(false)
 type AllTaskRow = TaskTreeRow
 
 const allTaskList = ref<AllTaskRow[]>([])
+const myTaskList = ref<AllTaskRow[]>([])
 const myTaskExecutionIds = ref<Set<number>>(new Set())
-const myExecutionList = ref<MyProductionExecution[]>([])
 const viewMode = ref<'mine' | 'all'>('mine')
 const canViewAll = ref(false)
-const childProcessingOpen = ref(false)
-const childProcessingLoading = ref(false)
-const childProcessingDetail = ref<ChildProcessingDetail | null>(null)
-const childProcessingExecution = ref<MyProductionExecution | null>(null)
 const total = ref(0)
-const queryParams = reactive<OperationExecutionQuery>({
-  orderNo: '',
-  processName: '',
-  executionStatus: '',
-  operatorName: '',
-  pageNum: 1,
-  pageSize: 10,
-})
 const allQueryParams = reactive<TaskTreeQuery>({ pageNum: 1, pageSize: 10 })
+const mineFilterForm = reactive({ keyword: '', status: '' })
 const allFilterForm = reactive({ keyword: '', status: '' })
 
 const getList = async () => {
   loading.value = true
   try {
-    const res: any = viewMode.value !== 'all'
-      ? await getMyProductionExecutions(queryParams)
-      : await getTaskTreePage({
-          ...allQueryParams,
-          keyword: allFilterForm.keyword.trim() || undefined,
-          status: allFilterForm.status || undefined,
-        })
-    const data = res?.data
-    if (viewMode.value !== 'all') myExecutionList.value = data?.records || []
-    else {
-      allTaskList.value = data?.records || []
-      try {
-        const myTasksResult: any = await getMyTasks()
-        myTaskExecutionIds.value = new Set(
-          (myTasksResult?.data || [])
-            .filter((task: TaskTreeRow) => Number(task.remainingQuantity || 0) > 0)
-            .map((task: TaskTreeRow) => task.executionId)
-        )
-      } catch {
-        myTaskExecutionIds.value = new Set()
-      }
+    if (viewMode.value === 'mine') {
+      const res: any = await getMyTasks()
+      const tasks: AllTaskRow[] = res?.data || []
+      myTaskExecutionIds.value = new Set(
+        tasks
+          .filter((task) => Number(task.remainingQuantity || 0) > 0)
+          .map((task) => task.executionId),
+      )
+      const keyword = mineFilterForm.keyword.trim().toLowerCase()
+      myTaskList.value = tasks.filter((task) => {
+        const matchesKeyword =
+          !keyword ||
+          [task.orderNo, task.processName, task.taskNo].some((value) =>
+            String(value || '').toLowerCase().includes(keyword),
+          )
+        return matchesKeyword && (!mineFilterForm.status || task.status === mineFilterForm.status)
+      })
+      total.value = myTaskList.value.length
+      return
     }
-    total.value = Array.isArray(data) ? data.length : data?.total || 0
+    const res: any = await getTaskTreePage({
+      ...allQueryParams,
+      keyword: allFilterForm.keyword.trim() || undefined,
+      status: allFilterForm.status || undefined,
+    })
+    const data = res?.data
+    allTaskList.value = data?.records || []
+    try {
+      const myTasksResult: any = await getMyTasks()
+      myTaskExecutionIds.value = new Set(
+        (myTasksResult?.data || [])
+          .filter((task: TaskTreeRow) => Number(task.remainingQuantity || 0) > 0)
+          .map((task: TaskTreeRow) => task.executionId),
+      )
+    } catch {
+      myTaskExecutionIds.value = new Set()
+    }
+    total.value = data?.total || 0
   } catch {
     if (viewMode.value === 'all') allTaskList.value = []
-    else myExecutionList.value = []
+    else myTaskList.value = []
     total.value = 0
   } finally {
     loading.value = false
@@ -1144,10 +1063,9 @@ const switchView = (mode: 'mine' | 'all') => {
   if (mode === 'all' && !canViewAll.value) return
   viewMode.value = mode
   if (mode === 'all') allQueryParams.pageNum = 1
-  else queryParams.pageNum = 1
   getList()
 }
-const loadAllTaskChildren = async (
+const loadTaskChildren = async (
   row: AllTaskRow,
   _treeNode: unknown,
   resolve: (children: AllTaskRow[]) => void,
@@ -1192,81 +1110,8 @@ const taskAsExecution = (row: AllTaskRow): OperationExecutionVO => ({
     row.status === 'ACTIVE' ? ExecutionStatusEnum.EXECUTING.value : undefined,
   inputQuantity: row.taskQuantity,
 })
-const asExecution = (row: MyProductionExecution): OperationExecutionVO => ({
-  executionId: row.executionId,
-  orderId: row.orderId,
-  orderNo: row.orderNo,
-  processId: row.processId,
-  processName: row.processName,
-  processOrder: row.processOrder,
-  executionStatus: row.executionStatus,
-  actualStartTime: row.actualStartTime,
-  equipmentId: row.equipmentId,
-  equipmentCode: row.equipmentCode,
-  equipmentName: row.equipmentName,
-  inputQuantity: row.plannedQuantity,
-})
-const goDispatchForRow = (row: MyProductionExecution) => {
-  router.push({
-    path: '/production/dispatch',
-    query: { executionId: String(row.executionId), keyword: row.orderNo || '' },
-  })
-}
-const goProductionOrder = async (row: MyProductionExecution) => {
-  // 2026-09-09 dev-20260909-002：点击提示通知上级（生产管理）启动工单/开始任务——
-  // 调通用接口 /common/notify-task：后端按角色发站内信 + 建待办任务（原跳转生产订单页行为已移除）
-  try {
-    await ElMessageBox.confirm(
-      `工单 ${row.orderNo}（工序：${row.processName || '-'}）尚未启动。\n确认通知上级（生产管理）启动工单并开始任务？`,
-      '请先启动工单',
-      { confirmButtonText: '通知上级', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
-    return // 用户取消
-  }
-  try {
-    const { createNotifyTask } = await import('@/api/notification')
-    await createNotifyTask({
-      title: `【催办】请启动工单 ${row.orderNo}`,
-      content: `操作工申请启动工单 ${row.orderNo}（工序：${row.processName || '-'}），请到生产管理启动工单并开始任务。`,
-      bizType: 'production_order',
-      bizId: row.orderId,
-      priority: 'urgent',
-      // roleKeys 不传：取系统参数 notify_task_default_roles（默认 production:all,admin，可在系统设置改）
-    })
-    ElMessage.success('已通知上级，请等待生产管理启动工单')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '通知上级失败')
-  }
-}
-const openChildProcessing = async (row: MyProductionExecution) => {
-  if (Number(row.childProcessingQuantity || 0) <= 0) return
-  childProcessingExecution.value = row
-  childProcessingDetail.value = null
-  childProcessingOpen.value = true
-  childProcessingLoading.value = true
-  try {
-    const res: any = await getMyChildProcessingDetail(row.executionId)
-    childProcessingDetail.value = res?.data || null
-  } catch (e: any) {
-    ElMessage.error(e?.message || '下级处理明细加载失败')
-  } finally {
-    childProcessingLoading.value = false
-  }
-}
-const openApprovalFromChild = () => {
-  childProcessingOpen.value = false
-  openPendingApproval()
-}
-const viewReportsFromChild = async () => {
-  if (!childProcessingExecution.value) return
-  childProcessingOpen.value = false
-  await handleView(asExecution(childProcessingExecution.value))
-  detailTab.value = 'reports'
-}
 const handleQuery = () => {
   if (viewMode.value === 'all') allQueryParams.pageNum = 1
-  else queryParams.pageNum = 1
   getList()
 }
 const handleReset = () => {
@@ -1274,97 +1119,9 @@ const handleReset = () => {
     Object.assign(allFilterForm, { keyword: '', status: '' })
     allQueryParams.pageNum = 1
   } else {
-    Object.assign(queryParams, { orderNo: '', processName: '', executionStatus: '', pageNum: 1 })
+    Object.assign(mineFilterForm, { keyword: '', status: '' })
   }
   getList()
-}
-
-// ============ 开始/暂停/恢复/完成 ============
-const handleStart = async (row: OperationExecutionVO) => {
-  // 扫码C：可选扫设备码（不一致后端软校验放行并记录），跳过=不校验
-  let deviceCode: string | undefined
-  try {
-    const { value } = await ElMessageBox.prompt(
-      row.equipmentName ? `指定设备：${row.equipmentName}（${row.equipmentCode || '-'}）` : '该工序未指定设备',
-      '开始工序（可选扫设备码）',
-      {
-        confirmButtonText: '开始',
-        cancelButtonText: '跳过',
-        inputPlaceholder: '扫码枪扫设备码，或直接点开始',
-        closeOnClickModal: false,
-      },
-    )
-    deviceCode = value?.trim() || undefined
-  } catch {
-    return // 用户取消
-  }
-  try {
-    const result = await operationExecutionApi.start(row.executionId!, deviceCode)
-    if (result.data !== true) throw new Error(result.msg || '开始工序失败')
-    ElMessage.success('已开始')
-    getList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
-  }
-}
-const handlePause = async (row: OperationExecutionVO) => {
-  try {
-    const result = await operationExecutionApi.pause(row.executionId!)
-    if (result.data !== true) throw new Error(result.msg || '暂停工序失败')
-    ElMessage.success('已暂停')
-    getList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
-  }
-}
-
-// 完成提示：0 报工 / 低于计划 / 超计划 warning（后端 gate 为准）
-const handleComplete = async (row: OperationExecutionVO) => {
-  await loadExecutionContext(row)
-  const qualified = Number(row.qualifiedQuantity || 0)
-  const defective = Number(row.defectiveQuantity || 0)
-  const planned = Number(row.inputQuantity || 0)
-  const blockers: string[] = []
-  if (qualified === 0 && defective === 0) blockers.push('尚无有效报工记录')
-  if (Number(detailRootTask.value?.pendingQuantity || 0) > 0)
-    blockers.push(`还有 ${fmtQty(detailRootTask.value?.pendingQuantity)} 件报工待审批`)
-  if (Number(detailRootTask.value?.remainingQuantity || 0) > 0)
-    blockers.push(`还有 ${fmtQty(detailRootTask.value?.remainingQuantity)} 件任务未分配或未完成`)
-  if (Number(detailRootTask.value?.assignedQuantity || 0) > 0)
-    blockers.push(`已派出的任务还有 ${fmtQty(detailRootTask.value?.assignedQuantity)} 件未完成`)
-  if (planned > 0 && qualified < planned)
-    blockers.push(`合格数量 ${qualified}，未达到计划数量 ${planned}`)
-  if (blockers.length && detailRootTask.value?.allowedActions?.includes('COMPLETE'))
-    blockers.push(
-      `父级任务需负责人在电脑端任务管理中确认${
-        detailRootTask.value?.assigneeName ? `（负责人：${detailRootTask.value.assigneeName}）` : ''
-      }`
-    )
-  if (blockers.length) {
-    await ElMessageBox.alert(blockers.map((v) => `✗ ${v}`).join('\n'), '暂不能完成该工序', {
-      type: 'warning',
-    })
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      `该工序已满足前端完成条件。\n计划 ${planned}，合格 ${qualified}，不良 ${defective}。`,
-      '完成工序',
-      { type: 'info', confirmButtonText: '确认完成' }
-    )
-  } catch {
-    return
-  }
-  try {
-    const result = await operationExecutionApi.complete(row.executionId!)
-    if (result.data !== true) {
-      throw new Error(result.msg || '工序完成失败')
-    }
-    ElMessage.success('工序已完成；若为最后工序将自动生成完工检验，等待质检')
-    getList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
-  }
 }
 
 // ============ 详情 Drawer ============
@@ -1876,26 +1633,6 @@ onMounted(async () => {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
-}
-.pending-value {
-  color: var(--el-color-danger);
-}
-.processable-value {
-  color: var(--el-color-success);
-  font-weight: 600;
-}
-.completed-value {
-  color: var(--el-color-success);
-}
-.child-value {
-  color: var(--el-color-primary);
-}
-.child-link {
-  font-weight: 600;
-}
-.approval-value {
-  color: var(--el-color-warning);
-  font-weight: 600;
 }
 .detail-header {
   display: flex;

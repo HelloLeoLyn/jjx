@@ -40,6 +40,16 @@
 - 保留 canViewAll 权限 gate；我的生产任务视图/移动端/dispatch 页/后端均不动
 - 完成后自跑 npx vue-tsc --noEmit 确认零错误
 
+## V3（用户 2026-09-09 定稿：我的生产任务 = 全部工序同款派工树）
+- 我的生产任务视图（v-if="viewMode === 'mine'"）替换成与全部工序完全同款的树表：列=任务号/工序/执行人/任务数量/已完成(可点)/待审批/已分配/剩余/状态/操作，行即任务（不再按工序聚合）
+- 数据范围不同：第一层 = 本人持有的有效任务（现有 getMyTasks()，/production/tasks/mine，TaskTreeRow[]），不再用 getMyProductionExecutions/myExecutionList；子任务 getTaskChildren 懒加载（无子返回空，叶子自然收起）；不新增后端接口、不分页（本人任务量小，直接全量）
+- 操作列 = 执行页自己的（同全部工序 V2 那组：去审批/报工/详情/完成明细）+ 保留原 mine 行的「分配」（myProcessableQuantity>0 时，goDispatchForRow 同款）；开始/暂停不动（现状 PC 就无）
+- 筛选：mine 视图与 all 共用 keyword+任务状态+状态筛选（两视图各自 query 参数），删掉原来按 execution 聚合的筛选字段中仅 mine 用的部分（orderNo/processName/executionStatus 若 all 不再用则一并清理）
+- 清理：getMyProductionExecutions/MyProductionExecution 相关加载、myExecutionList、按工序聚合的数值列与函数在 mine 不再引用后删除（asExecution/handleView/详情弹窗等仍被 all 与报工复用，保留；Codex 需保证 vue-tsc 零残留引用）
+- 报工/详情等行操作依赖 executionId：mine 任务行有 executionId（TaskTreeRow 字段），沿用 all 视图 taskAsExecution 思路
+- 保留 canViewAll/all 视图不动、移动端/dispatch/后端不动
+- 完成后 npx vue-tsc --noEmit 零错误 + 人工用 prod_manager 与 punch_op1 各看一遍 mine 视图
+
 ## 明确不做 / 禁碰
-- 不改后端、不新增接口（复用 getTaskTreePage/getTaskChildren）
+- 不改后端、不新增接口（复用 getMyTasks/getTaskTreePage/getTaskChildren）
 - 不 git commit；不动工作区无关脏文件；不要顺手重构其他区块
