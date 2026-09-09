@@ -35,6 +35,9 @@ public class InventoryTransferItem extends BaseEntity {
     /** 调拨单ID */
     private Long transferId;
 
+    /** 统一库存物品ID */
+    private Long inventoryItemId;
+
     /** 物料ID */
     private Long materialId;
 

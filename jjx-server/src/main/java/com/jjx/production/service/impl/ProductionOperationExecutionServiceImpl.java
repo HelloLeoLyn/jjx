@@ -282,6 +282,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                         }
                     }
                 }
+            }
             // 2026-09-09 完工按钮权限（Leo 定）：仅 EXECUTING 且当前用户=该工序根任务负责人（一级负责人）或超管可完工
             if (!executionIds.isEmpty()) {
                 String execIdStr = executionIds.stream().map(String::valueOf)
@@ -290,7 +291,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                 try {
                     jdbcTemplate.query("SELECT execution_id, assignee_id FROM production_task "
                                     + "WHERE execution_id IN (" + execIdStr + ") AND parent_task_id IS NULL",
-                            rs -> rootAssigneeMap.put(rs.getLong("execution_id"),
+                            (org.springframework.jdbc.core.RowCallbackHandler) rs -> rootAssigneeMap.put(rs.getLong("execution_id"),
                                     rs.getObject("assignee_id") == null ? null : rs.getLong("assignee_id")));
                 } catch (Exception e) {
                     log.warn("查询根任务负责人失败: {}", e.getMessage());

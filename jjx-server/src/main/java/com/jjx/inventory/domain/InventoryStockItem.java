@@ -25,6 +25,9 @@ public class InventoryStockItem implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long itemId;
 
+    /** 统一库存物品ID */
+    private Long inventoryItemId;
+
     /** 物料ID */
     private Long materialId;
 

@@ -21,6 +21,19 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
     @Select("SELECT * FROM inventory_stock WHERE material_id = #{materialId}")
     InventoryStock selectByMaterialId(@Param("materialId") Long materialId);
 
+    @Select("SELECT * FROM inventory_stock WHERE inventory_item_id = #{inventoryItemId}")
+    InventoryStock selectByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
+
+    @Update("INSERT INTO inventory_stock (inventory_item_id, material_id, material_code, material_name, total_quantity, total_reserved, earliest_expiry, location_id) " +
+            "SELECT si.inventory_item_id, MAX(si.material_id), MAX(si.material_code), MAX(si.material_name), " +
+            "COALESCE(SUM(si.quantity),0), COALESCE(SUM(si.reserved_quantity),0), MIN(si.expiry_date), " +
+            "(SELECT sub.location_id FROM inventory_stock_item sub WHERE sub.inventory_item_id=si.inventory_item_id " +
+            "AND sub.status=1 AND sub.quantity>0 ORDER BY (sub.location_id IS NULL), sub.expiry_date, sub.last_inbound_time LIMIT 1) " +
+            "FROM inventory_stock_item si WHERE si.inventory_item_id=#{inventoryItemId} AND si.status=1 GROUP BY si.inventory_item_id " +
+            "ON DUPLICATE KEY UPDATE total_quantity=VALUES(total_quantity), total_reserved=VALUES(total_reserved), " +
+            "earliest_expiry=VALUES(earliest_expiry), location_id=VALUES(location_id), last_update_time=NOW()")
+    int refreshSummaryByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
+
     /**
      * 刷新指定物料的汇总数据
      * 从明细表计算汇总值并更新到汇总表（upsert：无行时自动创建，首次入库不再丢失汇总）
@@ -47,9 +60,9 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
     /**
      * 查询低库存物料（低于安全库存）027/080定稿：用可用量(available_quantity=总量-预留)而非总量
      */
-    @Select("SELECT s.*, m.safe_stock FROM inventory_stock s " +
-            "JOIN inventory_material m ON s.material_id = m.material_id " +
-            "WHERE (s.total_quantity - IFNULL(s.total_reserved,0)) < m.safe_stock AND m.safe_stock > 0")
+    @Select("SELECT s.*, i.safe_stock FROM inventory_stock s " +
+            "JOIN inventory_item i ON s.inventory_item_id = i.inventory_item_id " +
+            "WHERE (s.total_quantity - IFNULL(s.total_reserved,0)) < i.safe_stock AND i.safe_stock > 0")
     List<InventoryStock> selectLowStock();
 
     /**

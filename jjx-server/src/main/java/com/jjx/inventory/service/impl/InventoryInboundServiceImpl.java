@@ -37,7 +37,8 @@ import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.mapper.InventoryWarehouseMapper;
 import com.jjx.inventory.service.InventoryInboundService;
 import com.jjx.inventory.service.InventoryAlertService;
-import com.jjx.inventory.service.ProductStockService;
+import com.jjx.inventory.service.InventoryItemService;
+import com.jjx.inventory.enums.InventoryItemTypeEnum;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -77,7 +78,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final EventPublisher eventPublisher;
     private final InventoryAlertService alertService;
-    private final ProductStockService productStockService;
+    private final InventoryItemService inventoryItemService;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
     private final com.jjx.production.service.QualityActionService qualityActionService;
@@ -1037,6 +1038,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private void addStock(InventoryInboundOrder order, Long operatorId, String operatorName, String remark) {
         List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(order.getInboundId());
         for (InventoryInboundItem item : items) {
+            if (item.getInventoryItemId() == null) {
+                InventoryMaterial material = inventoryMaterialMapper.selectById(item.getMaterialId());
+                if (material == null) {
+                    throw new BusinessException("入库明细缺少有效的库存物品身份");
+                }
+                item.setInventoryItemId(inventoryItemService.ensure(
+                        InventoryItemTypeEnum.MATERIAL, material.getMaterialId(), material.getMaterialCode(),
+                        material.getMaterialName(), material.getSpecification(), material.getUnit()).getInventoryItemId());
+            }
             BigDecimal targetQuantity = isPurchaseInbound(order)
                     ? Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO)
                     : item.getQuantity();
@@ -1046,7 +1056,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
             // 查找现有批次库存
             LambdaQueryWrapper<InventoryStockItem> wrapper = new LambdaQueryWrapper<InventoryStockItem>()
-                    .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
+                    .eq(InventoryStockItem::getInventoryItemId, item.getInventoryItemId())
                     .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
                     .eq(InventoryStockItem::getStatus, 1);
             if (item.getLocationId() != null) {
@@ -1062,6 +1072,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             } else {
                 // 新建批次记录
                 InventoryStockItem newItem = new InventoryStockItem();
+                newItem.setInventoryItemId(item.getInventoryItemId());
                 newItem.setMaterialId(item.getMaterialId());
                 newItem.setMaterialCode(item.getMaterialCode());
                 newItem.setMaterialName(item.getMaterialName());
@@ -1081,15 +1092,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItemMapper.updateById(item);
 
             // 刷新库存汇总
-            stockMapper.refreshSummary(item.getMaterialId());
+            stockMapper.refreshSummaryByInventoryItemId(item.getInventoryItemId());
 
             // 记录流水（DEV-651 补：before/after 为 NOT NULL，入库=加库存，before=当前汇总-本次数量）
             java.math.BigDecimal currentTotal = java.math.BigDecimal.ZERO;
-            InventoryStock cur = stockMapper.selectByMaterialId(item.getMaterialId());
+            InventoryStock cur = stockMapper.selectByInventoryItemId(item.getInventoryItemId());
             if (cur != null && cur.getTotalQuantity() != null) {
                 currentTotal = cur.getTotalQuantity();
             }
             InventoryTransaction tx = new InventoryTransaction();
+            tx.setInventoryItemId(item.getInventoryItemId());
             tx.setMaterialId(item.getMaterialId());
             tx.setMaterialCode(item.getMaterialCode());
             tx.setMaterialName(item.getMaterialName());
@@ -1443,22 +1455,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         InventoryInboundItem inboundItem = new InventoryInboundItem();
         inboundItem.setInboundId(order.getInboundId());
         // 通过产品ID查成品物料档案（material_type=F），无档案则回退用产品ID（兼容旧数据）
-        Long materialId = prodOrder.getProductId();
         String materialCode = prodOrder.getProductCode();
         String materialName = prodOrder.getProductName();
-        if (prodOrder.getProductId() != null) {
-            com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectOne(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
-                            .eq(com.jjx.inventory.domain.InventoryMaterial::getProductId, prodOrder.getProductId())
-                            .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialType, "F")
-                            .last("LIMIT 1"));
-            if (mat != null) {
-                materialId = mat.getMaterialId();
-                materialCode = mat.getMaterialCode();
-                materialName = mat.getMaterialName();
-            }
-        }
-        inboundItem.setMaterialId(materialId);
+        inboundItem.setInventoryItemId(inventoryItemService.ensure(
+                InventoryItemTypeEnum.PRODUCT, prodOrder.getProductId(), materialCode,
+                materialName, null, "PCS").getInventoryItemId());
         inboundItem.setMaterialCode(materialCode);
         inboundItem.setMaterialName(materialName);
         // 068定稿：入库产品数量=最后一道工序/完工检验合格数（052口径 finishedQuantity，非工序汇总 completedQuantity）
@@ -1477,17 +1478,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // DEV-20260810-096：完工入库=产品入库（产品维度独立记账，入 product_stock 表）
         // 概念红线：完工入库入的是产品库存，不是物料不是材料；产品库存与物料库存各自独立记账
-        try {
-            BigDecimal productQty = inboundItem.getQuantity();
-            if (prodOrder.getProductId() != null && productQty != null) {
-                productStockService.increase(prodOrder.getProductId(), prodOrder.getProductCode(),
-                        prodOrder.getProductName(), productQty);
-                log.info("完工入库同步产品库存+: productId={}, qty={}", prodOrder.getProductId(), productQty);
-            }
-        } catch (Exception e) {
-            log.warn("完工入库同步产品库存失败（不影响入库主流程）: {}", e.getMessage());
-        }
-
         // 057定稿：产品入库确认成功后回写订单 produced_quantity += 入库量（账实最准，不是完工就写）
         try {
             if (prodOrder.getSalesOrderId() != null) {

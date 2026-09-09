@@ -22,7 +22,7 @@ public interface OrderStockReserveService {
     /**
      * 出库扣减时同步释放预留（DEV-580）：按物料释放最多 quantity 的预留
      */
-    void releaseForOutbound(Long orderId, Long materialId, java.math.BigDecimal quantity);
+    void releaseForOutbound(Long orderId, Long inventoryItemId, java.math.BigDecimal quantity);
 
     /**
      * 查询订单已预留数量：productId -> 预留量

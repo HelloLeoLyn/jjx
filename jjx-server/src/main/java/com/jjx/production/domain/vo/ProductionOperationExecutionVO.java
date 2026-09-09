@@ -177,9 +177,6 @@ public class ProductionOperationExecutionVO {
     @Schema(description = "是否可以开始执行")
     private Boolean canStart;
 
-    @Schema(description = "是否可以完成")
-    private Boolean canComplete;
-
     // ============ 扩展字段 ============
 
     @Schema(description = "生产记录列表")

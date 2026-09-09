@@ -8,14 +8,12 @@ import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryAlertLog;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
-import com.jjx.inventory.domain.ProductStock;
 import com.jjx.inventory.dto.query.AlertQueryDTO;
 import com.jjx.inventory.dto.vo.AlertVO;
 import com.jjx.inventory.mapper.InventoryAlertLogMapper;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
-import com.jjx.inventory.mapper.ProductStockMapper;
 import com.jjx.inventory.service.InventoryAlertService;
 import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
@@ -52,7 +50,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final InventoryStockMapper stockMapper;
     private final InventoryMaterialMapper materialMapper;
     private final InventoryStockItemMapper stockItemMapper;
-    private final ProductStockMapper productStockMapper;
+    private final com.jjx.inventory.mapper.InventoryItemMapper inventoryItemMapper;
     private final com.jjx.inventory.mapper.OrderMaterialReserveMapper orderMaterialReserveMapper;
     private final EventPublisher eventPublisher;
     private final OrderMapper orderMapper;
@@ -85,7 +83,6 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     public void executeAlertCheck() {
         log.info("开始执行库存预警检查");
         checkSafeStockAlert();
-        checkProductSafeStockAlert();
         checkMaxStockAlert();
         checkExpiryAlert();
         checkObsoleteAlert();
@@ -137,15 +134,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
 
             // 第一步：先扣产品库存（产品维度现货优先）
-            BigDecimal productAvailable = BigDecimal.ZERO;
-            try {
-                ProductStock ps = productStockMapper.selectByProductId(p.getProductId());
-                if (ps != null && ps.getAvailableQuantity() != null) {
-                    productAvailable = ps.getAvailableQuantity();
-                }
-            } catch (Exception e) {
-                log.warn("查询产品库存失败(按无现货处理): productId={}, err={}", p.getProductId(), e.getMessage());
-            }
+            BigDecimal productAvailable = getProductAvailable(p.getProductId());
             BigDecimal needProduce = orderQty.subtract(productAvailable);
             if (needProduce.compareTo(BigDecimal.ZERO) <= 0) {
                 stockCoveredCount++;
@@ -375,15 +364,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 }
                 // 第一步：先扣产品库存（产品维度现货优先）
                 BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
-                BigDecimal productAvailable = BigDecimal.ZERO;
-                try {
-                    ProductStock ps = productStockMapper.selectByProductId(p.getProductId());
-                    if (ps != null && ps.getAvailableQuantity() != null) {
-                        productAvailable = ps.getAvailableQuantity();
-                    }
-                } catch (Exception e) {
-                    log.warn("全局缺料-查询产品库存失败(按0处理): productId={}", p.getProductId());
-                }
+                BigDecimal productAvailable = getProductAvailable(p.getProductId());
                 BigDecimal needProduce = orderQty.subtract(productAvailable);
                 if (needProduce.compareTo(BigDecimal.ZERO) <= 0) {
                     continue; // 现货足够，无需生产
@@ -524,36 +505,13 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     /**
      * 产品安全库存预警检查（080：产品也加安全库存预警，口径=可用量<安全库存）
      */
-    public void checkProductSafeStockAlert() {
-        try {
-            List<ProductStock> all = productStockMapper.selectList(new LambdaQueryWrapper<ProductStock>()
-                    .gt(ProductStock::getSafeStock, BigDecimal.ZERO));
-            int lowCount = 0;
-            for (ProductStock ps : all) {
-                BigDecimal available = (ps.getAvailableQuantity() != null) ? ps.getAvailableQuantity()
-                        : ps.getTotalQuantity().subtract(ps.getTotalReserved() == null ? BigDecimal.ZERO : ps.getTotalReserved());
-                if (available.compareTo(ps.getSafeStock()) < 0) {
-                    String msg = "产品[" + ps.getProductCode() + "] " + ps.getProductName()
-                            + " 可用库存: " + available.stripTrailingZeros().toPlainString() + ", 低于安全库存 " + ps.getSafeStock().stripTrailingZeros().toPlainString();
-                    log.warn(msg);
-                    InventoryAlertLog alert = new InventoryAlertLog();
-                    alert.setAlertType("safe_stock");
-                    alert.setAlertLevel("warning");
-                    alert.setMaterialId(ps.getProductId());
-                    alert.setMaterialCode(ps.getProductCode());
-                    alert.setMaterialName(ps.getProductName());
-                    alert.setCurrentStock(available);
-                    alert.setSafeStock(ps.getSafeStock());
-                    alert.setAlertMessage(msg);
-                    alert.setAlertTime(java.time.LocalDateTime.now());
-                    alertLogMapper.insert(alert);
-                    lowCount++;
-                }
-            }
-            log.info("产品安全库存预警检查完成，发现 {} 条", lowCount);
-        } catch (Exception e) {
-            log.warn("产品安全库存预警检查失败: {}", e.getMessage());
-        }
+    private BigDecimal getProductAvailable(Long productId) {
+        com.jjx.inventory.domain.InventoryItem item = inventoryItemMapper.selectBySource("PRODUCT", productId);
+        if (item == null) return BigDecimal.ZERO;
+        InventoryStock stock = stockMapper.selectByInventoryItemId(item.getInventoryItemId());
+        if (stock == null || stock.getTotalQuantity() == null) return BigDecimal.ZERO;
+        return stock.getTotalQuantity().subtract(
+                stock.getTotalReserved() == null ? BigDecimal.ZERO : stock.getTotalReserved());
     }
 
     @Override

@@ -31,6 +31,9 @@ public class SalesOrderStockReserve implements Serializable {
     /** 订单号 */
     private String orderNo;
 
+    /** 统一库存物品ID */
+    private Long inventoryItemId;
+
     /** 产品ID */
     private Long productId;
 

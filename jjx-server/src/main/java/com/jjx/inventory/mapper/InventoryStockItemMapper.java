@@ -34,6 +34,15 @@ public interface InventoryStockItemMapper extends BaseMapper<InventoryStockItem>
     @Select("SELECT * FROM inventory_stock_item WHERE material_id = #{materialId} AND status = 1 AND quantity - reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC")
     List<InventoryStockItem> selectFIFOAvailable(@Param("materialId") Long materialId);
 
+    @Select("SELECT * FROM inventory_stock_item WHERE inventory_item_id = #{inventoryItemId} AND status = 1 " +
+            "AND quantity - reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC")
+    List<InventoryStockItem> selectFIFOAvailableByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
+
+    @Select("SELECT * FROM inventory_stock_item WHERE inventory_item_id = #{inventoryItemId} AND location_id = #{locationId} " +
+            "AND status = 1 AND quantity - reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC")
+    List<InventoryStockItem> selectFIFOAvailableByInventoryItemAndLocation(
+            @Param("inventoryItemId") Long inventoryItemId, @Param("locationId") Long locationId);
+
     /**
      * 按FIFO顺序获取指定库位的可用批次明细（用于按库位拣货扣减，DEV-693）
      */
@@ -93,4 +102,8 @@ public interface InventoryStockItemMapper extends BaseMapper<InventoryStockItem>
      */
     @Select("SELECT * FROM inventory_stock_item WHERE material_id = #{materialId} AND status = 1 AND reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC FOR UPDATE")
     List<InventoryStockItem> selectFIFOReservedForUpdate(@Param("materialId") Long materialId);
+
+    @Select("SELECT * FROM inventory_stock_item WHERE inventory_item_id = #{inventoryItemId} AND status = 1 " +
+            "AND reserved_quantity > 0 ORDER BY expiry_date ASC, last_inbound_time ASC FOR UPDATE")
+    List<InventoryStockItem> selectFIFOReservedByInventoryItemForUpdate(@Param("inventoryItemId") Long inventoryItemId);
 }

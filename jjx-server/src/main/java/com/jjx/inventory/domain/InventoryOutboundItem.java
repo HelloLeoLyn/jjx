@@ -25,6 +25,9 @@ public class InventoryOutboundItem extends BaseEntity {
     /** 出库单ID */
     private Long outboundId;
 
+    /** 统一库存物品ID */
+    private Long inventoryItemId;
+
     /** 物料ID */
     private Long materialId;
 

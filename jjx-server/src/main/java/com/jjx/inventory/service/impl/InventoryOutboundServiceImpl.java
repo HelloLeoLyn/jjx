@@ -72,7 +72,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
-    private final com.jjx.inventory.service.ProductStockService productStockService;
+    private final com.jjx.inventory.service.InventoryItemService inventoryItemService;
 
     @Override
     public IPage<OutboundVO> page(OutboundQueryDTO query) {
@@ -371,7 +371,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             for (InventoryOutboundItem item : outItems) {
                 if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
                 try {
-                    orderStockReserveService.releaseForOutbound(order.getSourceId(), item.getMaterialId(), item.getQuantity());
+                    orderStockReserveService.releaseForOutbound(order.getSourceId(), item.getInventoryItemId(), item.getQuantity());
                 } catch (Exception e) {
                     log.warn("出库联动释放成品预留失败（不影响扣减）: {}", e.getMessage());
                 }
@@ -379,6 +379,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         for (InventoryOutboundItem item : outItems) {
             if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
+            if (item.getInventoryItemId() == null) {
+                com.jjx.inventory.domain.InventoryMaterial material = materialMapper.selectById(item.getMaterialId());
+                if (material == null) throw new BusinessException("出库明细缺少有效的库存物品身份");
+                item.setInventoryItemId(inventoryItemService.ensure(
+                        com.jjx.inventory.enums.InventoryItemTypeEnum.MATERIAL, material.getMaterialId(),
+                        material.getMaterialCode(), material.getMaterialName(), material.getSpecification(),
+                        material.getUnit()).getInventoryItemId());
+            }
 
             // DEV-20260909-001 方案A：生产领料确认发料 = 预占转实扣——先释放本单预占，后续 FIFO 扣减才能扣到
             if ("work_order".equals(order.getSourceType())) {
@@ -388,7 +396,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             BigDecimal remaining = item.getQuantity();
             // DEV-693：明细指定了库位 → 先按该库位 FIFO 扣减，不足再从全局 FIFO 补齐
             if (item.getLocationId() != null) {
-                List<InventoryStockItem> locItems = stockItemMapper.selectFIFOAvailableByLocation(item.getMaterialId(), item.getLocationId());
+                List<InventoryStockItem> locItems = stockItemMapper.selectFIFOAvailableByInventoryItemAndLocation(item.getInventoryItemId(), item.getLocationId());
                 for (InventoryStockItem si : locItems) {
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
@@ -398,7 +406,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 }
             }
             if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(item.getMaterialId());
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailableByInventoryItemId(item.getInventoryItemId());
                 for (InventoryStockItem si : fifoItems) {
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
@@ -410,27 +418,17 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if (remaining.compareTo(BigDecimal.ZERO) > 0) {
                 throw new BusinessException("物料[" + item.getMaterialCode() + "]库存不足，缺少: " + remaining);
             }
-            stockMapper.refreshSummary(item.getMaterialId());
+            stockMapper.refreshSummaryByInventoryItemId(item.getInventoryItemId());
             // DEV-20260810-096：销售出库=产品出库（产品维度独立记账）
             // 产品库存与物料库存各自独立记账；仅销售出库同步扣产品库存（物料是成品F且有专用产品时）
-            if ("SALES".equals(order.getSourceType())) {
-                try {
-                    com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(item.getMaterialId());
-                    if (mat != null && mat.getProductId() != null) {
-                        productStockService.decrease(mat.getProductId(), item.getQuantity());
-                        log.info("销售出库同步产品库存-: productId={}, qty={}", mat.getProductId(), item.getQuantity());
-                    }
-                } catch (Exception e) {
-                    log.warn("销售出库同步产品库存失败（不影响出库主流程）: {}", e.getMessage());
-                }
-            }
             // 获取扣减前的库存汇总
             java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
-            InventoryStock currentStock = stockMapper.selectByMaterialId(item.getMaterialId());
+            InventoryStock currentStock = stockMapper.selectByInventoryItemId(item.getInventoryItemId());
             if (currentStock != null && currentStock.getTotalQuantity() != null) {
                 beforeQty = currentStock.getTotalQuantity().add(item.getQuantity());
             }
             InventoryTransaction tx = new InventoryTransaction();
+            tx.setInventoryItemId(item.getInventoryItemId());
             tx.setMaterialId(item.getMaterialId());
             tx.setMaterialCode(item.getMaterialCode());
             tx.setMaterialName(item.getMaterialName());
@@ -1370,18 +1368,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         for (com.jjx.sales.domain.entity.SalesOrderProduct product : products) {
             InventoryOutboundItem outItem = new InventoryOutboundItem();
             // 查成品物料档案（发布时自动创建，material_type='F'）
-            com.jjx.inventory.domain.InventoryMaterial finishMat = null;
-            try {
-                finishMat = materialMapper.selectOne(
-                        new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
-                                .eq(com.jjx.inventory.domain.InventoryMaterial::getProductId, product.getProductId())
-                                .last("LIMIT 1"));
-            } catch (Exception e) {
-                log.warn("查询成品物料失败: {}", e.getMessage());
-            }
-            if (finishMat == null) {
-                throw new BusinessException("产品[" + product.getProductCode() + "]无成品物料档案，请先发布产品");
-            }
+            com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
+                    com.jjx.inventory.enums.InventoryItemTypeEnum.PRODUCT, product.getProductId(),
+                    product.getProductCode(), product.getProductName(), null, "PCS");
             // 已发货量（该订单所有销售出库单明细合计）
             BigDecimal shipped = BigDecimal.ZERO;
             try {
@@ -1392,7 +1381,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 for (InventoryOutboundOrder so : shipOrders) {
                     List<InventoryOutboundItem> soItems = outboundItemMapper.selectByOutboundId(so.getOutboundId());
                     for (InventoryOutboundItem si : soItems) {
-                        if (si.getMaterialId() != null && si.getMaterialId().equals(finishMat.getMaterialId()) && si.getQuantity() != null) {
+                        if (inventoryItem.getInventoryItemId().equals(si.getInventoryItemId()) && si.getQuantity() != null) {
                             shipped = shipped.add(si.getQuantity());
                         }
                     }
@@ -1407,33 +1396,30 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             }
             // 产品库存可用量（096产品维度）
             BigDecimal productAvailable = BigDecimal.ZERO;
-            try {
-                com.jjx.inventory.domain.ProductStock ps = productStockService.getByProductId(product.getProductId());
-                if (ps != null && ps.getAvailableQuantity() != null) {
-                    productAvailable = ps.getAvailableQuantity();
-                }
-            } catch (Exception e) {
-                log.warn("查询产品库存失败(按0处理): productId={}", product.getProductId());
+            InventoryStock productStock = stockMapper.selectByInventoryItemId(inventoryItem.getInventoryItemId());
+            if (productStock != null && productStock.getTotalQuantity() != null) {
+                productAvailable = productStock.getTotalQuantity().subtract(
+                        productStock.getTotalReserved() == null ? BigDecimal.ZERO : productStock.getTotalReserved());
             }
             BigDecimal shipQty = remaining.min(productAvailable);
             if (shipQty.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new BusinessException("产品[" + product.getProductCode() + "]库存不足，无法发货（还需" + remaining.stripTrailingZeros().toPlainString() + "，可用" + productAvailable.stripTrailingZeros().toPlainString() + "）");
             }
             outItem.setOutboundId(order.getOutboundId());
-            outItem.setMaterialId(finishMat.getMaterialId());
-            outItem.setMaterialCode(finishMat.getMaterialCode());
-            outItem.setMaterialName(finishMat.getMaterialName());
+            outItem.setInventoryItemId(inventoryItem.getInventoryItemId());
+            outItem.setMaterialCode(inventoryItem.getItemCode());
+            outItem.setMaterialName(inventoryItem.getItemName());
             outItem.setQuantity(shipQty);
             outItem.setUnitPrice(product.getUnitPrice());
             outItem.setSortOrder(sort++);
             // DEV-693：预填 FIFO 推荐库位（最早批次所在库位）
             try {
-                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(finishMat.getMaterialId());
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailableByInventoryItemId(inventoryItem.getInventoryItemId());
                 if (!fifoItems.isEmpty() && fifoItems.get(0).getLocationId() != null) {
                     outItem.setLocationId(fifoItems.get(0).getLocationId());
                 }
             } catch (Exception e) {
-                log.warn("销售出库推荐库位失败(跳过): materialId={}, err={}", finishMat.getMaterialId(), e.getMessage());
+                log.warn("销售出库推荐库位失败(跳过): inventoryItemId={}, err={}", inventoryItem.getInventoryItemId(), e.getMessage());
             }
             outboundItemMapper.insert(outItem);
         }
