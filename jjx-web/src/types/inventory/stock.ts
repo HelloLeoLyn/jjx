@@ -2,6 +2,7 @@
 export interface StockQueryParams {
   current?: number
   pageSize?: number
+  itemType?: 'MATERIAL' | 'PRODUCT'
   materialCode?: string
   materialName?: string
   warehouseId?: string
@@ -17,7 +18,11 @@ export interface StockQueryParams {
 // 库存汇总VO（按物料维度）
 export interface StockVO {
   stockId: string
-  materialId: string
+  inventoryItemId: string
+  itemType: 'MATERIAL' | 'PRODUCT'
+  itemTypeName: string
+  sourceId: string
+  materialId?: string
   materialCode: string
   materialName: string
   specification: string
@@ -44,6 +49,7 @@ export interface StockVO {
 export interface StockItemQueryParams {
   current?: number
   pageSize?: number
+  inventoryItemId?: string
   materialId?: string
   materialCode?: string
   materialName?: string
@@ -58,7 +64,8 @@ export interface StockItemQueryParams {
 // 库存批次明细VO
 export interface StockItemVO {
   itemId: string
-  materialId: string
+  inventoryItemId: string
+  materialId?: string
   materialCode: string
   materialName: string
   specification: string

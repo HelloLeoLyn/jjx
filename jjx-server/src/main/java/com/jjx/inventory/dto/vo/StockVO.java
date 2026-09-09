@@ -17,6 +17,18 @@ public class StockVO {
     /** 汇总记录ID */
     private Long stockId;
 
+    /** 统一库存物品ID */
+    private Long inventoryItemId;
+
+    /** 库存物品类型：MATERIAL/PRODUCT */
+    private String itemType;
+
+    /** 库存物品类型名称 */
+    private String itemTypeName;
+
+    /** 对应材料或产品档案ID */
+    private Long sourceId;
+
     /** 物料ID */
     private Long materialId;
 

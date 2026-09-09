@@ -3,6 +3,16 @@
     <!-- 搜索栏 -->
     <el-card class="search-card">
       <el-form :model="queryParams" :inline="true">
+        <el-form-item label="库存类型">
+          <el-select v-model="queryParams.itemType" clearable placeholder="全部" style="width: 120px">
+            <el-option
+              v-for="item in InventoryItemTypeEnum.items"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="物料编码">
           <el-input
             v-model="queryParams.materialCode"
@@ -172,6 +182,13 @@
     <!-- 表格 -->
     <el-card class="table-card">
       <el-table v-loading="loading" :data="stockList" border style="width: 100%">
+        <el-table-column label="库存类型" prop="itemTypeName" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="InventoryItemTypeEnum.getTagProps(row.itemType).type" size="small">
+              {{ InventoryItemTypeEnum.getLabel(row.itemType) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="物料名称" prop="materialName" width="150" show-overflow-tooltip />
         <el-table-column label="规格型号" prop="specification" width="120" show-overflow-tooltip />
@@ -238,7 +255,11 @@
     />
 
     <!-- 批次明细对话框 -->
-    <StockDetailDialog v-model:visible="detailDialogVisible" :material-id="currentMaterialId" />
+    <StockDetailDialog
+      v-model:visible="detailDialogVisible"
+      :stock-id="currentStockId"
+      :inventory-item-id="currentInventoryItemId"
+    />
   </div>
 </template>
 
@@ -264,6 +285,7 @@ import {
 import { stockApi } from '@/api/inventory/stock'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { StockQueryParams, StockVO, StockSummaryVO } from '@/types/inventory/stock'
+import { InventoryItemTypeEnum } from '@/enums/inventory'
 import StockImportDialog from '@/components/inventory/StockImportDialog.vue'
 import StockBatchImportDialog from '@/components/inventory/StockBatchImportDialog.vue'
 import StockDetailDialog from '@/components/inventory/StockDetailDialog.vue'
@@ -311,7 +333,8 @@ const batchImportVisible = ref(false)
 
 // 批次明细对话框
 const detailDialogVisible = ref(false)
-const currentMaterialId = ref<string>('')
+const currentStockId = ref<string>('')
+const currentInventoryItemId = ref<string>('')
 
 // 获取库存列表
 const getList = async () => {
@@ -360,6 +383,7 @@ const handleReset = () => {
   queryParams.current = 1
   queryParams.materialCode = ''
   queryParams.materialName = ''
+  queryParams.itemType = undefined
   queryParams.minQuantity = undefined
   queryParams.maxQuantity = undefined
   queryParams.lowStock = undefined
@@ -407,7 +431,8 @@ const handleImportSuccess = () => {
 
 // 查看批次明细
 const handleViewDetail = (row: StockVO) => {
-  currentMaterialId.value = row.materialId || ''
+  currentStockId.value = row.stockId
+  currentInventoryItemId.value = row.inventoryItemId
   detailDialogVisible.value = true
 }
 

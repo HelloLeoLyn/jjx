@@ -11,6 +11,9 @@ import java.util.List;
 @Mapper(componentModel = MappingConstants.ComponentModel.SPRING)
 public interface StockConverter {
 
+    @Mapping(target = "itemType", ignore = true)
+    @Mapping(target = "itemTypeName", ignore = true)
+    @Mapping(target = "sourceId", ignore = true)
     @Mapping(target = "specification", ignore = true)
     @Mapping(target = "unit", ignore = true)
     @Mapping(target = "totalCost", ignore = true)

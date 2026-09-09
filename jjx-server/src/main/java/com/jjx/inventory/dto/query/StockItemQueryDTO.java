@@ -8,6 +8,9 @@ import lombok.Data;
 @Data
 public class StockItemQueryDTO {
 
+    /** 统一库存物品ID */
+    private Long inventoryItemId;
+
     /** 当前页码 */
     private Integer current = 1;
 

@@ -14,9 +14,18 @@ export const StockStatusEnum = createEnum({
   defaultTag: { type: 'info' },
 })
 
+export const InventoryItemTypeEnum = createEnum({
+  items: [
+    { value: 'MATERIAL', label: '材料', tagProps: { type: 'primary' } },
+    { value: 'PRODUCT', label: '产品', tagProps: { type: 'success' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
 /**
  * 库存相关枚举统一导出
  */
 export const StockEnum = {
   status: StockStatusEnum,
+  itemType: InventoryItemTypeEnum,
 }

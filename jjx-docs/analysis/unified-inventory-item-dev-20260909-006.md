@@ -12,6 +12,7 @@
 4. 销售发货、成品预留、缺料计算统一查询/扣减库存批次。
 5. 删除 `ProductStock` 实体、Mapper、Service、Controller 及 `product_stock` 表，删除产品镜像物料。
 6. 安全库存阈值改为从 `inventory_item` 读取，材料与产品共用一条预警链路。
+7. 库存列表增加“材料/产品”分类与筛选，产品批次明细改按 `inventory_item_id` 查询，可直接查看仓库、库位和批次。
 
 ## 数据及验证
 
@@ -21,6 +22,8 @@
 - 迁移后：MATERIAL 1535、PRODUCT 1；库存汇总/批次缺失身份均为 0
 - `mvn -DskipTests clean compile` 通过（847 个源文件）
 - 18080 端口独立启动成功，登录与库存列表接口验证通过；旧产品库存路由已移除
+- MATERIAL 筛选返回 3 条、PRODUCT 筛选返回 1 条；产品汇总类型为 PRODUCT，批次明细 1 条
+- `npm run validate` 通过；同步移除 1 条已消失的状态魔法值存量基线，未新增违规
 
 ## 注意
 

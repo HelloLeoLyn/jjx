@@ -50,12 +50,22 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
     private final InventoryMaterialMapper materialMapper;
     private final InventoryWarehouseMapper warehouseMapper;
     private final InventoryStorageLocationMapper storageLocationMapper;
+    private final InventoryItemMapper inventoryItemMapper;
     private final StockConverter stockConverter;
 
     @Override
     public IPage<StockVO> page(StockQueryDTO query) {
         // 构建查询条件
         LambdaQueryWrapper<InventoryStock> wrapper = new LambdaQueryWrapper<>();
+
+        if (query.getItemType() != null && !query.getItemType().isBlank()) {
+            String itemType = query.getItemType().toUpperCase();
+            if (!"MATERIAL".equals(itemType) && !"PRODUCT".equals(itemType)) {
+                throw new IllegalArgumentException("非法的库存物品类型");
+            }
+            wrapper.inSql(InventoryStock::getInventoryItemId,
+                    "SELECT inventory_item_id FROM inventory_item WHERE item_type='" + itemType + "'");
+        }
 
         if (query.getMaterialId() != null) {
             wrapper.eq(InventoryStock::getMaterialId, query.getMaterialId());
@@ -65,6 +75,14 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
         }
         if (query.getMaterialName() != null && !query.getMaterialName().isEmpty()) {
             wrapper.like(InventoryStock::getMaterialName, query.getMaterialName());
+        }
+        if (query.getWarehouseId() != null) {
+            wrapper.inSql(InventoryStock::getInventoryItemId,
+                    "SELECT inventory_item_id FROM inventory_stock_item WHERE warehouse_id=" + query.getWarehouseId());
+        }
+        if (query.getLocationId() != null) {
+            wrapper.inSql(InventoryStock::getInventoryItemId,
+                    "SELECT inventory_item_id FROM inventory_stock_item WHERE location_id=" + query.getLocationId());
         }
         if (query.getMinQuantity() != null) {
             wrapper.ge(InventoryStock::getTotalQuantity, query.getMinQuantity());
@@ -108,6 +126,14 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
     @Override
     public StockSummaryVO getSummary(StockQueryDTO query) {
         LambdaQueryWrapper<InventoryStock> wrapper = new LambdaQueryWrapper<>();
+        if (query.getItemType() != null && !query.getItemType().isBlank()) {
+            String itemType = query.getItemType().toUpperCase();
+            if (!"MATERIAL".equals(itemType) && !"PRODUCT".equals(itemType)) {
+                throw new IllegalArgumentException("非法的库存物品类型");
+            }
+            wrapper.inSql(InventoryStock::getInventoryItemId,
+                    "SELECT inventory_item_id FROM inventory_item WHERE item_type='" + itemType + "'");
+        }
         if (query.getMaterialId() != null) {
             wrapper.eq(InventoryStock::getMaterialId, query.getMaterialId());
         }
@@ -128,8 +154,8 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             if (stock.getTotalReserved() != null) {
                 totalReserved = totalReserved.add(stock.getTotalReserved());
             }
-            if (stock.getMaterialId() != null && !materialIds.contains(stock.getMaterialId())) {
-                materialIds.add(stock.getMaterialId());
+            if (stock.getInventoryItemId() != null && !materialIds.contains(stock.getInventoryItemId())) {
+                materialIds.add(stock.getInventoryItemId());
                 materialCount++;
             }
         }
@@ -691,6 +717,17 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
      */
     private void enrichStockVO(StockVO vo) {
         if (vo == null) return;
+
+        if (vo.getInventoryItemId() != null) {
+            com.jjx.inventory.domain.InventoryItem item = inventoryItemMapper.selectById(vo.getInventoryItemId());
+            if (item != null) {
+                vo.setItemType(item.getItemType());
+                vo.setItemTypeName("PRODUCT".equals(item.getItemType()) ? "产品" : "材料");
+                vo.setSourceId(item.getSourceId());
+                vo.setSpecification(item.getSpecification());
+                vo.setUnit(item.getUnit());
+            }
+        }
 
         // 填充库位名称（DEV-692）
         if (vo.getLocationId() != null) {

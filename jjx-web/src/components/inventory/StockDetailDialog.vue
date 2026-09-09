@@ -148,7 +148,8 @@ import type { StockItemQueryParams, StockItemVO, StockVO } from '@/types/invento
 
 const props = defineProps<{
   visible: boolean
-  materialId?: string
+  stockId?: string
+  inventoryItemId?: string
 }>()
 
 const emit = defineEmits<{
@@ -160,8 +161,8 @@ watch(
   () => props.visible,
   (val) => {
     dialogVisible.value = val
-    if (val && props.materialId) {
-      queryParams.materialId = props.materialId
+    if (val && props.inventoryItemId) {
+      queryParams.inventoryItemId = props.inventoryItemId
       getMaterialSummary()
       getList()
     }
@@ -185,7 +186,7 @@ const earliestExpiry = ref('')
 const queryParams = reactive<StockItemQueryParams>({
   current: 1,
   pageSize: 10,
-  materialId: props.materialId || '',
+  inventoryItemId: props.inventoryItemId || '',
   batchNo: '',
   warehouseId: undefined,
   locationId: undefined,
@@ -203,9 +204,9 @@ const locationOptions = ref<{ value: string; label: string }[]>([])
 
 // 获取物料汇总信息
 const getMaterialSummary = async () => {
-  if (!props.materialId) return
+  if (!props.stockId) return
   try {
-    const res = await stockApi.getByMaterial(props.materialId)
+    const res = await stockApi.getById(props.stockId)
     const data = res.data as StockVO
     if (data) {
       materialCode.value = data.materialCode || ''

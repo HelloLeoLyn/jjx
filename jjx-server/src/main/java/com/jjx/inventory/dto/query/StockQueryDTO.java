@@ -13,6 +13,9 @@ import java.math.BigDecimal;
 @EqualsAndHashCode(callSuper = true)
 public class StockQueryDTO extends PageQuery {
 
+    /** 库存物品类型：MATERIAL/PRODUCT */
+    private String itemType;
+
     /**
      * 库存ID
      */

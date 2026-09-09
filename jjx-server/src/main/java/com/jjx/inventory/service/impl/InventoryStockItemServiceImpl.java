@@ -35,6 +35,10 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
     public IPage<StockItemVO> page(StockItemQueryDTO query) {
         LambdaQueryWrapper<InventoryStockItem> wrapper = new LambdaQueryWrapper<>();
 
+        if (query.getInventoryItemId() != null) {
+            wrapper.eq(InventoryStockItem::getInventoryItemId, query.getInventoryItemId());
+        }
+
         if (query.getMaterialId() != null) {
             wrapper.eq(InventoryStockItem::getMaterialId, query.getMaterialId());
         }
