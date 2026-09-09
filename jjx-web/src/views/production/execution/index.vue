@@ -26,7 +26,7 @@
         :class="['scope-card', { active: viewMode === 'mine' }]"
         @click="switchView('mine')"
       >
-        <strong>当前生产任务</strong><span>本人持有的任务与下级展开</span>
+        <strong>当前工单</strong><span>本人当前工单的任务与下级展开</span>
       </button>
       <button
         v-if="canViewAll"
@@ -34,7 +34,7 @@
         :class="['scope-card', { active: viewMode === 'all' }]"
         @click="switchView('all')"
       >
-        <strong>全部工序</strong><span>全部任务与历史（仅管理权限可用）</span>
+        <strong>历史工单</strong><span>全部任务与历史（仅管理权限可用）</span>
       </button>
     </div>
 
@@ -90,7 +90,7 @@
       </div>
     </el-card>
 
-    <!-- 我的生产任务：本人任务全量，子任务按层懒加载 -->
+    <!-- 当前工单：本人任务全量，子任务按层懒加载 -->
     <el-card v-if="viewMode === 'mine'" class="list-card" shadow="never">
       <el-table
         v-loading="loading"
@@ -191,7 +191,7 @@
       </el-table>
     </el-card>
 
-    <!-- 全部工序：根任务分页，子任务按层懒加载 -->
+    <!-- 历史工单：根任务分页（全量含历史），子任务按层懒加载 -->
     <el-card v-if="viewMode === 'all'" class="list-card" shadow="never">
       <el-table
         v-loading="loading"
