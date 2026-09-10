@@ -24,6 +24,23 @@
       <button class="m-refresh" :disabled="loading" @click="loadData">⟳</button>
     </div>
 
+    <!-- 工单级收口（一级负责人：一次完成整张工单全部工序；工人无此动作） -->
+    <div v-if="orderCompletionList.length" class="m-order-complete">
+      <div v-for="oc in orderCompletionList" :key="oc.orderId" class="m-oc-card">
+        <div class="m-oc-info">
+          <span class="m-oc-no">{{ oc.orderNo || '工单#' + oc.orderId }}</span>
+          <span class="m-oc-sub">待完工 {{ oc.pendingExecutionCount }} 道工序</span>
+        </div>
+        <button
+          class="m-act m-act-ok"
+          :disabled="completingOrderId === oc.orderId"
+          @click="handleCompleteOrder(oc)"
+        >
+          {{ completingOrderId === oc.orderId ? '处理中…' : '✓ 完成整单' }}
+        </button>
+      </div>
+    </div>
+
     <!-- 任务列表 -->
     <div v-if="filteredExecs.length" class="m-list">
       <div v-for="ex in filteredExecs" :key="ex.executionId" class="m-exec-card">
@@ -61,9 +78,6 @@
           <button v-if="canResume(ex)" class="m-act m-act-primary" :disabled="startingId === ex.executionId" @click="handleStart(ex)">
             ▶ 继续
           </button>
-          <button v-if="ex.canComplete" class="m-act m-act-ok" :disabled="completingId === ex.executionId" @click="handleComplete(ex)">
-            ✓ 完工
-          </button>
           <button v-if="canReport(ex)" class="m-act m-act-primary" @click="goReport(ex)">
             报工
           </button>
@@ -86,6 +100,7 @@ import { getProductionOrderByCode } from '@/api/production/order'
 import { getMyProductionExecutions } from '@/api/production/task'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import type { MyProductionExecution } from '@/types/production/task'
+import type { OrderCompletionStatusVO } from '@/types/production/operationExecution'
 import type { ProductionOrderVO } from '@/types/production/order'
 import { ExecutionStatusEnum, ProductionOrderStatusEnum } from '@/enums/production'
 
@@ -98,7 +113,9 @@ const order = ref<ProductionOrderVO | null>(null)
 const executions = ref<MyProductionExecution[]>([])
 const startingId = ref<number | null>(null)
 const pausingId = ref<number | null>(null)
-const completingId = ref<number | null>(null)
+/** 工单级收口（一级负责人） */
+const completingOrderId = ref<number | null>(null)
+const orderCompletionList = ref<OrderCompletionStatusVO[]>([])
 
 const orderStatusLabel = computed(() => {
   if (!order.value) return '-'
@@ -192,31 +209,30 @@ async function handlePause(ex: MyProductionExecution) {
   }
 }
 
-async function handleComplete(ex: MyProductionExecution) {
-  if (!ex.executionId) return
+async function handleCompleteOrder(oc: OrderCompletionStatusVO) {
   try {
     await ElMessageBox.confirm(
-      `确认完成工序「${ex.processName}」？\n后端将校验：子树完成量、无待审批报工、无剩余责任，不满足会拦截。`,
-      '完工确认',
-      { type: 'warning', confirmButtonText: '确认完工', cancelButtonText: '再想想' },
+      `确认完成整张工单「${oc.orderNo || oc.orderId}」？\n将一次性完成全部 ${oc.pendingExecutionCount} 道工序；系统会逐工序校验前置（无待审报工 / 数量达标 / 无未分配剩余 / 子树完成），任一未就绪将整体拒绝。`,
+      '完成整单确认',
+      { type: 'warning', confirmButtonText: '确认完成', cancelButtonText: '再想想' },
     )
   } catch {
     return
   }
-  completingId.value = ex.executionId
+  completingOrderId.value = oc.orderId
   try {
-    await operationExecutionApi.complete(ex.executionId)
-    ElMessage.success('工序已完成；若为最后工序将自动生成完工检验')
+    await operationExecutionApi.completeOrder(oc.orderId)
+    ElMessage.success('工单已收口；若为最后一道工序将自动生成完工检验（FQC）')
     await loadData()
   } catch (e: any) {
-    ElMessage.error(e?.message || '完工失败')
+    ElMessage.error(String(e?.msg || e?.message || '完成失败').replace(/\n/g, ' '))
   } finally {
-    completingId.value = null
+    completingOrderId.value = null
   }
 }
 
-function goReport(ex: MyProductionExecution) {
-  router.push({
+
+function goReport(ex: MyProductionExecution) {  router.push({
     path: '/m/report',
     query: {
       executionId: ex.executionId,
@@ -267,6 +283,29 @@ function progressDone(ex: MyProductionExecution): boolean {
   return total > 0 && Number(ex.myCompletedQuantity || 0) >= total
 }
 
+/** 工单级收口状态（仅展示当前用户有权且有待完工工序的工单） */
+async function loadOrderCompletionStatus() {
+  const ids = Array.from(
+    new Set(
+      executions.value
+        .map((e) => e.orderId)
+        .filter((v): v is number => typeof v === 'number'),
+    ),
+  )
+  if (!ids.length) {
+    orderCompletionList.value = []
+    return
+  }
+  try {
+    const res: any = await operationExecutionApi.getOrderCompletionStatus(ids)
+    orderCompletionList.value = ((res?.data || []) as OrderCompletionStatusVO[]).filter(
+      (s) => s.canComplete,
+    )
+  } catch {
+    orderCompletionList.value = []
+  }
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -282,6 +321,7 @@ async function loadData() {
     if (orderNo.value) params.orderNo = orderNo.value
     const res: any = await getMyProductionExecutions(params)
     executions.value = res?.data?.records || []
+    await loadOrderCompletionStatus()
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
@@ -485,5 +525,35 @@ loadData()
   color: #c0c4cc;
   font-size: 13px;
   padding: 70px 0;
+}
+/* 工单级收口卡片（一级负责人） */
+.m-order-complete {
+  margin-bottom: 12px;
+}
+.m-oc-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.m-oc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.m-oc-no {
+  font-size: 14px;
+  font-weight: 600;
+  color: #614700;
+}
+.m-oc-sub {
+  font-size: 12px;
+  color: #a67c00;
 }
 </style>

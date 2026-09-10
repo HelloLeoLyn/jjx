@@ -77,6 +77,17 @@ public interface ProductionOperationExecutionService {
     boolean completeExecution(Long executionId);
 
     /**
+     * 工单级统一收口（2026-09-10）：一级负责人对整张工单一次完成全部待完工工序。
+     * 逐工序前置校验，任一未就绪则整体拒绝并返回阻断清单；全部通过后逐条收口，由最后一道自动创建 FQC。
+     */
+    boolean completeOrderExecutions(Long orderId);
+
+    /**
+     * 工单级收口状态投影（批量）：供 PC/移动端决定「完成工单」按钮显隐。
+     */
+    List<com.jjx.production.domain.vo.OrderCompletionStatusVO> getOrderCompletionStatus(List<Long> orderIds);
+
+    /**
      * 取消工序执行
      */
     boolean cancelExecution(Long executionId);

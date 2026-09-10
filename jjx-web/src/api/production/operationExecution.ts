@@ -5,6 +5,7 @@ import type {
   OperationExecutionCreateDTO,
   OperationExecutionUpdateDTO,
   OperationExecutionStats,
+  OrderCompletionStatusVO,
 } from '@/types/production/operationExecution'
 import type { PageResult, R } from '@/types'
 
@@ -98,6 +99,23 @@ export const operationExecutionApi = {
    */
   complete(executionId: number) {
     return request.put<R<boolean>>(`/production/operation-execution/${executionId}/complete`)
+  },
+
+  /**
+   * 工单级统一收口（2026-09-10）：一级负责人一次完成整张工单全部工序
+   */
+  completeOrder(orderId: number) {
+    return request.put<R<boolean>>(`/production/operation-execution/order/${orderId}/complete`)
+  },
+
+  /**
+   * 工单级收口状态（批量，按钮显隐用）
+   */
+  getOrderCompletionStatus(orderIds: number[]) {
+    return request.get<R<OrderCompletionStatusVO[]>>(
+      '/production/operation-execution/order-completion-status',
+      { params: { orderIds: orderIds.join(',') } }
+    )
   },
 
   /**

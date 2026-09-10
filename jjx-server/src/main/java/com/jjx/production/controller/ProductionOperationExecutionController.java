@@ -148,9 +148,24 @@ public class ProductionOperationExecutionController {
         return Result.success(success);
     }
 
+    @Operation(summary = "工单级统一收口（一级负责人一次完成整张工单全部工序）")
+    @PutMapping("/order/{orderId}/complete")
+    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_order'", bizId = "#orderId", action = LogActions.OP_EXEC_COMPLETE)
+    @SaCheckPermission("production:operation-execution:edit")
+    public Result<Boolean> completeOrderExecutions(@PathVariable Long orderId) {
+        return Result.success(productionOperationExecutionService.completeOrderExecutions(orderId));
+    }
+
+    @Operation(summary = "工单级收口状态（批量，按钮显隐用）")
+    @GetMapping("/order-completion-status")
+    @SaCheckPermission("production:operation-execution:view")
+    public Result<List<com.jjx.production.domain.vo.OrderCompletionStatusVO>> getOrderCompletionStatus(
+            @RequestParam("orderIds") List<Long> orderIds) {
+        return Result.success(productionOperationExecutionService.getOrderCompletionStatus(orderIds));
+    }
+
     @Operation(summary = "取消工序执行")
-    @PutMapping("/{executionId}/cancel")
-    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", action = LogActions.OP_EXEC_CANCEL)
+    @PutMapping("/{executionId}/cancel")    @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", action = LogActions.OP_EXEC_CANCEL)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> cancelExecution(@PathVariable Long executionId) {
         boolean success = productionOperationExecutionService.cancelExecution(executionId);

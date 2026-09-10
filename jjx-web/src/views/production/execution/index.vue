@@ -24,6 +24,7 @@
       v-if="scopeReady"
       :can-view-all="canViewAll"
       @select="handleOrderSelect"
+      @completed="handleOrderCompleted"
     />
 
     <TaskTreePanel
@@ -775,6 +776,11 @@ const handleOrderSelect = (
   taskList.value = []
   total.value = 0
   if (order) getList()
+}
+
+/** 工单级收口成功：刷新下区任务树 */
+const handleOrderCompleted = () => {
+  getList()
 }
 
 const getList = async () => {

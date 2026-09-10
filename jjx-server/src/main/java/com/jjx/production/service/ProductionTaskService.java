@@ -60,6 +60,12 @@ public interface ProductionTaskService {
      */
     void assertExecutionCompletable(Long executionId);
 
+    /**
+     * 工序完工前置阻断项（空=就绪）。
+     * 2026-09-10：供工单级统一收口做「逐工序前置聚合」——一次拿到全部未满足项，不抛异常。
+     */
+    java.util.List<String> executionCompletionBlockers(Long executionId);
+
     /** 工序根任务（First Task）负责人 assignee_id；无根任务/无负责人返回 null（完工权限用） */
     Long getRootAssigneeId(Long executionId);
 

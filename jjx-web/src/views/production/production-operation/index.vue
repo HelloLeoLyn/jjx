@@ -216,15 +216,6 @@
                 @click="handleStart(scope.row)"
                 >开始</el-button
               >
-              <el-button
-                v-if="scope.row.canComplete"
-                type="warning"
-                link
-                icon="Check"
-                v-hasPermi="['production:operation-execution:edit']"
-                @click="handleComplete(scope.row)"
-                >完成</el-button
-              >
               <el-button type="info" link icon="View" @click="handleView(scope.row)"
                 >详情</el-button
               >
@@ -737,27 +728,6 @@ const handleStart = async (row: OperationItem) => {
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') {
       ElMessage.error(e?.msg || '开始操作失败')
-    }
-  }
-}
-
-// 完成操作
-const handleComplete = async (row: OperationItem) => {
-  try {
-    await ElMessageBox.confirm('确认完成此操作任务?', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-
-    // DEV-685：接真实接口
-    await operationExecutionApi.complete(Number(row.operationId))
-    ElMessage.success('操作任务已完成')
-    getList()
-    getStats()
-  } catch (e: any) {
-    if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error(e?.msg || '完成操作失败')
     }
   }
 }

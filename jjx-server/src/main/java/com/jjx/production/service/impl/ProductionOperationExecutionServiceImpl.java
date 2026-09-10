@@ -545,6 +545,143 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         return true;
     }
 
+    /** 未终态工序（非 已完成/已跳过/已取消） */
+    private List<ProductionOperationExecution> listOpenExecutions(Long orderId) {
+        return list(Wrappers.<ProductionOperationExecution>lambdaQuery()
+                .eq(ProductionOperationExecution::getOrderId, orderId)
+                .notIn(ProductionOperationExecution::getExecutionStatus,
+                        ExecutionStatusEnum.COMPLETED.getValue(),
+                        ExecutionStatusEnum.SKIPPED.getValue(),
+                        ExecutionStatusEnum.CANCELLED.getValue())
+                .orderByAsc(ProductionOperationExecution::getProcessOrder));
+    }
+
+    private static String processLabel(ProductionOperationExecution exec) {
+        String name = exec.getProcessName();
+        return (name == null || name.isBlank()) ? ("工序" + exec.getProcessOrder()) : name;
+    }
+
+    private static String statusText(Integer status) {
+        ExecutionStatusEnum e = ExecutionStatusEnum.getByValue(status);
+        return e == null ? String.valueOf(status) : e.getLabel();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean completeOrderExecutions(Long orderId) {
+        log.info("工单统一收口: orderId={}", orderId);
+        if (orderId == null) {
+            throw new BusinessException("工单ID不能为空");
+        }
+        ProductionOrder order = productionOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("工单不存在: " + orderId);
+        }
+        List<ProductionOperationExecution> open = listOpenExecutions(orderId);
+        if (open.isEmpty()) {
+            throw new BusinessException("该工单没有待完成的工序，无需重复收口");
+        }
+
+        Long userId = com.jjx.system.utils.SecurityUtils.getUserId();
+        boolean isSuperAdmin = com.jjx.system.utils.SecurityUtils.hasRole("admin");
+
+        // ① 权限（该工单全部待完工工序的根任务负责人本人） + ② 逐工序前置，一次聚合全部阻断项
+        List<String> blockers = new java.util.ArrayList<>();
+        for (ProductionOperationExecution exec : open) {
+            String label = processLabel(exec);
+            Long rootAssigneeId = productionTaskService.getRootAssigneeId(exec.getExecutionId());
+            boolean isRootOwner = rootAssigneeId != null && rootAssigneeId.equals(userId);
+            if (!isRootOwner && !isSuperAdmin) {
+                throw new BusinessException(rootAssigneeId == null
+                        ? "工序[" + label + "]暂无一级负责人，仅超级管理员可完成"
+                        : "仅该工单一级负责人（或超级管理员）可收口，请由负责人操作");
+            }
+            if (!ExecutionStatusEnum.EXECUTING.getValue().equals(exec.getExecutionStatus())) {
+                blockers.add(label + "：当前状态为" + statusText(exec.getExecutionStatus()) + "，不能完成");
+                continue;
+            }
+            for (String b : productionTaskService.executionCompletionBlockers(exec.getExecutionId())) {
+                blockers.add(label + "：" + b);
+            }
+        }
+        if (!blockers.isEmpty()) {
+            throw new BusinessException("工单暂不能完成：\n✗ " + String.join("\n✗ ", blockers));
+        }
+
+        // 逐条收口（先根任务，再工序状态；任一失败事务回滚=整体拒绝）
+        LocalDateTime completedAt = LocalDateTime.now();
+        for (ProductionOperationExecution exec : open) {
+            productionTaskService.completeRootForExecution(exec.getExecutionId());
+            boolean success = update(Wrappers.<ProductionOperationExecution>lambdaUpdate()
+                    .eq(ProductionOperationExecution::getExecutionId, exec.getExecutionId())
+                    .eq(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.EXECUTING.getValue())
+                    .set(ProductionOperationExecution::getExecutionStatus, ExecutionStatusEnum.COMPLETED.getValue())
+                    .set(ProductionOperationExecution::getActualEndTime, completedAt));
+            if (!success) {
+                throw new BusinessException("工序[" + processLabel(exec) + "]状态已变更，请刷新后重试");
+            }
+        }
+        // 全部收口后由最后一道工序自动创建完工检验（FQC）
+        ProductionOperationExecution last = open.get(open.size() - 1);
+        qualityActionService.createFqcForExecution(last.getExecutionId());
+        log.info("工单统一收口完成: orderId={}, 工序数={}, FQC来源execution={}", orderId, open.size(), last.getExecutionId());
+        return true;
+    }
+
+    @Override
+    public List<com.jjx.production.domain.vo.OrderCompletionStatusVO> getOrderCompletionStatus(List<Long> orderIds) {
+        List<com.jjx.production.domain.vo.OrderCompletionStatusVO> result = new java.util.ArrayList<>();
+        if (orderIds == null || orderIds.isEmpty()) {
+            return result;
+        }
+        List<Long> ids = orderIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return result;
+        }
+        Long userId = com.jjx.system.utils.SecurityUtils.getUserId();
+        boolean isSuperAdmin = com.jjx.system.utils.SecurityUtils.hasRole("admin");
+        String orderIdStr = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+        java.util.Map<Long, ComStatusRow> rows = new java.util.HashMap<>();
+        try {
+            jdbcTemplate.query("SELECT e.order_id AS order_id, COUNT(*) AS open_cnt, "
+                            + "SUM(CASE WHEN t.task_id IS NOT NULL AND t.assignee_id = " + (userId == null ? -1L : userId)
+                            + " THEN 1 ELSE 0 END) AS mine_cnt, "
+                            + "SUM(CASE WHEN t.task_id IS NOT NULL THEN 1 ELSE 0 END) AS root_cnt "
+                            + "FROM production_operation_execution e "
+                            + "LEFT JOIN production_task t ON t.execution_id = e.execution_id AND t.parent_task_id IS NULL "
+                            + "WHERE e.order_id IN (" + orderIdStr + ") "
+                            + "AND e.execution_status NOT IN (" + ExecutionStatusEnum.COMPLETED.getValue() + ","
+                            + ExecutionStatusEnum.SKIPPED.getValue() + "," + ExecutionStatusEnum.CANCELLED.getValue() + ") "
+                            + "GROUP BY e.order_id",
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs -> rows.put(rs.getLong("order_id"),
+                            new ComStatusRow(rs.getInt("open_cnt"), rs.getInt("mine_cnt"), rs.getInt("root_cnt"))));
+        } catch (Exception e) {
+            log.warn("查询工单收口状态失败: {}", e.getMessage());
+        }
+        for (Long id : ids) {
+            ComStatusRow row = rows.get(id);
+            if (row == null) {
+                continue;
+            }
+            com.jjx.production.domain.vo.OrderCompletionStatusVO vo = new com.jjx.production.domain.vo.OrderCompletionStatusVO();
+            vo.setOrderId(id);
+            ProductionOrder order = productionOrderMapper.selectById(id);
+            vo.setOrderNo(order == null ? null : order.getOrderNo());
+            vo.setPendingExecutionCount(row.openCnt);
+            vo.setAuthorized(isSuperAdmin || (row.rootCnt > 0 && row.mineCnt == row.rootCnt));
+            vo.setCanComplete(vo.isAuthorized() && row.openCnt > 0);
+            result.add(vo);
+        }
+        return result;
+    }
+
+    /** jdbcTemplate 结果行载体 */
+    private record ComStatusRow(int openCnt, int mineCnt, int rootCnt) {
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean cancelExecution(Long executionId) {

@@ -157,3 +157,18 @@ export interface OperationExecutionStats {
   completedCount: number
   cancelledCount: number
 }
+
+/**
+ * 工单级收口状态（2026-09-10）：一级负责人对整张工单一次收口。
+ * 仅做轻量投影（是否可点击）；逐工序前置在点击收口时由服务端聚合校验。
+ */
+export interface OrderCompletionStatusVO {
+  orderId: number
+  orderNo?: string
+  /** 待完工工序数（未终态） */
+  pendingExecutionCount: number
+  /** 当前用户是否有权收口（该工单全部工序根负责人本人，或超管） */
+  authorized: boolean
+  /** 是否可点击收口（有权 + 存在待完工工序） */
+  canComplete: boolean
+}

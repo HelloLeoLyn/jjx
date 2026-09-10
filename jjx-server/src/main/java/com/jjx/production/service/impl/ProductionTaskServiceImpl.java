@@ -459,27 +459,32 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
 
     @Override
     public void assertExecutionCompletable(Long executionId) {
-        if (executionId == null) {
-            throw new BusinessException("executionId 不能为空");
-        }
-        Long firstTaskId = findFirstTask(executionId);
-        if (firstTaskId == null) {
-            throw new BusinessException("该工序尚未生成生产任务，不能完工，请刷新后重试或联系管理员");
-        }
-        ProductionTask firstTask = productionTaskMapper.selectById(firstTaskId);
-        if (firstTask == null) {
-            throw new BusinessException("该工序任务不存在，不能完工，请刷新后重试或联系管理员");
-        }
-        if (STATUS_COMPLETED.equals(firstTask.getStatus())) {
-            return; // 根任务已收口（历史已完成），直接放行
-        }
-        // 2026-09-09 完成链简化：不再要求「根任务已被人工 COMPLETED」，
-        // 改为校验整棵子树就绪（完成前置口径），就绪即允许工序「完工」按钮收口根任务。
-        List<String> blockers = completionBlockers(firstTask);
+        List<String> blockers = executionCompletionBlockers(executionId);
         if (!blockers.isEmpty()) {
             throw new BusinessException("该工序暂不能完工：\n✗ " + String.join("\n✗ ", blockers)
                     + "\n（待全部完成后，由该工序一级负责人点击「完工」收口）");
         }
+    }
+
+    @Override
+    public List<String> executionCompletionBlockers(Long executionId) {
+        if (executionId == null) {
+            return List.of("executionId 不能为空");
+        }
+        Long firstTaskId = findFirstTask(executionId);
+        if (firstTaskId == null) {
+            return List.of("该工序尚未生成生产任务，不能完工，请刷新后重试或联系管理员");
+        }
+        ProductionTask firstTask = productionTaskMapper.selectById(firstTaskId);
+        if (firstTask == null) {
+            return List.of("该工序任务不存在，不能完工，请刷新后重试或联系管理员");
+        }
+        if (STATUS_COMPLETED.equals(firstTask.getStatus())) {
+            return List.of(); // 根任务已收口（历史已完成），直接放行
+        }
+        // 2026-09-09 完成链简化：不再要求「根任务已被人工 COMPLETED」，
+        // 改为校验整棵子树就绪（完成前置口径），就绪即允许工序「完工」收口根任务。
+        return completionBlockers(firstTask);
     }
 
     private static String quantityText(BigDecimal quantity) {
