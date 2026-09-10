@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "check:status-enums": "node scripts/check-status-magic-values.mjs",
     "test:status-enums": "node scripts/check-status-magic-values.mjs --self-test",
-    "validate": "npm run check:status-enums && vue-tsc --noEmit"
+    "check:docs": "node ../scripts/check-docs.mjs",
+    "validate": "npm run check:status-enums && npm run check:docs && vue-tsc --noEmit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

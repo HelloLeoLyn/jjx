@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# JJX commit-msg 闸门 · 提交信息规范（CONVENTIONS §5/§6）
+#   1) 必须带任务码 dev-YYYYMMDD-NNN          → 关：git config jjx.requireTaskCode false
+#   2) 任务码必须真实存在于 sys_task          → 关：git config jjx.verifyTaskCode false
+#      校验用只读账号 jjx_ro；库连不上/无账号时只提醒、放行（不阻塞提交）
+#   3) Merge / Revert / fixup! / squash! 自动豁免
+#   临时跳过单次：git commit --no-verify       生效前提：core.hooksPath=scripts/hooks
+
+set -uo pipefail
+MSG_FILE="${1:-}"
+[ -z "$MSG_FILE" ] && exit 0
+msg=$(head -n 1 "$MSG_FILE" 2>/dev/null || true)
+
+case "$msg" in
+  Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
+esac
+
+RO_USER="${JJX_RO_USER:-jjx_ro}"
+RO_PASS="${JJX_RO_PASS:-jjx_ro_2026}"
+DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_PORT="${DB_PORT:-3306}"
+DB_NAME="${DB_NAME:-jjx_erp_db}"
+
+usage_hint() {
+  cat <<EOF
+  取号（当日最大 N + 1，只读账号即可）:
+    mysql -h127.0.0.1 -u jjx_ro -pjjx_ro_2026 -N -B jjx_erp_db -e \\
+      "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(task_code,'-',-1) AS UNSIGNED)),0)+1 FROM sys_task WHERE task_code LIKE CONCAT('dev-',DATE_FORMAT(NOW(),'%Y%m%d'),'-%')"
+  登记（插入前先做 sys_task 表级 guard 备份）:
+    INSERT INTO sys_task (task_code,task_type,kanban_module,title,status,priority,create_by)
+    VALUES ('dev-YYYYMMDD-NNN','DEV','dev','<标题>',0,'P3','<agent>');
+  临时跳过: git commit --no-verify
+EOF
+}
+
+# ── 1. 必须带任务码 ────────────────────────────────────────────────────────
+code=$(printf '%s' "$msg" | grep -Eo 'dev-[0-9]{8}-[0-9]{3,}' | head -1)
+if [ -z "$code" ]; then
+  strict=$(git config --bool --get jjx.requireTaskCode 2>/dev/null)
+  [ -z "$strict" ] && strict=true
+  if [ "$strict" = "true" ]; then
+    cat <<EOF
+
+✘ 拦截：提交信息缺任务码 dev-YYYYMMDD-NNN（CONVENTIONS §5）
+  当前: $msg
+  格式: type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）
+       type ∈ feat|fix|refactor|docs|style|chore|perf|test
+
+$(usage_hint)
+  例外: Merge/Revert/fixup!/squash! 自动豁免
+  本 clone 关闭: git config jjx.requireTaskCode false
+
+EOF
+    exit 1
+  fi
+  printf '\n⚠ 提醒：提交信息没带任务码（已按 jjx.requireTaskCode=false 放行）\n  当前: %s\n\n' "$msg"
+  exit 0
+fi
+
+# ── 2. 任务码必须真实存在（fail-open：库不可用时只提醒）────────────────────
+verify=$(git config --bool --get jjx.verifyTaskCode 2>/dev/null)
+[ -z "$verify" ] && verify=true
+if [ "$verify" = "true" ]; then
+  if ! command -v mysql >/dev/null 2>&1; then
+    printf '\n⚠ 提醒：本机没有 mysql 客户端，跳过任务码真实性校验（%s）\n\n' "$code"
+    exit 0
+  fi
+  found=$(MYSQL_PWD="$RO_PASS" mysql -h"$DB_HOST" -P"$DB_PORT" -u"$RO_USER" \
+            --connect-timeout=3 -N -B "$DB_NAME" \
+            -e "SELECT 1 FROM sys_task WHERE task_code='$code' LIMIT 1;" 2>/dev/null)
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf '\n⚠ 提醒：连不上库/只读账号不可用，跳过任务码真实性校验（%s）\n' "$code"
+    printf '  （校验命令：mysql -h%s -u%s %s -e "SELECT 1 FROM sys_task WHERE task_code='"'"'%s'"'"'"）\n\n' \
+      "$DB_HOST" "$RO_USER" "$DB_NAME" "$code"
+    exit 0
+  fi
+  if [ -z "$found" ]; then
+    cat <<EOF
+
+✘ 拦截：任务码 $code 在 sys_task 里不存在（CONVENTIONS §6：任务必须真实登记）
+
+  要么先把任务登记进去：
+    INSERT INTO sys_task (task_code,task_type,kanban_module,title,status,priority,create_by)
+    VALUES ('$code','DEV','dev','<标题>',0,'P3','<agent>');
+
+$(usage_hint)
+  确认要放行: git commit --no-verify    或    git config jjx.verifyTaskCode false
+
+EOF
+    exit 1
+  fi
+fi
+exit 0

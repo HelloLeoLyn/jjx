@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# JJX pre-commit 闸门 · 内容类（拦"不可逆"的改动）
+# 生效前提：git config core.hooksPath scripts/hooks  → 跑 bash scripts/install-hooks.sh
+# 人工覆盖：git commit --no-verify（只在确认过后果时用）
+# 规则出处：AGENTS.md / jjx-docs/standards/CONVENTIONS.md §5
+
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" 2>/dev/null || exit 1
+
+fail=0
+say() { printf '%s\n' "$*"; }
+
+# ── 闸门 1：共享目录禁止删除 / 移出（不可逆，规范 §5 红线）──────────────
+PROTECTED_RE='^(jjx-docs/sql/|jjx-docs/standards/)'
+deleted=$(git diff --cached --name-only --diff-filter=D | grep -E "$PROTECTED_RE" || true)
+moved=$(git diff --cached --name-status --diff-filter=R | awk '{ if ($2 ~ /^jjx-docs\/(sql|standards)\// || $3 ~ /^jjx-docs\/(sql|standards)\//) print }')
+
+if [ -n "$deleted" ] || [ -n "$moved" ]; then
+  say ""
+  say "✘ 拦截：禁止删除/移动共享目录（jjx-docs/sql/、jjx-docs/standards/）内的文件"
+  say "  依据：CONVENTIONS §5（不可逆；疑似冗余先问，不要直接删）"
+  while IFS= read -r f; do [ -n "$f" ] && say "  删除: $f"; done <<< "$deleted"
+  while IFS= read -r f; do [ -n "$f" ] && say "  移动: $f"; done <<< "$moved"
+  say "  恢复办法：git ls-files -d | xargs git restore"
+  fail=1
+fi
+
+# ── 闸门 2：状态魔法值基线只许缩小（AGENTS.md：不许新增违规）──────────────
+BASE='jjx-web/scripts/status-magic-baseline.json'
+if git diff --cached --name-only | grep -qx "$BASE"; then
+  out=$(python3 - "$BASE" <<'PY'
+import json, subprocess, sys
+p = sys.argv[1]
+
+def load(rev):
+    r = subprocess.run(["git", "show", f"{rev}:{p}"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    try:
+        return json.loads(r.stdout).get("findings", {}) or {}
+    except Exception:
+        return None
+
+old, new = load("HEAD"), load("")
+if new is None:
+    print("  ✘ 基线文件在暂存区不可读，或已被删除/未加入暂存区")
+    print("     （合法维护只能通过减小条目；新增文件请走 npm run check:status-enums -- --write-baseline 并复核）")
+    sys.exit(1)
+if old is None:
+    print("  ✘ 基线文件是新增的（HEAD 中不存在）——建基线必须先复核全部条目，不允许顺手带进提交")
+    sys.exit(1)
+old = old or {}
+added = [k for k in new if k not in old]
+increased = [(k, old[k], new[k]) for k in new if k in old and new[k] > old[k]]
+if added or increased:
+    for k in added[:10]:
+        print("  新增条目: " + k[:110])
+    for k, o, n in increased[:10]:
+        print(f"  数值增大: {o} -> {n}  {k[:90]}")
+    sys.exit(1)
+removed = [k for k in old if k not in new]
+print(f"  ✓ 基线只减不增（本次减少 {len(removed)} 条）")
+sys.exit(0)
+PY
+) || {
+    say ""
+    say "✘ 拦截：status-magic-baseline.json 只许缩小，不许新增/放大（AGENTS.md 状态枚举条款）"
+    say "$out"
+    say "  正确做法：改业务代码让违规消失，而不是把它写进基线"
+    fail=1
+  }
+  [ -n "$out" ] && say "$out"
+fi
+
+if [ "$fail" -ne 0 ]; then
+  say ""
+  say "（确认无误要强行提交：git commit --no-verify）"
+  say ""
+  exit 1
+fi
+exit 0
