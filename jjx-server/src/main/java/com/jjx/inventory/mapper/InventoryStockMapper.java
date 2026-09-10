@@ -76,11 +76,15 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
 
     /**
      * 查询呆滞物料（180天未出库）
+     * 2026-09-10：原 `JOIN + GROUP BY s.material_id` 与 `SELECT s.*` 在 ONLY_FULL_GROUP_BY
+     * （MySQL 8 默认 sql_mode）下非法（错误 1055 Expression #1 ... not in GROUP BY clause），
+     * 导致库存台账呆滞列 / 呆滞预警 / 呆滞分析报表全部 500。
+     * 改用 EXISTS 子查询：天然去重（不再需要 GROUP BY），筛选语义保持不变。
      */
     @Select("SELECT s.* FROM inventory_stock s " +
-            "JOIN inventory_stock_item i ON s.material_id = i.material_id " +
-            "WHERE i.last_outbound_time IS NULL " +
-            "   OR i.last_outbound_time < DATE_SUB(NOW(), INTERVAL 180 DAY) " +
-            "GROUP BY s.material_id")
+            "WHERE EXISTS (SELECT 1 FROM inventory_stock_item i " +
+            "              WHERE i.material_id = s.material_id " +
+            "                AND (i.last_outbound_time IS NULL " +
+            "                     OR i.last_outbound_time < DATE_SUB(NOW(), INTERVAL 180 DAY)))")
     List<InventoryStock> selectObsolete();
 }
