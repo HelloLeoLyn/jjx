@@ -209,8 +209,7 @@
           ><template #default="{ row }"
             ><el-input-number
               v-if="
-                rowCanEdit(row) &&
-                row.inspectionResult === InboundInspectionResultEnum.FAIL.value
+                rowCanEdit(row) && row.inspectionResult === InboundInspectionResultEnum.FAIL.value
               "
               v-model="row.acceptedQuantity"
               :min="acceptedQuantityCanEdit(row) ? 1 : 0"
@@ -222,11 +221,10 @@
         >
         <el-table-column label="检测项目" width="125"
           ><template #default="{ row }"
-            ><el-button link type="primary" @click="openMaterialChecks(row)">检测项目</el-button>
-            <div class="check-progress">
-              已录 {{ checkProgress(row) }}/{{ row.inspectionItems.length }}
-            </div></template
-          ></el-table-column
+            ><el-button link type="primary" @click="openMaterialChecks(row)"
+              >检测项目{{ checkProgress(row) }}/{{ row.inspectionItems.length }}</el-button
+            >
+          </template></el-table-column
         >
         <el-table-column label="行状态" width="105"
           ><template #default="{ row }"
@@ -706,10 +704,7 @@ async function submitInspection() {
       ElMessage.warning(`${item.materialCode}：整批判定合格时接收数量须等于收货数量`)
       return
     }
-    if (
-      item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-      !item.disposition
-    ) {
+    if (item.inspectionResult === InboundInspectionResultEnum.FAIL.value && !item.disposition) {
       ElMessage.warning(`${item.materialCode}：整批判定不合格时必须选择处置方式`)
       return
     }

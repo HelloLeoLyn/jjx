@@ -2,7 +2,8 @@
   <el-dialog
     v-model="opened"
     :title="`${row?.materialCode || ''} ${row?.materialName || ''} 检测项目`"
-    width="900px"
+    min-width="900px"
+    max-width="1200px"
     destroy-on-close
     :close-on-click-modal="false"
   >
