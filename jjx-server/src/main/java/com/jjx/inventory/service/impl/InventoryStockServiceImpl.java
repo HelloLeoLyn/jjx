@@ -98,6 +98,8 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             wrapper.isNotNull(InventoryStock::getEarliestExpiry);
         }
 
+        // 2026-09-10: 台账仅展示统一库存物品行，历史遗留的 inventory_item_id 为空的行不再出现在列表（配套 79 号迁移清理）
+        wrapper.isNotNull(InventoryStock::getInventoryItemId);
         wrapper.orderByDesc(InventoryStock::getLastUpdateTime);
 
         // 分页查询

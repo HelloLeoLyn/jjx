@@ -35,20 +35,23 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
     int refreshSummaryByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
 
     /**
-     * 刷新指定物料的汇总数据
-     * 从明细表计算汇总值并更新到汇总表（upsert：无行时自动创建，首次入库不再丢失汇总）
+     * 刷新指定材料的汇总数据（兼容按 materialId 调用的存量调用点）
+     * 2026-09-10：原实现 INSERT 不写 inventory_item_id，而唯一键 uk_inventory_item(inventory_item_id)
+     * 对 NULL 不去重、ON DUPLICATE KEY 对 NULL 行永不触发 → 每调一次就新增一行 inventory_item_id IS NULL 的脏行，
+     * 造成库存台账同一物料多行、数量与 inventory_stock_item 不一致（历史脏行已由 79 号迁移清理）。
+     * 现改为按 si.inventory_item_id 分组写入（与 refreshSummaryByInventoryItemId 等价），不再产生 NULL 行。
      */
-    @Update("INSERT INTO inventory_stock (material_id, material_code, material_name, total_quantity, total_reserved, earliest_expiry, location_id) " +
-            "SELECT si.material_id, MAX(si.material_code), MAX(si.material_name), " +
+    @Update("INSERT INTO inventory_stock (inventory_item_id, material_id, material_code, material_name, total_quantity, total_reserved, earliest_expiry, location_id) " +
+            "SELECT si.inventory_item_id, MAX(si.material_id), MAX(si.material_code), MAX(si.material_name), " +
             "       COALESCE(SUM(si.quantity), 0), " +
             "       COALESCE(SUM(si.reserved_quantity), 0), " +
             "       MIN(si.expiry_date), " +
             "       (SELECT sub.location_id FROM inventory_stock_item sub " +
-            "        WHERE sub.material_id = si.material_id AND sub.status = 1 AND sub.quantity > 0 " +
+            "        WHERE sub.inventory_item_id = si.inventory_item_id AND sub.status = 1 AND sub.quantity > 0 " +
             "        ORDER BY (sub.location_id IS NULL) ASC, sub.expiry_date ASC, sub.last_inbound_time ASC LIMIT 1) " +
             "FROM inventory_stock_item si " +
-            "WHERE si.material_id = #{materialId} AND si.status = 1 " +
-            "GROUP BY si.material_id " +
+            "WHERE si.material_id = #{materialId} AND si.status = 1 AND si.inventory_item_id IS NOT NULL " +
+            "GROUP BY si.inventory_item_id " +
             "ON DUPLICATE KEY UPDATE " +
             "  total_quantity = VALUES(total_quantity), " +
             "  total_reserved = VALUES(total_reserved), " +
