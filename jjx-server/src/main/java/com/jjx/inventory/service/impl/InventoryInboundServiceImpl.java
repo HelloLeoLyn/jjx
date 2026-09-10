@@ -1496,7 +1496,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundOrderMapper.updateById(order);
         approve(order.getInboundId(), null, null, "生产完工入库");
 
-        // DEV-20260810-096：完工入库=产品入库（产品维度独立记账，入 product_stock 表）
+        // 完工入库写入统一库存的 PRODUCT 身份，并保留仓库、库位与批次维度。
         // 概念红线：完工入库入的是产品库存，不是物料不是材料；产品库存与物料库存各自独立记账
         // 057定稿：产品入库确认成功后回写订单 produced_quantity += 入库量（账实最准，不是完工就写）
         try {

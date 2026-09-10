@@ -458,7 +458,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("工单状态不允许取消");
         }
 
-        // 095：取消工单部分完工入库（产品维度，入 product_stock 表）
+        // 取消工单时，已通过 FQC 的合格品仍按 PRODUCT 库存身份办理部分完工入库。
         // 已完工合格品（2026-09-09 口径Y：FQC PASS passQty，见 handleFqcPass）→ 自动部分完工入库，产品库存+
         try {
             BigDecimal finishedQty = order.getFinishedQuantity() != null ? order.getFinishedQuantity() : BigDecimal.ZERO;

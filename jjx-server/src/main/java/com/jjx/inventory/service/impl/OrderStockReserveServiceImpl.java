@@ -31,7 +31,7 @@ import java.util.Map;
  * 逻辑：
  * 1. 订单确认(4→6)时检查成品可用库存 available_quantity
  * 2. 库存充足→预留全部；不足→预留库存部分，缺货量(订单量-预留量)进生产
- * 3. 预留走【产品库存表 product_stock】（040定稿：成品预留→产品预留，非物料库存）
+ * 3. 预留走统一库存中的 PRODUCT 身份（成品预留与材料库存共用引擎、按身份区分）
  *    available = total_quantity - total_reserved
  */
 @Slf4j
@@ -80,7 +80,7 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
                 log.info("订单{}明细产品ID为空，跳过", order.getOrderNo());
                 continue;
             }
-            // 040定稿：预留走【产品库存表 product_stock】（产品维度），不再走物料F维度
+            // 统一库存：按产品对应的 PRODUCT 库存身份预留，不生成产品镜像物料。
             // 可用库存 = 总库存 - 预留（available_quantity 生成列）
             com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
                     com.jjx.inventory.enums.InventoryItemTypeEnum.PRODUCT, p.getProductId(),
