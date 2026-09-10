@@ -1,7 +1,13 @@
 -- =====================================================
--- 清理测试数据脚本（v10）
+-- 清理测试数据脚本（v12）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v12 变更（2026-09-10）：
+--   1. 对齐当前库（102 张表）：全量比对脚本覆盖与库表差异，业务表无遗漏（未覆盖的只剩系统/基础档案）
+--   2. 补充统一库存物品主数据 inventory_item 保留声明（由 inventory_material 派生，与物料同级基础档案）
+--   3. 补充人事模块保留声明：hr_employee（员工档案，基础档案级）/ hr_dept_mapping（导入部门映射）
+--   4. 说明 sys_dept 已于 83_rebuild_sys_dept_org.sql 按新组织架构重建（16 部门），本脚本不清
+--   5. 核验段补 inventory_item / hr_employee / sys_dept 基数展示
 -- v11 变更（2026-09-12）：
 --   1. 删除product_stock
 --
@@ -279,11 +285,14 @@ TRUNCATE sys_error_log;
 
 -- ==================== 12. 基础资料 + 系统权限/配置（全部保留，不动） ====================
 -- 权限：sys_user / sys_role / sys_menu / sys_role_menu / sys_user_role / sys_dept
+--       sys_dept 已按 83_rebuild_sys_dept_org.sql 新组织架构重建（16 部门），本脚本不清
 -- 配置：sys_config / sys_dict / sys_dict_item / sys_event_config
 -- 质量模板：quality_template_registry
 -- 生产基础资料：jjx_screen_master / production_tooling / engineering_standard_process
 -- 业务基础资料：sales_customer / purchase_supplier / inventory_material /
---               inventory_material_category / inventory_warehouse
+--               inventory_material_category / inventory_warehouse /
+--               inventory_item（统一库存物品主数据，由物料派生，与物料同级）
+-- 人事基础档案：hr_employee（员工档案）/ hr_dept_mapping（导入部门映射）
 -- 历史配置备份：sys_event_config_bak_20260814
 -- 以上保留
 
@@ -314,4 +323,7 @@ SELECT
     (SELECT COUNT(*) FROM engineering_standard_process) AS standard_processes,
     (SELECT COUNT(*) FROM production_tooling) AS tooling_records,
     (SELECT COUNT(*) FROM quality_template_registry) AS quality_templates,
-    (SELECT COUNT(*) FROM jjx_screen_master) AS screens;
+    (SELECT COUNT(*) FROM jjx_screen_master) AS screens,
+    (SELECT COUNT(*) FROM inventory_item) AS inventory_items,
+    (SELECT COUNT(*) FROM hr_employee) AS hr_employees,
+    (SELECT COUNT(*) FROM sys_dept) AS departments;
