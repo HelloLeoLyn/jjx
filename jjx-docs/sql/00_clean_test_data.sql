@@ -2,6 +2,8 @@
 -- 清理测试数据脚本（v10）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v11 变更（2026-09-12）：
+--   1. 删除product_stock
 --
 -- v10 变更（2026-09-08）：
 --   1. 补充需求管理：biz_requirement_approval / biz_requirement
@@ -212,7 +214,6 @@ TRUNCATE inventory_alert_log;
 
 TRUNCATE order_material_reserve;
 
-TRUNCATE product_stock;
 
 TRUNCATE inventory_transaction;
 
