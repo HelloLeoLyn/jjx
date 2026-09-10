@@ -24,9 +24,9 @@
               审批通过
             </el-button>
             <el-button
-              v-if="inboundData.status === 2"
+              v-if="[0, 1, 2].includes(inboundData.status)"
               type="warning"
-              v-hasPermi="['inventory:inbound:approve']"
+              v-hasPermi="['inventory:inbound:confirm']"
               @click="handleConfirm"
             >
               确认入库
@@ -190,9 +190,11 @@ import type { TransactionVO } from '@/api/inventory/transaction'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
 import { InboundEnum } from '@/enums/inventory'
+import { useUserStore } from '@/store/modules/user'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 
 const inboundId = ref<string>('')
 const inboundData = ref<InboundVO>({
@@ -356,13 +358,11 @@ const handleConfirm = async () => {
   try {
     await ElMessageBox.confirm('确认入库吗？', '提示', { type: 'warning' })
 
-    // 这里需要获取当前用户信息，暂时使用模拟数据
-    const currentUser = {
-      id: '1',
-      name: '当前用户',
-    }
-
-    const res = await inboundApi.confirm(inboundId.value, currentUser.id, currentUser.name)
+    const res = await inboundApi.confirm(
+      inboundId.value,
+      String(userStore.userId || ''),
+      String(userStore.nickName || userStore.userName || '')
+    )
     if (res.data) {
       ElMessage.success('确认入库成功')
       loadInboundDetail()

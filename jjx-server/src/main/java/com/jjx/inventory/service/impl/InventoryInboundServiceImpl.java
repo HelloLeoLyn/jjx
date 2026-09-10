@@ -314,7 +314,21 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // 采购单 confirm 仅负责合格/允收数量过账：加库存+流水+置完成；不合格品隔离台账已在全部行审核通过时创建
         if (purchaseConfirmable) validateAllIqcApproved(inboundId);
+        BigDecimal postedQtyThisTime = BigDecimal.ZERO;
+        if ("PRODUCTION".equals(order.getSourceType())) {
+            postedQtyThisTime = inboundItemMapper.selectByInboundId(inboundId).stream()
+                    .map(item -> {
+                        BigDecimal targetQuantity = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+                        BigDecimal postedQuantity = Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO);
+                        BigDecimal quantityToPost = targetQuantity.subtract(postedQuantity);
+                        return quantityToPost.compareTo(BigDecimal.ZERO) > 0 ? quantityToPost : BigDecimal.ZERO;
+                    })
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
         addStock(order, operatorId, operatorName, "确认入库");
+        if ("PRODUCTION".equals(order.getSourceType())) {
+            writebackProducedQuantity(order, postedQtyThisTime);
+        }
         // 幂等兜底：审核通过时已建，此处跳过重复，兼容历史数据及边界场景
         if (purchaseConfirmable) createIqcQuarantine(order, operatorId, operatorName);
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
@@ -990,18 +1004,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
         }
 
-        // 行锁 + PENDING 状态守卫保证只有首次审批能执行过账；事务失败时库存、流水和状态一并回滚。
-        addStock(order, approverId, approverName, "审批通过入库");
-        order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
-        // 安全库存检查
-        try {
-            List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
-            for (InventoryInboundItem item : items) {
-                alertService.checkSafeStockAlert(item.getMaterialId());
-            }
-        } catch (Exception e) {
-            log.warn("安全库存检查失败: {}", e.getMessage());
-        }
+        // 审批只记录审批结果，不过账；库存过账的唯一入口是 confirm()。
+        order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
+        order.setApproverId(approverId);
+        order.setApproverName(approverName);
+        order.setApproveTime(LocalDateTime.now());
+        order.setApproveRemark(remark);
         return inboundOrderMapper.updateById(order) > 0;
     }
 
@@ -1122,6 +1130,27 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
             tx.setRemark(remark != null ? remark : "入库确认");
             transactionMapper.insert(tx);
+        }
+    }
+
+    private void writebackProducedQuantity(InventoryInboundOrder order, BigDecimal postedQty) {
+        try {
+            ProductionOrder productionOrder = productionOrderMapper.selectById(order.getSourceId());
+            if (productionOrder == null || productionOrder.getSalesOrderId() == null) {
+                return;
+            }
+            com.jjx.sales.domain.entity.SalesOrder salesOrder =
+                    salesOrderMapper.selectById(productionOrder.getSalesOrderId());
+            if (salesOrder == null) {
+                return;
+            }
+            int produced = salesOrder.getProducedQuantity() != null ? salesOrder.getProducedQuantity() : 0;
+            salesOrder.setProducedQuantity(produced + postedQty.intValue());
+            salesOrderMapper.updateById(salesOrder);
+            log.info("完工入库回写订单 produced_quantity: orderId={}, 本次+{}，累计={}",
+                    productionOrder.getSalesOrderId(), postedQty, salesOrder.getProducedQuantity());
+        } catch (Exception e) {
+            log.warn("完工入库回写订单 produced_quantity 失败（不影响入库主流程）: {}", e.getMessage());
         }
     }
 
@@ -1491,28 +1520,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundItem.setSortOrder(1);
         inboundItemMapper.insert(inboundItem);
 
-        // 4. 提交审批并自动审批
+        // 4. 提交审批，待人工确认后过账
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         inboundOrderMapper.updateById(order);
-        approve(order.getInboundId(), null, null, "生产完工入库");
-
-        // 完工入库写入统一库存的 PRODUCT 身份，并保留仓库、库位与批次维度。
-        // 概念红线：完工入库入的是产品库存，不是物料不是材料；产品库存与物料库存各自独立记账
-        // 057定稿：产品入库确认成功后回写订单 produced_quantity += 入库量（账实最准，不是完工就写）
-        try {
-            if (prodOrder.getSalesOrderId() != null) {
-                com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(prodOrder.getSalesOrderId());
-                if (salesOrder != null && inboundItem.getQuantity() != null) {
-                    int produced = salesOrder.getProducedQuantity() != null ? salesOrder.getProducedQuantity() : 0;
-                    salesOrder.setProducedQuantity(produced + inboundItem.getQuantity().intValue());
-                    salesOrderMapper.updateById(salesOrder);
-                    log.info("完工入库回写订单 produced_quantity: orderId={}, 本次+{}，累计={}",
-                            prodOrder.getSalesOrderId(), inboundItem.getQuantity().intValue(), salesOrder.getProducedQuantity());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("完工入库回写订单 produced_quantity 失败（不影响入库主流程）: {}", e.getMessage());
-        }
 
         log.info("生产完工入库完成: workOrderId={}, inboundId={}", workOrderId, order.getInboundId());
         return order.getInboundId();

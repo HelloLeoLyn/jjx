@@ -131,7 +131,7 @@
               v-if="isPurchase(row) && row.status === InboundOrderStatusEnum.APPROVED.value"
               link
               type="primary"
-              v-hasPermi="['inventory:inbound:edit']"
+              v-hasPermi="['inventory:inbound:confirm']"
               @click="handleIqcPosting(row)"
               >确认入库</el-button
             >
@@ -146,7 +146,7 @@
               "
               link
               type="primary"
-              v-hasPermi="['inventory:inbound:edit']"
+              v-hasPermi="['inventory:inbound:confirm']"
               @click="handleManualConfirm(row)"
               >确认入库</el-button
             >

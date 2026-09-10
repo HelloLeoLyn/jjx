@@ -35,7 +35,6 @@ public class InventoryEventBridge {
             params.put("inboundType", "production");
             params.put("remark", "生产完工自动入库");
             Long inboundId = inboundService.create(params);
-            inboundService.confirm(inboundId, null, "system");
             log.info("   ✅ 完工入库单已创建: inboundId={}", inboundId);
         } catch (Exception e) {
             log.error("   ❌ 创建完工入库单失败: {}", e.getMessage());
