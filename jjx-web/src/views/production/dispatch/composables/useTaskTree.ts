@@ -17,26 +17,21 @@ export function useTaskTree(getRows: () => TreeRow[]) {
     return row
   }
 
+  /**
+   * 行刷新：以服务端返回为准的通用合并
+   * 2026-09-10：改为通用合并（原为白名单逐字段赋值）。
+   * 原因：白名单漏了后端投影的 allowedActions/canAssign，派工/退回/收回后按钮（如「收回」）
+   * 不即时更新，必须整页刷新重新 getList 才拿到新投影。
+   * 现除 children（懒加载/mergeChildren 管理）与 __parent（本地树指针）外，fresh 的所有字段一律覆盖，
+   * 以后后端投影新增字段也不会再变陈旧。
+   */
   function updateFields(row: TreeRow, fresh: TaskTreeRow): void {
-    row.taskId = fresh.taskId
-    row.taskNo = fresh.taskNo
-    row.parentTaskId = fresh.parentTaskId
-    row.executionId = fresh.executionId
-    row.orderNo = fresh.orderNo
-    row.processName = fresh.processName
-    row.processCode = fresh.processCode
-    row.processOrder = fresh.processOrder
-    row.assigneeId = fresh.assigneeId
-    row.assigneeName = fresh.assigneeName
-    row.parentAssigneeName = fresh.parentAssigneeName
-    row.taskQuantity = fresh.taskQuantity
-    row.completedQuantity = fresh.completedQuantity
-    row.pendingQuantity = fresh.pendingQuantity
-    row.assignedQuantity = fresh.assignedQuantity
-    row.remainingQuantity = fresh.remainingQuantity
-    row.status = fresh.status
-    row.statusLabel = fresh.statusLabel
-    row.hasChildren = fresh.hasChildren
+    const target = row as unknown as Record<string, unknown>
+    const source = fresh as unknown as Record<string, unknown>
+    for (const key of Object.keys(source)) {
+      if (key === 'children' || key === '__parent') continue
+      target[key] = source[key]
+    }
   }
 
   function findRow(taskId: number, rows: TreeRow[] = getRows()): TreeRow | null {
