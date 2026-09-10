@@ -27,7 +27,7 @@ public class SalesReceiptController {
     private final SalesReceiptService receiptService;
 
     @Operation(summary = "收款列表")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:receipt:view")
     @GetMapping("/page")
     public Result<PageResult<SalesReceipt>> page(@RequestParam(defaultValue = "1") int pageNum,
                                                   @RequestParam(defaultValue = "10") int pageSize,
@@ -40,7 +40,7 @@ public class SalesReceiptController {
     }
 
     @Operation(summary = "收款详情")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:receipt:view")
     @GetMapping("/{id}")
     public Result<SalesReceipt> getById(@PathVariable Long id) {
         return Result.success(receiptService.getById(id));
@@ -48,13 +48,13 @@ public class SalesReceiptController {
 
     @Operation(summary = "记录收款单打印")
     @Log(module = "销售收款", businessType = BusinessType.OTHER, bizType = "'receipt_print'", bizId = "#id", action = LogActions.SALES_RECEIPT_PRINT_LOG)
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:receipt:view")
     @PostMapping("/{id}/print-log")
     public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }
 
     @Operation(summary = "新增收款")
     @Log(module = "销售收款", businessType = BusinessType.INSERT, bizType = "'receipt'", action = LogActions.SALES_RECEIPT_CREATE)
-    @SaCheckPermission("sales:order:edit")
+    @SaCheckPermission("sales:receipt:add")
     @PostMapping
     public Result<Long> create(@RequestBody SalesReceipt receipt) {
         return Result.success(receiptService.create(receipt));

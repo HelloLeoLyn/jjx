@@ -31,7 +31,7 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="showDetail(row)">详情</el-button>
-            <el-button v-if="row.deliveryStatus !== DeliveryStatusEnum.RECEIVED.value" link type="success" @click="openReceive(row)">签收</el-button>
+            <el-button v-if="row.deliveryStatus !== DeliveryStatusEnum.RECEIVED.value" link type="success" v-hasPermi="['sales:delivery:receive']" @click="openReceive(row)">签收</el-button>
             <el-button link type="primary" @click="printDelivery(row)">打印</el-button>
           </template>
         </el-table-column>

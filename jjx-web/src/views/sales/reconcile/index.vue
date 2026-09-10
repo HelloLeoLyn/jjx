@@ -35,7 +35,7 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="Search" :loading="loading" @click="search">查询对账</el-button>
-          <el-button icon="Printer" :disabled="!rows.length" @click="goPrint">打印对账单</el-button>
+          <el-button icon="Printer" v-hasPermi="['sales:reconcile:print']" :disabled="!rows.length" @click="goPrint">打印对账单</el-button>
         </el-form-item>
       </el-form>
 

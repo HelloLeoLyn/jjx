@@ -51,7 +51,7 @@ public class SalesDeliveryController {
     }
 
     @Operation(summary = "签收发货单")
-    @SaCheckPermission("sales:delivery:view")
+    @SaCheckPermission("sales:delivery:receive")
     @Log(module = "销售发货", businessType = BusinessType.UPDATE,
             bizType = "'sales_delivery'", bizId = "#deliveryId", bizStatus = "'RECEIVED'", action = LogActions.DELIVERY_RECEIVE)
     @PutMapping("/{deliveryId}/receive")

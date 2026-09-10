@@ -225,6 +225,23 @@ export const Permissions = {
   /** 报价管理 - 导出 */
   SALES_QUOTATION_EXPORT: 'sales:quotation:export',
 
+  /** 收款单管理 - 查看（2026-09-10 dev-20260910-014：与销售订单查看拆分） */
+  SALES_RECEIPT_VIEW: 'sales:receipt:view',
+  /** 收款单管理 - 新增收款 */
+  SALES_RECEIPT_ADD: 'sales:receipt:add',
+  /** 销售发票 - 查看（2026-09-10 dev-20260910-014：与销售订单查看拆分） */
+  SALES_INVOICE_VIEW: 'sales:invoice:view',
+  /** 销售发票 - 打印 */
+  SALES_INVOICE_PRINT: 'sales:invoice:print',
+  /** 发货管理 - 签收 */
+  SALES_DELIVERY_RECEIVE: 'sales:delivery:receive',
+  /** 销售报表 - 导出 */
+  SALES_REPORT_EXPORT: 'sales:report:export',
+  /** 业务对账 - 打印 */
+  SALES_RECONCILE_PRINT: 'sales:reconcile:print',
+  /** 订单跟踪 - 导出 */
+  SALES_TRACKING_EXPORT: 'sales:tracking:export',
+
   /** 操作日志 - 查看 */
   SALES_LOG_VIEW: 'sales:log:view',
   /** 操作日志 - 删除 */

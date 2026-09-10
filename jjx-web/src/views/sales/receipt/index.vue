@@ -8,7 +8,7 @@
         <el-form-item label="状态"><el-select v-model="query.status" clearable style="width: 120px"><el-option v-for="item in SalesFinanceDocumentStatusEnum.items" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
         <el-form-item><el-button type="primary" @click="search">查询</el-button><el-button @click="reset">重置</el-button></el-form-item>
       </el-form>
-      <div class="toolbar"><el-button type="primary" @click="openCreate">新增收款</el-button></div>
+      <div class="toolbar"><el-button type="primary" v-hasPermi="['sales:receipt:add']" @click="openCreate">新增收款</el-button></div>
       <el-table v-loading="loading" :data="rows" border>
         <el-table-column prop="receiptNo" label="单号" min-width="150" />
         <el-table-column prop="orderId" label="订单" width="100" />
@@ -48,7 +48,7 @@
         </el-row>
         <el-form-item label="备注"><el-input v-model="createForm.remark" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="createVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitCreate">提交</el-button></template>
+      <template #footer><el-button @click="createVisible = false">取消</el-button><el-button type="primary" v-hasPermi="['sales:receipt:add']" :loading="submitting" @click="submitCreate">提交</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="detailVisible" title="收款单详情" width="620px"><el-descriptions v-if="current" :column="2" border><el-descriptions-item v-for="item in detailItems" :key="item.label" :label="item.label">{{ item.value }}</el-descriptions-item></el-descriptions></el-dialog>

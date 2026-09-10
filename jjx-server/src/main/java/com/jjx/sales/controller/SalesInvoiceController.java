@@ -27,7 +27,7 @@ public class SalesInvoiceController {
     private final SalesInvoiceService invoiceService;
 
     @Operation(summary = "发票列表")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:invoice:view")
     @GetMapping("/page")
     public Result<PageResult<SalesInvoice>> page(@RequestParam(defaultValue = "1") int pageNum,
                                                   @RequestParam(defaultValue = "10") int pageSize,
@@ -40,7 +40,7 @@ public class SalesInvoiceController {
     }
 
     @Operation(summary = "发票详情")
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:invoice:view")
     @GetMapping("/{id}")
     public Result<SalesInvoice> getById(@PathVariable Long id) {
         return Result.success(invoiceService.getById(id));
@@ -48,7 +48,7 @@ public class SalesInvoiceController {
 
     @Operation(summary = "记录发票打印")
     @Log(module = "销售发票", businessType = BusinessType.OTHER, bizType = "'invoice_print'", bizId = "#id", action = LogActions.SALES_INVOICE_PRINT_LOG)
-    @SaCheckPermission("sales:order:view")
+    @SaCheckPermission("sales:invoice:view")
     @PostMapping("/{id}/print-log")
     public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }
 
