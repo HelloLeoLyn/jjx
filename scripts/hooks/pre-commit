@@ -11,9 +11,19 @@ fail=0
 say() { printf '%s\n' "$*"; }
 
 # ── 闸门 1：共享目录禁止删除 / 移出（不可逆，规范 §5 红线）──────────────
+# 显式逃生口：git config jjx.allowProtectedMove true（仅本次提交，改完记得 unset）
+# 用途：迁移号重编等正当位移（规范 §3 决议 C1）；留痕由 commit message 承担
 PROTECTED_RE='^(jjx-docs/sql/|jjx-docs/standards/)'
 deleted=$(git diff --cached --name-only --diff-filter=D | grep -E "$PROTECTED_RE" || true)
 moved=$(git diff --cached --name-status --diff-filter=R | awk '{ if ($2 ~ /^jjx-docs\/(sql|standards)\// || $3 ~ /^jjx-docs\/(sql|standards)\//) print }')
+
+if { [ -n "$deleted" ] || [ -n "$moved" ]; } && [ "$(git config --bool --get jjx.allowProtectedMove 2>/dev/null || echo false)" = "true" ]; then
+  say ""
+  say "⚠ 已按 jjx.allowProtectedMove=true 放行共享目录的位移（记得 git config --unset jjx.allowProtectedMove）"
+  while IFS= read -r f; do [ -n "$f" ] && say "  删除: $f"; done <<< "$deleted"
+  while IFS= read -r f; do [ -n "$f" ] && say "  移动: $f"; done <<< "$moved"
+  deleted=""; moved=""
+fi
 
 if [ -n "$deleted" ] || [ -n "$moved" ]; then
   say ""

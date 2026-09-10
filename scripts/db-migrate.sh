@@ -56,6 +56,12 @@ all_dir_nn() {
   ls -1 "$MIG_DIR" 2>/dev/null | grep -E '^[0-9]+_' \
     | sed -E 's/^([0-9]+)_.*/\1/' | sort -n | uniq
 }
+# 同号多文件检测（2026-09-10 实际撞过：82 被两个 agent 同时使用）
+dup_nn() {
+  ls -1 "$MIG_DIR" 2>/dev/null | grep -E '^[0-9]+_' \
+    | sed -E 's/^([0-9]+)_.*/\1/' | sort -n | uniq -d
+}
+files_of_nn() { ls -1 "$MIG_DIR" 2>/dev/null | grep -E "^${1}_" | paste -sd' '; }
 applied_set() {
   local a v
   a=$(q "SELECT config_value FROM sys_config WHERE config_key='$APPLIED_KEY';" | head -1)
@@ -98,6 +104,12 @@ if [ "${1:-}" = "--status" ] || [ $# -eq 0 ]; then
       && say "        （按 $VERSION_KEY 推导，首次执行迁移时会落成显式集合）"
   fi
   say "目录最大号: ${max:-无}"
+  dups="$(dup_nn)"
+  if [ -n "$dups" ]; then
+    warn "迁移号重复（已应用集合只记号，同号会导致对方的迁移被误判为已应用）："
+    for n in $dups; do say "    - 号 ${n}: $(files_of_nn "$n")"; done
+    say "      处理：后建者改号，并同步 sys_config.$APPLIED_KEY 里的旧号"
+  fi
   if [ -n "$max" ]; then
     pending=$(while IFS= read -r f; do
                 nn="${f%%_*}"
@@ -186,6 +198,9 @@ fi
 "${MYSQL[@]}" -e "SELECT 1" >/dev/null 2>&1 || die "连不上数据库 $DB_NAME@$DB_HOST:$DB_PORT（检查服务与账号）"
 create_cnt=$(grep -c '^CREATE TABLE' "$SRC" 2>/dev/null || true)
 destructive=$(grep -icE '^\s*(DROP|TRUNCATE|DELETE)' "$SRC" 2>/dev/null || true)
+if printf '%s\n' "$(dup_nn)" | grep -qw "$NN"; then
+  warn "号 ${NN} 存在多个文件：$(files_of_nn "$NN") —— 已应用集合只记号，请确认谁是本次目标（必要时先改号）"
+fi
 
 rec="$(recorded_version)"
 say ""
