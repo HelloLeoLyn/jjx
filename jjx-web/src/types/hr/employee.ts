@@ -74,3 +74,30 @@ export interface HrImportResult {
   failCount: number
   errors: { rowNum: number; message: string }[]
 }
+
+/** 由员工档案生成账号的表单 */
+export interface HrCreateUserForm {
+  userName?: string
+  password?: string
+  roleIds?: number[]
+  remark?: string
+}
+
+/** 生成的账号信息 */
+export interface HrAccount {
+  userId: number
+  userName: string
+  nickName?: string
+  deptId?: number
+  deptName?: string
+  /** 未同步项提示（手机号/邮箱被占用、未分配角色等） */
+  warnings?: string[]
+  roleBound?: boolean
+}
+
+/** 可分配角色选项 */
+export interface HrRoleOption {
+  roleId: number
+  roleName: string
+  roleKey?: string
+}

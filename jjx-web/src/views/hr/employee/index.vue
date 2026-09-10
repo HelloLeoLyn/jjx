@@ -107,7 +107,7 @@
         <el-table-column prop="userName" label="系统账号" width="120">
           <template #default="{ row }">{{ row.userName || '未关联' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button link size="small" @click="handleDetail(row)">详情</el-button>
             <el-button
@@ -118,6 +118,19 @@
             >
               编辑
             </el-button>
+            <el-button
+              v-if="!row.userId"
+              link
+              size="small"
+              type="primary"
+              v-hasPermi="['hr:employee:edit']"
+              @click="handleCreateUser(row)"
+            >
+              生成账号
+            </el-button>
+            <el-tooltip v-else content="该员工已生成系统账号，可在系统→用户管理维护" placement="top">
+              <el-button link size="small" disabled>已生成</el-button>
+            </el-tooltip>
             <el-button
               link
               size="small"
@@ -342,6 +355,57 @@
       />
     </el-dialog>
 
+    <!-- 一键生成系统账号 -->
+    <el-dialog v-model="userDialogVisible" title="生成系统账号" width="580px" destroy-on-close>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px"
+        :title="`由员工「${userForm.nickName}（${userForm.empNo}）」生成系统登录账号；默认值已填好，确认即可。`"
+      />
+      <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-width="92px">
+        <el-form-item label="登录名" prop="userName">
+          <el-input v-model="userForm.userName" placeholder="默认取姓名拼音，可改" />
+        </el-form-item>
+        <el-form-item label="初始密码" prop="password">
+          <el-input v-model="userForm.password" placeholder="默认 123456" show-password />
+        </el-form-item>
+        <el-form-item label="姓名">
+          <el-input :model-value="userForm.nickName" disabled />
+        </el-form-item>
+        <el-form-item label="部门">
+          <el-input :model-value="userForm.deptName || '-'" disabled />
+        </el-form-item>
+        <el-form-item label="手机号 / 邮箱">
+          <el-input
+            :model-value="[userForm.phone, userForm.email].filter(Boolean).join(' / ') || '-'"
+            disabled
+          />
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-select
+            v-model="userForm.roleIds"
+            multiple
+            clearable
+            placeholder="默认不分配，可在此勾选"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="r in roleOptions"
+              :key="r.roleId"
+              :label="r.roleName"
+              :value="r.roleId"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="userDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="userSaving" @click="submitCreateUser">生成账号</el-button>
+      </template>
+    </el-dialog>
+
     <ExcelImportDialog
       :visible="importDialogVisible"
       @update:visible="importDialogVisible = $event"
@@ -358,6 +422,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { pinyin } from 'pinyin-pro'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { deptApi } from '@/api/system/dept'
 import { hrEmployeeApi } from '@/api/hr/employee'
@@ -366,10 +431,13 @@ import { download } from '@/utils/format'
 import { EmploymentStatusEnum, SexEnum } from '@/enums/hr/EmployeeEnum'
 import type { SysDept } from '@/types/system'
 import type {
+  HrAccount,
+  HrCreateUserForm,
   HrEmployeeForm,
   HrEmployeeQuery,
   HrEmployeeVO,
   HrImportResult,
+  HrRoleOption,
 } from '@/types/hr/employee'
 
 defineOptions({ name: 'HrEmployee' })
@@ -395,6 +463,94 @@ const rules: FormRules = {
 const detailVisible = ref(false)
 const detail = ref<HrEmployeeVO>({} as HrEmployeeVO)
 const importDialogVisible = ref(false)
+
+// ===== 一键生成系统账号 =====
+interface UserFormState {
+  empId?: number
+  empNo?: string
+  nickName?: string
+  deptName?: string
+  phone?: string
+  email?: string
+  userName: string
+  password: string
+  roleIds: number[]
+}
+
+const DEFAULT_USER_PASSWORD = '123456'
+const userDialogVisible = ref(false)
+const userSaving = ref(false)
+const userFormRef = ref<FormInstance>()
+const roleOptions = ref<HrRoleOption[]>([])
+const userForm = reactive<UserFormState>({
+  userName: '',
+  password: DEFAULT_USER_PASSWORD,
+  roleIds: [],
+})
+const userRules: FormRules = {
+  userName: [
+    { required: true, message: '请输入登录名', trigger: 'blur' },
+    { pattern: /^[A-Za-z][A-Za-z0-9_.-]{1,29}$/, message: '字母开头，2-30 位字母/数字/_.-', trigger: 'blur' },
+  ],
+  password: [
+    { required: true, message: '请输入初始密码', trigger: 'blur' },
+    { min: 6, message: '密码至少 6 位', trigger: 'blur' },
+  ],
+}
+
+/** 姓名 → 拼音登录名（无声调、全小写） */
+function nameToUserName(name: string): string {
+  const raw = pinyin(name, { toneType: 'none', type: 'array', surname: 'head', nonZh: 'consecutive' })
+    .join('')
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, '')
+  return raw
+}
+
+async function handleCreateUser(row: HrEmployeeVO) {
+  const res = await hrEmployeeApi.detail(row.empId)
+  const d = res.data
+  if (!d) return
+  Object.assign(userForm, {
+    empId: d.empId,
+    empNo: d.empNo,
+    nickName: d.name,
+    deptName: d.deptName,
+    phone: d.phone,
+    email: d.email,
+    userName: nameToUserName(d.name || ''),
+    password: DEFAULT_USER_PASSWORD,
+    roleIds: [],
+  })
+  if (!roleOptions.value.length) {
+    const r = await hrEmployeeApi.roleOptions()
+    roleOptions.value = r.data || []
+  }
+  userDialogVisible.value = true
+}
+
+async function submitCreateUser() {
+  if (!userFormRef.value || !userForm.empId) return
+  await userFormRef.value.validate()
+  userSaving.value = true
+  try {
+    const payload: HrCreateUserForm = {
+      userName: userForm.userName,
+      password: userForm.password,
+      roleIds: userForm.roleIds,
+    }
+    const res = await hrEmployeeApi.createUser(userForm.empId, payload)
+    const acc = res.data as HrAccount
+    ElMessage.success(`已生成账号：${acc.userName}（初始密码 ${userForm.password}）`)
+    if (acc.warnings && acc.warnings.length) {
+      ElMessage.warning(acc.warnings.join('；'))
+    }
+    userDialogVisible.value = false
+    loadList()
+  } finally {
+    userSaving.value = false
+  }
+}
 
 const sensitiveHint = ref('')
 

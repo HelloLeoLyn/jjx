@@ -5,11 +5,14 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
+import com.jjx.hr.domain.dto.HrCreateUserDTO;
 import com.jjx.hr.domain.dto.HrEmployeeImportDTO;
 import com.jjx.hr.domain.dto.HrEmployeeQueryDTO;
 import com.jjx.hr.domain.entity.HrEmployee;
+import com.jjx.hr.domain.vo.HrAccountVO;
 import com.jjx.hr.domain.vo.HrEmployeeVO;
 import com.jjx.hr.domain.vo.HrImportResultVO;
+import com.jjx.hr.domain.vo.HrRoleOptionVO;
 import com.jjx.hr.service.HrEmployeeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,6 +85,21 @@ public class HrEmployeeController extends BaseController {
     public Result<Void> delete(@PathVariable Long empId) {
         employeeService.delete(empId);
         return Result.success();
+    }
+
+    @Operation(summary = "生成账号时可分配的角色下拉")
+    @SaCheckPermission("hr:employee:view")
+    @GetMapping("/role-options")
+    public Result<List<HrRoleOptionVO>> roleOptions() {
+        return Result.success(employeeService.roleOptions());
+    }
+
+    @Operation(summary = "根据员工档案生成系统账号（一键生成）")
+    @SaCheckPermission("hr:employee:edit")
+    @PostMapping("/{empId}/create-user")
+    public Result<HrAccountVO> createUser(@PathVariable Long empId,
+                                          @RequestBody(required = false) HrCreateUserDTO dto) {
+        return Result.success(employeeService.createUserFromEmployee(empId, dto));
     }
 
     @Operation(summary = "下载员工导入模板")

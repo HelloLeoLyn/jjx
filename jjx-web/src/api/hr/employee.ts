@@ -1,6 +1,14 @@
 import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
-import type { HrEmployeeForm, HrEmployeeQuery, HrEmployeeVO, HrImportResult } from '@/types/hr/employee'
+import type {
+  HrAccount,
+  HrCreateUserForm,
+  HrEmployeeForm,
+  HrEmployeeQuery,
+  HrEmployeeVO,
+  HrImportResult,
+  HrRoleOption,
+} from '@/types/hr/employee'
 
 /** 人事管理 - 员工档案 API */
 export const hrEmployeeApi = {
@@ -51,5 +59,15 @@ export const hrEmployeeApi = {
   /** 导出 */
   exportList(params: HrEmployeeQuery) {
     return request.get('/hrs/employees/export', { params, responseType: 'blob' })
+  },
+
+  /** 生成账号时可分配的角色下拉 */
+  roleOptions() {
+    return request.get<R<HrRoleOption[]>>('/hrs/employees/role-options')
+  },
+
+  /** 根据员工档案生成系统账号（一键生成） */
+  createUser(empId: number, data: HrCreateUserForm) {
+    return request.post<R<HrAccount>>(`/hrs/employees/${empId}/create-user`, data)
   },
 }

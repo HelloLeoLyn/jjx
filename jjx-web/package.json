@@ -30,6 +30,7 @@
     "path-browserify": "^1.0.1",
     "pdfjs-dist": "^6.2.108",
     "pinia": "^2.3.1",
+    "pinyin-pro": "^3.29.3",
     "qrcode": "^1.5.4",
     "screenfull": "^6.0.2",
     "sortablejs": "1.14.0",

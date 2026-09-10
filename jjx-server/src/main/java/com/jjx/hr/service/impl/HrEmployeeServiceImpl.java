@@ -5,15 +5,21 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.hr.domain.dto.HrCreateUserDTO;
 import com.jjx.hr.domain.dto.HrEmployeeImportDTO;
 import com.jjx.hr.domain.dto.HrEmployeeQueryDTO;
 import com.jjx.hr.domain.entity.HrEmployee;
+import com.jjx.hr.domain.vo.HrAccountVO;
 import com.jjx.hr.domain.vo.HrEmployeeVO;
 import com.jjx.hr.domain.vo.HrImportResultVO;
+import com.jjx.hr.domain.vo.HrRoleOptionVO;
 import com.jjx.hr.mapper.HrDeptMappingMapper;
 import com.jjx.hr.mapper.HrEmployeeMapper;
 import com.jjx.hr.service.HrEmployeeService;
 import com.jjx.hr.support.IdCardCipher;
+import com.jjx.system.domain.dto.SysUserDTO;
+import com.jjx.system.domain.entity.SysUser;
+import com.jjx.system.service.ISysUserService;
 import com.jjx.system.service.SysConfigService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +54,8 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
 
     private static final String CFG_PREFIX = "hr.emp_no.prefix";
     private static final String CFG_DIGITS = "hr.emp_no.digits";
+    private static final String CFG_DEFAULT_PASSWORD = "hr.user.default_password";
+    private static final String DEFAULT_PASSWORD = "123456";
     private static final String DEFAULT_PREFIX = "JJX";
     private static final int DEFAULT_DIGITS = 4;
     private static final String PHONE_REGEX = "^1[3-9]\\d{9}$";
@@ -63,6 +71,7 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
     private final SysConfigService sysConfigService;
     private final IdCardCipher idCardCipher;
     private final JdbcTemplate jdbcTemplate;
+    private final ISysUserService sysUserService;
 
     // ==================== 查询 ====================
 
@@ -171,6 +180,128 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
         if (this.count(w) > 0) {
             throw new BusinessException("该账号已关联其他员工（一账号仅可关联一名员工）");
         }
+    }
+
+    // ==================== 生成系统账号 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public HrAccountVO createUserFromEmployee(Long empId, HrCreateUserDTO dto) {
+        HrEmployee e = this.getById(empId);
+        if (e == null) {
+            throw new BusinessException("员工不存在或已删除");
+        }
+        if (e.getUserId() != null) {
+            throw new BusinessException("该员工已生成账号（user_id=" + e.getUserId() + "），请到系统管理→用户管理维护");
+        }
+        HrCreateUserDTO param = dto == null ? new HrCreateUserDTO() : dto;
+        String userName = hasText(param.getUserName()) ? param.getUserName().trim() : e.getEmpNo();
+        if (!hasText(userName)) {
+            throw new BusinessException("未取到登录名（员工工号为空），请手工填写");
+        }
+        String password = hasText(param.getPassword()) ? param.getPassword().trim() : defaultPassword();
+
+        List<String> warnings = new ArrayList<>();
+        // 重名（如 张伟/张薇 → zhangwei）自动加序号，并在返回里提示
+        if (sysUserService.selectUserByUserName(userName) != null) {
+            String base = userName;
+            int seq = 2;
+            while (seq <= 99 && sysUserService.selectUserByUserName(base + seq) != null) {
+                seq++;
+            }
+            if (seq > 99) {
+                throw new BusinessException("登录名 " + base + " 及其序号后缀均被占用，请手工指定登录名");
+            }
+            userName = base + seq;
+            warnings.add("登录名 " + base + " 已存在，已自动改为 " + userName + "（可手工修改）");
+        }
+
+        SysUserDTO u = new SysUserDTO();
+        u.setUserName(userName);
+        u.setNickName(e.getName());
+        u.setDeptId(e.getDeptId());
+        u.setSex(e.getSex() == null ? "0" : String.valueOf(e.getSex()));
+        u.setStatus(0);
+        u.setPassword(password);
+        u.setRemark(hasText(param.getRemark()) ? param.getRemark()
+                : ("由员工档案生成（工号 " + e.getEmpNo() + "）"));
+        if (hasText(e.getPhone())) {
+            if (countUserByField("phone", e.getPhone()) == 0) {
+                u.setPhone(e.getPhone());
+            } else {
+                warnings.add("手机号 " + e.getPhone() + " 已被其他账号占用，未同步到账号");
+            }
+        }
+        if (hasText(e.getEmail())) {
+            if (countUserByField("email", e.getEmail()) == 0) {
+                u.setEmail(e.getEmail());
+            } else {
+                warnings.add("邮箱 " + e.getEmail() + " 已被其他账号占用，未同步到账号");
+            }
+        }
+        boolean bound = param.getRoleIds() != null && !param.getRoleIds().isEmpty();
+        if (bound) {
+            u.setRoleIds(param.getRoleIds());
+        }
+        sysUserService.insertUser(u);
+
+        SysUser created = sysUserService.selectUserByUserName(userName);
+        if (created == null) {
+            throw new BusinessException("账号创建失败，请重试");
+        }
+        HrEmployee upd = new HrEmployee();
+        upd.setEmpId(empId);
+        upd.setUserId(created.getUserId());
+        this.updateById(upd);
+
+        HrAccountVO vo = new HrAccountVO();
+        vo.setUserId(created.getUserId());
+        vo.setUserName(userName);
+        vo.setNickName(e.getName());
+        vo.setDeptId(e.getDeptId());
+        vo.setDeptName(deptNameIndexById().get(e.getDeptId()));
+        vo.setRoleBound(bound);
+        if (!bound) {
+            warnings.add("未分配角色：可在弹窗中勾选，或到 系统管理→用户管理→分配角色 授权");
+        }
+        vo.setWarnings(warnings);
+        log.info("人事：由员工档案生成账号 empNo={} userName={} userId={}", e.getEmpNo(), userName, created.getUserId());
+        return vo;
+    }
+
+    @Override
+    public List<HrRoleOptionVO> roleOptions() {
+        List<HrRoleOptionVO> list = new ArrayList<>();
+        jdbcTemplate.query("SELECT role_id, role_name, role_key FROM sys_role "
+                        + "WHERE del_flag = '0' AND status = '0' ORDER BY role_sort, role_id",
+                rs -> {
+                    HrRoleOptionVO r = new HrRoleOptionVO();
+                    r.setRoleId(rs.getLong(1));
+                    r.setRoleName(rs.getString(2));
+                    r.setRoleKey(rs.getString(3));
+                    list.add(r);
+                });
+        return list;
+    }
+
+    private String defaultPassword() {
+        try {
+            String v = sysConfigService.getValue(CFG_DEFAULT_PASSWORD);
+            if (hasText(v)) {
+                return v.trim();
+            }
+        } catch (Exception ex) {
+            log.warn("读取 {} 失败，使用内置默认密码：{}", CFG_DEFAULT_PASSWORD, ex.getMessage());
+        }
+        return DEFAULT_PASSWORD;
+    }
+
+    /** 统计 sys_user 中某列已存在（列名仅内部常量调用） */
+    private long countUserByField(String column, String value) {
+        Long c = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sys_user WHERE " + column + " = ? AND del_flag = '0'",
+                Long.class, value);
+        return c == null ? 0L : c;
     }
 
     // ==================== 导入 ====================
