@@ -49,10 +49,14 @@ public class HrEmployeeVO {
 
     private String resume;
 
+    /** 是否已关联系统账号 */
     private Long userId;
 
     /** 关联账号用户名 */
     private String userName;
+
+    /** 关联账号是否已被删除（逻辑删除，可在本页「恢复账号」复活） */
+    private Boolean accountDeleted;
 
     private String remark;
 

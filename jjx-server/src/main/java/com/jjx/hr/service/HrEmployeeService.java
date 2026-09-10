@@ -40,4 +40,7 @@ public interface HrEmployeeService {
 
     /** 生成账号时可分配的角色选项 */
     List<HrRoleOptionVO> roleOptions();
+
+    /** 恢复员工关联的已删除系统账号（逻辑删除复活，权限保留） */
+    HrAccountVO reviveUser(Long empId);
 }

@@ -22,6 +22,7 @@ import com.jjx.system.domain.entity.SysUser;
 import com.jjx.system.service.ISysUserService;
 import com.jjx.system.service.SysConfigService;
 import com.jjx.system.utils.SecurityUtils;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -192,6 +193,9 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
             throw new BusinessException("员工不存在或已删除");
         }
         if (e.getUserId() != null) {
+            if (isUserDeleted(e.getUserId())) {
+                throw new BusinessException("该员工关联的账号已被删除，请用「恢复账号」找回");
+            }
             throw new BusinessException("该员工已生成账号（user_id=" + e.getUserId() + "），请到系统管理→用户管理维护");
         }
         HrCreateUserDTO param = dto == null ? new HrCreateUserDTO() : dto;
@@ -267,6 +271,61 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
         vo.setWarnings(warnings);
         log.info("人事：由员工档案生成账号 empNo={} userName={} userId={}", e.getEmpNo(), userName, created.getUserId());
         return vo;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public HrAccountVO reviveUser(Long empId) {
+        HrEmployee e = this.getById(empId);
+        if (e == null) {
+            throw new BusinessException("员工不存在或已删除");
+        }
+        if (e.getUserId() == null) {
+            throw new BusinessException("该员工还没有关联系统账号，请先「生成账号」");
+        }
+        Long uid = e.getUserId();
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT user_name, del_flag FROM sys_user WHERE user_id = ?", uid);
+        if (rows.isEmpty()) {
+            throw new BusinessException("关联的账号不存在（user_id=" + uid + "），请重新生成账号");
+        }
+        Map<String, Object> row = rows.get(0);
+        String delFlag = row.get("del_flag") == null ? "0" : String.valueOf(row.get("del_flag"));
+        if ("0".equals(delFlag)) {
+            throw new BusinessException("该账号未被删除，无需恢复");
+        }
+        // 复活：只把删除标志置回 0，角色关联与密码保持不变
+        jdbcTemplate.update("UPDATE sys_user SET del_flag = '0', update_by = ?, update_time = NOW() WHERE user_id = ?",
+                SecurityUtils.getUsername(), uid);
+
+        List<String> warnings = new ArrayList<>();
+        Long roleCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sys_user_role WHERE user_id = ?", Long.class, uid);
+        boolean bound = roleCount != null && roleCount > 0;
+        if (!bound) {
+            warnings.add("该账号尚未分配角色，可在 系统管理→用户管理→分配角色 授权");
+        }
+
+        HrAccountVO vo = new HrAccountVO();
+        vo.setUserId(uid);
+        vo.setUserName(String.valueOf(row.get("user_name")));
+        vo.setNickName(e.getName());
+        vo.setDeptId(e.getDeptId());
+        vo.setDeptName(deptNameIndexById().get(e.getDeptId()));
+        vo.setRoleBound(bound);
+        vo.setWarnings(warnings);
+        log.info("人事：恢复已删除账号 empNo={} userName={} userId={}", e.getEmpNo(), vo.getUserName(), uid);
+        return vo;
+    }
+
+    /** 账号是否已被（逻辑）删除——需含已删除行查询，不能用 mapper */
+    private boolean isUserDeleted(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        Long cnt = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sys_user WHERE user_id = ? AND del_flag <> '0'", Long.class, userId);
+        return cnt != null && cnt > 0;
     }
 
     @Override
@@ -413,6 +472,7 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
         }
         Map<Long, String> deptNames = deptNameIndexById();
         Map<Long, String> userNames = userNameIndex();
+        Set<Long> deletedUsers = deletedUserIds(records);
         boolean visible = SecurityUtils.hasPermission(PERM_SENSITIVE);
         for (HrEmployee e : records) {
             HrEmployeeVO vo = new HrEmployeeVO();
@@ -433,6 +493,7 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
             vo.setResume(e.getResume());
             vo.setUserId(e.getUserId());
             vo.setUserName(userNames.get(e.getUserId()));
+            vo.setAccountDeleted(e.getUserId() != null && deletedUsers.contains(e.getUserId()));
             vo.setRemark(e.getRemark());
             vo.setCreateTime(e.getCreateTime());
             vo.setUpdateTime(e.getUpdateTime());
@@ -481,6 +542,28 @@ public class HrEmployeeServiceImpl extends ServiceImpl<HrEmployeeMapper, HrEmplo
                     m.put(rs.getString(1), rs.getLong(2));
                 });
         return m;
+    }
+
+    /** 取这批员工关联账号中已被逻辑删除的 userId 集合 */
+    private Set<Long> deletedUserIds(List<HrEmployee> records) {
+        Set<Long> ids = new HashSet<>();
+        StringBuilder in = new StringBuilder();
+        for (HrEmployee e : records) {
+            if (e.getUserId() != null) {
+                if (in.length() > 0) {
+                    in.append(',');
+                }
+                in.append(e.getUserId());
+            }
+        }
+        if (in.length() == 0) {
+            return ids;
+        }
+        jdbcTemplate.query("SELECT user_id FROM sys_user WHERE del_flag <> '0' AND user_id IN (" + in + ")",
+                rs -> {
+                    ids.add(rs.getLong(1));
+                });
+        return ids;
     }
 
     private Map<Long, String> userNameIndex() {

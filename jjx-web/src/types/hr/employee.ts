@@ -37,6 +37,8 @@ export interface HrEmployeeVO {
   resume?: string
   userId?: number
   userName?: string
+  /** 关联账号已被删除（逻辑删除，可在本页「恢复账号」复活） */
+  accountDeleted?: boolean
   remark?: string
   /** 当前用户是否可看敏感字段明文 */
   sensitiveVisible?: boolean

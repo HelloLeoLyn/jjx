@@ -371,11 +371,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteUserById(Long userId) {
-        LambdaQueryWrapper<SysUserRole> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(SysUserRole::getUserId, userId);
-        userRoleMapper.delete(queryWrapper);
-
-        // Get the existing user first
+        // 2026-09-10 按 Leo 要求：用户删除改为逻辑删除（del_flag=2），不做物理删除；
+        // 角色关联保留——便于在人事管理中「恢复账号」后权限即时恢复。
         SysUser user = getById(userId);
         if (user == null) {
             return false;

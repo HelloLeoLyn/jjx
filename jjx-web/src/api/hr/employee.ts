@@ -70,4 +70,9 @@ export const hrEmployeeApi = {
   createUser(empId: number, data: HrCreateUserForm) {
     return request.post<R<HrAccount>>(`/hrs/employees/${empId}/create-user`, data)
   },
+
+  /** 恢复员工关联的已删除系统账号（逻辑删除复活） */
+  reviveUser(empId: number) {
+    return request.post<R<HrAccount>>(`/hrs/employees/${empId}/revive-user`)
+  },
 }

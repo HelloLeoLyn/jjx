@@ -128,6 +128,16 @@
             >
               生成账号
             </el-button>
+            <el-button
+              v-else-if="row.accountDeleted"
+              link
+              size="small"
+              type="warning"
+              v-hasPermi="['hr:employee:edit']"
+              @click="handleReviveUser(row)"
+            >
+              恢复账号
+            </el-button>
             <el-tooltip v-else content="该员工已生成系统账号，可在系统→用户管理维护" placement="top">
               <el-button link size="small" disabled>已生成</el-button>
             </el-tooltip>
@@ -161,7 +171,7 @@
     <el-dialog
       v-model="formVisible"
       :title="form.empId ? '编辑员工' : '新增员工'"
-      width="760px"
+      width="800px"
       destroy-on-close
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
@@ -356,7 +366,7 @@
     </el-dialog>
 
     <!-- 一键生成系统账号 -->
-    <el-dialog v-model="userDialogVisible" title="生成系统账号" width="580px" destroy-on-close>
+    <el-dialog v-model="userDialogVisible" title="生成系统账号" width="800px" destroy-on-close>
       <el-alert
         type="info"
         :closable="false"
@@ -377,11 +387,11 @@
         <el-form-item label="部门">
           <el-input :model-value="userForm.deptName || '-'" disabled />
         </el-form-item>
-        <el-form-item label="手机号 / 邮箱">
-          <el-input
-            :model-value="[userForm.phone, userForm.email].filter(Boolean).join(' / ') || '-'"
-            disabled
-          />
+        <el-form-item label="手机号">
+          <el-input :model-value="userForm.phone || '-'" disabled />
+        </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input :model-value="userForm.email || '-'" disabled />
         </el-form-item>
         <el-form-item label="角色">
           <el-select
@@ -527,6 +537,25 @@ async function handleCreateUser(row: HrEmployeeVO) {
     roleOptions.value = r.data || []
   }
   userDialogVisible.value = true
+}
+
+/** 恢复员工已删除的系统账号（逻辑删除复活） */
+function handleReviveUser(row: HrEmployeeVO) {
+  ElMessageBox.confirm(
+    `确认恢复员工「${row.name}」已删除的系统账号？恢复后可照常登录，原有角色权限保留。`,
+    '恢复账号',
+    { confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning' },
+  )
+    .then(async () => {
+      const res = await hrEmployeeApi.reviveUser(row.empId)
+      const acc = res.data as HrAccount
+      ElMessage.success(`已恢复账号：${acc.userName}`)
+      if (acc.warnings && acc.warnings.length) {
+        ElMessage.warning(acc.warnings.join('；'))
+      }
+      loadList()
+    })
+    .catch(() => {})
 }
 
 async function submitCreateUser() {

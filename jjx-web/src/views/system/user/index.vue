@@ -351,7 +351,7 @@ const handleEdit = async (row: SysUser) => {
 }
 
 const handleDelete = async (row: SysUser) => {
-  await ElMessageBox.confirm(`是否确认删除用户"${row.userName}"？`, '警告', {
+  await ElMessageBox.confirm(`是否确认删除用户"${row.userName}"？删除为逻辑删除（不物理删除），可在人事管理→员工档案中恢复。`, '警告', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning',
@@ -364,7 +364,7 @@ const handleDelete = async (row: SysUser) => {
 const handleBatchDelete = async () => {
   const ids = selectedRows.value.map((item) => item.userId!)
   const names = selectedRows.value.map((item) => item.userName).join(',')
-  await ElMessageBox.confirm(`是否确认删除用户"${names}"？`, '警告', {
+  await ElMessageBox.confirm(`是否确认删除选中的 ${names} ？删除为逻辑删除（不物理删除），可在人事管理→员工档案中恢复。`, '警告', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning',

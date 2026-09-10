@@ -1,6 +1,7 @@
 package com.jjx.system.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.jjx.common.core.domain.BaseEntity;
 import lombok.Data;
@@ -57,7 +58,8 @@ public class SysUser extends BaseEntity {
     /** 帐号状态（0正常 1停用） */
     private Integer status;
 
-    /** 删除标志（0代表存在 2代表删除） */
+    /** 删除标志（0代表存在 2代表删除）——逻辑删除，不做物理删除；可由人事管理「恢复账号」复活 */
+    @TableLogic(value = "0", delval = "2")
     private String delFlag;
 
     /** 最后登录IP */

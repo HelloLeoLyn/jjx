@@ -102,6 +102,13 @@ public class HrEmployeeController extends BaseController {
         return Result.success(employeeService.createUserFromEmployee(empId, dto));
     }
 
+    @Operation(summary = "恢复员工关联的已删除账号（逻辑删除复活）")
+    @SaCheckPermission("hr:employee:edit")
+    @PostMapping("/{empId}/revive-user")
+    public Result<HrAccountVO> reviveUser(@PathVariable Long empId) {
+        return Result.success(employeeService.reviveUser(empId));
+    }
+
     @Operation(summary = "下载员工导入模板")
     @SaCheckPermission("hr:employee:import")
     @GetMapping("/importTemplate")
