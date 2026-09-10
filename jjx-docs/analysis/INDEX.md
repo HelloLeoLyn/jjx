@@ -1,4 +1,8 @@
-﻿# analysis/ 索引（90 篇 md，2026-09-03 生成）
+﻿# analysis/ 索引（历史快照层 · 122 篇 md）
+
+> ⚠️ 本页是**历史快照清单**（实施记录 / 方案 / 分析 / 核查），按日期倒序，**不保证反映当前实现**。
+> 想知道"某模块现在是什么样" → 看 `jjx-docs/current/<模块>.md`；入口导航见 `jjx-docs/README.md`。
+> 2026-09-10 校对：表头原写"90 篇，2026-09-03 生成"，实际 122 篇、登记 122 条（2026-09-10 补登记 20 篇）。
 
 生成：python3 遍历 analysis/*.md 取文件名日期 + 首个 # 标题。增删文件后重新生成。
 
@@ -105,3 +109,25 @@
 | dev-20260909-006 | unified-inventory-item-dev-20260909-006.md | 方案A：材料/产品档案分立、库存身份与引擎统一（任务1673） |
 | dev-20260909-011 | fqc-rework-close-loop-dev-20260909-011.md | FQC分批检验、不良余量与独立返工执行闭环实施记录 |
 | dev-20260909-010 | inventory-menu-reorg-dev-20260909-010.md | 采购、质量、库存与生产职责重组及独立质量管理菜单实施记录 |
+| 2026-09-10 | ops-monitoring-plan-20260910.md | 运维监控方案：应用内自检 + 宿主探针 + 告警 + 处置（把「运维监控」升级为环境体检台） |
+| 2026-09-07 | engineering-routing-change-log-analysis-20260907.md | 工程管理工艺路线流水缺口核查与改造方案 |
+| 2026-09-06 | e2e-shortage-to-production-test-plan-20260906.md | E2E 全链路测试计划：生产缺料 → 采购 → 收货 → 检验 → 入库 → 生产领料 → 生产 |
+| 2026-09-06 | purchase-receive-test-plan-20260906.md | 采购模块测试方案：覆盖 2026-09-06 收货 400 Bug 回归 |
+| 2026-09-04 | delivery-print-dual-layout-dev-20260904-017.md | 送货单打印双版式：系统版 + QR-026 纸版复刻（dev-20260904-017，任务1418） |
+| 2026-09-04 | log-actions-draft-20260904.md | LogActions 常量草案（阶段2 铺码清单，dev-20260904-007） |
+| 2026-09-04 | log-actions-inventory-20260904.md | 全站 @Log 摸底原始清单（阶段2 铺码用，机械抽取） |
+| 2026-09-04 | mobile-business-review-20260904.md | 移动端业务复查 · 第0步静态核查报告（任务 1420） |
+| 2026-09-04 | mobile-test-checklist-20260904.md | 移动端（手机/PDA/扫码枪）从头测试清单（任务 1420） |
+| 2026-09-04 | print-common-layer-dev-20260904-019.md | 打印公共层：组件+composable 抽取（dev-20260904-019，任务 1417 后续） |
+| 2026-09-04 | production-order-print-dual-layout-dev-20260904-016.md | 生产工单打印（列表批量+列勾选，内容对齐 QR-005）双版式（dev-20260904-016，任务1417） |
+| 2026-09-04 | purchase-order-print-layout-select-dev-20260904-015.md | 采购订单打印页：版式二选一（系统版 / QR-024 纸版复刻）样板（dev-20260904-015） |
+| 2026-09-04 | quotation-edit-attachment-trace-dev-20260904-008.md | 报价修改流水挂附件：明细行产品文件库上传归属该次修改操作行（dev-20260904-008） |
+| 2026-09-04 | task-1232-demo-data-plan-20260904.md | 任务 1232：销售主流程演示数据跑通（P0，前置验证） |
+| 2026-09-04 | trace-action-dev-20260904-007.md | 流水操作动作化：@Log 加 action 中文动作文案（阶段1 框架，dev-20260904-007） |
+| 2026-09-03 | dashboard-stock-perm-gate-dev-20260903-115.md | 首页仪表盘库存区块按权限收敛（dev-20260903-115） |
+| 2026-09-03 | inquiry-edit-trace-fixes-dev-20260903-116.md | 询价修改流水修复：单价精度误报 + 修改上传附件归属操作行（dev-20260903-116） |
+| 2026-09-03 | tags-view-refresh-redirect-dev-20260903-114.md | 标签页右键刷新路径翻倍修复（dev-20260903-114） |
+| 2026-09-03 | test-plan-trial-run-20260903.md | JJX ERP 试运行前系统级测试计划 |
+| 2026-09-02 | bizflow-dialog-dead-tabs-cleanup-dev-20260902-088.md | 清理询价转报价弹窗无效 Tab（任务 1278 / dev-20260902-088） |
+| 2026-09-02 | change-ledger-dev-20260902-101.md | 变更记录台账（QR-071 电子台账，任务 1302 / dev-20260902-101） |
+| dev-20260910-005 | order-level-completion-dev-20260910-005.md | 工单级统一收口（PC+移动端）：一级负责人一次完成整张工单全部工序，逐工序前置聚合校验、最后一道自动生成 FQC |
