@@ -536,20 +536,25 @@ const exchangeRateHint = computed(() => {
   return `1 ${form.currency} = ${form.exchangeRate} CNY`
 })
 
-// 币种变化时自动获取汇率
+// 币种变化时自动获取实时汇率
+// 2026-09-10 按 Leo 要求：汇率不做任何兜底——取不到就清空并明确提示，由用户手工填写，
+// 禁止拿旧值/1 冒充实时汇率参与报价金额计算
 const handleCurrencyChange = async (val: string) => {
   if (val === 'CNY') {
     form.exchangeRate = 1
     return
   }
+  form.exchangeRate = undefined as unknown as number
   exchangeRateLoading.value = true
   try {
     const res = await orderApi.getExchangeRate(val)
     if (res?.code === 200 && res.data) {
       form.exchangeRate = res.data
+    } else {
+      ElMessage.warning(`未取到 ${val} 的实时汇率，请手工填写`)
     }
   } catch (e) {
-    console.error('获取汇率失败:', e)
+    ElMessage.warning(`实时汇率获取失败，请手工填写 1 ${val} 对 CNY 的汇率`)
   } finally {
     exchangeRateLoading.value = false
   }

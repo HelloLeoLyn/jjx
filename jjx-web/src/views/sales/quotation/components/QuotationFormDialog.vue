@@ -419,18 +419,22 @@ const onCustomerChange = (val: any, customer: any) => {
   })
 }
 
+// 2026-09-10 按 Leo 要求：汇率不做任何兜底——取不到就清空并明确提示，由用户手工填写
 const handleCurrencyChange = async (val: string) => {
   if (val === 'CNY') {
     props.formData.exchangeRate = 1
     return
   }
+  props.formData.exchangeRate = undefined as unknown as number
   try {
     const res = await quotationApi.getExchangeRate(val)
     if (res?.code === 200 && res.data) {
       props.formData.exchangeRate = res.data
+    } else {
+      ElMessage.warning(`未取到 ${val} 的实时汇率，请手工填写`)
     }
   } catch (e) {
-    console.error('获取汇率失败:', e)
+    ElMessage.warning(`实时汇率获取失败，请手工填写 1 ${val} 对 CNY 的汇率`)
   }
 }
 
