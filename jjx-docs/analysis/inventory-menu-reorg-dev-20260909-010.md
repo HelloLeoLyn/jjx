@@ -22,6 +22,7 @@
 - 最终迁移：`jjx-docs/sql/migrations/78_create_quality_domain_and_flatten_inventory_menu.sql`
 - 最终迁移前备份：`jjx-docs/sql/backups/jjx_erp_db_backup_20260910-0825_before-quality-menu-domain.sql`
 - 备份大小：3,812,098 字节；包含 98 个表；MD5：`E997B149079974D4336356F93FCAA68A`。
+- 空环境交接快照：`jjx-docs/sql/backups/jjx_erp_db_backup_20260910-0835_final-handoff.sql`；包含全部 73～78 号迁移结果及最终任务状态，MD5：`CEC785F7E89876B4795977A0B7A2B75F`。
 - 最终迁移可重复执行；第一阶段建立的临时分组在子菜单迁出后安全清理。
 
 ## 业务流程
