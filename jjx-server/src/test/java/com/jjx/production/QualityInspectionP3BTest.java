@@ -48,8 +48,14 @@ class QualityInspectionP3BTest {
     void setUp() throws Exception {
         var ctor = QualityInspectionServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
-        // 构造参数顺序：inspectionMapper, itemMapper, pdfConfigLoader(null), productionOrderMapper, workReportMapper, executionMapper
-        service = (QualityInspectionServiceImpl) ctor.newInstance(inspectionMapper, itemMapper, null, productionOrderMapper, workReportMapper, mock(com.jjx.production.mapper.ProductionOperationExecutionMapper.class));
+        // 2026-09-10：字段顺序 inspectionMapper, itemMapper, productionOrderMapper, workReportMapper,
+        // executionMapper, inboundItemMapper, productMapper, salesOrderMapper（构造参数 6 → 8）
+        service = (QualityInspectionServiceImpl) ctor.newInstance(
+                inspectionMapper, itemMapper, productionOrderMapper, workReportMapper,
+                mock(com.jjx.production.mapper.ProductionOperationExecutionMapper.class),
+                mock(com.jjx.inventory.mapper.InventoryInboundItemMapper.class),
+                mock(com.jjx.product.mapper.ProductMapper.class),
+                mock(com.jjx.sales.mapper.OrderMapper.class));
     }
 
     // ---------- 1. Entity 字段类型（P3-B 核心：无 Integer/DECIMAL 错配） ----------

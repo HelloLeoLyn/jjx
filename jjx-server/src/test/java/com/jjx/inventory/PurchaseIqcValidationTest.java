@@ -3,7 +3,7 @@ package com.jjx.inventory;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.production.domain.dto.InspectionItemDTO;
-import com.jjx.purchase.domain.dto.PurchaseOrderItemDTO;
+import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.purchase.service.impl.PurchaseOrderServiceImpl;
 import com.jjx.inventory.service.impl.InventoryInboundServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -21,7 +21,7 @@ class PurchaseIqcValidationTest {
 
     @Test
     void purchasePriceMustBePositive() throws Exception {
-        PurchaseOrderItemDTO item = new PurchaseOrderItemDTO();
+        PurchaseOrderItem item = new PurchaseOrderItem();
         item.setMaterialCode("M-001");
         item.setUnitPrice(BigDecimal.ZERO);
 

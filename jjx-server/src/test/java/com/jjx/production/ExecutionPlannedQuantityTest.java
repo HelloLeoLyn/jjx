@@ -52,10 +52,13 @@ class ExecutionPlannedQuantityTest {
 
         Constructor<?> ctor = ProductionOrderServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
+        // 2026-09-10：新增第 14 个依赖 ProductionOrderStartTransactionService（开工事务 Bean），
+        // 本测试只调 generateOperationExecutions，不触达该 Bean，传 null
         service = (ProductionOrderServiceImpl) ctor.newInstance(
                 orderMapper, converter, executionMapper, routingItemMapper, eventPublisher,
                 qualityInspectionService, qualityInspectionMapper, inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, productionTaskService);
+                stockReserveService, materialReserveService, salesOrderMapper, productionTaskService,
+                null);
 
         genMethod = ProductionOrderServiceImpl.class.getDeclaredMethod(
                 "generateOperationExecutions",

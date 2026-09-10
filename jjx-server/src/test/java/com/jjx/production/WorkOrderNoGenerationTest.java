@@ -45,12 +45,14 @@ class WorkOrderNoGenerationTest {
 
         Constructor<?> ctor = ProductionOrderServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
+        // 2026-09-10：新增第 14 个依赖 ProductionOrderStartTransactionService，本测试不触达，传 null
         service = (ProductionOrderServiceImpl) ctor.newInstance(
                 orderMapper, converter, executionMapper, routingItemMapper, eventPublisher,
                 qualityInspectionService,
                 mock(com.jjx.production.mapper.ProductionQualityInspectionMapper.class),
                 inboundService, outboundService,
-                stockReserveService, materialReserveService, salesOrderMapper, mock(com.jjx.production.service.ProductionTaskService.class));
+                stockReserveService, materialReserveService, salesOrderMapper, mock(com.jjx.production.service.ProductionTaskService.class),
+                null);
 
         genMethod = ProductionOrderServiceImpl.class.getDeclaredMethod("generateWorkOrderNo", ProductionOrder.class);
         genMethod.setAccessible(true);

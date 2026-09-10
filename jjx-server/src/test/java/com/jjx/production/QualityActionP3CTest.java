@@ -7,7 +7,6 @@ import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionQualityInspection;
 import com.jjx.production.domain.vo.QualityInspectionVO;
-import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.QualityInspectionTypeEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
@@ -56,8 +55,11 @@ class QualityActionP3CTest {
     void setUp() throws Exception {
         var ctor = QualityActionServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
+        // 2026-09-10：DEV-011 后构造参数 4 → 6（+productionTaskService、+inventoryInboundServiceProvider）
         service = (QualityActionServiceImpl) ctor.newInstance(inspectionMapper, executionMapper,
-                productionOrderMapper, qualityInspectionService);
+                productionOrderMapper, qualityInspectionService,
+                org.mockito.Mockito.mock(com.jjx.production.service.ProductionTaskService.class),
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
     }
 
     private ProductionQualityInspection pendingFqc(Long id, Long orderId, Long executionId) {
@@ -98,9 +100,11 @@ class QualityActionP3CTest {
         assertEquals(QualityInspectionResultEnum.PASS.getCode(), q.getResult());
         assertEquals(0, new BigDecimal("98.0000").compareTo(q.getPassQty()));
         verify(inspectionMapper).updateById(q);
-        // FQC PASS → finishedQuantity = passQty
+        // DEV-011 FQC 联动：passQty>0 走 handleFqcPass（写成品口径），failQty>0 走 handleFqcFail（标返工）
+        // 本用例 pass=98/fail=2，两者都触发 → updateById 共 2 次
         org.mockito.ArgumentCaptor<ProductionOrder> cap = org.mockito.ArgumentCaptor.forClass(ProductionOrder.class);
-        verify(productionOrderMapper).updateById(cap.capture());
+        verify(productionOrderMapper, org.mockito.Mockito.times(2)).updateById(cap.capture());
+        // FQC PASS → finishedQuantity = 原成品 + passQty（口径Y）
         assertEquals(0, new BigDecimal("98").compareTo(cap.getValue().getFinishedQuantity()));
     }
 
@@ -115,15 +119,11 @@ class QualityActionP3CTest {
     // ---------- 2. judge FAIL：FQC FAIL → 最后有效 Execution 恢复 EXECUTING ----------
 
     @Test
-    void judgeFailRestoresExecutionToExecuting() {
+    void judgeFailMarksOrderReworkWithoutTouchingExecution() {
         ProductionQualityInspection q = pendingFqc(1L, 2L, 3L);
         when(inspectionMapper.selectById(1L)).thenReturn(q);
         ProductionOrder o = order(2L, BigDecimal.ZERO, 0);
         when(productionOrderMapper.selectById(2L)).thenReturn(o);
-        ProductionOperationExecution exec = new ProductionOperationExecution();
-        exec.setExecutionId(3L);
-        exec.setExecutionStatus(ExecutionStatusEnum.COMPLETED.getValue());
-        when(executionMapper.selectById(3L)).thenReturn(exec);
         when(qualityInspectionService.getById(1L)).thenReturn(new QualityInspectionVO());
 
         QualityJudgeDTO dto = passDto("100", "0", "100");
@@ -137,10 +137,8 @@ class QualityActionP3CTest {
         // Order 保持未完成 + 标记返工；finishedQuantity 不被 FAIL 修改（保持原值 ZERO）
         assertEquals(1, o.getReworkFlag());
         assertEquals(0, BigDecimal.ZERO.compareTo(o.getFinishedQuantity()));
-        // Execution 恢复 EXECUTING
-        assertEquals(ExecutionStatusEnum.EXECUTING.getValue(), exec.getExecutionStatus());
-        assertNull(exec.getActualEndTime());
-        verify(executionMapper).updateById(exec);
+        // DEV-011：FAIL 不再回退原执行（不良走独立 REWORK 执行），原报工事实不被改写
+        verify(executionMapper, org.mockito.Mockito.never()).updateById(org.mockito.ArgumentMatchers.any(ProductionOperationExecution.class));
     }
 
     // ---------- 3. 不可变：已判定禁止再次 judge ----------
@@ -195,6 +193,8 @@ class QualityActionP3CTest {
         ProductionQualityInspection old = pendingFqc(1L, 2L, 3L);
         old.setInspectionType(QualityInspectionTypeEnum.FQC.getCode());
         when(inspectionMapper.selectById(1L)).thenReturn(old);
+        // DEV-011：reinspect 从旧单 VO 复制检验项，需返回非 null VO
+        when(qualityInspectionService.getById(1L)).thenReturn(new QualityInspectionVO());
         when(qualityInspectionService.create(any(QualityInspectionCreateDTO.class))).thenAnswer(inv -> {
             QualityInspectionCreateDTO dto = inv.getArgument(0);
             assertEquals(QualityInspectionTypeEnum.FQC.getCode(), dto.getInspectionType());

@@ -46,6 +46,7 @@ class InventoryOutboundInvariantTest {
     @Test void insufficientStockDoesNotWriteTransactionOrTerminalStatus() {
         InventoryOutboundItem item = new InventoryOutboundItem();
         item.setMaterialId(11L);
+        item.setInventoryItemId(31L);
         item.setMaterialCode("MAT-11");
         item.setQuantity(new BigDecimal("10"));
         InventoryStockItem batch = new InventoryStockItem();
@@ -54,7 +55,8 @@ class InventoryOutboundInvariantTest {
         batch.setReservedQuantity(BigDecimal.ZERO);
         when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(InventoryOrderStatusEnum.APPROVED));
         when(outboundItemMapper.selectByOutboundId(1L)).thenReturn(List.of(item));
-        when(stockItemMapper.selectFIFOAvailable(11L)).thenReturn(List.of(batch));
+        // DEV-20260909-001 后 confirm 按库存物品身份（inventoryItemId）走 FIFO 扣减（非旧 selectFIFOAvailable(materialId)）
+        when(stockItemMapper.selectFIFOAvailableByInventoryItemId(31L)).thenReturn(List.of(batch));
         assertThrows(BusinessException.class, () -> service.confirm(1L, 9L, "tester"));
         verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
         verify(stockMapper, never()).refreshSummary(any());
