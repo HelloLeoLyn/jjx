@@ -2,8 +2,13 @@
 # ============================================================================
 # JJX 迁移唯一执行通道
 #
-#   bash scripts/db-migrate.sh --status                                 查看已应用版本 / 待执行迁移
+#   bash scripts/db-migrate.sh --status                                 查看已应用迁移 / 待执行清单
 #   bash scripts/db-migrate.sh <NN_desc.sql> --yes [--task dev-...] [--tag xxx]
+#   bash scripts/db-migrate.sh --record <NN> --yes                      接管已有库，登记某号已应用
+#
+# 版本记账用「已应用集合」sys_config.ops.schema.applied（逗号分隔的号），
+# 同时维护 ops.schema.version = 集合最大值（兼容旧读法）。
+# 用集合而非"最大号"是为了乱序执行安全：若跳过 79 先跑 81，--status 仍会报 79 待执行。
 #
 # 设计原则（CONVENTIONS §2/§3）：把"改库先备份"从"要求 agent 自觉"变成
 # "不备份这条路根本走不通"——本脚本是执行迁移的唯一入口，内部固定顺序：
@@ -26,6 +31,7 @@ DB_NAME="${DB_NAME:-jjx_erp_db}"
 BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 MIG_DIR="${JJX_MIGRATIONS_DIR:-$REPO_ROOT/jjx-docs/sql/migrations}"
 VERSION_KEY="ops.schema.version"
+APPLIED_KEY="ops.schema.applied"
 
 export MYSQL_PWD="$DB_PASS"
 MYSQL=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4)
@@ -44,26 +50,70 @@ max_migration() {
 }
 recorded_version() { q "SELECT config_value FROM sys_config WHERE config_key='$VERSION_KEY';" | head -1; }
 
+# ── 已应用集合（乱序执行安全：记录"哪些号已应用"，而不是"最大号"）────────────
+# 背景：2026-09-10 发现若跑 81 而 79/80 未跑，用"最大号"记录会让 --status 再也看不见 79/80 缺失。
+all_dir_nn() {
+  ls -1 "$MIG_DIR" 2>/dev/null | grep -E '^[0-9]+_' \
+    | sed -E 's/^([0-9]+)_.*/\1/' | sort -n | uniq
+}
+applied_set() {
+  local a v
+  a=$(q "SELECT config_value FROM sys_config WHERE config_key='$APPLIED_KEY';" | head -1)
+  if [ -n "$a" ]; then
+    printf '%s' "$a" | tr ',' '\n' | grep -E '^[0-9]+$' | sort -n | uniq | paste -sd,
+    return
+  fi
+  # 无集合记录时按 version 推导：目录里所有 <= version 的号（接管老库用）
+  v="$(recorded_version)"
+  [ -z "$v" ] && return
+  all_dir_nn | awk -v v="$v" '$1+0 <= v+0' | paste -sd,
+}
+is_applied() { case ",$(applied_set)," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+record_applied() {  # $1=NN
+  local set new maxv
+  set="$(applied_set)"
+  new=$( { [ -n "$set" ] && printf '%s\n' "$set" | tr ',' '\n'; printf '%s\n' "$1"; } \
+         | grep -E '^[0-9]+$' | sort -n | uniq | paste -sd, )
+  maxv=$(printf '%s' "$new" | tr ',' '\n' | sort -n | tail -1)
+  "${MYSQL[@]}" "$DB_NAME" -e "
+    INSERT INTO sys_config (config_key, config_value, config_name, config_group, remark, sort_order, is_active)
+    VALUES ('$APPLIED_KEY', '$new', '已应用迁移集合', 'ops', '由 scripts/db-migrate.sh 维护（逗号分隔）', 0, 1)
+    ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), update_time=NOW();
+    INSERT INTO sys_config (config_key, config_value, config_name, config_group, remark, sort_order, is_active)
+    VALUES ('$VERSION_KEY', '$maxv', '已应用迁移版本(最大)', 'ops', '由 scripts/db-migrate.sh 维护', 0, 1)
+    ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), update_time=NOW();" 2>/dev/null
+  printf '%s' "$new"
+}
+
 if [ "${1:-}" = "--status" ] || [ $# -eq 0 ]; then
-  rec="$(recorded_version)"; max="$(max_migration)"
+  rec="$(recorded_version)"; max="$(max_migration)"; set="$(applied_set)"
   say "迁移目录: ${MIG_DIR#$REPO_ROOT/}"
   say "库        : $DB_NAME@$DB_HOST:$DB_PORT"
   say ""
-  if [ -z "$rec" ]; then
-    warn "库中未记录已应用版本（sys_config.$VERSION_KEY 为空）——只能按迁移目录人工比对"
+  if [ -z "$set" ]; then
+    warn "库中未记录已应用迁移（sys_config.$APPLIED_KEY / $VERSION_KEY 均为空）——只能按目录人工比对"
   else
-    say "已应用版本: $rec"
+    say "已应用: $set"
+    [ -z "$(q "SELECT config_value FROM sys_config WHERE config_key='$APPLIED_KEY';" | head -1)" ] \
+      && say "        （按 $VERSION_KEY 推导，首次执行迁移时会落成显式集合）"
   fi
   say "目录最大号: ${max:-无}"
-  if [ -n "$rec" ] && [ -n "$max" ]; then
-    pending=$(ls -1 "$MIG_DIR" | grep -E '^[0-9]+_' \
-              | awk -v r="$rec" -F_ '{ if ($1+0 > r+0) print }' | sort -n)
+  if [ -n "$max" ]; then
+    pending=$(while IFS= read -r f; do
+                nn="${f%%_*}"
+                case ",$set," in *",$nn,"*) ;; *) printf '%s\n' "$f" ;; esac
+              done < <(ls -1 "$MIG_DIR" | grep -E '^[0-9]+_' | sort -n))
     if [ -z "$pending" ]; then
-      ok "无待执行迁移（库与代码一致）"
+      ok "无待执行迁移（目录里的迁移都已应用）"
     else
       n=$(printf '%s\n' "$pending" | grep -c .)
       warn "待执行迁移 ${n} 个："
       while IFS= read -r f; do [ -n "$f" ] && say "    - $f"; done <<< "$pending"
+      if [ -n "$set" ]; then
+        maxapp=$(printf '%s' "$set" | tr ',' '\n' | sort -n | tail -1)
+        low=$(printf '%s\n' "$pending" | awk -F_ -v m="$maxapp" '$1+0 < m+0' | grep -c . || true)
+        [ "${low:-0}" -gt 0 ] && warn "注意乱序：已应用更高号（最大 $maxapp），但有 ${low} 个低号迁移缺失，建议逐个补齐"
+      fi
       say "  执行：bash scripts/db-migrate.sh <文件名> --yes --task dev-YYYYMMDD-NNN"
     fi
   fi
@@ -105,15 +155,11 @@ if [ -n "$RECORD" ]; then
   old="$(recorded_version)"
   say "── 登记已应用版本 ──"
   say "  guard 备份: ${GUARD#$REPO_ROOT/}（$(stat -c%s "$GUARD")B / INSERT ${G_ROWS} 段 / md5 ${G_MD5}）"
-  say "  版本: ${old:-（空）} → $RECORD"
+  say "  已应用集合: $(applied_set)（追加 $RECORD）"
   [ "$CONFIRMED" -eq 1 ] || { say "  （未加 --yes：未写入）"; exit 0; }
-  "${MYSQL[@]}" "$DB_NAME" -e "
-    INSERT INTO sys_config (config_key, config_value, config_name, config_group, remark, sort_order, is_active)
-    VALUES ('$VERSION_KEY', '$RECORD', '已应用迁移版本', 'ops',
-            '接管登记：$(date +%Y-%m-%d\ %H:%M) 由 ${AI_AGENT:-agent} 登记为 $RECORD${TASK:+；任务 $TASK}', 0, 1)
-    ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), remark=VALUES(remark), update_time=NOW();" 2>/dev/null \
-    || die "写入失败（未改动任何业务数据）"
-  ok "sys_config.$VERSION_KEY = $(recorded_version)"
+  newset=$(record_applied "$RECORD") || die "写入失败（未改动任何业务数据）"
+  [ -n "$newset" ] || die "写入失败（未改动任何业务数据）"
+  ok "sys_config.$APPLIED_KEY = $newset"
   exit 0
 fi
 
@@ -204,22 +250,20 @@ ok "迁移执行完成（$(($(date +%s) - START))s）"
 say ""
 say "── 3/3 记录已应用版本 ──"
 REMARK="迁移 ${BASE} 于 $(date '+%Y-%m-%d %H:%M') 由 ${AI_AGENT:-agent} 执行；备份 $(basename "$BACKUP") md5=$BK_MD5${TASK:+；任务 $TASK}"
-if q "SELECT 1 FROM sys_config LIMIT 1" >/dev/null && [ -n "$(q "SELECT 1 FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='sys_config'")" ]; then
-  "${MYSQL[@]}" "$DB_NAME" -e "
-    INSERT INTO sys_config (config_key, config_value, config_name, config_group, remark, sort_order, is_active)
-    VALUES ('$VERSION_KEY', '$NN', '已应用迁移版本', 'ops', '${REMARK//\'/}', 0, 1)
-    ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), remark=VALUES(remark), update_time=NOW();" 2>/dev/null \
-    && ok "sys_config.$VERSION_KEY = $NN" \
-    || warn "版本记录写入失败（迁移已执行，请手工登记）"
+if [ -n "$(q "SELECT 1 FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='sys_config'")" ]; then
+  newset=$(record_applied "$NN")
+  [ -n "$newset" ] && ok "sys_config.$APPLIED_KEY = $newset" \
+                   || warn "版本记录写入失败（迁移已执行，请手工登记）"
 else
   warn "本库没有 sys_config 表，跳过版本记录"
+  newset=""
 fi
 
 say ""
 say "════ 完成 ════"
 say "  迁移 : $BASE"
 say "  备份 : ${BACKUP#$REPO_ROOT/}  (md5 $BK_MD5)"
-say "  版本 : $VERSION_KEY = $NN"
+say "  已应用: $APPLIED_KEY = ${newset:-$NN}"
 say ""
 say "  收尾提醒："
 say "   - 备份按规范随仓库提交（CONVENTIONS §2）"
