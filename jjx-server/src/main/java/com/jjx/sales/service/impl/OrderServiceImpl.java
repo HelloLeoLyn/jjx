@@ -139,6 +139,7 @@ public class OrderServiceImpl implements IOrderService {
         }
         SalesOrder entity = orderConverter.toEntity(dto);
         entity.setOrderNo(orderNo);
+        fillCustomerShortName(entity, dto.getCustomerId());
         // 链路追踪（DEV-568）：无上游 traceId 则生成 UUID
         String traceId = dto.getTraceId() != null && !dto.getTraceId().isEmpty()
                 ? dto.getTraceId() : java.util.UUID.randomUUID().toString().replace("-", "");
@@ -208,6 +209,7 @@ public class OrderServiceImpl implements IOrderService {
         }
 
         SalesOrder entity = orderConverter.toEntity(dto);
+        fillCustomerShortName(entity, dto.getCustomerId());
 
         // 2026-08-18 L3：修改前抓旧明细（用于字段级变更对比）
         java.util.List<SalesOrderProductVO> oldItemVOs = null;
@@ -372,6 +374,7 @@ public class OrderServiceImpl implements IOrderService {
         copy.setOrderNo(generateOrderNo());
         copy.setCustomerId(source.getCustomerId());
         copy.setCustomerName(source.getCustomerName());
+        copy.setCustomerShortName(source.getCustomerShortName());
         copy.setContactPerson(source.getContactPerson());
         copy.setContactPhone(source.getContactPhone());
         copy.setOrderDate(new Date());
@@ -477,6 +480,14 @@ public class OrderServiceImpl implements IOrderService {
 
         log.info("订单[{}]复制成功，生成新订单[{}](orderId={})", source.getOrderNo(), copy.getOrderNo(), copy.getOrderId());
         return copy.getOrderId();
+    }
+
+    private void fillCustomerShortName(SalesOrder order, Long customerId) {
+        if (order == null || customerId == null) {
+            return;
+        }
+        CustomerVO customer = customerService.selectCustomerById(customerId);
+        order.setCustomerShortName(customer.getCustomerShortName());
     }
 
     /**

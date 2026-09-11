@@ -4,6 +4,8 @@ import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.result.Result;
+import com.jjx.common.core.page.PageResult;
+import com.jjx.sales.domain.dto.SampleOrderQueryDTO;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
@@ -126,6 +128,13 @@ public class SampleOrderController extends BaseController {
             @RequestParam(required = false) Long salesPersonId,
             @RequestParam(required = false) Boolean hasAcceptor) {
         return Result.success(sampleOrderService.selectSampleList(customerId, sampleStatus, salesPersonId, hasAcceptor));
+    }
+
+    @Operation(summary = "样品单分页列表")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/page")
+    public Result<PageResult<SalesOrder>> page(SampleOrderQueryDTO queryDTO) {
+        return Result.success(sampleOrderService.pageSampleOrders(queryDTO));
     }
 
     @Operation(summary = "印刷工序历史输入联想（1225：印刷名称/色号/油墨）")

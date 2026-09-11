@@ -9,7 +9,7 @@
             placeholder="请输入客户名称"
             clearable
             style="width: 200px"
-            @keyup.enter="getList"
+            @keyup.enter="handleQuery"
           />
         </el-form-item>
         <el-form-item label="样品状态" prop="sampleStatus">
@@ -28,7 +28,7 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" icon="Search" @click="getList">搜索</el-button>
+          <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
           <el-button icon="Refresh" @click="resetQuery">重置</el-button>
         </el-form-item>
       </el-form>
@@ -95,6 +95,13 @@
         </el-table-column>
         <TableActionColumn :actions="sampleActions" width="400" display="text" @action="handleSampleAction" />
       </el-table>
+      <pagination
+        v-show="total > 0"
+        v-model:page="queryParams.pageNum"
+        v-model:limit="queryParams.pageSize"
+        :total="total"
+        @pagination="getList"
+      />
     </el-card>
 
     <!-- ===== 创建样品单弹窗 ===== -->
@@ -422,6 +429,7 @@ import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
 import SalesOrderFormDialog from '@/views/sales/order/components/SalesOrderFormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import type { SampleOrderQueryParams } from '@/api/sales/sampleOrder'
 import { quotationApi } from '@/api/sales/quotation'
 import { customerApi } from '@/api/sales/customer'
 import { searchProduct } from '@/api/product'
@@ -441,13 +449,16 @@ const route = useRoute()
 const loading = ref(false)
 const creating = ref(false)
 const sampleList = ref<any[]>([])
+const total = ref(0)
 const statusOptions = ref<
   Array<{ value: number; label: string; description: string; terminal: boolean }>
 >([])
 const quotationOptions = ref<any[]>([])
 
-const queryParams = reactive({
-  customerName: '',
+const queryParams = reactive<SampleOrderQueryParams>({
+  pageNum: 1,
+  pageSize: 10,
+  customerName: undefined,
   sampleStatus: undefined as number | undefined,
 })
 
@@ -636,17 +647,25 @@ function statusTagType(status: number): TagType {
 async function getList() {
   loading.value = true
   try {
-    const res = await sampleOrderApi.list({ sampleStatus: queryParams.sampleStatus })
-    sampleList.value = res.data || []
+    const res = await sampleOrderApi.page(queryParams)
+    sampleList.value = res.data?.records || []
+    total.value = res.data?.total || 0
   } catch {
     sampleList.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
 }
 
+function handleQuery() {
+  queryParams.pageNum = 1
+  getList()
+}
+
 function resetQuery() {
-  queryParams.customerName = ''
+  queryParams.pageNum = 1
+  queryParams.customerName = undefined
   queryParams.sampleStatus = undefined
   getList()
 }

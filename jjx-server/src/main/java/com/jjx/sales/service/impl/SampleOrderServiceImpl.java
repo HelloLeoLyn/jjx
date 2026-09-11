@@ -28,6 +28,10 @@ import com.jjx.system.utils.SecurityUtils;
 
 import cn.hutool.db.sql.Order;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jjx.common.core.page.PageResult;
+import com.jjx.sales.domain.dto.SampleOrderQueryDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -131,6 +135,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setQuotationId(quotationId);
         order.setCustomerId(quotation.getCustomerId());
         order.setCustomerName(quotation.getCustomerName());
+        com.jjx.sales.domain.entity.SalesCustomer quotationCustomer =
+                customerMapper.selectById(quotation.getCustomerId());
+        order.setCustomerShortName(quotationCustomer == null ? null : quotationCustomer.getCustomerShortName());
         // 联系人/电话：创建时传入则覆盖报价单默认值
         order.setContactPerson(contactPerson != null && !contactPerson.isEmpty()
                 ? contactPerson : quotation.getContactPerson());
@@ -236,6 +243,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         copy.setQuotationId(null);
         copy.setCustomerId(source.getCustomerId());
         copy.setCustomerName(source.getCustomerName());
+        copy.setCustomerShortName(source.getCustomerShortName());
         copy.setContactPerson(source.getContactPerson());
         copy.setContactPhone(source.getContactPhone());
         copy.setOrderDate(new Date());
@@ -403,6 +411,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         upd.setOrderId(orderId);
         upd.setCustomerId(customer.getCustomerId());
         upd.setCustomerName(customer.getCustomerName());
+        upd.setCustomerShortName(customer.getCustomerShortName());
         upd.setContactPerson(dto.getContactPerson());
         upd.setContactPhone(dto.getContactPhone());
         upd.setRemark(dto.getRemark());
@@ -556,6 +565,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setQuotationId(dto.getQuotationId());
         order.setCustomerId(customer.getCustomerId());
         order.setCustomerName(customer.getCustomerName());
+        order.setCustomerShortName(customer.getCustomerShortName());
         // 联系人/电话：前端传入 > 报价单 > 客户档案
         order.setContactPerson(dto.getContactPerson() != null && !dto.getContactPerson().isEmpty()
                 ? dto.getContactPerson()
@@ -3046,6 +3056,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         standardOrder.setQuotationId(sampleOrder.getQuotationId());
         standardOrder.setCustomerId(sampleOrder.getCustomerId());
         standardOrder.setCustomerName(sampleOrder.getCustomerName());
+        standardOrder.setCustomerShortName(sampleOrder.getCustomerShortName());
         standardOrder.setContactPerson(sampleOrder.getContactPerson());
         standardOrder.setContactPhone(sampleOrder.getContactPhone());
         if (extras != null) {
@@ -3514,23 +3525,53 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     @Override
     public List<SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor) {
-        java.util.List<SalesOrder> list = orderMapper.selectSampleOrders();
-        if (list == null || list.isEmpty()) {
-            return list;
+        LambdaQueryWrapper<SalesOrder> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(SalesOrder::getOrderType, SalesOrderTypeEnum.SAMPLE.getCode())
+                .eq(SalesOrder::getDeleted, 0)
+                .eq(customerId != null, SalesOrder::getCustomerId, customerId)
+                .eq(sampleStatus != null, SalesOrder::getSampleStatus, sampleStatus)
+                .eq(salesPersonId != null, SalesOrder::getSalesManagerId, salesPersonId);
+        if (Boolean.TRUE.equals(hasAcceptor)) {
+            wrapper.isNotNull(SalesOrder::getEngineeringAcceptor)
+                    .ne(SalesOrder::getEngineeringAcceptor, "");
+        } else if (Boolean.FALSE.equals(hasAcceptor)) {
+            wrapper.and(w -> w.isNull(SalesOrder::getEngineeringAcceptor)
+                    .or().eq(SalesOrder::getEngineeringAcceptor, ""));
         }
-        java.util.List<SalesOrder> result = list;
-        if (customerId != null) {
-            result = result.stream().filter(o -> customerId.equals(o.getCustomerId())).collect(java.util.stream.Collectors.toList());
-        }
-        if (sampleStatus != null) {
-            result = result.stream().filter(o -> sampleStatus.equals(o.getSampleStatus())).collect(java.util.stream.Collectors.toList());
-        }
-        if (hasAcceptor != null && hasAcceptor) {
-            result = result.stream().filter(o -> o.getEngineeringAcceptor() != null && !o.getEngineeringAcceptor().isEmpty())
-                    .collect(java.util.stream.Collectors.toList());
-        }
+        wrapper.orderByDesc(SalesOrder::getCreateTime);
+        List<SalesOrder> result = orderMapper.selectList(wrapper);
         fillSampleTransferSummary(result);
         return result;
+    }
+
+    @Override
+    public PageResult<SalesOrder> pageSampleOrders(SampleOrderQueryDTO queryDTO) {
+        LambdaQueryWrapper<SalesOrder> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(SalesOrder::getOrderType, SalesOrderTypeEnum.SAMPLE.getCode())
+                .eq(SalesOrder::getDeleted, 0)
+                .like(org.springframework.util.StringUtils.hasText(queryDTO.getOrderNo()),
+                        SalesOrder::getOrderNo, queryDTO.getOrderNo())
+                .eq(queryDTO.getCustomerId() != null, SalesOrder::getCustomerId, queryDTO.getCustomerId())
+                .like(org.springframework.util.StringUtils.hasText(queryDTO.getCustomerName()),
+                        SalesOrder::getCustomerName, queryDTO.getCustomerName())
+                .like(org.springframework.util.StringUtils.hasText(queryDTO.getCustomerShortName()),
+                        SalesOrder::getCustomerShortName, queryDTO.getCustomerShortName())
+                .eq(queryDTO.getSampleStatus() != null, SalesOrder::getSampleStatus, queryDTO.getSampleStatus())
+                .eq(queryDTO.getSalesPersonId() != null,
+                        SalesOrder::getSalesManagerId, queryDTO.getSalesPersonId());
+        if (Boolean.TRUE.equals(queryDTO.getHasAcceptor())) {
+            wrapper.isNotNull(SalesOrder::getEngineeringAcceptor)
+                    .ne(SalesOrder::getEngineeringAcceptor, "");
+        } else if (Boolean.FALSE.equals(queryDTO.getHasAcceptor())) {
+            wrapper.and(w -> w.isNull(SalesOrder::getEngineeringAcceptor)
+                    .or().eq(SalesOrder::getEngineeringAcceptor, ""));
+        }
+        wrapper.orderByDesc(SalesOrder::getCreateTime);
+
+        Page<SalesOrder> page = orderMapper.selectPage(
+                new Page<>(queryDTO.getPageNum(), queryDTO.getPageSize()), wrapper);
+        fillSampleTransferSummary(page.getRecords());
+        return PageResult.of(page, page.getRecords());
     }
 
     /**

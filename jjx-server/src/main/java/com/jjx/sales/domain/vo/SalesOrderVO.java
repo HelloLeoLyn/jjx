@@ -30,6 +30,9 @@ public class SalesOrderVO {
     @Schema(description = "客户名称", example = "XX科技有限公司")
     private String customerName;
 
+    @Schema(description = "客户简称（下单时快照）")
+    private String customerShortName;
+
     @Schema(description = "联系人", example = "张三")
     private String contactPerson;
 

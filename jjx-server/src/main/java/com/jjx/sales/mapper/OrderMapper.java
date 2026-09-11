@@ -109,9 +109,4 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
                           @Param("engineeringStatus") Integer engineeringStatus,
                           @Param("acceptorName") String acceptorName);
 
-    /**
-     * 查询样品单列表（order_type=2）
-     */
-    @Select("SELECT * FROM sales_order WHERE order_type = 2 AND deleted = 0 ORDER BY create_time DESC")
-    List<SalesOrder> selectSampleOrders();
 }

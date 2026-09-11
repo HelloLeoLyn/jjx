@@ -28,6 +28,18 @@ export function suggestSampleInks(keyword?: string, limit?: number) {
 
 import type { AxiosPromise } from 'axios'
 
+export interface SampleOrderQueryParams {
+  pageNum: number
+  pageSize: number
+  orderNo?: string
+  customerId?: number
+  customerName?: string
+  customerShortName?: string
+  sampleStatus?: number
+  salesPersonId?: number
+  hasAcceptor?: boolean
+}
+
 // 样品单接口
 export const sampleOrderApi = {
   // 从报价单创建样品单
@@ -107,7 +119,7 @@ export const sampleOrderApi = {
     })
   },
 
-  // 样品单列表
+  // 样品单列表（旧接口，兼容工作台调用）
   list(params?: {
     customerId?: number
     sampleStatus?: number
@@ -116,6 +128,15 @@ export const sampleOrderApi = {
   }): AxiosPromise<any[]> {
     return request({
       url: '/sales/sample-order/list',
+      method: 'get',
+      params,
+    })
+  },
+
+  // 样品单分页列表
+  page(params: SampleOrderQueryParams): AxiosPromise<any> {
+    return request({
+      url: '/sales/sample-order/page',
       method: 'get',
       params,
     })

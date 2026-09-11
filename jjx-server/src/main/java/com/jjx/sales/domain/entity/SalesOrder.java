@@ -52,6 +52,9 @@ public class SalesOrder extends BaseEntity {
      */
     private String customerName;
 
+    /** 客户简称（下单时快照） */
+    private String customerShortName;
+
     /**
      * 联系人
      */

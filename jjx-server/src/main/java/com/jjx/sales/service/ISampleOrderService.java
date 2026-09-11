@@ -205,6 +205,10 @@ public interface ISampleOrderService {
      */
     List<com.jjx.sales.domain.entity.SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor);
 
+    /** 样品单数据库条件分页查询。 */
+    com.jjx.common.core.page.PageResult<com.jjx.sales.domain.entity.SalesOrder> pageSampleOrders(
+            com.jjx.sales.domain.dto.SampleOrderQueryDTO queryDTO);
+
     /**
      * 样品单作废
      * 非终态（未转量产/未关闭/未作废）样品单可作废
