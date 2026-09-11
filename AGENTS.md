@@ -26,16 +26,15 @@ Writing files is legitimate only as part of an executed task (backups / migratio
 Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
-- **DB change first** (any migration / bulk DML / risky fix): back up BEFORE touching data →
-  `jjx-docs/sql/backups/jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql` (mysql root/123456, utf8mb4).
+- **DB change first** (any migration / bulk DML / risky fix): back up BEFORE touching data. Full dumps and guard backups go to the Git-external `JJX_BACKUP_DIR` (default: sibling `jjx-backups/`), not into the repository.
 - Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql` (next max NN+1).
 - Analysis / test-plan / design reports: `jjx-docs/analysis/<topic>-dev-YYYYMMDD-NNN.md`, register in INDEX.md, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).
-- Table-level guard backups before row cleanups: `jjx-docs/sql/backups/<table>_<topic>_YYYYMMDD-HHmm.sql`.
+- Table-level guard backups before row cleanups: `$JJX_BACKUP_DIR/<table>_<topic>_YYYYMMDD-HHmm.sql` (outside Git).
 - Commit message: `type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`; never mix unrelated files.
-- NEVER `git reset --hard` / `git clean` / `git push -f` / delete files under `jjx-docs/sql`, `jjx-docs/sql/backups`, `jjx-docs/standards` (restore: `git ls-files -d | xargs git restore`).
+- NEVER `git reset --hard` / `git clean` / `git push -f`. Files under `jjx-docs/sql/` (except legacy `backups/`) and `jjx-docs/standards/` must not be deleted or moved. Legacy tracked backups may be removed only in an explicit cleanup task.
 - Scratch/temp files: `/tmp` or repo `.tmp/` (gitignored), clean same day.
 - **Git gates (hooks)**: run `bash scripts/install-hooks.sh` **once per clone** (sets `core.hooksPath=scripts/hooks`).
-  `pre-commit` blocks: deletions/moves under `jjx-docs/sql/` / `jjx-docs/standards/`, and any expansion of `status-magic-baseline.json`.
+  `pre-commit` blocks: deletions/moves under `jjx-docs/sql/` except `backups/`, deletions/moves under `jjx-docs/standards/`, and any expansion of `status-magic-baseline.json`. Backup cleanup is warned but allowed.
   `commit-msg` requires the task code `dev-YYYYMMDD-NNN` and verifies it really exists in `sys_task` (read-only check; fail-open when the DB is unreachable). Disable per clone: `git config jjx.requireTaskCode false` / `jjx.verifyTaskCode false`.
   Single-commit bypass: `git commit --no-verify` — only when you have confirmed the consequences.

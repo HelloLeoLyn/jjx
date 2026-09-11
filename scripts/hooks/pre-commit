@@ -10,25 +10,28 @@ cd "$(git rev-parse --show-toplevel)" 2>/dev/null || exit 1
 fail=0
 say() { printf '%s\n' "$*"; }
 
-# ── 闸门 1：共享目录禁止删除 / 移出（不可逆，规范 §5 红线）──────────────
-# 显式逃生口：git config jjx.allowProtectedMove true（仅本次提交，改完记得 unset）
-# 用途：迁移号重编等正当位移（规范 §3 决议 C1）；留痕由 commit message 承担
-PROTECTED_RE='^(jjx-docs/sql/|jjx-docs/standards/)'
-deleted=$(git diff --cached --name-only --diff-filter=D | grep -E "$PROTECTED_RE" || true)
-moved=$(git diff --cached --name-status --diff-filter=R | awk '{ if ($2 ~ /^jjx-docs\/(sql|standards)\// || $3 ~ /^jjx-docs\/(sql|standards)\//) print }')
+# ── 闸门 1：迁移/正式 SQL/规范禁止删除；历史备份清理仅警告 ──────────────
+deleted_all=$(git diff --cached --name-only --diff-filter=D)
+deleted=$(printf '%s\n' "$deleted_all" | grep -E '^(jjx-docs/sql/|jjx-docs/standards/)' | grep -v '^jjx-docs/sql/backups/' || true)
+backup_deleted=$(printf '%s\n' "$deleted_all" | grep -E '^jjx-docs/sql/backups/' || true)
+moved=$(git diff --cached --name-status --diff-filter=R | awk '
+  function protected(p) {
+    return p ~ /^jjx-docs\/standards\// || (p ~ /^jjx-docs\/sql\// && p !~ /^jjx-docs\/sql\/backups\//)
+  }
+  { if (protected($2) || protected($3)) print }
+')
 
-if { [ -n "$deleted" ] || [ -n "$moved" ]; } && [ "$(git config --bool --get jjx.allowProtectedMove 2>/dev/null || echo false)" = "true" ]; then
+if [ -n "$backup_deleted" ]; then
+  count=$(printf '%s\n' "$backup_deleted" | grep -c . || true)
   say ""
-  say "⚠ 已按 jjx.allowProtectedMove=true 放行共享目录的位移（记得 git config --unset jjx.allowProtectedMove）"
-  while IFS= read -r f; do [ -n "$f" ] && say "  删除: $f"; done <<< "$deleted"
-  while IFS= read -r f; do [ -n "$f" ] && say "  移动: $f"; done <<< "$moved"
-  deleted=""; moved=""
+  say "⚠ 提醒：本次将清理 jjx-docs/sql/backups/ 下 ${count} 个历史备份"
+  say "  要求：用户已确认，且使用独立任务码与独立提交（CONVENTIONS §2/§5）"
 fi
 
 if [ -n "$deleted" ] || [ -n "$moved" ]; then
   say ""
-  say "✘ 拦截：禁止删除/移动共享目录（jjx-docs/sql/、jjx-docs/standards/）内的文件"
-  say "  依据：CONVENTIONS §5（不可逆；疑似冗余先问，不要直接删）"
+  say "✘ 拦截：禁止删除/移动迁移、SQL 正式资产或规范文件"
+  say "  保护范围：jjx-docs/sql/（backups/ 除外）、jjx-docs/standards/"
   while IFS= read -r f; do [ -n "$f" ] && say "  删除: $f"; done <<< "$deleted"
   while IFS= read -r f; do [ -n "$f" ] && say "  移动: $f"; done <<< "$moved"
   say "  恢复办法：git ls-files -d | xargs git restore"

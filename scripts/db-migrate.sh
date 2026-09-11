@@ -17,7 +17,7 @@
 #
 # 环境覆盖（默认值即本机开发库，见 CONVENTIONS §2）：
 #   DB_HOST DB_PORT DB_USER DB_PASS DB_NAME
-#   JJX_BACKUP_DIR（默认 jjx-docs/sql/backups）
+#   JJX_BACKUP_DIR（默认仓库同级 jjx-backups；必须位于 Git 仓库外）
 #   JJX_MIGRATIONS_DIR（默认 jjx-docs/sql/migrations；仅用于自测）
 # ============================================================================
 set -uo pipefail
@@ -28,10 +28,17 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$(dirname "$REPO_ROOT")/jjx-backups}"
 MIG_DIR="${JJX_MIGRATIONS_DIR:-$REPO_ROOT/jjx-docs/sql/migrations}"
 VERSION_KEY="ops.schema.version"
 APPLIED_KEY="ops.schema.applied"
+
+case "$BACKUP_DIR/" in
+  "$REPO_ROOT/"*)
+    printf 'JJX_BACKUP_DIR must be outside the Git repository: %s\n' "$BACKUP_DIR" >&2
+    exit 1
+    ;;
+esac
 
 export MYSQL_PWD="$DB_PASS"
 MYSQL=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4)
@@ -281,6 +288,6 @@ say "  备份 : ${BACKUP#$REPO_ROOT/}  (md5 $BK_MD5)"
 say "  已应用: $APPLIED_KEY = ${newset:-$NN}"
 say ""
 say "  收尾提醒："
-say "   - 备份按规范随仓库提交（CONVENTIONS §2）"
+say "   - 备份位于 Git 仓库外，按保留策略管理（CONVENTIONS §2）"
 say "   - 在 sys_task 登记执行记录（时间/执行人/备份 md5）"
 say "   - 业务侧验证后再通知用户验收"

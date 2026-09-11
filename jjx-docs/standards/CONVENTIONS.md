@@ -9,8 +9,8 @@
 
 | 场景 | 固定位置 | 说明 |
 |---|---|---|
-| DB 全量备份 | `jjx-docs/sql/backups/` | 改库前必做；随仓库提交 |
-| DB 表级/行级 guard 备份 | `jjx-docs/sql/backups/` | 清理/修复特定表前；命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql` |
+| DB 全量备份 | Git 仓库外 `JJX_BACKUP_DIR` | 改库前必做；默认仓库同级 `jjx-backups/`，不提交 Git |
+| DB 表级/行级 guard 备份 | Git 仓库外 `JJX_BACKUP_DIR` | 清理/修复特定表前；不提交 Git |
 | DB 迁移/上线脚本 | `jjx-docs/sql/migrations/` | 序号 `NN_<描述>.sql` 递增；幂等优先 |
 | 分析/方案/测试计划/报告 | `jjx-docs/analysis/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 INDEX.md；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
 | **现行真相（各模块当前状态）** | `jjx-docs/current/<模块>.md` | 一个模块只允许一篇，不带日期；命名 `<模块>.md`；会过期、需定期复核；历史指针留在文末 |
@@ -27,14 +27,11 @@
 
 **触发时机**：任何迁移脚本执行前、批量 UPDATE/DELETE 前、修复疑似脏数据前、跨环境导数据前。
 
-**统一命令**（固定参数，不用花式选项）：
+**统一入口**：
 
 ```bash
-mkdir -p /home/administrator/jjx/jjx-docs/sql/backups
-mysqldump -u root -p123456 --default-character-set=utf8mb4 \
-  --single-transaction --set-gtid-purged=OFF --no-tablespaces \
-  jjx_erp_db > /home/administrator/jjx/jjx-docs/sql/backups/jjx_erp_db_backup_$(date +%Y%m%d-%H%M)_<tag>.sql
-md5sum /home/administrator/jjx/jjx-docs/sql/backups/jjx_erp_db_backup_*.sql
+export JJX_BACKUP_DIR=/path/outside/jjx/repository
+bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 ```
 
 **命名**：`jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql`
@@ -42,9 +39,10 @@ md5sum /home/administrator/jjx/jjx-docs/sql/backups/jjx_erp_db_backup_*.sql
 - 文件头第 1~3 行注释写明：备份人（agent 名）、原因、关联任务码（若有）。
 
 **验证**：执行后必须 `md5sum` + `grep -c "CREATE TABLE"` 抽查，并在汇报里给出 md5。
-**表级/行级 guard 备份**（清理 sys_task 等特定表/行前）：同样落 `jjx-docs/sql/backups/`，命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`（如 `sys_task_cleanup_20260907-0930.sql`），md5 照验。
-**保留**：默认随仓库提交（跨机器一致）；单文件 > 20MB 先 gzip（`.sql.gz`）再入库；超 100MB 不入库，放共享盘并在文件位置留 `.gitkeep`+README 说明。
-**禁止**：备份写到各自 workspace 的任意目录（如 `memory/*.sql`、`/tmp/backup.sql`）。
+**表级/行级 guard 备份**（清理 sys_task 等特定表/行前）：同样落到 `JJX_BACKUP_DIR`，命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`，md5 照验。
+**保留**：本机开发备份默认保留 14 天；每日只保留最后一份，发布里程碑备份转移到团队外部存储长期保留。Git 永久保留迁移 SQL、恢复说明和必要校验信息，不再提交数据库 dump。
+**清理**：`jjx-docs/sql/backups/` 仅视为历史存量。删除存量备份必须使用独立任务码和独立提交；不得与业务代码、迁移脚本混交。迁移脚本及规范文件仍永久保护。
+**禁止**：备份写入 Git 仓库、`memory/` 或临时目录。`JJX_BACKUP_DIR` 必须位于仓库之外。
 
 ---
 
@@ -88,10 +86,10 @@ md5sum /home/administrator/jjx/jjx-docs/sql/backups/jjx_erp_db_backup_*.sql
   - 例：`fix(order-no): 销售订单单号统一 yyMMdd+3位（dev-20260907-012）`
 - 一个提交只做一件事；**不混入无关文件**（提交前 `git status` 核对，只 add 自己的文件）
 - 严禁：`git reset --hard` / `git clean` / `git checkout .` / `git push -f`（force push 会从远端抹掉别人的提交）等会吞掉他人改动或历史的操作；确需回退先 `git stash` 并告知他人，恢复远端用正常 push 补回
-- **禁止删除/移动共享目录**（`jjx-docs/sql/`、`jjx-docs/sql/backups/`、`jjx-docs/standards/`）里的任何文件——疑似冗余先问，不直接删；**看到他人/批量删除状态也先问再恢复**，不自动 git restore
+- **永久保护**：禁止删除/移动 `jjx-docs/sql/`（历史 `backups/` 除外）和 `jjx-docs/standards/`。`jjx-docs/sql/backups/` 存量文件可在用户确认后，以独立清理任务和独立提交删除；看到他人删除状态仍先问，不自动恢复或提交。
 - 推送：push 前先 fetch 确认无冲突；GitHub 走 `ssh://git@github.com/HelloLeoLyn/jjx.git dev`（本机 https 被全局改写，勿用默认 push）
 - **闸门（git hooks，每个 clone 装一次）**：`bash scripts/install-hooks.sh` → 设置 `core.hooksPath=scripts/hooks`。已启用两个：
-  - `pre-commit` 拦：① `jjx-docs/sql/` `jjx-docs/standards/` 下的删除/移出（不可逆）② `status-magic-baseline.json` 新增条目或数值放大
+  - `pre-commit` 拦：① `jjx-docs/sql/`（`backups/` 除外）和 `jjx-docs/standards/` 下的删除/移出；`backups/` 删除仅警告并允许 ② `status-magic-baseline.json` 新增条目或数值放大
   - `commit-msg` 拦：① 必须带任务码 `dev-YYYYMMDD-NNN`（关：`git config jjx.requireTaskCode false`）② 该码必须**真实存在于 sys_task**（用只读账号校验；关：`git config jjx.verifyTaskCode false`；库连不上时只提醒、不阻塞提交）
   - 单次跳过：`git commit --no-verify`（确认过后果再用）；卸载：`git config --unset core.hooksPath`
 
@@ -162,7 +160,8 @@ md5sum /home/administrator/jjx/jjx-docs/sql/backups/jjx_erp_db_backup_*.sql
 |---|---|---|---|
 | 数据库 `jjx_erp_db` 写 | 仅本机执行者，且必须走 `scripts/db-migrate.sh` | 入口脚本强制"先全库备份 → 再执行 → 写版本号"；不备份执行不了 | 半硬（root 仍可直连绕过） |
 | 数据库**只读查看** | 任何人 → 用只读账号 `jjx_ro` | MySQL 授权（仅 SELECT；写操作返回 1142） | **硬** |
-| `jjx-docs/sql/**`、`jjx-docs/standards/**` 的删除/移出 | 无人（需用户批准） | `pre-commit` 拦截 | **硬** |
+| `jjx-docs/sql/**`（`backups/` 除外）、`jjx-docs/standards/**` 的删除/移出 | 无人（需用户批准） | `pre-commit` 拦截 | **硬** |
+| `jjx-docs/sql/backups/**` 历史存量清理 | 用户确认后，独立任务与独立提交 | `pre-commit` 警告并放行 | 审计型 |
 | `status-magic-baseline.json` 新增/放大 | 无人 | `pre-commit` 拦截（只许缩小） | **硬** |
 | 文档规则（INDEX 登记 / BOM / 命名 / `current/` 一模块一篇） | 任何人，须过门禁 | `npm run check:docs`（已并入 `validate`） | 硬（需主动跑；建议开工自检） |
 | 提交信息任务码（且须真实登记） | 任何人 | `commit-msg` 默认硬拦：① 必须带码 ② 用只读账号查 `sys_task` 确认该码真实存在（库不可达时放行不阻塞）。开关 `jjx.requireTaskCode` / `jjx.verifyTaskCode`；单次跳过 `--no-verify` | **硬**（可自行关闭，弱化点） |
