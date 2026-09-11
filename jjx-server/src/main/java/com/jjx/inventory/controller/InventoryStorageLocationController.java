@@ -11,14 +11,18 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.inventory.domain.InventoryStorageLocation;
+import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.imports.StorageLocationImportDTO;
 import com.jjx.inventory.dto.query.StorageLocationQueryDTO;
 import com.jjx.inventory.dto.save.StorageLocationSaveDTO;
 import com.jjx.inventory.dto.update.StorageLocationUpdateDTO;
+import com.jjx.inventory.dto.vo.StorageLocationExportVO;
 import com.jjx.inventory.dto.vo.StorageLocationVO;
 import com.jjx.inventory.service.InventoryStorageLocationService;
+import com.jjx.inventory.service.InventoryWarehouseService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +30,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +46,8 @@ import java.util.stream.Collectors;
 public class InventoryStorageLocationController extends BaseController {
 
     private final InventoryStorageLocationService storageLocationService;
+
+    private final InventoryWarehouseService warehouseService;
 
     /**
      * 分页查询库位列表
@@ -65,6 +72,73 @@ public class InventoryStorageLocationController extends BaseController {
     }
 
     /**
+     * 导出库位列表Excel（dev-20260911-001）
+     * 权限口径与 /page 一致：inventory:storage-location:view 可见即可导出
+     */
+    @Operation(summary = "导出库位列表Excel")
+    @GetMapping("/export")
+    @SaCheckPermission("inventory:storage-location:view")
+    public void export(StorageLocationQueryDTO queryDTO, HttpServletResponse response) {
+        List<InventoryStorageLocation> list = storageLocationService.list(buildQueryWrapper(queryDTO));
+
+        // 列表VO未关联仓库名，导出时补齐
+        Map<Long, String> warehouseMap = new HashMap<>();
+        for (InventoryWarehouse warehouse : warehouseService.list()) {
+            warehouseMap.put(warehouse.getWarehouseId(), warehouse.getWarehouseName());
+        }
+
+        List<StorageLocationExportVO> rows = new ArrayList<>();
+        for (InventoryStorageLocation location : list) {
+            StorageLocationExportVO row = new StorageLocationExportVO();
+            BeanUtils.copyProperties(location, row);
+            row.setWarehouseName(
+                    location.getWarehouseId() == null ? null : warehouseMap.get(location.getWarehouseId()));
+            row.setLocationTypeDesc(locationTypeText(location.getLocationType()));
+            row.setStatusDesc(locationStatusText(location.getStatus()));
+            row.setCreateTime(formatDateTime(location.getCreateTime()));
+            rows.add(row);
+        }
+
+        ExcelUtils.export(response, rows, StorageLocationExportVO.class, "库位列表");
+    }
+
+    private static final java.time.format.DateTimeFormatter EXPORT_DATE_TIME =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /**
+     * 导出用时间格式化
+     */
+    private static String formatDateTime(java.time.LocalDateTime value) {
+        return value == null ? "" : EXPORT_DATE_TIME.format(value);
+    }
+
+    /**
+     * 库位类型文本
+     */
+    private static String locationTypeText(String type) {
+        if (type == null || type.isEmpty()) {
+            return "";
+        }
+        return switch (type) {
+            case "normal" -> "普通库位";
+            case "frozen" -> "冷冻库位";
+            case "flammable" -> "易燃库位";
+            case "valuable" -> "贵重库位";
+            default -> type;
+        };
+    }
+
+    /**
+     * 库位状态文本（1正常 0停用）
+     */
+    private static String locationStatusText(String status) {
+        if (status == null || status.isEmpty()) {
+            return "";
+        }
+        return "1".equals(status) ? "正常" : "0".equals(status) ? "停用" : status;
+    }
+
+    /**
      * 查询指定仓库下的库位列表
      */
     @GetMapping("/warehouse/{warehouseId}")
@@ -78,7 +152,7 @@ public class InventoryStorageLocationController extends BaseController {
     /**
      * 获取库位详情
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     @SaCheckPermission("inventory:storage-location:view")
     public Result<StorageLocationVO> getById(@PathVariable Long id) {
         InventoryStorageLocation location = storageLocationService.getById(id);

@@ -9,13 +9,20 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.inventory.domain.InventoryMaterial;
+import com.jjx.inventory.domain.InventoryMaterialCategory;
+import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.imports.MaterialImportDTO;
 import com.jjx.inventory.dto.query.MaterialCheckDTO;
 import com.jjx.inventory.dto.query.MaterialQueryDTO;
 import com.jjx.inventory.dto.save.MaterialSaveDTO;
 import com.jjx.inventory.dto.update.MaterialUpdateDTO;
+import com.jjx.inventory.dto.vo.MaterialExportVO;
 import com.jjx.inventory.dto.vo.MaterialVO;
+import com.jjx.inventory.enums.MaterialEnums;
+import com.jjx.inventory.service.InventoryMaterialCategoryService;
 import com.jjx.inventory.service.InventoryMaterialService;
+import com.jjx.inventory.service.InventoryWarehouseService;
+import io.swagger.v3.oas.annotations.Operation;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,6 +32,8 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,6 +47,10 @@ import java.util.Map;
 public class InventoryMaterialController extends BaseController {
 
     private final InventoryMaterialService materialService;
+
+    private final InventoryMaterialCategoryService categoryService;
+
+    private final InventoryWarehouseService warehouseService;
 
     /**
      * 获取物料总数
@@ -73,7 +86,7 @@ public class InventoryMaterialController extends BaseController {
     /**
      * 获取物料详情
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     @SaCheckPermission("inventory:material:view")
     public Result<MaterialVO> getById(@PathVariable Long id) {
         MaterialVO material = materialService.getDetailById(id);
@@ -193,6 +206,70 @@ public class InventoryMaterialController extends BaseController {
         List<Map<String, Object>> options = materialService.getOptions(keyword);
         return Result.success(options);
     }
+    /**
+     * 导出物料列表Excel（dev-20260911-001）
+     * 权限口径与 /list 一致：inventory:material:view 可见即可导出
+     */
+    @Operation(summary = "导出物料列表Excel")
+    @GetMapping("/export")
+    @SaCheckPermission("inventory:material:view")
+    public void export(MaterialQueryDTO queryDTO, HttpServletResponse response) {
+        List<InventoryMaterial> list = materialService.selectEntities(queryDTO);
+
+        // 列表VO未做关联字段填充，导出时补齐分类名/默认仓库名
+        Map<Long, String> categoryMap = new HashMap<>();
+        for (InventoryMaterialCategory category : categoryService.list()) {
+            categoryMap.put(category.getCategoryId(), category.getCategoryName());
+        }
+        Map<Long, String> warehouseMap = new HashMap<>();
+        for (InventoryWarehouse warehouse : warehouseService.list()) {
+            warehouseMap.put(warehouse.getWarehouseId(), warehouse.getWarehouseName());
+        }
+
+        List<MaterialExportVO> rows = new ArrayList<>();
+        for (InventoryMaterial entity : list) {
+            MaterialExportVO row = new MaterialExportVO();
+            BeanUtils.copyProperties(entity, row);
+            MaterialEnums.Type type = MaterialEnums.Type.fromValue(entity.getMaterialType());
+            row.setMaterialTypeDesc(type == null ? entity.getMaterialType() : type.getLabel());
+            row.setCategoryName(
+                    entity.getCategoryId() == null ? null : categoryMap.get(entity.getCategoryId()));
+            row.setDefaultWarehouseName(entity.getDefaultWarehouseId() == null ? null
+                    : warehouseMap.get(entity.getDefaultWarehouseId()));
+            row.setStatusDesc(materialStatusText(entity.getStatus()));
+            row.setBatchControlDesc(Boolean.TRUE.equals(entity.getBatchControl()) ? "是" : "否");
+            row.setCreateTime(formatDateTime(entity.getCreateTime()));
+            rows.add(row);
+        }
+
+        ExcelUtils.export(response, rows, MaterialExportVO.class, "物料列表");
+    }
+
+    private static final java.time.format.DateTimeFormatter EXPORT_DATE_TIME =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /**
+     * 导出用时间格式化
+     */
+    private static String formatDateTime(java.time.LocalDateTime value) {
+        return value == null ? "" : EXPORT_DATE_TIME.format(value);
+    }
+
+    /**
+     * 物料状态文本（inventory_material.status：1启用 0停用 2废弃）
+     */
+    private static String materialStatusText(Integer status) {
+        if (status == null) {
+            return "";
+        }
+        return switch (status) {
+            case 1 -> "启用";
+            case 0 -> "停用";
+            case 2 -> "废弃";
+            default -> String.valueOf(status);
+        };
+    }
+
     /**
      * 导入物料数据
      */

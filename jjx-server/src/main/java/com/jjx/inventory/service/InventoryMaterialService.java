@@ -74,6 +74,11 @@ public interface InventoryMaterialService extends IService<InventoryMaterial> {
     com.jjx.inventory.dto.vo.MaterialImportResultVO importMaterial(List<MaterialImportDTO> importList, String operName);
     List<MaterialVO> selectList(MaterialQueryDTO queryDTO);
 
+    /**
+     * 按查询条件取物料实体列表（导出用，不分页）
+     */
+    List<InventoryMaterial> selectEntities(MaterialQueryDTO queryDTO);
+
     /** 生成编码 */
     String generateCode();
 

@@ -363,6 +363,11 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
+    public List<InventoryMaterial> selectEntities(MaterialQueryDTO queryDTO) {
+        return materialMapper.selectList(buildQueryWrapper(queryDTO));
+    }
+
+    @Override
     public String generateCode() {
         return generateMaterialCode(null);
     }

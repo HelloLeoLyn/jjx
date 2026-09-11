@@ -8,20 +8,25 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.WarehouseQueryDTO;
 import com.jjx.inventory.dto.save.WarehouseSaveDTO;
 import com.jjx.inventory.dto.update.WarehouseUpdateDTO;
+import com.jjx.inventory.dto.vo.WarehouseExportVO;
 import com.jjx.inventory.dto.vo.WarehouseVO;
 import com.jjx.inventory.service.InventoryWarehouseService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -58,6 +63,65 @@ public class InventoryWarehouseController extends BaseController {
     }
 
     /**
+     * 导出仓库列表Excel（dev-20260911-001）
+     * 权限口径与 /page 一致：inventory:warehouse:view 可见即可导出
+     */
+    @Operation(summary = "导出仓库列表Excel")
+    @GetMapping("/export")
+    @SaCheckPermission("inventory:warehouse:view")
+    public void export(WarehouseQueryDTO queryDTO, HttpServletResponse response) {
+        List<InventoryWarehouse> list = warehouseService.list(buildQueryWrapper(queryDTO));
+
+        List<WarehouseExportVO> rows = new ArrayList<>();
+        for (InventoryWarehouse warehouse : list) {
+            WarehouseExportVO row = new WarehouseExportVO();
+            BeanUtils.copyProperties(warehouse, row);
+            row.setWarehouseTypeDesc(warehouseTypeText(warehouse.getWarehouseType()));
+            row.setStatusDesc(warehouseStatusText(warehouse.getStatus()));
+            row.setCreateTime(formatDateTime(warehouse.getCreateTime()));
+            rows.add(row);
+        }
+
+        ExcelUtils.export(response, rows, WarehouseExportVO.class, "仓库列表");
+    }
+
+    private static final java.time.format.DateTimeFormatter EXPORT_DATE_TIME =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /**
+     * 导出用时间格式化
+     */
+    private static String formatDateTime(java.time.LocalDateTime value) {
+        return value == null ? "" : EXPORT_DATE_TIME.format(value);
+    }
+
+    /**
+     * 仓库类型文本
+     */
+    private static String warehouseTypeText(String type) {
+        if (type == null || type.isEmpty()) {
+            return "";
+        }
+        return switch (type) {
+            case "normal" -> "普通仓库";
+            case "quality" -> "质检仓库";
+            case "finished" -> "成品仓库";
+            case "scrap" -> "废品仓库";
+            default -> type;
+        };
+    }
+
+    /**
+     * 仓库状态文本（1正常 0停用，与列表页开关一致）
+     */
+    private static String warehouseStatusText(String status) {
+        if (status == null || status.isEmpty()) {
+            return "";
+        }
+        return "1".equals(status) ? "正常" : "0".equals(status) ? "停用" : status;
+    }
+
+    /**
      * 查询仓库简单列表（用于下拉框）
      */
     @GetMapping("/list")
@@ -70,7 +134,7 @@ public class InventoryWarehouseController extends BaseController {
     /**
      * 获取仓库详情
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     @SaCheckPermission("inventory:warehouse:view")
     public Result<WarehouseVO> getById(@PathVariable Long id) {
         InventoryWarehouse warehouse = warehouseService.getById(id);
