@@ -475,6 +475,7 @@ import {
   importTemplate,
   checkSupplierCodeUnique,
   checkSupplierNameUnique,
+  getNextSupplierCode,
 } from '@/api/purchase/supplier'
 import { parseTime, download } from '@/utils/format'
 import { SupplierTypeEnum, SupplierStatusEnum } from '@/enums/purchase'
@@ -725,6 +726,12 @@ const handleAdd = () => {
   resetForm()
   open.value = true
   title.value = '新增供应商'
+  // 编码由系统生成：打开弹窗时预填下一个编码（dev-20260911-005，SUP+5位流水）
+  getNextSupplierCode()
+    .then((response: any) => {
+      form.supplierCode = response?.data ?? ''
+    })
+    .catch(() => {})
 }
 
 // 修改按钮操作

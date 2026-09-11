@@ -20,6 +20,7 @@ import com.jjx.purchase.service.IPurchaseSupplierService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -96,10 +97,37 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         return supplierConverter.toVO(purchaseSupplier);
     }
 
+    /** 供应商编码前缀（dev-20260911-005） */
+    private static final String SUPPLIER_CODE_PREFIX = "SUP";
+
+    /** 供应商编码流水位数（dev-20260911-005） */
+    private static final int SUPPLIER_CODE_DIGITS = 5;
+
     @Override
+    public String generateSupplierCode() {
+        String maxCode = supplierMapper.selectMaxSupplierCode(SUPPLIER_CODE_PREFIX);
+        long next = 1L;
+        if (StringUtils.isNotBlank(maxCode) && maxCode.length() > SUPPLIER_CODE_PREFIX.length()) {
+            String num = maxCode.substring(SUPPLIER_CODE_PREFIX.length());
+            if (num.matches("\\d+")) {
+                next = Long.parseLong(num) + 1;
+            }
+        }
+        if (next > 99999L) {
+            throw new BusinessException("供应商编码流水号已超过 5 位上限（SUP99999）");
+        }
+        return SUPPLIER_CODE_PREFIX + String.format("%0" + SUPPLIER_CODE_DIGITS + "d", next);
+    }
+
     @Event(value = "purchase.supplier.created", bizId = "#supplierDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertSupplier(PurchaseSupplierDTO supplierDTO) {
+        // 供应商编码留空时由系统生成（dev-20260911-005）
+        if (StringUtils.isBlank(supplierDTO.getSupplierCode())) {
+            supplierDTO.setSupplierCode(generateSupplierCode());
+            log.info("供应商编码留空，自动生成：{}", supplierDTO.getSupplierCode());
+        }
+
         // 检查供应商编码是否唯一
         if (checkSupplierCodeUnique(supplierDTO.getSupplierCode())) {
             throw new BusinessException("供应商编码已存在");
@@ -111,9 +139,6 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         }
 
         // 验证必填字段
-        if (StringUtils.isEmpty(supplierDTO.getSupplierCode())) {
-            throw new BusinessException("供应商编码不能为空");
-        }
         if (StringUtils.isEmpty(supplierDTO.getSupplierName())) {
             throw new BusinessException("供应商名称不能为空");
         }
@@ -141,8 +166,20 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             supplier.setPriceScore(BigDecimal.ZERO);
         }
 
-        // 保存供应商
-        int result = supplierMapper.insert(supplier);
+        // 保存供应商（编码并发冲突时重新取号重试，dev-20260911-005）
+        int result = 0;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try {
+                result = supplierMapper.insert(supplier);
+                break;
+            } catch (DuplicateKeyException e) {
+                if (attempt == 4) {
+                    throw new BusinessException("供应商编码生成冲突，请重试");
+                }
+                supplier.setSupplierCode(generateSupplierCode());
+                log.warn("供应商编码冲突，重新取号：{}", supplier.getSupplierCode());
+            }
+        }
         if (result <= 0) {
             throw new BusinessException("保存供应商失败");
         }
@@ -335,8 +372,16 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         for (int i = 0; i < importList.size(); i++) {
             SupplierImportDTO importDTO = importList.get(i);
             try {
-                // 检查供应商编码是否已存在
-                PurchaseSupplier existingSupplier = supplierMapper.selectBySupplierCode(importDTO.getSupplierCode());
+                // 编码优先匹配；未填编码时按名称匹配（dev-20260911-005）
+                String code = StringUtils.trimToNull(importDTO.getSupplierCode());
+                PurchaseSupplier existingSupplier;
+                if (code != null) {
+                    existingSupplier = supplierMapper.selectBySupplierCode(code);
+                } else if (StringUtils.isNotBlank(importDTO.getSupplierName())) {
+                    existingSupplier = supplierMapper.selectBySupplierName(importDTO.getSupplierName().trim());
+                } else {
+                    existingSupplier = null;
+                }
                 if (existingSupplier != null) {
                     // 更新已有供应商
                     existingSupplier.setSupplierName(importDTO.getSupplierName());
@@ -353,7 +398,8 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                 } else {
                     // 新增供应商
                     PurchaseSupplier supplier = new PurchaseSupplier();
-                    supplier.setSupplierCode(importDTO.getSupplierCode());
+                    // 编码留空时系统生成（dev-20260911-005：SUP + 5 位流水）
+                    supplier.setSupplierCode(code != null ? code : generateSupplierCode());
                     supplier.setSupplierName(importDTO.getSupplierName());
                     supplier.setSupplierType(importDTO.getSupplierType());
                     supplier.setContactPerson(importDTO.getContactPerson());

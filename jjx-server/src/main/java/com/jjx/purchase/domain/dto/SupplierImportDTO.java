@@ -12,7 +12,7 @@ public class SupplierImportDTO {
     /**
      * 供应商编码
      */
-    @ExcelColumn(value = "供应商编码", order = 1, required = true, comment = "供应商唯一编码")
+    @ExcelColumn(value = "供应商编码", order = 1, required = false, comment = "供应商唯一编码，留空由系统自动生成（SUP+5位流水）")
     private String supplierCode;
 
     /**

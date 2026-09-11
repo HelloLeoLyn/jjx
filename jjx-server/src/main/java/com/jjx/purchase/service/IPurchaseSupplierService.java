@@ -47,6 +47,14 @@ public interface IPurchaseSupplierService {
     int insertSupplier(PurchaseSupplierDTO supplierDTO);
 
     /**
+     * 生成下一个供应商编码（dev-20260911-005：SUP + 5 位流水，首条 SUP00001）
+     * 取现有 SUP+数字 编码的最大值 +1，不受日期与 Redis 序列 TTL 影响
+     *
+     * @return 下一个可用编码
+     */
+    String generateSupplierCode();
+
+    /**
      * 修改供应商
      *
      * @param supplierDTO 供应商数据传输对象

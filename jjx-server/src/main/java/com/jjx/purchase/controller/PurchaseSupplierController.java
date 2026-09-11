@@ -189,6 +189,16 @@ public class PurchaseSupplierController extends BaseController {
     }
 
     /**
+     * 获取下一个供应商编码（dev-20260911-005：SUP + 5 位流水，首条 SUP00001）
+     */
+    @Operation(summary = "获取下一个供应商编码")
+    @SaCheckPermission("purchase:supplier:add")
+    @GetMapping("/next-code")
+    public Result<String> nextCode() {
+        return Result.success(supplierService.generateSupplierCode());
+    }
+
+    /**
      * 导入供应商数据
      */
     @Operation(summary = "导入供应商数据")

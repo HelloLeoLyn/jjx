@@ -44,6 +44,14 @@ export function delSupplier(supplierIds: number | number[]) {
   })
 }
 
+// 获取下一个供应商编码（dev-20260911-005）
+export function getNextSupplierCode() {
+  return request({
+    url: '/purchase/supplier/next-code',
+    method: 'get',
+  })
+}
+
 // 导出供应商
 export function exportSupplier(params?: SupplierQueryParams) {
   return request({

@@ -95,4 +95,23 @@ public interface PurchaseSupplierMapper extends BaseMapper<PurchaseSupplier> {
      */
     @Select("SELECT * FROM purchase_supplier WHERE supplier_code = #{supplierCode} AND del_flag = '0'")
     PurchaseSupplier selectBySupplierCode(@Param("supplierCode") String supplierCode);
+
+    /**
+     * 取指定前缀下最大的流水编码（dev-20260911-005）
+     * 只匹配“前缀 + 纯数字”的编码，避免手工录入的杂乱编码干扰取号
+     *
+     * @param prefix 编码前缀，如 SUP
+     * @return 当前最大编码，无匹配时返回 null
+     */
+    @Select("SELECT MAX(supplier_code) FROM purchase_supplier WHERE supplier_code REGEXP CONCAT('^', #{prefix}, '[0-9]+$')")
+    String selectMaxSupplierCode(@Param("prefix") String prefix);
+
+    /**
+     * 根据供应商名称查询供应商（导入时无编码则按名称匹配，dev-20260911-005）
+     *
+     * @param supplierName 供应商名称
+     * @return 供应商
+     */
+    @Select("SELECT * FROM purchase_supplier WHERE supplier_name = #{supplierName} AND del_flag = '0' LIMIT 1")
+    PurchaseSupplier selectBySupplierName(@Param("supplierName") String supplierName);
 }
