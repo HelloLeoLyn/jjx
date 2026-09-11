@@ -161,66 +161,7 @@
       @cancel="handleFormCancel"
     />
 
-    <!-- 客户详情对话框 -->
-    <el-dialog title="客户详情" v-model="detailOpen" width="900px" append-to-body>
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="客户编码">{{ detail.customerCode }}</el-descriptions-item>
-        <el-descriptions-item label="客户名称">{{ detail.customerName }}</el-descriptions-item>
-        <el-descriptions-item label="客户简称">{{ detail.customerShortName }}</el-descriptions-item>
-        <el-descriptions-item label="客户类型">
-          <el-tag :type="CustomerTypeEnum.getTagProps(detail.customerType ?? 1).type">
-            {{ CustomerTypeEnum.getLabel(detail.customerType ?? 1) }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="客户等级">
-          <el-tag :type="CustomerLevelEnum.getTagProps(detail.customerLevel ?? 1).type">
-            {{ CustomerLevelEnum.getLabel(detail.customerLevel ?? 1) }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="客户状态">
-          <el-tag type="info">
-            {{ CustomerStatusEnum.getLabel(detail.customerStatus) }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="行业分类">{{ detail.industryCategory }}</el-descriptions-item>
-        <el-descriptions-item label="客户来源">
-          <el-tag>{{ getSourceLabel(detail.customerSource) }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="联系人">{{ detail.contactPerson }}</el-descriptions-item>
-        <el-descriptions-item label="联系电话">{{ detail.contactPhone }}</el-descriptions-item>
-        <el-descriptions-item label="联系邮箱">{{ detail.contactEmail }}</el-descriptions-item>
-        <el-descriptions-item label="传真">{{ detail.fax }}</el-descriptions-item>
-        <el-descriptions-item label="所在地区" :span="2">
-          {{ [detail.country, detail.province, detail.city].filter(Boolean).join(' / ') || '-' }}
-          <template v-if="detail.postalCode"><span class="addr-postal">（邮编 {{ detail.postalCode }}）</span></template>
-        </el-descriptions-item>
-        <el-descriptions-item label="详细地址" :span="2">{{ detail.address }}</el-descriptions-item>
-        <el-descriptions-item label="信用额度">{{
-          formatCurrency(detail.creditLimit)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="已用额度">{{
-          formatCurrency(detail.usedCreditLimit)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="客户评分">
-          <el-rate :model-value="detail.customerScore" disabled :max="5" show-score />
-        </el-descriptions-item>
-        <el-descriptions-item label="付款方式">
-          <el-tag>{{ getPaymentMethodLabel(detail.paymentMethod) }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="是否VIP">
-          <el-tag :type="detail.vip ? 'success' : 'info'">
-            {{ detail.vip ? '是' : '否' }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">{{ detail.remark }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{
-          parseTime(detail.createTime)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{
-          parseTime(detail.updateTime)
-        }}</el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
+    <CustomerDetailDialog v-model="detailOpen" :customer-id="detailCustomerId" />
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -258,13 +199,13 @@ import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vu
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { parseTime, download } from '@/utils/format'
 import CustomerFormDialog from './components/CustomerFormDialog.vue'
+import CustomerDetailDialog from './components/CustomerDetailDialog.vue'
 import { CustomerTypeEnum, CustomerLevelEnum, CustomerStatusEnum } from '@/enums/sales/CustomerEnum'
 import { useCustomerOptions } from './composables/useCustomerOptions'
 import type {
   CustomerQueryParams,
   CustomerFormData,
   CustomerItem,
-  CustomerDetail,
 } from '@/types/sales/customer'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
@@ -321,36 +262,6 @@ const form = reactive<CustomerFormData>({
   remark: '',
 })
 
-// 详情数据
-const detail = reactive<CustomerDetail>({
-  customerId: 0,
-  customerCode: '',
-  customerName: '',
-  customerShortName: '',
-  customerType: undefined,
-  customerLevel: undefined,
-  customerStatus: 1,
-  industryCategory: '',
-  customerSource: undefined,
-  contactPerson: '',
-  contactPhone: '',
-  contactEmail: '',
-  fax: '',
-  country: '',
-  province: '',
-  city: '',
-  address: '',
-  postalCode: '',
-  creditLimit: 0,
-  usedCreditLimit: 0,
-  customerScore: 3,
-  paymentMethod: undefined,
-  vip: false,
-  remark: '',
-  createTime: '',
-  updateTime: '',
-})
-
 // 响应式数据
 const loading = ref(false)
 const ids = ref<number[]>([])
@@ -360,6 +271,7 @@ const total = ref(0)
 const title = ref('')
 const open = ref(false)
 const detailOpen = ref(false)
+const detailCustomerId = ref<number>()
 
 // 表格数据
 const customerList = ref<CustomerItem[]>([])
@@ -367,12 +279,7 @@ const customerList = ref<CustomerItem[]>([])
 // 字典选项
 const {
   customerTypeOptions,
-  customerLevelOptions,
   customerStatusOptions,
-  customerSourceOptions,
-  paymentMethodOptions,
-  getSourceLabel,
-  getPaymentMethodLabel,
 } = useCustomerOptions()
 
 // 获取客户列表
@@ -537,11 +444,8 @@ const handleChangeStatus = (row: CustomerItem | MouseEvent) => {
 // 查看详情按钮操作
 const handleView = (row: CustomerItem | MouseEvent) => {
   if (row instanceof MouseEvent) return
-  const customerId = row.customerId
-  customerApi.getCustomer(customerId).then((response) => {
-    Object.assign(detail, response.data)
-    detailOpen.value = true
-  })
+  detailCustomerId.value = row.customerId
+  detailOpen.value = true
 }
 
 // 表单重置
@@ -602,11 +506,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.addr-postal {
-  color: #909399;
-  font-size: 12px;
-  margin-left: 4px;
-}
 .search-card {
   margin-bottom: 16px;
 }
