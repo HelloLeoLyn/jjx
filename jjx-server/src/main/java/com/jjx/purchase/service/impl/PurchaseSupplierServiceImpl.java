@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.enums.StatusEnum;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.purchase.converter.PurchaseConverter;
 import com.jjx.purchase.converter.SupplierConverter;
 import com.jjx.purchase.domain.dto.PurchaseSupplierDTO;
@@ -46,6 +47,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     private final PurchaseConverter purchaseConverter;
     private final SupplierConverter supplierConverter;
     private final ISysTagService tagService;
+    private final RedisSequenceService redisSequenceService;
 
     /** 供应商标签业务类型（系统标签 dev-20260911-007） */
     public static final String TAG_BIZ_TYPE = "purchase_supplier";
@@ -142,18 +144,8 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
 
     @Override
     public String generateSupplierCode() {
-        String maxCode = supplierMapper.selectMaxSupplierCode(SUPPLIER_CODE_PREFIX);
-        long next = 1L;
-        if (StringUtils.isNotBlank(maxCode) && maxCode.length() > SUPPLIER_CODE_PREFIX.length()) {
-            String num = maxCode.substring(SUPPLIER_CODE_PREFIX.length());
-            if (num.matches("\\d+")) {
-                next = Long.parseLong(num) + 1;
-            }
-        }
-        if (next > 99999L) {
-            throw new BusinessException("供应商编码流水号已超过 5 位上限（SUP99999）");
-        }
-        return SUPPLIER_CODE_PREFIX + String.format("%0" + SUPPLIER_CODE_DIGITS + "d", next);
+        return redisSequenceService.generateBusinessNumberByType(
+                "supplier", SUPPLIER_CODE_PREFIX, "", SUPPLIER_CODE_DIGITS);
     }
 
     @Event(value = "purchase.supplier.created", bizId = "#supplierDTO", bizType = "'purchase'")

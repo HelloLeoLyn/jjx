@@ -122,38 +122,14 @@ public class ToolingServiceImpl extends ServiceImpl<ProductionToolingMapper, Pro
     public String genNo(String type) {
         ToolingTypeEnum t = ToolingTypeEnum.fromCode(type);
         if (t == null) throw new BusinessException("工装类型不正确（SCREEN=网框 / DIE=刀模）");
-        String rule = sysConfigService.getValue(CONFIG_NO_RULE);
-        if (StringUtils.isBlank(rule)) rule = DEFAULT_NO_RULE;
-
         String prefix = "DIE".equals(t.getCode()) ? "DM" : "WK";
-        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyMMdd"));
-        String redisKey = "seq:tooling:" + prefix + ":" + date;
-        long seq = redisSequenceService.getNextSequence(redisKey);
-
-        // 解析模板：{prefix} {date} {seq:N}
-        StringBuilder sb = new StringBuilder();
-        Matcher m = Pattern.compile("\\{(prefix|date|seq:\\d+)}").matcher(rule);
-        int last = 0;
-        while (m.find()) {
-            sb.append(rule, last, m.start());
-            String token = m.group(1);
-            if ("prefix".equals(token)) {
-                sb.append(prefix);
-            } else if ("date".equals(token)) {
-                sb.append(date);
-            } else {
-                int width = Integer.parseInt(token.substring(4, token.length() - 1));
-                sb.append(String.format("%0" + width + "d", seq));
-            }
-            last = m.end();
-        }
-        sb.append(rule.substring(last));
-        String no = sb.toString();
+        String no = redisSequenceService.generateBusinessNumberByTypeWithPrefix(
+                "tooling", prefix, "yyMMdd", 4);
         // 唯一性兜底：万一冲突则继续递增
         while (toolingMapper.selectCount(Wrappers.<ProductionTooling>lambdaQuery()
                 .eq(ProductionTooling::getToolingNo, no)) > 0) {
-            seq = redisSequenceService.getNextSequence(redisKey);
-            no = render(rule, prefix, date, (int) seq);
+            no = redisSequenceService.generateBusinessNumberByTypeWithPrefix(
+                    "tooling", prefix, "yyMMdd", 4);
         }
         return no;
     }

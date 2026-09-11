@@ -702,7 +702,8 @@ public class OrderServiceImpl implements IOrderService {
 
             // 4. 创建生产工单
             ProductionOrderCreateDTO dto = new ProductionOrderCreateDTO();
-            dto.setOrderNo(redisSequenceService.generateBizNumber(RedisSequenceService.BizCode.WPO));
+            dto.setOrderNo(redisSequenceService.generateBusinessNumberByType(
+                    "production_order", "WPO", "yyMMdd", 3));
             dto.setOrderType("WORK_ORDER");
             dto.setSalesOrderId(orderId);
             dto.setSalesOrderNo(order.getOrderNo());

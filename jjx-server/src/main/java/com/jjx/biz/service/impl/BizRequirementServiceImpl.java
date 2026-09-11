@@ -104,7 +104,8 @@ public class BizRequirementServiceImpl implements IBizRequirementService {
         if (requirement.getTitle() == null || requirement.getTitle().isBlank()) {
             throw new BusinessException("需求标题不能为空");
         }
-        requirement.setRequirementNo(redisSequenceService.generateBusinessNumber("RQ", "业务需求单号"));
+        requirement.setRequirementNo(redisSequenceService.generateBusinessNumberByType(
+                "biz_requirement", "RQ", "yyMMdd", 4));
         if (requirement.getRequirementType() == null || requirement.getRequirementType().isBlank()) {
             requirement.setRequirementType("CHANGE");
         }

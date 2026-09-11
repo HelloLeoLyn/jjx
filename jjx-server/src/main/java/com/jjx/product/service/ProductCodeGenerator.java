@@ -1,10 +1,11 @@
 package com.jjx.product.service;
 
+import com.jjx.framework.common.RedisSequenceService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 产品编码生成器
@@ -12,26 +13,18 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 示例：PROD202403260001
  */
 @Component
+@RequiredArgsConstructor
 public class ProductCodeGenerator {
 
     private static final String PREFIX = "PROD";
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
-    private final AtomicInteger sequence = new AtomicInteger(1);
+    private final RedisSequenceService sequenceService;
 
     /**
      * 生成产品编码
      * @return 产品编码
      */
     public String generateProductCode() {
-        String datePart = LocalDateTime.now().format(DATE_FORMATTER);
-        int seq = sequence.getAndUpdate(current -> {
-            if (current >= 9999) {
-                return 1;
-            }
-            return current + 1;
-        });
-
-        return String.format("%s%s%04d", PREFIX, datePart, seq);
+        return sequenceService.generateBusinessNumberByType("product", PREFIX, "yyyyMMdd", 4);
     }
 
     /**
@@ -44,17 +37,10 @@ public class ProductCodeGenerator {
             return generateProductCode();
         }
 
-        String datePart = LocalDateTime.now().format(DATE_FORMATTER);
-        int seq = sequence.getAndUpdate(current -> {
-            if (current >= 9999) {
-                return 1;
-            }
-            return current + 1;
-        });
-
         // 使用分类编码的前缀
         String categoryPrefix = categoryCode.length() > 4 ? categoryCode.substring(0, 4) : categoryCode;
-        return String.format("%s-%s%04d", categoryPrefix, datePart, seq);
+        return sequenceService.generateBusinessNumberByTypeWithPrefix(
+                "product", categoryPrefix + "-", "yyyyMMdd", 4);
     }
 
     /**

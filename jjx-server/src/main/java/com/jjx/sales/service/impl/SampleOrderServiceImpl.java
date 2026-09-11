@@ -1563,7 +1563,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("仅已确认或已转量产的样品单可进行资料转移");
         }
 
-        String transferNo = redisSequenceService.generateBusinessNumber("TF", "资料转移单号");
+        String transferNo = redisSequenceService.generateBusinessNumberByType(
+                "material_transfer", "TF", "yyMMdd", 4);
         String transferredVersion = null; // 本次转移生成的版本号（回填打样单）
         java.util.List<String> details = new java.util.ArrayList<>();
         String productAction = "NONE", bomAction = "NONE", routingAction = "NONE";
@@ -2217,7 +2218,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
 
-        String transferNo = redisSequenceService.generateBusinessNumber("TF", "资料转移单号");
+        String transferNo = redisSequenceService.generateBusinessNumberByType(
+                "material_transfer", "TF", "yyMMdd", 4);
         String transferredVersion = null;
         java.util.List<String> details = new java.util.ArrayList<>();
         String productAction = "NONE", bomAction = "NONE", routingAction = "NONE";

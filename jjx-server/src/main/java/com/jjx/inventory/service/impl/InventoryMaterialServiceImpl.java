@@ -442,8 +442,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
      */
     private String generateMaterialCode(String materialType) {
         String prefix = resolveMaterialCodePrefix(materialType);
-        Long sequence = redisSequenceService.getNextSequence("material:code");
-        return prefix + String.format("%06d", 100000L + sequence);
+        return redisSequenceService.generateBusinessNumberByTypeWithPrefix(
+                "material", prefix, "", 6);
     }
 
     /**

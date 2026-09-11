@@ -262,7 +262,8 @@ public class QuotationServiceImpl implements IQuotationService {
         }
         // 自动生成报价单号（未传入时，DEV-601修复：原逻辑只校验不生成，导致新增保存报错）
         if (quotation.getQuotationNo() == null || quotation.getQuotationNo().isEmpty()) {
-            quotation.setQuotationNo(redisSequenceService.generateBusinessNumber("QT", "报价单号"));
+            quotation.setQuotationNo(redisSequenceService.generateBusinessNumberByType(
+                    "quotation", "QT", "yyMMdd", 4));
         }
         // 检查报价单号是否唯一
         if (!checkQuotationNoUnique(quotation.getQuotationNo())) {

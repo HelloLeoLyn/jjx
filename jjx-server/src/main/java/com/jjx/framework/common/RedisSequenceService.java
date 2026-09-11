@@ -3,12 +3,14 @@ package com.jjx.framework.common;
 import com.jjx.common.exception.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.system.service.SysConfigService;
+import com.jjx.system.mapper.SysNumberSequenceMapper;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -29,6 +31,7 @@ public class RedisSequenceService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final SysConfigService sysConfigService;
     private final ObjectMapper objectMapper;
+    private final SysNumberSequenceMapper numberSequenceMapper;
 
     /** 日期格式化器 */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyMMdd");
@@ -218,10 +221,20 @@ public class RedisSequenceService {
         return bizNumber;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public String generateBusinessNumberByType(String bizType, String fallbackPrefix,
                                                String fallbackDateFormat, int fallbackDigits) {
         BusinessNumberRule rule = loadRule(bizType, fallbackPrefix, fallbackDateFormat, fallbackDigits);
         return generateBusinessNumber(rule, LocalDate.now(), bizType);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public String generateBusinessNumberByTypeWithPrefix(String bizType, String dynamicPrefix,
+                                                         String fallbackDateFormat, int fallbackDigits) {
+        BusinessNumberRule configured = loadRule(bizType, dynamicPrefix, fallbackDateFormat, fallbackDigits);
+        BusinessNumberRule effective = new BusinessNumberRule(dynamicPrefix, configured.dateFormat(),
+                configured.digits(), configured.startValue(), configured.resetCycle());
+        return generateBusinessNumber(effective, LocalDate.now(), bizType);
     }
 
     BusinessNumberRule loadRule(String bizType, String fallbackPrefix,
@@ -249,23 +262,55 @@ public class RedisSequenceService {
     }
 
     String generateBusinessNumber(BusinessNumberRule rule, LocalDate date, String bizType) {
-        validateRule(rule);
-        String datePart = date.format(DateTimeFormatter.ofPattern(normalizeDatePattern(rule.dateFormat())));
-        // 沿用旧版 prefix 维度的 Redis key，迁移后不会把当日序列从 1 重新开始。
-        Long sequence = getNextSequence(SEQUENCE_KEY_PREFIX + rule.prefix() + ":" + datePart);
-        if (sequence > maxSequence(rule.digits())) {
+        BusinessNumberRule normalized = normalizeRule(rule);
+        validateRule(normalized);
+        String datePart = normalized.dateFormat().isBlank() ? ""
+                : date.format(DateTimeFormatter.ofPattern(normalizeDatePattern(normalized.dateFormat())));
+        String periodKey = periodKey(normalized.resetCycle(), date);
+        long sequence = nextPersistentSequence(bizType, periodKey, normalized.startValue());
+        if (sequence > maxSequence(normalized.digits())) {
             throw new BusinessException(bizType + "序列号已达到最大值，日期: " + datePart);
         }
-        return rule.prefix() + datePart + String.format("%0" + rule.digits() + "d", sequence);
+        return normalized.prefix() + datePart + String.format("%0" + normalized.digits() + "d", sequence);
     }
 
     private static void validateRule(BusinessNumberRule rule) {
-        if (rule == null || rule.prefix() == null || rule.prefix().isBlank()
-                || rule.dateFormat() == null || rule.dateFormat().isBlank()
-                || rule.digits() < 1 || rule.digits() > 12) {
-            throw new IllegalArgumentException("编号规则必须包含 prefix、dateFormat，digits 范围为 1-12");
+        BusinessNumberRule normalized = normalizeRule(rule);
+        if (normalized.prefix().isBlank() || normalized.digits() < 1 || normalized.digits() > 12
+                || normalized.startValue() < 1 || normalized.startValue() > maxSequence(normalized.digits())) {
+            throw new IllegalArgumentException("编号规则必须包含 prefix，digits 范围为1-12，startValue必须在流水位数范围内");
         }
-        DateTimeFormatter.ofPattern(normalizeDatePattern(rule.dateFormat()));
+        if (!normalized.dateFormat().isBlank()) {
+            DateTimeFormatter.ofPattern(normalizeDatePattern(normalized.dateFormat()));
+        }
+    }
+
+    private static BusinessNumberRule normalizeRule(BusinessNumberRule rule) {
+        if (rule == null) throw new IllegalArgumentException("编号规则不能为空");
+        String prefix = rule.prefix() == null ? "" : rule.prefix();
+        String dateFormat = rule.dateFormat() == null ? "" : rule.dateFormat();
+        int digits = rule.digits() == null ? 4 : rule.digits();
+        long startValue = rule.startValue() == null ? 1L : rule.startValue();
+        ResetCycle cycle = rule.resetCycle() == null
+                ? (dateFormat.isBlank() ? ResetCycle.NONE : ResetCycle.DAILY)
+                : rule.resetCycle();
+        return new BusinessNumberRule(prefix, dateFormat, digits, startValue, cycle);
+    }
+
+    private static String periodKey(ResetCycle cycle, LocalDate date) {
+        return switch (cycle) {
+            case NONE -> "GLOBAL";
+            case DAILY -> date.format(DateTimeFormatter.BASIC_ISO_DATE);
+            case MONTHLY -> date.format(DateTimeFormatter.ofPattern("yyyyMM"));
+            case YEARLY -> String.valueOf(date.getYear());
+        };
+    }
+
+    private long nextPersistentSequence(String sequenceKey, String periodKey, long startValue) {
+        numberSequenceMapper.advance(sequenceKey, periodKey, startValue);
+        Long value = numberSequenceMapper.selectCurrentForUpdate(sequenceKey, periodKey);
+        if (value == null) throw new BusinessException("业务编号序列生成失败：" + sequenceKey);
+        return value;
     }
 
     private static String normalizeDatePattern(String pattern) {
@@ -279,7 +324,14 @@ public class RedisSequenceService {
         return max;
     }
 
-    public record BusinessNumberRule(String prefix, String dateFormat, int digits) {}
+    public enum ResetCycle { NONE, DAILY, MONTHLY, YEARLY }
+
+    public record BusinessNumberRule(String prefix, String dateFormat, Integer digits,
+                                     Long startValue, ResetCycle resetCycle) {
+        public BusinessNumberRule(String prefix, String dateFormat, int digits) {
+            this(prefix, dateFormat, digits, 1L, null);
+        }
+    }
 
     /**
      * 序列号统计信息

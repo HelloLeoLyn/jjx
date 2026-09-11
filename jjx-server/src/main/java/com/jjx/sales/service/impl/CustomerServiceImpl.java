@@ -454,7 +454,7 @@ public class CustomerServiceImpl implements ICustomerService {
         log.info("生成客户编码");
         // 使用统一序列号服务生成客户编码
         // 格式：CUST + 日期(yyMMdd) + 序列号(4位)
-        return redisSequenceService.generateBizNumber(RedisSequenceService.BizCode.CUST);
+        return redisSequenceService.generateBusinessNumberByType("customer", "CUS", "", 5);
     }
 
     @Override

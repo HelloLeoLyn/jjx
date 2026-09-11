@@ -168,7 +168,8 @@ public class InquiryServiceImpl implements IInquiryService {
     public int insertInquiry(SalesInquiry inquiry) {
         // 自动生成询价单号
         // 自动生成询价单号和链路追踪ID
-        String inquiryNo = redisSequenceService.generateBusinessNumber("INQ", "询价单号");
+        String inquiryNo = redisSequenceService.generateBusinessNumberByType(
+                "inquiry", "INQ", "yyMMdd", 4);
         inquiry.setInquiryNo(inquiryNo);
         inquiry.setTraceId(java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16));
 
@@ -483,7 +484,8 @@ public class InquiryServiceImpl implements IInquiryService {
 
         // 创建报价单
         SalesQuotation quotation = new SalesQuotation();
-        quotation.setQuotationNo(redisSequenceService.generateBusinessNumber("QT", "报价单号"));
+        quotation.setQuotationNo(redisSequenceService.generateBusinessNumberByType(
+                "quotation", "QT", "yyMMdd", 4));
         quotation.setQuotationType(inquiry.getInquiryType() != null ? inquiry.getInquiryType() : 1);
         quotation.setCustomerId(inquiry.getCustomerId());
         quotation.setCustomerName(inquiry.getCustomerName());
