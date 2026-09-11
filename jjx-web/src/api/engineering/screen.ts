@@ -60,3 +60,25 @@ export function suggestScreen(keyword?: string, limit?: number) {
     params: { keyword, limit },
   })
 }
+
+/** 按来源菲林查网版（菲林→网版联动） */
+export function listScreensByFilm(filmId: number) {
+  return request({
+    url: `/engineering/screen/by-film/${filmId}`,
+    method: 'get',
+  })
+}
+
+/** 由菲林生成网版记录（网版号按框型自动续号） */
+export function createScreenFromFilm(params: {
+  filmId: number
+  frameType: string
+  mesh?: string
+  remark?: string
+}) {
+  return request({
+    url: '/engineering/screen/from-film',
+    method: 'post',
+    params,
+  })
+}

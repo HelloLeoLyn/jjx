@@ -1855,6 +1855,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         routingAction = "SKIP_NO_PROCESS";
                         details.add("产品[" + prod.getProductCode() + "]无工序记录，未生成工艺路线");
                     }
+
+                    // ===== ④ 菲林档案：由打样工程附件里的菲林图生成草稿（dev-20260911-003）=====
+                    generateFilmDraftsFromSample(orderId, pid, prod.getProductCode(), prod.getProductName(), details);
             }
         }
 
@@ -1896,6 +1899,135 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         log.info("样品单[{}] 资料转移完成[{}] 产品={} BOM={} 路线={}",
                 sampleOrder.getOrderNo(), transferNo, productAction, bomAction, routingAction);
         return result;
+    }
+
+    /**
+     * A2 打样→菲林联动（dev-20260911-003）：
+     * 资料转移时把打样单工程附件里的「菲林图」转成菲林档案草稿（类型/尺寸人工核对后再走审批）。
+     * 规则：产品已有菲林档案则跳过；仅识别文件名含「菲林」或图纸类扩展名的附件；
+     * 任何异常只记日志，不影响资料转移主流程。
+     */
+    private int generateFilmDraftsFromSample(Long orderId, Long productId, String productCode,
+                                             String productName, java.util.List<String> details) {
+        if (productId == null) {
+            return 0;
+        }
+        try {
+            Long exists = engineeringFilmMapper.selectCount(new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringFilm>()
+                    .eq(com.jjx.engineering.domain.entity.EngineeringFilm::getProductId, productId));
+            if (exists != null && exists > 0) {
+                return 0;
+            }
+            java.util.List<com.jjx.system.domain.entity.SysAttachment> atts =
+                    attachmentService.getAttachments("sample", orderId);
+            if (atts == null || atts.isEmpty()) {
+                return 0;
+            }
+            String username = null;
+            Long userId = null;
+            try {
+                username = SecurityUtils.getUsername();
+                userId = SecurityUtils.getUserId();
+            } catch (Exception ignore) {
+                // 无登录上下文（系统调用）时留空
+            }
+            int created = 0;
+            for (com.jjx.system.domain.entity.SysAttachment att : atts) {
+                String fileName = att.getFileName() == null ? "" : att.getFileName();
+                if (!isFilmDrawingName(fileName)) {
+                    continue;
+                }
+                String filmType = guessFilmType(fileName);
+                com.jjx.engineering.domain.entity.EngineeringFilm film =
+                        new com.jjx.engineering.domain.entity.EngineeringFilm();
+                film.setFilmCode(nextFilmCode(productCode, filmType));
+                film.setFilmName(fileName.replaceAll("\\.[^.]+$", ""));
+                film.setFilmType(filmType);
+                film.setProductId(productId);
+                film.setProductCode(productCode);
+                film.setProductName(productName);
+                film.setVersion("v1.0");
+                film.setIsCurrent(0);
+                film.setIsReleased(0);
+                film.setApproveStatus(com.jjx.common.enums.ApproveStatusEnum.DRAFT.getValue());
+                film.setFileId(att.getId());
+                film.setFilePath(att.getFilePath());
+                film.setFileName(fileName);
+                film.setRemark("由打样单资料转移自动生成（附件#" + att.getId() + "），请核对菲林类型与尺寸后提交审批");
+                film.setDesignerId(userId);
+                film.setDesignerName(username);
+                film.setDesignTime(java.time.LocalDateTime.now());
+                film.setCreateBy(username);
+                engineeringFilmMapper.insert(film);
+                created++;
+            }
+            if (created > 0) {
+                details.add("菲林[自动生成" + created + "张草稿]由打样附件转入，待核对类型/尺寸");
+                log.info("样品单[{}] 资料转移自动生成菲林草稿 {} 张（产品{}）", orderId, created, productCode);
+            } else {
+                details.add("菲林[未生成]打样附件中未识别到菲林图（文件名含「菲林」或图纸类扩展名）");
+            }
+            return created;
+        } catch (Exception e) {
+            log.warn("打样菲林草稿生成失败（不影响资料转移）: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    /** 附件名是否像菲林图：含「菲林」，或扩展名属图纸类 */
+    private boolean isFilmDrawingName(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return false;
+        }
+        if (fileName.contains("菲林")) {
+            return true;
+        }
+        String lower = fileName.toLowerCase();
+        return lower.endsWith(".dxf") || lower.endsWith(".dwg") || lower.endsWith(".ai")
+                || lower.endsWith(".cdr") || lower.endsWith(".pdf") || lower.endsWith(".plt")
+                || lower.endsWith(".eps") || lower.endsWith(".jpg") || lower.endsWith(".png");
+    }
+
+    /** 按文件名关键字猜菲林类型，缺省面板菲林 */
+    private String guessFilmType(String fileName) {
+        String n = fileName == null ? "" : fileName;
+        if (n.contains("上层") || n.toLowerCase().contains("upper")) {
+            return "UPPER_CIRCUIT";
+        }
+        if (n.contains("下层") || n.toLowerCase().contains("lower")) {
+            return "LOWER_CIRCUIT";
+        }
+        if (n.contains("间隔") || n.toLowerCase().contains("spacer")) {
+            return "SPACER";
+        }
+        if (n.contains("背胶") || n.toLowerCase().contains("adhesive")) {
+            return "BACK_ADHESIVE";
+        }
+        return "OVERLAY";
+    }
+
+    /** 菲林编码：FILM-{产品编码}-{类型短码}，冲突时追加序号 */
+    private String nextFilmCode(String productCode, String filmType) {
+        String shortType = switch (filmType == null ? "" : filmType) {
+            case "UPPER_CIRCUIT" -> "UC";
+            case "SPACER" -> "SP";
+            case "LOWER_CIRCUIT" -> "LC";
+            case "BACK_ADHESIVE" -> "BA";
+            default -> "OV";
+        };
+        String base = "FILM-" + (productCode == null || productCode.isBlank() ? "NA" : productCode.trim())
+                + "-" + shortType;
+        String candidate = base;
+        int seq = 2;
+        while (seq < 100) {
+            Long cnt = engineeringFilmMapper.selectCount(new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringFilm>()
+                    .eq(com.jjx.engineering.domain.entity.EngineeringFilm::getFilmCode, candidate));
+            if (cnt == null || cnt == 0) {
+                return candidate;
+            }
+            candidate = base + "-" + seq++;
+        }
+        return base + "-" + System.currentTimeMillis() % 10000;
     }
 
     /**
@@ -2781,7 +2913,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 .eq(com.jjx.engineering.domain.entity.EngineeringFilm::getProductId, pid));
                 if (cnt == null || cnt == 0) {
                     filmPass = false;
-                    filmMsg = "产品[" + prodCodeMap.getOrDefault(pid, String.valueOf(pid)) + "]无菲林档案（建议在产品档案补全，不阻塞转量产）";
+                    filmMsg = "产品[" + prodCodeMap.getOrDefault(pid, String.valueOf(pid))
+                            + "]无菲林档案（可在「工程管理→菲林管理」建档，或先做资料转移由打样菲林图自动生成草稿；不阻塞转量产）";
                     break;
                 }
             }

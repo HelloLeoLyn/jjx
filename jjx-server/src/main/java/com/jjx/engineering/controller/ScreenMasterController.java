@@ -77,4 +77,21 @@ public class ScreenMasterController {
                                                      @RequestParam(required = false) Integer limit) {
         return Result.success(screenService.suggest(keyword, limit));
     }
+
+    @Operation(summary = "按来源菲林查网版（菲林→网版联动）")
+    @SaCheckPermission("engineering:screen:view")
+    @GetMapping("/by-film/{filmId}")
+    public Result<List<ScreenMaster>> listByFilm(@PathVariable Long filmId) {
+        return Result.success(screenService.listByFilmId(filmId));
+    }
+
+    @Operation(summary = "由菲林生成网版记录（网版号按框型自动续号）")
+    @SaCheckPermission("engineering:screen:add")
+    @PostMapping("/from-film")
+    public Result<Long> createFromFilm(@RequestParam Long filmId,
+                                       @RequestParam String frameType,
+                                       @RequestParam(required = false) String mesh,
+                                       @RequestParam(required = false) String remark) {
+        return Result.success(screenService.createFromFilm(filmId, frameType, mesh, remark));
+    }
 }

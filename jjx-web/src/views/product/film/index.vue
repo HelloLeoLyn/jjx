@@ -4,24 +4,44 @@
     <el-card shadow="never" class="search-card">
       <el-form inline>
         <el-form-item label="产品">
-          <el-select
-            v-model="queryProductId"
-            placeholder="选择产品查看菲林"
-            filterable
-            clearable
-            style="width: 240px"
-            @change="onProductChange"
-          >
+          <div style="width: 260px">
+            <ProductSelector
+              v-model="queryProductId"
+              :options="productOptions"
+              value-type="productId"
+              placeholder="不选=全部产品"
+              @change="onProductChange"
+            />
+          </div>
+        </el-form-item>
+        <el-form-item label="菲林类型">
+          <el-select v-model="queryFilmType" placeholder="全部" clearable style="width: 150px" @change="loadFilms">
             <el-option
-              v-for="p in productOptions"
-              :key="p.productId"
-              :label="`${p.productCode} - ${p.productName}`"
-              :value="p.productId"
+              v-for="t in FilmTypeCodeEnum.items"
+              :key="t.value"
+              :label="t.label"
+              :value="t.value"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="菲林名称">
-          <el-input v-model="queryName" placeholder="模糊搜索" clearable style="width: 180px" @keyup.enter="loadFilms" />
+        <el-form-item label="审批状态">
+          <el-select v-model="queryApproveStatus" placeholder="全部" clearable style="width: 130px" @change="loadFilms">
+            <el-option
+              v-for="s in FilmApproveStatusEnum.items"
+              :key="s.value"
+              :label="s.label"
+              :value="s.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="关键字">
+          <el-input
+            v-model="queryKeyword"
+            placeholder="菲林编码/名称/产品"
+            clearable
+            style="width: 190px"
+            @keyup.enter="loadFilms"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="loadFilms">查询</el-button>
@@ -33,57 +53,138 @@
     <!-- 列表 -->
     <el-card shadow="never" class="table-card">
       <div class="toolbar">
-        <el-button type="primary" :icon="Plus" v-hasPermi="['engineering:film:edit']" :disabled="!queryProductId" @click="handleAdd">
+        <el-button
+          type="primary"
+          :icon="Plus"
+          v-hasPermi="['engineering:film:edit']"
+          :disabled="!queryProductId"
+          @click="handleAdd"
+        >
           新增菲林
         </el-button>
-        <span v-if="!queryProductId" class="toolbar-tip">请先选择产品</span>
+        <span class="toolbar-tip">不选产品时展示全部菲林；新增需先选定产品</span>
       </div>
 
       <el-table :data="filmList" v-loading="loading" border stripe>
-        <el-table-column label="菲林编码" prop="filmCode" width="140" />
-        <el-table-column label="菲林名称" prop="filmName" min-width="150" show-overflow-tooltip />
-        <el-table-column label="类型" prop="filmTypeName" width="110" />
-        <el-table-column label="版本" prop="version" width="90" align="center">
+        <el-table-column label="菲林编码" prop="filmCode" width="170" show-overflow-tooltip />
+        <el-table-column label="产品" min-width="140" show-overflow-tooltip>
           <template #default="scope">
-            <span>{{ scope.row.version }}</span>
-            <el-tag v-if="scope.row.isCurrent === 1" size="small" type="success" style="margin-left:4px">当前</el-tag>
+            {{ scope.row.productCode }} {{ scope.row.productName }}
           </template>
         </el-table-column>
-        <el-table-column label="尺寸" prop="filmSize" width="100" />
-        <el-table-column label="厚度" width="90" align="center">
+        <el-table-column label="菲林名称" prop="filmName" min-width="130" show-overflow-tooltip />
+        <el-table-column label="类型" width="120">
+          <template #default="scope">
+            {{ scope.row.filmTypeName || filmTypeLabel(scope.row.filmType) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="版本" prop="version" width="110" align="center">
+          <template #default="scope">
+            <span>{{ scope.row.version }}</span>
+            <el-tag
+              v-if="scope.row.isCurrent === FilmCurrentFlagEnum.CURRENT.value"
+              size="small"
+              type="success"
+              style="margin-left: 4px"
+            >
+              当前
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="尺寸" prop="filmSize" width="100" show-overflow-tooltip />
+        <el-table-column label="厚度" width="80" align="center">
           <template #default="scope">{{ scope.row.filmThickness ?? '-' }}</template>
+        </el-table-column>
+        <el-table-column label="图纸" width="90" align="center">
+          <template #default="scope">
+            <el-link
+              v-if="scope.row.fileId"
+              type="primary"
+              :href="downloadUrl(scope.row.fileId)"
+              target="_blank"
+              underline="never"
+            >
+              下载
+            </el-link>
+            <span v-else class="muted">未上传</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="网版" width="80" align="center">
+          <template #default="scope">
+            <el-link
+              v-hasPermi="['engineering:screen:view']"
+              type="primary"
+              underline="never"
+              @click="openScreenDialog(scope.row)"
+            >
+              查看
+            </el-link>
+          </template>
         </el-table-column>
         <el-table-column label="审批状态" width="100" align="center">
           <template #default="scope">
-            <el-tag :type="approveTagType(scope.row.approveStatus)" size="small">
-              {{ scope.row.approveStatusName || '未知' }}
+            <el-tag :type="FilmApproveStatusEnum.getTagProps(scope.row.approveStatus).type" size="small">
+              {{ FilmApproveStatusEnum.getLabel(scope.row.approveStatus) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="下发生产" width="90" align="center">
           <template #default="scope">
-            <el-tag v-if="scope.row.isReleased === 1" type="success" size="small">已下发</el-tag>
-            <el-tag v-else type="info" size="small">未下发</el-tag>
+            <el-tag :type="FilmReleaseStatusEnum.getTagProps(scope.row.isReleased ?? 0).type" size="small">
+              {{ FilmReleaseStatusEnum.getLabel(scope.row.isReleased ?? 0) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="设计师" prop="designerName" width="90" />
         <el-table-column label="创建时间" width="150">
           <template #default="scope">{{ scope.row.createTime || '-' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right" align="center">
+        <el-table-column label="操作" width="300" fixed="right" align="center">
           <template #default="scope">
-            <el-button link type="primary" size="small" v-hasPermi="['engineering:film:edit']" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button link type="success" size="small" v-hasPermi="['engineering:film:edit']" @click="handleNewVersion(scope.row)">新版本</el-button>
-            <template v-if="scope.row.approveStatus === 1 || scope.row.approveStatus === undefined || scope.row.approveStatus === null">
-              <el-button link type="warning" size="small" v-hasPermi="['engineering:film:submit']" @click="handleSubmit(scope.row)">提交审批</el-button>
+            <template v-if="isEditable(scope.row)">
+              <el-button link type="primary" size="small" v-hasPermi="['engineering:film:edit']" @click="handleEdit(scope.row)">
+                编辑
+              </el-button>
+              <el-button link type="warning" size="small" v-hasPermi="['engineering:film:submit']" @click="handleSubmit(scope.row)">
+                提交审批
+              </el-button>
             </template>
-            <template v-else-if="scope.row.approveStatus === 2">
-              <el-button link type="success" size="small" v-hasPermi="['engineering:film:approve']" @click="handleApprove(scope.row)">通过</el-button>
-              <el-button link type="danger" size="small" v-hasPermi="['engineering:film:reject']" @click="handleReject(scope.row)">驳回</el-button>
+            <template v-else-if="scope.row.approveStatus === FilmApproveStatusEnum.PENDING.value">
+              <el-button link type="success" size="small" v-hasPermi="['engineering:film:approve']" @click="handleApprove(scope.row)">
+                通过
+              </el-button>
+              <el-button link type="danger" size="small" v-hasPermi="['engineering:film:reject']" @click="handleReject(scope.row)">
+                驳回
+              </el-button>
             </template>
-            <el-button v-if="scope.row.approveStatus === 3" link type="primary" size="small" v-hasPermi="['engineering:film:edit']" @click="handleSetCurrent(scope.row)">设当前</el-button>
-            <el-button v-if="scope.row.approveStatus === 3 && !scope.row.isReleased" link type="success" size="small" v-hasPermi="['engineering:film:release']" @click="handleRelease(scope.row)">下发生产</el-button>
-            <el-button link type="danger" size="small" v-hasPermi="['engineering:film:delete']" @click="handleDelete(scope.row)">删除</el-button>
+            <template v-else-if="scope.row.approveStatus === FilmApproveStatusEnum.APPROVED.value">
+              <el-button link type="primary" size="small" v-hasPermi="['engineering:film:edit']" @click="handleSetCurrent(scope.row)">
+                设当前
+              </el-button>
+              <el-button
+                v-if="scope.row.isReleased !== FilmReleaseStatusEnum.RELEASED.value"
+                link
+                type="success"
+                size="small"
+                v-hasPermi="['engineering:film:release']"
+                @click="handleRelease(scope.row)"
+              >
+                下发生产
+              </el-button>
+            </template>
+            <el-button link type="primary" size="small" v-hasPermi="['engineering:film:edit']" @click="handleNewVersion(scope.row)">
+              新版本
+            </el-button>
+            <el-button
+              v-if="isEditable(scope.row)"
+              link
+              type="danger"
+              size="small"
+              v-hasPermi="['engineering:film:delete']"
+              @click="handleDelete(scope.row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -91,7 +192,7 @@
     </el-card>
 
     <!-- 新增/编辑弹窗 -->
-    <el-dialog :title="form.filmId ? '编辑菲林' : '新增菲林'" v-model="dialogVisible" width="620px" append-to-body>
+    <el-dialog :title="form.filmId ? '编辑菲林' : '新增菲林'" v-model="dialogVisible" width="680px" append-to-body>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-row :gutter="20">
           <el-col :span="12">
@@ -101,12 +202,13 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="类型" prop="filmType">
-              <el-select v-model="form.filmType" placeholder="选择类型" style="width:100%">
-                <el-option label="面板菲林" value="OVERLAY" />
-                <el-option label="上层线路菲林" value="UPPER_CIRCUIT" />
-                <el-option label="间隔菲林" value="SPACER" />
-                <el-option label="下层线路菲林" value="LOWER_CIRCUIT" />
-                <el-option label="背胶菲林" value="BACK_ADHESIVE" />
+              <el-select v-model="form.filmType" placeholder="选择类型" style="width: 100%">
+                <el-option
+                  v-for="t in FilmTypeCodeEnum.items"
+                  :key="t.value"
+                  :label="t.label"
+                  :value="t.value"
+                />
               </el-select>
             </el-form-item>
           </el-col>
@@ -119,7 +221,14 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="厚度">
-              <el-input-number v-model="form.filmThickness" :min="0" :precision="2" :controls="false" style="width:100%" placeholder="mm" />
+              <el-input-number
+                v-model="form.filmThickness"
+                :min="0"
+                :precision="2"
+                :controls="false"
+                style="width: 100%"
+                placeholder="mm"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -130,6 +239,28 @@
         </el-row>
         <el-form-item label="颜色">
           <el-input v-model="form.color" placeholder="如：透明白" />
+        </el-form-item>
+        <el-form-item label="菲林图纸">
+          <div class="upload-row">
+            <el-upload
+              :show-file-list="false"
+              :before-upload="beforeUpload"
+              :http-request="doUpload"
+              :disabled="uploading"
+            >
+              <el-button :loading="uploading" :icon="Upload">
+                {{ form.fileId ? '重新上传' : '上传图纸' }}
+              </el-button>
+            </el-upload>
+            <span v-if="form.fileName" class="file-tip">
+              <el-link type="primary" :href="downloadUrl(form.fileId)" target="_blank" underline="never">
+                {{ form.fileName }}
+              </el-link>
+              <el-button link type="danger" size="small" @click="clearFile">移除</el-button>
+            </span>
+            <span v-else class="muted">未上传</span>
+          </div>
+          <div class="form-tip">支持 PDF/DWG/DXF/AI/CDR/图片（≤50MB）；上传后归档到产品文件库「菲林」类别</div>
         </el-form-item>
         <el-form-item label="技术规格">
           <el-input v-model="form.technicalSpec" type="textarea" :rows="2" placeholder="技术规格说明" />
@@ -146,26 +277,99 @@
         <el-button type="primary" :loading="submitting" @click="handleSubmitForm">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 菲林 → 网版 联动弹窗（dev-20260911-003） -->
+    <el-dialog
+      v-model="screenDialogVisible"
+      :title="`网版 · ${screenFilm?.filmCode || ''} ${screenFilm?.filmName || ''}`"
+      width="720px"
+      append-to-body
+    >
+      <el-form inline>
+        <el-form-item label="网框型号">
+          <el-select v-model="screenForm.frameType" style="width: 110px">
+            <el-option
+              v-for="f in ScreenFrameTypeEnum.items"
+              :key="f.value"
+              :label="f.label"
+              :value="f.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="目数">
+          <el-input v-model="screenForm.mesh" placeholder="如 300" style="width: 110px" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="screenForm.remark" placeholder="可选" style="width: 180px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button
+            type="primary"
+            :loading="screenSubmitting"
+            v-hasPermi="['engineering:screen:add']"
+            @click="submitScreen"
+          >
+            生成网版
+          </el-button>
+        </el-form-item>
+      </el-form>
+      <el-table :data="screenList" v-loading="screenLoading" border size="small">
+        <el-table-column label="网版编号" prop="screenNo" width="110" />
+        <el-table-column label="框型" width="80">
+          <template #default="s">{{ s.row.frameType }}</template>
+        </el-table-column>
+        <el-table-column label="网版内容" prop="content" min-width="200" show-overflow-tooltip />
+        <el-table-column label="目数" prop="mesh" width="80" />
+        <el-table-column label="状态" width="90">
+          <template #default="s">
+            <el-tag :type="ScreenStatusEnum.getTagProps(s.row.status).type" size="small">
+              {{ ScreenStatusEnum.getLabel(s.row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!screenLoading && !screenList.length" description="该菲林还没有生成网版" :image-size="60" />
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Plus } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Upload } from '@element-plus/icons-vue'
 import { filmApi, type EngineeringFilm } from '@/api/product/film'
 import { listProductPage } from '@/api/product'
+import { attachmentApi } from '@/api/system/attachment'
+import { listScreensByFilm, createScreenFromFilm } from '@/api/engineering/screen'
+import ProductSelector from '@/components/Selector/ProductSelector.vue'
+import {
+  FilmApproveStatusEnum,
+  FilmTypeCodeEnum,
+  FilmReleaseStatusEnum,
+  FilmCurrentFlagEnum,
+} from '@/enums/product/film'
+import { ScreenStatusEnum, ScreenFrameTypeEnum } from '@/enums/engineering/screen'
 
 defineOptions({ name: 'EngineeringFilm' })
 
 const loading = ref(false)
 const submitting = ref(false)
+const uploading = ref(false)
 const filmList = ref<EngineeringFilm[]>([])
 const productOptions = ref<any[]>([])
 const queryProductId = ref<number | null>(null)
-const queryName = ref('')
+const queryFilmType = ref<string>('')
+const queryApproveStatus = ref<number | null>(null)
+const queryKeyword = ref('')
 const dialogVisible = ref(false)
+
+// 网版联动（dev-20260911-003）
+const screenDialogVisible = ref(false)
+const screenLoading = ref(false)
+const screenSubmitting = ref(false)
+const screenFilm = ref<EngineeringFilm | null>(null)
+const screenList = ref<any[]>([])
+const screenForm = reactive({ frameType: ScreenFrameTypeEnum.A.value, mesh: '', remark: '' })
 
 const form = reactive<Partial<EngineeringFilm>>({
   filmId: undefined,
@@ -177,6 +381,9 @@ const form = reactive<Partial<EngineeringFilm>>({
   color: '',
   technicalSpec: '',
   designNotes: '',
+  fileId: undefined,
+  fileName: '',
+  filePath: '',
   remark: '',
 })
 
@@ -185,30 +392,41 @@ const rules = {
   filmType: [{ required: true, message: '请选择类型', trigger: 'change' }],
 }
 
+/** 草稿或已驳回可编辑/提交 */
+function isEditable(row: EngineeringFilm): boolean {
+  const editable: number[] = [FilmApproveStatusEnum.DRAFT.value, FilmApproveStatusEnum.REJECTED.value]
+  return editable.includes(Number(row.approveStatus ?? FilmApproveStatusEnum.DRAFT.value))
+}
+
+function filmTypeLabel(code?: string): string {
+  return code ? FilmTypeCodeEnum.getLabel(code) : '-'
+}
+
+function downloadUrl(fileId?: number | string | null): string {
+  return fileId ? attachmentApi.downloadUrl(Number(fileId)) : ''
+}
+
 // 加载产品下拉
 async function loadProducts() {
   try {
-    const res: any = await listProductPage({ pageNum: 1, pageSize: 100 })
+    const res: any = await listProductPage({ pageNum: 1, pageSize: 200 })
     productOptions.value = res?.data?.records || res?.data?.rows || res?.data || []
   } catch {
     productOptions.value = []
   }
 }
 
-// 加载菲林列表
+// 加载菲林列表（不选产品时=全部）
 async function loadFilms() {
-  if (!queryProductId.value) {
-    filmList.value = []
-    return
-  }
   loading.value = true
   try {
-    const res: any = await filmApi.getByProductId(queryProductId.value)
-    let list = (res as any)?.data || []
-    if (queryName.value) {
-      list = list.filter((f: any) => (f.filmName || '').includes(queryName.value) || (f.filmCode || '').includes(queryName.value))
-    }
-    filmList.value = list
+    const res: any = await filmApi.list({
+      productId: queryProductId.value || undefined,
+      filmType: queryFilmType.value || undefined,
+      approveStatus: queryApproveStatus.value ?? undefined,
+      keyword: queryKeyword.value || undefined,
+    })
+    filmList.value = (res as any)?.data || []
   } catch {
     filmList.value = []
   } finally {
@@ -217,23 +435,34 @@ async function loadFilms() {
 }
 
 function onProductChange() {
-  queryName.value = ''
   loadFilms()
 }
 
 function resetQuery() {
   queryProductId.value = null
-  queryName.value = ''
-  filmList.value = []
-}
-
-function approveTagType(status: number | undefined | null): TagType {
-  const map: Record<number, TagType> = { 1: 'info', 2: 'warning', 3: 'success', 4: 'danger' }
-  return map[status ?? 1] ?? 'info'
+  queryFilmType.value = ''
+  queryApproveStatus.value = null
+  queryKeyword.value = ''
+  loadFilms()
 }
 
 function handleAdd() {
-  Object.assign(form, { filmId: undefined, filmName: '', filmType: '', filmSize: '', filmThickness: undefined, filmMaterial: '', color: '', technicalSpec: '', designNotes: '', remark: '' })
+  Object.assign(form, {
+    filmId: undefined,
+    productId: queryProductId.value ?? undefined,
+    filmName: '',
+    filmType: '',
+    filmSize: '',
+    filmThickness: undefined,
+    filmMaterial: '',
+    color: '',
+    technicalSpec: '',
+    designNotes: '',
+    fileId: undefined,
+    fileName: '',
+    filePath: '',
+    remark: '',
+  })
   dialogVisible.value = true
 }
 
@@ -241,11 +470,55 @@ async function handleEdit(row: EngineeringFilm) {
   try {
     const res: any = await filmApi.getById(row.filmId!)
     Object.assign(form, res?.data || row)
-    dialogVisible.value = true
   } catch {
     Object.assign(form, row)
-    dialogVisible.value = true
   }
+  dialogVisible.value = true
+}
+
+function beforeUpload(file: File) {
+  if (file.size > 50 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过50MB')
+    return false
+  }
+  return true
+}
+
+/** 图纸上传：先落产品文件库（菲林类别），把附件 id 回填到菲林档案 */
+async function doUpload(options: any) {
+  const productId = form.productId || queryProductId.value
+  const productCode = productId
+    ? productOptions.value.find((p: any) => p.productId === productId)?.productCode
+    : undefined
+  if (!productCode) {
+    ElMessage.warning('请先选择产品再上传图纸')
+    options.onError(new Error('no product'))
+    return
+  }
+  uploading.value = true
+  try {
+    const res: any = await attachmentApi.uploadProductFile(options.file, productCode, '菲林')
+    if (res?.code === 200) {
+      form.fileId = Number(res.data)
+      form.fileName = options.file.name
+      ElMessage.success('图纸上传成功')
+      options.onSuccess(res.data)
+    } else {
+      ElMessage.error(res?.msg || '上传失败')
+      options.onError(new Error(res?.msg || '上传失败'))
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '上传失败')
+    options.onError(e)
+  } finally {
+    uploading.value = false
+  }
+}
+
+function clearFile() {
+  form.fileId = undefined
+  form.fileName = ''
+  form.filePath = ''
 }
 
 async function handleSubmitForm() {
@@ -285,10 +558,11 @@ async function handleApprove(row: EngineeringFilm) {
 async function handleReject(row: EngineeringFilm) {
   try {
     const { value } = await ElMessageBox.prompt('请填写驳回原因', '审批驳回', {
-      inputPlaceholder: '驳回原因（选填）',
+      inputPlaceholder: '驳回原因（必填）',
+      inputValidator: (val: string) => (val && val.trim() ? true : '驳回原因不能为空'),
     })
-    await filmApi.reject(row.filmId!)
-    ElMessage.success(value ? '已驳回' : '已驳回')
+    await filmApi.reject(row.filmId!, value)
+    ElMessage.success('已驳回')
     loadFilms()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '驳回失败')
@@ -296,10 +570,18 @@ async function handleReject(row: EngineeringFilm) {
 }
 
 async function handleNewVersion(row: EngineeringFilm) {
-  await ElMessageBox.confirm(`确认为「${row.filmName}」创建新版本？`, '新版本')
-  await filmApi.newVersion(row.filmId!)
-  ElMessage.success('新版本已创建')
-  loadFilms()
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `为「${row.filmName}」创建新版本（留空自动 +0.1）`,
+      '新版本',
+      { inputPlaceholder: '如 v1.1', inputValue: '' }
+    )
+    await filmApi.newVersion(row.filmId!, value || undefined, undefined)
+    ElMessage.success('新版本已创建')
+    loadFilms()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '创建新版本失败')
+  }
 }
 
 async function handleSetCurrent(row: EngineeringFilm) {
@@ -323,13 +605,87 @@ async function handleDelete(row: EngineeringFilm) {
   loadFilms()
 }
 
-onMounted(() => {
-  loadProducts()
+// ── 菲林 → 网版 ───────────────────────────────────────────────
+async function openScreenDialog(row: EngineeringFilm) {
+  screenFilm.value = row
+  screenForm.frameType = ScreenFrameTypeEnum.A.value
+  screenForm.mesh = ''
+  screenForm.remark = ''
+  screenDialogVisible.value = true
+  await loadScreens()
+}
+
+async function loadScreens() {
+  if (!screenFilm.value?.filmId) return
+  screenLoading.value = true
+  try {
+    const res: any = await listScreensByFilm(screenFilm.value.filmId)
+    screenList.value = res?.data || []
+  } catch {
+    screenList.value = []
+  } finally {
+    screenLoading.value = false
+  }
+}
+
+async function submitScreen() {
+  if (!screenFilm.value?.filmId) return
+  screenSubmitting.value = true
+  try {
+    await createScreenFromFilm({
+      filmId: screenFilm.value.filmId,
+      frameType: screenForm.frameType,
+      mesh: screenForm.mesh || undefined,
+      remark: screenForm.remark || undefined,
+    })
+    ElMessage.success('已生成网版')
+    await loadScreens()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '生成网版失败')
+  } finally {
+    screenSubmitting.value = false
+  }
+}
+
+onMounted(async () => {
+  await loadProducts()
+  loadFilms()
 })
 </script>
 
 <style scoped>
-.search-card, .table-card { margin-bottom: 16px; }
-.toolbar { margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
-.toolbar-tip { color: #909399; font-size: 12px; }
+.search-card,
+.table-card {
+  margin-bottom: 16px;
+}
+.toolbar {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toolbar-tip {
+  color: #909399;
+  font-size: 12px;
+}
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.file-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.form-tip {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.muted {
+  color: #c0c4cc;
+  font-size: 12px;
+}
 </style>

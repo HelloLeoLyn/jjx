@@ -4,21 +4,20 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.product.domain.dto.EngineeringFilmDTO;
 import com.jjx.engineering.domain.entity.EngineeringFilm;
 import com.jjx.product.domain.vo.EngineeringFilmVO;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 public interface IEngineeringFilmService extends IService<EngineeringFilm> {
     
     /**
-     * 创建菲林
+     * 创建菲林（filmCode 留空时自动生成；图纸文件由调用方上传附件后回填 fileId）
      */
-    EngineeringFilmVO createFilm(EngineeringFilmDTO dto, MultipartFile file);
+    EngineeringFilmVO createFilm(EngineeringFilmDTO dto);
     
     /**
      * 更新菲林
      */
-    EngineeringFilmVO updateFilm(EngineeringFilmDTO dto, MultipartFile file);
+    EngineeringFilmVO updateFilm(EngineeringFilmDTO dto);
     
     /**
      * 删除菲林
@@ -41,9 +40,9 @@ public interface IEngineeringFilmService extends IService<EngineeringFilm> {
     void reject(Long filmId, String remark);
     
     /**
-     * 创建新版本
+     * 创建新版本（newVersion 留空时自动叠加小版本号）
      */
-    EngineeringFilmVO createNewVersion(Long filmId, String newVersion, String changeLog, MultipartFile file);
+    EngineeringFilmVO createNewVersion(Long filmId, String newVersion, String changeLog);
     
     /**
      * 设置当前版本
@@ -69,4 +68,9 @@ public interface IEngineeringFilmService extends IService<EngineeringFilm> {
      * 获取菲林详情
      */
     EngineeringFilmVO getFilmDetail(Long filmId);
+    
+    /**
+     * 全部菲林列表（按产品/类型/审批状态/关键字过滤，供菲林总览页使用）
+     */
+    List<EngineeringFilmVO> listFilms(Long productId, String filmType, Integer approveStatus, String keyword);
 }

@@ -29,6 +29,13 @@
           <template #default="{ row }">{{ row.frameType }}框</template>
         </el-table-column>
         <el-table-column prop="content" label="网版内容记录" min-width="320" show-overflow-tooltip />
+        <el-table-column label="关联产品/菲林" width="190" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.productCode">{{ row.productCode }}</span>
+            <el-tag v-if="row.filmId" size="small" type="warning" style="margin-left: 6px">菲林来源</el-tag>
+            <span v-if="!row.productCode && !row.filmId" class="muted">历史台账</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="mesh" label="目数" width="80" />
         <el-table-column label="状态" width="80">
           <template #default="{ row }"><el-tag :type="row.status === CommonStatusEnum.NORMAL.value ? 'success' : 'info'">{{ row.status === CommonStatusEnum.NORMAL.value ? '在用' : '停用' }}</el-tag></template>

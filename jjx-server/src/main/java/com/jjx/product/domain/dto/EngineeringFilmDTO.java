@@ -16,8 +16,7 @@ public class EngineeringFilmDTO {
     @NotNull(message = "菲林ID不能为空", groups = ValidationGroups.Update.class)
     private Long filmId;
     
-    @NotBlank(message = "菲林编码不能为空")
-    @Schema(description = "菲林编码", example = "FILM_OVERLAY_001")
+    @Schema(description = "菲林编码（留空则按 产品编码-菲林类型 自动生成）", example = "FILM_OVERLAY_001")
     private String filmCode;
     
     @NotBlank(message = "菲林名称不能为空")
@@ -52,6 +51,15 @@ public class EngineeringFilmDTO {
     
     @Schema(description = "关联工序ID")
     private Long processId;
+    
+    @Schema(description = "图纸文件ID（sys_attachment.id，由 /system/attachment/upload-product 上传后回填）")
+    private Long fileId;
+    
+    @Schema(description = "图纸文件路径")
+    private String filePath;
+    
+    @Schema(description = "图纸文件名")
+    private String fileName;
     
     @Schema(description = "备注")
     private String remark;

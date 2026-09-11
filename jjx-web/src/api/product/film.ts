@@ -21,16 +21,41 @@ export interface EngineeringFilm {
   color?: string
   technicalSpec?: string
   designNotes?: string
+  fileId?: number
+  filePath?: string
+  fileName?: string
+  processId?: number
+  processCode?: string
+  approveStatus?: number
+  approveStatusName?: string
+  approverName?: string
+  designerId?: number
+  designerName?: string
+  designTime?: string
+  isReleased?: number
+  releaseTime?: string
   remark?: string
   status?: number
   statusName?: string
   createTime?: string
 }
 
+export interface FilmQueryParams {
+  productId?: number | null
+  filmType?: string
+  approveStatus?: number
+  keyword?: string
+}
+
 export const filmApi = {
   // 根据产品ID获取菲林列表
   getByProductId(productId: number): AxiosPromise<EngineeringFilm[]> {
     return request.get(`/engineering/films/product/${productId}`)
+  },
+
+  // 全部菲林列表（总览页：产品/类型/审批状态/关键字过滤，产品可空）
+  list(params: FilmQueryParams): AxiosPromise<EngineeringFilm[]> {
+    return request.get('/engineering/films/page', { params })
   },
 
   // 获取菲林详情
@@ -64,13 +89,15 @@ export const filmApi = {
   },
 
   // 审批驳回
-  reject(filmId: number): AxiosPromise<void> {
-    return request.put(`/engineering/films/${filmId}/reject`)
+  reject(filmId: number, remark: string): AxiosPromise<void> {
+    return request.put(`/engineering/films/${filmId}/reject`, null, { params: { remark } })
   },
 
   // 创建新版本
-  newVersion(filmId: number): AxiosPromise<EngineeringFilm> {
-    return request.post(`/engineering/films/${filmId}/new-version`)
+  newVersion(filmId: number, newVersion?: string, changeLog?: string): AxiosPromise<EngineeringFilm> {
+    return request.post(`/engineering/films/${filmId}/new-version`, null, {
+      params: { newVersion, changeLog },
+    })
   },
 
   // 设为当前版本

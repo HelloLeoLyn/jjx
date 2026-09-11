@@ -13,7 +13,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -48,9 +47,8 @@ public class EngineeringFilmController {
     @PostMapping
     @SaCheckPermission("engineering:film:edit")
     public Result<EngineeringFilmVO> create(
-            @Valid @RequestPart("dto") EngineeringFilmDTO dto,
-            @RequestPart(value = "file", required = false) MultipartFile file) {
-        EngineeringFilmVO vo = filmService.createFilm(dto, file);
+            @Valid @RequestBody EngineeringFilmDTO dto) {
+        EngineeringFilmVO vo = filmService.createFilm(dto);
         return Result.success(vo);
     }
 
@@ -59,10 +57,9 @@ public class EngineeringFilmController {
     @SaCheckPermission("engineering:film:edit")
     public Result<EngineeringFilmVO> update(
             @PathVariable @NotNull Long filmId,
-            @Valid @RequestPart("dto") EngineeringFilmDTO dto,
-            @RequestPart(value = "file", required = false) MultipartFile file) {
+            @Valid @RequestBody EngineeringFilmDTO dto) {
         dto.setFilmId(filmId);
-        EngineeringFilmVO vo = filmService.updateFilm(dto, file);
+        EngineeringFilmVO vo = filmService.updateFilm(dto);
         return Result.success(vo);
     }
 
@@ -113,11 +110,21 @@ public class EngineeringFilmController {
     @SaCheckPermission("engineering:film:edit")
     public Result<EngineeringFilmVO> createNewVersion(
             @PathVariable @NotNull Long filmId,
-            @RequestParam String newVersion,
-            @RequestParam(required = false) String changeLog,
-            @RequestPart(value = "file", required = false) MultipartFile file) {
-        EngineeringFilmVO vo = filmService.createNewVersion(filmId, newVersion, changeLog, file);
+            @RequestParam(required = false) String newVersion,
+            @RequestParam(required = false) String changeLog) {
+        EngineeringFilmVO vo = filmService.createNewVersion(filmId, newVersion, changeLog);
         return Result.success(vo);
+    }
+
+    @Operation(summary = "全部菲林列表（总览页：按产品/类型/审批状态/关键字过滤）")
+    @GetMapping("/page")
+    @SaCheckPermission("engineering:film:view")
+    public Result<List<EngineeringFilmVO>> page(
+            @Parameter(description = "产品ID") @RequestParam(required = false) Long productId,
+            @Parameter(description = "菲林类型") @RequestParam(required = false) String filmType,
+            @Parameter(description = "审批状态：1草稿 2待审批 3已批准 4已驳回") @RequestParam(required = false) Integer approveStatus,
+            @Parameter(description = "关键字：菲林编码/名称/产品编码/产品名称") @RequestParam(required = false) String keyword) {
+        return Result.success(filmService.listFilms(productId, filmType, approveStatus, keyword));
     }
 
     @Operation(summary = "设为当前版本")

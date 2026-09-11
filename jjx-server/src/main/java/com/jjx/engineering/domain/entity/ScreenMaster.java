@@ -33,6 +33,15 @@ public class ScreenMaster extends BaseEntity {
     /** 状态：1在用 0停用 */
     private Integer status;
 
+    /** 关联产品ID（由菲林生成时有值，历史导入数据为 NULL） */
+    private Long productId;
+
+    /** 关联产品编码 */
+    private String productCode;
+
+    /** 来源菲林ID（engineering_film.film_id） */
+    private Long filmId;
+
     /** 备注 */
     private String remark;
 }

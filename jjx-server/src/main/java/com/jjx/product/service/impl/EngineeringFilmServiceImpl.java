@@ -8,15 +8,17 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
 import com.jjx.product.domain.dto.EngineeringFilmDTO;
 import com.jjx.engineering.domain.entity.EngineeringFilm;
+import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.EngineeringFilmVO;
 import com.jjx.product.enums.FilmTypeEnum;
 import com.jjx.product.mapper.EngineeringFilmMapper;
+import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.IEngineeringFilmService;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,30 +32,38 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         implements IEngineeringFilmService {
 
     private final EngineeringFilmMapper filmMapper;
+    private final ProductMapper productMapper;
     private final ReviewFlowService reviewFlowService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public EngineeringFilmVO createFilm(EngineeringFilmDTO dto, MultipartFile file) {
+    public EngineeringFilmVO createFilm(EngineeringFilmDTO dto) {
+        // 产品信息回填（列表页要展示产品编码/名称）
+        Product product = productMapper.selectById(dto.getProductId());
+        if (product == null) {
+            throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
+        }
+
+        // 菲林编码：留空则按 产品编码 + 菲林类型 自动生成
+        if (dto.getFilmCode() == null || dto.getFilmCode().trim().isEmpty()) {
+            dto.setFilmCode(generateFilmCode(product.getProductCode(), dto.getFilmType(), null));
+        }
+
         // 检查编码是否唯一
         checkFilmCodeUnique(dto.getFilmCode(), null);
 
         // 创建菲林
         EngineeringFilm film = new EngineeringFilm();
         BeanUtil.copyProperties(dto, film);
+        film.setProductCode(product.getProductCode());
+        film.setProductName(product.getProductName());
         film.setVersion("v1.0");
         film.setIsCurrent(0);
+        film.setIsReleased(0);
         film.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
+        fillDesigner(film);
         film.setCreateTime(LocalDateTime.now());
         film.setUpdateTime(LocalDateTime.now());
-
-        // TODO: 处理文件上传
-        if (file != null && !file.isEmpty()) {
-            // 保存文件，获取fileId和filePath
-            // film.setFileId(fileId);
-            // film.setFilePath(filePath);
-            film.setFileName(file.getOriginalFilename());
-        }
 
         save(film);
 
@@ -63,7 +73,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public EngineeringFilmVO updateFilm(EngineeringFilmDTO dto, MultipartFile file) {
+    public EngineeringFilmVO updateFilm(EngineeringFilmDTO dto) {
         EngineeringFilm film = getById(dto.getFilmId());
         if (film == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
@@ -75,19 +85,15 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         }
 
         // 检查编码是否唯一
+        if (dto.getFilmCode() == null || dto.getFilmCode().trim().isEmpty()) {
+            dto.setFilmCode(film.getFilmCode());
+        }
         if (!film.getFilmCode().equals(dto.getFilmCode())) {
             checkFilmCodeUnique(dto.getFilmCode(), dto.getFilmId());
         }
 
         BeanUtil.copyProperties(dto, film);
         film.setUpdateTime(LocalDateTime.now());
-
-        // TODO: 处理文件上传
-        if (file != null && !file.isEmpty()) {
-            // film.setFileId(fileId);
-            // film.setFilePath(filePath);
-            film.setFileName(file.getOriginalFilename());
-        }
 
         updateById(film);
 
@@ -189,10 +195,15 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public EngineeringFilmVO createNewVersion(Long filmId, String newVersion, String changeLog, MultipartFile file) {
+    public EngineeringFilmVO createNewVersion(Long filmId, String newVersion, String changeLog) {
         EngineeringFilm oldFilm = getById(filmId);
         if (oldFilm == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
+        }
+
+        // 版本号留空时自动叠加小版本
+        if (newVersion == null || newVersion.trim().isEmpty()) {
+            newVersion = nextVersion(oldFilm.getVersion());
         }
 
         // 检查新版本是否已存在
@@ -213,15 +224,16 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         newFilm.setParentFilmId(oldFilm.getFilmId());
         newFilm.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newFilm.setIsCurrent(0);
+        newFilm.setIsReleased(0);
+        newFilm.setReleaseTime(null);
+        newFilm.setApproveRemark(null);
+        newFilm.setApproveTime(null);
+        if (changeLog != null && !changeLog.trim().isEmpty()) {
+            newFilm.setRemark(changeLog.trim());
+        }
+        fillDesigner(newFilm);
         newFilm.setCreateTime(LocalDateTime.now());
         newFilm.setUpdateTime(LocalDateTime.now());
-
-        // TODO: 处理文件上传
-        if (file != null && !file.isEmpty()) {
-            // newFilm.setFileId(fileId);
-            // newFilm.setFilePath(filePath);
-            newFilm.setFileName(file.getOriginalFilename());
-        }
 
         save(newFilm);
 
@@ -294,6 +306,90 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
             return null;
         }
         return convertToVO(film);
+    }
+
+    @Override
+    public List<EngineeringFilmVO> listFilms(Long productId, String filmType, Integer approveStatus, String keyword) {
+        LambdaQueryWrapper<EngineeringFilm> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(productId != null, EngineeringFilm::getProductId, productId);
+        wrapper.eq(filmType != null && !filmType.trim().isEmpty(), EngineeringFilm::getFilmType, filmType);
+        wrapper.eq(approveStatus != null, EngineeringFilm::getApproveStatus, approveStatus);
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            String kw = keyword.trim();
+            wrapper.and(w -> w.like(EngineeringFilm::getFilmCode, kw)
+                    .or().like(EngineeringFilm::getFilmName, kw)
+                    .or().like(EngineeringFilm::getProductCode, kw)
+                    .or().like(EngineeringFilm::getProductName, kw));
+        }
+        wrapper.orderByAsc(EngineeringFilm::getProductCode)
+               .orderByAsc(EngineeringFilm::getFilmType)
+               .orderByDesc(EngineeringFilm::getVersion);
+        return list(wrapper).stream().map(EngineeringFilmServiceImpl::convertToVO).toList();
+    }
+
+    /**
+     * 生成菲林编码：FILM-{产品编码}-{类型短码}，重复时追加 -2/-3…
+     */
+    private String generateFilmCode(String productCode, String filmType, Long excludeId) {
+        String base = "FILM-" + (productCode == null || productCode.isBlank() ? "NA" : productCode.trim())
+                + "-" + shortType(filmType);
+        String candidate = base;
+        int seq = 2;
+        while (existsFilmCode(candidate, excludeId) && seq < 100) {
+            candidate = base + "-" + seq++;
+        }
+        return candidate;
+    }
+
+    private boolean existsFilmCode(String filmCode, Long excludeId) {
+        LambdaQueryWrapper<EngineeringFilm> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(EngineeringFilm::getFilmCode, filmCode);
+        if (excludeId != null) {
+            wrapper.ne(EngineeringFilm::getFilmId, excludeId);
+        }
+        return count(wrapper) > 0;
+    }
+
+    private String shortType(String filmType) {
+        if (filmType == null) {
+            return "XX";
+        }
+        return switch (filmType) {
+            case "OVERLAY" -> "OV";
+            case "UPPER_CIRCUIT" -> "UC";
+            case "SPACER" -> "SP";
+            case "LOWER_CIRCUIT" -> "LC";
+            case "BACK_ADHESIVE" -> "BA";
+            default -> filmType.length() > 4 ? filmType.substring(0, 4) : filmType;
+        };
+    }
+
+    /**
+     * 版本自增：v1.0 -> v1.1；非标准格式时追加 .1
+     */
+    private String nextVersion(String version) {
+        if (version == null || version.trim().isEmpty()) {
+            return "v1.0";
+        }
+        String v = version.trim();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^v(\\d+)\\.(\\d+)$").matcher(v);
+        if (m.matches()) {
+            return "v" + m.group(1) + "." + (Integer.parseInt(m.group(2)) + 1);
+        }
+        return v + ".1";
+    }
+
+    /**
+     * 记录设计人/设计时间（无登录上下文时静默跳过，便于资料转移等系统调用）
+     */
+    private void fillDesigner(EngineeringFilm film) {
+        try {
+            film.setDesignerId(SecurityUtils.getUserId());
+            film.setDesignerName(SecurityUtils.getUsername());
+            film.setDesignTime(LocalDateTime.now());
+        } catch (Exception e) {
+            log.debug("菲林设计人回填跳过（无登录上下文）: {}", e.getMessage());
+        }
     }
 
     /**
