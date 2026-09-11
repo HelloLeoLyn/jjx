@@ -51,6 +51,17 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="标签" prop="tagId">
+          <el-select
+            v-model="queryParams.tagId"
+            placeholder="按标签筛选"
+            clearable
+            filterable
+            style="width: 200px"
+          >
+            <el-option v-for="tag in tagOptions" :key="tag.tagId" :label="tag.tagName" :value="tag.tagId!" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
           <el-button icon="Refresh" @click="resetQuery">重置</el-button>
@@ -102,6 +113,22 @@
         <el-table-column label="供应商类型" align="center" prop="supplierType" width="120">
           <template #default="scope">
             <span>{{ getSupplierTypeLabel(scope.row.supplierType) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="标签" align="left" width="220">
+          <template #default="scope">
+            <template v-if="scope.row.tagNames && scope.row.tagNames.length">
+              <el-tag
+                v-for="(t, i) in scope.row.tagNames"
+                :key="i"
+                size="small"
+                type="info"
+                style="margin: 1px 2px"
+              >
+                {{ t }}
+              </el-tag>
+            </template>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="联系人" align="center" prop="contactPerson" width="100" />
@@ -225,6 +252,23 @@
           <el-col :span="12">
             <el-form-item label="联系人" prop="contactPerson">
               <el-input v-model="form.contactPerson" placeholder="请输入联系人" maxlength="50" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="标签" prop="tagIds">
+              <el-select
+                v-model="form.tagIds"
+                multiple
+                filterable
+                clearable
+                placeholder="选择标签（可多个，如 塑料制品 / 薄膜）"
+                style="width: 100%"
+              >
+                <el-option v-for="tag in tagOptions" :key="tag.tagId" :label="tag.tagName" :value="tag.tagId!" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -480,6 +524,8 @@ import {
 import { parseTime, download } from '@/utils/format'
 import { SupplierTypeEnum, SupplierStatusEnum } from '@/enums/purchase'
 import { dictApi } from '@/api/system/dict'
+import { tagApi } from '@/api/system/tag'
+import { TAG_GROUP, type SysTag } from '@/types/system/tag'
 import type { SysDictItem } from '@/types/system/dict'
 
 // 查询参数
@@ -490,6 +536,7 @@ const queryParams = reactive({
   supplierName: undefined as string | undefined,
   supplierType: undefined as string | undefined,
   status: undefined as string | undefined,
+  tagId: undefined as number | undefined,
   orderByColumn: undefined as string | undefined,
   isAsc: undefined as 'asc' | 'desc' | undefined,
 })
@@ -512,6 +559,7 @@ const form = reactive({
   supplierCode: '',
   supplierName: '',
   supplierType: '',
+  tagIds: [] as number[],
   contactPerson: '',
   phone: '',
   email: '',
@@ -642,6 +690,18 @@ const supplierTypeOptions = SupplierTypeEnum.items
 const statusOptions = SupplierStatusEnum.items
 const paymentTermsOptions = ref<SysDictItem[]>([])
 
+// 标签选项（系统标签，dev-20260911-007）
+const tagOptions = ref<SysTag[]>([])
+
+const loadTagOptions = async () => {
+  try {
+    const response: any = await tagApi.list({ tagGroup: TAG_GROUP.SUPPLIER_GOODS, status: 1 })
+    tagOptions.value = response?.data || []
+  } catch (error) {
+    console.error('获取标签失败:', error)
+  }
+}
+
 const loadPaymentTermsOptions = async () => {
   try {
     const response = await dictApi.getItems('payment_terms')
@@ -696,6 +756,7 @@ const resetQuery = () => {
     supplierName: undefined,
     supplierType: undefined,
     status: undefined,
+    tagId: undefined,
     orderByColumn: undefined,
     isAsc: undefined,
   })
@@ -740,6 +801,8 @@ const handleUpdate = (row?: any) => {
   const supplierId = row?.supplierId || ids.value[0]
   getSupplier(supplierId).then((response: any) => {
     Object.assign(form, response.data)
+    // 标签：后端已回填 tagIds，空值归一化（dev-20260911-007）
+    form.tagIds = response.data?.tagIds ?? []
     open.value = true
     title.value = '修改供应商'
   })
@@ -844,6 +907,7 @@ const resetForm = () => {
     supplierCode: '',
     supplierName: '',
     supplierType: '',
+    tagIds: [],
     contactPerson: '',
     phone: '',
     email: '',
@@ -928,5 +992,6 @@ watch(
 onMounted(() => {
   getList()
   loadPaymentTermsOptions()
+  loadTagOptions()
 })
 </script>

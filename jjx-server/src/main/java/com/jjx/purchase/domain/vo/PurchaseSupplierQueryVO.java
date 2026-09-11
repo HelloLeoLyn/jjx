@@ -30,6 +30,11 @@ public class PurchaseSupplierQueryVO {
     private String supplierType;
 
     /**
+     * 标签ID（按标签筛选，系统标签 dev-20260911-007）
+     */
+    private Long tagId;
+
+    /**
      * 联系人
      */
     private String contactPerson;

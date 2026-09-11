@@ -22,37 +22,43 @@ public class SupplierImportDTO {
     private String supplierName;
 
 
-    @ExcelColumn(value = "供应商类型", order = 3, required = true, comment = "M=物料,  E=设备, O=其他")
+    @ExcelColumn(value = "供应商类型", order = 3, required = false, comment = "M=物料, E=设备, O=其他（留空默认M）")
     private String supplierType;
+
+    /**
+     * 供应商标签（系统标签，多个用 / 分隔；支持「大类*明细」两级，如 塑料制品*薄膜）
+     */
+    @ExcelColumn(value = "供应商标签", order = 4, comment = "多个用斜杠分隔；支持 大类*明细 两级，自动建档")
+    private String supplierTags;
 
     /**
      * 联系人
      */
-    @ExcelColumn(value = "联系人", order = 4, comment = "供应商联系人姓名")
+    @ExcelColumn(value = "联系人", order = 5, comment = "供应商联系人姓名")
     private String contactPerson;
 
     /**
      * 联系电话
      */
-    @ExcelColumn(value = "联系电话", order = 5, comment = "供应商联系电话")
+    @ExcelColumn(value = "联系电话", order = 6, comment = "供应商联系电话")
     private String phone;
 
     /**
      * 邮箱
      */
-    @ExcelColumn(value = "邮箱", order = 6, comment = "供应商邮箱地址")
+    @ExcelColumn(value = "邮箱", order = 7, comment = "供应商邮箱地址")
     private String email;
 
     /**
      * 地址
      */
-    @ExcelColumn(value = "地址", order = 7, comment = "供应商详细地址")
+    @ExcelColumn(value = "地址", order = 8, comment = "供应商详细地址")
     private String address;
 
     /**
      * 税号
      */
-    @ExcelColumn(value = "税号", order = 8, comment = "纳税人识别号")
+    @ExcelColumn(value = "税号", order = 9, comment = "纳税人识别号")
     private String taxNo;
 
 

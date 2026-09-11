@@ -33,6 +33,8 @@ public interface SupplierConverter {
 
     @Mapping(target = "supplierTypeName", ignore = true)
     @Mapping(target = "statusName", ignore = true)
+    @Mapping(target = "tagIds", ignore = true)
+    @Mapping(target = "tagNames", ignore = true)
     PurchaseSupplierVO toVO(PurchaseSupplier entity);
 
     List<PurchaseSupplierVO> toVOList(List<PurchaseSupplier> list);

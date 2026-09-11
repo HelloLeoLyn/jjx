@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 供应商数据传输对象
@@ -106,6 +107,11 @@ public class PurchaseSupplierDTO {
      * 最后评估日期
      */
     private LocalDate lastEvaluationDate;
+
+    /**
+     * 标签ID集合（系统标签 dev-20260911-007，全量替换语义；null=不改）
+     */
+    private List<Long> tagIds;
 
     /**
      * 状态（0正常 1停用）

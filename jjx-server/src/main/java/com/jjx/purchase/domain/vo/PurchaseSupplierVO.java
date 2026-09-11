@@ -4,6 +4,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 供应商视图对象
@@ -30,6 +31,16 @@ public class PurchaseSupplierVO {
      * 供应商类型（material原材料/equipment设备/other其他）
      */
     private String supplierType;
+
+    /**
+     * 标签ID集合（系统标签 dev-20260911-007）
+     */
+    private List<Long> tagIds;
+
+    /**
+     * 标签名称集合（系统标签 dev-20260911-007）
+     */
+    private List<String> tagNames;
 
     /**
      * 供应商类型名称

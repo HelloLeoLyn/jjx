@@ -29,6 +29,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.SysTag;
+import com.jjx.system.service.ISysTagService;
+import com.jjx.system.utils.SecurityUtils;
 
 /**
  * 供应商服务实现类
@@ -42,6 +45,13 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseConverter purchaseConverter;
     private final SupplierConverter supplierConverter;
+    private final ISysTagService tagService;
+
+    /** 供应商标签业务类型（系统标签 dev-20260911-007） */
+    public static final String TAG_BIZ_TYPE = "purchase_supplier";
+
+    /** 供应商标签分组（字典 sys_tag_group） */
+    public static final String TAG_GROUP_SUPPLIER_GOODS = "supplier_goods";
     @Override
     public com.jjx.common.core.page.PageResult<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO) {
         LambdaQueryWrapper<PurchaseSupplier> wrapper = Wrappers.lambdaQuery();
@@ -66,6 +76,15 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             wrapper.like(PurchaseSupplier::getPhone, queryVO.getPhone());
         }
 
+        // 按标签筛选（dev-20260911-007）：先反查挂了该标签的供应商ID
+        if (queryVO.getTagId() != null) {
+            List<Long> bizIds = tagService.getBizIdsByTagIds(TAG_BIZ_TYPE, List.of(queryVO.getTagId()));
+            if (bizIds.isEmpty()) {
+                return com.jjx.common.core.page.PageResult.build(new java.util.ArrayList<>(), 0L);
+            }
+            wrapper.in(PurchaseSupplier::getSupplierId, bizIds);
+        }
+
         // 排序
         wrapper.orderByDesc(PurchaseSupplier::getCreateTime).orderByDesc(PurchaseSupplier::getSupplierId);
 
@@ -77,7 +96,23 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         com.baomidou.mybatisplus.core.metadata.IPage<PurchaseSupplier> pageResult = supplierMapper.selectPage(page, wrapper);
 
         List<PurchaseSupplierVO> voList = supplierConverter.toVOList(pageResult.getRecords());
+        fillTags(voList);
         return com.jjx.common.core.page.PageResult.of(pageResult, voList);
+    }
+
+    /** 填充标签（dev-20260911-007） */
+    private void fillTags(List<PurchaseSupplierVO> voList) {
+        if (voList == null || voList.isEmpty()) {
+            return;
+        }
+        for (PurchaseSupplierVO vo : voList) {
+            if (vo.getSupplierId() == null) {
+                continue;
+            }
+            List<SysTag> tags = tagService.getBizTags(TAG_BIZ_TYPE, vo.getSupplierId());
+            vo.setTagIds(tags.stream().map(SysTag::getTagId).collect(java.util.stream.Collectors.toList()));
+            vo.setTagNames(tags.stream().map(SysTag::getTagName).collect(java.util.stream.Collectors.toList()));
+        }
     }
 
     @Override
@@ -86,7 +121,9 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         if (supplier == null) {
             throw new BusinessException("供应商不存在");
         }
-        return supplierConverter.toVO(supplier);
+        PurchaseSupplierVO vo = supplierConverter.toVO(supplier);
+        fillTags(java.util.Collections.singletonList(vo));
+        return vo;
     }
 
     @Override
@@ -184,6 +221,12 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             throw new BusinessException("保存供应商失败");
         }
 
+        // 标签（dev-20260911-007）
+        if (supplierDTO.getTagIds() != null) {
+            tagService.setBizTags(TAG_BIZ_TYPE, supplier.getSupplierId(), supplierDTO.getTagIds(),
+                    SecurityUtils.getUsername());
+        }
+
         return result;
     }
 
@@ -224,6 +267,12 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         int result = supplierMapper.updateById(supplier);
         if (result <= 0) {
             throw new BusinessException("更新供应商失败");
+        }
+
+        // 标签（dev-20260911-007：全量替换；null=不改）
+        if (supplierDTO.getTagIds() != null) {
+            tagService.setBizTags(TAG_BIZ_TYPE, supplierDTO.getSupplierId(), supplierDTO.getTagIds(),
+                    SecurityUtils.getUsername());
         }
 
         return result;
@@ -382,10 +431,26 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                 } else {
                     existingSupplier = null;
                 }
+                // 供应商类型：允许 M/E/O；若填了其他文本（历史表把供货品类写在类型列），按标签处理（dev-20260911-007）
+                String rawType = StringUtils.trimToNull(importDTO.getSupplierType());
+                String supplierType = null;
+                StringBuilder extraTag = new StringBuilder();
+                if (rawType != null) {
+                    if (com.jjx.purchase.domain.enums.SupplierTypeEnum.isValid(rawType.toUpperCase())) {
+                        supplierType = rawType.toUpperCase();
+                    } else {
+                        extraTag.append(rawType);
+                    }
+                }
+                // 解析标签（专用列 + 类型列误填的文本）
+                List<Long> tagIds = resolveImportTags(importDTO.getSupplierTags(), extraTag.toString());
+
                 if (existingSupplier != null) {
                     // 更新已有供应商
                     existingSupplier.setSupplierName(importDTO.getSupplierName());
-                    existingSupplier.setSupplierType(importDTO.getSupplierType());
+                    if (supplierType != null) {
+                        existingSupplier.setSupplierType(supplierType);
+                    }
                     existingSupplier.setContactPerson(importDTO.getContactPerson());
                     existingSupplier.setPhone(importDTO.getPhone());
                     existingSupplier.setEmail(importDTO.getEmail());
@@ -394,6 +459,10 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                     existingSupplier.setBankAccount(importDTO.getBankAccount());
                     existingSupplier.setRemark(importDTO.getRemark());
                     supplierMapper.updateById(existingSupplier);
+                    if (!tagIds.isEmpty()) {
+                        tagService.setBizTags(TAG_BIZ_TYPE, existingSupplier.getSupplierId(),
+                                mergeTagIds(existingSupplier.getSupplierId(), tagIds), operName);
+                    }
                     updateCount++;
                 } else {
                     // 新增供应商
@@ -401,7 +470,7 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                     // 编码留空时系统生成（dev-20260911-005：SUP + 5 位流水）
                     supplier.setSupplierCode(code != null ? code : generateSupplierCode());
                     supplier.setSupplierName(importDTO.getSupplierName());
-                    supplier.setSupplierType(importDTO.getSupplierType());
+                    supplier.setSupplierType(supplierType != null ? supplierType : "M");
                     supplier.setContactPerson(importDTO.getContactPerson());
                     supplier.setPhone(importDTO.getPhone());
                     supplier.setEmail(importDTO.getEmail());
@@ -415,6 +484,9 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                     supplier.setDeliveryScore(BigDecimal.ZERO);
                     supplier.setPriceScore(BigDecimal.ZERO);
                     supplierMapper.insert(supplier);
+                    if (!tagIds.isEmpty()) {
+                        tagService.setBizTags(TAG_BIZ_TYPE, supplier.getSupplierId(), tagIds, operName);
+                    }
                     successCount++;
                 }
             } catch (Exception e) {
@@ -441,5 +513,55 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
 
         log.info(resultMsg.toString());
         return resultMsg.toString();
+    }
+
+    /**
+     * 解析导入的标签文本为标签ID列表（dev-20260911-007）
+     * <p>多个标签用 / ， , ; ； | 分隔；单项支持「大类*明细」两级，标签不存在时自动建档。</p>
+     */
+    private List<Long> resolveImportTags(String... tagTexts) {
+        List<Long> ids = new java.util.ArrayList<>();
+        for (String tagText : tagTexts) {
+            if (StringUtils.isBlank(tagText)) {
+                continue;
+            }
+            for (String raw : tagText.split("[/,，;；|、]", -1)) {
+                String item = raw == null ? "" : raw.trim();
+                if (item.isEmpty()) {
+                    continue;
+                }
+                Long parentId = null;
+                String name = item;
+                int star = item.indexOf('*');
+                if (star > 0 && star < item.length() - 1) {
+                    String parentName = item.substring(0, star).trim();
+                    name = item.substring(star + 1).trim();
+                    if (!parentName.isEmpty()) {
+                        parentId = tagService.ensureTag(TAG_GROUP_SUPPLIER_GOODS, parentName, null,
+                                SecurityUtils.getUsername());
+                    }
+                }
+                Long tagId = tagService.ensureTag(TAG_GROUP_SUPPLIER_GOODS, name, parentId,
+                        SecurityUtils.getUsername());
+                if (tagId != null && !ids.contains(tagId)) {
+                    ids.add(tagId);
+                }
+            }
+        }
+        return ids;
+    }
+
+    /** 合并已有标签与新标签（导入时不覆盖原有标签） */
+    private List<Long> mergeTagIds(Long supplierId, List<Long> newTagIds) {
+        List<Long> merged = new java.util.ArrayList<>();
+        for (SysTag tag : tagService.getBizTags(TAG_BIZ_TYPE, supplierId)) {
+            merged.add(tag.getTagId());
+        }
+        for (Long id : newTagIds) {
+            if (!merged.contains(id)) {
+                merged.add(id);
+            }
+        }
+        return merged;
     }
 }
