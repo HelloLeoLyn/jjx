@@ -58,8 +58,8 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="启用" :value="1" />
-            <el-option label="禁用" :value="0" />
+            <el-option label="启用" :value="CommonStatusEnum.NORMAL.value" />
+            <el-option label="禁用" :value="CommonStatusEnum.DISABLED.value" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -72,11 +72,23 @@
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
-        <el-button type="primary" icon="Plus" v-hasPermi="['engineering:standardProcess:add']" @click="handleAdd">新增标准工序</el-button>
-        <el-button type="success" plain icon="Upload" v-hasPermi="['engineering:standardProcess:add']" @click="openImportDialog">导入</el-button>
+        <el-button
+          type="primary"
+          icon="Plus"
+          v-hasPermi="['engineering:standardProcess:add']"
+          @click="handleAdd"
+          >新增标准工序</el-button
+        >
+        <el-button
+          type="success"
+          plain
+          icon="Upload"
+          v-hasPermi="['engineering:standardProcess:add']"
+          @click="openImportDialog"
+          >导入</el-button
+        >
       </div>
     </el-card>
-
 
     <!-- 表格区域 -->
     <el-card class="table-card" shadow="never">
@@ -122,32 +134,19 @@
         <el-table-column prop="displayOrder" label="排序" width="60" align="center" />
         <el-table-column prop="isEnabled" label="启用状态" width="120" align="center">
           <template #default="scope">
-            <el-tag :type="scope.row.isEnabled === 1 ? 'success' : 'info'" size="small">
-              {{ scope.row.isEnabled === 1 ? '启用' : '禁用' }}
+            <el-tag :type="rowEnabled(scope.row) ? 'success' : 'info'" size="small">
+              {{ rowEnabled(scope.row) ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="createBy" label="创建人" width="100" />
         <el-table-column prop="createTime" label="创建时间" width="170" />
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="scope">
-            <el-button link type="primary" size="small" v-hasPermi="['engineering:standardProcess:edit']" @click="handleEdit(scope.row)">
-              编辑
-            </el-button>
-            <el-button
-              link
-              :type="scope.row.isEnabled === 1 ? 'warning' : 'success'"
-              size="small"
-              v-hasPermi="['engineering:standardProcess:edit']"
-              @click="handleToggleEnabled(scope.row)"
-            >
-              {{ scope.row.isEnabled === 1 ? '禁用' : '启用' }}
-            </el-button>
-            <el-button link type="danger" size="small" v-hasPermi="['engineering:standardProcess:edit']" @click="handleDelete(scope.row)">
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="processActions"
+          :min-width="220"
+          display="text"
+          @action="handleProcessAction"
+        />
       </el-table>
 
       <div class="pagination-container">
@@ -173,7 +172,6 @@
       @success="loadData"
     />
   </div>
-
 </template>
 
 <script setup lang="ts">
@@ -183,11 +181,15 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Edit, Delete, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 
 import { standardProcessApi } from '@/api/product/standardProcess'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { useDict } from '@/composables/useDict'
+import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 import type {
   StandardProcessQueryParams,
   StandardProcessItem,
@@ -224,6 +226,38 @@ const queryParams = reactive<StandardProcessQueryParams>({
 const tableData = ref<StandardProcessItem[]>([])
 const total = ref(0)
 const loading = ref(false)
+
+const rowEnabled = (row: StandardProcessItem) => row.isEnabled === CommonStatusEnum.NORMAL.value
+
+const processActions: TableAction<StandardProcessItem>[] = [
+  {
+    key: 'edit',
+    label: '编辑',
+    icon: Edit,
+    type: 'primary',
+    permission: 'engineering:standardProcess:edit',
+  },
+  {
+    key: 'toggle',
+    label: ({ row }) => (rowEnabled(row) ? '禁用' : '启用'),
+    icon: ({ row }: { row: StandardProcessItem }) => (rowEnabled(row) ? CircleClose : CircleCheck),
+    type: ({ row }) => (rowEnabled(row) ? 'warning' : 'success'),
+    permission: 'engineering:standardProcess:edit',
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    icon: Delete,
+    type: 'danger',
+    permission: 'engineering:standardProcess:edit',
+  },
+]
+
+const handleProcessAction = (key: string, row: StandardProcessItem) => {
+  if (key === 'edit') handleEdit(row)
+  if (key === 'toggle') void handleToggleEnabled(row)
+  if (key === 'delete') handleDelete(row)
+}
 
 // ==================== 数据加载 ====================
 const loadData = async () => {
@@ -287,7 +321,7 @@ const handleEdit = (row: StandardProcessItem) => {
 
 // ==================== 启用/禁用 ====================
 const handleToggleEnabled = async (row: StandardProcessItem) => {
-  const action = row.isEnabled === 1 ? '禁用' : '启用'
+  const action = rowEnabled(row) ? '禁用' : '启用'
   try {
     await ElMessageBox.confirm(`确定要${action}工序 "${row.processName}" 吗？`, '提示', {
       confirmButtonText: '确定',
@@ -295,7 +329,7 @@ const handleToggleEnabled = async (row: StandardProcessItem) => {
       type: 'warning',
     })
 
-    if (row.isEnabled === 1) {
+    if (rowEnabled(row)) {
       await standardProcessApi.disable(row.processId)
     } else {
       await standardProcessApi.enable(row.processId)
@@ -338,5 +372,4 @@ const importDialogVisible = ref(false)
 function openImportDialog() {
   importDialogVisible.value = true
 }
-
 </script>

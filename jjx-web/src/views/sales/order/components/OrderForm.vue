@@ -248,11 +248,11 @@
           <el-input v-model="scope.row.lineRemark" placeholder="行备注" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="80" align="center">
-        <template #default="scope">
+      <TableActionColumn width="80" align="center" :fixed="false">
+        <template #before="scope">
           <el-button link type="danger" icon="Delete" @click="removeItem(scope.$index)"></el-button>
         </template>
-      </el-table-column>
+      </TableActionColumn>
     </el-table>
 
     <el-row>

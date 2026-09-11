@@ -28,13 +28,7 @@
         </el-table-column>
         <el-table-column prop="receiverName" label="签收人" width="110" />
         <el-table-column prop="receiveTime" label="签收时间" width="170" />
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="showDetail(row)">详情</el-button>
-            <el-button v-if="row.deliveryStatus !== DeliveryStatusEnum.RECEIVED.value" link type="success" v-hasPermi="['sales:delivery:receive']" @click="openReceive(row)">签收</el-button>
-            <el-button link type="primary" @click="printDelivery(row)">打印</el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn :actions="deliveryActions" width="200" display="text" @action="handleDeliveryAction" />
       </el-table>
       <pagination v-show="total > 0" v-model:page="query.pageNum" v-model:limit="query.pageSize" :total="total" @pagination="load" />
     </el-card>
@@ -79,6 +73,18 @@ import { ElMessage } from 'element-plus'
 import { deliveryApi, type SalesDeliveryQueryDTO, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
 import { DeliveryStatusEnum } from '@/enums/sales/DeliveryEnum'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const deliveryActions: TableAction<SalesDeliveryVO>[] = [
+  { key: 'detail', label: '详情' },
+  { key: 'receive', label: '签收', type: 'success', permission: 'sales:delivery:receive', visible: ({ row }) => row.deliveryStatus !== DeliveryStatusEnum.RECEIVED.value },
+  { key: 'print', label: '打印' },
+]
+const handleDeliveryAction = (key: string, row: SalesDeliveryVO) => {
+  if (key === 'detail') void showDetail(row)
+  if (key === 'receive') openReceive(row)
+  if (key === 'print') printDelivery(row)
+}
 
 defineOptions({ name: 'SalesDelivery' })
 const router = useRouter()

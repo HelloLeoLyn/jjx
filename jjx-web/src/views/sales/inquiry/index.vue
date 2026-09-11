@@ -142,73 +142,15 @@
           </template>
         </el-table-column>
         <el-table-column label="销售负责人" align="center" prop="salesPersonName" width="120" />
-        <el-table-column
-          label="操作"
+        <TableActionColumn
+          :actions="inquiryActions"
           align="left"
           class-name="small-padding fixed-width"
           max-width="400"
           min-width="200"
-          fixed="right"
-        >
-          <template #default="scope">
-            <el-button link type="info" icon="Connection" @click="showTrace(scope.row)"
-              >查看流水</el-button
-            >
-            <el-button
-              link
-              type="primary"
-              icon="Edit"
-              v-hasPermi="['sales:inquiry:edit']"
-              @click="handleUpdate(scope.row)"
-              :disabled="scope.row.inquiryStatus === 3"
-              >编辑</el-button
-            >
-
-            <!-- 发送（草稿/待处理 → 已发送） -->
-            <!-- <el-button
-              v-if="[0, 1].includes(scope.row.inquiryStatus)"
-              link
-              type="warning"
-              icon="Promotion"
-              v-hasPermi="['sales:inquiry:edit']"
-              @click="handleSend(scope.row)"
-              >发送</el-button
-            > -->
-            <!-- 客户确认/拒绝（已发送） -->
-            <template v-if="scope.row.inquiryStatus === 2">
-              <el-button
-                link
-                type="success"
-                icon="CircleCheck"
-                v-hasPermi="['sales:inquiry:edit']"
-                @click="handleAccept(scope.row)"
-                >确认</el-button
-              >
-              <el-button
-                link
-                type="danger"
-                icon="CircleClose"
-                v-hasPermi="['sales:inquiry:edit']"
-                @click="handleReject(scope.row)"
-                >拒绝</el-button
-              >
-            </template>
-
-            <template v-if="scope.row.inquiryStatus !== InquiryStatusEnum.CONVERTED.value">
-              <el-button
-                link
-                type="primary"
-                icon="Right"
-                v-hasPermi="['sales:inquiry:convert']"
-                @click="handleConvert(scope.row)"
-                >转报价</el-button
-              >
-            </template>
-            <el-button link type="primary" icon="Printer" v-hasPermi="['sales:inquiry:view']" @click="handlePrint(scope.row)"
-              >打印</el-button
-            >
-          </template>
-        </el-table-column>
+          display="text"
+          @action="handleInquiryAction"
+        />
       </el-table>
 
       <pagination
@@ -466,6 +408,24 @@ import { InquiryStatusEnum } from '@/enums/sales'
 import { customerApi } from '@/api/sales/customer'
 import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const inquiryActions: TableAction<any>[] = [
+  { key: 'trace', label: '查看流水', type: 'info' },
+  { key: 'edit', label: '编辑', permission: 'sales:inquiry:edit', disabled: ({ row }) => row.inquiryStatus === InquiryStatusEnum.CONVERTED.value },
+  { key: 'accept', label: '确认', type: 'success', permission: 'sales:inquiry:edit', visible: ({ row }) => row.inquiryStatus === InquiryStatusEnum.SENT.value },
+  { key: 'reject', label: '拒绝', type: 'danger', permission: 'sales:inquiry:edit', visible: ({ row }) => row.inquiryStatus === InquiryStatusEnum.SENT.value },
+  { key: 'convert', label: '转报价', permission: 'sales:inquiry:convert', visible: ({ row }) => row.inquiryStatus !== InquiryStatusEnum.CONVERTED.value },
+  { key: 'print', label: '打印', permission: 'sales:inquiry:view' },
+]
+const handleInquiryAction = (key: string, row: any) => {
+  if (key === 'trace') showTrace(row)
+  if (key === 'edit') handleUpdate(row)
+  if (key === 'accept') void handleAccept(row)
+  if (key === 'reject') void handleReject(row)
+  if (key === 'convert') void handleConvert(row)
+  if (key === 'print') handlePrint(row)
+}
 
 defineOptions({
   name: 'SalesInquiry',

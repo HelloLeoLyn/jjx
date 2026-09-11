@@ -132,44 +132,14 @@
             <span>{{ parseTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column
-          label="操作"
+        <TableActionColumn
+          :actions="customerActions"
           align="center"
           class-name="small-padding fixed-width"
           width="200"
-        >
-          <template #default="scope">
-            <el-tooltip content="修改" placement="top">
-              <el-button
-                link
-                type="primary"
-                icon="Edit"
-                v-hasPermi="['sales:customer:edit']"
-                @click="handleUpdate(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="删除" placement="top">
-              <el-button
-                link
-                type="danger"
-                icon="Delete"
-                v-hasPermi="['sales:customer:delete']"
-                @click="handleDelete(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="状态变更" placement="top">
-              <el-button
-                link
-                type="warning"
-                icon="Refresh"
-                @click="handleChangeStatus(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="详情" placement="top">
-              <el-button link type="info" icon="View" @click="handleView(scope.row)"></el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+          display="text"
+          @action="handleCustomerAction"
+        />
       </el-table>
 
       <!-- 分页 -->
@@ -296,6 +266,20 @@ import type {
   CustomerItem,
   CustomerDetail,
 } from '@/types/sales/customer'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const customerActions: TableAction<CustomerItem>[] = [
+  { key: 'edit', label: '修改', permission: 'sales:customer:edit' },
+  { key: 'delete', label: '删除', type: 'danger', permission: 'sales:customer:delete' },
+  { key: 'status', label: '状态变更', type: 'warning' },
+  { key: 'detail', label: '详情', type: 'info' },
+]
+const handleCustomerAction = (key: string, row: CustomerItem) => {
+  if (key === 'edit') handleUpdate(row)
+  if (key === 'delete') handleDelete(row)
+  if (key === 'status') handleChangeStatus(row)
+  if (key === 'detail') handleView(row)
+}
 
 // 查询参数
 const queryParams = reactive<CustomerQueryParams>({

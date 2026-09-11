@@ -151,8 +151,8 @@
             <span>{{ formatCurrency(scope.row.amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="150" align="center">
-          <template #default="scope">
+        <TableActionColumn :min-width="150" align="center" :fixed="false">
+          <template #before="scope">
             <!-- 样品类型：编码生成（针对行内产品） -->
             <template v-if="formData.quotationType === 2">
               <el-tooltip content="生成/修改产品编码" placement="top">
@@ -176,7 +176,7 @@
               @click="removeItem(scope.$index)"
             />
           </template>
-        </el-table-column>
+        </TableActionColumn>
       </el-table>
 
       <el-row>

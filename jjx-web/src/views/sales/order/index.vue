@@ -184,174 +184,12 @@
             <span>{{ parseTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="360" fixed="right">
-          <template #default="{ row }">
-            <div class="operation-buttons">
-              <el-button link type="info" icon="Connection" @click="showTrace(row)"
-                >查看流水</el-button
-              >
-              <!-- <el-button
-                link
-                type="primary"
-                icon="Printer"
-                v-hasPermi="['sales:order:view']"
-                @click="handleReviewPrint(row)"
-              >
-                评审表打印
-              </el-button> -->
-              <!-- 草稿状态 (1) -->
-              <template v-if="row.orderStatus === 1">
-                <el-button
-                  type="primary"
-                  size="small"
-                  v-hasPermi="['sales:order:submit']"
-                  @click="handleSubmitReview(row)"
-                >
-                  提交审核
-                </el-button>
-              </template>
-
-              <!-- 待审核状态 (2) -->
-              <template v-else-if="row.orderStatus === 2">
-                <el-button
-                  type="primary"
-                  size="small"
-                  v-hasPermi="['sales:order:review']"
-                  @click="handleStartReview(row)"
-                >
-                  开始审核
-                </el-button>
-              </template>
-
-              <!-- 审核中状态 (3) -->
-              <template v-else-if="row.orderStatus === 3">
-                <el-button
-                  type="primary"
-                  size="small"
-                  v-hasPermi="['sales:order:approve']"
-                  @click="handleApprove(row)"
-                >
-                  审核通过
-                </el-button>
-                <el-button
-                  type="danger"
-                  size="small"
-                  v-hasPermi="['sales:order:approve']"
-                  @click="handleReject(row)"
-                >
-                  审核驳回
-                </el-button>
-              </template>
-
-              <!-- 已审核状态 (4) -->
-              <template v-else-if="row.orderStatus === 4">
-                <el-button type="primary" size="small" @click="handleGeneratePlan(row)">
-                  生成生产计划
-                </el-button>
-                <el-button
-                  type="info"
-                  size="small"
-                  v-hasPermi="['sales:order:view']"
-                  @click="handleConfirmPrint(row)"
-                >
-                  打印确认书
-                </el-button>
-              </template>
-
-              <!-- 已驳回状态 (5) -->
-              <template v-else-if="row.orderStatus === 5">
-                <el-button
-                  type="primary"
-                  size="small"
-                  v-hasPermi="['sales:order:submit']"
-                  @click="handleResubmit(row)"
-                >
-                  重新提交
-                </el-button>
-              </template>
-
-              <!-- 已确认状态 (6)：计划已生成，只保留齐套检查/打印确认书/确认凭证（2026-08-13） -->
-              <template v-else-if="row.orderStatus === 6">
-                <el-button
-                  type="info"
-                  size="small"
-                  plain
-                  v-hasPermi="['sales:order:edit']"
-                  @click="handleRecheckShortage(row)"
-                >
-                  齐套检查
-                </el-button>
-                <el-button
-                  type="info"
-                  size="small"
-                  plain
-                  v-hasPermi="['sales:order:view']"
-                  @click="openConfirmAttachment(row)"
-                >
-                  确认凭证
-                </el-button>
-              </template>
-
-              <!-- 生产中状态 (7) -->
-              <template v-else-if="row.orderStatus === 7">
-                <el-tag type="info" size="small">生产中</el-tag>
-                <el-button
-                  type="warning"
-                  size="small"
-                  v-hasPermi="['sales:order:edit']"
-                  @click="handleShip(row)"
-                >
-                  发货
-                </el-button>
-              </template>
-
-              <!-- 已发货状态 (8) -->
-              <template v-else-if="row.orderStatus === 8">
-                <el-button
-                  type="success"
-                  size="small"
-                  v-hasPermi="['sales:order:edit']"
-                  @click="handleCompleteOrder(row)"
-                >
-                  完成订单
-                </el-button>
-              </template>
-
-              <!-- 已完成状态 (9) -->
-              <template v-else-if="row.orderStatus === 9">
-                <el-button type="info" size="small" disabled> 订单已完成 </el-button>
-              </template>
-
-              <!-- 已取消状态 (10) -->
-              <template v-else-if="row.orderStatus === 10">
-                <el-button type="info" size="small" disabled> 订单已取消 </el-button>
-              </template>
-
-              <!-- 取消订单按钮（已发货/已完成/已取消不显示） -->
-              <el-button
-                v-if="row.orderStatus !== 8 && row.orderStatus !== 9 && row.orderStatus !== 10"
-                type="danger"
-                size="small"
-                v-hasPermi="['sales:order:edit']"
-                @click="handleCancelOrder(row)"
-              >
-                取消订单
-              </el-button>
-
-              <!-- 修改按钮（草稿和已驳回状态可修改） -->
-              <el-button
-                v-if="row.orderStatus === 1 || row.orderStatus === 5"
-                type="primary"
-                size="small"
-                plain
-                v-hasPermi="['sales:order:edit']"
-                @click="handleUpdate(row)"
-              >
-                修改
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="orderRowActions"
+          :min-width="360"
+          display="text"
+          @action="handleOrderRowAction"
+        />
       </el-table>
 
       <!-- 分页 -->
@@ -477,6 +315,38 @@ import ShortageCheckDialog from './components/ShortageCheckDialog.vue'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
 import type { SalesDeliveryCreateDTO } from '@/api/sales/delivery'
 import { SalesOrderStatusEnum, PaymentStatusEnum, ProdStatusEnum } from '@/enums/sales/OrderEnum'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const statusIs = (row: any, status: number) => row.orderStatus === status
+const orderRowActions: TableAction<any>[] = [
+  { key: 'trace', label: '查看流水', type: 'info' },
+  { key: 'submit', label: '提交审核', permission: 'sales:order:submit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.DRAFT.value) },
+  { key: 'startReview', label: '开始审核', permission: 'sales:order:review', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PENDING_REVIEW.value) },
+  { key: 'approve', label: '审核通过', type: 'success', permission: 'sales:order:approve', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value) },
+  { key: 'reject', label: '审核驳回', type: 'danger', permission: 'sales:order:approve', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value) },
+  { key: 'plan', label: '生成生产计划', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value) },
+  { key: 'print', label: '打印确认书', type: 'info', permission: 'sales:order:view', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value) },
+  { key: 'resubmit', label: '重新提交', permission: 'sales:order:submit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REJECTED.value) },
+  { key: 'shortage', label: '齐套检查', type: 'info', permission: 'sales:order:edit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value) },
+  { key: 'proof', label: '确认凭证', type: 'info', permission: 'sales:order:view', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value) },
+  { key: 'producing', label: '生产中', type: 'info', disabled: true, visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value) },
+  { key: 'ship', label: '发货', type: 'warning', permission: 'sales:order:edit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value) },
+  { key: 'complete', label: '完成订单', type: 'success', permission: 'sales:order:edit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.SHIPPED.value) },
+  { key: 'completed', label: '订单已完成', type: 'info', disabled: true, visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.COMPLETED.value) },
+  { key: 'cancelled', label: '订单已取消', type: 'info', disabled: true, visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CANCELLED.value) },
+  { key: 'cancel', label: '取消订单', type: 'danger', permission: 'sales:order:edit', visible: ({ row }) => ![SalesOrderStatusEnum.SHIPPED.value, SalesOrderStatusEnum.COMPLETED.value, SalesOrderStatusEnum.CANCELLED.value].includes(row.orderStatus) },
+  { key: 'edit', label: '修改', permission: 'sales:order:edit', visible: ({ row }) => [SalesOrderStatusEnum.DRAFT.value, SalesOrderStatusEnum.REJECTED.value].includes(row.orderStatus) },
+]
+const handleOrderRowAction = (key: string, row: any) => {
+  const handlers: Record<string, () => void> = {
+    trace: () => showTrace(row), submit: () => void handleSubmitReview(row), startReview: () => void handleStartReview(row),
+    approve: () => handleApprove(row), reject: () => handleReject(row), plan: () => handleGeneratePlan(row),
+    print: () => handleConfirmPrint(row), resubmit: () => void handleResubmit(row), shortage: () => handleRecheckShortage(row),
+    proof: () => openConfirmAttachment(row), ship: () => void handleShip(row), complete: () => void handleCompleteOrder(row),
+    cancel: () => void handleCancelOrder(row), edit: () => handleUpdate(row),
+  }
+  handlers[key]?.()
+}
 
 // 查询参数
 const queryParams = reactive<SalesOrderQueryDTO>({

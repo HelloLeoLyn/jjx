@@ -115,138 +115,15 @@
               <span>{{ parseTime(row.createTime) }}</span>
             </template>
           </el-table-column>
-          <el-table-column
-            label="操作"
+          <TableActionColumn
+            :actions="rowActions"
             align="left"
             class-name="small-padding fixed-width"
-            min-width="250"
-          >
-            <template #default="{ row }">
-              <el-tooltip content="查看流水" placement="top">
-                <el-button link type="info" icon="Connection" @click="showTrace(row)" />
-              </el-tooltip>
-              <el-tooltip content="修改" placement="top" v-if="canEdit(row)">
-                <el-button link type="primary" icon="Edit" @click="handleUpdate(row)" />
-              </el-tooltip>
-              <el-tooltip content="删除" placement="top" v-if="canDelete(row)">
-                <el-button link type="danger" icon="Delete" @click="handleDelete(row)" />
-              </el-tooltip>
-              <el-tooltip
-                content="发送报价"
-                placement="top"
-                v-if="row.quotationStatus === QuotationStatusEnum.APPROVED.value"
-              >
-                <el-button
-                  link
-                  type="warning"
-                  icon="Promotion"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="handleSend(row)"
-                />
-              </el-tooltip>
-              <el-tooltip content="重新报价" placement="top" v-if="canReQuote(row)">
-                <el-button
-                  link
-                  type="warning"
-                  icon="RefreshLeft"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="handleReQuote(row)"
-                />
-              </el-tooltip>
-              <el-tooltip content="转为订单" placement="top" v-if="canConvert(row)">
-                <el-button
-                  link
-                  type="success"
-                  icon="Switch"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="handleConvert(row)"
-                />
-              </el-tooltip>
-              <el-tooltip content="转为样品单" placement="top" v-if="canConvertToSample(row)">
-                <el-button
-                  link
-                  type="warning"
-                  icon="Collection"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="handleConvertToSample(row)"
-                />
-              </el-tooltip>
-              <el-tooltip
-                content="改单"
-                placement="top"
-                v-if="row.quotationStatus === QuotationStatusEnum.COMPLETED.value"
-              >
-                <el-button
-                  link
-                  type="warning"
-                  icon="EditPen"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="handleModify(row)"
-                />
-              </el-tooltip>
-              <el-tooltip content="提交审核" placement="top" v-if="canSubmitReview(row)">
-                <el-button
-                  link
-                  type="primary"
-                  icon="Upload"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="handleSubmitReview(row)"
-                />
-              </el-tooltip>
-              <el-tooltip
-                content="客户确认"
-                placement="top"
-                v-if="row.quotationStatus === QuotationStatusEnum.SENT.value"
-              >
-                <el-button
-                  link
-                  type="success"
-                  icon="CircleCheck"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="() => handleCustomerConfirm(true, row)"
-                />
-              </el-tooltip>
-              <el-tooltip
-                content="客户拒绝"
-                placement="top"
-                v-if="row.quotationStatus === QuotationStatusEnum.SENT.value"
-              >
-                <el-button
-                  link
-                  type="danger"
-                  icon="CircleClose"
-                  v-hasPermi="['sales:quotation:edit']"
-                  @click="() => handleCustomerConfirm(false, row)"
-                />
-              </el-tooltip>
-              <el-tooltip
-                content="审核通过"
-                placement="top"
-                v-if="row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value"
-              >
-                <el-button
-                  link
-                  type="success"
-                  icon="CircleCheck"
-                  v-hasPermi="['sales:quotation:approve']"
-                  @click="() => handleReview(true, row)"
-                />
-              </el-tooltip>
-              <el-tooltip
-                content="审核驳回"
-                placement="top"
-                v-if="row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value"
-              >
-                <el-button
-                  link
-                  type="danger"
-                  icon="CircleClose"
-                  v-hasPermi="['sales:quotation:approve']"
-                  @click="() => handleReview(false, row)"
-                />
-              </el-tooltip>
-            </template>
-          </el-table-column>
+            :min-width="250"
+            :max-visible="3"
+            display="text"
+            @action="handleRowAction"
+          />
         </el-table>
 
         <pagination
@@ -344,6 +221,19 @@ defineOptions({
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
+import {
+  CircleCheck,
+  CircleClose,
+  Collection,
+  Connection,
+  Delete,
+  Edit,
+  EditPen,
+  Promotion,
+  RefreshLeft,
+  Switch,
+  Upload,
+} from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 import { useTable } from '@/composables/useTable'
 import { quotationApi } from '@/api/sales/quotation'
@@ -364,6 +254,7 @@ import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vu
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 const route = useRoute()
 const router = useRouter()
 // ============================================================
@@ -523,6 +414,116 @@ const canSubmitReview = (row: any) => {
   return [QuotationStatusEnum.DRAFT.value, QuotationStatusEnum.MODIFYING.value].includes(
     row.quotationStatus
   )
+}
+
+const rowActions: TableAction<any>[] = [
+  { key: 'trace', label: '查看流水', icon: Connection, type: 'info' },
+  { key: 'edit', label: '修改', icon: Edit, visible: ({ row }) => canEdit(row) },
+  {
+    key: 'delete',
+    label: '删除',
+    icon: Delete,
+    type: 'danger',
+    visible: ({ row }) => canDelete(row),
+  },
+  {
+    key: 'send',
+    label: '发送报价',
+    icon: Promotion,
+    type: 'warning',
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => row.quotationStatus === QuotationStatusEnum.APPROVED.value,
+  },
+  {
+    key: 'reQuote',
+    label: '重新报价',
+    icon: RefreshLeft,
+    type: 'warning',
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => canReQuote(row),
+  },
+  {
+    key: 'convert',
+    label: '转为订单',
+    icon: Switch,
+    type: 'success',
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => canConvert(row),
+  },
+  {
+    key: 'convertToSample',
+    label: '转为样品单',
+    icon: Collection,
+    type: 'warning',
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => canConvertToSample(row),
+  },
+  {
+    key: 'modify',
+    label: '改单',
+    icon: EditPen,
+    type: 'warning',
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => row.quotationStatus === QuotationStatusEnum.COMPLETED.value,
+  },
+  {
+    key: 'submitReview',
+    label: '提交审核',
+    icon: Upload,
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => canSubmitReview(row),
+  },
+  {
+    key: 'customerConfirm',
+    label: '客户确认',
+    icon: CircleCheck,
+    type: 'success',
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => row.quotationStatus === QuotationStatusEnum.SENT.value,
+  },
+  {
+    key: 'customerReject',
+    label: '客户拒绝',
+    icon: CircleClose,
+    type: 'danger',
+    permission: 'sales:quotation:edit',
+    visible: ({ row }) => row.quotationStatus === QuotationStatusEnum.SENT.value,
+  },
+  {
+    key: 'approve',
+    label: '审核通过',
+    icon: CircleCheck,
+    type: 'success',
+    permission: 'sales:quotation:approve',
+    visible: ({ row }) => row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value,
+  },
+  {
+    key: 'reject',
+    label: '审核驳回',
+    icon: CircleClose,
+    type: 'danger',
+    permission: 'sales:quotation:approve',
+    visible: ({ row }) => row.quotationStatus === QuotationStatusEnum.PENDING_REVIEW.value,
+  },
+]
+
+const handleRowAction = (key: string, row: any) => {
+  const handlers: Record<string, () => void> = {
+    trace: () => showTrace(row),
+    edit: () => handleUpdate(row),
+    delete: () => handleDelete(row),
+    send: () => handleSend(row),
+    reQuote: () => void handleReQuote(row),
+    convert: () => void handleConvert(row),
+    convertToSample: () => void handleConvertToSample(row),
+    modify: () => void handleModify(row),
+    submitReview: () => handleSubmitReview(row),
+    customerConfirm: () => void handleCustomerConfirm(true, row),
+    customerReject: () => void handleCustomerConfirm(false, row),
+    approve: () => void handleReview(true, row),
+    reject: () => void handleReview(false, row),
+  }
+  handlers[key]?.()
 }
 
 // ============================================================

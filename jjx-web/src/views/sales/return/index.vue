@@ -36,14 +36,7 @@
           <template #default="{ row }"><el-tag :type="SalesReturnStatusEnum.getTagProps(row.returnStatus).type">{{ SalesReturnStatusEnum.getLabel(row.returnStatus) }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="approveTime" label="审核时间" width="150" />
-        <el-table-column label="操作" width="270" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="detail(row)">详情</el-button>
-            <el-button v-if="row.returnStatus === SalesReturnStatusEnum.APPLYING.value" v-hasPermi="['sales:return:approve']" link type="success" @click="openApprove(row)">审核</el-button>
-            <el-button v-if="row.returnStatus === SalesReturnStatusEnum.APPROVED.value" v-hasPermi="['sales:return:edit']" link type="warning" @click="openReceive(row)">收货</el-button>
-            <el-button v-if="row.returnStatus === SalesReturnStatusEnum.RECEIVED.value" v-hasPermi="['sales:return:edit']" link type="danger" @click="openRefund(row)">退款</el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn :actions="returnActions" width="270" display="text" @action="handleReturnAction" />
       </el-table>
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @change="load" />
     </el-card>
@@ -160,6 +153,20 @@ import { ElMessage } from 'element-plus'
 import { pageSalesReturn, getSalesReturn, createSalesReturn, approveSalesReturn, rejectSalesReturn, receiveSalesReturn, refundSalesReturn, getSalesReturnItems } from '@/api/sales/return'
 import { orderApi } from '@/api/sales/order'
 import { SalesReturnStatusEnum, SalesReturnTypeEnum } from '@/enums/sales'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const returnActions: TableAction<any>[] = [
+  { key: 'detail', label: '详情' },
+  { key: 'approve', label: '审核', type: 'success', permission: 'sales:return:approve', visible: ({ row }) => row.returnStatus === SalesReturnStatusEnum.APPLYING.value },
+  { key: 'receive', label: '收货', type: 'warning', permission: 'sales:return:edit', visible: ({ row }) => row.returnStatus === SalesReturnStatusEnum.APPROVED.value },
+  { key: 'refund', label: '退款', type: 'danger', permission: 'sales:return:edit', visible: ({ row }) => row.returnStatus === SalesReturnStatusEnum.RECEIVED.value },
+]
+const handleReturnAction = (key: string, row: any) => {
+  if (key === 'detail') void detail(row)
+  if (key === 'approve') openApprove(row)
+  if (key === 'receive') openReceive(row)
+  if (key === 'refund') openRefund(row)
+}
 
 defineOptions({ name: 'SalesReturn' })
 

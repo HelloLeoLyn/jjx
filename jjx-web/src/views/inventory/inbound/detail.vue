@@ -9,14 +9,23 @@
           </div>
           <div class="header-actions">
             <el-button @click="handleBack">返回</el-button>
-            <el-button v-if="inboundData.status === 0" type="primary" @click="handleEdit">
+            <el-button
+              v-if="inboundData.status === InboundOrderStatusEnum.DRAFT.value"
+              type="primary"
+              @click="handleEdit"
+            >
               编辑
             </el-button>
-            <el-button v-if="inboundData.status === 0" type="success" v-hasPermi="['inventory:inbound:edit']" @click="handleSubmit">
+            <el-button
+              v-if="inboundData.status === InboundOrderStatusEnum.DRAFT.value"
+              type="success"
+              v-hasPermi="['inventory:inbound:edit']"
+              @click="handleSubmit"
+            >
               提交审批
             </el-button>
             <el-button
-              v-if="inboundData.status === 1"
+              v-if="inboundData.status === InboundOrderStatusEnum.PENDING.value"
               type="success"
               v-hasPermi="['inventory:inbound:approve']"
               @click="handleApprove"
@@ -24,7 +33,7 @@
               审批通过
             </el-button>
             <el-button
-              v-if="[0, 1, 2].includes(inboundData.status)"
+              v-if="confirmableStatuses.has(inboundData.status)"
               type="warning"
               v-hasPermi="['inventory:inbound:confirm']"
               @click="handleConfirm"
@@ -32,7 +41,10 @@
               确认入库
             </el-button>
             <el-button
-              v-if="inboundData.status === 0 || inboundData.status === 1"
+              v-if="
+                inboundData.status === InboundOrderStatusEnum.DRAFT.value ||
+                inboundData.status === InboundOrderStatusEnum.PENDING.value
+              "
               type="danger"
               v-hasPermi="['inventory:inbound:edit']"
               @click="handleCancel"
@@ -189,12 +201,18 @@ import { getTransactionsByDocNo } from '@/api/inventory/transaction'
 import type { TransactionVO } from '@/api/inventory/transaction'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
-import { InboundEnum } from '@/enums/inventory'
+import { InboundEnum, InboundOrderStatusEnum } from '@/enums/inventory'
 import { useUserStore } from '@/store/modules/user'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+
+const confirmableStatuses = new Set<number>([
+  InboundOrderStatusEnum.DRAFT.value,
+  InboundOrderStatusEnum.PENDING.value,
+  InboundOrderStatusEnum.APPROVED.value,
+])
 
 const inboundId = ref<string>('')
 const inboundData = ref<InboundVO>({
@@ -211,7 +229,7 @@ const inboundData = ref<InboundVO>({
   sourceNo: '',
   totalQuantity: 0,
   totalAmount: 0,
-  status: 0,
+  status: InboundOrderStatusEnum.DRAFT.value,
   statusName: '',
   remark: '',
   createBy: '',

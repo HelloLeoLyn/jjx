@@ -72,13 +72,12 @@
   </el-table-column>
 
   <!-- ===== 操作列 ===== -->
-  <el-table-column
-    label="操作"
+  <TableActionColumn
     align="center"
     class-name="small-padding fixed-width"
     min-width="250"
   >
-    <template #default="{ row }">
+    <template #before="{ row }">
       <SkeletonAction>
         <el-tooltip content="修改" placement="top" v-if="canEdit(row)">
           <el-button link type="primary" icon="Edit" @click="emit('update', row)" />
@@ -205,7 +204,7 @@
         </el-tooltip>
       </SkeletonAction>
     </template>
-  </el-table-column>
+  </TableActionColumn>
 </template>
 
 <script setup lang="ts">

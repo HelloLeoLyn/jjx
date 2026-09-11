@@ -93,134 +93,7 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="400" fixed="right">
-          <template #default="scope">
-            <el-button link type="primary" size="small" @click="showDetail(scope.row)"
-              >详情</el-button
-            >
-            <el-button link type="info" size="small" @click="handlePrint(scope.row)"
-              >打印</el-button
-            >
-
-            <!-- 查看流水 -->
-            <el-button link type="info" size="small" @click="showTrace(scope.row)"
-              >查看流水</el-button
-            >
-
-            <!-- 复制（DEV-1114）：仅终态单（已转量产/已关闭/已取消）可复制，一键生成新草稿单 -->
-            <el-button
-              v-hasPermi="['sales:sample:add']"
-              v-if="canCopy(scope.row)"
-              link
-              type="warning"
-              size="small"
-              @click="handleCopySample(scope.row)"
-              >复制</el-button
-            >
-
-            <!-- 工程接单（预览器）：接单后到工程管理-打样平台操作 -->
-            <el-button
-              v-hasPermi="['sales:sample:engineering']"
-              v-if="canAcceptEngineering(scope.row)"
-              link
-              type="warning"
-              size="small"
-              @click="handleAcceptSample(scope.row)"
-              >🔧 工程接单</el-button
-            >
-            <el-button
-              v-hasPermi="['sales:sample:engineering']"
-              v-if="canGoWorkbench(scope.row)"
-              link
-              type="success"
-              size="small"
-              @click="goWorkbench"
-              >✅ 已接单</el-button
-            >
-
-            <!-- 作废：非终态（草稿/待打样/打样中/待送样/已送样/已确认）可作废 -->
-            <el-button
-              v-hasPermi="['sales:sample:edit']"
-              v-if="canCancel(scope.row)"
-              link
-              type="danger"
-              size="small"
-              @click="handleCancel(scope.row)"
-              >作废</el-button
-            >
-
-            <template v-if="isCreated(scope.row)">
-              <el-button
-                v-hasPermi="['sales:sample:edit']"
-                link
-                type="primary"
-                size="small"
-                @click="handleEdit(scope.row)"
-                >编辑</el-button
-              >
-              <el-button
-                v-hasPermi="['sales:sample:edit']"
-                link
-                type="primary"
-                size="small"
-                @click="handleSubmitRequest(scope.row)"
-                >申请打样</el-button
-              >
-            </template>
-
-            <template v-else-if="canSendSample(scope.row)">
-              <el-button
-                v-hasPermi="['sales:sample:deliver']"
-                link
-                type="primary"
-                size="small"
-                @click="handleSendSample(scope.row)"
-                >送样登记</el-button
-              >
-            </template>
-            <template v-else-if="canConfirmSample(scope.row)">
-              <el-button
-                v-hasPermi="['sales:sample:confirm']"
-                link
-                type="success"
-                size="small"
-                @click="handleConfirm(scope.row)"
-                >客户确认OK</el-button
-              >
-              <el-button
-                v-hasPermi="['sales:sample:confirm']"
-                link
-                type="warning"
-                size="small"
-                @click="handleRejectSample(scope.row)"
-                >退回修改</el-button
-              >
-            </template>
-            <template v-else-if="canConvert(scope.row)">
-              <el-button
-                v-hasPermi="['sales:sample:convert']"
-                link
-                type="primary"
-                size="small"
-                @click="handleConvert(scope.row)"
-                >转量产</el-button
-              >
-            </template>
-            <template v-else-if="isTransferred(scope.row)">
-              <el-tag size="small" type="success">已转量产</el-tag>
-            </template>
-            <template v-else-if="canRestart(scope.row)">
-              <el-button
-                v-hasPermi="['sales:sample:engineering']"
-                link
-                type="warning"
-                size="small"
-                @click="handleRestart(scope.row)"
-                >重新打样</el-button
-              >
-            </template>
-          </template>
-        </el-table-column>
+        <TableActionColumn :actions="sampleActions" width="400" display="text" @action="handleSampleAction" />
       </el-table>
     </el-card>
 
@@ -322,11 +195,11 @@
                 <el-input v-model="scope.row.unit" size="small" placeholder="PCS" />
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="55" align="center">
-              <template #default="scope">
+            <TableActionColumn width="55" align="center" :fixed="false">
+              <template #before="scope">
                 <el-button link type="danger" @click="removeItem(scope.$index)">删</el-button>
               </template>
-            </el-table-column>
+            </TableActionColumn>
           </el-table>
           <el-button
             size="small"
@@ -557,6 +430,7 @@ import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vu
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationDetailDialog.vue'
 import SampleReviewPreview from './components/SampleReviewPreview.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'SalesSampleOrder' })
 
@@ -1171,6 +1045,34 @@ function canCopy(row: any): boolean {
     SampleOrderStatusEnum.CLOSED.value,
     SampleOrderStatusEnum.CANCELLED.value,
   ].includes(row?.sampleStatus)
+}
+
+const sampleActions: TableAction<any>[] = [
+  { key: 'detail', label: '详情' },
+  { key: 'print', label: '打印', type: 'info' },
+  { key: 'trace', label: '查看流水', type: 'info' },
+  { key: 'copy', label: '复制', type: 'warning', permission: 'sales:sample:add', visible: ({ row }) => canCopy(row) },
+  { key: 'accept', label: '工程接单', type: 'warning', permission: 'sales:sample:engineering', visible: ({ row }) => canAcceptEngineering(row) },
+  { key: 'workbench', label: '已接单', type: 'success', permission: 'sales:sample:engineering', visible: ({ row }) => canGoWorkbench(row) },
+  { key: 'cancel', label: '作废', type: 'danger', permission: 'sales:sample:edit', visible: ({ row }) => canCancel(row) },
+  { key: 'edit', label: '编辑', permission: 'sales:sample:edit', visible: ({ row }) => isCreated(row) },
+  { key: 'request', label: '申请打样', permission: 'sales:sample:edit', visible: ({ row }) => isCreated(row) },
+  { key: 'send', label: '送样登记', permission: 'sales:sample:deliver', visible: ({ row }) => canSendSample(row) },
+  { key: 'confirm', label: '客户确认OK', type: 'success', permission: 'sales:sample:confirm', visible: ({ row }) => canConfirmSample(row) },
+  { key: 'reject', label: '退回修改', type: 'warning', permission: 'sales:sample:confirm', visible: ({ row }) => canConfirmSample(row) },
+  { key: 'convert', label: '转量产', permission: 'sales:sample:convert', visible: ({ row }) => canConvert(row) },
+  { key: 'transferred', label: '已转量产', type: 'success', disabled: true, visible: ({ row }) => isTransferred(row) },
+  { key: 'restart', label: '重新打样', type: 'warning', permission: 'sales:sample:engineering', visible: ({ row }) => canRestart(row) },
+]
+const handleSampleAction = (key: string, row: any) => {
+  const handlers: Record<string, () => void> = {
+    detail: () => void showDetail(row), print: () => handlePrint(row), trace: () => showTrace(row),
+    copy: () => void handleCopySample(row), accept: () => void handleAcceptSample(row), workbench: goWorkbench,
+    cancel: () => void handleCancel(row), edit: () => void handleEdit(row), request: () => void handleSubmitRequest(row),
+    send: () => void handleSendSample(row), confirm: () => void handleConfirm(row), reject: () => void handleRejectSample(row),
+    convert: () => void handleConvert(row), restart: () => void handleRestart(row),
+  }
+  handlers[key]?.()
 }
 
 // 操作预览器状态

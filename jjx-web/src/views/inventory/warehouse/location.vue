@@ -158,12 +158,12 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" v-hasPermi="['inventory:warehouse:edit']" @click="handleEdit(row)">编辑</el-button>
-            <el-button link type="danger" v-hasPermi="['inventory:warehouse:delete']" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="locationActions"
+          :min-width="150"
+          display="text"
+          @action="handleLocationAction"
+        />
       </el-table>
 
       <pagination
@@ -276,9 +276,14 @@ import { Plus, Edit, Delete, Upload, Download } from '@element-plus/icons-vue'
 import { warehouseApi } from '@/api/inventory/warehouse'
 import { locationApi } from '@/api/inventory/location'
 import { formatNumber } from '@/utils/format'
-import type { InventoryStorageLocationQueryParams } from '@/types/inventory/location'
+import type {
+  InventoryStorageLocation,
+  InventoryStorageLocationQueryParams,
+} from '@/types/inventory/location'
 import { LocationEnum } from '@/enums/inventory'
 import LocationImportDialog from '@/components/inventory/LocationImportDialog.vue'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 const route = useRoute()
 const router = useRouter()
 
@@ -305,6 +310,28 @@ const dialogVisible = ref(false)
 const importDialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
+
+const locationActions: TableAction<InventoryStorageLocation>[] = [
+  {
+    key: 'edit',
+    label: '编辑',
+    icon: Edit,
+    type: 'primary',
+    permission: 'inventory:warehouse:edit',
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    icon: Delete,
+    type: 'danger',
+    permission: 'inventory:warehouse:delete',
+  },
+]
+
+const handleLocationAction = (key: string, row: InventoryStorageLocation) => {
+  if (key === 'edit') handleEdit(row)
+  if (key === 'delete') handleDelete(row)
+}
 
 // 当前选中的仓库
 const currentWarehouseId = ref<number | null>(1)

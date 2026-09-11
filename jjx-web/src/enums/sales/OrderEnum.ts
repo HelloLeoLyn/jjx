@@ -1,25 +1,25 @@
 // src/enums/sales/OrderEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 销售订单状态枚举
  * 对应后端 SalesOrderStatusEnum
  */
-export const SalesOrderStatusEnum = createEnum<number>({
-  items: [
-    { value: 1, label: '草稿', tagProps: { type: 'info' } },
-    { value: 2, label: '待审核', tagProps: { type: 'warning' } },
-    { value: 3, label: '审核中', tagProps: { type: 'warning' } },
-    { value: 4, label: '已审核', tagProps: { type: 'primary' } },
-    { value: 5, label: '已驳回', tagProps: { type: 'danger' } },
-    { value: 6, label: '已确认', tagProps: { type: 'success' } },
-    { value: 7, label: '生产中', tagProps: { type: 'warning' } },
-    { value: 8, label: '已发货', tagProps: { type: 'success' } },
-    { value: 9, label: '已完成', tagProps: { type: 'success' } },
-    { value: 10, label: '已取消', tagProps: { type: 'danger' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const SalesOrderStatusEnum = createNamedEnum(
+  {
+    DRAFT: { value: 1, label: '草稿', tagProps: { type: 'info' } },
+    PENDING_REVIEW: { value: 2, label: '待审核', tagProps: { type: 'warning' } },
+    REVIEWING: { value: 3, label: '审核中', tagProps: { type: 'warning' } },
+    REVIEWED: { value: 4, label: '已审核', tagProps: { type: 'primary' } },
+    REJECTED: { value: 5, label: '已驳回', tagProps: { type: 'danger' } },
+    CONFIRMED: { value: 6, label: '已确认', tagProps: { type: 'success' } },
+    PRODUCING: { value: 7, label: '生产中', tagProps: { type: 'warning' } },
+    SHIPPED: { value: 8, label: '已发货', tagProps: { type: 'success' } },
+    COMPLETED: { value: 9, label: '已完成', tagProps: { type: 'success' } },
+    CANCELLED: { value: 10, label: '已取消', tagProps: { type: 'danger' } },
+  },
+  { type: 'info' },
+)
 /**
  * 订单类型枚举
  * 对应后端 SalesOrderTypeEnum

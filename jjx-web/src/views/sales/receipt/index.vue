@@ -19,7 +19,7 @@
         <el-table-column label="实收" width="120" align="right"><template #default="{ row }">{{ money(row.actualAmount) }}</template></el-table-column>
         <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="SalesFinanceDocumentStatusEnum.getTagProps(row.status).type">{{ SalesFinanceDocumentStatusEnum.getLabel(row.status) }}</el-tag></template></el-table-column>
         <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
-        <el-table-column label="操作" width="150" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="print(row.receiptId)">打印</el-button><el-button link @click="detail(row.receiptId)">详情</el-button></template></el-table-column>
+        <TableActionColumn :actions="receiptActions" width="150" display="text" @action="handleReceiptAction" />
       </el-table>
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @change="load" />
     </el-card>
@@ -64,6 +64,17 @@ import { salesReceiptApi, type SalesReceipt } from '@/api/sales/receipt'
 import { orderApi } from '@/api/sales/order'
 import type { SalesOrderVO } from '@/types/sales/order'
 import { ReceiptTypeEnum, SalesFinanceDocumentStatusEnum, SalesReceiptPaymentMethodEnum } from '@/enums/sales'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const receiptActions: TableAction<SalesReceipt>[] = [
+  { key: 'print', label: '打印', type: 'primary' },
+  { key: 'detail', label: '详情' },
+]
+
+const handleReceiptAction = (key: string, row: SalesReceipt) => {
+  if (key === 'print') print(row.receiptId)
+  if (key === 'detail') void detail(row.receiptId)
+}
 
 type CreateReceiptForm = {
   orderId?: number

@@ -104,34 +104,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column
-          label="操作"
+        <TableActionColumn
+          :actions="trackingActions"
           align="center"
           class-name="small-padding fixed-width"
           width="200"
-        >
-          <template #default="scope">
-            <el-tooltip content="跟踪详情" placement="top">
-              <el-button link type="primary" icon="View" @click="handleView(scope.row)"></el-button>
-            </el-tooltip>
-            <el-tooltip content="生产进度" placement="top">
-              <el-button
-                link
-                type="success"
-                icon="Operation"
-                @click="handleProductionProgress(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="发货跟踪" placement="top">
-              <el-button
-                link
-                type="warning"
-                icon="Truck"
-                @click="handleDeliveryTracking(scope.row)"
-              ></el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+          display="text"
+          @action="handleTrackingAction"
+        />
       </el-table>
 
       <!-- 分页 -->
@@ -327,6 +307,18 @@ import { orderApi } from '@/api/sales/order'
 import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { getProductionOrderList } from '@/api/production/order'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const trackingActions: TableAction<any>[] = [
+  { key: 'detail', label: '跟踪详情' },
+  { key: 'production', label: '生产进度', type: 'success' },
+  { key: 'delivery', label: '发货跟踪', type: 'warning' },
+]
+const handleTrackingAction = (key: string, row: any) => {
+  if (key === 'detail') handleView(row)
+  if (key === 'production') handleProductionProgress(row)
+  if (key === 'delivery') handleDeliveryTracking(row)
+}
 
 const router = useRouter()
 
