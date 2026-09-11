@@ -4,7 +4,7 @@
     <el-divider content-position="left">基本信息</el-divider>
 
     <el-row :gutter="20">
-      <el-col :span="12">
+      <!-- <el-col :span="12">
         <el-form-item label="产品分类" prop="categoryId" required>
           <el-cascader
             v-model="formData.categoryId"
@@ -22,6 +22,21 @@
             </template>
           </el-cascader>
           <div class="form-tip">支持分类编码/名称搜索，选择后自动生成产品编码</div>
+        </el-form-item>
+      </el-col> -->
+      <el-col :span="12">
+        <el-form-item label="客户" prop="codeCustomerId" required>
+          <CustomerSelector
+            :model-value="formData.codeCustomerId ?? null"
+            value-type="customerId"
+            placeholder="请选择客户"
+            @update:model-value="
+              (val: any) => {
+                formData.codeCustomerId = val ?? undefined
+              }
+            "
+            @change="handleCustomerChange"
+          />
         </el-form-item>
       </el-col>
       <el-col :span="12">
@@ -41,25 +56,8 @@
       </el-col>
     </el-row>
 
-
     <!-- 编码构成要素（客户选择 + 公共编码生成组件 2026-08-12） -->
-    <el-row :gutter="20">
-      <el-col :span="12">
-        <el-form-item label="客户" prop="codeCustomerId" required>
-          <CustomerSelector
-            :model-value="formData.codeCustomerId ?? null"
-            value-type="customerId"
-            placeholder="请选择客户"
-            @update:model-value="
-              (val: any) => {
-                formData.codeCustomerId = val ?? undefined
-              }
-            "
-            @change="handleCustomerChange"
-          />
-        </el-form-item>
-      </el-col>
-    </el-row>
+    <el-row :gutter="20"> </el-row>
     <ProductCodeGenerator
       ref="codeGenRef"
       :customer-short="selectedCustomerShortName"
@@ -73,7 +71,7 @@
 
     <!-- 产品编码（组件生成后自动填入，只读展示） -->
     <el-row :gutter="20">
-      <el-col :span="24">
+      <el-col :span="12">
         <el-form-item label="产品编码" prop="productCode" required>
           <el-input
             v-model="formData.productCode"
@@ -81,33 +79,16 @@
             readonly
           />
           <div class="form-tip" :class="{ 'is-error': codeError }">
-            {{ codeError || '编码格式：客户简称(1-3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)' }}
+            {{
+              codeError || '编码格式：客户简称(1-3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)'
+            }}
           </div>
         </el-form-item>
       </el-col>
-    </el-row>
-    <el-row :gutter="20">
+
       <el-col :span="12">
         <el-form-item label="产品名称" prop="productName" required>
           <el-input v-model="formData.productName" placeholder="请输入产品名称" />
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
-        <el-form-item label="单位" prop="unit">
-          <el-select
-            v-model="formData.unit"
-            placeholder="请选择单位"
-            filterable
-            allow-create
-            style="width: 100%"
-          >
-            <el-option
-              v-for="item in unitList"
-              :key="item.code"
-              :label="`${item.name} (${item.code})`"
-              :value="item.code"
-            />
-          </el-select>
         </el-form-item>
       </el-col>
     </el-row>
@@ -268,7 +249,13 @@ const formData = reactive<Partial<ProductFormData>>({
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 const codeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
-const codeState = ref<ProductCodeState>({ serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' })
+const codeState = ref<ProductCodeState>({
+  serialNo: '',
+  panelType: '',
+  panelFeature: '',
+  circuitType: '',
+  circuitFeature: '',
+})
 const codeParams = ref<ProductCodeResult | null>(null)
 
 // 编码生成回调：同步流水号/产品编码/错误提示
@@ -303,6 +290,7 @@ const rules = {
   ],
   productName: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
   codeCustomerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
+  productType: [{ required: true, message: '请选择产品类型', trigger: 'change' }],
   codeSerialNo: [{ required: true, message: '请选择客户后自动生成流水号', trigger: 'change' }],
 }
 
@@ -338,7 +326,13 @@ const handleCustomerChange = async (
     formData.customerName = ''
     selectedCustomer.value = null
     selectedCustomerShortName.value = ''
-    codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+    codeState.value = {
+      serialNo: '',
+      panelType: '',
+      panelFeature: '',
+      circuitType: '',
+      circuitFeature: '',
+    }
     return
   }
 
@@ -372,7 +366,13 @@ const loadCategoryTree = async () => {
 // 从产品编码反解编码构成要素（2026-08-10：编辑回显面板/线路/流水号）
 // 编码 = 客户简称(1-3) + 流水号(3) + 面板结构(1) + 面板特征(1) + 线路类型(1) + 线路特征(1)，总长9-10位
 function parseCodeElements(code?: string | null) {
-  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  codeState.value = {
+    serialNo: '',
+    panelType: '',
+    panelFeature: '',
+    circuitType: '',
+    circuitFeature: '',
+  }
   formData.codeSerialNo = ''
   if (!code) return
   const c = code.trim()
@@ -435,7 +435,6 @@ const handleCategoryChange = (categoryId?: number) => {
   // 分类变化不再自动生成编码，编码由结构要素决定
 }
 
-
 // 提交表单
 const handleSubmit = async () => {
   try {
@@ -488,7 +487,13 @@ const resetForm = () => {
     codeCustomerId: undefined,
     codeSerialNo: '',
   })
-  codeState.value = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
+  codeState.value = {
+    serialNo: '',
+    panelType: '',
+    panelFeature: '',
+    circuitType: '',
+    circuitFeature: '',
+  }
   codeParams.value = null
   selectedCustomer.value = null
   selectedCustomerShortName.value = ''

@@ -77,8 +77,8 @@ export const ProductStatusEnum = createEnum({
  */
 export const ProductTypeEnum = createEnum({
   items: [
-    { value: 1, label: '标准产品', tagProps: { type: 'primary' } },
-    { value: 2, label: '定制产品', tagProps: { type: 'success' } },
+    { value: 1, label: '成品', tagProps: { type: 'primary' } },
+    { value: 2, label: '样品', tagProps: { type: 'success' } },
   ],
   defaultTag: { type: 'info' },
 })

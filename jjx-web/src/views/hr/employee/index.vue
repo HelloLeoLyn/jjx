@@ -67,7 +67,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="在职状态">
-          <el-select v-model="query.employmentStatus" clearable placeholder="全部" style="width: 130px">
+          <el-select
+            v-model="query.employmentStatus"
+            clearable
+            placeholder="全部"
+            style="width: 130px"
+          >
             <el-option
               v-for="d in EmploymentStatusEnum.items"
               :key="d.value"
@@ -110,13 +115,21 @@
         <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button link size="small" @click="handleDetail(row)">详情</el-button>
+            <el-button link size="small" v-hasPermi="['hr:employee:edit']" @click="handleEdit(row)">
+              编辑
+            </el-button>
+
+            <!-- <el-tooltip v-else content="该员工已生成系统账号，可在系统→用户管理维护" placement="top">
+              <el-button link size="small" disabled>已生成</el-button>
+            </el-tooltip> -->
             <el-button
               link
               size="small"
-              v-hasPermi="['hr:employee:edit']"
-              @click="handleEdit(row)"
+              type="danger"
+              v-hasPermi="['hr:employee:delete']"
+              @click="handleRemove(row)"
             >
-              编辑
+              删除
             </el-button>
             <el-button
               v-if="!row.userId"
@@ -137,18 +150,6 @@
               @click="handleReviveUser(row)"
             >
               恢复账号
-            </el-button>
-            <el-tooltip v-else content="该员工已生成系统账号，可在系统→用户管理维护" placement="top">
-              <el-button link size="small" disabled>已生成</el-button>
-            </el-tooltip>
-            <el-button
-              link
-              size="small"
-              type="danger"
-              v-hasPermi="['hr:employee:delete']"
-              @click="handleRemove(row)"
-            >
-              删除
             </el-button>
           </template>
         </el-table-column>
@@ -227,7 +228,12 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="岗位">
-              <el-select v-model="form.position" clearable placeholder="请选择岗位" style="width: 100%">
+              <el-select
+                v-model="form.position"
+                clearable
+                placeholder="请选择岗位"
+                style="width: 100%"
+              >
                 <el-option
                   v-for="d in positionOptions"
                   :key="d.itemKey"
@@ -271,25 +277,22 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="身份证号">
-              <el-input
-                v-model="form.idCardNo"
-                :placeholder="sensitiveHint"
-                clearable
-              />
+              <el-input v-model="form.idCardNo" :placeholder="sensitiveHint" clearable />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="身份证地址">
-              <el-input
-                v-model="form.idCardAddress"
-                :placeholder="sensitiveHint"
-                clearable
-              />
+              <el-input v-model="form.idCardAddress" :placeholder="sensitiveHint" clearable />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="学历">
-              <el-select v-model="form.education" clearable placeholder="请选择" style="width: 100%">
+              <el-select
+                v-model="form.education"
+                clearable
+                placeholder="请选择"
+                style="width: 100%"
+              >
                 <el-option
                   v-for="d in educationOptions"
                   :key="d.itemKey"
@@ -344,16 +347,26 @@
         <el-descriptions-item label="邮箱">{{ detail.email || '-' }}</el-descriptions-item>
         <el-descriptions-item label="进厂日期">{{ detail.hireDate || '-' }}</el-descriptions-item>
         <el-descriptions-item label="离职日期">{{ detail.leaveDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="学历">{{ educationLabel(detail.education) }}</el-descriptions-item>
+        <el-descriptions-item label="学历">{{
+          educationLabel(detail.education)
+        }}</el-descriptions-item>
         <el-descriptions-item label="专业">{{ detail.major || '-' }}</el-descriptions-item>
         <el-descriptions-item label="身份证号">{{ detail.idCardNo || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="系统账号">{{ detail.userName || '未关联' }}</el-descriptions-item>
+        <el-descriptions-item label="系统账号">{{
+          detail.userName || '未关联'
+        }}</el-descriptions-item>
         <el-descriptions-item label="身份证地址" :span="2">
           {{ detail.idCardAddress || '-' }}
         </el-descriptions-item>
-        <el-descriptions-item label="现住址" :span="2">{{ detail.currentAddress || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="个人履历" :span="2">{{ detail.resume || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">{{ detail.remark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="现住址" :span="2">{{
+          detail.currentAddress || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="个人履历" :span="2">{{
+          detail.resume || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2">{{
+          detail.remark || '-'
+        }}</el-descriptions-item>
       </el-descriptions>
       <el-alert
         v-if="!detail.sensitiveVisible"
@@ -412,7 +425,9 @@
       </el-form>
       <template #footer>
         <el-button @click="userDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="userSaving" @click="submitCreateUser">生成账号</el-button>
+        <el-button type="primary" :loading="userSaving" @click="submitCreateUser"
+          >生成账号</el-button
+        >
       </template>
     </el-dialog>
 
@@ -500,7 +515,11 @@ const userForm = reactive<UserFormState>({
 const userRules: FormRules = {
   userName: [
     { required: true, message: '请输入登录名', trigger: 'blur' },
-    { pattern: /^[A-Za-z][A-Za-z0-9_.-]{1,29}$/, message: '字母开头，2-30 位字母/数字/_.-', trigger: 'blur' },
+    {
+      pattern: /^[A-Za-z][A-Za-z0-9_.-]{1,29}$/,
+      message: '字母开头，2-30 位字母/数字/_.-',
+      trigger: 'blur',
+    },
   ],
   password: [
     { required: true, message: '请输入初始密码', trigger: 'blur' },
@@ -510,7 +529,12 @@ const userRules: FormRules = {
 
 /** 姓名 → 拼音登录名（无声调、全小写） */
 function nameToUserName(name: string): string {
-  const raw = pinyin(name, { toneType: 'none', type: 'array', surname: 'head', nonZh: 'consecutive' })
+  const raw = pinyin(name, {
+    toneType: 'none',
+    type: 'array',
+    surname: 'head',
+    nonZh: 'consecutive',
+  })
     .join('')
     .toLowerCase()
     .replace(/[^a-z0-9_.-]/g, '')
@@ -544,7 +568,7 @@ function handleReviveUser(row: HrEmployeeVO) {
   ElMessageBox.confirm(
     `确认恢复员工「${row.name}」已删除的系统账号？恢复后可照常登录，原有角色权限保留。`,
     '恢复账号',
-    { confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning' },
+    { confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning' }
   )
     .then(async () => {
       const res = await hrEmployeeApi.reviveUser(row.empId)
@@ -677,9 +701,7 @@ async function handleEdit(row: HrEmployeeVO) {
     userId: d.userId,
     remark: d.remark,
   })
-  sensitiveHint.value = d.sensitiveVisible
-    ? ''
-    : '无敏感字段权限：保持脱敏原值即不修改'
+  sensitiveHint.value = d.sensitiveVisible ? '' : '无敏感字段权限：保持脱敏原值即不修改'
   formVisible.value = true
 }
 
@@ -741,7 +763,7 @@ function handleExport() {
 function handleImportSuccess(result?: HrImportResult) {
   if (result && result.failCount > 0) {
     ElMessage.warning(
-      `导入完成：成功 ${result.successCount} 条，失败 ${result.failCount} 条（详见接口返回明细）`,
+      `导入完成：成功 ${result.successCount} 条，失败 ${result.failCount} 条（详见接口返回明细）`
     )
   } else {
     ElMessage.success('导入成功')
