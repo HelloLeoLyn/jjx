@@ -7,6 +7,7 @@ import type {
   MaterialQueryDTO,
 } from '@/types/inventory/material'
 import type { PageResult, R } from '@/types'
+import type { SysTag } from '@/types/system/tag'
 
 // 物料管理API
 export const materialApi = {
@@ -112,6 +113,10 @@ export const materialApi = {
     return request.get<R<number>>('/inventory/material/count')
   },
 
+  getTags() {
+    return request.get<R<SysTag[]>>('/inventory/material/tags')
+  },
+
   // 获取物料下拉选项
   getOptions(keyword?: string) {
     return request.get<R<InventoryMaterial[]>>('/inventory/material/options', {
@@ -144,8 +149,8 @@ export const materialApi = {
   },
 
   // 生成物料编码
-  generateCode() {
-    return request.get<R<string>>('/inventory/material/code')
+  generateCode(materialType?: string) {
+    return request.get<R<string>>('/inventory/material/code', { params: { materialType } })
   },
 }
 

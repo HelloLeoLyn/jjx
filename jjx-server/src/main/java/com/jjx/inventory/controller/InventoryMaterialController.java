@@ -6,6 +6,7 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.enums.StatusEnum;
 import com.jjx.common.utils.ExcelUtils;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.inventory.domain.InventoryMaterial;
@@ -25,6 +26,8 @@ import com.jjx.inventory.service.InventoryWarehouseService;
 import io.swagger.v3.oas.annotations.Operation;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
+import com.jjx.system.domain.entity.SysTag;
+import com.jjx.system.service.ISysTagService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +55,8 @@ public class InventoryMaterialController extends BaseController {
 
     private final InventoryWarehouseService warehouseService;
 
+    private final ISysTagService tagService;
+
     /**
      * 获取物料总数
      */
@@ -78,9 +83,15 @@ public class InventoryMaterialController extends BaseController {
         return Result.success(materialService.selectList(queryDTO));
     }
 
+    @GetMapping("/tags")
+    @SaCheckPermission("inventory:material:view")
+    public Result<List<SysTag>> tags() {
+        return Result.success(tagService.listTags("material_attribute", null, StatusEnum.NORMAL.getCode()));
+    }
+
     @GetMapping("/code")
-    public Result<String> code() {
-        return Result.success(materialService.generateCode());
+    public Result<String> code(@RequestParam(required = false) String materialType) {
+        return Result.success(materialService.generateCode(materialType));
     }
 
     /**
@@ -113,7 +124,7 @@ public class InventoryMaterialController extends BaseController {
         BeanUtils.copyProperties(dto, material);
 
         // 调用Service创建
-        materialService.create(material);
+        materialService.create(material, dto.getTagIds(), getUsername());
         return Result.success();
     }
 
@@ -133,7 +144,7 @@ public class InventoryMaterialController extends BaseController {
         BeanUtils.copyProperties(dto, material);
 
         // 调用Service更新
-        materialService.update(material);
+        materialService.update(material, dto.getTagIds(), getUsername());
         return Result.success();
     }
 

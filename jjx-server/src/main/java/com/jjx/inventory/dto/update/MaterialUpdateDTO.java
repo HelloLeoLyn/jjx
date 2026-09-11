@@ -3,6 +3,7 @@ package com.jjx.inventory.dto.update;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 物料更新参数DTO
@@ -39,4 +40,5 @@ public class MaterialUpdateDTO {
     private Long defaultLocationId;
     private Integer status;
     private String remark;
+    private List<Long> tagIds;
 }

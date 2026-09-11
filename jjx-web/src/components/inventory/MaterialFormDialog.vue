@@ -25,7 +25,7 @@
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="物料类型" prop="materialType">
-            <el-select v-model="form.materialType" placeholder="请选择" style="width: 100%">
+            <el-select v-model="form.materialType" placeholder="请选择" style="width: 100%" @change="handleMaterialTypeChange">
               <el-option
                 v-for="opt in MaterialTypeEnum.items"
                 :key="opt.value"
@@ -41,6 +41,24 @@
           </el-form-item>
         </el-col>
       </el-row>
+      <el-form-item label="物料标签">
+        <el-select
+          v-model="form.tagIds"
+          multiple
+          filterable
+          clearable
+          collapse-tags
+          placeholder="请选择物料标签"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="tag in tagOptions"
+            :key="tag.tagId"
+            :label="tag.tagName"
+            :value="tag.tagId"
+          />
+        </el-select>
+      </el-form-item>
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="规格型号" prop="specification">
@@ -176,12 +194,14 @@ const title = computed(() => (props.materialId ? '编辑物料' : '新增物料'
 
 const submitting = ref(false)
 const formRef = ref()
+const tagOptions = ref<Array<{ tagId: number; tagName: string }>>([])
 
 const form = reactive({
   materialId: null as number | null,
   materialCode: '',
   materialName: '',
-  materialType: '',
+  materialType: 'R',
+  tagIds: [] as number[],
   materialNameEn: '',
   specification: '',
   unit: 'PCS',
@@ -208,7 +228,8 @@ const resetForm = () => {
   form.materialId = null
   form.materialCode = ''
   form.materialName = ''
-  form.materialType = ''
+  form.materialType = 'R'
+  form.tagIds = []
   form.materialNameEn = ''
   form.specification = ''
   form.unit = 'PCS'
@@ -226,7 +247,7 @@ const resetForm = () => {
 
 const handleGenerateCode = async () => {
   try {
-    const res = await materialApi.generateCode()
+    const res = await materialApi.generateCode(form.materialType)
     if (res.data) {
       form.materialCode = res.data
     }
@@ -235,10 +256,22 @@ const handleGenerateCode = async () => {
   }
 }
 
+const handleMaterialTypeChange = () => {
+  if (!form.materialId) handleGenerateCode()
+}
+
+const loadTagOptions = async () => {
+  const res = await materialApi.getTags()
+  tagOptions.value = (res.data || []).flatMap((tag) =>
+    tag.tagId == null ? [] : [{ tagId: tag.tagId, tagName: tag.tagName || tag.tagCode || String(tag.tagId) }]
+  )
+}
+
 const loadMaterialInfo = async (materialId: number) => {
   try {
     const res = await materialApi.getInfo(String(materialId))
     Object.assign(form, res.data)
+    form.tagIds = (res.data?.tags || []).flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
   } catch (error) {
     ElMessage.error('加载物料信息失败')
   }
@@ -268,11 +301,12 @@ const submitForm = () => {
           shelfLife: form.shelfLife || undefined,
           expiryAlertDays: form.expiryAlertDays,
           remark: form.remark,
+          tagIds: form.tagIds,
         }
         await materialApi.update(updateData)
         ElMessage.success('修改成功')
         visible.value = false
-        emit('success', { ...form } as InventoryMaterial)
+        emit('success', { ...form } as unknown as InventoryMaterial)
       } else {
         const saveData: MaterialSaveDTO = {
           materialCode: form.materialCode,
@@ -290,13 +324,14 @@ const submitForm = () => {
           shelfLife: form.shelfLife || undefined,
           expiryAlertDays: form.expiryAlertDays,
           remark: form.remark,
+          tagIds: form.tagIds,
         }
         await materialApi.add(saveData)
         ElMessage.success('新增成功')
         visible.value = false
         // 新增后查询完整物料信息返回
         const res = await materialApi.getByCode(form.materialCode)
-        emit('success', res.data || ({ ...form } as InventoryMaterial))
+        emit('success', res.data || ({ ...form } as unknown as InventoryMaterial))
       }
     } catch (error) {
       console.error('提交失败:', error)
@@ -315,6 +350,7 @@ watch(
   (newVal) => {
     if (newVal) {
       resetForm()
+      loadTagOptions()
       if (props.materialId) {
         loadMaterialInfo(props.materialId)
       } else {

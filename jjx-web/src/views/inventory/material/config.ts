@@ -26,6 +26,12 @@ export const searchOptions: SearchOptions[] = [
     options: MaterialTypeEnum.items,
   },
   {
+    prop: 'tagId',
+    label: '物料标签',
+    type: 'select',
+    options: [],
+  },
+  {
     prop: 'status',
     label: '状态',
     type: 'select',

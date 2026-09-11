@@ -19,6 +19,7 @@ public interface MaterialConverter {
     @Mapping(target = "createByName", ignore = true)
     @Mapping(target = "categoryName", ignore = true)
     @Mapping(target = "availableStock", ignore = true)
+    @Mapping(target = "tags", ignore = true)
     MaterialVO toVO(InventoryMaterial entity);
 
     List<MaterialVO> toVOList(List<InventoryMaterial> list);

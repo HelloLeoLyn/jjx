@@ -4,6 +4,8 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import com.jjx.system.domain.entity.SysTag;
 
 /**
  * 物料视图对象VO
@@ -48,4 +50,5 @@ public class MaterialVO {
     private String updateBy;
     private String updateByName;
     private LocalDateTime updateTime;
+    private List<SysTag> tags;
 }

@@ -7,9 +7,10 @@ import { createEnum } from '../base'
  */
 export const MaterialTypeEnum = createEnum({
   items: [
-    { value: 'R', label: '原材料', tagProps: { type: 'danger' } },
-    { value: 'S', label: '半成品', tagProps: { type: 'warning' } },
     { value: 'F', label: '成品', tagProps: { type: 'success' } },
+    { value: 'S', label: '半成品', tagProps: { type: 'warning' } },
+    { value: 'R', label: '原材料', tagProps: { type: 'danger' } },
+    { value: 'I', label: '油墨', tagProps: { type: 'primary' } },
     { value: 'A', label: '辅助材料', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },

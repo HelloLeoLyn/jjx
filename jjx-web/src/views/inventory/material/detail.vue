@@ -25,6 +25,13 @@
           </el-col>
         </el-row>
 
+        <el-form-item label="物料标签">
+          <el-tag v-for="tag in material.tags || []" :key="tag.tagId" class="detail-tag">
+            {{ tag.tagName }}
+          </el-tag>
+          <span v-if="!material.tags?.length">-</span>
+        </el-form-item>
+
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="物料类型">
@@ -188,6 +195,12 @@ onMounted(() => {
   getMaterialDetail()
 })
 </script>
+
+<style scoped>
+.detail-tag {
+  margin-right: 6px;
+}
+</style>
 
 <style scoped>
 .material-detail {

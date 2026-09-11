@@ -1,4 +1,5 @@
 import type { PageQuery } from '@/types'
+import type { SysTag } from '@/types/system/tag'
 // 物料实体
 export interface InventoryMaterial {
   materialId: number
@@ -24,6 +25,7 @@ export interface InventoryMaterial {
   updateTime?: string
   createBy?: string
   updateBy?: string
+  tags?: SysTag[]
 }
 
 // 物料查询参数
@@ -33,6 +35,7 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   materialName?: string
   materialNameEn?: string
   materialType?: string
+  tagId?: number
   categoryId?: number
   specification?: string
   status?: string
@@ -53,6 +56,8 @@ export interface MaterialQueryDTO extends PageQuery {
   specification?: string
   supplierId?: number
   categoryId?: number
+  materialType?: string
+  tagId?: number
 }
 // 物料保存DTO
 export interface MaterialSaveDTO {
@@ -71,6 +76,7 @@ export interface MaterialSaveDTO {
   shelfLife?: number
   expiryAlertDays: number
   remark?: string
+  tagIds?: number[]
 }
 
 // 物料更新DTO
@@ -92,6 +98,7 @@ export interface MaterialUpdateDTO {
   expiryAlertDays?: number
   remark?: string
   status?: string
+  tagIds?: number[]
 }
 
 // ==================== 材料分类类型 ====================

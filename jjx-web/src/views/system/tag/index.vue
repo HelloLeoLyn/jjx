@@ -20,8 +20,8 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="query.status" placeholder="全部" clearable style="width: 120px" @change="getList">
-            <el-option label="启用" :value="1" />
-            <el-option label="停用" :value="0" />
+            <el-option label="启用" :value="CommonStatusEnum.NORMAL.value" />
+            <el-option label="停用" :value="CommonStatusEnum.DISABLED.value" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -52,8 +52,8 @@
         <el-table-column label="排序" prop="sortOrder" width="80" align="center" />
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 1 ? 'success' : 'info'">
-              {{ row.status === 1 ? '启用' : '停用' }}
+            <el-tag size="small" :type="CommonStatusEnum.getTagProps(row.status).type as any">
+              {{ CommonStatusEnum.getLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -91,8 +91,8 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="0">停用</el-radio>
+            <el-radio :value="CommonStatusEnum.NORMAL.value">启用</el-radio>
+            <el-radio :value="CommonStatusEnum.DISABLED.value">停用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
@@ -113,6 +113,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { tagApi } from '@/api/system/tag'
 import { dictApi } from '@/api/system/dict'
 import type { SysTag } from '@/types/system/tag'
+import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 
 interface GroupOption {
   value: string

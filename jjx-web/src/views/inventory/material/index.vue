@@ -42,6 +42,14 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="物料标签" min-width="180">
+          <template #default="{ row }">
+            <el-tag v-for="tag in row.tags || []" :key="tag.tagId" size="small" class="material-tag">
+              {{ tag.tagName }}
+            </el-tag>
+            <span v-if="!row.tags?.length">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="规格型号" prop="specification" width="150" show-overflow-tooltip />
         <el-table-column label="单位" prop="unit" width="80" align="center" />
         <el-table-column label="安全库存" prop="safeStock" width="100" align="right" />
@@ -140,6 +148,7 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   materialCode: '',
   materialName: '',
   materialType: '',
+  tagId: undefined,
   specification: '',
   status: '',
 })
@@ -182,6 +191,7 @@ const handleReset = () => {
   queryParams.materialName = ''
   queryParams.materialType = ''
   queryParams.status = ''
+  queryParams.tagId = undefined
   getList()
 }
 
@@ -253,7 +263,14 @@ const handleExport = () => {
     .finally(() => loading.close())
 }
 
-onMounted(() => {
+onMounted(async () => {
+  const tagRes = await materialApi.getTags()
+  const tagField = searchFields.find((field) => field.prop === 'tagId')
+  if (tagField) {
+    tagField.options = (tagRes.data || []).flatMap((tag) =>
+      tag.tagId == null ? [] : [{ value: tag.tagId, label: tag.tagName || tag.tagCode || String(tag.tagId) }]
+    )
+  }
   getList()
 })
 </script>
@@ -272,5 +289,9 @@ onMounted(() => {
 .low-stock {
   color: #f56c6c;
   font-weight: bold;
+}
+
+.material-tag {
+  margin-right: 4px;
 }
 </style>

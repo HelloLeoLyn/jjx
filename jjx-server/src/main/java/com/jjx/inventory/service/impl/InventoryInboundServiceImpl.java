@@ -1392,7 +1392,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 BigDecimal quantity = i < quantities.size() ? quantities.get(i) : null;
                 if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) continue;
                 String materialType = materialTypes.get(items.get(i).getMaterialId());
-                if (MaterialEnums.Type.RAW.getValue().equals(materialType)) {
+                if (MaterialEnums.Type.RAW.getValue().equals(materialType)
+                        || MaterialEnums.Type.INK.getValue().equals(materialType)) {
                     rawQuantity = rawQuantity.add(quantity);
                 } else if (MaterialEnums.Type.FINISHED.getValue().equals(materialType)) {
                     finishedQuantity = finishedQuantity.add(quantity);

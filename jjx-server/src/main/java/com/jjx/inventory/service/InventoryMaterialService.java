@@ -34,12 +34,12 @@ public interface InventoryMaterialService extends IService<InventoryMaterial> {
     /**
      * 创建物料
      */
-    boolean create(InventoryMaterial material);
+    boolean create(InventoryMaterial material, List<Long> tagIds, String operName);
 
     /**
      * 更新物料
      */
-    boolean update(InventoryMaterial material);
+    boolean update(InventoryMaterial material, List<Long> tagIds, String operName);
 
     /**
      * 删除物料（检查是否被使用）
@@ -80,7 +80,7 @@ public interface InventoryMaterialService extends IService<InventoryMaterial> {
     List<InventoryMaterial> selectEntities(MaterialQueryDTO queryDTO);
 
     /** 生成编码 */
-    String generateCode();
+    String generateCode(String materialType);
 
     /**
      * 校验物料是否存在（根据名称、规格等条件）

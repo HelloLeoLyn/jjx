@@ -23,10 +23,14 @@ export interface SysTag {
 export const TAG_BIZ_TYPE = {
   /** 供应商 */
   SUPPLIER: 'purchase_supplier',
+  /** 物料档案 */
+  MATERIAL: 'inventory_material',
 } as const
 
 /** 标签分组编码常量（对应字典 sys_tag_group） */
 export const TAG_GROUP = {
   /** 供应商供货品类 */
   SUPPLIER_GOODS: 'supplier_goods',
+  /** 物料属性 */
+  MATERIAL_ATTRIBUTE: 'material_attribute',
 } as const

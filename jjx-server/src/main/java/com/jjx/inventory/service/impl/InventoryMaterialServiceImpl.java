@@ -16,18 +16,18 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.page.PageResult;
+import com.jjx.common.exception.BusinessException;
 import com.jjx.common.enums.StatusEnum;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.inventory.converter.MaterialConverter;
 import com.jjx.inventory.domain.InventoryMaterial;
-import com.jjx.inventory.domain.InventoryMaterialCategory;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.dto.imports.MaterialImportDTO;
 import com.jjx.inventory.dto.query.MaterialCheckDTO;
 import com.jjx.inventory.dto.query.MaterialQueryDTO;
 import com.jjx.inventory.dto.vo.MaterialVO;
 import com.jjx.inventory.enums.ProcessGroup;
-import com.jjx.inventory.mapper.InventoryMaterialCategoryMapper;
+import com.jjx.inventory.enums.MaterialEnums;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.service.InventoryMaterialService;
@@ -38,6 +38,8 @@ import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.entity.SysTag;
+import com.jjx.system.service.ISysTagService;
 
 /**
  * 物料主数据服务实现类
@@ -48,8 +50,10 @@ import com.jjx.system.annotation.Event;
 public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialMapper, InventoryMaterial>
         implements InventoryMaterialService {
 
+    private static final String MATERIAL_TAG_GROUP = "material_attribute";
+    private static final String MATERIAL_BIZ_TYPE = "inventory_material";
+
     private final InventoryMaterialMapper materialMapper;
-    private final InventoryMaterialCategoryMapper materialCategoryMapper;
     private final InventoryStockMapper stockMapper;
     private final RedisSequenceService redisSequenceService;
     private final MaterialConverter materialConverter;
@@ -57,6 +61,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
+    private final ISysTagService tagService;
 
     @Override
     public PageResult<MaterialVO> pageQuery(MaterialQueryDTO queryDTO) {
@@ -64,17 +69,28 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         Page<InventoryMaterial> page = new Page<>(queryDTO.getPageNum(), queryDTO.getPageSize());
         materialMapper.selectPage(page, wrapper);
         List<InventoryMaterial> records = page.getRecords();
-        List<MaterialVO> voList = materialConverter.toVOList(records);
+        List<MaterialVO> voList = enrichTags(materialConverter.toVOList(records));
         return PageResult.of(page, voList);
     }
 
-    private static @NonNull LambdaQueryWrapper<InventoryMaterial> buildQueryWrapper(MaterialQueryDTO queryDTO) {
+    private @NonNull LambdaQueryWrapper<InventoryMaterial> buildQueryWrapper(MaterialQueryDTO queryDTO) {
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
         if (queryDTO.getMaterialCode() != null && !queryDTO.getMaterialCode().isEmpty()) {
             wrapper.like(InventoryMaterial::getMaterialCode, queryDTO.getMaterialCode());
         }
         if (queryDTO.getMaterialName() != null && !queryDTO.getMaterialName().isEmpty()) {
             wrapper.like(InventoryMaterial::getMaterialName, queryDTO.getMaterialName());
+        }
+        if (StringUtils.isNotBlank(queryDTO.getMaterialType())) {
+            wrapper.eq(InventoryMaterial::getMaterialType, queryDTO.getMaterialType());
+        }
+        if (queryDTO.getTagId() != null) {
+            List<Long> materialIds = tagService.getBizIdsByTagIds(MATERIAL_BIZ_TYPE, List.of(queryDTO.getTagId()));
+            if (materialIds.isEmpty()) {
+                wrapper.apply("1 = 0");
+            } else {
+                wrapper.in(InventoryMaterial::getMaterialId, materialIds);
+            }
         }
         if (queryDTO.getSpecification() != null && !queryDTO.getSpecification().isEmpty()) {
             wrapper.eq(InventoryMaterial::getSpecification, queryDTO.getSpecification());
@@ -95,7 +111,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     public MaterialVO getDetailById(Long id) {
         InventoryMaterial material = materialMapper.selectById(id);
-        return materialConverter.toVO(material);
+        return enrichTags(materialConverter.toVO(material));
     }
 
     @Override
@@ -106,20 +122,26 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     @Event(value = "inventory.material.created", bizId = "#material", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
-    public boolean create(InventoryMaterial material) {
+    public boolean create(InventoryMaterial material, List<Long> tagIds, String operName) {
+        validateMaterialType(material.getMaterialType());
         // 检查编码是否已存在
         if (existsByCode(material.getMaterialCode())) {
             log.error("物料编码已存在: {}", material.getMaterialCode());
             return false;
         }
 
-        return materialMapper.insert(material) > 0;
+        boolean created = materialMapper.insert(material) > 0;
+        if (created) {
+            setMaterialTags(material.getMaterialId(), tagIds, operName);
+        }
+        return created;
     }
 
     @Override
     @Event(value = "inventory.material.updated", bizId = "#material", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
-    public boolean update(InventoryMaterial material) {
+    public boolean update(InventoryMaterial material, List<Long> tagIds, String operName) {
+        validateMaterialType(material.getMaterialType());
         InventoryMaterial existing = materialMapper.selectById(material.getMaterialId());
         if (existing == null) {
             log.error("物料不存在: {}", material.getMaterialId());
@@ -134,7 +156,11 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             }
         }
 
-        return materialMapper.updateById(material) > 0;
+        boolean updated = materialMapper.updateById(material) > 0;
+        if (updated) {
+            setMaterialTags(material.getMaterialId(), tagIds, operName);
+        }
+        return updated;
     }
 
     @Override
@@ -179,7 +205,11 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             throw new RuntimeException("物料已被生产工单引用，无法删除");
         }
 
-        return materialMapper.deleteById(id) > 0;
+        boolean deleted = materialMapper.deleteById(id) > 0;
+        if (deleted) {
+            tagService.setBizTags(MATERIAL_BIZ_TYPE, id, List.of(), "system");
+        }
+        return deleted;
     }
 
     @Override
@@ -262,7 +292,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize())
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
-        List<MaterialVO> voList = materialConverter.toVOList(page.getRecords());
+        List<MaterialVO> voList = enrichTags(materialConverter.toVOList(page.getRecords()));
         return PageResult.of(page, voList);
     }
 
@@ -320,7 +350,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 }
 
                 // 生成物料编码
-                String materialCode = generateMaterialCode(null);
+                validateMaterialType(dto.getMaterialType());
+                String materialCode = generateMaterialCode(dto.getMaterialType());
 
                 // 创建物料实体
                 InventoryMaterial material = new InventoryMaterial();
@@ -359,7 +390,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     public List<MaterialVO> selectList(MaterialQueryDTO queryDTO) {
         LambdaQueryWrapper<InventoryMaterial> queryWrapper = buildQueryWrapper(queryDTO);
         List<InventoryMaterial> inventoryMaterials = materialMapper.selectList(queryWrapper);
-        return materialConverter.toVOList(inventoryMaterials);
+        return enrichTags(materialConverter.toVOList(inventoryMaterials));
     }
 
     @Override
@@ -368,8 +399,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
-    public String generateCode() {
-        return generateMaterialCode(null);
+    public String generateCode(String materialType) {
+        return generateMaterialCode(materialType);
     }
 
     @Override
@@ -392,7 +423,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (material == null) {
             return null;
         }
-        return materialConverter.toVO(material);
+        return enrichTags(materialConverter.toVO(material));
     }
 
     private static String getProcessGroup(MaterialImportDTO dto) {
@@ -406,25 +437,59 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     /**
      * 生成物料编码
-     * 格式：分类编码前缀（无分类时为 MTR）+ 6 位自增码，从 100001 开始
-     * 例如：MTR100001、INK100001（具体数字由全局流水决定）
+     * 格式：物料类型前缀 + 6 位自增码，从 100001 开始。
+     * 例如：RM100001、INK100002（具体数字由全局流水决定）。
      */
-    private String generateMaterialCode(Long categoryId) {
-        String prefix = resolveMaterialCodePrefix(categoryId);
+    private String generateMaterialCode(String materialType) {
+        String prefix = resolveMaterialCodePrefix(materialType);
         Long sequence = redisSequenceService.getNextSequence("material:code");
         return prefix + String.format("%06d", 100000L + sequence);
     }
 
     /**
-     * 按分类解析物料编码前缀；未传分类或分类编码不存在时使用 MTR。
+     * 按物料类型解析编码前缀；未传或无效时兼容使用 MTR。
      */
-    private String resolveMaterialCodePrefix(Long categoryId) {
-        if (categoryId == null) {
+    private String resolveMaterialCodePrefix(String materialType) {
+        MaterialEnums.Type type = MaterialEnums.Type.fromValue(materialType);
+        if (type == null) {
             return "MTR";
         }
-        InventoryMaterialCategory category = materialCategoryMapper.selectById(categoryId);
-        return category != null && StringUtils.isNotBlank(category.getCategoryCode())
-                ? category.getCategoryCode()
-                : "MTR";
+        return switch (type) {
+            case FINISHED -> "FG";
+            case SEMI -> "SFG";
+            case RAW -> "RM";
+            case INK -> "INK";
+            case AUXILIARY -> "AUX";
+        };
+    }
+
+    private void validateMaterialType(String materialType) {
+        if (MaterialEnums.Type.fromValue(materialType) == null) {
+            throw new BusinessException("无效的物料类型：" + materialType);
+        }
+    }
+
+    private void setMaterialTags(Long materialId, List<Long> tagIds, String operName) {
+        List<Long> requested = tagIds == null ? List.of() : tagIds.stream().distinct().toList();
+        if (!requested.isEmpty()) {
+            List<Long> allowed = tagService.listTags(MATERIAL_TAG_GROUP, null, StatusEnum.NORMAL.getCode()).stream()
+                    .map(SysTag::getTagId).toList();
+            if (!allowed.containsAll(requested)) {
+                throw new BusinessException("物料标签不存在、已停用或不属于物料属性分组");
+            }
+        }
+        tagService.setBizTags(MATERIAL_BIZ_TYPE, materialId, requested, operName);
+    }
+
+    private MaterialVO enrichTags(MaterialVO vo) {
+        if (vo != null && vo.getMaterialId() != null) {
+            vo.setTags(tagService.getBizTags(MATERIAL_BIZ_TYPE, vo.getMaterialId()));
+        }
+        return vo;
+    }
+
+    private List<MaterialVO> enrichTags(List<MaterialVO> list) {
+        list.forEach(this::enrichTags);
+        return list;
     }
 }

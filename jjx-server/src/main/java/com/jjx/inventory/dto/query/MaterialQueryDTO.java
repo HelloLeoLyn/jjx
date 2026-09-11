@@ -4,6 +4,7 @@ import com.jjx.common.core.page.PageQuery;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+
 /**
  * 物料查询参数DTO
  */
@@ -20,6 +21,8 @@ public class MaterialQueryDTO extends PageQuery{
     private String materialName;
 
     private String materialType;
+
+    private Long tagId;
 
     private Long categoryId;
 

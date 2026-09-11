@@ -16,12 +16,14 @@ public final class MaterialEnums {
      * 物料类型枚举
      */
     public enum Type {
-        /** 原材料 */
-        RAW("R", "原材料", "danger"),
-        /** 半成品 */
-        SEMI("S", "半成品", "warning"),
         /** 成品 */
         FINISHED("F", "成品", "success"),
+        /** 半成品 */
+        SEMI("S", "半成品", "warning"),
+        /** 原材料 */
+        RAW("R", "原材料", "danger"),
+        /** 油墨 */
+        INK("I", "油墨", "primary"),
         /** 辅助材料 */
         AUXILIARY("A", "辅助材料", "info");
 
