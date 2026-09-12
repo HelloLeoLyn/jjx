@@ -49,8 +49,18 @@
     <!-- 表格 -->
     <el-card class="table-card" shadow="never">
       <el-table v-loading="loading" :data="sampleList" style="width: 100%" border stripe>
-        <el-table-column label="样品单号" prop="orderNo" width="180" />
-        <el-table-column label="客户" prop="customerName" width="160" />
+        <el-table-column label="样品单号" prop="orderNo" width="180">
+          <template #default="scope">
+            <el-link type="primary" @click="showDetail(scope.row)">{{ scope.row.orderNo }}</el-link>
+          </template>
+        </el-table-column>
+        <el-table-column label="客户简称" prop="customerShortName" width="160">
+          <template #default="scope">
+            <el-link type="primary" @click="showCustDetail(scope.row)">{{
+              scope.row.customerShortName || scope.row.customerName || '-'
+            }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column label="样品状态" width="130">
           <template #default="scope">
             <el-tag :type="statusTagType(scope.row.sampleStatus)" size="small">
@@ -93,7 +103,12 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <TableActionColumn :actions="sampleActions" width="400" display="text" @action="handleSampleAction" />
+        <TableActionColumn
+          :actions="sampleActions"
+          width="400"
+          display="text"
+          @action="handleSampleAction"
+        />
       </el-table>
       <pagination
         v-show="total > 0"
@@ -395,6 +410,11 @@
       :is-sensitive="true"
     />
 
+    <CustomerDetailDialog
+      v-model="customerDetailVisible"
+      :customer-id="customerDetailId"
+    />
+
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
 
@@ -437,6 +457,7 @@ import { SampleOrderStatusEnum } from '@/enums/sales'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationDetailDialog.vue'
+import CustomerDetailDialog from '@/views/sales/customer/components/CustomerDetailDialog.vue'
 import SampleReviewPreview from './components/SampleReviewPreview.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
@@ -472,6 +493,15 @@ const previewData = ref<{ order: any; products: any[] } | null>(null)
 // 来源报价单详情（复用共享报价详情组件）
 const quotationDetailVisible = ref(false)
 const quotationDetailId = ref<number>(0)
+const customerDetailVisible = ref(false)
+const customerDetailId = ref<number>()
+
+function showCustDetail(row: { customerId?: number }) {
+  if (!row.customerId) return
+  customerDetailId.value = row.customerId
+  customerDetailVisible.value = true
+}
+
 function openQuotationDetail() {
   quotationDetailId.value = previewData.value?.order?.quotationId
   quotationDetailVisible.value = true
@@ -1070,26 +1100,102 @@ const sampleActions: TableAction<any>[] = [
   { key: 'detail', label: '详情' },
   { key: 'print', label: '打印', type: 'info' },
   { key: 'trace', label: '查看流水', type: 'info' },
-  { key: 'copy', label: '复制', type: 'warning', permission: 'sales:sample:add', visible: ({ row }) => canCopy(row) },
-  { key: 'accept', label: '工程接单', type: 'warning', permission: 'sales:sample:engineering', visible: ({ row }) => canAcceptEngineering(row) },
-  { key: 'workbench', label: '已接单', type: 'success', permission: 'sales:sample:engineering', visible: ({ row }) => canGoWorkbench(row) },
-  { key: 'cancel', label: '作废', type: 'danger', permission: 'sales:sample:edit', visible: ({ row }) => canCancel(row) },
-  { key: 'edit', label: '编辑', permission: 'sales:sample:edit', visible: ({ row }) => isCreated(row) },
-  { key: 'request', label: '申请打样', permission: 'sales:sample:edit', visible: ({ row }) => isCreated(row) },
-  { key: 'send', label: '送样登记', permission: 'sales:sample:deliver', visible: ({ row }) => canSendSample(row) },
-  { key: 'confirm', label: '客户确认OK', type: 'success', permission: 'sales:sample:confirm', visible: ({ row }) => canConfirmSample(row) },
-  { key: 'reject', label: '退回修改', type: 'warning', permission: 'sales:sample:confirm', visible: ({ row }) => canConfirmSample(row) },
-  { key: 'convert', label: '转量产', permission: 'sales:sample:convert', visible: ({ row }) => canConvert(row) },
-  { key: 'transferred', label: '已转量产', type: 'success', disabled: true, visible: ({ row }) => isTransferred(row) },
-  { key: 'restart', label: '重新打样', type: 'warning', permission: 'sales:sample:engineering', visible: ({ row }) => canRestart(row) },
+  {
+    key: 'copy',
+    label: '复制',
+    type: 'warning',
+    permission: 'sales:sample:add',
+    visible: ({ row }) => canCopy(row),
+  },
+  {
+    key: 'accept',
+    label: '工程接单',
+    type: 'warning',
+    permission: 'sales:sample:engineering',
+    visible: ({ row }) => canAcceptEngineering(row),
+  },
+  {
+    key: 'workbench',
+    label: '已接单',
+    type: 'success',
+    permission: 'sales:sample:engineering',
+    visible: ({ row }) => canGoWorkbench(row),
+  },
+  {
+    key: 'cancel',
+    label: '作废',
+    type: 'danger',
+    permission: 'sales:sample:edit',
+    visible: ({ row }) => canCancel(row),
+  },
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: 'sales:sample:edit',
+    visible: ({ row }) => isCreated(row),
+  },
+  {
+    key: 'request',
+    label: '申请打样',
+    permission: 'sales:sample:edit',
+    visible: ({ row }) => isCreated(row),
+  },
+  {
+    key: 'send',
+    label: '送样登记',
+    permission: 'sales:sample:deliver',
+    visible: ({ row }) => canSendSample(row),
+  },
+  {
+    key: 'confirm',
+    label: '客户确认OK',
+    type: 'success',
+    permission: 'sales:sample:confirm',
+    visible: ({ row }) => canConfirmSample(row),
+  },
+  {
+    key: 'reject',
+    label: '退回修改',
+    type: 'warning',
+    permission: 'sales:sample:confirm',
+    visible: ({ row }) => canConfirmSample(row),
+  },
+  {
+    key: 'convert',
+    label: '转量产',
+    permission: 'sales:sample:convert',
+    visible: ({ row }) => canConvert(row),
+  },
+  {
+    key: 'transferred',
+    label: '已转量产',
+    type: 'success',
+    disabled: true,
+    visible: ({ row }) => isTransferred(row),
+  },
+  {
+    key: 'restart',
+    label: '重新打样',
+    type: 'warning',
+    permission: 'sales:sample:engineering',
+    visible: ({ row }) => canRestart(row),
+  },
 ]
 const handleSampleAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {
-    detail: () => void showDetail(row), print: () => handlePrint(row), trace: () => showTrace(row),
-    copy: () => void handleCopySample(row), accept: () => void handleAcceptSample(row), workbench: goWorkbench,
-    cancel: () => void handleCancel(row), edit: () => void handleEdit(row), request: () => void handleSubmitRequest(row),
-    send: () => void handleSendSample(row), confirm: () => void handleConfirm(row), reject: () => void handleRejectSample(row),
-    convert: () => void handleConvert(row), restart: () => void handleRestart(row),
+    print: () => handlePrint(row),
+    trace: () => showTrace(row),
+    copy: () => void handleCopySample(row),
+    accept: () => void handleAcceptSample(row),
+    workbench: goWorkbench,
+    cancel: () => void handleCancel(row),
+    edit: () => void handleEdit(row),
+    request: () => void handleSubmitRequest(row),
+    send: () => void handleSendSample(row),
+    confirm: () => void handleConfirm(row),
+    reject: () => void handleRejectSample(row),
+    convert: () => void handleConvert(row),
+    restart: () => void handleRestart(row),
   }
   handlers[key]?.()
 }

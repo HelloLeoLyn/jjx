@@ -8,6 +8,10 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.dto.SampleOrderQueryDTO;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.sales.domain.entity.SalesOrder;
+import com.jjx.sales.domain.vo.SalesOrderProductVO;
+import com.jjx.sales.domain.vo.SampleConvertCheckVO;
+import com.jjx.sales.domain.vo.SampleSourceDocVO.InquirySummary;
+import com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationSummary;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.system.annotation.BusinessType;
@@ -84,14 +88,14 @@ public class SampleOrderController extends BaseController {
     @Operation(summary = "样品单明细（转量产标准化窗口用）")
     @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/products/{orderId}")
-    public Result<java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO>> getProducts(@PathVariable Long orderId) {
+    public Result<java.util.List<SalesOrderProductVO>> getProducts(@PathVariable Long orderId) {
         return Result.success(orderProductService.getListByOrderId(orderId));
     }
 
     @Operation(summary = "转量产就绪检查（产品/BOM/工艺路线/菲林清单）")
     @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/convert-check/{orderId}")
-    public Result<com.jjx.sales.domain.vo.SampleConvertCheckVO> convertCheck(@PathVariable Long orderId) {
+    public Result<SampleConvertCheckVO> convertCheck(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.checkConvertReady(orderId));
     }
 
@@ -103,7 +107,7 @@ public class SampleOrderController extends BaseController {
     @Operation(summary = "打样工作台-来源报价单摘要（按样品单收敛，无价格）")
     @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/{orderId}/source-quotation")
-    public Result<com.jjx.sales.domain.vo.SampleSourceDocVO.QuotationSummary> sourceQuotationSummary(@PathVariable Long orderId) {
+    public Result<QuotationSummary> sourceQuotationSummary(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.getSourceQuotationSummary(orderId));
     }
 
@@ -115,7 +119,7 @@ public class SampleOrderController extends BaseController {
     @Operation(summary = "打样工作台-来源询价单摘要（按样品单收敛，无敏感数据）")
     @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
     @GetMapping("/{orderId}/source-inquiry")
-    public Result<com.jjx.sales.domain.vo.SampleSourceDocVO.InquirySummary> sourceInquirySummary(@PathVariable Long orderId) {
+    public Result<InquirySummary> sourceInquirySummary(@PathVariable Long orderId) {
         return Result.success(sampleOrderService.getSourceInquirySummary(orderId));
     }
 

@@ -49,26 +49,65 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" v-hasPermi="['sales:customer:add']" @click="handleAdd">新增</el-button>
+          <el-button
+            type="primary"
+            plain
+            icon="Plus"
+            v-hasPermi="['sales:customer:add']"
+            @click="handleAdd"
+            >新增</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" v-hasPermi="['sales:customer:edit']" :disabled="single" @click="handleUpdate"
+          <el-button
+            type="success"
+            plain
+            icon="Edit"
+            v-hasPermi="['sales:customer:edit']"
+            :disabled="single"
+            @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" v-hasPermi="['sales:customer:delete']" :disabled="multiple" @click="handleDelete"
+          <el-button
+            type="danger"
+            plain
+            icon="Delete"
+            v-hasPermi="['sales:customer:delete']"
+            :disabled="multiple"
+            @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" v-hasPermi="['sales:customer:export']" @click="handleExport">导出</el-button>
+          <el-button
+            type="warning"
+            plain
+            icon="Download"
+            v-hasPermi="['sales:customer:export']"
+            @click="handleExport"
+            >导出</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" v-hasPermi="['sales:customer:import']" @click="importDialogVisible = true">导入</el-button>
+          <el-button
+            type="info"
+            plain
+            icon="Upload"
+            v-hasPermi="['sales:customer:import']"
+            @click="importDialogVisible = true"
+            >导入</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Check" v-hasPermi="['sales:customer:edit']" :disabled="multiple" @click="handleApprove"
+          <el-button
+            type="success"
+            plain
+            icon="Check"
+            v-hasPermi="['sales:customer:edit']"
+            :disabled="multiple"
+            @click="handleApprove"
             >批量审核</el-button
           >
         </el-col>
@@ -84,7 +123,13 @@
         @sort-change="handleSortChange"
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="客户编码" align="center" prop="customerCode" width="130" />
+        <el-table-column label="客户编码" align="center" prop="customerCode" width="130">
+          <template #default="scope">
+            <el-link type="primary" @click="handleView(scope.row)">{{
+              scope.row.customerCode
+            }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column label="客户名称" align="center" prop="customerName" width="180" />
         <el-table-column label="客户简称" align="center" prop="customerShortName" width="100" />
         <el-table-column label="客户类型" align="center" prop="customerType" width="100">
@@ -136,7 +181,8 @@
           :actions="customerActions"
           align="center"
           class-name="small-padding fixed-width"
-          width="200"
+          min-width="200"
+          :max-visible="4"
           display="text"
           @action="handleCustomerAction"
         />
@@ -183,7 +229,6 @@
       @success="getList"
     />
   </div>
-
 </template>
 
 <script setup lang="ts">
@@ -429,7 +474,12 @@ const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
-const customerStatusTextMap: Record<number, string> = { 1: '潜在客户', 2: '正式客户', 3: '暂停合作', 4: '终止合作' }
+const customerStatusTextMap: Record<number, string> = {
+  1: '潜在客户',
+  2: '正式客户',
+  3: '暂停合作',
+  4: '终止合作',
+}
 const handleChangeStatus = (row: CustomerItem | MouseEvent) => {
   if (row instanceof MouseEvent) return
   if (!row.customerId) return

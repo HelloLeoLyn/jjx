@@ -120,7 +120,7 @@
             align="left"
             class-name="small-padding fixed-width"
             :min-width="250"
-            :max-visible="3"
+            :max-visible="4"
             display="text"
             @action="handleRowAction"
           />

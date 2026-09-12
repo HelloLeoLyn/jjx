@@ -1,8 +1,41 @@
-import request from '@/utils/request'
+import rawRequest from '@/utils/request'
+import type { AxiosRequestConfig } from 'axios'
+import type { PageResult, R as ApiResult } from '@/types'
+import type {
+  CreateFromQuotationDTO,
+  InkSuggestion,
+  SalesOrderProduct,
+  SampleBomItem,
+  SampleConvertCheck,
+  SampleConvertDTO,
+  SampleConvertExtras,
+  SampleConvertItem,
+  SampleOrder,
+  SampleOrderCreateDTO,
+  SampleOrderListParams,
+  SampleOrderQueryParams,
+  SampleOrderUpdateDTO,
+  SampleProcess,
+  SampleProcessPlanDTO,
+  SampleProcessStatusDTO,
+  SampleRound,
+  SampleSourceInquiry,
+  SampleSourceQuotation,
+  SampleStatusOption,
+  SampleSummary,
+  SampleTransferReminder,
+  SampleTransferResult,
+} from '@/types/sales/sampleOrder'
+
+/** request 拦截器返回业务响应体；在 API 边界统一校正 Axios 的原始响应声明。 */
+const request = <T>(config: AxiosRequestConfig): Promise<T> =>
+  rawRequest(config) as unknown as Promise<T>
+
+type R<T> = Omit<ApiResult<T>, 'data'> & { data: T }
 
 /** 印刷工序历史输入联想（1225） */
 export function getProcessHistory() {
-  return request({
+  return request<R<Record<string, string[]>>>({
     url: '/sales/sample-order/process/history',
     method: 'get',
   })
@@ -10,7 +43,7 @@ export function getProcessHistory() {
 
 /** 色号联想（2026-09-04：空=常用TOP10，有输入=字典模糊搜） */
 export function suggestSampleColors(keyword?: string, limit?: number) {
-  return request({
+  return request<R<string[]>>({
     url: '/sales/sample-order/process/color-suggest',
     method: 'get',
     params: { keyword, limit },
@@ -19,48 +52,21 @@ export function suggestSampleColors(keyword?: string, limit?: number) {
 
 /** 油墨联想（2026-09-04：空=常用TOP10，有输入=INK物料+历史模糊搜；返回 [{text, materialId}]） */
 export function suggestSampleInks(keyword?: string, limit?: number) {
-  return request({
+  return request<R<InkSuggestion[]>>({
     url: '/sales/sample-order/process/ink-suggest',
     method: 'get',
     params: { keyword, limit },
   })
 }
 
-import type { AxiosPromise } from 'axios'
-
-export interface SampleOrderQueryParams {
-  pageNum: number
-  pageSize: number
-  orderNo?: string
-  customerId?: number
-  customerName?: string
-  customerShortName?: string
-  sampleStatus?: number
-  salesPersonId?: number
-  hasAcceptor?: boolean
-}
+export type { SampleOrderQueryParams } from '@/types/sales/sampleOrder'
 
 // 样品单接口
 export const sampleOrderApi = {
   // 从报价单创建样品单
   // 新增样品单（直接选客户+产品明细，报价单可选）
-  create(data: {
-    customerId: number
-    quotationId?: number
-    items?: Array<{
-      productId?: number
-      productCode?: string
-      productName?: string
-      quantity?: number
-      unit?: string
-    }>
-    deliveryDate?: string
-    contactPerson?: string
-    contactPhone?: string
-    techRequirement?: string
-    remark?: string
-  }): AxiosPromise<any> {
-    return request({
+  create(data: SampleOrderCreateDTO) {
+    return request<R<SampleOrder>>({
       url: '/sales/sample-order',
       method: 'post',
       data,
@@ -68,43 +74,16 @@ export const sampleOrderApi = {
   },
 
   // 更新样品单（驳回后编辑：仅样品需求已创建状态可编辑，明细全量替换）
-  update(
-    orderId: number,
-    data: {
-      customerId: number
-      items?: Array<{
-        productId?: number
-        productCode?: string
-        productName?: string
-        quantity?: number
-        unit?: string
-      }>
-      deliveryDate?: string
-      contactPerson?: string
-      contactPhone?: string
-      techRequirement?: string
-      remark?: string
-    }
-  ): AxiosPromise<any> {
-    return request({
+  update(orderId: number, data: SampleOrderUpdateDTO) {
+    return request<R<SampleOrder>>({
       url: `/sales/sample-order/${orderId}`,
       method: 'put',
       data,
     })
   },
 
-  createFromQuotation(
-    quotationId: number,
-    data?: {
-      sampleQty?: number
-      remark?: string
-      deliveryDate?: string
-      contactPerson?: string
-      contactPhone?: string
-      techRequirement?: string
-    }
-  ): AxiosPromise<any> {
-    return request({
+  createFromQuotation(quotationId: number, data?: CreateFromQuotationDTO) {
+    return request<R<SampleOrder>>({
       url: `/sales/sample-order/create-from-quotation/${quotationId}`,
       method: 'post',
       params: data,
@@ -112,21 +91,16 @@ export const sampleOrderApi = {
   },
 
   // 复制样品单（DEV-1114：仅已完成/已取消终态单，一键生成新草稿单）
-  copy(orderId: number): AxiosPromise<any> {
-    return request({
+  copy(orderId: number) {
+    return request<R<SampleOrder>>({
       url: `/sales/sample-order/copy/${orderId}`,
       method: 'post',
     })
   },
 
   // 样品单列表（旧接口，兼容工作台调用）
-  list(params?: {
-    customerId?: number
-    sampleStatus?: number
-    salesPersonId?: number
-    hasAcceptor?: boolean
-  }): AxiosPromise<any[]> {
-    return request({
+  list(params?: SampleOrderListParams) {
+    return request<R<SampleOrder[]>>({
       url: '/sales/sample-order/list',
       method: 'get',
       params,
@@ -134,8 +108,8 @@ export const sampleOrderApi = {
   },
 
   // 样品单分页列表
-  page(params: SampleOrderQueryParams): AxiosPromise<any> {
-    return request({
+  page(params: SampleOrderQueryParams) {
+    return request<R<PageResult<SampleOrder>>>({
       url: '/sales/sample-order/page',
       method: 'get',
       params,
@@ -143,16 +117,16 @@ export const sampleOrderApi = {
   },
 
   // 样品单详情
-  getInfo(orderId: number): AxiosPromise<any> {
-    return request({
+  getInfo(orderId: number) {
+    return request<R<SampleOrder>>({
       url: `/sales/sample-order/${orderId}`,
       method: 'get',
     })
   },
 
   // 样品单产品明细（DEV-781：报价转样品后详情展示）
-  getProducts(orderId: number): AxiosPromise<any> {
-    return request({
+  getProducts(orderId: number) {
+    return request<R<SalesOrderProduct[]>>({
       url: `/sales/sample-order/products/${orderId}`,
       method: 'get',
     })
@@ -160,22 +134,22 @@ export const sampleOrderApi = {
 
   // 打样工作台「来源单据」摘要（任务1438）：按样品单关联链收敛，服务端已剔除价格等敏感数据
   // 无来源单据时 data=null
-  getSourceQuotationSummary(orderId: number): AxiosPromise<any> {
-    return request({
+  getSourceQuotationSummary(orderId: number) {
+    return request<R<SampleSourceQuotation | null>>({
       url: `/sales/sample-order/${orderId}/source-quotation`,
       method: 'get',
     })
   },
-  getSourceInquirySummary(orderId: number): AxiosPromise<any> {
-    return request({
+  getSourceInquirySummary(orderId: number) {
+    return request<R<SampleSourceInquiry | null>>({
       url: `/sales/sample-order/${orderId}/source-inquiry`,
       method: 'get',
     })
   },
 
   // 提交审核
-  submitRequest(orderId: number, attachmentIds?: string): AxiosPromise<any> {
-    return request({
+  submitRequest(orderId: number, attachmentIds?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/submit-request/${orderId}`,
       method: 'put',
       params: { attachmentIds },
@@ -183,8 +157,8 @@ export const sampleOrderApi = {
   },
 
   // 审核通过
-  approve(orderId: number, remark?: string, attachmentIds?: string): AxiosPromise<any> {
-    return request({
+  approve(orderId: number, remark?: string, attachmentIds?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/approve/${orderId}`,
       method: 'put',
       params: { remark, attachmentIds },
@@ -192,8 +166,8 @@ export const sampleOrderApi = {
   },
 
   // 审核驳回
-  rejectReview(orderId: number, remark?: string, attachmentIds?: string): AxiosPromise<any> {
-    return request({
+  rejectReview(orderId: number, remark?: string, attachmentIds?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/reject-review/${orderId}`,
       method: 'put',
       params: { remark, attachmentIds },
@@ -201,8 +175,8 @@ export const sampleOrderApi = {
   },
 
   // 工程接单
-  startEngineering(orderId: number, engineeringNote?: string): AxiosPromise<any> {
-    return request({
+  startEngineering(orderId: number, engineeringNote?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/start-engineering/${orderId}`,
       method: 'put',
       params: { engineeringNote },
@@ -210,8 +184,8 @@ export const sampleOrderApi = {
   },
 
   // 工程标记样品完成
-  markReady(orderId: number, sampleQty?: number): AxiosPromise<any> {
-    return request({
+  markReady(orderId: number, sampleQty?: number) {
+    return request<R<void>>({
       url: `/sales/sample-order/mark-ready/${orderId}`,
       method: 'put',
       params: { sampleQty },
@@ -219,8 +193,8 @@ export const sampleOrderApi = {
   },
 
   // 送样登记
-  sendSample(orderId: number, trackingNo?: string, attachmentIds?: string): AxiosPromise<any> {
-    return request({
+  sendSample(orderId: number, trackingNo?: string, attachmentIds?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/send-sample/${orderId}`,
       method: 'put',
       params: { trackingNo, attachmentIds },
@@ -228,8 +202,8 @@ export const sampleOrderApi = {
   },
 
   // 客户确认
-  confirm(orderId: number, clientName?: string, attachmentIds?: string): AxiosPromise<any> {
-    return request({
+  confirm(orderId: number, clientName?: string, attachmentIds?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/confirm/${orderId}`,
       method: 'put',
       params: { clientName, attachmentIds },
@@ -237,8 +211,8 @@ export const sampleOrderApi = {
   },
 
   // 客户退回
-  rejectSample(orderId: number, rejectReason?: string, attachmentIds?: string): AxiosPromise<any> {
-    return request({
+  rejectSample(orderId: number, rejectReason?: string, attachmentIds?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/reject-sample/${orderId}`,
       method: 'put',
       params: { rejectReason, attachmentIds },
@@ -246,21 +220,13 @@ export const sampleOrderApi = {
   },
 
   // 转量产
-  convertToProduction(
-    orderId: number,
-    items?: Array<{ orderProductId: number; productId: number }>,
-    extras?: {
-      paymentTerms?: string
-      deliveryTerms?: string
-      deliveryAddress?: string
-      contactPerson?: string
-      contactPhone?: string
-    }
-  ): AxiosPromise<any> {
+  convertToProduction(orderId: number, items?: SampleConvertItem[], extras?: SampleConvertExtras) {
     const params = extras
-      ? Object.fromEntries(Object.entries(extras).filter(([, value]) => value != null && value !== ''))
+      ? Object.fromEntries(
+          Object.entries(extras).filter(([, value]) => value != null && value !== '')
+        )
       : undefined
-    return request({
+    return request<R<SampleOrder>>({
       url: `/sales/sample-order/convert-to-production/${orderId}`,
       method: 'put',
       data: items ?? null,
@@ -269,8 +235,8 @@ export const sampleOrderApi = {
   },
 
   // 转量产（2026-09-07 复用标准订单新增表单：整单预填样品数据提交，数量/单价可改）
-  convertSample(orderId: number, dto: Record<string, any>): AxiosPromise<any> {
-    return request({
+  convertSample(orderId: number, dto: SampleConvertDTO) {
+    return request<R<SampleOrder>>({
       url: `/sales/sample-order/${orderId}/convert`,
       method: 'post',
       data: dto,
@@ -278,24 +244,24 @@ export const sampleOrderApi = {
   },
 
   // 转量产 · 产品标准化窗口（DEV-xxx）
-  convertCheck(orderId: number): AxiosPromise<any> {
-    return request({
+  convertCheck(orderId: number) {
+    return request<R<SampleConvertCheck>>({
       url: `/sales/sample-order/convert-check/${orderId}`,
       method: 'get',
     })
   },
 
   // 转量产 · 资料转移提醒（DEV-1228：发布任务给工程执行资料转移，不再直接转移）
-  transferRemind(orderId: number): AxiosPromise<any> {
-    return request({
+  transferRemind(orderId: number) {
+    return request<R<SampleTransferReminder>>({
       url: `/sample/transfer/remind/${orderId}`,
       method: 'post',
     })
   },
 
   // 作废
-  cancel(orderId: number, cancelReason?: string): AxiosPromise<any> {
-    return request({
+  cancel(orderId: number, cancelReason?: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/cancel/${orderId}`,
       method: 'put',
       params: cancelReason ? { cancelReason } : undefined,
@@ -303,24 +269,24 @@ export const sampleOrderApi = {
   },
 
   // 退回后重新打样
-  restartEngineering(orderId: number): AxiosPromise<any> {
-    return request({
+  restartEngineering(orderId: number) {
+    return request<R<void>>({
       url: `/sales/sample-order/restart-engineering/${orderId}`,
       method: 'put',
     })
   },
 
   // 工程接单确认
-  acceptEngineering(orderId: number): AxiosPromise<any> {
-    return request({
+  acceptEngineering(orderId: number) {
+    return request<R<void>>({
       url: `/sales/sample-order/accept-engineering/${orderId}`,
       method: 'put',
     })
   },
 
   // 工程拒单
-  rejectEngineering(orderId: number, rejectReason: string): AxiosPromise<any> {
-    return request({
+  rejectEngineering(orderId: number, rejectReason: string) {
+    return request<R<void>>({
       url: `/sales/sample-order/reject-engineering/${orderId}`,
       method: 'put',
       params: { rejectReason },
@@ -334,8 +300,8 @@ export const sampleOrderApi = {
     materials?: string | null,
     processNote?: string,
     durationMinutes?: number
-  ): AxiosPromise<any> {
-    return request({
+  ) {
+    return request<R<void>>({
       url: `/sales/sample-order/update-process/${orderId}`,
       method: 'put',
       data: { process, materials, processNote, durationMinutes },
@@ -343,8 +309,8 @@ export const sampleOrderApi = {
   },
 
   // 查询打样工序历史（roundNo 可选，DEV-500 按轮次过滤）
-  listProcesses(orderId: number, roundNo?: number): AxiosPromise<any> {
-    return request({
+  listProcesses(orderId: number, roundNo?: number) {
+    return request<R<SampleProcess[]>>({
       url: `/sales/sample-order/processes/${orderId}`,
       method: 'get',
       params: roundNo ? { roundNo } : undefined,
@@ -352,8 +318,8 @@ export const sampleOrderApi = {
   },
 
   // 保存打样工序计划（多选标准工序，整单覆盖当前轮次）
-  saveProcessPlan(orderId: number, data: any): AxiosPromise<any> {
-    return request({
+  saveProcessPlan(orderId: number, data: SampleProcessPlanDTO) {
+    return request<R<SampleProcess[]>>({
       url: `/sales/sample-order/processes/${orderId}/plan`,
       method: 'put',
       data,
@@ -361,8 +327,8 @@ export const sampleOrderApi = {
   },
 
   // 推进打样工序状态（开始/完成，可带耗时/说明/材料）
-  updateProcessItemStatus(orderId: number, processId: number, data: any): AxiosPromise<any> {
-    return request({
+  updateProcessItemStatus(orderId: number, processId: number, data: SampleProcessStatusDTO) {
+    return request<R<SampleProcess>>({
       url: `/sales/sample-order/processes/${orderId}/item/${processId}/status`,
       method: 'put',
       data,
@@ -370,16 +336,16 @@ export const sampleOrderApi = {
   },
 
   // 查询打样BOM物料清单
-  listBom(orderId: number): AxiosPromise<any> {
-    return request({
+  listBom(orderId: number) {
+    return request<R<SampleBomItem[]>>({
       url: `/sales/sample-order/bom/${orderId}`,
       method: 'get',
     })
   },
 
   // 保存打样BOM物料清单（覆盖当前轮次）
-  saveBom(orderId: number, items: any[], roundNo?: number): AxiosPromise<any> {
-    return request({
+  saveBom(orderId: number, items: SampleBomItem[], roundNo?: number) {
+    return request<R<SampleBomItem[]>>({
       url: `/sales/sample-order/bom/${orderId}`,
       method: 'put',
       params: roundNo ? { roundNo } : undefined,
@@ -388,16 +354,16 @@ export const sampleOrderApi = {
   },
 
   // 删除单条打样BOM
-  deleteBomItem(bomId: number): AxiosPromise<any> {
-    return request({
+  deleteBomItem(bomId: number) {
+    return request<R<void>>({
       url: `/sales/sample-order/bom/${bomId}`,
       method: 'delete',
     })
   },
 
   // 录入打样成本/工时
-  recordCost(orderId: number, cost?: number, workHours?: number): AxiosPromise<any> {
-    return request({
+  recordCost(orderId: number, cost?: number, workHours?: number) {
+    return request<R<void>>({
       url: `/sales/sample-order/record-cost/${orderId}`,
       method: 'put',
       params: { cost, workHours },
@@ -405,34 +371,32 @@ export const sampleOrderApi = {
   },
 
   // 产品资料转移（DEV-505：建档产品/BOM/工艺路线）
-  transfer(orderId: number): AxiosPromise<any> {
-    return request({
+  transfer(orderId: number) {
+    return request<R<SampleTransferResult>>({
       url: `/sales/sample-order/transfer/${orderId}`,
       method: 'post',
     })
   },
 
   // 查询打样轮次快照
-  getRounds(orderId: number): AxiosPromise<any[]> {
-    return request({
+  getRounds(orderId: number) {
+    return request<R<SampleRound[]>>({
       url: `/sales/sample-order/rounds/${orderId}`,
       method: 'get',
     })
   },
 
   // 打样汇总（总工时+材料成本，DEV-526 打样平台进度展示用）
-  getSummary(orderId: number): AxiosPromise<any> {
-    return request({
+  getSummary(orderId: number) {
+    return request<R<SampleSummary>>({
       url: `/sales/sample-order/summary/${orderId}`,
       method: 'get',
     })
   },
 
   // 状态选项
-  getStatusOptions(): AxiosPromise<
-    Array<{ value: number; label: string; description: string; terminal: boolean }>
-  > {
-    return request({
+  getStatusOptions() {
+    return request<R<SampleStatusOption[]>>({
       url: '/sales/sample-order/status-options',
       method: 'get',
     })
