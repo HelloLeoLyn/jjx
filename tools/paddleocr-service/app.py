@@ -89,6 +89,35 @@ def perceptual_hash(image: np.ndarray) -> str:
     return f"{value:016x}"
 
 
+def detect_row_bounds(image: np.ndarray, x1: float, x2: float, y1: float, y2: float,
+                      rows: int) -> list[tuple[float, float]]:
+    """按工序表横向黑色边框定位行，失败时回退等高切分。"""
+    height, width = image.shape[:2]
+    xa, xb = int(width * x1), int(width * x2)
+    ya, yb = int(height * y1), int(height * y2)
+    gray = cv2.cvtColor(image[ya:yb, xa:xb], cv2.COLOR_BGR2GRAY)
+    score = (gray < 80).mean(axis=1)
+    candidates = np.where(score >= 0.60)[0] + ya
+    groups: list[list[int]] = []
+    for value in candidates:
+        if not groups or value - groups[-1][-1] > 3:
+            groups.append([int(value)])
+        else:
+            groups[-1].append(int(value))
+    lines = [int(round(float(np.mean(group)))) for group in groups]
+    expected = np.linspace(ya, yb, rows + 1).astype(int).tolist()
+    if len(lines) < rows + 1:
+        lines = expected
+    else:
+        # 只保留覆盖整个工序区域的规则边框，避免材料表等相邻横线混入。
+        selected = [line for line in lines if ya - 4 <= line <= yb + 4]
+        if len(selected) != rows + 1:
+            lines = expected
+        else:
+            lines = selected
+    return [(lines[index] / height, lines[index + 1] / height) for index in range(rows)]
+
+
 def png64(image: np.ndarray) -> str:
     ok, encoded = cv2.imencode(".png", image)
     if not ok:
@@ -106,9 +135,8 @@ def parse_quantity(specification: str) -> tuple[float, str]:
 def workflow_rows(image: np.ndarray, lines: list[tuple[float, float, str]], workflow_type: str, x1: float, x2: float,
                   y1: float, y2: float, rows: int = 14) -> dict:
     result = {"workflowType": workflow_type, "steps": []}
-    for index in range(rows):
-        top = y1 + (y2-y1)*index/rows
-        bottom = y1 + (y2-y1)*(index+1)/rows
+    bounds = detect_row_bounds(image, x1, x2, y1, y2, rows)
+    for index, (top, bottom) in enumerate(bounds):
         row = crop(image, x1, top, x2, bottom)
         if row.size == 0:
             continue
@@ -116,17 +144,23 @@ def workflow_rows(image: np.ndarray, lines: list[tuple[float, float, str]], work
         icon = row[:, :icon_width]
         normal = normalized_icon(icon)
         raw_text = region_text(lines, x1+(x2-x1)*0.28, top, x2, bottom)
+        components = [part.strip() for part in raw_text.split("+") if part.strip()]
+        is_composite = len(components) > 1
         if cv2.countNonZero(normal) < 30 and not raw_text:
             continue
-        result["steps"].append({
+        step = {
             "stepNo": index + 1,
             "rawText": raw_text,
+            "isComposite": is_composite,
+            "components": [{"order": order, "text": part, "processId": None}
+                           for order, part in enumerate(components, start=1)] if is_composite else [],
             "processId": None,
             "processName": raw_text or None,
             "perceptualHash": perceptual_hash(normal),
             "iconOriginalBase64": png64(icon),
             "iconNormalizedBase64": png64(normal),
-        })
+        }
+        result["steps"].append(step)
     return result
 
 

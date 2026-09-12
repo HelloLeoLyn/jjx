@@ -1,0 +1,16 @@
+[Unit]
+Description=JJX ERP project PaddleOCR service
+After=network.target
+
+[Service]
+Type=simple
+User=administrator
+WorkingDirectory=/home/administrator/jjx/tools/paddleocr-service
+ExecStart=/home/administrator/jjx/tools/paddleocr-service/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8866
+Restart=on-failure
+RestartSec=5
+Environment=PADDLE_PDX_CACHE_HOME=/home/administrator/jjx/tools/paddleocr-service/.model-cache
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
