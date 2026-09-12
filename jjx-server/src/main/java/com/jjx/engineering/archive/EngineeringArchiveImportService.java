@@ -73,11 +73,8 @@ public class EngineeringArchiveImportService {
     }
 
     private boolean canOverwrite(EngineeringArchiveImport archive) {
-        if (archive.getRecognizeStatus() == null || ArchiveRecognitionStatus.GENERATED.getValue() != archive.getRecognizeStatus()
-                || archive.getProductId() == null || archive.getBomId() == null || archive.getRoutingId() == null) return false;
-        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM product p JOIN engineering_bom b ON b.bom_id=? JOIN engineering_routing r ON r.routing_id=? WHERE p.product_id=? AND p.product_status=? AND b.approve_status=? AND r.approve_status=?",
-                Integer.class, archive.getBomId(), archive.getRoutingId(), archive.getProductId(), ProductEnums.Status.DEVELOPING.getValue(), ProductEnums.BomStatus.DRAFT.getValue(), ProductEnums.RouteStatus.DRAFT.getValue());
-        return count != null && count == 1;
+        if (archive.getRecognizeStatus() == null || ArchiveRecognitionStatus.GENERATED.getValue() != archive.getRecognizeStatus()) return false;
+        return !hasApprovedProduct(archive) && !hasApprovedBom(archive) && !hasApprovedRouting(archive);
     }
 
     public EngineeringArchiveImport get(Long id) {
@@ -179,9 +176,6 @@ public class EngineeringArchiveImportService {
     @Transactional(rollbackFor = Exception.class)
     public EngineeringArchiveImport overwriteRetry(Long id) {
         EngineeringArchiveImport archive = required(id);
-        if (archive.getProductId() == null || archive.getBomId() == null || archive.getRoutingId() == null) {
-            return retry(id);
-        }
         assertOverwriteAllowed(archive);
         byte[] bytes;
         try {
@@ -206,20 +200,23 @@ public class EngineeringArchiveImportService {
     }
 
     private void assertOverwriteAllowed(EngineeringArchiveImport archive) {
-        Map<String, Object> product = jdbcTemplate.queryForMap(
-                "SELECT product_status FROM product WHERE product_id=?", archive.getProductId());
-        Map<String, Object> bom = jdbcTemplate.queryForMap(
-                "SELECT approve_status FROM engineering_bom WHERE bom_id=?", archive.getBomId());
-        Map<String, Object> routing = jdbcTemplate.queryForMap(
-                "SELECT approve_status FROM engineering_routing WHERE routing_id=?", archive.getRoutingId());
-        int productStatus = ((Number) product.get("product_status")).intValue();
-        int bomStatus = ((Number) bom.get("approve_status")).intValue();
-        int routingStatus = ((Number) routing.get("approve_status")).intValue();
-        if (productStatus != ProductEnums.Status.DEVELOPING.getValue()
-                || bomStatus != ProductEnums.BomStatus.DRAFT.getValue()
-                || routingStatus != ProductEnums.RouteStatus.DRAFT.getValue()) {
+        if (hasApprovedProduct(archive) || hasApprovedBom(archive) || hasApprovedRouting(archive)) {
             throw new BusinessException("该档案已存在审批通过或非草稿数据，禁止覆盖重试");
         }
+    }
+
+    private boolean hasApprovedProduct(EngineeringArchiveImport archive) {
+        return archive.getProductId() != null && exists("SELECT COUNT(*) FROM product WHERE product_id=? AND product_status IN (?, ?, ?)", archive.getProductId(), ProductEnums.Status.APPROVED.getValue(), ProductEnums.Status.RELEASED.getValue(), ProductEnums.Status.OBSOLETE.getValue());
+    }
+    private boolean hasApprovedBom(EngineeringArchiveImport archive) {
+        return archive.getBomId() != null && exists("SELECT COUNT(*) FROM engineering_bom WHERE bom_id=? AND approve_status=?", archive.getBomId(), ProductEnums.BomStatus.APPROVED.getValue());
+    }
+    private boolean hasApprovedRouting(EngineeringArchiveImport archive) {
+        return archive.getRoutingId() != null && exists("SELECT COUNT(*) FROM engineering_routing WHERE routing_id=? AND approve_status=?", archive.getRoutingId(), ProductEnums.RouteStatus.APPROVED.getValue());
+    }
+    private boolean exists(String sql, Object... args) {
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, args);
+        return count != null && count > 0;
     }
 
     private void deleteGeneratedDrafts(EngineeringArchiveImport archive) {
