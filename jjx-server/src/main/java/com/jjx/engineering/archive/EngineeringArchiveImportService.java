@@ -267,7 +267,10 @@ public class EngineeringArchiveImportService {
     @Transactional(rollbackFor = Exception.class)
     public EngineeringArchiveImport generateDrafts(Long id) {
         EngineeringArchiveImport archive = required(id);
-        if (archive.getProductId() != null) throw new BusinessException("该档案已经生成过草稿");
+        // 已有生成记录时统一走覆盖流程：草稿可覆盖，已审核数据由覆盖流程拒绝。
+        if (archive.getProductId() != null || archive.getBomId() != null || archive.getRoutingId() != null) {
+            return overwriteRetry(id);
+        }
         try {
             JsonNode root = objectMapper.readTree(archive.getExtractedJson());
             String code = text(root, "productCode");
