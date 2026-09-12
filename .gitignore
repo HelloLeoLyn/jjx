@@ -114,3 +114,6 @@ jjx-docs/assets/*.xlsx
 
 # Excel 临时锁文件，不入库（dev-20260911-008）
 ~$*
+
+# Windows 下载残留（NTFS 备用数据流 Zone.Identifier），不入库（dev-20260912-016）
+*Zone.Identifier
