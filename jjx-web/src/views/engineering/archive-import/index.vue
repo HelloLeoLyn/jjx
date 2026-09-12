@@ -37,7 +37,7 @@
           <template #default="{ row }">
             <el-button link type="primary" @click="openReview(row)">查看/修正</el-button>
             <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.FAILED.value" link type="warning" @click="retry(row)">重试</el-button>
-            <el-button v-if="row.overwriteAllowed === true" link type="warning" v-hasPermi="['engineering:archive:import']" @click="overwriteRetry(row)">覆盖重试</el-button>
+            <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.GENERATED.value" link type="warning" v-hasPermi="['engineering:archive:import']" @click="overwriteRetry(row)">覆盖重试</el-button>
             <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.REVIEW.value" link type="success" v-hasPermi="['engineering:archive:generate']" @click="generate(row)">生成草稿</el-button>
           </template>
         </el-table-column>
