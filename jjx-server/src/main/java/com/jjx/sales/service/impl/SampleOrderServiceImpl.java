@@ -168,6 +168,35 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     // ============ 核心业务流程 ============
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<SalesOrder> createSplitFromQuotation(Long quotationId, Integer sampleQty, String remark,
+                                                      String deliveryDate, String contactPerson,
+                                                      String contactPhone, String techRequirement) {
+        SalesQuotation quotation = quotationMapper.selectById(quotationId);
+        if (quotation == null || quotation.getDeleted() == 1) throw new BusinessException("报价单不存在");
+        List<com.jjx.sales.domain.entity.SalesQuotationItem> sourceItems = quotationItemMapper.selectList(
+                Wrappers.<com.jjx.sales.domain.entity.SalesQuotationItem>lambdaQuery()
+                        .eq(com.jjx.sales.domain.entity.SalesQuotationItem::getQuotationId, quotationId));
+        if (sourceItems == null || sourceItems.isEmpty()) throw new BusinessException("报价单没有产品明细");
+        List<SalesOrder> result = new ArrayList<>();
+        for (int i = 0; i < sourceItems.size(); i++) {
+            com.jjx.sales.domain.entity.SalesQuotationItem source = sourceItems.get(i);
+            com.jjx.sales.domain.dto.SampleOrderCreateDTO dto = new com.jjx.sales.domain.dto.SampleOrderCreateDTO();
+            dto.setCustomerId(quotation.getCustomerId());
+            dto.setQuotationId(i == 0 ? quotationId : null);
+            dto.setDeliveryDate(deliveryDate); dto.setContactPerson(contactPerson);
+            dto.setContactPhone(contactPhone); dto.setTechRequirement(techRequirement); dto.setRemark(remark);
+            com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item item = new com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item();
+            item.setProductId(source.getProductId()); item.setProductCode(source.getProductCode());
+            item.setProductName(source.getProductName()); item.setQuantity(sampleQty != null ? sampleQty : source.getQuantity());
+            item.setUnit(source.getUnit());
+            dto.setItems(List.of(item));
+            result.add(createSample(dto));
+        }
+        return result;
+    }
+
+    @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark,

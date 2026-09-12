@@ -190,7 +190,7 @@ export const quotationOperations: OperationDef[] = [
     // DEV-1111：默认值由报价单页动态注入（按报价单明细数量求和），此处不再写死
     fields: [{ key: 'sampleQty', label: '打样数量', type: 'number', required: true }],
     api: ({ bizId, values }) =>
-      sampleOrderApi.createFromQuotation(bizId, { sampleQty: Number(values.sampleQty) }),
+      sampleOrderApi.createSplitFromQuotation(bizId, { sampleQty: Number(values.sampleQty) }),
   },
 ]
 

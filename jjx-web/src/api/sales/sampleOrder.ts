@@ -90,6 +90,14 @@ export const sampleOrderApi = {
     })
   },
 
+  createSplitFromQuotation(quotationId: number, data?: CreateFromQuotationDTO) {
+    return request<R<SampleOrder[]>>({
+      url: `/sales/sample-order/create-split-from-quotation/${quotationId}`,
+      method: 'post',
+      params: data,
+    })
+  },
+
   // 复制样品单（DEV-1114：仅已完成/已取消终态单，一键生成新草稿单）
   copy(orderId: number) {
     return request<R<SampleOrder>>({

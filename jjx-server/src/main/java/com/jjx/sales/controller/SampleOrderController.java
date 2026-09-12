@@ -70,6 +70,21 @@ public class SampleOrderController extends BaseController {
                 quotationId, sampleQty, remark, deliveryDate, contactPerson, contactPhone, techRequirement));
     }
 
+    @Operation(summary = "多产品报价拆分创建样品单")
+    @SaCheckPermission("sales:sample:add")
+    @PostMapping("/create-split-from-quotation/{quotationId}")
+    public Result<List<SalesOrder>> createSplitFromQuotation(
+            @PathVariable Long quotationId,
+            @RequestParam(required = false) Integer sampleQty,
+            @RequestParam(required = false) String remark,
+            @RequestParam(required = false) String deliveryDate,
+            @RequestParam(required = false) String contactPerson,
+            @RequestParam(required = false) String contactPhone,
+            @RequestParam(required = false) String techRequirement) {
+        return Result.success(sampleOrderService.createSplitFromQuotation(
+                quotationId, sampleQty, remark, deliveryDate, contactPerson, contactPhone, techRequirement));
+    }
+
     @Operation(summary = "复制样品单（仅已完成/已取消终态单，一键生成新草稿单）")
     @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", action = LogActions.SAMPLE_COPY)
     @SaCheckPermission("sales:sample:add")

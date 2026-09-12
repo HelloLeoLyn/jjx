@@ -16,6 +16,11 @@ public interface ISampleOrderService {
     SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark,
                                    String deliveryDate, String contactPerson, String contactPhone, String techRequirement);
 
+    /** 多产品报价拆分为多张一产品样品单。 */
+    List<SalesOrder> createSplitFromQuotation(Long quotationId, Integer sampleQty, String remark,
+                                              String deliveryDate, String contactPerson, String contactPhone,
+                                              String techRequirement);
+
     /**
      * 新增样品单（直接选客户+产品明细，报价单为可选来源）
      */
