@@ -15,6 +15,12 @@ import java.util.List;
 @Schema(description = "销售订单响应VO")
 public class SalesOrderVO {
 
+    /** 样品单一对一产品快照。 */
+    private Long sampleProductId;
+    private String sampleProductCode;
+    private String sampleProductName;
+    private String sampleProductSpecification;
+
     @Schema(description = "订单ID", example = "1001")
     private Long orderId;
 

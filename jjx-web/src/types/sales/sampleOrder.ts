@@ -5,6 +5,16 @@ export interface SampleOrderQueryParams extends PageQuery {
   customerId?: number
   customerName?: string
   customerShortName?: string
+  /** 样品单一对一产品快照（来源 sales_sample_order） */
+  productId?: number
+  productCode?: string
+  productName?: string
+  productSpecification?: string
+  customerMaterialNo?: string
+  unit?: string
+  unitPrice?: number
+  amount?: number
+  productRemark?: string
   sampleStatus?: number
   salesPersonId?: number
   hasAcceptor?: boolean

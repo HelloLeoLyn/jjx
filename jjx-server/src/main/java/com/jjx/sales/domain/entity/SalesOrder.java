@@ -92,6 +92,12 @@ public class SalesOrder extends BaseEntity {
      */
     private Integer sampleStatus;
 
+    /** 样品单一对一产品快照（不落 sales_order 主表）。 */
+    @TableField(exist = false) private Long sampleProductId;
+    @TableField(exist = false) private String sampleProductCode;
+    @TableField(exist = false) private String sampleProductName;
+    @TableField(exist = false) private String sampleProductSpecification;
+
     /** 样品资料累计转移次数（列表展示字段，不落库） */
     @TableField(exist = false)
     private Integer transferCount;

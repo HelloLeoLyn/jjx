@@ -25,7 +25,9 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
             "s.engineering_acceptor, s.engineering_accept_time, s.reject_reason, s.current_process, " +
             "s.sample_cost, s.sample_work_hours, s.sample_tracking_no, s.sample_send_date, " +
             "s.sample_confirm_date, s.confirm_by, s.confirm_method, s.confirm_time, s.confirm_sent_time, " +
-            "s.sample_client_name, s.converted_order_id, s.convert_order_time, s.formal_version, s.last_transfer_time " +
+            "s.sample_client_name, s.converted_order_id, s.convert_order_time, s.formal_version, s.last_transfer_time, " +
+            "s.product_id AS sample_product_id, s.product_code AS sample_product_code, " +
+            "s.product_name AS sample_product_name, s.product_specification AS sample_product_specification " +
             "FROM sales_order o LEFT JOIN sales_sample_order s ON s.order_id=o.order_id AND s.deleted=0 " +
             "WHERE o.order_id=#{id} AND o.deleted=0")
     SalesOrder selectById(Serializable id);

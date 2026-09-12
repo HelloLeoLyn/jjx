@@ -143,6 +143,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setConfirmSentTime(p.getConfirmSentTime()); order.setSampleClientName(p.getSampleClientName());
         order.setConvertedOrderId(p.getConvertedOrderId()); order.setConvertOrderTime(p.getConvertOrderTime());
         order.setFormalVersion(p.getFormalVersion()); order.setLastTransferTime(p.getLastTransferTime());
+        order.setSampleProductId(p.getProductId()); order.setSampleProductCode(p.getProductCode());
+        order.setSampleProductName(p.getProductName()); order.setSampleProductSpecification(p.getProductSpecification());
         return order;
     }
 
@@ -676,6 +678,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 明细：前端传 items 优先；带报价单且无 items 时从报价单复制
         java.util.List<com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item> items = dto.getItems();
         if (items != null && !items.isEmpty()) {
+            if (items.size() > 1) {
+                throw new BusinessException("样品单只能关联一个产品，请按产品分别创建样品单");
+            }
             java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> addList = new java.util.ArrayList<>();
             for (com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item it : items) {
                 if (it.getProductId() != null) {
@@ -693,6 +698,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 addList.add(d);
             }
             orderProductService.batchAdd(addList);
+            syncSampleProductProfile(order.getOrderId());
         } else if (quotation != null) {
             copyQuotationItemsToOrder(quotation.getQuotationId(), order.getOrderId());
         }
@@ -3360,6 +3366,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             log.warn("报价单[{}]无明细，未复制到订单[{}]", quotationId, targetOrderId);
             return;
         }
+        if (items.size() > 1) {
+            throw new BusinessException("报价单包含多个产品，样品单需按产品分别创建");
+        }
         java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> dtos = new java.util.ArrayList<>();
         for (com.jjx.sales.domain.entity.SalesQuotationItem it : items) {
             com.jjx.sales.domain.dto.SalesOrderProductDTO dto = new com.jjx.sales.domain.dto.SalesOrderProductDTO();
@@ -3689,6 +3698,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             order.setConvertOrderTime(profile.getConvertOrderTime());
             order.setFormalVersion(profile.getFormalVersion());
             order.setLastTransferTime(profile.getLastTransferTime());
+            order.setSampleProductId(profile.getProductId());
+            order.setSampleProductCode(profile.getProductCode());
+            order.setSampleProductName(profile.getProductName());
+            order.setSampleProductSpecification(profile.getProductSpecification());
         }
         List<Long> orderIds = orders.stream()
                 .map(SalesOrder::getOrderId)
