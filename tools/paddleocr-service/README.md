@@ -11,6 +11,16 @@ python3.11 -m venv .venv
 .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8866
 ```
 
+也可以使用项目专用脚本：
+
+```bash
+bash start.sh
+bash restart.sh
+bash stop.sh
+```
+
+脚本只匹配本项目 `.venv/bin/uvicorn app:app` 进程，不会停止其他项目的 OCR 服务。若由 systemd 管理，请使用 `systemctl restart/stop jjx-paddleocr`，不要同时运行手动脚本。
+
 首次启动会下载中文 OCR 模型。健康检查：`curl http://127.0.0.1:8866/health`。
 
 当前解析器仅支持 JJX“产品作业规范”固定版式 JPG/PNG。不同版式应新增模板解析器，不能套用本模板坐标。
