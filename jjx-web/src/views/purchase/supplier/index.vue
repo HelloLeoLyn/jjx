@@ -51,12 +51,13 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="标签" prop="tagIds">
+        <el-form-item label="标签" prop="tagIds" style="width: 100%; margin-right: 0">
           <!-- 标签查询辅助组件（dev-20260912-004）：多选 + 分组 + 计数 + 与/或 + 最近使用 -->
           <TagQuerySelect
             v-model="queryParams.tagIds"
             v-model:match-mode="queryParams.tagMatchMode"
             biz-type="purchase_supplier"
+            block
           />
         </el-form-item>
         <el-form-item>

@@ -78,18 +78,17 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             wrapper.like(PurchaseSupplier::getPhone, queryVO.getPhone());
         }
 
-        // 按标签筛选（dev-20260911-007 单标签；dev-20260912-004 支持多标签 + 与/或）
+        // 按标签筛选（dev-20260912-007 公共助手）：tagIds + tagMatchMode（兼容单值 tagId）
         List<Long> queryTagIds = queryVO.getTagIds();
         if ((queryTagIds == null || queryTagIds.isEmpty()) && queryVO.getTagId() != null) {
             queryTagIds = List.of(queryVO.getTagId());
         }
-        if (queryTagIds != null && !queryTagIds.isEmpty()) {
-            boolean matchAll = !"OR".equalsIgnoreCase(queryVO.getTagMatchMode());
-            List<Long> bizIds = tagService.getBizIdsByTagIds(TAG_BIZ_TYPE, queryTagIds, matchAll);
-            if (bizIds.isEmpty()) {
+        List<Long> tagBizIds = tagService.resolveBizIdsFilter(TAG_BIZ_TYPE, queryTagIds, queryVO.getTagMatchMode());
+        if (tagBizIds != null) {
+            if (tagBizIds.isEmpty()) {
                 return com.jjx.common.core.page.PageResult.build(new java.util.ArrayList<>(), 0L);
             }
-            wrapper.in(PurchaseSupplier::getSupplierId, bizIds);
+            wrapper.in(PurchaseSupplier::getSupplierId, tagBizIds);
         }
 
         // 排序

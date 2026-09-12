@@ -22,7 +22,7 @@ public class SupplierImportDTO {
     private String supplierName;
 
 
-    @ExcelColumn(value = "供应商类型", order = 3, required = false, comment = "M=物料, E=设备, O=其他（留空默认M）")
+    @ExcelColumn(value = "供应商类型", order = 3, required = false, comment = "R=原材料/A=辅助材料/I=油墨/F=成品/E=设备/O=其他；也可填供货品类（如 油墨*丝印油墨），自动归类，对不上归其他")
     private String supplierType;
 
     /**

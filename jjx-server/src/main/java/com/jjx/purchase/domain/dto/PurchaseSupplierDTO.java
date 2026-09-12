@@ -1,6 +1,5 @@
 package com.jjx.purchase.domain.dto;
 
-import com.jjx.purchase.domain.enums.SupplierTypeEnum;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
@@ -34,10 +33,11 @@ public class PurchaseSupplierDTO {
     private String supplierName;
 
     /**
-     * 供应商类型（material原材料/equipment设备/other其他）
+     * 供应商类型（主要供货类别，字典 purchase_supplier_type）：
+     * R原材料 / A辅助材料 / I油墨 / F成品 / E设备 / O其他（dev-20260912-003）
      */
-    @NotNull(message = "供应商类型不能为空")
-    private SupplierTypeEnum supplierType;
+    @NotBlank(message = "供应商类型不能为空")
+    private String supplierType;
 
     /**
      * 联系人

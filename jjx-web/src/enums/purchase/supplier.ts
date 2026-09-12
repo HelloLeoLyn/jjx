@@ -5,9 +5,12 @@ import { createEnum } from '@/enums/base'
  */
 export const SupplierTypeEnum = createEnum({
   items: [
-    { value: 'M', label: '原材料供应商', tagProps: { type: 'primary' } },
-    { value: 'E', label: '设备供应商', tagProps: { type: 'success' } },
-    { value: 'O', label: '其他供应商', tagProps: { type: 'info' } },
+    { value: 'R', label: '原材料', tagProps: { type: 'primary' } },
+    { value: 'A', label: '辅助材料', tagProps: { type: 'warning' } },
+    { value: 'I', label: '油墨', tagProps: { type: 'danger' } },
+    { value: 'F', label: '成品', tagProps: { type: 'success' } },
+    { value: 'E', label: '设备', tagProps: { type: 'info' } },
+    { value: 'O', label: '其他', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },
 })
