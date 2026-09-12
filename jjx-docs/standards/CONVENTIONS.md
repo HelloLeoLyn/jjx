@@ -44,6 +44,9 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 **清理**：`jjx-docs/sql/backups/` 仅视为历史存量。删除存量备份必须使用独立任务码和独立提交；不得与业务代码、迁移脚本混交。迁移脚本及规范文件仍永久保护。
 **禁止**：备份写入 Git 仓库、`memory/` 或临时目录。`JJX_BACKUP_DIR` 必须位于仓库之外。
 
+**例外备案（2026-09-12 用户批准）**：经**用户明确指示**要把指定 dump 提交进 git 时可执行，但必须：① 提交信息与 `sys_task` 里标注「§2 例外」；② 知悉该文件将**永久留在 git 历史**（含真实业务数据，事后移除需改写历史 + force push，属 §5 禁区）。
+已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260912-1908_before-archive-ocr-task.sql`（任务码 dev-20260912-017）。
+
 ---
 
 ## 3. 迁移/上线 SQL 规范
