@@ -1,7 +1,9 @@
 -- =====================================================
--- 清理测试数据脚本（v12）
+-- 清理测试数据脚本（v13）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v13 变更（2026-09-12）：
+--   1. 移除已下线的 production_tooling / jjx_screen_master 引用及核验项
 -- v12 变更（2026-09-10）：
 --   1. 对齐当前库（102 张表）：全量比对脚本覆盖与库表差异，业务表无遗漏（未覆盖的只剩系统/基础档案）
 --   2. 补充统一库存物品主数据 inventory_item 保留声明（由 inventory_material 派生，与物料同级基础档案）
@@ -144,6 +146,16 @@ TRUNCATE product;
 TRUNCATE product_backup_20260809;
 
 -- ==================== 4. 工程模块（v5 起标准工序保留，其余清） ====================
+TRUNCATE engineering_resource_maintenance;
+
+TRUNCATE engineering_resource_product_rel;
+
+TRUNCATE engineering_screen_plate;
+
+TRUNCATE engineering_screen_frame;
+
+TRUNCATE engineering_die;
+
 TRUNCATE engineering_routing_item;
 
 TRUNCATE engineering_routing;
@@ -212,8 +224,6 @@ TRUNCATE production_trace_log;
 TRUNCATE production_order;
 
 TRUNCATE production_equipment;
-
--- 工装模具档案 production_tooling 保留不清
 
 -- ==================== 8. 库存模块（v4 起物料/仓库也清） ====================
 TRUNCATE inventory_alert_log;
@@ -288,7 +298,7 @@ TRUNCATE sys_error_log;
 --       sys_dept 已按 83_rebuild_sys_dept_org.sql 新组织架构重建（16 部门），本脚本不清
 -- 配置：sys_config / sys_dict / sys_dict_item / sys_event_config
 -- 质量模板：quality_template_registry
--- 生产基础资料：jjx_screen_master / production_tooling / engineering_standard_process
+-- 生产基础资料：engineering_standard_process
 -- 业务基础资料：sales_customer / purchase_supplier / inventory_material /
 --               inventory_material_category / inventory_warehouse /
 --               inventory_item（统一库存物品主数据，由物料派生，与物料同级）
@@ -321,9 +331,7 @@ SELECT
     (SELECT COUNT(*) FROM purchase_supplier) AS suppliers,
     (SELECT COUNT(*) FROM inventory_warehouse) AS warehouses,
     (SELECT COUNT(*) FROM engineering_standard_process) AS standard_processes,
-    (SELECT COUNT(*) FROM production_tooling) AS tooling_records,
     (SELECT COUNT(*) FROM quality_template_registry) AS quality_templates,
-    (SELECT COUNT(*) FROM jjx_screen_master) AS screens,
     (SELECT COUNT(*) FROM inventory_item) AS inventory_items,
     (SELECT COUNT(*) FROM hr_employee) AS hr_employees,
     (SELECT COUNT(*) FROM sys_dept) AS departments;

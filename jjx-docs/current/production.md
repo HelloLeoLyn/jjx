@@ -35,7 +35,7 @@
 
 ## 关键表
 
-`production_order`、`production_operation_execution`、`production_operation_record`、`production_task`、`production_task_event`、`production_work_report`、`production_equipment`、`production_tooling`、`production_quality_inspection(+_item)`、`production_trace_log`
+`production_order`、`production_operation_execution`、`production_operation_record`、`production_task`、`production_task_event`、`production_work_report`、`production_equipment`、`production_quality_inspection(+_item)`、`production_trace_log`
 
 ## 关键代码
 

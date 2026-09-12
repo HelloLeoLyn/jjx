@@ -90,8 +90,6 @@
     "src/views/production/production-operation/index.vue|status-comparison|scope.row.operationStatus === 0 ||": 1,
     "src/views/production/production-operation/index.vue|status-comparison|scope.row.operationStatus === 1": 1,
     "src/views/production/production-operation/index.vue|status-comparison|v-if=\"scope.row.operationStatus === 0\"": 1,
-    "src/views/production/tooling/index.vue|status-comparison|<el-dropdown v-if=\"row.status !== 4\" @command=\"(cmd) => handleStatus(row, cmd)\">": 1,
-    "src/views/production/tooling/index.vue|status-comparison|if (status === 4) {": 1,
     "src/views/purchase/order/components/OrderDetailDialog.vue|status-comparison|<el-empty v-if=\"!currentInbounds.length && orderDetail.receiptStatus > 0\" description=\"暂无待确认凭证（已全部入库或未生成）\" :image-size=\"50\" />": 1,
     "src/views/purchase/order/components/OrderDetailDialog.vue|status-comparison|<span v-if=\"ib.status === 1\" class=\"voucher-tip\">待仓库在【入库管理】审批</span>": 1,
     "src/views/purchase/order/components/OrderDetailDialog.vue|status-comparison|const currentInbounds = computed(() => inboundList.value.filter((i) => i.status !== 10))": 1,

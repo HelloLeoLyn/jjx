@@ -57,12 +57,11 @@
           type="primary"
           :icon="Plus"
           v-hasPermi="['engineering:film:edit']"
-          :disabled="!queryProductId"
           @click="handleAdd"
         >
           新增菲林
         </el-button>
-        <span class="toolbar-tip">不选产品时展示全部菲林；新增需先选定产品</span>
+        <span class="toolbar-tip">不选产品时展示全部菲林；新增时在表单内选择产品</span>
       </div>
 
       <el-table :data="filmList" v-loading="loading" border stripe>
@@ -107,18 +106,6 @@
               下载
             </el-link>
             <span v-else class="muted">未上传</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="网版" width="80" align="center">
-          <template #default="scope">
-            <el-link
-              v-hasPermi="['engineering:screen:view']"
-              type="primary"
-              underline="never"
-              @click="openScreenDialog(scope.row)"
-            >
-              查看
-            </el-link>
           </template>
         </el-table-column>
         <el-table-column label="审批状态" width="100" align="center">
@@ -194,6 +181,16 @@
     <!-- 新增/编辑弹窗 -->
     <el-dialog :title="form.filmId ? '编辑菲林' : '新增菲林'" v-model="dialogVisible" width="680px" append-to-body>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+        <el-form-item label="关联产品" prop="productId">
+          <ProductSelector
+            :model-value="form.productId ?? null"
+            @update:model-value="form.productId = Number($event) || undefined"
+            :options="productOptions"
+            value-type="productId"
+            :disabled="Boolean(form.filmId)"
+            placeholder="请选择产品"
+          />
+        </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="菲林名称" prop="filmName">
@@ -278,69 +275,17 @@
       </template>
     </el-dialog>
 
-    <!-- 菲林 → 网版 联动弹窗（dev-20260911-003） -->
-    <el-dialog
-      v-model="screenDialogVisible"
-      :title="`网版 · ${screenFilm?.filmCode || ''} ${screenFilm?.filmName || ''}`"
-      width="720px"
-      append-to-body
-    >
-      <el-form inline>
-        <el-form-item label="网框型号">
-          <el-select v-model="screenForm.frameType" style="width: 110px">
-            <el-option
-              v-for="f in ScreenFrameTypeEnum.items"
-              :key="f.value"
-              :label="f.label"
-              :value="f.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="目数">
-          <el-input v-model="screenForm.mesh" placeholder="如 300" style="width: 110px" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="screenForm.remark" placeholder="可选" style="width: 180px" />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            :loading="screenSubmitting"
-            v-hasPermi="['engineering:screen:add']"
-            @click="submitScreen"
-          >
-            生成网版
-          </el-button>
-        </el-form-item>
-      </el-form>
-      <el-table :data="screenList" v-loading="screenLoading" border size="small">
-        <el-table-column label="网版编号" prop="screenNo" width="110" />
-        <el-table-column label="框型" width="80">
-          <template #default="s">{{ s.row.frameType }}</template>
-        </el-table-column>
-        <el-table-column label="网版内容" prop="content" min-width="200" show-overflow-tooltip />
-        <el-table-column label="目数" prop="mesh" width="80" />
-        <el-table-column label="状态" width="90">
-          <template #default="s">
-            <el-tag :type="ScreenStatusEnum.getTagProps(s.row.status).type" size="small">
-              {{ ScreenStatusEnum.getLabel(s.row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-if="!screenLoading && !screenList.length" description="该菲林还没有生成网版" :image-size="60" />
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import { Search, Refresh, Plus, Upload } from '@element-plus/icons-vue'
 import { filmApi, type EngineeringFilm } from '@/api/product/film'
 import { listProductPage } from '@/api/product'
 import { attachmentApi } from '@/api/system/attachment'
-import { listScreensByFilm, createScreenFromFilm } from '@/api/engineering/screen'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import {
   FilmApproveStatusEnum,
@@ -348,7 +293,6 @@ import {
   FilmReleaseStatusEnum,
   FilmCurrentFlagEnum,
 } from '@/enums/product/film'
-import { ScreenStatusEnum, ScreenFrameTypeEnum } from '@/enums/engineering/screen'
 
 defineOptions({ name: 'EngineeringFilm' })
 
@@ -362,14 +306,7 @@ const queryFilmType = ref<string>('')
 const queryApproveStatus = ref<number | null>(null)
 const queryKeyword = ref('')
 const dialogVisible = ref(false)
-
-// 网版联动（dev-20260911-003）
-const screenDialogVisible = ref(false)
-const screenLoading = ref(false)
-const screenSubmitting = ref(false)
-const screenFilm = ref<EngineeringFilm | null>(null)
-const screenList = ref<any[]>([])
-const screenForm = reactive({ frameType: ScreenFrameTypeEnum.A.value, mesh: '', remark: '' })
+const formRef = ref<FormInstance>()
 
 const form = reactive<Partial<EngineeringFilm>>({
   filmId: undefined,
@@ -388,6 +325,7 @@ const form = reactive<Partial<EngineeringFilm>>({
 })
 
 const rules = {
+  productId: [{ required: true, message: '请选择关联产品', trigger: 'change' }],
   filmName: [{ required: true, message: '菲林名称不能为空', trigger: 'blur' }],
   filmType: [{ required: true, message: '请选择类型', trigger: 'change' }],
 }
@@ -522,10 +460,11 @@ function clearFile() {
 }
 
 async function handleSubmitForm() {
-  if (!queryProductId.value) return
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   submitting.value = true
   try {
-    const payload = { ...form, productId: queryProductId.value }
+    const payload = { ...form, productId: form.productId }
     if (form.filmId) {
       await filmApi.update(form.filmId, payload)
       ElMessage.success('修改成功')
@@ -603,48 +542,6 @@ async function handleDelete(row: EngineeringFilm) {
   await filmApi.remove(row.filmId!)
   ElMessage.success('已删除')
   loadFilms()
-}
-
-// ── 菲林 → 网版 ───────────────────────────────────────────────
-async function openScreenDialog(row: EngineeringFilm) {
-  screenFilm.value = row
-  screenForm.frameType = ScreenFrameTypeEnum.A.value
-  screenForm.mesh = ''
-  screenForm.remark = ''
-  screenDialogVisible.value = true
-  await loadScreens()
-}
-
-async function loadScreens() {
-  if (!screenFilm.value?.filmId) return
-  screenLoading.value = true
-  try {
-    const res: any = await listScreensByFilm(screenFilm.value.filmId)
-    screenList.value = res?.data || []
-  } catch {
-    screenList.value = []
-  } finally {
-    screenLoading.value = false
-  }
-}
-
-async function submitScreen() {
-  if (!screenFilm.value?.filmId) return
-  screenSubmitting.value = true
-  try {
-    await createScreenFromFilm({
-      filmId: screenFilm.value.filmId,
-      frameType: screenForm.frameType,
-      mesh: screenForm.mesh || undefined,
-      remark: screenForm.remark || undefined,
-    })
-    ElMessage.success('已生成网版')
-    await loadScreens()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '生成网版失败')
-  } finally {
-    screenSubmitting.value = false
-  }
 }
 
 onMounted(async () => {

@@ -78,11 +78,9 @@
             </el-table-column>
             <el-table-column label="网框编号" width="160">
               <template #default="{ row }">
-                <el-autocomplete
+                <el-input
                   v-model="row.screenNo"
                   size="small"
-                  :fetch-suggestions="suggestScreen"
-                  :trigger-on-focus="true"
                   clearable
                   placeholder="网框编号"
                 />
@@ -227,7 +225,6 @@ import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { getProcessHistory, suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
 import { ProcessStatusEnum } from '@/enums/product/process'
-import { suggestScreen as suggestScreenApi } from '@/api/engineering/screen'
 
 /**
  * 印刷工序面板（dev-20260811-009）
@@ -315,17 +312,6 @@ function suggestFrom(query: string, cb: (items: { value: string }[]) => void, ke
   const q = (query || '').trim().toLowerCase()
   const filtered = q ? list.filter((v) => v.toLowerCase().includes(q)) : list
   cb(filtered.slice(0, 20).map((value) => ({ value })))
-}
-
-// 网框联想：调网版主数据 suggest 接口（编号+内容显示）
-async function suggestScreen(query: string, cb: (items: { value: string }[]) => void) {
-  try {
-    const res: any = await suggestScreenApi(query || undefined, 20)
-    const list = res?.data || []
-    cb(list.map((s: any) => ({ value: `${s.screenNo} ${s.content || ''}`.trim() })))
-  } catch {
-    cb([])
-  }
 }
 
 function filtered(value: string) {
