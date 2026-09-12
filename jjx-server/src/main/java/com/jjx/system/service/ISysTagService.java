@@ -63,13 +63,32 @@ public interface ISysTagService extends IService<SysTag> {
 
     /**
      * 标签查询辅助（facets）：返回标签列表 + 在当前选中标签组合下的关联数量。
-     * 计数口径：以「已选标签 AND 交集后的业务对象集合」为分母，便于判断再加一个标签还剩多少条。
+     * 计数口径：MATCH=AND 时以「已选标签 AND 交集后的业务对象集合」为分母；OR 时不做收窄（计数=各标签全库数量）。
      *
      * @param bizType         业务类型
      * @param selectedTagIds  已选标签（参与收窄，可为空）
      * @param keyword         标签名/编码模糊搜索（可为空）
      */
     List<com.jjx.system.domain.vo.TagFacetVO> facets(String bizType, List<Long> selectedTagIds, String keyword);
+
+    /**
+     * 标签查询辅助（facets）带匹配模式（dev-20260912-007）
+     *
+     * @param matchMode AND=按已选收窄（默认）；OR=不收窄
+     */
+    List<com.jjx.system.domain.vo.TagFacetVO> facets(String bizType, List<Long> selectedTagIds, String keyword, String matchMode);
+
+    /**
+     * 统一按标签过滤：返回需要 in 的业务ID列表（dev-20260912-007 公共助手）
+     * <p>约定：各模块 QueryVO 统一用 tagIds + tagMatchMode(AND/OR) 两个字段；
+     * tagIds 为空 → 返回 null 表示「无标签过滤」；非空 → 返回命中的 bizId 列表（可能为空集合=无命中）。</p>
+     *
+     * @param bizType       业务类型
+     * @param tagIds        标签ID集合
+     * @param tagMatchMode  AND=同时含全部（默认）；OR=含任一
+     * @return null=无过滤；非null=需 in 的 bizId 列表
+     */
+    List<Long> resolveBizIdsFilter(String bizType, List<Long> tagIds, String tagMatchMode);
 
     /**
      * 取或建（导入时自动建标签用）

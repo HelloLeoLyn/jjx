@@ -32,6 +32,8 @@ export interface SearchOptions {
   label: string
   type: 'input' | 'select' | 'daterange' | 'date' | 'custom' | 'tree'
   options?: Array<{ value: any; label: string }>
+  /** 是否独占一行（custom 类字段如标签筛选常用，dev-20260912-009） */
+  block?: boolean
 }
 
 export interface FormOptions {

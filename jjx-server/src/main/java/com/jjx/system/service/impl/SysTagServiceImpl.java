@@ -174,15 +174,31 @@ public class SysTagServiceImpl extends ServiceImpl<SysTagMapper, SysTag> impleme
     }
 
     @Override
+    public List<Long> resolveBizIdsFilter(String bizType, List<Long> tagIds, String tagMatchMode) {
+        if (tagIds == null || tagIds.stream().filter(java.util.Objects::nonNull).findAny().isEmpty()) {
+            return null; // 无标签过滤
+        }
+        boolean matchAll = !"OR".equalsIgnoreCase(tagMatchMode);
+        return getBizIdsByTagIds(bizType, tagIds, matchAll);
+    }
+
+    @Override
     public List<com.jjx.system.domain.vo.TagFacetVO> facets(String bizType, List<Long> selectedTagIds, String keyword) {
+        return facets(bizType, selectedTagIds, keyword, "AND");
+    }
+
+    @Override
+    public List<com.jjx.system.domain.vo.TagFacetVO> facets(String bizType, List<Long> selectedTagIds, String keyword, String matchMode) {
         if (StringUtils.isBlank(bizType)) {
             return new ArrayList<>();
         }
         List<Long> selected = selectedTagIds == null ? new ArrayList<>()
                 : selectedTagIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
-        // 已选标签先按 AND 收窄，得到计数分母；组合无命中时直接返回空
+        // AND：已选标签先按 AND 收窄，得到计数分母；组合无命中时直接返回空
+        // OR：不做收窄（计数=各标签全库数量，dev-20260912-007）
+        boolean matchAll = !"OR".equalsIgnoreCase(matchMode);
         List<Long> scope = null;
-        if (!selected.isEmpty()) {
+        if (!selected.isEmpty() && matchAll) {
             scope = getBizIdsByTagIds(bizType, selected, true);
             if (scope.isEmpty()) {
                 return new ArrayList<>();

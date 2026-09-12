@@ -2,7 +2,7 @@
   <el-card class="search-card" shadow="never">
     <el-form :model="formData" :inline="true">
       <template v-for="field in fields" :key="field.prop">
-        <el-form-item :label="field.label">
+        <el-form-item :label="field.label" :style="field.block ? 'width:100%;margin-right:0' : undefined">
           <!-- 输入框 -->
           <template v-if="field.type === 'input'">
             <el-input

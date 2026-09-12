@@ -7,17 +7,15 @@
   业务侧只需把 tagIds / tagMatchMode 传给列表接口即可（后端按 sys_tag_rel 反查 bizId 过滤）。
 -->
 <template>
-  <div class="tag-query-select">
+  <div class="tag-query-select" :class="{ 'is-block': block }">
     <el-select
       :model-value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
-      :style="{ width }"
+      :style="{ width: block ? '100%' : width }"
       multiple
       filterable
       clearable
-      collapse-tags
-      collapse-tags-tooltip
       :loading="loading"
       @update:model-value="onSelect"
       @clear="onClear"
@@ -85,6 +83,8 @@ const props = withDefaults(
     showMode?: boolean
     /** 是否显示最近使用 */
     showRecent?: boolean
+    /** 是否独占一行（下拉宽度铺满，已选标签换行全显示，dev-20260912-009） */
+    block?: boolean
   }>(),
   {
     matchMode: 'AND',
@@ -94,6 +94,7 @@ const props = withDefaults(
     disabled: false,
     showMode: true,
     showRecent: true,
+    block: false,
   },
 )
 
@@ -148,7 +149,7 @@ async function loadFacets() {
   if (!props.bizType) return
   loading.value = true
   try {
-    const res: any = await tagApi.facets({ bizType: props.bizType, tagIds: props.modelValue })
+    const res: any = await tagApi.facets({ bizType: props.bizType, tagIds: props.modelValue, matchMode: mode.value })
     const list: TagFacet[] = res?.data || []
     if (list.length || !props.modelValue.length) {
       facets.value = list
@@ -221,6 +222,8 @@ watch(
 watch(mode, (value) => {
   emit('update:matchMode', value)
   emit('change', props.modelValue, value)
+  // 与/或切换会改变计数口径（AND 收窄 / OR 不收窄），重新拉取
+  loadFacets()
 })
 
 onMounted(() => {
@@ -240,6 +243,11 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+/* 独占一行：铺满宽度，已选标签自动换行全部展示 */
+.tag-query-select.is-block {
+  display: flex;
+  width: 100%;
 }
 .tag-option {
   display: flex;

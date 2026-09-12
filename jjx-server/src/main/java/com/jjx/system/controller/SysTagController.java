@@ -49,8 +49,9 @@ public class SysTagController extends BaseController {
     public Result<List<com.jjx.system.domain.vo.TagFacetVO>> facets(
             @RequestParam String bizType,
             @RequestParam(required = false) List<Long> tagIds,
-            @RequestParam(required = false) String keyword) {
-        return Result.success(tagService.facets(bizType, tagIds, keyword));
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String matchMode) {
+        return Result.success(tagService.facets(bizType, tagIds, keyword, matchMode == null ? "AND" : matchMode));
     }
 
     /**

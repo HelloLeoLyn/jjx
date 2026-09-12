@@ -45,12 +45,13 @@ export const tagApi = {
    * 标签查询辅助（facets）：标签 + 当前选中组合下的关联数量（dev-20260912-004）
    * @param tagIds 已选标签（参与「与」收窄，用于动态计数）
    */
-  facets(params: { bizType: string; tagIds?: number[]; keyword?: string }) {
-    const { bizType, tagIds, keyword } = params
+  facets(params: { bizType: string; tagIds?: number[]; keyword?: string; matchMode?: 'AND' | 'OR' }) {
+    const { bizType, tagIds, keyword, matchMode } = params
     return request.get<R<TagFacet[]>>('/system/tag/facets', {
       params: {
         bizType,
         keyword,
+        matchMode,
         // Spring 以逗号串绑定 List<Long>，避免 axios 数组序列化成 tagIds[]
         tagIds: tagIds && tagIds.length ? tagIds.join(',') : undefined,
       },
