@@ -39,6 +39,21 @@ public class SysTagController extends BaseController {
     }
 
     /**
+     * 标签查询辅助（facets）：标签 + 当前选中组合下的关联数量。
+     * 计数口径 = 已选标签 AND 交集后的业务对象集合（faceted narrowing）。
+     * 供业务模块的查询区使用，故不挂 system:tag:view（业务角色一般没有系统标签权限）；
+     * 标签的增删改仍由 system:tag:add/edit/delete 保护。
+     */
+    @Operation(summary = "标签查询辅助（含计数）")
+    @GetMapping("/facets")
+    public Result<List<com.jjx.system.domain.vo.TagFacetVO>> facets(
+            @RequestParam String bizType,
+            @RequestParam(required = false) List<Long> tagIds,
+            @RequestParam(required = false) String keyword) {
+        return Result.success(tagService.facets(bizType, tagIds, keyword));
+    }
+
+    /**
      * 新增标签
      */
     @Operation(summary = "新增标签")

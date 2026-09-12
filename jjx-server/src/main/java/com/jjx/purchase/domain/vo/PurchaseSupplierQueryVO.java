@@ -35,6 +35,16 @@ public class PurchaseSupplierQueryVO {
     private Long tagId;
 
     /**
+     * 标签ID集合（多标签筛选，dev-20260912-004；与 tagId 二选一，优先本字段）
+     */
+    private java.util.List<Long> tagIds;
+
+    /**
+     * 标签匹配模式：AND=同时含全部标签（默认）；OR=含任一标签
+     */
+    private String tagMatchMode;
+
+    /**
      * 联系人
      */
     private String contactPerson;

@@ -53,6 +53,25 @@ public interface ISysTagService extends IService<SysTag> {
     List<Long> getBizIdsByTagIds(String bizType, List<Long> tagIds);
 
     /**
+     * 按标签反查业务ID（dev-20260912-004 标签查询组件）
+     *
+     * @param bizType  业务类型
+     * @param tagIds   标签ID集合
+     * @param matchAll true=同时含全部标签（AND）；false=含任一标签（OR）
+     */
+    List<Long> getBizIdsByTagIds(String bizType, List<Long> tagIds, boolean matchAll);
+
+    /**
+     * 标签查询辅助（facets）：返回标签列表 + 在当前选中标签组合下的关联数量。
+     * 计数口径：以「已选标签 AND 交集后的业务对象集合」为分母，便于判断再加一个标签还剩多少条。
+     *
+     * @param bizType         业务类型
+     * @param selectedTagIds  已选标签（参与收窄，可为空）
+     * @param keyword         标签名/编码模糊搜索（可为空）
+     */
+    List<com.jjx.system.domain.vo.TagFacetVO> facets(String bizType, List<Long> selectedTagIds, String keyword);
+
+    /**
      * 取或建（导入时自动建标签用）
      *
      * @param tagGroup 分组

@@ -155,17 +155,57 @@ public class SysTagServiceImpl extends ServiceImpl<SysTagMapper, SysTag> impleme
 
     @Override
     public List<Long> getBizIdsByTagIds(String bizType, List<Long> tagIds) {
+        return getBizIdsByTagIds(bizType, tagIds, false);
+    }
+
+    @Override
+    public List<Long> getBizIdsByTagIds(String bizType, List<Long> tagIds, boolean matchAll) {
         if (StringUtils.isBlank(bizType) || tagIds == null || tagIds.isEmpty()) {
             return new ArrayList<>();
         }
-        List<SysTagRel> rels = tagRelMapper.selectList(new LambdaQueryWrapper<SysTagRel>()
-                .eq(SysTagRel::getBizType, bizType)
-                .in(SysTagRel::getTagId, tagIds));
-        Set<Long> ids = new LinkedHashSet<>();
-        for (SysTagRel rel : rels) {
-            ids.add(rel.getBizId());
+        List<Long> distinct = tagIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return new ArrayList<>();
         }
-        return new ArrayList<>(ids);
+        if (matchAll) {
+            return tagRelMapper.selectBizIdsByAllTags(bizType, distinct, distinct.size());
+        }
+        return tagRelMapper.selectBizIdsByAnyTag(bizType, distinct);
+    }
+
+    @Override
+    public List<com.jjx.system.domain.vo.TagFacetVO> facets(String bizType, List<Long> selectedTagIds, String keyword) {
+        if (StringUtils.isBlank(bizType)) {
+            return new ArrayList<>();
+        }
+        List<Long> selected = selectedTagIds == null ? new ArrayList<>()
+                : selectedTagIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        // 已选标签先按 AND 收窄，得到计数分母；组合无命中时直接返回空
+        List<Long> scope = null;
+        if (!selected.isEmpty()) {
+            scope = getBizIdsByTagIds(bizType, selected, true);
+            if (scope.isEmpty()) {
+                return new ArrayList<>();
+            }
+        }
+        java.util.Map<Long, Long> counts = new java.util.HashMap<>();
+        for (com.jjx.system.domain.vo.TagFacetVO row : tagRelMapper.countByTagGrouped(bizType, scope)) {
+            if (row.getTagId() != null) {
+                counts.put(row.getTagId(), row.getCount() == null ? 0L : row.getCount());
+            }
+        }
+        List<com.jjx.system.domain.vo.TagFacetVO> result = new ArrayList<>();
+        for (SysTag tag : listTags(null, keyword, 1)) {
+            com.jjx.system.domain.vo.TagFacetVO vo = new com.jjx.system.domain.vo.TagFacetVO();
+            vo.setTagId(tag.getTagId());
+            vo.setTagCode(tag.getTagCode());
+            vo.setTagName(tag.getTagName());
+            vo.setTagGroup(tag.getTagGroup());
+            vo.setCount(counts.getOrDefault(tag.getTagId(), 0L));
+            vo.setSelected(selected.contains(tag.getTagId()));
+            result.add(vo);
+        }
+        return result;
     }
 
     @Override

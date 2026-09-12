@@ -2,7 +2,7 @@
   <div class="app-container">
     <!-- 搜索区域 -->
     <el-card class="search-card" shadow="never">
-      <el-form :model="queryParams" ref="queryForm" :inline="true" label-width="80px">
+      <el-form :model="queryParams" ref="queryForm" :inline="true" label-width="100px">
         <el-form-item label="供应商编码" prop="supplierCode">
           <el-input
             v-model="queryParams.supplierCode"
@@ -51,16 +51,13 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="标签" prop="tagId">
-          <el-select
-            v-model="queryParams.tagId"
-            placeholder="按标签筛选"
-            clearable
-            filterable
-            style="width: 200px"
-          >
-            <el-option v-for="tag in tagOptions" :key="tag.tagId" :label="tag.tagName" :value="tag.tagId!" />
-          </el-select>
+        <el-form-item label="标签" prop="tagIds">
+          <!-- 标签查询辅助组件（dev-20260912-004）：多选 + 分组 + 计数 + 与/或 + 最近使用 -->
+          <TagQuerySelect
+            v-model="queryParams.tagIds"
+            v-model:match-mode="queryParams.tagMatchMode"
+            biz-type="purchase_supplier"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
@@ -76,20 +73,46 @@
           <el-button type="primary" plain icon="Plus" @click="handleAdd">新增</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Edit" v-hasPermi="['purchase:supplier:edit']" :disabled="single" @click="handleUpdate"
+          <el-button
+            type="success"
+            plain
+            icon="Edit"
+            v-hasPermi="['purchase:supplier:edit']"
+            :disabled="single"
+            @click="handleUpdate"
             >修改</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="danger" plain icon="Delete" v-hasPermi="['purchase:supplier:delete']" :disabled="multiple" @click="handleDelete"
+          <el-button
+            type="danger"
+            plain
+            icon="Delete"
+            v-hasPermi="['purchase:supplier:delete']"
+            :disabled="multiple"
+            @click="handleDelete"
             >删除</el-button
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" v-hasPermi="['purchase:supplier:export']" @click="handleExport">导出</el-button>
+          <el-button
+            type="warning"
+            plain
+            icon="Download"
+            v-hasPermi="['purchase:supplier:export']"
+            @click="handleExport"
+            >导出</el-button
+          >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="info" plain icon="Upload" v-hasPermi="['purchase:supplier:import']" @click="importDialogVisible = true">导入</el-button>
+          <el-button
+            type="info"
+            plain
+            icon="Upload"
+            v-hasPermi="['purchase:supplier:import']"
+            @click="importDialogVisible = true"
+            >导入</el-button
+          >
         </el-col>
         <el-col :span="1.5">
           <el-button type="success" plain icon="Star" :disabled="single" @click="handleEvaluation"
@@ -259,16 +282,16 @@
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="标签" prop="tagIds">
-              <el-select
+              <!-- 复用标签查询组件做标签维护：只展示供货品类分组，不带与/或与最近使用 -->
+              <TagQuerySelect
                 v-model="form.tagIds"
-                multiple
-                filterable
-                clearable
+                biz-type="purchase_supplier"
+                tag-group="supplier_goods"
+                :show-mode="false"
+                :show-recent="false"
+                width="100%"
                 placeholder="选择标签（可多个，如 塑料制品 / 薄膜）"
-                style="width: 100%"
-              >
-                <el-option v-for="tag in tagOptions" :key="tag.tagId" :label="tag.tagName" :value="tag.tagId!" />
-              </el-select>
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -495,7 +518,6 @@
       @success="getList"
     />
   </div>
-
 </template>
 
 <script setup lang="ts">
@@ -524,8 +546,7 @@ import {
 import { parseTime, download } from '@/utils/format'
 import { SupplierTypeEnum, SupplierStatusEnum } from '@/enums/purchase'
 import { dictApi } from '@/api/system/dict'
-import { tagApi } from '@/api/system/tag'
-import { TAG_GROUP, type SysTag } from '@/types/system/tag'
+import TagQuerySelect from '@/components/TagQuerySelect.vue'
 import type { SysDictItem } from '@/types/system/dict'
 
 // 查询参数
@@ -536,7 +557,8 @@ const queryParams = reactive({
   supplierName: undefined as string | undefined,
   supplierType: undefined as string | undefined,
   status: undefined as string | undefined,
-  tagId: undefined as number | undefined,
+  tagIds: [] as number[],
+  tagMatchMode: 'AND' as 'AND' | 'OR',
   orderByColumn: undefined as string | undefined,
   isAsc: undefined as 'asc' | 'desc' | undefined,
 })
@@ -690,18 +712,6 @@ const supplierTypeOptions = SupplierTypeEnum.items
 const statusOptions = SupplierStatusEnum.items
 const paymentTermsOptions = ref<SysDictItem[]>([])
 
-// 标签选项（系统标签，dev-20260911-007）
-const tagOptions = ref<SysTag[]>([])
-
-const loadTagOptions = async () => {
-  try {
-    const response: any = await tagApi.list({ tagGroup: TAG_GROUP.SUPPLIER_GOODS, status: 1 })
-    tagOptions.value = response?.data || []
-  } catch (error) {
-    console.error('获取标签失败:', error)
-  }
-}
-
 const loadPaymentTermsOptions = async () => {
   try {
     const response = await dictApi.getItems('payment_terms')
@@ -756,7 +766,8 @@ const resetQuery = () => {
     supplierName: undefined,
     supplierType: undefined,
     status: undefined,
-    tagId: undefined,
+    tagIds: [],
+    tagMatchMode: 'AND',
     orderByColumn: undefined,
     isAsc: undefined,
   })
@@ -992,6 +1003,5 @@ watch(
 onMounted(() => {
   getList()
   loadPaymentTermsOptions()
-  loadTagOptions()
 })
 </script>

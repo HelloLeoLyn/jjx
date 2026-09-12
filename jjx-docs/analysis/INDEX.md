@@ -8,6 +8,7 @@
 
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-12 (dev-004) | tag-query-helper-dev-20260912-004.md | 标签查询辅助组件（多选/分组/计数/与或）+ 供应商管理落地（dev-20260912-004） |
 | 2026-09-12 (dev-002) | engineering-archive-operability-dev-20260912-002.md | 历史档案录入可运行性修复报告 |
 | 2026-09-12 (dev-001) | sample-order-split-dev-20260912-001.md | 样品订单独立表改造实施记录 |
 | 2026-09-11 (dev-004) | engineering-archive-import-dev-20260911-004.md | 工程管理历史档案本地识别录入实施报告 |

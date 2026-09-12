@@ -40,4 +40,30 @@ export const tagApi = {
   getBizIdsByTag(bizType: string, tagId: number) {
     return request.get<R<number[]>>('/system/tag/biz-ids', { params: { bizType, tagId } })
   },
+
+  /**
+   * 标签查询辅助（facets）：标签 + 当前选中组合下的关联数量（dev-20260912-004）
+   * @param tagIds 已选标签（参与「与」收窄，用于动态计数）
+   */
+  facets(params: { bizType: string; tagIds?: number[]; keyword?: string }) {
+    const { bizType, tagIds, keyword } = params
+    return request.get<R<TagFacet[]>>('/system/tag/facets', {
+      params: {
+        bizType,
+        keyword,
+        // Spring 以逗号串绑定 List<Long>，避免 axios 数组序列化成 tagIds[]
+        tagIds: tagIds && tagIds.length ? tagIds.join(',') : undefined,
+      },
+    })
+  },
+}
+
+/** 标签查询辅助项（含当前条件下计数） */
+export interface TagFacet {
+  tagId: number
+  tagCode?: string
+  tagName: string
+  tagGroup: string
+  count: number
+  selected?: boolean
 }

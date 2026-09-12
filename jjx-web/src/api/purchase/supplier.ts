@@ -6,8 +6,20 @@ export function listSupplier(params?: SupplierQueryParams) {
   return request({
     url: '/purchase/supplier/list',
     method: 'get',
-    params,
+    params: normalizeTagParams(params),
   })
+}
+
+/**
+ * 标签查询参数归一化（dev-20260912-004）：
+ * Spring 以逗号串绑定 List<Long>，把 tagIds 数组压成 "1,2,3"，避免 axios 序列化成 tagIds[]=1&tagIds[]=2
+ */
+function normalizeTagParams<T extends Record<string, any> | undefined>(params: T): T {
+  if (params && Array.isArray((params as any).tagIds)) {
+    const ids = (params as any).tagIds as number[]
+    return { ...params, tagIds: ids.length ? ids.join(',') : undefined } as T
+  }
+  return params
 }
 
 // 查询供应商详细

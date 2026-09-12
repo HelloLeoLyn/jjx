@@ -150,6 +150,10 @@ export interface SupplierQueryParams extends PurchaseQueryParams {
   supplierName?: string
   supplierType?: string
   status?: string
+  /** 标签筛选（多标签，dev-20260912-004） */
+  tagIds?: number[] | string
+  /** 标签匹配模式：AND（默认）/ OR */
+  tagMatchMode?: 'AND' | 'OR'
   startDate?: string
   endDate?: string
 }

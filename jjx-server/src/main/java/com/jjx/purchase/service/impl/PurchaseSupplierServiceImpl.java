@@ -78,9 +78,14 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             wrapper.like(PurchaseSupplier::getPhone, queryVO.getPhone());
         }
 
-        // 按标签筛选（dev-20260911-007）：先反查挂了该标签的供应商ID
-        if (queryVO.getTagId() != null) {
-            List<Long> bizIds = tagService.getBizIdsByTagIds(TAG_BIZ_TYPE, List.of(queryVO.getTagId()));
+        // 按标签筛选（dev-20260911-007 单标签；dev-20260912-004 支持多标签 + 与/或）
+        List<Long> queryTagIds = queryVO.getTagIds();
+        if ((queryTagIds == null || queryTagIds.isEmpty()) && queryVO.getTagId() != null) {
+            queryTagIds = List.of(queryVO.getTagId());
+        }
+        if (queryTagIds != null && !queryTagIds.isEmpty()) {
+            boolean matchAll = !"OR".equalsIgnoreCase(queryVO.getTagMatchMode());
+            List<Long> bizIds = tagService.getBizIdsByTagIds(TAG_BIZ_TYPE, queryTagIds, matchAll);
             if (bizIds.isEmpty()) {
                 return com.jjx.common.core.page.PageResult.build(new java.util.ArrayList<>(), 0L);
             }
@@ -171,8 +176,11 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         if (StringUtils.isEmpty(supplierDTO.getSupplierName())) {
             throw new BusinessException("供应商名称不能为空");
         }
-        if (supplierDTO.getSupplierType() == null) {
+        if (StringUtils.isBlank(supplierDTO.getSupplierType())) {
             throw new BusinessException("供应商类型不能为空");
+        }
+        if (!com.jjx.purchase.domain.enums.SupplierTypeEnum.isValid(supplierDTO.getSupplierType())) {
+            throw new BusinessException("供应商类型不合法");
         }
 
         // 转换实体
@@ -392,9 +400,13 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         long disabledCount = all.stream().filter(s -> s.getStatus() != null && s.getStatus() == 1).count();
         stats.put("normalCount", all.size() - disabledCount);
         stats.put("disabledCount", disabledCount);
-        stats.put("materialsCount", all.stream().filter(s -> "M".equals(s.getSupplierType())).count());
+        // dev-20260912-003：类型改为 R/A/I/F/E/O；materialsCount/equipmentCount/otherCount 保留键名兼容
+        stats.put("materialsCount", all.stream().filter(s -> "R".equals(s.getSupplierType())).count());
+        stats.put("auxiliaryCount", all.stream().filter(s -> "A".equals(s.getSupplierType())).count());
+        stats.put("inkCount", all.stream().filter(s -> "I".equals(s.getSupplierType())).count());
+        stats.put("finishedCount", all.stream().filter(s -> "F".equals(s.getSupplierType())).count());
         stats.put("equipmentCount", all.stream().filter(s -> "E".equals(s.getSupplierType())).count());
-        stats.put("otherCount", all.stream().filter(s -> !"M".equals(s.getSupplierType()) && !"E".equals(s.getSupplierType())).count());
+        stats.put("otherCount", all.stream().filter(s -> !"R".equals(s.getSupplierType()) && !"E".equals(s.getSupplierType())).count());
         return stats;
     }
 
@@ -423,14 +435,18 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                 } else {
                     existingSupplier = null;
                 }
-                // 供应商类型：允许 M/E/O；若填了其他文本（历史表把供货品类写在类型列），按标签处理（dev-20260911-007）
+                // 供应商类型（dev-20260912-003）：能对应字典编码的直接用；否则按供货品类大类归类
+                //   - 大类命中关键词 → 对应类型；未命中 → 其他(O)
+                //   - 原值（大类*明细）仍整体进标签，保留两级明细
+                //   （保留 dev-20260911-007 的标签兜底：历史表把供货品类写在类型列）
                 String rawType = StringUtils.trimToNull(importDTO.getSupplierType());
                 String supplierType = null;
                 StringBuilder extraTag = new StringBuilder();
                 if (rawType != null) {
-                    if (com.jjx.purchase.domain.enums.SupplierTypeEnum.isValid(rawType.toUpperCase())) {
-                        supplierType = rawType.toUpperCase();
+                    if (com.jjx.purchase.domain.enums.SupplierTypeEnum.isValid(rawType)) {
+                        supplierType = rawType.trim().toUpperCase();
                     } else {
+                        supplierType = com.jjx.purchase.domain.enums.SupplierTypeEnum.classifyByGoodsCategory(rawType);
                         extraTag.append(rawType);
                     }
                 }
@@ -462,7 +478,8 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                     // 编码留空时系统生成（dev-20260911-005：SUP + 5 位流水）
                     supplier.setSupplierCode(code != null ? code : generateSupplierCode());
                     supplier.setSupplierName(importDTO.getSupplierName());
-                    supplier.setSupplierType(supplierType != null ? supplierType : "M");
+                    supplier.setSupplierType(supplierType != null ? supplierType
+                            : com.jjx.purchase.domain.enums.SupplierTypeEnum.OTHER.getCode());
                     supplier.setContactPerson(importDTO.getContactPerson());
                     supplier.setPhone(importDTO.getPhone());
                     supplier.setEmail(importDTO.getEmail());
