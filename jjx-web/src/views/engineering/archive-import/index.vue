@@ -6,6 +6,7 @@
           <div>
             <div class="title">历史档案录入</div>
             <div class="hint">原图保留在本地，识别结果确认后生成产品、BOM和工艺路线草稿。</div>
+            <el-tag size="small" :type="ocrAvailable ? 'success' : 'danger'">OCR：{{ ocrAvailable ? '已连接' : '未启动' }}</el-tag>
           </div>
           <el-upload :show-file-list="false" accept="image/jpeg,image/png" :http-request="uploadArchive">
             <el-button type="primary" :loading="uploading" v-hasPermi="['engineering:archive:import']">上传并识别</el-button>
@@ -72,6 +73,7 @@ const loading = ref(false), uploading = ref(false)
 const rows = ref<ArchiveImportRecord[]>([]), total = ref(0), pageNum = ref(1), pageSize = ref(20)
 const reviewVisible = ref(false), sampleVisible = ref(false), resultText = ref('')
 const current = ref<ArchiveImportRecord>(), samples = ref<IconSample[]>([]), processes = ref<StandardProcessItem[]>([])
+const ocrAvailable = ref(false)
 
 function payload<T>(response: any): T { return (response?.data?.data ?? response?.data ?? response) as T }
 async function load() {
@@ -88,7 +90,7 @@ async function retry(row: ArchiveImportRecord) { await archiveImportApi.retry(ro
 async function generate(row: ArchiveImportRecord) { await ElMessageBox.confirm('将按当前识别结果创建产品、BOM和工艺路线草稿，是否继续？', '生成草稿'); await archiveImportApi.generate(row.archiveId); ElMessage.success('草稿已生成'); await load() }
 async function openSamples() { if (!current.value) return; samples.value = payload(await archiveImportApi.samples(current.value.archiveId)); if (!processes.value.length) processes.value = payload(await standardProcessApi.getEnabledProcesses()); sampleVisible.value=true }
 async function confirmSample(row: IconSample) { if (!row.processId) return; await archiveImportApi.confirmSample(row.sampleId, row.processId); ElMessage.success('图标样本已确认，可用于下次识别') }
-onMounted(load)
+onMounted(async () => { await load(); const health: any = payload(await archiveImportApi.ocrHealth()); ocrAvailable.value = health?.available === true })
 </script>
 
 <style scoped>

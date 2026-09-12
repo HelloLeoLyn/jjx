@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.system.domain.entity.SysAttachment;
+import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.product.enums.ProductEnums;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ import java.net.SocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,6 +55,7 @@ public class EngineeringArchiveImportService {
     private final ProcessIconSampleMapper iconSampleMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final SysAttachmentMapper attachmentMapper;
 
     @Value("${file.upload.path:./upload}")
     private String uploadBasePath;
@@ -66,6 +70,17 @@ public class EngineeringArchiveImportService {
 
     public EngineeringArchiveImport get(Long id) {
         return archiveMapper.selectById(id);
+    }
+
+    public Map<String, Object> ocrHealth() {
+        try {
+            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+            HttpResponse<String> response = client.send(HttpRequest.newBuilder(URI.create(ocrUrl + "/health"))
+                    .timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            return Map.of("available", response.statusCode() == 200, "statusCode", response.statusCode());
+        } catch (Exception e) {
+            return Map.of("available", false, "message", "本地 OCR 服务未启动");
+        }
     }
 
     public List<ProcessIconSample> samples(Long archiveId) {
@@ -110,6 +125,18 @@ public class EngineeringArchiveImportService {
             archive.setCreateBy(user);
             archive.setUpdateBy(user);
             archiveMapper.insert(archive);
+            SysAttachment attachment = new SysAttachment();
+            attachment.setBizType("engineering_archive");
+            attachment.setBizId(archive.getArchiveId());
+            attachment.setCategory("历史档案原图");
+            attachment.setFileName(originalName);
+            attachment.setFilePath(relative);
+            attachment.setFileSize((long) bytes.length);
+            attachment.setFileType(contentType);
+            attachment.setRemark("历史档案录入原始文件");
+            attachment.setCreateBy(user);
+            attachment.setUpdateBy(user);
+            attachmentMapper.insert(attachment);
             recognize(archive, bytes, originalName);
             return archive;
         } catch (BusinessException e) {

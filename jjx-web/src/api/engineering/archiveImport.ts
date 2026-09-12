@@ -27,6 +27,7 @@ export interface IconSample {
 
 export const archiveImportApi = {
   page: (params: { pageNum: number; pageSize: number }) => request.get('/engineering/archive-imports', { params }),
+  ocrHealth: () => request.get('/engineering/archive-imports/ocr-health'),
   upload: (file: File) => {
     const data = new FormData()
     data.append('file', file)

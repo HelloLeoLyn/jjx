@@ -24,6 +24,9 @@ public class EngineeringArchiveImportController {
     @GetMapping("/{id}")
     @SaCheckPermission("engineering:archive:view")
     public Result<EngineeringArchiveImport> detail(@PathVariable Long id) { return Result.success(service.get(id)); }
+    @GetMapping("/ocr-health")
+    @SaCheckPermission("engineering:archive:view")
+    public Result<java.util.Map<String, Object>> ocrHealth() { return Result.success(service.ocrHealth()); }
     @PostMapping("/upload")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> upload(@RequestParam MultipartFile file) { return Result.success(service.uploadAndRecognize(file)); }

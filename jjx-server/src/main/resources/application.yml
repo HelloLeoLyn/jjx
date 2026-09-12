@@ -34,7 +34,8 @@ logging:
 # 文件上传配置
 file:
   upload:
-    path: ./upload
+    # 固定上传根目录，避免随 Spring 启动工作目录漂移；部署时可用 JJX_UPLOAD_ROOT 覆盖
+    path: ${JJX_UPLOAD_ROOT:/home/administrator/jjx/upload}
 
 # Sa-Token配置
 sa-token:
