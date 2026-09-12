@@ -33,6 +33,9 @@ public class MaterialImportDTO {
     @ExcelColumn(value = "项目", order = 6,comment = "项目")
     private String processGroup;
 
-    @ExcelColumn(value = "材料类型", order = 6,comment = "材料类型")
+    @ExcelColumn(value = "材料类型", order = 6,comment = "材料类型（R原材料/S半成品/F成品/I油墨/A辅助材料）")
     private String materialType;
+
+    @ExcelColumn(value = "材料标签", order = 7, comment = "多个用斜杠分隔；支持 大类*明细 两级，自动建档")
+    private String tagTexts;
 }
