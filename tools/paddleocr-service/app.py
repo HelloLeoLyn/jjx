@@ -174,9 +174,9 @@ async def recognize(file: UploadFile = File(...)) -> dict:
         "productRemark": "【历史作业规范】\n" + "\n".join(remarks),
         "materials": materials,
         "workflows": [
-            workflow_rows(image, lines, "PANEL", 0.064, 0.338, 0.411, 0.779),
+            workflow_rows(image, lines, "PANEL", 0.064, 0.338, 0.411, 0.779, 14),
             workflow_rows(image, lines, "UP_LINE", 0.385, 0.670, 0.626, 0.779, 6),
-            workflow_rows(image, lines, "DOWN_LINE", 0.716, 0.930, 0.411, 0.779),
+            workflow_rows(image, lines, "DOWN_LINE", 0.716, 0.930, 0.411, 0.779, 14),
         ],
         "rawFooter": footer,
     }

@@ -14,6 +14,14 @@
         </div>
       </template>
 
+      <el-alert class="upload-guide" type="info" :closable="false">
+        <template #title>上传要求与图标识别说明</template>
+        <div>支持 JPG/PNG；建议图片宽度 ≥ 1600px、高度 ≥ 2300px，宽高比约 0.678（允许 ±3%）。</div>
+        <div>系统按固定模板比例识别：上部分默认 14 格；下部分为面板 14 格、下线 14 格、上线 6 格；工序格按比例定位，不要求固定像素。</div>
+        <div>中间产品结构图按固定位置保留，不参与下方工序格切分；本功能重点识别面板、上线、下线图标对应的标准工序。</div>
+        <div>图标区域按工序格宽度约 28% 裁切（自动限制 96～260px）。中间带“+”的图形会作为复合图标候选，先保留完整图标，再人工决定整体映射或拆分映射。</div>
+      </el-alert>
+
       <el-table v-loading="loading" :data="rows">
         <el-table-column prop="fileName" label="原始文件" min-width="230" show-overflow-tooltip />
         <el-table-column prop="productCode" label="产品编号" width="160" />
@@ -97,6 +105,7 @@ onMounted(async () => { await load(); const health: any = payload(await archiveI
 .header-row { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .title { font-size:18px; font-weight:600; }
 .hint { margin-top:6px; color:var(--el-text-color-secondary); }
+.upload-guide { margin-bottom:14px; line-height:1.7; }
 .json-editor { margin-top:14px; font-family:monospace; }
 .sample-icon { width:54px; height:54px; object-fit:contain; border:1px solid var(--el-border-color); }
 .el-pagination { margin-top:16px; justify-content:flex-end; }
