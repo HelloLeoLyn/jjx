@@ -410,6 +410,7 @@ public class EngineeringArchiveImportService {
         body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         HttpRequest request = HttpRequest.newBuilder(URI.create(ocrUrl + "/recognize"))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .timeout(Duration.ofSeconds(120))
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build();
         HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).proxy(new ProxySelector() {
             @Override public List<Proxy> select(URI uri) { return List.of(Proxy.NO_PROXY); }
