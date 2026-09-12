@@ -105,7 +105,7 @@
         </el-table-column>
         <TableActionColumn
           :actions="sampleActions"
-          width="400"
+          min-width="200"
           display="text"
           @action="handleSampleAction"
         />
@@ -410,10 +410,7 @@
       :is-sensitive="true"
     />
 
-    <CustomerDetailDialog
-      v-model="customerDetailVisible"
-      :customer-id="customerDetailId"
-    />
+    <CustomerDetailDialog v-model="customerDetailVisible" :customer-id="customerDetailId" />
 
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
@@ -1097,16 +1094,14 @@ function canCopy(row: any): boolean {
 }
 
 const sampleActions: TableAction<any>[] = [
-  { key: 'detail', label: '详情' },
-  { key: 'print', label: '打印', type: 'info' },
   { key: 'trace', label: '查看流水', type: 'info' },
   {
-    key: 'copy',
-    label: '复制',
-    type: 'warning',
-    permission: 'sales:sample:add',
-    visible: ({ row }) => canCopy(row),
+    key: 'edit',
+    label: '编辑',
+    permission: 'sales:sample:edit',
+    visible: ({ row }) => isCreated(row),
   },
+
   {
     key: 'accept',
     label: '工程接单',
@@ -1121,19 +1116,7 @@ const sampleActions: TableAction<any>[] = [
     permission: 'sales:sample:engineering',
     visible: ({ row }) => canGoWorkbench(row),
   },
-  {
-    key: 'cancel',
-    label: '作废',
-    type: 'danger',
-    permission: 'sales:sample:edit',
-    visible: ({ row }) => canCancel(row),
-  },
-  {
-    key: 'edit',
-    label: '编辑',
-    permission: 'sales:sample:edit',
-    visible: ({ row }) => isCreated(row),
-  },
+
   {
     key: 'request',
     label: '申请打样',
@@ -1180,6 +1163,22 @@ const sampleActions: TableAction<any>[] = [
     permission: 'sales:sample:engineering',
     visible: ({ row }) => canRestart(row),
   },
+  {
+    key: 'copy',
+    label: '复制',
+    type: 'warning',
+    permission: 'sales:sample:add',
+    visible: ({ row }) => canCopy(row),
+  },
+  {
+    key: 'cancel',
+    label: '作废',
+    type: 'danger',
+    permission: 'sales:sample:edit',
+    visible: ({ row }) => canCancel(row),
+  },
+
+  { key: 'print', label: '打印', type: 'info' },
 ]
 const handleSampleAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {

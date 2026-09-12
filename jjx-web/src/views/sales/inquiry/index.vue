@@ -99,7 +99,6 @@
     <el-card class="table-card" shadow="never">
       <el-table v-loading="loading" :data="inquiryList" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="流水号" width="155" align="center" prop="traceId" />
         <el-table-column label="询价单号" align="center" width="180">
           <template #default="scope">
             <el-link type="primary" underline="never" @click="handleDetail(scope.row)">{{
@@ -282,11 +281,7 @@
 
             <!-- 产品名称（必填，不默认=编码；样品生成编码后由销售填写） -->
             <el-form-item label="产品名称" prop="productName">
-              <el-input
-                v-model="form.productName"
-                placeholder="请填写产品名称"
-                maxlength="200"
-              />
+              <el-input v-model="form.productName" placeholder="请填写产品名称" maxlength="200" />
             </el-form-item>
             <!-- 产品描述 -->
             <el-form-item label="产品描述" prop="productDescription">
@@ -412,10 +407,32 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 
 const inquiryActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
-  { key: 'edit', label: '编辑', permission: 'sales:inquiry:edit', disabled: ({ row }) => row.inquiryStatus === InquiryStatusEnum.CONVERTED.value },
-  { key: 'accept', label: '确认', type: 'success', permission: 'sales:inquiry:edit', visible: ({ row }) => row.inquiryStatus === InquiryStatusEnum.SENT.value },
-  { key: 'reject', label: '拒绝', type: 'danger', permission: 'sales:inquiry:edit', visible: ({ row }) => row.inquiryStatus === InquiryStatusEnum.SENT.value },
-  { key: 'convert', label: '转报价', permission: 'sales:inquiry:convert', visible: ({ row }) => row.inquiryStatus !== InquiryStatusEnum.CONVERTED.value },
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: 'sales:inquiry:edit',
+    disabled: ({ row }) => row.inquiryStatus === InquiryStatusEnum.CONVERTED.value,
+  },
+  {
+    key: 'accept',
+    label: '确认',
+    type: 'success',
+    permission: 'sales:inquiry:edit',
+    visible: ({ row }) => row.inquiryStatus === InquiryStatusEnum.SENT.value,
+  },
+  {
+    key: 'reject',
+    label: '拒绝',
+    type: 'danger',
+    permission: 'sales:inquiry:edit',
+    visible: ({ row }) => row.inquiryStatus === InquiryStatusEnum.SENT.value,
+  },
+  {
+    key: 'convert',
+    label: '转报价',
+    permission: 'sales:inquiry:convert',
+    visible: ({ row }) => row.inquiryStatus !== InquiryStatusEnum.CONVERTED.value,
+  },
   { key: 'print', label: '打印', permission: 'sales:inquiry:view' },
 ]
 const handleInquiryAction = (key: string, row: any) => {
