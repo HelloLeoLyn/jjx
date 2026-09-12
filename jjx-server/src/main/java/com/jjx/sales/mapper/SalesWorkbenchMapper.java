@@ -29,11 +29,11 @@ public interface SalesWorkbenchMapper {
     Long countQuotationReviewing(@Param("userId") Long userId);
 
     /** 卡审核订单：待审核(2)/审核中(3)，标准订单 */
-    @Select("SELECT COUNT(*) FROM sales_order WHERE deleted = 0 AND sales_manager_id = #{userId} AND sample_status IS NULL AND order_status IN (2, 3)")
+    @Select("SELECT COUNT(*) FROM sales_order o WHERE o.deleted = 0 AND o.sales_manager_id = #{userId} AND o.order_type = 1 AND o.order_status IN (2, 3)")
     Long countOrderReviewing(@Param("userId") Long userId);
 
     /** 待转生产订单：已确认(6)未开始生产，标准订单 */
-    @Select("SELECT COUNT(*) FROM sales_order WHERE deleted = 0 AND sales_manager_id = #{userId} AND sample_status IS NULL AND order_status = 6")
+    @Select("SELECT COUNT(*) FROM sales_order o WHERE o.deleted = 0 AND o.sales_manager_id = #{userId} AND o.order_type = 1 AND o.order_status = 6")
     Long countOrderReadyProduction(@Param("userId") Long userId);
 
     /** 已发货未签收：发货单状态 已发货(2)/运输中(3) */
@@ -42,8 +42,8 @@ public interface SalesWorkbenchMapper {
     Long countDeliveryUnreceived(@Param("userId") Long userId);
 
     /** 应收未清：已确认后(6-9)仍未结清（无到期日字段，逾期/临期精确计算后置） */
-    @Select("SELECT COUNT(*) FROM sales_order WHERE deleted = 0 AND sales_manager_id = #{userId} " +
-            "AND sample_status IS NULL AND order_status IN (6, 7, 8, 9) AND unpaid_amount > 0")
+    @Select("SELECT COUNT(*) FROM sales_order o WHERE o.deleted = 0 AND o.sales_manager_id = #{userId} " +
+            "AND o.order_type = 1 AND o.order_status IN (6, 7, 8, 9) AND o.unpaid_amount > 0")
     Long countReceivableUnpaid(@Param("userId") Long userId);
 
     // ========== 本月业绩 ==========
@@ -54,8 +54,8 @@ public interface SalesWorkbenchMapper {
     BigDecimal sumMonthQuotation(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 
     /** 本月订单额：order_date 本月，确认口径 已确认(6)/生产中(7)/已发货(8)/已完成(9)，标准订单 */
-    @Select("SELECT COALESCE(SUM(final_amount), 0) FROM sales_order WHERE deleted = 0 AND sales_manager_id = #{userId} " +
-            "AND sample_status IS NULL AND order_date BETWEEN #{start} AND #{end} AND order_status IN (6, 7, 8, 9)")
+    @Select("SELECT COALESCE(SUM(o.final_amount), 0) FROM sales_order o WHERE o.deleted = 0 AND o.sales_manager_id = #{userId} " +
+            "AND o.order_type = 1 AND o.order_date BETWEEN #{start} AND #{end} AND o.order_status IN (6, 7, 8, 9)")
     BigDecimal sumMonthOrder(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 
     /** 本月回款额：收款单 receipt_date 本月，按订单归属过滤 */
@@ -72,7 +72,7 @@ public interface SalesWorkbenchMapper {
                                @Param("endTime") java.time.LocalDateTime endTime);
 
     /** 本月打样单数：样品单（sample_status 非空） */
-    @Select("SELECT COUNT(*) FROM sales_order WHERE deleted = 0 AND sales_manager_id = #{userId} " +
-            "AND sample_status IS NOT NULL AND order_date BETWEEN #{start} AND #{end}")
+    @Select("SELECT COUNT(*) FROM sales_order o WHERE o.deleted = 0 AND o.sales_manager_id = #{userId} " +
+            "AND o.order_type = 2 AND EXISTS (SELECT 1 FROM sales_sample_order s WHERE s.order_id = o.order_id AND s.deleted = 0) AND o.order_date BETWEEN #{start} AND #{end}")
     Long countMonthSample(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 }

@@ -5,6 +5,7 @@ import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.sales.domain.dto.SalesOrderProductDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
+import com.jjx.sales.domain.entity.SalesSampleOrder;
 import com.jjx.sales.domain.entity.SalesQuotation;
 import com.jjx.sales.domain.entity.SalesSampleProcess;
 import com.jjx.sales.domain.entity.SalesSampleBom;
@@ -59,6 +60,7 @@ import java.util.stream.Collectors;
 public class SampleOrderServiceImpl implements ISampleOrderService {
 
     private final OrderMapper orderMapper;
+    private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
     private final QuotationMapper quotationMapper;
     private final com.jjx.sales.mapper.SalesQuotationItemMapper quotationItemMapper;
     private final com.jjx.sales.mapper.SalesInquiryMapper inquiryMapper;
@@ -86,6 +88,63 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final LogSaveService logSaveService;
     private final OperLogChangeRecorder changeRecorder;
     private final com.jjx.sales.mapper.CustomerMapper customerMapper;
+
+    /** 样品订单公共主表落库后同步一对一扩展记录。 */
+    private void upsertSampleOrderProfile(SalesOrder order) {
+        if (order == null || order.getOrderId() == null
+                || !SalesOrderTypeEnum.SAMPLE.getCode().equals(order.getOrderType())) {
+            return;
+        }
+        SalesSampleOrder profile = sampleOrderMapper.selectByOrderId(order.getOrderId());
+        if (profile == null) {
+            profile = new SalesSampleOrder();
+            profile.setOrderId(order.getOrderId());
+        }
+        profile.setSampleStatus(order.getSampleStatus());
+        profile.setSampleRound(order.getSampleRound());
+        profile.setSampleQty(order.getSampleQty());
+        profile.setEngineeringNote(order.getEngineeringNote());
+        profile.setEngineeringAcceptor(order.getEngineeringAcceptor());
+        profile.setEngineeringAcceptTime(order.getEngineeringAcceptTime());
+        profile.setRejectReason(order.getRejectReason());
+        profile.setCurrentProcess(order.getCurrentProcess());
+        profile.setSampleCost(order.getSampleCost());
+        profile.setSampleWorkHours(order.getSampleWorkHours());
+        profile.setSampleTrackingNo(order.getSampleTrackingNo());
+        profile.setSampleSendDate(order.getSampleSendDate());
+        profile.setSampleConfirmDate(order.getSampleConfirmDate());
+        profile.setConfirmBy(order.getConfirmBy());
+        profile.setConfirmMethod(order.getConfirmMethod());
+        profile.setConfirmTime(order.getConfirmTime());
+        profile.setConfirmSentTime(order.getConfirmSentTime());
+        profile.setSampleClientName(order.getSampleClientName());
+        profile.setConvertedOrderId(order.getConvertedOrderId());
+        profile.setConvertOrderTime(order.getConvertOrderTime());
+        profile.setFormalVersion(order.getFormalVersion());
+        profile.setLastTransferTime(order.getLastTransferTime());
+        if (profile.getSampleOrderId() == null) sampleOrderMapper.insert(profile);
+        else sampleOrderMapper.updateById(profile);
+    }
+
+    /** 读取样品扩展信息并回填到领域对象，供逐步切换查询链路使用。 */
+    private SalesOrder loadSampleOrder(Long orderId) {
+        SalesOrder order = orderMapper.selectById(orderId);
+        if (order == null || !SalesOrderTypeEnum.SAMPLE.getCode().equals(order.getOrderType())) return order;
+        SalesSampleOrder p = sampleOrderMapper.selectByOrderId(orderId);
+        if (p == null) return order;
+        order.setSampleStatus(p.getSampleStatus()); order.setSampleRound(p.getSampleRound());
+        order.setSampleQty(p.getSampleQty()); order.setEngineeringNote(p.getEngineeringNote());
+        order.setEngineeringAcceptor(p.getEngineeringAcceptor()); order.setEngineeringAcceptTime(p.getEngineeringAcceptTime());
+        order.setRejectReason(p.getRejectReason()); order.setCurrentProcess(p.getCurrentProcess());
+        order.setSampleCost(p.getSampleCost()); order.setSampleWorkHours(p.getSampleWorkHours());
+        order.setSampleTrackingNo(p.getSampleTrackingNo()); order.setSampleSendDate(p.getSampleSendDate());
+        order.setSampleConfirmDate(p.getSampleConfirmDate()); order.setConfirmBy(p.getConfirmBy());
+        order.setConfirmMethod(p.getConfirmMethod()); order.setConfirmTime(p.getConfirmTime());
+        order.setConfirmSentTime(p.getConfirmSentTime()); order.setSampleClientName(p.getSampleClientName());
+        order.setConvertedOrderId(p.getConvertedOrderId()); order.setConvertOrderTime(p.getConvertOrderTime());
+        order.setFormalVersion(p.getFormalVersion()); order.setLastTransferTime(p.getLastTransferTime());
+        return order;
+    }
 
     // ============ 状态更新辅助 ============
 
@@ -189,6 +248,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setTraceId(quotation.getTraceId());
 
         orderMapper.insert(order);
+        upsertSampleOrderProfile(order);
         log.info("从报价单[{}]创建样品单[{}] orderId={}", quotation.getQuotationNo(), orderNo, order.getOrderId());
 
         // 复制报价单明细到样品单（产品资料转移/转量产依赖明细，源头修复）
@@ -271,6 +331,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         copy.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
 
         orderMapper.insert(copy);
+        upsertSampleOrderProfile(copy);
         log.info("复制样品单[{}]生成新样品单[{}] orderId={}", source.getOrderNo(), orderNo, copy.getOrderId());
 
         // 复制产品明细（全字段）
@@ -609,6 +670,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 : java.util.UUID.randomUUID().toString().replace("-", ""));
 
         orderMapper.insert(order);
+        upsertSampleOrderProfile(order);
         log.info("新增样品单[{}] orderId={}，客户={}", orderNo, order.getOrderId(), customer.getCustomerName());
 
         // 明细：前端传 items 优先；带报价单且无 items 时从报价单复制
@@ -3313,7 +3375,34 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             dtos.add(dto);
         }
         orderProductService.batchAdd(dtos);
+        syncSampleProductProfile(targetOrderId);
         log.info("报价单[{}]明细已复制到订单[{}] ({}条)", quotationId, targetOrderId, dtos.size());
+    }
+
+    /** 样品单产品一对一：从复制后的唯一明细写入样品扩展表。 */
+    private void syncSampleProductProfile(Long orderId) {
+        if (orderId == null) return;
+        SalesSampleOrder profile = sampleOrderMapper.selectByOrderId(orderId);
+        if (profile == null) return;
+        List<com.jjx.sales.domain.entity.SalesOrderProduct> products = orderProductMapper.selectList(
+                Wrappers.<com.jjx.sales.domain.entity.SalesOrderProduct>lambdaQuery()
+                        .eq(com.jjx.sales.domain.entity.SalesOrderProduct::getOrderId, orderId));
+        if (products != null && !products.isEmpty()) {
+            com.jjx.sales.domain.entity.SalesOrderProduct p = products.get(0);
+            profile.setProductId(p.getProductId());
+            profile.setProductCode(p.getProductCode());
+            profile.setProductName(p.getProductName());
+            profile.setProductSpecification(p.getSpecification());
+            profile.setCustomerMaterialNo(p.getCustomerMaterialNo());
+            profile.setUnit(p.getUnit());
+            profile.setUnitPrice(p.getUnitPrice());
+            profile.setAmount(p.getAmount());
+            profile.setProductRemark(p.getRemark());
+            sampleOrderMapper.updateById(profile);
+            if (products.size() > 1) {
+                log.warn("样品单[{}]存在{}条产品明细，后续迁移需按产品拆单", orderId, products.size());
+            }
+        }
     }
 
     /**
@@ -3529,14 +3618,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         wrapper.eq(SalesOrder::getOrderType, SalesOrderTypeEnum.SAMPLE.getCode())
                 .eq(SalesOrder::getDeleted, 0)
                 .eq(customerId != null, SalesOrder::getCustomerId, customerId)
-                .eq(sampleStatus != null, SalesOrder::getSampleStatus, sampleStatus)
+                .apply(sampleStatus != null, "EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.sample_status={0} AND ss.deleted=0)", sampleStatus)
                 .eq(salesPersonId != null, SalesOrder::getSalesManagerId, salesPersonId);
         if (Boolean.TRUE.equals(hasAcceptor)) {
-            wrapper.isNotNull(SalesOrder::getEngineeringAcceptor)
-                    .ne(SalesOrder::getEngineeringAcceptor, "");
+            wrapper.apply("EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.engineering_acceptor IS NOT NULL AND ss.engineering_acceptor <> '' AND ss.deleted=0)");
         } else if (Boolean.FALSE.equals(hasAcceptor)) {
-            wrapper.and(w -> w.isNull(SalesOrder::getEngineeringAcceptor)
-                    .or().eq(SalesOrder::getEngineeringAcceptor, ""));
+            wrapper.apply("NOT EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.engineering_acceptor IS NOT NULL AND ss.engineering_acceptor <> '' AND ss.deleted=0)");
         }
         wrapper.orderByDesc(SalesOrder::getCreateTime);
         List<SalesOrder> result = orderMapper.selectList(wrapper);
@@ -3556,15 +3643,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         SalesOrder::getCustomerName, queryDTO.getCustomerName())
                 .like(org.springframework.util.StringUtils.hasText(queryDTO.getCustomerShortName()),
                         SalesOrder::getCustomerShortName, queryDTO.getCustomerShortName())
-                .eq(queryDTO.getSampleStatus() != null, SalesOrder::getSampleStatus, queryDTO.getSampleStatus())
+                .apply(queryDTO.getSampleStatus() != null, "EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.sample_status={0} AND ss.deleted=0)", queryDTO.getSampleStatus())
                 .eq(queryDTO.getSalesPersonId() != null,
                         SalesOrder::getSalesManagerId, queryDTO.getSalesPersonId());
         if (Boolean.TRUE.equals(queryDTO.getHasAcceptor())) {
-            wrapper.isNotNull(SalesOrder::getEngineeringAcceptor)
-                    .ne(SalesOrder::getEngineeringAcceptor, "");
+            wrapper.apply("EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.engineering_acceptor IS NOT NULL AND ss.engineering_acceptor <> '' AND ss.deleted=0)");
         } else if (Boolean.FALSE.equals(queryDTO.getHasAcceptor())) {
-            wrapper.and(w -> w.isNull(SalesOrder::getEngineeringAcceptor)
-                    .or().eq(SalesOrder::getEngineeringAcceptor, ""));
+            wrapper.apply("NOT EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.engineering_acceptor IS NOT NULL AND ss.engineering_acceptor <> '' AND ss.deleted=0)");
         }
         wrapper.orderByDesc(SalesOrder::getCreateTime);
 
@@ -3578,6 +3663,33 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 批量回填样品单资料转移次数及最近一次转移信息，避免列表逐行查询。
      */
     private void fillSampleTransferSummary(List<SalesOrder> orders) {
+        // 列表查询主表不再包含样品字段，统一从一对一扩展表回填。
+        for (SalesOrder order : orders) {
+            SalesSampleOrder profile = sampleOrderMapper.selectByOrderId(order.getOrderId());
+            if (profile == null) continue;
+            order.setSampleStatus(profile.getSampleStatus());
+            order.setSampleRound(profile.getSampleRound());
+            order.setSampleQty(profile.getSampleQty());
+            order.setEngineeringNote(profile.getEngineeringNote());
+            order.setEngineeringAcceptor(profile.getEngineeringAcceptor());
+            order.setEngineeringAcceptTime(profile.getEngineeringAcceptTime());
+            order.setRejectReason(profile.getRejectReason());
+            order.setCurrentProcess(profile.getCurrentProcess());
+            order.setSampleCost(profile.getSampleCost());
+            order.setSampleWorkHours(profile.getSampleWorkHours());
+            order.setSampleTrackingNo(profile.getSampleTrackingNo());
+            order.setSampleSendDate(profile.getSampleSendDate());
+            order.setSampleConfirmDate(profile.getSampleConfirmDate());
+            order.setConfirmBy(profile.getConfirmBy());
+            order.setConfirmMethod(profile.getConfirmMethod());
+            order.setConfirmTime(profile.getConfirmTime());
+            order.setConfirmSentTime(profile.getConfirmSentTime());
+            order.setSampleClientName(profile.getSampleClientName());
+            order.setConvertedOrderId(profile.getConvertedOrderId());
+            order.setConvertOrderTime(profile.getConvertOrderTime());
+            order.setFormalVersion(profile.getFormalVersion());
+            order.setLastTransferTime(profile.getLastTransferTime());
+        }
         List<Long> orderIds = orders.stream()
                 .map(SalesOrder::getOrderId)
                 .filter(java.util.Objects::nonNull)

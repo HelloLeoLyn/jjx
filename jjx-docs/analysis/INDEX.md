@@ -8,6 +8,7 @@
 
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-12 (dev-001) | sample-order-split-dev-20260912-001.md | 样品订单独立表改造实施记录 |
 | 2026-09-11 (dev-004) | engineering-archive-import-dev-20260911-004.md | 工程管理历史档案本地识别录入实施报告 |
 | 2026-09-11 (dev-003) | film-module-linkage-dev-20260911-003.md | 菲林模块打通链路：档案可用 + 打样联动 + 网版联动（dev-20260911-003） |
 | 2026-09-09 (dev-004) | production-execution-workbench-dev-20260909-004.md | 工序执行页工作台化+组件化（任务 1666，Step1 重构/Step2 主从壳） |
