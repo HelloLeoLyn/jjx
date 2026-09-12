@@ -192,10 +192,12 @@ public class EngineeringArchiveImportService {
         }
         if (archive.getRecognizeStatus() == null || ArchiveRecognitionStatus.REVIEW.getValue() != archive.getRecognizeStatus()) return archive;
         deleteGeneratedDrafts(archive);
+        // MyBatis 默认跳过 NULL 字段，必须显式清空数据库关联，避免再次进入覆盖递归。
+        jdbcTemplate.update("UPDATE engineering_archive_import SET product_id=NULL,bom_id=NULL,routing_id=NULL WHERE archive_id=?",
+                archive.getArchiveId());
         archive.setProductId(null);
         archive.setBomId(null);
         archive.setRoutingId(null);
-        archiveMapper.updateById(archive);
         return generateDrafts(archive.getArchiveId());
     }
 

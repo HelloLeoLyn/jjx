@@ -62,7 +62,16 @@
         <el-table-column prop="stepNo" label="步骤" width="70" />
         <el-table-column label="匹配度" width="100"><template #default="{ row }">{{ row.matchScore == null ? '-' : `${Math.round(row.matchScore*100)}%` }}</template></el-table-column>
         <el-table-column label="标准工序" min-width="250">
-          <template #default="{ row }"><el-select v-model="row.processId" filterable placeholder="选择工序"><el-option v-for="p in processes" :key="p.processId" :label="`${p.processName}（${p.processId}）`" :value="p.processId" /></el-select></template>
+          <template #default="{ row }">
+            <el-select v-model="row.processId" filterable placeholder="选择工序" class="process-select">
+              <template #label="{ label, value }">
+                <span class="process-option"><SvgIcon v-if="processById(value)?.icon" :name="processById(value)!.icon!" :size="22" /><span>{{ label }}</span></span>
+              </template>
+              <el-option v-for="p in processes" :key="p.processId" :label="`${p.processName}（${p.processId}）`" :value="p.processId">
+                <span class="process-option"><SvgIcon v-if="p.icon" :name="p.icon" :size="22" /><span>{{ p.processName }}（{{ p.processId }}）</span></span>
+              </el-option>
+            </el-select>
+          </template>
         </el-table-column>
         <el-table-column width="90"><template #default="{ row }"><el-button link type="primary" :disabled="!row.processId" v-hasPermi="['engineering:archive:icon-map']" @click="confirmSample(row)">确认</el-button></template></el-table-column>
       </el-table>
@@ -83,6 +92,7 @@ const rows = ref<ArchiveImportRecord[]>([]), total = ref(0), pageNum = ref(1), p
 const reviewVisible = ref(false), sampleVisible = ref(false), resultText = ref('')
 const current = ref<ArchiveImportRecord>(), samples = ref<IconSample[]>([]), processes = ref<StandardProcessItem[]>([])
 const ocrAvailable = ref(false)
+function processById(id: number | string | undefined) { return processes.value.find(p => p.processId === Number(id)) }
 
 function payload<T>(response: any): T { return (response?.data?.data ?? response?.data ?? response) as T }
 async function load() {
@@ -115,5 +125,7 @@ onMounted(async () => { await load(); const health: any = payload(await archiveI
 .upload-guide { margin-bottom:14px; line-height:1.7; }
 .json-editor { margin-top:14px; font-family:monospace; }
 .sample-icon { width:54px; height:54px; object-fit:contain; border:1px solid var(--el-border-color); }
+.process-select { width: 100%; }
+.process-option { display:inline-flex; align-items:center; gap:8px; min-height:28px; }
 .el-pagination { margin-top:16px; justify-content:flex-end; }
 </style>
