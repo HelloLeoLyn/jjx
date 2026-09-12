@@ -26,10 +26,10 @@ export const searchOptions: SearchOptions[] = [
     options: MaterialTypeEnum.items,
   },
   {
-    prop: 'tagId',
+    prop: 'tagIds',
     label: '物料标签',
-    type: 'select',
-    options: [],
+    type: 'custom',
+    block: true,
   },
   {
     prop: 'status',

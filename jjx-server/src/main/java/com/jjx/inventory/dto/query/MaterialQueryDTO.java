@@ -22,7 +22,17 @@ public class MaterialQueryDTO extends PageQuery{
 
     private String materialType;
 
+    /**
+     * @deprecated 单值标签筛选，已由 tagIds + tagMatchMode 取代（dev-20260912-007）
+     */
+    @Deprecated
     private Long tagId;
+
+    /** 标签ID集合（多选，与 tagMatchMode 配合，dev-20260912-007） */
+    private java.util.List<Long> tagIds;
+
+    /** 标签匹配模式：AND=同时含全部（默认）；OR=含任一 */
+    private String tagMatchMode;
 
     private Long categoryId;
 

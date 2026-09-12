@@ -35,7 +35,8 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   materialName?: string
   materialNameEn?: string
   materialType?: string
-  tagId?: number
+  tagIds?: number[]
+  tagMatchMode?: 'AND' | 'OR'
   categoryId?: number
   specification?: string
   status?: string

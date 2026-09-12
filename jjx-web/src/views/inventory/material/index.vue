@@ -6,7 +6,16 @@
       :fields="searchFields"
       @search="handleQuery"
       @reset="handleReset"
-    />
+    >
+      <template #tagIds>
+        <TagQuerySelect
+          v-model="tagIdsModel"
+          v-model:match-mode="tagMatchModeModel"
+          biz-type="inventory_material"
+          block
+        />
+      </template>
+    </SearchForm>
 
     <!-- 操作栏 -->
     <Toolbar
@@ -111,13 +120,14 @@ defineOptions({
   name: 'InventoryMaterial',
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import Toolbar from '@/components/common-ui/Toolbar.vue'
+import TagQuerySelect from '@/components/TagQuerySelect.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import { materialApi } from '@/api/inventory/material'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
@@ -148,9 +158,24 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   materialCode: '',
   materialName: '',
   materialType: '',
-  tagId: undefined,
+  tagIds: [],
+  tagMatchMode: 'AND',
   specification: '',
   status: '',
+})
+
+// 标签筛选绑定（queryParams 字段可选，这里做非空归一，dev-20260912-007）
+const tagIdsModel = computed({
+  get: () => queryParams.tagIds ?? [],
+  set: (value: number[]) => {
+    queryParams.tagIds = value
+  },
+})
+const tagMatchModeModel = computed({
+  get: () => queryParams.tagMatchMode ?? 'AND',
+  set: (value: 'AND' | 'OR') => {
+    queryParams.tagMatchMode = value
+  },
 })
 
 // 响应式数据
@@ -191,7 +216,8 @@ const handleReset = () => {
   queryParams.materialName = ''
   queryParams.materialType = ''
   queryParams.status = ''
-  queryParams.tagId = undefined
+  queryParams.tagIds = []
+  queryParams.tagMatchMode = 'AND'
   getList()
 }
 
@@ -264,13 +290,6 @@ const handleExport = () => {
 }
 
 onMounted(async () => {
-  const tagRes = await materialApi.getTags()
-  const tagField = searchFields.find((field) => field.prop === 'tagId')
-  if (tagField) {
-    tagField.options = (tagRes.data || []).flatMap((tag) =>
-      tag.tagId == null ? [] : [{ value: tag.tagId, label: tag.tagName || tag.tagCode || String(tag.tagId) }]
-    )
-  }
   getList()
 })
 </script>

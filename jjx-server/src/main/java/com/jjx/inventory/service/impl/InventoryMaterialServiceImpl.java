@@ -84,12 +84,17 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (StringUtils.isNotBlank(queryDTO.getMaterialType())) {
             wrapper.eq(InventoryMaterial::getMaterialType, queryDTO.getMaterialType());
         }
-        if (queryDTO.getTagId() != null) {
-            List<Long> materialIds = tagService.getBizIdsByTagIds(MATERIAL_BIZ_TYPE, List.of(queryDTO.getTagId()));
-            if (materialIds.isEmpty()) {
+        // 按标签筛选（dev-20260912-007 公共助手）：tagIds + tagMatchMode；兼容单值 tagId
+        java.util.List<Long> tagIds = queryDTO.getTagIds();
+        if ((tagIds == null || tagIds.isEmpty()) && queryDTO.getTagId() != null) {
+            tagIds = java.util.List.of(queryDTO.getTagId());
+        }
+        List<Long> tagBizIds = tagService.resolveBizIdsFilter(MATERIAL_BIZ_TYPE, tagIds, queryDTO.getTagMatchMode());
+        if (tagBizIds != null) {
+            if (tagBizIds.isEmpty()) {
                 wrapper.apply("1 = 0");
             } else {
-                wrapper.in(InventoryMaterial::getMaterialId, materialIds);
+                wrapper.in(InventoryMaterial::getMaterialId, tagBizIds);
             }
         }
         if (queryDTO.getSpecification() != null && !queryDTO.getSpecification().isEmpty()) {
@@ -327,20 +332,18 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                     continue;
                 }
 
-                PurchaseSupplierVO purchaseSupplierVO = purchaseSupplierService
-                        .selectSupplierByName(dto.getSupplierName());
-                if (purchaseSupplierVO == null) {
-                    result.addFail(excelRow, dto.getMaterialName(), "找不到对应供应商: " + dto.getSupplierName());
-                    continue;
-                }
+                // 供应商可不填/未建档（Leo 2026-09-12）：能匹配则挂档案，匹配不到不阻断，物料仍导入，供应商后续补
+                String supplierName = StringUtils.trimToNull(dto.getSupplierName());
+                PurchaseSupplierVO purchaseSupplierVO = supplierName == null ? null
+                        : purchaseSupplierService.selectSupplierByName(supplierName);
                 // 检查是否已存在（按物料名称+规格+供应商去重）
                 LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
                 wrapper.eq(InventoryMaterial::getMaterialName, dto.getMaterialName());
                 if (dto.getSpecification() != null && !dto.getSpecification().isEmpty()) {
                     wrapper.eq(InventoryMaterial::getSpecification, dto.getSpecification());
                 }
-                if (dto.getSupplierName() != null && !dto.getSupplierName().isEmpty()) {
-                    wrapper.eq(InventoryMaterial::getSupplierName, dto.getSupplierName());
+                if (supplierName != null) {
+                    wrapper.eq(InventoryMaterial::getSupplierName, supplierName);
                 }
 
                 Long existCount = materialMapper.selectCount(wrapper);
@@ -361,8 +364,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 material.setMaterialType(dto.getMaterialType());
                 material.setSpecification(dto.getSpecification());
                 material.setUnit(dto.getUnit());
-                material.setSupplierId(purchaseSupplierVO.getSupplierId());
-                material.setSupplierName(dto.getSupplierName());
+                material.setSupplierId(purchaseSupplierVO != null ? purchaseSupplierVO.getSupplierId() : null);
+                material.setSupplierName(supplierName);
                 material.setRemark(dto.getRemark());
                 material.setStatus(StatusEnum.NORMAL.getCode());
                 material.setSafeStock(BigDecimal.ZERO);
@@ -372,6 +375,12 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 material.setExpiryAlertDays(30);
                 material.setProcessGroup(getProcessGroup(dto));
                 materialMapper.insert(material);
+
+                // 材料标签（dev-20260912-005）：品类明细作物料标签(material_attribute)导入，自动建档
+                List<Long> tagIds = resolveImportTags(dto.getTagTexts(), operName);
+                if (!tagIds.isEmpty()) {
+                    tagService.setBizTags(MATERIAL_BIZ_TYPE, material.getMaterialId(), tagIds, operName);
+                }
                 successCount++;
 
             } catch (Exception e) {
@@ -433,6 +442,38 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             return processGroup.getCode();
         }
         return null;
+    }
+
+    /**
+     * 解析导入的材料标签文本（dev-20260912-005）
+     * <p>多个标签用 / ， , ; ； | 、 分隔；单项支持「大类*明细」两级，标签不存在时自动建档。</p>
+     */
+    private List<Long> resolveImportTags(String tagTexts, String operName) {
+        List<Long> ids = new ArrayList<>();
+        if (StringUtils.isBlank(tagTexts)) {
+            return ids;
+        }
+        for (String raw : tagTexts.split("[/,，;；|、]", -1)) {
+            String item = raw == null ? "" : raw.trim();
+            if (item.isEmpty()) {
+                continue;
+            }
+            Long parentId = null;
+            String name = item;
+            int star = item.indexOf('*');
+            if (star > 0 && star < item.length() - 1) {
+                String parentName = item.substring(0, star).trim();
+                name = item.substring(star + 1).trim();
+                if (!parentName.isEmpty()) {
+                    parentId = tagService.ensureTag(MATERIAL_TAG_GROUP, parentName, null, operName);
+                }
+            }
+            Long tagId = tagService.ensureTag(MATERIAL_TAG_GROUP, name, parentId, operName);
+            if (tagId != null && !ids.contains(tagId)) {
+                ids.add(tagId);
+            }
+        }
+        return ids;
     }
 
     /**

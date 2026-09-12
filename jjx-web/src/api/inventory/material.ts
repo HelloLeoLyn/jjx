@@ -8,17 +8,22 @@ import type {
 } from '@/types/inventory/material'
 import type { PageResult, R } from '@/types'
 import type { SysTag } from '@/types/system/tag'
+import { normalizeTagParams } from '@/utils/tagQuery'
 
 // 物料管理API
 export const materialApi = {
   // 获取物料列表
   list(params: MaterialQueryDTO) {
-    return request.get<R<InventoryMaterial[]>>('/inventory/material/list', { params })
+    return request.get<R<InventoryMaterial[]>>('/inventory/material/list', {
+      params: normalizeTagParams(params as any),
+    })
   },
 
   // 获取物料列表
   page(params: InventoryMaterialQueryParams) {
-    return request.get<R<PageResult<InventoryMaterial>>>('/inventory/material/page', { params })
+    return request.get<R<PageResult<InventoryMaterial>>>('/inventory/material/page', {
+      params: normalizeTagParams(params as any),
+    })
   },
 
   // 搜索物料（简化版，用于BOM编辑器的自动完成）
@@ -127,7 +132,7 @@ export const materialApi = {
   // 导出物料
   export(params: InventoryMaterialQueryParams) {
     return request.get('/inventory/material/export', {
-      params,
+      params: normalizeTagParams(params as any),
       responseType: 'blob',
     })
   },
