@@ -33,6 +33,11 @@ public class EngineeringArchiveImportController {
     @PostMapping("/{id}/retry")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> retry(@PathVariable Long id) { return Result.success(service.retry(id)); }
+    @PostMapping("/{id}/overwrite-retry")
+    @SaCheckPermission("engineering:archive:import")
+    public Result<EngineeringArchiveImport> overwriteRetry(@PathVariable Long id) {
+        return Result.success(service.overwriteRetry(id));
+    }
     @PutMapping("/{id}/result")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> updateResult(@PathVariable Long id, @RequestBody JsonNode body) { return Result.success(service.updateResult(id, body)); }

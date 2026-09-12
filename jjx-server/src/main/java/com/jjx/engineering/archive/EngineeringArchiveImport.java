@@ -3,6 +3,7 @@ package com.jjx.engineering.archive;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -22,6 +23,8 @@ public class EngineeringArchiveImport {
     private Long productId;
     private Long bomId;
     private Long routingId;
+    @TableField(exist = false)
+    private Boolean overwriteAllowed;
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;

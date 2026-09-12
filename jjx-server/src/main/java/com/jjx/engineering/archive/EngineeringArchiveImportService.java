@@ -63,9 +63,21 @@ public class EngineeringArchiveImportService {
     private String ocrUrl;
 
     public Page<EngineeringArchiveImport> page(long pageNum, long pageSize) {
-        return archiveMapper.selectPage(new Page<>(pageNum, pageSize),
+        Page<EngineeringArchiveImport> result = archiveMapper.selectPage(new Page<>(pageNum, pageSize),
                 new LambdaQueryWrapper<EngineeringArchiveImport>()
                         .orderByDesc(EngineeringArchiveImport::getCreateTime));
+        for (EngineeringArchiveImport row : result.getRecords()) {
+            row.setOverwriteAllowed(canOverwrite(row));
+        }
+        return result;
+    }
+
+    private boolean canOverwrite(EngineeringArchiveImport archive) {
+        if (archive.getRecognizeStatus() == null || ArchiveRecognitionStatus.GENERATED.getValue() != archive.getRecognizeStatus()
+                || archive.getProductId() == null || archive.getBomId() == null || archive.getRoutingId() == null) return false;
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM product p JOIN engineering_bom b ON b.bom_id=? JOIN engineering_routing r ON r.routing_id=? WHERE p.product_id=? AND p.product_status=? AND b.approve_status=? AND r.approve_status=?",
+                Integer.class, archive.getBomId(), archive.getRoutingId(), archive.getProductId(), ProductEnums.Status.DEVELOPING.getValue(), ProductEnums.BomStatus.DRAFT.getValue(), ProductEnums.RouteStatus.DRAFT.getValue());
+        return count != null && count == 1;
     }
 
     public EngineeringArchiveImport get(Long id) {
@@ -161,6 +173,64 @@ public class EngineeringArchiveImportService {
             archiveMapper.updateById(archive);
             return archive;
         }
+    }
+
+    /** 重新识别并覆盖本档案关联的未审批草稿。已审批/已发布数据禁止覆盖。 */
+    @Transactional(rollbackFor = Exception.class)
+    public EngineeringArchiveImport overwriteRetry(Long id) {
+        EngineeringArchiveImport archive = required(id);
+        if (archive.getProductId() == null || archive.getBomId() == null || archive.getRoutingId() == null) {
+            return retry(id);
+        }
+        assertOverwriteAllowed(archive);
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(Path.of(uploadBasePath).resolve(archive.getFilePath()).normalize());
+            archive.setRecognizeStatus(ArchiveRecognitionStatus.RECOGNIZING.getValue());
+            archive.setRecognizeMessage(null);
+            archiveMapper.updateById(archive);
+            recognize(archive, bytes, archive.getFileName());
+        } catch (Exception e) {
+            archive.setRecognizeStatus(ArchiveRecognitionStatus.FAILED.getValue());
+            archive.setRecognizeMessage("覆盖重试失败：" + trimMessage(e.getMessage()));
+            archiveMapper.updateById(archive);
+            return archive;
+        }
+        if (archive.getRecognizeStatus() == null || ArchiveRecognitionStatus.REVIEW.getValue() != archive.getRecognizeStatus()) return archive;
+        deleteGeneratedDrafts(archive);
+        archive.setProductId(null);
+        archive.setBomId(null);
+        archive.setRoutingId(null);
+        archiveMapper.updateById(archive);
+        return generateDrafts(archive.getArchiveId());
+    }
+
+    private void assertOverwriteAllowed(EngineeringArchiveImport archive) {
+        Map<String, Object> product = jdbcTemplate.queryForMap(
+                "SELECT product_status FROM product WHERE product_id=?", archive.getProductId());
+        Map<String, Object> bom = jdbcTemplate.queryForMap(
+                "SELECT approve_status FROM engineering_bom WHERE bom_id=?", archive.getBomId());
+        Map<String, Object> routing = jdbcTemplate.queryForMap(
+                "SELECT approve_status FROM engineering_routing WHERE routing_id=?", archive.getRoutingId());
+        int productStatus = ((Number) product.get("product_status")).intValue();
+        int bomStatus = ((Number) bom.get("approve_status")).intValue();
+        int routingStatus = ((Number) routing.get("approve_status")).intValue();
+        if (productStatus != ProductEnums.Status.DEVELOPING.getValue()
+                || bomStatus != ProductEnums.BomStatus.DRAFT.getValue()
+                || routingStatus != ProductEnums.RouteStatus.DRAFT.getValue()) {
+            throw new BusinessException("该档案已存在审批通过或非草稿数据，禁止覆盖重试");
+        }
+    }
+
+    private void deleteGeneratedDrafts(EngineeringArchiveImport archive) {
+        jdbcTemplate.update("DELETE FROM engineering_bom_item WHERE bom_id=?", archive.getBomId());
+        jdbcTemplate.update("DELETE FROM engineering_routing_item WHERE routing_id=?", archive.getRoutingId());
+        jdbcTemplate.update("DELETE FROM engineering_bom WHERE bom_id=? AND approve_status=?",
+                archive.getBomId(), ProductEnums.BomStatus.DRAFT.getValue());
+        jdbcTemplate.update("DELETE FROM engineering_routing WHERE routing_id=? AND approve_status=?",
+                archive.getRoutingId(), ProductEnums.RouteStatus.DRAFT.getValue());
+        jdbcTemplate.update("DELETE FROM product WHERE product_id=? AND product_status=?",
+                archive.getProductId(), ProductEnums.Status.DEVELOPING.getValue());
     }
 
     private void recognize(EngineeringArchiveImport archive, byte[] bytes, String fileName) {

@@ -37,6 +37,7 @@
           <template #default="{ row }">
             <el-button link type="primary" @click="openReview(row)">查看/修正</el-button>
             <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.FAILED.value" link type="warning" @click="retry(row)">重试</el-button>
+            <el-button v-if="row.overwriteAllowed === true" link type="warning" v-hasPermi="['engineering:archive:import']" @click="overwriteRetry(row)">覆盖重试</el-button>
             <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.REVIEW.value" link type="success" v-hasPermi="['engineering:archive:generate']" @click="generate(row)">生成草稿</el-button>
           </template>
         </el-table-column>
@@ -95,6 +96,12 @@ async function uploadArchive(options: UploadRequestOptions) {
 function openReview(row: ArchiveImportRecord) { current.value = row; resultText.value = row.extractedJson ? JSON.stringify(JSON.parse(row.extractedJson), null, 2) : '{}'; reviewVisible.value = true }
 async function saveResult() { if (!current.value) return; try { const parsed = JSON.parse(resultText.value); await archiveImportApi.updateResult(current.value.archiveId, parsed); ElMessage.success('识别结果已保存'); reviewVisible.value=false; await load() } catch (e: any) { ElMessage.error(e instanceof SyntaxError ? 'JSON格式不正确' : (e.message || '保存失败')) } }
 async function retry(row: ArchiveImportRecord) { await archiveImportApi.retry(row.archiveId); ElMessage.success('已重新识别'); await load() }
+async function overwriteRetry(row: ArchiveImportRecord) {
+  await ElMessageBox.confirm('将重新识别原图，并删除该档案关联的产品、BOM和工艺路线草稿后重新生成。审批通过的数据不可覆盖，是否继续？', '覆盖重试', { type: 'warning' })
+  await archiveImportApi.overwriteRetry(row.archiveId)
+  ElMessage.success('已完成覆盖重试')
+  await load()
+}
 async function generate(row: ArchiveImportRecord) { await ElMessageBox.confirm('将按当前识别结果创建产品、BOM和工艺路线草稿，是否继续？', '生成草稿'); await archiveImportApi.generate(row.archiveId); ElMessage.success('草稿已生成'); await load() }
 async function openSamples() { if (!current.value) return; samples.value = payload(await archiveImportApi.samples(current.value.archiveId)); if (!processes.value.length) processes.value = payload(await standardProcessApi.getEnabledProcesses()); sampleVisible.value=true }
 async function confirmSample(row: IconSample) { if (!row.processId) return; await archiveImportApi.confirmSample(row.sampleId, row.processId); ElMessage.success('图标样本已确认，可用于下次识别') }

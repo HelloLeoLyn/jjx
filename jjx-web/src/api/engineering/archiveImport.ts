@@ -11,6 +11,7 @@ export interface ArchiveImportRecord {
   productId?: number
   bomId?: number
   routingId?: number
+  overwriteAllowed?: boolean
   createTime: string
 }
 
@@ -34,6 +35,7 @@ export const archiveImportApi = {
     return request.post('/engineering/archive-imports/upload', data, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
   retry: (id: number) => request.post(`/engineering/archive-imports/${id}/retry`),
+  overwriteRetry: (id: number) => request.post(`/engineering/archive-imports/${id}/overwrite-retry`),
   updateResult: (id: number, data: unknown) => request.put(`/engineering/archive-imports/${id}/result`, data),
   generate: (id: number) => request.post(`/engineering/archive-imports/${id}/generate`),
   samples: (archiveId: number) => request.get('/engineering/archive-imports/icon-samples', { params: { archiveId } }),
