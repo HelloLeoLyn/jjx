@@ -12,6 +12,7 @@ import com.jjx.sales.domain.entity.SalesDelivery;
 import com.jjx.sales.domain.vo.SalesDeliveryVO;
 import com.jjx.sales.mapper.SalesDeliveryMapper;
 import com.jjx.sales.service.ISalesDeliveryService;
+import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -95,6 +96,9 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    // 口径 D6：签收后发事件（收件角色与账期规则由 sys_event_config 配置，代码不写死）
+    @Event(value = "sales.delivery.received", bizId = "#deliveryId", bizType = "'sales_delivery'",
+           params = "deliveryId=#deliveryId")
     public void receive(Long deliveryId, SalesDelivery receiveInfo) {
         SalesDelivery current = salesDeliveryMapper.selectById(deliveryId);
         if (current == null) {
