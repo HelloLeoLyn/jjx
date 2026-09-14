@@ -143,7 +143,7 @@ import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
 import { useCompanyConfig } from '@/composables/useCompanyConfig'
-import { usePrintLayout, usePrintLog } from '@/composables/usePrint'
+import { usePrintLayout } from '@/composables/usePrint'
 
 type PrintLayout = 'system' | 'qr026'
 type DeliveryItem = Record<string, any>
@@ -160,19 +160,19 @@ const { layout, setLayout } = usePrintLayout<PrintLayout>('delivery-print-layout
   { value: 'system', label: '系统版' },
   { value: 'qr026', label: '纸版(QR-026)' },
 ])
-const { log: logPrint } = usePrintLog('sales_delivery')
 const receiveDate = computed(() => info.value?.receiveTime?.slice(0, 10) || '________________')
 
 function handleLayoutChange(value: string | number | boolean | undefined) {
   if (value === 'system' || value === 'qr026') setLayout(value)
 }
 async function print() {
+  // 口径 D3：打印必留痕（谁/何时/第几次/哪张单）；留痕失败不阻断打印本身
   try {
-    await logPrint(deliveryId)
-    window.print()
+    await deliveryApi.printLog(deliveryId)
   } catch {
-    ElMessage.error('打印留痕失败，请重试')
+    ElMessage.warning('打印留痕失败（不影响打印）')
   }
+  window.print()
 }
 
 onMounted(async () => {

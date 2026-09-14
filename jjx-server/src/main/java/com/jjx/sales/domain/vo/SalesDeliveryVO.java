@@ -87,4 +87,14 @@ public class SalesDeliveryVO {
 
     @Schema(description = "收货备注")
     private String receiveRemark;
+
+    @Schema(description = "打印次数")
+    private Integer printCount;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @Schema(description = "最近打印时间")
+    private Date lastPrintTime;
+
+    @Schema(description = "最近打印人")
+    private String lastPrintBy;
 }

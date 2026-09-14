@@ -26,6 +26,12 @@ export interface SalesDeliveryVO {
   receiverPhone: string
   receiveTime: string
   receiveRemark: string
+  /** 打印次数（口径 D3：来自 quality_template_print_log 聚合） */
+  printCount?: number
+  /** 最近打印时间 */
+  lastPrintTime?: string
+  /** 最近打印人 */
+  lastPrintBy?: string
 }
 
 export interface SalesDeliveryQueryDTO {
@@ -75,6 +81,11 @@ export const deliveryApi = {
   /** 签收发货单 */
   receive(deliveryId: number, data: SalesDeliveryReceiveDTO) {
     return request.put<R<void>>(`/sales/deliveries/${deliveryId}/receive`, data)
+  },
+
+  /** 记录送货单打印留痕（口径 D3：biz_type=sales_delivery + biz_id=deliveryId） */
+  printLog(deliveryId: number) {
+    return request.post<R<void>>(`/sales/deliveries/${deliveryId}/print-log`)
   },
 
 }

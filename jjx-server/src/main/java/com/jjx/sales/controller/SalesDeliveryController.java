@@ -61,4 +61,12 @@ public class SalesDeliveryController {
         return Result.success();
     }
 
+    @Operation(summary = "记录送货单打印留痕")
+    @SaCheckPermission("sales:delivery:view")
+    @PostMapping("/{deliveryId}/print-log")
+    public Result<Void> printLog(@PathVariable Long deliveryId) {
+        salesDeliveryService.recordPrintLog(deliveryId);
+        return Result.success();
+    }
+
 }

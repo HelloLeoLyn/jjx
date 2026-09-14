@@ -31,6 +31,12 @@ public interface ISalesDeliveryService {
     void receive(Long deliveryId, SalesDelivery receiveInfo);
 
     /**
+     * 记录送货单打印留痕
+     * 口径（D3）：biz_type='sales_delivery'、biz_id=deliveryId，写 quality_template_print_log
+     */
+    void recordPrintLog(Long deliveryId);
+
+    /**
      * 导出送货单PDF（单张表单）
      */
 }

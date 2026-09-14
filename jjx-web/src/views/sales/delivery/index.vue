@@ -28,6 +28,15 @@
         </el-table-column>
         <el-table-column prop="receiverName" label="签收人" width="110" />
         <el-table-column prop="receiveTime" label="签收时间" width="170" />
+        <el-table-column label="打印" width="90">
+          <template #default="{ row }">{{ row.printCount ?? 0 }} 次</template>
+        </el-table-column>
+        <el-table-column label="最近打印" width="170">
+          <template #default="{ row }">
+            <span v-if="row.printCount">{{ row.lastPrintBy || '-' }}<br /><span class="muted">{{ row.lastPrintTime ? row.lastPrintTime.slice(0, 16) : '' }}</span></span>
+            <span v-else class="muted">未打印</span>
+          </template>
+        </el-table-column>
         <TableActionColumn :actions="deliveryActions" width="200" display="text" @action="handleDeliveryAction" />
       </el-table>
       <pagination v-show="total > 0" v-model:page="query.pageNum" v-model:limit="query.pageSize" :total="total" @pagination="load" />
@@ -125,4 +134,4 @@ function printDelivery(row: SalesDeliveryVO) { router.push({ path: '/sales/deliv
 onMounted(load)
 </script>
 
-<style scoped>.search-card{margin-bottom:16px}</style>
+<style scoped>.search-card{margin-bottom:16px}.muted{color:#909399;font-size:12px}</style>

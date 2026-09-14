@@ -305,6 +305,7 @@ const route = useRoute()
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
+import { deliveryApi } from '@/api/sales/delivery'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
@@ -615,10 +616,28 @@ const submitShip = async () => {
     ElMessage.success('发货成功，订单已进入已发货状态')
     shipDialogVisible.value = false
     getList()
+    await guideToPrint(shipOrderId.value)
   } catch (e: any) {
     ElMessage.error(e?.message || '发货失败')
   } finally {
     shipSubmitting.value = false
+  }
+}
+
+/** 口径 D3：发货成功后引导去打印随货凭证（送货单）；取消或失败都不影响发货 */
+const guideToPrint = async (orderId: number) => {
+  try {
+    const res = await deliveryApi.listByOrderId(orderId)
+    const latest = (res.data || [])[0]
+    if (!latest) return
+    await ElMessageBox.confirm(`发货单 ${latest.deliveryNo} 已生成，是否现在打印随货凭证（交客户签字）？`, '随货凭证', {
+      confirmButtonText: '去打印',
+      cancelButtonText: '稍后',
+      type: 'info',
+    })
+    router.push({ path: '/sales/delivery/print', query: { deliveryId: latest.deliveryId } })
+  } catch {
+    // 用户选择"稍后"或查询失败：静默跳过，不打断发货
   }
 }
 
