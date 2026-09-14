@@ -78,6 +78,8 @@
 - **权限 fail-open 三处位置**：`jjx-web/src/permission.ts:51`（`setPermissions(['*'])` 兜底）、`jjx-web/src/store/modules/user.ts:120`、`jjx-web/src/directives/index.ts:45`（`hasPermi()`）。
 - **工作区待收敛 56 项**：37 M + 9 D + 10 ??，主体是并行会话的 Java/Vue 改动（工艺资源、档案 OCR、销售样品）、用户删掉的迁移 101~106、3 个 assets 删除。
 - **上传目录两份**子目录结构相同（backup/engineering-archive/inquiry/order/product…），50M vs 41M，需定唯一路径。
+- **上传目录已查清（任务 dev-20260914-010）**：活的＝仓库根 `upload/`（9-07 后新写 291 个文件；运行实例 cwd＝仓库根）；`jjx-server/upload/` 是 9-06 之前从 `jjx-server/` 启动时的残留（9-07 后写入 0）。配置侧已修正为绝对路径 `${JJX_UPLOAD_ROOT:/home/administrator/jjx/upload}`，当前未设环境变量 → 就是仓库根。**风险点：两份各有对方没有的文件**（旧份独有 4 个子目录 + 9-04/9-05 的模板文件），上线前需一次"合并搬迁"。
+- **顺带发现**：`quality_template_registry` 有 19 条 `file_id` 非空，而 `sys_attachment` 只有 1 行 → 19 条悬挂引用（第 8 项范围，处理建议＝置空）。
 
 ## 核查进度表（每查一项填一行，没证据不算查过）
 
@@ -96,7 +98,7 @@
 | 11 | 凭据清理 | 🟡 | ⬜ 未查 | `jjx-docs/accounts/accounts.json` + `index.html` 仍在仓库；`sys_config.sms_api_key` 存在 | 2026-09-14 |
 | 12 | 生产库账号 | 🔴 | ⬜ 未查 | | |
 | 13 | application-prod.yml | 🔴 | 🟨 已核，确认缺失 | 只有 `application.yml`（active: dev）+ `application-dev.yml` | 2026-09-14 |
-| 14 | 上传目录定唯一路径 | 🔴 | ⏳ 已登记任务 dev-20260914-010（查哪份是活的） | 仓库根 `upload/` 50M 与 `jjx-server/upload/` 41M，子目录结构相同；配置 `${JJX_UPLOAD_ROOT:/home/administrator/jjx/upload}` | 2026-09-14 |
+| 14 | 上传目录定唯一路径 | 🔴 | ✅ 已查清（任务 dev-20260914-010） | **活的＝仓库根 `upload/`**：9-07 之后新写 291 个文件、实例 cwd＝仓库根；`jjx-server/upload/` 9-07 之后写入＝0（9-06 前残留）。**但两份各有对方没有的文件**（旧份独有 `production_order`/`purchase_order`/`quotation_flow`/`sales_order` 四个子目录 + `quality_template` 的 9-04/9-05 文件）→ 生产前要"合并搬迁"，不能直接删 | 2026-09-14 |
 | 15 | 外部依赖启动方式 | 🟡 | ⬜ 未查 | dev.yml: Redis `localhost:6379`、mail `localhost`；OCR `127.0.0.1:8866` | 2026-09-14 |
 | 16 | 网络与证书 | 🟡 | ⬜ 未查 | | |
 | 17 | 权限 fail-closed | 🔴 | 🟨 已核，位置已定 | `permission.ts:51` `setPermissions(['*'])`；`store/modules/user.ts:120`；`directives/index.ts:45` | 2026-09-14 |
