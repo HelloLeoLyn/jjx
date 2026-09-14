@@ -40,7 +40,7 @@
 
 | # | 层 | 项 | 现状 | 结论 / 待办 |
 |---|---|---|---|---|
-| 13 | 🔴 | 生产配置 profile | 只有 `application.yml`（active: dev）+ `application-dev.yml` | ✅ **已建模板** `jjx-server/src/main/resources/application-prod.yml`（全部走环境变量、无明文）；启动用 `--spring.profiles.active=prod`，上线前填真实值 |
+| 13 | 🔴 | 生产配置 profile | 只有 `application.yml`（active: dev）+ `application-dev.yml` | ✅ **模板已入库**：`jjx-server/src/main/resources/application-prod.yml.example`（全环境变量、无明文）。`.gitignore` 第 57 行忽略 `application-prod.yml`（防误提交生产配置）→ 部署时 `cp …example …prod.yml` 再填值，启动加 `--spring.profiles.active=prod` |
 | 14 | 🔴 | 上传目录 | 活的＝仓库根 `upload/`（9-07 后新写 291 个文件；实例 cwd＝仓库根）；`jjx-server/upload/` 是 9-06 前残留（9-07 后写入 0），但**两份各有对方没有的文件** | ✅ 口径：生产 `JJX_UPLOAD_ROOT` 显式设为生产绝对路径；**上线前做一次"合并搬迁"**（把旧份独有目录 `production_order`/`purchase_order`/`quotation_flow`/`sales_order` + `quality_template` 9-04/9-05 文件并进活目录），再归档旧份 |
 | 15 | 🟡 | 外部依赖 | MySQL、Redis 是 **systemd 服务**（active running）；OCR 是 `.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8866`（手工起）；后端是 `java -jar`（手工起，cwd=仓库根） | 生产：把**后端与 OCR 也做成 systemd 单元**（含开机自启、自动重启、日志落文件）；MySQL/Redis 已有 unit 沿用 |
 | 16 | 🟡 | 网络与证书 | 监听：3306/6379/8866 都只听 `127.0.0.1`（好）；`8080` 监听 `*`、`3000` 监听 `0.0.0.0`（前端 dev server 对外）；80/443 有监听；证书在 `jjx-docs/assets/certs/`（`JJX-CA.crt` + 手机安装指引） | 生产口径：对外只开 80/443 走 nginx 反代 → 后端 8080 收成仅本机；**不要暴露前端 dev server(3000)**；手机端扫码需 HTTPS（证书见 `guides/internal-https-setup-guide-20260904.md`） |
@@ -131,7 +131,7 @@
 | 10 | 脱敏口径 | 🟡 | ✅ 规格已出 | `design/sensitive-data-masking-dev-20260914-002.md` | 2026-09-14 |
 | 11 | 凭据清理 | 🟡 | ✅ 已核 + 口径 | `accounts/` 2 个文件均被 git 跟踪；口径见附录 C | 2026-09-14 |
 | 12 | 生产库账号 | 🔴 | ✅ 已核 + 规划 | 现有 root/jjx_ro；规划见附录 C | 2026-09-14 |
-| 13 | application-prod.yml | 🔴 | ✅ 已建模板 | `jjx-server/src/main/resources/application-prod.yml`（环境变量注入） | 2026-09-14 |
+| 13 | application-prod.yml | 🔴 | ✅ 已建模板 | `jjx-server/src/main/resources/application-prod.yml.example`（环境变量注入；prod.yml 本身被 .gitignore 忽略） | 2026-09-14 |
 | 14 | 上传目录 | 🔴 | ✅ 已查清 + 口径 | 活＝仓库根；旧份需合并搬迁 | 2026-09-14 |
 | 15 | 外部依赖 | 🟡 | ✅ 已核 + 口径 | MySQL/Redis 是 systemd；后端/OCR 手工起 → 生产要 unit | 2026-09-14 |
 | 16 | 网络与证书 | 🟡 | ✅ 已核 + 口径 | 8080/3000 对外暴露需收回；证书在 `assets/certs/` | 2026-09-14 |
