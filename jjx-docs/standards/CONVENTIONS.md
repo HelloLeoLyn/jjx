@@ -52,6 +52,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 **例外备案（2026-09-12 用户批准）**：经**用户明确指示**要把指定 dump 提交进 git 时可执行，但必须：① 提交信息与 `sys_task` 里标注「§2 例外」；② 知悉该文件将**永久留在 git 历史**（含真实业务数据，事后移除需改写历史 + force push，属 §5 禁区）。
 已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260912-1908_before-archive-ocr-task.sql`（任务码 dev-20260912-017）。
+已备案：`jjx-docs/sql/init/jjx_erp_db_backup_*_init-data-subset.sql`（**初始化数据交付物**，不是例行备份：按清单 `jjx-docs/sql/init/init-subset-tables.txt` 滚动重出，Git 只留最新一份；自任务码 dev-20260914-001 起）。
 
 ---
 

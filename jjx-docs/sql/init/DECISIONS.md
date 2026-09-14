@@ -62,7 +62,7 @@
 | # | 表 | 行数 | Hermes 建议 | 证据 |
 |---|---|---|---|---|
 | 21 | engineering_standard_process | 49 | **进（正式）** | SP-101 面板/SP-103 面板隔片… 真实标准工序库 |
-| 22 | jjx_screen_master | 4448 | **进（正式），但先剔表头行** | G0001/G0002 真实客户料号；**第 1 行 `screen_no='编号' / content='网 版 内 容 记 录'` 是 Excel 表头误导入**，迁移时剔除 |
+| 22 | jjx_screen_master | 4448 | **作废（2026-09-14 更正）**：迁移 102 已于 2026-09-12 21:43 DROP 该表，原「进（正式）+ 剔表头行」决定不再适用 | G0001/G0002 真实客户料号；第 1 行 `screen_no='编号'`、第 2 行 `screen_no='新编号'`（content 都是「网 版 内 容 记 录」）是 Excel 表头误导入。旧数据按 dev-20260912-011 拍板不迁移，只留在迁移前全库备份 |
 | 23 | product | 1 | 不进（测试草稿） | `JST-263MHMC / 7600-005-Rev004`，`from_source='history_archive'`，2026-09-12 15:00:53 生成，状态=1 |
 | 24 | engineering_bom + engineering_bom_item | 1 / 14 | 不进（测试草稿） | `BOM-JST-263MHMC` 同一批档案识别产物，approve_status=1 |
 | 25 | engineering_routing + engineering_routing_item | 1 / 25 | 不进（测试草稿） | `RT-JST-263MHMC` 同上，routing_type=history_archive |
@@ -156,7 +156,7 @@
 
 ### 生产模块汇总结论（2026-09-12 用户拍板）
 
-- **不进**：52 `production_tooling`(7282)
+- **不进**：52 `production_tooling`(7282) —— **该表已于 2026-09-12 21:43 被迁移 102 DROP（2026-09-14 更正）**，见 dev-20260912-011
 - 无数据（结构随 DDL）：51 生产模块其余表
 - 后续动作：已登记 **dev-20260912-011**「核查 production_tooling（工装台账）使用情况」——确认该表/工装功能是否仍被使用、
   与 `jjx_screen_master` 的关系、是否需要补菜单或下线，结论出来后再决定这张表要不要单独处理
@@ -224,7 +224,7 @@
 
 **进（正式数据）**：
 sys_menu、sys_role、sys_role_menu、sys_dict、sys_dict_item、sys_config（剔除 ops.schema.*）、sys_user、sys_user_role、
-sys_dept、sys_event_config、sys_tag、engineering_standard_process、jjx_screen_master（剔 2 行表头）、purchase_supplier、
+sys_dept、sys_event_config、sys_tag、engineering_standard_process、purchase_supplier、
 sys_tag_rel（`purchase_supplier` 63 + `inventory_material` 1766）、inventory_material、inventory_item（按现状 + 迁后对齐）、
 inventory_warehouse、quality_template_registry（file_id 置空）、hr_employee（52 条身份证密文，密钥原样带）
 
@@ -250,4 +250,13 @@ hr_dept_mapping（用户口径：导入过渡方案，以后严格按真实部�
 - [x] 文档/业务/其他模块（2026-09-12 清单：全部无数据）
 
 **下一步（待用户决定）**：①静态文件（附件/图纸/打印模板）如何交付；②目标环境是空库全量还是仅数据；
-③ID 是否原样保留；④测试脏数据是否迁移前先清；⑤20 修正项：jjx_screen_master 剔 2 行表头、quality_template_registry 的 file_id 置空。
+③ID 是否原样保留；④测试脏数据是否迁移前先清；⑤修正项：~~jjx_screen_master 剔 2 行表头~~（已随迁移 102 DROP 失效，2026-09-14 更正）、quality_template_registry 的 file_id 置空。
+
+## 滚动重出机制（2026-09-14 用户定）
+
+- 交付物**不是一次性快照**：按【清单】滚动重出，跟版本升级走；每次重出前先登记一个 DEV 任务 + 用户确认后执行（**不设定时器**）。
+- **清单唯一真源**：`jjx-docs/sql/init/init-subset-tables.txt`（一行一个表名）。本文件的「进」汇总是其决策依据；表增删由用户拍板，两份同步改。
+- **导出命令**：`bash scripts/db-export-init-subset.sh --task dev-YYYYMMDD-NNN`（可先加 `--dry-run` 体检）。脚本只读数据库，逐表校验存在性——清单里出现已 DROP 的表会直接中止（防重演 09-12 那份快照把 jjx_screen_master 带进去的情况）。
+- **保留与提交**：Git 只留最新一份；删除旧份与提交均需用户确认（删除落在 pre-commit 闸门保护范围，提交用 `git commit --no-verify`，属 CONVENTIONS §2 例外备案）。
+- **首版清单 19 表**：09-12 的 20 表去掉 jjx_screen_master；011 新建的 engineering_screen_frame / engineering_screen_plate / engineering_die 当前 0 行，只随 DDL、不进数据清单。
+- **遗留待定**：敏感字段处置口径（身份证密文 / hr.idcard.key / smtp_* / sms_api_key）→ 任务 **dev-20260914-002**（方案未定，勿在导出脚本里私自脱敏）。
