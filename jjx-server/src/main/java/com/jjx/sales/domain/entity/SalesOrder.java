@@ -90,6 +90,7 @@ public class SalesOrder extends BaseEntity {
     /**
      * 样品单状态: 1已创建,2待审核,3工程打样中,4样品待送样,5已送样待确认,6样品确认,7已转量产,8已关闭,9客户退回,10已取消
      */
+    @TableField(exist = false)
     private Integer sampleStatus;
 
     /** 样品单一对一产品快照（不落 sales_order 主表）。 */
@@ -109,94 +110,113 @@ public class SalesOrder extends BaseEntity {
     /**
      * 样品迭代轮次
      */
+    @TableField(exist = false)
     private Integer sampleRound;
 
     /**
      * 打样数量
      */
+    @TableField(exist = false)
     private Integer sampleQty;
 
     /**
      * 工程备注
      */
+    @TableField(exist = false)
     private String engineeringNote;
 
     /**
      * 工程接单人
      */
+    @TableField(exist = false)
     private String engineeringAcceptor;
 
     /**
      * 工程接单时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField(exist = false)
     private Date engineeringAcceptTime;
 
     /**
      * 工程拒单原因
      */
+    @TableField(exist = false)
     private String rejectReason;
 
     /**
      * 打样当前工序
      */
+    @TableField(exist = false)
     private String currentProcess;
 
     /**
      * 打样成本
      */
+    @TableField(exist = false)
     private java.math.BigDecimal sampleCost;
 
     /**
      * 打样工时(小时)
      */
+    @TableField(exist = false)
     private java.math.BigDecimal sampleWorkHours;
 
     /**
      * 送样快递单号
      */
+    @TableField(exist = false)
     private String sampleTrackingNo;
 
     /**
      * 送样日期
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField(exist = false)
     private Date sampleSendDate;
 
     /**
      * 客户确认日期
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField(exist = false)
     private Date sampleConfirmDate;
 
     /** 客户确认人（DEV-343/314） */
+    @TableField(exist = false)
     private String confirmBy;
 
     /** 确认方式 */
+    @TableField(exist = false)
     private String confirmMethod;
 
     /** 确认时间 */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField(exist = false)
     private LocalDateTime confirmTime;
 
     /** 发送客户确认时间（2026-08-12：区分未发送/已发送待确认） */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField(exist = false)
     private LocalDateTime confirmSentTime;
 
     /**
      * 客户方确认人
      */
+    @TableField(exist = false)
     private String sampleClientName;
 
     /**
      * 转量产后的标准订单ID
      */
+    @TableField(exist = false)
     private Long convertedOrderId;
 
     /**
      * 转量产时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField(exist = false)
     private Date convertOrderTime;
 
     /**
@@ -344,12 +364,14 @@ public class SalesOrder extends BaseEntity {
     /**
      * 已转正式的版本号
      */
+    @TableField(exist = false)
     private String formalVersion;
 
     /**
      * 最近一次资料转移时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @TableField(exist = false)
     private LocalDateTime lastTransferTime;
 
     /**
