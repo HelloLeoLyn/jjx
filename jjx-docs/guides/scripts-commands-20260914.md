@@ -93,7 +93,8 @@
   - 例行：`bash scripts/db-backup.sh`
   - 带来源/任务码：`bash scripts/db-backup.sh --tag before-xxx --task dev-YYYYMMDD-NNN`
   - 只看不写：`bash scripts/db-backup.sh --dry-run`
-  - 常用开关：`--reason <文案>`、`--out-dir <dir>`、`--keep-days <N>`（默认 14）、`--no-clean`
+  - 常用开关：`--reason <文案>`、`--out-dir <dir>`、`--keep-days <N>`（默认 14）、`--no-clean`、`--exclude-table <表名>`（可重复）
+- `--exclude-table`（2026-09-14 加，任务 dev-20260914-028）：导出时跳过该表（内部转 `mysqldump --ignore-table`），如 `--exclude-table hr_employee`；**排除后的产物不是可完整恢复的全库备份**，只当剪裁快照用（脚本会打 ⚠ 提醒）。
 - 输出怎么读：报告库/目录/文件名/原因/任务码/清理策略 → 备份后给 **字节数 / 表数 / md5** + 恢复命令 → 再走过期清理段。
 - 产物：`jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql`，同名冲突自动加 `-2/-3`，**不覆盖**；文件头 1~3 行=备份人/原因/任务码，并追加一行到 `<备份目录>/db-backup-log.txt` 留痕。
 - 清理口径：只删 `<备份目录>` 下超过 `--keep-days`（默认 14 天）的 `jjx_erp_db_backup_*.sql`（= 全库备份）；guard 表级备份、`.tar.gz` 等**只提示不删**。

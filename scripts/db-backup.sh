@@ -7,6 +7,7 @@
 #   bash scripts/db-backup.sh --task dev-YYYYMMDD-NNN   # 记录关联任务码到文件头
 #   bash scripts/db-backup.sh --dry-run                 # 只看路径/将清理什么，不落盘
 #   bash scripts/db-backup.sh --no-clean                # 备份但不清理过期
+#   bash scripts/db-backup.sh --exclude-table hr_employee  # 导出时排除指定表（可重复）
 #   bash scripts/db-backup.sh --help
 #
 # 危险等级：🟡 只读数据库 + 写仓库外文件（不写库、不改库内数据）；--dry-run 为 🟢 纯预览
@@ -38,6 +39,7 @@ AGENT="${AI_AGENT:-dahuang}"
 TAG=""
 TASK=""
 REASON=""
+EXCLUDES=()
 KEEP_DAYS=14
 DO_CLEAN=1
 DRY_RUN=0
@@ -60,6 +62,7 @@ usage() {
   --tag <tag>        原因标签（简短英文，[A-Za-z0-9._-]，如 before-xxx、daily）；缺省=例行备份
   --task <code>      关联任务码 dev-YYYYMMDD-NNN（写进文件头，便于回溯）
   --reason <text>    自定义"原因"文案（默认按 tag 自动生成）
+  --exclude-table <表名>  导出时排除该表（可重复；如 hr_employee），内部转 mysqldump --ignore-table
   --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；仍必须在 Git 仓库外）
   --keep-days <N>    过期清理阈值，默认 14 天
   --no-clean         本次不清理过期备份
@@ -67,6 +70,7 @@ usage() {
   -h, --help         本帮助
 
 产物: jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql（同名冲突自动加 -2/-3 后缀，不覆盖）
+注意: --exclude-table 导出的**不是**可完整恢复的全库备份，只当剪裁快照用
 留痕: 追加一行到 <备份目录>/db-backup-log.txt（时间/备份人/文件/md5/字节/表数/任务码）
 清理: 仅清理 <备份目录> 下 jjx_erp_db_backup_*.sql 且超过 --keep-days 的文件；
       其它类型的备份（guard 表级备份、tar.gz 等）只提示、不删。
@@ -79,6 +83,7 @@ while [ $# -gt 0 ]; do
     --tag)       TAG="${2:-}"; shift 2 ;;
     --task)      TASK="${2:-}"; shift 2 ;;
     --reason)    REASON="${2:-}"; shift 2 ;;
+    --exclude-table) EXCLUDES+=("${2:-}"); shift 2 ;;
     --out-dir)   BACKUP_DIR="${2:-}"; shift 2 ;;
     --keep-days) KEEP_DAYS="${2:-}"; shift 2 ;;
     --no-clean)  DO_CLEAN=0; shift ;;
@@ -104,6 +109,14 @@ fi
 case "$KEEP_DAYS" in
   ''|*[!0-9]*) die "--keep-days 必须是正整数（当前：$KEEP_DAYS）" ;;
 esac
+
+# 排除表：允许写 table 或 db.table，统一归一到表名
+IGNORE_ARGS=()
+for t in ${EXCLUDES[@]+${EXCLUDES[@]}}; do
+  t="${t##*.}"
+  printf '%s' "$t" | grep -Eq '^[A-Za-z0-9_]+$' || die "--exclude-table 表名不合法：$t"
+  IGNORE_ARGS+=(--ignore-table="${DB_NAME}.${t}")
+done
 
 command -v mysqldump >/dev/null 2>&1 || die "找不到 mysqldump（Debian/Ubuntu: apt install mysql-client）"
 
@@ -146,6 +159,9 @@ say "  目录:   ${BACKUP_DIR}"
 say "  文件:   $(basename "$TARGET")"
 say "  原因:   ${REASON}"
 say "  任务码: ${TASK:-无}"
+if [ "${#IGNORE_ARGS[@]}" -gt 0 ]; then
+  warn "排除表: $(printf '%s ' "${EXCLUDES[@]}")（导出结果不是可完整恢复的全库备份）"
+fi
 say "  清理:   $([ "$DO_CLEAN" -eq 1 ] && printf '删除超过 %s 天的全库备份' "$KEEP_DAYS" || printf '本次不清理')"
 say ""
 
@@ -154,7 +170,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
 else
   RAW="${TARGET}.raw"
   if ! mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 \
-        --single-transaction --set-gtid-purged=OFF --no-tablespaces "$DB_NAME" \
+        --single-transaction --set-gtid-purged=OFF --no-tablespaces \
+        ${IGNORE_ARGS[@]+"${IGNORE_ARGS[@]}"} "$DB_NAME" \
         > "$RAW" 2>"${RAW}.err"; then
     sed 's/^/    /' "${RAW}.err" >&2; rm -f "$RAW" "${RAW}.err"
     die "备份失败——未产出文件"
