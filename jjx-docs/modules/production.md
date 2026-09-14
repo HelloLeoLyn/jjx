@@ -31,7 +31,7 @@
 - **完工收口门禁**：必须过 FQC —— 无待检记录、无未处置不良余量、累计合格成品数 ≥ 计划数量；口径为"Y：FQC PASS 的 passQty"。
 - **身份与范围配置驱动**：`sys_config` 的 `production_admin` / `production_global_scope` 存 role_key 名单（逗号分隔），**不硬编码角色**；`/mine` 接口支持 `includeCompleted`，一级负责人可见整单工序。
 - **工序执行页**已工作台化：上区工单面板（当前/历史 + 我的/全部）联动下区任务树；组件抽为 `TaskTreePanel`，纯函数进 utils。
-- 手机端：`/m/**` 移动入口支持按工单号查任务、报工、完工（注意摄像头扫码需 HTTPS 安全上下文，见 `reference/internal-https-setup-guide-20260904.md`）。
+- 手机端：`/m/**` 移动入口支持按工单号查任务、报工、完工（注意摄像头扫码需 HTTPS 安全上下文，见 `guides/internal-https-setup-guide-20260904.md`）。
 
 ## 关键表
 

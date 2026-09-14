@@ -2,7 +2,24 @@
 # 安装本仓库的 git 闸门（每台机器 / 每个 clone 跑一次）
 #   bash scripts/install-hooks.sh
 # 卸载：git config --unset core.hooksPath
+# 危险等级：🟡 只写本地 git 配置（core.hooksPath），不碰数据库，可卸载
+# 前置：在仓库内执行；scripts/hooks/* 存在
+# 手册：jjx-docs/guides/scripts-commands-20260914.md
 set -euo pipefail
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  cat <<'EOF'
+用途: 安装本仓库 git 闸门（pre-commit + commit-msg），每个 clone 跑一次
+危险等级: 🟡 只写本地 git 配置（core.hooksPath），不碰数据库，可卸载
+前置: 在仓库内执行；scripts/hooks/* 存在
+用法: bash scripts/install-hooks.sh
+卸载: git config --unset core.hooksPath
+退出码: 0=成功
+手册: jjx-docs/guides/scripts-commands-20260914.md
+EOF
+  exit 0
+fi
+
 cd "$(git rev-parse --show-toplevel)"
 
 chmod +x scripts/hooks/* 2>/dev/null || true

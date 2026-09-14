@@ -12,11 +12,17 @@
 | DB 全量备份 | Git 仓库外 `JJX_BACKUP_DIR` | 改库前必做；默认仓库同级 `jjx-backups/`，不提交 Git |
 | DB 表级/行级 guard 备份 | Git 仓库外 `JJX_BACKUP_DIR` | 清理/修复特定表前；不提交 Git |
 | DB 迁移/上线脚本 | `jjx-docs/sql/migrations/` | 序号 `NN_<描述>.sql` 递增；幂等优先 |
-| 分析/方案/测试计划/报告 | `jjx-docs/analysis/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 INDEX.md；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
-| **现行真相（各模块当前状态）** | `jjx-docs/current/<模块>.md` | 一个模块只允许一篇，不带日期；命名 `<模块>.md`；会过期、需定期复核；历史指针留在文末 |
+| 当时怎么做的（分析/方案/测试计划/报告/实施记录） | `jjx-docs/history/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 `history/INDEX.md`；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
+| **现行真相（各模块当前状态）** | `jjx-docs/modules/<模块>.md` | 一个模块只允许一篇，不带日期；命名 `<模块>.md`；会过期、需定期复核；历史指针留在文末 |
+| 手册 / 运维 / 排障（怎么干一件事） | `jjx-docs/guides/` | `<主题>-YYYYMMDD.md`；脚本命令手册也放这里 |
+| 设计 / 流程 / 方案（为什么这么做） | `jjx-docs/design/` | `<主题>-YYYYMMDD.md`；业务流程、架构、方案 |
+| 决策记录 | `jjx-docs/decisions/` | 一条决定一篇，带日期与状态 |
+| 查事实（权限矩阵/清单/组件用法） | `jjx-docs/reference/` | 长期有效 |
 | 文档库入口导航 | `jjx-docs/README.md` | "我要干嘛 → 看哪篇"（判断时效只看这张表，不看文件 mtime） |
 | 打印模板/素材 | `jjx-docs/assets/` `jjx-docs/print_template/` | |
-| 需求/参考归档 | `jjx-docs/requirements/` `jjx-docs/reference/` `jjx-docs/archive/` | |
+| 需求原始材料/归档 | `jjx-docs/requirements/` `jjx-docs/sources/` `jjx-docs/archive/` | |
+| 文档门禁 | `scripts/check-docs.mjs`（`npm run check:docs`） | 扫 `history/`（R1 登记 INDEX、R2 BOM、R3 命名）与 `modules/`（R4 不带日期 + BOM） |
+| 可执行脚本 | `scripts/` | 手动执行的脚本一律放这里（命名 `<对象>-<动作>.sh`）；**新增或修改必须同步 `jjx-docs/guides/scripts-commands-20260914.md`**，并补 `--help` + 危险等级（🟢只读/🟡写文件/🔴改数据库）+ 前置声明 |
 | 每日工作记录（OpenClaw） | workspace `memory/YYYY-MM-DD.md` | 其他 agent 可选 |
 | 临时/中间产物 | `/tmp` 或仓库 `.tmp/`（gitignore） | 当日清理，不进正式目录 |
 | 任务登记 | `sys_task` 表 | `dev-YYYYMMDD-NNN` |
@@ -69,8 +75,8 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 ## 4. 分析/方案/测试计划文档
 
-- 位置：`jjx-docs/analysis/`；命名 `<主题>-dev-YYYYMMDD-NNN.md`（无任务码可退化为 `-YYYYMMDD.md`；存量 90 篇以现状为准，2026-09-07 决议 C2）
-- 新文档**登记 `analysis/INDEX.md`**（或跑其再生命令）后随代码提交
+- 位置：`jjx-docs/history/`；命名 `<主题>-dev-YYYYMMDD-NNN.md`（无任务码可退化为 `-YYYYMMDD.md`；存量 131 篇以现状为准，2026-09-07 决议 C2；2026-09-14 目录由 `analysis/` 改名 `history/`）
+- 新文档**登记 `history/INDEX.md`**（或跑其再生命令）后随代码提交
 - **UTF-8 带 BOM**（手机阅读不乱码），验证：
   ```bash
   python3 -c "d=open('文件','rb').read(); assert d[:3]==b'\xef\xbb\xbf'; d.decode('utf-8')"

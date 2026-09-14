@@ -5,6 +5,11 @@
 #   bash scripts/db-migrate.sh --status                                 查看已应用迁移 / 待执行清单
 #   bash scripts/db-migrate.sh <NN_desc.sql> --yes [--task dev-...] [--tag xxx]
 #   bash scripts/db-migrate.sh --record <NN> --yes                      接管已有库，登记某号已应用
+#   bash scripts/db-migrate.sh --help
+#
+# 危险等级：🔴 改数据库（执行迁移：备份→执行→记版本；备份失败即中止）／🟡 只写版本记录（--record）／🟢 只读（--status）
+# 前置：迁移文件在 jjx-docs/sql/migrations/；JJX_BACKUP_DIR 在仓库外可写；动库必须带真实任务码
+# 手册：jjx-docs/guides/scripts-commands-20260914.md
 #
 # 版本记账用「已应用集合」sys_config.ops.schema.applied（逗号分隔的号），
 # 同时维护 ops.schema.version = 集合最大值（兼容旧读法）。
@@ -151,7 +156,7 @@ while [ $# -gt 0 ]; do
     --record) RECORD="${2:-}"; shift ;;
     --task) TASK="${2:-}"; shift ;;
     --tag)  TAG="${2:-}"; shift ;;
-    -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) die "未知参数: $1" ;;
     *)  [ -z "$MIG_FILE" ] || die "只接受一个迁移文件参数" ; MIG_FILE="$1" ;;
   esac

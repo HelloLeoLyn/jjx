@@ -20,8 +20,8 @@
 ## 规范 / 手册（动手前先看）
 
 - `AGENTS.md`（根，速查）+ `jjx-docs/standards/CONVENTIONS.md`（**唯一真源**：备份/迁移/文档/提交/§9 讨论与执行边界）
-- `jjx-docs/reference/internal-https-setup-guide-20260904.md` —— 内网 HTTPS 全量方案（证书怎么签、怎么装到手机、排障）
-- `jjx-docs/reference/ops-runbook-20260910.md` —— 排查手册（30 秒看全局、链路分段、常见故障分型）
+- `jjx-docs/guides/internal-https-setup-guide-20260904.md` —— 内网 HTTPS 全量方案（证书怎么签、怎么装到手机、排障）
+- `jjx-docs/guides/ops-runbook-20260910.md` —— 排查手册（30 秒看全局、链路分段、常见故障分型）
 - `jjx-docs/README.md` —— 文档库入口（我要干嘛 → 看哪篇）
 
 ## 内网环境（单机）

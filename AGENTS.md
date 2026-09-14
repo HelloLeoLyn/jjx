@@ -28,7 +28,7 @@ Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 Quick rules:
 - **DB change first** (any migration / bulk DML / risky fix): back up BEFORE touching data. Full dumps and guard backups go to the Git-external `JJX_BACKUP_DIR` (default: sibling `jjx-backups/`), not into the repository.
 - Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql` (next max NN+1).
-- Analysis / test-plan / design reports: `jjx-docs/analysis/<topic>-dev-YYYYMMDD-NNN.md`, register in INDEX.md, UTF-8 BOM.
+- Analysis / test-plan / design reports: `jjx-docs/history/<topic>-dev-YYYYMMDD-NNN.md`, register in `history/INDEX.md`, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).
 - Table-level guard backups before row cleanups: `$JJX_BACKUP_DIR/<table>_<topic>_YYYYMMDD-HHmm.sql` (outside Git).
 - Commit message: `type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`; never mix unrelated files.

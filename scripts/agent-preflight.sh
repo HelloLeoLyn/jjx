@@ -3,8 +3,23 @@
 # 开工自检（agent 动手前跑一条就够；CONVENTIONS §10）
 #   bash scripts/agent-preflight.sh
 # 只读、快速（不跑 maven/npm install/vue-tsc）。任一项失败 → exit 1。
+# 危险等级：🟢 只读（不改库、不改文件）
+# 前置：在仓库内执行；数据库可连（连不上只标 ✘，不改任何东西）
+# 手册：jjx-docs/guides/scripts-commands-20260914.md
 # ============================================================================
 set -uo pipefail
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  cat <<'EOF'
+用途: 开工自检（闸门 / 库迁移版本 / 只读账号 / 文档门禁 / 工作区状态）
+危险等级: 🟢 只读
+前置: 在仓库内执行；数据库可连（连不上会标 ✘，不改任何东西）
+用法: bash scripts/agent-preflight.sh
+退出码: 0=自检通过  1=有未通过项
+手册: jjx-docs/guides/scripts-commands-20260914.md
+EOF
+  exit 0
+fi
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 

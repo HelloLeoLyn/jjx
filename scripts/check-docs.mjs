@@ -3,14 +3,17 @@
  * jjx-docs 文档规则门禁（docs-as-code gate）
  *
  * 规则（AGENTS.md / jjx-docs/README.md 维护标准）：
- *   R1 analysis/*.md 必须登记 analysis/INDEX.md（零容忍，无基线）
- *   R2 analysis/*.md 必须 UTF-8 带 BOM（存量债务走基线，只管新增）
- *   R3 analysis/*.md 文件名必须带日期或 -dev-YYYYMMDD-NNN（存量债务走基线）
- *   R4 current/*.md 必须无日期/任务码后缀（一个模块一篇现行真相），且带 BOM（零容忍）
+ *   R1 history/*.md 必须登记 history/INDEX.md（零容忍，无基线）
+ *   R2 history/*.md 必须 UTF-8 带 BOM（存量债务走基线，只管新增）
+ *   R3 history/*.md 文件名必须带日期或 -dev-YYYYMMDD-NNN（存量债务走基线）
+ *   R4 modules/*.md 必须无日期/任务码后缀（一个模块一篇现行真相），且带 BOM（零容忍）
  *
  * 用法：
  *   node scripts/check-docs.mjs                 检查
  *   node scripts/check-docs.mjs --write-baseline 重写存量基线（只允许在"债务变少"时执行）
+ *
+ * 2026-09-14（dev-20260914-004）目录按业内标准归位：analysis/ → history/、current/ → modules/，
+ * 本脚本同步改名；基线 scripts/docs-baseline.json 按文件名记债，故不受改名影响。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -19,8 +22,8 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const docsRoot = path.join(repoRoot, "jjx-docs");
-const analysisDir = path.join(docsRoot, "analysis");
-const currentDir = path.join(docsRoot, "current");
+const historyDir = path.join(docsRoot, "history");
+const modulesDir = path.join(docsRoot, "modules");
 const baselinePath = path.join(here, "docs-baseline.json");
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
@@ -33,21 +36,21 @@ const listMd = (dir) =>
 
 // ── 采集 ──────────────────────────────────────────────────────────────
 const registered = new Set(
-  [...read(path.join(analysisDir, "INDEX.md")).toString("utf8").matchAll(
+  [...read(path.join(historyDir, "INDEX.md")).toString("utf8").matchAll(
     /\|\s*([A-Za-z0-9._-]+\.md)\s*\|/g,
   )].map((m) => m[1]),
 );
 
-const analysisFiles = listMd(analysisDir).filter((f) => f !== "INDEX.md");
-const unregistered = analysisFiles.filter((f) => !registered.has(f));
-const noBom = analysisFiles.filter((f) => !hasBom(path.join(analysisDir, f)));
-const badName = analysisFiles.filter(
+const historyFiles = listMd(historyDir).filter((f) => f !== "INDEX.md");
+const unregistered = historyFiles.filter((f) => !registered.has(f));
+const noBom = historyFiles.filter((f) => !hasBom(path.join(historyDir, f)));
+const badName = historyFiles.filter(
   (f) => !/(-dev-\d{8}-\d{3}|-\d{8})/.test(f),
 );
 
-const currentFiles = listMd(currentDir);
-const currentBadName = currentFiles.filter((f) => /(-\d{8}|-dev-)/.test(f));
-const currentNoBom = currentFiles.filter((f) => !hasBom(path.join(currentDir, f)));
+const moduleFiles = listMd(modulesDir);
+const moduleBadName = moduleFiles.filter((f) => /(-\d{8}|-dev-)/.test(f));
+const moduleNoBom = moduleFiles.filter((f) => !hasBom(path.join(modulesDir, f)));
 
 // ── 基线 ──────────────────────────────────────────────────────────────
 const loadBaseline = () => {
@@ -91,7 +94,7 @@ const fail = (title, items, hint) => {
 };
 
 fail(
-  `R1 新文档未登记 analysis/INDEX.md（${unregistered.length} 篇）`,
+  `R1 新文档未登记 history/INDEX.md（${unregistered.length} 篇）`,
   unregistered,
   "登记后重跑，或跑 INDEX.md 头部注释里的再生命令",
 );
@@ -106,10 +109,10 @@ fail(
   "命名须带日期或任务码：<主题>-dev-YYYYMMDD-NNN.md / <主题>-YYYYMMDD.md",
 );
 fail(
-  `R4 current/ 目录规范（${currentBadName.length + currentNoBom.length} 处）`,
-  [...currentBadName.map((f) => `current/${f} 不该带日期/任务码（现行真相用 <模块>.md）`),
-   ...currentNoBom.map((f) => `current/${f} 缺 UTF-8 BOM`)],
-  "一个模块只允许一篇现行真相；快照请放 analysis/",
+  `R4 modules/ 目录规范（${moduleBadName.length + moduleNoBom.length} 处）`,
+  [...moduleBadName.map((f) => `modules/${f} 不该带日期/任务码（现行真相用 <模块>.md）`),
+   ...moduleNoBom.map((f) => `modules/${f} 缺 UTF-8 BOM`)],
+  "一个模块只允许一篇现行真相；快照请放 history/",
 );
 
 if (failed) {
@@ -121,6 +124,6 @@ const debt =
   `存量基线：缺 BOM ${noBom.length} 篇、命名不合规 ${badName.length} 篇`;
 const cleared = clearedNoBom.length + clearedBadName.length;
 console.log(
-  `文档门禁通过（analysis ${analysisFiles.length} 篇 / current ${currentFiles.length} 篇；` +
+  `文档门禁通过（history ${historyFiles.length} 篇 / modules ${moduleFiles.length} 篇；` +
     `${debt}${cleared ? `，本次减少 ${cleared} 条，可执行 --write-baseline 收窄基线` : ""}）`,
 );
