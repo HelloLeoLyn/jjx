@@ -194,4 +194,16 @@ mysql -h127.0.0.1 -u jjx_ro -pjjx_ro_2026 jjx_erp_db   # SELECT only
 bash scripts/agent-preflight.sh
 ```
 
+---
+
+## 11. 多 agent 并行协作（2026-09-14 立；同仓多会话实测踩坑后固化）
+
+同一仓库同时有 **OpenClaw / Hermes / Codex / 用户手动** 在改，以下四条为**硬规则**（违反按越界处理）：
+
+1. **任务即锁**：动手前在 `sys_task` 登记任务（`dev-YYYYMMDD-NNN`），并在任务描述里写**白名单文件**；同一文件同一时间只允许一个任务在改——白名单外的文件只读。
+2. **提交纪律**：`git commit` 前先看 `git diff --cached --stat`，确认暂存区**只含本任务文件**；同一文件里混着别的任务/会话改动时，用 `git add -p` 精确挑 hunk；发现别人 staged 的内容先 `git restore --staged <file>` 再提交。
+3. **禁改清单**：`AGENTS.md`（写入需用户明确批准）、`jjx-docs/sql/`、`jjx-docs/standards/` 下的文件**禁删禁移**（pre-commit 拦）；别人的 `M/D/??` 一律**不还原**（还原前必须问用户）。
+4. **归属只认基线**：任务开始时把 `git status --short` 存档为基线 —— 基线里已有的 `M/D/??` 是别人的，绝不动；开始后才出现的才是越界嫌疑，先取证（时间戳/进程/提交记录）再报告用户。
+
+配套：开工先跑 `bash scripts/agent-preflight.sh`；冲突仲裁口径＝**谁先提交谁算**，后来者 rebase 或让；整体路线见 `jjx-docs/guides/master-plan-20260914.md` 第 5 节。
 
