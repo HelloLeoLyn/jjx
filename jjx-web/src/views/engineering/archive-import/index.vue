@@ -59,7 +59,9 @@
           <div>
             <span class="progress">已确认 {{ confirmed }}/{{ confirmable }}</span
             ><el-button :loading="saving" @click="save">保存草稿</el-button
-            ><el-button type="primary" :disabled="stage === 5" @click="stage++">下一阶段</el-button>
+            ><el-button type="primary" :disabled="stage === 5" @click="nextStage"
+              >下一阶段</el-button
+            >
           </div>
         </div></template
       >
@@ -68,7 +70,7 @@
           v-for="(name, index) in stageNames"
           :key="name"
           :title="name"
-          @click="stage = index"
+          @click="goStage(index)"
       /></el-steps>
       <div class="workspace">
         <section class="pane">
@@ -108,7 +110,10 @@
                   :class="{ active: selectedStep === s }"
                   @click="selectStep(w, s)"
                 >
-                  {{ s.stepNo }}
+                  <span>{{ s.stepNo }}</span>
+                  <el-tag size="small" :type="s.classificationConfirmed ? 'success' : 'warning'">
+                    {{ s.classificationConfirmed ? '已确认' : '待确认' }}
+                  </el-tag>
                 </button>
               </div>
             </div></template
@@ -122,7 +127,10 @@
               @click="selectStep(x.workflow, x.step)"
             >
               <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
-              ><el-tag v-bind="ArchiveCellContentTypeEnum.getTagProps(x.step.contentType)">{{
+              ><el-tag size="small" :type="x.step.classificationConfirmed ? 'success' : 'warning'">
+                {{ x.step.classificationConfirmed ? '已确认' : '待确认' }}
+              </el-tag>
+              <el-tag v-bind="ArchiveCellContentTypeEnum.getTagProps(x.step.contentType)">{{
                 ArchiveCellContentTypeEnum.getLabel(x.step.contentType)
               }}</el-tag>
             </button></template
@@ -135,7 +143,21 @@
               @click="selectStep(x.workflow, x.step)"
             >
               <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
-              ><el-tag type="warning">{{ x.step.components.length }} 子工序</el-tag>
+              ><el-tag
+                size="small"
+                :type="
+                  x.step.components.length && x.step.components.every((c) => c.processId)
+                    ? 'success'
+                    : 'warning'
+                "
+              >
+                {{
+                  x.step.components.length && x.step.components.every((c) => c.processId)
+                    ? '已完成'
+                    : '待拆分'
+                }}
+              </el-tag>
+              <el-tag type="warning">{{ x.step.components.length }} 子工序</el-tag>
             </button></template
           >
           <template v-else-if="stage === 4"
@@ -146,7 +168,29 @@
               @click="selectStep(x.workflow, x.step)"
             >
               <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
-              ><small>{{ x.step.editedText || '未识别' }}</small>
+              ><el-tag
+                size="small"
+                :type="
+                  x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value
+                    ? x.step.components.every((c) => c.processId)
+                      ? 'success'
+                      : 'warning'
+                    : x.step.processId
+                      ? 'success'
+                      : 'warning'
+                "
+              >
+                {{
+                  x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value
+                    ? x.step.components.every((c) => c.processId)
+                      ? '已匹配'
+                      : '待匹配'
+                    : x.step.processId
+                      ? '已匹配'
+                      : '待匹配'
+                }}
+              </el-tag>
+              <small>{{ x.step.editedText || '未识别' }}</small>
             </button></template
           >
           <template v-else
@@ -545,6 +589,51 @@ async function selectStep(w: Workflow, s: Step) {
   selectedStep.value = s
   selectedUrl.value = await url(s.cellImagePath)
 }
+function stageBlocked(target: number): string | undefined {
+  if (target <= stage.value) return
+  if (stage.value === 0 && groups.value.some((g) => !g.confirmed)) return '请先确认全部分组'
+  if (stage.value === 1 && draft.value.workflows.some((w) => !w.steps?.length))
+    return '请先完成工序分格'
+  if (stage.value === 2 && flatSteps.value.some((x) => !x.step.classificationConfirmed))
+    return '请先完成全部工序内容分类'
+  if (
+    stage.value === 3 &&
+    composites.value.some(
+      (x) => !x.step.components.length || x.step.components.some((c) => !c.processId)
+    )
+  )
+    return '请先为复合工序补齐标准子工序'
+  if (
+    stage.value === 4 &&
+    nonEmpty.value.some(
+      (x) =>
+        (!x.step.processId &&
+          x.step.processStructure !== ArchiveProcessStructureEnum.COMPOSITE.value) ||
+        (x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value &&
+          x.step.components.some((c) => !c.processId))
+    )
+  )
+    return '请先完成标准工序匹配'
+}
+function goStage(target: number) {
+  if (target <= stage.value) {
+    stage.value = target
+    return
+  }
+  if (target > stage.value + 1) {
+    ElMessage.warning('请按顺序完成当前阶段')
+    return
+  }
+  const reason = stageBlocked(target)
+  if (reason) {
+    ElMessage.warning(reason)
+    return
+  }
+  stage.value = target
+}
+function nextStage() {
+  goStage(Math.min(5, stage.value + 1))
+}
 function syncComposite(v: string) {
   if (!selectedStep.value) return
   selectedStep.value.isComposite = v === ArchiveProcessStructureEnum.COMPOSITE.value
@@ -666,6 +755,10 @@ h3 {
   gap: 5px;
 }
 .cells button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
   min-height: 34px;
   border: 1px solid var(--el-border-color);
   background: transparent;
