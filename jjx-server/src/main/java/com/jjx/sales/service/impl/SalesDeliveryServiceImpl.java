@@ -108,6 +108,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         update.setReceiverName(receiveInfo == null ? null : receiveInfo.getReceiverName());
         update.setReceiverPhone(receiveInfo == null ? null : receiveInfo.getReceiverPhone());
         update.setReceiveRemark(receiveInfo == null ? null : receiveInfo.getReceiveRemark());
+        update.setCustomerReceiveDate(receiveInfo == null ? null : receiveInfo.getCustomerReceiveDate());
         update.setReceiveTime(new Date());
         update.setReceiveBy(SecurityUtils.getUserId());
         String receiveName = SecurityUtils.getRealName();

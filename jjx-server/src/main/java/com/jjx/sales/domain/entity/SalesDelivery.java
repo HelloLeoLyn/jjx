@@ -100,6 +100,10 @@ public class SalesDelivery extends BaseEntity {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date receiveTime;
 
+    /** 客户签收日期（纸面，口径D1；与收货时间/系统登记时间区分） */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private Date customerReceiveDate;
+
     /** 收货备注 */
     private String receiveRemark;
 

@@ -82,8 +82,12 @@ public class SalesDeliveryVO {
     private String receiverPhone;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    @Schema(description = "收货时间")
+    @Schema(description = "收货时间（系统登记）")
     private Date receiveTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    @Schema(description = "客户签收日期（纸面）")
+    private Date customerReceiveDate;
 
     @Schema(description = "收货备注")
     private String receiveRemark;

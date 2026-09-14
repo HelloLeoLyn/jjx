@@ -51,7 +51,8 @@
         <el-descriptions-item label="承运商">{{ current.carrier || '-' }}</el-descriptions-item>
         <el-descriptions-item label="物流单号">{{ current.trackingNo || '-' }}</el-descriptions-item>
         <el-descriptions-item label="签收人">{{ current.receiverName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="签收时间">{{ current.receiveTime || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="客户签收日期">{{ current.customerReceiveDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="签收时间（系统登记）">{{ current.receiveTime || '-' }}</el-descriptions-item>
         <el-descriptions-item label="签收备注" :span="2">{{ current.receiveRemark || '-' }}</el-descriptions-item>
       </el-descriptions>
       <el-table :data="items" border style="margin-top: 18px">
@@ -62,12 +63,35 @@
         <el-table-column prop="unitPrice" label="单价" width="100" />
         <el-table-column prop="amount" label="金额" width="110" />
       </el-table>
+
+      <!-- 回签件（口径 D2）：客户签字送货单的回签归档，作为对账/开票/收款依据 -->
+      <el-divider content-position="left">回签件（结算依据）</el-divider>
+      <div class="attach-row">
+        <el-upload :show-file-list="false" :before-upload="beforeUploadReturn" accept="image/*,.pdf">
+          <el-button type="primary" size="small" icon="Upload">上传回签件</el-button>
+        </el-upload>
+        <span class="muted">客户签字的送货单回签件；月结/自送客户必须上传（分级强制待定：TODO 判"月结"用哪个字段需 Leo 确认）</span>
+      </div>
+      <el-table :data="returnFiles" border style="margin-top: 10px" size="small">
+        <el-table-column prop="fileName" label="文件名" min-width="200" />
+        <el-table-column prop="remark" label="标记" width="110" />
+        <el-table-column prop="createBy" label="上传人" width="110" />
+        <el-table-column label="操作" width="140">
+          <template #default="{ row }">
+            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank">下载</el-link>
+            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)">删除</el-link>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-drawer>
 
     <el-dialog v-model="receiveVisible" title="发货单签收" width="480px">
-      <el-form :model="receiveForm" label-width="90px">
+      <el-form :model="receiveForm" label-width="110px">
         <el-form-item label="签收人"><el-input v-model="receiveForm.receiverName" /></el-form-item>
         <el-form-item label="联系电话"><el-input v-model="receiveForm.receiverPhone" /></el-form-item>
+        <el-form-item label="客户签收日期">
+          <el-date-picker v-model="receiveForm.customerReceiveDate" type="date" value-format="YYYY-MM-DD" placeholder="纸质送货单上的签字日期" style="width: 100%" />
+        </el-form-item>
         <el-form-item label="签收备注"><el-input v-model="receiveForm.receiveRemark" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="receiveVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitReceive">确认签收</el-button></template>
@@ -81,6 +105,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { deliveryApi, type SalesDeliveryQueryDTO, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
+import { attachmentApi } from '@/api/system/attachment'
 import { DeliveryStatusEnum } from '@/enums/sales/DeliveryEnum'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
@@ -102,7 +127,7 @@ const records = ref<SalesDeliveryVO[]>([]), items = ref<any[]>([])
 const dateRange = ref<string[]>([]), detailVisible = ref(false), receiveVisible = ref(false)
 const current = ref<SalesDeliveryVO>(), receiveDeliveryId = ref<number>()
 const query = reactive<SalesDeliveryQueryDTO>({ pageNum: 1, pageSize: 10 })
-const receiveForm = reactive({ receiverName: '', receiverPhone: '', receiveRemark: '' })
+const receiveForm = reactive({ receiverName: '', receiverPhone: '', customerReceiveDate: '', receiveRemark: '' })
 
 async function load() {
   loading.value = true
@@ -121,8 +146,38 @@ async function showDetail(row: SalesDeliveryVO) {
   current.value = detail.data || undefined
   items.value = order.data?.items || []
   detailVisible.value = true
+  await loadReturnFiles(row.deliveryId)
 }
-function openReceive(row: SalesDeliveryVO) { receiveDeliveryId.value = row.deliveryId; Object.assign(receiveForm, { receiverName: '', receiverPhone: '', receiveRemark: '' }); receiveVisible.value = true }
+
+/** 回签件（口径 D2）：bizType=sales_delivery + bizId=deliveryId，标记「结算依据」 */
+const RETURN_BIZ_TYPE = 'sales_delivery'
+const returnFiles = ref<any[]>([])
+async function loadReturnFiles(deliveryId: number) {
+  const res = await attachmentApi.list(RETURN_BIZ_TYPE, deliveryId)
+  returnFiles.value = res.data || []
+}
+async function beforeUploadReturn(file: File) {
+  const deliveryId = current.value?.deliveryId
+  if (!deliveryId) return false
+  try {
+    await attachmentApi.upload(file, RETURN_BIZ_TYPE, deliveryId, '结算依据')
+    ElMessage.success('回签件已上传')
+    await loadReturnFiles(deliveryId)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '回签件上传失败')
+  }
+  return false
+}
+async function removeReturnFile(row: any) {
+  try {
+    await attachmentApi.remove(row.id)
+    ElMessage.success('已删除')
+    if (current.value?.deliveryId) await loadReturnFiles(current.value.deliveryId)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
+  }
+}
+function openReceive(row: SalesDeliveryVO) { receiveDeliveryId.value = row.deliveryId; Object.assign(receiveForm, { receiverName: '', receiverPhone: '', customerReceiveDate: '', receiveRemark: '' }); receiveVisible.value = true }
 async function submitReceive() {
   if (!receiveDeliveryId.value) return
   submitting.value = true
@@ -134,4 +189,4 @@ function printDelivery(row: SalesDeliveryVO) { router.push({ path: '/sales/deliv
 onMounted(load)
 </script>
 
-<style scoped>.search-card{margin-bottom:16px}.muted{color:#909399;font-size:12px}</style>
+<style scoped>.search-card{margin-bottom:16px}.muted{color:#909399;font-size:12px}.attach-row{display:flex;align-items:center;gap:12px}</style>

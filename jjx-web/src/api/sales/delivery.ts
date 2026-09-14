@@ -25,6 +25,8 @@ export interface SalesDeliveryVO {
   receiverName: string
   receiverPhone: string
   receiveTime: string
+  /** 客户签收日期（纸面，口径 D1） */
+  customerReceiveDate?: string
   receiveRemark: string
   /** 打印次数（口径 D3：来自 quality_template_print_log 聚合） */
   printCount?: number
@@ -48,6 +50,8 @@ export interface SalesDeliveryQueryDTO {
 export interface SalesDeliveryReceiveDTO {
   receiverName?: string
   receiverPhone?: string
+  /** 客户签收日期（纸面，口径 D1；与系统登记时间区分） */
+  customerReceiveDate?: string
   receiveRemark?: string
 }
 

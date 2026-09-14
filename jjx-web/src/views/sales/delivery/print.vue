@@ -160,7 +160,7 @@ const { layout, setLayout } = usePrintLayout<PrintLayout>('delivery-print-layout
   { value: 'system', label: '系统版' },
   { value: 'qr026', label: '纸版(QR-026)' },
 ])
-const receiveDate = computed(() => info.value?.receiveTime?.slice(0, 10) || '________________')
+const receiveDate = computed(() => info.value?.customerReceiveDate?.slice(0, 10) || info.value?.receiveTime?.slice(0, 10) || '________________')
 
 function handleLayoutChange(value: string | number | boolean | undefined) {
   if (value === 'system' || value === 'qr026') setLayout(value)
