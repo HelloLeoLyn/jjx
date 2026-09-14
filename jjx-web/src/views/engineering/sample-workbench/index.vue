@@ -217,14 +217,16 @@ function canTransfer(row: any): boolean {
     row?.sampleStatus
   )
 }
-// 已接单：进入打样平台（终态不可进——已取消/已关闭/已转量产，2026-09-04 Leo 提出）
+// 已接单且处于后端允许维护工序计划的状态时，才可进入打样平台。
+// 待打样状态即使存在历史脏接单人也不能进入，应先重新接单推进到工程打样中。
 function canEnterWorkbench(row: any): boolean {
   return (
     !!row?.engineeringAcceptor &&
-    ![
-      SampleOrderStatus.CANCELLED.value,
-      SampleOrderStatus.CLOSED.value,
-      SampleOrderStatus.TRANSFERRED.value,
+    [
+      SampleOrderStatus.ENGINEERING.value,
+      SampleOrderStatus.SAMPLE_READY.value,
+      SampleOrderStatus.SAMPLE_SENT.value,
+      SampleOrderStatus.CONFIRMED.value,
     ].includes(row?.sampleStatus)
   )
 }

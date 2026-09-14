@@ -56,10 +56,9 @@
       <el-table-column label="组合工序" min-width="300">
         <template #default="scope">
           <div class="group-items">
-            <EngineeringRoutingItem
-              v-for="(item, index) in scope.row.items"
-              :key="item.itemId ?? item.processId ?? index"
-              :item="item"
+            <ProcessOperationCard
+              :items="operationItems(scope.row.items)"
+              :remark="scope.row.remark"
             />
           </div>
         </template>
@@ -74,7 +73,9 @@
       </el-table-column>
       <el-table-column label="工艺参数" min-width="180">
         <template #default="scope">
-          <span v-if="printParamsText(scope.row.items)" style="color: #e6a23c">🖨️ {{ printParamsText(scope.row.items) }}</span>
+          <span v-if="printParamsText(scope.row.items)" style="color: #e6a23c"
+            >🖨️ {{ printParamsText(scope.row.items) }}</span
+          >
           <span v-else>-</span>
         </template>
       </el-table-column>
@@ -101,7 +102,8 @@ import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/pro
 import { RouteStatusEnum } from '@/enums/product'
 import { getDictLabel } from '@/utils/dict'
 import { useDict } from '@/composables/useDict'
-import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
+import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
+import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
 
 /** 工序类别字典（process_category：PANEL/UP_LINE/DOWN_LINE/OTHER） */
 const { options: categoryOptions } = useDict('process_category')
@@ -122,6 +124,17 @@ function printParamsText(items?: any[]): string {
     }
   }
   return parts.join(' ')
+}
+
+function operationItems(items: EngineeringRoutingItemVO[]): ProcessOperationCardItem[] {
+  return (items || []).map((item, index) => ({
+    key: item.itemId ?? item.processId ?? index,
+    icon: item.icon,
+    processName: item.processName,
+    indexNumber: item.hasIndex === 1 ? item.indexNumber : null,
+    hasWorkInstruction: item.hasWorkInstruction,
+    workInstruction: item.workInstruction,
+  }))
 }
 
 const loading = ref(false)
@@ -186,7 +199,7 @@ const buildGroups = (items: EngineeringRoutingItemVO[]) => {
             (sum, item) => sum + (item.customMachineHours || item.standardMachineHours || 0),
             0
           ),
-          remark: parent.description || '',
+          remark: parent.remark || '',
           processCategoryName: groupItems[0]?.processCategoryName || '',
         }
       })
@@ -217,7 +230,7 @@ const buildGroups = (items: EngineeringRoutingItemVO[]) => {
         (sum, i) => sum + (i.customMachineHours || i.standardMachineHours || 0),
         0
       ),
-      remark: items[0]?.description || '',
+      remark: items[0]?.remark || '',
       processCategoryName: getDictLabel(categoryOptions.value, items[0]?.processCategory) || '',
     }))
   }

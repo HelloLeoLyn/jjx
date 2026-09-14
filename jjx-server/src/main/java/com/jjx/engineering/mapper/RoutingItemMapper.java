@@ -13,9 +13,9 @@ import java.math.BigDecimal;
 public interface RoutingItemMapper {
 
     @Insert("INSERT INTO engineering_routing_item (routing_id, process_id, major_category, process_name, process_order, " +
-            "custom_labor_hours, custom_machine_hours, custom_process_params, description, process_category, group_id, group_name, group_order, index_number, parent_id) " +
+            "custom_labor_hours, custom_machine_hours, custom_process_params, description, work_instruction, remark, process_category, group_id, group_name, group_order, index_number, parent_id) " +
             "VALUES (#{routingId}, #{processId}, #{majorCategory}, #{processName}, #{processOrder}, #{laborHours}, #{machineHours}, " +
-            "#{processParams}, #{description}, #{processCategory}, #{groupId}, #{groupName}, #{groupOrder}, #{indexNumber}, #{parentId})")
+            "#{processParams}, #{description}, #{workInstruction}, #{remark}, #{processCategory}, #{groupId}, #{groupName}, #{groupOrder}, #{indexNumber}, #{parentId})")
     int insertItem(@Param("routingId") Long routingId,
                    @Param("processId") Long processId,
                    @Param("majorCategory") String majorCategory,
@@ -25,6 +25,8 @@ public interface RoutingItemMapper {
                    @Param("machineHours") BigDecimal machineHours,
                    @Param("processParams") String processParams,
                    @Param("description") String description,
+                   @Param("workInstruction") String workInstruction,
+                   @Param("remark") String remark,
                    @Param("processCategory") String processCategory,
                    @Param("groupId") Long groupId,
                    @Param("groupName") String groupName,

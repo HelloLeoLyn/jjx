@@ -1,131 +1,711 @@
 <template>
   <div class="app-container">
     <el-card shadow="never">
-      <template #header>
-        <div class="header-row">
+      <template #header
+        ><div class="header">
           <div>
-            <div class="title">历史档案录入</div>
-            <div class="hint">原图保留在本地，识别结果确认后生成产品、BOM和工艺路线草稿。</div>
-            <el-tag size="small" :type="ocrAvailable ? 'success' : 'danger'">OCR：{{ ocrAvailable ? '已连接' : '未启动' }}</el-tag>
+            <h3>历史档案识别工作台</h3>
+            <div class="hint">逐阶段确认，只保存识别草稿，不生成正式业务数据。</div>
+            <el-tag :type="ocrAvailable ? 'success' : 'danger'"
+              >OCR：{{ ocrAvailable ? '已连接' : '未启动' }}</el-tag
+            >
           </div>
-          <el-upload :show-file-list="false" accept="image/jpeg,image/png" :http-request="uploadArchive">
-            <el-button type="primary" :loading="uploading" v-hasPermi="['engineering:archive:import']">上传并识别</el-button>
-          </el-upload>
-        </div>
-      </template>
-
-      <el-alert class="upload-guide" type="info" :closable="false">
-        <template #title>上传要求与图标识别说明</template>
-        <div>支持 JPG/PNG；建议图片宽度 ≥ 1600px、高度 ≥ 2300px，宽高比约 0.678（允许 ±3%）。</div>
-        <div>系统按固定模板比例识别：上部分默认 14 格；下部分为面板 14 格、下线 14 格、上线 6 格；工序格按比例定位，不要求固定像素。</div>
-        <div>中间产品结构图按固定位置保留，不参与下方工序格切分；本功能重点识别面板、上线、下线图标对应的标准工序。</div>
-        <div>图标区域按工序格宽度约 28% 裁切（自动限制 96～260px）。中间带“+”的图形会作为复合图标候选，先保留完整图标，再人工决定整体映射或拆分映射。</div>
-      </el-alert>
-
+          <el-upload :show-file-list="false" accept="image/jpeg,image/png" :http-request="upload"
+            ><el-button type="primary" :loading="uploading">上传并识别</el-button></el-upload
+          >
+        </div></template
+      >
       <el-table v-loading="loading" :data="rows">
-        <el-table-column prop="fileName" label="原始文件" min-width="230" show-overflow-tooltip />
-        <el-table-column prop="productCode" label="产品编号" width="160" />
-        <el-table-column prop="productName" label="产品名称" min-width="180" />
-        <el-table-column label="状态" width="120">
-          <template #default="{ row }">
-            <el-tag v-bind="ArchiveRecognitionStatusEnum.getTagProps(row.recognizeStatus)">{{ ArchiveRecognitionStatusEnum.getLabel(row.recognizeStatus) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="recognizeMessage" label="识别信息" min-width="230" show-overflow-tooltip />
-        <el-table-column prop="createTime" label="上传时间" width="170" />
-        <el-table-column label="操作" width="250" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openReview(row)">查看/修正</el-button>
-            <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.FAILED.value" link type="warning" @click="retry(row)">重试</el-button>
-            <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.GENERATED.value" link type="warning" v-hasPermi="['engineering:archive:import']" @click="overwriteRetry(row)">覆盖重试</el-button>
-            <el-button v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.REVIEW.value" link type="success" v-hasPermi="['engineering:archive:generate']" @click="generate(row)">生成草稿</el-button>
-          </template>
-        </el-table-column>
+        <el-table-column prop="fileName" label="原始文件" min-width="240" />
+        <el-table-column prop="productCode" label="产品编号" width="170" /><el-table-column
+          prop="productName"
+          label="产品名称"
+          min-width="180"
+        />
+        <el-table-column label="状态" width="110"
+          ><template #default="{ row }"
+            ><el-tag v-bind="ArchiveRecognitionStatusEnum.getTagProps(row.recognizeStatus)">{{
+              ArchiveRecognitionStatusEnum.getLabel(row.recognizeStatus)
+            }}</el-tag></template
+          ></el-table-column
+        >
+        <el-table-column prop="recognizeMessage" label="识别信息" min-width="220" />
+        <el-table-column label="操作" width="160"
+          ><template #default="{ row }"
+            ><el-button link type="primary" @click="openWorkbench(row)">进入工作台</el-button
+            ><el-button
+              v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.FAILED.value"
+              link
+              type="warning"
+              @click="retry(row)"
+              >重试</el-button
+            ></template
+          ></el-table-column
+        >
       </el-table>
-      <el-pagination v-model:current-page="pageNum" v-model:page-size="pageSize" :total="total" layout="total, prev, pager, next" @change="load" />
+      <el-pagination
+        v-model:current-page="pageNum"
+        v-model:page-size="pageSize"
+        :total="total"
+        layout="total,prev,pager,next"
+        @change="load"
+      />
     </el-card>
 
-    <el-dialog v-model="reviewVisible" title="识别结果确认" width="900px" destroy-on-close>
-      <el-alert type="info" :closable="false" title="可直接修正 JSON。processId 留空的工序可先生成草稿，之后在工艺路线页面补选。" />
-      <el-input v-model="resultText" type="textarea" :rows="20" class="json-editor" />
-      <template #footer>
-        <el-button @click="reviewVisible=false">关闭</el-button>
-        <el-button type="primary" v-hasPermi="['engineering:archive:import']" @click="saveResult">保存修正</el-button>
-        <el-button type="warning" @click="openSamples">图标映射</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="sampleVisible" title="工序图标映射" width="850px">
-      <el-table :data="samples">
-        <el-table-column label="图标" width="100"><template #default="{ row }"><img v-if="row.previewBase64" :src="row.previewBase64" class="sample-icon" /></template></el-table-column>
-        <el-table-column prop="workflowType" label="区域" width="110" />
-        <el-table-column prop="stepNo" label="步骤" width="70" />
-        <el-table-column label="匹配度" width="100"><template #default="{ row }">{{ row.matchScore == null ? '-' : `${Math.round(row.matchScore*100)}%` }}</template></el-table-column>
-        <el-table-column label="标准工序" min-width="250">
-          <template #default="{ row }">
-            <el-select v-model="row.processId" filterable placeholder="选择工序" class="process-select">
-              <template #label="{ label, value }">
-                <span class="process-option"><SvgIcon v-if="processById(value)?.icon" :name="processById(value)!.icon!" :size="22" /><span>{{ label }}</span></span>
-              </template>
-              <el-option v-for="p in processes" :key="p.processId" :label="`${p.processName}（${p.processId}）`" :value="p.processId">
-                <span class="process-option"><SvgIcon v-if="p.icon" :name="p.icon" :size="22" /><span>{{ p.processName }}（{{ p.processId }}）</span></span>
-              </el-option>
-            </el-select>
-          </template>
-        </el-table-column>
-        <el-table-column width="90"><template #default="{ row }"><el-button link type="primary" :disabled="!row.processId" v-hasPermi="['engineering:archive:icon-map']" @click="confirmSample(row)">确认</el-button></template></el-table-column>
-      </el-table>
+    <el-dialog v-model="visible" fullscreen destroy-on-close @closed="closeWorkbench">
+      <template #header
+        ><div class="header">
+          <strong>{{ current?.fileName }}</strong>
+          <div>
+            <span class="progress">已确认 {{ confirmed }}/{{ confirmable }}</span
+            ><el-button :loading="saving" @click="save">保存草稿</el-button
+            ><el-button type="primary" :disabled="stage === 5" @click="stage++">下一阶段</el-button>
+          </div>
+        </div></template
+      >
+      <el-steps :active="stage" align-center class="stages"
+        ><el-step
+          v-for="(name, index) in stageNames"
+          :key="name"
+          :title="name"
+          @click="stage = index"
+      /></el-steps>
+      <div class="workspace">
+        <section class="pane">
+          <h4>原图与切片</h4>
+          <div class="image"><img v-if="originalUrl" :src="originalUrl" /></div>
+          <div v-if="selectedUrl">
+            <h4>当前选择</h4>
+            <div class="image crop"><img :src="selectedUrl" /></div>
+          </div>
+        </section>
+        <section class="pane">
+          <h4>{{ stageNames[stage] }}</h4>
+          <template v-if="stage === 0"
+            ><button
+              v-for="g in groups"
+              :key="g.key"
+              class="card"
+              :class="{ active: key === g.key }"
+              @click="selectGroup(g)"
+            >
+              <span>{{ g.label }}</span
+              ><el-tag :type="g.confirmed ? 'success' : 'warning'">{{
+                g.confirmed ? '已确认' : '待确认'
+              }}</el-tag>
+            </button></template
+          >
+          <template v-else-if="stage === 1"
+            ><div v-for="w in draft.workflows" :key="w.workflowType" class="workflow">
+              <b>{{ workflowName(w.workflowType) }} · {{ w.detection?.detectedStepCount }} 格</b
+              ><el-tag :type="w.detection?.usedFallback ? 'danger' : 'success'">{{
+                w.detection?.usedFallback ? '已兜底' : '黑边框'
+              }}</el-tag>
+              <div class="cells">
+                <button
+                  v-for="s in w.steps"
+                  :key="s.stepNo"
+                  :class="{ active: selectedStep === s }"
+                  @click="selectStep(w, s)"
+                >
+                  {{ s.stepNo }}
+                </button>
+              </div>
+            </div></template
+          >
+          <template v-else-if="stage === 2"
+            ><button
+              v-for="x in flatSteps"
+              :key="x.key"
+              class="card"
+              :class="{ active: key === x.key }"
+              @click="selectStep(x.workflow, x.step)"
+            >
+              <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
+              ><el-tag v-bind="ArchiveCellContentTypeEnum.getTagProps(x.step.contentType)">{{
+                ArchiveCellContentTypeEnum.getLabel(x.step.contentType)
+              }}</el-tag>
+            </button></template
+          >
+          <template v-else-if="stage === 3"
+            ><el-empty v-if="!composites.length" description="暂无复合工序" /><button
+              v-for="x in composites"
+              :key="x.key"
+              class="card"
+              @click="selectStep(x.workflow, x.step)"
+            >
+              <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
+              ><el-tag type="warning">{{ x.step.components.length }} 子工序</el-tag>
+            </button></template
+          >
+          <template v-else-if="stage === 4"
+            ><button
+              v-for="x in nonEmpty"
+              :key="x.key"
+              class="card"
+              @click="selectStep(x.workflow, x.step)"
+            >
+              <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
+              ><small>{{ x.step.editedText || '未识别' }}</small>
+            </button></template
+          >
+          <template v-else
+            ><div class="summary">
+              <el-statistic title="分组" :value="groups.length" /><el-statistic
+                title="工序格"
+                :value="flatSteps.length"
+              /><el-statistic title="空白" :value="empty.length" /><el-statistic
+                title="复合"
+                :value="composites.length"
+              />
+            </div>
+            <el-alert
+              :type="confirmed < confirmable ? 'warning' : 'success'"
+              :title="
+                confirmed < confirmable
+                  ? `仍有 ${confirmable - confirmed} 项待确认`
+                  : '草稿已全部确认'
+              "
+              :closable="false"
+          /></template>
+        </section>
+        <section class="pane">
+          <h4>检查与修正</h4>
+          <ProcessOperationCard
+            v-if="selectedStep"
+            :items="archivePreviewItems"
+            :remark="selectedStep.operationRemark"
+          />
+          <el-form v-if="selectedGroup" label-position="top"
+            ><el-form-item label="分组"><el-input v-model="selectedGroup.label" /></el-form-item>
+            <div class="bounds">
+              <el-form-item v-for="f in boundFields" :key="f" :label="f"
+                ><el-input-number
+                  v-model="selectedGroup.bounds[f]"
+                  :min="0"
+                  :max="1"
+                  :step="0.001"
+                  :precision="3"
+              /></el-form-item>
+            </div>
+            <el-button type="success" @click="selectedGroup.confirmed = true"
+              >确认分组</el-button
+            ></el-form
+          >
+          <el-form v-else-if="selectedStep" label-position="top"
+            ><el-form-item label="识别原文"
+              ><el-input :model-value="selectedStep.rawText" disabled /></el-form-item
+            ><el-form-item label="修订文本"
+              ><el-input v-model="selectedStep.editedText" type="textarea" /></el-form-item
+            ><el-form-item label="内容形态"
+              ><el-select v-model="selectedStep.contentType"
+                ><el-option
+                  v-for="o in ArchiveCellContentTypeEnum.items"
+                  :key="o.value"
+                  :label="o.label"
+                  :value="o.value" /></el-select></el-form-item
+            ><el-form-item label="工序结构"
+              ><el-select v-model="selectedStep.processStructure" @change="syncComposite"
+                ><el-option
+                  v-for="o in ArchiveProcessStructureEnum.items"
+                  :key="o.value"
+                  :label="o.label"
+                  :value="o.value" /></el-select
+            ></el-form-item>
+            <template
+              v-if="selectedStep.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value"
+              ><div class="subhead">
+                <b>标准子工序</b><el-button link @click="addComponent">新增</el-button>
+              </div>
+              <div v-for="(c, i) in selectedStep.components" :key="i" class="component">
+                <span>{{ i + 1 }}</span
+                ><el-input v-model="c.text" placeholder="识别内容" /><el-select
+                  v-model="c.processId"
+                  clearable
+                  filterable
+                  placeholder="选择标准工序"
+                  ><el-option
+                    v-for="p in processes"
+                    :key="p.processId"
+                    :label="p.processName"
+                    :value="p.processId"
+                    ><div class="process-option">
+                      <SvgIcon v-if="p.icon" :name="p.icon" :size="22" /><span>{{
+                        p.processName
+                      }}</span>
+                    </div></el-option
+                  ></el-select
+                ><el-input
+                  v-if="processById(c.processId)?.hasWorkInstruction === 1 || c.workInstruction"
+                  v-model="c.workInstruction"
+                  clearable
+                  placeholder="作业说明（可选）"
+                /><el-button link type="danger" @click="removeComponent(i)">删除</el-button>
+              </div></template
+            >
+            <el-form-item
+              v-if="
+                selectedStep.contentType !== ArchiveCellContentTypeEnum.EMPTY.value &&
+                selectedStep.processStructure !== ArchiveProcessStructureEnum.COMPOSITE.value
+              "
+              label="标准工序"
+            >
+              <el-select v-model="selectedStep.processId" clearable filterable>
+                <template #prefix
+                  ><IconStepBadge
+                    v-if="selectedProcess?.icon"
+                    :icon="selectedProcess.icon"
+                    :size="22"
+                    :work-instruction="selectedStep.workInstruction"
+                /></template>
+                <el-option
+                  v-for="p in processes"
+                  :key="p.processId"
+                  :label="p.processName"
+                  :value="p.processId"
+                >
+                  <div class="process-option">
+                    <SvgIcon v-if="p.icon" :name="p.icon" :size="24" /><span
+                      v-else
+                      class="process-placeholder"
+                      >—</span
+                    ><span>{{ p.processName }}</span>
+                  </div>
+                </el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item
+              v-if="
+                selectedStep.processStructure !== ArchiveProcessStructureEnum.COMPOSITE.value &&
+                selectedProcess?.hasWorkInstruction === 1
+              "
+              label="作业说明（显示在图标下标）"
+              ><el-input
+                v-model="selectedStep.workInstruction"
+                clearable
+                placeholder="如：线路外形、冲窗口灯孔"
+            /></el-form-item>
+            <template
+              v-if="selectedStep.processStructure === ArchiveProcessStructureEnum.DEPENDENCY.value"
+              ><el-form-item label="依赖结构"
+                ><el-select v-model="selectedStep.precondition.workflowType"
+                  ><el-option label="面板" value="PANEL" /><el-option
+                    label="上线"
+                    value="UP_LINE" /><el-option
+                    label="下线"
+                    value="DOWN_LINE" /></el-select></el-form-item
+              ><el-form-item label="依赖工序格"
+                ><el-input-number
+                  v-model="selectedStep.precondition.stepNo"
+                  :min="1" /></el-form-item
+            ></template>
+            <el-collapse v-if="selectedStep.contentType !== ArchiveCellContentTypeEnum.EMPTY.value"
+              ><el-collapse-item title="更多：作业说明与工序备注（可选）"
+                ><el-form-item
+                  v-if="
+                    selectedStep.processStructure !== ArchiveProcessStructureEnum.COMPOSITE.value &&
+                    selectedProcess?.hasWorkInstruction !== 1
+                  "
+                  label="作业说明（显示在图标下标）"
+                  ><el-input
+                    v-model="selectedStep.workInstruction"
+                    clearable
+                    placeholder="如：线路外形、冲窗口灯孔" /></el-form-item
+                ><el-form-item
+                  :label="
+                    selectedStep.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value
+                      ? '整道复合工序备注'
+                      : '工序备注'
+                  "
+                  ><el-input
+                    v-model="selectedStep.operationRemark"
+                    clearable
+                    placeholder="如：一车一模" /></el-form-item></el-collapse-item
+            ></el-collapse>
+            <el-button type="success" @click="selectedStep.classificationConfirmed = true"
+              >确认工序格</el-button
+            > </el-form
+          ><el-empty v-else description="从中间选择分组或工序格" />
+        </section>
+      </div>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
-import { archiveImportApi, type ArchiveImportRecord, type IconSample } from '@/api/engineering/archiveImport'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage, type UploadRequestOptions } from 'element-plus'
+import { archiveImportApi, type ArchiveImportRecord } from '@/api/engineering/archiveImport'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
-import { ArchiveRecognitionStatusEnum } from '@/enums/engineering/archive'
-
-const loading = ref(false), uploading = ref(false)
-const rows = ref<ArchiveImportRecord[]>([]), total = ref(0), pageNum = ref(1), pageSize = ref(20)
-const reviewVisible = ref(false), sampleVisible = ref(false), resultText = ref('')
-const current = ref<ArchiveImportRecord>(), samples = ref<IconSample[]>([]), processes = ref<StandardProcessItem[]>([])
-const ocrAvailable = ref(false)
-function processById(id: number | string | undefined) { return processes.value.find(p => p.processId === Number(id)) }
-
-function payload<T>(response: any): T { return (response?.data?.data ?? response?.data ?? response) as T }
+import {
+  ArchiveCellContentTypeEnum,
+  ArchiveProcessStructureEnum,
+  ArchiveRecognitionStatusEnum,
+} from '@/enums/engineering/archive'
+import SvgIcon from '@/components/SvgIcon/index.vue'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
+import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
+import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
+type Bounds = { x1: number; y1: number; x2: number; y2: number }
+type Group = {
+  key?: string
+  groupType: string
+  label: string
+  confirmed: boolean
+  bounds: Bounds
+  groupImagePath?: string
+}
+type Component = {
+  order: number
+  text: string | null
+  contentType?: string
+  processId?: number
+  workInstruction?: string
+  confirmed?: boolean
+}
+type Step = {
+  stepNo: number
+  bounds: Bounds
+  rawText: string
+  editedText: string
+  contentType: string
+  processStructure: string
+  classificationConfirmed: boolean
+  isComposite: boolean
+  components: Component[]
+  processId?: number
+  workInstruction?: string
+  operationRemark?: string
+  precondition: { workflowType?: string; stepNo?: number }
+  cellImagePath?: string
+}
+type Workflow = Group & {
+  workflowType: string
+  gridConfirmed: boolean
+  detection: { detectedStepCount: number; usedFallback: boolean }
+  steps: Step[]
+}
+type Draft = { groups: Group[]; workflows: Workflow[]; [key: string]: unknown }
+const stageNames = ['分组确认', '工序分格', '内容分类', '复合拆分', '工序匹配', '草稿检查'],
+  boundFields: (keyof Bounds)[] = ['x1', 'y1', 'x2', 'y2']
+const loading = ref(false),
+  uploading = ref(false),
+  saving = ref(false),
+  visible = ref(false),
+  ocrAvailable = ref(false),
+  stage = ref(0),
+  key = ref('')
+const rows = ref<ArchiveImportRecord[]>([]),
+  total = ref(0),
+  pageNum = ref(1),
+  pageSize = ref(20),
+  current = ref<ArchiveImportRecord>()
+const draft = ref<Draft>({ groups: [], workflows: [] }),
+  selectedGroup = ref<Group>(),
+  selectedStep = ref<Step>(),
+  originalUrl = ref(''),
+  selectedUrl = ref(''),
+  processes = ref<StandardProcessItem[]>([])
+const cache = new Map<string, string>()
+const payload = <T,>(r: any): T => (r?.data?.data ?? r?.data ?? r) as T
+const workflowName = (t: string) =>
+  (({ PANEL: '面板', UP_LINE: '上线', DOWN_LINE: '下线' }) as Record<string, string>)[t] || t
+const groups = computed(() => [
+  ...draft.value.groups.map((g, i) => ({ ...g, key: `g-${i}` })),
+  ...draft.value.workflows.map((w) => ({ ...w, key: `w-${w.workflowType}` })),
+])
+const flatSteps = computed(() =>
+  draft.value.workflows.flatMap((workflow) =>
+    workflow.steps.map((step) => ({
+      key: `${workflow.workflowType}-${step.stepNo}`,
+      workflow,
+      step,
+    }))
+  )
+)
+const empty = computed(() =>
+  flatSteps.value.filter((x) => x.step.contentType === ArchiveCellContentTypeEnum.EMPTY.value)
+)
+const nonEmpty = computed(() =>
+  flatSteps.value.filter((x) => x.step.contentType !== ArchiveCellContentTypeEnum.EMPTY.value)
+)
+const composites = computed(() =>
+  flatSteps.value.filter(
+    (x) => x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value
+  )
+)
+const confirmable = computed(() => groups.value.length + flatSteps.value.length)
+const confirmed = computed(
+  () =>
+    groups.value.filter((g) => g.confirmed).length +
+    flatSteps.value.filter((x) => x.step.classificationConfirmed).length
+)
+const selectedProcess = computed(() =>
+  processes.value.find((p) => p.processId === selectedStep.value?.processId)
+)
+const archivePreviewItems = computed<ProcessOperationCardItem[]>(() => {
+  const s = selectedStep.value
+  if (!s) return []
+  if (s.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value)
+    return s.components.map((c, i) => {
+      const p = processById(c.processId)
+      return {
+        key: i,
+        icon: p?.icon,
+        processName: p?.processName || c.text || `子工序${i + 1}`,
+        hasWorkInstruction: p?.hasWorkInstruction,
+        workInstruction: c.workInstruction,
+      }
+    })
+  const p = selectedProcess.value
+  return [
+    {
+      key: s.stepNo,
+      icon: p?.icon,
+      processName: p?.processName || s.editedText || s.rawText || `工序${s.stepNo}`,
+      hasWorkInstruction: p?.hasWorkInstruction,
+      workInstruction: s.workInstruction,
+    },
+  ]
+})
+const processById = (id?: number) => processes.value.find((p) => p.processId === id)
 async function load() {
   loading.value = true
-  try { const page: any = payload(await archiveImportApi.page({ pageNum: pageNum.value, pageSize: pageSize.value })); rows.value = page.records || []; total.value = Number(page.total || 0) } finally { loading.value = false }
+  try {
+    const p: any = payload(
+      await archiveImportApi.page({ pageNum: pageNum.value, pageSize: pageSize.value })
+    )
+    rows.value = p.records || []
+    total.value = Number(p.total || 0)
+  } finally {
+    loading.value = false
+  }
 }
-async function uploadArchive(options: UploadRequestOptions) {
+async function upload(o: UploadRequestOptions) {
   uploading.value = true
-  try { await archiveImportApi.upload(options.file as File); ElMessage.success('档案已上传，识别结果请在列表确认'); await load() } finally { uploading.value = false }
+  try {
+    await archiveImportApi.upload(o.file as File)
+    ElMessage.success('识别完成，请进入工作台')
+    await load()
+  } finally {
+    uploading.value = false
+  }
 }
-function openReview(row: ArchiveImportRecord) { current.value = row; resultText.value = row.extractedJson ? JSON.stringify(JSON.parse(row.extractedJson), null, 2) : '{}'; reviewVisible.value = true }
-async function saveResult() { if (!current.value) return; try { const parsed = JSON.parse(resultText.value); await archiveImportApi.updateResult(current.value.archiveId, parsed); ElMessage.success('识别结果已保存'); reviewVisible.value=false; await load() } catch (e: any) { ElMessage.error(e instanceof SyntaxError ? 'JSON格式不正确' : (e.message || '保存失败')) } }
-async function retry(row: ArchiveImportRecord) { await archiveImportApi.retry(row.archiveId); ElMessage.success('已重新识别'); await load() }
-async function overwriteRetry(row: ArchiveImportRecord) {
-  await ElMessageBox.confirm('将重新识别原图，并删除该档案关联的产品、BOM和工艺路线草稿后重新生成。审批通过的数据不可覆盖，是否继续？', '覆盖重试', { type: 'warning' })
-  await archiveImportApi.overwriteRetry(row.archiveId)
-  ElMessage.success('已完成覆盖重试')
+async function retry(r: ArchiveImportRecord) {
+  await archiveImportApi.retry(r.archiveId)
   await load()
 }
-async function generate(row: ArchiveImportRecord) { await ElMessageBox.confirm('将按当前识别结果创建产品、BOM和工艺路线草稿，是否继续？', '生成草稿'); await archiveImportApi.generate(row.archiveId); ElMessage.success('草稿已生成'); await load() }
-async function openSamples() { if (!current.value) return; samples.value = payload(await archiveImportApi.samples(current.value.archiveId)); if (!processes.value.length) processes.value = payload(await standardProcessApi.getEnabledProcesses()); sampleVisible.value=true }
-async function confirmSample(row: IconSample) { if (!row.processId) return; await archiveImportApi.confirmSample(row.sampleId, row.processId); ElMessage.success('图标样本已确认，可用于下次识别') }
-onMounted(async () => { await load(); const health: any = payload(await archiveImportApi.ocrHealth()); ocrAvailable.value = health?.available === true })
+async function url(path?: string) {
+  if (!path) return ''
+  if (cache.has(path)) return cache.get(path)!
+  const blob = (await archiveImportApi.image(path)) as Blob,
+    u = URL.createObjectURL(blob)
+  cache.set(path, u)
+  return u
+}
+async function openWorkbench(r: ArchiveImportRecord) {
+  const d = payload<ArchiveImportRecord>(await archiveImportApi.detail(r.archiveId))
+  current.value = d
+  draft.value = d.extractedJson ? JSON.parse(d.extractedJson) : { groups: [], workflows: [] }
+  draft.value.groups ||= []
+  draft.value.workflows ||= []
+  draft.value.workflows.forEach((w) =>
+    w.steps.forEach((s) => {
+      s.precondition ||= {}
+      s.workInstruction ||= ''
+      s.operationRemark ||= ''
+      s.components.forEach((c) => (c.workInstruction ||= ''))
+    })
+  )
+  visible.value = true
+  stage.value = 0
+  originalUrl.value = await url(d.filePath)
+  if (!processes.value.length)
+    processes.value = payload(await standardProcessApi.getEnabledProcesses())
+}
+function closeWorkbench() {
+  for (const u of cache.values()) URL.revokeObjectURL(u)
+  cache.clear()
+  originalUrl.value = ''
+  selectedUrl.value = ''
+  selectedGroup.value = undefined
+  selectedStep.value = undefined
+}
+async function selectGroup(g: Group) {
+  key.value = g.key || ''
+  selectedStep.value = undefined
+  const w = draft.value.workflows.find((x) => g.key === `w-${x.workflowType}`)
+  selectedGroup.value = w ? (w as unknown as Group) : draft.value.groups[Number(g.key?.slice(2))]
+  selectedUrl.value = await url(g.groupImagePath)
+}
+async function selectStep(w: Workflow, s: Step) {
+  key.value = `${w.workflowType}-${s.stepNo}`
+  selectedGroup.value = undefined
+  selectedStep.value = s
+  selectedUrl.value = await url(s.cellImagePath)
+}
+function syncComposite(v: string) {
+  if (!selectedStep.value) return
+  selectedStep.value.isComposite = v === ArchiveProcessStructureEnum.COMPOSITE.value
+  if (selectedStep.value.isComposite && !selectedStep.value.components.length) addComponent()
+  if (!selectedStep.value.isComposite) selectedStep.value.components = []
+}
+function addComponent() {
+  selectedStep.value?.components.push({
+    order: selectedStep.value.components.length + 1,
+    text: null,
+    contentType: ArchiveCellContentTypeEnum.UNKNOWN.value,
+    workInstruction: '',
+    confirmed: false,
+  })
+}
+function removeComponent(i: number) {
+  selectedStep.value?.components.splice(i, 1)
+  selectedStep.value?.components.forEach((c, n) => (c.order = n + 1))
+}
+async function save() {
+  if (!current.value) return
+  saving.value = true
+  try {
+    await archiveImportApi.updateResult(current.value.archiveId, draft.value)
+    ElMessage.success('草稿已保存')
+    await load()
+  } finally {
+    saving.value = false
+  }
+}
+onMounted(async () => {
+  await load()
+  const h: any = payload(await archiveImportApi.ocrHealth())
+  ocrAvailable.value = h?.available === true
+})
 </script>
 
 <style scoped>
-.header-row { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.title { font-size:18px; font-weight:600; }
-.hint { margin-top:6px; color:var(--el-text-color-secondary); }
-.upload-guide { margin-bottom:14px; line-height:1.7; }
-.json-editor { margin-top:14px; font-family:monospace; }
-.sample-icon { width:54px; height:54px; object-fit:contain; border:1px solid var(--el-border-color); }
-.process-select { width: 100%; }
-.process-option { display:inline-flex; align-items:center; gap:8px; min-height:28px; }
-.el-pagination { margin-top:16px; justify-content:flex-end; }
+.header,
+.subhead,
+.workflow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+h3 {
+  margin: 0 0 6px;
+}
+.hint,
+.progress {
+  color: var(--el-text-color-secondary);
+  margin-right: 14px;
+}
+.el-pagination {
+  margin-top: 14px;
+  justify-content: flex-end;
+}
+.stages {
+  margin: 0 20px 20px;
+  cursor: pointer;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 0.9fr;
+  gap: 12px;
+  height: calc(100vh - 155px);
+}
+.pane {
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+}
+.pane h4 {
+  margin: 0 0 12px;
+}
+.image {
+  display: flex;
+  justify-content: center;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--el-fill-color-light);
+}
+.image img {
+  max-width: 100%;
+  height: auto;
+}
+.crop {
+  max-height: 25vh;
+}
+.card {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 7px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+.card.active,
+.card:hover,
+.cells button.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+.workflow {
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.cells {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+.cells button {
+  min-height: 34px;
+  border: 1px solid var(--el-border-color);
+  background: transparent;
+  border-radius: 5px;
+}
+.bounds,
+.summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bounds :deep(.el-input-number),
+.pane :deep(.el-select) {
+  width: 100%;
+}
+.component {
+  display: grid;
+  grid-template-columns: 24px 1fr 44px;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+.process-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.process-placeholder {
+  display: inline-flex;
+  width: 24px;
+  justify-content: center;
+  color: var(--el-text-color-placeholder);
+}
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 1fr 1fr;
+    height: auto;
+  }
+  .pane:last-child {
+    grid-column: 1/-1;
+  }
+}
 </style>

@@ -81,6 +81,18 @@ public class EngineeringArchiveImportService {
         return archiveMapper.selectById(id);
     }
 
+    public Path resolvePreviewImage(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) throw new BusinessException("图片路径不能为空");
+        Path base = Path.of(uploadBasePath).toAbsolutePath().normalize();
+        Path relative = Path.of(relativePath).normalize();
+        if (relative.isAbsolute() || relative.startsWith("..") || !relative.startsWith("engineering-archive")) {
+            throw new BusinessException("图片路径不合法");
+        }
+        Path target = base.resolve(relative).normalize();
+        if (!target.startsWith(base) || !Files.isRegularFile(target)) throw new BusinessException("图片不存在");
+        return target;
+    }
+
     public Map<String, Object> ocrHealth() {
         try {
             HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
@@ -237,11 +249,12 @@ public class EngineeringArchiveImportService {
             String json = callLocalOcr(bytes, fileName);
             JsonNode root = objectMapper.readTree(json);
             persistAndMatchIcons(archive, root);
+            persistDraftImages(archive, root);
             archive.setExtractedJson(objectMapper.writeValueAsString(root));
             archive.setProductName(text(root, "productName"));
             archive.setProductCode(text(root, "productCode"));
             archive.setRecognizeStatus(ArchiveRecognitionStatus.REVIEW.getValue());
-            archive.setRecognizeMessage("本地识别完成，请确认后生成草稿");
+            archive.setRecognizeMessage("本地识别完成，请查看并修正识别草稿");
         } catch (Exception e) {
             log.warn("本地OCR失败 archiveId={}: {}", archive.getArchiveId(), e.getMessage());
             archive.setRecognizeStatus(ArchiveRecognitionStatus.FAILED.getValue());
@@ -357,6 +370,8 @@ public class EngineeringArchiveImportService {
             String type = defaultText(text(workflow, "workflowType"), "OTHER");
             for (JsonNode rawStep : workflow.path("steps")) {
                 if (!(rawStep instanceof ObjectNode step)) continue;
+                String contentType = text(step, "contentType");
+                if ("EMPTY".equals(contentType) || "TEXT_ONLY".equals(contentType)) continue;
                 String original64 = text(step, "iconOriginalBase64");
                 String normalized64 = text(step, "iconNormalizedBase64");
                 String hash = text(step, "perceptualHash");
@@ -397,6 +412,44 @@ public class EngineeringArchiveImportService {
                 if (sample.getProcessId() != null) step.put("processId", sample.getProcessId());
                 step.remove("iconOriginalBase64");
                 step.remove("iconNormalizedBase64");
+            }
+        }
+    }
+
+    /** 将 OCR 返回的区域/整格图片落到本地，草稿 JSON 只保留可追溯路径。 */
+    private void persistDraftImages(EngineeringArchiveImport archive, JsonNode root) throws Exception {
+        Path base = Path.of(uploadBasePath).toAbsolutePath().normalize();
+        Path directory = base.resolve("engineering-archive/crops/" + archive.getArchiveId()).normalize();
+        if (!directory.startsWith(base)) throw new BusinessException("识别切片目录越界");
+        Files.createDirectories(directory);
+        persistDraftImages(root, directory, "archive");
+    }
+
+    private void persistDraftImages(JsonNode node, Path directory, String prefix) throws Exception {
+        if (node == null) return;
+        if (node.isArray()) {
+            for (int index = 0; index < node.size(); index++) {
+                persistDraftImages(node.get(index), directory, prefix + "-" + (index + 1));
+            }
+            return;
+        }
+        if (!(node instanceof ObjectNode object)) return;
+        List<String> fields = new java.util.ArrayList<>();
+        object.fieldNames().forEachRemaining(fields::add);
+        for (String field : fields) {
+            JsonNode value = object.get(field);
+            if (field.endsWith("ImageBase64") && value != null && value.isTextual() && !value.asText().isBlank()) {
+                String stem = field.substring(0, field.length() - "ImageBase64".length())
+                        .replaceAll("[^A-Za-z0-9_-]", "-");
+                String fileName = prefix + "-" + stem + "-" + UUID.randomUUID() + ".png";
+                Path target = directory.resolve(fileName).normalize();
+                if (!target.startsWith(directory)) throw new BusinessException("识别切片文件越界");
+                Files.write(target, Base64.getDecoder().decode(value.asText()));
+                object.put(field.substring(0, field.length() - "Base64".length()) + "Path",
+                        Path.of(uploadBasePath).toAbsolutePath().normalize().relativize(target).toString());
+                object.remove(field);
+            } else {
+                persistDraftImages(value, directory, prefix + "-" + field.replaceAll("[^A-Za-z0-9_-]", "-"));
             }
         }
     }

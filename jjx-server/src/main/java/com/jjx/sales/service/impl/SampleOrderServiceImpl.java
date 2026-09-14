@@ -1078,6 +1078,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         java.math.BigDecimal machineHours;
         String processParams;
         String description;
+        String workInstruction;
+        String remark;
         String processCategory;
         Long groupId;
         String groupName;
@@ -1086,7 +1088,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         RoutingRowData(Long processId, String majorCategory, String processName,
                        java.math.BigDecimal laborHours, java.math.BigDecimal machineHours,
-                       String processParams, String description, String processCategory,
+                       String processParams, String description, String workInstruction, String remark, String processCategory,
                        Long groupId, String groupName, Integer groupOrder, Integer indexNumber) {
             this.processId = processId;
             this.majorCategory = majorCategory;
@@ -1095,6 +1097,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             this.machineHours = machineHours;
             this.processParams = processParams;
             this.description = description;
+            this.workInstruction = workInstruction;
+            this.remark = remark;
             this.processCategory = processCategory;
             this.groupId = groupId;
             this.groupName = groupName;
@@ -1138,7 +1142,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     step++,
                     labor, machine,
                     combo ? null : first.processParams,
-                    combo ? "打样传承组合: " + opName : first.description,
+                    combo ? null : first.description,
+                    combo ? null : first.workInstruction,
+                    first.remark,
                     first.processCategory,
                     // 2026-09-05 组合语义由父子行表达，group_* 字段退役不再落库
                     null, null, null,
@@ -1151,7 +1157,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     routingItemMapper.insertItem(routingId, j.processId,
                             j.majorCategory != null ? j.majorCategory : "ASSEMBLY",
                             j.processName, null, j.laborHours, j.machineHours, j.processParams,
-                            j.description, j.processCategory, null, null, null, j.indexNumber, parentId);
+                            j.description, j.workInstruction, null, j.processCategory, null, null, null, j.indexNumber, parentId);
                 }
             }
         }
@@ -1246,7 +1252,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("拒单原因不能为空");
         }
 
-        int affected = orderMapper.updateSampleStatus(orderId, SampleOrderStatusEnum.ENGINEERING.getValue(),
+        int affected = orderMapper.rejectEngineering(orderId,
+                SampleOrderStatusEnum.ENGINEERING.getValue(),
                 SampleOrderStatusEnum.REQUEST.getValue());
         if (affected == 0) {
             throw new BusinessException("样品单状态已变更，无法拒单，请刷新后重试");
@@ -1403,7 +1410,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 record.setMaterials(item.getMaterials());
                 record.setProcessNote(item.getProcessNote());
                 record.setOperator(SecurityUtils.getUsername());
-                record.setRemark("工序计划");
+                record.setRemark(item.getRemark());
                 sampleProcessMapper.insert(record);
             }
         }
@@ -1938,7 +1945,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                     sp.getProcessName(),
                                     laborHours, machineHours,
                                     processParams,
-                                    "打样传承: " + (sp.getProcessNote() != null ? sp.getProcessNote() : sp.getProcessName()),
+                                    null,
+                                    sp.getProcessNote(),
+                                    sp.getRemark(),
                                     category, groupId, groupName, groupOrder,
                                     sp.getIndexNumber())); // DEV-777：打样下标透传到工艺路线
                         }
@@ -2195,6 +2204,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 item.setProcessOrder(sp.getProcessOrder());
                 item.setProcessCategory(sp.getProcessCategory());
                 item.setProcessNote(sp.getProcessNote());
+                item.setRemark(sp.getRemark());
                 item.setCustomProcessParams(sp.getCustomProcessParams());
                 item.setDurationMinutes(sp.getDurationMinutes());
                 // 匹配推荐：优先用打样已关联的标准工序，其次按名称模糊匹配
@@ -2211,6 +2221,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     item.setMatched(true);
                     // 下标：hasIndex 取匹配标准工序的 has_index；indexNumber 优先打样工序真实下标，无则回退顺序号
                     item.setHasIndex(match.getHasIndex() != null ? match.getHasIndex() : 0);
+                    item.setHasWorkInstruction(match.getHasWorkInstruction() != null ? match.getHasWorkInstruction() : 0);
                     if (match.getHasIndex() != null && match.getHasIndex() == 1) {
                         item.setIndexNumber(sp.getIndexNumber() != null ? sp.getIndexNumber() : sp.getProcessOrder());
                     }
@@ -2524,7 +2535,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 machineHours,
                                 // 2026-08-12：透传印刷自定义参数（色号/油墨/网框）到工艺路线
                                 hasCustomParams ? pm.getCustomProcessParams() : null,
-                                pm.getProcessNote() != null ? pm.getProcessNote() : "打样传承: " + pm.getProcessName(),
+                                null,
+                                pm.getProcessNote(),
+                                pm.getRemark(),
                                 category,
                                 groupId,
                                 groupName,
@@ -2656,6 +2669,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 }
                 pm.setProcessCategory(sp.getProcessCategory());
                 pm.setProcessNote(sp.getProcessNote());
+                pm.setRemark(sp.getRemark());
                 pm.setCustomProcessParams(sp.getCustomProcessParams());
                 pm.setDurationMinutes(sp.getDurationMinutes());
                 pm.setIndexNumber(sp.getIndexNumber());

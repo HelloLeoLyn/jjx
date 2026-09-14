@@ -244,7 +244,7 @@ export function useSampleWorkbench() {
           processOrder: 0, // 追加，保存时重新编号
           category: first.processCategory || '',
           status: 0,
-          processNote: first.processNote || '',
+          operationRemark: first.remark || '',
           materials: first.materials || null,
         })
         planList.value.push(pc)
@@ -315,7 +315,7 @@ export function useSampleWorkbench() {
           processOrder: 0, // 追加，保存时重新编号
           category: first.processCategory || '',
           status: 0,
-          processNote: first.processNote || '',
+          operationRemark: first.remark || '',
           materials: first.materials || null,
         })
         planList.value.push(pc)
@@ -494,13 +494,16 @@ export function useSampleWorkbench() {
         processId: i.processId ?? null,
         // DEV-777：下标（hasIndex 来自标准工序，indexNumber 用户输入）
         hasIndex: i.hasIndex ?? 0,
+        hasWorkInstruction: i.hasWorkInstruction ?? 0,
         indexNumber: i.indexNumber ?? null,
+        workInstruction: i.workInstruction ?? i.processNote ?? '',
       })),
       category: extra.category ?? '',
       majorCategory: extra.majorCategory ?? 'ASSEMBLY',
       draggingOver: false,
       status: extra.status ?? 0,
-      processNote: extra.processNote || '',
+      operationRemark: extra.operationRemark ?? extra.remark ?? '',
+      remarkEditing: false,
       materials: extra.materials || null,
       durationMinutes: extra.durationMinutes ?? null,
       startTime: extra.startTime || null,
@@ -638,7 +641,8 @@ export function useSampleWorkbench() {
             processCategory: pc.category || undefined,
             majorCategory: 'ASSEMBLY',
             materials: pc.materials,
-            processNote: pc.processNote,
+            processNote: it.workInstruction || null,
+            remark: pc.operationRemark || null,
             status: pc.status ?? 0,
             indexNumber: it.indexNumber ?? undefined, // DEV-777：下标数字
           })
@@ -718,14 +722,16 @@ export function useSampleWorkbench() {
   }
 
   // ===== 拖拽接收（左侧工序 → 右侧卡片组合）=====
-  // DEV-777：从标准工序库补 hasIndex（拖入的标准工序是否带下标）
+  // 从标准工序库补实例扩展能力（数字下标/作业说明）。
   function enrichProcess(data: any) {
     let hasIndex = 0
+    let hasWorkInstruction = 0
     if (data.processId) {
       const src = allProcesses.value.find((x: any) => x.processId === data.processId)
       hasIndex = src?.hasIndex ?? 0
+      hasWorkInstruction = src?.hasWorkInstruction ?? 0
     }
-    return { ...data, hasIndex }
+    return { ...data, hasIndex, hasWorkInstruction }
   }
 
   // 下标输入弹窗（DEV-777，仿工艺路线）
@@ -806,6 +812,7 @@ export function useSampleWorkbench() {
         icon: enriched.icon || '',
         processId: pc.processId ?? null,
         hasIndex: enriched.hasIndex,
+        hasWorkInstruction: enriched.hasWorkInstruction,
         indexNumber: null,
       })
       markDirty(pc)
@@ -1421,15 +1428,16 @@ export function useSampleWorkbench() {
                 processCategory: src.processCategory,
                 icon: src.icon,
                 hasIndex: src.hasIndex ?? 0,
+                hasWorkInstruction: src.hasWorkInstruction ?? 0,
               }
-            : { ...r, hasIndex: r.hasIndex ?? 0 }
+            : { ...r, hasIndex: r.hasIndex ?? 0, hasWorkInstruction: r.hasWorkInstruction ?? 0 }
         })
         return makeCard(enriched, {
           uid: `db-${order}`,
           processOrder: order,
           category: first.processCategory || '',
           status: first.status ?? 0,
-          processNote: first.processNote || '',
+          operationRemark: first.remark || '',
           materials: first.materials || null,
           durationMinutes: first.durationMinutes ?? null,
           startTime: first.startTime || null,
@@ -1500,7 +1508,7 @@ export function useSampleWorkbench() {
         JSON.stringify({
           items: pc.items,
           materials: pc.editing ? pc.materialRows : pc.materials,
-          processNote: pc.processNote,
+          operationRemark: pc.operationRemark,
           category: pc.category,
         })
       ),

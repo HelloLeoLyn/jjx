@@ -76,6 +76,11 @@ public class SampleProcessPlanDTO {
         private String processNote;
 
         /**
+         * 整道单工序或复合父工序备注
+         */
+        private String remark;
+
+        /**
          * 状态：0待做 1进行中 2完成
          */
         private Integer status;

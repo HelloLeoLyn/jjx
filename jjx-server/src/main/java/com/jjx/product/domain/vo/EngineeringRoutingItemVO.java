@@ -38,6 +38,8 @@ public class EngineeringRoutingItemVO {
     private BigDecimal customMachineHours;
     private String customProcessParams;
     private String description;
+    private String workInstruction;
+    private String remark;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -69,4 +71,6 @@ public class EngineeringRoutingItemVO {
     private Integer isOptional;
     /** 标准工序是否带下标（平铺自 standard_process.has_index） */
     private Integer hasIndex;
+    /** 标准工序是否常规携带实例作业说明 */
+    private Integer hasWorkInstruction;
 }

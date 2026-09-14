@@ -206,7 +206,7 @@ function doCompare() {
     const oldIt = oldMap.get(keyOf(it))
     if (!oldIt) return
     const changes: { field: string; old: string; new: string }[] = []
-    const fields = ['processCategory', 'customLaborHours', 'standardLaborHours', 'indexNumber', 'description']
+    const fields = ['processCategory', 'customLaborHours', 'standardLaborHours', 'indexNumber', 'description', 'remark']
     fields.forEach((f: string) => {
       const ov = (oldIt as any)[f]
       const nv = (it as any)[f]
@@ -242,7 +242,7 @@ function keyOf(it: any): string {
 function fieldLabel(f: string): string {
   const map: Record<string, string> = {
     processCategory: '类别', customLaborHours: '人工工时', standardLaborHours: '标准工时',
-    indexNumber: '下标', description: '说明',
+    indexNumber: '下标', description: '作业说明', remark: '工序备注',
   }
   return map[f] || f
 }

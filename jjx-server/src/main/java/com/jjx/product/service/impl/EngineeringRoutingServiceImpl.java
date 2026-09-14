@@ -659,6 +659,9 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         if (item.getDescription() != null && item.getDescription().isBlank()) {
             item.setDescription(null);
         }
+        if (item.getRemark() != null && item.getRemark().isBlank()) {
+            item.setRemark(null);
+        }
         // 工序类别：空/无效时默认 MAIN（表 NOT NULL）
         if (item.getProcessCategory() == null || item.getProcessCategory().isBlank()) {
             item.setProcessCategory("MAIN");

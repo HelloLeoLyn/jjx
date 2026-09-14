@@ -322,6 +322,7 @@ export interface StandardProcessOption {
   description: string
   /** 是否带下标：0-不带,1-带 */
   hasIndex: number
+  hasWorkInstruction: number
   isEnabled: number
   displayOrder: number
   icon: string

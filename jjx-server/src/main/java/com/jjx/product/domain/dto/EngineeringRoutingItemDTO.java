@@ -81,6 +81,12 @@ public class EngineeringRoutingItemDTO {
      */
     private String description;
 
+    /** 作业说明（与业务描述分离） */
+    private String workInstruction;
+
+    /** 独立工序自身备注，或复合父工序的整道备注 */
+    private String remark;
+
     /**
      * 工序类别（字典表 process_category）
      */

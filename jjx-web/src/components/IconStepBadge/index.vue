@@ -5,6 +5,7 @@
     <span v-if="stepNum !== null" class="step-badge" :class="{ 'is-zero': stepNum === 0 }" @click.stop="onJump">
       {{ stepNum }}
     </span>
+    <span v-if="workInstruction" class="instruction-badge" :title="workInstruction">{{ workInstruction }}</span>
 
     <!-- 输入弹层 -->
     <el-popover
@@ -61,6 +62,8 @@ const props = defineProps<{
   size?: number
   /** index 模式：显式下标数字（优先于 description 解析） */
   index?: number | null
+  /** 本次工序作业说明，按工程图习惯显示在图标下标位置 */
+  workInstruction?: string
 }>()
 
 const emit = defineEmits<{
@@ -86,6 +89,7 @@ const stepNum = computed<number | null>(() => {
 })
 
 function openInput() {
+  if (props.index === undefined) return
   draftNum.value = stepNum.value
   inputVisible.value = true
 }
@@ -148,5 +152,18 @@ function onJump() {
 
 .step-badge.is-zero {
   background: #909399;
+}
+
+.instruction-badge {
+  position: absolute;
+  left: 70%;
+  bottom: -7px;
+  max-width: 96px;
+  overflow: hidden;
+  color: var(--el-text-color-regular);
+  font-size: 10px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

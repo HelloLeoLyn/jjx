@@ -21,7 +21,7 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
     @Select("SELECT " +
             "i.detail_id AS item_id, i.routing_id, i.process_order, " +
             "i.custom_labor_hours, i.custom_machine_hours, " +
-            "i.custom_process_params, i.description, " +
+            "i.custom_process_params, i.description, i.work_instruction, i.remark, " +
             "i.create_time, i.update_time, " +
             "i.major_category, " +
             "i.group_id, i.group_order, i.group_name, " +
@@ -32,7 +32,7 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
             "p.process_type, COALESCE(p.process_category, i.process_category) AS process_category, " +
             "p.standard_labor_hours, p.standard_machine_hours, " +
             "p.equipment_type, p.skill_requirement, " +
-            "p.is_enabled, p.display_order, p.icon, p.has_index " +
+            "p.is_enabled, p.display_order, p.icon, p.has_index, p.has_work_instruction " +
             "FROM engineering_routing_item i " +
             "LEFT JOIN engineering_standard_process p ON i.process_id = p.process_id " +
             "WHERE i.routing_id = #{routingId} " +

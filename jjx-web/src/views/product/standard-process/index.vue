@@ -131,6 +131,14 @@
           </template>
         </el-table-column>
 
+        <el-table-column prop="hasWorkInstruction" label="作业说明" width="100" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.hasWorkInstruction === 1 ? 'success' : 'info'" size="small">
+              {{ scope.row.hasWorkInstruction === 1 ? '可填写' : '不带' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="displayOrder" label="排序" width="60" align="center" />
         <el-table-column prop="isEnabled" label="启用状态" width="120" align="center">
           <template #default="scope">
@@ -171,6 +179,7 @@
       template-name="标准工序导入模板.xlsx"
       @success="loadData"
     />
+    <StandardProcessPreviewDrawer v-model="previewVisible" :process="previewProcess" />
   </div>
 </template>
 
@@ -181,12 +190,13 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, Delete, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { Edit, Delete, CircleCheck, CircleClose, View } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 
 import { standardProcessApi } from '@/api/product/standardProcess'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import StandardProcessPreviewDrawer from './components/StandardProcessPreviewDrawer.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { useDict } from '@/composables/useDict'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
@@ -229,7 +239,16 @@ const loading = ref(false)
 
 const rowEnabled = (row: StandardProcessItem) => row.isEnabled === CommonStatusEnum.NORMAL.value
 
+const previewVisible = ref(false)
+const previewProcess = ref<StandardProcessItem | null>(null)
+
 const processActions: TableAction<StandardProcessItem>[] = [
+  {
+    key: 'preview',
+    label: '预览',
+    icon: View,
+    type: 'info',
+  },
   {
     key: 'edit',
     label: '编辑',
@@ -254,9 +273,15 @@ const processActions: TableAction<StandardProcessItem>[] = [
 ]
 
 const handleProcessAction = (key: string, row: StandardProcessItem) => {
+  if (key === 'preview') handlePreview(row)
   if (key === 'edit') handleEdit(row)
   if (key === 'toggle') void handleToggleEnabled(row)
   if (key === 'delete') handleDelete(row)
+}
+
+const handlePreview = (row: StandardProcessItem) => {
+  previewProcess.value = row
+  previewVisible.value = true
 }
 
 // ==================== 数据加载 ====================

@@ -7,10 +7,20 @@
           <!-- 版本号显示（10-10 新增） -->
           <span class="version-badge">
             当前版本：<el-tag size="small" type="primary">{{ displayVersion }}</el-tag>
-            <el-tag v-if="formData.sourceSampleId" size="small" type="info" style="margin-left:6px">
+            <el-tag
+              v-if="formData.sourceSampleId"
+              size="small"
+              type="info"
+              style="margin-left: 6px"
+            >
               来源打样单 #{{ formData.sourceSampleId }}
             </el-tag>
-            <el-tag v-if="formData.parentRoutingId" size="small" type="warning" style="margin-left:6px">
+            <el-tag
+              v-if="formData.parentRoutingId"
+              size="small"
+              type="warning"
+              style="margin-left: 6px"
+            >
               升版自 V{{ parentVersionHint }}
             </el-tag>
           </span>
@@ -88,9 +98,9 @@
         show-icon
         :closable="false"
         :title="`检测到工序内容变更，保存时将自动升级版本（${displayVersion} → ${nextVersionHint}），旧版本将失效`"
-        style="margin-bottom:10px"
+        style="margin-bottom: 10px"
       />
-      <div v-if="hasChanges" style="margin-bottom:10px">
+      <div v-if="hasChanges" style="margin-bottom: 10px">
         <el-input
           v-model="changeNote"
           type="textarea"
@@ -104,6 +114,7 @@
         ref="routeItemEditorRef"
         :model-value="formData.items"
         :standard-processes="standardProcesses"
+        modern-operation-card
       />
     </el-card>
   </div>
@@ -208,6 +219,7 @@ function mapRouteItem(item: any): any {
     processCode: item.processCode || '',
     icon: item.icon || '',
     hasIndex: item.hasIndex ?? 0,
+    hasWorkInstruction: item.hasWorkInstruction ?? 0,
     indexNumber: item.indexNumber ?? null,
     children: (item.children || []).map(mapRouteItem),
   }
@@ -215,23 +227,25 @@ function mapRouteItem(item: any): any {
 
 /** 生成 items 快照（忽略 itemId/groupId 等易变字段，只比工序构成业务字段；2026-09-05 含 children） */
 function snapshotItems(items: any[]): string {
-  return JSON.stringify((items || []).map((it) => ({
-    processId: it.processId,
-    stdProcessId: it.stdProcessId,
-    processName: it.processName,
-    processCategory: it.processCategory,
-    processOrder: it.processOrder,
-    customLaborHours: it.customLaborHours,
-    customMachineHours: it.customMachineHours,
-    isOptional: it.isOptional,
-    indexNumber: it.indexNumber,
-    children: (it.children || []).map((c: any) => ({
-      processId: c.processId,
-      processName: c.processName,
-      customLaborHours: c.customLaborHours,
-      customMachineHours: c.customMachineHours,
-    })),
-  })))
+  return JSON.stringify(
+    (items || []).map((it) => ({
+      processId: it.processId,
+      stdProcessId: it.stdProcessId,
+      processName: it.processName,
+      processCategory: it.processCategory,
+      processOrder: it.processOrder,
+      customLaborHours: it.customLaborHours,
+      customMachineHours: it.customMachineHours,
+      isOptional: it.isOptional,
+      indexNumber: it.indexNumber,
+      children: (it.children || []).map((c: any) => ({
+        processId: c.processId,
+        processName: c.processName,
+        customLaborHours: c.customLaborHours,
+        customMachineHours: c.customMachineHours,
+      })),
+    }))
+  )
 }
 
 /** 检测变更：对比当前编辑器 items 与初始快照 */

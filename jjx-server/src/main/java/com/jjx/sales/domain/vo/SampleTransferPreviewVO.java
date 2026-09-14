@@ -46,12 +46,16 @@ public class SampleTransferPreviewVO {
         private String processCategory;
         /** 工艺说明 */
         private String processNote;
+        /** 独立工序自身备注，或同一组合整道工序备注 */
+        private String remark;
         /** 定制工艺参数 JSON（2026-08-12 印刷工序透传：{printName,colorNo,inkNo,screenNo}） */
         private String customProcessParams;
         /** 耗时（分钟） */
         private Integer durationMinutes;
         /** 标准工序是否带下标（0/1，来自匹配的标准工序 has_index） */
         private Integer hasIndex;
+        /** 标准工序是否常规携带实例作业说明（0/1） */
+        private Integer hasWorkInstruction;
         /** 下标数字（方案A：取打样工序顺序号 processOrder） */
         private Integer indexNumber;
         /** 系统匹配推荐的标准工序ID（匹配不上为 null） */
@@ -109,6 +113,8 @@ public class SampleTransferPreviewVO {
         private String icon;
         /** 是否带下标（0/1） */
         private Integer hasIndex;
+        /** 是否常规携带实例作业说明（0/1） */
+        private Integer hasWorkInstruction;
     }
 
     /**

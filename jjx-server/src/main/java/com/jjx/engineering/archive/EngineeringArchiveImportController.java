@@ -7,6 +7,12 @@ import com.jjx.common.core.result.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 @RestController
@@ -24,6 +30,15 @@ public class EngineeringArchiveImportController {
     @GetMapping("/{id}")
     @SaCheckPermission("engineering:archive:view")
     public Result<EngineeringArchiveImport> detail(@PathVariable Long id) { return Result.success(service.get(id)); }
+    @GetMapping("/image")
+    @SaCheckPermission("engineering:archive:view")
+    public ResponseEntity<Resource> image(@RequestParam String path) throws Exception {
+        Path image = service.resolvePreviewImage(path);
+        String contentType = Files.probeContentType(image);
+        return ResponseEntity.ok()
+                .contentType(contentType == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.parseMediaType(contentType))
+                .body(new FileSystemResource(image));
+    }
     @GetMapping("/ocr-health")
     @SaCheckPermission("engineering:archive:view")
     public Result<java.util.Map<String, Object>> ocrHealth() { return Result.success(service.ocrHealth()); }
@@ -33,17 +48,9 @@ public class EngineeringArchiveImportController {
     @PostMapping("/{id}/retry")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> retry(@PathVariable Long id) { return Result.success(service.retry(id)); }
-    @PostMapping("/{id}/overwrite-retry")
-    @SaCheckPermission("engineering:archive:import")
-    public Result<EngineeringArchiveImport> overwriteRetry(@PathVariable Long id) {
-        return Result.success(service.overwriteRetry(id));
-    }
     @PutMapping("/{id}/result")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> updateResult(@PathVariable Long id, @RequestBody JsonNode body) { return Result.success(service.updateResult(id, body)); }
-    @PostMapping("/{id}/generate")
-    @SaCheckPermission("engineering:archive:generate")
-    public Result<EngineeringArchiveImport> generate(@PathVariable Long id) { return Result.success(service.generateDrafts(id)); }
     @GetMapping("/icon-samples")
     @SaCheckPermission("engineering:archive:view")
     public Result<List<ProcessIconSample>> samples(@RequestParam(required = false) Long archiveId) { return Result.success(service.samples(archiveId)); }

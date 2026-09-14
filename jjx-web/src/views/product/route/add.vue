@@ -71,6 +71,7 @@
         ref="routeItemEditorRef"
         :model-value="formData.items"
         :standard-processes="standardProcesses"
+        modern-operation-card
       />
     </el-card>
   </div>

@@ -153,4 +153,14 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
                           @Param("engineeringStatus") Integer engineeringStatus,
                           @Param("acceptorName") String acceptorName);
 
+    /**
+     * 工程拒单：状态退回待打样，并原子清除上一轮接单信息。
+     */
+    @Update("UPDATE sales_sample_order SET sample_status = #{requestStatus}, " +
+            "engineering_acceptor = NULL, engineering_accept_time = NULL, update_time = NOW() " +
+            "WHERE order_id = #{orderId} AND sample_status = #{engineeringStatus} AND deleted = 0")
+    int rejectEngineering(@Param("orderId") Long orderId,
+                          @Param("engineeringStatus") Integer engineeringStatus,
+                          @Param("requestStatus") Integer requestStatus);
+
 }

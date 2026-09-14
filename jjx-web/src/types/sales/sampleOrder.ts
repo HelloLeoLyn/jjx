@@ -176,6 +176,7 @@ export interface SampleProcessPlanItem {
   processName: string
   materials?: string
   processNote?: string
+  remark?: string
   status?: number
 }
 

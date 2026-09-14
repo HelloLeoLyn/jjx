@@ -80,6 +80,9 @@ public class ProductStandardProcess {
      * 是否带下标：0-不带,1-带（带下标的工序在工艺路线中需输入下标数字）
      */
     private Integer hasIndex;
+
+    /** 是否常规携带实例作业说明：0-否,1-是 */
+    private Integer hasWorkInstruction;
     
     /**
      * 是否启用

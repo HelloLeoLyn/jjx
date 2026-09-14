@@ -105,6 +105,7 @@ export interface ProductRouteItemFormData {
   customMachineHours?: number
   customProcessParams?: string
   description?: string
+  remark?: string
   processName?: string
   processType?: string
 }
@@ -115,6 +116,8 @@ export interface ProductRouteItemFormData {
  * 产品路线明细VO
  */
 export interface EngineeringRoutingItemVO {
+  /** 独立的工序作业说明 */
+  workInstruction?: string
   // 路线明细字段
   itemId: number
   routingId: number
@@ -123,6 +126,7 @@ export interface EngineeringRoutingItemVO {
   customMachineHours?: number
   customProcessParams?: string
   description?: string
+  remark?: string
   createTime: string
   updateTime: string
 
@@ -167,6 +171,8 @@ export interface EngineeringRoutingItemVO {
   isOptional?: number
   /** 标准工序是否带下标 */
   hasIndex?: number
+  /** 标准工序是否常规携带实例作业说明 */
+  hasWorkInstruction?: number
   /** 2026-09-05 父子结构：子行挂父行 */
   parentId?: number | null
   /** 2026-09-05 父子结构：组合工序的作业项（父行 children，any[] 避免自引用类型进 FormRules 深度遍历报 TS2615） */
@@ -178,6 +184,8 @@ export interface EngineeringRoutingItemVO {
  * 对应后端 EngineeringRoutingItemDTO
  */
 export interface EngineeringRoutingItemDTO {
+  /** 独立的工序作业说明 */
+  workInstruction?: string
   itemId?: number
   routingId?: number
   groupId?: number
@@ -189,6 +197,7 @@ export interface EngineeringRoutingItemDTO {
   customMachineHours?: number
   customProcessParams?: string
   description?: string
+  remark?: string
   processCategory?: string
   indexNumber?: number
   precondition?: string

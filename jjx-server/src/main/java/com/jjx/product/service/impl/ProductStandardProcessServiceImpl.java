@@ -115,6 +115,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         if (process.getDescription() != null) existing.setDescription(process.getDescription());
         if (process.getDisplayOrder() != null) existing.setDisplayOrder(process.getDisplayOrder());
         if (process.getHasIndex() != null) existing.setHasIndex(process.getHasIndex());
+        if (process.getHasWorkInstruction() != null) existing.setHasWorkInstruction(process.getHasWorkInstruction());
         existing.setUpdateTime(LocalDateTime.now());
 
         // JSON字段处理：空字符串转为null，避免MySQL JSON类型报错

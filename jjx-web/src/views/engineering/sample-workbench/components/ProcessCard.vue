@@ -19,10 +19,19 @@
         saveStateText(pc)
       }}</span>
       <div class="pc-head-right">
-        <el-tag v-if="pc.status === SampleProcessStatusEnum.DONE.value" size="small" type="success">✓ 已完成</el-tag>
-        <el-tag v-else-if="pc.status === SampleProcessStatusEnum.DOING.value" size="small" type="warning">⏳ 进行中</el-tag>
+        <el-tag v-if="pc.status === SampleProcessStatusEnum.DONE.value" size="small" type="success"
+          >✓ 已完成</el-tag
+        >
+        <el-tag
+          v-else-if="pc.status === SampleProcessStatusEnum.DOING.value"
+          size="small"
+          type="warning"
+          >⏳ 进行中</el-tag
+        >
         <el-tag v-else size="small" type="info">待做</el-tag>
-        <span v-if="pc.status === SampleProcessStatusEnum.DONE.value && pc.durationMinutes" style="color: #909399; font-size: 12px"
+        <span
+          v-if="pc.status === SampleProcessStatusEnum.DONE.value && pc.durationMinutes"
+          style="color: #909399; font-size: 12px"
           >⏱ {{ pc.durationMinutes }}分钟</span
         >
       </div>
@@ -31,43 +40,60 @@
     <div class="pc-row">
       <div class="pc-row-label">标准工序</div>
       <div class="pc-items">
-        <el-tag
-          v-for="(it, ii) in pc.items"
-          :key="ii"
-          size="small"
-          :closable="!readonly && pc.editing"
-          :disable-transitions="false"
-          @close="$emit('remove-item', Number(ii))"
-          style="margin-right: 6px; margin-bottom: 4px"
-        >
-          <IconStepBadge
-            v-if="it.hasIndex === 1"
-            :icon="it.icon || ''"
-            :size="16"
-            :index="it.indexNumber ?? null"
-            @update:index="(n: number) => $emit('update-index', it, n)"
-          />
-          <template v-else>
-            <SvgIcon
+        <ProcessOperationCard
+          v-if="readonly || !pc.editing"
+          :items="operationItems(pc.items)"
+          :remark="pc.operationRemark"
+        />
+        <template v-else>
+          <el-tag
+            v-for="(it, ii) in pc.items"
+            :key="ii"
+            size="small"
+            :closable="!readonly && pc.editing"
+            :disable-transitions="false"
+            @close="$emit('remove-item', Number(ii))"
+            style="margin-right: 6px; margin-bottom: 4px"
+          >
+            <IconStepBadge
               v-if="it.icon"
-              :name="it.icon"
-              :size="14"
-              style="vertical-align: -2px; margin-right: 4px"
+              :icon="it.icon || ''"
+              :size="16"
+              :index="it.hasIndex === 1 ? (it.indexNumber ?? null) : undefined"
+              :work-instruction="it.workInstruction"
+              @update:index="(n: number) => $emit('update-index', it, n)"
             />
             {{ it.processName }}
-          </template>
-        </el-tag>
-        <el-button
-          v-if="!readonly && !pc.editing"
-          size="small"
-          link
-          type="primary"
-          @click="$emit('open-picker')"
-          >＋ 添加标准工序</el-button
-        >
-        <span v-if="!pc.items.length && !pc.editing" style="color: #c0c4cc; font-size: 12px"
-          >未选择标准工序</span
-        >
+            <el-popover
+              v-if="!readonly && pc.editing && (it.hasWorkInstruction === 1 || it.workInstruction)"
+              placement="top"
+              :width="300"
+              trigger="click"
+            >
+              <el-input
+                v-model="it.workInstruction"
+                clearable
+                placeholder="作业说明（可选，如：线路外形）"
+              />
+              <template #reference
+                ><el-button link size="small">{{
+                  it.workInstruction ? '改说明' : '＋说明'
+                }}</el-button></template
+              >
+            </el-popover>
+          </el-tag>
+          <el-button
+            v-if="!readonly && !pc.editing"
+            size="small"
+            link
+            type="primary"
+            @click="$emit('open-picker')"
+            >＋ 添加标准工序</el-button
+          >
+          <span v-if="!pc.items.length && !pc.editing" style="color: #c0c4cc; font-size: 12px"
+            >未选择标准工序</span
+          >
+        </template>
       </div>
     </div>
     <!-- 行3：材料表格 -->
@@ -188,17 +214,24 @@
         >
       </div>
     </div>
-    <!-- 行4：描述 -->
-    <div class="pc-row">
-      <div class="pc-row-label">📝 描述</div>
+    <!-- 行4：整道工序备注；单工序属于自身，复合工序属于整个组合 -->
+    <div v-if="pc.operationRemark || (!readonly && pc.editing)" class="pc-row">
+      <div class="pc-row-label">📝 工序备注</div>
+      <el-button
+        v-if="!readonly && pc.editing && !pc.operationRemark && !pc.remarkEditing"
+        link
+        type="primary"
+        @click="pc.remarkEditing = true"
+        >＋备注</el-button
+      >
       <el-input
-        v-if="!readonly && pc.editing"
-        v-model="pc.processNote"
+        v-else-if="!readonly && pc.editing"
+        v-model="pc.operationRemark"
         type="textarea"
         :rows="2"
-        placeholder="如：丝印机200目网版，刮刀压力3kg，室温干燥30分钟"
+        placeholder="可选，如：一车一模；复合工序时作用于整道工序"
       />
-      <div v-else class="pc-desc-readonly">{{ pc.processNote || '—' }}</div>
+      <div v-else class="pc-desc-readonly">{{ pc.operationRemark || '—' }}</div>
     </div>
     <!-- 右下角：删除/保存/编辑 -->
     <div class="pc-footer">
@@ -218,7 +251,8 @@
 
 <script setup lang="ts">
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
-import SvgIcon from '@/components/SvgIcon/index.vue'
+import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
+import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
 /**
@@ -235,6 +269,17 @@ defineProps<{
   parseMaterials: (json?: string | null) => any[]
   readonly?: boolean
 }>()
+
+function operationItems(items: any[]): ProcessOperationCardItem[] {
+  return (items || []).map((item, index) => ({
+    key: item.itemId ?? index,
+    icon: item.icon,
+    processName: item.processName,
+    indexNumber: item.hasIndex === 1 ? item.indexNumber : null,
+    hasWorkInstruction: item.hasWorkInstruction,
+    workInstruction: item.workInstruction,
+  }))
+}
 
 const emit = defineEmits<{
   (e: 'toggle-select', v: boolean): void

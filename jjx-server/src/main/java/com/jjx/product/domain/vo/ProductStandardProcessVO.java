@@ -79,6 +79,9 @@ public class ProductStandardProcessVO {
      */
     private Integer hasIndex;
 
+    /** 是否常规携带实例作业说明：0-否,1-是 */
+    private Integer hasWorkInstruction;
+
     /**
      * 是否启用：0-禁用,1-启用
      */
