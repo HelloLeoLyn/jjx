@@ -19,6 +19,8 @@
 | 清理前先看会删什么 | `bash scripts/db-clean-test-data.sh` | 🟢 |
 | 装 git 闸门（每 clone 一次） | `bash scripts/install-hooks.sh` | 🟡 |
 | 重出初始化数据子集 | `bash scripts/db-export-init-subset.sh --task dev-YYYYMMDD-NNN` | 🟡 |
+| 立刻拍一份全库快照 | `bash scripts/db-backup.sh --tag before-xxx --task dev-YYYYMMDD-NNN` | 🟡 |
+| 看全库备份会落哪/会清谁 | `bash scripts/db-backup.sh --dry-run` | 🟢 |
 | 执行一个迁移 | `bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-YYYYMMDD-NNN` | 🔴 |
 | 清理测试数据 | `bash scripts/db-clean-test-data.sh --execute` | 🔴 |
 | 改完代码/文档自查 | `cd jjx-web && npm run validate` | 🟢 |
@@ -81,7 +83,24 @@
 - 命令：`bash scripts/clean-archive-ocr-data.sh`（预览）／加 `--yes`（真删）。
 - 退出码：0=成功，非 0=中止。
 
-## 6. scripts/install-hooks.sh —— 安装 git 闸门
+## 6. scripts/db-backup.sh —— 独立全库备份（2026-09-14 新增，任务 dev-20260914-027）
+
+- 用途：不触发任何库内变更，只想**立刻拿一份全库快照**时用（补上此前只能手敲 `mysqldump` = 绕过规范入口的缺口）。
+- 与其它脚本的边界：迁移/清测试数据各自**内部自带**全库备份（本脚本不替代它们）；`db-export-init-subset.sh` 出的是初始化交付物、**不是备份**。
+- 危险等级：🟡 只读数据库 + 写仓库外文件（可回退）；`--dry-run` 为 🟢 纯预览（不落盘）。
+- 前置：`mysqldump` 可用；数据库可达；`JJX_BACKUP_DIR`（默认仓库同级 `jjx-backups/`）位于 Git 仓库外且可写。
+- 命令：
+  - 例行：`bash scripts/db-backup.sh`
+  - 带来源/任务码：`bash scripts/db-backup.sh --tag before-xxx --task dev-YYYYMMDD-NNN`
+  - 只看不写：`bash scripts/db-backup.sh --dry-run`
+  - 常用开关：`--reason <文案>`、`--out-dir <dir>`、`--keep-days <N>`（默认 14）、`--no-clean`
+- 输出怎么读：报告库/目录/文件名/原因/任务码/清理策略 → 备份后给 **字节数 / 表数 / md5** + 恢复命令 → 再走过期清理段。
+- 产物：`jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql`，同名冲突自动加 `-2/-3`，**不覆盖**；文件头 1~3 行=备份人/原因/任务码，并追加一行到 `<备份目录>/db-backup-log.txt` 留痕。
+- 清理口径：只删 `<备份目录>` 下超过 `--keep-days`（默认 14 天）的 `jjx_erp_db_backup_*.sql`（= 全库备份）；guard 表级备份、`.tar.gz` 等**只提示不删**。
+- 退出码：0=备份成功；1=前置不满足 / 备份失败 / 产物异常（<1KB 或 0 张表）。
+- 注意：备份写入 Git 仓库外是硬要求（CONVENTIONS §2），`--out-dir` 传仓库内路径会直接被拒。
+
+## 7. scripts/install-hooks.sh —— 安装 git 闸门
 
 - 用途：把本仓库的 `pre-commit` + `commit-msg` 钩子挂上（`core.hooksPath=scripts/hooks`）。
 - 危险等级：🟡 只写本地 git 配置，不碰数据库；可卸载。
@@ -90,7 +109,7 @@
 - 输出怎么读：确认 `core.hooksPath = scripts/hooks` + 已启用钩子清单。
 - 退出码：0=成功。
 
-## 7. 自动跑（不用手敲）
+## 8. 自动跑（不用手敲）
 
 | 钩子 | 什么时候跑 | 拦什么 |
 |---|---|---|
@@ -99,7 +118,7 @@
 
 单次跳过：`git commit --no-verify`（确认后果再用）。
 
-## 8. npm 门禁（在 `jjx-web/` 下跑）
+## 9. npm 门禁（在 `jjx-web/` 下跑）
 
 | 命令 | 查什么 |
 |---|---|
