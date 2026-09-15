@@ -304,8 +304,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
-     * 复制样品单（DEV-1114）：仅已完成/已取消终态单（已转量产7/已关闭8/已取消10）可复制，
-     * 一键生成新草稿单（CREATED），复制明细，双向写操作日志（对齐 copyOrder）
+     * 复制样品单（DEV-1114）：任意状态均可复制（含打样中/已确认/客户退回等，
+     * 2026-09-15 按 B 口径放宽，不再限制终态），一键生成新草稿单（CREATED），复制明细，
+     * 双向写操作日志（对齐 copyOrder）
      */
     @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
@@ -318,13 +319,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (!SalesOrderTypeEnum.SAMPLE.getCode().equals(source.getOrderType())) {
             throw new BusinessException("该单据不是样品单，不可复制");
         }
-        if (source.getSampleStatus() == null
-                || !java.util.Set.of(
-                SampleOrderStatusEnum.TRANSFERRED.getValue(),
-                SampleOrderStatusEnum.CLOSED.getValue(),
-                SampleOrderStatusEnum.CANCELLED.getValue()).contains(source.getSampleStatus())) {
-            throw new BusinessException("仅已完成或已取消的样品单可复制");
-        }
+        // 任意状态均可复制（2026-09-15 放宽：不再限制终态，B 口径）
 
         // 生成新样品单号
         String orderNo = redisSequenceService.generateBusinessNumberByType("sample_order", "SP", "yyMMdd", 3);

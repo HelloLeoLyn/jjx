@@ -1084,13 +1084,9 @@ function canCancel(row: any): boolean {
     SampleOrderStatusEnum.CONFIRMED.value,
   ].includes(row?.sampleStatus)
 }
-// 复制：仅终态（已转量产/已关闭/已取消）
+// 复制：任意状态均可复制（含打样中/已确认/客户退回，2026-09-15 B 口径放宽）
 function canCopy(row: any): boolean {
-  return [
-    SampleOrderStatusEnum.TRANSFERRED.value,
-    SampleOrderStatusEnum.CLOSED.value,
-    SampleOrderStatusEnum.CANCELLED.value,
-  ].includes(row?.sampleStatus)
+  return row?.sampleStatus != null
 }
 
 const sampleActions: TableAction<any>[] = [
