@@ -290,6 +290,7 @@
                   clearable
                   filterable
                   placeholder="选择标准工序"
+                  @change="c.confirmed = true"
                   ><el-option
                     v-for="p in processes"
                     :key="p.processId"
@@ -316,7 +317,12 @@
               "
               label="标准工序"
             >
-              <el-select v-model="selectedStep.processId" clearable filterable>
+              <el-select
+                v-model="selectedStep.processId"
+                clearable
+                filterable
+                @change="selectedStep.processMappingConfirmed = true"
+              >
                 <template #prefix
                   ><IconStepBadge
                     v-if="selectedProcess?.icon"
@@ -388,7 +394,12 @@
                     clearable
                     placeholder="如：一车一模" /></el-form-item></el-collapse-item
             ></el-collapse>
-            <el-button type="success" @click="selectedStep.classificationConfirmed = true"
+            <el-button
+              type="success"
+              @click="
+                selectedStep.classificationConfirmed = true
+                selectedStep.processMappingConfirmed = true
+              "
               >确认工序格</el-button
             > </el-form
           ><el-empty v-else description="从中间选择分组或工序格" />
@@ -440,6 +451,7 @@ type Step = {
   classificationConfirmed: boolean
   isComposite: boolean
   components: Component[]
+  processMappingConfirmed?: boolean
   processId?: number
   workInstruction?: string
   operationRemark?: string

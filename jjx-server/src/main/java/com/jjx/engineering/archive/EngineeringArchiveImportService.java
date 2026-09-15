@@ -264,9 +264,11 @@ public class EngineeringArchiveImportService {
         archiveMapper.updateById(archive);
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public EngineeringArchiveImport updateResult(Long id, JsonNode result) {
         EngineeringArchiveImport archive = required(id);
         try {
+            learnConfirmedIconMappings(result);
             archive.setExtractedJson(objectMapper.writeValueAsString(result));
             archive.setProductName(text(result, "productName"));
             archive.setProductCode(text(result, "productCode"));
@@ -277,6 +279,39 @@ public class EngineeringArchiveImportService {
         } catch (Exception e) {
             throw new BusinessException("保存识别结果失败：" + e.getMessage());
         }
+    }
+
+    /** 将人工确认的单工序图标沉淀为最新映射；自动匹配结果不会自动学习。 */
+    private void learnConfirmedIconMappings(JsonNode root) {
+        for (JsonNode workflow : root.path("workflows")) {
+            for (JsonNode step : workflow.path("steps")) {
+                if (!step.path("processMappingConfirmed").asBoolean(false)) continue;
+                learnIconMapping(step);
+            }
+        }
+    }
+
+    private void learnIconMapping(JsonNode step) {
+        Long sampleId = step.path("iconSampleId").canConvertToLong()
+                ? step.path("iconSampleId").longValue() : null;
+        Long processId = step.path("processId").canConvertToLong()
+                ? step.path("processId").longValue() : null;
+        if (sampleId == null || processId == null) return;
+        ProcessIconSample sample = iconSampleMapper.selectById(sampleId);
+        if (sample == null || sample.getPerceptualHash() == null) return;
+        Integer enabled = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM engineering_standard_process WHERE process_id=? AND is_enabled=1", Integer.class, processId);
+        if (enabled == null || enabled == 0) return;
+        jdbcTemplate.update("UPDATE engineering_process_icon_sample SET confirm_status=?,use_as_system_icon=0 " +
+                        "WHERE perceptual_hash=? AND sample_id<>? AND confirm_status=?",
+                IconConfirmStatus.PENDING.getValue(), sample.getPerceptualHash(), sampleId,
+                IconConfirmStatus.CONFIRMED.getValue());
+        sample.setProcessId(processId);
+        sample.setConfirmStatus(IconConfirmStatus.CONFIRMED.getValue());
+        sample.setUseAsSystemIcon(1);
+        sample.setUsageCount((sample.getUsageCount() == null ? 0 : sample.getUsageCount()) + 1);
+        sample.setUpdateBy(loginUser());
+        iconSampleMapper.updateById(sample);
     }
 
     @Transactional(rollbackFor = Exception.class)
