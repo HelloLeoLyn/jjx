@@ -15,6 +15,8 @@ export interface InventoryMaterial {
   reorderPoint: number
   standardPrice?: number
   leadTime?: number
+  // 后端 MaterialVO 同时返回 supplierId/supplierName（物料默认供应商）
+  supplierId?: number
   supplierName?: string
   batchControl: boolean
   shelfLife?: number

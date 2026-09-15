@@ -12,24 +12,39 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Warning" @click="loadSuggestions" :loading="loadingSuggestions">
+          <el-button
+            type="primary"
+            plain
+            icon="Warning"
+            @click="loadSuggestions"
+            :loading="loadingSuggestions"
+          >
             从预警加载
           </el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="Plus" @click="showAddMaterial = true">添加物料</el-button>
+          <el-button type="success" plain icon="Plus" @click="showAddMaterial = true"
+            >添加物料</el-button
+          >
         </el-col>
         <el-col :span="1.5">
           <el-button plain icon="Refresh" @click="clearPlan">清空</el-button>
         </el-col>
         <el-col :span="1.5">
-          <el-button plain icon="Download" :disabled="planRows.length === 0" @click="handleExport">导出 Excel</el-button>
+          <el-button plain icon="Download" :disabled="planRows.length === 0" @click="handleExport"
+            >导出 Excel</el-button
+          >
         </el-col>
         <el-col :span="1.5">
           <el-button plain icon="Printer" @click="handlePrintPlan">打印计划</el-button>
         </el-col>
         <el-col :span="1.5" style="float: right">
-          <el-button type="primary" icon="Check" :disabled="planRows.length === 0" @click="handleConfirmPlan">
+          <el-button
+            type="primary"
+            icon="Check"
+            :disabled="planRows.length === 0"
+            @click="handleConfirmPlan"
+          >
             确认计划 → 生成采购订单
           </el-button>
         </el-col>
@@ -38,22 +53,46 @@
 
     <!-- 计划行表格 -->
     <el-card class="table-card" shadow="never">
-      <el-table :data="planRows" border style="width: 100%" @selection-change="handleSelectionChange">
+      <el-table
+        :data="planRows"
+        border
+        style="width: 100%"
+        @selection-change="handleSelectionChange"
+      >
         <el-table-column type="selection" width="50" align="center" />
         <el-table-column label="物料编码" prop="materialCode" width="130" />
-        <el-table-column label="物料名称" prop="materialName" min-width="160" show-overflow-tooltip />
+        <el-table-column
+          label="物料名称"
+          prop="materialName"
+          min-width="160"
+          show-overflow-tooltip
+        />
+        <el-table-column label="供应商" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.supplierName || '-' }}</template>
+        </el-table-column>
         <el-table-column label="当前库存" prop="currentStock" width="100" align="right" />
         <el-table-column label="建议量" prop="suggestQuantity" width="100" align="right" />
         <el-table-column label="采购数量" width="130" align="center">
           <template #default="{ row }">
-            <el-input-number v-model="row.quantity" :min="1" size="small" controls-position="right" style="width: 110px" />
+            <el-input-number
+              v-model="row.quantity"
+              :min="1"
+              size="small"
+              controls-position="right"
+              style="width: 110px"
+            />
           </template>
         </el-table-column>
         <el-table-column label="单位" prop="unit" width="70" align="center" />
         <el-table-column label="来源" prop="reason" min-width="160" show-overflow-tooltip />
         <el-table-column label="优先级" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.priority === 'urgent' ? 'danger' : row.priority === 'high' ? 'warning' : 'info'" size="small">
+            <el-tag
+              :type="
+                row.priority === 'urgent' ? 'danger' : row.priority === 'high' ? 'warning' : 'info'
+              "
+              size="small"
+            >
               {{ row.priority === 'urgent' ? '紧急' : row.priority === 'high' ? '高' : '普通' }}
             </el-tag>
           </template>
@@ -64,11 +103,20 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-if="planRows.length === 0" description="暂无计划物料，点击「从预警加载」或「添加物料」" :image-size="80" />
+      <el-empty
+        v-if="planRows.length === 0"
+        description="暂无计划物料，点击「从预警加载」或「添加物料」"
+        :image-size="80"
+      />
     </el-card>
 
     <!-- 添加物料对话框 -->
-    <el-dialog v-model="showAddMaterial" title="添加物料（不限缺库存）" width="640px" append-to-body>
+    <el-dialog
+      v-model="showAddMaterial"
+      title="添加物料（不限缺库存）"
+      width="640px"
+      append-to-body
+    >
       <el-form label-width="80px">
         <el-form-item label="物料">
           <el-select
@@ -99,10 +147,20 @@
     </el-dialog>
 
     <!-- 确认计划对话框：选供应商 -->
-    <el-dialog v-model="showConfirmDialog" title="确认计划 → 生成采购订单" width="520px" append-to-body>
+    <el-dialog
+      v-model="showConfirmDialog"
+      title="确认计划 → 生成采购订单"
+      width="520px"
+      append-to-body
+    >
       <el-form label-width="80px">
         <el-form-item label="供应商">
-          <el-select v-model="confirmSupplierId" filterable placeholder="选择供应商" style="width: 100%">
+          <el-select
+            v-model="confirmSupplierId"
+            filterable
+            placeholder="选择供应商"
+            style="width: 100%"
+          >
             <el-option
               v-for="s in suppliers"
               :key="s.supplierId"
@@ -117,7 +175,9 @@
       </el-form>
       <template #footer>
         <el-button @click="showConfirmDialog = false">取消</el-button>
-        <el-button type="primary" :loading="confirming" @click="doConfirmPlan">生成采购订单</el-button>
+        <el-button type="primary" :loading="confirming" @click="doConfirmPlan"
+          >生成采购订单</el-button
+        >
       </template>
     </el-dialog>
   </div>
@@ -132,7 +192,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
-import { getPlanSuggestions, confirmPlan, addOrder, generateOrderNo, inTransit as orderInTransit } from '@/api/purchase/order'
+import {
+  getPlanSuggestions,
+  confirmPlan,
+  addOrder,
+  generateOrderNo,
+  inTransit as orderInTransit,
+} from '@/api/purchase/order'
 import { alertApi } from '@/api/inventory/alert'
 import { listSupplier } from '@/api/purchase/supplier'
 import { materialApi } from '@/api/inventory/material'
@@ -142,6 +208,8 @@ interface PlanRow {
   materialId: number
   materialCode: string
   materialName: string
+  supplierId?: number
+  supplierName?: string
   unit?: string
   currentStock: number
   suggestQuantity: number
@@ -164,7 +232,9 @@ const confirmSupplierId = ref<number | null>(null)
 const confirming = ref(false)
 
 const selectedRows = ref<PlanRow[]>([])
-const selectedTotalQty = computed(() => selectedRows.value.reduce((s, r) => s + (r.quantity || 0), 0))
+const selectedTotalQty = computed(() =>
+  selectedRows.value.reduce((s, r) => s + (r.quantity || 0), 0)
+)
 
 const handlePrintPlan = () => window.open('/purchase/plan/print', '_blank')
 
@@ -192,6 +262,8 @@ const loadSuggestions = async () => {
         materialId: s.materialId || 0,
         materialCode: s.materialCode,
         materialName: s.materialName,
+        supplierId: s.supplierId,
+        supplierName: s.supplierName,
         unit: s.unit,
         currentStock: s.currentStock || 0,
         suggestQuantity: s.suggestQuantity || 0,
@@ -251,6 +323,8 @@ const confirmAddMaterial = async () => {
       materialId: mat.materialId,
       materialCode: mat.materialCode,
       materialName: mat.materialName,
+      supplierId: mat.supplierId,
+      supplierName: mat.supplierName,
       unit: mat.unit,
       currentStock: 0,
       suggestQuantity: 0,
@@ -268,7 +342,11 @@ const removeRow = (index: number) => {
   const row = planRows.value[index]
   // 2026-08-18：移除仅作用于列表行，预警仍保留（下次加载会回来），提示避免误解
   if (row?.sourceAlertId) {
-    ElMessageBox.confirm('该行来自预警，移除后预警仍保留在待办中，下次加载会再次出现。确定移除吗？', '提示', { type: 'warning' })
+    ElMessageBox.confirm(
+      '该行来自预警，移除后预警仍保留在待办中，下次加载会再次出现。确定移除吗？',
+      '提示',
+      { type: 'warning' }
+    )
       .then(() => {
         planRows.value.splice(index, 1)
       })
@@ -347,12 +425,19 @@ const doConfirmPlan = async () => {
       })),
       saveAsPlan: false,
     } as any)
-    ElMessage.success(`已生成采购订单（${toConfirm.length} 个物料，0 价草稿），请到「采购订单」补采购单价后再提交审批`)
+    ElMessage.success(
+      `已生成采购订单（${toConfirm.length} 个物料，0 价草稿），请到「采购订单」补采购单价后再提交审批`
+    )
     // 预警闭环：勾选行来源预警 + 勾选物料全部未处理预警 一并回写（2026-08-18 P0-A/P1-A：按物料回写，修手动行/低库存复燃）
     const alertIds = toConfirm.map((r) => r.sourceAlertId).filter((id): id is number => !!id)
     const materialIds = toConfirm.map((r) => r.materialId).filter((id): id is number => !!id)
     try {
-      await alertApi.batchProcess({ alertIds, materialIds, relatedOrderNo: orderNo, remark: '采购计划确认' })
+      await alertApi.batchProcess({
+        alertIds,
+        materialIds,
+        relatedOrderNo: orderNo,
+        remark: '采购计划确认',
+      })
     } catch (e) {
       // 2026-08-18：回写失败不再静默，明确提示（采购单已生成，预警需人工处理）
       console.warn('回写预警状态失败', e)

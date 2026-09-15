@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -765,6 +766,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             // 查询物料最高库存参数
             BigDecimal maxStock = null;
             BigDecimal reorderPoint = null;
+            Long supplierId = null;
+            String supplierName = null;
             try {
                 com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(stock.getMaterialId());
                 if (mat != null && mat.getMaxStock() != null) {
@@ -772,6 +775,10 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 }
                 if (mat != null && mat.getReorderPoint() != null && mat.getReorderPoint().compareTo(BigDecimal.ZERO) > 0) {
                     reorderPoint = mat.getReorderPoint();
+                }
+                if (mat != null) {
+                    supplierId = mat.getSupplierId();
+                    supplierName = mat.getSupplierName();
                 }
             } catch (Exception e) {
                 log.warn("查询物料最高库存失败: materialId={}, err={}", stock.getMaterialId(), e.getMessage());
@@ -801,16 +808,18 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             // 落库/去重更新 safe_stock 预警
             Long alertId = upsertLowStockAlert(stock, suggestQty);
 
-            suggestions.add(Map.of(
-                    "materialId", stock.getMaterialId(),
-                    "materialCode", stock.getMaterialCode(),
-                    "materialName", stock.getMaterialName(),
-                    "currentStock", stock.getTotalQuantity() != null ? stock.getTotalQuantity().doubleValue() : 0,
-                    "suggestQuantity", suggestQty.doubleValue(),
-                    "reason", reason,
-                    "priority", priority,
-                    "sourceAlertId", alertId
-            ));
+            Map<String, Object> row = new HashMap<>();
+            row.put("materialId", stock.getMaterialId());
+            row.put("materialCode", stock.getMaterialCode());
+            row.put("materialName", stock.getMaterialName());
+            row.put("currentStock", stock.getTotalQuantity() != null ? stock.getTotalQuantity().doubleValue() : 0);
+            row.put("suggestQuantity", suggestQty.doubleValue());
+            row.put("reason", reason);
+            row.put("priority", priority);
+            row.put("sourceAlertId", alertId);
+            if (supplierId != null) row.put("supplierId", supplierId);
+            if (supplierName != null && !supplierName.isBlank()) row.put("supplierName", supplierName);
+            suggestions.add(row);
         }
 
         // 来源2：未处理的订单缺料预警（DEV-573 8-04 衔接齐套检查）
@@ -829,16 +838,28 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             }
             if (gap.compareTo(BigDecimal.ZERO) <= 0) continue;
 
-            suggestions.add(Map.of(
-                    "materialId", alert.getMaterialId(),
-                    "materialCode", alert.getMaterialCode(),
-                    "materialName", alert.getMaterialName(),
-                    "currentStock", alert.getCurrentStock() != null ? alert.getCurrentStock().doubleValue() : 0,
-                    "suggestQuantity", gap.doubleValue(),
-                    "reason", "订单[" + (alert.getOrderNo() != null ? alert.getOrderNo() : "") + "]缺料，建议补货",
-                    "priority", "urgent",
-                    "sourceAlertId", alert.getAlertId()
-            ));
+            Long supplierId = null;
+            String supplierName = null;
+            if (alert.getMaterialId() != null) {
+                com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(alert.getMaterialId());
+                if (mat != null) {
+                    supplierId = mat.getSupplierId();
+                    supplierName = mat.getSupplierName();
+                }
+            }
+
+            Map<String, Object> row = new HashMap<>();
+            row.put("materialId", alert.getMaterialId());
+            row.put("materialCode", alert.getMaterialCode());
+            row.put("materialName", alert.getMaterialName());
+            row.put("currentStock", alert.getCurrentStock() != null ? alert.getCurrentStock().doubleValue() : 0);
+            row.put("suggestQuantity", gap.doubleValue());
+            row.put("reason", "订单[" + (alert.getOrderNo() != null ? alert.getOrderNo() : "") + "]缺料，建议补货");
+            row.put("priority", "urgent");
+            row.put("sourceAlertId", alert.getAlertId());
+            if (supplierId != null) row.put("supplierId", supplierId);
+            if (supplierName != null && !supplierName.isBlank()) row.put("supplierName", supplierName);
+            suggestions.add(row);
         }
 
         log.info("生成采购建议完成，共 {} 条（低库存{} + 订单缺料{}）", suggestions.size(),
