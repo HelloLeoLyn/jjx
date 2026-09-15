@@ -320,14 +320,36 @@ public class EngineeringArchiveImportService {
             for (JsonNode workflow : root.path("workflows")) {
                 String workflowType = defaultText(text(workflow, "workflowType"), "OTHER");
                 for (JsonNode step : workflow.path("steps")) {
-                    Long processId = step.path("processId").canConvertToLong() ? step.path("processId").longValue() : null;
-                    String processName = text(step, "processName");
-                    if (processId != null) {
-                        List<Map<String,Object>> p = jdbcTemplate.queryForList("SELECT process_name FROM engineering_standard_process WHERE process_id=? AND is_enabled=1", processId);
-                        if (p.isEmpty()) processId = null; else processName = String.valueOf(p.getFirst().get("process_name"));
+                    boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
+                    if (composite && step.path("components").isArray() && step.path("components").size() > 0) {
+                        long groupId = order;
+                        int groupOrder = 1;
+                        for (JsonNode component : step.path("components")) {
+                            Long processId = component.path("processId").canConvertToLong()
+                                    ? component.path("processId").longValue() : null;
+                            String processName = text(component, "text");
+                            if (processId != null) {
+                                List<Map<String,Object>> p = jdbcTemplate.queryForList(
+                                        "SELECT process_name FROM engineering_standard_process WHERE process_id=? AND is_enabled=1", processId);
+                                if (p.isEmpty()) processId = null;
+                                else processName = String.valueOf(p.getFirst().get("process_name"));
+                            }
+                            jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                                    routingId, processId, processName, "ASSEMBLY", order++, workflowType,
+                                    text(component, "text"), text(component, "workInstruction"),
+                                    text(step, "operationRemark"), groupId, groupOrder++, text(step, "processName"));
+                        }
+                    } else {
+                        Long processId = step.path("processId").canConvertToLong() ? step.path("processId").longValue() : null;
+                        String processName = text(step, "processName");
+                        if (processId != null) {
+                            List<Map<String,Object>> p = jdbcTemplate.queryForList("SELECT process_name FROM engineering_standard_process WHERE process_id=? AND is_enabled=1", processId);
+                            if (p.isEmpty()) processId = null; else processName = String.valueOf(p.getFirst().get("process_name"));
+                        }
+                        jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark) VALUES(?,?,?,?,?,?,?,?,?)",
+                                routingId, processId, processName, "ASSEMBLY", order++, workflowType,
+                                text(step, "rawText"), text(step, "workInstruction"), text(step, "operationRemark"));
                     }
-                    jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description) VALUES(?,?,?,?,?,?,?)",
-                            routingId, processId, processName, "ASSEMBLY", order++, workflowType, text(step, "rawText"));
                 }
             }
             jdbcTemplate.update("UPDATE product SET current_bom_id=?,current_route_id=?,current_bom_version=?,current_routing_version=? WHERE product_id=?",

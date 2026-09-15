@@ -51,6 +51,11 @@ public class EngineeringArchiveImportController {
     @PutMapping("/{id}/result")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> updateResult(@PathVariable Long id, @RequestBody JsonNode body) { return Result.success(service.updateResult(id, body)); }
+    @PostMapping("/{id}/generate-drafts")
+    @SaCheckPermission("engineering:archive:import")
+    public Result<EngineeringArchiveImport> generateDrafts(@PathVariable Long id) {
+        return Result.success(service.generateDrafts(id));
+    }
     @GetMapping("/icon-samples")
     @SaCheckPermission("engineering:archive:view")
     public Result<List<ProcessIconSample>> samples(@RequestParam(required = false) Long archiveId) { return Result.success(service.samples(archiveId)); }

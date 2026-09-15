@@ -211,7 +211,29 @@
                   : '草稿已全部确认'
               "
               :closable="false"
-          /></template>
+            />
+            <el-button
+              type="primary"
+              :loading="generating"
+              :disabled="
+                !generationReady ||
+                current?.recognizeStatus === ArchiveRecognitionStatusEnum.GENERATED.value
+              "
+              @click="generateDrafts"
+            >
+              {{
+                current?.recognizeStatus === ArchiveRecognitionStatusEnum.GENERATED.value
+                  ? '已生成正式草稿'
+                  : '生成产品、BOM和工艺路线草稿'
+              }}
+            </el-button>
+            <el-alert
+              v-if="current?.recognizeStatus === ArchiveRecognitionStatusEnum.GENERATED.value"
+              type="success"
+              title="正式业务草稿已生成，可到产品、BOM和工艺路线页面继续维护。"
+              :closable="false"
+            />
+          </template>
         </section>
         <section class="pane">
           <h4>检查与修正</h4>
@@ -436,6 +458,7 @@ const stageNames = ['分组确认', '工序分格', '内容分类', '复合拆�
 const loading = ref(false),
   uploading = ref(false),
   saving = ref(false),
+  generating = ref(false),
   visible = ref(false),
   ocrAvailable = ref(false),
   stage = ref(0),
@@ -513,6 +536,16 @@ const archivePreviewItems = computed<ProcessOperationCardItem[]>(() => {
     },
   ]
 })
+const generationReady = computed(
+  () =>
+    groups.value.every((g) => g.confirmed) &&
+    flatSteps.value.every((x) => {
+      if (x.step.contentType === ArchiveCellContentTypeEnum.EMPTY.value) return true
+      if (x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value)
+        return x.step.components.length > 0 && x.step.components.every((c) => c.processId)
+      return Boolean(x.step.processId)
+    })
+)
 const processById = (id?: number) => processes.value.find((p) => p.processId === id)
 async function load() {
   loading.value = true
@@ -662,6 +695,17 @@ async function save() {
     await load()
   } finally {
     saving.value = false
+  }
+}
+async function generateDrafts() {
+  if (!current.value || !generationReady.value) return
+  generating.value = true
+  try {
+    current.value = payload(await archiveImportApi.generateDrafts(current.value.archiveId))
+    await load()
+    ElMessage.success('产品、BOM和工艺路线草稿已生成')
+  } finally {
+    generating.value = false
   }
 }
 onMounted(async () => {

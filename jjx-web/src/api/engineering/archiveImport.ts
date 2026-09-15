@@ -28,17 +28,28 @@ export interface IconSample {
 }
 
 export const archiveImportApi = {
-  page: (params: { pageNum: number; pageSize: number }) => request.get('/engineering/archive-imports', { params }),
+  page: (params: { pageNum: number; pageSize: number }) =>
+    request.get('/engineering/archive-imports', { params }),
   detail: (id: number) => request.get(`/engineering/archive-imports/${id}`),
-  image: (path: string) => request.get('/engineering/archive-imports/image', { params: { path }, responseType: 'blob' }),
+  image: (path: string) =>
+    request.get('/engineering/archive-imports/image', { params: { path }, responseType: 'blob' }),
   ocrHealth: () => request.get('/engineering/archive-imports/ocr-health'),
   upload: (file: File) => {
     const data = new FormData()
     data.append('file', file)
-    return request.post('/engineering/archive-imports/upload', data, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return request.post('/engineering/archive-imports/upload', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
   },
   retry: (id: number) => request.post(`/engineering/archive-imports/${id}/retry`),
-  updateResult: (id: number, data: unknown) => request.put(`/engineering/archive-imports/${id}/result`, data),
-  samples: (archiveId: number) => request.get('/engineering/archive-imports/icon-samples', { params: { archiveId } }),
-  confirmSample: (sampleId: number, processId: number) => request.put(`/engineering/archive-imports/icon-samples/${sampleId}/confirm`, null, { params: { processId } }),
+  updateResult: (id: number, data: unknown) =>
+    request.put(`/engineering/archive-imports/${id}/result`, data),
+  generateDrafts: (id: number) =>
+    request.post(`/engineering/archive-imports/${id}/generate-drafts`),
+  samples: (archiveId: number) =>
+    request.get('/engineering/archive-imports/icon-samples', { params: { archiveId } }),
+  confirmSample: (sampleId: number, processId: number) =>
+    request.put(`/engineering/archive-imports/icon-samples/${sampleId}/confirm`, null, {
+      params: { processId },
+    }),
 }
