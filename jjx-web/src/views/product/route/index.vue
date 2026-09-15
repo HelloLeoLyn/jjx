@@ -17,7 +17,7 @@
           type="warning"
           plain
           icon="CopyDocument"
-          :disabled="!single"
+          :disabled="single"
           @click="handleCopySelected"
           >复制版本</el-button
         >
