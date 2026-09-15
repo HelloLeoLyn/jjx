@@ -179,6 +179,11 @@
       template-name="标准工序导入模板.xlsx"
       @success="loadData"
     />
+    <StandardProcessFormDialog
+      v-model="processDialogVisible"
+      :process-id="processDialogId"
+      @success="loadData"
+    />
     <StandardProcessPreviewDrawer v-model="previewVisible" :process="previewProcess" />
   </div>
 </template>
@@ -191,11 +196,11 @@ defineOptions({
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Delete, CircleCheck, CircleClose, View } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
 
 import { standardProcessApi } from '@/api/product/standardProcess'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import StandardProcessFormDialog from './components/StandardProcessFormDialog.vue'
 import StandardProcessPreviewDrawer from './components/StandardProcessPreviewDrawer.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { useDict } from '@/composables/useDict'
@@ -204,8 +209,6 @@ import type {
   StandardProcessQueryParams,
   StandardProcessItem,
 } from '@/types/product/standardProcess'
-
-const router = useRouter()
 
 // 工序类型/类别选项（字典维护）
 const { options: processTypeOptions } = useDict('process_type')
@@ -241,6 +244,8 @@ const rowEnabled = (row: StandardProcessItem) => row.isEnabled === CommonStatusE
 
 const previewVisible = ref(false)
 const previewProcess = ref<StandardProcessItem | null>(null)
+const processDialogVisible = ref(false)
+const processDialogId = ref<number | undefined>(undefined)
 
 const processActions: TableAction<StandardProcessItem>[] = [
   {
@@ -336,12 +341,14 @@ const handleCurrentChange = (val: number) => {
 
 // ==================== 新增 ====================
 const handleAdd = () => {
-  router.push('/product/standard-process/add')
+  processDialogId.value = undefined
+  processDialogVisible.value = true
 }
 
 // ==================== 编辑 ====================
 const handleEdit = (row: StandardProcessItem) => {
-  router.push(`/product/standard-process/edit/${row.processId}`)
+  processDialogId.value = row.processId
+  processDialogVisible.value = true
 }
 
 // ==================== 启用/禁用 ====================

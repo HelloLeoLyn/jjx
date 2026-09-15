@@ -515,26 +515,6 @@ export const constantRoutes: RouteRecordRaw[] = [
         redirect: '/engineering/standard-processes',
         meta: { hidden: true },
       },
-      {
-        path: 'standard-process/add',
-        name: 'StandardProcessAdd',
-        component: () => import('@/views/product/standard-process/add.vue'),
-        meta: {
-          hidden: true,
-          title: '新增标准工序',
-          permission: 'engineering:standard-process:add',
-        },
-      },
-      {
-        path: 'standard-process/edit/:processId',
-        name: 'StandardProcessEdit',
-        component: () => import('@/views/product/standard-process/edit.vue'),
-        meta: {
-          hidden: true,
-          title: '编辑标准工序',
-          permission: 'engineering:standard-process:edit',
-        },
-      },
     ],
   },
   // 工程打样工作台（隐藏路由：打样平台按钮进入，侧边栏不显示，标签页打开）
