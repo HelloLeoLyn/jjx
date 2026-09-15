@@ -30,15 +30,14 @@
           ></el-table-column
         >
         <el-table-column prop="recognizeMessage" label="识别信息" min-width="220" />
-        <el-table-column label="操作" width="160"
+        <el-table-column label="操作" width="220"
           ><template #default="{ row }"
             ><el-button link type="primary" @click="openWorkbench(row)">进入工作台</el-button
             ><el-button
-              v-if="row.recognizeStatus === ArchiveRecognitionStatusEnum.FAILED.value"
               link
               type="warning"
               @click="retry(row)"
-              >重试</el-button
+              >重新识别</el-button
             ></template
           ></el-table-column
         >
@@ -59,7 +58,7 @@
           <div>
             <span class="progress">已确认 {{ confirmed }}/{{ confirmable }}</span
             ><el-button :loading="saving" @click="save">保存草稿</el-button
-            ><el-button type="primary" :disabled="stage === 5" @click="nextStage"
+            ><el-button type="primary" :disabled="stage === 3" @click="nextStage"
               >下一阶段</el-button
             >
           </div>
@@ -75,7 +74,21 @@
       <div class="workspace">
         <section class="pane">
           <h4>原图与切片</h4>
-          <div class="image"><img v-if="originalUrl" :src="originalUrl" /></div>
+          <div v-if="stage === 0" class="group-collage">
+            <img v-if="originalUrl" class="collage-background" :src="originalUrl" />
+            <button
+              v-for="g in groups"
+              :key="`collage-${g.key}`"
+              class="collage-tile"
+              :class="{ active: key === g.key }"
+              :style="groupTileStyle(g)"
+              @click="selectGroup(g)"
+            >
+              <img v-if="groupImageUrls[g.key || '']" :src="groupImageUrls[g.key || '']" />
+              <span>{{ g.label }}</span>
+            </button>
+          </div>
+          <div v-else class="image"><img v-if="originalUrl" :src="originalUrl" /></div>
           <div v-if="selectedUrl">
             <h4>当前选择</h4>
             <div class="image crop"><img :src="selectedUrl" /></div>
@@ -84,14 +97,17 @@
         <section class="pane">
           <h4>{{ stageNames[stage] }}</h4>
           <template v-if="stage === 0"
-            ><button
+            ><div class="group-toolbar">
+              <span>已切割 {{ groups.length }} 个分组，可直接总览并确认</span>
+              <el-button type="success" size="small" @click="confirmAllGroups">确认全部分组</el-button>
+            </div><button
               v-for="g in groups"
               :key="g.key"
               class="card"
               :class="{ active: key === g.key }"
               @click="selectGroup(g)"
             >
-              <span>{{ g.label }}</span
+              <span class="group-card-content"><img v-if="groupImageUrls[g.key || '']" :src="groupImageUrls[g.key || '']" /><span>{{ g.label }}</span></span
               ><el-tag :type="g.confirmed ? 'success' : 'warning'">{{
                 g.confirmed ? '已确认' : '待确认'
               }}</el-tag>
@@ -123,74 +139,31 @@
               v-for="x in flatSteps"
               :key="x.key"
               class="card"
-              :class="{ active: key === x.key }"
-              @click="selectStep(x.workflow, x.step)"
-            >
-              <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
-              ><el-tag size="small" :type="x.step.classificationConfirmed ? 'success' : 'warning'">
-                {{ x.step.classificationConfirmed ? '已确认' : '待确认' }}
-              </el-tag>
-              <el-tag v-bind="ArchiveCellContentTypeEnum.getTagProps(x.step.contentType)">{{
-                ArchiveCellContentTypeEnum.getLabel(x.step.contentType)
-              }}</el-tag>
-            </button></template
-          >
-          <template v-else-if="stage === 3"
-            ><el-empty v-if="!composites.length" description="暂无复合工序" /><button
-              v-for="x in composites"
-              :key="x.key"
-              class="card"
               @click="selectStep(x.workflow, x.step)"
             >
               <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
               ><el-tag
                 size="small"
                 :type="
-                  x.step.components.length && x.step.components.every((c) => c.processId)
-                    ? 'success'
-                    : 'warning'
-                "
-              >
-                {{
-                  x.step.components.length && x.step.components.every((c) => c.processId)
-                    ? '已完成'
-                    : '待拆分'
-                }}
-              </el-tag>
-              <el-tag type="warning">{{ x.step.components.length }} 子工序</el-tag>
-            </button></template
-          >
-          <template v-else-if="stage === 4"
-            ><button
-              v-for="x in nonEmpty"
-              :key="x.key"
-              class="card"
-              @click="selectStep(x.workflow, x.step)"
-            >
-              <span>{{ workflowName(x.workflow.workflowType) }} · {{ x.step.stepNo }}</span
-              ><el-tag
-                size="small"
-                :type="
-                  x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value
-                    ? x.step.components.every((c) => c.processId)
-                      ? 'success'
-                      : 'warning'
-                    : x.step.processId
+                  x.step.contentType === ArchiveCellContentTypeEnum.EMPTY.value
+                    ? 'info'
+                    : stepConfirmed(x.step)
                       ? 'success'
                       : 'warning'
                 "
               >
                 {{
-                  x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value
-                    ? x.step.components.every((c) => c.processId)
-                      ? '已匹配'
-                      : '待匹配'
-                    : x.step.processId
-                      ? '已匹配'
-                      : '待匹配'
+                  x.step.contentType === ArchiveCellContentTypeEnum.EMPTY.value
+                    ? '空工序'
+                    : stepConfirmed(x.step)
+                      ? '已确认'
+                      : '待确认'
                 }}
-              </el-tag>
-              <small>{{ x.step.editedText || '未识别' }}</small>
+              </el-tag><el-tag v-if="x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value" type="warning">
+                复合 {{ x.step.components.length }} 子工序
+              </el-tag><el-tag v-else v-bind="ArchiveCellContentTypeEnum.getTagProps(x.step.contentType)">
+                {{ ArchiveCellContentTypeEnum.getLabel(x.step.contentType) }}
+              </el-tag><small>{{ x.step.editedText || '未识别' }}</small>
             </button></template
           >
           <template v-else
@@ -397,7 +370,7 @@
             <el-button
               type="success"
               @click="
-                selectedStep.classificationConfirmed = true
+                selectedStep.classificationConfirmed = true;
                 selectedStep.processMappingConfirmed = true
               "
               >确认工序格</el-button
@@ -411,7 +384,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage, type UploadRequestOptions } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { archiveImportApi, type ArchiveImportRecord } from '@/api/engineering/archiveImport'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
@@ -465,7 +438,7 @@ type Workflow = Group & {
   steps: Step[]
 }
 type Draft = { groups: Group[]; workflows: Workflow[]; [key: string]: unknown }
-const stageNames = ['分组确认', '工序分格', '内容分类', '复合拆分', '工序匹配', '草稿检查'],
+const stageNames = ['分组确认', '工序分格', '工序确认', '草稿检查'],
   boundFields: (keyof Bounds)[] = ['x1', 'y1', 'x2', 'y2']
 const loading = ref(false),
   uploading = ref(false),
@@ -485,6 +458,7 @@ const draft = ref<Draft>({ groups: [], workflows: [] }),
   selectedStep = ref<Step>(),
   originalUrl = ref(''),
   selectedUrl = ref(''),
+  groupImageUrls = ref<Record<string, string>>({}),
   processes = ref<StandardProcessItem[]>([])
 const cache = new Map<string, string>()
 const payload = <T,>(r: any): T => (r?.data?.data ?? r?.data ?? r) as T
@@ -518,7 +492,7 @@ const confirmable = computed(() => groups.value.length + flatSteps.value.length)
 const confirmed = computed(
   () =>
     groups.value.filter((g) => g.confirmed).length +
-    flatSteps.value.filter((x) => x.step.classificationConfirmed).length
+    flatSteps.value.filter((x) => stepConfirmed(x.step)).length
 )
 const selectedProcess = computed(() =>
   processes.value.find((p) => p.processId === selectedStep.value?.processId)
@@ -559,6 +533,13 @@ const generationReady = computed(
     })
 )
 const processById = (id?: number) => processes.value.find((p) => p.processId === id)
+const stepConfirmed = (step: Step) => {
+  if (step.contentType === ArchiveCellContentTypeEnum.EMPTY.value) return Boolean(step.classificationConfirmed)
+  if (!step.classificationConfirmed) return false
+  if (step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value)
+    return step.components.length > 0 && step.components.every((c) => Boolean(c.processId))
+  return Boolean(step.processId)
+}
 async function load() {
   loading.value = true
   try {
@@ -582,7 +563,17 @@ async function upload(o: UploadRequestOptions) {
   }
 }
 async function retry(r: ArchiveImportRecord) {
+  try {
+    await ElMessageBox.confirm(
+      '重新识别会刷新当前档案的识别结果，当前未保存的修改可能丢失，是否继续？',
+      '确认重新识别',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
   await archiveImportApi.retry(r.archiveId)
+  ElMessage.success('已重新识别')
   await load()
 }
 async function url(path?: string) {
@@ -610,6 +601,11 @@ async function openWorkbench(r: ArchiveImportRecord) {
   visible.value = true
   stage.value = 0
   originalUrl.value = await url(d.filePath)
+  groupImageUrls.value = {}
+  for (const g of groups.value) {
+    const imageUrl = await url(g.groupImagePath)
+    if (imageUrl) groupImageUrls.value[g.key || ''] = imageUrl
+  }
   if (!processes.value.length)
     processes.value = payload(await standardProcessApi.getEnabledProcesses())
 }
@@ -618,6 +614,7 @@ function closeWorkbench() {
   cache.clear()
   originalUrl.value = ''
   selectedUrl.value = ''
+  groupImageUrls.value = {}
   selectedGroup.value = undefined
   selectedStep.value = undefined
 }
@@ -634,31 +631,27 @@ async function selectStep(w: Workflow, s: Step) {
   selectedStep.value = s
   selectedUrl.value = await url(s.cellImagePath)
 }
+function groupTileStyle(g: Group) {
+  const b = g.bounds
+  return {
+    left: `${b.x1 * 100}%`,
+    top: `${b.y1 * 100}%`,
+    width: `${Math.max(1, (b.x2 - b.x1) * 100)}%`,
+    height: `${Math.max(1, (b.y2 - b.y1) * 100)}%`,
+  }
+}
+function confirmAllGroups() {
+  draft.value.groups.forEach((g) => (g.confirmed = true))
+  draft.value.workflows.forEach((w) => (w.confirmed = true))
+  ElMessage.success('已确认全部分组')
+}
 function stageBlocked(target: number): string | undefined {
   if (target <= stage.value) return
   if (stage.value === 0 && groups.value.some((g) => !g.confirmed)) return '请先确认全部分组'
   if (stage.value === 1 && draft.value.workflows.some((w) => !w.steps?.length))
     return '请先完成工序分格'
-  if (stage.value === 2 && flatSteps.value.some((x) => !x.step.classificationConfirmed))
-    return '请先完成全部工序内容分类'
-  if (
-    stage.value === 3 &&
-    composites.value.some(
-      (x) => !x.step.components.length || x.step.components.some((c) => !c.processId)
-    )
-  )
-    return '请先为复合工序补齐标准子工序'
-  if (
-    stage.value === 4 &&
-    nonEmpty.value.some(
-      (x) =>
-        (!x.step.processId &&
-          x.step.processStructure !== ArchiveProcessStructureEnum.COMPOSITE.value) ||
-        (x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value &&
-          x.step.components.some((c) => !c.processId))
-    )
-  )
-    return '请先完成标准工序匹配'
+  if (stage.value === 2 && flatSteps.value.some((x) => !stepConfirmed(x.step)))
+    return '请先完成全部工序的分类、拆分和标准工序匹配'
 }
 function goStage(target: number) {
   if (target <= stage.value) {
@@ -677,7 +670,7 @@ function goStage(target: number) {
   stage.value = target
 }
 function nextStage() {
-  goStage(Math.min(5, stage.value + 1))
+  goStage(Math.min(3, stage.value + 1))
 }
 function syncComposite(v: string) {
   if (!selectedStep.value) return
@@ -777,6 +770,77 @@ h3 {
 .image img {
   max-width: 100%;
   height: auto;
+}
+.group-collage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--el-fill-color-light);
+  aspect-ratio: 4 / 3;
+}
+.collage-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  opacity: 0.16;
+}
+.collage-tile {
+  position: absolute;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 2px;
+  border: 2px solid var(--el-color-warning);
+  background: var(--el-bg-color-overlay);
+  color: var(--el-text-color-primary);
+  cursor: pointer;
+}
+.collage-tile.active {
+  z-index: 2;
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 2px var(--el-color-primary-light-5);
+}
+.collage-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+.collage-tile span {
+  position: absolute;
+  max-width: 90%;
+  overflow: hidden;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 85%);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.group-card-content {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.group-card-content img {
+  width: 44px;
+  height: 32px;
+  object-fit: fill;
+  border: 1px solid var(--el-border-color-lighter);
 }
 .crop {
   max-height: 25vh;

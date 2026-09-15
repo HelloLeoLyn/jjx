@@ -57,6 +57,7 @@
         <template #default="scope">
           <div class="group-items">
             <ProcessOperationCard
+              mode="table"
               :items="operationItems(scope.row.items)"
               :remark="scope.row.remark"
             />

@@ -17,6 +17,7 @@ import com.jjx.product.mapper.EngineeringRoutingItemMapper;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.product.service.IProductStandardProcessService;
 import com.jjx.system.service.SysDictService;
+import com.jjx.system.domain.vo.SysDictItemVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -47,6 +48,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ProductStandardProcessVO createProcess(ProductStandardProcess process) {
+        validateIcon(process.getIcon());
         // 检查编码是否唯一
         if (!checkProcessCodeUnique(process.getProcessCode(), null)) {
             throw new BusinessException(BusinessExceptionEnum.BOM_CODE_DUPLICATE);
@@ -94,6 +96,8 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
 
+        validateIcon(process.getIcon());
+
         // 检查编码是否唯一（排除自身）
         if (!existing.getProcessCode().equals(process.getProcessCode())) {
             if (!checkProcessCodeUnique(process.getProcessCode(), process.getProcessId())) {
@@ -113,6 +117,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         if (process.getEquipmentType() != null) existing.setEquipmentType(process.getEquipmentType());
         if (process.getQualityStandard() != null) existing.setQualityStandard(process.getQualityStandard());
         if (process.getDescription() != null) existing.setDescription(process.getDescription());
+        if (process.getIcon() != null) existing.setIcon(process.getIcon());
         if (process.getDisplayOrder() != null) existing.setDisplayOrder(process.getDisplayOrder());
         if (process.getHasIndex() != null) existing.setHasIndex(process.getHasIndex());
         if (process.getHasWorkInstruction() != null) existing.setHasWorkInstruction(process.getHasWorkInstruction());
@@ -130,6 +135,21 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
 
         log.info("更新标准工序成功: {} - {}", existing.getProcessCode(), existing.getProcessName());
         return productStandardProcessConverter.toVO(existing);
+    }
+
+    /**
+     * 标准工序图标只能引用 JJX 图标字典中的启用项，避免保存旧的硬编码代码（如 QC）后列表无法渲染。
+     */
+    private void validateIcon(String icon) {
+        if (StringUtils.isBlank(icon)) {
+            return;
+        }
+        boolean exists = dictService.selectActiveItemsByDictCode("engineering_jjx_icon").stream()
+                .map(SysDictItemVO::getItemValue)
+                .anyMatch(icon::equals);
+        if (!exists) {
+            throw new BusinessException("图标不存在或已停用，请从 JJX 图标库重新选择");
+        }
     }
 
     @Override

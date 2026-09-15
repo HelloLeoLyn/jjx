@@ -13,6 +13,13 @@ Judge the request type BEFORE touching anything:
 Unsure which it is → treat it as discuss and ask three things first: what to touch, where, what the deliverable is.
 Writing files is legitimate only as part of an executed task (backups / migrations / doc registration are part of the task, not "顺便"). Full rule: `jjx-docs/standards/CONVENTIONS.md` §9.
 
+## Service lifecycle — explicit user instruction required
+
+- Never start, stop, restart, reload, kill, or replace a running service/process unless the user explicitly requests that exact lifecycle operation in the current request.
+- An implementation, build, test, deploy-preparation, or E2E request does **not** authorize service lifecycle changes. Finish the code/build work, report that a restart is required, and let the user perform it.
+- This applies to backend/frontend dev servers, OCR services, systemd units, containers, background processes, port occupants, and similar runtime operations.
+- Read-only checks such as health requests, port inspection, process listing, and log reading remain allowed when relevant; they must not mutate runtime state.
+
 ## Status enums
 
 - Before changing status-related UI or logic, search and reuse the existing enum under `jjx-web/src/enums/`.

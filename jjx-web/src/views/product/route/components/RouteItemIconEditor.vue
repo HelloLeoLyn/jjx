@@ -102,6 +102,7 @@
                     >
                       <template v-if="modernOperationCard">
                         <ProcessOperationCard
+                          mode="table"
                           :items="toOperationCardItems(scope.row.items)"
                           draggable
                           editable
@@ -413,12 +414,13 @@
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 下标工序：输入下标数字弹窗（has_index=1 的工序拖入时弹出） -->
-    <el-dialog v-model="indexDialogVisible" title="输入下标数字" width="380px" append-to-body>
+    <!-- 工序下标说明：数字下标与作业说明共用一个输入弹窗 -->
+    <el-dialog v-model="indexDialogVisible" :title="promptTitle" width="380px" append-to-body>
       <div style="font-size: 13px; color: #606266; margin-bottom: 12px">
-        工序 <b>{{ indexDialogProcessName }}</b> 带下标，请输入下标数字（正整数）：
+        工序 <b>{{ indexDialogProcessName }}</b>{{ promptMode === 'instruction' ? '需要作业说明，请填写：' : '带数字下标，请输入：' }}
       </div>
       <el-input-number
+        v-if="promptMode === 'index'"
         v-model="indexDialogValue"
         :min="1"
         :max="999"
@@ -427,9 +429,16 @@
         style="width: 100%"
         placeholder="如 4 显示为 ④"
       />
+      <el-input
+        v-else
+        v-model="instructionDialogValue"
+        maxlength="80"
+        clearable
+        placeholder="如：冲窗口灯孔、线路外形"
+      />
       <template #footer>
         <el-button @click="indexDialogVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!indexDialogValue" @click="confirmIndexDialog"
+        <el-button type="primary" :disabled="!promptValueValid" @click="confirmPrompt"
           >确定</el-button
         >
       </template>
@@ -638,14 +647,32 @@ let draggedItemInfo: { groupIndex: number; itemIndex: number } | null = null
 // ==================== 下标工序弹窗（批次1） ====================
 const indexDialogVisible = ref(false)
 const indexDialogValue = ref<number | null>(null)
+const instructionDialogValue = ref('')
+const promptMode = ref<'index' | 'instruction'>('index')
 const indexDialogProcessName = ref('')
 let pendingIndexItem: EngineeringRoutingItemVO | null = null
+
+const promptTitle = computed(() => (promptMode.value === 'instruction' ? '填写作业说明' : '输入下标数字'))
+const promptValueValid = computed(() =>
+  promptMode.value === 'instruction'
+    ? instructionDialogValue.value.trim().length > 0
+    : indexDialogValue.value != null && indexDialogValue.value > 0,
+)
 
 // 打开下标输入弹窗（has_index=1 的工序拖入/点击图标时）
 const openIndexDialog = (item: EngineeringRoutingItemVO) => {
   pendingIndexItem = item
+  promptMode.value = 'index'
   indexDialogProcessName.value = item.processName || ''
   indexDialogValue.value = item.indexNumber ?? null
+  indexDialogVisible.value = true
+}
+
+const openInstructionDialog = (item: EngineeringRoutingItemVO) => {
+  pendingIndexItem = item
+  promptMode.value = 'instruction'
+  indexDialogProcessName.value = item.processName || ''
+  instructionDialogValue.value = ''
   indexDialogVisible.value = true
 }
 
@@ -658,6 +685,22 @@ const confirmIndexDialog = () => {
     target.indexNumber = Math.floor(indexDialogValue.value)
     syncToParent()
   }
+  indexDialogVisible.value = false
+  pendingIndexItem = null
+}
+
+const confirmPrompt = () => {
+  if (!pendingIndexItem) return
+  const target = reactive(pendingIndexItem)
+  if (promptMode.value === 'index' && indexDialogValue.value != null && indexDialogValue.value > 0) {
+    target.indexNumber = Math.floor(indexDialogValue.value)
+  } else if (promptMode.value === 'instruction' && instructionDialogValue.value.trim()) {
+    ;(target as EngineeringRoutingItemVO & { workInstruction?: string }).workInstruction =
+      instructionDialogValue.value.trim()
+  } else {
+    return
+  }
+  syncToParent()
   indexDialogVisible.value = false
   pendingIndexItem = null
 }
@@ -947,9 +990,11 @@ const createItemVO = (process: StandardProcessOption): EngineeringRoutingItemVO 
   }
 }
 
-// 添加工序后：若该工序带下标（has_index=1）则弹窗输入下标数字
+// 添加工序后：数字下标和作业说明共用同一个输入弹窗
 const maybePromptIndex = (item: EngineeringRoutingItemVO) => {
-  if (item.hasIndex === 1) {
+  if (item.hasWorkInstruction === 1) {
+    openInstructionDialog(item)
+  } else if (item.hasIndex === 1) {
     openIndexDialog(item)
   }
 }

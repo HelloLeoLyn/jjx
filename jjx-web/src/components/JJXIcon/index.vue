@@ -2,13 +2,20 @@
   <div class="jjx-icon-selector">
     <!-- 搜索框 -->
     <div class="search-bar">
-      <el-input
+    <el-input
         v-model="searchKey"
         placeholder="搜索图标"
         clearable
         size="small"
-        prefix-icon="Search"
-      />
+      prefix-icon="Search"
+    />
+    <el-upload
+      :show-file-list="false"
+      accept="image/png,image/jpeg,image/svg+xml"
+      :http-request="uploadIcon"
+    >
+      <el-button size="small" type="primary" plain>上传 JJX 图标</el-button>
+    </el-upload>
     </div>
 
     <!-- 分类标签 -->
@@ -20,10 +27,11 @@
             v-for="icon in getFilteredIcons(tab.name)"
             :key="icon.name"
             class="icon-item"
-            :class="{ active: modelValue === icon.name }"
-            @click="handleSelect(icon.name)"
+            :class="{ active: modelValue === icon.value }"
+            @click="handleSelect(icon.value)"
           >
-            <SvgIcon :name="`${icon.name}`" :size="32" />
+            <img v-if="icon.previewUrl" :src="icon.previewUrl" class="uploaded-icon" />
+            <SvgIcon v-else :name="`${icon.value}`" :size="32" />
             <span class="icon-name">{{ icon.label }}</span>
           </div>
         </div>
@@ -41,6 +49,10 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
+import { useDict } from '@/composables/useDict'
+import { dictApi } from '@/api/system/dict'
+import { attachmentApi } from '@/api/system/attachment'
 
 interface Props {
   modelValue?: string
@@ -49,105 +61,24 @@ interface Props {
 interface Emits {
   (e: 'update:modelValue', value: string): void
 }
+type IconOption = {
+  name: string
+  value: string
+  label: string
+  category?: string
+  previewUrl?: string
+}
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: '',
 })
 
 const emit = defineEmits<Emits>()
+const iconDictCode = 'engineering_jjx_icon'
+const { options: dictionaryOptions, refresh: refreshDictionary } = useDict(iconDictCode)
 
 const searchKey = ref('')
 const activeTab = ref('mianban')
-
-// 面板分类
-const mianban = [
-  { name: '面板', label: '面板' },
-  { name: '面板2', label: '面板2' },
-  { name: '面板隔片', label: '面板隔片' },
-  { name: '面板背胶', label: '面板背胶' },
-  { name: '面板裁切', label: '面板裁切' },
-  { name: '面板裁切', label: '面板裁切' },
-  { name: '面板保护膜', label: '面板保护膜' },
-  { name: '面板凹凸', label: '面板凹凸' },
-  { name: '面板冲孔', label: '面板冲孔' },
-  { name: '面板冲形', label: '面板冲形' },
-  { name: '面板冲形 (1)', label: '面板冲形' },
-  { name: '垫片', label: '垫片' },
-  { name: '面板冲第一刀', label: '面板冲第一刀' },
-  { name: '面板冲第二刀', label: '面板冲第二刀' },
-]
-
-// 上线分类
-const shangxian = [
-  { name: '上线', label: '上线' },
-  { name: '上线隔片', label: '上线隔片' },
-  { name: '上线裁切', label: '上线裁切' },
-  { name: '上线加强片', label: '上线加强片' },
-  { name: '上线保护膜', label: '上线保护膜' },
-  { name: '上线凹凸', label: '上线凹凸' },
-  { name: '上线冲孔', label: '上线冲孔' },
-  { name: '上线冲第一刀', label: '上线冲第一刀' },
-  { name: '上线冲型', label: '上线冲型' },
-]
-
-// 下线分类
-const xiaxian = [
-  { name: '下线', label: '下线' },
-  { name: '下线隔片', label: '下线隔片' },
-  { name: '下线隔片 (1)', label: '下线隔片' },
-  { name: '下线裁切', label: '下线裁切' },
-  { name: '下线加强片', label: '下线加强片' },
-  { name: '下线保护膜', label: '下线保护膜' },
-  { name: '下线背胶', label: '下线背胶' },
-  { name: '下线冲孔', label: '下线冲孔' },
-  { name: '下线第一刀', label: '下线第一刀' },
-  { name: '下线第一刀 (1)', label: '下线第一刀' },
-  { name: '下线冲型', label: '下线冲型' },
-  { name: '下线连接器', label: '下线连接器' },
-]
-
-// 弹片分类
-const tanpian = [
-  { name: '弹片', label: '弹片' },
-  { name: '弹片上贴黑豆', label: '弹片上贴黑豆' },
-]
-
-// 其他分类
-const others = [
-  { name: 'LED', label: 'LED' },
-  { name: '成品', label: '成品' },
-  { name: '打公PIN', label: '打公PIN' },
-  { name: '打母PIN', label: '打母PIN' },
-  { name: '撕水性保护膜', label: '撕水性保护膜' },
-  { name: '清洁', label: '清洁' },
-  { name: '裁切', label: '裁切' },
-  { name: '线路测阻值', label: '线路测阻值' },
-  { name: 'OHM', label: 'OHM' },
-  { name: '贴RUBBER胶', label: '贴RUBBER胶' },
-  { name: '贴周期码', label: '贴周期码' },
-  { name: '贴离形纸', label: '贴离形纸' },
-  { name: '长方形', label: '长方形' },
-  { name: '凸台', label: '凸台' },
-  { name: '包装', label: '包装' },
-  { name: '包装2', label: '包装2' },
-  { name: '品检', label: '品检' },
-  { name: 'QC', label: 'QC' },
-  { name: '垫片', label: '垫片' },
-  { name: '连接器', label: '连接器' },
-  { name: '连接器与适配器', label: '连接器与适配器' },
-]
-
-// 未使用分类
-const nouse = [
-  { name: 'omega', label: 'omega' },
-  { name: 'rect', label: 'rect' },
-  { name: 'rect-split', label: 'rect-split' },
-  { name: 'shape-d', label: 'shape-d' },
-  { name: 't_田字格', label: '田字格' },
-  { name: 'tx-正方形', label: '正方形' },
-  { name: '三角形', label: '三角形' },
-  { name: '三角形 (1)', label: '三角形' },
-]
 
 // 标签页配置
 const iconTabs = [
@@ -159,24 +90,66 @@ const iconTabs = [
   { name: 'nouse', label: '未使用' },
 ]
 
-// 图标分类映射
-const iconCategoryMap: Record<string, { name: string; label: string }[]> = {
-  mianban,
-  shangxian,
-  xiaxian,
-  tanpian,
-  others,
-  nouse,
-}
+const dictionaryIcons = computed(() =>
+  dictionaryOptions.value
+    .filter((item) => item.isActive !== 0)
+    .map((item) => {
+      let meta: { category?: string; previewUrl?: string } = {}
+      try {
+        meta = item.remark ? JSON.parse(item.remark) : {}
+      } catch {
+        // 兼容历史非 JSON 备注
+      }
+      return {
+        name: item.itemKey,
+        value: item.itemValue || item.itemKey,
+        label: item.label || item.itemKey,
+        category: meta.category || 'others',
+        previewUrl: meta.previewUrl,
+      }
+    })
+)
 
 // 获取过滤后的图标
-const getFilteredIcons = (tabName: string) => {
-  const icons = iconCategoryMap[tabName] || []
+const getFilteredIcons = (tabName: string): IconOption[] => {
+  // 字典是唯一运行时来源；字典接口不可用时显示空状态，避免继续展示已失效的硬编码数组。
+  const icons = dictionaryIcons.value.filter((icon) => icon.category === tabName)
   if (!searchKey.value) return icons
   const key = searchKey.value.toLowerCase()
   return icons.filter(
     (icon) => icon.name.toLowerCase().includes(key) || icon.label.includes(searchKey.value)
   )
+}
+
+async function uploadIcon(options: UploadRequestOptions) {
+  try {
+    const name = await ElMessageBox.prompt('请输入图标名称', '上传 JJX 图标', {
+      inputValue: options.file.name.replace(/\.[^.]+$/, ''),
+      inputPattern: /\S+/,
+      inputErrorMessage: '图标名称不能为空',
+    })
+    const uploaded: any = await attachmentApi.upload(
+      options.file as File,
+      'engineering_jjx_icon',
+      0,
+      JSON.stringify({ category: activeTab.value }),
+    )
+    const attachmentId = uploaded?.data?.data ?? uploaded?.data
+    const previewUrl = attachmentApi.downloadUrl(Number(attachmentId))
+    await dictApi.addItem({
+      dictCode: iconDictCode,
+      itemKey: `jjx-upload-${attachmentId}`,
+      itemValue: previewUrl,
+      label: name.value,
+      remark: JSON.stringify({ category: activeTab.value, source: 'UPLOAD', previewUrl }),
+      sortOrder: 999,
+      isActive: 1,
+    })
+    await refreshDictionary()
+    ElMessage.success('图标已上传并加入 JJX 图标库')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '图标上传失败')
+  }
 }
 
 // 选择图标
@@ -238,6 +211,12 @@ const handleSelect = (name: string) => {
         text-align: center;
         line-height: 1.3;
         word-break: break-all;
+      }
+
+      .uploaded-icon {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
       }
     }
   }

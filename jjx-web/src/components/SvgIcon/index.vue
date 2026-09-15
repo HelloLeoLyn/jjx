@@ -1,7 +1,15 @@
 <!-- src/components/SvgIcon/index.vue -->
 <template>
-  <svg aria-hidden="true" class="svg-icon" :width="sizeNum" :height="sizeNum">
-    <use :href="symbolId" :fill="color" />
+  <img
+    v-if="isImageUrl"
+    aria-hidden="true"
+    class="svg-icon image-icon"
+    :src="props.name"
+    :width="sizeNum"
+    :height="sizeNum"
+  />
+  <svg v-else aria-hidden="true" class="svg-icon" :width="sizeNum" :height="sizeNum">
+    <use :href="resolvedSymbolId" :fill="color" />
   </svg>
 </template>
 
@@ -31,12 +39,16 @@ const sizeNum = computed(() => {
   return 18
 })
 
-const symbolId = computed(() => `#${props.prefix}-${props.name}`)
+const isImageUrl = computed(() => /^(https?:|data:|\/|\.\/)/.test(props.name))
+const resolvedSymbolId = computed(() => `#${props.prefix}-${props.name}`)
 </script>
 
 <style scoped>
 .svg-icon {
   display: inline-block;
   vertical-align: middle;
+}
+.image-icon {
+  object-fit: contain;
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="operation-card" :class="{ 'is-composite': items.length > 1 }">
+  <div class="operation-card" :class="[`mode-${mode}`, { 'is-composite': items.length > 1 }]">
     <div class="operation-children">
       <template v-for="(item, index) in items" :key="item.key ?? index">
         <span v-if="index > 0" class="plus">+</span>
@@ -21,7 +21,7 @@
             <SvgIcon v-if="item.icon" :name="item.icon" :size="32" />
             <span v-else class="icon-placeholder">工</span>
             <el-popover
-              v-if="editable && item.indexNumber != null"
+            v-if="editable && !item.workInstruction && item.indexNumber != null"
               placement="top"
               :width="210"
               trigger="click"
@@ -42,15 +42,54 @@
                 }}</span>
               </template>
             </el-popover>
-            <span v-else-if="item.indexNumber != null" class="index-number">{{
+            <span v-else-if="!item.workInstruction && item.indexNumber != null" class="index-number">{{
               item.indexNumber
             }}</span>
           </div>
-          <div class="process-copy">
-            <div class="process-name" :title="item.processName">{{ item.processName }}</div>
+          <el-popover
+            v-if="mode === 'table' && editable && (item.workInstruction || (item.hasWorkInstruction === 1 && item.indexNumber == null))"
+            placement="bottom-start"
+            :teleported="false"
+            :fallback-placements="['bottom-start']"
+            :offset="4"
+            :width="300"
+            trigger="click"
+          >
+            <el-input
+              :model-value="item.workInstruction"
+              clearable
+              maxlength="80"
+              placeholder="作业说明，如：冲窗口灯孔"
+              @input="(value: string) => emit('update:work-instruction', index, value)"
+            />
+            <div class="common-work-instructions">
+              <span>常用：</span>
+              <button
+                v-for="text in commonWorkInstructions"
+                :key="text"
+                type="button"
+                @click="selectWorkInstruction(index, text)"
+              >{{ text }}</button>
+            </div>
+            <template #reference>
+              <span class="table-subscript is-editable">
+                {{ item.workInstruction || '＋作业说明' }}
+              </span>
+            </template>
+          </el-popover>
+          <span
+            v-else-if="mode === 'table' && item.workInstruction"
+            class="table-subscript"
+          >
+            {{ item.workInstruction }}
+          </span>
+          <div v-else-if="mode !== 'table'" class="process-copy">
             <el-popover
               v-if="editable && (item.hasWorkInstruction === 1 || item.workInstruction)"
-              placement="top"
+              placement="bottom-start"
+              :teleported="false"
+              :fallback-placements="['bottom-start']"
+              :offset="4"
               :width="300"
               trigger="click"
             >
@@ -61,6 +100,15 @@
                 placeholder="作业说明，如：冲窗口灯孔"
                 @input="(value: string) => emit('update:work-instruction', index, value)"
               />
+              <div class="common-work-instructions">
+                <span>常用：</span>
+                <button
+                  v-for="text in commonWorkInstructions"
+                  :key="text"
+                  type="button"
+                  @click="selectWorkInstruction(index, text)"
+                >{{ text }}</button>
+              </div>
               <template #reference>
                 <div
                   class="work-instruction is-editable"
@@ -99,15 +147,19 @@
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import type { ProcessOperationCardItem } from './types'
 
+const commonWorkInstructions = ['线路外形', '冲窗口灯孔', '一车一模', '一车二模', '撕保护膜', '贴保护膜']
+
 const props = withDefaults(
   defineProps<{
     items: ProcessOperationCardItem[]
     remark?: string
+    mode?: 'default' | 'table'
     draggable?: boolean
     editable?: boolean
   }>(),
   {
     remark: '',
+    mode: 'default',
     draggable: false,
     editable: false,
   }
@@ -121,6 +173,10 @@ const emit = defineEmits<{
   (event: 'update:work-instruction', itemIndex: number, value: string): void
   (event: 'remove', itemIndex: number): void
 }>()
+
+function selectWorkInstruction(itemIndex: number, value: string) {
+  emit('update:work-instruction', itemIndex, value)
+}
 
 function onDragOver(event: DragEvent, itemIndex: number) {
   if (!props.draggable) return
@@ -152,6 +208,68 @@ function onDrop(event: DragEvent, itemIndex: number) {
   box-shadow: 0 4px 14px rgb(0 0 0 / 5%);
 }
 
+.operation-card.mode-table {
+  min-height: 34px;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mode-table .operation-children {
+  gap: 8px;
+}
+
+.mode-table .operation-child {
+  align-items: flex-end;
+  /* 下标紧贴图标右侧，避免表格中图标与说明被拉开 */
+  gap: 0;
+}
+
+.mode-table .icon-cell {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+  align-items: flex-end;
+}
+
+.mode-table .icon-placeholder {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.mode-table .table-subscript {
+  max-width: 84px;
+  margin-bottom: -5px;
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-size: 10px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mode-table .table-subscript.is-editable {
+  cursor: pointer;
+}
+
+.mode-table .table-subscript.is-editable:hover {
+  color: var(--el-color-primary);
+}
+
+.mode-table .operation-remark {
+  display: none;
+}
+
+.mode-table .plus {
+  font-size: 14px;
+}
+
 .operation-children,
 .operation-child {
   display: flex;
@@ -165,7 +283,7 @@ function onDrop(event: DragEvent, itemIndex: number) {
 
 .operation-child {
   position: relative;
-  gap: 12px;
+  gap: 8px;
 }
 
 .operation-child.is-draggable {
@@ -283,6 +401,32 @@ function onDrop(event: DragEvent, itemIndex: number) {
 
 .work-instruction.is-empty {
   color: var(--el-text-color-placeholder);
+}
+
+.common-work-instructions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.common-work-instructions button {
+  padding: 2px 6px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 3px;
+  background: var(--el-fill-color-lighter);
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.common-work-instructions button:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 
 .remove-item {

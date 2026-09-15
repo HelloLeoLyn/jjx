@@ -61,6 +61,12 @@ def region_text(lines: list[tuple[float, float, str]], x1: float, y1: float, x2:
 def normalized_icon(image: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
     binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    # 工序格四周黑框不属于图标。先清掉贴边像素，避免边框交点残留为伪图标。
+    margin = max(2, min(6, min(binary.shape[:2]) // 10))
+    binary[:margin, :] = 0
+    binary[-margin:, :] = 0
+    binary[:, :margin] = 0
+    binary[:, -margin:] = 0
     horizontal = cv2.morphologyEx(binary, cv2.MORPH_OPEN,
                                   cv2.getStructuringElement(cv2.MORPH_RECT, (max(8, image.shape[1]//2), 1)))
     vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN,
@@ -90,8 +96,8 @@ def perceptual_hash(image: np.ndarray) -> str:
 
 
 def detect_row_bounds(image: np.ndarray, x1: float, x2: float, y1: float, y2: float,
-                      rows: int) -> list[tuple[float, float]]:
-    """按工序表横向黑色边框定位行，失败时回退等高切分。"""
+                      fallback_rows: int) -> tuple[list[tuple[float, float]], dict]:
+    """按实际横向黑边框切行；完全无法定位时才使用旧模板兜底。"""
     height, width = image.shape[:2]
     xa, xb = int(width * x1), int(width * x2)
     ya, yb = int(height * y1), int(height * y2)
@@ -105,17 +111,47 @@ def detect_row_bounds(image: np.ndarray, x1: float, x2: float, y1: float, y2: fl
         else:
             groups[-1].append(int(value))
     lines = [int(round(float(np.mean(group)))) for group in groups]
-    expected = np.linspace(ya, yb, rows + 1).astype(int).tolist()
-    if len(lines) < rows + 1:
-        lines = expected
-    else:
-        # 只保留覆盖整个工序区域的规则边框，避免材料表等相邻横线混入。
-        selected = [line for line in lines if ya - 4 <= line <= yb + 4]
-        if len(selected) != rows + 1:
-            lines = expected
+    # 去除过近的重复线和高度明显不足的伪格。工序数由剩余相邻边框决定。
+    min_gap = max(8, int((yb - ya) / max(fallback_rows * 3, 1)))
+    selected: list[int] = []
+    for line in lines:
+        if ya - 4 <= line <= yb + 4 and (not selected or line - selected[-1] >= min_gap):
+            selected.append(line)
+    fallback = len(selected) < 2
+    if fallback:
+        selected = np.linspace(ya, yb, fallback_rows + 1).astype(int).tolist()
+    bounds = [(selected[index] / height, selected[index + 1] / height)
+              for index in range(len(selected) - 1)
+              if selected[index + 1] - selected[index] >= min_gap]
+    return bounds, {
+        "detectedBorderCount": 0 if fallback else len(selected),
+        "detectedStepCount": len(bounds),
+        "usedFallback": fallback,
+    }
+
+
+def detect_workflow_right_border(image: np.ndarray, x1: float, outer_x2: float,
+                                 y1: float, y2: float) -> tuple[float, bool]:
+    """从作业流程列左边界至耗时列外边界中，定位作业流程/耗时分隔线。"""
+    height, width = image.shape[:2]
+    xa, xb = int(width * x1), int(width * outer_x2)
+    ya, yb = int(height * y1), int(height * y2)
+    gray = cv2.cvtColor(image[ya:yb, xa:xb], cv2.COLOR_BGR2GRAY)
+    score = (gray < 80).mean(axis=0)
+    candidates = np.where(score >= 0.75)[0] + xa
+    groups: list[list[int]] = []
+    for value in candidates:
+        if not groups or value - groups[-1][-1] > 3:
+            groups.append([int(value)])
         else:
-            lines = selected
-    return [(lines[index] / height, lines[index + 1] / height) for index in range(rows)]
+            groups[-1].append(int(value))
+    borders = [int(round(float(np.mean(group)))) for group in groups]
+    # 前半段可能包含图标或文字竖画；分隔线位于候选区域后半段，且不是最右外框。
+    minimum = xa + int((xb - xa) * 0.45)
+    internal = [border for border in borders if minimum <= border < xb - 4]
+    if not internal:
+        return outer_x2, True
+    return internal[0] / width, False
 
 
 def png64(image: np.ndarray) -> str:
@@ -134,8 +170,20 @@ def parse_quantity(specification: str) -> tuple[float, str]:
 
 def workflow_rows(image: np.ndarray, lines: list[tuple[float, float, str]], workflow_type: str, x1: float, x2: float,
                   y1: float, y2: float, rows: int = 14) -> dict:
-    result = {"workflowType": workflow_type, "steps": []}
-    bounds = detect_row_bounds(image, x1, x2, y1, y2, rows)
+    x2, used_column_fallback = detect_workflow_right_border(image, x1, x2, y1, y2)
+    bounds, detection = detect_row_bounds(image, x1, x2, y1, y2, rows)
+    detection["usedColumnFallback"] = used_column_fallback
+    result = {
+        "workflowType": workflow_type,
+        "groupType": workflow_type,
+        "label": {"PANEL": "面板作业流程", "UP_LINE": "上线作业流程", "DOWN_LINE": "下线作业流程"}.get(workflow_type, workflow_type),
+        "confirmed": False,
+        "bounds": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+        "groupImageBase64": png64(crop(image, x1, y1, x2, y2)),
+        "detection": detection,
+        "gridConfirmed": False,
+        "steps": [],
+    }
     for index, (top, bottom) in enumerate(bounds):
         row = crop(image, x1, top, x2, bottom)
         if row.size == 0:
@@ -143,20 +191,35 @@ def workflow_rows(image: np.ndarray, lines: list[tuple[float, float, str]], work
         icon_width = max(20, int(row.shape[1]*0.28))
         icon = row[:, :icon_width]
         normal = normalized_icon(icon)
-        raw_text = region_text(lines, x1+(x2-x1)*0.28, top, x2, bottom)
-        components = [part.strip() for part in raw_text.split("+") if part.strip()]
-        is_composite = len(components) > 1
-        if cv2.countNonZero(normal) < 30 and not raw_text:
-            continue
+        # x1 已位于“作业流程”列左边界，图形、文字和“+”都属于该列内容。
+        raw_text = region_text(lines, x1, top, x2, bottom)
+        is_composite = "+" in raw_text
+        components = [part.strip() or None for part in raw_text.split("+")] if is_composite else []
+        has_icon = cv2.countNonZero(normal) >= 30
+        has_text = bool(raw_text)
+        content_type = ("MIXED" if has_icon and has_text else
+                        "ICON_ONLY" if has_icon else
+                        "TEXT_ONLY" if has_text else "EMPTY")
+        process_structure = "EMPTY" if content_type == "EMPTY" else "COMPOSITE" if is_composite else "SINGLE"
         step = {
             "stepNo": index + 1,
+            "bounds": {"x1": x1, "y1": top, "x2": x2, "y2": bottom},
             "rawText": raw_text,
+            "editedText": raw_text,
+            "contentType": content_type,
+            "processStructure": process_structure,
+            "classificationConfirmed": False,
             "isComposite": is_composite,
-            "components": [{"order": order, "text": part, "processId": None}
+            "components": [{"order": order, "text": part, "contentType": "UNKNOWN",
+                            "processId": None, "workInstruction": "", "confirmed": False}
                            for order, part in enumerate(components, start=1)] if is_composite else [],
             "processId": None,
             "processName": raw_text or None,
+            "workInstruction": "",
+            "operationRemark": "",
+            "precondition": {},
             "perceptualHash": perceptual_hash(normal),
+            "cellImageBase64": png64(row),
             "iconOriginalBase64": png64(icon),
             "iconNormalizedBase64": png64(normal),
         }
@@ -185,6 +248,11 @@ async def recognize(file: UploadFile = File(...)) -> dict:
 
     materials = []
     material_top, material_bottom, count = 0.087, 0.381, 14
+    material_regions = {
+        "materialDetailImageBase64": png64(crop(image, 0.115, material_top, 0.60, material_bottom)),
+        "toolingPositionImageBase64": png64(crop(image, 0.60, material_top, 0.73, material_bottom)),
+        "embossConditionImageBase64": png64(crop(image, 0.73, material_top, 0.995, material_bottom)),
+    }
     remarks = []
     for index in range(count):
         top = material_top + (material_bottom-material_top)*index/count
@@ -197,20 +265,37 @@ async def recognize(file: UploadFile = File(...)) -> dict:
             continue
         quantity, unit = parse_quantity(specification)
         materials.append({"itemNo": index+1, "materialName": name,
-                          "specification": specification, "quantity": quantity, "unit": unit})
+                          "specification": specification, "quantity": quantity, "unit": unit,
+                          "materialDetailImageBase64": png64(crop(image, 0.115, top, 0.60, bottom)),
+                          "toolingPosition": tooling,
+                          "toolingPositionImageBase64": png64(crop(image, 0.60, top, 0.73, bottom)),
+                          "embossCondition": emboss,
+                          "embossConditionImageBase64": png64(crop(image, 0.73, top, 0.995, bottom))})
         if tooling or emboss:
             remarks.append(f"{index+1}. {name}；刀模位置：{tooling or '-'}；凹凸条件：{emboss or '-'}")
 
     return {
+        "schemaVersion": 3,
         "template": "JJX_PRODUCT_OPERATION_STANDARD_V1",
         "productName": product_name,
         "productCode": product_code,
         "productRemark": "【历史作业规范】\n" + "\n".join(remarks),
+        "groups": [
+            {"groupType": "MATERIAL_DETAIL", "label": "材料明细", "confirmed": False,
+             "bounds": {"x1": 0.115, "y1": material_top, "x2": 0.60, "y2": material_bottom},
+             "groupImageBase64": material_regions["materialDetailImageBase64"]},
+            {"groupType": "TOOLING_POSITION", "label": "刀模位置", "confirmed": False,
+             "bounds": {"x1": 0.60, "y1": material_top, "x2": 0.73, "y2": material_bottom},
+             "groupImageBase64": material_regions["toolingPositionImageBase64"]},
+            {"groupType": "EMBOSS_CONDITION", "label": "凹凸条件", "confirmed": False,
+             "bounds": {"x1": 0.73, "y1": material_top, "x2": 0.995, "y2": material_bottom},
+             "groupImageBase64": material_regions["embossConditionImageBase64"]},
+        ],
         "materials": materials,
         "workflows": [
-            workflow_rows(image, lines, "PANEL", 0.064, 0.338, 0.411, 0.779, 14),
-            workflow_rows(image, lines, "UP_LINE", 0.385, 0.670, 0.626, 0.779, 6),
-            workflow_rows(image, lines, "DOWN_LINE", 0.716, 0.930, 0.411, 0.779, 14),
+            workflow_rows(image, lines, "PANEL", 0.064, 0.338, 0.405, 0.775, 14),
+            workflow_rows(image, lines, "UP_LINE", 0.385, 0.670, 0.612, 0.775, 6),
+            workflow_rows(image, lines, "DOWN_LINE", 0.716, 0.930, 0.405, 0.775, 14),
         ],
         "rawFooter": footer,
     }
