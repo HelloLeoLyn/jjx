@@ -366,9 +366,13 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         //              —— 用于 BOM / 工艺路线建档：产品尚未发布时也要能建 BOM/路线，否则「发布需BOM、建BOM需已发布」死锁
         //   其他(默认) = 仅已发布(6)，保持销售等对外场景原行为
         if ("active".equalsIgnoreCase(scope)) {
-            wrapper.notIn(Product::getProductStatus,
-                    ProductEnums.Status.OBSOLETE.getValue(),
-                    ProductEnums.Status.CANCELLED.getValue());
+            // 2026-09-15：NOT IN 对 NULL 不成立（SQL 三值逻辑），历史数据 product_status 为 NULL 的产品
+            // 必须显式纳入，否则在 active 口径下依旧选不出来
+            wrapper.and(w -> w.isNull(Product::getProductStatus)
+                    .or()
+                    .notIn(Product::getProductStatus,
+                            ProductEnums.Status.OBSOLETE.getValue(),
+                            ProductEnums.Status.CANCELLED.getValue()));
         } else {
             wrapper.eq(Product::getProductStatus, ProductEnums.Status.RELEASED.getValue()); // 只查询已发布的产品
         }

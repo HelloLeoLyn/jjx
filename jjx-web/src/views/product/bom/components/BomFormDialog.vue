@@ -20,10 +20,13 @@
         <el-col :span="12">
           <el-form-item label="产品" prop="productId">
             <!-- 2026-09-15：BOM 建档放开产品状态（除 停产/取消 外均可选），破除「发布需BOM、建BOM需已发布」死锁 -->
+            <!-- 2026-09-15：allow-remote-with-options —— productOptions 只是回填当前产品用于显示，
+                 不能因此禁用远程搜索（否则修改BOM改选不了产品、新增时选错后搜不出别的产品） -->
             <ProductSelector
               v-model="formData.productId"
               valueType="productId"
               status-scope="active"
+              allow-remote-with-options
               :options="productOptions"
               @change="handleProductChange"
             />
@@ -228,14 +231,27 @@ const rules = reactive<FormRules>({
 })
 
 // 处理产品选择变化
-const handleProductChange = (productId: number, product: any) => {
-  if (product) {
-    formData.productCode = product.productCode
-    formData.productName = product.productName
-    formData.productId = product.productId
-    formData.bomName = `${product.productName}-BOM`
-    formData.bomCode = `${product.productCode}-BOM`
+const handleProductChange = (productId: number | null, product: any) => {
+  if (!product) {
+    // 2026-09-15：清空产品时同步清掉回填字段——残留会让 productOptions 非空，
+    // 且提交时 productCode/productName 与 productId 不一致
+    const oldCode = formData.productCode
+    const oldName = formData.productName
+    if (oldCode && formData.bomCode === `${oldCode}-BOM`) {
+      formData.bomCode = ''
+    }
+    if (oldName && formData.bomName === `${oldName}-BOM`) {
+      formData.bomName = ''
+    }
+    formData.productCode = ''
+    formData.productName = ''
+    return
   }
+  formData.productCode = product.productCode
+  formData.productName = product.productName
+  formData.productId = product.productId
+  formData.bomName = `${product.productName}-BOM`
+  formData.bomCode = `${product.productCode}-BOM`
 }
 
 // 处理BOM明细变化

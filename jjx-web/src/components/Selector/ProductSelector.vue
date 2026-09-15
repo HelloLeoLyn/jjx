@@ -47,6 +47,13 @@ interface Props {
    * 'active'（除 停产/取消 外均可选，用于 BOM/工艺路线建档场景）
    */
   statusScope?: string
+  /**
+   * 有外部 options 时是否仍执行远程搜索并与 options 合并（2026-09-15）：
+   * false（默认）= 保持旧行为，options 非空即完全走本地 options，不请求远程；
+   * true = 仅用于「options 只是回填当前选中项」的场景（如 BOM 修改回填单条产品），
+   *        搜索时远程结果与 options 按 productId 去重合并，使当前选中项保持可显示、同时能改选其它产品。
+   */
+  allowRemoteWithOptions?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -62,6 +69,7 @@ const props = withDefaults(defineProps<Props>(), {
   options: () => [],
   customerId: undefined,
   statusScope: 'released',
+  allowRemoteWithOptions: false,
 })
 
 const emit = defineEmits<{
@@ -79,7 +87,17 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 // 选项数据源：优先使用外部传入的 options，否则使用远程搜索结果
 const displayOptions = computed(() => {
   if (props.options && props.options.length > 0) {
-    return props.options
+    // allowRemoteWithOptions：options 只用于回填当前选中项，搜索结果需并入（2026-09-15）
+    if (!props.allowRemoteWithOptions) {
+      return props.options
+    }
+    const merged = [...props.options]
+    for (const item of remoteOptions.value) {
+      if (!merged.some((option) => option.productId === item.productId)) {
+        merged.push(item)
+      }
+    }
+    return merged
   }
   return remoteOptions.value
 })
@@ -132,8 +150,8 @@ const handleRemoteSearch = (query: string) => {
 
   if (debounceTimer) clearTimeout(debounceTimer)
 
-  // 如果有外部传入的 options，不执行远程搜索
-  if (props.options && props.options.length > 0) {
+  // 如果有外部传入的 options，不执行远程搜索（除非显式要求与远程结果合并）
+  if (props.options && props.options.length > 0 && !props.allowRemoteWithOptions) {
     return
   }
 
