@@ -30,8 +30,8 @@ export interface ProductBizAttachmentGroup {
 /**
  * 搜索产品
  */
-export function searchProduct(keyword: string, customerId?: number) {
-  return request.get('/product/search', { params: { keyword, customerId } })
+export function searchProduct(keyword: string, customerId?: number, scope?: string) {
+  return request.get('/product/search', { params: { keyword, customerId, scope } })
 }
 
 /**

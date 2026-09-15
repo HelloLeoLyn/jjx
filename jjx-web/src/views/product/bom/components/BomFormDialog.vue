@@ -19,9 +19,11 @@
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="产品" prop="productId">
+            <!-- 2026-09-15：BOM 建档放开产品状态（除 停产/取消 外均可选），破除「发布需BOM、建BOM需已发布」死锁 -->
             <ProductSelector
               v-model="formData.productId"
               valueType="productId"
+              status-scope="active"
               :options="productOptions"
               @change="handleProductChange"
             />

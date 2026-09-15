@@ -63,8 +63,11 @@ public interface IProductService extends IService<Product> {
 
     /**
      * 搜索产品（DEV-1121：支持按专属客户过滤，customerId 可空）
+     *
+     * @param scope 状态范围：null/"released"=仅已发布（默认，销售等对外场景）；
+     *              "active"=除 停产/取消 外均可选（建档场景：BOM/工艺路线）
      */
-    List<Product> searchProducts(String keyword, Long customerId);
+    List<Product> searchProducts(String keyword, Long customerId, String scope);
 
     /**
      * 新增产品

@@ -17,9 +17,11 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="产品" prop="productId">
+              <!-- 2026-09-15：工艺路线建档同样放开产品状态（除 停产/取消 外均可选），避免与「发布需路线已批」死锁 -->
               <ProductSelector
                 v-model="selectedProduct"
                 value-type="object"
+                status-scope="active"
                 @change="handleProductChange"
               />
             </el-form-item>

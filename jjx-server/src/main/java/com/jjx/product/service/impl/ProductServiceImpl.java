@@ -349,7 +349,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     }
 
     @Override
-    public List<Product> searchProducts(String keyword, Long customerId) {
+    public List<Product> searchProducts(String keyword, Long customerId, String scope) {
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
         // DEV-1121：专属客户过滤（定制产品都有固定客户）
         if (customerId != null) {
@@ -361,7 +361,17 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                     .or()
                     .like(Product::getProductName, keyword));
         }
-        wrapper.eq(Product::getProductStatus,ProductEnums.Status.RELEASED.getValue()); // 只查询已发布的产品
+        // 2026-09-15：状态范围按场景区分
+        //   active   = 除 停产(7)/取消(8) 外均可选（开发中1/待审核2/审核中3/已通过4/已发布6）
+        //              —— 用于 BOM / 工艺路线建档：产品尚未发布时也要能建 BOM/路线，否则「发布需BOM、建BOM需已发布」死锁
+        //   其他(默认) = 仅已发布(6)，保持销售等对外场景原行为
+        if ("active".equalsIgnoreCase(scope)) {
+            wrapper.notIn(Product::getProductStatus,
+                    ProductEnums.Status.OBSOLETE.getValue(),
+                    ProductEnums.Status.CANCELLED.getValue());
+        } else {
+            wrapper.eq(Product::getProductStatus, ProductEnums.Status.RELEASED.getValue()); // 只查询已发布的产品
+        }
         wrapper.orderByDesc(Product::getCreateTime);
         return productMapper.selectList(wrapper);
     }

@@ -42,6 +42,11 @@ interface Props {
   options?: ProductItem[]
   /** DEV-1121：专属客户过滤（可选，不传时全库搜索，行为不变） */
   customerId?: number
+  /**
+   * 状态范围（2026-09-15）：'released'（默认，仅已发布）|
+   * 'active'（除 停产/取消 外均可选，用于 BOM/工艺路线建档场景）
+   */
+  statusScope?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -56,6 +61,7 @@ const props = withDefaults(defineProps<Props>(), {
   autoSelectFirst: false,
   options: () => [],
   customerId: undefined,
+  statusScope: 'released',
 })
 
 const emit = defineEmits<{
@@ -139,7 +145,7 @@ const handleRemoteSearch = (query: string) => {
   debounceTimer = setTimeout(async () => {
     loading.value = true
     try {
-      const res = await productApi.search(query, props.customerId)
+      const res = await productApi.search(query, props.customerId, props.statusScope)
       if (res.code === 200 && res.data) {
         remoteOptions.value = res.data
         emit('search', query)
@@ -170,6 +176,14 @@ const handleChange = (val: number) => {
 // DEV-1121：客户切换时清空远程搜索缓存
 watch(
   () => props.customerId,
+  () => {
+    remoteOptions.value = []
+  },
+)
+
+// 2026-09-15：状态范围切换时清空缓存，避免旧范围结果残留
+watch(
+  () => props.statusScope,
   () => {
     remoteOptions.value = []
   },
