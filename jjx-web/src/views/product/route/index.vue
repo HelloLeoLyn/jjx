@@ -162,6 +162,12 @@
     <!-- 详情对话框 -->
     <RouteDetailDialog v-model="detailDialogVisible" :routing-id="currentRoutingId" />
 
+    <RouteFormDialog
+      v-model="formDialogVisible"
+      :routing-id="formRoutingId"
+      @success="loadData"
+    />
+
     <!-- 版本对比对话框（DEV-768） -->
     <RouteVersionCompareDialog
       v-model="versionCompareVisible"
@@ -199,7 +205,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { productRouteApi } from '@/api/product/routing'
 
-import type { StandardProcessOption } from '@/types/product'
 import type { ProductRouteQueryParams, EngineeringRoutingVO } from '@/types/product/routing'
 
 import RouteSearch from './components/RouteSearch.vue'
@@ -207,10 +212,9 @@ import RouteDetailDialog from './components/RouteDetailDialog.vue'
 import RouteCopyDialog from './components/RouteCopyDialog.vue'
 import RouteApproveDialog from './components/RouteApproveDialog.vue'
 import RouteVersionCompareDialog from './components/RouteVersionCompareDialog.vue'
+import RouteFormDialog from './components/RouteFormDialog.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
-import { useRouter } from 'vue-router'
 import { RouteStatusEnum, ProductActions } from '@/enums/product'
-const router = useRouter()
 // ==================== 查询参数 ====================
 const queryParams = reactive<ProductRouteQueryParams>({
   pageNum: 1,
@@ -247,11 +251,10 @@ interface ProductOption {
   productName: string
 }
 
-// ==================== 标准工序选项 ====================
-const standardProcesses = ref<StandardProcessOption[]>([])
-
 // ==================== 对话框状态 ====================
 const detailDialogVisible = ref(false)
+const formDialogVisible = ref(false)
+const formRoutingId = ref<number | undefined>(undefined)
 const copyDialogVisible = ref(false)
 const approveDialogVisible = ref(false)
 
@@ -273,15 +276,6 @@ const loadData = async () => {
     ElMessage.error('加载工艺路线列表失败')
   } finally {
     loading.value = false
-  }
-}
-
-const loadStandardProcesses = async () => {
-  try {
-    const response = await productRouteApi.getEnabledProcesses()
-    standardProcesses.value = response.data || []
-  } catch (error) {
-    console.error('加载标准工序失败:', error)
   }
 }
 
@@ -320,12 +314,14 @@ const handleCurrentChange = (val: number) => {
 
 // ==================== 新增 ====================
 const handleAdd = () => {
-  router.push(`/product/route/add`)
+  formRoutingId.value = undefined
+  formDialogVisible.value = true
 }
 
 // ==================== 编辑 ====================
 const handleEdit = (row: EngineeringRoutingVO) => {
-  router.push(`/product/route/edit/${row.routingId}`)
+  formRoutingId.value = row.routingId
+  formDialogVisible.value = true
 }
 
 // ==================== 删除 ====================
@@ -454,7 +450,6 @@ const handleApproveReject = async (remark: string) => {
 // ==================== 初始化 ====================
 onMounted(() => {
   loadData()
-  loadStandardProcesses()
 })
 </script>
 

@@ -511,18 +511,6 @@ export const constantRoutes: RouteRecordRaw[] = [
         meta: { hidden: true },
       },
       {
-        path: 'route/add',
-        name: 'ProductRouteAdd',
-        component: () => import('@/views/product/route/add.vue'),
-        meta: { hidden: true, title: '新增工艺路线', permission: 'engineering:routing:add' },
-      },
-      {
-        path: 'route/edit/:routingId',
-        name: 'ProductRouteEdit',
-        component: () => import('@/views/product/route/edit.vue'),
-        meta: { hidden: true, title: '编辑工艺路线', permission: 'engineering:routing:edit' },
-      },
-      {
         path: 'standard-process',
         redirect: '/engineering/standard-processes',
         meta: { hidden: true },

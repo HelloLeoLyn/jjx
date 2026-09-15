@@ -50,201 +50,210 @@
         </div>
 
         <!-- 下方：组合工序表格（拖拽目标）-->
-        <div
-          class="table-drop-zone"
-          @dragover.prevent="handleDragOver"
-          @dragleave="handleDragLeave"
-          @drop="handleDropOnTable"
-          :class="{ 'drag-over': isDragOverTable }"
-        >
-          <el-table
-            :data="groups"
-            border
-            stripe
-            style="width: 100%"
-            max-height="500"
-            @dragover.prevent="handleDragOver"
-            @drop="handleDropOnTable"
+        <el-tabs v-model="assemblyActiveTab" type="border-card">
+          <el-tab-pane
+            v-for="tab in ASSEMBLY_TABS"
+            :key="tab.value"
+            :name="tab.value"
+            :label="`${tab.label}（${assemblyGroupsByTab(tab.value).length}）`"
           >
-            <!-- 空数据时显示拖拽提示 -->
-            <template #empty>
-              <div
-                class="drop-zone-empty"
+            <div
+              class="table-drop-zone"
+              @dragover.prevent="handleDragOver"
+              @dragleave="handleDragLeave"
+              @drop="handleDropOnTable"
+              :class="{ 'drag-over': isDragOverTable }"
+            >
+              <el-table
+                :data="assemblyGroupsByTab(tab.value)"
+                border
+                stripe
+                style="width: 100%"
+                max-height="500"
                 @dragover.prevent="handleDragOver"
                 @drop="handleDropOnTable"
               >
-                <el-empty description="拖拽图标到此处创建工序组" :image-size="80" />
-              </div>
-            </template>
-            <el-table-column label="序号" width="60" align="center">
-              <template #default="scope">
-                {{ scope.row.groupOrder }}
-              </template>
-            </el-table-column>
+                <!-- 空数据时显示拖拽提示 -->
+                <template #empty>
+                  <div
+                    class="drop-zone-empty"
+                    @dragover.prevent="handleDragOver"
+                    @drop="handleDropOnTable"
+                  >
+                    <el-empty description="拖拽图标到此处新增组合" :image-size="80" />
+                  </div>
+                </template>
+                <el-table-column label="序号" width="60" align="center">
+                  <template #default="scope">
+                    {{ scope.row.groupOrder }}
+                  </template>
+                </el-table-column>
 
-            <el-table-column label="组合工序" min-width="460">
-              <template #default="scope">
-                <div
-                  class="group-items"
-                  @dragover.prevent="handleDragOverGroup($event, scope.$index)"
-                  @drop="handleDropOnGroup($event, scope.$index)"
-                  :class="{
-                    'drag-over': dragOverGroupIndex === scope.$index,
-                    'is-modern': modernOperationCard,
-                  }"
-                >
-                  <template v-if="modernOperationCard">
-                    <ProcessOperationCard
-                      :items="toOperationCardItems(scope.row.items)"
-                      draggable
-                      editable
-                      @item-dragstart="
-                        (event: DragEvent, itemIndex: number) =>
-                          handleItemDragStart(event, scope.$index, itemIndex)
-                      "
-                      @item-dragover="
-                        (event: DragEvent, itemIndex: number) =>
-                          handleItemDragOver(event, scope.$index, itemIndex)
-                      "
-                      @item-drop="
-                        (event: DragEvent, itemIndex: number) =>
-                          handleItemDrop(event, scope.$index, itemIndex)
-                      "
-                      @update:index="
-                        (itemIndex: number, value: number) =>
-                          onUpdateIndex(scope.row, scope.row.items[itemIndex], value)
-                      "
-                      @update:work-instruction="
-                        (itemIndex: number, value: string) =>
-                          onUpdateWorkInstruction(scope.row.items[itemIndex], value)
-                      "
-                      @remove="(itemIndex: number) => removeItemFromGroup(scope.$index, itemIndex)"
+                <el-table-column label="组合工序" min-width="460">
+                  <template #default="scope">
+                    <div
+                      class="group-items"
+                      @dragover.prevent="handleDragOverGroup($event, groupIndex(scope.row))"
+                      @drop="handleDropOnGroup($event, groupIndex(scope.row))"
+                      :class="{
+                        'drag-over': dragOverGroupIndex === groupIndex(scope.row),
+                        'is-modern': modernOperationCard,
+                      }"
+                    >
+                      <template v-if="modernOperationCard">
+                        <ProcessOperationCard
+                          :items="toOperationCardItems(scope.row.items)"
+                          draggable
+                          editable
+                          @item-dragstart="
+                            (event: DragEvent, itemIndex: number) =>
+                              handleItemDragStart(event, groupIndex(scope.row), itemIndex)
+                          "
+                          @item-dragover="
+                            (event: DragEvent, itemIndex: number) =>
+                              handleItemDragOver(event, groupIndex(scope.row), itemIndex)
+                          "
+                          @item-drop="
+                            (event: DragEvent, itemIndex: number) =>
+                              handleItemDrop(event, groupIndex(scope.row), itemIndex)
+                          "
+                          @update:index="
+                            (itemIndex: number, value: number) =>
+                              onUpdateIndex(scope.row, scope.row.items[itemIndex], value)
+                          "
+                          @update:work-instruction="
+                            (itemIndex: number, value: string) =>
+                              onUpdateWorkInstruction(scope.row.items[itemIndex], value)
+                          "
+                          @remove="(itemIndex: number) => removeItemFromGroup(groupIndex(scope.row), itemIndex)"
+                        />
+                      </template>
+                      <div
+                        v-else
+                        v-for="(item, itemIndex) in scope.row.items"
+                        :key="item.itemId ?? `${item.processId}_${itemIndex}`"
+                        class="group-item-row"
+                      >
+                        <EngineeringRoutingItem
+                          mode="edit"
+                          :item="item"
+                          @update:index="(n: number) => onUpdateIndex(scope.row, item, n)"
+                          @remove="removeItemFromGroup(groupIndex(scope.row), Number(itemIndex))"
+                        />
+                      </div>
+                      <span class="drop-hint">拖拽图标到此处加入组</span>
+                    </div>
+                  </template>
+                </el-table-column>
+
+                <el-table-column label="工序类别" width="160">
+                  <template #default="scope">
+                    <el-select
+                      v-model="scope.row.processCategory"
+                      placeholder="请选择工序类别"
+                      size="small"
+                      clearable
+                      style="width: 140px"
+                      @change="(val: string) => handleProcessCategoryChange(groupIndex(scope.row), val)"
+                    >
+                      <el-option
+                        v-for="item in ProcessCategoryEnum.items"
+                        :key="item.value"
+                        :label="item.label"
+                        :value="item.value"
+                      />
+                    </el-select>
+                  </template>
+                </el-table-column>
+
+                <el-table-column label="工艺参数" min-width="200">
+                  <template #default="scope">
+                    <el-input
+                      v-model="scope.row.customProcessParams"
+                      size="small"
+                      :placeholder="printParamsHint(scope.row)"
+                      @input="syncToParent"
                     />
                   </template>
-                  <div
-                    v-else
-                    v-for="(item, itemIndex) in scope.row.items"
-                    :key="item.itemId ?? `${item.processId}_${itemIndex}`"
-                    class="group-item-row"
-                  >
-                    <EngineeringRoutingItem
-                      mode="edit"
-                      :item="item"
-                      @update:index="(n: number) => onUpdateIndex(scope.row, item, n)"
-                      @remove="removeItemFromGroup(scope.$index, Number(itemIndex))"
+                </el-table-column>
+
+                <el-table-column label="总人工工时" width="120" align="center">
+                  <template #default="scope">
+                    <el-input-number
+                      v-model="scope.row.totalLaborHours"
+                      :min="0"
+                      :precision="2"
+                      :step="0.1"
+                      size="small"
+                      controls-position="right"
+                      style="width: 100px"
+                      @change="
+                        (val: number | undefined) => handleGroupTotalChange(groupIndex(scope.row), 'labor', val)
+                      "
                     />
-                  </div>
-                  <span class="drop-hint">拖拽图标到此处加入组</span>
-                </div>
-              </template>
-            </el-table-column>
+                  </template>
+                </el-table-column>
 
-            <el-table-column label="工序类别" width="160">
-              <template #default="scope">
-                <el-select
-                  v-model="scope.row.processCategory"
-                  placeholder="请选择工序类别"
-                  size="small"
-                  clearable
-                  style="width: 140px"
-                  @change="(val: string) => handleProcessCategoryChange(scope.$index, val)"
-                >
-                  <el-option
-                    v-for="item in ProcessCategoryEnum.items"
-                    :key="item.value"
-                    :label="item.label"
-                    :value="item.value"
-                  />
-                </el-select>
-              </template>
-            </el-table-column>
+                <el-table-column label="总机器工时" width="120" align="center">
+                  <template #default="scope">
+                    <el-input-number
+                      v-model="scope.row.totalMachineHours"
+                      :min="0"
+                      :precision="2"
+                      :step="0.1"
+                      size="small"
+                      controls-position="right"
+                      style="width: 100px"
+                      @change="
+                        (val: number | undefined) =>
+                          handleGroupTotalChange(groupIndex(scope.row), 'machine', val)
+                      "
+                    />
+                  </template>
+                </el-table-column>
 
-            <el-table-column label="工艺参数" min-width="200">
-              <template #default="scope">
-                <el-input
-                  v-model="scope.row.customProcessParams"
-                  size="small"
-                  :placeholder="printParamsHint(scope.row)"
-                  @input="syncToParent"
-                />
-              </template>
-            </el-table-column>
+                <el-table-column label="组合备注" width="380">
+                  <template #default="scope">
+                    <el-input
+                      v-model="scope.row.remark"
+                      size="small"
+                      placeholder="组合备注（存到第一条工序的说明中）"
+                    />
+                  </template>
+                </el-table-column>
 
-            <el-table-column label="总人工工时" width="120" align="center">
-              <template #default="scope">
-                <el-input-number
-                  v-model="scope.row.totalLaborHours"
-                  :min="0"
-                  :precision="2"
-                  :step="0.1"
-                  size="small"
-                  controls-position="right"
-                  style="width: 100px"
-                  @change="
-                    (val: number | undefined) => handleGroupTotalChange(scope.$index, 'labor', val)
-                  "
-                />
-              </template>
-            </el-table-column>
-
-            <el-table-column label="总机器工时" width="120" align="center">
-              <template #default="scope">
-                <el-input-number
-                  v-model="scope.row.totalMachineHours"
-                  :min="0"
-                  :precision="2"
-                  :step="0.1"
-                  size="small"
-                  controls-position="right"
-                  style="width: 100px"
-                  @change="
-                    (val: number | undefined) =>
-                      handleGroupTotalChange(scope.$index, 'machine', val)
-                  "
-                />
-              </template>
-            </el-table-column>
-
-            <el-table-column label="组合备注" width="380">
-              <template #default="scope">
-                <el-input
-                  v-model="scope.row.remark"
-                  size="small"
-                  placeholder="组合备注（存到第一条工序的说明中）"
-                />
-              </template>
-            </el-table-column>
-
-            <el-table-column label="操作" min-width="120" align="center" fixed="right">
-              <template #default="scope">
-                <el-button
-                  link
-                  type="primary"
-                  icon="Top"
-                  @click="moveGroupUp(scope.$index)"
-                  :disabled="scope.$index === 0"
-                />
-                <el-button
-                  link
-                  type="primary"
-                  icon="Bottom"
-                  @click="moveGroupDown(scope.$index)"
-                  :disabled="scope.$index === groups.length - 1"
-                />
-                <el-button link type="danger" icon="Delete" @click="removeGroup(scope.$index)" />
-              </template>
-            </el-table-column>
-          </el-table>
-          <div
-            class="table-bottom-drop-zone"
-            @dragover.prevent="handleDragOver"
-            @dragleave="handleDragLeave"
-            @drop="handleDropOnTable"
-            :class="{ 'drag-over': isDragOverTable }"
-          >
-            <span class="drop-zone-text">+ 拖拽图标到此处新增组合</span>
-          </div>
-        </div>
+                <el-table-column label="操作" min-width="120" align="center" fixed="right">
+                  <template #default="scope">
+                    <el-button
+                      link
+                      type="primary"
+                      icon="Top"
+                      @click="moveGroupUp(scope.row)"
+                      :disabled="scope.$index === 0"
+                    />
+                    <el-button
+                      link
+                      type="primary"
+                      icon="Bottom"
+                      @click="moveGroupDown(scope.row)"
+                      :disabled="scope.$index === assemblyGroupsByTab(tab.value).length - 1"
+                    />
+                    <el-button link type="danger" icon="Delete" @click="removeGroup(groupIndex(scope.row))" />
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div
+                class="table-bottom-drop-zone"
+                @dragover.prevent="handleDragOver"
+                @dragleave="handleDragLeave"
+                @drop="handleDropOnTable"
+                :class="{ 'drag-over': isDragOverTable }"
+              >
+                <span class="drop-zone-text">+ 拖拽图标到此处新增组合</span>
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </el-tab-pane>
 
       <!-- 印刷 tab：独立印刷工序表格（2026-08-12，与打样平台一致：按结构 Tabs 分） -->
@@ -496,6 +505,26 @@ const PRINT_TABS = [
   { value: '', label: '未分类' },
 ]
 const printActiveTab = ref('PANEL')
+
+const ASSEMBLY_TABS = [
+  { value: 'PANEL', label: '面板' },
+  { value: 'UP_LINE', label: '上线' },
+  { value: 'DOWN_LINE', label: '下线' },
+  { value: '', label: '未分类' },
+]
+const assemblyActiveTab = ref('PANEL')
+
+function assemblyGroupsByTab(value: string) {
+  return groups.value.filter((group) => {
+    const category = group.processCategory || ''
+    if (value === '') return category === '' || category === 'OTHER'
+    return category === value
+  })
+}
+
+function groupIndex(group: RouteItemGroup) {
+  return groups.value.indexOf(group)
+}
 
 function filteredPrintRows(value: string) {
   // 2026-08-12：OTHER 归一显示到未分类（旧转移数据类别可能是 OTHER）
@@ -928,12 +957,14 @@ const maybePromptIndex = (item: EngineeringRoutingItemVO) => {
 // 添加到新组合
 const addToNewGroup = (process: StandardProcessOption) => {
   const newItem = createItemVO(process)
+  newItem.processCategory = assemblyActiveTab.value
   groups.value.push({
     groupOrder: groups.value.length + 1,
     items: [newItem],
     totalLaborHours: process.standardLaborHours || 0,
     totalMachineHours: process.standardMachineHours || 0,
     remark: '',
+    processCategory: assemblyActiveTab.value,
   })
   updateGroupOrder()
   syncToParent()
@@ -1020,34 +1051,43 @@ const moveItemToNewGroup = (fromGroupIndex: number, itemIndex: number) => {
   } else {
     recalculateGroupHours(fromGroupIndex)
   }
+  item.processCategory = assemblyActiveTab.value
   groups.value.push({
     groupOrder: groups.value.length + 1,
     items: [item],
     totalLaborHours: item.customLaborHours || item.standardLaborHours || 0,
     totalMachineHours: item.customMachineHours || item.standardMachineHours || 0,
     remark: '',
-    processCategory: item.processCategory || '',
+    processCategory: assemblyActiveTab.value,
   })
   updateGroupOrder()
   syncToParent()
 }
 
 // 上移组合
-const moveGroupUp = (index: number) => {
-  if (index <= 0) return
+const moveGroupUp = (group: RouteItemGroup) => {
+  const filtered = assemblyGroupsByTab(assemblyActiveTab.value)
+  const filteredIndex = filtered.indexOf(group)
+  if (filteredIndex <= 0) return
+  const index = groupIndex(group)
+  const previousIndex = groupIndex(filtered[filteredIndex - 1])
   const temp = groups.value[index]
-  groups.value[index] = groups.value[index - 1]
-  groups.value[index - 1] = temp
+  groups.value[index] = groups.value[previousIndex]
+  groups.value[previousIndex] = temp
   updateGroupOrder()
   syncToParent()
 }
 
 // 下移组合
-const moveGroupDown = (index: number) => {
-  if (index >= groups.value.length - 1) return
+const moveGroupDown = (group: RouteItemGroup) => {
+  const filtered = assemblyGroupsByTab(assemblyActiveTab.value)
+  const filteredIndex = filtered.indexOf(group)
+  if (filteredIndex < 0 || filteredIndex >= filtered.length - 1) return
+  const index = groupIndex(group)
+  const nextIndex = groupIndex(filtered[filteredIndex + 1])
   const temp = groups.value[index]
-  groups.value[index] = groups.value[index + 1]
-  groups.value[index + 1] = temp
+  groups.value[index] = groups.value[nextIndex]
+  groups.value[nextIndex] = temp
   updateGroupOrder()
   syncToParent()
 }
