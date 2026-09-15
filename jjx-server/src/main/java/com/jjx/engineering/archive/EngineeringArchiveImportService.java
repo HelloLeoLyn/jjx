@@ -320,6 +320,7 @@ public class EngineeringArchiveImportService {
             for (JsonNode workflow : root.path("workflows")) {
                 String workflowType = defaultText(text(workflow, "workflowType"), "OTHER");
                 for (JsonNode step : workflow.path("steps")) {
+                    if ("EMPTY".equals(text(step, "contentType"))) continue;
                     boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
                     if (composite && step.path("components").isArray() && step.path("components").size() > 0) {
                         long groupId = order;
@@ -520,6 +521,19 @@ public class EngineeringArchiveImportService {
     private String text(JsonNode node, String field) { JsonNode value = node == null ? null : node.get(field); return value == null || value.isNull() ? null : value.asText().trim(); }
     private String defaultText(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
     private java.math.BigDecimal decimal(JsonNode node, String field, int fallback) { try { return node.path(field).isNumber() ? node.path(field).decimalValue() : new java.math.BigDecimal(node.path(field).asText()); } catch (Exception e) { return java.math.BigDecimal.valueOf(fallback); } }
-    private int countSteps(JsonNode root) { int count = 0; for (JsonNode w : root.path("workflows")) count += w.path("steps").size(); return count; }
+    private int countSteps(JsonNode root) {
+        int count = 0;
+        for (JsonNode workflow : root.path("workflows")) {
+            for (JsonNode step : workflow.path("steps")) {
+                if ("EMPTY".equals(text(step, "contentType"))) continue;
+                if ("COMPOSITE".equals(text(step, "processStructure")) && step.path("components").isArray()) {
+                    count += step.path("components").size();
+                } else {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
     private String trimMessage(String message) { if (message == null) return "未知错误"; return message.length() > 350 ? message.substring(0, 350) : message; }
 }

@@ -29,7 +29,8 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
             "i.index_number, i.precondition, i.precondition_display, i.is_optional, " +
             // 2026-08-12：印刷等自定义工序名称冗余在 i.process_name（COALESCE 兑底）
             "p.process_id, p.process_code, COALESCE(p.process_name, i.process_name) AS process_name, " +
-            "p.process_type, COALESCE(p.process_category, i.process_category) AS process_category, " +
+            // 路线明细的 process_category 表示面板/上线/下线分组，不能被标准工序自身类别覆盖。
+            "p.process_type, i.process_category AS process_category, " +
             "p.standard_labor_hours, p.standard_machine_hours, " +
             "p.equipment_type, p.skill_requirement, " +
             "p.is_enabled, p.display_order, p.icon, p.has_index, p.has_work_instruction " +
