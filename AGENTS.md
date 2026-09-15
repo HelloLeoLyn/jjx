@@ -26,7 +26,7 @@ Writing files is legitimate only as part of an executed task (backups / migratio
 Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
-- **DB change first** (any migration / bulk DML / risky fix): back up BEFORE touching data. Full dumps and guard backups go to the Git-external `JJX_BACKUP_DIR` (default: sibling `jjx-backups/`), not into the repository.
+- **DB risk-based backup**: destructive/批量 DML、表结构变更、风险修复必须先备份；低风险幂等配置/字典新增由用户按需决定是否备份。备份统一放 Git 外的 `JJX_BACKUP_DIR`（默认：同级 `jjx-backups/`）。
 - Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql` (next max NN+1).
 - Analysis / test-plan / design reports: `jjx-docs/history/<topic>-dev-YYYYMMDD-NNN.md`, register in `history/INDEX.md`, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).

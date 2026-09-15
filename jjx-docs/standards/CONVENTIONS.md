@@ -9,7 +9,7 @@
 
 | 场景 | 固定位置 | 说明 |
 |---|---|---|
-| DB 全量备份 | Git 仓库外 `JJX_BACKUP_DIR` | 改库前必做；默认仓库同级 `jjx-backups/`，不提交 Git |
+| DB 全量备份 | Git 仓库外 `JJX_BACKUP_DIR` | 改库前**按风险**必做（§2）：破坏性/批量 DML/表结构变更强制；低风险配置/字典新增由用户决定；默认仓库同级 `jjx-backups/`，不提交 Git |
 | DB 表级/行级 guard 备份 | Git 仓库外 `JJX_BACKUP_DIR` | 清理/修复特定表前；不提交 Git |
 | DB 迁移/上线脚本 | `jjx-docs/sql/migrations/` | 序号 `NN_<描述>.sql` 递增；幂等优先 |
 | 当时怎么做的（分析/方案/测试计划/报告/实施记录） | `jjx-docs/history/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 `history/INDEX.md`；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
@@ -29,9 +29,11 @@
 
 ---
 
-## 2. 数据库备份规范（红线：先备份再动库）
+## 2. 数据库备份规范（按风险决定）
 
-**触发时机**：任何迁移脚本执行前、批量 UPDATE/DELETE 前、修复疑似脏数据前、跨环境导数据前。
+**触发时机**：破坏性操作、批量 UPDATE/DELETE、表结构变更、修复疑似脏数据、跨环境导数据前必须备份。低风险、幂等的系统配置/字典新增由用户人工判断是否备份。
+
+**低风险清单（写死；不在此清单内的一律按高风险）**：仅 `sys_config`、`sys_dict_type`、`sys_dict_data` 三类表的**新增或幂等覆盖**（同值 UPDATE / `WHERE NOT EXISTS` 守卫，不删行、不改结构）可由用户人工判断是否备份。**菜单/权限**（`sys_menu`、`sys_role_menu`）的新增与变更**不算**低风险——它改变"谁看得见什么"，按高风险强制备份。
 
 **统一入口**：
 
@@ -65,10 +67,10 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   - 幂等优先（`ADD COLUMN IF NOT EXISTS` 不可用时，先查 information_schema 或 `WHERE NOT EXISTS` 守卫）
   - 破坏性语句（DROP/TRUNCATE/DELETE）必须显式注释原因，单独文件，禁止与建表混在一个"安全"文件里
   - 文件编码 UTF-8；执行后登记 sys_task 或在本文件/任务描述留执行记录（时间、执行人 agent）
-- 执行纪律：先备份（第 2 节）→ 审阅 → 执行 → 验证 → 汇报
+- 执行纪律：按风险决定是否备份 → 审阅 → 执行 → 验证 → 汇报
 - **唯一执行通道**：`bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN`
-  内部固定顺序：前置检查（文件名/位置/非空/库可达）→ 全库备份（记 md5、表数、任务码）→ 执行 → 写 `sys_config.ops.schema.version` → 输出摘要。备份异常或执行失败都会中止且**不记录版本**。
-  **不要直接 `mysql < file`**——绕过入口等于没有备份、也没有版本记录。
+  高风险迁移内部固定顺序：前置检查 → 全库备份 → 执行 → 写 `sys_config.ops.schema.version` → 输出摘要。低风险配置/字典新增可由用户明确选择直接执行，但仍须幂等并保留执行记录。
+  **不要直接 `mysql < file`**——应通过入口执行并保留版本记录。
   - 查看已应用版本 / 待执行迁移清单：`bash scripts/db-migrate.sh --status`
   - 接管已有库、登记当前版本：`bash scripts/db-migrate.sh --record <NN> --yes`
 
@@ -133,7 +135,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 - [ ] 这次是「讨论」还是「执行」？讨论 → 一个字都不落盘（§9）
 - [ ] 这台机器装过 git 闸门吗？→ `bash scripts/install-hooks.sh`（每个 clone 一次）
-- [ ] 这次会碰数据库吗？→ 先备份（第 2 节）
+- [ ] 这次会碰数据库吗？→ 按风险和用户选择决定是否备份（第 2 节）
 - [ ] 产物文件路径/命名符合第 1 节？会不会和别人冲突？
 - [ ] 会不会覆盖别人的未提交改动？（git status 核对）
 - [ ] 提交信息带 type + 任务码？只含本次相关文件？
@@ -168,7 +170,8 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 | 资源面 | 谁可写 | 强制手段 | 强度 |
 |---|---|---|---|
-| 数据库 `jjx_erp_db` 写 | 仅本机执行者，且必须走 `scripts/db-migrate.sh` | 入口脚本强制"先全库备份 → 再执行 → 写版本号"；不备份执行不了 | 半硬（root 仍可直连绕过） |
+| 数据库 `jjx_erp_db` 写（迁移 / 表结构变更 / 批量 DML） | 仅本机执行者，且必须走 `scripts/db-migrate.sh` | 入口脚本强制"先全库备份 → 再执行 → 写版本号"；不备份执行不了 | 半硬（root 仍可直连绕过） |
+| 数据库 `jjx_erp_db` 写（低风险配置/字典新增，范围见 §2 低风险清单） | 用户点头后可由执行者直连 `mysql` 执行 | 脚本管不到：不做备份、不写 `ops.schema.version`，只留执行记录 → 事后人审 | 审计型 |
 | 数据库**只读查看** | 任何人 → 用只读账号 `jjx_ro` | MySQL 授权（仅 SELECT；写操作返回 1142） | **硬** |
 | `jjx-docs/sql/**`（`backups/` 除外）、`jjx-docs/standards/**` 的删除/移出 | 无人（需用户批准） | `pre-commit` 拦截 | **硬** |
 | `jjx-docs/sql/backups/**` 历史存量清理 | 用户确认后，独立任务与独立提交 | `pre-commit` 警告并放行 | 审计型 |
@@ -206,4 +209,3 @@ bash scripts/agent-preflight.sh
 4. **归属只认基线**：任务开始时把 `git status --short` 存档为基线 —— 基线里已有的 `M/D/??` 是别人的，绝不动；开始后才出现的才是越界嫌疑，先取证（时间戳/进程/提交记录）再报告用户。
 
 配套：开工先跑 `bash scripts/agent-preflight.sh`；冲突仲裁口径＝**谁先提交谁算**，后来者 rebase 或让；整体路线见 `jjx-docs/guides/master-plan-20260914.md` 第 5 节。
-
