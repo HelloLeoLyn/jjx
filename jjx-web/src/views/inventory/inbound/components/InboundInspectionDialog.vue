@@ -151,7 +151,11 @@
             ><el-input-number
               v-model="row.acceptedQuantity"
               :min="0"
-              :max="row.quantity"
+              :max="
+                row.inspectionResult === InspectionResultEnum.FAIL.value
+                  ? Number(row.qualifiedQuantity || 0)
+                  : Number(row.quantity || 0)
+              "
               :disabled="row.locked"
               controls-position="right"
           /></template>
@@ -383,8 +387,10 @@ function normalizeInspectionItem(check: any) {
   }
 }
 function syncDisposition(row: any) {
+  // dev-20260916-009：让步接收由「整批接收」改为「良品接收」，不良品一律走隔离处置
+  // （隔离数量 = 收货数量 - 接收数量，若把不良计入接收，隔离会算成 0，不良品当良品入库）
   if (row.disposition === IqcDispositionEnum.CONCESSION.value)
-    row.acceptedQuantity = Number(row.quantity || 0)
+    row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
   else if (
     row.disposition === IqcDispositionEnum.RETURN.value ||
     row.disposition === IqcDispositionEnum.SCRAP.value ||
@@ -411,6 +417,16 @@ async function submit() {
     }
     if (Number(item.acceptedQuantity) > Number(item.quantity)) {
       ElMessage.warning(`${item.materialCode}：允收入库数量不能超过收货数量`)
+      return
+    }
+    // dev-20260916-009：不良品不得计入允收入库数量（否则隔离数量=收货-接收=0，不良品当良品入库）
+    if (
+      item.inspectionResult === InspectionResultEnum.FAIL.value &&
+      Number(item.acceptedQuantity) > Number(item.qualifiedQuantity || 0)
+    ) {
+      ElMessage.warning(
+        `${item.materialCode}：允收入库数量不能超过良品数量（${Number(item.qualifiedQuantity || 0)}），不良品请走隔离处置`
+      )
       return
     }
   }

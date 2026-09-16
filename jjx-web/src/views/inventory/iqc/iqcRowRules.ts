@@ -10,17 +10,25 @@
 import { InspectionResultEnum, IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
 import { InspectionResult } from '@/enums/quality/InspectionEnum'
 
-/** 处置方式联动接收数量（让步接收/部分接收 → 整批接收） */
+/** 处置方式联动接收数量：不良品不得计入允收入库数量（否则隔离数量=收货-接收=0，不良品会被当良品入库）
+ *  dev-20260916-009：让步接收/部分接收的默认与上限均为「良品数量」，不良品一律走隔离处置 */
 export function syncIqcDisposition(row: any) {
   if (!row) return
+  row.acceptedQuantity = maxAcceptedIqcQuantity(row)
+}
+
+/** 可允收入库数量上限：特采/部分接收 = 收货数量 - 不良数量（良品数量），其余处置 = 0 */
+export function maxAcceptedIqcQuantity(row: any): number {
+  if (!row) return 0
+  const quantity = Number(row.quantity || 0)
+  const qualified = Math.max(0, Number(row.qualifiedQuantity || 0))
   if (
     row.disposition === IqcDispositionEnum.CONCESSION.value ||
     row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value
   ) {
-    row.acceptedQuantity = Number(row.quantity || 0)
-  } else {
-    row.acceptedQuantity = 0
+    return Math.min(quantity, qualified)
   }
+  return 0
 }
 
 /** 由检验项缺陷数反推行级数量与判定（弹窗保存/批量后调用） */

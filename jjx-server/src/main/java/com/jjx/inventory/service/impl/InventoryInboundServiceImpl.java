@@ -761,6 +761,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                         && accepted.signum() != 0) {
                     throw new BusinessException("退货/报废/返工等处置整批不接收，接收数量须为 0");
                 }
+                // 2026-09-16 dev-20260916-009：不良品不得计入允收入库数量。
+                // 隔离数量口径 = 收货数量 - 接收数量，若不良品被接收，隔离数量会算成 0，
+                // 不良品就会被当良品入库（PO202609160003 / RM001563 实例）。
+                // 因此接收数量上限 = 收货数量 - 不良数量 = 良品数量。
+                BigDecimal maxAccepted = item.getQuantity().subtract(rejected);
+                if ("FAIL".equals(itemResult) && accepted.compareTo(maxAccepted) > 0) {
+                    throw new BusinessException("物料" + item.getMaterialCode()
+                            + "允收入库数量不能超过良品数量（收货数量 - 不良数量 = " + maxAccepted.stripTrailingZeros().toPlainString()
+                            + "），不良品请走隔离处置");
+                }
 
                 boolean editablePending = previous != null
                         && com.jjx.production.enums.QualityInspectionResultEnum.PENDING.getCode()

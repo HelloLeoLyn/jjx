@@ -233,7 +233,7 @@
               "
               v-model="row.acceptedQuantity"
               :min="acceptedQuantityCanEdit(row) ? 1 : 0"
-              :max="row.quantity"
+              :max="maxAcceptedIqcQuantity(row)"
               :disabled="!acceptedQuantityCanEdit(row)"
               controls-position="right"
             /><span v-else>{{ row.acceptedQuantity }}</span></template
@@ -334,6 +334,7 @@ import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
 import {
   batchPassIqcRow,
   copyIqcChecks,
+  maxAcceptedIqcQuantity,
   syncIqcRowFromChecks,
 } from './iqcRowRules'
 import {
@@ -819,9 +820,19 @@ async function submitInspection() {
       ElMessage.warning(`${item.materialCode}：当前处置整批不接收，接收数量须为 0`)
       return
     }
-    if (acceptedQuantityCanEdit(item) && Number(item.acceptedQuantity) <= 0) {
-      ElMessage.warning(`${item.materialCode}：特采或部分接收时接收数量必须大于 0`)
-      return
+    if (acceptedQuantityCanEdit(item)) {
+      if (Number(item.acceptedQuantity) <= 0) {
+        ElMessage.warning(`${item.materialCode}：特采或部分接收时接收数量必须大于 0`)
+        return
+      }
+      // dev-20260916-009：不良品不得计入接收数量，否则隔离数量=收货-接收=0，不良品会被当良品入库
+      const maxAccepted = maxAcceptedIqcQuantity(item)
+      if (Number(item.acceptedQuantity) > maxAccepted) {
+        ElMessage.warning(
+          `${item.materialCode}：接收数量不能超过良品数量（${maxAccepted}），不良品请走隔离处置`
+        )
+        return
+      }
     }
     if (
       item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
