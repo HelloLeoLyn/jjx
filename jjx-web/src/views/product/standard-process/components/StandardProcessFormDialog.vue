@@ -16,11 +16,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="工序名称" prop="processName">
-              <el-input
-                v-model="formData.processName"
-                placeholder="请输入工序名称"
-                @blur="handleProceessNameChanage"
-              />
+              <el-input v-model="formData.processName" placeholder="请输入工序名称" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -31,7 +27,7 @@
                 v-model="formData.processType"
                 placeholder="请选择工序类型"
                 style="width: 100%"
-                @change="handleProcessTypeChange"
+                @change="handleProcessAttrChange"
               >
                 <el-option
                   v-for="item in processTypeOptions"
@@ -48,7 +44,7 @@
                 v-model="formData.processCategory"
                 placeholder="请选择工序类别"
                 style="width: 100%"
-                @change="handleProcessCategoryChange"
+                @change="handleProcessAttrChange"
               >
                 <el-option
                   v-for="item in processCategoryOptions"
@@ -307,15 +303,12 @@ const generateProcessCode = async () => {
   }
 }
 
-const handleProceessNameChanage = () => {
-  generateProcessCode()
-}
+// 编码单规则（2026-09-16）：SP-<段位><序号>，段位 = 1面板/2上线/3下线/4其他，后端按工序类别生成。
+// 只有"新增未保存"时随类型/类别重算；编辑已有工序时编码一经分配即稳定，不再变更。
+const canRegenerateCode = computed(() => props.processId === undefined)
 
-const handleProcessTypeChange = () => {
-  generateProcessCode()
-}
-
-const handleProcessCategoryChange = () => {
+const handleProcessAttrChange = () => {
+  if (!canRegenerateCode.value) return
   generateProcessCode()
 }
 

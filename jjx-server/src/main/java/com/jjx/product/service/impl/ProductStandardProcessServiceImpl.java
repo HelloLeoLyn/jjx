@@ -13,6 +13,7 @@ import com.jjx.product.domain.converter.ProductStandardProcessConverter;
 import com.jjx.product.domain.dto.ProductStandardProcessQueryDTO;
 import com.jjx.product.domain.entity.ProductStandardProcess;
 import com.jjx.product.domain.vo.ProductStandardProcessVO;
+import com.jjx.product.enums.ProcessCategoryEnum;
 import com.jjx.product.mapper.EngineeringRoutingItemMapper;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.product.service.IProductStandardProcessService;
@@ -98,15 +99,14 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
 
         validateIcon(process.getIcon());
 
-        // 检查编码是否唯一（排除自身）
-        if (!existing.getProcessCode().equals(process.getProcessCode())) {
-            if (!checkProcessCodeUnique(process.getProcessCode(), process.getProcessId())) {
-                throw new BusinessException(BusinessExceptionEnum.BOM_CODE_DUPLICATE);
-            }
+        // 编码一经分配即稳定（单规则，2026-09-16）：编辑不再改写 process_code，
+        // 避免同一工序编码漂移导致历史单据/报表对不上；确需换码时由人工走"新增 + 停用旧码"。
+        if (StringUtils.isNotBlank(process.getProcessCode())
+                && !process.getProcessCode().equals(existing.getProcessCode())) {
+            log.info("标准工序[{}] 忽略传入的新编码[{}]：编码分配后不可变更", existing.getProcessCode(), process.getProcessCode());
         }
 
         // 更新字段（null 安全：只更新传入的非空字段，2026-08-09 支持只改 description）
-        if (process.getProcessCode() != null) existing.setProcessCode(process.getProcessCode());
         if (process.getProcessName() != null) existing.setProcessName(process.getProcessName());
         if (process.getProcessType() != null) existing.setProcessType(process.getProcessType());
         if (process.getProcessCategory() != null) existing.setProcessCategory(process.getProcessCategory());
@@ -399,29 +399,115 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
 
     // ==================== 编码生成 ====================
 
+    /**
+     * 标准工序编码单规则（2026-09-16 定，唯一规则，无第二套编码）：
+     * SP-&lt;段位&gt;&lt;序号&gt;，段位固定 1 位 = 1 面板 / 2 上线 / 3 下线 / 4 其他（真源：ProcessCategoryEnum#getSegment），
+     * 序号 = 段内现有最大序号 + 1，2 位起不足补 0（超过 99 自动扩位），不回收、不复用。
+     * 例：SP-101 面板、SP-205 上线、SP-312 下线、SP-403 其他。
+     * 解析口径：SP- 之后的第 1 位字符 = 段位，其余数字 = 段内序号。
+     */
+    private static final String CODE_PREFIX = "SP-";
+    private static final java.util.regex.Pattern CODE_PATTERN =
+            java.util.regex.Pattern.compile("^SP-([1-9])(\\d{2,})$");
+
     @Override
     public String generateNextProcessCode(String processType, String processCategory) {
-        if (StringUtils.isBlank(processType) || StringUtils.isBlank(processCategory)) {
-            throw new BusinessException("工序类型和工序类别不能为空");
+        // 单规则下编码只由"工序类别"决定段位，工序类型不再参与编码
+        ProcessCategoryEnum category = resolveProcessCategory(processCategory);
+        int segment = category.getSegment();
+
+        // 段内现有最大序号（脏码/历史码解析失败即跳过，不让异常编码把生成链路打挂）
+        int maxSeq = 0;
+        List<ProductStandardProcess> existing = processMapper.selectList(
+                Wrappers.<ProductStandardProcess>lambdaQuery()
+                        .select(ProductStandardProcess::getProcessCode)
+                        .likeRight(ProductStandardProcess::getProcessCode, CODE_PREFIX));
+        for (ProductStandardProcess p : existing) {
+            Integer seg = parseSegment(p.getProcessCode());
+            Integer seq = parseSequence(p.getProcessCode());
+            if (seg != null && seq != null && seg == segment && seq > maxSeq) {
+                maxSeq = seq;
+            }
         }
 
-        // 2. 查询已存在的最大序号
-        String prefix = "T" + processType + "C" + processCategory;
-        LambdaQueryWrapper<ProductStandardProcess> wrapper = Wrappers.lambdaQuery();
-        wrapper.likeRight(ProductStandardProcess::getProcessCode, prefix);
-        wrapper.orderByDesc(ProductStandardProcess::getProcessCode);
-        wrapper.last("LIMIT 1");
-        List<ProductStandardProcess> existing = processMapper.selectList(wrapper);
+        // 从"最大序号 + 1"起找第一个未被占用的号（兼容尚未迁移的历史号段，上限 9999 兜底）
+        int seq = maxSeq;
+        String candidate;
+        do {
+            seq++;
+            candidate = formatProcessCode(segment, seq);
+        } while (checkProcessCodeExists(candidate) && seq < 9999);
+        return candidate;
+    }
 
-        int nextSeq = 1;
-        if (CollUtil.isNotEmpty(existing)) {
-            String lastCode = existing.get(0).getProcessCode();
-            String seqStr = lastCode.substring(prefix.length());
-            nextSeq = Integer.parseInt(seqStr) + 1;
+    /** 编码段位；不符合 SP-&lt;段位&gt;&lt;序号&gt; 的历史/异常编码返回 null */
+    static Integer parseSegment(String code) {
+        java.util.regex.Matcher m = code == null ? null : CODE_PATTERN.matcher(code.trim());
+        return (m != null && m.matches()) ? Integer.valueOf(m.group(1)) : null;
+    }
+
+    /** 编码段内序号；解析失败返回 null */
+    static Integer parseSequence(String code) {
+        java.util.regex.Matcher m = code == null ? null : CODE_PATTERN.matcher(code.trim());
+        if (m == null || !m.matches()) {
+            return null;
         }
+        try {
+            return Integer.valueOf(m.group(2));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 
-        // 3. 生成新编码
-        return prefix + String.format("%03d", nextSeq);
+    /** 按规则拼码：SP-<段位><序号> */
+    static String formatProcessCode(int segment, int sequence) {
+        return String.format("SP-%d%02d", segment, sequence);
+    }
+
+    /**
+     * 校验并解析"手工/导入"传入的编码是否合规：必须符合 SP-&lt;段位&gt;&lt;序号&gt; 且段位与工序类别一致。
+     * 不合规返回提示语（供导入逐行报错），合规返回 null。
+     */
+    private String validateCodeAgainstCategory(String code, String processCategory) {
+        Integer seg = parseSegment(code);
+        Integer seq = parseSequence(code);
+        if (seg == null || seq == null) {
+            return "工序编码不符合规则（应为 SP-<段位><序号>，段位=1面板/2上线/3下线/4其他），可留空由系统生成";
+        }
+        if (!ProcessCategoryEnum.isValidSegment(seg)) {
+            return "工序编码段位非法（只能 1面板/2上线/3下线/4其他）：" + code;
+        }
+        ProcessCategoryEnum category = ProcessCategoryEnum.isValidCode(processCategory)
+                ? ProcessCategoryEnum.getByCode(processCategory) : null;
+        if (category == null) {
+            return "工序类别不能为空或非法（PANEL/UP_LINE/DOWN_LINE/OTHER），无法校验编码段位";
+        }
+        if (category.getSegment() != seg) {
+            return "工序编码段位与工序类别不一致：" + code + " 属段位 " + seg
+                    + "（" + ProcessCategoryEnum.getBySegment(seg).getLabel() + "），但类别为 "
+                    + category.getLabel() + "（段位 " + category.getSegment() + "）";
+        }
+        return null;
+    }
+
+    private ProcessCategoryEnum resolveProcessCategory(String processCategory) {
+        if (StringUtils.isBlank(processCategory)) {
+            throw new BusinessException("工序类别不能为空");
+        }
+        if (!ProcessCategoryEnum.isValidCode(processCategory)) {
+            throw new BusinessException("工序类别不合法（PANEL/UP_LINE/DOWN_LINE/OTHER）：" + processCategory);
+        }
+        return ProcessCategoryEnum.getByCode(processCategory);
+    }
+
+    private boolean checkProcessCodeExists(String processCode) {
+        if (StringUtils.isBlank(processCode)) {
+            return false;
+        }
+        Long count = processMapper.selectCount(
+                Wrappers.<ProductStandardProcess>lambdaQuery()
+                        .eq(ProductStandardProcess::getProcessCode, processCode));
+        return count != null && count > 0;
     }
 
     // ==================== 私有辅助方法 ====================
@@ -474,30 +560,41 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
             int excelRow = i + 2; // 第1行表头，数据从第2行开始
             String code = dto.getProcessCode() == null ? "" : dto.getProcessCode().trim();
             try {
-                // 必填校验
-                if (code.isEmpty()) {
-                    result.addFail(excelRow, dto.getProcessName(), "工序编码不能为空");
-                    continue;
-                }
+                // ① 名称必填
                 if (dto.getProcessName() == null || dto.getProcessName().trim().isEmpty()) {
-                    result.addFail(excelRow, code, "工序名称不能为空");
+                    result.addFail(excelRow, code.isEmpty() ? "(空)" : code, "工序名称不能为空");
                     continue;
                 }
-                // 文件内重复
-                if (dupCountMap.getOrDefault(code, 0) > 1) {
-                    result.addFail(excelRow, code, "文件内重复行（工序编码出现 " + dupCountMap.get(code) + " 次），请删除重复行或合并");
-                    continue;
-                }
-                // 类型/类别枚举校验
+                // ② 类型/类别枚举校验（类别决定编码段位）
                 String type = dto.getProcessType() == null ? "" : dto.getProcessType().trim();
                 if (!type.isEmpty() && !com.jjx.product.enums.ProcessTypeEnum.isValidCode(type)) {
-                    result.addFail(excelRow, code, "工序类型不合法: " + type + "（MAIN_PAD/UP_LINE/DOWN_LINE/PRINTING/CUTTING/LAMINATING/TESTING/PACKAGING）");
+                    result.addFail(excelRow, code.isEmpty() ? "(空)" : code,
+                            "工序类型不合法: " + type + "（见字典 process_type，如 PRINTING/PUNCH_SHAPE/PROTECTIVE_FILM/OTHER）");
                     continue;
                 }
                 String category = dto.getProcessCategory() == null ? "" : dto.getProcessCategory().trim();
                 if (!category.isEmpty() && !com.jjx.product.enums.ProcessCategoryEnum.isValidCode(category)) {
-                    result.addFail(excelRow, code, "工序类别不合法: " + category + "（PREPARATION/MAIN/FINISHING/QUALITY）");
+                    result.addFail(excelRow, code.isEmpty() ? "(空)" : code,
+                            "工序类别不合法: " + category + "（PANEL面板/UP_LINE上线/DOWN_LINE下线/OTHER其他）");
                     continue;
+                }
+                // ③ 编码单规则（2026-09-16）：留空 → 按类别段位自动生成；填了 → 必须符合同一规则且段位与类别一致
+                if (code.isEmpty()) {
+                    if (category.isEmpty()) {
+                        result.addFail(excelRow, dto.getProcessName(), "工序编码留空时须填工序类别（编码由系统按类别段位生成）");
+                        continue;
+                    }
+                    code = generateNextProcessCode(type.isEmpty() ? null : type, category);
+                } else {
+                    if (dupCountMap.getOrDefault(code, 0) > 1) {
+                        result.addFail(excelRow, code, "文件内重复行（工序编码出现 " + dupCountMap.get(code) + " 次），请删除重复行或合并");
+                        continue;
+                    }
+                    String codeError = validateCodeAgainstCategory(code, category);
+                    if (codeError != null) {
+                        result.addFail(excelRow, code, codeError);
+                        continue;
+                    }
                 }
                 // 工时/机时/排序数字解析
                 java.math.BigDecimal laborHours = parseDecimal(dto.getStandardLaborHours());

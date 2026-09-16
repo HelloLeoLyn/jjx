@@ -407,13 +407,13 @@ public final class ExcelUtils {
             case "supplier":
                 return "XX科技有限公司";
             case "processCode":
-                return "SP-001";
+                return "SP-199";
             case "processName":
                 return "丝印";
             case "processType":
                 return "PRINTING";
             case "processCategory":
-                return "MAIN";
+                return "PANEL";
             case "standardLaborHours":
                 return "0.5";
             case "standardMachineHours":
