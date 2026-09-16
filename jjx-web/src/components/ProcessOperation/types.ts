@@ -1,4 +1,4 @@
-export interface ProcessOperationCardItem {
+export interface ProcessOperationItem {
   key?: string | number
   icon?: string
   processName: string

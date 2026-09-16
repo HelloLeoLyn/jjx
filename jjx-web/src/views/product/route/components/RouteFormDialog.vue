@@ -22,7 +22,12 @@
         <el-tag v-if="formData.sourceSampleId" size="small" type="info" style="margin-left: 6px">
           来源打样单 #{{ formData.sourceSampleId }}
         </el-tag>
-        <el-tag v-if="formData.parentRoutingId" size="small" type="warning" style="margin-left: 6px">
+        <el-tag
+          v-if="formData.parentRoutingId"
+          size="small"
+          type="warning"
+          style="margin-left: 6px"
+        >
           升版自 V{{ parentVersionHint }}
         </el-tag>
       </div>
@@ -31,7 +36,12 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="产品" prop="productId">
-              <el-input v-if="isEdit" v-model="formData.productId" placeholder="请选择产品" readonly />
+              <el-input
+                v-if="isEdit"
+                v-model="formData.productId"
+                placeholder="请选择产品"
+                readonly
+              />
               <ProductSelector
                 v-else
                 v-model="selectedProduct"
@@ -62,12 +72,22 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="路线说明" prop="description">
-              <el-input v-model="formData.description" type="textarea" :rows="2" placeholder="请输入路线说明" />
+              <el-input
+                v-model="formData.description"
+                type="textarea"
+                :rows="2"
+                placeholder="请输入路线说明"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="备注" prop="remark">
-              <el-input v-model="formData.remark" type="textarea" :rows="2" placeholder="请输入备注" />
+              <el-input
+                v-model="formData.remark"
+                type="textarea"
+                :rows="2"
+                placeholder="请输入备注"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -95,7 +115,7 @@
         ref="editorRef"
         :model-value="formData.items"
         :standard-processes="standardProcesses"
-        modern-operation-card
+        modern-operation
         @update:model-value="handleItemsUpdate"
       />
     </div>
@@ -217,7 +237,10 @@ function mapRouteItem(item: any): any {
     description: item.description || '',
     processCategory: item.processCategory || '',
     majorCategory: item.majorCategory || 'ASSEMBLY',
-    processName: item.processName || (item.majorCategory === 'PRINT' ? printNameFromParams(item.customProcessParams) : '') || '',
+    processName:
+      item.processName ||
+      (item.majorCategory === 'PRINT' ? printNameFromParams(item.customProcessParams) : '') ||
+      '',
     processCode: item.processCode || '',
     icon: item.icon || '',
     hasIndex: item.hasIndex ?? 0,

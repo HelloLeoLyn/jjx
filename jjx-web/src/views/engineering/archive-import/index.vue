@@ -33,12 +33,7 @@
         <el-table-column label="操作" width="220"
           ><template #default="{ row }"
             ><el-button link type="primary" @click="openWorkbench(row)">进入工作台</el-button
-            ><el-button
-              link
-              type="warning"
-              @click="retry(row)"
-              >重新识别</el-button
-            ></template
+            ><el-button link type="warning" @click="retry(row)">重新识别</el-button></template
           ></el-table-column
         >
       </el-table>
@@ -99,15 +94,22 @@
           <template v-if="stage === 0"
             ><div class="group-toolbar">
               <span>已切割 {{ groups.length }} 个分组，可直接总览并确认</span>
-              <el-button type="success" size="small" @click="confirmAllGroups">确认全部分组</el-button>
-            </div><button
+              <el-button type="success" size="small" @click="confirmAllGroups"
+                >确认全部分组</el-button
+              >
+            </div>
+            <button
               v-for="g in groups"
               :key="g.key"
               class="card"
               :class="{ active: key === g.key }"
               @click="selectGroup(g)"
             >
-              <span class="group-card-content"><img v-if="groupImageUrls[g.key || '']" :src="groupImageUrls[g.key || '']" /><span>{{ g.label }}</span></span
+              <span class="group-card-content"
+                ><img
+                  v-if="groupImageUrls[g.key || '']"
+                  :src="groupImageUrls[g.key || '']"
+                /><span>{{ g.label }}</span></span
               ><el-tag :type="g.confirmed ? 'success' : 'warning'">{{
                 g.confirmed ? '已确认' : '待确认'
               }}</el-tag>
@@ -158,12 +160,15 @@
                     : stepConfirmed(x.step)
                       ? '已确认'
                       : '待确认'
-                }}
-              </el-tag><el-tag v-if="x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value" type="warning">
-                复合 {{ x.step.components.length }} 子工序
-              </el-tag><el-tag v-else v-bind="ArchiveCellContentTypeEnum.getTagProps(x.step.contentType)">
-                {{ ArchiveCellContentTypeEnum.getLabel(x.step.contentType) }}
-              </el-tag><small>{{ x.step.editedText || '未识别' }}</small>
+                }} </el-tag
+              ><el-tag
+                v-if="x.step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value"
+                type="warning"
+              >
+                复合 {{ x.step.components.length }} 子工序 </el-tag
+              ><el-tag v-else v-bind="ArchiveCellContentTypeEnum.getTagProps(x.step.contentType)">
+                {{ ArchiveCellContentTypeEnum.getLabel(x.step.contentType) }} </el-tag
+              ><small>{{ x.step.editedText || '未识别' }}</small>
             </button></template
           >
           <template v-else
@@ -210,7 +215,7 @@
         </section>
         <section class="pane">
           <h4>检查与修正</h4>
-          <ProcessOperationCard
+          <ProcessOperation
             v-if="selectedStep"
             :items="archivePreviewItems"
             :remark="selectedStep.operationRemark"
@@ -367,14 +372,7 @@
                     clearable
                     placeholder="如：一车一模" /></el-form-item></el-collapse-item
             ></el-collapse>
-            <el-button
-              type="success"
-              @click="
-                selectedStep.classificationConfirmed = true;
-                selectedStep.processMappingConfirmed = true
-              "
-              >确认工序格</el-button
-            > </el-form
+            <el-button type="success" @click="confirmSelectedStep">确认工序格</el-button> </el-form
           ><el-empty v-else description="从中间选择分组或工序格" />
         </section>
       </div>
@@ -395,8 +393,8 @@ import {
 } from '@/enums/engineering/archive'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
-import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
-import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
+import ProcessOperation from '@/components/ProcessOperation/index.vue'
+import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 type Bounds = { x1: number; y1: number; x2: number; y2: number }
 type Group = {
   key?: string
@@ -497,7 +495,7 @@ const confirmed = computed(
 const selectedProcess = computed(() =>
   processes.value.find((p) => p.processId === selectedStep.value?.processId)
 )
-const archivePreviewItems = computed<ProcessOperationCardItem[]>(() => {
+const archivePreviewItems = computed<ProcessOperationItem[]>(() => {
   const s = selectedStep.value
   if (!s) return []
   if (s.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value)
@@ -533,8 +531,14 @@ const generationReady = computed(
     })
 )
 const processById = (id?: number) => processes.value.find((p) => p.processId === id)
+const confirmSelectedStep = () => {
+  if (!selectedStep.value) return
+  selectedStep.value.classificationConfirmed = true
+  selectedStep.value.processMappingConfirmed = true
+}
 const stepConfirmed = (step: Step) => {
-  if (step.contentType === ArchiveCellContentTypeEnum.EMPTY.value) return Boolean(step.classificationConfirmed)
+  if (step.contentType === ArchiveCellContentTypeEnum.EMPTY.value)
+    return Boolean(step.classificationConfirmed)
   if (!step.classificationConfirmed) return false
   if (step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value)
     return step.components.length > 0 && step.components.every((c) => Boolean(c.processId))
@@ -567,7 +571,7 @@ async function retry(r: ArchiveImportRecord) {
     await ElMessageBox.confirm(
       '重新识别会刷新当前档案的识别结果，当前未保存的修改可能丢失，是否继续？',
       '确认重新识别',
-      { type: 'warning' },
+      { type: 'warning' }
     )
   } catch {
     return

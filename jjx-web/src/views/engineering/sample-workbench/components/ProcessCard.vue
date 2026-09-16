@@ -40,7 +40,7 @@
     <div class="pc-row">
       <div class="pc-row-label">标准工序</div>
       <div class="pc-items">
-        <ProcessOperationCard
+        <ProcessOperation
           v-if="readonly || !pc.editing"
           :items="operationItems(pc.items)"
           :remark="pc.operationRemark"
@@ -251,8 +251,8 @@
 
 <script setup lang="ts">
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
-import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
-import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
+import ProcessOperation from '@/components/ProcessOperation/index.vue'
+import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
 /**
@@ -270,7 +270,7 @@ defineProps<{
   readonly?: boolean
 }>()
 
-function operationItems(items: any[]): ProcessOperationCardItem[] {
+function operationItems(items: any[]): ProcessOperationItem[] {
   return (items || []).map((item, index) => ({
     key: item.itemId ?? index,
     icon: item.icon,

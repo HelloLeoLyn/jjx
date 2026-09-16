@@ -113,7 +113,7 @@ declare module 'vue' {
     PrintDialog: typeof import('./components/PrintDialog/index.vue')['default']
     PrintQrCode: typeof import('./components/print/PrintQrCode.vue')['default']
     PrintToolbar: typeof import('./components/print/PrintToolbar.vue')['default']
-    ProcessOperationCard: typeof import('./components/ProcessOperationCard/index.vue')['default']
+    ProcessOperation: typeof import('./components/ProcessOperation/index.vue')['default']
     ProductCategorySelect: typeof import('./components/ProductCategorySelect.vue')['default']
     ProductCodeGenerator: typeof import('./components/ProductCodeGenerator/index.vue')['default']
     ProductFileLibrary: typeof import('./components/product/ProductFileLibrary.vue')['default']

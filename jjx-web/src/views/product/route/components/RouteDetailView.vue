@@ -56,11 +56,7 @@
       <el-table-column label="组合工序" min-width="300">
         <template #default="scope">
           <div class="group-items">
-            <ProcessOperationCard
-              mode="table"
-              :items="operationItems(scope.row.items)"
-              :remark="scope.row.remark"
-            />
+            <ProcessOperation :items="operationItems(scope.row.items)" :remark="scope.row.remark" />
           </div>
         </template>
       </el-table-column>
@@ -103,8 +99,8 @@ import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/pro
 import { RouteStatusEnum } from '@/enums/product'
 import { getDictLabel } from '@/utils/dict'
 import { useDict } from '@/composables/useDict'
-import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
-import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
+import ProcessOperation from '@/components/ProcessOperation/index.vue'
+import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 
 /** 工序类别字典（process_category：PANEL/UP_LINE/DOWN_LINE/OTHER） */
 const { options: categoryOptions } = useDict('process_category')
@@ -127,7 +123,7 @@ function printParamsText(items?: any[]): string {
   return parts.join(' ')
 }
 
-function operationItems(items: EngineeringRoutingItemVO[]): ProcessOperationCardItem[] {
+function operationItems(items: EngineeringRoutingItemVO[]): ProcessOperationItem[] {
   return (items || []).map((item, index) => ({
     key: item.itemId ?? item.processId ?? index,
     icon: item.icon,

@@ -97,13 +97,12 @@
                       @drop="handleDropOnGroup($event, groupIndex(scope.row))"
                       :class="{
                         'drag-over': dragOverGroupIndex === groupIndex(scope.row),
-                        'is-modern': modernOperationCard,
+                        'is-modern': modernOperation,
                       }"
                     >
-                      <template v-if="modernOperationCard">
-                        <ProcessOperationCard
-                          mode="table"
-                          :items="toOperationCardItems(scope.row.items)"
+                      <template v-if="modernOperation">
+                        <ProcessOperation
+                          :items="toOperationItems(scope.row.items)"
                           draggable
                           editable
                           @item-dragstart="
@@ -126,7 +125,10 @@
                             (itemIndex: number, value: string) =>
                               onUpdateWorkInstruction(scope.row.items[itemIndex], value)
                           "
-                          @remove="(itemIndex: number) => removeItemFromGroup(groupIndex(scope.row), itemIndex)"
+                          @remove="
+                            (itemIndex: number) =>
+                              removeItemFromGroup(groupIndex(scope.row), itemIndex)
+                          "
                         />
                       </template>
                       <div
@@ -155,7 +157,9 @@
                       size="small"
                       clearable
                       style="width: 140px"
-                      @change="(val: string) => handleProcessCategoryChange(groupIndex(scope.row), val)"
+                      @change="
+                        (val: string) => handleProcessCategoryChange(groupIndex(scope.row), val)
+                      "
                     >
                       <el-option
                         v-for="item in ProcessCategoryEnum.items"
@@ -189,7 +193,8 @@
                       controls-position="right"
                       style="width: 100px"
                       @change="
-                        (val: number | undefined) => handleGroupTotalChange(groupIndex(scope.row), 'labor', val)
+                        (val: number | undefined) =>
+                          handleGroupTotalChange(groupIndex(scope.row), 'labor', val)
                       "
                     />
                   </template>
@@ -239,7 +244,12 @@
                       @click="moveGroupDown(scope.row)"
                       :disabled="scope.$index === assemblyGroupsByTab(tab.value).length - 1"
                     />
-                    <el-button link type="danger" icon="Delete" @click="removeGroup(groupIndex(scope.row))" />
+                    <el-button
+                      link
+                      type="danger"
+                      icon="Delete"
+                      @click="removeGroup(groupIndex(scope.row))"
+                    />
                   </template>
                 </el-table-column>
               </el-table>
@@ -417,7 +427,8 @@
     <!-- 工序下标说明：数字下标与作业说明共用一个输入弹窗 -->
     <el-dialog v-model="indexDialogVisible" :title="promptTitle" width="380px" append-to-body>
       <div style="font-size: 13px; color: #606266; margin-bottom: 12px">
-        工序 <b>{{ indexDialogProcessName }}</b>{{ promptMode === 'instruction' ? '需要作业说明，请填写：' : '带数字下标，请输入：' }}
+        工序 <b>{{ indexDialogProcessName }}</b
+        >{{ promptMode === 'instruction' ? '需要作业说明，请填写：' : '带数字下标，请输入：' }}
       </div>
       <el-input-number
         v-if="promptMode === 'index'"
@@ -454,8 +465,8 @@ import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
 import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
-import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
-import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
+import ProcessOperation from '@/components/ProcessOperation/index.vue'
+import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 
 // ==================== 类型定义 ====================
 
@@ -475,19 +486,20 @@ interface RouteItemGroup {
 const props = defineProps<{
   modelValue: EngineeringRoutingItemVO[]
   standardProcesses: StandardProcessOption[]
-  modernOperationCard?: boolean
+  modernOperation?: boolean
 }>()
 
-const modernOperationCard = computed(() => props.modernOperationCard === true)
+const modernOperation = computed(() => props.modernOperation === true)
 
-function toOperationCardItems(items: EngineeringRoutingItemVO[]): ProcessOperationCardItem[] {
+function toOperationItems(items: EngineeringRoutingItemVO[]): ProcessOperationItem[] {
   return items.map((item, index) => ({
     key: item.itemId ?? `${item.processId}_${index}`,
     icon: item.icon,
     processName: item.processName,
     indexNumber: item.hasIndex === 1 ? item.indexNumber : null,
     hasWorkInstruction: item.hasWorkInstruction,
-    workInstruction: (item as EngineeringRoutingItemVO & { workInstruction?: string }).workInstruction,
+    workInstruction: (item as EngineeringRoutingItemVO & { workInstruction?: string })
+      .workInstruction,
   }))
 }
 
@@ -652,11 +664,13 @@ const promptMode = ref<'index' | 'instruction'>('index')
 const indexDialogProcessName = ref('')
 let pendingIndexItem: EngineeringRoutingItemVO | null = null
 
-const promptTitle = computed(() => (promptMode.value === 'instruction' ? '填写作业说明' : '输入下标数字'))
+const promptTitle = computed(() =>
+  promptMode.value === 'instruction' ? '填写作业说明' : '输入下标数字'
+)
 const promptValueValid = computed(() =>
   promptMode.value === 'instruction'
     ? instructionDialogValue.value.trim().length > 0
-    : indexDialogValue.value != null && indexDialogValue.value > 0,
+    : indexDialogValue.value != null && indexDialogValue.value > 0
 )
 
 // 打开下标输入弹窗（has_index=1 的工序拖入/点击图标时）
@@ -692,7 +706,11 @@ const confirmIndexDialog = () => {
 const confirmPrompt = () => {
   if (!pendingIndexItem) return
   const target = reactive(pendingIndexItem)
-  if (promptMode.value === 'index' && indexDialogValue.value != null && indexDialogValue.value > 0) {
+  if (
+    promptMode.value === 'index' &&
+    indexDialogValue.value != null &&
+    indexDialogValue.value > 0
+  ) {
     target.indexNumber = Math.floor(indexDialogValue.value)
   } else if (promptMode.value === 'instruction' && instructionDialogValue.value.trim()) {
     ;(target as EngineeringRoutingItemVO & { workInstruction?: string }).workInstruction =

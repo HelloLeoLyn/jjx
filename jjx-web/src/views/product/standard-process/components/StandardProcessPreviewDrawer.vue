@@ -47,7 +47,7 @@
       </el-form>
 
       <div class="preview-title">新版工艺组件 Demo</div>
-      <ProcessOperationCard :items="previewItems" :remark="operationRemark" />
+      <ProcessOperation :items="previewItems" :remark="operationRemark" />
 
       <div class="preview-notes">
         <span>标准工序：{{ process.processName }}</span>
@@ -59,8 +59,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
-import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
+import ProcessOperation from '@/components/ProcessOperation/index.vue'
+import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 
 const props = defineProps<{
@@ -77,9 +77,9 @@ const indexNumber = ref<number | null>(4)
 const workInstruction = ref('线路外形')
 const operationRemark = ref('一车一模')
 
-const previewItems = computed<ProcessOperationCardItem[]>(() => {
+const previewItems = computed<ProcessOperationItem[]>(() => {
   if (!props.process) return []
-  const items: ProcessOperationCardItem[] = [
+  const items: ProcessOperationItem[] = [
     {
       key: props.process.processId,
       icon: props.process.icon,

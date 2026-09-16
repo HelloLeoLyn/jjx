@@ -101,7 +101,7 @@
         </el-table-column>
         <el-table-column label="组件预览" width="150" align="center">
           <template #default="scope">
-            <ProcessOperationCard mode="table" :items="[previewItem(scope.row)]" />
+            <ProcessOperation :items="[previewItem(scope.row)]" />
           </template>
         </el-table-column>
         <el-table-column prop="processCode" label="工序编码" width="140" />
@@ -207,8 +207,8 @@ import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
 import StandardProcessFormDialog from './components/StandardProcessFormDialog.vue'
 import StandardProcessPreviewDrawer from './components/StandardProcessPreviewDrawer.vue'
-import ProcessOperationCard from '@/components/ProcessOperationCard/index.vue'
-import type { ProcessOperationCardItem } from '@/components/ProcessOperationCard/types'
+import ProcessOperation from '@/components/ProcessOperation/index.vue'
+import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { useDict } from '@/composables/useDict'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
@@ -254,7 +254,7 @@ const previewProcess = ref<StandardProcessItem | null>(null)
 const processDialogVisible = ref(false)
 const processDialogId = ref<number | undefined>(undefined)
 
-const previewItem = (row: StandardProcessItem): ProcessOperationCardItem => ({
+const previewItem = (row: StandardProcessItem): ProcessOperationItem => ({
   key: row.processId,
   icon: row.icon,
   processName: row.processName,

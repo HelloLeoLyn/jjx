@@ -1,5 +1,5 @@
 <template>
-  <div class="operation-card" :class="[`mode-${mode}`, { 'is-composite': items.length > 1 }]">
+  <div class="process-operation" :class="{ 'is-composite': items.length > 1 }">
     <div class="operation-children">
       <template v-for="(item, index) in items" :key="item.key ?? index">
         <span v-if="index > 0" class="plus">+</span>
@@ -21,7 +21,7 @@
             <SvgIcon v-if="item.icon" :name="item.icon" :size="32" />
             <span v-else class="icon-placeholder">工</span>
             <el-popover
-            v-if="editable && !item.workInstruction && item.indexNumber != null"
+              v-if="editable && !item.workInstruction && item.indexNumber != null"
               placement="top"
               :width="210"
               trigger="click"
@@ -42,12 +42,18 @@
                 }}</span>
               </template>
             </el-popover>
-            <span v-else-if="!item.workInstruction && item.indexNumber != null" class="index-number">{{
-              item.indexNumber
-            }}</span>
+            <span
+              v-else-if="!item.workInstruction && item.indexNumber != null"
+              class="index-number"
+            >
+              {{ item.indexNumber }}
+            </span>
           </div>
           <el-popover
-            v-if="mode === 'table' && editable && (item.workInstruction || (item.hasWorkInstruction === 1 && item.indexNumber == null))"
+            v-if="
+              editable &&
+              (item.workInstruction || (item.hasWorkInstruction === 1 && item.indexNumber == null))
+            "
             placement="bottom-start"
             :teleported="false"
             :fallback-placements="['bottom-start']"
@@ -69,63 +75,19 @@
                 :key="text"
                 type="button"
                 @click="selectWorkInstruction(index, text)"
-              >{{ text }}</button>
+              >
+                {{ text }}
+              </button>
             </div>
             <template #reference>
-              <span class="table-subscript is-editable">
+              <span class="operation-subscript is-editable">
                 {{ item.workInstruction || '＋作业说明' }}
               </span>
             </template>
           </el-popover>
-          <span
-            v-else-if="mode === 'table' && item.workInstruction"
-            class="table-subscript"
-          >
+          <span v-else-if="item.workInstruction" class="operation-subscript">
             {{ item.workInstruction }}
           </span>
-          <div v-else-if="mode !== 'table'" class="process-copy">
-            <el-popover
-              v-if="editable && (item.hasWorkInstruction === 1 || item.workInstruction)"
-              placement="bottom-start"
-              :teleported="false"
-              :fallback-placements="['bottom-start']"
-              :offset="4"
-              :width="300"
-              trigger="click"
-            >
-              <el-input
-                :model-value="item.workInstruction"
-                clearable
-                maxlength="80"
-                placeholder="作业说明，如：冲窗口灯孔"
-                @input="(value: string) => emit('update:work-instruction', index, value)"
-              />
-              <div class="common-work-instructions">
-                <span>常用：</span>
-                <button
-                  v-for="text in commonWorkInstructions"
-                  :key="text"
-                  type="button"
-                  @click="selectWorkInstruction(index, text)"
-                >{{ text }}</button>
-              </div>
-              <template #reference>
-                <div
-                  class="work-instruction is-editable"
-                  :class="{ 'is-empty': !item.workInstruction }"
-                >
-                  {{ item.workInstruction || '＋作业说明' }}
-                </div>
-              </template>
-            </el-popover>
-            <div
-              v-else-if="item.workInstruction"
-              class="work-instruction"
-              :title="item.workInstruction"
-            >
-              {{ item.workInstruction }}
-            </div>
-          </div>
           <button
             v-if="editable"
             class="remove-item"
@@ -138,33 +100,30 @@
         </div>
       </template>
     </div>
-
-    <div v-if="remark" class="operation-remark" :title="remark">{{ remark }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import SvgIcon from '@/components/SvgIcon/index.vue'
-import type { ProcessOperationCardItem } from './types'
+import type { ProcessOperationItem } from './types'
 
-const commonWorkInstructions = ['线路外形', '冲窗口灯孔', '一车一模', '一车二模', '撕保护膜', '贴保护膜']
-
+const commonWorkInstructions = [
+  '线路外形',
+  '冲窗口灯孔',
+  '一车一模',
+  '一车二模',
+  '撕保护膜',
+  '贴保护膜',
+]
 const props = withDefaults(
   defineProps<{
-    items: ProcessOperationCardItem[]
+    items: ProcessOperationItem[]
     remark?: string
-    mode?: 'default' | 'table'
     draggable?: boolean
     editable?: boolean
   }>(),
-  {
-    remark: '',
-    mode: 'default',
-    draggable: false,
-    editable: false,
-  }
+  { remark: '', draggable: false, editable: false }
 )
-
 const emit = defineEmits<{
   (event: 'item-dragstart', sourceEvent: DragEvent, itemIndex: number): void
   (event: 'item-dragover', sourceEvent: DragEvent, itemIndex: number): void
@@ -173,17 +132,14 @@ const emit = defineEmits<{
   (event: 'update:work-instruction', itemIndex: number, value: string): void
   (event: 'remove', itemIndex: number): void
 }>()
-
 function selectWorkInstruction(itemIndex: number, value: string) {
   emit('update:work-instruction', itemIndex, value)
 }
-
 function onDragOver(event: DragEvent, itemIndex: number) {
   if (!props.draggable) return
   event.preventDefault()
   emit('item-dragover', event, itemIndex)
 }
-
 function onDrop(event: DragEvent, itemIndex: number) {
   if (!props.draggable) return
   event.preventDefault()
@@ -193,109 +149,36 @@ function onDrop(event: DragEvent, itemIndex: number) {
 </script>
 
 <style scoped>
-.operation-card {
+.process-operation {
   display: flex;
-  min-height: 84px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  box-sizing: border-box;
-  padding: 18px 20px;
-  overflow: hidden;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: var(--el-bg-color);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 5%);
-}
-
-.operation-card.mode-table {
   min-height: 34px;
+  align-items: center;
   justify-content: flex-start;
-  gap: 0;
-  padding: 0;
+  box-sizing: border-box;
   overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
 }
-
-.mode-table .operation-children {
-  gap: 8px;
-}
-
-.mode-table .operation-child {
-  align-items: flex-end;
-  /* 下标紧贴图标右侧，避免表格中图标与说明被拉开 */
-  gap: 0;
-}
-
-.mode-table .icon-cell {
-  width: 30px;
-  height: 30px;
-  flex-basis: 30px;
-  align-items: flex-end;
-}
-
-.mode-table .icon-placeholder {
-  width: 24px;
-  height: 24px;
-  font-size: 11px;
-}
-
-.mode-table .table-subscript {
-  max-width: 84px;
-  margin-bottom: -5px;
-  overflow: hidden;
-  color: var(--el-text-color-secondary);
-  font-size: 10px;
-  line-height: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mode-table .table-subscript.is-editable {
-  cursor: pointer;
-}
-
-.mode-table .table-subscript.is-editable:hover {
-  color: var(--el-color-primary);
-}
-
-.mode-table .operation-remark {
-  display: none;
-}
-
-.mode-table .plus {
-  font-size: 14px;
-}
-
 .operation-children,
 .operation-child {
   display: flex;
   min-width: 0;
   align-items: center;
 }
-
 .operation-children {
-  gap: 16px;
-}
-
-.operation-child {
-  position: relative;
   gap: 8px;
 }
-
+.operation-child {
+  position: relative;
+  align-items: flex-end;
+  gap: 0;
+}
 .operation-child.is-draggable {
   padding: 4px;
   border-radius: 6px;
   transition: background-color 0.15s ease;
 }
-
 .operation-child.is-draggable:hover {
   background: var(--el-fill-color-light);
 }
-
 .drag-handle {
   flex: 0 0 auto;
   color: var(--el-text-color-placeholder);
@@ -304,39 +187,34 @@ function onDrop(event: DragEvent, itemIndex: number) {
   cursor: grab;
   user-select: none;
 }
-
 .drag-handle:hover {
   color: var(--el-color-primary);
 }
-
 .drag-handle:active {
   cursor: grabbing;
 }
-
 .icon-cell {
   position: relative;
   display: flex;
-  width: 44px;
-  height: 40px;
-  flex: 0 0 44px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   align-items: flex-end;
   justify-content: flex-start;
   color: var(--el-color-primary);
 }
-
 .icon-placeholder {
   display: flex;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
   border: 1px dashed currentColor;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1;
 }
-
 .index-number {
   position: absolute;
   right: 0;
@@ -354,55 +232,23 @@ function onDrop(event: DragEvent, itemIndex: number) {
   line-height: 15px;
   text-align: center;
 }
-
-.index-number.is-editable {
+.index-number.is-editable,
+.operation-subscript.is-editable {
   cursor: pointer;
 }
-
-.process-copy {
-  display: flex;
-  min-width: 96px;
-  height: 40px;
-  flex-direction: column;
-  justify-content: flex-end;
-}
-
-.process-name {
-  max-width: 150px;
-  overflow: hidden;
-  color: var(--el-text-color-primary);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 22px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.work-instruction {
-  height: 16px;
-  max-width: 150px;
+.operation-subscript {
+  max-width: 84px;
+  margin-bottom: -5px;
   overflow: hidden;
   color: var(--el-text-color-secondary);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 10px;
+  line-height: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.work-instruction.is-editable {
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.work-instruction.is-editable:hover {
-  background: var(--el-fill-color);
+.operation-subscript.is-editable:hover {
   color: var(--el-color-primary);
 }
-
-.work-instruction.is-empty {
-  color: var(--el-text-color-placeholder);
-}
-
 .common-work-instructions {
   display: flex;
   flex-wrap: wrap;
@@ -412,7 +258,6 @@ function onDrop(event: DragEvent, itemIndex: number) {
   color: var(--el-text-color-secondary);
   font-size: 12px;
 }
-
 .common-work-instructions button {
   padding: 2px 6px;
   border: 1px solid var(--el-border-color-light);
@@ -423,12 +268,10 @@ function onDrop(event: DragEvent, itemIndex: number) {
   line-height: 18px;
   cursor: pointer;
 }
-
 .common-work-instructions button:hover {
   border-color: var(--el-color-primary);
   color: var(--el-color-primary);
 }
-
 .remove-item {
   position: absolute;
   top: -10px;
@@ -445,32 +288,12 @@ function onDrop(event: DragEvent, itemIndex: number) {
   line-height: 17px;
   cursor: pointer;
 }
-
 .operation-child:hover .remove-item {
   display: block;
 }
-
 .plus {
   flex: 0 0 auto;
   color: var(--el-text-color-placeholder);
-  font-size: 18px;
-}
-
-.operation-remark {
-  max-width: 160px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  color: var(--el-text-color-primary);
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.3;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.is-composite .operation-remark {
-  padding-left: 16px;
-  border-left: 1px solid var(--el-border-color-lighter);
+  font-size: 14px;
 }
 </style>
