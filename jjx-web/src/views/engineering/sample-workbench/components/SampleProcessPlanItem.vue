@@ -38,7 +38,6 @@
     </div>
     <!-- 行2：标准工序（组合，任意结构） -->
     <div class="pc-row">
-      <div class="pc-row-label">标准工序</div>
       <div class="pc-items">
         <ProcessOperation
           v-if="readonly || !pc.editing"
@@ -98,7 +97,6 @@
     </div>
     <!-- 行3：材料表格 -->
     <div class="pc-row">
-      <div class="pc-row-label">🧾 材料</div>
       <div class="pc-mat">
         <el-table
           v-if="(pc.editing ? pc.materialRows : parseMaterials(pc.materials)).length"
@@ -192,6 +190,14 @@
             </template>
           </el-table-column>
           <el-table-column v-if="!readonly && pc.editing" label="操作" width="60" align="center">
+            <template #header>
+              <el-button
+                size="small"
+                plain
+                icon="Plus"
+                @click="$emit('add-material-row')"
+              ></el-button>
+            </template>
             <template #default="{ $index }">
               <el-button size="small" link type="danger" @click="pc.materialRows.splice($index, 1)"
                 >删</el-button
@@ -199,14 +205,7 @@
             </template>
           </el-table-column>
         </el-table>
-        <div v-if="!readonly && pc.editing" style="margin-top: 6px; display: flex; gap: 6px">
-          <el-button size="small" plain icon="Plus" @click="$emit('add-material-row')"
-            >添加材料</el-button
-          >
-          <el-button size="small" link type="primary" @click="$emit('create-material', null)"
-            >新建物料</el-button
-          >
-        </div>
+        <div v-if="!readonly && pc.editing" style="margin-top: 6px; display: flex; gap: 6px"></div>
         <span
           v-else-if="!parseMaterials(pc.materials).length"
           style="color: #c0c4cc; font-size: 12px"
@@ -215,17 +214,9 @@
       </div>
     </div>
     <!-- 行4：整道工序备注；单工序属于自身，复合工序属于整个组合 -->
-    <div v-if="pc.operationRemark || (!readonly && pc.editing)" class="pc-row">
-      <div class="pc-row-label">📝 工序备注</div>
-      <el-button
-        v-if="!readonly && pc.editing && !pc.operationRemark && !pc.remarkEditing"
-        link
-        type="primary"
-        @click="pc.remarkEditing = true"
-        >＋备注</el-button
-      >
+    <div class="pc-row">
       <el-input
-        v-else-if="!readonly && pc.editing"
+        v-if="!readonly && pc.editing"
         v-model="pc.operationRemark"
         type="textarea"
         :rows="2"
@@ -256,7 +247,7 @@ import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
 /**
- * 工序卡片（dev-20260811-008 组件化核心）
+ * 打样工序计划项（dev-20260811-008 组件化核心）
  * 自包含：状态/标准工序/材料/描述/编辑操作
  * 预留：卡片类型字段（标准/自定义），印刷工序后续扩展
  */

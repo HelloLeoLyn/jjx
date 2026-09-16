@@ -44,7 +44,7 @@
           :label="`${tab.label}（${cardsByTab(tab.value).length}）`"
         >
           <div class="plan-scroll" @dragover.prevent @drop="onPlanDrop">
-            <ProcessCard
+            <SampleProcessPlanItem
               v-for="(pc, idx) in cardsByTab(tab.value)"
               :key="pc.uid"
               :pc="pc"
@@ -98,7 +98,7 @@
 
 <script setup lang="ts">
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
-import ProcessCard from './ProcessCard.vue'
+import SampleProcessPlanItem from './SampleProcessPlanItem.vue'
 import FrequentMaterialsBar from './FrequentMaterialsBar.vue'
 import BatchToolbar from './BatchToolbar.vue'
 

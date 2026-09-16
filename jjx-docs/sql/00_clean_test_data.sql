@@ -293,6 +293,8 @@ TRUNCATE sys_login_log;
 
 TRUNCATE sys_error_log;
 
+TRUNCATE sales_sample_order;
+
 -- ==================== 12. 基础资料 + 系统权限/配置（全部保留，不动） ====================
 -- 权限：sys_user / sys_role / sys_menu / sys_role_menu / sys_user_role / sys_dept
 --       sys_dept 已按 83_rebuild_sys_dept_org.sql 新组织架构重建（16 部门），本脚本不清

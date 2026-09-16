@@ -94,11 +94,11 @@
     <el-card class="table-card" shadow="never">
       <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%">
         <el-table-column type="index" label="序号" width="60" align="center" />
-        <el-table-column prop="icon" label="图标" width="90" align="center">
+        <!-- <el-table-column prop="icon" label="图标" width="90" align="center">
           <template #default="scope">
             <SvgIcon :name="scope.row.icon" :size="20" />
           </template>
-        </el-table-column>
+        </el-table-column> -->
         <el-table-column label="组件预览" width="150" align="center">
           <template #default="scope">
             <ProcessOperation :items="[previewItem(scope.row)]" />

@@ -34,7 +34,7 @@
       <el-tab-pane label="🛠 冲型组装" name="ASSEMBLY">
         <template v-if="isCurrentRound">
           <!-- 工序计划面板（左选择器 + 右卡片区） -->
-          <PlanBoard
+          <SampleProcessPlanEditor
             :readonly="readonlyMode"
             :batch-mode="batchMode"
             :batch-selected="batchSelected"
@@ -536,7 +536,7 @@ import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationD
 import InquiryDetailDialog from '@/views/sales/inquiry/components/InquiryDetailDialog.vue'
 import SourceDocSummaryDialog from './components/SourceDocSummaryDialog.vue'
 import { hasPermi } from '@/directives'
-import PlanBoard from './components/PlanBoard.vue'
+import SampleProcessPlanEditor from './components/SampleProcessPlanEditor.vue'
 import ExecutionTimeline from './components/ExecutionTimeline.vue'
 import BomPanel from './components/BomPanel.vue'
 import NoteFilesPanel from './components/NoteFilesPanel.vue'
