@@ -840,8 +840,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 throw new BusinessException("物料" + inboundItem.getMaterialCode() + "存在未命名的检测项目");
             }
             if (org.apache.commons.lang3.StringUtils.isBlank(check.getActualValue())) {
-                throw new BusinessException("物料" + inboundItem.getMaterialCode() + "的检测项目“"
-                        + check.getCheckItem() + "”必须填写实测记录");
+                // 2026-09-16 dev-20260916-008：实测记录允许留空（配合"整批合格"批量口径），
+                // 只要求逐项给出合格/不合格结论；需要证据时可让检验员补填。
+                log.debug("IQC 检测项目[{}]实测记录留空（物料{}），按当前口径放行",
+                        check.getCheckItem(), inboundItem.getMaterialCode());
             }
             String result = check.getResult() == null ? "" : check.getResult().toLowerCase();
             if (!List.of(

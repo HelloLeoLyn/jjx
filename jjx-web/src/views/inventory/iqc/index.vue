@@ -126,7 +126,27 @@
         ><span v-else-if="isApproved"> · 检验已批准，待确认入库</span
         ><span v-else-if="isCompleted"> · 入库流程已完成</span>
       </div>
-      <el-table :data="workRows" border class="material-table">
+      <div class="batch-bar">
+        <el-button
+          type="primary"
+          :disabled="!selectedEditableRows.length"
+          @click="batchPassSelected"
+          >整批合格（已选 {{ selectedEditableRows.length }} 行）</el-button
+        >
+        <el-button :disabled="!selectedEditableRows.length" @click="copyFromPreviousRow"
+          >复制上一行</el-button
+        >
+        <el-button :disabled="!selectedRows.length" @click="clearSelectedRows">清空选中</el-button>
+        <el-button type="primary" plain @click="openWholeInboundChecks">整单检验录入</el-button>
+        <span class="batch-tip">勾选多行可整批合格；录入弹窗内 Tab 移动、Enter 保存、可"保存并下一行"；实测记录可留空</span>
+      </div>
+      <el-table
+        :data="workRows"
+        border
+        class="material-table"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="46" fixed="left" :selectable="rowCanEdit" />
         <el-table-column prop="materialCode" label="材料编码" min-width="125" /><el-table-column
           prop="materialName"
           label="材料名称"
@@ -281,7 +301,9 @@
     <MaterialChecksDialog
       v-model:visible="checksVisible"
       :row="activeWorkRow"
+      :next-label="nextEditableLabel"
       @saved="handleChecksSaved"
+      @next="openNextEditableRow"
     />
     <IqcReviewDialog
       v-model:visible="reviewVisible"
@@ -309,6 +331,11 @@ import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
+import {
+  batchPassIqcRow,
+  copyIqcChecks,
+  syncIqcRowFromChecks,
+} from './iqcRowRules'
 import {
   InboundOrderStatusEnum,
   InspectionResultEnum as InboundInspectionResultEnum,
@@ -647,7 +674,87 @@ function checkProgress(row: WorkRow) {
       String(check.remark || '').trim()
   ).length
 }
-function openMaterialChecks(row: WorkRow) {
+// ==================== 批量操作 + 连续录入（dev-20260916-008） ====================
+const selectedRows = ref<WorkRow[]>([])
+const selectedEditableRows = computed(() => selectedRows.value.filter((row) => rowCanEdit(row)))
+
+function handleSelectionChange(rows: WorkRow[]) {
+  selectedRows.value = rows
+}
+
+/** 整批合格：结论合格 + 实测记录留空 + CR/MA/MI 归零 + 抽检/接收=收货数（用户拍板口径） */
+function batchPassSelected() {
+  const rows = selectedEditableRows.value
+  if (!rows.length) return
+  rows.forEach((row) => batchPassIqcRow(row))
+  ElMessage.success(`已对 ${rows.length} 行按整批合格填充（实测记录留空）`)
+}
+
+/** 复制上一行：只带 检验标准/方法/设备/结论，不带实测值与缺陷数 */
+function copyFromPreviousRow() {
+  const rows = selectedEditableRows.value
+  if (!rows.length) return
+  let copied = 0
+  rows.forEach((row) => {
+    const index = workRows.value.indexOf(row)
+    const previous = index > 0 ? workRows.value[index - 1] : undefined
+    if (!previous || !rowCanEdit(row)) return
+    copyIqcChecks(previous, row)
+    copied++
+  })
+  if (copied) ElMessage.success(`已把上一行检验项复制到 ${copied} 行`)
+  else ElMessage.warning('选中的行没有可复制的上一行')
+}
+
+/** 清空选中行：检验项与行级结论复位（不改收货数量） */
+function clearSelectedRows() {
+  selectedEditableRows.value.forEach((row) => {
+    ;(row.inspectionItems || []).forEach((check: any) => {
+      check.actualValue = ''
+      check.crQuantity = 0
+      check.maQuantity = 0
+      check.miQuantity = 0
+      check.result = undefined
+      check.remark = ''
+    })
+    syncIqcRowFromChecks(row)
+  })
+  selectedRows.value = []
+}
+
+/** 下一可编辑行（供弹窗"保存并下一行"） */
+const nextEditableRow = computed(() => {
+  const current = activeWorkRow.value
+  if (!current) return undefined
+  const index = workRows.value.indexOf(current)
+  if (index < 0) return undefined
+  return workRows.value.slice(index + 1).find((row) => rowCanEdit(row))
+})
+const nextEditableLabel = computed(() =>
+  nextEditableRow.value ? nextEditableRow.value.materialCode : ''
+)
+function openNextEditableRow() {
+  const next = nextEditableRow.value
+  if (!next) {
+    ElMessage.success('已是最后一个可编辑材料')
+    checksVisible.value = false
+    return
+  }
+  activeWorkRow.value = next
+}
+
+/** 整单检验录入：从第一个可编辑材料开始，逐行连续录入 */
+function openWholeInboundChecks() {
+  const first = workRows.value.find((row) => rowCanEdit(row))
+  if (!first) {
+    ElMessage.info('当前单据没有可编辑的材料行')
+    return
+  }
+  openMaterialChecks(first)
+}
+
+function openMaterialChecks(row?: WorkRow) {
+  if (!row) return
   activeWorkRow.value = row
   checksVisible.value = true
 }
@@ -723,14 +830,14 @@ async function submitInspection() {
       ElMessage.warning(`${item.materialCode}：不合格必须填写不合格原因`)
       return
     }
-    const incompleteCheck = item.inspectionItems.find(
+    // 2026-09-16 dev-20260916-008：实测记录允许留空（配合"整批合格"口径），仅要求逐项给出合格/不合格结论
+    const undecidedCheck = item.inspectionItems.find(
       (check: any) =>
-        !String(check.actualValue || '').trim() ||
         ![QualityInspectionResult.PASS, QualityInspectionResult.FAIL].includes(check.result)
     )
-    if (incompleteCheck) {
+    if (undecidedCheck) {
       ElMessage.warning(
-        `${item.materialCode}：请完成检测项目“${incompleteCheck.checkItem}”的实测记录与判定`
+        `${item.materialCode}：请判定检测项目「${undecidedCheck.checkItem}」合格或不合格（实测记录可留空）`
       )
       return
     }
@@ -850,6 +957,17 @@ onBeforeUnmount(clearSelection)
 }
 .material-table :deep(.el-input-number) {
   width: 112px;
+}
+/* 批量工具条（dev-20260916-008） */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.batch-tip {
+  color: #909399;
+  font-size: 12px;
 }
 .reason-input {
   margin-top: 6px;

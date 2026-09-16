@@ -61,7 +61,8 @@
               :value="option.value" /></el-select></template
       ></el-table-column>
       <el-table-column label="备注" min-width="140"
-        ><template #default="{ row: check }"><el-input v-model="check.remark" /></template
+        ><template #default="{ row: check }"
+          ><el-input v-model="check.remark" @keyup.enter="save" /></template
       ></el-table-column>
       <el-table-column v-if="!row.locked" label="操作" width="70" fixed="right"
         ><template #default="{ row: check }"
@@ -75,10 +76,15 @@
         ></el-table-column
       >
     </el-table>
-    <template #footer
-      ><el-button @click="opened = false">取消</el-button
-      ><el-button type="primary" @click="save">保存</el-button></template
-    >
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button :disabled="row?.locked" @click="batchPassRow">整批合格（本行）</el-button>
+        <span class="footer-tip">实测记录可留空；Tab 移动、Enter 保存</span>
+        <el-button @click="opened = false">取消</el-button>
+        <el-button v-if="nextLabel" @click="saveAndNext">保存并下一行（{{ nextLabel }}）</el-button>
+        <el-button type="primary" @click="save">保存</el-button>
+      </div>
+    </template>
   </el-dialog>
 </template>
 
@@ -86,57 +92,36 @@
 import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  InspectionResultEnum as InboundInspectionResultEnum,
-  IqcDispositionEnum,
-} from '@/enums/inventory/InboundEnum'
-import {
   InspectionResult as QualityInspectionResult,
   InspectionResultEnum as QualityInspectionResultEnum,
 } from '@/enums/quality/InspectionEnum'
+import {
+  batchPassIqcRow,
+  syncIqcDisposition,
+  syncIqcRowFromChecks,
+} from '../iqcRowRules'
 
-const props = defineProps<{ visible: boolean; row?: any }>()
-const emit = defineEmits<{ (e: 'update:visible', value: boolean): void; (e: 'saved'): void }>()
+const props = defineProps<{ visible: boolean; row?: any; nextLabel?: string }>()
+const emit = defineEmits<{
+  (e: 'update:visible', value: boolean): void
+  (e: 'saved'): void
+  (e: 'next'): void
+}>()
 const opened = computed({ get: () => props.visible, set: (value) => emit('update:visible', value) })
 const checkResultOptions = QualityInspectionResultEnum.items.filter(
   (item) => item.value !== QualityInspectionResult.PENDING
 )
 
 function syncDisposition(row: any) {
-  if (
-    row.disposition === IqcDispositionEnum.CONCESSION.value ||
-    row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value
-  )
-    row.acceptedQuantity = Number(row.quantity || 0)
-  else row.acceptedQuantity = 0
+  syncIqcDisposition(row)
+}
+/** 本行"整批合格"：结论合格 + 实测记录留空 + 缺陷数归零 + 抽检/接收=收货数（dev-20260916-008 口径） */
+function batchPassRow() {
+  batchPassIqcRow(props.row)
+  ElMessage.success('本行已按整批合格填充，实测记录留空')
 }
 function syncRow() {
-  const row = props.row
-  if (!row) return
-  const total = row.inspectionItems.reduce(
-    (sum: number, check: any) =>
-      sum +
-      Number(check.crQuantity || 0) +
-      Number(check.maQuantity || 0) +
-      Number(check.miQuantity || 0),
-    0
-  )
-  let sampled = Number(row.sampledQuantity || 0)
-  if (sampled === 0 && total > 0) sampled = total
-  row.sampledQuantity = sampled
-  row.rejectedQuantity = Math.min(sampled, total)
-  row.qualifiedQuantity = Math.max(0, sampled - row.rejectedQuantity)
-  const critical = row.inspectionItems.reduce(
-    (sum: number, check: any) => sum + Number(check.crQuantity || 0),
-    0
-  )
-  if (critical > 0 || row.rejectedQuantity > 0)
-    row.inspectionResult = InboundInspectionResultEnum.FAIL.value
-  else if (row.qualifiedQuantity > 0) row.inspectionResult = InboundInspectionResultEnum.PASS.value
-  else row.inspectionResult = ''
-  if (row.inspectionResult === InboundInspectionResultEnum.PASS.value) {
-    row.disposition = undefined
-    row.acceptedQuantity = Number(row.quantity || 0)
-  } else syncDisposition(row)
+  syncIqcRowFromChecks(props.row)
 }
 function removeCheck(check: any) {
   const row = props.row
@@ -155,11 +140,30 @@ function save() {
   emit('saved')
   opened.value = false
 }
+/** 保存本行并直接切到下一可编辑行（弹窗不关闭，连续录入，dev-20260916-008） */
+function saveAndNext() {
+  syncRow()
+  emit('saved')
+  emit('next')
+}
 </script>
 
 <style scoped>
 .locked-checks {
   pointer-events: none;
   opacity: 0.65;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-tip {
+  flex: 1;
+  text-align: left;
+  color: #909399;
+  font-size: 12px;
 }
 </style>
