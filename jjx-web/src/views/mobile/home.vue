@@ -231,7 +231,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: linear-gradient(135deg, #2b5aa7, #3f7bd6);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #3f7bd6));
   color: #fff;
   border-radius: 14px;
   padding: 16px;
@@ -309,7 +309,7 @@ onMounted(() => {
   font-size: 12px;
   color: #909399;
 }
-.num.primary { color: #2b5aa7; }
+.num.primary { color: var(--doc-theme, #2b5aa7); }
 .num.warn { color: #e6a23c; }
 .num.done { color: #67c23a; }
 .m-no-task {

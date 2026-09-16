@@ -147,7 +147,7 @@ onMounted(async () => {
   letter-spacing: 8px;
   margin: 14px 0;
   padding-bottom: 8px;
-  border-bottom: 2px solid #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
 }
 
 .doc-info {
@@ -176,7 +176,7 @@ onMounted(async () => {
 }
 
 .eng-title {
-  background: #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
   color: #fff;
   font-size: 11px;
   font-weight: 600;

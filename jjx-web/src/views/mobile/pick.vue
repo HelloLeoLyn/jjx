@@ -208,14 +208,14 @@ async function handleSubmit() {
   font-size: 15px;
   font-weight: 600;
   color: #fff;
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   cursor: pointer;
 }
 .m-locate-btn:disabled {
   opacity: 0.6;
 }
 .m-pick-card {
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   border-radius: 14px;
   padding: 14px 16px;
   margin-bottom: 12px;
@@ -278,7 +278,7 @@ async function handleSubmit() {
   font-weight: 500;
 }
 .m-tag.st-sub {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   background: #ecf3ff;
 }
 .m-tag.st-insuff {
@@ -337,7 +337,7 @@ async function handleSubmit() {
   font-size: 16px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   cursor: pointer;
 }
 .m-submit-btn:disabled {

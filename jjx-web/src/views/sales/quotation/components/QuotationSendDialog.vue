@@ -296,7 +296,7 @@ const handleSend = async () => {
 .company-name {
   font-size: 20px;
   font-weight: 700;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   letter-spacing: 2px;
 }
 
@@ -313,7 +313,7 @@ const handleSend = async () => {
   letter-spacing: 8px;
   margin: 14px 0;
   padding-bottom: 8px;
-  border-bottom: 2px solid #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
 }
 
 .doc-info {
@@ -342,11 +342,11 @@ const handleSend = async () => {
 }
 
 .doc-items th {
-  background: #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
   color: #fff;
   padding: 6px 4px;
   font-weight: 600;
-  border: 1px solid #2b5aa7;
+  border: 1px solid var(--doc-theme, #2b5aa7);
 }
 
 .doc-items td {
@@ -389,7 +389,7 @@ const handleSend = async () => {
 }
 
 .amount-total {
-  background: #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
   color: #fff;
   font-weight: 700;
   font-size: 13px;

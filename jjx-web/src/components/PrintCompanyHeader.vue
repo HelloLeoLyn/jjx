@@ -90,7 +90,7 @@ const companyExtra = computed(() =>
 }
 
 .company-name {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 2px;

@@ -214,7 +214,7 @@ loadTasks()
   padding: 12px 12px 70px;
 }
 .m-report-card {
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   border-radius: 14px;
   padding: 14px 16px;
   margin-bottom: 12px;
@@ -247,7 +247,7 @@ loadTasks()
   transition: border-color 0.15s;
 }
 .m-task-card.active {
-  border-color: #2b5aa7;
+  border-color: var(--doc-theme, #2b5aa7);
   box-shadow: 0 2px 12px rgba(43, 90, 167, 0.18);
 }
 .m-task-head {
@@ -263,7 +263,7 @@ loadTasks()
   font-family: ui-monospace, monospace;
 }
 .m-task-check {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   font-size: 16px;
   font-weight: 700;
 }
@@ -318,7 +318,7 @@ loadTasks()
   font-size: 16px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   cursor: pointer;
 }
 .m-report-btn:disabled {

@@ -83,7 +83,7 @@ h1 {
   text-align: center;
   font-size: 20px;
   letter-spacing: 4px;
-  border-bottom: 2px solid #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
   padding-bottom: 10px;
 }
 .meta {
@@ -103,7 +103,7 @@ td {
   padding: 6px;
 }
 th {
-  background: #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
   color: white;
 }
 .right {

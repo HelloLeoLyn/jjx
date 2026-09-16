@@ -181,7 +181,7 @@ onMounted(loadData)
 .doc-title {
   margin: 14px 0;
   padding-bottom: 8px;
-  border-bottom: 2px solid #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 8px;
@@ -218,7 +218,7 @@ onMounted(loadData)
 
 .requirement-table th {
   width: 13%;
-  background: #eef3fa;
+  background: var(--doc-theme-soft, #eef3fa);
   color: #303133;
   font-weight: 600;
   text-align: center;

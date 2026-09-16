@@ -181,7 +181,7 @@ async function handleConfirm() {
   font-weight: 700;
   text-align: center;
   letter-spacing: 8px;
-  border-bottom: 2px solid #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
 }
 
 .doc-info {
@@ -219,8 +219,8 @@ async function handleConfirm() {
   padding: 7px 4px;
   color: #fff;
   font-weight: 600;
-  background: #2b5aa7;
-  border: 1px solid #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
+  border: 1px solid var(--doc-theme, #2b5aa7);
 }
 
 .doc-items td {

@@ -168,9 +168,9 @@ onMounted(() => {
   padding-bottom: 4px;
 }
 .m-tab.active {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   font-weight: 600;
-  border-bottom: 2px solid #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
 }
 .m-tab-right {
   margin-left: auto;

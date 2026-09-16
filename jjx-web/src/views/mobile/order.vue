@@ -339,7 +339,7 @@ loadData()
   padding: 12px 12px 70px;
 }
 .m-order-card {
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   border-radius: 14px;
   padding: 14px 16px;
   margin-bottom: 12px;
@@ -382,7 +382,7 @@ loadData()
   box-shadow: 0 1px 4px rgba(43, 90, 167, 0.06);
 }
 .m-chip.active {
-  background: #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
   color: #fff;
   font-weight: 600;
 }
@@ -405,7 +405,7 @@ loadData()
   border: none;
   border-radius: 50%;
   background: #fff;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   font-size: 16px;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(43, 90, 167, 0.1);
@@ -449,7 +449,7 @@ loadData()
   background: #fdf6ec;
 }
 .m-tag.s-2 {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   background: #ecf3ff;
 }
 .m-tag.s-4 {
@@ -473,7 +473,7 @@ loadData()
   color: #e6a23c;
 }
 .m-exec-qty .can-report {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
 }
 .m-progress {
   height: 6px;
@@ -485,7 +485,7 @@ loadData()
 .m-progress-bar {
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(90deg, #4a7fd4, #2b5aa7);
+  background: linear-gradient(90deg, var(--doc-theme-2, #4a7fd4), var(--doc-theme, #2b5aa7));
   transition: width 0.3s;
 }
 .m-progress-bar.full {
@@ -505,7 +505,7 @@ loadData()
   cursor: pointer;
 }
 .m-act-primary {
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   color: #fff;
 }
 .m-act-ok {

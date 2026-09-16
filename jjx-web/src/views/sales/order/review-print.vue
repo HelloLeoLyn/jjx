@@ -129,12 +129,12 @@ onMounted(async () => {
 <style scoped>
 .print-page { min-height: 100vh; padding: 20px; background: #eef0f3; }
 .toolbar { display: flex; justify-content: space-between; max-width: 794px; margin: 0 auto 16px; }
-h1 { margin: 12px 0 18px; padding-bottom: 10px; border-bottom: 2px solid #2b5aa7; text-align: center; letter-spacing: 8px; }
+h1 { margin: 12px 0 18px; padding-bottom: 10px; border-bottom: 2px solid var(--doc-theme, #2b5aa7); text-align: center; letter-spacing: 8px; }
 h2 { margin: 18px 0 8px; font-size: 14px; }
 .order-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; font-size: 11px; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
 th, td { padding: 6px; border: 1px solid #aaa; overflow-wrap: anywhere; }
-th { background: #2b5aa7; color: #fff; }
+th { background: var(--doc-theme, #2b5aa7); color: #fff; }
 .comment { text-align: left; }
 .center { text-align: center; }
 .signatures { display: flex; justify-content: space-between; margin-top: 50px; font-size: 11px; }

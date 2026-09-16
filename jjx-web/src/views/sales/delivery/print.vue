@@ -207,7 +207,7 @@ onMounted(async () => {
 h1 {
   text-align: center;
   letter-spacing: 12px;
-  border-bottom: 2px solid #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
   padding-bottom: 10px;
 }
 .info {
@@ -228,7 +228,7 @@ td {
   padding: 7px;
 }
 th {
-  background: #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
   color: #fff;
 }
 .right {

@@ -624,8 +624,8 @@ onMounted(async () => {
   letter-spacing: 6px;
   margin: 4px 0 12px;
   padding-bottom: 8px;
-  border-bottom: 2px solid #2b5aa7;
-  color: #2b5aa7;
+  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
+  color: var(--doc-theme, #2b5aa7);
 }
 
 /* 信息区 */
@@ -673,7 +673,7 @@ onMounted(async () => {
   display: block;
   font-size: 14px;
   font-weight: 700;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   margin-top: 2px;
 }
 
@@ -694,7 +694,7 @@ onMounted(async () => {
 }
 .pick-group-no {
   font-weight: 700;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
 }
 .pick-group-time {
   color: #909399;
@@ -715,10 +715,10 @@ onMounted(async () => {
 .section-title {
   font-size: 12px;
   font-weight: 700;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   margin: 12px 0 6px;
   padding-left: 8px;
-  border-left: 3px solid #2b5aa7;
+  border-left: 3px solid var(--doc-theme, #2b5aa7);
 }
 
 /* 表格 */

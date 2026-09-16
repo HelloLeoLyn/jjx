@@ -133,7 +133,7 @@ function onCommand(cmd: string) {
 .m-topbar-brand {
   font-size: 16px;
   font-weight: 700;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
 }
 .m-topbar-title {
   font-size: 16px;
@@ -184,7 +184,7 @@ function onCommand(cmd: string) {
   user-select: none;
 }
 .m-tab.active {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
 }
 .m-tab-icon {
   font-size: 20px;

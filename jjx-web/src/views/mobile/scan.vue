@@ -163,7 +163,7 @@ function handleGo() {
   gap: 14px;
   width: 100%;
   border: none;
-  background: linear-gradient(135deg, #2b5aa7, #3f7bd6);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #3f7bd6));
   color: #fff;
   border-radius: 12px;
   padding: 18px 20px;
@@ -245,14 +245,14 @@ function handleGo() {
   min-width: 0;
 }
 .m-scan-input:focus {
-  border-color: #2b5aa7;
+  border-color: var(--doc-theme, #2b5aa7);
 }
 .m-scan-go-btn {
   width: 88px;
   border: none;
   background: #fff;
-  color: #2b5aa7;
-  border: 1px solid #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
+  border: 1px solid var(--doc-theme, #2b5aa7);
   border-radius: 12px;
   font-size: 16px;
   font-weight: 600;
@@ -290,7 +290,7 @@ function handleGo() {
 }
 .m-recent-no {
   font-family: ui-monospace, monospace;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
 }
 .m-recent-arrow {
   color: #c0c4cc;

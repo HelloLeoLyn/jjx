@@ -243,7 +243,7 @@ onMounted(() => loadData())
   box-shadow: 0 1px 4px rgba(43, 90, 167, 0.06);
 }
 .m-chip.active {
-  background: #2b5aa7;
+  background: var(--doc-theme, #2b5aa7);
   color: #fff;
   font-weight: 600;
 }
@@ -278,7 +278,7 @@ onMounted(() => loadData())
   background: #f0f9eb;
 }
 .m-tag.st-iqc {
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
   background: #ecf3ff;
 }
 .m-tag.st-pass {
@@ -331,7 +331,7 @@ onMounted(() => loadData())
   cursor: pointer;
 }
 .m-act-primary {
-  background: linear-gradient(135deg, #2b5aa7, #4a7fd4);
+  background: linear-gradient(135deg, var(--doc-theme, #2b5aa7), var(--doc-theme-2, #4a7fd4));
   color: #fff;
 }
 .m-empty {

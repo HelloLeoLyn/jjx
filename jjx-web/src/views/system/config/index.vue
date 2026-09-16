@@ -93,7 +93,7 @@
 
               <div v-if="activeGroup === 'pdf_template'" class="pdf-preview">
                 <div class="preview-title">模板预览</div>
-                <div class="preview-sheet" :style="{ borderTopColor: formMap.theme_color || '#2B5AA7' }">
+                <div class="preview-sheet" :style="{ borderTopColor: formMap.theme_color || DEFAULT_DOC_THEME }">
                   <img v-if="formMap.company_logo" :src="formMap.company_logo" class="preview-logo" />
                   <strong v-if="formMap.show_header !== '0'">{{ formMap.company_name || '公司名称' }}</strong>
                   <span>{{ formMap.company_address }}</span>
@@ -122,6 +122,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { sysConfigApi, type SysConfigItem } from '@/api/system/sysConfig'
+import { applyDocTheme, DEFAULT_DOC_THEME } from '@/composables/useDocTheme'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -258,6 +259,8 @@ async function handleSave() {
       }
     }
     ElMessage.success('保存成功')
+    // 主题色即时生效：写回 :root（打印/移动端统一主题），无需刷新页面
+    applyDocTheme(String(formMap.value.theme_color ?? ''))
     await loadData()
   } catch (e) {
     console.error('保存配置失败:', e)

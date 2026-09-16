@@ -222,7 +222,7 @@ defineExpose({ load, list })
 
 .group-badge {
   font-weight: 600;
-  color: #2b5aa7;
+  color: var(--doc-theme, #2b5aa7);
 }
 
 .group-no {

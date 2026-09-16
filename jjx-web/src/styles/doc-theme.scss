@@ -1,0 +1,26 @@
+// ============================================================================
+// 文档主题色（打印单据 / 移动端卡片统一主题）——2026-09-16 dev-20260916-003
+//
+// 真源：sys_config.theme_color（分组 pdf_template）
+//   → 后端 GET /config/module/pdf_template（ConfigModuleController）
+//   → 运行时由 composables/useDocTheme.ts 写到 :root 的 --doc-theme
+// 本文件只负责「兜底值」与「派生色」，不再散落硬编码主色：
+//   --doc-theme       主色：标题、下划线、表头底色、强调文字
+//   --doc-theme-soft  主色浅底：表头/斑马纹浅底（由主色派生）
+//   --doc-theme-2     主色渐变第二个色标（卡片渐变，由主色派生）
+// 注意：打印（浏览器打印 PDF）读的就是这些变量，改配置即改所有单据样式。
+// ============================================================================
+
+:root {
+  --doc-theme: #2b5aa7;
+  --doc-theme-soft: #eef3fa;
+  --doc-theme-2: #4a7fd4;
+}
+
+// 派生色：主色变化时自动跟随（color-mix 不可用的老浏览器退化为上面的兜底色）
+@supports (color: color-mix(in srgb, red, white)) {
+  :root {
+    --doc-theme-soft: color-mix(in srgb, var(--doc-theme) 12%, #ffffff);
+    --doc-theme-2: color-mix(in srgb, var(--doc-theme) 65%, #ffffff);
+  }
+}
