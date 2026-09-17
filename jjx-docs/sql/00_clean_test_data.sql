@@ -9,7 +9,8 @@
 --   3. 改为保留（原为清理，属基础档案/配置）：product / product_category / product_config_model /
 --      product_config_option；并新增保留声明：quality_sampling_plan（AQL 配置）、
 --      engineering_process_icon_sample（图标学习样本）、sys_tag / sys_tag_rel（标签）
---   4. 删除过时条目：engineering_routing_backup_20260809（表已不存在）
+--   4. 删除过时条目：engineering_routing_backup_20260809、engineering_bom_backup_20260809（表均已不存在，
+--      2026-09-17 首次执行时实测报 ERROR 1146，见 dev-20260917-021 备注）
 --   5. 核验段同步更新（新增表纳入"应为 0"、基础资料展示段补齐）
 -- v13 变更（2026-09-12）：
 --   1. 移除已下线的 production_tooling / jjx_screen_master 引用及核验项
@@ -171,9 +172,6 @@ TRUNCATE engineering_routing;
 TRUNCATE engineering_bom_item;
 
 TRUNCATE engineering_bom;
-
--- 08-09 版本化改造前的数据备份表（历史脏数据）
-TRUNCATE engineering_bom_backup_20260809;
 
 -- v5：标准工序保留不清（基础档案）
 -- TRUNCATE engineering_standard_process;
