@@ -21,6 +21,15 @@ public interface QualityNcrService {
                              BigDecimal maQuantity, BigDecimal miQuantity,
                              String defectReason, String inspector);
 
+    /**
+     * 同步台账（再次提交/更正场景）：同一检验批已有未结台账 → 覆盖不良数量与分类；否则新建。
+     * 用于来料重复提交同一行、复检更正等，避免同一批不良被重复记账。
+     */
+    QualityNcr syncFromLot(QualityLot lot, BigDecimal defectQuantity, BigDecimal crQuantity,
+                           BigDecimal maQuantity, BigDecimal miQuantity,
+                           String defectReason, String inspector);
+
+
     QualityNcr getNcr(Long ncrId);
 
     IPage<QualityNcr> pageNcrs(QualityLotQueryDTO query);

@@ -73,6 +73,9 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final NotificationService notificationService;
     private final RedisSequenceService redisSequenceService;
     private final ProductionRoleResolver productionRoleResolver;
+    // 质量管理重构（dev-20260917-006）：末道工序报工审批通过 → 建成品检验批
+    private final com.jjx.quality.service.QualityLotService qualityLotService;
+    private final com.jjx.quality.service.FinalProcessResolver finalProcessResolver;
 
     private static final String PROJECTION_MISMATCH = "MISMATCH";
     private static final Long SYSTEM_ADMIN_ID = 1L;
@@ -291,10 +294,60 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         projectionService.recalculate(r.getExecutionId());
         completeTaskWhenQualified(r, operatorName);
         compareProjectionAndWarn(r);
+        createFqcLotIfFinal(r);
         log.info("审批通过 reportId={}, executionId={}, reviewer={}", reportId, r.getExecutionId(), operatorName);
         WorkReportVO result = readService.getById(reportId);
         result.setEventPublished(true);
         return result;
+    }
+
+    /**
+     * 质量管理重构（dev-20260917-006）：末道工序（工程标记）的报工审批通过 → 建成品检验批（全检，数量=合格+不良）。
+     * 一笔报工 = 一个检验批（分批天然成立）；幂等：同一报工只建一次；失败只告警，不影响报工审批语义。
+     */
+    private void createFqcLotIfFinal(ProductionWorkReport r) {
+        try {
+            if (r.getExecutionId() == null || !finalProcessResolver.isFinalExecution(r.getExecutionId())) {
+                return;
+            }
+            BigDecimal lotQuantity = safe(r.getQualifiedQuantity()).add(safe(r.getDefectiveQuantity()));
+            if (lotQuantity.signum() <= 0) {
+                return;
+            }
+            if (!qualityLotService.listBySource("WORK_REPORT", r.getReportId()).isEmpty()) {
+                return;
+            }
+            com.jjx.quality.dto.QualityLotCreateDTO dto = new com.jjx.quality.dto.QualityLotCreateDTO();
+            dto.setLotType("FQC");
+            dto.setSourceType("WORK_REPORT");
+            dto.setSourceId(r.getReportId());
+            dto.setSourceItemId(r.getExecutionId());
+            dto.setOrderId(r.getOrderId());
+            dto.setExecutionId(r.getExecutionId());
+            dto.setLotQuantity(lotQuantity);
+            dto.setRemark("末道工序报工审批通过自动建成品检验批："
+                    + (r.getReportNo() == null ? "" : r.getReportNo()));
+            try {
+                jdbcTemplate.queryForObject(
+                        "SELECT product_id, product_code, product_name FROM production_order WHERE order_id = ?",
+                        (rs, rowNum) -> {
+                            dto.setProductId(rs.getLong("product_id"));
+                            dto.setProductCode(rs.getString("product_code"));
+                            dto.setProductName(rs.getString("product_name"));
+                            return null;
+                        }, r.getOrderId());
+            } catch (Exception ignored) {
+            }
+            com.jjx.quality.domain.entity.QualityLot lot = qualityLotService.createLot(dto);
+            log.info("末道工序报工审批通过，已建成品检验批: lotNo={} 报工={} 批量={}",
+                    lot.getLotNo(), r.getReportNo(), lotQuantity.toPlainString());
+        } catch (Exception e) {
+            log.warn("报工审批后建成品检验批失败（不影响审批）: reportId={} err={}", r.getReportId(), e.getMessage());
+        }
+    }
+
+    private static BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /** 审批事务内按报工 task_id 直达任务；自动完成失败只告警，不改变报工审批语义。 */

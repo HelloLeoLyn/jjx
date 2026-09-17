@@ -83,6 +83,39 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityNcr syncFromLot(QualityLot lot, BigDecimal defectQuantity, BigDecimal crQuantity,
+                                  BigDecimal maQuantity, BigDecimal miQuantity,
+                                  String defectReason, String inspector) {
+        if (lot == null || lot.getLotId() == null) {
+            throw new BusinessException("检验批不存在，无法同步不良台账");
+        }
+        BigDecimal defect = nz(defectQuantity);
+        if (defect.signum() <= 0) {
+            return null; // 无不良 → 不建台账
+        }
+        QualityNcr open = ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
+                        .eq(QualityNcr::getLotId, lot.getLotId())
+                        .ne(QualityNcr::getStatus, "CLOSED")
+                        .orderByDesc(QualityNcr::getNcrId))
+                .stream().findFirst().orElse(null);
+        if (open == null) {
+            return createFromLot(lot, defect, crQuantity, maQuantity, miQuantity, defectReason, inspector);
+        }
+        open.setDefectQuantity(defect);
+        open.setCrQuantity(nz(crQuantity));
+        open.setMaQuantity(nz(maQuantity));
+        open.setMiQuantity(nz(miQuantity));
+        open.setDefectReason(defectReason);
+        BigDecimal disposed = nz(open.getDisposedQuantity());
+        open.setStatus(disposed.compareTo(defect) >= 0 ? "CLOSED"
+                : (disposed.signum() > 0 ? "DISPOSING" : "PENDING"));
+        ncrMapper.updateById(open);
+        log.info("不良台账同步（更正）: ncrNo={} 不良={}", open.getNcrNo(), defect.toPlainString());
+        return open;
+    }
+
+    @Override
     public QualityNcr getNcr(Long ncrId) {
         QualityNcr ncr = ncrMapper.selectById(ncrId);
         if (ncr == null) {

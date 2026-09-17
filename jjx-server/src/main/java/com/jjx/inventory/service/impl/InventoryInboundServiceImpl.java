@@ -68,6 +68,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     private final InventoryInboundOrderMapper inboundOrderMapper;
     private final InventoryInboundItemMapper inboundItemMapper;
+    // 质量管理重构（dev-20260917-005）：来料检验结果同步为"检验批 + 不良台账"
+    private final com.jjx.quality.service.QualityLotService qualityLotService;
+    private final com.jjx.quality.service.QualityNcrService qualityNcrService;
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
@@ -832,12 +835,80 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 item.setRejectReason(submitted.getRejectReason());
                 inboundItemMapper.updateById(item);
                 allPass = allPass && "PASS".equals(itemResult);
+                // 质量管理重构（dev-20260917-005）：来料检验结果落到统一检验批 + 不良台账
+                syncQualityLotForInboundItem(order, item, submitted, qualified, rejected, itemResult);
         }
         order.setInspectionResult(allPass ? "PASS" : "OTHER");
         order.setInspectionRemark(inspection.getInspectionRemark());
         order.setInspectorId(SecurityUtils.getUserId());
         order.setInspectorName(SecurityUtils.getUsername());
         order.setInspectionTime(LocalDateTime.now());
+    }
+
+    /**
+     * 质量管理重构（dev-20260917-005）：来料检验结果 → 统一检验批 +（有不良时）不良台账。
+     * 口径：同一入库行一条检验批（source_type=INBOUND_ITEM / source_item_id=itemId），再次提交视为更正；
+     *      不良一律进台账，不写进允收入库数量（允收上限=良品数，已在提交校验里守卫）。
+     * 失败只告警，不影响入库检验主流程。
+     */
+    private void syncQualityLotForInboundItem(InventoryInboundOrder order, InventoryInboundItem item,
+            com.jjx.inventory.dto.save.InboundInspectionSubmitDTO.Item submitted,
+            BigDecimal qualified, BigDecimal rejected, String itemResult) {
+        try {
+            BigDecimal sampled = submitted.getSampledQuantity() == null
+                    ? safe(qualified).add(safe(rejected)) : submitted.getSampledQuantity();
+            BigDecimal lotQuantity = item.getQuantity() == null ? sampled : item.getQuantity();
+            if (lotQuantity.signum() <= 0) {
+                return;
+            }
+            String inspector = null;
+            try {
+                inspector = com.jjx.system.utils.SecurityUtils.getUsername();
+            } catch (Exception ignored) {
+            }
+            // 同一入库行的检验批（可能多条=分批/历史版本，这里取最新一条做更正）
+            com.jjx.quality.domain.entity.QualityLot lot = qualityLotService
+                    .listBySource("INBOUND_ITEM", order.getInboundId()).stream()
+                    .filter(l -> item.getItemId() != null && item.getItemId().equals(l.getSourceItemId()))
+                    .reduce((a, b) -> b).orElse(null);
+            if (lot == null) {
+                com.jjx.quality.dto.QualityLotCreateDTO dto = new com.jjx.quality.dto.QualityLotCreateDTO();
+                dto.setLotType("IQC");
+                dto.setSourceType("INBOUND_ITEM");
+                dto.setSourceId(order.getInboundId());
+                dto.setSourceItemId(item.getItemId());
+                dto.setMaterialId(item.getMaterialId());
+                dto.setMaterialCode(item.getMaterialCode());
+                dto.setMaterialName(item.getMaterialName());
+                dto.setBatchNo(item.getBatchNo());
+                dto.setLotQuantity(lotQuantity);
+                dto.setRemark("来料检验自动建批：" + (order.getInboundNo() == null ? "" : order.getInboundNo()));
+                lot = qualityLotService.createLot(dto);
+            }
+            lot = qualityLotService.applyJudgement(lot.getLotId(), sampled,
+                    safe(qualified), safe(rejected),
+                    "PASS".equals(itemResult) ? "pass" : "fail", inspector);
+            if (safe(rejected).signum() > 0) {
+                BigDecimal cr = BigDecimal.ZERO, ma = BigDecimal.ZERO, mi = BigDecimal.ZERO;
+                if (submitted.getInspectionItems() != null) {
+                    for (com.jjx.production.domain.dto.InspectionItemDTO check : submitted.getInspectionItems()) {
+                        if (check == null) continue;
+                        cr = cr.add(safe(check.getCrQuantity()));
+                        ma = ma.add(safe(check.getMaQuantity()));
+                        mi = mi.add(safe(check.getMiQuantity()));
+                    }
+                }
+                qualityNcrService.syncFromLot(lot, safe(rejected), cr, ma, mi,
+                        submitted.getRejectReason(), inspector);
+            }
+        } catch (Exception e) {
+            log.warn("来料检验同步检验批/不良台账失败（不影响入库检验）: itemId={} err={}",
+                    item.getItemId(), e.getMessage());
+        }
+    }
+
+    private static BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     private static void validateIqcInspectionItems(InventoryInboundItem inboundItem,

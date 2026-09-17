@@ -95,11 +95,16 @@ public class ProductStandardProcess {
     private Integer displayOrder;
     
     /**
+     * 是否末道（成品）工序——工程标记；报工审批通过后据此建成品检验批（dev-20260917-006）
+     */
+    private Integer isFinalProcess;
+
+    /**
      * 创建者
      */
     @TableField(fill = FieldFill.INSERT)
     private String createBy;
-    
+
     /**
      * 创建时间
      */

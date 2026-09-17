@@ -105,6 +105,8 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
                 && !process.getProcessCode().equals(existing.getProcessCode())) {
             log.info("标准工序[{}] 忽略传入的新编码[{}]：编码分配后不可变更", existing.getProcessCode(), process.getProcessCode());
         }
+        // 末道（成品）工序标记：由工程维护，报工审批通过后据此建成品检验批（dev-20260917-006）
+        if (process.getIsFinalProcess() != null) existing.setIsFinalProcess(process.getIsFinalProcess());
 
         // 更新字段（null 安全：只更新传入的非空字段，2026-08-09 支持只改 description）
         if (process.getProcessName() != null) existing.setProcessName(process.getProcessName());

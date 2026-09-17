@@ -229,6 +229,8 @@ public class QualityActionServiceImpl implements QualityActionService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFqcForExecution(Long executionId) {
+        // TODO(dev-20260917-007/008)：成品检验已切到统一检验批（报工审批通过建批，见 WorkReportActionServiceImpl.createFqcLotIfFinal）。
+        //  本轮保留旧完工质检查询单以免打断现有页面；判定/入库的账务将在 007（复检=更正）与 008（处置联动库存）中收口后下线本方法。
         ProductionOperationExecution exec = executionMapper.selectById(executionId);
         if (exec == null) throw new BusinessException("工序执行记录不存在: " + executionId);
         // 幂等：同 execution 已有 PENDING FQC 不重复创建；历史 FAIL 不阻止新建
