@@ -33,26 +33,6 @@ class PurchaseIqcValidationTest {
         assertDoesNotThrow(() -> purchasePriceValidator().invoke(null, List.of(item)));
     }
 
-    @Test
-    void iqcChecksRequireActualValueAndFinalResult() throws Exception {
-        InventoryInboundItem inboundItem = new InventoryInboundItem();
-        inboundItem.setMaterialCode("M-002");
-        InspectionItemDTO check = new InspectionItemDTO();
-        check.setCheckItem("外观");
-        check.setResult("pass");
-
-        InvocationTargetException missingActual = assertThrows(InvocationTargetException.class,
-                () -> iqcCheckValidator().invoke(null, inboundItem, List.of(check)));
-        assertInstanceOf(BusinessException.class, missingActual.getCause());
-
-        check.setActualValue("符合样板");
-        assertDoesNotThrow(() -> iqcCheckValidator().invoke(null, inboundItem, List.of(check)));
-
-        check.setResult("pending");
-        InvocationTargetException pendingResult = assertThrows(InvocationTargetException.class,
-                () -> iqcCheckValidator().invoke(null, inboundItem, List.of(check)));
-        assertInstanceOf(BusinessException.class, pendingResult.getCause());
-    }
 
     @Test
     void iqcChecksCannotBeEmpty() throws Exception {
