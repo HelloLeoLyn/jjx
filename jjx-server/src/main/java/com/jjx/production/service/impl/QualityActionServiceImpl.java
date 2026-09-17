@@ -229,8 +229,16 @@ public class QualityActionServiceImpl implements QualityActionService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFqcForExecution(Long executionId) {
-        // TODO(dev-20260917-007/008)：成品检验已切到统一检验批（报工审批通过建批，见 WorkReportActionServiceImpl.createFqcLotIfFinal）。
-        //  本轮保留旧完工质检查询单以免打断现有页面；判定/入库的账务将在 007（复检=更正）与 008（处置联动库存）中收口后下线本方法。
+        // 2026-09-17 定案（用户）：成品检验已切到统一检验批——末道工序"报工审批通过"即建批
+        // （WorkReportActionServiceImpl.createFqcLotIfFinal），判定/差额入库/不良台账均走新模型。
+        // 旧的"完工建 FQC 单"路径停止建单（页面已隐藏，避免隐形双记账）；如后续要彻底删除本方法与
+        // QualityInspectionController 的旧 FQC 接口，另立任务。
+        log.info("成品检验已切新模型（检验批），跳过旧完工质检单创建: executionId={}", executionId);
+        return null;
+    }
+
+    /** 旧完工质检单创建逻辑（保留备查，不再调用）
+    private Long createFqcForExecutionLegacy(Long executionId) {
         ProductionOperationExecution exec = executionMapper.selectById(executionId);
         if (exec == null) throw new BusinessException("工序执行记录不存在: " + executionId);
         // 幂等：同 execution 已有 PENDING FQC 不重复创建；历史 FAIL 不阻止新建
@@ -259,6 +267,7 @@ public class QualityActionServiceImpl implements QualityActionService {
         log.info("最后工序 execution={} 完成，自动创建 FQC={}", executionId, fqcId);
         return fqcId;
     }
+    */
 
     @Override
     @Transactional(rollbackFor = Exception.class)
