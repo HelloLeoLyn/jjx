@@ -65,6 +65,8 @@ class SegmentationTest(unittest.TestCase):
         self.assertEqual("COMPOSITE", step["processStructure"])
         self.assertFalse(step["classificationConfirmed"])
         self.assertEqual(["冲切", "贴合", None], [item["text"] for item in step["components"]])
+        self.assertEqual([1, 2, 3], [item["order"] for item in step["components"]])
+        self.assertTrue(all(item["perceptualHash"] for item in step["components"]))
         self.assertTrue(step["cellImageBase64"])
 
     def test_empty_cells_are_kept_for_manual_review(self):
@@ -77,6 +79,51 @@ class SegmentationTest(unittest.TestCase):
         self.assertEqual(1, len(result["steps"]))
         self.assertEqual("EMPTY", result["steps"][0]["contentType"])
         self.assertEqual("EMPTY", result["steps"][0]["processStructure"])
+
+    def test_icon_process_and_right_side_remark_are_separated_by_text_order(self):
+        image = np.full((120, 240, 3), 255, dtype=np.uint8)
+        cv2.line(image, (0, 20), (239, 20), (0, 0, 0), 2)
+        cv2.line(image, (0, 100), (239, 100), (0, 0, 0), 2)
+        lines = [(0.2, 0.5, "□"), (0.6, 0.5, "一车一模")]
+
+        result = app.workflow_rows(image, lines, "PANEL", 0, 1, 0.1, 0.9, 1)
+        step = result["steps"][0]
+
+        self.assertEqual("□", step["rawText"])
+        self.assertEqual("一车一模", step["operationRemark"])
+
+    def test_thin_icon_is_not_downgraded_to_text_only(self):
+        image = np.full((120, 240, 3), 255, dtype=np.uint8)
+        cv2.line(image, (0, 20), (239, 20), (0, 0, 0), 2)
+        cv2.line(image, (0, 100), (239, 100), (0, 0, 0), 2)
+        # 模拟去边框后只剩少量有效像素的细线图标。
+        cv2.line(image, (30, 55), (30, 65), (0, 0, 0), 1)
+        lines = [(0.2, 0.5, "田")]
+        result = app.workflow_rows(image, lines, "PANEL", 0, 1, 0.1, 0.9, 1)
+        self.assertIn(result["steps"][0]["contentType"], ("ICON_ONLY", "MIXED"))
+
+    def test_composite_components_keep_full_segment_and_shape_direction(self):
+        image = np.full((120, 240, 3), 255, dtype=np.uint8)
+        cv2.line(image, (0, 20), (239, 20), (0, 0, 0), 2)
+        cv2.line(image, (0, 100), (239, 100), (0, 0, 0), 2)
+        cv2.drawContours(image, [np.array([[[35, 75]], [[55, 75]], [[45, 45]]])], -1, (0, 0, 0), 2)
+        cv2.drawContours(image, [np.array([[[155, 45]], [[175, 45]], [[165, 75]]])], -1, (0, 0, 0), 2)
+        components = app.split_composite_components(image[20:100], ["面板", "下线跳"])
+
+        self.assertEqual(2, len(components))
+        self.assertEqual("UP", components[0]["shapeDirection"])
+        self.assertEqual("DOWN", components[1]["shapeDirection"])
+        self.assertTrue(all(component["imageBase64"] for component in components))
+
+    def test_step_keeps_raw_ocr_text_separate(self):
+        image = np.full((120, 240, 3), 255, dtype=np.uint8)
+        cv2.line(image, (0, 20), (239, 20), (0, 0, 0), 2)
+        cv2.line(image, (0, 100), (239, 100), (0, 0, 0), 2)
+        result = app.workflow_rows(image, [(0.2, 0.5, "中")], "PANEL", 0, 1, 0.1, 0.9, 1)
+        step = result["steps"][0]
+
+        self.assertEqual("中", step["ocrRawText"])
+        self.assertEqual("中", step["recognizedText"])
 
 
 if __name__ == "__main__":

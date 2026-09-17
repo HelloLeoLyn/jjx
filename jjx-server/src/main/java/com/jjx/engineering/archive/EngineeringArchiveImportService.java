@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.security.MessageDigest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -40,7 +41,11 @@ import java.util.HexFormat;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -249,15 +254,18 @@ public class EngineeringArchiveImportService {
             String json = callLocalOcr(bytes, fileName);
             JsonNode root = objectMapper.readTree(json);
             persistAndMatchIcons(archive, root);
+            normalizeRecognizedContent(root);
             persistDraftImages(archive, root);
             archive.setExtractedJson(objectMapper.writeValueAsString(root));
             archive.setProductName(text(root, "productName"));
             archive.setProductCode(text(root, "productCode"));
             archive.setRecognizeStatus(ArchiveRecognitionStatus.REVIEW.getValue());
+            archive.setRecognizeTime(LocalDateTime.now());
             archive.setRecognizeMessage("本地识别完成，请查看并修正识别草稿");
         } catch (Exception e) {
             log.warn("本地OCR失败 archiveId={}: {}", archive.getArchiveId(), e.getMessage());
             archive.setRecognizeStatus(ArchiveRecognitionStatus.FAILED.getValue());
+            archive.setRecognizeTime(LocalDateTime.now());
             archive.setRecognizeMessage("本地OCR服务不可用或识别失败：" + trimMessage(e.getMessage()));
         }
         archive.setUpdateBy(loginUser());
@@ -269,6 +277,7 @@ public class EngineeringArchiveImportService {
         EngineeringArchiveImport archive = required(id);
         try {
             learnConfirmedIconMappings(result);
+            normalizeRecognizedContent(result);
             archive.setExtractedJson(objectMapper.writeValueAsString(result));
             archive.setProductName(text(result, "productName"));
             archive.setProductCode(text(result, "productCode"));
@@ -286,9 +295,48 @@ public class EngineeringArchiveImportService {
         for (JsonNode workflow : root.path("workflows")) {
             for (JsonNode step : workflow.path("steps")) {
                 if (!step.path("processMappingConfirmed").asBoolean(false)) continue;
-                learnIconMapping(step);
+                if ("COMPOSITE".equals(text(step, "processStructure")) && step.path("components").isArray()) {
+                    learnCompositeIconMapping(step);
+                } else {
+                    learnIconMapping(step);
+                }
             }
         }
+    }
+
+    /** 子工序本身也是图标样本，和普通图标共用样本表。 */
+    private void learnCompositeIconMapping(JsonNode step) {
+        Long sampleId = step.path("iconSampleId").canConvertToLong() ? step.path("iconSampleId").longValue() : null;
+        if (sampleId == null) return;
+        ProcessIconSample sample = iconSampleMapper.selectById(sampleId);
+        if (sample == null) return;
+        int order = 1;
+        for (JsonNode component : step.path("components")) {
+            Long processId = component.path("processId").canConvertToLong() ? component.path("processId").longValue() : null;
+            if (processId == null) continue;
+            String suffix = "#component-" + order;
+            String hash = defaultText(text(component, "perceptualHash"), sample.getPerceptualHash());
+            Long childId = jdbcTemplate.query(
+                    "SELECT sample_id FROM engineering_process_icon_sample WHERE parent_sample_id=? AND component_order=? LIMIT 1",
+                    rs -> rs.next() ? rs.getLong(1) : null, sampleId, order);
+            if (childId == null) {
+                insert("INSERT INTO engineering_process_icon_sample(process_id,archive_id,workflow_type,step_no,original_path,normalized_path,perceptual_hash,match_score,confirm_status,usage_count,use_as_system_icon,create_by,update_by,parent_sample_id,component_order,work_instruction) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        processId, sample.getArchiveId(), sample.getWorkflowType(), sample.getStepNo(),
+                        sample.getOriginalPath() + suffix, sample.getNormalizedPath() + suffix, hash, 1d,
+                        IconConfirmStatus.CONFIRMED.getValue(), 1, 1, loginUser(), loginUser(), sampleId, order,
+                        text(component, "workInstruction"));
+            } else {
+                jdbcTemplate.update("UPDATE engineering_process_icon_sample SET process_id=?,perceptual_hash=?,confirm_status=?,use_as_system_icon=1,work_instruction=?,update_by=? WHERE sample_id=?",
+                        processId, hash, IconConfirmStatus.CONFIRMED.getValue(), text(component, "workInstruction"), loginUser(), childId);
+            }
+            order++;
+        }
+        sample.setProcessId(null);
+        sample.setConfirmStatus(IconConfirmStatus.CONFIRMED.getValue());
+        sample.setUseAsSystemIcon(1);
+        sample.setUsageCount((sample.getUsageCount() == null ? 0 : sample.getUsageCount()) + 1);
+        sample.setUpdateBy(loginUser());
+        iconSampleMapper.updateById(sample);
     }
 
     private void learnIconMapping(JsonNode step) {
@@ -314,12 +362,89 @@ public class EngineeringArchiveImportService {
         iconSampleMapper.updateById(sample);
     }
 
+    /** 标准工序已匹配时，清理 OCR 把图标误读成单字/符号的伪原文。 */
+    private void normalizeRecognizedContent(JsonNode root) {
+        for (JsonNode workflow : root.path("workflows")) {
+            for (JsonNode step : workflow.path("steps")) {
+                if (!(step instanceof ObjectNode object)) continue;
+                if (!object.has("ocrRawText") && object.has("rawText")) {
+                    object.set("ocrRawText", object.get("rawText"));
+                }
+                boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
+                if (composite && step.path("components").isArray()) {
+                    object.put("contentType", "ICON_ONLY");
+                    object.put("recognizedText", "复合图标");
+                    for (JsonNode component : step.path("components")) {
+                        if (component instanceof ObjectNode child) {
+                            if (!child.has("ocrRawText") && child.has("text")) {
+                                child.set("ocrRawText", child.get("text"));
+                            }
+                            if (looksLikeIconNoise(text(child, "text"))) {
+                                child.putNull("text");
+                                child.put("recognizedText", "图标");
+                                child.put("contentType", "ICON_ONLY");
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if (!step.path("processId").canConvertToLong()) {
+                    Map<String, Object> textProcess = resolveTextProcess(text(step, "rawText"));
+                    if (textProcess != null) {
+                        object.put("processId", ((Number) textProcess.get("process_id")).longValue());
+                        object.put("processName", String.valueOf(textProcess.get("process_name")));
+                        object.put("recognizedText", String.valueOf(textProcess.get("process_name")));
+                    }
+                }
+                if (!step.path("processId").canConvertToLong()) continue;
+                String rawText = text(step, "rawText");
+                if (looksLikeIconNoise(rawText)) {
+                    object.putNull("rawText");
+                    object.put("recognizedText", "图标");
+                    object.put("contentType", "ICON_ONLY");
+                } else if (rawText != null && !rawText.isBlank()) {
+                    if (!object.has("recognizedText") || object.path("recognizedText").isNull()) {
+                        object.put("recognizedText", rawText);
+                    }
+                    object.put("contentType", "TEXT_ONLY");
+                }
+            }
+        }
+    }
+
+    private boolean looksLikeIconNoise(String value) {
+        if (value == null || value.isBlank()) return false;
+        String normalized = value.trim();
+        if (normalized.length() == 1 && !normalized.matches("[A-Za-z0-9]")) return true;
+        return normalized.matches("[^\\p{L}\\p{N}]+") || normalized.matches("[\\u4e00-\\u9fff]");
+    }
+
+    /** 文本别名只做明确映射，避免把备注文字误当成标准工序。 */
+    private Map<String, Object> resolveTextProcess(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim();
+        if ("QC".equalsIgnoreCase(normalized)) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT process_id,process_name FROM engineering_standard_process WHERE process_name=? AND is_enabled=1 LIMIT 2", "品检");
+            return rows.size() == 1 ? rows.getFirst() : null;
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT process_id,process_name FROM engineering_standard_process WHERE process_name=? AND is_enabled=1 LIMIT 2", normalized);
+        return rows.size() == 1 ? rows.getFirst() : null;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public EngineeringArchiveImport generateDrafts(Long id) {
         EngineeringArchiveImport archive = required(id);
-        // 已有生成记录时统一走覆盖流程：草稿可覆盖，已审核数据由覆盖流程拒绝。
+        // 已有生成记录时只重建当前已保存的人工确认结果，不能重新 OCR 覆盖人工选择。
         if (archive.getProductId() != null || archive.getBomId() != null || archive.getRoutingId() != null) {
-            return overwriteRetry(id);
+            assertOverwriteAllowed(archive);
+            deleteGeneratedDrafts(archive);
+            jdbcTemplate.update("UPDATE engineering_archive_import SET product_id=NULL,bom_id=NULL,routing_id=NULL WHERE archive_id=?",
+                    archive.getArchiveId());
+            archive.setProductId(null);
+            archive.setBomId(null);
+            archive.setRoutingId(null);
         }
         try {
             JsonNode root = objectMapper.readTree(archive.getExtractedJson());
@@ -358,7 +483,12 @@ public class EngineeringArchiveImportService {
                     if ("EMPTY".equals(text(step, "contentType"))) continue;
                     boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
                     if (composite && step.path("components").isArray() && step.path("components").size() > 0) {
-                        long groupId = order;
+                        String groupName = defaultText(text(step, "processName"), text(step, "rawText"));
+                        long parentId = insert("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                                routingId, null, groupName, "ASSEMBLY", order++, workflowType,
+                                text(step, "rawText"), text(step, "workInstruction"), text(step, "operationRemark"),
+                                null, 0, groupName);
+                        long groupId = parentId;
                         int groupOrder = 1;
                         for (JsonNode component : step.path("components")) {
                             Long processId = component.path("processId").canConvertToLong()
@@ -370,10 +500,11 @@ public class EngineeringArchiveImportService {
                                 if (p.isEmpty()) processId = null;
                                 else processName = String.valueOf(p.getFirst().get("process_name"));
                             }
-                            jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                                    routingId, processId, processName, "ASSEMBLY", order++, workflowType,
+                            Integer indexNumber = extractIndexNumber(component);
+                            jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name,parent_id,index_number) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                    routingId, processId, processName, "ASSEMBLY", null, workflowType,
                                     text(component, "text"), text(component, "workInstruction"),
-                                    text(step, "operationRemark"), groupId, groupOrder++, text(step, "processName"));
+                                    text(step, "operationRemark"), groupId, groupOrder++, groupName, parentId, indexNumber);
                         }
                     } else {
                         Long processId = step.path("processId").canConvertToLong() ? step.path("processId").longValue() : null;
@@ -420,8 +551,9 @@ public class EngineeringArchiveImportService {
     private void persistAndMatchIcons(EngineeringArchiveImport archive, JsonNode root) throws Exception {
         List<ProcessIconSample> confirmed = iconSampleMapper.selectList(
                 new LambdaQueryWrapper<ProcessIconSample>()
-                        .eq(ProcessIconSample::getConfirmStatus, IconConfirmStatus.CONFIRMED.getValue())
-                        .isNotNull(ProcessIconSample::getProcessId));
+                        .eq(ProcessIconSample::getConfirmStatus, IconConfirmStatus.CONFIRMED.getValue()));
+        Set<Long> compositeSampleIds = new HashSet<>(jdbcTemplate.queryForList(
+                "SELECT DISTINCT parent_sample_id FROM engineering_process_icon_sample WHERE parent_sample_id IS NOT NULL AND confirm_status=1", Long.class));
         Path directory = Path.of(uploadBasePath).resolve("engineering-archive/icons/" + archive.getArchiveId()).normalize();
         Files.createDirectories(directory);
         for (JsonNode workflow : root.path("workflows")) {
@@ -444,6 +576,10 @@ public class EngineeringArchiveImportService {
                 int bestDistance = Integer.MAX_VALUE;
                 long targetHash = Long.parseUnsignedLong(hash, 16);
                 for (ProcessIconSample candidate : confirmed) {
+                    // 同一视觉符号在面板/上线/下线中的工艺含义可能不同，禁止跨流程段套用映射。
+                    if (!type.equals(candidate.getWorkflowType())) continue;
+                    boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
+                    if (candidate.getProcessId() == null && (!composite || !compositeSampleIds.contains(candidate.getSampleId()))) continue;
                     try {
                         int distance = Long.bitCount(targetHash ^ Long.parseUnsignedLong(candidate.getPerceptualHash(), 16));
                         if (distance < bestDistance) { bestDistance = distance; best = candidate; }
@@ -468,10 +604,56 @@ public class EngineeringArchiveImportService {
                 step.put("iconSampleId", sample.getSampleId());
                 step.put("matchScore", score);
                 if (sample.getProcessId() != null) step.put("processId", sample.getProcessId());
+                if ("COMPOSITE".equals(text(step, "processStructure"))) {
+                    matchCompositeComponents(step, type, confirmed);
+                }
+                // 子图标未独立匹配成功时保留待确认，不能把相似历史复合格按顺序套用。
                 step.remove("iconOriginalBase64");
                 step.remove("iconNormalizedBase64");
             }
         }
+    }
+
+    /** 复合格拆分后的每个子项按普通工序规则独立匹配；整格映射只作为未命中项的兜底。 */
+    private void matchCompositeComponents(ObjectNode step, String workflowType, List<ProcessIconSample> confirmed) {
+        for (JsonNode node : step.path("components")) {
+            if (!(node instanceof ObjectNode component) || component.path("processId").canConvertToLong()) continue;
+            String rawText = text(component, "text");
+            if (rawText != null && !rawText.isBlank()) {
+                List<Map<String, Object>> processes = jdbcTemplate.queryForList(
+                        "SELECT process_id FROM engineering_standard_process WHERE process_name=? AND is_enabled=1 LIMIT 2", rawText);
+                if (processes.size() == 1) {
+                    component.put("processId", ((Number) processes.getFirst().get("process_id")).longValue());
+                    component.put("confirmed", false);
+                    continue;
+                }
+            }
+                String hash = text(component, "perceptualHash");
+                if (hash == null || hash.length() != 16) continue;
+            if (isDegeneratePerceptualHash(hash)) continue;
+            long targetHash;
+            try { targetHash = Long.parseUnsignedLong(hash, 16); } catch (RuntimeException ignored) { continue; }
+            ProcessIconSample best = null;
+            int bestDistance = Integer.MAX_VALUE;
+            for (ProcessIconSample candidate : confirmed) {
+                if (!workflowType.equals(candidate.getWorkflowType()) || candidate.getProcessId() == null) continue;
+                if (isDegeneratePerceptualHash(candidate.getPerceptualHash())) continue;
+                try {
+                    int distance = Long.bitCount(targetHash ^ Long.parseUnsignedLong(candidate.getPerceptualHash(), 16));
+                    if (distance < bestDistance) { bestDistance = distance; best = candidate; }
+                } catch (RuntimeException ignored) { }
+            }
+            if (best != null && 1d - bestDistance / 64d >= 0.875d) {
+                component.put("processId", best.getProcessId());
+                component.put("confirmed", false);
+            }
+        }
+    }
+
+    /** 全 0/全 F 哈希通常表示切片为空白或被边框吞没，不能用于标准工序映射。 */
+    private boolean isDegeneratePerceptualHash(String hash) {
+        if (hash == null || hash.length() != 16) return true;
+        return hash.matches("0{16}") || hash.matches("[fF]{16}");
     }
 
     /** 将 OCR 返回的区域/整格图片落到本地，草稿 JSON 只保留可追溯路径。 */
@@ -569,6 +751,24 @@ public class EngineeringArchiveImportService {
             }
         }
         return count;
+    }
+    private Integer extractIndexNumber(JsonNode component) {
+        String instruction = text(component, "workInstruction");
+        Long processId = component.path("processId").canConvertToLong() ? component.path("processId").longValue() : null;
+        if (processId == null) return null;
+        List<Map<String, Object>> properties = jdbcTemplate.queryForList(
+                "SELECT has_index,has_work_instruction FROM engineering_standard_process WHERE process_id=? AND is_enabled=1 LIMIT 1", processId);
+        if (properties.isEmpty()) return null;
+        boolean hasIndex = ((Number) properties.getFirst().get("has_index")).intValue() == 1;
+        boolean hasInstruction = ((Number) properties.getFirst().get("has_work_instruction")).intValue() == 1;
+        if (!hasIndex || hasInstruction) return null;
+        Integer value = trailingNumber(instruction);
+        return value != null ? value : trailingNumber(text(component, "text"));
+    }
+    private Integer trailingNumber(String value) {
+        if (value == null || value.isBlank()) return null;
+        Matcher matcher = Pattern.compile("(\\d+)\\s*$").matcher(value);
+        return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
     }
     private String trimMessage(String message) { if (message == null) return "未知错误"; return message.length() > 350 ? message.substring(0, 350) : message; }
 }

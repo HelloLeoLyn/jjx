@@ -16,6 +16,7 @@ public class EngineeringArchiveImport {
     private String filePath;
     private String fileHash;
     private Integer recognizeStatus;
+    private LocalDateTime recognizeTime;
     private String recognizeMessage;
     private String productName;
     private String productCode;

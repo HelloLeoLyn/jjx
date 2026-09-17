@@ -5,6 +5,7 @@ export interface ArchiveImportRecord {
   fileName: string
   filePath: string
   recognizeStatus: number
+  recognizeTime?: string
   recognizeMessage?: string
   productName?: string
   productCode?: string

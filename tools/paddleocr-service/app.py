@@ -58,6 +58,44 @@ def region_text(lines: list[tuple[float, float, str]], x1: float, y1: float, x2:
     return " ".join(text for _, _, text in sorted(selected)).strip()
 
 
+def row_process_and_remark(lines: list[tuple[float, float, str]], x1: float, y1: float,
+                           x2: float, y2: float) -> tuple[str, str]:
+    """按文字框顺序拆分工序内容与备注，不依赖固定横坐标。"""
+    selected = sorted(
+        [(x, text) for x, y, text in lines if x1 <= x <= x2 and y1 <= y <= y2],
+        key=lambda item: item[0],
+    )
+    if not selected:
+        return "", ""
+    # 含“+”的文字框本身就是复合工序表达式，不能拆成备注。
+    plus_indexes = [index for index, (_, text) in enumerate(selected) if "+" in text]
+    if plus_indexes:
+        start, end = min(plus_indexes), max(plus_indexes)
+        process = " ".join(text for _, text in selected[start:end + 1]).strip()
+        remark = " ".join(text for _, text in selected[end + 1:]).strip()
+        return process, remark
+    has_symbol = any(not re.search(r"[\u4e00-\u9fff]", text) and len(text) <= 8 for _, text in selected)
+    if not has_symbol:
+        return " ".join(text for _, text in selected).strip(), ""
+    # 有图标/符号时，后续中文文字属于该格右侧的备注；边界由文字框顺序决定。
+    first_remark = next((index for index, (_, text) in enumerate(selected)
+                         if re.search(r"[\u4e00-\u9fff]", text)), None)
+    if first_remark is None:
+        return " ".join(text for _, text in selected).strip(), ""
+    process = " ".join(text for _, text in selected[:first_remark]).strip()
+    remark = " ".join(text for _, text in selected[first_remark:]).strip()
+    return process, remark
+
+
+def looks_like_visual_noise(value: str) -> bool:
+    value = (value or "").strip()
+    if not value:
+        return False
+    if len(value) == 1:
+        return True
+    return bool(re.fullmatch(r"[^\u4e00-\u9fffA-Za-z0-9]+", value))
+
+
 def normalized_icon(image: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
     binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
@@ -93,6 +131,31 @@ def perceptual_hash(image: np.ndarray) -> str:
     for pixel in small.flatten():
         value = (value << 1) | int(pixel >= mean)
     return f"{value:016x}"
+
+
+def triangle_direction(image: np.ndarray) -> str | None:
+    """识别最大三角轮廓的尖端方向；无法确认时返回 None。"""
+    binary = image if len(image.shape) == 2 else normalized_icon(image)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    contour = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(contour) < 12:
+        return None
+    perimeter = cv2.arcLength(contour, True)
+    polygon = cv2.approxPolyDP(contour, max(1.5, perimeter * 0.08), True)
+    if len(polygon) != 3:
+        return None
+    points = polygon[:, 0, :]
+    top = float(points[:, 1].min())
+    bottom = float(points[:, 1].max())
+    top_count = int(np.count_nonzero(np.isclose(points[:, 1], top, atol=2)))
+    bottom_count = int(np.count_nonzero(np.isclose(points[:, 1], bottom, atol=2)))
+    if top_count == 1 and bottom_count >= 2:
+        return "UP"
+    if bottom_count == 1 and top_count >= 2:
+        return "DOWN"
+    return None
 
 
 def detect_row_bounds(image: np.ndarray, x1: float, x2: float, y1: float, y2: float,
@@ -168,6 +231,34 @@ def parse_quantity(specification: str) -> tuple[float, str]:
     return float(match.group(1)), (match.group(2) or "PCS").upper()
 
 
+def split_composite_components(row: np.ndarray, parts: list[str | None]) -> list[dict]:
+    """按复合格内的视觉顺序切出子项，后端再按普通工序规则逐项匹配。"""
+    if not parts:
+        return []
+    width = row.shape[1]
+    result = []
+    for index, part in enumerate(parts):
+        left = int(width * index / len(parts))
+        right = int(width * (index + 1) / len(parts))
+        segment = row[:, left:right]
+        # 不能再只取子格前 75%；下线跳的下标通常位于图标右下侧。
+        # 保留整个子格，再由 normalized_icon 去除边框和空白。
+        normalized = normalized_icon(segment)
+        result.append({
+            "order": index + 1,
+            "text": part,
+            "contentType": "TEXT_ONLY" if part else "ICON_ONLY",
+            "processId": None,
+            "workInstruction": "",
+            "confirmed": False,
+            "perceptualHash": perceptual_hash(normalized),
+            "shapeDirection": triangle_direction(normalized),
+            "imageBase64": png64(segment),
+            "normalizedImageBase64": png64(normalized),
+        })
+    return result
+
+
 def workflow_rows(image: np.ndarray, lines: list[tuple[float, float, str]], workflow_type: str, x1: float, x2: float,
                   y1: float, y2: float, rows: int = 14) -> dict:
     x2, used_column_fallback = detect_workflow_right_border(image, x1, x2, y1, y2)
@@ -192,11 +283,12 @@ def workflow_rows(image: np.ndarray, lines: list[tuple[float, float, str]], work
         icon = row[:, :icon_width]
         normal = normalized_icon(icon)
         # x1 已位于“作业流程”列左边界，图形、文字和“+”都属于该列内容。
-        raw_text = region_text(lines, x1, top, x2, bottom)
+        raw_text, operation_remark = row_process_and_remark(lines, x1, top, x2, bottom)
         is_composite = "+" in raw_text
         components = [part.strip() or None for part in raw_text.split("+")] if is_composite else []
-        has_icon = cv2.countNonZero(normal) >= 30
-        has_text = bool(raw_text)
+        # 细线图标（如包装图标）有效像素可能很少，但只要不是空白就应保留为图标。
+        has_icon = cv2.countNonZero(normal) >= 5
+        has_text = bool(raw_text) and not (not is_composite and looks_like_visual_noise(raw_text))
         content_type = ("MIXED" if has_icon and has_text else
                         "ICON_ONLY" if has_icon else
                         "TEXT_ONLY" if has_text else "EMPTY")
@@ -205,18 +297,18 @@ def workflow_rows(image: np.ndarray, lines: list[tuple[float, float, str]], work
             "stepNo": index + 1,
             "bounds": {"x1": x1, "y1": top, "x2": x2, "y2": bottom},
             "rawText": raw_text,
+            "ocrRawText": raw_text,
+            "recognizedText": raw_text or None,
             "editedText": raw_text,
             "contentType": content_type,
             "processStructure": process_structure,
             "classificationConfirmed": False,
             "isComposite": is_composite,
-            "components": [{"order": order, "text": part, "contentType": "UNKNOWN",
-                            "processId": None, "workInstruction": "", "confirmed": False}
-                           for order, part in enumerate(components, start=1)] if is_composite else [],
+            "components": split_composite_components(row, components) if is_composite else [],
             "processId": None,
             "processName": raw_text or None,
             "workInstruction": "",
-            "operationRemark": "",
+            "operationRemark": operation_remark,
             "precondition": {},
             "perceptualHash": perceptual_hash(normal),
             "cellImageBase64": png64(row),
