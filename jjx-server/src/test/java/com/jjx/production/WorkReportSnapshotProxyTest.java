@@ -69,7 +69,10 @@ class WorkReportSnapshotProxyTest {
                 taskService, projectionService, readService, mock(QualityInspectionService.class),
                 jdbcTemplate, mock(NotificationService.class),
                 mock(com.jjx.framework.common.RedisSequenceService.class),
-                roleResolver);
+                roleResolver,
+                // dev-20260917-006：末道工序报工审批通过 → 建成品检验批所需依赖
+                mock(com.jjx.quality.service.QualityLotService.class),
+                mock(com.jjx.quality.service.FinalProcessResolver.class));
     }
 
     @Test
