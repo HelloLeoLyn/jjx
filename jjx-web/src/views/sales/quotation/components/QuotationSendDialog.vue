@@ -147,15 +147,16 @@ const companyContact = computed(() => {
 
 async function loadCompanyConfig() {
   try {
-    const res: any = await sysConfigApi.listByGroup('pdf_template')
-    const list: any[] = res?.data || []
-    const map: Record<string, string> = {}
-    for (const item of list) map[item.configKey] = item.configValue || ''
+    // 2026-09-17：改用开放通道 /config/module/pdf_template（登录即可、敏感键后端过滤），
+    // 原来走 /system/config/group/pdf_template 需要 system:config:view，销售角色会报"无此权限"
+    const res: any = await sysConfigApi.module('pdf_template')
+    const map: Record<string, string> = res?.data || {}
     companyName.value = map.company_name || ''
     companyAddress.value = map.company_address || ''
     companyPhone.value = map.company_phone || ''
     companyEmail.value = map.company_email || ''
   } catch (e) {
+    // 读取失败降级为空抬头，不阻断发送流程
     console.error('加载公司配置失败:', e)
   }
 }
