@@ -1,0 +1,103 @@
+package com.jjx.quality.domain.entity;
+
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+/**
+ * 检验批（IQC/IPQC/FQC 统一模型）—— dev-20260917-001
+ *
+ * 业务恒等式（每次动作后必须成立）：
+ *   lot_quantity = inspected_quantity + 待检余量
+ *   inspected_quantity = pass_quantity + fail_quantity
+ *   fail_quantity = disposed_quantity + 待处置
+ *   stored_quantity <= lot_quantity（累计入库不得超批量）
+ */
+@Data
+@TableName("quality_lot")
+public class QualityLot {
+
+    @TableId(type = IdType.AUTO)
+    private Long lotId;
+
+    /** 检验批号 */
+    private String lotNo;
+
+    /** IQC/IPQC/FQC */
+    private String lotType;
+
+    /** INBOUND_ITEM 收货行 / WORK_REPORT 报工批 / EXECUTION 工序 */
+    private String sourceType;
+    private Long sourceId;
+    private Long sourceItemId;
+
+    /** 工单（成品/过程） */
+    private Long orderId;
+    /** 工序执行 */
+    private Long executionId;
+
+    /** 来料：物料 */
+    private Long materialId;
+    private String materialCode;
+    private String materialName;
+
+    /** 成品：产品 */
+    private Long productId;
+    private String productCode;
+    private String productName;
+
+    private String batchNo;
+
+    /** 批量（本批应检总量） */
+    private BigDecimal lotQuantity;
+    /** 已检数量 */
+    private BigDecimal inspectedQuantity;
+    /** 合格数量 */
+    private BigDecimal passQuantity;
+    /** 不良数量 */
+    private BigDecimal failQuantity;
+    /** 已入库/已放行（防超入校验） */
+    private BigDecimal storedQuantity;
+    /** 已处置不良数量 */
+    private BigDecimal disposedQuantity;
+
+    /** 抽样方案（来料） */
+    private Long samplingPlanId;
+    private BigDecimal sampleQuantity;
+    private BigDecimal acceptNumber;
+    private BigDecimal rejectNumber;
+
+    /** pending/pass/fail/concession */
+    private String result;
+    /** PENDING/INSPECTING/JUDGED/CLOSED */
+    private String status;
+
+    /** 复检来源批 + 版本 */
+    private Long parentLotId;
+    private Integer version;
+
+    private String inspector;
+    private LocalDateTime inspectTime;
+    private String remark;
+
+    private String createBy;
+    private LocalDateTime createTime;
+    private String updateBy;
+    private LocalDateTime updateTime;
+
+    @TableLogic
+    private Integer delFlag;
+
+    /** 待检余量（不落库，供页面/校验用） */
+    public BigDecimal remainingQuantity() {
+        BigDecimal lot = lotQuantity == null ? BigDecimal.ZERO : lotQuantity;
+        BigDecimal inspected = inspectedQuantity == null ? BigDecimal.ZERO : inspectedQuantity;
+        BigDecimal remaining = lot.subtract(inspected);
+        return remaining.signum() < 0 ? BigDecimal.ZERO : remaining;
+    }
+}

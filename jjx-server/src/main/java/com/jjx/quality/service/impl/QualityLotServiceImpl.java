@@ -1,0 +1,274 @@
+package com.jjx.quality.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.common.exception.BusinessException;
+import com.jjx.quality.domain.entity.QualityLot;
+import com.jjx.quality.domain.entity.QualityLotItem;
+import com.jjx.quality.dto.QualityLotCreateDTO;
+import com.jjx.quality.dto.QualityLotItemDTO;
+import com.jjx.quality.dto.QualityLotQueryDTO;
+import com.jjx.quality.enums.QualityLotStatusEnum;
+import com.jjx.quality.enums.QualityLotTypeEnum;
+import com.jjx.quality.mapper.QualityLotItemMapper;
+import com.jjx.quality.mapper.QualityLotMapper;
+import com.jjx.quality.service.QualityLotService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 检验批服务实现 —— dev-20260917-001
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, QualityLot> implements QualityLotService {
+
+    private static final DateTimeFormatter LOT_NO_DATE = DateTimeFormatter.ofPattern("yyMMdd");
+
+    private final QualityLotMapper lotMapper;
+    private final QualityLotItemMapper itemMapper;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityLot createLot(QualityLotCreateDTO dto) {
+        if (dto == null || StringUtils.isBlank(dto.getLotType())) {
+            throw new BusinessException("检验批类型不能为空（IQC/IPQC/FQC）");
+        }
+        if (QualityLotTypeEnum.getByCode(dto.getLotType()) == null) {
+            throw new BusinessException("检验批类型不合法：" + dto.getLotType());
+        }
+        BigDecimal lotQty = dto.getLotQuantity() == null ? BigDecimal.ZERO : dto.getLotQuantity();
+        if (lotQty.signum() <= 0) {
+            throw new BusinessException("检验批量必须大于 0");
+        }
+        // 防重复建批：同一来源 + 同一来源行 + 同一版本只允许一条
+        int version = dto.getVersion() == null ? 1 : dto.getVersion();
+        if (StringUtils.isNotBlank(dto.getSourceType()) && dto.getSourceId() != null) {
+            Long exists = lotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
+                    .eq(QualityLot::getSourceType, dto.getSourceType())
+                    .eq(QualityLot::getSourceId, dto.getSourceId())
+                    .eq(dto.getSourceItemId() != null, QualityLot::getSourceItemId, dto.getSourceItemId())
+                    .eq(QualityLot::getVersion, version));
+            if (exists != null && exists > 0) {
+                throw new BusinessException("该来源已存在同版本检验批，如需再次检验请走复检（新版本）");
+            }
+        }
+
+        QualityLot lot = new QualityLot();
+        lot.setLotNo(generateLotNo());
+        lot.setLotType(dto.getLotType());
+        lot.setSourceType(dto.getSourceType());
+        lot.setSourceId(dto.getSourceId());
+        lot.setSourceItemId(dto.getSourceItemId());
+        lot.setOrderId(dto.getOrderId());
+        lot.setExecutionId(dto.getExecutionId());
+        lot.setMaterialId(dto.getMaterialId());
+        lot.setMaterialCode(dto.getMaterialCode());
+        lot.setMaterialName(dto.getMaterialName());
+        lot.setProductId(dto.getProductId());
+        lot.setProductCode(dto.getProductCode());
+        lot.setProductName(dto.getProductName());
+        lot.setBatchNo(dto.getBatchNo());
+        lot.setLotQuantity(lotQty);
+        lot.setInspectedQuantity(BigDecimal.ZERO);
+        lot.setPassQuantity(BigDecimal.ZERO);
+        lot.setFailQuantity(BigDecimal.ZERO);
+        lot.setStoredQuantity(BigDecimal.ZERO);
+        lot.setDisposedQuantity(BigDecimal.ZERO);
+        lot.setSamplingPlanId(dto.getSamplingPlanId());
+        lot.setSampleQuantity(dto.getSampleQuantity());
+        lot.setAcceptNumber(dto.getAcceptNumber());
+        lot.setRejectNumber(dto.getRejectNumber());
+        lot.setResult("pending");
+        lot.setStatus(QualityLotStatusEnum.PENDING.getCode());
+        lot.setParentLotId(dto.getParentLotId());
+        lot.setVersion(version);
+        lot.setRemark(dto.getRemark());
+        lot.setDelFlag(0);
+        lotMapper.insert(lot);
+
+        if (dto.getItems() != null && !dto.getItems().isEmpty()) {
+            saveItems(lot.getLotId(), dto.getItems());
+        }
+        log.info("检验批已创建: lotNo={} type={} 批量={} 来源={}:{}", lot.getLotNo(), lot.getLotType(),
+                lotQty.toPlainString(), dto.getSourceType(), dto.getSourceId());
+        return lot;
+    }
+
+    @Override
+    public QualityLot getLot(Long lotId) {
+        QualityLot lot = lotMapper.selectById(lotId);
+        if (lot == null) {
+            throw new BusinessException("检验批不存在: " + lotId);
+        }
+        return lot;
+    }
+
+    @Override
+    public List<QualityLot> listBySource(String sourceType, Long sourceId) {
+        if (StringUtils.isBlank(sourceType) || sourceId == null) {
+            return new ArrayList<>();
+        }
+        return lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getSourceType, sourceType)
+                .eq(QualityLot::getSourceId, sourceId)
+                .orderByAsc(QualityLot::getVersion)
+                .orderByAsc(QualityLot::getLotId));
+    }
+
+    @Override
+    public List<QualityLot> listByOrder(Long orderId, Long executionId) {
+        return lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                .eq(orderId != null, QualityLot::getOrderId, orderId)
+                .eq(executionId != null, QualityLot::getExecutionId, executionId)
+                .orderByAsc(QualityLot::getLotId));
+    }
+
+    @Override
+    public IPage<QualityLot> pageLots(QualityLotQueryDTO query) {
+        QualityLotQueryDTO q = query == null ? new QualityLotQueryDTO() : query;
+        LambdaQueryWrapper<QualityLot> wrapper = new LambdaQueryWrapper<QualityLot>()
+                .eq(StringUtils.isNotBlank(q.getLotType()), QualityLot::getLotType, q.getLotType())
+                .eq(StringUtils.isNotBlank(q.getStatus()), QualityLot::getStatus, q.getStatus())
+                .like(StringUtils.isNotBlank(q.getLotNo()), QualityLot::getLotNo, q.getLotNo())
+                .eq(q.getOrderId() != null, QualityLot::getOrderId, q.getOrderId())
+                .eq(q.getExecutionId() != null, QualityLot::getExecutionId, q.getExecutionId())
+                .eq(q.getMaterialId() != null, QualityLot::getMaterialId, q.getMaterialId())
+                .eq(StringUtils.isNotBlank(q.getMaterialCode()), QualityLot::getMaterialCode, q.getMaterialCode())
+                .eq(q.getProductId() != null, QualityLot::getProductId, q.getProductId())
+                .eq(StringUtils.isNotBlank(q.getBatchNo()), QualityLot::getBatchNo, q.getBatchNo())
+                .orderByDesc(QualityLot::getLotId);
+        if (Boolean.TRUE.equals(q.getHasPendingDefect())) {
+            wrapper.apply("fail_quantity > disposed_quantity");
+        }
+        return lotMapper.selectPage(new Page<>(q.getPageNum(), q.getPageSize()), wrapper);
+    }
+
+    @Override
+    public List<QualityLotItem> listItems(Long lotId) {
+        return itemMapper.selectList(new LambdaQueryWrapper<QualityLotItem>()
+                .eq(QualityLotItem::getLotId, lotId)
+                .orderByAsc(QualityLotItem::getSortOrder)
+                .orderByAsc(QualityLotItem::getItemId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveItems(Long lotId, List<QualityLotItemDTO> items) {
+        getLot(lotId);
+        itemMapper.delete(new LambdaQueryWrapper<QualityLotItem>().eq(QualityLotItem::getLotId, lotId));
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        int order = 0;
+        for (QualityLotItemDTO dto : items) {
+            if (dto == null || StringUtils.isBlank(dto.getCheckItem())) {
+                continue;
+            }
+            QualityLotItem item = new QualityLotItem();
+            item.setLotId(lotId);
+            item.setCheckItem(dto.getCheckItem());
+            item.setStandard(dto.getStandard());
+            item.setInspectionMethod(dto.getInspectionMethod());
+            item.setEquipment(dto.getEquipment());
+            item.setSampleValues(dto.getSampleValues());
+            item.setActualValue(dto.getActualValue());
+            item.setCrQuantity(dto.getCrQuantity() == null ? BigDecimal.ZERO : dto.getCrQuantity());
+            item.setMaQuantity(dto.getMaQuantity() == null ? BigDecimal.ZERO : dto.getMaQuantity());
+            item.setMiQuantity(dto.getMiQuantity() == null ? BigDecimal.ZERO : dto.getMiQuantity());
+            item.setResult(dto.getResult());
+            item.setRemark(dto.getRemark());
+            item.setSortOrder(dto.getSortOrder() == null ? order++ : dto.getSortOrder());
+            itemMapper.insert(item);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityLot applyJudgement(Long lotId, BigDecimal inspectedQuantity, BigDecimal passQuantity,
+                                     BigDecimal failQuantity, String result, String inspector) {
+        QualityLot lot = getLot(lotId);
+        BigDecimal inspected = nz(inspectedQuantity);
+        BigDecimal pass = nz(passQuantity);
+        BigDecimal fail = nz(failQuantity);
+        if (inspected.signum() <= 0) {
+            throw new BusinessException("检验数量必须大于 0");
+        }
+        if (inspected.compareTo(lot.getLotQuantity()) > 0) {
+            throw new BusinessException("检验数量不能超过该批批量（" + lot.getLotQuantity().toPlainString() + "）");
+        }
+        if (pass.add(fail).compareTo(inspected) != 0) {
+            throw new BusinessException("合格数量 + 不良数量必须等于检验数量");
+        }
+        lot.setInspectedQuantity(inspected);
+        lot.setPassQuantity(pass);
+        lot.setFailQuantity(fail);
+        lot.setResult(result);
+        lot.setInspector(inspector);
+        lot.setInspectTime(java.time.LocalDateTime.now());
+        lot.setStatus(QualityLotStatusEnum.JUDGED.getCode());
+        lotMapper.updateById(lot);
+        return lot;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityLot addStoredQuantity(Long lotId, BigDecimal delta) {
+        QualityLot lot = getLot(lotId);
+        BigDecimal next = nz(lot.getStoredQuantity()).add(nz(delta));
+        if (next.compareTo(lot.getLotQuantity()) > 0) {
+            throw new BusinessException("入库/放行累计不能超过该批批量（" + lot.getLotQuantity().toPlainString()
+                    + "，已入库 " + nz(lot.getStoredQuantity()).toPlainString() + "）");
+        }
+        lot.setStoredQuantity(next);
+        lotMapper.updateById(lot);
+        return lot;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityLot addDisposedQuantity(Long lotId, BigDecimal delta) {
+        QualityLot lot = getLot(lotId);
+        BigDecimal next = nz(lot.getDisposedQuantity()).add(nz(delta));
+        if (next.compareTo(nz(lot.getFailQuantity())) > 0) {
+            throw new BusinessException("已处置数量不能超过不良数量（"
+                    + nz(lot.getFailQuantity()).toPlainString() + "）");
+        }
+        lot.setDisposedQuantity(next);
+        lotMapper.updateById(lot);
+        return lot;
+    }
+
+    /** 生成批号 QLyyMMdd0001（批量小，用 count+1 加占用校验，避免额外依赖） */
+    private String generateLotNo() {
+        String prefix = "QL" + LocalDate.now().format(LOT_NO_DATE);
+        long base = nzLong(lotMapper.countByLotNoPrefix(prefix));
+        for (long seq = base + 1; seq < base + 10000; seq++) {
+            String candidate = prefix + String.format("%04d", seq);
+            if (nzLong(lotMapper.countByLotNo(candidate)) == 0) {
+                return candidate;
+            }
+        }
+        throw new BusinessException("检验批号生成失败，请检查批号规则");
+    }
+
+    private BigDecimal nz(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private long nzLong(Long value) {
+        return value == null ? 0L : value;
+    }
+}
