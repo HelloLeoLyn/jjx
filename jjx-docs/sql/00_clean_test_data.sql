@@ -1,7 +1,16 @@
 -- =====================================================
--- 清理测试数据脚本（v13）
+-- 清理测试数据脚本（v14）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v14 变更（2026-09-17，逐表与用户确认后修订）：
+--   1. 新增清理（此前遗漏）：quality_lot / quality_lot_item / quality_ncr / quality_ncr_action
+--      （质量重构新模型业务表）、engineering_archive_import（档案导入记录）、sys_number_sequence（单号流水，清空重置）
+--   2. 补充清理：sales_sample_order（此前漏表，已确认）
+--   3. 改为保留（原为清理，属基础档案/配置）：product / product_category / product_config_model /
+--      product_config_option；并新增保留声明：quality_sampling_plan（AQL 配置）、
+--      engineering_process_icon_sample（图标学习样本）、sys_tag / sys_tag_rel（标签）
+--   4. 删除过时条目：engineering_routing_backup_20260809（表已不存在）
+--   5. 核验段同步更新（新增表纳入"应为 0"、基础资料展示段补齐）
 -- v13 变更（2026-09-12）：
 --   1. 移除已下线的 production_tooling / jjx_screen_master 引用及核验项
 -- v12 变更（2026-09-10）：
@@ -131,16 +140,15 @@ TRUNCATE biz_requirement_approval;
 
 TRUNCATE biz_requirement;
 
--- ==================== 3. 产品模块（v4 起全清） ====================
+-- ==================== 3. 产品模块（v14 起产品档案转为保留） ====================
+-- 产品实例属业务数据：清
 TRUNCATE product_instance;
 
-TRUNCATE product_config_option;
-
-TRUNCATE product_config_model;
-
-TRUNCATE product_category;
-
-TRUNCATE product;
+-- v14（2026-09-17 用户确认）：产品档案 / 分类 / 配置模型 属基础档案与配置，保留不清
+-- TRUNCATE product_config_option;
+-- TRUNCATE product_config_model;
+-- TRUNCATE product_category;
+-- TRUNCATE product;
 
 -- 08-09 版本化改造前的数据备份表（无代码引用，历史脏数据）
 TRUNCATE product_backup_20260809;
@@ -164,13 +172,17 @@ TRUNCATE engineering_bom_item;
 
 TRUNCATE engineering_bom;
 
+-- 08-09 版本化改造前的数据备份表（历史脏数据）
+TRUNCATE engineering_bom_backup_20260809;
+
 -- v5：标准工序保留不清（基础档案）
 -- TRUNCATE engineering_standard_process;
 
--- 08-09 版本化改造前的数据备份表（无代码引用，历史脏数据）
-TRUNCATE engineering_bom_backup_20260809;
+-- v14：图标学习样本保留（识别映射的学习成果，清了需重学）
+-- TRUNCATE engineering_process_icon_sample;
 
--- TRUNCATE engineering_routing_backup_20260809; -- 表已不存在（2026-08-13 清理时发现）
+-- v14 新增：档案导入记录属业务数据 → 清
+TRUNCATE engineering_archive_import;
 
 TRUNCATE engineering_film;
 
@@ -283,6 +295,15 @@ TRUNCATE review_flow;
 -- 只清打印留痕，模板注册配置保留
 TRUNCATE quality_template_print_log;
 
+-- v14 新增：质量重构新模型业务表（此前遗漏，易与 sales_sample_order 同类残留）
+TRUNCATE quality_ncr_action;
+
+TRUNCATE quality_ncr;
+
+TRUNCATE quality_lot_item;
+
+TRUNCATE quality_lot;
+
 TRUNCATE sys_attachment;
 
 TRUNCATE sys_notification;
@@ -293,6 +314,9 @@ TRUNCATE sys_login_log;
 
 TRUNCATE sys_error_log;
 
+-- v14：单号流水清空重置（否则测试单号持续往后跳；清了下次从 1 开始）
+TRUNCATE sys_number_sequence;
+
 TRUNCATE sales_sample_order;
 
 -- ==================== 12. 基础资料 + 系统权限/配置（全部保留，不动） ====================
@@ -300,10 +324,14 @@ TRUNCATE sales_sample_order;
 --       sys_dept 已按 83_rebuild_sys_dept_org.sql 新组织架构重建（16 部门），本脚本不清
 -- 配置：sys_config / sys_dict / sys_dict_item / sys_event_config
 -- 质量模板：quality_template_registry
+-- 质量配置：quality_sampling_plan（AQL 抽样方案，v14 起保留）
 -- 生产基础资料：engineering_standard_process
+-- 图标学习样本：engineering_process_icon_sample（v14 起保留）
 -- 业务基础资料：sales_customer / purchase_supplier / inventory_material /
 --               inventory_material_category / inventory_warehouse /
 --               inventory_item（统一库存物品主数据，由物料派生，与物料同级）
+-- 产品基础资料：product / product_category / product_config_model / product_config_option（v14 起保留）
+-- 标签：sys_tag / sys_tag_rel（v14 起保留）
 -- 人事基础档案：hr_employee（员工档案）/ hr_dept_mapping（导入部门映射）
 -- 历史配置备份：sys_event_config_bak_20260814
 -- 以上保留
@@ -322,6 +350,12 @@ UNION ALL SELECT 'inventory_iqc_quarantine', COUNT(*) FROM inventory_iqc_quarant
 UNION ALL SELECT 'inventory_iqc_disposition_order', COUNT(*) FROM inventory_iqc_disposition_order
 UNION ALL SELECT 'production_order', COUNT(*) FROM production_order
 UNION ALL SELECT 'production_quality_inspection', COUNT(*) FROM production_quality_inspection
+UNION ALL SELECT 'quality_lot', COUNT(*) FROM quality_lot
+UNION ALL SELECT 'quality_lot_item', COUNT(*) FROM quality_lot_item
+UNION ALL SELECT 'quality_ncr', COUNT(*) FROM quality_ncr
+UNION ALL SELECT 'quality_ncr_action', COUNT(*) FROM quality_ncr_action
+UNION ALL SELECT 'engineering_archive_import', COUNT(*) FROM engineering_archive_import
+UNION ALL SELECT 'sys_number_sequence', COUNT(*) FROM sys_number_sequence
 UNION ALL SELECT 'review_flow', COUNT(*) FROM review_flow
 UNION ALL SELECT 'quality_template_print_log', COUNT(*) FROM quality_template_print_log
 UNION ALL SELECT 'sys_task_non_dev', COUNT(*) FROM sys_task
@@ -334,6 +368,12 @@ SELECT
     (SELECT COUNT(*) FROM inventory_warehouse) AS warehouses,
     (SELECT COUNT(*) FROM engineering_standard_process) AS standard_processes,
     (SELECT COUNT(*) FROM quality_template_registry) AS quality_templates,
+    (SELECT COUNT(*) FROM quality_sampling_plan) AS sampling_plans,
+    (SELECT COUNT(*) FROM engineering_process_icon_sample) AS icon_samples,
+    (SELECT COUNT(*) FROM product) AS products,
+    (SELECT COUNT(*) FROM product_category) AS product_categories,
+    (SELECT COUNT(*) FROM sys_tag) AS tags,
+    (SELECT COUNT(*) FROM sales_customer) AS customers,
     (SELECT COUNT(*) FROM inventory_item) AS inventory_items,
     (SELECT COUNT(*) FROM hr_employee) AS hr_employees,
     (SELECT COUNT(*) FROM sys_dept) AS departments;
