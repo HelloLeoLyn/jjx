@@ -46,13 +46,11 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="detail(row)">详情</el-button>
-            <el-button v-if="row.documentStatus !== InvoiceStatusEnum.VERIFIED.value" v-hasPermi="['purchase:invoice:edit']" link type="success" @click="openVerify(row)">核销</el-button>
-            <el-button v-hasPermi="['purchase:invoice:delete']" link type="danger" @click="remove(row)">删除</el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="invoiceActions"
+          width="190"
+          @action="handleInvoiceAction"
+        />
       </el-table>
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @change="load" />
     </el-card>
@@ -120,6 +118,8 @@ import { listInvoice, getInvoice, delInvoice, verifyInvoice, getPendingInvoiceOr
 import { listSupplier } from '@/api/purchase/supplier'
 import { InvoiceStatusEnum } from '@/enums/purchase/invoice'
 import { download } from '@/utils/format'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'PurchaseInvoice' })
 
@@ -144,6 +144,34 @@ const verifyTarget = ref<any>()
 const query = reactive<any>({ pageNum: 1, pageSize: 10, documentNo: '', supplierId: undefined, documentStatus: undefined })
 const createForm = reactive<{ orderId?: number; supplierName: string; files: TempFile[] }>({ orderId: undefined, supplierName: '', files: [] })
 const verifyForm = reactive({ verificationDate: '', verifierName: '', verificationRemark: '' })
+
+const invoiceActions: TableAction<any>[] = [
+  { key: 'detail', label: '详情', order: 10 },
+  {
+    key: 'verify',
+    label: '核销',
+    type: 'success',
+    permission: 'purchase:invoice:edit',
+    visible: ({ row }) => row.documentStatus !== InvoiceStatusEnum.VERIFIED.value,
+    order: 20,
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    permission: 'purchase:invoice:delete',
+    order: 30,
+  },
+]
+
+function handleInvoiceAction(key: string, row: any) {
+  const handlers: Record<string, () => void> = {
+    detail: () => void detail(row),
+    verify: () => openVerify(row),
+    delete: () => void remove(row),
+  }
+  handlers[key]?.()
+}
 
 const money = (v?: number) => v == null ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 })
 

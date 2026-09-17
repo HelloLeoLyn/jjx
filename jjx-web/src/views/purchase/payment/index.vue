@@ -99,51 +99,12 @@
           >
         </el-table-column>
         <el-table-column prop="actualPaymentDate" label="实际付款日" width="110" />
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="detail(row)">详情</el-button>
-            <el-button
-              v-if="row.approvalStatus === PaymentApprovalStatus.PENDING"
-              v-hasPermi="['purchase:payment:approve']"
-              link
-              type="success"
-              @click="openApprove(row)"
-              >审批</el-button
-            >
-            <el-button
-              v-if="
-                row.approvalStatus === PaymentApprovalStatus.APPROVED &&
-                row.paymentStatus === PaymentStatusEnum.PENDING.value
-              "
-              v-hasPermi="['purchase:payment:edit']"
-              link
-              type="warning"
-              @click="openConfirm(row)"
-              >确认付款</el-button
-            >
-            <el-button
-              v-if="
-                row.approvalStatus === PaymentApprovalStatus.PENDING &&
-                row.paymentStatus === PaymentStatusEnum.PENDING.value
-              "
-              v-hasPermi="['purchase:payment:edit']"
-              link
-              @click="openEdit(row)"
-              >编辑</el-button
-            >
-            <el-button
-              v-if="
-                row.approvalStatus === PaymentApprovalStatus.PENDING &&
-                row.paymentStatus === PaymentStatusEnum.PENDING.value
-              "
-              v-hasPermi="['purchase:payment:delete']"
-              link
-              type="danger"
-              @click="remove(row)"
-              >删除</el-button
-            >
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="paymentActions"
+          width="220"
+          :max-visible="3"
+          @action="handlePaymentAction"
+        />
       </el-table>
       <el-pagination
         v-model:current-page="query.pageNum"
@@ -326,6 +287,8 @@ import {
   PaymentApprovalStatusEnum,
   PaymentMethodEnum,
 } from '@/enums/purchase/payment'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'PurchasePayment' })
 
@@ -369,6 +332,58 @@ const rules = {
 }
 const approveForm = reactive({ approverName: '', approvalComment: '' })
 const confirmForm = reactive({ actualPaymentDate: '', voucherNo: '' })
+
+const isPendingPayment = (row: any) =>
+  row.approvalStatus === PaymentApprovalStatus.PENDING &&
+  row.paymentStatus === PaymentStatusEnum.PENDING.value
+
+const paymentActions: TableAction<any>[] = [
+  { key: 'detail', label: '详情', order: 10 },
+  {
+    key: 'approve',
+    label: '审批',
+    type: 'success',
+    permission: 'purchase:payment:approve',
+    visible: ({ row }) => row.approvalStatus === PaymentApprovalStatus.PENDING,
+    order: 20,
+  },
+  {
+    key: 'confirm',
+    label: '确认付款',
+    type: 'warning',
+    permission: 'purchase:payment:edit',
+    visible: ({ row }) =>
+      row.approvalStatus === PaymentApprovalStatus.APPROVED &&
+      row.paymentStatus === PaymentStatusEnum.PENDING.value,
+    order: 30,
+  },
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: 'purchase:payment:edit',
+    visible: ({ row }) => isPendingPayment(row),
+    order: 40,
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    permission: 'purchase:payment:delete',
+    visible: ({ row }) => isPendingPayment(row),
+    order: 50,
+  },
+]
+
+function handlePaymentAction(key: string, row: any) {
+  const handlers: Record<string, () => void> = {
+    detail: () => void detail(row),
+    approve: () => openApprove(row),
+    confirm: () => openConfirm(row),
+    edit: () => void openEdit(row),
+    delete: () => void remove(row),
+  }
+  handlers[key]?.()
+}
 
 const money = (v?: number) =>
   v == null ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 })

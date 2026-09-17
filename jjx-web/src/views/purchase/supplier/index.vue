@@ -186,44 +186,12 @@
             <span>{{ parseTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
-        <el-table-column
-          label="操作"
-          align="center"
-          class-name="small-padding fixed-width"
-          width="200"
-        >
-          <template #default="scope">
-            <el-tooltip content="修改" placement="top">
-              <el-button
-                link
-                type="primary"
-                icon="Edit"
-                v-hasPermi="['purchase:supplier:edit']"
-                @click="handleUpdate(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="删除" placement="top">
-              <el-button
-                link
-                type="danger"
-                icon="Delete"
-                v-hasPermi="['purchase:supplier:delete']"
-                @click="handleDelete(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="详情" placement="top">
-              <el-button link type="info" icon="View" @click="handleView(scope.row)"></el-button>
-            </el-tooltip>
-            <el-tooltip content="评估" placement="top">
-              <el-button
-                link
-                type="success"
-                icon="Star"
-                @click="handleEvaluation(scope.row)"
-              ></el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="supplierActions"
+          width="240"
+          :max-visible="3"
+          @action="handleSupplierAction"
+        />
       </el-table>
 
       <!-- 分页 -->
@@ -549,6 +517,8 @@ import { SupplierTypeEnum, SupplierStatusEnum } from '@/enums/purchase'
 import { dictApi } from '@/api/system/dict'
 import TagQuerySelect from '@/components/TagQuerySelect.vue'
 import type { SysDictItem } from '@/types/system/dict'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 // 查询参数
 const queryParams = reactive({
@@ -707,6 +677,13 @@ const evaluationRules = reactive<FormRules>({
 
 // 表格数据
 const supplierList = ref<any[]>([])
+
+const supplierActions: TableAction<any>[] = [
+  { key: 'edit', label: '修改', permission: 'purchase:supplier:edit', order: 10 },
+  { key: 'delete', label: '删除', type: 'danger', permission: 'purchase:supplier:delete', order: 20 },
+  { key: 'detail', label: '详情', type: 'info', order: 30 },
+  { key: 'evaluate', label: '评估', type: 'success', order: 40 },
+]
 
 // 字典选项
 const supplierTypeOptions = SupplierTypeEnum.items
@@ -890,6 +867,16 @@ const handleView = (row: any) => {
 }
 
 // 状态改变处理
+function handleSupplierAction(key: string, row: any) {
+  const handlers: Record<string, () => void> = {
+    edit: () => handleUpdate(row),
+    delete: () => handleDelete(row),
+    detail: () => handleView(row),
+    evaluate: () => handleEvaluation(row),
+  }
+  handlers[key]?.()
+}
+
 const handleStatusChange = (row: any) => {
   const text = row.status === 1 ? '启用' : '停用'
   ElMessageBox.confirm('确认要' + text + '"' + row.supplierName + '"供应商吗？', '警告', {

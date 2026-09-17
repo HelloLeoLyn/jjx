@@ -97,11 +97,11 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" align="center">
-          <template #default="{ $index }">
-            <el-button link type="danger" @click="removeRow($index)">移除</el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="planActions"
+          width="100"
+          @action="handlePlanAction"
+        />
       </el-table>
       <el-empty
         v-if="planRows.length === 0"
@@ -203,6 +203,8 @@ import { alertApi } from '@/api/inventory/alert'
 import { listSupplier } from '@/api/purchase/supplier'
 import { materialApi } from '@/api/inventory/material'
 import type { InventoryMaterial } from '@/types/inventory/material'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 interface PlanRow {
   materialId: number
@@ -217,6 +219,14 @@ interface PlanRow {
   reason: string
   priority: string
   sourceAlertId?: number
+}
+
+const planActions: TableAction<PlanRow>[] = [
+  { key: 'remove', label: '移除', type: 'danger' },
+]
+
+function handlePlanAction(key: string, _row: PlanRow, index: number) {
+  if (key === 'remove') removeRow(index)
 }
 
 const planRows = ref<PlanRow[]>([])

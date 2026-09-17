@@ -232,126 +232,12 @@
             <span>{{ formatDate(scope.row.createTime || '', 'YYYY-MM-DD HH:mm:ss') }}</span>
           </template>
         </el-table-column>
-        <el-table-column
-          label="操作"
-          align="left"
-          class-name="small-padding fixed-width"
-          min-width="300"
-        >
-          <template #default="scope">
-            <el-tooltip content="打印" placement="top">
-              <el-button
-                link
-                type="info"
-                icon="Printer"
-                @click="handlePrint(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 修改按钮（草稿和已拒绝可修改） -->
-            <el-tooltip
-              v-if="isOrderEditable(scope.row.approvalStatus)"
-              content="修改"
-              placement="top"
-            >
-              <el-button
-                link
-                type="primary"
-                icon="Edit"
-                v-hasPermi="['purchase:order:edit']"
-                @click="() => handleUpdate(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 取消按钮（草稿、待审批、已拒绝可取消） -->
-            <el-tooltip
-              v-if="isOrderCancellable(scope.row.approvalStatus)"
-              content="取消"
-              placement="top"
-            >
-              <el-button
-                link
-                type="danger"
-                icon="Delete"
-                v-hasPermi="['purchase:order:edit']"
-                @click="() => openPreview('purchase.cancel', scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 审批按钮（待审批可审批） -->
-            <el-tooltip
-              v-if="isOrderApprovable(scope.row.approvalStatus)"
-              content="审批通过"
-              placement="top"
-            >
-              <el-button
-                link
-                type="warning"
-                icon="Check"
-                v-hasPermi="['purchase:order:approve']"
-                @click="() => openPreview('purchase.approve', scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 驳回按钮（待审批可驳回） -->
-            <el-tooltip
-              v-if="isOrderApprovable(scope.row.approvalStatus)"
-              content="审批驳回"
-              placement="top"
-            >
-              <el-button
-                link
-                type="danger"
-                icon="CloseBold"
-                v-hasPermi="['purchase:order:approve']"
-                @click="() => openPreview('purchase.reject', scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 提交审核按钮（草稿可提交） -->
-            <el-tooltip v-if="scope.row.approvalStatus === ApprovalStatusEnum.DRAFT.value" content="提交审核" placement="top">
-              <el-button
-                link
-                type="primary"
-                icon="Promotion"
-                v-hasPermi="['purchase:order:edit']"
-                @click="() => openPreview('purchase.submitReview', scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 收货按钮（已批准且未完全收货） -->
-            <el-tooltip
-              v-if="isOrderReceivable(scope.row.approvalStatus, scope.row.receiptStatus)"
-              content="收货"
-              placement="top"
-            >
-              <el-button
-                link
-                type="success"
-                icon="Location"
-                v-hasPermi="['purchase:receipt:add']"
-                @click="() => handleReceive(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 付款按钮（已批准且未完全付款） -->
-            <el-tooltip
-              v-if="isOrderPayable(scope.row.approvalStatus, scope.row.paymentStatus)"
-              content="付款"
-              placement="top"
-            >
-              <el-button
-                link
-                type="primary"
-                icon="Money"
-                v-hasPermi="['purchase:payment:add']"
-                @click="() => handlePayment(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 查看流水（DEV-569） -->
-            <el-tooltip content="查看流水" placement="top">
-              <el-button
-                link
-                type="info"
-                icon="Connection"
-                @click="showTrace(scope.row)"
-              ></el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="orderActions"
+          min-width="260"
+          :max-visible="3"
+          @action="handleOrderAction"
+        />
       </el-table>
 
       <!-- 分页 -->
@@ -461,6 +347,8 @@ import {
   cancleOrder,
 } from '@/api/purchase/order'
 import { download } from '@/utils/format'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 // 使用Composables
 const { orderList, total, loading, loadData } = usePurchaseOrder()
@@ -823,6 +711,79 @@ function openPreview(opKey: string, row?: PurchaseOrderVO) {
   previewBizId.value = Number(row?.orderId)
   previewBizNo.value = row?.orderNo || ''
   previewVisible.value = true
+}
+
+const orderActions: TableAction<PurchaseOrderVO>[] = [
+  { key: 'print', label: '打印', type: 'info', order: 10 },
+  {
+    key: 'edit',
+    label: '修改',
+    permission: 'purchase:order:edit',
+    visible: ({ row }) => isOrderEditable(row.approvalStatus),
+    order: 20,
+  },
+  {
+    key: 'cancel',
+    label: '取消',
+    type: 'danger',
+    permission: 'purchase:order:edit',
+    visible: ({ row }) => isOrderCancellable(row.approvalStatus),
+    order: 30,
+  },
+  {
+    key: 'approve',
+    label: '审批通过',
+    type: 'success',
+    permission: 'purchase:order:approve',
+    visible: ({ row }) => isOrderApprovable(row.approvalStatus),
+    order: 40,
+  },
+  {
+    key: 'reject',
+    label: '审批驳回',
+    type: 'danger',
+    permission: 'purchase:order:approve',
+    visible: ({ row }) => isOrderApprovable(row.approvalStatus),
+    order: 50,
+  },
+  {
+    key: 'submit',
+    label: '提交审核',
+    permission: 'purchase:order:edit',
+    visible: ({ row }) => row.approvalStatus === ApprovalStatusEnum.DRAFT.value,
+    order: 60,
+  },
+  {
+    key: 'receive',
+    label: '收货',
+    type: 'success',
+    permission: 'purchase:receipt:add',
+    visible: ({ row }) => isOrderReceivable(row.approvalStatus, row.receiptStatus),
+    order: 70,
+  },
+  {
+    key: 'payment',
+    label: '付款',
+    permission: 'purchase:payment:add',
+    visible: ({ row }) => isOrderPayable(row.approvalStatus, row.paymentStatus),
+    order: 80,
+  },
+  { key: 'trace', label: '查看流水', type: 'info', order: 90 },
+]
+
+function handleOrderAction(key: string, row: PurchaseOrderVO) {
+  const handlers: Record<string, () => void> = {
+    print: () => handlePrint(row),
+    edit: () => handleUpdate(row),
+    cancel: () => openPreview('purchase.cancel', row),
+    approve: () => openPreview('purchase.approve', row),
+    reject: () => openPreview('purchase.reject', row),
+    submit: () => openPreview('purchase.submitReview', row),
+    receive: () => handleReceive(row),
+    payment: () => handlePayment(row),
+    trace: () => showTrace(row),
+  }
+  handlers[key]?.()
 }
 </script>
 

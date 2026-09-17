@@ -28,12 +28,11 @@
                   <span v-else>-</span>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="180" fixed="right">
-                <template #default="{ row: item }">
-                  <el-button v-if="item.receiptStatus !== ReceiptStatusEnum.RECEIVED.value" v-hasPermi="['purchase:receipt:edit']" link type="primary" @click="openConfirm(row, item)">收货</el-button>
-                  <el-button v-hasPermi="['purchase:receipt:edit']" link type="warning" @click="openInspect(row, item)">检验</el-button>
-                </template>
-              </el-table-column>
+              <TableActionColumn
+                :actions="receiptActions"
+                width="180"
+                @action="(key, item) => handleReceiptAction(key, row, item)"
+              />
             </el-table>
           </template>
         </el-table-column>
@@ -88,6 +87,8 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listReceipt, confirmReceipt, inspectReceipt } from '@/api/purchase/receipt'
 import { ReceiptStatusEnum, InspectionResultEnum } from '@/enums/purchase/receipt'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'PurchaseReceipt' })
 
@@ -102,6 +103,28 @@ const query = reactive({ orderNo: '', supplierName: '' })
 
 const confirmForm = reactive<any>({ receivedQuantity: 0, receiverName: '', receiptDate: '', remark: '' })
 const inspectForm = reactive<any>({ inspectionResult: 'passed', inspectorName: '', inspectionDate: '', inspectionRemark: '' })
+
+const receiptActions: TableAction<any>[] = [
+  {
+    key: 'receive',
+    label: '收货',
+    permission: 'purchase:receipt:edit',
+    visible: ({ row }) => row.receiptStatus !== ReceiptStatusEnum.RECEIVED.value,
+    order: 10,
+  },
+  {
+    key: 'inspect',
+    label: '检验',
+    type: 'warning',
+    permission: 'purchase:receipt:edit',
+    order: 20,
+  },
+]
+
+function handleReceiptAction(key: string, order: any, item: any) {
+  if (key === 'receive') openConfirm(order, item)
+  if (key === 'inspect') openInspect(order, item)
+}
 
 const money = (v?: number) => v == null ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 })
 
