@@ -179,7 +179,7 @@ import { qualityLotApi, type QualityLot, type QualityLotItem } from '@/api/quali
 const router = useRouter()
 
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
-const title = props.lotType === 'IQC' ? '来料检验（检验批）' : '成品检验（检验批）'
+const title = props.lotType === 'IQC' ? '来料检验' : '成品检验'
 const lotType = props.lotType
 
 const loading = ref(false)
