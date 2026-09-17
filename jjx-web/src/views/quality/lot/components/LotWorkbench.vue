@@ -68,6 +68,7 @@
             <el-button link type="primary" size="small" @click="openItems(row)">录入</el-button>
             <el-button link type="success" size="small" @click="openJudge(row)">判定</el-button>
             <el-button link type="warning" size="small" @click="handleReinspect(row)">复检</el-button>
+            <el-button link size="small" @click="printReport(row)">打印</el-button>
             <el-button
               v-if="lotType === 'FQC' && row.orderId"
               link
@@ -172,7 +173,10 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRouter } from 'vue-router'
 import { qualityLotApi, type QualityLot, type QualityLotItem } from '@/api/quality/lot'
+
+const router = useRouter()
 
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
 const title = props.lotType === 'IQC' ? '来料检验（检验批）' : '成品检验（检验批）'
@@ -315,6 +319,11 @@ const handleSyncFinish = async (row: QualityLot) => {
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败')
   }
+}
+
+/** 打印检验报告（QR-037 进料 / QR-039 成品，报告数据来自检验批） */
+const printReport = (row: QualityLot) => {
+  router.push({ path: '/quality/print/lot-report', query: { lotId: row.lotId } })
 }
 
 onMounted(() => load(1))

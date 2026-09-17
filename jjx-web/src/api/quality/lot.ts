@@ -115,6 +115,9 @@ export const qualityLotApi = {
   create(data: Record<string, unknown>) {
     return request.post<R<QualityLot>>('/quality/lot', data)
   },
+  report(lotId: number) {
+    return request.get<R<Record<string, any>>>(`/quality/lot/${lotId}/report`)
+  },
 }
 
 export const qualityNcrApi = {
