@@ -42,6 +42,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     private final QualityNcrMapper ncrMapper;
     private final QualityNcrActionMapper actionMapper;
     private final QualityLotService qualityLotService;
+    /** 用 ObjectProvider 延迟取，避免 库存→质量→库存 的循环依赖（既有先例：QualityActionServiceImpl） */
+    private final org.springframework.beans.factory.ObjectProvider<com.jjx.inventory.service.InventoryInboundService> inventoryInboundServiceProvider;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -206,9 +208,42 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncrMapper.updateById(ncr);
         // 同步检验批的已处置数量（防超处置）
         qualityLotService.addDisposedQuantity(ncr.getLotId(), quantity);
+        // 处置与库存联动（dev-20260917-008）
+        applyStockEffect(ncr, action, actionType, quantity);
         log.info("不良处置登记: ncrNo={} 方式={} 数量={} 已处置={}/{}", ncr.getNcrNo(), actionType,
                 quantity.toPlainString(), disposed.toPlainString(), nz(ncr.getDefectQuantity()).toPlainString());
         return action;
+    }
+
+    /**
+     * 处置的库存影响（dev-20260917-008）：
+     * - 让步接收（特采）：不良数量转良品库存并打特采标记（写 ADJUST 凭证，带 lotId/ncrId）；
+     * - 报废：在"只入合格数"的账务口径下不良品从未进良品库，故不产生库存扣减，仅记台账；
+     * - 返工：生成返工工序（沿用既有返工逻辑），完工再检合格后走正常成品入库。
+     */
+    private void applyStockEffect(QualityNcr ncr, QualityNcrAction action, String actionType, BigDecimal quantity) {
+        try {
+            if ("CONCESSION".equals(actionType) && ncr.getOrderId() != null) {
+                com.jjx.inventory.service.InventoryInboundService inboundService =
+                        inventoryInboundServiceProvider.getIfAvailable();
+                if (inboundService == null) {
+                    log.warn("库存服务不可用，让步接收未联动库存: ncrNo={}", ncr.getNcrNo());
+                    return;
+                }
+                inboundService.adjustFinishStock(ncr.getOrderId(), ncr.getLotId(), ncr.getNcrId(), quantity,
+                        "让步接收（特采）转良品：不良 " + quantity.toPlainString() + " 件");
+                action.setStatus("DONE");
+                action.setResultRemark("让步接收已转良品库存（特采标记）");
+                actionMapper.updateById(action);
+            } else if ("SCRAP".equals(actionType)) {
+                action.setStatus("DONE");
+                action.setResultRemark("报废已登记：不良品未进入良品库存，无需库存扣减（口径A）");
+                actionMapper.updateById(action);
+            }
+        } catch (Exception e) {
+            log.warn("处置库存联动失败（台账已登记，需人工处理）: ncrNo={} 方式={} err={}",
+                    ncr.getNcrNo(), actionType, e.getMessage());
+        }
     }
 
     @Override

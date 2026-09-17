@@ -1760,6 +1760,69 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public BigDecimal adjustFinishStock(Long orderId, Long lotId, Long ncrId, BigDecimal deltaQuantity, String remark) {
+        if (orderId == null || deltaQuantity == null || deltaQuantity.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        ProductionOrder prodOrder = productionOrderMapper.selectById(orderId);
+        if (prodOrder == null) {
+            throw new BusinessException("生产工单不存在: " + orderId);
+        }
+        String batchNo = "BATCH-" + prodOrder.getOrderNo();
+        InventoryStockItem stock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                .eq(InventoryStockItem::getMaterialCode, prodOrder.getProductCode())
+                .eq(InventoryStockItem::getBatchNo, batchNo)
+                .orderByAsc(InventoryStockItem::getItemId)
+                .last("LIMIT 1"));
+        if (stock == null) {
+            if (deltaQuantity.signum() > 0) {
+                throw new BusinessException("成品库存批次不存在，无法调整（批次 " + batchNo + "）。请先完成成品入库。");
+            }
+            return BigDecimal.ZERO;
+        }
+        BigDecimal before = stock.getQuantity() == null ? BigDecimal.ZERO : stock.getQuantity();
+        BigDecimal after = before.add(deltaQuantity);
+        if (after.signum() < 0) {
+            throw new BusinessException("库存调整后为负（当前 " + before.toPlainString() + "，调整 "
+                    + deltaQuantity.toPlainString() + "），请人工核对");
+        }
+        stock.setQuantity(after);
+        stockItemMapper.updateById(stock);
+
+        InventoryTransaction tx = new InventoryTransaction();
+        tx.setInventoryItemId(stock.getInventoryItemId());
+        tx.setMaterialId(stock.getMaterialId());
+        tx.setMaterialCode(stock.getMaterialCode());
+        tx.setMaterialName(stock.getMaterialName());
+        tx.setWarehouseId(stock.getWarehouseId());
+        tx.setLocationId(stock.getLocationId());
+        tx.setTransactionType("ADJUST");
+        tx.setSourceType("PRODUCTION_QC");
+        tx.setSourceId(orderId);
+        tx.setSourceNo(prodOrder.getOrderNo());
+        tx.setLotId(lotId);
+        tx.setNcrId(ncrId);
+        tx.setBatchNo(batchNo);
+        tx.setQuantity(deltaQuantity);
+        tx.setBeforeQuantity(before);
+        tx.setAfterQuantity(after);
+        tx.setUnitCost(stock.getUnitCost());
+        tx.setAmount(stock.getUnitCost() == null ? null : stock.getUnitCost().multiply(deltaQuantity));
+        tx.setTransactionTime(java.time.LocalDateTime.now());
+        tx.setRemark(remark == null ? "不良处置引起的库存调整" : remark);
+        try {
+            tx.setOperatorId(SecurityUtils.getUserId());
+            tx.setOperatorName(SecurityUtils.getUsername());
+        } catch (Exception ignored) {
+        }
+        transactionMapper.insert(tx);
+        log.info("成品库存调整完成(不良处置): order={} delta={} lotId={} ncrId={} remark={}",
+                prodOrder.getOrderNo(), deltaQuantity.toPlainString(), lotId, ncrId, remark);
+        return deltaQuantity;
+    }
+
+    @Override
     public List<InboundVO> getPendingApproval() {
         List<InventoryInboundOrder> orders = inboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryInboundOrder>()
