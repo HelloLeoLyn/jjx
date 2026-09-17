@@ -25,6 +25,7 @@ import java.util.List;
 public class QualityLotController {
 
     private final QualityLotService qualityLotService;
+    private final com.jjx.quality.service.QualityFinishService qualityFinishService;
 
     @Operation(summary = "分页查询检验批（类型/状态/来源过滤）")
     @GetMapping("/page")
@@ -68,5 +69,25 @@ public class QualityLotController {
     public Result<Boolean> saveItems(@PathVariable Long lotId, @RequestBody List<QualityLotItemDTO> items) {
         qualityLotService.saveItems(lotId, items);
         return Result.success(true);
+    }
+
+    @Operation(summary = "判定检验批（成品：落数+不良进台账+差额入库；复检更正同一批）")
+    @PostMapping("/{lotId}/judge")
+    public Result<QualityLot> judge(@PathVariable Long lotId,
+                                    @RequestBody com.jjx.quality.dto.QualityLotJudgeDTO dto) {
+        return Result.success(qualityFinishService.judgeLot(lotId, dto));
+    }
+
+    @Operation(summary = "复检：对同一批建新版本（替换判定，不新增产出）")
+    @PostMapping("/{lotId}/reinspect")
+    public Result<QualityLot> reinspect(@PathVariable Long lotId) {
+        return Result.success(qualityFinishService.reinspectLot(lotId));
+    }
+
+    @Operation(summary = "按检验批重算工单成品入库（差额同步，幂等）")
+    @PostMapping("/order/{orderId}/sync-finish")
+    public Result<Object> syncFinish(@PathVariable Long orderId,
+                                     @RequestParam(required = false) String reason) {
+        return Result.success(qualityFinishService.syncFinishInbound(orderId, reason));
     }
 }

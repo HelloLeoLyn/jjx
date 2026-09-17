@@ -53,6 +53,10 @@ public class InventoryTransaction extends BaseEntity {
 
     /** 来源单号 */
     private String sourceNo;
+    /** 检验批ID（dev-20260917-004：库存变动可追到检验批） */
+    private Long lotId;
+    /** 不良台账ID（dev-20260917-004） */
+    private Long ncrId;
 
     /** 批次号 */
     private String batchNo;

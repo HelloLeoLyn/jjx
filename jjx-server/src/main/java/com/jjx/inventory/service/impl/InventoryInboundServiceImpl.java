@@ -1613,6 +1613,153 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public BigDecimal syncFinishInbound(Long orderId, Long lotId, BigDecimal targetQuantity, String reason) {
+        if (orderId == null || targetQuantity == null) {
+            return BigDecimal.ZERO;
+        }
+        ProductionOrder prodOrder = productionOrderMapper.selectById(orderId);
+        if (prodOrder == null) {
+            throw new BusinessException("生产工单不存在: " + orderId);
+        }
+        List<InventoryInboundOrder> exists = inboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getSourceType, "PRODUCTION")
+                .eq(InventoryInboundOrder::getSourceId, orderId)
+                .ne(InventoryInboundOrder::getOrderStatus, InventoryOrderStatusEnum.CANCELLED.getValue())
+                .orderByAsc(InventoryInboundOrder::getInboundId));
+        InventoryInboundOrder order = exists.isEmpty() ? null : exists.get(0);
+        InventoryInboundItem item = null;
+        BigDecimal current = BigDecimal.ZERO;
+        if (order != null) {
+            item = inboundItemMapper.selectOne(new LambdaQueryWrapper<InventoryInboundItem>()
+                    .eq(InventoryInboundItem::getInboundId, order.getInboundId())
+                    .orderByAsc(InventoryInboundItem::getItemId)
+                    .last("LIMIT 1"));
+            current = (item == null || item.getQuantity() == null) ? BigDecimal.ZERO : item.getQuantity();
+        }
+        BigDecimal delta = targetQuantity.subtract(current);
+        if (delta.signum() == 0) {
+            return BigDecimal.ZERO;
+        }
+        boolean posted = order != null && isPostedInboundStatus(order.getOrderStatus());
+
+        if (order == null) {
+            if (delta.signum() < 0) {
+                return BigDecimal.ZERO;
+            }
+            order = new InventoryInboundOrder();
+            order.setInboundNo("FINISH-" + prodOrder.getOrderNo());
+            order.setInboundType("PRODUCTION_FINISH");
+            order.setSourceType("PRODUCTION");
+            order.setSourceId(orderId);
+            order.setSourceNo(prodOrder.getOrderNo());
+            order.setTraceId(prodOrder.getTraceId());
+            order.setInboundDate(java.time.LocalDate.now());
+            try {
+                InventoryWarehouse defaultWh = warehouseMapper.selectOne(new LambdaQueryWrapper<InventoryWarehouse>()
+                        .eq(InventoryWarehouse::getStatus, 1)
+                        .orderByAsc(InventoryWarehouse::getWarehouseId)
+                        .last("LIMIT 1"));
+                if (defaultWh != null) {
+                    order.setWarehouseId(defaultWh.getWarehouseId());
+                }
+            } catch (Exception e) {
+                log.warn("获取默认仓库失败: {}", e.getMessage());
+            }
+            order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+            inboundOrderMapper.insert(order);
+
+            item = new InventoryInboundItem();
+            item.setInboundId(order.getInboundId());
+            item.setInventoryItemId(inventoryItemService.ensure(InventoryItemTypeEnum.PRODUCT, prodOrder.getProductId(),
+                    prodOrder.getProductCode(), prodOrder.getProductName(), null, "PCS").getInventoryItemId());
+            item.setMaterialCode(prodOrder.getProductCode());
+            item.setMaterialName(prodOrder.getProductName());
+            item.setQuantity(targetQuantity);
+            item.setBatchNo("BATCH-" + prodOrder.getOrderNo());
+            item.setSortOrder(1);
+            inboundItemMapper.insert(item);
+            log.info("完工入库单已建（差额同步）: order={} 数量={} lotId={}",
+                    prodOrder.getOrderNo(), targetQuantity.toPlainString(), lotId);
+            return delta;
+        }
+
+        if (item != null) {
+            item.setQuantity(targetQuantity);
+            inboundItemMapper.updateById(item);
+        }
+        if (!posted) {
+            log.info("完工入库数量已更正（未过账）: order={} {} -> {} lotId={} reason={}",
+                    prodOrder.getOrderNo(), current.toPlainString(), targetQuantity.toPlainString(), lotId, reason);
+            return delta;
+        }
+
+        // 已过账 → 只做差额：调库存 + ADJUST 凭证（带 lotId）
+        String batchNo = (item == null || item.getBatchNo() == null)
+                ? "BATCH-" + prodOrder.getOrderNo() : item.getBatchNo();
+        InventoryStockItem stock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                .eq(InventoryStockItem::getMaterialCode, prodOrder.getProductCode())
+                .eq(InventoryStockItem::getBatchNo, batchNo)
+                .orderByAsc(InventoryStockItem::getItemId)
+                .last("LIMIT 1"));
+        if (stock == null) {
+            if (delta.signum() > 0) {
+                throw new BusinessException("成品库存批次不存在，无法差额入库：" + batchNo);
+            }
+            return BigDecimal.ZERO;
+        }
+        BigDecimal before = stock.getQuantity() == null ? BigDecimal.ZERO : stock.getQuantity();
+        BigDecimal after = before.add(delta);
+        if (after.signum() < 0) {
+            throw new BusinessException("复检更正后库存将为负（当前 " + before.toPlainString() + "，差额 "
+                    + delta.toPlainString() + "），请人工核对后再处理");
+        }
+        stock.setQuantity(after);
+        stockItemMapper.updateById(stock);
+
+        InventoryTransaction tx = new InventoryTransaction();
+        tx.setInventoryItemId(stock.getInventoryItemId());
+        tx.setMaterialId(stock.getMaterialId());
+        tx.setMaterialCode(stock.getMaterialCode());
+        tx.setMaterialName(stock.getMaterialName());
+        tx.setWarehouseId(stock.getWarehouseId());
+        tx.setLocationId(stock.getLocationId());
+        tx.setTransactionType("ADJUST");
+        tx.setSourceType("PRODUCTION");
+        tx.setSourceId(orderId);
+        tx.setSourceNo(prodOrder.getOrderNo());
+        tx.setLotId(lotId);
+        tx.setBatchNo(batchNo);
+        tx.setQuantity(delta);
+        tx.setBeforeQuantity(before);
+        tx.setAfterQuantity(after);
+        tx.setUnitCost(stock.getUnitCost());
+        tx.setAmount(stock.getUnitCost() == null ? null : stock.getUnitCost().multiply(delta));
+        tx.setTransactionTime(java.time.LocalDateTime.now());
+        tx.setRemark(reason == null ? "成品检验差额调整（复检更正）" : reason);
+        try {
+            tx.setOperatorId(SecurityUtils.getUserId());
+            tx.setOperatorName(SecurityUtils.getUsername());
+        } catch (Exception ignored) {
+        }
+        transactionMapper.insert(tx);
+        log.info("成品库存已按差额调整: order={} delta={} lotId={} reason={}",
+                prodOrder.getOrderNo(), delta.toPlainString(), lotId, reason);
+        return delta;
+    }
+
+    private static boolean isPostedInboundStatus(Integer status) {
+        if (status == null) {
+            return false;
+        }
+        return status == InventoryOrderStatusEnum.CONFIRMED.getValue()
+                || status == InventoryOrderStatusEnum.OUT_CONFIRM.getValue()
+                || status == InventoryOrderStatusEnum.IN_CONFIRM.getValue()
+                || status == InventoryOrderStatusEnum.COMPLETED.getValue()
+                || status == InventoryOrderStatusEnum.PROCESSED.getValue();
+    }
+
+    @Override
     public List<InboundVO> getPendingApproval() {
         List<InventoryInboundOrder> orders = inboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryInboundOrder>()
