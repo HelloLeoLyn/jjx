@@ -21,7 +21,7 @@
         <div class="info-item">
           <span class="info-label">客户名称</span>{{ info.customerName || '-' }}
         </div>
-        <div class="info-item"><span class="info-label">联系人</span>{{ contactText }}</div>
+
         <div class="info-item">
           <span class="info-label">交货日期</span>{{ info.deliveryDate || '-' }}
         </div>
@@ -30,9 +30,8 @@
         <div class="info-item">
           <span class="info-label">销售负责人</span>{{ info.salesManagerName || '-' }}
         </div>
-        <div class="info-item info-item-wide">
-          <span class="info-label">收货人</span>{{ contactText }}
-        </div>
+        <div class="info-item"><span class="info-label">收货人</span>{{ info.contactPerson }}</div>
+        <div class="info-item"><span class="info-label">联系电话</span>{{ info.contactPhone }}</div>
         <div class="info-item info-item-wide">
           <span class="info-label">收货地址</span>{{ deliveryAddressText }}
         </div>
@@ -117,12 +116,6 @@ const loading = ref(false)
 const { paymentTermsOptions } = useOrderForm()
 
 const itemsList = computed<any[]>(() => info.value?.items || [])
-
-const contactText = computed(() => {
-  const person = info.value?.contactPerson || ''
-  const phone = info.value?.contactPhone || ''
-  return [person, phone].filter(Boolean).join(' ') || '-'
-})
 
 const currencyText = computed(() => info.value?.currency || 'CNY')
 
@@ -328,14 +321,16 @@ onMounted(loadData)
 
 .doc-signs {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 40px;
   margin-top: 40px;
   padding: 0 20px;
 }
 
 .sign-item {
   width: 30%;
-  text-align: center;
+  text-align: left;
   font-size: 11px;
 }
 

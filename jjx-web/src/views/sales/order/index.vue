@@ -115,7 +115,7 @@
             plain
             icon="CopyDocument"
             v-hasPermi="['sales:order:add']"
-            :disabled="!single"
+            :disabled="single"
             @click="handleCopySelected"
             >复制</el-button
           >
@@ -321,30 +321,137 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 const statusIs = (row: any, status: number) => row.orderStatus === status
 const orderRowActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
-  { key: 'submit', label: '提交审核', permission: 'sales:order:submit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.DRAFT.value) },
-  { key: 'startReview', label: '开始审核', permission: 'sales:order:review', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PENDING_REVIEW.value) },
-  { key: 'approve', label: '审核通过', type: 'success', permission: 'sales:order:approve', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value) },
-  { key: 'reject', label: '审核驳回', type: 'danger', permission: 'sales:order:approve', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value) },
-  { key: 'plan', label: '生成生产计划', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value) },
-  { key: 'print', label: '打印确认书', type: 'info', permission: 'sales:order:view', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value) },
-  { key: 'resubmit', label: '重新提交', permission: 'sales:order:submit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REJECTED.value) },
-  { key: 'shortage', label: '齐套检查', type: 'info', permission: 'sales:order:edit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value) },
-  { key: 'proof', label: '确认凭证', type: 'info', permission: 'sales:order:view', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value) },
-  { key: 'producing', label: '生产中', type: 'info', disabled: true, visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value) },
-  { key: 'ship', label: '发货', type: 'warning', permission: 'sales:order:edit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value) },
-  { key: 'complete', label: '完成订单', type: 'success', permission: 'sales:order:edit', visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.SHIPPED.value) },
-  { key: 'completed', label: '订单已完成', type: 'info', disabled: true, visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.COMPLETED.value) },
-  { key: 'cancelled', label: '订单已取消', type: 'info', disabled: true, visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CANCELLED.value) },
-  { key: 'cancel', label: '取消订单', type: 'danger', permission: 'sales:order:edit', visible: ({ row }) => ![SalesOrderStatusEnum.SHIPPED.value, SalesOrderStatusEnum.COMPLETED.value, SalesOrderStatusEnum.CANCELLED.value].includes(row.orderStatus) },
-  { key: 'edit', label: '修改', permission: 'sales:order:edit', visible: ({ row }) => [SalesOrderStatusEnum.DRAFT.value, SalesOrderStatusEnum.REJECTED.value].includes(row.orderStatus) },
+  {
+    key: 'submit',
+    label: '提交审核',
+    permission: 'sales:order:submit',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.DRAFT.value),
+  },
+  {
+    key: 'startReview',
+    label: '开始审核',
+    permission: 'sales:order:review',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PENDING_REVIEW.value),
+  },
+  {
+    key: 'approve',
+    label: '审核通过',
+    type: 'success',
+    permission: 'sales:order:approve',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value),
+  },
+  {
+    key: 'reject',
+    label: '审核驳回',
+    type: 'danger',
+    permission: 'sales:order:approve',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value),
+  },
+  {
+    key: 'plan',
+    label: '生成生产计划',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value),
+  },
+  {
+    key: 'print',
+    label: '打印确认书',
+    type: 'info',
+    permission: 'sales:order:view',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value),
+  },
+  {
+    key: 'resubmit',
+    label: '重新提交',
+    permission: 'sales:order:submit',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REJECTED.value),
+  },
+  {
+    key: 'shortage',
+    label: '齐套检查',
+    type: 'info',
+    permission: 'sales:order:edit',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value),
+  },
+  {
+    key: 'proof',
+    label: '确认凭证',
+    type: 'info',
+    permission: 'sales:order:view',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value),
+  },
+  {
+    key: 'producing',
+    label: '生产中',
+    type: 'info',
+    disabled: true,
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value),
+  },
+  {
+    key: 'ship',
+    label: '发货',
+    type: 'warning',
+    permission: 'sales:order:edit',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value),
+  },
+  {
+    key: 'complete',
+    label: '完成订单',
+    type: 'success',
+    permission: 'sales:order:edit',
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.SHIPPED.value),
+  },
+  {
+    key: 'completed',
+    label: '订单已完成',
+    type: 'info',
+    disabled: true,
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.COMPLETED.value),
+  },
+  {
+    key: 'cancelled',
+    label: '订单已取消',
+    type: 'info',
+    disabled: true,
+    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CANCELLED.value),
+  },
+  {
+    key: 'cancel',
+    label: '取消订单',
+    type: 'danger',
+    permission: 'sales:order:edit',
+    visible: ({ row }) =>
+      ![
+        SalesOrderStatusEnum.SHIPPED.value,
+        SalesOrderStatusEnum.COMPLETED.value,
+        SalesOrderStatusEnum.CANCELLED.value,
+      ].includes(row.orderStatus),
+  },
+  {
+    key: 'edit',
+    label: '修改',
+    permission: 'sales:order:edit',
+    visible: ({ row }) =>
+      [SalesOrderStatusEnum.DRAFT.value, SalesOrderStatusEnum.REJECTED.value].includes(
+        row.orderStatus
+      ),
+  },
 ]
 const handleOrderRowAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {
-    trace: () => showTrace(row), submit: () => void handleSubmitReview(row), startReview: () => void handleStartReview(row),
-    approve: () => handleApprove(row), reject: () => handleReject(row), plan: () => handleGeneratePlan(row),
-    print: () => handleConfirmPrint(row), resubmit: () => void handleResubmit(row), shortage: () => handleRecheckShortage(row),
-    proof: () => openConfirmAttachment(row), ship: () => void handleShip(row), complete: () => void handleCompleteOrder(row),
-    cancel: () => void handleCancelOrder(row), edit: () => handleUpdate(row),
+    trace: () => showTrace(row),
+    submit: () => void handleSubmitReview(row),
+    startReview: () => void handleStartReview(row),
+    approve: () => handleApprove(row),
+    reject: () => handleReject(row),
+    plan: () => handleGeneratePlan(row),
+    print: () => handleConfirmPrint(row),
+    resubmit: () => void handleResubmit(row),
+    shortage: () => handleRecheckShortage(row),
+    proof: () => openConfirmAttachment(row),
+    ship: () => void handleShip(row),
+    complete: () => void handleCompleteOrder(row),
+    cancel: () => void handleCancelOrder(row),
+    edit: () => handleUpdate(row),
   }
   handlers[key]?.()
 }
@@ -630,11 +737,15 @@ const guideToPrint = async (orderId: number) => {
     const res = await deliveryApi.listByOrderId(orderId)
     const latest = (res.data || [])[0]
     if (!latest) return
-    await ElMessageBox.confirm(`发货单 ${latest.deliveryNo} 已生成，是否现在打印随货凭证（交客户签字）？`, '随货凭证', {
-      confirmButtonText: '去打印',
-      cancelButtonText: '稍后',
-      type: 'info',
-    })
+    await ElMessageBox.confirm(
+      `发货单 ${latest.deliveryNo} 已生成，是否现在打印随货凭证（交客户签字）？`,
+      '随货凭证',
+      {
+        confirmButtonText: '去打印',
+        cancelButtonText: '稍后',
+        type: 'info',
+      }
+    )
     router.push({ path: '/sales/delivery/print', query: { deliveryId: latest.deliveryId } })
   } catch {
     // 用户选择"稍后"或查询失败：静默跳过，不打断发货

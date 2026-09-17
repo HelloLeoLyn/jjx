@@ -15,26 +15,27 @@ public class SalesOrderCalculator {
 
 
     /**
-     * 计算税额
+     * 从含税总金额中拆分税额。
      */
     public static BigDecimal calculateTaxAmount(BigDecimal totalAmount, BigDecimal taxRate) {
         if (totalAmount == null || taxRate == null) {
             return BigDecimal.ZERO;
         }
-        return totalAmount.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+        if (taxRate.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return totalAmount.multiply(taxRate)
+                .divide(BigDecimal.valueOf(100).add(taxRate), 2, RoundingMode.HALF_UP);
     }
 
     /**
-     * 计算含税总金额
+     * 订单总金额已按含税金额保存，直接作为含税总金额使用。
      */
     public static BigDecimal calculateTotalAmountWithTax(BigDecimal totalAmount, BigDecimal taxAmount) {
         if (totalAmount == null) {
             return BigDecimal.ZERO;
         }
-        if (taxAmount == null) {
-            return totalAmount;
-        }
-        return totalAmount.add(taxAmount);
+        return totalAmount;
     }
 
     /**
@@ -86,7 +87,7 @@ public class SalesOrderCalculator {
             order.setTaxAmount(taxAmount);
         }
 
-        // 2. 计算含税总金额
+        // 2. total_amount 本身已含税，不再叠加 tax_amount
         BigDecimal totalAmountWithTax = calculateTotalAmountWithTax(order.getTotalAmount(), taxAmount);
         order.setTotalAmountWithTax(totalAmountWithTax);
 
