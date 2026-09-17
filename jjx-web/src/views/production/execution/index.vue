@@ -613,9 +613,25 @@
       </div>
     </el-drawer>
 
-    <!-- 待我审批 Drawer -->
-    <el-drawer v-model="pendingOpen" title="待我审批" size="760px" append-to-body>
-      <el-table v-loading="pendingLoading" :data="pendingList" size="small">
+    <!-- 待我审批（弹窗 + 批量审批，dev-20260916-010） -->
+    <el-dialog v-model="pendingOpen" title="待我审批" width="980px" append-to-body>
+      <div class="pending-toolbar">
+        <el-button
+          type="success"
+          :loading="batchApproving"
+          :disabled="!pendingSelection.length"
+          @click="handleBatchApprove"
+          >批量审批通过（已选 {{ pendingSelection.length }} 条）</el-button
+        >
+        <span class="pending-tip">勾选多条可一次通过；单条可用「通过 / 驳回」（驳回原因必填）</span>
+      </div>
+      <el-table
+        v-loading="pendingLoading"
+        :data="pendingList"
+        size="small"
+        @selection-change="handlePendingSelectionChange"
+      >
+        <el-table-column type="selection" width="46" />
         <el-table-column label="报工单号" prop="reportNo" min-width="160" />
         <el-table-column label="工单/工序" min-width="130" show-overflow-tooltip>
           <template #default="{ row }"
@@ -650,7 +666,7 @@
           @current-change="loadPendingApproval"
         />
       </div>
-    </el-drawer>
+    </el-dialog>
 
     <!-- 审批通过（备注可选） -->
     <el-dialog v-model="approveVisible" title="审批通过" width="440px" append-to-body>
@@ -1277,6 +1293,54 @@ const loadPendingApproval = async () => {
 
 const openPendingApproval = () => {
   pendingOpen.value = true
+  pendingSelection.value = []
+  loadPendingApproval()
+}
+
+// 批量审批通过（dev-20260916-010）：逐条串行调用审批接口，避免并发抢占任务数量校验；
+// 逐条记录失败原因，最后汇总提示（部分成功也保留已成功的记录）
+const pendingSelection = ref<WorkReportVO[]>([])
+const batchApproving = ref(false)
+
+const handlePendingSelectionChange = (rows: WorkReportVO[]) => {
+  pendingSelection.value = rows
+}
+
+const handleBatchApprove = async () => {
+  const rows = [...pendingSelection.value]
+  if (!rows.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确认批量审批通过选中的 ${rows.length} 条报工？审批后将推进任务进度且不可撤销。`,
+      '批量审批通过',
+      { type: 'warning', confirmButtonText: '批量通过', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  batchApproving.value = true
+  const failed: string[] = []
+  try {
+    for (const row of rows) {
+      try {
+        await approveWorkReport(row.reportId, {})
+      } catch (e: any) {
+        failed.push(`${row.reportNo || row.reportId}：${e?.message || '审批失败'}`)
+      }
+    }
+  } finally {
+    batchApproving.value = false
+  }
+  if (failed.length) {
+    ElMessage.warning(
+      `批量审批完成：成功 ${rows.length - failed.length} 条，失败 ${failed.length} 条（${failed
+        .slice(0, 3)
+        .join('；')}${failed.length > 3 ? ' 等' : ''}）`
+    )
+  } else {
+    ElMessage.success(`批量审批通过 ${rows.length} 条`)
+  }
+  pendingSelection.value = []
   loadPendingApproval()
 }
 
@@ -1377,6 +1441,17 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+/* 待我审批弹窗工具条（dev-20260916-010 批量审批） */
+.pending-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pending-tip {
+  color: #909399;
+  font-size: 12px;
 }
 .detail-header {
   display: flex;
