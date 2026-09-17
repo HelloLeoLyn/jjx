@@ -45,42 +45,32 @@
           :remark="pc.operationRemark"
         />
         <template v-else>
-          <el-tag
+          <el-tooltip
             v-for="(it, ii) in pc.items"
             :key="ii"
-            size="small"
-            :closable="!readonly && pc.editing"
-            :disable-transitions="false"
-            @close="$emit('remove-item', Number(ii))"
-            style="margin-right: 6px; margin-bottom: 4px"
+            content="双击编辑作业说明"
+            placement="top"
+            :disabled="!(it.hasWorkInstruction === 1 || it.workInstruction)"
           >
-            <IconStepBadge
-              v-if="it.icon"
-              :icon="it.icon || ''"
-              :size="16"
-              :index="it.hasIndex === 1 ? (it.indexNumber ?? null) : undefined"
-              :work-instruction="it.workInstruction"
-              @update:index="(n: number) => $emit('update-index', it, n)"
-            />
-            {{ it.processName }}
-            <el-popover
-              v-if="!readonly && pc.editing && (it.hasWorkInstruction === 1 || it.workInstruction)"
-              placement="top"
-              :width="300"
-              trigger="click"
-            >
-              <el-input
-                v-model="it.workInstruction"
-                clearable
-                placeholder="作业说明（可选，如：线路外形）"
-              />
-              <template #reference
-                ><el-button link size="small">{{
-                  it.workInstruction ? '改说明' : '＋说明'
-                }}</el-button></template
+            <span class="instruction-trigger" @dblclick.stop="openInstructionEditor(it)">
+              <el-tag
+                size="small"
+                :closable="!readonly && pc.editing"
+                :disable-transitions="false"
+                class="process-item-tag"
+                @close="$emit('remove-item', Number(ii))"
               >
-            </el-popover>
-          </el-tag>
+                <IconStepBadge
+                  v-if="it.icon"
+                  :icon="it.icon || ''"
+                  :size="16"
+                  :index="it.hasIndex === 1 ? (it.indexNumber ?? null) : undefined"
+                  :work-instruction="it.workInstruction"
+                  @update:index="(n: number) => $emit('update-index', it, n)"
+                />
+              </el-tag>
+            </span>
+          </el-tooltip>
           <el-button
             v-if="!readonly && !pc.editing"
             size="small"
@@ -95,6 +85,28 @@
         </template>
       </div>
     </div>
+    <el-dialog
+      v-model="instructionDialogVisible"
+      title="编辑作业说明"
+      width="420px"
+      append-to-body
+      @closed="instructionEditingItem = null"
+    >
+      <el-input
+        v-model="instructionDraft"
+        type="textarea"
+        :rows="3"
+        maxlength="80"
+        show-word-limit
+        autofocus
+        placeholder="作业说明（可选，如：线路外形）"
+        @keyup.esc="closeInstructionEditor"
+      />
+      <template #footer>
+        <el-button @click="closeInstructionEditor">取消</el-button>
+        <el-button type="primary" @click="saveInstructionEditor">确定</el-button>
+      </template>
+    </el-dialog>
     <!-- 行3：材料表格 -->
     <div class="pc-row">
       <div class="pc-mat">
@@ -241,6 +253,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
 import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
@@ -270,6 +283,28 @@ function operationItems(items: any[]): ProcessOperationItem[] {
     hasWorkInstruction: item.hasWorkInstruction,
     workInstruction: item.workInstruction,
   }))
+}
+
+const instructionEditingItem = ref<any | null>(null)
+const instructionDialogVisible = ref(false)
+const instructionDraft = ref('')
+
+function openInstructionEditor(item: any) {
+  instructionEditingItem.value = item
+  instructionDraft.value = item.workInstruction || ''
+  instructionDialogVisible.value = true
+}
+
+function closeInstructionEditor() {
+  instructionEditingItem.value = null
+  instructionDialogVisible.value = false
+}
+
+function saveInstructionEditor() {
+  if (instructionEditingItem.value) {
+    instructionEditingItem.value.workInstruction = instructionDraft.value.trim()
+  }
+  closeInstructionEditor()
 }
 
 const emit = defineEmits<{
@@ -392,6 +427,15 @@ function onCardDrop(e: DragEvent, pc: any) {
 .pc-items {
   flex: 1;
   min-width: 0;
+}
+.process-item-tag {
+  margin-right: 6px;
+  margin-bottom: 4px;
+  cursor: default;
+}
+.instruction-trigger {
+  display: inline-flex;
+  cursor: text;
 }
 .pc-mat {
   flex: 1;

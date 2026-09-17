@@ -18,76 +18,56 @@
             >⋮⋮</span
           >
           <div class="icon-cell">
-            <SvgIcon v-if="item.icon" :name="item.icon" :size="32" />
-            <span v-else class="icon-placeholder">工</span>
             <el-popover
-              v-if="editable && !item.workInstruction && item.indexNumber != null"
-              placement="top"
-              :width="210"
+              v-if="
+                editable && item.icon && (item.workInstruction || item.hasWorkInstruction === 1)
+              "
+              placement="bottom-start"
+              :teleported="false"
+              :fallback-placements="['bottom-start']"
+              :offset="4"
+              :width="300"
               trigger="click"
             >
-              <el-input-number
-                :model-value="item.indexNumber"
-                :min="0"
-                :max="999"
-                controls-position="right"
-                size="small"
-                @change="
-                  (value: number | undefined) => value != null && emit('update:index', index, value)
-                "
+              <el-input
+                :model-value="item.workInstruction"
+                clearable
+                maxlength="80"
+                placeholder="作业说明，如：冲窗口灯孔"
+                @input="(value: string) => emit('update:work-instruction', index, value)"
               />
+              <div class="common-work-instructions">
+                <span>常用：</span>
+                <button
+                  v-for="text in commonWorkInstructions"
+                  :key="text"
+                  type="button"
+                  @click="selectWorkInstruction(index, text)"
+                >
+                  {{ text }}
+                </button>
+              </div>
               <template #reference>
-                <span class="index-number is-editable" title="点击修改数字下标">{{
-                  item.indexNumber
-                }}</span>
+                <IconStepBadge
+                  :icon="item.icon"
+                  :size="32"
+                  :index="item.workInstruction ? null : item.indexNumber"
+                  :work-instruction="item.workInstruction"
+                  :editable="false"
+                />
               </template>
             </el-popover>
-            <span
-              v-else-if="!item.workInstruction && item.indexNumber != null"
-              class="index-number"
-            >
-              {{ item.indexNumber }}
-            </span>
-          </div>
-          <el-popover
-            v-if="
-              editable &&
-              (item.workInstruction || (item.hasWorkInstruction === 1 && item.indexNumber == null))
-            "
-            placement="bottom-start"
-            :teleported="false"
-            :fallback-placements="['bottom-start']"
-            :offset="4"
-            :width="300"
-            trigger="click"
-          >
-            <el-input
-              :model-value="item.workInstruction"
-              clearable
-              maxlength="80"
-              placeholder="作业说明，如：冲窗口灯孔"
-              @input="(value: string) => emit('update:work-instruction', index, value)"
+            <IconStepBadge
+              v-else-if="item.icon"
+              :icon="item.icon"
+              :size="32"
+              :index="item.indexNumber"
+              :work-instruction="item.workInstruction"
+              :editable="editable"
+              @update:index="(value: number) => emit('update:index', index, value)"
             />
-            <div class="common-work-instructions">
-              <span>常用：</span>
-              <button
-                v-for="text in commonWorkInstructions"
-                :key="text"
-                type="button"
-                @click="selectWorkInstruction(index, text)"
-              >
-                {{ text }}
-              </button>
-            </div>
-            <template #reference>
-              <span class="operation-subscript is-editable">
-                {{ item.workInstruction || '＋作业说明' }}
-              </span>
-            </template>
-          </el-popover>
-          <span v-else-if="item.workInstruction" class="operation-subscript">
-            {{ item.workInstruction }}
-          </span>
+            <span v-else class="icon-placeholder">工</span>
+          </div>
           <button
             v-if="editable"
             class="remove-item"
@@ -104,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import SvgIcon from '@/components/SvgIcon/index.vue'
+import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import type { ProcessOperationItem } from './types'
 
 const commonWorkInstructions = [
@@ -214,40 +194,6 @@ function onDrop(event: DragEvent, itemIndex: number) {
   border-radius: 6px;
   font-size: 11px;
   line-height: 1;
-}
-.index-number {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  min-width: 17px;
-  height: 17px;
-  box-sizing: border-box;
-  padding: 0 3px;
-  border: 1px solid currentColor;
-  border-radius: 9px;
-  background: var(--el-bg-color);
-  color: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
-}
-.index-number.is-editable,
-.operation-subscript.is-editable {
-  cursor: pointer;
-}
-.operation-subscript {
-  max-width: 84px;
-  margin-bottom: -5px;
-  overflow: hidden;
-  color: var(--el-text-color-secondary);
-  font-size: 10px;
-  line-height: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.operation-subscript.is-editable:hover {
-  color: var(--el-color-primary);
 }
 .common-work-instructions {
   display: flex;

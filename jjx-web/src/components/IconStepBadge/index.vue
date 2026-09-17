@@ -1,11 +1,10 @@
 <template>
   <div class="icon-step-badge" @click="openInput">
     <SvgIcon :name="icon" :size="size" />
-    <!-- 下标数字（index 模式：直接显示 indexNumber；description 模式：解析 <jump>N</jump>） -->
-    <span v-if="stepNum !== null" class="step-badge" :class="{ 'is-zero': stepNum === 0 }" @click.stop="onJump">
-      {{ stepNum }}
+    <!-- 统一下标：作业说明优先，否则显示数字下标 -->
+    <span v-if="subscriptText" class="subscript" :title="subscriptText" @click.stop="onJump">
+      {{ subscriptText }}
     </span>
-    <span v-if="workInstruction" class="instruction-badge" :title="workInstruction">{{ workInstruction }}</span>
 
     <!-- 输入弹层 -->
     <el-popover
@@ -27,9 +26,7 @@
         <el-button type="primary" size="small" :loading="saving" @click="confirm">确定</el-button>
       </div>
       <div style="font-size: 12px; color: #909399; margin-top: 4px">
-        <template v-if="useIndexMode">
-          输入下标数字（如 4 显示为 ④），保存到工艺路线明细 index_number
-        </template>
+        <template v-if="useIndexMode"> 输入下标数字，保存到工艺路线明细 index_number </template>
         <template v-else>
           输入数字将写入描述 <code>&lt;jump&gt;N&lt;/jump&gt;</code>，代表跳转到对应步骤
         </template>
@@ -64,6 +61,8 @@ const props = defineProps<{
   index?: number | null
   /** 本次工序作业说明，按工程图习惯显示在图标下标位置 */
   workInstruction?: string
+  /** 是否允许编辑数字下标 */
+  editable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -88,8 +87,12 @@ const stepNum = computed<number | null>(() => {
   return m ? Number(m[1]) : null
 })
 
+const subscriptText = computed(
+  () => props.workInstruction || (stepNum.value !== null ? String(stepNum.value) : '')
+)
+
 function openInput() {
-  if (props.index === undefined) return
+  if (props.editable === false || props.index === undefined) return
   draftNum.value = stepNum.value
   inputVisible.value = true
 }
@@ -132,37 +135,25 @@ function onJump() {
   line-height: 0;
 }
 
-.step-badge {
+.subscript {
   position: absolute;
-  right: -6px;
-  bottom: -6px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: #f56c6c;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 16px;
-  text-align: center;
-  cursor: pointer;
-  box-shadow: 0 0 0 1px #fff;
-}
-
-.step-badge.is-zero {
-  background: #909399;
-}
-
-.instruction-badge {
-  position: absolute;
-  left: 70%;
-  bottom: -7px;
-  max-width: 96px;
-  overflow: hidden;
+  left: 95%;
+  bottom: 0;
+  min-width: unset;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--el-text-color-regular);
   font-size: 10px;
+  font-weight: 400;
   line-height: 14px;
+  text-align: left;
+  box-shadow: none;
+  max-width: 96px;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
