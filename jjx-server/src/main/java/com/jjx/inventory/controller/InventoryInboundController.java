@@ -44,14 +44,14 @@ public class InventoryInboundController {
 
     @GetMapping("/iqc-list")
     @Operation(summary = "分页查询 IQC 采购收货单及检验进度")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:lot:view"}, mode = SaMode.OR)
     public Result<IPage<IqcPendingVO>> iqcList(IqcPendingQueryDTO query) {
         return Result.success(inboundService.pageIqcPending(query));
     }
 
     @GetMapping("/{inboundId:\\d+}")
     @Operation(summary = "获取入库单详情")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:lot:view"}, mode = SaMode.OR)
     public Result<InboundVO> getById(@PathVariable Long inboundId) {
         return Result.success(inboundService.getDetail(inboundId));
     }
@@ -86,7 +86,7 @@ public class InventoryInboundController {
     @PostMapping("/submit-approve/{inboundId}")
     @Operation(summary = "提交审批")
     @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()", action = LogActions.INBOUND_SUBMIT)
-    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:inspector"}, mode = SaMode.OR)
+    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:lot:inspect"}, mode = SaMode.OR)
     public Result<Boolean> submitApprove(@PathVariable Long inboundId,
                                          @RequestBody(required = false) InboundInspectionSubmitDTO inspection) {
         return Result.success(inboundService.submitApprove(inboundId, inspection));
@@ -94,7 +94,7 @@ public class InventoryInboundController {
 
     @PostMapping("/inspection-item/{itemId}/approve")
     @Operation(summary = "单项 IQC 审核通过（不执行库存过账）")
-    @SaCheckPermission("inventory:inbound:approve")
+    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:lot:judge"}, mode = SaMode.OR)
     public Result<Boolean> approveInspectionItem(@PathVariable Long itemId,
                                                   @RequestBody InboundInspectionReviewDTO review) {
         return Result.success(inboundService.approveInspectionItem(itemId, review));
@@ -102,7 +102,7 @@ public class InventoryInboundController {
 
     @PostMapping("/inspection-item/{itemId}/reject")
     @Operation(summary = "单项 IQC 审核驳回")
-    @SaCheckPermission("inventory:inbound:approve")
+    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:lot:judge"}, mode = SaMode.OR)
     public Result<Boolean> rejectInspectionItem(@PathVariable Long itemId,
                                                  @RequestBody InboundInspectionReviewDTO review) {
         return Result.success(inboundService.rejectInspectionItem(itemId, review));
@@ -110,21 +110,21 @@ public class InventoryInboundController {
 
     @PostMapping("/inspection-item/{itemId}/reinspect")
     @Operation(summary = "单项 IQC 发起复检")
-    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:inspector"}, mode = SaMode.OR)
+    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:lot:inspect"}, mode = SaMode.OR)
     public Result<Long> reinspectItem(@PathVariable Long itemId) {
         return Result.success(inboundService.reinspectItem(itemId));
     }
 
     @GetMapping("/{inboundId}/iqc-quarantine")
     @Operation(summary = "查询 IQC 隔离台账")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:lot:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<InventoryIqcQuarantine>> listQuarantine(@PathVariable Long inboundId) {
         return Result.success(inboundService.listQuarantine(inboundId));
     }
 
     @PostMapping("/iqc-quarantine/{quarantineId}/action")
     @Operation(summary = "执行 IQC 隔离品处置")
-    @SaCheckPermission("inventory:inbound:edit")
+    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:ncr:dispose"}, mode = SaMode.OR)
     public Result<Boolean> handleQuarantine(@PathVariable Long quarantineId,
                                             @RequestBody IqcQuarantineActionDTO action) {
         return Result.success(inboundService.handleQuarantine(quarantineId, action));
@@ -132,56 +132,56 @@ public class InventoryInboundController {
 
     @GetMapping("/{inboundId}/iqc-disposition-orders")
     @Operation(summary = "查询 IQC 隔离处置单")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:lot:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<com.jjx.inventory.domain.InventoryIqcDispositionOrder>> listDispositionOrders(@PathVariable Long inboundId) {
         return Result.success(inboundService.listDispositionOrders(inboundId));
     }
 
     @GetMapping("/iqc-quarantine/list")
     @Operation(summary = "查询全部 IQC 隔离台账")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<InventoryIqcQuarantine>> listAllQuarantine(@RequestParam(required = false) String status) {
         return Result.success(inboundService.listAllQuarantine(status));
     }
 
     @GetMapping("/iqc-disposition-orders/list")
     @Operation(summary = "查询全部 IQC 处置单")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<com.jjx.inventory.domain.InventoryIqcDispositionOrder>> listAllDispositionOrders(@RequestParam(required = false) String action) {
         return Result.success(inboundService.listAllDispositionOrders(action));
     }
 
     @GetMapping("/iqc-disposition-orders/{dispositionId}")
     @Operation(summary = "查询 IQC 处置单详情")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<com.jjx.inventory.domain.InventoryIqcDispositionOrder> getDispositionOrder(@PathVariable Long dispositionId) {
         return Result.success(inboundService.getDispositionOrder(dispositionId));
     }
 
     @GetMapping("/{inboundId}/iqc-return-orders")
     @Operation(summary = "查询 IQC 采购退货单")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<com.jjx.inventory.domain.InventoryIqcReturnOrder>> listIqcReturnOrders(@PathVariable Long inboundId) {
         return Result.success(inboundService.listIqcReturnOrders(inboundId));
     }
 
     @GetMapping("/{inboundId}/iqc-rework-orders")
     @Operation(summary = "查询 IQC 供应商返工单")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<com.jjx.inventory.domain.InventoryIqcReworkOrder>> listIqcReworkOrders(@PathVariable Long inboundId) {
         return Result.success(inboundService.listIqcReworkOrders(inboundId));
     }
 
     @GetMapping("/{inboundId}/iqc-scrap-orders")
     @Operation(summary = "查询 IQC 报废审批单")
-    @SaCheckPermission("inventory:inbound:view")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<com.jjx.inventory.domain.InventoryIqcScrapOrder>> listIqcScrapOrders(@PathVariable Long inboundId) {
         return Result.success(inboundService.listIqcScrapOrders(inboundId));
     }
 
     @PostMapping("/iqc-scrap-orders/{scrapId}/approve")
     @Operation(summary = "审批 IQC 报废单")
-    @SaCheckPermission("inventory:inbound:approve")
+    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:ncr:dispose"}, mode = SaMode.OR)
     public Result<Boolean> approveIqcScrap(@PathVariable Long scrapId,
                                            @RequestBody com.jjx.inventory.dto.save.IqcScrapApproveDTO approval) {
         return Result.success(inboundService.approveIqcScrap(scrapId, approval));
@@ -189,7 +189,7 @@ public class InventoryInboundController {
 
     @PostMapping("/iqc-rework-orders/{reworkId}/complete")
     @Operation(summary = "完成 IQC 返工并发起复检")
-    @SaCheckPermission("inventory:inbound:edit")
+    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:ncr:dispose"}, mode = SaMode.OR)
     public Result<Long> completeIqcRework(@PathVariable Long reworkId) {
         return Result.success(inboundService.completeIqcRework(reworkId));
     }

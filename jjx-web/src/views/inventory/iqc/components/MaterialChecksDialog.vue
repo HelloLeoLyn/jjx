@@ -12,7 +12,7 @@
       :data="row.inspectionItems"
       border
       size="small"
-      :class="{ 'locked-checks': row.locked }"
+      :class="{ 'locked-checks': readonly }"
     >
       <el-table-column label="检验项目" prop="checkItem" width="100" />
       <el-table-column label="检验标准" min-width="210"
@@ -64,7 +64,7 @@
         ><template #default="{ row: check }"
           ><el-input v-model="check.remark" @keyup.enter="save" /></template
       ></el-table-column>
-      <el-table-column v-if="!row.locked" label="操作" width="70" fixed="right"
+      <el-table-column v-if="!readonly" label="操作" width="70" fixed="right"
         ><template #default="{ row: check }"
           ><el-button
             link
@@ -78,11 +78,13 @@
     </el-table>
     <template #footer>
       <div class="dialog-footer">
-        <el-button :disabled="row?.locked" @click="batchPassRow">整批合格（本行）</el-button>
+        <el-button v-if="!readonly" @click="batchPassRow">整批合格（本行）</el-button>
         <span class="footer-tip">实测记录可留空；Tab 移动、Enter 保存</span>
         <el-button @click="opened = false">取消</el-button>
-        <el-button v-if="nextLabel" @click="saveAndNext">保存并下一行（{{ nextLabel }}）</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button v-if="!readonly && nextLabel" @click="saveAndNext"
+          >保存并下一行（{{ nextLabel }}）</el-button
+        >
+        <el-button v-if="!readonly" type="primary" @click="save">保存</el-button>
       </div>
     </template>
   </el-dialog>
@@ -101,7 +103,7 @@ import {
   syncIqcRowFromChecks,
 } from '../iqcRowRules'
 
-const props = defineProps<{ visible: boolean; row?: any; nextLabel?: string }>()
+const props = defineProps<{ visible: boolean; row?: any; nextLabel?: string; readonly?: boolean }>()
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'saved'): void

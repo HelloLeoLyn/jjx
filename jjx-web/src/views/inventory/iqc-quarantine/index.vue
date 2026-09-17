@@ -47,7 +47,7 @@
         ><el-table-column label="操作" width="130"
           ><template #default="{ row }"
             ><el-button
-              v-if="row.status === IqcReworkStatus.CREATED"
+              v-if="canDispose && row.status === IqcReworkStatus.CREATED"
               type="primary"
               link
               @click="completeRework(row)"
@@ -73,12 +73,16 @@
   </div>
 </template>
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
 import { iqcApi } from '@/api/inventory/iqc'
 import { IqcQuarantineStatusEnum } from '@/enums/inventory/IqcQuarantineEnum'
 import { IqcReworkStatus, IqcReworkStatusEnum } from '@/enums/inventory/IqcReworkEnum'
+import { hasPermi } from '@/directives'
+const canDispose = computed(() =>
+  hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit'])
+)
 const status = ref<string>()
 const rows = ref<any[]>([])
 const orders = ref<any[]>([])

@@ -115,7 +115,9 @@
             <span
               >检验已全部通过，请到【库存管理 → 入库管理】对入库单
               {{ selectedInbound.inboundNo }} 执行确认入库</span
-            ><el-button type="success" size="small" @click="goPosting">去确认入库</el-button>
+            ><el-button v-if="canConfirmInbound" type="success" size="small" @click="goPosting"
+              >去确认入库</el-button
+            >
           </div></template
         ></el-alert
       >
@@ -126,7 +128,7 @@
         ><span v-else-if="isApproved"> · 检验已批准，待确认入库</span
         ><span v-else-if="isCompleted"> · 入库流程已完成</span>
       </div>
-      <div class="batch-bar">
+      <div v-if="canInspect" class="batch-bar">
         <el-button
           type="primary"
           :disabled="!selectedEditableRows.length"
@@ -260,7 +262,7 @@
             ><el-button v-if="rowCanEdit(row)" link type="primary" @click="openMaterialChecks(row)"
               >检验录入</el-button
             ><el-button
-              v-if="row.reviewStatus === QualityReviewStatus.PENDING"
+              v-if="canJudge && row.reviewStatus === QualityReviewStatus.PENDING"
               link
               type="success"
               @click="openReview"
@@ -269,6 +271,7 @@
               >打印</el-button
             ><el-button
               v-if="
+                canDispose &&
                 row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
                 (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
               "
@@ -302,6 +305,7 @@
       v-model:visible="checksVisible"
       :row="activeWorkRow"
       :next-label="nextEditableLabel"
+      :readonly="!activeWorkRow || !rowCanEdit(activeWorkRow)"
       @saved="handleChecksSaved"
       @next="openNextEditableRow"
     />
@@ -325,6 +329,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { hasPermi } from '@/directives'
 import { qualityApi } from '@/api/production/quality'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
@@ -367,6 +372,16 @@ type WorkRow = {
   inspectionItems: any[]
 }
 const router = useRouter()
+const canInspect = computed(() =>
+  hasPermi(['quality:lot:inspect', 'inventory:inbound:edit'])
+)
+const canJudge = computed(() =>
+  hasPermi(['quality:lot:judge', 'inventory:inbound:approve'])
+)
+const canDispose = computed(() =>
+  hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit'])
+)
+const canConfirmInbound = computed(() => hasPermi('inventory:inbound:confirm'))
 const flowOptions: Array<{
   key: FlowKey
   label: string
@@ -452,6 +467,7 @@ function orderStatusLabel(row: IqcPendingVO) {
     : InboundOrderStatusEnum.getLabel(row.orderStatus)
 }
 function rowCanEdit(row: WorkRow) {
+  if (!canInspect.value) return false
   if (
     row.reviewStatus === QualityReviewStatus.APPROVED ||
     row.reviewStatus === QualityReviewStatus.PENDING

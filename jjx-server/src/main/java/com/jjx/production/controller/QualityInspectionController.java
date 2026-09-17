@@ -1,6 +1,7 @@
 package com.jjx.production.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.dto.QualityInspectionCreateDTO;
@@ -26,12 +27,14 @@ public class QualityInspectionController {
 
     @Operation(summary = "分页查询")
     @GetMapping("/page")
+    @SaCheckPermission(value = {"production:quality:view", "quality:lot:view"}, mode = SaMode.OR)
     public Result<PageResult<QualityInspectionVO>> page(QualityInspectionQueryDTO query) {
         return Result.success(qualityService.page(query));
     }
 
     @Operation(summary = "查询详情")
     @GetMapping("/{id}")
+    @SaCheckPermission(value = {"production:quality:view", "quality:lot:view"}, mode = SaMode.OR)
     public Result<QualityInspectionVO> getById(@PathVariable Long id) {
         return Result.success(qualityService.getById(id));
     }

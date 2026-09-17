@@ -20,7 +20,7 @@
       >
       <el-table-column label="处置" width="330">
         <template #default="{ row }">
-          <template v-if="row.status === IqcQuarantineStatus.PENDING">
+          <template v-if="canDispose && row.status === IqcQuarantineStatus.PENDING">
             <el-input-number
               v-model="row.actionQuantity"
               :min="0.0001"
@@ -54,10 +54,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
 import { useUserStore } from '@/store/modules/user'
+import { hasPermi } from '@/directives'
 import {
   IqcQuarantineAction,
   IqcQuarantineStatus,
@@ -78,6 +79,9 @@ const orders = ref<any[]>([])
 const loading = ref(false)
 const ordersLoading = ref(false)
 const user = useUserStore()
+const canDispose = computed(() =>
+  hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit'])
+)
 watch(
   () => [props.visible, props.inboundId, props.itemId] as const,
   ([visible]) => {

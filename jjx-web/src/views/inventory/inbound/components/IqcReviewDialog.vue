@@ -64,7 +64,7 @@
       </el-table-column>
       <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <template v-if="row.quality?.reviewStatus === QualityReviewStatus.PENDING">
+          <template v-if="canJudge && row.quality?.reviewStatus === QualityReviewStatus.PENDING">
             <el-button
               link
               type="success"
@@ -81,7 +81,7 @@
             >
           </template>
           <el-button
-            v-if="row.quality?.reviewStatus === QualityReviewStatus.APPROVED"
+            v-if="canInspect && row.quality?.reviewStatus === QualityReviewStatus.APPROVED"
             link
             type="warning"
             :loading="submittingId === row.itemId"
@@ -99,11 +99,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
 import { qualityApi, type QualityVO } from '@/api/production/quality'
 import { useUserStore } from '@/store/modules/user'
+import { hasPermi } from '@/directives'
 import { InspectionResultEnum, IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 import type { InboundItemVO } from '@/types/inventory/inbound'
@@ -114,6 +115,12 @@ const emit = defineEmits<{
   (event: 'success'): void
 }>()
 const userStore = useUserStore()
+const canJudge = computed(() =>
+  hasPermi(['quality:lot:judge', 'inventory:inbound:approve'])
+)
+const canInspect = computed(() =>
+  hasPermi(['quality:lot:inspect', 'inventory:inbound:edit'])
+)
 const loading = ref(false)
 const submittingId = ref('')
 const rows = ref<
