@@ -653,9 +653,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         item.setSubstituteJson(dto.getSubstituteJson());
         item.setItemOrder(dto.getItemOrder());
         item.setRemark(dto.getRemark());
-        // ===== 应用料/实际投料（2026-08-10）：Excel 直读优先，否则自动计算 =====
-        item.setAppliedQty(dto.getAppliedQty());
-        item.setActualIssueQty(dto.getActualIssueQty());
+        // ===== 应用料/实际投料（2026-08-10）：统一按公式计算 =====
         calculateAppliedIssue(item);
         return item;
     }
@@ -664,36 +662,32 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      * 计算应用料/实际投料：
      *  applied_qty = quantity × (1 + loss_rate/100)
      *  actual_issue_qty：物料类型=R（板材/卷材）且 min_issue_qty>0 时 = CEIL(applied/min_issue)×min_issue，否则 = applied
-     *  Excel 已直读的字段不覆盖
+     *  始终按公式重新计算
      */
     private void calculateAppliedIssue(EngineeringBomItem item) {
-        // 应用料：未提供才计算
-        if (item.getAppliedQty() == null) {
-            java.math.BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : java.math.BigDecimal.ZERO;
-            Integer loss = item.getLossRate() != null ? item.getLossRate() : 0;
-            item.setAppliedQty(qty.multiply(java.math.BigDecimal.valueOf(1 + loss / 100.0))
-                    .setScale(4, java.math.RoundingMode.HALF_UP));
+        // 应用料
+        java.math.BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : java.math.BigDecimal.ZERO;
+        Integer loss = item.getLossRate() != null ? item.getLossRate() : 0;
+        item.setAppliedQty(qty.multiply(java.math.BigDecimal.valueOf(1 + loss / 100.0))
+                .setScale(4, java.math.RoundingMode.HALF_UP));
+        // 实际投料
+        java.math.BigDecimal applied = item.getAppliedQty() != null ? item.getAppliedQty() : java.math.BigDecimal.ZERO;
+        // 查物料类型：R=板材/卷材
+        boolean isSheet = false;
+        if (item.getMaterialId() != null) {
+            try {
+                com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectById(item.getMaterialId());
+                isSheet = mat != null && "R".equalsIgnoreCase(mat.getMaterialType());
+            } catch (Exception ignored) { }
         }
-        // 实际投料：未提供才计算
-        if (item.getActualIssueQty() == null) {
-            java.math.BigDecimal applied = item.getAppliedQty() != null ? item.getAppliedQty() : java.math.BigDecimal.ZERO;
-            // 查物料类型：R=板材/卷材
-            boolean isSheet = false;
-            if (item.getMaterialId() != null) {
-                try {
-                    com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectById(item.getMaterialId());
-                    isSheet = mat != null && "R".equalsIgnoreCase(mat.getMaterialType());
-                } catch (Exception ignored) { }
-            }
-            java.math.BigDecimal minIssue = item.getMinIssueQty() != null ? item.getMinIssueQty() : java.math.BigDecimal.ZERO;
-            if (isSheet && minIssue.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                // CEIL(applied / min_issue) × min_issue
-                java.math.BigDecimal ratio = applied.divide(minIssue, 10, java.math.RoundingMode.HALF_UP);
-                java.math.BigDecimal ceil = ratio.setScale(0, java.math.RoundingMode.CEILING);
-                item.setActualIssueQty(ceil.multiply(minIssue).setScale(4, java.math.RoundingMode.HALF_UP));
-            } else {
-                item.setActualIssueQty(applied.setScale(4, java.math.RoundingMode.HALF_UP));
-            }
+        java.math.BigDecimal minIssue = item.getMinIssueQty() != null ? item.getMinIssueQty() : java.math.BigDecimal.ZERO;
+        if (isSheet && minIssue.compareTo(java.math.BigDecimal.ZERO) > 0) {
+            // CEIL(applied / min_issue) × min_issue
+            java.math.BigDecimal ratio = applied.divide(minIssue, 10, java.math.RoundingMode.HALF_UP);
+            java.math.BigDecimal ceil = ratio.setScale(0, java.math.RoundingMode.CEILING);
+            item.setActualIssueQty(ceil.multiply(minIssue).setScale(4, java.math.RoundingMode.HALF_UP));
+        } else {
+            item.setActualIssueQty(applied.setScale(4, java.math.RoundingMode.HALF_UP));
         }
     }
 

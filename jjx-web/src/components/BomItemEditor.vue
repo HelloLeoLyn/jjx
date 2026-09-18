@@ -135,6 +135,7 @@
             :step="getQuantityStep(scope.row.unit)"
             size="small"
             controls-position="right"
+            @change="recalcAppliedIssue(scope.row)"
           />
         </template>
       </el-table-column>
@@ -186,6 +187,7 @@
             :step="1"
             size="small"
             controls-position="right"
+            @change="recalcAppliedIssue(scope.row)"
           />
         </template>
       </el-table-column>
@@ -510,9 +512,9 @@ watch(
     if (isUpdating) return
     if (JSON.stringify(newVal) !== JSON.stringify(flattenTree(items.value))) {
       items.value = buildTree(newVal)
-      // 应用料/实际投料：有库值保留，无则自动计算预览（递归）
+      // 应用料/实际投料：按公式重新计算预览（递归）
       walkTree(items.value, (row) => {
-        if (row.appliedQty == null && row.quantity != null) {
+        if (row.quantity != null) {
           recalcAppliedIssue(row)
         }
       })
