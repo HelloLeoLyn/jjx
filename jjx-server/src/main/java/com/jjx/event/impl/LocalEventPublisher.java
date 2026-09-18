@@ -144,6 +144,11 @@ public class LocalEventPublisher implements EventPublisher {
                     task.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
                     task.setKanbanModule(event.getKanbanModule() != null ? event.getKanbanModule() : "office");
                     task.setStatus(0);
+                    // 2026-09-18：触发人落到 create_by（看板卡详情「创建人」，此前为空）
+                    String taskTriggerUserName = payloadString(payload, "triggerUserName");
+                    if (taskTriggerUserName != null) {
+                        task.setCreateBy(taskTriggerUserName);
+                    }
                     sysTaskMapper.insert(task);
                     log.info("   📋 任务已创建: title={}, assigneeId={}, assignRole={}",
                             event.getTitle(), directAssigneeId, assignRole);
@@ -213,6 +218,13 @@ public class LocalEventPublisher implements EventPublisher {
         catch (NumberFormatException ignored) { return null; }
     }
 
+    /** 取 payload 里的字符串值；空串与 "null" 都当没有（模板里可能带上 null 字样）。 */
+    private String payloadString(Map<String, Object> payload, String key) {
+        if (payload == null || payload.get(key) == null) return null;
+        String value = String.valueOf(payload.get(key));
+        return value.isBlank() || "null".equalsIgnoreCase(value) ? null : value;
+    }
+
     private void createNotification(SysEventConfig event, String eventCode,
                                     Map<String, Object> payload, Long receiverId) {
         try {
@@ -225,6 +237,16 @@ public class LocalEventPublisher implements EventPublisher {
             dto.setBizId(bizId == null ? null : String.valueOf(bizId));
             dto.setReceiverId(receiverId);
             dto.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
+            // 2026-09-18：触发人落库到「发送人」（此前 sender_id/sender_name 一直为 NULL，
+            // 通知列表看不出是谁触发的；事件 payload 里本来就有 triggerUserId/triggerUserName）
+            Long triggerUserId = payloadLong(payload, "triggerUserId");
+            if (triggerUserId != null) {
+                dto.setSenderId(triggerUserId);
+            }
+            String triggerUserName = payloadString(payload, "triggerUserName");
+            if (triggerUserName != null) {
+                dto.setSenderName(triggerUserName);
+            }
             notificationService.createNotification(dto);
             log.debug("   📨 通知已创建: event={}, userId={}", eventCode, receiverId);
         } catch (Exception e) {

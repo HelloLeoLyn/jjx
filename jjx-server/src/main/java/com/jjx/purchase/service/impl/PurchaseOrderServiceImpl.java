@@ -1278,6 +1278,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         Map<String, Object> payload = new HashMap<>();
         payload.put("bizType", "purchase");
         payload.put("triggerUserId", SecurityUtils.getUserId());
+        payload.put("triggerUserName", SecurityUtils.getUsername());
         payload.put("bizId", dto.getOrderId());
         payload.put("orderId", dto.getOrderId());
         payload.put("orderNo", order.getOrderNo());

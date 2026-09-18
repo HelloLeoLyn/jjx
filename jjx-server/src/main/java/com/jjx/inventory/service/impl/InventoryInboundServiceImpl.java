@@ -991,6 +991,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         Map<String, Object> payload = new HashMap<>();
         payload.put("bizType", "quality");
         payload.put("triggerUserId", SecurityUtils.getUserId());
+        payload.put("triggerUserName", SecurityUtils.getUsername());
         if (order != null) {
             payload.put("bizId", order.getInboundId());
             payload.put("inboundId", order.getInboundId());
@@ -1339,6 +1340,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         Map<String, Object> createdPayload = new HashMap<>();
         createdPayload.put("bizType", "inventory");
         createdPayload.put("triggerUserId", SecurityUtils.getUserId());
+        createdPayload.put("triggerUserName", SecurityUtils.getUsername());
         createdPayload.put("bizId", order.getInboundId());
         createdPayload.put("inboundId", order.getInboundId());
         createdPayload.put("inboundNo", order.getInboundNo());

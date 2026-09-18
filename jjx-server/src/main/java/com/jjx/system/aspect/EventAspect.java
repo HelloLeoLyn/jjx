@@ -45,10 +45,11 @@ public class EventAspect {
         // 构建事件参数
         Map<String, Object> payload = new HashMap<>();
 
-        // 当前操作者
+        // 当前操作者（2026-09-18：补 triggerUserName，通知「发送人」/任务「创建人」要用它落库）
         try {
             Long userId = SecurityUtils.getUserId();
             payload.put("triggerUserId", userId);
+            payload.put("triggerUserName", SecurityUtils.getUsername());
         } catch (Exception ignored) {
         }
 
