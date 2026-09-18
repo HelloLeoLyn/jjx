@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/modules/user'
 
@@ -61,6 +61,17 @@ const userStore = useUserStore()
 
 const userName = userStore.userName || ''
 const nickName = userStore.nickName || ''
+
+// 刷新 / 收藏直达时 pinia 是空的（权限快照只在登录响应里取到，/m/* 又不走 PC 的动态路由初始化），
+// 按 DEV-1018 的口径用 /sessions/current 恢复一次；否则按权限显示的入口（派工 Tab、首页宫格）会被误藏
+onMounted(async () => {
+  if (!userStore.token || userStore.permissions.length) return
+  try {
+    await userStore.getUserInfo()
+  } catch {
+    // 失败不阻塞页面（401 由 request 拦截器统一处理）
+  }
+})
 
 const tabs = [
   { path: '/m/order', label: '任务', icon: '📋', match: /^\/m\/order/ },

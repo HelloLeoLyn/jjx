@@ -67,7 +67,7 @@
           <span class="m-grid-icon">📷</span>
           <span>扫码</span>
         </div>
-        <div v-if="canReport" class="m-grid-item" @click="router.push('/m/reports')">
+        <div v-if="canMyReport" class="m-grid-item" @click="router.push('/m/reports')">
           <span class="m-grid-icon">🧾</span>
           <span>我的报工</span>
         </div>
@@ -78,6 +78,45 @@
         <div v-if="canPick" class="m-grid-item" @click="router.push('/m/pick')">
           <span class="m-grid-icon">📦</span>
           <span>生产领料</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全部功能（九宫格）：每格按后端权限键显示，与各接口 @SaCheckPermission 同键 -->
+    <div class="m-home-card">
+      <div class="m-card-title"><span>🧩 全部功能</span></div>
+      <div class="m-grid">
+        <div class="m-grid-item" @click="router.push('/m/order')">
+          <span class="m-grid-icon">📋</span>
+          <span>我的任务</span>
+        </div>
+        <div class="m-grid-item" @click="router.push('/m/scan')">
+          <span class="m-grid-icon">📷</span>
+          <span>扫码定位</span>
+        </div>
+        <div v-if="canMyReport" class="m-grid-item" @click="router.push('/m/reports')">
+          <span class="m-grid-icon">🧾</span>
+          <span>我的报工</span>
+        </div>
+        <div v-if="canApprove" class="m-grid-item" @click="router.push('/m/report-approvals')">
+          <span class="m-grid-icon">✅</span>
+          <span>报工审批</span>
+        </div>
+        <div v-if="canQuality" class="m-grid-item" @click="router.push('/m/quality')">
+          <span class="m-grid-icon">🔍</span>
+          <span>质检判定</span>
+        </div>
+        <div v-if="canPick" class="m-grid-item" @click="router.push('/m/pick')">
+          <span class="m-grid-icon">📦</span>
+          <span>生产领料</span>
+        </div>
+        <div v-if="canDispatch" class="m-grid-item" @click="router.push('/m/dispatch')">
+          <span class="m-grid-icon">🧭</span>
+          <span>派工</span>
+        </div>
+        <div class="m-grid-item" @click="router.push('/m/notices')">
+          <span class="m-grid-icon">🔔</span>
+          <span>通知</span>
         </div>
       </div>
     </div>
@@ -212,10 +251,17 @@ async function openNotice(n: any) {
   ElMessage.info('该通知请在 PC 端查看处理')
 }
 
-// ===== 宫格权限 =====
-const canReport = computed(() => userStore.hasPermission('production:work-report:view') || userStore.hasPermission('production:work-report:add'))
-const canQuality = computed(() => userStore.hasPermission('production:quality:judge'))
+// ===== 宫格权限（全部与后端各接口 @SaCheckPermission 同键，不在前端造角色规则）=====
+/** 我的报工：GET /production/work-report/mine → production:work-report:view */
+const canMyReport = computed(() => userStore.hasPermission('production:work-report:view') || userStore.hasPermission('production:work-report:add'))
+/** 报工审批：GET /production/work-report/pending-approval → production:work-report:approve */
+const canApprove = computed(() => userStore.hasPermission('production:work-report:approve'))
+/** 质检判定：GET /production/quality/page → production:quality:view 或 quality:lot:view（控制器 OR） */
+const canQuality = computed(() => userStore.hasPermission('production:quality:view') || userStore.hasPermission('quality:lot:view'))
+/** 生产领料：GET /inventory/outbound/list → inventory:outbound:view */
 const canPick = computed(() => userStore.hasPermission('inventory:outbound:view') || userStore.hasPermission('inventory:outbound:add'))
+/** 派工：POST /production/tasks/{taskId}/assign → production:task:assign（操作工 32 无此键，看不到本格） */
+const canDispatch = computed(() => userStore.hasPermission('production:task:assign'))
 
 onMounted(() => {
   loadTasks()

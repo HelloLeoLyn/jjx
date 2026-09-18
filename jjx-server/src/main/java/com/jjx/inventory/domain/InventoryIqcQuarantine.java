@@ -12,10 +12,14 @@ public class InventoryIqcQuarantine {
     private Long inboundId;
     private Long inboundItemId;
     private Long inspectionId;
+
+    /** IQC 归一（dev-20260918-026）：关联 quality_lot 主键 */
+    private Long lotId;
     private Long materialId;
     private String materialCode;
     private String materialName;
     private String batchNo;
+    private Long iqcBatchId;
     private BigDecimal quantity;
     private BigDecimal remainingQuantity;
     private String disposition;

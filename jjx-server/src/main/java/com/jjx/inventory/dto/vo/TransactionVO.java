@@ -86,6 +86,7 @@ public class TransactionVO {
      * 批次号
      */
     private String batchNo;
+    private Long iqcBatchId;
 
     /**
      * 变动数量（正数增加，负数减少）

@@ -3,9 +3,11 @@
     <div class="toolbar no-print">
       <el-button @click="router.back()">返回</el-button>
       <el-tag v-if="info" type="info">{{ info.lotNo }} · {{ info.reportTitle }}</el-tag>
-      <el-button type="primary" :loading="printing" :disabled="!info" @click="print">打印</el-button>
+      <el-button type="primary" :loading="printing" :disabled="!info" @click="print"
+        >打印</el-button
+      >
     </div>
-    <A4Canvas v-if="info" :padding-mm="10">
+    <A4Canvas v-if="info" :padding-mm="9">
       <LotReportSheet :data="info" />
     </A4Canvas>
     <div v-else v-loading="loading" class="loading" />
@@ -50,7 +52,11 @@ async function print() {
   if (!info.value) return
   printing.value = true
   try {
-    await logTemplatePrint(String(info.value.recordNo || ''), 'quality_lot', Number(info.value.lotId))
+    await logTemplatePrint(
+      String(info.value.recordNo || ''),
+      'quality_lot',
+      Number(info.value.lotId)
+    )
     window.print()
   } catch (e: any) {
     ElMessage.error(e?.message || '打印留痕失败')

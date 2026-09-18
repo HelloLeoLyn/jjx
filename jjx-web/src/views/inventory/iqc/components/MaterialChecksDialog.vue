@@ -117,7 +117,7 @@ const checkResultOptions = QualityInspectionResultEnum.items.filter(
 function syncDisposition(row: any) {
   syncIqcDisposition(row)
 }
-/** 本行"整批合格"：结论合格 + 实测记录留空 + 缺陷数归零 + 抽检/接收=收货数（dev-20260916-008 口径） */
+/** 本行"整批合格"：结论合格 + 实测记录留空 + 缺陷数归零 + 合格/接收=收货数（全检口径） */
 function batchPassRow() {
   batchPassIqcRow(props.row)
   ElMessage.success('本行已按整批合格填充，实测记录留空')

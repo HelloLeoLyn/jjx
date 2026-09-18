@@ -25,6 +25,7 @@ public class InboundItemVO {
     private BigDecimal unitPrice;
     private BigDecimal amount;
     private String batchNo;
+    private Long iqcBatchId;
     private LocalDate productionDate;
     private LocalDate expiryDate;
     private Long locationId;

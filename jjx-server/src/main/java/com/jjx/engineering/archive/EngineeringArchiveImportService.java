@@ -253,8 +253,9 @@ public class EngineeringArchiveImportService {
         try {
             String json = callLocalOcr(bytes, fileName);
             JsonNode root = objectMapper.readTree(json);
-            persistAndMatchIcons(archive, root);
             normalizeRecognizedContent(root);
+            normalizeWorkflowStepNumbers(root);
+            persistAndMatchIcons(archive, root);
             persistDraftImages(archive, root);
             archive.setExtractedJson(objectMapper.writeValueAsString(root));
             archive.setProductName(text(root, "productName"));
@@ -278,6 +279,7 @@ public class EngineeringArchiveImportService {
         try {
             learnConfirmedIconMappings(result);
             normalizeRecognizedContent(result);
+            normalizeWorkflowStepNumbers(result);
             archive.setExtractedJson(objectMapper.writeValueAsString(result));
             archive.setProductName(text(result, "productName"));
             archive.setProductCode(text(result, "productCode"));
@@ -374,6 +376,7 @@ public class EngineeringArchiveImportService {
                 if (composite && step.path("components").isArray()) {
                     object.put("contentType", "ICON_ONLY");
                     object.put("recognizedText", "复合图标");
+                    normalizeCompositeComponents(object);
                     for (JsonNode component : step.path("components")) {
                         if (component instanceof ObjectNode child) {
                             if (!child.has("ocrRawText") && child.has("text")) {
@@ -408,6 +411,42 @@ public class EngineeringArchiveImportService {
                     }
                     object.put("contentType", "TEXT_ONLY");
                 }
+            }
+        }
+    }
+
+    /** 每个工序分组独立编号；空格/空行不占用工序序号。 */
+    private void normalizeWorkflowStepNumbers(JsonNode root) {
+        for (JsonNode workflow : root.path("workflows")) {
+            if (!workflow.path("steps").isArray()) continue;
+            int sequence = 1;
+            for (JsonNode node : workflow.path("steps")) {
+                if (!(node instanceof ObjectNode step)) continue;
+                if ("EMPTY".equals(text(step, "contentType"))) continue;
+                step.put("stepNo", sequence++);
+            }
+        }
+    }
+
+    /** 将复合图标后的独立数字并入前一个图标，避免“▽ + 10”被当成三个工序。 */
+    private void normalizeCompositeComponents(ObjectNode step) {
+        if (!step.path("components").isArray()) return;
+        com.fasterxml.jackson.databind.node.ArrayNode components = (com.fasterxml.jackson.databind.node.ArrayNode) step.path("components");
+        for (int i = components.size() - 1; i >= 0; i--) {
+            JsonNode node = components.get(i);
+            if (!(node instanceof ObjectNode component)) continue;
+            String value = text(component, "text");
+            if (value == null || value.isBlank()) continue;
+            String trimmed = value.trim();
+            if (trimmed.matches("\\d+") && i > 0 && components.get(i - 1) instanceof ObjectNode previous) {
+                previous.put("workInstruction", trimmed);
+                components.remove(i);
+                continue;
+            }
+            Matcher matcher = Pattern.compile("^(.*?)(\\d+)$").matcher(trimmed);
+            if (matcher.matches() && !matcher.group(1).isBlank()) {
+                component.put("text", matcher.group(1).trim());
+                component.put("workInstruction", matcher.group(2));
             }
         }
     }
@@ -448,11 +487,13 @@ public class EngineeringArchiveImportService {
         }
         try {
             JsonNode root = objectMapper.readTree(archive.getExtractedJson());
+            normalizeWorkflowStepNumbers(root);
             String code = text(root, "productCode");
             String name = text(root, "productName");
             if (code == null || code.isBlank() || name == null || name.isBlank()) {
                 throw new BusinessException("请先确认产品名称和产品编号");
             }
+            validateDraft(root);
             Integer duplicate = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM product WHERE product_code=?", Integer.class, code);
             if (duplicate != null && duplicate > 0) throw new BusinessException("产品编号已存在：" + code);
             String user = loginUser();
@@ -476,9 +517,9 @@ public class EngineeringArchiveImportService {
             long routingId = insert("INSERT INTO engineering_routing(routing_code,routing_name,product_id,product_code,product_name,routing_type,routing_version,version,is_current,approve_status,process_count,description,create_by,update_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     "RT-" + code, name + " 历史档案工艺", productId, code, name, ROUTING_TYPE, VERSION, VERSION, true,
                     ProductEnums.BomStatus.DRAFT.getValue(), countSteps(root), "来源历史档案 #" + id, user, user);
-            int order = 1;
             for (JsonNode workflow : root.path("workflows")) {
                 String workflowType = defaultText(text(workflow, "workflowType"), "OTHER");
+                int order = 1;
                 for (JsonNode step : workflow.path("steps")) {
                     if ("EMPTY".equals(text(step, "contentType"))) continue;
                     boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
@@ -534,6 +575,54 @@ public class EngineeringArchiveImportService {
         } catch (Exception e) {
             throw new BusinessException("生成草稿失败：" + e.getMessage());
         }
+    }
+
+    /** 生成正式草稿前的后端兜底校验，不能只依赖前端 generationReady。 */
+    private void validateDraft(JsonNode root) {
+        for (JsonNode group : root.path("groups")) {
+            if (!group.path("confirmed").asBoolean(false)) {
+                throw new BusinessException("分组尚未确认：" + text(group, "label"));
+            }
+        }
+        for (JsonNode workflow : root.path("workflows")) {
+            String workflowType = defaultText(text(workflow, "workflowType"), "OTHER");
+            for (JsonNode step : workflow.path("steps")) {
+                if ("EMPTY".equals(text(step, "contentType"))) continue;
+                int stepNo = step.path("stepNo").asInt();
+                boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
+                if (composite) {
+                    if (!step.path("components").isArray() || step.path("components").isEmpty()) {
+                        throw new BusinessException(workflowType + "第" + stepNo + "道复合工序没有子项");
+                    }
+                    for (int i = 0; i < step.path("components").size(); i++) {
+                        JsonNode component = step.path("components").get(i);
+                        Long processId = component.path("processId").canConvertToLong() ? component.path("processId").longValue() : null;
+                        if (processId == null || !component.path("confirmed").asBoolean(false)) {
+                            throw new BusinessException(workflowType + "第" + stepNo + "道第" + (i + 1) + "个子项未完成标准工序确认");
+                        }
+                        Map<String, Object> process = standardProcess(processId);
+                        if (process == null) throw new BusinessException("标准工序不存在或已停用：processId=" + processId);
+                    }
+                } else {
+                    Long processId = step.path("processId").canConvertToLong() ? step.path("processId").longValue() : null;
+                    if (processId == null || !step.path("classificationConfirmed").asBoolean(false)
+                            || !step.path("processMappingConfirmed").asBoolean(false)) {
+                        throw new BusinessException(workflowType + "第" + stepNo + "道工序未完成标准工序确认");
+                    }
+                    Map<String, Object> process = standardProcess(processId);
+                    if (process == null) {
+                        throw new BusinessException("标准工序不存在或已停用：processId=" + processId);
+                    }
+                }
+            }
+        }
+    }
+
+    private Map<String, Object> standardProcess(Long processId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT process_id,process_name,has_index,has_work_instruction FROM engineering_standard_process WHERE process_id=? AND is_enabled=1 LIMIT 1",
+                processId);
+        return rows.isEmpty() ? null : rows.getFirst();
     }
 
     public ProcessIconSample confirmSample(Long sampleId, Long processId) {
@@ -756,6 +845,7 @@ public class EngineeringArchiveImportService {
         String instruction = text(component, "workInstruction");
         Long processId = component.path("processId").canConvertToLong() ? component.path("processId").longValue() : null;
         if (processId == null) return null;
+        if (component.path("workInstruction").isTextual()) return null;
         List<Map<String, Object>> properties = jdbcTemplate.queryForList(
                 "SELECT has_index,has_work_instruction FROM engineering_standard_process WHERE process_id=? AND is_enabled=1 LIMIT 1", processId);
         if (properties.isEmpty()) return null;

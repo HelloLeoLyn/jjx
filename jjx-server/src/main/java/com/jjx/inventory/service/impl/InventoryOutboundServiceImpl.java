@@ -439,6 +439,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             tx.setSourceId(outboundId);
             tx.setSourceNo(order.getOutboundNo());
             tx.setBatchNo(item.getBatchNo());
+            InventoryStockItem lineageStock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                    .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
+                    .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
+                    .last("LIMIT 1"));
+            tx.setIqcBatchId(lineageStock == null ? null : lineageStock.getIqcBatchId());
             tx.setQuantity(item.getQuantity().negate());
             tx.setBeforeQuantity(beforeQty);
             tx.setAfterQuantity(beforeQty.subtract(item.getQuantity()));

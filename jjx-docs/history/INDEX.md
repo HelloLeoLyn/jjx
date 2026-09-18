@@ -7,8 +7,11 @@
 
 生成：python3 遍历 history/*.md 取文件名日期 + 首个 # 标题。增删文件后重新生成。
 
+@@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-18 (dev-016) | quality-legacy-fqc-endpoint-inventory-dev-20260918-016.md | 旧质检 /production/quality 端点·页面·菜单 使用方盘点（dev-20260918-016） |
+| 2026-09-18 (dev-008) | quality-rework-child-lot-dev-20260918-008.md | 质量管理：供应商返工复检子批次与批次谱系方案（dev-20260918-008） |
 | 2026-09-14 (dev-013) | engineering-archive-local-segmentation-dev-20260912-013.md | 历史档案本地结构切割与工序识别实施报告（dev-20260912-013） |
 | 2026-09-12 (dev-004) | tag-query-helper-dev-20260912-004.md | 标签查询辅助组件（多选/分组/计数/与或）+ 供应商管理落地（dev-20260912-004） |
 | 2026-09-12 (dev-002) | engineering-archive-operability-dev-20260912-002.md | 历史档案录入可运行性修复报告 |

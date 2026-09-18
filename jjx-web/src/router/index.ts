@@ -146,6 +146,16 @@ export const constantRoutes: RouteRecordRaw[] = [
           hidden: true,
         },
       },
+      // 移动端派工（简易版）：入口按 production:task:view 显示，可派与否由后端 allowedActions 决定
+      {
+        path: '/m/dispatch',
+        name: 'MobileDispatch',
+        component: () => import('@/views/mobile/dispatch.vue'),
+        meta: {
+          title: '派工',
+          hidden: true,
+        },
+      },
     ],
   },
   {
@@ -355,12 +365,6 @@ export const constantRoutes: RouteRecordRaw[] = [
     name: 'QualityLotReportPrint',
     component: () => import('@/views/quality/print/LotReportPage.vue'),
     meta: { title: '检验报告打印', hidden: true },
-  },
-  {
-    path: '/production/quality-print/fqc-report',
-    name: 'ProductionFqcReportPrint',
-    component: () => import('@/views/production/quality-print/fqc-report.vue'),
-    meta: { title: '成品检验报告', hidden: true },
   },
   {
     path: '/production/quality-print/iqc-report',

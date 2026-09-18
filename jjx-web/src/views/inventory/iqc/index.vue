@@ -140,7 +140,10 @@
         >
         <el-button :disabled="!selectedRows.length" @click="clearSelectedRows">清空选中</el-button>
         <el-button type="primary" plain @click="openWholeInboundChecks">整单检验录入</el-button>
-        <span class="batch-tip">勾选多行可整批合格；录入弹窗内 Tab 移动、Enter 保存、可"保存并下一行"；实测记录可留空</span>
+        <span class="batch-tip"
+          >勾选多行可整批合格；录入弹窗内 Tab 移动、Enter
+          保存、可"保存并下一行"；实测记录可留空</span
+        >
       </div>
       <el-table
         :data="workRows"
@@ -153,18 +156,14 @@
           prop="materialName"
           label="材料名称"
           min-width="150"
-        /><el-table-column prop="quantity" label="收货数量" width="90" /><el-table-column
-          label="抽检"
-          width="90"
-          ><template #default="{ row }">{{ row.sampledQuantity }}</template></el-table-column
-        >
+        /><el-table-column prop="quantity" label="收货数量" width="90" />
         <el-table-column label="合格" width="130"
           ><template #default="{ row }"
             ><el-input-number
               v-if="rowCanEdit(row)"
               v-model="row.qualifiedQuantity"
               :min="0"
-              :max="row.quantity"
+              :max="row.isReinspection ? row.reinspectionQuantity : row.quantity"
               controls-position="right"
               @change="recalRow(row)"
             /><span v-else>{{ row.qualifiedQuantity }}</span></template
@@ -176,7 +175,7 @@
               v-if="rowCanEdit(row)"
               v-model="row.rejectedQuantity"
               :min="0"
-              :max="row.quantity"
+              :max="row.isReinspection ? row.reinspectionQuantity : row.quantity"
               controls-position="right"
               @change="recalRow(row)"
             /><span v-else>{{ row.rejectedQuantity }}</span></template
@@ -227,20 +226,7 @@
             ><span v-else>-</span></template
           ></el-table-column
         >
-        <el-table-column label="接收数量（整批）" width="155"
-          ><template #default="{ row }"
-            ><el-input-number
-              v-if="
-                rowCanEdit(row) && row.inspectionResult === InboundInspectionResultEnum.FAIL.value
-              "
-              v-model="row.acceptedQuantity"
-              :min="acceptedQuantityCanEdit(row) ? 1 : 0"
-              :max="maxAcceptedIqcQuantity(row)"
-              :disabled="!acceptedQuantityCanEdit(row)"
-              controls-position="right"
-            /><span v-else>{{ row.acceptedQuantity }}</span></template
-          ></el-table-column
-        >
+        <el-table-column label="接收数量" prop="acceptedQuantity" width="100" />
         <el-table-column label="检测项目" width="125"
           ><template #default="{ row }"
             ><el-button link type="primary" @click="openMaterialChecks(row)"
@@ -328,7 +314,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { hasPermi } from '@/directives'
 import { qualityApi } from '@/api/production/quality'
 import { inboundApi } from '@/api/inventory/inbound'
@@ -339,7 +325,6 @@ import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
 import {
   batchPassIqcRow,
   copyIqcChecks,
-  maxAcceptedIqcQuantity,
   syncIqcRowFromChecks,
 } from './iqcRowRules'
 import {
@@ -360,7 +345,6 @@ type WorkRow = {
   materialCode: string
   materialName: string
   quantity: number
-  sampledQuantity: number
   qualifiedQuantity: number
   rejectedQuantity: number
   acceptedQuantity: number
@@ -368,19 +352,17 @@ type WorkRow = {
   disposition?: string
   rejectReason: string
   reviewStatus?: string
+  isReinspection: boolean
+  reinspectionQuantity: number
+  baseAcceptedQuantity: number
   locked: boolean
   inspectionItems: any[]
 }
 const router = useRouter()
-const canInspect = computed(() =>
-  hasPermi(['quality:lot:inspect', 'inventory:inbound:edit'])
-)
-const canJudge = computed(() =>
-  hasPermi(['quality:lot:judge', 'inventory:inbound:approve'])
-)
-const canDispose = computed(() =>
-  hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit'])
-)
+const route = useRoute()
+const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
+const canJudge = computed(() => hasPermi(['quality:lot:judge', 'inventory:inbound:approve']))
+const canDispose = computed(() => hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit']))
 const canConfirmInbound = computed(() => hasPermi('inventory:inbound:confirm'))
 const flowOptions: Array<{
   key: FlowKey
@@ -589,7 +571,10 @@ async function loadInboundDetail(row: IqcPendingVO) {
         const isReinspection = Boolean(
             quality?.previousInspectionId && quality?.result === QualityInspectionResult.PENDING
           ),
-          reinspectionQuantity = Number(previousQuality?.failQty || 0),
+          reinspectionQuantity = isReinspection
+            ? Number(quality?.totalQty || previousQuality?.failQty || 0)
+            : 0,
+          baseAcceptedQuantity = Number(item.acceptedQuantity || 0),
           fresh = !quality
         return {
           itemId: String(item.inboundItemId || item.itemId),
@@ -597,11 +582,6 @@ async function loadInboundDetail(row: IqcPendingVO) {
           materialCode: item.materialCode,
           materialName: item.materialName,
           quantity: Number(item.quantity || 0),
-          sampledQuantity: fresh
-            ? 0
-            : isReinspection
-              ? reinspectionQuantity
-              : Number(item.sampledQuantity ?? item.quantity ?? 0),
           qualifiedQuantity: fresh
             ? 0
             : isReinspection
@@ -621,6 +601,9 @@ async function loadInboundDetail(row: IqcPendingVO) {
           disposition: isReinspection ? undefined : item.disposition,
           rejectReason: isReinspection ? '' : item.rejectReason || '',
           reviewStatus: quality?.reviewStatus,
+          isReinspection,
+          reinspectionQuantity,
+          baseAcceptedQuantity,
           locked:
             quality?.reviewStatus === QualityReviewStatus.PENDING ||
             quality?.reviewStatus === QualityReviewStatus.APPROVED,
@@ -641,37 +624,16 @@ async function loadInboundDetail(row: IqcPendingVO) {
 function handleResultChange(row: WorkRow) {
   if (row.inspectionResult === InboundInspectionResultEnum.PASS.value) {
     row.disposition = undefined
-    row.acceptedQuantity = Number(row.quantity || 0)
+    row.acceptedQuantity = row.qualifiedQuantity
   } else if (row.inspectionResult === InboundInspectionResultEnum.FAIL.value) syncDisposition(row)
 }
-function acceptedQuantityCanEdit(row: WorkRow) {
-  return (
-    row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-    (row.disposition === IqcDispositionEnum.CONCESSION.value ||
-      row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value)
-  )
-}
-function dispositionRejectsWholeBatch(disposition?: string) {
-  return (
-    disposition === IqcDispositionEnum.RETURN.value ||
-    disposition === IqcDispositionEnum.SCRAP.value ||
-    disposition === IqcDispositionEnum.REINSPECT.value ||
-    disposition === IqcDispositionEnum.HOLD.value ||
-    disposition === IqcDispositionEnum.SUPPLIER_REWORK.value
-  )
-}
 function syncDisposition(row: WorkRow) {
-  if (
-    row.disposition === IqcDispositionEnum.CONCESSION.value ||
-    row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value
-  )
-    row.acceptedQuantity = Number(row.quantity || 0)
-  else row.acceptedQuantity = 0
+  row.acceptedQuantity = row.qualifiedQuantity
 }
 function recalRow(row: WorkRow) {
   row.qualifiedQuantity = Number(row.qualifiedQuantity || 0)
   row.rejectedQuantity = Number(row.rejectedQuantity || 0)
-  row.sampledQuantity = row.qualifiedQuantity + row.rejectedQuantity
+  row.acceptedQuantity = row.qualifiedQuantity
   row.inspectionResult =
     row.rejectedQuantity > 0
       ? InboundInspectionResultEnum.FAIL.value
@@ -699,7 +661,7 @@ function handleSelectionChange(rows: WorkRow[]) {
   selectedRows.value = rows
 }
 
-/** 整批合格：结论合格 + 实测记录留空 + CR/MA/MI 归零 + 抽检/接收=收货数（用户拍板口径） */
+/** 整批合格：结论合格 + 实测记录留空 + CR/MA/MI 归零 + 合格/接收=收货数（全检口径） */
 function batchPassSelected() {
   const rows = selectedEditableRows.value
   if (!rows.length) return
@@ -807,48 +769,15 @@ async function submitInspection() {
   if (!selectedInbound.value) return
   for (const item of workRows.value) {
     if (!rowCanEdit(item)) continue
-    if (
-      Number(item.sampledQuantity) !==
-      Number(item.qualifiedQuantity) + Number(item.rejectedQuantity)
-    ) {
-      ElMessage.warning(`${item.materialCode}：抽检数量须等于合格与不良数量之和`)
-      return
-    }
-    if (
-      Number(item.acceptedQuantity) < 0 ||
-      Number(item.acceptedQuantity) > Number(item.quantity)
-    ) {
-      ElMessage.warning(`${item.materialCode}：接收数量必须在收货数量范围内`)
-      return
-    }
-    if (
-      item.inspectionResult === InboundInspectionResultEnum.PASS.value &&
-      Number(item.acceptedQuantity) !== Number(item.quantity)
-    ) {
-      ElMessage.warning(`${item.materialCode}：整批判定合格时接收数量须等于收货数量`)
+    item.acceptedQuantity = Number(item.qualifiedQuantity || 0)
+    const inspectionQuantity = item.isReinspection ? item.reinspectionQuantity : item.quantity
+    if (Number(item.qualifiedQuantity) + Number(item.rejectedQuantity) !== inspectionQuantity) {
+      ElMessage.warning(`${item.materialCode}：合格数量与不良数量之和必须等于收货数量`)
       return
     }
     if (item.inspectionResult === InboundInspectionResultEnum.FAIL.value && !item.disposition) {
       ElMessage.warning(`${item.materialCode}：整批判定不合格时必须选择处置方式`)
       return
-    }
-    if (dispositionRejectsWholeBatch(item.disposition) && Number(item.acceptedQuantity) !== 0) {
-      ElMessage.warning(`${item.materialCode}：当前处置整批不接收，接收数量须为 0`)
-      return
-    }
-    if (acceptedQuantityCanEdit(item)) {
-      if (Number(item.acceptedQuantity) <= 0) {
-        ElMessage.warning(`${item.materialCode}：特采或部分接收时接收数量必须大于 0`)
-        return
-      }
-      // dev-20260916-009：不良品不得计入接收数量，否则隔离数量=收货-接收=0，不良品会被当良品入库
-      const maxAccepted = maxAcceptedIqcQuantity(item)
-      if (Number(item.acceptedQuantity) > maxAccepted) {
-        ElMessage.warning(
-          `${item.materialCode}：接收数量不能超过良品数量（${maxAccepted}），不良品请走隔离处置`
-        )
-        return
-      }
     }
     if (
       item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
@@ -870,15 +799,12 @@ async function submitInspection() {
     }
   }
   const undecided = workRows.value.filter(
-      (item) => rowCanEdit(item) && !item.inspectionResult
-    ).length,
-    unaccepted = workRows.value.filter(
-      (item) => rowCanEdit(item) && Number(item.acceptedQuantity) < Number(item.quantity)
-    ).length
-  if (undecided || unaccepted) {
+    (item) => rowCanEdit(item) && !item.inspectionResult
+  ).length
+  if (undecided) {
     try {
       await ElMessageBox.confirm(
-        `还有 ${undecided} 行未判定、${unaccepted} 行部分或全部未接收，确认后未接收数量将进入隔离处置，是否继续？`,
+        `还有 ${undecided} 行未判定；每行合格数量与不良数量之和须等于收货数量，是否继续？`,
         '提示',
         { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
       )
@@ -893,7 +819,6 @@ async function submitInspection() {
       items: workRows.value.map(
         ({
           itemId,
-          sampledQuantity,
           inspectionResult,
           disposition,
           qualifiedQuantity,
@@ -903,7 +828,6 @@ async function submitInspection() {
           inspectionItems,
         }) => ({
           itemId,
-          sampledQuantity,
           inspectionResult,
           disposition,
           qualifiedQuantity,
@@ -922,7 +846,26 @@ async function submitInspection() {
     submitting.value = false
   }
 }
-onMounted(() => loadList())
+onMounted(async () => {
+  const inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''
+  const itemId = typeof route.query.itemId === 'string' ? route.query.itemId : ''
+  if (inboundNo) {
+    listQuery.flowStatus = 'ALL'
+    listQuery.inboundNo = inboundNo
+  }
+  await loadList()
+  if (!inboundNo) return
+  const targetInbound = inboundRows.value.find((row) => row.inboundNo === inboundNo)
+  if (!targetInbound) {
+    ElMessage.warning(`未找到入库单 ${inboundNo}`)
+    return
+  }
+  await selectInbound(targetInbound)
+  if (!itemId) return
+  const targetRow = workRows.value.find((row) => row.itemId === itemId)
+  if (targetRow && rowCanEdit(targetRow)) openMaterialChecks(targetRow)
+  else ElMessage.warning('对应复检材料当前不可编辑，请检查检验权限或记录状态')
+})
 onBeforeUnmount(clearSelection)
 </script>
 

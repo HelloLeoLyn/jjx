@@ -45,6 +45,7 @@ public class InventoryStockItem implements Serializable {
 
     /** 批次号 */
     private String batchNo;
+    private Long iqcBatchId;
 
     /** 生产日期 */
     @JsonFormat(pattern = "yyyy-MM-dd")

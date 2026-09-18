@@ -116,17 +116,7 @@
           </template>
         </el-table-column>
         <el-table-column label="收货数量" prop="quantity" width="100" />
-        <el-table-column label="抽检数量" width="140">
-          <template #default="{ row }"
-            ><el-input-number
-              v-model="row.sampledQuantity"
-              :min="0"
-              :max="row.quantity"
-              :disabled="row.locked"
-              controls-position="right"
-          /></template>
-        </el-table-column>
-        <el-table-column label="样品合格数" width="140">
+        <el-table-column label="合格数量" width="140">
           <template #default="{ row }"
             ><el-input-number
               v-model="row.qualifiedQuantity"
@@ -134,9 +124,10 @@
               :max="row.quantity"
               :disabled="row.locked"
               controls-position="right"
+              @change="syncFullInspection(row)"
           /></template>
         </el-table-column>
-        <el-table-column label="样品不良数" width="140">
+        <el-table-column label="不良数量" width="140">
           <template #default="{ row }"
             ><el-input-number
               v-model="row.rejectedQuantity"
@@ -144,22 +135,10 @@
               :max="row.quantity"
               :disabled="row.locked"
               controls-position="right"
+              @change="syncFullInspection(row)"
           /></template>
         </el-table-column>
-        <el-table-column label="允收入库" width="140">
-          <template #default="{ row }"
-            ><el-input-number
-              v-model="row.acceptedQuantity"
-              :min="0"
-              :max="
-                row.inspectionResult === InspectionResultEnum.FAIL.value
-                  ? Number(row.qualifiedQuantity || 0)
-                  : Number(row.quantity || 0)
-              "
-              :disabled="row.locked"
-              controls-position="right"
-          /></template>
-        </el-table-column>
+        <el-table-column label="允收入库" prop="acceptedQuantity" width="140" />
         <el-table-column label="检验判定" width="150">
           <template #default="{ row }">
             <el-select
@@ -306,9 +285,6 @@ watch(
             materialCode: item.materialCode,
             materialName: item.materialName,
             quantity: Number(item.quantity || 0),
-            sampledQuantity: isReinspection
-              ? reinspectionQuantity
-              : Number(item.sampledQuantity ?? item.quantity ?? 0),
             qualifiedQuantity: isReinspection
               ? reinspectionQuantity
               : Number(item.qualifiedQuantity ?? item.quantity ?? 0),
@@ -316,6 +292,8 @@ watch(
             acceptedQuantity: isReinspection
               ? reinspectionQuantity
               : Number(item.acceptedQuantity ?? item.quantity ?? 0),
+            isReinspection: Boolean(isReinspection),
+            reinspectionQuantity,
             inspectionResult: isReinspection
               ? InspectionResultEnum.PASS.value
               : item.inspectionResult || InspectionResultEnum.PASS.value,
@@ -347,8 +325,10 @@ function defectTotal(row: any) {
 }
 function syncDefects(row: any) {
   const total = defectTotal(row)
-  row.rejectedQuantity = Math.min(Number(row.sampledQuantity || 0), total)
-  row.qualifiedQuantity = Math.max(0, Number(row.sampledQuantity || 0) - row.rejectedQuantity)
+  const inspectionQuantity = Number(row.isReinspection ? row.reinspectionQuantity : row.quantity || 0)
+  row.rejectedQuantity = Math.min(inspectionQuantity, total)
+  row.qualifiedQuantity = Math.max(0, inspectionQuantity - row.rejectedQuantity)
+  row.acceptedQuantity = row.qualifiedQuantity
   const critical = row.inspectionItems.reduce(
     (sum: number, check: any) => sum + Number(check.crQuantity || 0),
     0
@@ -358,10 +338,15 @@ function syncDefects(row: any) {
     row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
   }
 }
+function syncFullInspection(row: any) {
+  row.qualifiedQuantity = Number(row.qualifiedQuantity || 0)
+  row.rejectedQuantity = Number(row.rejectedQuantity || 0)
+  row.acceptedQuantity = row.qualifiedQuantity
+}
 function handleResultChange(row: any) {
   if (row.inspectionResult === InspectionResultEnum.PASS.value) {
     row.disposition = undefined
-    row.acceptedQuantity = Number(row.quantity || 0)
+    row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
   } else if (row.inspectionResult === InspectionResultEnum.FAIL.value) {
     row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
   }
@@ -387,28 +372,15 @@ function normalizeInspectionItem(check: any) {
   }
 }
 function syncDisposition(row: any) {
-  // dev-20260916-009：让步接收由「整批接收」改为「良品接收」，不良品一律走隔离处置
-  // （隔离数量 = 收货数量 - 接收数量，若把不良计入接收，隔离会算成 0，不良品当良品入库）
-  if (row.disposition === IqcDispositionEnum.CONCESSION.value)
-    row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
-  else if (
-    row.disposition === IqcDispositionEnum.RETURN.value ||
-    row.disposition === IqcDispositionEnum.SCRAP.value ||
-    row.disposition === IqcDispositionEnum.REINSPECT.value ||
-    row.disposition === IqcDispositionEnum.HOLD.value ||
-    row.disposition === IqcDispositionEnum.SUPPLIER_REWORK.value
-  )
-    row.acceptedQuantity = 0
-  else row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
+  row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
 }
 
 async function submit() {
   for (const item of form.items) {
-    if (
-      Number(item.sampledQuantity) !==
-      Number(item.qualifiedQuantity) + Number(item.rejectedQuantity)
-    ) {
-      ElMessage.warning(`${item.materialCode}：抽检数量须等于合格与不良数量之和`)
+    item.acceptedQuantity = Number(item.qualifiedQuantity || 0)
+    const inspectionQuantity = Number(item.isReinspection ? item.reinspectionQuantity : item.quantity)
+    if (Number(item.qualifiedQuantity) + Number(item.rejectedQuantity) !== inspectionQuantity) {
+      ElMessage.warning(`${item.materialCode}：合格数量与不良数量之和必须等于收货数量`)
       return
     }
     if (item.inspectionResult === InspectionResultEnum.FAIL.value && !item.disposition) {
@@ -437,7 +409,6 @@ async function submit() {
       items: form.items.map(
         ({
           itemId,
-          sampledQuantity,
           inspectionResult,
           disposition,
           qualifiedQuantity,
@@ -447,7 +418,6 @@ async function submit() {
           inspectionItems,
         }) => ({
           itemId,
-          sampledQuantity,
           inspectionResult,
           disposition,
           qualifiedQuantity,

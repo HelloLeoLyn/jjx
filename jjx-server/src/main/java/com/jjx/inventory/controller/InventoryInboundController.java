@@ -172,6 +172,13 @@ public class InventoryInboundController {
         return Result.success(inboundService.listIqcReworkOrders(inboundId));
     }
 
+    @GetMapping("/{inboundId}/iqc-batches")
+    @Operation(summary = "查询 IQC 批次谱系")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:lot:view", "quality:ncr:view"}, mode = SaMode.OR)
+    public Result<List<com.jjx.inventory.domain.InventoryIqcBatch>> listIqcBatches(@PathVariable Long inboundId) {
+        return Result.success(inboundService.listIqcBatches(inboundId));
+    }
+
     @GetMapping("/{inboundId}/iqc-scrap-orders")
     @Operation(summary = "查询 IQC 报废审批单")
     @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)

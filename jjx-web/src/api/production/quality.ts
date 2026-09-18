@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
-import { InspectionResult, type FqcDisposition } from '@/enums/quality'
+import { InspectionResult } from '@/enums/quality'
 
 export interface QualityQuery {
   pageNum: number
@@ -76,30 +76,6 @@ export interface QualityVO {
   items?: InspectionItemVO[]
 }
 
-export interface FqcReportPrintVO {
-  inspectionId: number
-  inspectionNo?: string
-  customerName?: string
-  orderQuantity?: number
-  sampleQuantity?: number
-  version?: string
-  productName?: string
-  salesOrderNo?: string
-  productionBatchNo?: string
-  productCode?: string
-  machineModel?: string
-  inspectionTime?: string
-  failQuantity?: number
-  result?: string
-  resultName?: string
-  inspector?: string
-  qualitySupervisor?: string
-  defectDescription?: string
-  recordNo?: string
-  items?: InspectionItemVO[]
-}
-
-/** P3-C：判定入参（正式质量动作，不走 legacy PUT） */
 export interface QualityJudgePayload {
   result: typeof InspectionResult.PASS | typeof InspectionResult.FAIL
   totalQty?: number
@@ -130,9 +106,6 @@ export const qualityApi = {
   getById(id: number) {
     return request.get<R<QualityVO>>(`/production/quality/${id}`)
   },
-  getFqcReportPrint(id: number) {
-    return request.get<R<FqcReportPrintVO>>(`/production/quality/${id}/fqc-report-print`)
-  },
   create(data: any) {
     return request.post<R<number>>('/production/quality', data)
   },
@@ -147,9 +120,6 @@ export const qualityApi = {
   /** P3-C：复检（新建 PENDING 记录，不覆盖历史） */
   reinspect(id: number) {
     return request.post<R<number>>(`/production/quality/${id}/reinspect`)
-  },
-  disposeFailure(id: number, data: { action: FqcDisposition; quantity: number; remark?: string }) {
-    return request.post<R<number | null>>(`/production/quality/${id}/disposition`, data)
   },
   update(data: any) {
     return request.put<R<void>>('/production/quality', data)

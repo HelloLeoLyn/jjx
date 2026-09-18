@@ -687,7 +687,10 @@ const handleCancle = async (row: PurchaseOrderVO) => {
  * 判断订单是否可删除（草稿和已拒绝可删除）
  */
 function isOrderDeletable(approvalStatus: number): boolean {
-  return approvalStatus === ApprovalStatusEnum.DRAFT.value || approvalStatus === ApprovalStatusEnum.REJECTED.value
+  return (
+    approvalStatus === ApprovalStatusEnum.DRAFT.value ||
+    approvalStatus === ApprovalStatusEnum.REJECTED.value
+  )
 }
 
 // ===== 操作预览器 =====
@@ -714,7 +717,7 @@ function openPreview(opKey: string, row?: PurchaseOrderVO) {
 }
 
 const orderActions: TableAction<PurchaseOrderVO>[] = [
-  { key: 'print', label: '打印', type: 'info', order: 10 },
+  { key: 'trace', label: '查看流水', type: 'info', order: 10 },
   {
     key: 'edit',
     label: '修改',
@@ -722,14 +725,7 @@ const orderActions: TableAction<PurchaseOrderVO>[] = [
     visible: ({ row }) => isOrderEditable(row.approvalStatus),
     order: 20,
   },
-  {
-    key: 'cancel',
-    label: '取消',
-    type: 'danger',
-    permission: 'purchase:order:edit',
-    visible: ({ row }) => isOrderCancellable(row.approvalStatus),
-    order: 30,
-  },
+
   {
     key: 'approve',
     label: '审批通过',
@@ -768,7 +764,16 @@ const orderActions: TableAction<PurchaseOrderVO>[] = [
     visible: ({ row }) => isOrderPayable(row.approvalStatus, row.paymentStatus),
     order: 80,
   },
-  { key: 'trace', label: '查看流水', type: 'info', order: 90 },
+  {
+    key: 'cancel',
+    label: '取消',
+    type: 'danger',
+    permission: 'purchase:order:edit',
+    visible: ({ row }) => isOrderCancellable(row.approvalStatus),
+    order: 90,
+  },
+
+  { key: 'print', label: '打印', type: 'info', order: 100 },
 ]
 
 function handleOrderAction(key: string, row: PurchaseOrderVO) {

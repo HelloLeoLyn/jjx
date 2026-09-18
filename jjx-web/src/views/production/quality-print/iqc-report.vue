@@ -38,8 +38,8 @@
               <td>{{ info.inboundNo || '' }}</td>
               <th>产品编号</th>
               <td>{{ selectedItem?.materialCode || '' }}</td>
-              <th>抽检数量</th>
-              <td>{{ sampledQuantity }}</td>
+              <th>检验数量</th>
+              <td>{{ inspectionQuantity }}</td>
             </tr>
             <tr>
               <th>日期</th>
@@ -178,9 +178,7 @@ const selectedItem = computed(() =>
   (info.value?.items || []).find((item) => Number(item.inboundItemId || item.itemId) === Number(inspection.value?.sourceItemId))
 )
 const incomingQuantity = computed(() => selectedItem.value?.quantity ?? '')
-const sampledQuantity = computed(
-  () => inspection.value?.totalQty ?? selectedItem.value?.sampledQuantity ?? ''
-)
+const inspectionQuantity = computed(() => selectedItem.value?.sampledQuantity ?? '')
 const isOfficial = computed(() => inspection.value?.reviewStatus === QualityReviewStatus.APPROVED)
 const rejectedTotal = computed(
   () => inspection.value?.failQty ?? selectedItem.value?.rejectedQuantity ?? ''

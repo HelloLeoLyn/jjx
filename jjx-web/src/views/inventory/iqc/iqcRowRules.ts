@@ -3,32 +3,24 @@
  * dev-20260916-008（2026-09-16）：批量合格 / 复制上一行 / 行内联动
  *
  * 口径（用户拍板）：
- * - 批量合格：每项 结论=合格、实测记录留空、CR/MA/MI=0；抽检数量=收货数量、合格数量=收货数量、
+ * - 全检：合格数量 + 不良数量 = 收货数量，接收数量 = 合格数量
+ * - 批量合格：每项 结论=合格、实测记录留空、CR/MA/MI=0；合格数量=收货数量、
  *   不良=0、判定=合格、处置与不合格原因清空、接收数量=收货数量
  * - 复制上一行：只带 检验标准/方法/设备/结论，不带实测值与缺陷数（避免误判）
  */
-import { InspectionResultEnum, IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
+import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
 import { InspectionResult } from '@/enums/quality/InspectionEnum'
 
-/** 处置方式联动接收数量：不良品不得计入允收入库数量（否则隔离数量=收货-接收=0，不良品会被当良品入库）
- *  dev-20260916-009：让步接收/部分接收的默认与上限均为「良品数量」，不良品一律走隔离处置 */
+/** 处置方式联动接收数量：全检口径下接收数量恒等于合格数量 */
 export function syncIqcDisposition(row: any) {
   if (!row) return
   row.acceptedQuantity = maxAcceptedIqcQuantity(row)
 }
 
-/** 可允收入库数量上限：特采/部分接收 = 收货数量 - 不良数量（良品数量），其余处置 = 0 */
+/** 全检口径的接收数量：等于合格数量 */
 export function maxAcceptedIqcQuantity(row: any): number {
   if (!row) return 0
-  const quantity = Number(row.quantity || 0)
-  const qualified = Math.max(0, Number(row.qualifiedQuantity || 0))
-  if (
-    row.disposition === IqcDispositionEnum.CONCESSION.value ||
-    row.disposition === IqcDispositionEnum.PARTIAL_ACCEPT.value
-  ) {
-    return Math.min(quantity, qualified)
-  }
-  return 0
+  return Math.max(0, Number(row.qualifiedQuantity || 0))
 }
 
 /** 由检验项缺陷数反推行级数量与判定（弹窗保存/批量后调用） */
@@ -38,11 +30,9 @@ export function syncIqcRowFromChecks(row: any) {
   const sum = (key: string) => items.reduce((total, check) => total + Number(check?.[key] || 0), 0)
   const total = sum('crQuantity') + sum('maQuantity') + sum('miQuantity')
 
-  let sampled = Number(row.sampledQuantity || 0)
-  if (sampled === 0 && total > 0) sampled = total
-  row.sampledQuantity = sampled
-  row.rejectedQuantity = Math.min(sampled, total)
-  row.qualifiedQuantity = Math.max(0, sampled - row.rejectedQuantity)
+  const quantity = Number(row.isReinspection ? row.reinspectionQuantity : row.quantity || 0)
+  row.rejectedQuantity = Math.min(quantity, total)
+  row.qualifiedQuantity = Math.max(0, quantity - row.rejectedQuantity)
 
   if (sum('crQuantity') > 0 || row.rejectedQuantity > 0) {
     row.inspectionResult = InspectionResultEnum.FAIL.value
@@ -53,16 +43,16 @@ export function syncIqcRowFromChecks(row: any) {
   }
   if (row.inspectionResult === InspectionResultEnum.PASS.value) {
     row.disposition = undefined
-    row.acceptedQuantity = Number(row.quantity || 0)
+    row.acceptedQuantity = row.qualifiedQuantity
   } else {
     syncIqcDisposition(row)
   }
 }
 
-/** 批量合格：整批判合格、实测记录留空、缺陷数归零、抽检=收货数、接收=收货数 */
+/** 批量合格：整批判合格、实测记录留空、缺陷数归零、合格/接收=收货数 */
 export function batchPassIqcRow(row: any) {
   if (!row) return
-  const quantity = Number(row.quantity || 0)
+  const quantity = Number(row.isReinspection ? row.reinspectionQuantity : row.quantity || 0)
   ;(row.inspectionItems || []).forEach((check: any) => {
     check.actualValue = ''
     check.crQuantity = 0
@@ -70,7 +60,6 @@ export function batchPassIqcRow(row: any) {
     check.miQuantity = 0
     check.result = InspectionResult.PASS
   })
-  row.sampledQuantity = quantity
   row.qualifiedQuantity = quantity
   row.rejectedQuantity = 0
   row.inspectionResult = InspectionResultEnum.PASS.value

@@ -143,6 +143,9 @@
                       <el-table-column label="识别原文" min-width="160">
                         <template #default="{ row: component }">
                           <span>{{ component.text || '图标' }}</span>
+                          <el-tag v-if="component.jumpCategory" size="small" type="warning"
+                            >{{ jumpCategoryLabel(component.jumpCategory) }}跳</el-tag
+                          >
                         </template>
                       </el-table-column>
                       <el-table-column label="标准工序" min-width="220">
@@ -177,6 +180,12 @@
                               </el-option>
                             </el-option-group>
                           </el-select>
+                        </template>
+                      </el-table-column>
+                      <el-table-column label="跳类型" width="100">
+                        <template #default="{ row: component }">
+                          <el-tag v-if="component.jumpCategory" type="warning" size="small">{{ jumpCategoryLabel(component.jumpCategory) }}</el-tag>
+                          <span v-else>-</span>
                         </template>
                       </el-table-column>
                       <el-table-column label="作业说明" min-width="160">
@@ -214,8 +223,13 @@
                 <el-table-column prop="stepNo" label="序号" width="65" />
                 <el-table-column label="标准工序" min-width="220">
                   <template #default="{ row }">
+                    <template
+                      v-if="row.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value"
+                    >
+                      <el-tag type="info">复合工序（子项确认）</el-tag>
+                    </template>
                     <el-select
-                      v-if="row.contentType !== ArchiveCellContentTypeEnum.EMPTY.value"
+                      v-else-if="row.contentType !== ArchiveCellContentTypeEnum.EMPTY.value"
                       v-model="row.processId"
                       filterable
                       clearable
@@ -248,11 +262,22 @@
                     <el-tag v-else type="info">空工序</el-tag>
                   </template>
                 </el-table-column>
+                <el-table-column label="跳类型" width="100">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.jumpCategory" type="warning" size="small">{{ jumpCategoryLabel(row.jumpCategory) }}</el-tag>
+                    <span v-else>-</span>
+                  </template>
+                </el-table-column>
                 <el-table-column label="状态" width="90"
                   ><template #default="{ row }"
-                    ><el-tag :type="stepConfirmed(row) ? 'success' : 'warning'">{{
-                      stepConfirmed(row) ? '已确认' : '待确认'
-                    }}</el-tag></template
+                    ><el-tooltip
+                      v-if="!stepConfirmed(row)"
+                      :content="stepIssue(row)"
+                      placement="top"
+                    >
+                      <el-tag type="warning">待确认</el-tag>
+                    </el-tooltip>
+                    <el-tag v-else type="success">已确认</el-tag></template
                   ></el-table-column
                 >
                 <el-table-column
@@ -296,9 +321,9 @@
                       type="success"
                       plain
                       :disabled="
-                        row.processStructure !== ArchiveProcessStructureEnum.COMPOSITE.value &&
-                        row.contentType !== ArchiveCellContentTypeEnum.EMPTY.value &&
-                        !row.processId
+                        row.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value ||
+                        (row.contentType !== ArchiveCellContentTypeEnum.EMPTY.value &&
+                          !row.processId)
                       "
                       @click.stop="confirmStep(row)"
                       >{{ stepConfirmed(row) ? '修改后确认' : '确认' }}</el-button
@@ -381,6 +406,8 @@ type Component = {
   order: number
   text: string | null
   processId?: number
+  indexNumber?: number
+  jumpCategory?: 'PANEL' | 'UP_LINE' | 'DOWN_LINE'
   workInstruction?: string
   confirmed?: boolean
 }
@@ -394,6 +421,8 @@ type Step = {
   components: Component[]
   processMappingConfirmed?: boolean
   processId?: number
+  indexNumber?: number
+  jumpCategory?: 'PANEL' | 'UP_LINE' | 'DOWN_LINE'
   workInstruction?: string
   operationRemark?: string
   cellImagePath?: string
@@ -432,6 +461,18 @@ const archiveActions: TableAction<ArchiveImportRecord>[] = [
 const payload = <T,>(r: any): T => (r?.data?.data ?? r?.data ?? r) as T
 const workflowName = (t: string) =>
   (({ PANEL: '面板', UP_LINE: '上线', DOWN_LINE: '下线' }) as Record<string, string>)[t] || t
+
+const jumpCategoryLabel = (category?: string) =>
+  ({ PANEL: '面板', UP_LINE: '上线', DOWN_LINE: '下线' })[category || ''] || category || ''
+
+/** 档案图标中的三种“跳”只按外形识别，不把尾随数字当作工序下标。 */
+const detectJumpCategory = (value?: string): Component['jumpCategory'] => {
+  const text = (value || '').replace(/\s/g, '')
+  if (/□|▭|▱|长方形|矩形/.test(text)) return 'PANEL'
+  if (/△|▲|上三角/.test(text)) return 'UP_LINE'
+  if (/▽|▼|下三角/.test(text)) return 'DOWN_LINE'
+  return undefined
+}
 const groups = computed(() => [
   ...draft.value.groups.map((g, i) => ({ ...g, key: `g-${i}` })),
   ...draft.value.workflows.map((w) => ({ ...w, key: `w-${w.workflowType}` })),
@@ -468,6 +509,61 @@ const generationReady = computed(
     })
 )
 const processById = (id?: number) => processes.value.find((p) => p.processId === id)
+const autoMapJumpProcess = (component: Component) => {
+  if (!component.jumpCategory) return
+  const candidates = processes.value.filter(
+    (p) => p.processCategory === component.jumpCategory && /跳/.test(p.processName || '')
+  )
+  if (!component.processId && candidates.length === 1) component.processId = candidates[0].processId
+}
+const normalizeComponentNumbers = (step: Step) => {
+  if (step.processStructure !== ArchiveProcessStructureEnum.COMPOSITE.value) return
+  const components = step.components || []
+  for (let i = components.length - 1; i >= 0; i--) {
+    const component = components[i]
+    const text = String(component.text || '').trim()
+    if (/^\d+$/.test(text) && i > 0) {
+      const previous = components[i - 1]
+      previous.workInstruction = previous.workInstruction
+        ? `${previous.workInstruction} ${text}`
+        : text
+      components.splice(i, 1)
+      continue
+    }
+    const match = text.match(/^(.*?)(\d+)$/)
+    if (match && match[1].trim()) {
+      component.text = match[1].trim()
+      component.workInstruction = component.workInstruction
+        ? `${component.workInstruction} ${match[2]}`
+        : match[2]
+    }
+    component.jumpCategory = detectJumpCategory(component.text || undefined)
+    autoMapJumpProcess(component)
+  }
+}
+const normalizeWorkflowStepNumbers = () => {
+  draft.value.workflows.forEach((workflow) => {
+    let sequence = 1
+    workflow.steps.forEach((step) => {
+      if (step.contentType === ArchiveCellContentTypeEnum.EMPTY.value) return
+      step.stepNo = sequence++
+    })
+  })
+}
+const stepIssue = (step: Step) => {
+  if (step.contentType === ArchiveCellContentTypeEnum.EMPTY.value) return '空工序无需匹配标准工序'
+  if (step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value) {
+    if (!step.components?.length) return '复合工序没有识别到子项'
+    const missing = step.components.findIndex((c) => !c.processId)
+    if (missing >= 0) return `子项${missing + 1}未选择标准工序`
+    const unconfirmed = step.components.findIndex((c) => !c.confirmed)
+    if (unconfirmed >= 0) return `子项${unconfirmed + 1}尚未确认`
+    return '复合工序待确认'
+  }
+  if (!step.processId) return '未选择标准工序'
+  if (!step.processMappingConfirmed) return '标准工序尚未确认'
+  return '待确认'
+}
 const processGroups = computed(() => {
   const grouped = new Map<string, StandardProcessItem[]>()
   processes.value.forEach((process) => {
@@ -479,15 +575,20 @@ const processGroups = computed(() => {
   return Array.from(grouped, ([label, options]) => ({ label, options }))
 })
 const confirmStep = (step: Step) => {
-  if (step.contentType !== ArchiveCellContentTypeEnum.EMPTY.value && !step.processId) return
   if (step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value) {
+    normalizeComponentNumbers(step)
     if (!step.components.length || step.components.some((c) => !c.processId || !c.confirmed)) return
+  } else if (step.contentType !== ArchiveCellContentTypeEnum.EMPTY.value && !step.processId) {
+    return
   }
   step.classificationConfirmed = true
   step.processMappingConfirmed = true
 }
 const confirmComponent = (step: Step, component: Component) => {
+  normalizeComponentNumbers(step)
   if (!component.processId) return
+  const process = processById(component.processId)
+  component.jumpCategory ||= detectJumpCategory(component.text || undefined)
   component.confirmed = true
   if (step.components.length && step.components.every((c) => c.processId && c.confirmed)) {
     step.classificationConfirmed = true
@@ -501,12 +602,25 @@ const stepConfirmed = (step: Step) => {
   if (step.contentType === ArchiveCellContentTypeEnum.EMPTY.value)
     return Boolean(step.classificationConfirmed)
   if (!step.classificationConfirmed) return false
-  if (step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value)
+  if (step.processStructure === ArchiveProcessStructureEnum.COMPOSITE.value) {
     return (
       step.components.length > 0 &&
-      step.components.every((c) => Boolean(c.processId) && c.confirmed)
+      step.components.every((c) => {
+        const process = processById(c.processId)
+        return (
+          Boolean(c.processId) &&
+          Boolean(c.confirmed) &&
+          Boolean(process)
+        )
+      })
     )
-  return Boolean(step.processId) && Boolean(step.processMappingConfirmed)
+  }
+  const process = processById(step.processId)
+  return (
+    Boolean(step.processId) &&
+    Boolean(step.processMappingConfirmed) &&
+    Boolean(process)
+  )
 }
 async function load() {
   loading.value = true
@@ -562,11 +676,20 @@ async function openWorkbench(r: ArchiveImportRecord) {
   draft.value = d.extractedJson ? JSON.parse(d.extractedJson) : { groups: [], workflows: [] }
   draft.value.groups ||= []
   draft.value.workflows ||= []
+  if (!processes.value.length)
+    processes.value = payload(await standardProcessApi.getEnabledProcesses())
+  normalizeWorkflowStepNumbers()
   draft.value.workflows.forEach((w) =>
     w.steps.forEach((s) => {
       s.workInstruction ||= ''
       s.operationRemark ||= ''
-      s.components.forEach((c) => (c.workInstruction ||= ''))
+      normalizeComponentNumbers(s)
+      s.components.forEach((c) => {
+        if (!c.workInstruction && c.indexNumber != null) c.workInstruction = String(c.indexNumber)
+        c.workInstruction ||= ''
+        c.jumpCategory ||= detectJumpCategory(c.text || undefined)
+        autoMapJumpProcess(c)
+      })
     })
   )
   visible.value = true
@@ -577,8 +700,6 @@ async function openWorkbench(r: ArchiveImportRecord) {
     const imageUrl = await url(g.groupImagePath)
     if (imageUrl) groupImageUrls.value[g.key || ''] = imageUrl
   }
-  if (!processes.value.length)
-    processes.value = payload(await standardProcessApi.getEnabledProcesses())
 }
 function closeWorkbench() {
   for (const u of cache.values()) URL.revokeObjectURL(u)

@@ -71,6 +71,7 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     com.jjx.inventory.domain.InventoryIqcDispositionOrder getDispositionOrder(Long dispositionId);
     List<com.jjx.inventory.domain.InventoryIqcReturnOrder> listIqcReturnOrders(Long inboundId);
     List<com.jjx.inventory.domain.InventoryIqcReworkOrder> listIqcReworkOrders(Long inboundId);
+    List<com.jjx.inventory.domain.InventoryIqcBatch> listIqcBatches(Long inboundId);
     List<com.jjx.inventory.domain.InventoryIqcScrapOrder> listIqcScrapOrders(Long inboundId);
     boolean approveIqcScrap(Long scrapId, com.jjx.inventory.dto.save.IqcScrapApproveDTO approval);
     Long completeIqcRework(Long reworkId);

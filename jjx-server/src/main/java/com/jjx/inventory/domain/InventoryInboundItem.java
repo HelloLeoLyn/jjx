@@ -64,6 +64,9 @@ public class InventoryInboundItem extends BaseEntity {
     /** 当前生效的统一质量检验记录 */
     private Long inspectionId;
 
+    /** IQC 归一（dev-20260918-026）：关联 quality_lot 主键 */
+    private Long lotId;
+
     /** 当前明细检验结论 */
     private String inspectionResult;
 
@@ -78,6 +81,7 @@ public class InventoryInboundItem extends BaseEntity {
 
     /** 批次号 */
     private String batchNo;
+    private Long iqcBatchId;
 
     /** 生产日期 */
     @JsonFormat(pattern = "yyyy-MM-dd")

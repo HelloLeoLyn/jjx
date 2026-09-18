@@ -5,13 +5,25 @@
         <div class="header">
           <span>{{ title }}</span>
           <div>
-            <el-select v-model="query.status" clearable placeholder="状态" style="width: 130px" @change="load(1)">
+            <el-select
+              v-model="query.status"
+              clearable
+              placeholder="状态"
+              style="width: 130px"
+              @change="load(1)"
+            >
               <el-option label="待检" value="PENDING" />
               <el-option label="检验中" value="INSPECTING" />
               <el-option label="已判定" value="JUDGED" />
               <el-option label="已关闭" value="CLOSED" />
             </el-select>
-            <el-input v-model="query.lotNo" clearable placeholder="批号" style="width: 170px" @keyup.enter="load(1)" />
+            <el-input
+              v-model="query.lotNo"
+              clearable
+              placeholder="批号"
+              style="width: 170px"
+              @keyup.enter="load(1)"
+            />
             <el-button type="primary" @click="load(1)">查询</el-button>
             <el-button @click="load()">刷新</el-button>
           </div>
@@ -50,13 +62,17 @@
         </el-table-column>
         <el-table-column label="待处置" width="90" align="right">
           <template #default="{ row }">
-            <el-tag v-if="pendingDefect(row) > 0" type="danger" size="small">{{ num(pendingDefect(row)) }}</el-tag>
+            <el-tag v-if="pendingDefect(row) > 0" type="danger" size="small">{{
+              num(pendingDefect(row))
+            }}</el-tag>
             <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag size="small" :type="statusTag(row.status)">{{ statusLabel(row.status) }}</el-tag>
+            <el-tag size="small" :type="statusTag(row.status)">{{
+              statusLabel(row.status)
+            }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="判定" width="90">
@@ -67,7 +83,9 @@
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openItems(row)">录入</el-button>
             <el-button link type="success" size="small" @click="openJudge(row)">判定</el-button>
-            <el-button link type="warning" size="small" @click="handleReinspect(row)">复检</el-button>
+            <el-button link type="warning" size="small" @click="handleReinspect(row)"
+              >复检</el-button
+            >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
             <el-button
               v-if="lotType === 'FQC' && row.orderId"
@@ -96,8 +114,13 @@
     <!-- 录入（检验项） -->
     <el-dialog v-model="itemsVisible" title="检验录入" width="1100px" append-to-body>
       <el-table :data="itemRows" border size="small">
+        <el-table-column v-if="lotType === 'FQC'" label="类别" width="75">
+          <template #default="{ row }">{{ row.category || '其他' }}</template>
+        </el-table-column>
         <el-table-column label="检验项目" width="130">
-          <template #default="{ row }"><el-input v-model="row.checkItem" /></template>
+          <template #default="{ row }"
+            ><el-input v-model="row.checkItem" :disabled="lotType === 'FQC'"
+          /></template>
         </el-table-column>
         <el-table-column label="检验规范" min-width="170">
           <template #default="{ row }"><el-input v-model="row.standard" /></template>
@@ -112,19 +135,25 @@
           <template #default="{ row }"><el-input v-model="row.sampleValues" /></template>
         </el-table-column>
         <el-table-column label="CR" width="80">
-          <template #default="{ row }"><el-input-number v-model="row.crQuantity" :min="0" size="small" /></template>
+          <template #default="{ row }"
+            ><el-input-number v-model="row.crQuantity" :min="0" size="small"
+          /></template>
         </el-table-column>
         <el-table-column label="MA" width="80">
-          <template #default="{ row }"><el-input-number v-model="row.maQuantity" :min="0" size="small" /></template>
+          <template #default="{ row }"
+            ><el-input-number v-model="row.maQuantity" :min="0" size="small"
+          /></template>
         </el-table-column>
         <el-table-column label="MI" width="80">
-          <template #default="{ row }"><el-input-number v-model="row.miQuantity" :min="0" size="small" /></template>
+          <template #default="{ row }"
+            ><el-input-number v-model="row.miQuantity" :min="0" size="small"
+          /></template>
         </el-table-column>
         <el-table-column label="结论" width="110">
           <template #default="{ row }">
             <el-select v-model="row.result" size="small">
-              <el-option label="合格" value="pass" />
-              <el-option label="不合格" value="fail" />
+              <el-option label="合格" :value="InspectionResult.PASS" />
+              <el-option label="不合格" :value="InspectionResult.FAIL" />
             </el-select>
           </template>
         </el-table-column>
@@ -133,7 +162,8 @@
         </el-table-column>
       </el-table>
       <div class="dialog-actions">
-        <el-button @click="addItemRow">新增检验项</el-button>
+        <el-button v-if="lotType !== 'FQC'" @click="addItemRow">新增检验项</el-button>
+        <span v-else class="entry-tip">FQC 项目已按 JJX-QR-039 固定分组，逐项填写后保存</span>
       </div>
       <template #footer>
         <el-button @click="itemsVisible = false">取消</el-button>
@@ -147,7 +177,11 @@
         <el-form-item label="检验批">{{ current?.lotNo }}</el-form-item>
         <el-form-item label="批量">{{ num(current?.lotQuantity) }}</el-form-item>
         <el-form-item label="检验数量" required>
-          <el-input-number v-model="judgeForm.inspectedQuantity" :min="1" :max="Number(current?.lotQuantity || 0)" />
+          <el-input-number
+            v-model="judgeForm.inspectedQuantity"
+            :min="1"
+            :max="Number(current?.lotQuantity || 0)"
+          />
         </el-form-item>
         <el-form-item label="合格数量" required>
           <el-input-number v-model="judgeForm.passQuantity" :min="0" />
@@ -156,7 +190,12 @@
           <el-input-number v-model="judgeForm.failQuantity" :min="0" />
         </el-form-item>
         <el-form-item v-if="Number(judgeForm.failQuantity || 0) > 0" label="不良原因">
-          <el-input v-model="judgeForm.defectReason" type="textarea" :rows="2" placeholder="不合格原因" />
+          <el-input
+            v-model="judgeForm.defectReason"
+            type="textarea"
+            :rows="2"
+            placeholder="不合格原因"
+          />
         </el-form-item>
         <div class="judge-tip">
           合格 + 不良 必须等于检验数量；不良会自动进不良台账（成品按差额入库，复检只调差额）
@@ -175,6 +214,7 @@ import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { qualityLotApi, type QualityLot, type QualityLotItem } from '@/api/quality/lot'
+import { InspectionResult } from '@/enums/quality'
 
 const router = useRouter()
 
@@ -190,8 +230,10 @@ const current = ref<QualityLot | null>(null)
 
 const num = (value?: number | null) =>
   value == null ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
-const remaining = (row: QualityLot) => Number(row.lotQuantity || 0) - Number(row.inspectedQuantity || 0)
-const pendingDefect = (row: QualityLot) => Number(row.failQuantity || 0) - Number(row.disposedQuantity || 0)
+const remaining = (row: QualityLot) =>
+  Number(row.lotQuantity || 0) - Number(row.inspectedQuantity || 0)
+const pendingDefect = (row: QualityLot) =>
+  Number(row.failQuantity || 0) - Number(row.disposedQuantity || 0)
 const sourceLabel = (row: QualityLot) => {
   const map: Record<string, string> = {
     WORK_REPORT: '报工批',
@@ -202,9 +244,12 @@ const sourceLabel = (row: QualityLot) => {
   return `${map[key] || key}${row.sourceId ? ' #' + row.sourceId : ''}`
 }
 const statusLabel = (status?: string) =>
-  ({ PENDING: '待检', INSPECTING: '检验中', JUDGED: '已判定', CLOSED: '已关闭' })[status || ''] || status || '-'
+  ({ PENDING: '待检', INSPECTING: '检验中', JUDGED: '已判定', CLOSED: '已关闭' })[status || ''] ||
+  status ||
+  '-'
 const statusTag = (status?: string) =>
-  (({ PENDING: 'info', INSPECTING: 'warning', JUDGED: 'success', CLOSED: '' })[status || ''] || 'info') as never
+  (({ PENDING: 'info', INSPECTING: 'warning', JUDGED: 'success', CLOSED: '' })[status || ''] ||
+    'info') as never
 const resultLabel = (result?: string) =>
   ({ pass: '合格', fail: '不合格', concession: '特采', pending: '待判' })[result || ''] || '-'
 
@@ -228,18 +273,60 @@ const load = async (page?: number) => {
 const itemsVisible = ref(false)
 const itemRows = ref<QualityLotItem[]>([])
 const saving = ref(false)
+const fqcLayout = [
+  { category: '材 质', items: ['面板', '上线', '下线', '背胶'] },
+  { category: '尺 寸', items: ['长度', '宽度', '厚度', 'Key高度', '线头', '视窗'] },
+  { category: '功能', items: ['电阻', '防水', '寿命'] },
+  { category: '印 刷', items: ['图文', '灯孔', '网点', '线头'] },
+  { category: '组合', items: ['LED', 'PIN', '弹片', '背胶'] },
+  { category: '颜 色', items: ['Color', 'Color', 'Color', 'Color', 'Color', 'Color', 'Color'] },
+]
+const createItem = (
+  checkItem: string,
+  category?: string
+): QualityLotItem & { category?: string } => ({
+  checkItem,
+  category,
+  crQuantity: 0,
+  maQuantity: 0,
+  miQuantity: 0,
+  result: InspectionResult.PASS,
+})
+const alignFqcItems = (items: QualityLotItem[]) => {
+  const queues = new Map<string, QualityLotItem[]>()
+  for (const item of items) {
+    const key = String(item.checkItem || '')
+      .trim()
+      .toLowerCase()
+    queues.set(key, [...(queues.get(key) || []), item])
+  }
+  const aligned: (QualityLotItem & { category?: string })[] = []
+  for (const group of fqcLayout) {
+    for (const name of group.items) {
+      const item = queues.get(name.toLowerCase())?.shift()
+      aligned.push({ ...(item || createItem(name)), checkItem: name, category: group.category })
+    }
+  }
+  // 保留历史上不在 QR-039 固定清单内的项目，避免打开并保存时丢失数据。
+  for (const leftovers of queues.values()) {
+    aligned.push(...leftovers.map((item) => ({ ...item, category: '其他' })))
+  }
+  return aligned
+}
 const openItems = async (row: QualityLot) => {
   current.value = row
+  let loaded: QualityLotItem[] = []
   try {
     const res: any = await qualityLotApi.items(row.lotId)
-    itemRows.value = (res?.data || []).map((item: QualityLotItem) => ({ ...item }))
+    loaded = (res?.data || []).map((item: QualityLotItem) => ({ ...item }))
   } catch {
-    itemRows.value = []
+    loaded = []
   }
-  if (!itemRows.value.length) itemRows.value = [{ checkItem: '', result: 'pass' } as QualityLotItem]
+  itemRows.value = lotType === 'FQC' ? alignFqcItems(loaded) : loaded
+  if (!itemRows.value.length) itemRows.value = [createItem('')]
   itemsVisible.value = true
 }
-const addItemRow = () => itemRows.value.push({ checkItem: '', crQuantity: 0, maQuantity: 0, miQuantity: 0, result: 'pass' } as QualityLotItem)
+const addItemRow = () => itemRows.value.push(createItem(''))
 const saveItems = async () => {
   if (!current.value) return
   const invalid = itemRows.value.find((item) => !String(item.checkItem || '').trim())
@@ -262,7 +349,12 @@ const saveItems = async () => {
 // ============ 判定 ============
 const judgeVisible = ref(false)
 const judging = ref(false)
-const judgeForm = reactive({ inspectedQuantity: 0, passQuantity: 0, failQuantity: 0, defectReason: '' })
+const judgeForm = reactive({
+  inspectedQuantity: 0,
+  passQuantity: 0,
+  failQuantity: 0,
+  defectReason: '',
+})
 const openJudge = (row: QualityLot) => {
   current.value = row
   judgeForm.inspectedQuantity = Number(row.lotQuantity || 0)
@@ -278,10 +370,14 @@ const submitJudge = async () => {
   const fail = Number(judgeForm.failQuantity || 0)
   if (inspected <= 0) return ElMessage.warning('检验数量必须大于 0')
   if (pass + fail !== inspected) return ElMessage.warning('合格数量 + 不良数量必须等于检验数量')
-  if (fail > 0 && !judgeForm.defectReason.trim()) return ElMessage.warning('有不良时必须填写不良原因')
+  if (fail > 0 && !judgeForm.defectReason.trim())
+    return ElMessage.warning('有不良时必须填写不良原因')
   judging.value = true
   try {
-    await qualityLotApi.judge(current.value.lotId, { ...judgeForm, result: fail > 0 ? 'fail' : 'pass' })
+    await qualityLotApi.judge(current.value.lotId, {
+      ...judgeForm,
+      result: fail > 0 ? 'fail' : 'pass',
+    })
     ElMessage.success('判定完成' + (fail > 0 ? '，不良已进台账' : ''))
     judgeVisible.value = false
     load()
@@ -351,6 +447,10 @@ onMounted(() => load(1))
 }
 .dialog-actions {
   margin-top: 8px;
+}
+.entry-tip {
+  color: #909399;
+  font-size: 12px;
 }
 .judge-tip {
   color: #909399;

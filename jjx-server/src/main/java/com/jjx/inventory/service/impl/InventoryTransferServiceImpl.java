@@ -362,6 +362,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             tx.setSourceId(transferId);
             tx.setSourceNo(order.getTransferNo());
             tx.setBatchNo(item.getBatchNo());
+            InventoryStockItem lineageStock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                    .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
+                    .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
+                    .last("LIMIT 1"));
+            tx.setIqcBatchId(lineageStock == null ? null : lineageStock.getIqcBatchId());
             tx.setQuantity(item.getQuantity().negate());
             tx.setUnitCost(item.getUnitCost());
             tx.setAmount(item.getAmount() != null ? item.getAmount().negate() : null);
@@ -426,6 +431,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             newStock.setWarehouseId(order.getToWarehouseId());
             newStock.setLocationId(item.getToLocationId() != null ? item.getToLocationId() : order.getToLocationId());
             newStock.setBatchNo(item.getBatchNo() != null ? item.getBatchNo() : LocalDate.now().toString());
+            InventoryStockItem sourceStock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                    .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
+                    .eq(InventoryStockItem::getBatchNo, newStock.getBatchNo())
+                    .last("LIMIT 1"));
+            newStock.setIqcBatchId(sourceStock == null ? null : sourceStock.getIqcBatchId());
             newStock.setQuantity(item.getQuantity());
             newStock.setReservedQuantity(BigDecimal.ZERO);
             newStock.setUnitCost(item.getUnitCost());
@@ -451,6 +461,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             tx.setSourceId(transferId);
             tx.setSourceNo(order.getTransferNo());
             tx.setBatchNo(item.getBatchNo());
+            tx.setIqcBatchId(newStock.getIqcBatchId());
             tx.setQuantity(item.getQuantity());
             tx.setUnitCost(item.getUnitCost());
             tx.setAmount(item.getAmount());
@@ -506,6 +517,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                     newStock.setWarehouseId(order.getFromWarehouseId());
                     newStock.setLocationId(item.getFromLocationId() != null ? item.getFromLocationId() : order.getFromLocationId());
                     newStock.setBatchNo(item.getBatchNo() != null ? item.getBatchNo() : LocalDate.now().toString());
+                    InventoryStockItem sourceStock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                            .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
+                            .eq(InventoryStockItem::getBatchNo, newStock.getBatchNo())
+                            .last("LIMIT 1"));
+                    newStock.setIqcBatchId(sourceStock == null ? null : sourceStock.getIqcBatchId());
                     newStock.setQuantity(item.getQuantity());
                     newStock.setReservedQuantity(BigDecimal.ZERO);
                     newStock.setUnitCost(item.getUnitCost());
@@ -528,6 +544,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                     tx.setSourceId(transferId);
                     tx.setSourceNo(order.getTransferNo());
                     tx.setBatchNo(item.getBatchNo());
+                    tx.setIqcBatchId(newStock.getIqcBatchId());
                     tx.setQuantity(item.getQuantity());
                     tx.setUnitCost(item.getUnitCost());
                     tx.setAmount(item.getAmount() != null ? item.getAmount() : null);
