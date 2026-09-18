@@ -40,13 +40,8 @@
       </div>
     </div>
 
-    <!-- 视图切换 + 筛选 -->
+    <!-- 筛选 -->
     <div class="page-toolbar">
-      <ViewSwitcher
-        :views="store.availableViews"
-        :model-value="store.currentViewId"
-        @change="onViewChange"
-      />
       <FilterBar
         :filter="store.filter"
         :total-cards="store.totalCards"
@@ -94,7 +89,6 @@ import { ref, computed, onMounted } from 'vue'
 import { Refresh, Microphone } from '@element-plus/icons-vue'
 import * as ElementIcons from '@element-plus/icons-vue'
 import { useKanbanStore } from '@/views/kanban/stores/kanban'
-import ViewSwitcher from '@/views/kanban/components/ViewSwitcher.vue'
 import FilterBar from '@/views/kanban/components/FilterBar.vue'
 import KanbanBoard from '@/views/kanban/components/KanbanBoard.vue'
 import CardDetailDialog from '@/views/kanban/components/CardDetailDialog.vue'
@@ -122,15 +116,11 @@ function getIconComponent(name: string) {
 
 onMounted(async () => {
   broadcast.init()
-  await store.switchTemplate('production')
+  await store.switchTemplate('dev')
 })
 
 function onTemplateChange(val: string | number | boolean | undefined) {
   store.switchTemplate(val as TemplateType)
-}
-
-function onViewChange(viewId: string) {
-  store.switchView(viewId)
 }
 
 function onFilterChange(filter: BoardFilter) {

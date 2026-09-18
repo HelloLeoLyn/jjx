@@ -13,6 +13,8 @@ import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import com.jjx.system.domain.entity.SysTask;
+import com.jjx.system.domain.entity.SysRole;
+import com.jjx.system.mapper.SysRoleMapper;
 import com.jjx.system.mapper.SysTaskMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +41,7 @@ import java.util.stream.Collectors;
 public class BoardTaskController {
 
     private final SysTaskMapper sysTaskMapper;
+    private final SysRoleMapper sysRoleMapper;
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOperationExecutionMapper executionMapper;
 
@@ -56,7 +59,30 @@ public class BoardTaskController {
             return Result.success(fetchProductionTasks());
         }
         LambdaQueryWrapper<SysTask> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysTask::getKanbanModule, module);
+        if ("dev".equals(module)) {
+            wrapper.eq(SysTask::getKanbanModule, "dev");
+        } else if ("prod".equals(module) || "biz".equals(module)) {
+            List<Long> productionRoleIds = sysRoleMapper.selectList(
+                            new LambdaQueryWrapper<SysRole>()
+                                    .likeRight(SysRole::getRoleKey, "production:")
+                                    .eq(SysRole::getStatus, "0"))
+                    .stream()
+                    .map(SysRole::getRoleId)
+                    .collect(Collectors.toList());
+            wrapper.ne(SysTask::getKanbanModule, "dev");
+            if ("prod".equals(module)) {
+                if (productionRoleIds.isEmpty()) {
+                    wrapper.apply("1 = 0");
+                } else {
+                    wrapper.in(SysTask::getAssignRole, productionRoleIds);
+                }
+            } else if (!productionRoleIds.isEmpty()) {
+                wrapper.and(w -> w.isNull(SysTask::getAssignRole)
+                        .or().notIn(SysTask::getAssignRole, productionRoleIds));
+            }
+        } else {
+            wrapper.eq(SysTask::getKanbanModule, module);
+        }
         if (status != null) {
             wrapper.eq(SysTask::getStatus, status);
         }

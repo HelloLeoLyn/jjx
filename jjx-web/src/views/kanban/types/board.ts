@@ -1,5 +1,5 @@
 /** 卡片优先级 */
-export type Priority = 'urgent' | 'high' | 'normal' | 'low'
+export type Priority = 'urgent' | 'high' | 'normal' | 'low' | 'P0' | 'P1' | 'P2' | 'P3'
 
 /** 卡片状态 */
 export type CardStatus =
@@ -11,7 +11,7 @@ export type CardStatus =
   | 'cancelled'
 
 /** 看板模板类型 */
-export type TemplateType = 'production' | 'office' | 'emergency' | 'dev'
+export type TemplateType = 'prod' | 'biz' | 'dev'
 
 /** 看板模板定义 */
 export interface BoardTemplate {

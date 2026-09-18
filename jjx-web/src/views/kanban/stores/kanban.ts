@@ -23,7 +23,7 @@ import {
 
 export const useKanbanStore = defineStore('kanban', () => {
   // 当前选中的模板类型
-  const currentTemplate = ref<TemplateType>('production')
+  const currentTemplate = ref<TemplateType>('dev')
 
   // 当前选中的视图 ID
   const currentViewId = ref<string>('')
@@ -198,7 +198,7 @@ export const useKanbanStore = defineStore('kanban', () => {
       taskCode: t.taskCode || '',
       title: t.title,
       templateType,
-      priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority)
+      priority: (['urgent', 'high', 'normal', 'low', 'P0', 'P1', 'P2', 'P3'].includes(t.priority)
         ? t.priority
         : 'normal') as BoardCard['priority'],
       status: mapSysTaskStatus(t),

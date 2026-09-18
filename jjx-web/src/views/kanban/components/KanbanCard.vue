@@ -4,6 +4,7 @@
       <el-tag :type="priorityTagType" size="small" effect="dark" class="priority-tag">
         {{ priorityLabel }}
       </el-tag>
+      <el-tag v-if="moduleLabel" size="small">{{ moduleLabel }}</el-tag>
       <span class="card-id">{{ card.id }}-{{ card.taskCode }}</span>
       <el-button
         v-if="jumpTarget"
@@ -76,7 +77,7 @@ const props = defineProps<{
 const router = useRouter()
 
 const jumpTarget = computed(() =>
-  props.card.templateType === 'office'
+  props.card.templateType === 'biz'
     ? resolveJump(String(props.card.extraData?.sourceEvent || ''), props.card.extraData?.bizId as string | number | null)
     : null
 )
@@ -86,7 +87,16 @@ const emit = defineEmits<{
 }>()
 
 const priorityLabel = computed(() => {
-  const map: Record<string, string> = { urgent: '紧急', high: '高', normal: '普通', low: '低' }
+  const map: Record<string, string> = {
+    urgent: '紧急',
+    high: '高',
+    normal: '普通',
+    low: '低',
+    P0: '紧急',
+    P1: '高',
+    P2: '中',
+    P3: '低',
+  }
   return map[props.card.priority] ?? '普通'
 })
 
@@ -96,8 +106,26 @@ const priorityTagType = computed<TagType>(() => {
     high: 'warning',
     normal: 'info',
     low: 'info',
+    P0: 'danger',
+    P1: 'warning',
+    P2: 'primary',
+    P3: 'info',
   }
   return map[props.card.priority] ?? 'info'
+})
+
+const moduleLabel = computed(() => {
+  const map: Record<string, string> = {
+    sales: '销售',
+    purchase: '采购',
+    inventory: '库存',
+    product: '产品工程',
+    quality: '品质',
+    production: '生产',
+    biz: '业务需求',
+  }
+  const bizType = props.card.extraData?.bizType
+  return typeof bizType === 'string' ? map[bizType] || '' : ''
 })
 
 const priorityClass = computed(() => `priority-${props.card.priority}`)
@@ -150,6 +178,22 @@ function goToBiz() {
 }
 
 .kanban-card.priority-low {
+  border-left: 3px solid #c0c4cc;
+}
+
+.kanban-card.priority-P0 {
+  border-left: 3px solid #f56c6c;
+}
+
+.kanban-card.priority-P1 {
+  border-left: 3px solid #e6a23c;
+}
+
+.kanban-card.priority-P2 {
+  border-left: 3px solid #409eff;
+}
+
+.kanban-card.priority-P3 {
   border-left: 3px solid #c0c4cc;
 }
 

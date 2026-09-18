@@ -108,7 +108,7 @@ async function fetchSysTaskBoardData(
       taskCode: t.taskCode || '',
       title: t.title,
       templateType: templateType as BoardCard['templateType'],
-      priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority)
+      priority: (['urgent', 'high', 'normal', 'low', 'P0', 'P1', 'P2', 'P3'].includes(t.priority)
         ? t.priority
         : 'normal') as BoardCard['priority'],
       status: mapSysTaskStatus(t),
@@ -220,6 +220,8 @@ export async function moveCard(
 ): Promise<ApiResponse<null>> {
   if (
     templateType === 'dev' ||
+    templateType === 'prod' ||
+    templateType === 'biz' ||
     templateType === 'office' ||
     templateType === 'emergency' ||
     templateType === 'production'
@@ -245,6 +247,8 @@ export async function fetchCardDetail(
 ): Promise<ApiResponse<BoardCard | null>> {
   if (
     templateType === 'dev' ||
+    templateType === 'prod' ||
+    templateType === 'biz' ||
     templateType === 'office' ||
     templateType === 'emergency' ||
     templateType === 'production'
@@ -258,7 +262,7 @@ export async function fetchCardDetail(
         taskCode: t.taskCode || '',
         title: t.title,
         templateType: templateType as BoardCard['templateType'],
-        priority: (['urgent', 'high', 'normal', 'low'].includes(t.priority)
+        priority: (['urgent', 'high', 'normal', 'low', 'P0', 'P1', 'P2', 'P3'].includes(t.priority)
           ? t.priority
           : 'normal') as BoardCard['priority'],
         status: mapSysTaskStatus(t),
@@ -289,6 +293,8 @@ export async function createCard(
 ): Promise<ApiResponse<BoardCard>> {
   if (
     templateType === 'dev' ||
+    templateType === 'prod' ||
+    templateType === 'biz' ||
     templateType === 'office' ||
     templateType === 'emergency' ||
     templateType === 'production'
@@ -335,6 +341,8 @@ export async function updateCard(
 ): Promise<ApiResponse<BoardCard | null>> {
   if (
     templateType === 'dev' ||
+    templateType === 'prod' ||
+    templateType === 'biz' ||
     templateType === 'office' ||
     templateType === 'emergency' ||
     templateType === 'production'

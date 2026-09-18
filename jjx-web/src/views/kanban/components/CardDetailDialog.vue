@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-model="visible" :title="card?.title ?? '卡片详情'" width="1080px" @close="onClose">
-    <!-- ① dev/office 任务：完整 SysTask 全字段 -->
+    <!-- ① dev/prod/biz 任务：完整 SysTask 全字段 -->
     <template v-if="taskDetail">
       <el-descriptions class="task-desc" :column="2" border size="small" label-width="120px">
         <el-descriptions-item label="任务ID">{{ taskDetail.taskId ?? '-' }}</el-descriptions-item>
@@ -176,7 +176,7 @@ const emit = defineEmits<{
 }>()
 const router = useRouter()
 
-/** 完整任务详情（dev/office 走 /kanban/board/{module}/tasks/{taskId}） */
+/** 完整任务详情（dev/prod/biz 走 /kanban/board/{module}/tasks/{taskId}） */
 const taskDetail = ref<any>(null)
 
 /** 任务截图（复用通用附件：bizType=task, bizId=taskId） */
@@ -187,7 +187,7 @@ function extractTaskId(cardId: string): string {
 }
 
 function isSysTaskModule(templateType?: string): boolean {
-  return templateType === 'dev' || templateType === 'office'
+  return templateType === 'dev' || templateType === 'prod' || templateType === 'biz'
 }
 
 async function loadDetail(card: BoardCard | null) {
@@ -196,7 +196,7 @@ async function loadDetail(card: BoardCard | null) {
   if (!card) return
   const taskId = Number(extractTaskId(card.id))
   if (!taskId) return
-  // dev/office：sys_task 全字段详情
+  // dev/prod/biz：sys_task 全字段详情
   if (card.templateType && isSysTaskModule(card.templateType)) {
     try {
       const res: any = await http.get(`/kanban/board/${card.templateType}/tasks/${taskId}`)
@@ -207,7 +207,7 @@ async function loadDetail(card: BoardCard | null) {
       console.warn('任务详情加载失败', e)
     }
   }
-  // 截图（dev/office 与 production 共用）
+  // 截图（三种模板共用）
   try {
     const { attachmentApi } = await import('@/api/system/attachment')
     const res = await attachmentApi.list('task', taskId)
@@ -241,8 +241,8 @@ const visible = computed({
 })
 
 const jumpTarget = computed(() => {
-  // dev/emergency 是开发需求/紧急事项卡，无业务单据可跳（方案确认范围）
-  if (props.card?.templateType === 'dev' || props.card?.templateType === 'emergency') return null
+  // 开发任务卡无业务单据可跳
+  if (props.card?.templateType === 'dev') return null
   if (taskDetail.value) {
     return (
       resolveJump(taskDetail.value.sourceEvent || '', taskDetail.value.bizId) ||
@@ -251,7 +251,7 @@ const jumpTarget = computed(() => {
         : null)
     )
   }
-  return props.card?.templateType === 'production' ? { path: '/production/order' } : null
+  return null
 })
 
 function goToBiz() {
@@ -261,7 +261,16 @@ function goToBiz() {
 }
 
 function priorityLabel(p?: string): string {
-  const map: Record<string, string> = { urgent: '紧急', high: '高', normal: '普通', low: '低' }
+  const map: Record<string, string> = {
+    urgent: '紧急',
+    high: '高',
+    normal: '普通',
+    low: '低',
+    P0: '紧急',
+    P1: '高',
+    P2: '中',
+    P3: '低',
+  }
   return map[p ?? ''] ?? p ?? '-'
 }
 
@@ -271,6 +280,10 @@ function priorityType(p?: string): TagType {
     high: 'warning',
     normal: 'info',
     low: 'info',
+    P0: 'danger',
+    P1: 'warning',
+    P2: 'primary',
+    P3: 'info',
   }
   return map[p ?? ''] ?? 'info'
 }
