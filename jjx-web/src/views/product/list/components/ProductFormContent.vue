@@ -69,23 +69,8 @@
       @change="onCodeChange"
     />
 
-    <!-- 产品编码（组件生成后自动填入，只读展示） -->
+    <!-- 产品编码由后端保存时生成（dev-20260918）：表单不显示，创建成功后提示里给出 -->
     <el-row :gutter="20">
-      <el-col :span="12">
-        <el-form-item label="产品编码" prop="productCode" required>
-          <el-input
-            v-model="formData.productCode"
-            placeholder="选择客户并点击生成编码自动填入"
-            readonly
-          />
-          <div class="form-tip" :class="{ 'is-error': codeError }">
-            {{
-              codeError || '编码格式：客户简称(1-3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)'
-            }}
-          </div>
-        </el-form-item>
-      </el-col>
-
       <el-col :span="12">
         <el-form-item label="产品名称" prop="productName" required>
           <el-input v-model="formData.productName" placeholder="请输入产品名称" />
@@ -444,14 +429,37 @@ const handleSubmit = async () => {
     throw new Error('表单验证失败')
   }
 
-  if (codeError.value) {
-    ElMessage.error('请修正产品编码后重试')
-    throw new Error('产品编码错误')
+  // 新增：产品编码由后端生成，需先备齐构成要素（客户 + 四选）
+  if (!isEdit.value) {
+    if (!formData.codeCustomerId) {
+      ElMessage.error('请选择客户（产品编码需要客户简称）')
+      throw new Error('缺少客户')
+    }
+    if (
+      !codeState.value.panelType ||
+      !codeState.value.panelFeature ||
+      !codeState.value.circuitType ||
+      !codeState.value.circuitFeature
+    ) {
+      ElMessage.error('请完整选择面板结构/特征、线路类型/特征')
+      throw new Error('编码要素不完整')
+    }
   }
 
   // 组装规格参数JSON
   const specJson = JSON.stringify(specData)
-  const submitData = { ...formData, specJson }
+  // 新增不提交产品编码（后端按规则生成）；只把构成要素带上
+  const submitData: any = {
+    ...formData,
+    specJson,
+    panelType: codeState.value.panelType,
+    panelFeature: codeState.value.panelFeature,
+    circuitType: codeState.value.circuitType,
+    circuitFeature: codeState.value.circuitFeature,
+  }
+  if (!isEdit.value) {
+    delete submitData.productCode
+  }
 
   submitting.value = true
   try {
@@ -459,8 +467,18 @@ const handleSubmit = async () => {
       await productApi.edit(submitData as ProductFormData)
       ElMessage.success('更新成功')
     } else {
-      await productApi.add(submitData as ProductFormData)
-      ElMessage.success('创建成功')
+      const res: any = await productApi.add(submitData as ProductFormData)
+      let code = ''
+      try {
+        const id = res?.data
+        if (id) {
+          const info: any = await productApi.info(id)
+          code = info?.data?.productCode || ''
+        }
+      } catch {
+        code = ''
+      }
+      ElMessage.success(code ? `创建成功，产品编码：${code}` : '创建成功')
     }
     emit('success')
   } finally {

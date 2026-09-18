@@ -383,6 +383,8 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
     @Override
     public Long addProduct(ProductDTO productDTO) {
+        // 产品编码由后端生成（dev-20260918）：客户简称(1-3)+流水号(3)+面板结构(2)+线路结构(2)
+        fillProductCodeIfAbsent(productDTO);
         // 这里需要实现新增产品的逻辑，包括校验、转换和保存
         if (StringUtils.isNotBlank(productDTO.getProductCode())&&!checkProductCodeUnique(productDTO.getProductCode(), null)) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_CODE_DUPLICATE);
@@ -509,6 +511,63 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
         product.setProductStatus(ProductEnums.Status.CANCELLED.getValue());
         return productMapper.updateById(product) > 0;
+    }
+
+    /** 后端生成产品编码（dev-20260918）：客户简称(1-3) + 流水号(3) + 面板结构(2) + 线路结构(2) */
+    private void fillProductCodeIfAbsent(ProductDTO dto) {
+        if (dto == null || StringUtils.isNotBlank(dto.getProductCode())) {
+            return;
+        }
+        String shortName = null;
+        if (dto.getCustomerId() != null) {
+            try {
+                com.jjx.sales.domain.entity.SalesCustomer c = salesCustomerMapper.selectById(dto.getCustomerId());
+                if (c != null) shortName = c.getCustomerShortName();
+            } catch (Exception ignored) {
+            }
+        }
+        if (shortName == null || shortName.isBlank()) {
+            throw new BusinessException("请先选择客户（产品编码需要客户简称）");
+        }
+        String short3 = shortName.trim();
+        if (short3.length() > 3) short3 = short3.substring(0, 3);
+        String panelPart = nzStr(dto.getPanelType()) + nzStr(dto.getPanelFeature());
+        String circuitPart = nzStr(dto.getCircuitType()) + nzStr(dto.getCircuitFeature());
+        if (panelPart.length() != 2) throw new BusinessException("请完整选择面板结构/特征");
+        if (circuitPart.length() != 2) throw new BusinessException("请完整选择线路类型/特征");
+        String serial = productCodeService.nextSerial(short3);
+        dto.setProductCode(short3 + serial + panelPart + circuitPart);
+        dto.setSpecJson(mergeCodeSpecJson(dto.getSpecJson(), serial,
+                dto.getPanelType(), dto.getPanelFeature(), dto.getCircuitType(), dto.getCircuitFeature()));
+    }
+
+    private static String nzStr(String s) {
+        return s == null ? "" : s;
+    }
+
+    /** 把编码参数并入 spec_json（保留已有规格字段） */
+    @SuppressWarnings("unchecked")
+    private String mergeCodeSpecJson(String specJson, String serialNo, String panelType,
+                                     String panelFeature, String circuitType, String circuitFeature) {
+        java.util.Map<String, Object> spec = new java.util.LinkedHashMap<>();
+        if (StringUtils.isNotBlank(specJson)) {
+            try {
+                spec = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(specJson, java.util.Map.class);
+            } catch (Exception ignored) {
+                spec = new java.util.LinkedHashMap<>();
+            }
+        }
+        spec.put("panelType", nzStr(panelType));
+        spec.put("panelFeature", nzStr(panelFeature));
+        spec.put("circuitType", nzStr(circuitType));
+        spec.put("circuitFeature", nzStr(circuitFeature));
+        spec.put("serialNo", nzStr(serialNo));
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(spec);
+        } catch (Exception e) {
+            return specJson;
+        }
     }
 
     @Override

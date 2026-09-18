@@ -21,6 +21,15 @@ public class ProductDTO {
     @NotBlank(message = "产品名称不能为空")
     private String productName;
 
+    /** 编码构成：面板类型（dev-20260918：产品编码由后端按 客户简称+流水号+面板+线路 生成） */
+    private String panelType;
+    /** 编码构成：面板特征 */
+    private String panelFeature;
+    /** 编码构成：线路类型 */
+    private String circuitType;
+    /** 编码构成：线路特征 */
+    private String circuitFeature;
+
     /** 分类ID */
     private Long categoryId;
 
