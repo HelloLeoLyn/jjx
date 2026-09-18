@@ -158,10 +158,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
             for (EngineeringBomItem item : items) {
                 if (item.getMaterialId() == null) continue;
-                BigDecimal unitQty = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
-                BigDecimal loss = BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate());
-                BigDecimal need = needProduce.multiply(unitQty)
-                        .multiply(BigDecimal.ONE.add(loss.divide(BigDecimal.valueOf(100))));
+                BigDecimal need = getActualIssueQty(item).multiply(needProduce);
                 demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
                 codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
                 nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
@@ -384,10 +381,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                                 .eq(EngineeringBomItem::getBomId, bom.getBomId()));
                 for (EngineeringBomItem item : items) {
                     if (item.getMaterialId() == null) continue;
-                    BigDecimal unitQty = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
-                    BigDecimal loss = BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate());
-                    BigDecimal need = needProduce.multiply(unitQty)
-                            .multiply(BigDecimal.ONE.add(loss.divide(BigDecimal.valueOf(100))));
+                    BigDecimal need = getActualIssueQty(item).multiply(needProduce);
                     demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
                     codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
                     nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
@@ -1028,6 +1022,16 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
         Page<InventoryAlertLog> page = new Page<>(pageNum, pageSize);
         return alertLogMapper.selectPage(page, wrapper);
+    }
+
+    private BigDecimal getActualIssueQty(EngineeringBomItem item) {
+        if (item.getActualIssueQty() != null) {
+            return item.getActualIssueQty();
+        }
+        log.warn("BOM 明细 {} 缺实际投料，按应用料兜底，请重新保存 BOM", item.getItemId());
+        BigDecimal quantity = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+        BigDecimal lossRate = BigDecimal.valueOf(item.getLossRate() != null ? item.getLossRate() : 0);
+        return quantity.multiply(BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100))));
     }
 
     private List<AlertVO> convertToVOList(List<InventoryAlertLog> alerts) {

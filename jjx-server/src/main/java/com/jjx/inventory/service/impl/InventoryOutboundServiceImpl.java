@@ -494,14 +494,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                             java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(order.getSourceId());
                             for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
                                 if (!"buy".equals(bomItem.getSourceType())) continue;
-                                BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
-                                        ? bomItem.getBaseQty() : BigDecimal.ONE;
-                                BigDecimal demand = bomItem.getQuantity()
+                                BigDecimal demand = getActualIssueQty(bomItem)
                                         .multiply(prodOrder.getPlannedQuantity())
-                                        .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
-                                        .multiply(BigDecimal.ONE.add(bomItem.getLossRate() != null
-                                                ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
-                                                : BigDecimal.ZERO))
                                         .setScale(0, java.math.RoundingMode.UP);
                                 BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
                                 if (demand.subtract(picked).compareTo(BigDecimal.ZERO) > 0) {
@@ -762,14 +756,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(prodOrder.getOrderId());
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
-            BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
-                    ? bomItem.getBaseQty() : BigDecimal.ONE;
-            BigDecimal demand = bomItem.getQuantity()
+            BigDecimal demand = getActualIssueQty(bomItem)
                     .multiply(prodOrder.getPlannedQuantity())
-                    .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.ONE.add(bomItem.getLossRate() != null
-                            ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
-                            : BigDecimal.ZERO))
                     .setScale(0, java.math.RoundingMode.UP);
             BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
             BigDecimal remaining = demand.subtract(picked);
@@ -932,14 +920,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
 
-            BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
-                    ? bomItem.getBaseQty() : BigDecimal.ONE;
-            BigDecimal qtyNeeded = bomItem.getQuantity()
+            BigDecimal qtyNeeded = getActualIssueQty(bomItem)
                     .multiply(prodOrder.getPlannedQuantity())
-                    .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.ONE.add(
-                            bomItem.getLossRate() != null ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
-                    ))
                     .setScale(0, java.math.RoundingMode.UP);
 
             // 034/048定稿：首选料可用不足时，按 substitute_json 优先级尝试替代料（模数换算：替代需求量=原需求量×ratio）
@@ -1113,14 +1095,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
-            BigDecimal baseQty = bomItem.getBaseQty() != null && bomItem.getBaseQty().compareTo(BigDecimal.ZERO) > 0
-                    ? bomItem.getBaseQty() : BigDecimal.ONE;
-            BigDecimal demand = bomItem.getQuantity()
+            BigDecimal demand = getActualIssueQty(bomItem)
                     .multiply(prodOrder.getPlannedQuantity())
-                    .divide(baseQty, 4, java.math.RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.ONE.add(
-                            bomItem.getLossRate() != null ? BigDecimal.valueOf(bomItem.getLossRate()).divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO
-                    ))
                     .setScale(0, java.math.RoundingMode.UP);
             BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
             BigDecimal remaining = demand.subtract(picked);
@@ -1135,6 +1111,17 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             result.add(row);
         }
         return result;
+    }
+
+    private BigDecimal getActualIssueQty(
+            com.jjx.engineering.domain.entity.EngineeringBomItem bomItem) {
+        if (bomItem.getActualIssueQty() != null) {
+            return bomItem.getActualIssueQty();
+        }
+        log.warn("BOM 明细 {} 缺实际投料，按应用料兜底，请重新保存 BOM", bomItem.getItemId());
+        BigDecimal quantity = bomItem.getQuantity() != null ? bomItem.getQuantity() : BigDecimal.ZERO;
+        BigDecimal lossRate = BigDecimal.valueOf(bomItem.getLossRate() != null ? bomItem.getLossRate() : 0);
+        return quantity.multiply(BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100))));
     }
 
     /**
