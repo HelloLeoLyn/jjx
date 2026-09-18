@@ -34,6 +34,7 @@
                   class="icon-item"
                   draggable="true"
                   @dragstart="handleDragStart($event, process)"
+                  @dragend="clearDragState"
                   @click="addToNewGroup(process)"
                 >
                   <SvgIcon v-if="process.icon" :name="process.icon" :size="32" />
@@ -103,12 +104,18 @@
                       <template v-if="modernOperation">
                         <ProcessOperation
                           :items="toOperationItems(scope.row.items)"
+                          :drop-index="
+                            dropInsert?.groupIndex === groupIndex(scope.row)
+                              ? dropInsert.index
+                              : null
+                          "
                           draggable
                           editable
                           @item-dragstart="
                             (event: DragEvent, itemIndex: number) =>
                               handleItemDragStart(event, groupIndex(scope.row), itemIndex)
                           "
+                          @item-dragend="clearDragState"
                           @item-dragover="
                             (event: DragEvent, itemIndex: number) =>
                               handleItemDragOver(event, groupIndex(scope.row), itemIndex)
@@ -651,6 +658,7 @@ const activeTab = ref('')
 const groups = ref<RouteItemGroup[]>([])
 const isDragOverTable = ref(false)
 const dragOverGroupIndex = ref<number | null>(null)
+const dropInsert = ref<{ groupIndex: number; index: number } | null>(null)
 
 // 拖拽数据
 let draggedProcess: StandardProcessOption | null = null
@@ -885,6 +893,31 @@ const handleItemDragStart = (event: DragEvent, groupIndex: number, itemIndex: nu
   }
 }
 
+const clearDragState = () => {
+  isDragOverTable.value = false
+  dragOverGroupIndex.value = null
+  dropInsert.value = null
+  draggedProcess = null
+  draggedItemInfo = null
+}
+
+const updateDropInsert = (event: DragEvent, groupIndex: number) => {
+  const items = groups.value[groupIndex]?.items ?? []
+  let index = items.length
+  if (!draggedItemInfo || draggedItemInfo.groupIndex === groupIndex) {
+    const container = event.currentTarget as HTMLElement | null
+    const elements = container?.querySelectorAll<HTMLElement>('[data-item-index]') ?? []
+    for (const element of elements) {
+      const itemIndex = Number(element.dataset.itemIndex)
+      if (event.clientX < element.getBoundingClientRect().left + element.offsetWidth / 2) {
+        index = itemIndex
+        break
+      }
+    }
+  }
+  dropInsert.value = { groupIndex, index }
+}
+
 // 拖拽经过表格区域
 const handleDragOver = (event: DragEvent) => {
   event.preventDefault()
@@ -903,6 +936,7 @@ const handleDragLeave = () => {
 const handleDragOverGroup = (event: DragEvent, groupIndex: number) => {
   event.preventDefault()
   dragOverGroupIndex.value = groupIndex
+  updateDropInsert(event, groupIndex)
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = draggedItemInfo ? 'move' : 'copy'
   }
@@ -912,6 +946,9 @@ const handleDragOverGroup = (event: DragEvent, groupIndex: number) => {
 const handleItemDragOver = (event: DragEvent, groupIndex: number, itemIndex: number) => {
   event.preventDefault()
   dragOverGroupIndex.value = groupIndex
+  if (!dropInsert.value || dropInsert.value.groupIndex !== groupIndex) {
+    dropInsert.value = { groupIndex, index: itemIndex }
+  }
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = draggedItemInfo ? 'move' : 'copy'
   }
@@ -922,6 +959,7 @@ const handleDropOnTable = (event: DragEvent) => {
   event.preventDefault()
   isDragOverTable.value = false
   dragOverGroupIndex.value = null
+  dropInsert.value = null
 
   if (draggedProcess) {
     addToNewGroup(draggedProcess)
@@ -935,14 +973,21 @@ const handleDropOnTable = (event: DragEvent) => {
 // 拖拽放置到组合区域（加入组合）
 const handleDropOnGroup = (event: DragEvent, groupIndex: number) => {
   event.preventDefault()
+  const insertIndex = dropInsert.value?.groupIndex === groupIndex
+    ? dropInsert.value.index
+    : groups.value[groupIndex].items.length
   dragOverGroupIndex.value = null
+  dropInsert.value = null
 
   if (draggedProcess) {
-    addToGroup(groupIndex, draggedProcess)
+    addToGroupAtIndex(groupIndex, draggedProcess, insertIndex)
     draggedProcess = null
   } else if (draggedItemInfo) {
-    // 移动组合内的工序到另一个组
-    moveItemBetweenGroups(draggedItemInfo.groupIndex, draggedItemInfo.itemIndex, groupIndex)
+    if (draggedItemInfo.groupIndex === groupIndex) {
+      moveItemWithinGroup(groupIndex, draggedItemInfo.itemIndex, insertIndex)
+    } else {
+      moveItemBetweenGroups(draggedItemInfo.groupIndex, draggedItemInfo.itemIndex, groupIndex)
+    }
     draggedItemInfo = null
   }
 }
@@ -950,16 +995,20 @@ const handleDropOnGroup = (event: DragEvent, groupIndex: number) => {
 // 拖拽放置到组合内的工序标签上（排序）
 const handleItemDrop = (event: DragEvent, targetGroupIndex: number, targetItemIndex: number) => {
   event.preventDefault()
+  const insertIndex = dropInsert.value?.groupIndex === targetGroupIndex
+    ? dropInsert.value.index
+    : targetItemIndex
   dragOverGroupIndex.value = null
+  dropInsert.value = null
 
   if (draggedProcess) {
     // 将新工序插入到目标位置
-    addToGroupAtIndex(targetGroupIndex, draggedProcess, targetItemIndex)
+    addToGroupAtIndex(targetGroupIndex, draggedProcess, insertIndex)
     draggedProcess = null
   } else if (draggedItemInfo) {
     // 在组合内移动工序位置
     if (draggedItemInfo.groupIndex === targetGroupIndex) {
-      moveItemWithinGroup(targetGroupIndex, draggedItemInfo.itemIndex, targetItemIndex)
+      moveItemWithinGroup(targetGroupIndex, draggedItemInfo.itemIndex, insertIndex)
     } else {
       moveItemBetweenGroups(draggedItemInfo.groupIndex, draggedItemInfo.itemIndex, targetGroupIndex)
     }
@@ -1073,7 +1122,8 @@ const removeItemFromGroup = (groupIndex: number, itemIndex: number) => {
 const moveItemWithinGroup = (groupIndex: number, fromIndex: number, toIndex: number) => {
   const items = groups.value[groupIndex].items
   const [moved] = items.splice(fromIndex, 1)
-  items.splice(toIndex, 0, moved)
+  const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex
+  items.splice(insertIndex, 0, moved)
   syncToParent()
 }
 

@@ -2,10 +2,12 @@
   <div class="process-operation" :class="{ 'is-composite': items.length > 1 }">
     <div class="operation-children">
       <template v-for="(item, index) in items" :key="item.key ?? index">
+        <span v-if="dropIndex === index" class="drop-insert-line" aria-hidden="true"></span>
         <span v-if="index > 0" class="plus">+</span>
         <div
           class="operation-child"
           :class="{ 'is-draggable': draggable }"
+          :data-item-index="index"
           @dragover="onDragOver($event, index)"
           @drop="onDrop($event, index)"
         >
@@ -15,6 +17,7 @@
             draggable="true"
             title="拖动调整工序顺序或移动到其他组合"
             @dragstart="emit('item-dragstart', $event, index)"
+            @dragend="emit('item-dragend')"
             >⋮⋮</span
           >
           <div class="icon-cell">
@@ -79,6 +82,11 @@
           </button>
         </div>
       </template>
+      <span
+        v-if="dropIndex === items.length"
+        class="drop-insert-line"
+        aria-hidden="true"
+      ></span>
     </div>
   </div>
 </template>
@@ -101,11 +109,13 @@ const props = withDefaults(
     remark?: string
     draggable?: boolean
     editable?: boolean
+    dropIndex?: number | null
   }>(),
-  { remark: '', draggable: false, editable: false }
+  { remark: '', draggable: false, editable: false, dropIndex: null }
 )
 const emit = defineEmits<{
   (event: 'item-dragstart', sourceEvent: DragEvent, itemIndex: number): void
+  (event: 'item-dragend'): void
   (event: 'item-dragover', sourceEvent: DragEvent, itemIndex: number): void
   (event: 'item-drop', sourceEvent: DragEvent, itemIndex: number): void
   (event: 'update:index', itemIndex: number, value: number): void
@@ -145,6 +155,13 @@ function onDrop(event: DragEvent, itemIndex: number) {
 }
 .operation-children {
   gap: 8px;
+}
+.drop-insert-line {
+  width: 2px;
+  height: 38px;
+  flex: 0 0 2px;
+  border-radius: 1px;
+  background: var(--el-color-primary);
 }
 .operation-child {
   position: relative;

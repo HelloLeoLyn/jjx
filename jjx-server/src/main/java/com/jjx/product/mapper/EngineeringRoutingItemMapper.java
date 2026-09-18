@@ -15,7 +15,7 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
     /**
      * 根据路线ID查询明细（按工序顺序排序）
      */
-    @Select("SELECT * FROM engineering_routing_item WHERE routing_id = #{routingId} ORDER BY process_order")
+    @Select("SELECT * FROM engineering_routing_item WHERE routing_id = #{routingId} ORDER BY process_order, detail_id")
     List<EngineeringRoutingItem> selectByRoutingId(@Param("routingId") Long routingId);
 
     @Select("SELECT " +
@@ -37,7 +37,7 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
             "FROM engineering_routing_item i " +
             "LEFT JOIN engineering_standard_process p ON i.process_id = p.process_id " +
             "WHERE i.routing_id = #{routingId} " +
-            "ORDER BY i.group_order, i.process_order")
+            "ORDER BY i.group_order, i.process_order, i.detail_id")
     List<EngineeringRoutingItemVO> selectVOsByRoutingId(@Param("routingId") Long routingId);
 
     /**
