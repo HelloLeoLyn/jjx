@@ -104,33 +104,24 @@
                       <template v-if="modernOperation">
                         <ProcessOperation
                           :items="toOperationItems(scope.row.items)"
-                          :drop-index="
-                            dropInsert?.groupIndex === groupIndex(scope.row)
-                              ? dropInsert.index
-                              : null
-                          "
+                          :group-key="groupIndex(scope.row)"
+                          :sync-token="groupSyncToken[groupIndex(scope.row)] ?? 0"
                           draggable
                           editable
-                          @item-dragstart="
-                            (event: DragEvent, itemIndex: number) =>
-                              handleItemDragStart(event, groupIndex(scope.row), itemIndex)
-                          "
-                          @item-dragend="clearDragState"
-                          @item-dragover="
-                            (event: DragEvent, itemIndex: number) =>
-                              handleItemDragOver(event, groupIndex(scope.row), itemIndex)
-                          "
-                          @item-drop="
-                            (event: DragEvent, itemIndex: number) =>
-                              handleItemDrop(event, groupIndex(scope.row), itemIndex)
-                          "
+                          @items-reordered="handleItemsReordered"
+                          @item-added="handleItemAdded"
+                          @item-removed="handleItemRemoved"
                           @update:index="
                             (itemIndex: number, value: number) =>
                               onUpdateIndex(scope.row, scope.row.items[itemIndex], value)
                           "
                           @update:work-instruction="
                             (itemIndex: number, value: string) =>
-                              onUpdateWorkInstruction(scope.row.items[itemIndex], value)
+                              onUpdateWorkInstruction(
+                                groupIndex(scope.row),
+                                scope.row.items[itemIndex],
+                                value
+                              )
                           "
                           @remove="
                             (itemIndex: number) =>
@@ -658,11 +649,11 @@ const activeTab = ref('')
 const groups = ref<RouteItemGroup[]>([])
 const isDragOverTable = ref(false)
 const dragOverGroupIndex = ref<number | null>(null)
-const dropInsert = ref<{ groupIndex: number; index: number } | null>(null)
+const groupSyncToken = ref<number[]>([])
+let syncSeq = 0
 
 // 拖拽数据
 let draggedProcess: StandardProcessOption | null = null
-let draggedItemInfo: { groupIndex: number; itemIndex: number } | null = null
 
 // ==================== 下标工序弹窗（批次1） ====================
 const indexDialogVisible = ref(false)
@@ -734,11 +725,17 @@ const confirmPrompt = () => {
 // IconStepBadge 下标变更（点击工序图标改下标数字）
 const onUpdateIndex = (group: RouteItemGroup, item: EngineeringRoutingItemVO, n: number) => {
   item.indexNumber = Math.floor(n)
+  bumpGroupSyncToken(groups.value.indexOf(group))
   syncToParent()
 }
 
-const onUpdateWorkInstruction = (item: EngineeringRoutingItemVO, value: string) => {
+const onUpdateWorkInstruction = (
+  groupIndex: number,
+  item: EngineeringRoutingItemVO,
+  value: string
+) => {
   ;(item as EngineeringRoutingItemVO & { workInstruction?: string }).workInstruction = value
+  bumpGroupSyncToken(groupIndex)
   syncToParent()
 }
 
@@ -868,6 +865,8 @@ const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
   }
 
   groups.value = built
+  syncSeq += 1
+  groupSyncToken.value = built.map(() => syncSeq)
   updateGroupOrder()
 }
 
@@ -876,46 +875,16 @@ const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
 // 开始拖拽图标
 const handleDragStart = (event: DragEvent, process: StandardProcessOption) => {
   draggedProcess = process
-  draggedItemInfo = null
   if (event.dataTransfer) {
     event.dataTransfer.setData('text/plain', String(process.processId))
     event.dataTransfer.effectAllowed = 'copy'
   }
 }
 
-// 开始拖拽组合内的工序
-const handleItemDragStart = (event: DragEvent, groupIndex: number, itemIndex: number) => {
-  draggedProcess = null
-  draggedItemInfo = { groupIndex, itemIndex }
-  if (event.dataTransfer) {
-    event.dataTransfer.setData('text/plain', 'item')
-    event.dataTransfer.effectAllowed = 'move'
-  }
-}
-
 const clearDragState = () => {
   isDragOverTable.value = false
   dragOverGroupIndex.value = null
-  dropInsert.value = null
   draggedProcess = null
-  draggedItemInfo = null
-}
-
-const updateDropInsert = (event: DragEvent, groupIndex: number) => {
-  const items = groups.value[groupIndex]?.items ?? []
-  let index = items.length
-  if (!draggedItemInfo || draggedItemInfo.groupIndex === groupIndex) {
-    const container = event.currentTarget as HTMLElement | null
-    const elements = container?.querySelectorAll<HTMLElement>('[data-item-index]') ?? []
-    for (const element of elements) {
-      const itemIndex = Number(element.dataset.itemIndex)
-      if (event.clientX < element.getBoundingClientRect().left + element.offsetWidth / 2) {
-        index = itemIndex
-        break
-      }
-    }
-  }
-  dropInsert.value = { groupIndex, index }
 }
 
 // 拖拽经过表格区域
@@ -936,21 +905,8 @@ const handleDragLeave = () => {
 const handleDragOverGroup = (event: DragEvent, groupIndex: number) => {
   event.preventDefault()
   dragOverGroupIndex.value = groupIndex
-  updateDropInsert(event, groupIndex)
   if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = draggedItemInfo ? 'move' : 'copy'
-  }
-}
-
-// 拖拽经过组合内的工序标签
-const handleItemDragOver = (event: DragEvent, groupIndex: number, itemIndex: number) => {
-  event.preventDefault()
-  dragOverGroupIndex.value = groupIndex
-  if (!dropInsert.value || dropInsert.value.groupIndex !== groupIndex) {
-    dropInsert.value = { groupIndex, index: itemIndex }
-  }
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = draggedItemInfo ? 'move' : 'copy'
+    event.dataTransfer.dropEffect = 'copy'
   }
 }
 
@@ -959,60 +915,21 @@ const handleDropOnTable = (event: DragEvent) => {
   event.preventDefault()
   isDragOverTable.value = false
   dragOverGroupIndex.value = null
-  dropInsert.value = null
 
   if (draggedProcess) {
     addToNewGroup(draggedProcess)
     draggedProcess = null
-  } else if (draggedItemInfo) {
-    moveItemToNewGroup(draggedItemInfo.groupIndex, draggedItemInfo.itemIndex)
-    draggedItemInfo = null
   }
 }
 
 // 拖拽放置到组合区域（加入组合）
 const handleDropOnGroup = (event: DragEvent, groupIndex: number) => {
   event.preventDefault()
-  const insertIndex = dropInsert.value?.groupIndex === groupIndex
-    ? dropInsert.value.index
-    : groups.value[groupIndex].items.length
   dragOverGroupIndex.value = null
-  dropInsert.value = null
 
   if (draggedProcess) {
-    addToGroupAtIndex(groupIndex, draggedProcess, insertIndex)
+    addToGroup(groupIndex, draggedProcess)
     draggedProcess = null
-  } else if (draggedItemInfo) {
-    if (draggedItemInfo.groupIndex === groupIndex) {
-      moveItemWithinGroup(groupIndex, draggedItemInfo.itemIndex, insertIndex)
-    } else {
-      moveItemBetweenGroups(draggedItemInfo.groupIndex, draggedItemInfo.itemIndex, groupIndex)
-    }
-    draggedItemInfo = null
-  }
-}
-
-// 拖拽放置到组合内的工序标签上（排序）
-const handleItemDrop = (event: DragEvent, targetGroupIndex: number, targetItemIndex: number) => {
-  event.preventDefault()
-  const insertIndex = dropInsert.value?.groupIndex === targetGroupIndex
-    ? dropInsert.value.index
-    : targetItemIndex
-  dragOverGroupIndex.value = null
-  dropInsert.value = null
-
-  if (draggedProcess) {
-    // 将新工序插入到目标位置
-    addToGroupAtIndex(targetGroupIndex, draggedProcess, insertIndex)
-    draggedProcess = null
-  } else if (draggedItemInfo) {
-    // 在组合内移动工序位置
-    if (draggedItemInfo.groupIndex === targetGroupIndex) {
-      moveItemWithinGroup(targetGroupIndex, draggedItemInfo.itemIndex, insertIndex)
-    } else {
-      moveItemBetweenGroups(draggedItemInfo.groupIndex, draggedItemInfo.itemIndex, targetGroupIndex)
-    }
-    draggedItemInfo = null
   }
 }
 
@@ -1078,6 +995,7 @@ const addToNewGroup = (process: StandardProcessOption) => {
     remark: '',
     processCategory: assemblyActiveTab.value,
   })
+  groupSyncToken.value.push(0)
   updateGroupOrder()
   syncToParent()
   maybePromptIndex(newItem)
@@ -1088,19 +1006,7 @@ const addToGroup = (groupIndex: number, process: StandardProcessOption) => {
   const newItem = createItemVO(process)
   groups.value[groupIndex].items.push(newItem)
   recalculateGroupHours(groupIndex)
-  syncToParent()
-  maybePromptIndex(newItem)
-}
-
-// 插入到组合的指定位置
-const addToGroupAtIndex = (
-  groupIndex: number,
-  process: StandardProcessOption,
-  itemIndex: number
-) => {
-  const newItem = createItemVO(process)
-  groups.value[groupIndex].items.splice(itemIndex, 0, newItem)
-  recalculateGroupHours(groupIndex)
+  bumpGroupSyncToken(groupIndex)
   syncToParent()
   maybePromptIndex(newItem)
 }
@@ -1111,69 +1017,81 @@ const removeItemFromGroup = (groupIndex: number, itemIndex: number) => {
   if (groups.value[groupIndex].items.length === 0) {
     // 如果组合为空，删除该组合
     groups.value.splice(groupIndex, 1)
+    groupSyncToken.value.splice(groupIndex, 1)
     updateGroupOrder()
   } else {
     recalculateGroupHours(groupIndex)
+    bumpGroupSyncToken(groupIndex)
   }
   syncToParent()
 }
 
-// 在组合内移动工序
-const moveItemWithinGroup = (groupIndex: number, fromIndex: number, toIndex: number) => {
-  const items = groups.value[groupIndex].items
-  const [moved] = items.splice(fromIndex, 1)
-  const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex
-  items.splice(insertIndex, 0, moved)
+type SortableMovePayload = {
+  groupKey: number | string
+  fromGroupKey: number | string
+  oldIndex: number
+  newIndex: number
+}
+
+const bumpGroupSyncToken = (groupIndex: number) => {
+  if (groupIndex < 0 || groupIndex >= groups.value.length) return
+  groupSyncToken.value[groupIndex] = (groupSyncToken.value[groupIndex] ?? 0) + 1
+}
+
+const handleItemsReordered = (payload: Omit<SortableMovePayload, 'fromGroupKey'>) => {
+  const groupIndex = Number(payload.groupKey)
+  const items = groups.value[groupIndex]?.items
+  if (!items) return
+  const [moved] = items.splice(payload.oldIndex, 1)
+  if (moved) items.splice(payload.newIndex, 0, moved)
+  bumpGroupSyncToken(groupIndex)
   syncToParent()
 }
 
-// 在组合间移动工序
-const moveItemBetweenGroups = (fromGroupIndex: number, itemIndex: number, toGroupIndex: number) => {
-  const item = groups.value[fromGroupIndex].items[itemIndex]
-  if (!item) return
+const handleItemRemoved = (_payload: {
+  groupKey: number | string
+  toGroupKey: number | string
+  oldIndex: number
+  newIndex: number
+}) => {
+  // 跨组的数据变更统一由目标组的 item-added 处理，避免 remove/add 双事件重复移动。
+}
 
-  // 检查目标组合是否已有相同工序
-  const exists = groups.value[toGroupIndex]?.items.some((i) => i.processId === item.processId)
-  if (exists) {
-    ElMessage.warning(`工序"${item.processName}"已在目标组合中`)
+const handleItemAdded = (payload: SortableMovePayload) => {
+  const fromGroupIndex = Number(payload.fromGroupKey)
+  const toGroupIndex = Number(payload.groupKey)
+  const sourceGroup = groups.value[fromGroupIndex]
+  const targetGroup = groups.value[toGroupIndex]
+  const item = sourceGroup?.items[payload.oldIndex]
+  if (!sourceGroup || !targetGroup || !item) {
+    bumpGroupSyncToken(fromGroupIndex)
+    bumpGroupSyncToken(toGroupIndex)
     return
   }
 
-  groups.value[fromGroupIndex].items.splice(itemIndex, 1)
-  groups.value[toGroupIndex].items.push(item)
-
-  if (groups.value[fromGroupIndex].items.length === 0) {
-    groups.value.splice(fromGroupIndex, 1)
-  } else {
-    recalculateGroupHours(fromGroupIndex)
+  // 检查目标组合是否已有相同工序
+  const exists = targetGroup.items.some((i) => i.processId === item.processId)
+  if (exists) {
+    ElMessage.warning(`工序"${item.processName}"已在目标组合中`)
+    bumpGroupSyncToken(fromGroupIndex)
+    bumpGroupSyncToken(toGroupIndex)
+    return
   }
-  recalculateGroupHours(toGroupIndex)
-  updateGroupOrder()
-  syncToParent()
-}
 
-// 从现有组合拖到表格空白区域，拆成新的独立组合
-const moveItemToNewGroup = (fromGroupIndex: number, itemIndex: number) => {
-  const sourceGroup = groups.value[fromGroupIndex]
-  const item = sourceGroup?.items[itemIndex]
-  if (!sourceGroup || !item) return
+  sourceGroup.items.splice(payload.oldIndex, 1)
+  targetGroup.items.splice(payload.newIndex, 0, item)
 
-  sourceGroup.items.splice(itemIndex, 1)
   if (sourceGroup.items.length === 0) {
     groups.value.splice(fromGroupIndex, 1)
+    groupSyncToken.value.splice(fromGroupIndex, 1)
   } else {
     recalculateGroupHours(fromGroupIndex)
   }
-  item.processCategory = assemblyActiveTab.value
-  groups.value.push({
-    groupOrder: groups.value.length + 1,
-    items: [item],
-    totalLaborHours: item.customLaborHours || item.standardLaborHours || 0,
-    totalMachineHours: item.customMachineHours || item.standardMachineHours || 0,
-    remark: '',
-    processCategory: assemblyActiveTab.value,
-  })
+  const currentTargetIndex = groups.value.indexOf(targetGroup)
+  recalculateGroupHours(currentTargetIndex)
   updateGroupOrder()
+  bumpGroupSyncToken(groups.value.indexOf(sourceGroup))
+  bumpGroupSyncToken(currentTargetIndex)
   syncToParent()
 }
 
@@ -1187,6 +1105,10 @@ const moveGroupUp = (group: RouteItemGroup) => {
   const temp = groups.value[index]
   groups.value[index] = groups.value[previousIndex]
   groups.value[previousIndex] = temp
+  ;[groupSyncToken.value[index], groupSyncToken.value[previousIndex]] = [
+    groupSyncToken.value[previousIndex] ?? 0,
+    groupSyncToken.value[index] ?? 0,
+  ]
   updateGroupOrder()
   syncToParent()
 }
@@ -1201,6 +1123,10 @@ const moveGroupDown = (group: RouteItemGroup) => {
   const temp = groups.value[index]
   groups.value[index] = groups.value[nextIndex]
   groups.value[nextIndex] = temp
+  ;[groupSyncToken.value[index], groupSyncToken.value[nextIndex]] = [
+    groupSyncToken.value[nextIndex] ?? 0,
+    groupSyncToken.value[index] ?? 0,
+  ]
   updateGroupOrder()
   syncToParent()
 }
@@ -1208,6 +1134,7 @@ const moveGroupDown = (group: RouteItemGroup) => {
 // 删除组合
 const removeGroup = (index: number) => {
   groups.value.splice(index, 1)
+  groupSyncToken.value.splice(index, 1)
   updateGroupOrder()
   syncToParent()
 }
@@ -1394,6 +1321,8 @@ defineExpose({
   getGroups: () => JSON.parse(JSON.stringify(groups.value)),
   setGroups: (data: RouteItemGroup[]) => {
     groups.value = JSON.parse(JSON.stringify(data))
+    syncSeq += 1
+    groupSyncToken.value = data.map(() => syncSeq)
   },
   getItems: () => JSON.parse(JSON.stringify(toParentItems())),
   setItems: (data: EngineeringRoutingItemVO[]) => {
