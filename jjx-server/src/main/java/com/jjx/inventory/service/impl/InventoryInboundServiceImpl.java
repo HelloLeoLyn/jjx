@@ -978,6 +978,49 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
     }
 
+    private Map<String, Object> iqcPayload(InventoryInboundOrder order, InventoryInboundItem item,
+            Long receiverId, String receiverName) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bizType", "quality");
+        payload.put("triggerUserId", SecurityUtils.getUserId());
+        if (order != null) {
+            payload.put("bizId", order.getInboundId());
+            payload.put("inboundId", order.getInboundId());
+            payload.put("inboundNo", order.getInboundNo());
+            payload.put("sourceId", order.getSourceId());
+            payload.put("sourceNo", order.getSourceNo());
+            payload.put("supplierId", order.getSupplierId());
+            payload.put("supplierName", order.getSupplierName());
+        }
+        if (item != null) {
+            payload.put("itemId", item.getItemId());
+            payload.put("materialId", item.getMaterialId());
+            payload.put("materialCode", item.getMaterialCode());
+            payload.put("materialName", item.getMaterialName());
+        }
+        if (receiverId != null) {
+            payload.put("receiverId", receiverId);
+        }
+        if (receiverName != null && !receiverName.isBlank()) {
+            payload.put("receiverName", receiverName);
+        }
+        return payload;
+    }
+
+    private void publishIqcEventAfterCommit(String eventCode, Map<String, Object> payload) {
+        Map<String, Object> payloadSnapshot = new HashMap<>(payload);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    eventPublisher.fire(eventCode, payloadSnapshot);
+                }
+            });
+        } else {
+            eventPublisher.fire(eventCode, payloadSnapshot);
+        }
+    }
+
     private boolean isPurchaseInbound(InventoryInboundOrder order) {
         return order.getSourceId() != null
                 && ("PURCHASE".equalsIgnoreCase(order.getSourceType())
