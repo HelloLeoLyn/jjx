@@ -166,8 +166,12 @@
       <el-table-column label="实际投料" prop="actualIssueQty" align="center" width="100">
         <template #default="scope">
           <span>{{ formatQty(scope.row.actualIssueQty) }}</span>
-          <el-tooltip v-if="scope.row.materialType === 'R'" content="板材/卷材，按最低投料量向上取整" placement="top">
-            <span style="color:#e6a23c;cursor:help"> ⓘ</span>
+          <el-tooltip
+            v-if="scope.row.materialType === 'R'"
+            content="板材/卷材，按最低投料量向上取整"
+            placement="top"
+          >
+            <span style="color: #e6a23c; cursor: help"> ⓘ</span>
           </el-tooltip>
         </template>
       </el-table-column>
@@ -186,8 +190,8 @@
         </template>
       </el-table-column>
 
-      <!-- 宽度(mm) -->
-      <el-table-column label="宽度(mm)" align="center" width="110">
+      宽度(mm)
+      <!-- <el-table-column label="宽度(mm)" align="center" width="110">
         <template #header>
           <div class="column-header">
             <span>宽度(mm)</span>
@@ -204,10 +208,10 @@
             controls-position="right"
           />
         </template>
-      </el-table-column>
+      </el-table-column> -->
 
       <!-- 长度(mm) -->
-      <el-table-column label="长度(mm)" align="center" width="110">
+      <!-- <el-table-column label="长度(mm)" align="center" width="110">
         <template #header>
           <div class="column-header">
             <span>长度(mm)</span>
@@ -224,7 +228,7 @@
             controls-position="right"
           />
         </template>
-      </el-table-column>
+      </el-table-column> -->
 
       <!-- 备注 -->
       <el-table-column label="备注" prop="remark" min-width="150">
@@ -242,18 +246,10 @@
       <!-- 操作列 -->
       <el-table-column label="操作" width="170" align="center" fixed="right">
         <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            size="small"
-            @click="handleAddChildItem(scope.row)"
-          >子物料</el-button>
-          <el-button
-            link
-            type="primary"
-            :icon="CopyDocument"
-            @click="handleCopyItem(scope.row)"
-          />
+          <el-button link type="primary" size="small" @click="handleAddChildItem(scope.row)"
+            >子物料</el-button
+          >
+          <el-button link type="primary" :icon="CopyDocument" @click="handleCopyItem(scope.row)" />
           <el-button
             v-if="scope.row.create"
             link
@@ -333,7 +329,10 @@ const hasSelected = computed(() => selectedItems.value.length > 0)
  * 新行用临时负数 id 作为父引用（前端树形 row-key 需要稳定 id）
  */
 function buildTree(list: EngineeringBomItem[]): EngineeringBomItem[] {
-  const arr = (list || []).map((it) => ({ ...it, children: it.children ? [...it.children] : undefined }))
+  const arr = (list || []).map((it) => ({
+    ...it,
+    children: it.children ? [...it.children] : undefined,
+  }))
   // 确保每行有稳定的 itemId（新行用临时负数）
   let tmpId = -1
   arr.forEach((it) => {
@@ -627,11 +626,15 @@ const handleDeleteItem = async (row: EngineeringBomItem) => {
     return
   }
   try {
-    await ElMessageBox.confirm(`确定要删除物料 "${row.materialName || row.materialCode || ''}" 吗？`, '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(
+      `确定要删除物料 "${row.materialName || row.materialCode || ''}" 吗？`,
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
     // 从树中移除（递归查找父节点并 splice）
     removeFromTree(items.value, Number(row.itemId))
     ElMessage.success('删除成功')

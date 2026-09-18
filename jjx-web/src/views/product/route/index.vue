@@ -152,18 +152,7 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 
 const routeActions: TableAction<EngineeringRoutingVO>[] = [
   { key: 'trace', label: '流水', permission: 'engineering:routing:view' },
-  {
-    key: 'compare',
-    label: '版本对比',
-    type: 'warning',
-    permission: 'engineering:routing:view',
-  },
-  {
-    key: 'edit',
-    label: '编辑',
-    permission: 'engineering:routing:edit',
-    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.EDIT),
-  },
+
   {
     key: 'submit',
     label: '提交审批',
@@ -185,6 +174,18 @@ const routeActions: TableAction<EngineeringRoutingVO>[] = [
     permission: 'engineering:routing:edit',
     visible: ({ row }) =>
       row.approveStatus === RouteStatusEnum.APPROVED.value && row.isCurrent !== 1,
+  },
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: 'engineering:routing:edit',
+    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.EDIT),
+  },
+  {
+    key: 'compare',
+    label: '版本对比',
+    type: 'warning',
+    permission: 'engineering:routing:view',
   },
   {
     key: 'delete',

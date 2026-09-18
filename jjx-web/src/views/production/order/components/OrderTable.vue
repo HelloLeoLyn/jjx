@@ -20,7 +20,9 @@
             >
               {{ row.orderType === 'plan' ? '计划' : '工单' }}
             </el-tag>
-            <span class="order-no">{{ row.orderNo }}</span>
+            <el-link :underline="false" @click="handleView(row)">
+              <span class="order-no">{{ row.orderNo }}</span>
+            </el-link>
           </div>
         </template>
       </el-table-column>
@@ -72,15 +74,17 @@
           <el-tag :type="row.statusType as any" size="small">
             {{ row.statusLabel }}
           </el-tag>
-          <el-tag v-if="row.reworkFlag === 1" type="danger" size="small">
-            返工中
-          </el-tag>
+          <el-tag v-if="row.reworkFlag === 1" type="danger" size="small"> 返工中 </el-tag>
         </template>
       </el-table-column>
 
       <el-table-column prop="materialStatusLabel" label="领料状态" width="100" align="center">
         <template #default="{ row }">
-          <el-tag :type="getMaterialStatusTagType(row.materialStatus) as any" size="small" effect="plain">
+          <el-tag
+            :type="getMaterialStatusTagType(row.materialStatus) as any"
+            size="small"
+            effect="plain"
+          >
             {{ row.materialStatusLabel || '未领料' }}
           </el-tag>
         </template>
@@ -98,7 +102,6 @@
         <template #default="{ row }">
           <OrderTableActions
             :order="row"
-            @view="() => handleView(row)"
             @edit="() => handleEdit(row)"
             @convert="() => handleConvert(row)"
             @start="() => handleStart(row)"

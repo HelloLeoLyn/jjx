@@ -1,11 +1,6 @@
 <template>
   <div class="table-actions">
     <el-space :size="4">
-      <!-- 查看按钮 -->
-      <el-tooltip content="查看详情" placement="top">
-        <el-button type="primary" size="small" icon="View" circle @click="handleView" />
-      </el-tooltip>
-
       <!-- 生产履历（P4-C：只读时间线） -->
       <el-tooltip content="生产履历" placement="top">
         <el-button
@@ -283,11 +278,15 @@ const handleConvert = () => {
 
 const handleStart = async () => {
   if (props.order.materialStatus === ProductionMaterialStatusEnum.NOT_PICKED.value) {
-    const confirmed = await ElMessageBox.confirm('该工单尚未生成领料单，确认直接开工？', '开始执行', {
-      confirmButtonText: '确认开工',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }).catch(() => false)
+    const confirmed = await ElMessageBox.confirm(
+      '该工单尚未生成领料单，确认直接开工？',
+      '开始执行',
+      {
+        confirmButtonText: '确认开工',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    ).catch(() => false)
     if (!confirmed) return
   }
   openPreview('production.start')

@@ -208,13 +208,7 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 const bomActions: TableAction<EngineeringBom>[] = [
   { key: 'trace', label: '流水' },
   { key: 'edit', label: '修改', permission: 'engineering:bom:edit' },
-  {
-    key: 'delete',
-    label: '删除',
-    type: 'danger',
-    permission: 'engineering:bom:delete',
-    visible: ({ row }) => ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.DELETE),
-  },
+
   {
     key: 'submit',
     label: '提交审核',
@@ -235,6 +229,13 @@ const bomActions: TableAction<EngineeringBom>[] = [
     type: 'success',
     permission: 'engineering:bom:edit',
     visible: ({ row }) => row.approveStatus === BomStatusEnum.APPROVED.value && !row.isCurrent,
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    permission: 'engineering:bom:delete',
+    visible: ({ row }) => ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.DELETE),
   },
 ]
 // 查询参数
