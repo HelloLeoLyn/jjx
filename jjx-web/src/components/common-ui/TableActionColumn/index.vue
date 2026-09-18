@@ -92,7 +92,7 @@ const props = withDefaults(
     actions: () => [],
     minWidth: 200,
     fixed: 'right',
-    align: 'center',
+    align: 'left',
     maxVisible: 3,
     display: 'text',
   }

@@ -125,6 +125,7 @@ public class ProductController extends BaseController {
          detail = "#result.data.detailMessage", action = LogActions.PRODUCT_EDIT)
     @SaCheckPermission("product:edit")
     public Result<ProductEditVO> edit(@Validated @RequestBody ProductDTO productDTO) {
+        productService.validateEditable(productDTO.getProductId());
         if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
             return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品编码已存在");
         }

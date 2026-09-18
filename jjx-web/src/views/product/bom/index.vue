@@ -56,7 +56,14 @@
     <el-card class="operation-card" shadow="never">
       <el-row :gutter="10" class="mb8">
         <el-col :span="1.5">
-          <el-button type="primary" plain icon="Plus" v-hasPermi="['engineering:bom:add']" @click="handleAdd">新增</el-button>
+          <el-button
+            type="primary"
+            plain
+            icon="Plus"
+            v-hasPermi="['engineering:bom:add']"
+            @click="handleAdd"
+            >新增</el-button
+          >
         </el-col>
         <el-col :span="1.5">
           <el-button
@@ -95,7 +102,15 @@
           >
         </el-col>
         <el-col :span="1.5">
-          <el-button type="success" plain icon="CopyDocument" v-hasPermi="['engineering:bom:add']" :disabled="single" @click="handleCopySelected">复制BOM</el-button>
+          <el-button
+            type="success"
+            plain
+            icon="CopyDocument"
+            v-hasPermi="['engineering:bom:add']"
+            :disabled="single"
+            @click="handleCopySelected"
+            >复制BOM</el-button
+          >
         </el-col>
       </el-row>
     </el-card>
@@ -138,78 +153,12 @@
           </template>
         </el-table-column>
         <el-table-column label="备注" align="center" prop="remark" min-width="180" />
-        <el-table-column
-          label="操作"
-          align="center"
-          class-name="small-padding fixed-width"
+        <TableActionColumn
+          :actions="bomActions"
           min-width="300"
-        >
-          <template #default="scope">
-            <el-tooltip content="修改" placement="top">
-              <el-button
-                link
-                type="primary"
-                icon="Edit"
-                v-hasPermi="['engineering:bom:edit']"
-                @click="handleUpdate(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="删除" placement="top">
-              <el-button
-                v-if="ProductEnum.bomStatus.canDo(scope.row.approveStatus, ProductActions.DELETE)"
-                link
-                type="danger"
-                icon="Delete"
-                v-hasPermi="['engineering:bom:delete']"
-                @click="handleDelete(scope.row)"
-              ></el-button>
-            </el-tooltip>
-
-            <el-tooltip
-              content="提交审核"
-              placement="top"
-              v-if="ProductEnum.bomStatus.canDo(scope.row.approveStatus, ProductActions.SUBMIT)"
-            >
-              <el-button
-                link
-                type="warning"
-                icon="Promotion"
-                v-hasPermi="['engineering:bom:add']"
-                @click="handleSubmitApprove(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip
-              content="审核"
-              placement="top"
-              v-if="ProductEnum.bomStatus.canDo(scope.row.approveStatus, ProductActions.APPROVE)"
-            >
-              <el-button
-                link
-                type="warning"
-                icon="View"
-                v-hasPermi="['engineering:bom:approve']"
-                @click="handleApprove(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 2026-08-18：审批通过后需手动设为当前生效（生成计划/领料依赖 is_current=1） -->
-            <el-tooltip
-              content="设为默认"
-              placement="top"
-              v-if="scope.row.approveStatus === 3 && scope.row.isCurrent !== 1"
-            >
-              <el-button
-                link
-                type="success"
-                icon="Star"
-                v-hasPermi="['engineering:bom:edit']"
-                @click="handleSetDefaultBom(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="流水" placement="top">
-              <el-button link type="primary" icon="Clock" @click="openTrace(scope.row)"></el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+          display="text"
+          @action="handleBomAction"
+        />
       </el-table>
 
       <!-- 分页 -->
@@ -253,7 +202,41 @@ import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
 import BomFormDialog from './components/BomFormDialog.vue'
 import type { EngineeringBomQueryParams, EngineeringBom } from '@/types/product/bom'
-import { ProductEnum, ProductActions } from '@/enums/product'
+import { BomStatusEnum, ProductEnum, ProductActions } from '@/enums/product'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const bomActions: TableAction<EngineeringBom>[] = [
+  { key: 'trace', label: '流水' },
+  { key: 'edit', label: '修改', permission: 'engineering:bom:edit' },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    permission: 'engineering:bom:delete',
+    visible: ({ row }) => ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.DELETE),
+  },
+  {
+    key: 'submit',
+    label: '提交审核',
+    type: 'warning',
+    permission: 'engineering:bom:add',
+    visible: ({ row }) => ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.SUBMIT),
+  },
+  {
+    key: 'approve',
+    label: '审核',
+    type: 'warning',
+    permission: 'engineering:bom:approve',
+    visible: ({ row }) => ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.APPROVE),
+  },
+  {
+    key: 'setDefault',
+    label: '设为默认',
+    type: 'success',
+    permission: 'engineering:bom:edit',
+    visible: ({ row }) => row.approveStatus === BomStatusEnum.APPROVED.value && !row.isCurrent,
+  },
+]
 // 查询参数
 const queryParams = reactive<EngineeringBomQueryParams>({
   pageNum: 1,
@@ -337,8 +320,9 @@ const handleSelectionChange = (selection: EngineeringBom[]) => {
   single.value = selection.length !== 1
   multiple.value = !selection.length
   // 勾选中有不可删除状态（已批准/审核中等）则禁用批量删除（2026-08-08）
-  canDeleteSelected.value = selection.length > 0 && selection.every((b) =>
-    ProductEnum.bomStatus.canDo(b.approveStatus, ProductActions.DELETE))
+  canDeleteSelected.value =
+    selection.length > 0 &&
+    selection.every((b) => ProductEnum.bomStatus.canDo(b.approveStatus, ProductActions.DELETE))
 }
 
 // 批量删除可用性（2026-08-08）
@@ -413,9 +397,13 @@ const handleApprove = (row?: EngineeringBom) => {
 
 // 设为默认BOM（2026-08-18：审批通过后需手动设为当前生效，生成计划/领料依赖）
 const handleSetDefaultBom = (row: EngineeringBom) => {
-  ElMessageBox.confirm(`将 BOM【${row.bomCode}】设为当前生效版本？（同产品其它BOM将取消当前标记）`, '设为默认', {
-    type: 'warning',
-  })
+  ElMessageBox.confirm(
+    `将 BOM【${row.bomCode}】设为当前生效版本？（同产品其它BOM将取消当前标记）`,
+    '设为默认',
+    {
+      type: 'warning',
+    }
+  )
     .then(async () => {
       await productBomApi.setCurrentEngineeringBom(row.bomId)
       ElMessage.success('已设为当前生效BOM')
@@ -459,6 +447,15 @@ const handleView = (row: EngineeringBom) => {
 const handleCopySelected = () => {
   if (!selectedBom.value) return
   handleCopyBom(selectedBom.value)
+}
+
+const handleBomAction = (key: string, row: EngineeringBom) => {
+  if (key === 'edit') handleUpdate(row)
+  if (key === 'delete') handleDelete(row)
+  if (key === 'submit') void handleSubmitApprove(row)
+  if (key === 'approve') handleApprove(row)
+  if (key === 'setDefault') handleSetDefaultBom(row)
+  if (key === 'trace') openTrace(row)
 }
 
 // 复制BOM为新版本（DEV-619：真接口，版本号递增+明细复制，替代原“清ID重建”假复制）

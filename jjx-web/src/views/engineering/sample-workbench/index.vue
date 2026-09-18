@@ -129,43 +129,12 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" align="center" fixed="right">
-          <template #default="scope">
-            <template v-if="canTransfer(scope.row)">
-              <el-button
-                v-hasPermi="['engineering:sample:transfer']"
-                type="warning"
-                link
-                size="small"
-                @click="handleTransfer(scope.row)"
-                >资料转移</el-button
-              >
-            </template>
-            <template v-else>
-              <el-button
-                v-if="canEnterWorkbench(scope.row)"
-                type="primary"
-                link
-                size="small"
-                :loading="acceptingOrderId === scope.row.orderId"
-                @click="openWorkbench(scope.row)"
-              >
-                进入打样
-              </el-button>
-              <el-button
-                v-if="canAccept(scope.row)"
-                v-hasPermi="['sales:sample:engineering', 'engineering:sample:workbench']"
-                type="primary"
-                link
-                size="small"
-                :loading="acceptingOrderId === scope.row.orderId"
-                @click="handleAcceptClick(scope.row)"
-              >
-                接单打样
-              </el-button>
-            </template>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="sampleActions"
+          width="150"
+          display="text"
+          @action="handleSampleAction"
+        />
       </el-table>
     </el-card>
 
@@ -188,6 +157,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatus, SampleOrderStatusEnum } from '@/enums/sales'
 import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { useSampleWorkbench } from './composables/useSampleWorkbench'
 const router = useRouter()
 
@@ -202,6 +172,29 @@ const {
 
 // 防止重复点击导致重复接单
 const acceptingOrderId = ref<number | null>(null)
+
+const sampleActions: TableAction<any>[] = [
+  {
+    key: 'transfer',
+    label: '资料转移',
+    type: 'warning',
+    permission: 'engineering:sample:transfer',
+    visible: ({ row }) => canTransfer(row),
+  },
+  {
+    key: 'workbench',
+    label: '进入打样',
+    visible: ({ row }) => !canTransfer(row) && canEnterWorkbench(row),
+    loading: ({ row }) => acceptingOrderId.value === row.orderId,
+  },
+  {
+    key: 'accept',
+    label: '接单打样',
+    permission: ['sales:sample:engineering', 'engineering:sample:workbench'],
+    visible: ({ row }) => !canTransfer(row) && canAccept(row),
+    loading: ({ row }) => acceptingOrderId.value === row.orderId,
+  },
+]
 
 function sampleStatusText(status: number | undefined | null): string {
   return status == null ? '未知' : SampleOrderStatusEnum.getLabel(status)
@@ -315,6 +308,12 @@ function handleAcceptClick(row: any) {
       }
     })
     .catch(() => {})
+}
+
+function handleSampleAction(key: string, row: any) {
+  if (key === 'transfer') void handleTransfer(row)
+  if (key === 'workbench') openWorkbench(row)
+  if (key === 'accept') handleAcceptClick(row)
 }
 
 async function getList() {

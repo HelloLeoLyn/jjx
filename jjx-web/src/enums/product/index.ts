@@ -65,7 +65,7 @@ export const ProductStatusEnum = createEnum({
       value: 8,
       label: '取消',
       tagProps: { type: 'danger' },
-      actions: [ProductActions.EDIT, ProductActions.SUBMIT],
+      actions: [],
     },
   ],
   defaultTag: { type: 'info' },
@@ -99,36 +99,46 @@ export const BomTypeEnum = createEnum({
  * BOM状态枚举
  * 对应 Java ProductEnums.BomStatus
  */
-export const BomStatusEnum = createEnum({
-  items: [
-    {
-      value: 1,
-      label: '草稿',
-      tagProps: { type: 'info' },
-      actions: [ProductActions.EDIT, ProductActions.SUBMIT, ProductActions.DELETE],
-    },
-    {
-      value: 2,
-      label: '审核中',
-      tagProps: { type: 'warning' },
-      actions: [ProductActions.APPROVE, ProductActions.REJECT],
-    },
-    {
-      value: 3,
-      label: '已批准',
-      tagProps: { type: 'success' },
-      actions: [ProductActions.COMPLETE],
-    },
-    {
-      value: 4,
-      label: '已驳回',
-      tagProps: { type: 'danger' },
-      actions: [ProductActions.EDIT, ProductActions.SUBMIT],
-    },
-    { value: 5, label: '已作废', tagProps: { type: 'danger' }, actions: [] },
-  ],
-  defaultTag: { type: 'info' },
-})
+const bomStatusDefinitions = {
+  DRAFT: {
+    value: 1 as const,
+    label: '草稿',
+    tagProps: { type: 'info' as const },
+    actions: [ProductActions.EDIT, ProductActions.SUBMIT, ProductActions.DELETE],
+  },
+  REVIEWING: {
+    value: 2 as const,
+    label: '审核中',
+    tagProps: { type: 'warning' as const },
+    actions: [ProductActions.APPROVE, ProductActions.REJECT],
+  },
+  APPROVED: {
+    value: 3 as const,
+    label: '已批准',
+    tagProps: { type: 'success' as const },
+    actions: [ProductActions.COMPLETE],
+  },
+  REJECTED: {
+    value: 4 as const,
+    label: '已驳回',
+    tagProps: { type: 'danger' as const },
+    actions: [ProductActions.EDIT, ProductActions.SUBMIT],
+  },
+  VOIDED: {
+    value: 5 as const,
+    label: '已作废',
+    tagProps: { type: 'danger' as const },
+    actions: [],
+  },
+}
+
+export const BomStatusEnum = Object.assign(
+  bomStatusDefinitions,
+  createEnum<number>({
+    items: Object.values(bomStatusDefinitions),
+    defaultTag: { type: 'info' },
+  })
+)
 
 /**
  * 物料来源类型枚举
@@ -162,35 +172,40 @@ export const BomLayerEnum = createEnum({
  * 对应 Java ApproveStatusEnum
  * 1=草稿 2=待审批 3=已批准 4=已驳回
  */
-export const RouteStatusEnum = createEnum({
-  items: [
-    {
-      value: 1,
-      label: '草稿',
-      tagProps: { type: 'info' },
-      actions: [ProductActions.EDIT, ProductActions.SUBMIT, ProductActions.DELETE],
-    },
-    {
-      value: 2,
-      label: '审核中',
-      tagProps: { type: 'warning' },
-      actions: [ProductActions.APPROVE, ProductActions.REJECT],
-    },
-    {
-      value: 3,
-      label: '已批准',
-      tagProps: { type: 'success' },
-      actions: [],
-    },
-    {
-      value: 4,
-      label: '已驳回',
-      tagProps: { type: 'danger' },
-      actions: [ProductActions.EDIT, ProductActions.SUBMIT, ProductActions.DELETE],
-    },
-  ],
-  defaultTag: { type: 'info' },
-})
+const routeStatusDefinitions = {
+  DRAFT: {
+    value: 1 as const,
+    label: '草稿',
+    tagProps: { type: 'info' as const },
+    actions: [ProductActions.EDIT, ProductActions.SUBMIT, ProductActions.DELETE],
+  },
+  REVIEWING: {
+    value: 2 as const,
+    label: '审核中',
+    tagProps: { type: 'warning' as const },
+    actions: [ProductActions.APPROVE, ProductActions.REJECT],
+  },
+  APPROVED: {
+    value: 3 as const,
+    label: '已批准',
+    tagProps: { type: 'success' as const },
+    actions: [],
+  },
+  REJECTED: {
+    value: 4 as const,
+    label: '已驳回',
+    tagProps: { type: 'danger' as const },
+    actions: [ProductActions.EDIT, ProductActions.SUBMIT, ProductActions.DELETE],
+  },
+}
+
+export const RouteStatusEnum = Object.assign(
+  routeStatusDefinitions,
+  createEnum<number>({
+    items: Object.values(routeStatusDefinitions),
+    defaultTag: { type: 'info' },
+  })
+)
 
 /**
  * 工序类型枚举
@@ -363,13 +378,28 @@ export const ConfigOptionTypeEnum = createEnum({
  * 配置模型状态枚举
  * 对应 Java ProductEnums.ConfigModelStatus
  */
-export const ConfigModelStatusEnum = createEnum({
-  items: [
-    { value: 1, label: '激活', tagProps: { type: 'success' }, actions: [ProductActions.EDIT] },
-    { value: 0, label: '未激活', tagProps: { type: 'danger' }, actions: [ProductActions.START] },
-  ],
-  defaultTag: { type: 'info' },
-})
+const configModelStatusDefinitions = {
+  ACTIVE: {
+    value: 1 as const,
+    label: '激活',
+    tagProps: { type: 'success' as const },
+    actions: [ProductActions.EDIT],
+  },
+  INACTIVE: {
+    value: 0 as const,
+    label: '未激活',
+    tagProps: { type: 'danger' as const },
+    actions: [ProductActions.START],
+  },
+}
+
+export const ConfigModelStatusEnum = Object.assign(
+  configModelStatusDefinitions,
+  createEnum<number>({
+    items: Object.values(configModelStatusDefinitions),
+    defaultTag: { type: 'info' },
+  })
+)
 
 /**
  * 产品分类状态枚举

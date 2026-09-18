@@ -79,6 +79,9 @@ public interface IProductService extends IService<Product> {
      */
     String buildEditDetail(ProductDTO productDTO);
 
+    /** 校验产品是否处于可编辑状态。 */
+    void validateEditable(Long productId);
+
     String getProductCode(String categoryCode);
 
     ProductFullVO getFullProductDetail(Long productId);

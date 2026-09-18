@@ -31,12 +31,12 @@
         >
         <el-table-column prop="recognizeMessage" label="识别信息" min-width="220" />
         <el-table-column prop="recognizeTime" label="识别时间" width="180" />
-        <el-table-column label="操作" width="220"
-          ><template #default="{ row }"
-            ><el-button link type="primary" @click="openWorkbench(row)">进入工作台</el-button
-            ><el-button link type="warning" @click="retry(row)">重新识别</el-button></template
-          ></el-table-column
-        >
+        <TableActionColumn
+          :actions="archiveActions"
+          width="220"
+          display="text"
+          @action="handleArchiveAction"
+        />
       </el-table>
       <el-pagination
         v-model:current-page="pageNum"
@@ -367,6 +367,7 @@ import {
   ArchiveRecognitionStatusEnum,
 } from '@/enums/engineering/archive'
 import SvgIcon from '@/components/SvgIcon/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 type Bounds = { x1: number; y1: number; x2: number; y2: number }
 type Group = {
   key?: string
@@ -424,6 +425,10 @@ const draft = ref<Draft>({ groups: [], workflows: [] }),
   groupImageUrls = ref<Record<string, string>>({}),
   processes = ref<StandardProcessItem[]>([])
 const cache = new Map<string, string>()
+const archiveActions: TableAction<ArchiveImportRecord>[] = [
+  { key: 'workbench', label: '进入工作台' },
+  { key: 'retry', label: '重新识别', type: 'warning' },
+]
 const payload = <T,>(r: any): T => (r?.data?.data ?? r?.data ?? r) as T
 const workflowName = (t: string) =>
   (({ PANEL: '面板', UP_LINE: '上线', DOWN_LINE: '下线' }) as Record<string, string>)[t] || t
@@ -538,6 +543,10 @@ async function retry(r: ArchiveImportRecord) {
   await archiveImportApi.retry(r.archiveId)
   ElMessage.success('已重新识别')
   await load()
+}
+function handleArchiveAction(key: string, row: ArchiveImportRecord) {
+  if (key === 'workbench') void openWorkbench(row)
+  if (key === 'retry') void retry(row)
 }
 async function url(path?: string) {
   if (!path) return ''

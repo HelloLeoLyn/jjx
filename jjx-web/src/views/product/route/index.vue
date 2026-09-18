@@ -71,79 +71,12 @@
         </el-table-column>
         <el-table-column prop="createBy" label="创建人" width="100" />
         <el-table-column prop="createTime" label="创建时间" width="170" />
-        <el-table-column label="操作" min-width="290" fixed="right">
-          <template #default="scope">
-            <el-tooltip content="编辑" placement="top">
-              <el-button
-                v-hasPermi="['engineering:routing:edit']"
-                link
-                type="primary"
-                icon="Edit"
-                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.EDIT)"
-                @click="handleEdit(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="版本对比" placement="top">
-              <el-button
-                link
-                type="warning"
-                icon="CopyDocument"
-                @click="handleVersionCompare(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="提交审批" placement="top">
-              <el-button
-                link
-                type="warning"
-                icon="Promotion"
-                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.SUBMIT)"
-                @click="handleSubmitApprove(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="审批" placement="top">
-              <el-button
-                v-hasPermi="['engineering:routing:approve', 'engineering:routing:reject']"
-                link
-                type="warning"
-                icon="View"
-                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.APPROVE)"
-                @click="handleApprove(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <!-- 2026-08-18：审批通过后需手动设为当前版本（生成计划/领料依赖 is_current=1） -->
-            <el-tooltip
-              content="设为默认"
-              placement="top"
-              v-if="scope.row.approveStatus === 3 && scope.row.isCurrent !== 1"
-            >
-              <el-button
-                v-hasPermi="['engineering:routing:edit']"
-                link
-                type="success"
-                icon="Star"
-                @click="handleSetCurrentRoute(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="删除" placement="top">
-              <el-button
-                link
-                type="danger"
-                icon="Delete"
-                v-hasPermi="['engineering:routing:delete']"
-                :disabled="!RouteStatusEnum.canDo(scope.row.approveStatus, ProductActions.DELETE)"
-                @click="handleDelete(scope.row)"
-              ></el-button>
-            </el-tooltip>
-            <el-tooltip content="流水" placement="top">
-              <el-button
-                link
-                type="primary"
-                icon="Clock"
-                @click="handleOpenTrace(scope.row)"
-              ></el-button>
-            </el-tooltip>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="routeActions"
+          min-width="290"
+          display="text"
+          @action="handleRouteAction"
+        />
       </el-table>
 
       <div class="pagination-container">
@@ -162,11 +95,7 @@
     <!-- 详情对话框 -->
     <RouteDetailDialog v-model="detailDialogVisible" :routing-id="currentRoutingId" />
 
-    <RouteFormDialog
-      v-model="formDialogVisible"
-      :routing-id="formRoutingId"
-      @success="loadData"
-    />
+    <RouteFormDialog v-model="formDialogVisible" :routing-id="formRoutingId" @success="loadData" />
 
     <!-- 版本对比对话框（DEV-768） -->
     <RouteVersionCompareDialog
@@ -191,7 +120,11 @@
     />
 
     <!-- 流水抽屉（bizType=routing，按 bizId 聚合该路线全部操作） -->
-    <TraceTimeline v-model="traceVisible" :biz-type="'routing'" :biz-id="String(traceRoutingId || '')" />
+    <TraceTimeline
+      v-model="traceVisible"
+      :biz-type="'routing'"
+      :biz-id="String(traceRoutingId || '')"
+    />
   </div>
 </template>
 
@@ -215,6 +148,52 @@ import RouteVersionCompareDialog from './components/RouteVersionCompareDialog.vu
 import RouteFormDialog from './components/RouteFormDialog.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { RouteStatusEnum, ProductActions } from '@/enums/product'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+
+const routeActions: TableAction<EngineeringRoutingVO>[] = [
+  { key: 'trace', label: '流水', permission: 'engineering:routing:view' },
+  {
+    key: 'compare',
+    label: '版本对比',
+    type: 'warning',
+    permission: 'engineering:routing:view',
+  },
+  {
+    key: 'edit',
+    label: '编辑',
+    permission: 'engineering:routing:edit',
+    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.EDIT),
+  },
+  {
+    key: 'submit',
+    label: '提交审批',
+    type: 'warning',
+    permission: 'engineering:routing:edit',
+    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.SUBMIT),
+  },
+  {
+    key: 'approve',
+    label: '审批',
+    type: 'warning',
+    permission: ['engineering:routing:approve', 'engineering:routing:reject'],
+    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.APPROVE),
+  },
+  {
+    key: 'setCurrent',
+    label: '设为默认',
+    type: 'success',
+    permission: 'engineering:routing:edit',
+    visible: ({ row }) =>
+      row.approveStatus === RouteStatusEnum.APPROVED.value && row.isCurrent !== 1,
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    permission: 'engineering:routing:delete',
+    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.DELETE),
+  },
+]
 // ==================== 查询参数 ====================
 const queryParams = reactive<ProductRouteQueryParams>({
   pageNum: 1,
@@ -242,6 +221,16 @@ const handleSelectionChange = (selection: EngineeringRoutingVO[]) => {
 const handleCopySelected = () => {
   if (!selectedRoute.value) return
   handleCopy(selectedRoute.value)
+}
+
+const handleRouteAction = (key: string, row: EngineeringRoutingVO) => {
+  if (key === 'edit') handleEdit(row)
+  if (key === 'compare') handleVersionCompare(row)
+  if (key === 'submit') void handleSubmitApprove(row)
+  if (key === 'approve') handleApprove(row)
+  if (key === 'setCurrent') handleSetCurrentRoute(row)
+  if (key === 'delete') handleDelete(row)
+  if (key === 'trace') handleOpenTrace(row)
 }
 
 // ==================== 产品选项 ====================

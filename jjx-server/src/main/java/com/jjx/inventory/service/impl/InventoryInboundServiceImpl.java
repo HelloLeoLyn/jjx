@@ -45,6 +45,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -355,7 +357,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
     }
 
-    private void createIqcQuarantine(InventoryInboundOrder order, Long operatorId, String operatorName) {
+    private int createIqcQuarantine(InventoryInboundOrder order, Long operatorId, String operatorName) {
+        int createdCount = 0;
         for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
             BigDecimal accepted = Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO);
             BigDecimal quarantineQty = item.getQuantity().subtract(accepted);
@@ -379,6 +382,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             quarantine.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
             quarantine.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
             iqcQuarantineMapper.insert(quarantine);
+            createdCount++;
 
             InventoryTransaction tx = new InventoryTransaction();
             tx.setMaterialId(item.getMaterialId());
@@ -402,6 +406,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setRemark("IQC 不合格品隔离");
             transactionMapper.insert(tx);
         }
+        return createdCount;
     }
 
     @Override
@@ -655,7 +660,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.submitted", bizId = "#inboundId", bizType = "'inventory'")
+    @Event(value = "quality.iqc.submitted", bizId = "#inboundId", bizType = "'quality'")
     public boolean submitApprove(Long inboundId, InboundInspectionSubmitDTO inspection) {
         // DEV-651 方案A：行锁
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -894,6 +899,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 ? SecurityUtils.getUsername() : review.getApproverName());
         quality.setReviewTime(LocalDateTime.now());
         qualityInspectionMapper.updateById(quality);
+        InventoryInboundOrder order = inboundOrderMapper.selectById(item.getInboundId());
+        publishIqcEventAfterCommit("quality.iqc.item.approved", iqcPayload(order, item,
+                order == null ? null : order.getInspectorId(), order == null ? null : order.getInspectorName()));
         updateInboundReviewStatus(item.getInboundId());
         return true;
     }
@@ -917,6 +925,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         quality.setReviewerName(review.getApproverName());
         quality.setReviewTime(LocalDateTime.now());
         qualityInspectionMapper.updateById(quality);
+        InventoryInboundOrder order = inboundOrderMapper.selectById(item.getInboundId());
+        publishIqcEventAfterCommit("quality.iqc.item.rejected", iqcPayload(order, item,
+                order == null ? null : order.getInspectorId(), order == null ? null : order.getInspectorName()));
         return true;
     }
 
@@ -938,6 +949,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         InventoryInboundOrder order = inboundOrderMapper.selectById(item.getInboundId());
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         inboundOrderMapper.updateById(order);
+        publishIqcEventAfterCommit("quality.iqc.reinspection.created", iqcPayload(order, item,
+                order.getInspectorId(), order.getInspectorName()));
         return newId;
     }
 
@@ -955,7 +968,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
             order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
             inboundOrderMapper.updateById(order);
-            createIqcQuarantine(order, SecurityUtils.getUserId(), SecurityUtils.getUsername());
+            int quarantineCount = createIqcQuarantine(order, SecurityUtils.getUserId(), SecurityUtils.getUsername());
+            Map<String, Object> approvedPayload = iqcPayload(order, null, null, null);
+            publishIqcEventAfterCommit("quality.iqc.approved", approvedPayload);
+            if (quarantineCount > 0) {
+                approvedPayload.put("quarantineCount", quarantineCount);
+                publishIqcEventAfterCommit("quality.iqc.quarantine.created", approvedPayload);
+            }
         }
     }
 

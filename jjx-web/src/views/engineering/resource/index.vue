@@ -11,7 +11,7 @@
           <el-table-column prop="version" label="版本" width="90" />
           <el-table-column prop="productName" label="原主产品" min-width="160" />
           <el-table-column label="关联产品" min-width="260"><template #default="{row}">{{ productText(row._products) }}</template></el-table-column>
-          <el-table-column label="操作" width="100"><template #default="{row}"><el-button link type="primary" v-hasPermi="['engineering:resource:edit']" @click="editProducts('FILM',row.filmId,row._products,row.filmName)">产品关联</el-button></template></el-table-column>
+          <TableActionColumn :actions="filmActions" width="100" display="text" @action="handleFilmAction" />
         </el-table>
       </template>
 
@@ -26,13 +26,11 @@
           <el-table-column prop="plate_content" label="版面内容" min-width="180" show-overflow-tooltip />
           <el-table-column label="关联产品" min-width="220"><template #default="{row}">{{ refText(row.product_refs) }}</template></el-table-column>
           <el-table-column prop="location" label="位置" width="120" />
-          <el-table-column label="操作" width="280" fixed="right"><template #default="{row}">
-            <el-button link type="primary" v-hasPermi="['engineering:resource:edit']" @click="openFrame(row)">编辑</el-button>
-            <el-button v-if="row.status === ScreenFrameStatusEnum.EMPTY.value" link type="success" v-hasPermi="['engineering:resource:edit']" @click="openPlate(row)">制版</el-button>
-            <el-button v-if="row.status === ScreenFrameStatusEnum.PLATED.value" link type="warning" v-hasPermi="['engineering:resource:maintain']" @click="wash(row)">洗版</el-button>
+          <TableActionColumn :actions="frameActions" width="280" display="text" @action="handleFrameAction">
+            <template #after="{ row }">
             <el-dropdown v-if="row.status !== ScreenFrameStatusEnum.SCRAPPED.value" v-hasPermi="['engineering:resource:maintain']" @command="(command:string)=>frameAction(row,command)"><el-button link type="warning">维护</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="REPAIR">送修</el-dropdown-item><el-dropdown-item command="ENABLE">恢复使用</el-dropdown-item><el-dropdown-item command="SCRAP">报废</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
-            <el-button link v-hasPermi="['engineering:resource:view']" @click="showHistory('SCREEN_FRAME',row.frame_id)">履历</el-button>
-          </template></el-table-column>
+            </template>
+          </TableActionColumn>
         </el-table>
       </template>
 
@@ -46,11 +44,7 @@
           <el-table-column label="状态" width="100"><template #default="{row}"><el-tag :type="DieStatusEnum.getTagProps(row.status).type">{{ DieStatusEnum.getLabel(row.status) }}</el-tag></template></el-table-column>
           <el-table-column label="关联产品" min-width="220"><template #default="{row}">{{ refText(row.product_refs) }}</template></el-table-column>
           <el-table-column prop="location" label="位置" width="110" />
-          <el-table-column label="操作" width="220" fixed="right"><template #default="{row}">
-            <el-button link type="primary" v-hasPermi="['engineering:resource:edit']" @click="openDie(row)">编辑</el-button>
-            <el-button v-if="row.status !== DieStatusEnum.SCRAPPED.value && row.status !== DieStatusEnum.REPLACED.value" link type="warning" v-hasPermi="['engineering:resource:maintain']" @click="openAction(row)">维护</el-button>
-            <el-button link @click="showHistory('DIE',row.die_id)">履历</el-button>
-          </template></el-table-column>
+          <TableActionColumn :actions="dieActions" width="220" display="text" @action="handleDieAction" />
         </el-table>
       </template>
     </el-card>
@@ -84,6 +78,7 @@ import { engineeringResourceApi as api } from '@/api/engineering/resource'
 import { filmApi } from '@/api/product/film'
 import { listProductPage } from '@/api/product'
 import { DieActionEnum, DieStatusEnum, ScreenFrameStatusEnum } from '@/enums/engineering/resource'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'EngineeringResource' })
 const route=useRoute()
@@ -92,6 +87,18 @@ const keyword=ref(''),loading=ref(false),films=ref<any[]>([]),frames=ref<any[]>(
 const frameVisible=ref(false),plateVisible=ref(false),dieVisible=ref(false),productVisible=ref(false),actionVisible=ref(false),historyVisible=ref(false)
 const frameForm=reactive<any>({}),plateForm=reactive<any>({productIds:[]}),dieForm=reactive<any>({productIds:[]}),actionForm=reactive<any>({actionType:DieActionEnum.REPAIR.value,description:'',newDieNo:''})
 const selectedProductIds=ref<number[]>([]),productType=ref(''),productId=ref(0),productTitle=ref(''),history=ref<any[]>([]),actionDieId=ref(0)
+const filmActions:TableAction<any>[]=[{key:'products',label:'产品关联',permission:'engineering:resource:edit'}]
+const frameActions:TableAction<any>[]=[
+  {key:'edit',label:'编辑',permission:'engineering:resource:edit'},
+  {key:'plate',label:'制版',type:'success',permission:'engineering:resource:edit',visible:({row})=>row.status===ScreenFrameStatusEnum.EMPTY.value},
+  {key:'wash',label:'洗版',type:'warning',permission:'engineering:resource:maintain',visible:({row})=>row.status===ScreenFrameStatusEnum.PLATED.value},
+  {key:'history',label:'履历',permission:'engineering:resource:view'},
+]
+const dieActions:TableAction<any>[]=[
+  {key:'edit',label:'编辑',permission:'engineering:resource:edit'},
+  {key:'maintain',label:'维护',type:'warning',permission:'engineering:resource:maintain',visible:({row})=>row.status!==DieStatusEnum.SCRAPPED.value&&row.status!==DieStatusEnum.REPLACED.value},
+  {key:'history',label:'履历'},
+]
 function dataOf(r:any){return r?.data ?? r ?? []}
 function refs(s?:string){return (s||'').split('||').filter(Boolean).map(x=>{const [id,...rest]=x.split(':');return {product_id:Number(id),product_code_name:rest.join(':')}})}
 function refText(s?:string){return refs(s).map(x=>x.product_code_name).join('；')||'-'}
@@ -111,6 +118,9 @@ async function saveAction(){await api.dieAction(actionDieId.value,actionForm);El
 function editProducts(type:string,id:number,current:any[],title:string){productType.value=type;productId.value=id;productTitle.value=title;selectedProductIds.value=(current||[]).map(x=>x.product_id);productVisible.value=true}
 async function saveProducts(){await api.replaceProducts(productType.value,productId.value,selectedProductIds.value);ElMessage.success('产品关联已保存');productVisible.value=false;load()}
 async function showHistory(type:string,id:number){history.value=dataOf(await api.maintenance(type,id));historyVisible.value=true}
+function handleFilmAction(key:string,row:any){if(key==='products')editProducts('FILM',row.filmId,row._products,row.filmName)}
+function handleFrameAction(key:string,row:any){if(key==='edit')openFrame(row);if(key==='plate')openPlate(row);if(key==='wash')void wash(row);if(key==='history')void showHistory('SCREEN_FRAME',row.frame_id)}
+function handleDieAction(key:string,row:any){if(key==='edit')void openDie(row);if(key==='maintain')openAction(row);if(key==='history')void showHistory('DIE',row.die_id)}
 watch(()=>route.name,()=>{keyword.value='';load()})
 onMounted(async()=>{await loadBase();await load()})
 </script>

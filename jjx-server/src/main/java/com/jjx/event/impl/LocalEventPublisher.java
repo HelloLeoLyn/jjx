@@ -106,8 +106,9 @@ public class LocalEventPublisher implements EventPublisher {
 
         // 任务处理：派给角色级别，排除触发者（待任务系统对接后生效）
         if ("task".equals(eventType) || "both".equals(eventType)) {
+            Long directAssigneeId = payloadLong(payload, "receiverId");
             Long assignRole = parseSingleRole(event.getTargetRole());
-            if (assignRole != null) {
+            if (directAssigneeId != null || assignRole != null) {
                 try {
                     SysTask task = new SysTask();
                     String rawCode = eventCode + "-" + System.currentTimeMillis();
@@ -122,7 +123,13 @@ public class LocalEventPublisher implements EventPublisher {
                     if (bizId != null) {
                         task.setBizId(bizId);
                     }
-                    task.setAssignRole(assignRole);
+                    if (directAssigneeId != null) {
+                        task.setAssigneeId(directAssigneeId);
+                        Object receiverName = payload == null ? null : payload.get("receiverName");
+                        if (receiverName != null) task.setAssigneeName(String.valueOf(receiverName));
+                    } else {
+                        task.setAssignRole(assignRole);
+                    }
                     // 业务类型：优先用事件配置的 biz_module（如 sales/purchase），回退 payload
                     Object bizTypeVal = payload != null ? payload.get("bizType") : null;
                     String bizType = event.getBizModule();
@@ -138,7 +145,8 @@ public class LocalEventPublisher implements EventPublisher {
                     task.setKanbanModule(event.getKanbanModule() != null ? event.getKanbanModule() : "office");
                     task.setStatus(0);
                     sysTaskMapper.insert(task);
-                    log.info("   📋 任务已创建: title={}, assignRole={}", event.getTitle(), assignRole);
+                    log.info("   📋 任务已创建: title={}, assigneeId={}, assignRole={}",
+                            event.getTitle(), directAssigneeId, assignRole);
                 } catch (Exception e) {
                     log.error("   ❌ 创建任务失败: {}", e.getMessage());
                 }

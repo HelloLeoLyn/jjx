@@ -22,22 +22,18 @@
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-              {{ row.status === 1 ? '启用' : '停用' }}
+            <el-tag :type="ConfigModelStatusEnum.getTagProps(row.status).type" size="small">
+              {{ ConfigModelStatusEnum.getLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
-        <el-table-column label="操作" width="240" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="row.isDefault !== 1" link type="warning" size="small" @click="handleSetDefault(row)">设默认</el-button>
-            <el-button link :type="row.status === 1 ? 'info' : 'success'" size="small" v-hasPermi="['engineering:edit']" @click="handleToggleStatus(row)">
-              {{ row.status === 1 ? '停用' : '启用' }}
-            </el-button>
-            <el-button link type="danger" size="small" v-hasPermi="['engineering:delete']" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="configActions"
+          width="240"
+          display="text"
+          @action="handleConfigAction"
+        />
       </el-table>
     </el-card>
 
@@ -85,9 +81,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { configModelApi } from '@/api/product/configModel'
 import request from '@/utils/request'
+import { ConfigModelStatusEnum } from '@/enums/product'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'EngineeringConfig' })
 
@@ -97,6 +95,31 @@ const list = ref<any[]>([])
 const productOptions = ref<any[]>([])
 const drawerVisible = ref(false)
 const isEdit = ref(false)
+
+const configActions: TableAction<any>[] = [
+  { key: 'edit', label: '编辑' },
+  {
+    key: 'setDefault',
+    label: '设默认',
+    type: 'warning',
+    visible: ({ row }) => row.isDefault !== 1,
+  },
+  {
+    key: 'toggleStatus',
+    label: ({ row }) =>
+      row.status === ConfigModelStatusEnum.ACTIVE.value ? '停用' : '启用',
+    type: ({ row }) =>
+      row.status === ConfigModelStatusEnum.ACTIVE.value ? 'info' : 'success',
+    permission: 'engineering:edit',
+  },
+  {
+    key: 'delete',
+    label: '删除',
+    type: 'danger',
+    permission: 'engineering:delete',
+    confirm: ({ row }) => `确认删除模型「${row.modelName}」？`,
+  },
+]
 
 const form = reactive<any>({
   modelId: null, modelCode: '', modelName: '', productId: null, remark: '', options: [],
@@ -195,7 +218,12 @@ async function handleSetDefault(row: any) {
 
 async function handleToggleStatus(row: any) {
   try {
-    await configModelApi.changeStatus(row.modelId, row.status === 1 ? 0 : 1)
+    const activeStatus = ConfigModelStatusEnum.ACTIVE.value
+    const inactiveStatus = ConfigModelStatusEnum.INACTIVE.value
+    await configModelApi.changeStatus(
+      row.modelId,
+      row.status === activeStatus ? inactiveStatus : activeStatus
+    )
     ElMessage.success('状态已更新')
     getList()
   } catch (e: any) {
@@ -205,13 +233,19 @@ async function handleToggleStatus(row: any) {
 
 async function handleDelete(row: any) {
   try {
-    await ElMessageBox.confirm(`确认删除模型「${row.modelName}」？`, '删除确认', { type: 'warning' })
     await configModelApi.remove(row.modelId)
     ElMessage.success('已删除')
     getList()
   } catch (e: any) {
     if (e !== 'cancel') ElMessage.error(e?.message || '删除失败')
   }
+}
+
+function handleConfigAction(key: string, row: any) {
+  if (key === 'edit') void openEdit(row)
+  if (key === 'setDefault') void handleSetDefault(row)
+  if (key === 'toggleStatus') void handleToggleStatus(row)
+  if (key === 'delete') void handleDelete(row)
 }
 
 onMounted(() => {

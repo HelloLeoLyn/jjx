@@ -437,10 +437,9 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
         Integer currentStatus = product.getProductStatus();
-        // 开发中(1)/已驳回(5)/取消(8) 均可提交审核（与前端列表枚举一致）
+        // 仅开发中/已驳回可提交审核；取消为终态。
         if(!Objects.equals(ProductEnums.Status.DEVELOPING.getValue(), currentStatus)
-                && !Objects.equals(ProductEnums.Status.REJECTED.getValue(), currentStatus)
-                && !Objects.equals(ProductEnums.Status.CANCELLED.getValue(), currentStatus)){
+                && !Objects.equals(ProductEnums.Status.REJECTED.getValue(), currentStatus)){
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_CANNOT_SUBMIT);
         }
         ProductUpdateDTO dto = new ProductUpdateDTO();
@@ -639,6 +638,17 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
      * 产品编辑变更明细（产品流水节点展开内容）
      * 白名单 = 前端表单可编辑字段，排除审计/状态流转字段
      */
+    @Override
+    public void validateEditable(Long productId) {
+        Product product = productMapper.selectById(productId);
+        if (product == null) {
+            throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
+        }
+        if (!ProductEnums.Status.fromValue(product.getProductStatus()).isEditable()) {
+            throw new BusinessException(BusinessExceptionEnum.PRODUCT_CANNOT_EDIT);
+        }
+    }
+
     @Override
     public String buildEditDetail(ProductDTO dto) {
         try {

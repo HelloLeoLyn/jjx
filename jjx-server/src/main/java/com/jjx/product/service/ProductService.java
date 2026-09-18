@@ -19,6 +19,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ProductService {
     private final ProductMapper productMapper;
+    private final IProductService productService;
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
 
@@ -27,6 +28,7 @@ public class ProductService {
         if (product == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
+        productService.validateEditable(product.getProductId());
         // DEV-805：只能配置已审批通过的BOM（防止把当前配置指向未批准草稿，导致发布/转量产校验失败）
         EngineeringBom bom = bomService.getById(dto.getCurrentBomId());
         if (bom == null || !Objects.equals(product.getProductId(), bom.getProductId())) {
@@ -50,6 +52,7 @@ public class ProductService {
         if (product == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
+        productService.validateEditable(product.getProductId());
         // DEV-805：只能配置已审批通过的工艺路线
         EngineeringRouting routing = routingService.getById(dto.getCurrentRouteId());
         if (routing == null || !Objects.equals(product.getProductId(), routing.getProductId())) {

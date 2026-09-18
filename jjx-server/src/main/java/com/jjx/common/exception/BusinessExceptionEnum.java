@@ -57,6 +57,7 @@ public enum BusinessExceptionEnum implements IExceptionEnum {
     PRODUCT_CANNOT_APPROVED(4010, "产品状态有误，无法审核通过"),
     PRODUCT_CANNOT_REJECT(4011, "产品状态有误，无法驳回审核"),
     PRODUCT_CANNOT_CANCEL(4012, "产品状态有误，无法取消"),
+    PRODUCT_CANNOT_EDIT(4013, "产品当前状态不可编辑"),
 
     // ==================== 产品BOM异常 (4100-4199) ====================
     BOM_NOT_FOUND(4101, "BOM不存在"),
