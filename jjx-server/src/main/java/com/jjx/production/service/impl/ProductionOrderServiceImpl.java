@@ -68,6 +68,15 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
     private final ProductionOrderStartTransactionService productionOrderStartTransactionService;
+    /** 完工口径（新质检模型）：有效 FQC 检验批汇总 —— dev-20260918-014 */
+    private final com.jjx.quality.service.QualityLotService qualityLotService;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    /**
+     * 完工是否要求成品入库已过账（dev-20260918-024 预留，默认关闭）。
+     * 2026-09-18 用户口径：工单完工 = 生产完成 + 成品检验通过；入库暂不设门槛。置 true 即启用。
+     */
+    private static final boolean REQUIRE_INBOUND_BEFORE_COMPLETE = false;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOrder(ProductionOrderCreateDTO createDTO) {
@@ -878,8 +887,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
      * 完工质检门（053定稿）：工单完工必须过质检门
      * ① 工单状态=进行中
      * ② 全部工序已完成（执行状态=COMPLETED/SKIPPED）
-     * ③ FQC质检通过（存在 result=pass 的完工质检）
-     * ④ 成品完工数量达标（finishedQuantity>0；2026-09-09 口径Y：成品=最新 FQC PASS 的 passQty）
+     * ③ 完工检验通过（dev-20260918-014：有效 FQC 检验批 quality_lot —— 无待检、无未处置不良）
+     * ④ 成品完工数量达标（口径Y：有效 FQC 批合格累计 QualifiedTotal ≥ 计划数量）
      * 任一不满足拒绝完工；调用方拿失败原因提示用户
      */
     private void validateOrderCompletion(ProductionOrder order) {
@@ -907,33 +916,52 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             log.error("完工质检门[2/4]查询工序失败", e);
             throw new BusinessException("完工校验失败：无法读取工序完成状态，请稍后重试");
         }
-        // ③ FQC质检通过（P3-C 重构：取最新一张 FQC，result 必须为 pass；消除 P3-A 死锁时序）
-        //    死锁源已移除：completeOrder 不再创建 FQC，FQC 由最后 Execution 完成时自动创建（P3-C）
+        // ③ 完工检验通过（dev-20260918-014：改读新质检模型 quality_lot 检验批，去旧表 production_quality_inspection 依赖）
+        //    口径 = 有效 FQC 批（无后继复检版本）：无待检、无未处置不良
+        com.jjx.quality.dto.FqcCompletionSummary fqcSummary;
         try {
-            java.util.List<com.jjx.production.domain.entity.ProductionQualityInspection> fqcs =
-                    qualityInspectionMapper.selectList(
-                            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.production.domain.entity.ProductionQualityInspection>()
-                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getOrderId, order.getOrderId())
-                                    .eq(com.jjx.production.domain.entity.ProductionQualityInspection::getInspectionType, QualityInspectionTypeEnum.FQC.getCode()));
-            long pendingFqc = fqcs.stream().filter(f -> QualityInspectionResultEnum.PENDING.getCode().equals(f.getResult())).count();
-            java.math.BigDecimal unresolved = fqcs.stream()
-                    .map(com.jjx.production.domain.entity.ProductionQualityInspection::getRemainingFailQty)
-                    .filter(java.util.Objects::nonNull)
-                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-            if (fqcs.isEmpty()) blockers.add("尚未生成完工检验（FQC）");
-            if (pendingFqc > 0) blockers.add("还有" + pendingFqc + "张FQC待检");
-            if (unresolved.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                blockers.add("还有" + unresolved.stripTrailingZeros().toPlainString() + "件FQC不良未处置");
-            }
+            fqcSummary = qualityLotService.summarizeEffectiveFqc(order.getOrderId());
         } catch (Exception e) {
             log.error("完工质检门[3/4]查询质检失败", e);
             throw new BusinessException("完工校验失败：无法读取完工检验结果，请稍后重试");
         }
-        // ④ 成品完工数量达标（finishedQuantity>0）
-        if (order.getFinishedQuantity() == null || order.getPlannedQuantity() == null
-                || order.getFinishedQuantity().compareTo(order.getPlannedQuantity()) < 0) {
-            log.warn("完工质检门[4/4]失败：工单{}成品完工数量为0", order.getOrderId());
-            blockers.add("成品FQC累计合格数量未达计划数量");
+        if (!fqcSummary.isHasLot()) {
+            blockers.add("尚未生成完工检验（FQC 检验批）");
+        }
+        if (fqcSummary.getPendingCount() > 0) {
+            blockers.add("还有" + fqcSummary.getPendingCount() + "张完工检验（FQC）待检");
+        }
+        if (fqcSummary.getUndisposedFailQuantity().compareTo(java.math.BigDecimal.ZERO) > 0) {
+            blockers.add("还有" + fqcSummary.getUndisposedFailQuantity().stripTrailingZeros().toPlainString()
+                    + "件完工检验不良未处置");
+        }
+        // ④ 成品完工数量达标（口径Y：有效 FQC 批合格累计 ≥ 计划数量）
+        if (order.getPlannedQuantity() == null
+                || fqcSummary.getQualifiedTotal().compareTo(order.getPlannedQuantity()) < 0) {
+            log.warn("完工质检门[4/4]失败：工单{}成品合格累计未达计划", order.getOrderId());
+            blockers.add("成品检验合格累计（" + fqcSummary.getQualifiedTotal().stripTrailingZeros().toPlainString()
+                    + "）未达计划数量（" + (order.getPlannedQuantity() == null ? "0"
+                    : order.getPlannedQuantity().stripTrailingZeros().toPlainString()) + "）");
+        }
+        // ⑤（预留·默认关闭，dev-20260918-024）成品入库过账后才允许完工。
+        //    需要时把 REQUIRE_INBOUND_BEFORE_COMPLETE 置 true 即启用（需仓库确认流程就绪）。
+        if (REQUIRE_INBOUND_BEFORE_COMPLETE) {
+            java.math.BigDecimal posted = java.math.BigDecimal.ZERO;
+            try {
+                java.math.BigDecimal v = jdbcTemplate.queryForObject(
+                        "SELECT COALESCE(SUM(i.posted_quantity),0) FROM inventory_inbound_order o "
+                                + "JOIN inventory_inbound_item i ON i.inbound_id = o.inbound_id "
+                                + "WHERE o.source_type='PRODUCTION' AND o.source_id=? "
+                                + "AND o.order_status IN (5,6,7,10,11)",
+                        java.math.BigDecimal.class, order.getOrderId());
+                posted = v == null ? java.math.BigDecimal.ZERO : v;
+            } catch (Exception e) {
+                log.warn("完工门禁[5]查询成品入库过账失败: {}", e.getMessage());
+            }
+            if (order.getPlannedQuantity() != null && posted.compareTo(order.getPlannedQuantity()) < 0) {
+                blockers.add("成品入库过账数量（" + posted.stripTrailingZeros().toPlainString()
+                        + "）未达计划数量（" + order.getPlannedQuantity().stripTrailingZeros().toPlainString() + "）");
+            }
         }
         if (!blockers.isEmpty()) {
             throw new BusinessException("完工校验不通过：" + String.join("；", blockers));

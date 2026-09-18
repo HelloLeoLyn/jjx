@@ -46,6 +46,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
     /** 扫码C：设备码软校验记录（DEVICE_CHECK） */
     private final com.jjx.production.service.ProductionOperationRecordService productionOperationRecordService;
+    /** 完工口径/阶段（新质检模型）—— dev-20260918-015 */
+    private final com.jjx.quality.service.QualityLotService qualityLotService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -532,9 +534,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                         ExecutionStatusEnum.COMPLETED.getValue(),
                         ExecutionStatusEnum.SKIPPED.getValue(),
                         ExecutionStatusEnum.CANCELLED.getValue()));
-        if (unfinishedOtherExecutions == 0) {
-            qualityActionService.createFqcForExecution(executionId);
-        }
+        // 旧 FQC 建单已下线（dev-20260918-017/018）：成品检验走 quality_lot（末道报工审批即建批）
 
         // 2026-09-09 口径Y（Leo 定）：工单成品数量（completed/finished/remaining）不再在工序完工时写入，
         // 统一由 FQC 判定 PASS 写入（QualityActionServiceImpl.handleFqcPass，成品=质检通过数）。
@@ -621,10 +621,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                 throw new BusinessException("工序[" + processLabel(exec) + "]状态已变更，请刷新后重试");
             }
         }
-        // 全部收口后由最后一道工序自动创建完工检验（FQC）
-        ProductionOperationExecution last = open.get(open.size() - 1);
-        qualityActionService.createFqcForExecution(last.getExecutionId());
-        log.info("工单统一收口完成: orderId={}, 工序数={}, FQC来源execution={}", orderId, open.size(), last.getExecutionId());
+        log.info("工单统一收口完成: orderId={}, 工序数={}（成品检验走 quality_lot：末道报工审批即建批）", orderId, open.size());
         return true;
     }
 
@@ -661,18 +658,35 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         } catch (Exception e) {
             log.warn("查询工单收口状态失败: {}", e.getMessage());
         }
+        // 工序进度（总数/已完成，不含已取消）—— dev-20260918-015
+        java.util.Map<Long, int[]> progress = new java.util.HashMap<>();
+        try {
+            jdbcTemplate.query("SELECT e.order_id AS order_id, COUNT(*) AS total_cnt, "
+                            + "SUM(CASE WHEN e.execution_status IN (" + ExecutionStatusEnum.COMPLETED.getValue() + ","
+                            + ExecutionStatusEnum.SKIPPED.getValue() + ") THEN 1 ELSE 0 END) AS done_cnt "
+                            + "FROM production_operation_execution e "
+                            + "WHERE e.order_id IN (" + orderIdStr + ") "
+                            + "AND e.execution_status <> " + ExecutionStatusEnum.CANCELLED.getValue() + " "
+                            + "GROUP BY e.order_id",
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs -> progress.put(rs.getLong("order_id"),
+                            new int[]{rs.getInt("total_cnt"), rs.getInt("done_cnt")}));
+        } catch (Exception e) {
+            log.warn("查询工单工序进度失败: {}", e.getMessage());
+        }
         for (Long id : ids) {
             ComStatusRow row = rows.get(id);
-            if (row == null) {
-                continue;
-            }
             com.jjx.production.domain.vo.OrderCompletionStatusVO vo = new com.jjx.production.domain.vo.OrderCompletionStatusVO();
             vo.setOrderId(id);
             ProductionOrder order = productionOrderMapper.selectById(id);
             vo.setOrderNo(order == null ? null : order.getOrderNo());
-            vo.setPendingExecutionCount(row.openCnt);
-            vo.setAuthorized(isSuperAdmin || (row.rootCnt > 0 && row.mineCnt == row.rootCnt));
-            vo.setCanComplete(vo.isAuthorized() && row.openCnt > 0);
+            int openCnt = row == null ? 0 : row.openCnt;
+            int rootCnt = row == null ? 0 : row.rootCnt;
+            int mineCnt = row == null ? 0 : row.mineCnt;
+            vo.setPendingExecutionCount(openCnt);
+            vo.setAuthorized(isSuperAdmin || (rootCnt > 0 && mineCnt == rootCnt));
+            vo.setCanComplete(vo.isAuthorized() && openCnt > 0);
+            int[] prog = progress.get(id);
+            fillStage(vo, order, prog == null ? 0 : prog[0], prog == null ? 0 : prog[1]);
             result.add(vo);
         }
         return result;
@@ -680,6 +694,84 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
     /** jdbcTemplate 结果行载体 */
     private record ComStatusRow(int openCnt, int mineCnt, int rootCnt) {
+    }
+
+    /**
+     * 派生「完工阶段」—— dev-20260918-015（四个状态机投影，不落库）。
+     * 工序完成 ≠ 工单完成：工序全完成后阶段应翻成「待完工检验」而不是仍显示「进行中」。
+     */
+    private void fillStage(com.jjx.production.domain.vo.OrderCompletionStatusVO vo, ProductionOrder order,
+                           int total, int done) {
+        java.math.BigDecimal zero = java.math.BigDecimal.ZERO;
+        vo.setQualifiedQuantity(zero);
+        vo.setPlannedQuantity(zero);
+        vo.setUndisposedFailQuantity(zero);
+        if (order == null) {
+            setStage(vo, "UNKNOWN", "未知", "工单不存在");
+            return;
+        }
+        Integer status = order.getOrderStatus();
+        java.math.BigDecimal planned = order.getPlannedQuantity() == null ? zero : order.getPlannedQuantity();
+        vo.setPlannedQuantity(planned);
+        if (com.jjx.production.enums.ProductionOrderStatusEnum.CANCELLED.getValue().equals(status)
+                || com.jjx.production.enums.ProductionOrderStatusEnum.CLOSED.getValue().equals(status)) {
+            setStage(vo, "CANCELLED", "已取消/已关闭", "—");
+            return;
+        }
+        // 已完工但入库失败 → 待入库处理（优先于「已完成」展示）
+        if (com.jjx.production.enums.ProductionOrderStatusEnum.COMPLETED.getValue().equals(status)
+                && order.getInboundPendingFlag() != null && order.getInboundPendingFlag() == 1) {
+            setStage(vo, "PENDING_INBOUND", "待入库处理", "重试完工入库（生产/仓库）");
+            return;
+        }
+        if (com.jjx.production.enums.ProductionOrderStatusEnum.COMPLETED.getValue().equals(status)) {
+            setStage(vo, "COMPLETED", "已完成", "工单已完工");
+            return;
+        }
+        if (com.jjx.production.enums.ProductionOrderStatusEnum.PAUSED.getValue().equals(status)) {
+            setStage(vo, "PAUSED", "已暂停", "恢复生产后继续");
+            return;
+        }
+        // 未到「进行中」→ 未开工
+        if (!com.jjx.production.enums.ProductionOrderStatusEnum.IN_PROGRESS.getValue().equals(status)) {
+            setStage(vo, "NOT_STARTED", "未开工", "开工后进入生产");
+            return;
+        }
+        boolean allDone = total > 0 && done >= total;
+        if (!allDone) {
+            setStage(vo, "IN_PRODUCTION", "生产中",
+                    "继续工序执行/报工（已完成 " + done + "/" + total + "）");
+            return;
+        }
+        // 工序全部完成 → 看完工检验（新质检模型 quality_lot）
+        com.jjx.quality.dto.FqcCompletionSummary fqc = qualityLotService.summarizeEffectiveFqc(order.getOrderId());
+        vo.setFqcPendingCount(fqc.getPendingCount());
+        vo.setQualifiedQuantity(fqc.getQualifiedTotal());
+        vo.setUndisposedFailQuantity(fqc.getUndisposedFailQuantity());
+        if (!fqc.isHasLot()) {
+            setStage(vo, "PENDING_FQC", "待完工检验", "末道工序报工审批通过后自动建完工检验批（质检）");
+            return;
+        }
+        if (fqc.getPendingCount() > 0) {
+            setStage(vo, "PENDING_FQC", "待完工检验", "判定完工检验（质检员）");
+            return;
+        }
+        if (fqc.getUndisposedFailQuantity().compareTo(zero) > 0) {
+            setStage(vo, "PENDING_DISPOSITION", "待不良处置", "返工/报废处置未清（生产/质检）");
+            return;
+        }
+        if (fqc.getQualifiedTotal().compareTo(planned) < 0) {
+            setStage(vo, "PENDING_FQC", "待完工检验", "完工检验合格累计未达计划，继续检验/补检（质检）");
+            return;
+        }
+        setStage(vo, "READY_TO_COMPLETE", "待完工确认", "点「完工工单」收口（一级负责人）");
+    }
+
+    private void setStage(com.jjx.production.domain.vo.OrderCompletionStatusVO vo,
+                          String stage, String label, String nextAction) {
+        vo.setStage(stage);
+        vo.setStageLabel(label);
+        vo.setNextAction(nextAction);
     }
 
     @Override

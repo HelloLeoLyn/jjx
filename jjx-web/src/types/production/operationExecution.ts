@@ -171,4 +171,22 @@ export interface OrderCompletionStatusVO {
   authorized: boolean
   /** 是否可点击收口（有权 + 存在待完工工序） */
   canComplete: boolean
+  /** 完工阶段（派生，dev-20260918-015）：NOT_STARTED/IN_PRODUCTION/PENDING_FQC/PENDING_DISPOSITION/READY_TO_COMPLETE/PENDING_INBOUND/COMPLETED/PAUSED/CANCELLED/UNKNOWN */
+  stage?: string
+  /** 阶段中文名 */
+  stageLabel?: string
+  /** 下一步该谁做什么 */
+  nextAction?: string
+  /** 工序总数（不含已取消） */
+  executionTotal?: number
+  /** 已完成工序数 */
+  executionDone?: number
+  /** 待检完工检验批张数 */
+  fqcPendingCount?: number
+  /** 未处置不良合计 */
+  undisposedFailQuantity?: number
+  /** 成品检验合格累计 */
+  qualifiedQuantity?: number
+  /** 计划数量 */
+  plannedQuantity?: number
 }

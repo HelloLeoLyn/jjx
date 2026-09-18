@@ -30,9 +30,20 @@
         <template #default="{ row }">{{ fmtQty(row.completedQuantity) }}</template>
       </el-table-column>
       <el-table-column prop="planEndDate" label="计划交期" width="130" />
-      <el-table-column label="状态" width="110">
+      <el-table-column label="阶段" width="130">
         <template #default="{ row }">
-          <el-tag :type="statusTag(row.orderStatus)">{{ statusLabel(row.orderStatus) }}</el-tag>
+          <el-tooltip
+            :content="`工单状态：${statusLabel(row.orderStatus)}` +
+              (stageOf(row).nextAction ? ` · 下一步：${stageOf(row).nextAction}` : '')"
+            placement="top"
+          >
+            <el-tag :type="stageTag(stageOf(row).stage)">{{ stageOf(row).label }}</el-tag>
+          </el-tooltip>
+        </template>
+      </el-table-column>
+      <el-table-column label="进度" min-width="230">
+        <template #default="{ row }">
+          <span class="wo-progress">{{ progressText(row) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="100" align="center">
@@ -112,8 +123,40 @@ const historyStatuses = [
 
 const statusLabel = (status?: number) =>
   status === undefined ? '未知' : ProductionOrderStatusEnum.getLabel(status)
-const statusTag = (status?: number) =>
-  status === undefined ? 'info' : ProductionOrderStatusEnum.getTagProps(status).type
+
+// ============ 完工阶段（派生，dev-20260918-015）============
+const STAGE_TAG: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'info'> = {
+  IN_PRODUCTION: 'primary',
+  PENDING_FQC: 'warning',
+  PENDING_DISPOSITION: 'danger',
+  READY_TO_COMPLETE: 'success',
+  PENDING_INBOUND: 'warning',
+  COMPLETED: 'success',
+  PAUSED: 'info',
+  NOT_STARTED: 'info',
+  CANCELLED: 'info',
+}
+/** 阶段优先，取不到（接口未回）时回落到工单原始状态 */
+const stageOf = (row: ProductionOrderVO) => {
+  const st = completionMap.value[String(row.orderId)]
+  return {
+    stage: st?.stage || '',
+    label: st?.stageLabel || statusLabel(row.orderStatus),
+    nextAction: st?.nextAction || '',
+  }
+}
+const stageTag = (stage?: string): 'primary' | 'success' | 'warning' | 'danger' | 'info' =>
+  STAGE_TAG[stage || ''] || 'info'
+/** 进度：工序 x/y · 完工检验 待检 · 合格 a/b */
+const progressText = (row: ProductionOrderVO) => {
+  const st = completionMap.value[String(row.orderId)]
+  if (!st) return '—'
+  const parts: string[] = []
+  if (st.executionTotal != null) parts.push(`工序 ${st.executionDone ?? 0}/${st.executionTotal}`)
+  if (st.fqcPendingCount && st.fqcPendingCount > 0) parts.push(`完工检验 待检 ${st.fqcPendingCount}`)
+  parts.push(`合格 ${fmtQty(st.qualifiedQuantity)}/${fmtQty(st.plannedQuantity)}`)
+  return parts.join(' · ')
+}
 
 const selectOrder = (order: ProductionOrderVO | null) => {
   tableRef.value?.setCurrentRow(order)
@@ -224,5 +267,10 @@ onMounted(loadOrders)
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+.wo-progress {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
 }
 </style>

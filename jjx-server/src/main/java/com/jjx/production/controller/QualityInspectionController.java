@@ -39,13 +39,6 @@ public class QualityInspectionController {
         return Result.success(qualityService.getById(id));
     }
 
-    @Operation(summary = "获取 JJX-QR-039 成品检验报告打印数据")
-    @SaCheckPermission("production:quality:view")
-    @GetMapping("/{id}/fqc-report-print")
-    public Result<FqcReportPrintVO> getFqcReportPrint(@PathVariable Long id) {
-        return Result.success(qualityService.getFqcReportPrint(id));
-    }
-
     @Operation(summary = "创建检验单")
     @PostMapping
     public Result<Long> create(@RequestBody QualityInspectionCreateDTO dto) {
@@ -79,14 +72,6 @@ public class QualityInspectionController {
     @PostMapping("/{id}/reinspect")
     public Result<Long> reinspect(@PathVariable Long id) {
         return Result.success(qualityActionService.reinspect(id));
-    }
-
-    @Operation(summary = "处置FQC不良：返工或报废")
-    @SaCheckPermission("production:quality:judge")
-    @PostMapping("/{id}/disposition")
-    public Result<Long> disposeFailure(@PathVariable Long id,
-            @jakarta.validation.Valid @RequestBody com.jjx.production.domain.dto.FqcDispositionDTO dto) {
-        return Result.success(qualityActionService.disposeFqcFailure(id, dto));
     }
 
     @Operation(summary = "创建质检（IPQC 可带 workReportId，P3-C；后端反查校验一致性）")

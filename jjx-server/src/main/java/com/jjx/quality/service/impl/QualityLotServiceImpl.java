@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.domain.entity.QualityLotItem;
+import com.jjx.quality.dto.FqcCompletionSummary;
 import com.jjx.quality.dto.QualityLotCreateDTO;
 import com.jjx.quality.dto.QualityLotItemDTO;
 import com.jjx.quality.dto.QualityLotQueryDTO;
@@ -25,7 +26,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 检验批服务实现 —— dev-20260917-001
@@ -249,6 +252,101 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         lot.setDisposedQuantity(next);
         lotMapper.updateById(lot);
         return lot;
+    }
+
+    @Override
+    public FqcCompletionSummary summarizeEffectiveFqc(Long orderId) {
+        FqcCompletionSummary summary = new FqcCompletionSummary();
+        if (orderId == null) {
+            return summary;
+        }
+        List<QualityLot> lots = lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getLotType, QualityLotTypeEnum.FQC.getCode())
+                .eq(QualityLot::getOrderId, orderId)
+                .eq(QualityLot::getDelFlag, 0)
+                .orderByAsc(QualityLot::getLotId));
+        if (lots.isEmpty()) {
+            return summary;
+        }
+        summary.setHasLot(true);
+        // 被后继复检版本取代的批：parent_lot_id 命中任一批即视为失效（与 syncFinishInbound 同口径）
+        Set<Long> superseded = new HashSet<>();
+        for (QualityLot lot : lots) {
+            if (lot.getParentLotId() != null) {
+                superseded.add(lot.getParentLotId());
+            }
+        }
+        BigDecimal qualified = BigDecimal.ZERO;
+        BigDecimal undisposed = BigDecimal.ZERO;
+        int pending = 0;
+        int effective = 0;
+        for (QualityLot lot : lots) {
+            if (superseded.contains(lot.getLotId())) {
+                continue; // 已有复检新版本 → 不计账
+            }
+            effective++;
+            boolean judged = lot.getInspectedQuantity() != null && lot.getInspectedQuantity().signum() > 0;
+            if (!judged) {
+                pending++;
+                continue;
+            }
+            qualified = qualified.add(nz(lot.getPassQuantity()));
+            BigDecimal left = nz(lot.getFailQuantity()).subtract(nz(lot.getDisposedQuantity()));
+            if (left.signum() > 0) {
+                undisposed = undisposed.add(left);
+            }
+        }
+        summary.setEffectiveLotCount(effective);
+        summary.setPendingCount(pending);
+        summary.setQualifiedTotal(qualified);
+        summary.setUndisposedFailQuantity(undisposed);
+        return summary;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int markOrderFinishedStored(Long orderId) {
+        if (orderId == null) {
+            return 0;
+        }
+        List<QualityLot> lots = lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getLotType, QualityLotTypeEnum.FQC.getCode())
+                .eq(QualityLot::getOrderId, orderId)
+                .eq(QualityLot::getDelFlag, 0)
+                .orderByAsc(QualityLot::getLotId));
+        if (lots.isEmpty()) {
+            return 0;
+        }
+        Set<Long> superseded = new HashSet<>();
+        for (QualityLot lot : lots) {
+            if (lot.getParentLotId() != null) {
+                superseded.add(lot.getParentLotId());
+            }
+        }
+        int changed = 0;
+        for (QualityLot lot : lots) {
+            if (superseded.contains(lot.getLotId())) {
+                continue;
+            }
+            boolean judged = lot.getInspectedQuantity() != null && lot.getInspectedQuantity().signum() > 0;
+            if (!judged) {
+                continue;
+            }
+            BigDecimal pass = nz(lot.getPassQuantity());
+            BigDecimal fail = nz(lot.getFailQuantity());
+            BigDecimal disposed = nz(lot.getDisposedQuantity());
+            if (nz(lot.getStoredQuantity()).compareTo(pass) < 0) {
+                lot.setStoredQuantity(pass);
+            }
+            // 关闭：合格全部入库 + 不良全部处置
+            if (nz(lot.getStoredQuantity()).compareTo(pass) >= 0 && disposed.compareTo(fail) >= 0) {
+                lot.setStatus(QualityLotStatusEnum.CLOSED.getCode());
+            }
+            lotMapper.updateById(lot);
+            changed++;
+        }
+        log.info("完工入库回写检验批已入库/关闭: orderId={} 批数={}", orderId, changed);
+        return changed;
     }
 
     /** 生成批号 QLyyMMdd0001（批量小，用 count+1 加占用校验，避免额外依赖） */

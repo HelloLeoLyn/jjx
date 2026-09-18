@@ -2,6 +2,8 @@ package com.jjx.production.domain.vo;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 /**
  * 工单级完工（统一收口）状态投影。
  *
@@ -28,4 +30,38 @@ public class OrderCompletionStatusVO {
 
     /** 是否可点击收口（有权限 + 存在待完工工序） */
     private boolean canComplete;
+
+    // ==================== 完工阶段（派生，不落库）—— dev-20260918-015 ====================
+
+    /**
+     * 完工阶段（派生自 4 个状态机）：
+     * NOT_STARTED 未开工 / IN_PRODUCTION 生产中 / PENDING_FQC 待完工检验 /
+     * PENDING_DISPOSITION 待不良处置 / READY_TO_COMPLETE 待完工确认 /
+     * PENDING_INBOUND 待入库处理 / COMPLETED 已完成 / CANCELLED 已取消
+     */
+    private String stage;
+
+    /** 阶段中文名（直接展示） */
+    private String stageLabel;
+
+    /** 下一步该谁做什么（一句话） */
+    private String nextAction;
+
+    /** 工序总数（不含已取消） */
+    private int executionTotal;
+
+    /** 已完成工序数（已完成/已跳过） */
+    private int executionDone;
+
+    /** 待检完工检验批张数 */
+    private int fqcPendingCount;
+
+    /** 未处置不良合计 */
+    private BigDecimal undisposedFailQuantity = BigDecimal.ZERO;
+
+    /** 成品检验合格累计 */
+    private BigDecimal qualifiedQuantity = BigDecimal.ZERO;
+
+    /** 计划数量 */
+    private BigDecimal plannedQuantity = BigDecimal.ZERO;
 }

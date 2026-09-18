@@ -127,25 +127,28 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         } catch (Exception e) {
             log.warn("读取工单计划数量失败: orderId={} err={}", orderId, e.getMessage());
         }
-        // 该工单成品检验批的"有效版本"（无后继复检版本）合格数合计
-        List<QualityLot> lots = lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
-                .eq(QualityLot::getLotType, "FQC")
-                .eq(QualityLot::getOrderId, orderId));
-        BigDecimal target = BigDecimal.ZERO;
-        for (QualityLot lot : lots) {
-            Long childCount = lotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
-                    .eq(QualityLot::getParentLotId, lot.getLotId()));
-            if (childCount != null && childCount > 0) {
-                continue; // 已有复检新版本 → 不计账
-            }
-            boolean judged = lot.getInspectedQuantity() != null && lot.getInspectedQuantity().signum() > 0;
-            if (judged) {
-                target = target.add(nz(lot.getPassQuantity()));
-            }
-        }
+        // 该工单有效成品检验批（无后继复检版本）合格累计 —— 唯一口径（dev-20260918-014）
+        com.jjx.quality.dto.FqcCompletionSummary summary = qualityLotService.summarizeEffectiveFqc(orderId);
+        BigDecimal target = nz(summary.getQualifiedTotal());
         if (planned != null && target.compareTo(planned) > 0) {
             throw new BusinessException("成品检验合格累计（" + target.toPlainString() + "）超过工单计划数量（"
                     + planned.toPlainString() + "），请检查检验批数量");
+        }
+        // 完工口径回写 production_order（幂等：= 有效批合格累计；替换旧 handleFqcPass 的累加写法，防重复累计）
+        BigDecimal remain = BigDecimal.ZERO;
+        if (planned != null) {
+            remain = planned.subtract(target);
+            if (remain.signum() < 0) {
+                remain = BigDecimal.ZERO;
+            }
+        }
+        try {
+            jdbcTemplate.update(
+                    "UPDATE production_order SET finished_quantity = ?, completed_quantity = ?, remaining_quantity = ? "
+                            + "WHERE order_id = ?",
+                    target, target, remain, orderId);
+        } catch (Exception e) {
+            log.warn("回写工单完工数量失败: orderId={} err={}", orderId, e.getMessage());
         }
         return inventoryInboundService.syncFinishInbound(orderId, null, target, reason);
     }

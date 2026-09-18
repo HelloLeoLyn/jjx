@@ -48,4 +48,17 @@ public interface QualityLotService {
 
     /** 不良处置累计（返工/让步/报废都会调用） */
     QualityLot addDisposedQuantity(Long lotId, BigDecimal delta);
+
+    /**
+     * 工单完工口径汇总（dev-20260918-014）：有效 FQC 批（无后继复检版本）的 待检张数 / 合格累计 / 未处置不良。
+     * 与 {@code QualityFinishServiceImpl.syncFinishInbound} 同一口径，供工单完工门禁与成品数量回写共用。
+     */
+    com.jjx.quality.dto.FqcCompletionSummary summarizeEffectiveFqc(Long orderId);
+
+    /**
+     * 完工入库过账后回写 → dev-20260918-022/023：
+     * 有效 FQC 批（已判定）stored_quantity 置为该批合格数；当"合格全部入库且不良全部处置"置 CLOSED。
+     * @return 处理的批数
+     */
+    int markOrderFinishedStored(Long orderId);
 }

@@ -216,33 +216,33 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     }
 
     /**
-     * 处置的库存影响（dev-20260917-008）：
+     * 处置的库存影响（dev-20260917-008；2026-09-18 dev-20260918-021 改为 fail-closed）：
      * - 让步接收（特采）：不良数量转良品库存并打特采标记（写 ADJUST 凭证，带 lotId/ncrId）；
      * - 报废：在"只入合格数"的账务口径下不良品从未进良品库，故不产生库存扣减，仅记台账；
-     * - 返工：生成返工工序（沿用既有返工逻辑），完工再检合格后走正常成品入库。
+     * - 返工：需真实返工工序 + 复检（另立任务 dev-20260918-028），此处不置 DONE。
+     *
+     * 原则：库存联动失败【必须整体回滚】，禁止"台账已关、库存未动"（此前 catch 吞异常 → 账实不符）。
      */
     private void applyStockEffect(QualityNcr ncr, QualityNcrAction action, String actionType, BigDecimal quantity) {
-        try {
-            if ("CONCESSION".equals(actionType) && ncr.getOrderId() != null) {
-                com.jjx.inventory.service.InventoryInboundService inboundService =
-                        inventoryInboundServiceProvider.getIfAvailable();
-                if (inboundService == null) {
-                    log.warn("库存服务不可用，让步接收未联动库存: ncrNo={}", ncr.getNcrNo());
-                    return;
-                }
-                inboundService.adjustFinishStock(ncr.getOrderId(), ncr.getLotId(), ncr.getNcrId(), quantity,
-                        "让步接收（特采）转良品：不良 " + quantity.toPlainString() + " 件");
-                action.setStatus("DONE");
-                action.setResultRemark("让步接收已转良品库存（特采标记）");
-                actionMapper.updateById(action);
-            } else if ("SCRAP".equals(actionType)) {
-                action.setStatus("DONE");
-                action.setResultRemark("报废已登记：不良品未进入良品库存，无需库存扣减（口径A）");
-                actionMapper.updateById(action);
+        if ("CONCESSION".equals(actionType) && ncr.getOrderId() != null) {
+            com.jjx.inventory.service.InventoryInboundService inboundService =
+                    inventoryInboundServiceProvider.getIfAvailable();
+            if (inboundService == null) {
+                throw new BusinessException("库存服务不可用，让步接收无法联动库存，已回滚处置");
             }
-        } catch (Exception e) {
-            log.warn("处置库存联动失败（台账已登记，需人工处理）: ncrNo={} 方式={} err={}",
-                    ncr.getNcrNo(), actionType, e.getMessage());
+            inboundService.adjustFinishStock(ncr.getOrderId(), ncr.getLotId(), ncr.getNcrId(), quantity,
+                    "让步接收（特采）转良品：不良 " + quantity.toPlainString() + " 件");
+            action.setStatus("DONE");
+            action.setResultRemark("让步接收已转良品库存（特采标记）");
+            actionMapper.updateById(action);
+        } else if ("SCRAP".equals(actionType)) {
+            action.setStatus("DONE");
+            action.setResultRemark("报废已登记：不良品未进入良品库存，无需库存扣减（口径A）");
+            actionMapper.updateById(action);
+        } else if ("REWORK".equals(actionType)) {
+            // 返工闭环未实现前保持 PROCESSING（不置 DONE），避免被当作"已处置"
+            action.setStatus("PROCESSING");
+            actionMapper.updateById(action);
         }
     }
 
@@ -252,6 +252,13 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         QualityNcrAction action = actionMapper.selectById(actionId);
         if (action == null) {
             throw new BusinessException("处置单不存在: " + actionId);
+        }
+        if ("DONE".equals(action.getStatus())) {
+            return action; // 幂等：已完成直接返回
+        }
+        // 返工完成必须关联真实返工工序，禁止"点一下就完成返工"（dev-20260918-021）
+        if ("REWORK".equals(action.getActionType()) && reworkExecutionId == null) {
+            throw new BusinessException("返工完成必须关联返工工序（reworkExecutionId 不能为空）");
         }
         action.setStatus("DONE");
         action.setResultRemark(resultRemark == null ? action.getResultRemark() : resultRemark);
