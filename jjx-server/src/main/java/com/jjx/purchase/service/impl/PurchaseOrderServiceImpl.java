@@ -10,6 +10,7 @@ import com.jjx.common.annotation.ExcelColumn;
 import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.event.EventPublisher;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.purchase.converter.PurchaseConverter;
 import com.jjx.purchase.domain.dto.*;
@@ -34,6 +35,8 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.FileOutputStream;
 import java.lang.reflect.Field;
@@ -64,6 +67,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     private final ReviewFlowService reviewFlowService;
     private final RedisSequenceService redisSequenceService;
+    private final EventPublisher eventPublisher;
 
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
@@ -1210,7 +1214,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "purchase.received", bizId = "#dto.orderId", bizType = "'purchase'")
     public int batchReceiveOrderItems(PurchaseOrderReceiveDTO dto) {
         // 订单ID兜底校验（orderId 由接口路径注入，此处防御 null）
         if (dto == null || dto.getOrderId() == null) {
@@ -1270,7 +1273,38 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
         inboundService.createInboundRecordFromPurchase(dto.getOrderId());
 
+        // 2026-09-18：事件改为手写 payload 后置发布，把业务单号/供应商带进通知模板
+        //（原 @Event 注解只能带内部 id，通知标题只能显示「内部编号」）
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bizType", "purchase");
+        payload.put("triggerUserId", SecurityUtils.getUserId());
+        payload.put("bizId", dto.getOrderId());
+        payload.put("orderId", dto.getOrderId());
+        payload.put("orderNo", order.getOrderNo());
+        payload.put("supplierId", order.getSupplierId());
+        payload.put("supplierName", order.getSupplierName());
+        payload.put("receiveCount", totalCount);
+        publishEventAfterCommit("purchase.received", payload);
+
         return totalCount;
+    }
+
+    /**
+     * 事务提交后发布事件（与 InventoryInboundServiceImpl.publishIqcEventAfterCommit 同一模式）。
+     * 事件配置里的通知/待办文案依赖 payload，必须在业务事务真正提交后发布，避免回滚后误发。
+     */
+    private void publishEventAfterCommit(String eventCode, Map<String, Object> payload) {
+        Map<String, Object> payloadSnapshot = new HashMap<>(payload);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    eventPublisher.fire(eventCode, payloadSnapshot);
+                }
+            });
+        } else {
+            eventPublisher.fire(eventCode, payloadSnapshot);
+        }
     }
 
     /**

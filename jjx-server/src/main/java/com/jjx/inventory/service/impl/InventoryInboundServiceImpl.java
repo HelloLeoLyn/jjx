@@ -293,7 +293,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.confirmed", bizId = "#inboundId", bizType = "'inventory'")
     public boolean confirm(Long inboundId, Long operatorId, String operatorName) {
         // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复入库
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -343,7 +342,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         } catch (Exception e) {
             log.warn("安全库存检查失败: {}", e.getMessage());
         }
-        return inboundOrderMapper.updateById(order) > 0;
+        boolean confirmed = inboundOrderMapper.updateById(order) > 0;
+        if (confirmed) {
+            // 2026-09-18：事件改为手写 payload 后置发布，把入库单号/采购单号/供应商/操作人带进通知模板
+            //（原 @Event 注解只能带内部 inboundId，通知标题只能显示「内部编号」）
+            Map<String, Object> payload = iqcPayload(order, null, null, null);
+            payload.put("bizType", "inventory");
+            payload.put("operatorName", operatorName);
+            publishIqcEventAfterCommit("inventory.inbound.confirmed", payload);
+        }
+        return confirmed;
     }
 
     private void validateAllIqcApproved(Long inboundId) {
@@ -1230,7 +1238,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.created_from_purchase", bizId = "#purchaseOrderId", bizType = "'inventory'")
     public Long createFromPurchase(Long purchaseOrderId) {
         log.info("从采购订单创建入库单: purchaseOrderId={}", purchaseOrderId);
 
@@ -1326,6 +1333,22 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundOrderMapper.updateById(order);
 
         try { eventPublisher.fire("purchase.arrived", Map.of("sourceNo", order.getSourceNo(), "inboundId", String.valueOf(order.getInboundId()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
+        // 2026-09-18：事件改为手写 payload 后置发布，把采购单号/入库单号/供应商带进通知模板
+        //（原 @Event 注解 payload 只有 purchaseOrderId，通知标题只能显示「内部编号」；
+        //  bizId 同步改为入库单 id，使通知「去处理」跳到 /inventory/inbound?bizId= 能落到本单）
+        Map<String, Object> createdPayload = new HashMap<>();
+        createdPayload.put("bizType", "inventory");
+        createdPayload.put("triggerUserId", SecurityUtils.getUserId());
+        createdPayload.put("bizId", order.getInboundId());
+        createdPayload.put("inboundId", order.getInboundId());
+        createdPayload.put("inboundNo", order.getInboundNo());
+        createdPayload.put("purchaseOrderId", purchaseOrderId);
+        createdPayload.put("purchaseOrderNo", po.getOrderNo());
+        createdPayload.put("sourceId", purchaseOrderId);
+        createdPayload.put("sourceNo", po.getOrderNo());
+        createdPayload.put("supplierId", po.getSupplierId());
+        createdPayload.put("supplierName", po.getSupplierName());
+        publishIqcEventAfterCommit("inventory.inbound.created_from_purchase", createdPayload);
         log.info("采购入库完成: purchaseOrderId={}, inboundId={}", purchaseOrderId, order.getInboundId());
         return order.getInboundId();
     }
