@@ -97,9 +97,19 @@
               {{ fmtTime(detailForm.plannedStartTime) }} 至 {{ fmtTime(detailForm.plannedEndTime) }}
             </div>
           </div>
-          <el-tag :type="statusTag(detailForm.executionStatus)">{{
-            statusLabel(detailForm.executionStatus)
-          }}</el-tag>
+          <div class="detail-header-actions">
+            <el-button
+              v-if="canStartExecution"
+              type="primary"
+              icon="VideoPlay"
+              :loading="startingExecution"
+              @click="handleStartExecution"
+              >开始工序</el-button
+            >
+            <el-tag :type="statusTag(detailForm.executionStatus)">{{
+              statusLabel(detailForm.executionStatus)
+            }}</el-tag>
+          </div>
         </div>
       </template>
 
@@ -933,12 +943,22 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
   detailChildren.value = []
   detailMyTasks.value = []
   qualityList.value = []
-  const [rootResult, mineResult, reportResult, qualityResult] = await Promise.allSettled([
+  const [execResult, rootResult, mineResult, reportResult, qualityResult] = await Promise.allSettled([
+    operationExecutionApi.getInfo(row.executionId),
     getExecutionRootTask(row.executionId),
     getMyTasks(row.executionId),
     getWorkReportsByExecution(row.executionId),
     qualityApi.page({ pageNum: 1, pageSize: 100, executionId: row.executionId }),
   ])
+  // 真实工序状态（不要用任务状态推断；报工/开工都看它）
+  if (execResult.status === 'fulfilled') {
+    const real: any = (execResult.value as any)?.data
+    if (real && real.executionStatus !== undefined && real.executionStatus !== null) {
+      detailForm.executionStatus = real.executionStatus
+      detailForm.actualStartTime = real.actualStartTime ?? detailForm.actualStartTime
+      detailExecution.value = real
+    }
+  }
   if (rootResult.status === 'fulfilled') {
     detailRootTask.value = (rootResult.value as any)?.data || null
     if (detailRootTask.value?.taskId) {
@@ -958,6 +978,39 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
     qualityList.value = Array.isArray(data) ? data : data?.records || []
   }
   contextLoading.value = false
+}
+
+const startingExecution = ref(false)
+const detailExecution = ref<OperationExecutionVO | null>(null)
+/** 工序可开始：待执行/准备中/已暂停（与后端 canStartExecution 一致） */
+const canStartExecution = computed(() => {
+  const st = detailExecution.value?.executionStatus ?? detailForm.executionStatus
+  return (
+    st === ExecutionStatusEnum.PENDING.value ||
+    st === ExecutionStatusEnum.PREPARING.value ||
+    st === ExecutionStatusEnum.PAUSED.value
+  )
+})
+/** 开始工序（PC 入口，dev-20260918）：工序开工后才可报工 */
+const handleStartExecution = async () => {
+  const executionId = Number(detailForm.executionId)
+  if (!executionId) return
+  startingExecution.value = true
+  try {
+    await operationExecutionApi.start(executionId)
+    ElMessage.success('工序已开始，现在可以报工了')
+    const info: any = await operationExecutionApi.getInfo(executionId)
+    const real: any = info?.data
+    if (real) {
+      detailExecution.value = real
+      detailForm.executionStatus = real.executionStatus
+      detailForm.actualStartTime = real.actualStartTime ?? detailForm.actualStartTime
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.msg || e?.message || '开始工序失败')
+  } finally {
+    startingExecution.value = false
+  }
 }
 
 const handleView = async (row: OperationExecutionVO) => {
