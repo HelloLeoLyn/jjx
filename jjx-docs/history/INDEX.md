@@ -1,4 +1,4 @@
-﻿# history/ 索引（历史快照层 · 131 篇 md）
+﻿# history/ 索引（历史快照层 · 134 篇 md）
 
 > ⚠️ 本页是**历史快照清单**（实施记录 / 方案 / 分析 / 核查），按日期倒序，**不保证反映当前实现**。
 > 想知道"某模块现在是什么样" → 看 `jjx-docs/modules/<模块>.md`；入口导航见 `jjx-docs/README.md`。
@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-21 (dev-044) | restart-regression-checklist-dev-20260921-044.md | 重启后回归清单（037/038/039/040 + 1232/1312/1944/1914）：一次重启收掉整批运行态验证 |
 | 2026-09-18 (dev-016) | quality-legacy-fqc-endpoint-inventory-dev-20260918-016.md | 旧质检 /production/quality 端点·页面·菜单 使用方盘点（dev-20260918-016） |
 | 2026-09-18 (dev-008) | quality-rework-child-lot-dev-20260918-008.md | 质量管理：供应商返工复检子批次与批次谱系方案（dev-20260918-008） |
 | 2026-09-14 (dev-013) | engineering-archive-local-segmentation-dev-20260912-013.md | 历史档案本地结构切割与工序识别实施报告（dev-20260912-013） |
