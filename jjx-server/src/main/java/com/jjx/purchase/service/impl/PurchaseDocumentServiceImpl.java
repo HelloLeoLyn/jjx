@@ -42,7 +42,21 @@ import com.jjx.system.annotation.Event;
 public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMapper, PurchaseDocument> implements IPurchaseDocumentService {
 
     private final PurchaseDocumentMapper documentMapper;
+    /** 2026-09-21（dev-20260921-013）：采购事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final PurchaseOrderMapper purchaseOrderMapper;
+
+    /**
+     * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
+     * 手写 payload，bizNo 取业务单号/编码（删除类由调用方传入删除前取到的值）。
+     */
+    private void publishDocumentEvent(String eventCode, Long id, String knownNo) {
+        PurchaseDocument entity = (id == null || knownNo != null) ? null : documentMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getDocumentNo());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "purchase", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public List<PurchaseDocument> selectDocumentList(PurchaseDocumentDTO dto) {
@@ -84,7 +98,6 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
-    @Event(value = "purchase.document.created", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertDocument(PurchaseDocumentDTO dto) {
         // 检查票据编号是否唯一
@@ -134,7 +147,11 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             document.setDocumentStatus(DocumentStatus.PENDING.getValue());
         }
 
-        return documentMapper.insert(document);
+        int rows = documentMapper.insert(document);
+        if (rows > 0) {
+            publishDocumentEvent("purchase.document.created", document.getDocumentId(), document.getDocumentNo());
+        }
+        return rows;
     }
 
     @Override
@@ -157,14 +174,18 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
-    @Event(value = "purchase.document.deleted", bizId = "#documentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteDocumentById(Long documentId) {
         PurchaseDocument document = documentMapper.selectById(documentId);
         if (document == null) {
             throw new BusinessException("票据不存在");
         }
-        return documentMapper.deleteById(documentId);
+        PurchaseDocument before = documentMapper.selectById(documentId);
+        int rows = documentMapper.deleteById(documentId);
+        if (rows > 0) {
+            publishDocumentEvent("purchase.document.deleted", documentId, before == null ? null : before.getDocumentNo());
+        }
+        return rows;
     }
 
     @Override
@@ -178,7 +199,6 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     }
 
     @Override
-    @Event(value = "purchase.document.verified", bizId = "#documentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark) {
         PurchaseDocument document = documentMapper.selectById(documentId);
@@ -197,7 +217,11 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
         }
         document.setUpdateTime(LocalDateTime.now());
 
-        return documentMapper.updateById(document);
+        int rows = documentMapper.updateById(document);
+        if (rows > 0) {
+            publishDocumentEvent("purchase.document.verified", document.getDocumentId(), document.getDocumentNo());
+        }
+        return rows;
     }
 
     @Override
@@ -380,6 +404,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             fileInfo.put("fileUrl", fileUrl);
             fileInfo.put("fileSize", file.getSize());
             fileInfo.put("orderNo", orderNo);
+            fileInfo.put("bizNo", orderNo);
             return fileInfo;
 
         } catch (IOException e) {
@@ -420,6 +445,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
                             fileInfo.put("fileSize", 0);
                         }
                         fileInfo.put("orderNo", orderNo);
+                        fileInfo.put("bizNo", orderNo);
                         return fileInfo;
                     })
                     .collect(Collectors.toList());

@@ -39,7 +39,21 @@ import com.jjx.system.annotation.Event;
 public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMapper, PurchasePayment> implements IPurchasePaymentService {
 
     private final PurchasePaymentMapper paymentMapper;
+    /** 2026-09-21（dev-20260921-013）：采购事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final PurchaseOrderMapper orderMapper;
+
+    /**
+     * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
+     * 手写 payload，bizNo 取业务单号/编码（删除类由调用方传入删除前取到的值）。
+     */
+    private void publishPaymentEvent(String eventCode, Long id, String knownNo) {
+        PurchasePayment entity = (id == null || knownNo != null) ? null : paymentMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getPaymentNo());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "purchase", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public PageResult<PurchasePayment> selectPaymentList(PurchasePaymentDTO dto) {
@@ -81,7 +95,6 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
-    @Event(value = "purchase.payment.created", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertPayment(PurchasePaymentDTO dto) {
         // 检查付款单号是否唯一
@@ -117,6 +130,9 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         // 更新订单付款信息
         updateOrderPaymentInfo(dto.getOrderId());
 
+        if (result > 0) {
+            publishPaymentEvent("purchase.payment.created", payment.getPaymentId(), payment.getPaymentNo());
+        }
         return result;
     }
 
@@ -152,7 +168,6 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
-    @Event(value = "purchase.payment.deleted", bizId = "#paymentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deletePaymentById(Long paymentId) {
         PurchasePayment payment = paymentMapper.selectById(paymentId);
@@ -171,6 +186,9 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             updateOrderPaymentInfo(payment.getOrderId());
         }
 
+        if (result > 0) {
+            publishPaymentEvent("purchase.payment.deleted", payment.getPaymentId(), payment.getPaymentNo());
+        }
         return result;
     }
 
@@ -185,7 +203,6 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
-    @Event(value = "purchase.payment.approved", bizId = "#paymentId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int approvePayment(Long paymentId, String approvalStatus, String approverName, String approvalComment) {
         PurchasePayment payment = paymentMapper.selectById(paymentId);
@@ -212,11 +229,13 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
 
         if (payment.getOrderId() != null) updateOrderPaymentInfo(payment.getOrderId());
 
+        if (result > 0) {
+            publishPaymentEvent("purchase.payment.approved", payment.getPaymentId(), payment.getPaymentNo());
+        }
         return result;
     }
 
     @Override
-    @Event(value = "purchase.payment.confirmed", bizId = "#dto", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int confirmPayment(PurchasePaymentDTO dto) {
         PurchasePayment payment = paymentMapper.selectById(dto.getPaymentId());
@@ -244,6 +263,9 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             updateOrderPaymentInfo(payment.getOrderId());
         }
 
+        if (result > 0) {
+            publishPaymentEvent("purchase.payment.confirmed", payment.getPaymentId(), payment.getPaymentNo());
+        }
         return result;
     }
 

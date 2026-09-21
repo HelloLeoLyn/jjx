@@ -69,6 +69,18 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final RedisSequenceService redisSequenceService;
     private final EventPublisher eventPublisher;
 
+    /**
+     * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
+     * 手写 payload，bizNo 取业务单号/编码（删除类由调用方传入删除前取到的值）。
+     */
+    private void publishPurchaseOrderEvent(String eventCode, Long id, String knownNo) {
+        PurchaseOrder entity = (id == null || knownNo != null) ? null : orderMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getOrderNo());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "purchase", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
+
     @Override
     public PageResult<PurchaseOrderVO> page(PurchaseOrderQueryDTO queryDTO) {
         LambdaQueryWrapper<PurchaseOrder> wrapper = buildQueryWrapper(queryDTO);
@@ -364,7 +376,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "purchase.submitted", bizId = "#orderId", bizType = "'purchase'")
     public int submitOrder(Long orderId) {
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(orderId);
@@ -395,6 +406,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             reviewFlowService.record("purchase_order", orderId, "SUBMIT", "提交审批",
                     fromStatus,
                     ApproveStatusEnum.PENDING.getValue(), null, null);
+        }
+        if (result > 0) {
+            publishPurchaseOrderEvent("purchase.submitted", order.getOrderId(), order.getOrderNo());
         }
         return result;
     }
@@ -431,7 +445,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
-    @Event(value = "purchase.approved", bizId = "#dto.orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public ApproveStatusEnum approveOrder(PurchaseOrderApprovalDTO dto) {
         // 检查订单是否存在
@@ -466,6 +479,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                     dto.getApprovalComment(), null);
         }
         // 返回落库后的真实状态：批准/驳回由入参决定，注解里不能写死，@Log 取 #result.data.label
+        publishPurchaseOrderEvent("purchase.approved", order.getOrderId(), order.getOrderNo());
         return result > 0 ? ApproveStatusEnum.getByValue(targetStatus) : null;
     }
 
@@ -475,7 +489,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
-    @Event(value = "purchase.item_received", bizId = "#orderId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int receiveOrderItem(Long orderId, Long itemId, BigDecimal receivedQuantity) {
         // 检查订单是否存在
@@ -528,6 +541,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
         inboundService.createInboundRecordFromPurchase(orderId);
 
+        if (result > 0) {
+            publishPurchaseOrderEvent("purchase.item_received", order.getOrderId(), order.getOrderNo());
+        }
         return result;
     }
 
@@ -628,8 +644,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
-    @Event(value = "purchase.payment_updated", bizId = "#orderId", bizType = "'purchase'")
     public int updatePaymentInfo(Long orderId, BigDecimal paidAmount, Integer paymentStatus) {
+        publishPurchaseOrderEvent("purchase.payment_updated", orderId, null);
         return orderMapper.updatePaymentInfo(orderId, paidAmount, paymentStatus);
     }
 
@@ -1282,6 +1298,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         payload.put("bizId", dto.getOrderId());
         payload.put("orderId", dto.getOrderId());
         payload.put("orderNo", order.getOrderNo());
+        payload.put("bizNo", order.getOrderNo());
         payload.put("supplierId", order.getSupplierId());
         payload.put("supplierName", order.getSupplierName());
         payload.put("receiveCount", totalCount);

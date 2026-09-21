@@ -38,6 +38,21 @@ import com.jjx.system.annotation.Event;
 @Service
 public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMapper, MaterialInquiry> implements IMaterialInquiryService {
 
+    /** 2026-09-21（dev-20260921-013）：采购事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
+
+    /**
+     * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
+     * 手写 payload，bizNo 取业务单号/编码（删除类由调用方传入删除前取到的值）。
+     */
+    private void publishInquiryEvent(String eventCode, Long id, String knownNo) {
+        MaterialInquiry entity = (id == null || knownNo != null) ? null : baseMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getMaterialCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "purchase", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
+
     @Override
     public PageResult<MaterialInquiryVO> selectMaterialInquiryList(MaterialInquiryQueryDTO queryDTO) {
         LambdaQueryWrapper<MaterialInquiry> queryWrapper = new LambdaQueryWrapper<>();
@@ -93,21 +108,27 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
-    @Event(value = "purchase.material_inquiry.created", bizId = "#inquiryDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertMaterialInquiry(MaterialInquiryDTO inquiryDTO) {
         MaterialInquiry entity = new MaterialInquiry();
         BeanUtils.copyProperties(inquiryDTO, entity);
-        return baseMapper.insert(entity);
+        int rows = baseMapper.insert(entity);
+        if (rows > 0) {
+            publishInquiryEvent("purchase.material_inquiry.created", entity.getInquiryId(), entity.getMaterialCode());
+        }
+        return rows;
     }
 
     @Override
-    @Event(value = "purchase.material_inquiry.updated", bizId = "#inquiryDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int updateMaterialInquiry(MaterialInquiryDTO inquiryDTO) {
         MaterialInquiry entity = new MaterialInquiry();
         BeanUtils.copyProperties(inquiryDTO, entity);
-        return baseMapper.updateById(entity);
+        int rows = baseMapper.updateById(entity);
+        if (rows > 0) {
+            publishInquiryEvent("purchase.material_inquiry.updated", entity.getInquiryId(), entity.getMaterialCode());
+        }
+        return rows;
     }
 
     @Override
@@ -117,10 +138,14 @@ public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMappe
     }
 
     @Override
-    @Event(value = "purchase.material_inquiry.deleted", bizId = "#inquiryId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteMaterialInquiryById(Long inquiryId) {
-        return baseMapper.deleteById(inquiryId);
+        MaterialInquiry before = baseMapper.selectById(inquiryId);
+        int rows = baseMapper.deleteById(inquiryId);
+        if (rows > 0) {
+            publishInquiryEvent("purchase.material_inquiry.deleted", inquiryId, before == null ? null : before.getMaterialCode());
+        }
+        return rows;
     }
 
     @Override

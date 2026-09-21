@@ -43,6 +43,8 @@ import com.jjx.system.utils.SecurityUtils;
 public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMapper, PurchaseSupplier> implements IPurchaseSupplierService {
 
     private final PurchaseSupplierMapper supplierMapper;
+    /** 2026-09-21（dev-20260921-013）：采购事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final PurchaseOrderMapper purchaseOrderMapper;
     private final PurchaseConverter purchaseConverter;
     private final SupplierConverter supplierConverter;
@@ -54,6 +56,18 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
 
     /** 供应商标签分组（字典 sys_tag_group） */
     public static final String TAG_GROUP_SUPPLIER_GOODS = "supplier_goods";
+    /**
+     * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
+     * 手写 payload，bizNo 取业务单号/编码（删除类由调用方传入删除前取到的值）。
+     */
+    private void publishSupplierEvent(String eventCode, Long id, String knownNo) {
+        PurchaseSupplier entity = (id == null || knownNo != null) ? null : supplierMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getSupplierCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "purchase", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
+
     @Override
     public com.jjx.common.core.page.PageResult<PurchaseSupplierVO> selectSupplierList(PurchaseSupplierQueryVO queryVO) {
         LambdaQueryWrapper<PurchaseSupplier> wrapper = Wrappers.lambdaQuery();
@@ -151,8 +165,6 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         return redisSequenceService.generateBusinessNumberByType(
                 "supplier", SUPPLIER_CODE_PREFIX, "", SUPPLIER_CODE_DIGITS);
     }
-
-    @Event(value = "purchase.supplier.created", bizId = "#supplierDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int insertSupplier(PurchaseSupplierDTO supplierDTO) {
         // 供应商编码留空时由系统生成（dev-20260911-005）
@@ -226,11 +238,13 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                     SecurityUtils.getUsername());
         }
 
+        if (result > 0) {
+            publishSupplierEvent("purchase.supplier.created", supplier.getSupplierId(), supplier.getSupplierCode());
+        }
         return result;
     }
 
     @Override
-    @Event(value = "purchase.supplier.updated", bizId = "#supplierDTO", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int updateSupplier(PurchaseSupplierDTO supplierDTO) {
         if (supplierDTO.getSupplierId() == null) {
@@ -274,11 +288,13 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
                     SecurityUtils.getUsername());
         }
 
+        if (result > 0) {
+            publishSupplierEvent("purchase.supplier.updated", existingSupplier.getSupplierId(), existingSupplier.getSupplierCode());
+        }
         return result;
     }
 
     @Override
-    @Event(value = "purchase.supplier.deleted", bizId = "#supplierId", bizType = "'purchase'")
     @Transactional(rollbackFor = Exception.class)
     public int deleteSupplierById(Long supplierId) {
         // 检查供应商是否存在
@@ -296,7 +312,11 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
         }
 
         // 删除供应商（逻辑删除）
-        return supplierMapper.deleteById(supplierId);
+        int rows = supplierMapper.deleteById(supplierId);
+        if (rows > 0) {
+            publishSupplierEvent("purchase.supplier.deleted", supplier.getSupplierId(), supplier.getSupplierCode());
+        }
+        return rows;
     }
 
     @Override
@@ -320,7 +340,6 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     }
 
     @Override
-    @Event(value = "purchase.supplier.status_updated", bizId = "#supplierId", bizType = "'purchase'")
     public int updateSupplierStatus(Long supplierId, Integer status) {
         // 检查供应商是否存在
         PurchaseSupplier supplier = supplierMapper.selectById(supplierId);
@@ -333,7 +352,11 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             throw new BusinessException("状态值不正确，必须是" + StatusEnum.NORMAL.getCode() + "（正常）或" + StatusEnum.DISABLE.getCode() + "（停用）");
         }
 
-        return supplierMapper.updateSupplierStatus(supplierId, status);
+        int rows = supplierMapper.updateSupplierStatus(supplierId, status);
+        if (rows > 0) {
+            publishSupplierEvent("purchase.supplier.status_updated", supplier.getSupplierId(), supplier.getSupplierCode());
+        }
+        return rows;
     }
 
     @Override
