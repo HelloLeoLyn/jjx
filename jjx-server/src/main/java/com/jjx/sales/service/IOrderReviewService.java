@@ -12,135 +12,12 @@ import java.util.List;
 public interface IOrderReviewService {
 
     /**
-     * 提交订单审核
-     *
-     * @param orderId 订单ID
-     * @param submitterId 提交人ID
-     * @param submitterName 提交人姓名
-     * @param submitComment 提交备注
-     * @return 审核记录ID
-     */
-    Long submitOrderForReview(Long orderId, Long submitterId, String submitterName, String submitComment);
-
-    /**
-     * 开始审核订单
-     *
-     * @param orderId 订单ID
-     * @param reviewerId 审核人ID
-     * @param reviewerName 审核人姓名
-     * @param reviewerRole 审核人角色
-     * @return 审核记录ID
-     */
-    Long startOrderReview(Long orderId, Long reviewerId, String reviewerName, String reviewerRole);
-
-    /**
-     * 审核通过订单
-     *
-     * @param orderId 订单ID
-     * @param reviewerId 审核人ID
-     * @param reviewerName 审核人姓名
-     * @param reviewComment 审核意见
-     * @param attachments 审核附件
-     * @return 审核记录ID
-     */
-    Long approveOrder(Long orderId, Long reviewerId, String reviewerName, String reviewComment, String attachments);
-
-    /**
-     * 审核驳回订单
-     *
-     * @param orderId 订单ID
-     * @param reviewerId 审核人ID
-     * @param reviewerName 审核人姓名
-     * @param reviewComment 审核意见
-     * @param rejectReason 驳回原因
-     * @param improvementSuggestions 改进建议
-     * @return 审核记录ID
-     */
-    Long rejectOrder(Long orderId, Long reviewerId, String reviewerName, String reviewComment,
-                     String rejectReason, String improvementSuggestions);
-
-    /**
-     * 退回订单修改
-     *
-     * @param orderId 订单ID
-     * @param reviewerId 审核人ID
-     * @param reviewerName 审核人姓名
-     * @param reviewComment 审核意见
-     * @param returnReason 退回原因
-     * @param modificationRequirements 修改要求
-     * @return 审核记录ID
-     */
-    Long returnOrderForModification(Long orderId, Long reviewerId, String reviewerName, String reviewComment,
-                                    String returnReason, String modificationRequirements);
-
-    /**
-     * 转交审核
-     *
-     * @param orderId 订单ID
-     * @param currentReviewerId 当前审核人ID
-     * @param nextReviewerId 下一审核人ID
-     * @param nextReviewerName 下一审核人姓名
-     * @param transferReason 转交原因
-     * @return 审核记录ID
-     */
-    Long transferOrderReview(Long orderId, Long currentReviewerId, Long nextReviewerId,
-                             String nextReviewerName, String transferReason);
-
-    /**
-     * 客户确认订单
-     *
-     * @param orderId 订单ID
-     * @param customerId 客户ID
-     * @param customerName 客户姓名
-     * @param confirmComment 确认意见
-     * @param customerFeedback 客户反馈
-     * @return 审核记录ID
-     */
-    Long confirmOrderByCustomer(Long orderId, Long customerId, String customerName,
-                                String confirmComment, String customerFeedback);
-
-    /**
-     * 取消订单审核
-     *
-     * @param orderId 订单ID
-     * @param cancellerId 取消人ID
-     * @param cancellerName 取消人姓名
-     * @param cancelReason 取消原因
-     * @return 审核记录ID
-     */
-    Long cancelOrderReview(Long orderId, Long cancellerId, String cancellerName, String cancelReason);
-
-    /**
      * 获取订单审核记录列表
      *
      * @param orderId 订单ID
      * @return 审核记录列表
      */
-    List<OrderReviewRecord> getOrderReviewRecords(Long orderId);
-
-    /**
-     * 按评审时间倒序获取订单评审记录
-     *
-     * @param orderId 订单ID
-     * @return 评审记录列表
-     */
-    List<OrderReviewRecord> listByOrder(Long orderId);
-
-    /**
-     * 获取订单审核历史
-     *
-     * @param orderId 订单ID
-     * @return 审核历史记录
-     */
-    List<OrderReviewRecord> getOrderReviewHistory(Long orderId);
-
-    /**
-     * 获取当前审核信息
-     *
-     * @param orderId 订单ID
-     * @return 当前审核记录
-     */
-    OrderReviewRecord getCurrentReviewInfo(Long orderId);
+    List<com.jjx.sales.domain.vo.OrderReviewProcessVO> getOrderReviewRecords(Long orderId);
 
     /**
      * 获取待审核订单列表
@@ -262,34 +139,4 @@ public interface IOrderReviewService {
      */
     Object getReviewPermissions(Long orderId, Long userId);
 
-    /**
-     * 批量提交审核
-     *
-     * @param orderIds 订单ID列表
-     * @param submitterId 提交人ID
-     * @param submitterName 提交人姓名
-     * @return 提交结果
-     */
-    Object batchSubmitForReview(List<Long> orderIds, Long submitterId, String submitterName);
-
-    /**
-     * 批量审核通过
-     *
-     * @param orderIds 订单ID列表
-     * @param reviewerId 审核人ID
-     * @param reviewerName 审核人姓名
-     * @return 审核结果
-     */
-    Object batchApproveOrders(List<Long> orderIds, Long reviewerId, String reviewerName);
-
-    /**
-     * 批量审核驳回
-     *
-     * @param orderIds 订单ID列表
-     * @param reviewerId 审核人ID
-     * @param reviewerName 审核人姓名
-     * @param rejectReason 驳回原因
-     * @return 审核结果
-     */
-    Object batchRejectOrders(List<Long> orderIds, Long reviewerId, String reviewerName, String rejectReason);
 }

@@ -254,6 +254,13 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
             log.error("退货入库联动失败: returnId={}, err={}", returnId, e.getMessage());
             throw new BusinessException("退货单已收货，但自动入库失败：" + e.getMessage());
         }
+        // 2026-09-21（dev-20260921-010）：退货收货发事件（收货会联动生成退货入库单并加回库存，
+        // 钱和货都动了，此前没有任何通知）
+        java.util.Map<String, Object> receivedPayload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        receivedPayload.put("returnNo", salesReturn.getReturnNo());
+        receivedPayload.put("customerName", salesReturn.getCustomerName());
+        receivedPayload.put("totalQuantity", salesReturn.getTotalQuantity());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.return.received", receivedPayload);
     }
 
     @Override

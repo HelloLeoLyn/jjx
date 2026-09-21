@@ -1,15 +1,11 @@
 package com.jjx.sales.controller;
 
-import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
-import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
-import com.jjx.sales.domain.entity.OrderReviewRecord;
 import com.jjx.sales.domain.entity.SalesOrder;
+import com.jjx.sales.domain.vo.OrderReviewProcessVO;
 import com.jjx.sales.service.IOrderReviewService;
-import com.jjx.system.annotation.BusinessType;
-import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,175 +15,32 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * 订单审核控制器
+ * 订单审核（只读）控制器。
+ *
+ * <p>2026-09-21（dev-20260921-010）：本控制器原先还挂着 11 个写接口
+ * （/submit /start /approve /reject /return /transfer /customer/confirm /cancel /batch/*），
+ * 它们前端 0 引用、服务的实现只动 mapper、不发任何事件，而且和 OrderStatusController
+ * 是同一套业务动作的第二套实现（状态机校验也不一致）——属于会静默绕过通知与留痕的隐患，已删除。
+ * 真正在用的审核动作入口是 OrderStatusController（/sales/orders/{orderId}/status/…）。
+ * 本控制器只保留查询能力。</p>
  */
 @Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/sales/order/review")
-@Tag(name = "订单审核管理")
+@Tag(name = "订单审核查询")
 public class OrderReviewController extends BaseController {
 
     private final IOrderReviewService orderReviewService;
 
     /**
-     * 提交订单审核
-     */
-    @PostMapping("/submit/{orderId}")
-    @Operation(summary = "提交订单审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_SUBMIT)
-    @SaCheckPermission("sales:order:submit")
-    public Result<Long> submitOrderForReview(@PathVariable Long orderId,
-                                             @RequestParam Long submitterId,
-                                             @RequestParam String submitterName,
-                                             @RequestParam(required = false) String submitComment) {
-        Long recordId = orderReviewService.submitOrderForReview(orderId, submitterId, submitterName, submitComment);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 开始审核订单
-     */
-    @PostMapping("/start/{orderId}")
-    @Operation(summary = "开始审核订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_START)
-    @SaCheckPermission("sales:order:review")
-    public Result<Long> startOrderReview(@PathVariable Long orderId,
-                                         @RequestParam Long reviewerId,
-                                         @RequestParam String reviewerName,
-                                         @RequestParam String reviewerRole) {
-        Long recordId = orderReviewService.startOrderReview(orderId, reviewerId, reviewerName, reviewerRole);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 审核通过订单
-     */
-    @PostMapping("/approve/{orderId}")
-    @Operation(summary = "审核通过订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_APPROVE)
-    @SaCheckPermission("sales:order:approve")
-    public Result<Long> approveOrder(@PathVariable Long orderId,
-                                     @RequestParam Long reviewerId,
-                                     @RequestParam String reviewerName,
-                                     @RequestParam(required = false) String reviewComment,
-                                     @RequestParam(required = false) String attachments) {
-        Long recordId = orderReviewService.approveOrder(orderId, reviewerId, reviewerName, reviewComment, attachments);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 审核驳回订单
-     */
-    @PostMapping("/reject/{orderId}")
-    @Operation(summary = "审核驳回订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_REJECT)
-    @SaCheckPermission("sales:order:approve")
-    public Result<Long> rejectOrder(@PathVariable Long orderId,
-                                    @RequestParam Long reviewerId,
-                                    @RequestParam String reviewerName,
-                                    @RequestParam(required = false) String reviewComment,
-                                    @RequestParam String rejectReason,
-                                    @RequestParam(required = false) String improvementSuggestions) {
-        Long recordId = orderReviewService.rejectOrder(orderId, reviewerId, reviewerName, reviewComment, rejectReason, improvementSuggestions);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 退回订单修改
-     */
-    @PostMapping("/return/{orderId}")
-    @Operation(summary = "退回订单修改")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_RETURN)
-    @SaCheckPermission("sales:order:review")
-    public Result<Long> returnOrderForModification(@PathVariable Long orderId,
-                                                   @RequestParam Long reviewerId,
-                                                   @RequestParam String reviewerName,
-                                                   @RequestParam(required = false) String reviewComment,
-                                                   @RequestParam String returnReason,
-                                                   @RequestParam(required = false) String modificationRequirements) {
-        Long recordId = orderReviewService.returnOrderForModification(orderId, reviewerId, reviewerName, reviewComment, returnReason, modificationRequirements);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 转交审核
-     */
-    @PostMapping("/transfer/{orderId}")
-    @Operation(summary = "转交审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_TRANSFER)
-    @SaCheckPermission("sales:order:review")
-    public Result<Long> transferOrderReview(@PathVariable Long orderId,
-                                            @RequestParam Long currentReviewerId,
-                                            @RequestParam Long nextReviewerId,
-                                            @RequestParam String nextReviewerName,
-                                            @RequestParam String transferReason) {
-        Long recordId = orderReviewService.transferOrderReview(orderId, currentReviewerId, nextReviewerId, nextReviewerName, transferReason);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 客户确认订单
-     */
-    @PostMapping("/customer/confirm/{orderId}")
-    @Operation(summary = "客户确认订单")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_CUSTOMER_CONFIRM)
-    @SaCheckPermission("sales:order:review")
-    public Result<Long> confirmOrderByCustomer(@PathVariable Long orderId,
-                                               @RequestParam Long customerId,
-                                               @RequestParam String customerName,
-                                               @RequestParam(required = false) String confirmComment,
-                                               @RequestParam(required = false) String customerFeedback) {
-        Long recordId = orderReviewService.confirmOrderByCustomer(orderId, customerId, customerName, confirmComment, customerFeedback);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 取消订单审核
-     */
-    @PostMapping("/cancel/{orderId}")
-    @Operation(summary = "取消订单审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_CANCEL)
-    @SaCheckPermission("sales:order:review")
-    public Result<Long> cancelOrderReview(@PathVariable Long orderId,
-                                          @RequestParam Long cancellerId,
-                                          @RequestParam String cancellerName,
-                                          @RequestParam String cancelReason) {
-        Long recordId = orderReviewService.cancelOrderReview(orderId, cancellerId, cancellerName, cancelReason);
-        return Result.success(recordId);
-    }
-
-    /**
-     * 获取订单审核记录列表
+     * 订单评审记录列表（读 review_flow，前端 review-print 页面在用）
      */
     @GetMapping("/records/{orderId}")
     @Operation(summary = "订单评审记录列表")
     @SaCheckPermission("sales:order:view")
-    public Result<List<OrderReviewRecord>> records(@PathVariable Long orderId) {
-        List<OrderReviewRecord> records = orderReviewService.listByOrder(orderId);
-        return Result.success(records);
-    }
-
-    /**
-     * 获取订单审核历史
-     */
-    @GetMapping("/history/{orderId}")
-    @Operation(summary = "获取订单审核历史")
-    @SaCheckPermission("sales:order:view")
-    public Result<List<OrderReviewRecord>> getOrderReviewHistory(@PathVariable Long orderId) {
-        List<OrderReviewRecord> history = orderReviewService.getOrderReviewHistory(orderId);
-        return Result.success(history);
-    }
-
-    /**
-     * 获取当前审核信息
-     */
-    @GetMapping("/current/{orderId}")
-    @Operation(summary = "获取当前审核信息")
-    @SaCheckPermission("sales:order:view")
-    public Result<OrderReviewRecord> getCurrentReviewInfo(@PathVariable Long orderId) {
-        OrderReviewRecord currentInfo = orderReviewService.getCurrentReviewInfo(orderId);
-        return Result.success(currentInfo);
+    public Result<List<OrderReviewProcessVO>> records(@PathVariable Long orderId) {
+        return Result.success(orderReviewService.getOrderReviewRecords(orderId));
     }
 
     /**
@@ -207,7 +60,7 @@ public class OrderReviewController extends BaseController {
     @Operation(summary = "获取已提交审核订单列表")
     @SaCheckPermission("sales:order:view")
     public Result<?> getSubmittedReviewOrders(@PathVariable Long submitterId) {
-       return Result.success(orderReviewService.getSubmittedReviewOrders(submitterId));
+        return Result.success(orderReviewService.getSubmittedReviewOrders(submitterId));
     }
 
     /**
@@ -217,8 +70,7 @@ public class OrderReviewController extends BaseController {
     @Operation(summary = "检查订单是否可提交审核")
     @SaCheckPermission("sales:order:view")
     public Result<Boolean> canSubmitForReview(@PathVariable Long orderId) {
-        boolean canSubmit = orderReviewService.canSubmitForReview(orderId);
-        return Result.success(canSubmit);
+        return Result.success(orderReviewService.canSubmitForReview(orderId));
     }
 
     /**
@@ -227,10 +79,8 @@ public class OrderReviewController extends BaseController {
     @GetMapping("/canReview/{orderId}")
     @Operation(summary = "检查订单是否可审核")
     @SaCheckPermission("sales:order:view")
-    public Result<Boolean> canReviewOrder(@PathVariable Long orderId,
-                                          @RequestParam Long reviewerId) {
-        boolean canReview = orderReviewService.canReviewOrder(orderId, reviewerId);
-        return Result.success(canReview);
+    public Result<Boolean> canReviewOrder(@PathVariable Long orderId, @RequestParam Long reviewerId) {
+        return Result.success(orderReviewService.canReviewOrder(orderId, reviewerId));
     }
 
     /**
@@ -239,10 +89,8 @@ public class OrderReviewController extends BaseController {
     @GetMapping("/canConfirm/{orderId}")
     @Operation(summary = "检查订单是否可客户确认")
     @SaCheckPermission("sales:order:view")
-    public Result<Boolean> canConfirmByCustomer(@PathVariable Long orderId,
-                                                @RequestParam Long customerId) {
-        boolean canConfirm = orderReviewService.canConfirmByCustomer(orderId, customerId);
-        return Result.success(canConfirm);
+    public Result<Boolean> canConfirmByCustomer(@PathVariable Long orderId, @RequestParam Long customerId) {
+        return Result.success(orderReviewService.canConfirmByCustomer(orderId, customerId));
     }
 
     /**
@@ -253,48 +101,5 @@ public class OrderReviewController extends BaseController {
     @SaCheckPermission("sales:order:view")
     public Result<List<SalesOrder>> getTimeoutReviewOrders(@RequestParam(defaultValue = "24") Integer timeoutHours) {
         return Result.success(orderReviewService.getTimeoutReviewOrders(timeoutHours));
-    }
-
-    /**
-     * 批量提交审核
-     */
-    @PostMapping("/batch/submit")
-    @Operation(summary = "批量提交审核")
-    @Log(module = "订单审核管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_BATCH_SUBMIT)
-    @SaCheckPermission("sales:order:submit")
-    public Result<Object> batchSubmitForReview(@RequestParam List<Long> orderIds,
-                                               @RequestParam Long submitterId,
-                                               @RequestParam String submitterName) {
-        Object result = orderReviewService.batchSubmitForReview(orderIds, submitterId, submitterName);
-        return Result.success(result);
-    }
-
-    /**
-     * 批量审核通过
-     */
-    @PostMapping("/batch/approve")
-    @Operation(summary = "批量审核通过")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_BATCH_APPROVE)
-    @SaCheckPermission("sales:order:approve")
-    public Result<Object> batchApproveOrders(@RequestParam List<Long> orderIds,
-                                             @RequestParam Long reviewerId,
-                                             @RequestParam String reviewerName) {
-        Object result = orderReviewService.batchApproveOrders(orderIds, reviewerId, reviewerName);
-        return Result.success(result);
-    }
-
-    /**
-     * 批量审核驳回
-     */
-    @PostMapping("/batch/reject")
-    @Operation(summary = "批量审核驳回")
-    @Log(module = "订单审核管理", businessType = BusinessType.APPROVE, bizType = "'order'", bizId = "#orderId", action = LogActions.ORDER_REVIEW_BATCH_REJECT)
-    @SaCheckPermission("sales:order:approve")
-    public Result<Object> batchRejectOrders(@RequestParam List<Long> orderIds,
-                                            @RequestParam Long reviewerId,
-                                            @RequestParam String reviewerName,
-                                            @RequestParam String rejectReason) {
-        Object result = orderReviewService.batchRejectOrders(orderIds, reviewerId, reviewerName, rejectReason);
-        return Result.success(result);
     }
 }
