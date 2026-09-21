@@ -39,7 +39,10 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
         String code = knownCode != null ? knownCode : (m == null ? null : m.getWarehouseCode());
         java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
                 "warehouse", id, code);
+        // 删除路径由调用方传 knownCode，此时 m 为 null —— 不防空会 NPE（2026-09-21 dev-20260921-023）
+        if (m != null) {
             payload.put("warehouseName", m.getWarehouseName());
+        }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 

@@ -56,6 +56,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                                  com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper,
                                  com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper,
                                  ReviewFlowService reviewFlowService,
+                                 com.jjx.event.EventPublisher eventPublisher,
                                  com.jjx.system.service.OperLogChangeRecorder changeRecorder) {
         this.productBomMapper = productBomMapper;
         this.productBomItemMapper = productBomItemMapper;
@@ -64,6 +65,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         this.productionOrderMapper = productionOrderMapper;
         this.inventoryMaterialMapper = inventoryMaterialMapper;
         this.reviewFlowService = reviewFlowService;
+        // 2026-09-21 dev-20260921-023：加字段时漏了构造函数赋值，全量编译不过（此错误此前被类型错掩盖）
+        this.eventPublisher = eventPublisher;
         this.changeRecorder = changeRecorder;
     }
 

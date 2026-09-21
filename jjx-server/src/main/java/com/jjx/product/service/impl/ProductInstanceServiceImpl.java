@@ -29,8 +29,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     /** 2026-09-21（dev-20260921-013）：产品事件改手写 payload。 */
     private final com.jjx.event.EventPublisher eventPublisher;
 
-    public ProductInstanceServiceImpl(ProductInstanceMapper productInstanceMapper) {
+    public ProductInstanceServiceImpl(ProductInstanceMapper productInstanceMapper,
+                                      com.jjx.event.EventPublisher eventPublisher) {
         this.productInstanceMapper = productInstanceMapper;
+        // 2026-09-21 dev-20260921-023：013 批次加字段时漏了构造函数赋值
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -104,8 +107,8 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
             instance.setInstanceStatus(1);
         }
 
-        int rows = productInstanceMapper.insert(instance) > 0;
-        if (rows > 0) {
+        boolean rows = productInstanceMapper.insert(instance) > 0;
+        if (rows) {
             publishInstanceEvent("product.instance.created", instance.getInstanceId(), instance.getInstanceCode());
         }
         return rows;

@@ -67,7 +67,9 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                 "inventory", id, order == null ? null : order.getTransferNo());
         if (order != null) {
             payload.put("transferNo", order.getTransferNo());
-            payload.put("warehouseId", order.getWarehouseId());
+            // 调拨单上是「发出仓 / 接收仓」两个字段，没有笼统的 warehouseId（2026-09-21 dev-20260921-023 修复）
+            payload.put("fromWarehouseId", order.getFromWarehouseId());
+            payload.put("toWarehouseId", order.getToWarehouseId());
         }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }

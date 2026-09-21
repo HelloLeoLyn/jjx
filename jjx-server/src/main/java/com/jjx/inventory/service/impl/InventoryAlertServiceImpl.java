@@ -70,8 +70,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         String code = knownCode != null ? knownCode : (m == null ? null : m.getMaterialCode());
         java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
                 "inventory_alert", id, code);
+        // 删除路径由调用方传 knownCode，此时 m 为 null —— 不防空会 NPE（2026-09-21 dev-20260921-023）
+        if (m != null) {
             payload.put("materialName", m.getMaterialName());
             payload.put("alertType", m.getAlertType());
+        }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 

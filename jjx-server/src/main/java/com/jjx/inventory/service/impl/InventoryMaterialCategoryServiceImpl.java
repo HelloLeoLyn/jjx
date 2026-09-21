@@ -61,7 +61,11 @@ public class InventoryMaterialCategoryServiceImpl
         String code = knownCode != null ? knownCode : (m == null ? null : m.getCategoryCode());
         java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
                 "material_category", id, code);
+        // 删除路径由调用方传 knownCode，此时 m 为 null —— 不防空会在运行时 NPE
+        // （2026-09-21 dev-20260921-023 修复）
+        if (m != null) {
             payload.put("categoryName", m.getCategoryName());
+        }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
@@ -151,6 +155,14 @@ public class InventoryMaterialCategoryServiceImpl
         if (materialCount != null && materialCount > 0) {
             log.error("分类下存在物料，无法删除: categoryId={}, materialCount={}", categoryId, materialCount);
             throw new RuntimeException("分类下存在 " + materialCount + " 个物料，无法删除");
+        }
+
+        // 删除前先取到实体：删除事件要带业务编码，删完就查不到了
+        // （2026-09-21 dev-20260921-023 修复：此前直接引用未加载的 category 变量）
+        InventoryMaterialCategory category = materialCategoryMapper.selectById(categoryId);
+        if (category == null) {
+            log.error("物料分类不存在: categoryId={}", categoryId);
+            return false;
         }
 
         boolean updated = materialCategoryMapper.deleteById(categoryId) > 0;

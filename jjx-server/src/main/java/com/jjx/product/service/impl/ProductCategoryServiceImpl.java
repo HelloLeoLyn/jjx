@@ -31,9 +31,13 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
     private final com.jjx.event.EventPublisher eventPublisher;
     private final ProductCategoryConverter categoryConverter;
 
-    public ProductCategoryServiceImpl(ProductCategoryMapper productCategoryMapper, ProductCategoryConverter categoryConverter) {
+    public ProductCategoryServiceImpl(ProductCategoryMapper productCategoryMapper,
+                                      ProductCategoryConverter categoryConverter,
+                                      com.jjx.event.EventPublisher eventPublisher) {
         this.productCategoryMapper = productCategoryMapper;
         this.categoryConverter = categoryConverter;
+        // 2026-09-21 dev-20260921-023：013 批次加字段时漏了构造函数赋值
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -135,8 +139,8 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
             }
             category.setCategoryLevel(parent.getCategoryLevel() + 1);
         }
-        int rows = productCategoryMapper.insert(category) > 0;
-        if (rows > 0) {
+        boolean rows = productCategoryMapper.insert(category) > 0;
+        if (rows) {
             publishCategoryEvent("product.category.created", category.getCategoryId(), category.getCategoryCode());
         }
         return rows;
@@ -156,8 +160,8 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_CATEGORY_NOT_FOUND);
         }
 
-        int rows = productCategoryMapper.updateById(category) > 0;
-        if (rows > 0) {
+        boolean rows = productCategoryMapper.updateById(category) > 0;
+        if (rows) {
             publishCategoryEvent("product.category.updated", oldCategory.getCategoryId(), oldCategory.getCategoryCode());
         }
         return rows;
@@ -174,10 +178,14 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
 
         // 检查是否有产品使用该分类
         // 这里需要调用产品服务检查，暂时跳过
-        return productCategoryMapper.deleteById(categoryId) > 0;
+        // 2026-09-21 dev-20260921-023：删除事件原本写在 return 之后（unreachable，且事件永不发布）；
+        // 删除前先取编码，删完再发事件。
         ProductCategory before = productCategoryMapper.selectById(categoryId);
-        publishCategoryEvent("product.category.deleted", categoryId, before == null ? null : before.getCategoryCode());
-
+        boolean deleted = productCategoryMapper.deleteById(categoryId) > 0;
+        if (deleted) {
+            publishCategoryEvent("product.category.deleted", categoryId, before == null ? null : before.getCategoryCode());
+        }
+        return deleted;
     }
 
     @Override

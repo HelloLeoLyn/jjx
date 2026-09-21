@@ -59,14 +59,14 @@ public class ProductionOrderStartTransactionService {
         // 状态联动：SO 已审核或已确认（历史订单）→ 生产中；已生产中则幂等跳过。
         updateSalesOrderStatus(order, orderId);
         log.info("生产工单开工状态事务提交就绪, ID: {}", orderId);
-        return true;
         // 2026-09-21（dev-20260921-013）：开工事件改手写 payload，bizNo=生产工单号
+        // 注意：必须写在 return 之前，否则是 unreachable statement（2026-09-21 dev-20260921-023 修复）
         java.util.Map<String, Object> startPayload = com.jjx.event.EventPublishSupport.payload(
                 "production", order.getOrderId(), order.getOrderNo());
         startPayload.put("orderNo", order.getOrderNo());
         startPayload.put("salesOrderNo", order.getSalesOrderNo());
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "production.started", startPayload);
-
+        return true;
     }
 
     private void updateSalesOrderStatus(ProductionOrder order, Long orderId) {

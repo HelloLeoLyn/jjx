@@ -13,6 +13,7 @@ import com.jjx.purchase.domain.entity.MaterialInquiry;
 import com.jjx.purchase.domain.vo.MaterialInquiryVO;
 import com.jjx.purchase.mapper.MaterialInquiryMapper;
 import com.jjx.purchase.service.IMaterialInquiryService;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.executor.BatchResult;
@@ -36,6 +37,7 @@ import com.jjx.system.annotation.Event;
  * @date 2026-04-02
  */
 @Service
+@RequiredArgsConstructor
 public class MaterialInquiryServiceImpl extends ServiceImpl<MaterialInquiryMapper, MaterialInquiry> implements IMaterialInquiryService {
 
     /** 2026-09-21（dev-20260921-013）：采购事件改手写 payload。 */

@@ -42,7 +42,10 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
         String code = knownCode != null ? knownCode : (m == null ? null : m.getLocationCode());
         java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
                 "storage_location", id, code);
+        // 删除路径由调用方传 knownCode，此时 m 为 null —— 不防空会 NPE（2026-09-21 dev-20260921-023）
+        if (m != null) {
             payload.put("locationName", m.getLocationName());
+        }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
