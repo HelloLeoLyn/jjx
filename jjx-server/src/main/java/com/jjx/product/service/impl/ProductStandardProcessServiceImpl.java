@@ -40,11 +40,25 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         implements IProductStandardProcessService {
 
     private final ProductStandardProcessMapper processMapper;
+    /** 2026-09-21（dev-20260921-013）：产品事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final EngineeringRoutingItemMapper routingItemMapper;
     private final ProductStandardProcessConverter productStandardProcessConverter;
     private final SysDictService dictService;
 
     // ==================== 基础 CRUD ====================
+
+    /**
+     * 产品类事件统一发布（2026-09-21 dev-20260921-013 产品批）：
+     * 手写 payload，bizNo 取产品/实例/分类/工序编码。
+     */
+    private void publishProcessEvent(String eventCode, Long id, String knownNo) {
+        ProductStandardProcess entity = (id == null || knownNo != null) ? null : processMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getProcessCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "product", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -155,7 +169,6 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     }
 
     @Override
-    @Event(value = "product.standard_process.deleted", bizId = "#processId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void deleteProcess(Long processId) {
         ProductStandardProcess process = getById(processId);
@@ -175,6 +188,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         }
 
         log.info("删除标准工序成功: {} - {}", process.getProcessCode(), process.getProcessName());
+        publishProcessEvent("product.standard_process.deleted", process.getProcessId(), process.getProcessCode());
     }
 
     @Override
@@ -232,7 +246,6 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     // ==================== 状态管理 ====================
 
     @Override
-    @Event(value = "product.standard_process.status_updated", bizId = "#processId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void setEnabled(Long processId, Boolean enabled) {
         ProductStandardProcess process = getById(processId);
@@ -249,6 +262,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         }
 
         log.info("设置工序状态成功: {} -> {}", process.getProcessCode(), enabled ? "启用" : "禁用");
+        publishProcessEvent("product.standard_process.status_updated", process.getProcessId(), process.getProcessCode());
     }
 
     // ==================== 查询接口 ====================

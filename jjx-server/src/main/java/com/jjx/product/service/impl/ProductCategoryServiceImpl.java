@@ -27,11 +27,25 @@ import com.jjx.system.annotation.Event;
 public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMapper,ProductCategory> implements IProductCategoryService {
     private static final Logger log = LoggerFactory.getLogger(ProductCategoryServiceImpl.class);
     private final ProductCategoryMapper productCategoryMapper;
+    /** 2026-09-21（dev-20260921-013）：产品事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final ProductCategoryConverter categoryConverter;
 
     public ProductCategoryServiceImpl(ProductCategoryMapper productCategoryMapper, ProductCategoryConverter categoryConverter) {
         this.productCategoryMapper = productCategoryMapper;
         this.categoryConverter = categoryConverter;
+    }
+
+    /**
+     * 产品类事件统一发布（2026-09-21 dev-20260921-013 产品批）：
+     * 手写 payload，bizNo 取产品/实例/分类/工序编码。
+     */
+    private void publishCategoryEvent(String eventCode, Long id, String knownNo) {
+        ProductCategory entity = (id == null || knownNo != null) ? null : productCategoryMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getCategoryCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "product", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     @Override
@@ -105,7 +119,6 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
 
     @Transactional(rollbackFor = Exception.class)
     @Override
-    @Event(value = "product.category.created", bizId = "#category", bizType = "'product'")
     public boolean createCategory(ProductCategory category) {
         // 检查分类编码是否唯一
         if (!checkCategoryCodeUnique(category.getCategoryCode())) {
@@ -122,12 +135,15 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
             }
             category.setCategoryLevel(parent.getCategoryLevel() + 1);
         }
-        return productCategoryMapper.insert(category) > 0;
+        int rows = productCategoryMapper.insert(category) > 0;
+        if (rows > 0) {
+            publishCategoryEvent("product.category.created", category.getCategoryId(), category.getCategoryCode());
+        }
+        return rows;
     }
 
     @Transactional(rollbackFor = Exception.class)
     @Override
-    @Event(value = "product.category.updated", bizId = "#category", bizType = "'product'")
     public boolean updateCategory(ProductCategory category) {
         // 检查分类编码是否唯一
         if (!checkCategoryCodeUnique(category.getCategoryCode())) {
@@ -140,11 +156,14 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_CATEGORY_NOT_FOUND);
         }
 
-        return productCategoryMapper.updateById(category) > 0;
+        int rows = productCategoryMapper.updateById(category) > 0;
+        if (rows > 0) {
+            publishCategoryEvent("product.category.updated", oldCategory.getCategoryId(), oldCategory.getCategoryCode());
+        }
+        return rows;
     }
 
     @Override
-    @Event(value = "product.category.deleted", bizId = "#categoryId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteCategory(Long categoryId) {
         // 检查是否有子分类
@@ -156,6 +175,9 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
         // 检查是否有产品使用该分类
         // 这里需要调用产品服务检查，暂时跳过
         return productCategoryMapper.deleteById(categoryId) > 0;
+        ProductCategory before = productCategoryMapper.selectById(categoryId);
+        publishCategoryEvent("product.category.deleted", categoryId, before == null ? null : before.getCategoryCode());
+
     }
 
     @Override
@@ -192,7 +214,6 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
     }
 
     @Override
-    @Event(value = "product.category.deleted_children", bizId = "#categoryId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean removeCategoryWithChildren(Long categoryId) {
         // 1. 验证分类是否存在
@@ -216,7 +237,11 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
         // 6. 记录删除日志
         log.info("删除分类及其子分类，父分类ID: {}, 删除数量: {}", categoryId, deletedCount);
 
-        return deletedCount > 0;
+        boolean ok = deletedCount > 0;
+        if (ok) {
+            publishCategoryEvent("product.category.deleted_children", category.getCategoryId(), category.getCategoryCode());
+        }
+        return ok;
     }
 
 

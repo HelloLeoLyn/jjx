@@ -26,9 +26,23 @@ import com.jjx.system.annotation.Event;
 public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMapper,ProductInstance> implements IProductInstanceService {
 
     private final ProductInstanceMapper productInstanceMapper;
+    /** 2026-09-21（dev-20260921-013）：产品事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     public ProductInstanceServiceImpl(ProductInstanceMapper productInstanceMapper) {
         this.productInstanceMapper = productInstanceMapper;
+    }
+
+    /**
+     * 产品类事件统一发布（2026-09-21 dev-20260921-013 产品批）：
+     * 手写 payload，bizNo 取产品/实例/分类/工序编码。
+     */
+    private void publishInstanceEvent(String eventCode, Long id, String knownNo) {
+        ProductInstance entity = (id == null || knownNo != null) ? null : productInstanceMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getInstanceCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "product", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     @Override
@@ -78,7 +92,6 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
     }
 
     @Override
-    @Event(value = "product.instance.created", bizId = "#instance", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean createInstance(ProductInstance instance) {
         // 检查实例编码是否唯一
@@ -91,11 +104,14 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
             instance.setInstanceStatus(1);
         }
 
-        return productInstanceMapper.insert(instance) > 0;
+        int rows = productInstanceMapper.insert(instance) > 0;
+        if (rows > 0) {
+            publishInstanceEvent("product.instance.created", instance.getInstanceId(), instance.getInstanceCode());
+        }
+        return rows;
     }
 
     @Override
-    @Event(value = "product.instance.batch_created", bizId = "#instances", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean batchCreateInstances(List<ProductInstance> instances) {
         if (instances == null || instances.isEmpty()) {
@@ -114,11 +130,14 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
             }
         }
 
-        return successCount > 0;
+        boolean ok = successCount > 0;
+        if (ok) {
+            publishInstanceEvent("product.instance.batch_created", null, successCount + " 个实例");
+        }
+        return ok;
     }
 
     @Override
-    @Event(value = "product.instance.status_updated", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateInstanceStatus(Long instanceId, Integer status) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
@@ -133,11 +152,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
 
         instance.setInstanceStatus(status);
 //        return productInstanceMapper.update(instance) > 0;
+        publishInstanceEvent("product.instance.status_updated", instance.getInstanceId(), instance.getInstanceCode());
         return true;
     }
 
     @Override
-    @Event(value = "product.instance.production_started", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean startProduction(Long instanceId) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
@@ -153,11 +172,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         instance.setInstanceStatus(3);
 //        instance.setProductionStartTime(new java.util.Date());
 //        return productInstanceMapper.update(instance) > 0;
+        publishInstanceEvent("product.instance.production_started", instance.getInstanceId(), instance.getInstanceCode());
         return false;
     }
 
     @Override
-    @Event(value = "product.instance.production_completed", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean completeProduction(Long instanceId) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
@@ -173,11 +192,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         instance.setInstanceStatus(5);
 //        instance.setProductionEndTime(new java.util.Date());
 //        return productInstanceMapper.update(instance) > 0;
+        publishInstanceEvent("product.instance.production_completed", instance.getInstanceId(), instance.getInstanceCode());
         return false;
     }
 
     @Override
-    @Event(value = "product.instance.delivered", bizId = "#instanceId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deliverInstance(Long instanceId) {
         ProductInstance instance = productInstanceMapper.selectById(instanceId);
@@ -193,6 +212,7 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
         instance.setInstanceStatus(9);
 //        instance.setDeliveryTime(new java.util.Date());
 //        productCategoryMapper.update(category) > 0
+        publishInstanceEvent("product.instance.delivered", instance.getInstanceId(), instance.getInstanceCode());
         return false;
     }
 

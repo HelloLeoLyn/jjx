@@ -48,6 +48,8 @@ import java.util.stream.Collectors;
 public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> implements IProductService {
 
     private final ProductMapper productMapper;
+    /** 2026-09-21（dev-20260921-013）：产品事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final ProductCodeGenerator productCodeGenerator;
     private final com.jjx.product.service.ProductCodeService productCodeService;
     private final ProductConverter productConverter;
@@ -163,6 +165,18 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
     private record BizAttachmentSource(String sourceType, Long sourceId, String sourceNo,
                                        LocalDateTime sourceTime) {
+    }
+
+    /**
+     * 产品类事件统一发布（2026-09-21 dev-20260921-013 产品批）：
+     * 手写 payload，bizNo 取产品/实例/分类/工序编码。
+     */
+    private void publishProductEvent(String eventCode, Long id, String knownNo) {
+        Product entity = (id == null || knownNo != null) ? null : productMapper.selectById(id);
+        String no = knownNo != null ? knownNo : (entity == null ? null : entity.getProductCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "product", id, no);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     @Override
@@ -430,8 +444,6 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
 
         return fullVO;
     }
-
-    @Event("product.submitted")
     @Override
     public boolean submitProduct(Long productId) {
         Product product = productMapper.selectById(productId);
@@ -449,10 +461,12 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         dto.setApproveRemark("");
         dto.setCurrentStatus(currentStatus);
         dto.setTargetStatus(ProductEnums.Status.PENDING.getValue());
-        return updateStatus(dto);
+        boolean ok = updateStatus(dto);
+        if (ok) {
+            publishProductEvent("product.submitted", product.getProductId(), product.getProductCode());
+        }
+        return ok;
     }
-
-    @Event("product.approved")
     @Override
     public boolean approveProduct(ProductUpdateDTO dto) {
         Product product = productMapper.selectById(dto.getProductId());
@@ -466,7 +480,11 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         dto.setCurrentStatus(ProductEnums.Status.PENDING.getValue());
         dto.setTargetStatus(ProductEnums.Status.APPROVED.getValue());
         boolean updated = updateStatus(dto);
-        return updated;
+        boolean ok = updated;
+        if (ok) {
+            publishProductEvent("product.approved", product.getProductId(), product.getProductCode());
+        }
+        return ok;
     }
 
     @Override
