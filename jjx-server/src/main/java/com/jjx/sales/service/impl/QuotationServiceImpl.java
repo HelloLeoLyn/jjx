@@ -745,20 +745,42 @@ public class QuotationServiceImpl implements IQuotationService {
      * 客户确认报价
      */
     @Override
-    @Event(value = "quotation.confirmed", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int confirmQuotation(Long quotationId, String attachmentIds) {
-        return changeToStatus(quotationId, QuotationStatus.ACCEPTED.getValue(), "CUSTOMER_CONFIRM", "客户确认报价", attachmentIds);
+        int rows = changeToStatus(quotationId, QuotationStatus.ACCEPTED.getValue(), "CUSTOMER_CONFIRM", "客户确认报价", attachmentIds);
+        if (rows > 0) {
+            publishQuotationEvent("quotation.confirmed", selectQuotationById(quotationId));
+        }
+        return rows;
     }
 
     /**
      * 客户拒绝报价
      */
     @Override
-    @Event(value = "quotation.rejected", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int rejectQuotation(Long quotationId, String attachmentIds) {
-        return changeToStatus(quotationId, QuotationStatus.REJECTED.getValue(), "CUSTOMER_REJECT", "客户拒绝报价", attachmentIds);
+        int rows = changeToStatus(quotationId, QuotationStatus.REJECTED.getValue(), "CUSTOMER_REJECT", "客户拒绝报价", attachmentIds);
+        if (rows > 0) {
+            publishQuotationEvent("quotation.rejected", selectQuotationById(quotationId));
+        }
+        return rows;
+    }
+
+    /**
+     * 报价类事件统一发布（2026-09-21 dev-20260921-013）：
+     * 改为手写 payload，带上信封字段 bizNo=报价单号，模板里可以写 {bizNo}（此前只能写内部编号 {bizId}）。
+     */
+    private void publishQuotationEvent(String eventCode, SalesQuotation quotation) {
+        if (quotation == null) {
+            return;
+        }
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "quotation", quotation.getQuotationId(), quotation.getQuotationNo());
+        payload.put("customerName", quotation.getCustomerName());
+        payload.put("quotationStatus", quotation.getQuotationStatus());
+        payload.put("finalAmount", quotation.getFinalAmount());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     /**
@@ -807,7 +829,6 @@ public class QuotationServiceImpl implements IQuotationService {
      * 发送报价单给客户
      */
     @Override
-    @Event(value = "quotation.sent", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int sendQuotation(Long quotationId, String attachmentIds) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -835,6 +856,7 @@ public class QuotationServiceImpl implements IQuotationService {
 
         int rows = quotationMapper.updateById(quotation);
         recordFlow(quotation, "SEND", "发送报价", from, QuotationStatus.SENT.getValue(), null, attachmentIds);
+        publishQuotationEvent("quotation.sent", quotation);
         return rows;
     }
 
@@ -842,7 +864,6 @@ public class QuotationServiceImpl implements IQuotationService {
      * 报价单转为订单
      */
     @Override
-    @Event(value = "quotation.converted", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public Object convertToOrder(Long quotationId) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -906,6 +927,7 @@ public class QuotationServiceImpl implements IQuotationService {
         quotationMapper.updateById(quotation);
         recordFlow(quotation, "CONVERT_ORDER", "转订单完成", from, QuotationStatus.COMPLETED.getValue(), "转为销售订单，订单号:" + orderId, null);
 
+        publishQuotationEvent("quotation.converted", quotation);
         log.info("报价单{}已转为订单: orderId={}", quotationId, orderId);
         return orderId;
     }
@@ -1095,7 +1117,6 @@ public class QuotationServiceImpl implements IQuotationService {
      * 提交审核（DEV-1116：校验前按当前明细兑底重算表头金额，避免明细有金额但表头未汇总误报）
      */
     @Override
-    @Event(value = "quotation.submitted", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public int submitReview(Long quotationId, String attachmentIds) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -1121,6 +1142,7 @@ public class QuotationServiceImpl implements IQuotationService {
         quotation.setQuotationStatus(QuotationStatus.PENDING_REVIEW.getValue());
         int rows = quotationMapper.updateById(quotation);
         recordFlow(quotation, "SUBMIT_REVIEW", "提交审核", from, QuotationStatus.PENDING_REVIEW.getValue(), null, attachmentIds);
+        publishQuotationEvent("quotation.submitted", quotation);
         return rows;
     }
 
@@ -1128,7 +1150,6 @@ public class QuotationServiceImpl implements IQuotationService {
      * 审核报价单
      */
     @Override
-    @Event(value = "quotation.reviewed", bizId = "#quotationId", bizType = "'quotation'")
     @Transactional(rollbackFor = Exception.class)
     public QuotationStatus reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds) {
         SalesQuotation quotation = selectQuotationById(quotationId);
@@ -1157,6 +1178,9 @@ public class QuotationServiceImpl implements IQuotationService {
         int rows = quotationMapper.updateById(quotation);
         recordFlow(quotation, approved ? "APPROVE" : "REJECT", approved ? "审核通过" : "审核驳回",
                 from, quotation.getQuotationStatus(), remark, attachmentIds);
+        if (rows > 0) {
+            publishQuotationEvent("quotation.reviewed", quotation);
+        }
         // 返回落库后的真实状态：审核结果由入参决定，注解里不能写死，@Log 取 #result.data.label
         return rows > 0 ? QuotationStatus.getByValue(quotation.getQuotationStatus()) : null;
     }
