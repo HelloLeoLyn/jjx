@@ -58,6 +58,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         implements InventoryOutboundService {
 
     private final InventoryOutboundOrderMapper outboundOrderMapper;
+    /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryOutboundItemMapper outboundItemMapper;
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStorageLocationMapper storageLocationMapper;
@@ -73,6 +75,23 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.InventoryItemService inventoryItemService;
+
+    /**
+     * 出库类事件统一发布（2026-09-21 dev-20260921-013 库存批）：
+     * 手写 payload，bizNo 取出库单号（原注解 bizId 只能带内部 outboundId）。
+     */
+    private void publishOutboundEvent(String eventCode, Long outboundId) {
+        InventoryOutboundOrder order = outboundId == null ? null : outboundOrderMapper.selectById(outboundId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "inventory", outboundId, order == null ? null : order.getOutboundNo());
+        if (order != null) {
+            payload.put("outboundNo", order.getOutboundNo());
+            payload.put("bizNo", order.getOutboundNo());
+            payload.put("sourceNo", order.getSourceNo());
+            payload.put("warehouseId", order.getWarehouseId());
+        }
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public IPage<OutboundVO> page(OutboundQueryDTO query) {
@@ -217,7 +236,6 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
-    @Event(value = "inventory.outbound.created", bizId = "#params", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     
     public Long create(Map<String, Object> params) {
@@ -272,6 +290,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 outboundOrderMapper.updateById(order);
             }
         }
+        publishOutboundEvent("inventory.outbound.created", order.getOutboundId());
         return order.getOutboundId();
     }
 
@@ -347,7 +366,6 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
-    @Event(value = "inventory.outbound.confirmed", bizId = "#outboundId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirm(Long outboundId, Long operatorId, String operatorName) {
         // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复出入库
@@ -590,11 +608,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             log.warn("销售出库回写订单 shipped_quantity 失败（不影响出库）: {}", e.getMessage());
         }
 
+        publishOutboundEvent("inventory.outbound.confirmed", order.getOutboundId());
         return updated;
     }
 
     @Override
-    @Event(value = "inventory.outbound.cancelled", bizId = "#outboundId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean cancel(Long outboundId, String reason) {
         // DEV-651 方案A：行锁
@@ -616,12 +634,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
         order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
         order.setRemark(reason);
-        return outboundOrderMapper.updateById(order) > 0;
+        boolean updated = outboundOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishOutboundEvent("inventory.outbound.cancelled", outboundId);
+        }
+        return updated;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.outbound.submitted", bizId = "#outboundId", bizType = "'inventory'")
     public boolean submitApprove(Long outboundId) {
         // DEV-651 方案A：行锁
         InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
@@ -646,11 +667,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             reservePickItems(outboundId);
         }
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
-        return outboundOrderMapper.updateById(order) > 0;
+        boolean updated = outboundOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishOutboundEvent("inventory.outbound.submitted", outboundId);
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.outbound.approved", bizId = "#outboundId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean approve(Long outboundId, Long approverId, String approverName, String remark) {
         // DEV-651 方案A：行锁
@@ -671,12 +695,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (remark != null) {
             order.setApproveRemark(remark);
         }
-        return outboundOrderMapper.updateById(order) > 0;
+        boolean updated = outboundOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishOutboundEvent("inventory.outbound.approved", outboundId);
+        }
+        return updated;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.outbound.rejected", bizId = "#outboundId", bizType = "'inventory'")
     public boolean reject(Long outboundId, Long approverId, String approverName, String remark) {
         // DEV-651 方案A：行锁
         InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
@@ -697,15 +724,20 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
         order.setOrderStatus(InventoryOrderStatusEnum.REJECTED.getValue());
         order.setRemark(remark);
-        return outboundOrderMapper.updateById(order) > 0;
+        boolean updated = outboundOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishOutboundEvent("inventory.outbound.rejected", outboundId);
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.outbound.created_from_production", bizId = "#workOrderId", bizType = "'inventory'")
     // REQUIRES_NEW（2026-08-11）：自动领料独立事务，失败只回滚自身，不污染工单开工主事务
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public Long createFromProduction(Long workOrderId) {
-        return createFromProduction(workOrderId, null);
+        Long createdId = createFromProduction(workOrderId, null);
+        publishOutboundEvent("inventory.outbound.created_from_production", createdId);
+        return createdId;
     }
 
     /**
@@ -1313,7 +1345,6 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
-    @Event(value = "inventory.outbound.created_from_sales", bizId = "#salesOrderId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public Long createFromSales(Long salesOrderId) {
         log.info("从销售订单创建出库单: salesOrderId={}", salesOrderId);
@@ -1432,6 +1463,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         log.info("销售发货出库完成: salesOrderId={}, outboundId={}", salesOrderId, order.getOutboundId());
+        publishOutboundEvent("inventory.outbound.created_from_sales", order.getOutboundId());
         return order.getOutboundId();
     }
 

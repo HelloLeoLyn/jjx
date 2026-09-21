@@ -96,6 +96,24 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
      *  用 ObjectProvider 懒取，避免 inventory → quality 的强依赖/循环。 */
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.quality.service.QualityLotService> qualityLotServiceProvider;
 
+    /**
+     * 入库类事件统一发布（2026-09-21 dev-20260921-013 库存批）：
+     * 手写 payload，bizNo 取入库单号（原注解 bizId 只能带内部 inboundId）。
+     */
+    private void publishInboundEvent(String eventCode, Long inboundId) {
+        InventoryInboundOrder order = inboundId == null ? null : inboundOrderMapper.selectById(inboundId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "inventory", inboundId, order == null ? null : order.getInboundNo());
+        if (order != null) {
+            payload.put("inboundNo", order.getInboundNo());
+            payload.put("bizNo", order.getInboundNo());
+            payload.put("sourceNo", order.getSourceNo());
+            payload.put("supplierName", order.getSupplierName());
+            payload.put("warehouseId", order.getWarehouseId());
+        }
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
+
     @Override
     public IPage<IqcPendingVO> pageIqcPending(IqcPendingQueryDTO query) {
         Page<IqcPendingVO> page = new Page<>(query.getPageNum(), query.getPageSize());
@@ -229,7 +247,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.created", bizId = "#params", bizType = "'inventory'")
     public Long create(Map<String, Object> params) {
         log.info("创建入库单: {}", params);
         InventoryInboundOrder order = new InventoryInboundOrder();
@@ -293,6 +310,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 inboundOrderMapper.updateById(order);
             }
         }
+        publishInboundEvent("inventory.inbound.created", order.getInboundId());
         return order.getInboundId();
     }
 
@@ -813,7 +831,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.cancelled", bizId = "#inboundId", bizType = "'inventory'")
     public boolean cancel(Long inboundId, String reason) {
         // DEV-651 方案A：行锁
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -829,7 +846,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
         order.setRemark(reason);
-        return inboundOrderMapper.updateById(order) > 0;
+        boolean updated = inboundOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishInboundEvent("inventory.inbound.cancelled", inboundId);
+        }
+        return updated;
     }
 
     @Override
@@ -1368,6 +1389,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             payload.put("bizId", order.getInboundId());
             payload.put("inboundId", order.getInboundId());
             payload.put("inboundNo", order.getInboundNo());
+            payload.put("bizNo", order.getInboundNo());
             payload.put("sourceId", order.getSourceId());
             payload.put("sourceNo", order.getSourceNo());
             payload.put("supplierId", order.getSupplierId());
@@ -1411,7 +1433,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.approved", bizId = "#inboundId", bizType = "'inventory'")
     public boolean approve(Long inboundId, Long approverId, String approverName, String remark) {
         // DEV-651 方案A：行锁
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -1466,12 +1487,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setApproverName(approverName);
         order.setApproveTime(LocalDateTime.now());
         order.setApproveRemark(remark);
-        return inboundOrderMapper.updateById(order) > 0;
+        boolean updated = inboundOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishInboundEvent("inventory.inbound.approved", inboundId);
+        }
+        return updated;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.rejected", bizId = "#inboundId", bizType = "'inventory'")
     public boolean reject(Long inboundId, Long approverId, String approverName, String remark) {
         // DEV-651 方案A：行锁
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -1492,7 +1516,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         order.setOrderStatus(InventoryOrderStatusEnum.REJECTED.getValue());
         order.setRemark(remark);
-        return inboundOrderMapper.updateById(order) > 0;
+        boolean updated = inboundOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishInboundEvent("inventory.inbound.rejected", inboundId);
+        }
+        return updated;
     }
 
     /**
@@ -1738,6 +1766,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         createdPayload.put("bizId", order.getInboundId());
         createdPayload.put("inboundId", order.getInboundId());
         createdPayload.put("inboundNo", order.getInboundNo());
+        createdPayload.put("bizNo", order.getInboundNo());
         createdPayload.put("purchaseOrderId", purchaseOrderId);
         createdPayload.put("purchaseOrderNo", po.getOrderNo());
         createdPayload.put("sourceId", purchaseOrderId);
@@ -1920,9 +1949,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "inventory.inbound.created_from_production", bizId = "#workOrderId", bizType = "'inventory'")
     public Long createFromProduction(Long workOrderId) {
-        return createFromProduction(workOrderId, null, null);
+        Long createdId = createFromProduction(workOrderId, null, null);
+        publishInboundEvent("inventory.inbound.created_from_production", createdId);
+        return createdId;
     }
 
     @Override
