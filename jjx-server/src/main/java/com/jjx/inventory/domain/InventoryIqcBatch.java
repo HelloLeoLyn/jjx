@@ -23,9 +23,13 @@ public class InventoryIqcBatch {
     private String batchType;
     private Long sourceReworkId;
     private Long sourceInboundItemId;
+    /** 所属入库单（2026-09-21 新增：谱系查询改按入库单过滤，避免明细 id 复用错挂） */
+    private Long sourceInboundId;
     private Long sourceInspectionId;
     private BigDecimal quantity;
     private BigDecimal processedQuantity;
+    /** 已处置量（2026-09-21 新增：与「检验量」processed_quantity 分列，原实现两者混用同一列） */
+    private BigDecimal disposedQuantity;
     private BigDecimal acceptedQuantity;
     private BigDecimal rejectedQuantity;
     private BigDecimal scrappedQuantity;

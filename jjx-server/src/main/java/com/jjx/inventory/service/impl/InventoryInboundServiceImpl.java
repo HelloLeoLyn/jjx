@@ -532,7 +532,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (batchId == null || quantity == null) return;
         InventoryIqcBatch batch = iqcBatchMapper.selectById(batchId);
         if (batch == null) return;
-        batch.setProcessedQuantity(nvl(batch.getProcessedQuantity()).add(quantity));
+        // 2026-09-21：处置量写单独的 disposed_quantity，不再复用 processed_quantity
+        //（后者今后只表示「检验/处理量」，由 updateIqcBatchResult 写入，避免一列两义）
+        batch.setDisposedQuantity(nvl(batch.getDisposedQuantity()).add(quantity));
         BigDecimal remaining = nvl(batch.getRemainingQuantity()).subtract(quantity).max(BigDecimal.ZERO);
         batch.setRemainingQuantity(remaining);
         if ("SCRAP".equals(actionCode)) {
@@ -652,12 +654,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     public List<InventoryIqcBatch> listIqcBatches(Long inboundId) {
-        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
-        if (items == null || items.isEmpty()) return List.of();
-        List<Long> itemIds = items.stream().map(InventoryInboundItem::getItemId).filter(Objects::nonNull).toList();
-        if (itemIds.isEmpty()) return List.of();
+        if (inboundId == null) return List.of();
+        // 2026-09-21 根治：改按「所属入库单」过滤。原实现按 source_inbound_item_id ∈ 该单明细 id，
+        // 而明细 id 会被复用（旧数据被清理后新明细又拿到 id 1/2）→ 历史批次被错误挂到新单上。
         return iqcBatchMapper.selectList(new LambdaQueryWrapper<InventoryIqcBatch>()
-                .in(InventoryIqcBatch::getSourceInboundItemId, itemIds)
+                .eq(InventoryIqcBatch::getSourceInboundId, inboundId)
                 .orderByAsc(InventoryIqcBatch::getBatchId));
     }
 
@@ -751,6 +752,26 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     /** 创建返工/复检子批次，并显式保留父批次关系。 */
     private InventoryIqcBatch ensureOriginalBatch(InventoryInboundItem item) {
+        // 2026-09-21 根治：身份优先 —— 明细已绑定批次时沿 parent 上溯到 ORIGINAL，
+        // 不再依赖 (material_id, batch_no) 查询。原实现按名字查，而返工后明细的 batch_no 会被
+        // 改写成子批次号（RW-…）→ 查不到原批 → 重复插新行，这就是「幽灵 ORIGINAL 批次 / 重复子批次」的根因。
+        if (item.getIqcBatchId() != null) {
+            InventoryIqcBatch current = iqcBatchMapper.selectById(item.getIqcBatchId());
+            if (current != null) {
+                InventoryIqcBatch root = current;
+                int guard = 0;
+                while (root.getParentBatchId() != null && guard++ < 20) {
+                    InventoryIqcBatch parent = iqcBatchMapper.selectById(root.getParentBatchId());
+                    if (parent == null) break;
+                    root = parent;
+                }
+                if (!Objects.equals(item.getIqcBatchId(), root.getBatchId())) {
+                    item.setIqcBatchId(root.getBatchId());
+                    inboundItemMapper.updateById(item);
+                }
+                return root;
+            }
+        }
         String parentBatchNo = item.getBatchNo();
         if (parentBatchNo == null || parentBatchNo.isBlank()) {
             throw new BusinessException("原批次号为空，无法建立批次身份");
@@ -766,6 +787,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             parent.setRootBatchNo(parentBatchNo);
             parent.setBatchType("ORIGINAL");
             parent.setSourceInboundItemId(item.getItemId());
+            parent.setSourceInboundId(item.getInboundId());
             parent.setSourceInspectionId(item.getInspectionId());
             parent.setQuantity(item.getQuantity());
             parent.setRemainingQuantity(item.getQuantity());
@@ -796,6 +818,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (child == null) {
             child = new InventoryIqcBatch();
             child.setBatchNo(childBatchNo);
+            // 2026-09-21：补写物料与所属入库单 —— 原先不写 material_id，导致「按 material+batch_no」
+            // 幂等判定失效（NULL≠NULL）而重复插子批次（如 batch 11/12），且批次与物料脱钩。
+            child.setMaterialId(item.getMaterialId());
+            child.setSourceInboundId(parent.getSourceInboundId() != null
+                    ? parent.getSourceInboundId() : item.getInboundId());
             child.setParentBatchId(parent.getBatchId());
             child.setParentBatchNo(parentBatchNo);
             child.setRootBatchNo(parent.getRootBatchNo());
