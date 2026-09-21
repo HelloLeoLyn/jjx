@@ -438,6 +438,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 触发联动事件
         try {
             eventPublisher.fire("production.completed", Map.of(
+                    "bizNo", order.getOrderNo(),
                     "orderNo", order.getOrderNo(),
                     "productId", String.valueOf(order.getProductId()),
                     "productName", order.getProductName(),

@@ -29,12 +29,13 @@ public class ProductionOrderStartTransactionService {
 
     private final ProductionOrderMapper productionOrderMapper;
     private final OrderMapper salesOrderMapper;
+    /** 2026-09-21（dev-20260921-013）：生产事件改手写 payload（带工单号）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     /**
      * 提交工单及销售订单状态。返回 false 表示工单已经处于进行中，属于幂等成功。
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
-    @Event(value = "production.started", bizId = "#orderId", bizType = "'production'")
     public boolean startOrder(Long orderId) {
         ProductionOrder order = productionOrderMapper.selectById(orderId);
         if (order == null) {
@@ -59,6 +60,13 @@ public class ProductionOrderStartTransactionService {
         updateSalesOrderStatus(order, orderId);
         log.info("生产工单开工状态事务提交就绪, ID: {}", orderId);
         return true;
+        // 2026-09-21（dev-20260921-013）：开工事件改手写 payload，bizNo=生产工单号
+        java.util.Map<String, Object> startPayload = com.jjx.event.EventPublishSupport.payload(
+                "production", order.getOrderId(), order.getOrderNo());
+        startPayload.put("orderNo", order.getOrderNo());
+        startPayload.put("salesOrderNo", order.getSalesOrderNo());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "production.started", startPayload);
+
     }
 
     private void updateSalesOrderStatus(ProductionOrder order, Long orderId) {

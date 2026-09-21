@@ -88,7 +88,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     @Override
     @Event(value = "production.work-report.submitted", bizId = "#result.reportId",
             bizType = "'production'", params = {
-            "orderNo = #result.orderNo", "executionId = #result.executionId",
+            "bizNo = #result.orderNo", "orderNo = #result.orderNo", "executionId = #result.executionId",
             "taskId = #result.taskId", "reportId = #result.reportId",
             "qualifiedQuantity = #result.qualifiedQuantity",
             "defectiveQuantity = #result.defectiveQuantity",
@@ -269,7 +269,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     @Override
     @Event(value = "production.work-report.approved", bizId = "#result.reportId",
             bizType = "'production'", condition = "#result.eventPublished", params = {
-            "orderNo = #result.orderNo", "executionId = #result.executionId",
+            "bizNo = #result.orderNo", "orderNo = #result.orderNo", "executionId = #result.executionId",
             "taskId = #result.taskId", "reportId = #result.reportId",
             "qualifiedQuantity = #result.qualifiedQuantity",
             "defectiveQuantity = #result.defectiveQuantity",
@@ -415,7 +415,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     @Override
     @Event(value = "production.work-report.rejected", bizId = "#result.reportId",
             bizType = "'production'", condition = "#result.eventPublished", params = {
-            "orderNo = #result.orderNo", "executionId = #result.executionId",
+            "bizNo = #result.orderNo", "orderNo = #result.orderNo", "executionId = #result.executionId",
             "taskId = #result.taskId", "reportId = #result.reportId",
             "qualifiedQuantity = #result.qualifiedQuantity",
             "defectiveQuantity = #result.defectiveQuantity",
