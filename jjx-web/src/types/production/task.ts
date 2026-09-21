@@ -71,6 +71,8 @@ export interface TaskTreeRow {
   taskNo?: string
   parentTaskId: number | null // null = 第一层真实任务（非 System Root）
   executionId: number
+  /** 工序执行状态（ExecutionStatusEnum 值；2026-09-21 dev-20260921-025 后端任务行补投影，列表侧判断能否开始工序） */
+  executionStatus?: number
   orderNo?: string
   processName?: string
   processCode?: string

@@ -88,13 +88,33 @@
       <el-table-column label="剩余" width="100" align="right">
         <template #default="{ row }">{{ fmtQty(row.remainingQuantity) }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="90">
+      <el-table-column label="任务状态" width="95">
         <template #default="{ row }">
           <el-tag size="small" :type="taskStatusTag(row.status)">{{ taskStatusLabel(row) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" min-width="300" fixed="right">
+      <el-table-column label="工序状态" width="95">
         <template #default="{ row }">
+          <el-tag
+            v-if="row.executionStatus !== undefined && row.executionStatus !== null"
+            size="small"
+            :type="execStatusTag(row.executionStatus)"
+            >{{ execStatusLabel(row.executionStatus) }}</el-tag
+          >
+          <span v-else class="text-muted">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" min-width="360" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            v-if="canStart(row)"
+            type="warning"
+            link
+            icon="VideoPlay"
+            v-hasPermi="['production:operation-execution:edit']"
+            @click="emit('start', row)"
+            >开始工序</el-button
+          >
           <el-button
             v-if="Number(row.pendingQuantity || 0) > 0"
             type="warning"
@@ -134,10 +154,15 @@
 <script setup lang="ts">
 import type { TaskTreeRow } from '@/types/production/task'
 import { fmtQty } from '../utils'
+import { ExecutionStatusEnum } from '@/enums/production'
 import {
   statusLabel as taskStatusLabel,
   statusTag as taskStatusTag,
 } from '@/views/production/dispatch/utils/taskFormatters'
+
+/** 工序执行状态展示（与任务状态分开：能否开始工序看的是工序状态） */
+const execStatusLabel = (value: number) => ExecutionStatusEnum.getLabel(value)
+const execStatusTag = (value: number) => ExecutionStatusEnum.getTagProps(value)?.type || 'info'
 
 type FilterQuery = { keyword: string; status: string }
 type LoadChildren = (
@@ -154,6 +179,7 @@ const props = withDefaults(
     loadRoot: () => void | Promise<void>
     loadChildren: LoadChildren
     canReport: (row: TaskTreeRow) => boolean
+    canStart: (row: TaskTreeRow) => boolean
     paginated?: boolean
     pageNum?: number
     pageSize?: number
@@ -166,6 +192,7 @@ const emit = defineEmits<{
   query: []
   reset: []
   approval: []
+  start: [row: TaskTreeRow]
   report: [row: TaskTreeRow]
   detail: [row: TaskTreeRow]
   completion: [row: TaskTreeRow]

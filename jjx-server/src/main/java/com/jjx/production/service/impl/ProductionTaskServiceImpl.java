@@ -1185,7 +1185,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             String execIdStr = execIds.stream().map(String::valueOf).collect(Collectors.joining(","));
             try {
                 jdbcTemplate.query("SELECT e.execution_id, e.order_id, e.process_id,"
-                                + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name, e.process_order"
+                                + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name, e.process_order,"
+                                + " e.execution_status"
                                 + " FROM production_operation_execution e"
                                 + " LEFT JOIN engineering_standard_process p ON p.process_id = e.process_id"
                                 + " WHERE e.execution_id IN (" + execIdStr + ")",
@@ -1195,7 +1196,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                                     rs.getLong("order_id"),
                                     rs.getObject("process_id"),
                                     rs.getString("process_name"),
-                                    rs.getObject("process_order")});
+                                    rs.getObject("process_order"),
+                                    rs.getObject("execution_status")});
                         });
             } catch (Exception e) {
                 log.warn("查询 execution 上下文失败: {}", e.getMessage());
@@ -1373,6 +1375,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     vo.setProcessName((String) exec[2]);
                 }
                 vo.setProcessOrder(exec[3] == null ? null : ((Number) exec[3]).intValue());
+                // 2026-09-21 dev-20260921-025：列表侧也要能判断「能否开始工序」
+                vo.setExecutionStatus(exec[4] == null ? null : ((Number) exec[4]).intValue());
             }
             vo.setAssigneeId(t.getAssigneeId());
             vo.setAssigneeName(t.getAssigneeId() == null ? null : userNameMap.get(t.getAssigneeId()));

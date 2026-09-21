@@ -36,6 +36,7 @@
       :load-root="getList"
       :load-children="loadTaskChildren"
       :can-report="canReportInAllView"
+      :can-start="canStartTaskRow"
       :paginated="selectedScope === 'all'"
       :page-num="allQueryParams.pageNum"
       :page-size="allQueryParams.pageSize"
@@ -46,6 +47,7 @@
       @query="handleQuery"
       @reset="handleReset"
       @approval="openPendingApproval"
+      @start="handleTaskStart"
       @report="handleTaskReport"
       @detail="handleTaskView"
       @completion="openTaskCompletionDetails"
@@ -917,6 +919,37 @@ const taskAsExecution = (row: AllTaskRow): OperationExecutionVO => ({
 })
 const handleTaskReport = (row: AllTaskRow) => openReportDialog(taskAsExecution(row), row.taskId)
 const handleTaskView = (row: AllTaskRow) => handleView(taskAsExecution(row))
+
+/**
+ * 列表行「开始工序」条件 —— 与后端门禁一致（待执行 / 已暂停），
+ * 不再靠任务状态推断（2026-09-21 dev-20260921-025）。
+ * 工单本身没开工时后端会给明确提示，这里不隐藏按钮（隐藏了用户反而找不到入口）。
+ */
+const canStartTaskRow = (row: AllTaskRow) =>
+  !!row.executionId &&
+  (Number(row.executionStatus) === ExecutionStatusEnum.PENDING.value ||
+    Number(row.executionStatus) === ExecutionStatusEnum.PAUSED.value)
+const handleTaskStart = async (row: AllTaskRow) => {
+  const executionId = Number(row.executionId)
+  if (!executionId) return
+  const label = row.processName || `工序执行 ${executionId}`
+  try {
+    await ElMessageBox.confirm(`确认开始「${label}」这道工序？开始后才能报工。`, '开始工序', {
+      type: 'warning',
+      confirmButtonText: '确认开始',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  try {
+    await operationExecutionApi.start(executionId)
+    ElMessage.success(`已开始：${label}，现在可以报工了`)
+    await getList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '开始工序失败')
+  }
+}
 const handleQuery = () => {
   if (selectedScope.value === 'all') allQueryParams.pageNum = 1
 }
@@ -982,13 +1015,11 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
 
 const startingExecution = ref(false)
 const detailExecution = ref<OperationExecutionVO | null>(null)
-/** 工序可开始：待执行/准备中/已暂停（与后端 canStartExecution 一致） */
+/** 工序可开始：待执行 / 已暂停（与后端 canStartExecution 门禁一致；「准备中」后端会拒，故不再算可开始） */
 const canStartExecution = computed(() => {
   const st = detailExecution.value?.executionStatus ?? detailForm.executionStatus
   return (
-    st === ExecutionStatusEnum.PENDING.value ||
-    st === ExecutionStatusEnum.PREPARING.value ||
-    st === ExecutionStatusEnum.PAUSED.value
+    st === ExecutionStatusEnum.PENDING.value || st === ExecutionStatusEnum.PAUSED.value
   )
 })
 /** 开始工序（PC 入口，dev-20260918）：工序开工后才可报工 */
