@@ -30,6 +30,14 @@
         </div>
       </template>
 
+      <!-- 功能说明：这页每个动作是什么意思（FQC/IQC 文案不同） -->
+      <el-alert type="info" :closable="false" class="page-help">
+        <template #title>
+          <span class="help-title">功能说明：{{ title }}（检验批）</span>
+        </template>
+        <div v-for="(line, idx) in helpLines" :key="idx" class="help-line">{{ line }}</div>
+      </el-alert>
+
       <el-table v-loading="loading" :data="rows" border size="small">
         <template #empty><el-empty description="暂无检验批" /></template>
         <el-table-column prop="lotNo" label="检验批号" min-width="150" />
@@ -109,14 +117,19 @@
               >复检</el-button
             >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
-            <el-button
-              v-if="canJudge && lotType === 'FQC' && row.orderId && isJudged(row)"
-              link
-              size="small"
-              :loading="busyLotId === row.lotId"
-              @click="handleSyncFinish(row)"
-              >同步入库</el-button
+            <el-tooltip
+              content="把工单完工入库数量对齐到「本工单成品检验合格累计」，只补差额（合格累计 − 已入数量）；提示 0 = 没有新增合格量，属正常，可重复点"
+              placement="top"
             >
+              <el-button
+                v-if="canJudge && lotType === 'FQC' && row.orderId && isJudged(row)"
+                link
+                size="small"
+                :loading="busyLotId === row.lotId"
+                @click="handleSyncFinish(row)"
+                >同步入库</el-button
+              >
+            </el-tooltip>
             <span v-if="!canJudge && !canInspect" class="no-action">无操作权限</span>
           </template>
         </el-table-column>
@@ -262,6 +275,26 @@ const rows = ref<QualityLot[]>([])
 const total = ref(0)
 const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '' })
 const current = ref<QualityLot | null>(null)
+
+/**
+ * 功能说明（2026-09-21 dev-20260921-032）：这页每个动作的含义。
+ * FQC 多一条「同步入库」；IQC 的入库与隔离走「库存管理 → 来料检验 / 不合格品处置」。
+ */
+const helpLines = computed<string[]>(() =>
+  lotType === 'IQC'
+    ? [
+        '① 录入：填检验项目与实测值，保存后进入待判定。',
+        '② 判定：填检验数量 / 合格 / 不良。判不合格会同步生成不良台账（去「质量管理 → 不良台账」处置）。',
+        '③ 复检：已判定的批可复检，会新建一个版本（旧版自动失效），原批号不变。',
+        '④ 来料的收货入库与隔离处置在「库存管理 → 来料检验 / 不合格品处置」，不在这页。',
+      ]
+    : [
+        '① 录入：检验项目按 JJX-QR-039 固定分组，逐项填实测值，保存后进入待判定。',
+        '② 判定：填检验数量 / 合格 / 不良。合格累计会回写工单完工数量；不良会同步生成不良台账。',
+        '③ 复检：已判定的批可复检，会新建一个版本（旧版自动失效），原批号不变。',
+        '④ 同步入库：把工单的完工入库数量对齐到「本工单成品检验合格累计」，只补差额（合格累计 − 已入数量）；提示「0」表示没有新增合格量，属正常，可重复点。',
+      ]
+)
 
 const num = (value?: number | null) =>
   value == null ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
@@ -510,5 +543,16 @@ onMounted(() => load(1))
 .no-action {
   color: #c0c4cc;
   font-size: 12px;
+}
+.page-help {
+  margin-bottom: 12px;
+}
+.page-help .help-title {
+  font-weight: 600;
+}
+.page-help .help-line {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #606266;
 }
 </style>
