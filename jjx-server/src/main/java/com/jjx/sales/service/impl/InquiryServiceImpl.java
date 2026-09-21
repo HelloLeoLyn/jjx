@@ -198,7 +198,7 @@ public class InquiryServiceImpl implements IInquiryService {
         if (inquiry.getSalesPersonId() == null) {
             try {
                 inquiry.setSalesPersonId(SecurityUtils.getUserId());
-                inquiry.setSalesPersonName(SecurityUtils.getUsername());
+                inquiry.setSalesPersonName(SecurityUtils.getDisplayName());
             } catch (Exception e) {
                 log.warn("无法获取当前用户信息: {}", e.getMessage());
             }

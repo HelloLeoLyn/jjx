@@ -52,6 +52,19 @@ public class SecurityUtils {
         return user != null && user.getUserInfo() != null ? user.getUserInfo().getRealName() : null;
     }
 
+    /**
+     * 人员「显示名」：写进 *Name 展示字段的字符串。
+     * 2026-09-21（dev-20260921-007）：显示类字段一律用昵称/姓名，账号名只进 create_by/username 列，
+     * 否则同一个人会在列表、打印件里出现「账号名 / 姓名」两种写法（报价单列表销售员不一致实例）。
+     */
+    public static String getDisplayName() {
+        String realName = getRealName();
+        if (realName != null && !realName.isBlank()) {
+            return realName;
+        }
+        return getUsername();
+    }
+
     public static Long getTenantId() {
         return 1L;
     }

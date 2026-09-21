@@ -358,7 +358,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 销售负责人：复制人（当前登录用户），与 createSample 一致
         try {
             copy.setSalesManagerId(SecurityUtils.getUserId());
-            copy.setSalesManagerName(SecurityUtils.getUsername());
+            copy.setSalesManagerName(SecurityUtils.getDisplayName());
         } catch (Exception ignored) {
         }
         copy.setRemark("复制自样品单[" + source.getOrderNo() + "]"
@@ -682,7 +682,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setExchangeRate(quotation != null ? quotation.getExchangeRate() : java.math.BigDecimal.ONE);
         try {
             order.setSalesManagerId(SecurityUtils.getUserId());
-            order.setSalesManagerName(SecurityUtils.getUsername());
+            order.setSalesManagerName(SecurityUtils.getDisplayName());
         } catch (Exception ignored) {
         }
         order.setRemark(dto.getRemark());

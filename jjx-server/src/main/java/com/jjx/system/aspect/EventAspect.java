@@ -46,10 +46,13 @@ public class EventAspect {
         Map<String, Object> payload = new HashMap<>();
 
         // 当前操作者（2026-09-18：补 triggerUserName，通知「发送人」/任务「创建人」要用它落库）
+        // 2026-09-21（dev-20260921-007）：另补 triggerRealName（显示名）——通知「发送人」用显示名，
+        // 任务 create_by 仍用账号（保持账号列语义），避免同一个人两种写法。
         try {
             Long userId = SecurityUtils.getUserId();
             payload.put("triggerUserId", userId);
             payload.put("triggerUserName", SecurityUtils.getUsername());
+            payload.put("triggerRealName", SecurityUtils.getDisplayName());
         } catch (Exception ignored) {
         }
 

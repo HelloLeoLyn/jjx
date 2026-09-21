@@ -258,7 +258,7 @@ public class QuotationServiceImpl implements IQuotationService {
         }
         if (!org.apache.commons.lang3.StringUtils.isNotBlank(quotation.getSalesPersonName())) {
             String realName = SecurityUtils.getRealName();
-            quotation.setSalesPersonName(realName != null && !realName.isBlank() ? realName : SecurityUtils.getUsername());
+            quotation.setSalesPersonName(SecurityUtils.getDisplayName());
         }
         // 自动生成报价单号（未传入时，DEV-601修复：原逻辑只校验不生成，导致新增保存报错）
         if (quotation.getQuotationNo() == null || quotation.getQuotationNo().isEmpty()) {
@@ -1136,7 +1136,7 @@ public class QuotationServiceImpl implements IQuotationService {
 
         // 更新审核信息（从当前登录用户获取，不再硬编码）
         quotation.setApproverId(SecurityUtils.getUserId());
-        quotation.setApproverName(SecurityUtils.getUsername());
+        quotation.setApproverName(SecurityUtils.getDisplayName());
         quotation.setApproveTime(LocalDateTime.now());
         quotation.setApproveRemark(remark);
 

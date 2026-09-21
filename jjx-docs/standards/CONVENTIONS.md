@@ -210,3 +210,16 @@ bash scripts/agent-preflight.sh
 4. **归属只认基线**：任务开始时把 `git status --short` 存档为基线 —— 基线里已有的 `M/D/??` 是别人的，绝不动；开始后才出现的才是越界嫌疑，先取证（时间戳/进程/提交记录）再报告用户。
 
 配套：开工先跑 `bash scripts/agent-preflight.sh`；冲突仲裁口径＝**谁先提交谁算**，后来者 rebase 或让；整体路线见 `jjx-docs/guides/master-plan-20260914.md` 第 5 节。
+
+---
+
+## 12. 人员显示名与账号列（2026-09-21 立；报价单列表销售员不一致实例）
+
+**规则：显示类 `*Name` 字段一律写显示名（`nick_name`），账号名只进账号列。**
+
+- 写显示名字段（销售员/销售负责人、检验人、审核人、操作人、设计人、报告人、发送人、看板处理人…）→ `SecurityUtils.getDisplayName()`（= `getRealName()`，为空回退 `getUsername()`）
+- 账号语义列（`create_by` / `update_by` / `operLog.username` / 事件 `triggerUserName`）→ `SecurityUtils.getUsername()`，**不要**改成显示名
+- 禁止在显示字段里用 `SecurityUtils.getUsername()`；新增显示字段时同此
+- 存量归一：`jjx-docs/sql/migrations/148_display_name_normalize.sql`（59 列，幂等）；同类列清单一并记录在该文件头部注释里
+- 判定口径：同一人两条单据显示不同（`zhangmuhua` vs `张慕华`）＝该字段被两条写入路径分别写了账号名与姓名，先查写入方（对应 `set*Name(...)` 的取值来源），不要改前端显示
+

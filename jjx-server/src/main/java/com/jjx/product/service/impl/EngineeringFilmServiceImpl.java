@@ -385,7 +385,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
     private void fillDesigner(EngineeringFilm film) {
         try {
             film.setDesignerId(SecurityUtils.getUserId());
-            film.setDesignerName(SecurityUtils.getUsername());
+            film.setDesignerName(SecurityUtils.getDisplayName());
             film.setDesignTime(LocalDateTime.now());
         } catch (Exception e) {
             log.debug("菲林设计人回填跳过（无登录上下文）: {}", e.getMessage());

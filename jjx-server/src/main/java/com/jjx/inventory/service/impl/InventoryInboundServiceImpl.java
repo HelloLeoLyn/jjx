@@ -406,7 +406,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             quarantine.setDisposition(item.getDisposition());
             quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode());
             quarantine.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-            quarantine.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+            quarantine.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
             iqcQuarantineMapper.insert(quarantine);
             createdCount++;
 
@@ -482,7 +482,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         dispositionOrder.setRemark(action.getRemark());
         dispositionOrder.setStatus("COMPLETED");
         dispositionOrder.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
-        dispositionOrder.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getUsername());
+        dispositionOrder.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
         iqcDispositionOrderMapper.insert(dispositionOrder);
         if ("RETURN".equals(actionCode)) createIqcReturnOrder(quarantine, dispositionOrder, action);
         if ("REWORK".equals(actionCode)) createIqcReworkOrder(quarantine, dispositionOrder, action);
@@ -504,7 +504,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         tx.setAfterQuantity(quarantine.getRemainingQuantity());
         tx.setTransactionTime(LocalDateTime.now());
         tx.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
-        tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getUsername());
+        tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
         tx.setRemark(action.getRemark()); transactionMapper.insert(tx);
         updateBatchAfterDisposition(quarantine.getIqcBatchId(), actionCode, quantity);
         return true;
@@ -662,7 +662,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             scrap.setStatus("APPROVED");
         }
         scrap.setApproverId(approval == null ? SecurityUtils.getUserId() : approval.getApproverId());
-        scrap.setApproverName(approval == null ? SecurityUtils.getUsername() : approval.getApproverName());
+        scrap.setApproverName(approval == null ? SecurityUtils.getDisplayName() : approval.getApproverName());
         iqcScrapOrderMapper.updateById(scrap);
         return true;
     }
@@ -977,7 +977,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     inspectionId = previous.getInspectionId();
                     previous.setDisposition(disposition == null ? null : disposition.getCode());
                     previous.setRemark(inspection.getInspectionRemark());
-                    previous.setInspector(SecurityUtils.getUsername());
+                    previous.setInspector(SecurityUtils.getDisplayName());
                     previous.setReviewStatus(com.jjx.production.enums.QualityReviewStatusEnum.PENDING.getCode());
                     previous.setReviewRemark(null);
                     previous.setReviewerId(null);
@@ -999,7 +999,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                                 ? 2 : previous.getInspectionVersion() + 1);
                     }
                     create.setDisposition(disposition == null ? null : disposition.getCode());
-                    create.setInspector(SecurityUtils.getUsername());
+                    create.setInspector(SecurityUtils.getDisplayName());
                     create.setRemark(inspection.getInspectionRemark());
                     create.setItems(submitted.getInspectionItems());
                     inspectionId = qualityInspectionService.create(create);
@@ -1038,7 +1038,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setInspectionResult(allPass ? "PASS" : "OTHER");
         order.setInspectionRemark(inspection.getInspectionRemark());
         order.setInspectorId(SecurityUtils.getUserId());
-        order.setInspectorName(SecurityUtils.getUsername());
+        order.setInspectorName(SecurityUtils.getDisplayName());
         order.setInspectionTime(LocalDateTime.now());
     }
 
@@ -1127,7 +1127,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 return;
             }
             lotService.applyJudgement(item.getLotId(), inspected, q, f,
-                    "PASS".equals(itemResult) ? "pass" : "fail", SecurityUtils.getUsername());
+                    "PASS".equals(itemResult) ? "pass" : "fail", SecurityUtils.getDisplayName());
         } catch (Exception e) {
             log.warn("IQC 判定写 quality_lot 失败（expand 阶段容错）: itemId={} err={}",
                     item == null ? null : item.getItemId(), e.getMessage());
@@ -1203,7 +1203,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         quality.setReviewRemark(review == null ? null : review.getRemark());
         quality.setReviewerId(review == null ? SecurityUtils.getUserId() : review.getApproverId());
         quality.setReviewerName(review == null || review.getApproverName() == null
-                ? SecurityUtils.getUsername() : review.getApproverName());
+                ? SecurityUtils.getDisplayName() : review.getApproverName());
         quality.setReviewTime(LocalDateTime.now());
         qualityInspectionMapper.updateById(quality);
         if (quality.getPreviousInspectionId() != null) {
@@ -1336,7 +1336,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (allApproved) {
             order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
             inboundOrderMapper.updateById(order);
-            int quarantineCount = createIqcQuarantine(order, SecurityUtils.getUserId(), SecurityUtils.getUsername());
+            int quarantineCount = createIqcQuarantine(order, SecurityUtils.getUserId(), SecurityUtils.getDisplayName());
             Map<String, Object> approvedPayload = iqcPayload(order, null, null, null);
             publishIqcEventAfterCommit("quality.iqc.approved", approvedPayload);
             if (quarantineCount > 0) {
@@ -1363,6 +1363,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         payload.put("bizType", "quality");
         payload.put("triggerUserId", SecurityUtils.getUserId());
         payload.put("triggerUserName", SecurityUtils.getUsername());
+        payload.put("triggerRealName", SecurityUtils.getDisplayName());
         if (order != null) {
             payload.put("bizId", order.getInboundId());
             payload.put("inboundId", order.getInboundId());
@@ -1585,7 +1586,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setAmount(item.getUnitPrice() == null ? null : item.getUnitPrice().multiply(quantityToPost));
             tx.setTransactionTime(LocalDateTime.now());
             tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
             tx.setRemark(remark != null ? remark : "入库确认");
             transactionMapper.insert(tx);
         }
@@ -1733,6 +1734,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         createdPayload.put("bizType", "inventory");
         createdPayload.put("triggerUserId", SecurityUtils.getUserId());
         createdPayload.put("triggerUserName", SecurityUtils.getUsername());
+        createdPayload.put("triggerRealName", SecurityUtils.getDisplayName());
         createdPayload.put("bizId", order.getInboundId());
         createdPayload.put("inboundId", order.getInboundId());
         createdPayload.put("inboundNo", order.getInboundNo());
@@ -2147,7 +2149,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         tx.setRemark(reason == null ? "成品检验差额调整（复检更正）" : reason);
         try {
             tx.setOperatorId(SecurityUtils.getUserId());
-            tx.setOperatorName(SecurityUtils.getUsername());
+            tx.setOperatorName(SecurityUtils.getDisplayName());
         } catch (Exception ignored) {
         }
         transactionMapper.insert(tx);
@@ -2221,7 +2223,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         tx.setRemark(remark == null ? "不良处置引起的库存调整" : remark);
         try {
             tx.setOperatorId(SecurityUtils.getUserId());
-            tx.setOperatorName(SecurityUtils.getUsername());
+            tx.setOperatorName(SecurityUtils.getDisplayName());
         } catch (Exception ignored) {
         }
         transactionMapper.insert(tx);

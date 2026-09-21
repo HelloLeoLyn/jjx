@@ -372,7 +372,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             tx.setAmount(item.getAmount() != null ? item.getAmount().negate() : null);
             tx.setTransactionTime(LocalDateTime.now());
             tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
             tx.setRemark("调拨出库确认");
             transactionMapper.insert(tx);
         }
@@ -467,7 +467,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
             tx.setAmount(item.getAmount());
             tx.setTransactionTime(LocalDateTime.now());
             tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
             tx.setRemark("调拨入库确认");
             transactionMapper.insert(tx);
         }
@@ -550,7 +550,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                     tx.setAmount(item.getAmount() != null ? item.getAmount() : null);
                     tx.setTransactionTime(LocalDateTime.now());
                     tx.setOperatorId(SecurityUtils.getUserId());
-                    tx.setOperatorName(SecurityUtils.getUsername());
+                    tx.setOperatorName(SecurityUtils.getDisplayName());
                     tx.setRemark("调拨取消回补源仓");
                     transactionMapper.insert(tx);
                 }

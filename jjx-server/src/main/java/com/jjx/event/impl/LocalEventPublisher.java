@@ -242,13 +242,17 @@ public class LocalEventPublisher implements EventPublisher {
             dto.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
             // 2026-09-18：触发人落库到「发送人」（此前 sender_id/sender_name 一直为 NULL，
             // 通知列表看不出是谁触发的；事件 payload 里本来就有 triggerUserId/triggerUserName）
+            // 2026-09-21（dev-20260921-007）：发送人用显示名（triggerRealName），没有才回退账号名。
             Long triggerUserId = payloadLong(payload, "triggerUserId");
             if (triggerUserId != null) {
                 dto.setSenderId(triggerUserId);
             }
-            String triggerUserName = payloadString(payload, "triggerUserName");
-            if (triggerUserName != null) {
-                dto.setSenderName(triggerUserName);
+            String triggerDisplayName = payloadString(payload, "triggerRealName");
+            if (triggerDisplayName == null) {
+                triggerDisplayName = payloadString(payload, "triggerUserName");
+            }
+            if (triggerDisplayName != null) {
+                dto.setSenderName(triggerDisplayName);
             }
             notificationService.createNotification(dto);
             log.debug("   📨 通知已创建: event={}, userId={}", eventCode, receiverId);
