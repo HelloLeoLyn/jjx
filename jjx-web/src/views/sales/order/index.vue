@@ -186,7 +186,7 @@
         </el-table-column>
         <TableActionColumn
           :actions="orderRowActions"
-          :min-width="360"
+          :min-width="210"
           display="text"
           @action="handleOrderRowAction"
         />
@@ -415,6 +415,15 @@ const orderRowActions: TableAction<any>[] = [
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CANCELLED.value),
   },
   {
+    key: 'edit',
+    label: '修改',
+    permission: 'sales:order:edit',
+    visible: ({ row }) =>
+      [SalesOrderStatusEnum.DRAFT.value, SalesOrderStatusEnum.REJECTED.value].includes(
+        row.orderStatus
+      ),
+  },
+  {
     key: 'cancel',
     label: '取消订单',
     type: 'danger',
@@ -425,15 +434,6 @@ const orderRowActions: TableAction<any>[] = [
         SalesOrderStatusEnum.COMPLETED.value,
         SalesOrderStatusEnum.CANCELLED.value,
       ].includes(row.orderStatus),
-  },
-  {
-    key: 'edit',
-    label: '修改',
-    permission: 'sales:order:edit',
-    visible: ({ row }) =>
-      [SalesOrderStatusEnum.DRAFT.value, SalesOrderStatusEnum.REJECTED.value].includes(
-        row.orderStatus
-      ),
   },
 ]
 const handleOrderRowAction = (key: string, row: any) => {

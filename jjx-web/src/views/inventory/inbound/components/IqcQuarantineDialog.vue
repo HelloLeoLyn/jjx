@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="visible"
     :title="`IQC 隔离处置 - ${inboundNo || ''}`"
-    width="950px"
+    width="1200px"
     append-to-body
     @update:model-value="emit('update:visible', $event)"
   >
@@ -98,9 +98,7 @@ const orders = ref<any[]>([])
 const loading = ref(false)
 const ordersLoading = ref(false)
 const user = useUserStore()
-const canDispose = computed(() =>
-  hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit'])
-)
+const canDispose = computed(() => hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit']))
 watch(
   () => [props.visible, props.inboundId, props.itemId] as const,
   ([visible]) => {
