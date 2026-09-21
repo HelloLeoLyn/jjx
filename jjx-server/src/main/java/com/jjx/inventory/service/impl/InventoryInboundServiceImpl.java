@@ -374,8 +374,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private int createIqcQuarantine(InventoryInboundOrder order, Long operatorId, String operatorName) {
         int createdCount = 0;
         for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
-            BigDecimal accepted = Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO);
-            BigDecimal quarantineQty = item.getQuantity().subtract(accepted);
+            // 2026-09-21（dev-20260921-004）：隔离数量口径 = 该明细当前检验记录的净不良量。
+            // 原公式「收货数量 − 允收数量」在复检/返工后必然算错：明细行被改写成子批次、允收量
+            // 随之变成子批次数量 → 100−5=95 件良品被当成隔离（PO202609210001-3 实例）。
+            BigDecimal quarantineQty = BigDecimal.ZERO;
+            if (item.getInspectionId() != null) {
+                com.jjx.production.domain.entity.ProductionQualityInspection inspection =
+                        qualityInspectionMapper.selectById(item.getInspectionId());
+                if (inspection != null && inspection.getFailQty() != null) {
+                    quarantineQty = inspection.getFailQty();
+                }
+            }
             if (quarantineQty.signum() <= 0) continue;
             Long count = iqcQuarantineMapper.selectCount(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>()
                     .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getInboundItemId, item.getItemId())
@@ -935,7 +944,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     throw new BusinessException("物料" + item.getMaterialCode() + "存在不良数量时不能判定合格");
                 }
                 validateIqcInspectionItems(item, submitted.getInspectionItems());
-                BigDecimal accepted = qualified;
+                // 2026-09-21（dev-20260921-004）：复检/返工场景下明细行仍代表「整批」，
+                // 允收量 = 收货数量 − 本轮净不良。原实现写 qualified（=本次子批次良品数），
+                // 等于把整行允收量改写成子批次数量 → 隔离公式与入库过账都按子批次数算，
+                // PO202609210001-3 因此少入 95 件、并生成 95 件的假隔离。
+                BigDecimal accepted = reinspection
+                        ? item.getQuantity().subtract(rejected)
+                        : qualified;
                 if (accepted.signum() < 0 || accepted.compareTo(item.getQuantity()) > 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "允收入库数量必须在收货数量范围内");
                 }
@@ -1040,9 +1055,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             if (lotService == null) {
                 return null;
             }
-            com.jjx.quality.domain.entity.QualityLot lot = lotService.listBySource("INBOUND", inboundId).stream()
-                    .filter(l -> item.getItemId() != null && item.getItemId().equals(l.getSourceItemId()))
+            java.util.List<com.jjx.quality.domain.entity.QualityLot> lots = lotService.listBySource("INBOUND", inboundId);
+            // 2026-09-21（dev-20260921-004）：复检/返工子批次必须独立成检验批，不能复用原批 lot。
+            // 原实现只按 sourceItemId 复用 → 子批复检结果覆写原批的「检验/合格/不良」事实
+            // （RM001585/PO202609210001-3-1 实测：原批 100 检 95 合格被写成 5 检 5 合格），
+            // 且复检批没有父子关系、无法追溯。现在按批次号匹配，子批挂 parent_lot_id 指向原批。
+            com.jjx.quality.domain.entity.QualityLot lot = lots.stream()
+                    .filter(l -> item.getBatchNo() != null && item.getBatchNo().equals(l.getBatchNo()))
                     .findFirst().orElse(null);
+            com.jjx.quality.domain.entity.QualityLot originalLot = lot == null ? lots.stream()
+                    .filter(l -> item.getItemId() != null && item.getItemId().equals(l.getSourceItemId()))
+                    .findFirst().orElse(null) : null;
             if (lot == null) {
                 com.jjx.quality.dto.QualityLotCreateDTO dto = new com.jjx.quality.dto.QualityLotCreateDTO();
                 dto.setLotType("IQC");
@@ -1054,6 +1077,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 dto.setMaterialName(item.getMaterialName());
                 dto.setBatchNo(item.getBatchNo());
                 BigDecimal lotQty = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
+                if (originalLot != null) {
+                    // 子批次（复检/返工产物）：批数量取本次复检数量，挂原批 lot 下并升版
+                    // （createLot 的防重复守卫：同来源+行+版本唯一，复检必须新版本）
+                    lotQty = qualified.add(rejected);
+                    dto.setParentLotId(originalLot.getLotId());
+                    int nextVersion = lots.stream()
+                            .filter(l -> item.getItemId() != null && item.getItemId().equals(l.getSourceItemId()))
+                            .map(l -> l.getVersion() == null ? 1 : l.getVersion())
+                            .max(Integer::compareTo).orElse(1) + 1;
+                    dto.setVersion(nextVersion);
+                }
                 if (lotQty.signum() <= 0) {
                     lotQty = qualified.add(rejected);
                 }
@@ -1061,7 +1095,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     return null;
                 }
                 dto.setLotQuantity(lotQty);
-                dto.setRemark("IQC 检验批（来源入库单，批次 " + item.getBatchNo() + "）");
+                dto.setRemark(originalLot == null
+                        ? "IQC 检验批（来源入库单，批次 " + item.getBatchNo() + "）"
+                        : "IQC 复检批（来源入库单，原批次 " + originalLot.getBatchNo()
+                          + "，批次 " + item.getBatchNo() + "）");
                 lot = lotService.createLot(dto);
             }
             // 判定不在提交时做：IQC 有独立审核环节，审核通过时再判（见 judgeIqcLot）
