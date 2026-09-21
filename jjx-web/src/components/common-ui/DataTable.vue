@@ -184,15 +184,32 @@ const handleSortChange = (sort: { prop: string; order: string }) => {
 const handleSizeChange = (size: number) => {
   localPageSize.value = size
   localCurrentPage.value = 1
-  emit('update:modelValue', { pageNum: 1, pageSize: size })
+  syncToParent(1, size)
   emit('size-change', size)
   emit('page-change', 1)
 }
 
 const handleCurrentChange = (page: number) => {
   localCurrentPage.value = page
-  emit('update:modelValue', { pageNum: page, pageSize: localPageSize.value })
+  syncToParent(page, localPageSize.value)
   emit('page-change', page)
+}
+
+/**
+ * 就地更新并回传父级查询对象（2026-09-21 修复）。
+ * 背景：`<script setup>` 里 `const queryParams = reactive({...})` 会被编译器改写为 `let` +
+ * getter/setter 暴露给渲染作用域，而父级模板的 `v-model="queryParams"` 编译为
+ * `$setup.queryParams = $event` → 走 setter → **直接把父级那个查询对象整个换掉**。
+ * 旧实现 emit 的是 `{pageNum, pageSize}` 这个不完整的新对象 → 翻页/改每页条数后
+ * 父级 queryParams 里就只剩这两个字段，筛选条件（业务模块/关键字…）全丢。
+ * 因此：**就地改父级对象，并回传同一个引用**（父级再赋值也还是它，条件不丢）。
+ */
+const syncToParent = (pageNum: number, pageSize: number) => {
+  const target =
+    props.modelValue && typeof props.modelValue === 'object' ? (props.modelValue as any) : ({} as any)
+  target.pageNum = pageNum
+  target.pageSize = pageSize
+  emit('update:modelValue', target)
 }
 </script>
 

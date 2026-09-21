@@ -97,16 +97,20 @@ const formData = reactive({ ...props.modelValue })
 
 /**
  * 回写父级查询对象。
- * 2026-09-21 修复：父级普遍写成 const queryParams = reactive({...}) + v-model="queryParams"，
- * 而 v-model 的赋值只会改到本组件 setup state，不会改到父级那个闭包对象，
- * 导致父级 getList() 读到的还是旧值 —— 搜索条件静默失效（影响所有用 SearchForm 的列表页）。
- * 所以这里直接就地写进父级传入的对象。
+ * 2026-09-21 修复：`<script setup>` 里 `const queryParams = reactive({...})` 会被编译器改写为
+ * `let` + getter/setter 暴露给渲染作用域，父级模板的 `v-model="queryParams"` 编译为
+ * `$setup.queryParams = $event` → 走 setter → **整个对象被换掉**。
+ * 旧实现 emit 一个全新对象 → 如果父级对象被换掉后本组件再往后写，就会写到别的对象上；
+ * 翻页（DataTable 的 v-model）时也会把带筛选条件的对象换成不完整的对象。
+ * 现在统一：**就地写进父级传入的对象，并回传同一个引用**（父级再赋值也还是它）。
  */
 const syncToParent = () => {
-  if (props.modelValue && typeof props.modelValue === 'object') {
-    Object.assign(props.modelValue, formData)
-  }
-  emit('update:modelValue', { ...formData })
+  const target =
+    props.modelValue && typeof props.modelValue === 'object'
+      ? (props.modelValue as Record<string, any>)
+      : ({ ...formData } as Record<string, any>)
+  Object.assign(target, formData)
+  emit('update:modelValue', target)
 }
 
 const handleSearch = () => {
@@ -141,12 +145,14 @@ const handleReset = () => {
     }
   })
 
-  // 更新父组件的 `modelValue`
+  // 更新父组件的 `modelValue`（就地写 + 回传同一引用，见 syncToParent 注释）
   Object.assign(formData, resetData) // 同步数据到 formData
-  if (props.modelValue && typeof props.modelValue === 'object') {
-    Object.assign(props.modelValue, resetData) // 就地写回父级查询对象（见 syncToParent 注释）
-  }
-  emit('update:modelValue', resetData)
+  const resetTarget =
+    props.modelValue && typeof props.modelValue === 'object'
+      ? (props.modelValue as Record<string, any>)
+      : (resetData as Record<string, any>)
+  Object.assign(resetTarget, resetData)
+  emit('update:modelValue', resetTarget)
   emit('reset')
 }
 </script>
