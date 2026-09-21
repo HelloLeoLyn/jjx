@@ -98,7 +98,7 @@ const orders = ref<any[]>([])
 const loading = ref(false)
 const ordersLoading = ref(false)
 const user = useUserStore()
-const canDispose = computed(() => hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit']))
+const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 watch(
   () => [props.visible, props.inboundId, props.itemId] as const,
   ([visible]) => {

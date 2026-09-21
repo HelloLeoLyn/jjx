@@ -178,10 +178,10 @@ import { IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
 import { hasPermi } from '@/directives'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 const router = useRouter()
-// 与来料检验页（iqc/index.vue）及处置弹窗同一口径：业务操作（inventory:inbound:edit）
-// 本来就能从「来料检验 → 隔离/处置」完成处置，这里原先只认 quality:ncr:dispose，
-// 导致库存业务操作/审核员打开本页时操作列只有一个「-」，无权限也无提示。
-const canDispose = computed(() => hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit']))
+// 2026-09-21 用户定口径 B（隔离处置只给品质主管一侧，见迁移 167）：
+// 收回 INVENTORY 业务操作(23)/审核员(24) 的处置入口后，本页与来料检验页的处置按钮
+// 只认 quality:ncr:dispose；无权限时显示「无处置权限」提示而不是留白。
+const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
 const status = ref<string>()
 const rows = ref<any[]>([])

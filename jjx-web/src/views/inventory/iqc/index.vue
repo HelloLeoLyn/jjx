@@ -369,7 +369,7 @@ const router = useRouter()
 const route = useRoute()
 const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
 const canJudge = computed(() => hasPermi(['quality:lot:judge', 'inventory:inbound:approve']))
-const canDispose = computed(() => hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit']))
+const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 const canConfirmInbound = computed(() => hasPermi('inventory:inbound:confirm'))
 const flowOptions: Array<{
   key: FlowKey
