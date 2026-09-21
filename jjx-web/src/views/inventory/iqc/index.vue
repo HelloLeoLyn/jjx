@@ -128,6 +128,13 @@
         ><span v-else-if="isApproved"> · 检验已批准，待确认入库</span
         ><span v-else-if="isCompleted"> · 入库流程已完成</span>
       </div>
+      <div v-if="canJudge" class="batch-bar">
+        <el-button type="primary" plain @click="openReview">复核窗口</el-button>
+        <span class="batch-tip"
+          >逐项审核/驳回、发起复检；若明细已全部审核、单据却仍停在待审批（历史并发复核留下的状态），
+          在窗口内点「重算单据状态」收尾。</span
+        >
+      </div>
       <div v-if="canInspect" class="batch-bar">
         <el-button
           type="primary"
