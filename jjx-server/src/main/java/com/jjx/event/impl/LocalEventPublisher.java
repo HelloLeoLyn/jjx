@@ -57,7 +57,8 @@ public class LocalEventPublisher implements EventPublisher {
                         .eq(SysEventConfig::getIsEnabled, 1)
         );
         if (event == null) {
-            log.warn("事件未配置或已停用，跳过: {}", eventCode);
+            // 2026-09-21（dev-20260921-005）：事件未配置是正常状态（如 quality.iqc.item.approved 未启用），
+            // 原来按 WARN 打，每次逐项审核都刷一条噪音、掩盖真问题。降级为 DEBUG。
             log.debug("事件[{}]未配置或已禁用，跳过", eventCode);
             return;
         }

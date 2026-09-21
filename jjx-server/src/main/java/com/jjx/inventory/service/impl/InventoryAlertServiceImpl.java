@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryAlertLog;
 import com.jjx.inventory.domain.InventoryStock;
+import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.dto.query.AlertQueryDTO;
 import com.jjx.inventory.dto.vo.AlertVO;
@@ -566,17 +567,15 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
         java.math.BigDecimal safe = java.math.BigDecimal.ZERO;
         try {
-            String sql = "SELECT safe_stock FROM inventory_material WHERE material_id = " + materialId;
-            java.util.List<java.util.Map<String,Object>> rows = java.util.Collections.emptyList();
-            // 使用 MyBatis-Plus 的 selectMaps 搭配 QueryWrapper 需要指定类型
-            // 通过 stockMapper 的现有方法查询
-            if (stockMapper.selectByMaterialId(materialId) != null) {
-                var qw = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<InventoryStock>();
-                qw.select("safe_stock").eq("material_id", materialId);
-                rows = stockMapper.selectMaps(qw);
+            // 2026-09-21（dev-20260921-005）：原实现用 QueryWrapper<InventoryStock> 去 select("safe_stock")，
+            // 而 inventory_stock 根本没有该列 → SQLSyntaxErrorException: Unknown column 'safe_stock'，
+            // 异常被下面的 catch 吞成 WARN，safe 恒为 0 → 第 590 行直接 return，
+            // 单物料安全库存预警从未生效（每次确认入库都在日志里刷 WARN）。
+            // 安全库存存在物料主数据 inventory_material.safe_stock（本类已注入 materialMapper）。
+            InventoryMaterial material = materialMapper.selectById(materialId);
+            if (material != null && material.getSafeStock() != null) {
+                safe = material.getSafeStock();
             }
-            if (!rows.isEmpty() && rows.get(0).get("safe_stock") != null)
-                safe = new java.math.BigDecimal(rows.get(0).get("safe_stock").toString());
         } catch (Exception e) {
             log.warn("查询安全库存失败: {}", e.getMessage());
         }
