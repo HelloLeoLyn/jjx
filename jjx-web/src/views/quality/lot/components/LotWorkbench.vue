@@ -79,21 +79,45 @@
           <template #default="{ row }">{{ resultLabel(row.result) }}</template>
         </el-table-column>
         <el-table-column prop="inspector" label="检验员" width="100" />
-        <el-table-column label="操作" width="210" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openItems(row)">录入</el-button>
-            <el-button link type="success" size="small" @click="openJudge(row)">判定</el-button>
-            <el-button link type="warning" size="small" @click="handleReinspect(row)"
+            <el-button
+              v-if="canInspect && isEditable(row)"
+              link
+              type="primary"
+              size="small"
+              :disabled="busyLotId === row.lotId"
+              @click="openItems(row)"
+              >录入</el-button
+            >
+            <el-button
+              v-if="canJudge && isEditable(row)"
+              link
+              type="success"
+              size="small"
+              :disabled="busyLotId === row.lotId"
+              @click="openJudge(row)"
+              >判定</el-button
+            >
+            <el-button
+              v-if="canJudge && isJudged(row)"
+              link
+              type="warning"
+              size="small"
+              :loading="busyLotId === row.lotId"
+              @click="handleReinspect(row)"
               >复检</el-button
             >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
             <el-button
-              v-if="lotType === 'FQC' && row.orderId"
+              v-if="canJudge && lotType === 'FQC' && row.orderId && isJudged(row)"
               link
               size="small"
+              :loading="busyLotId === row.lotId"
               @click="handleSyncFinish(row)"
               >同步入库</el-button
             >
+            <span v-if="!canJudge && !canInspect" class="no-action">无操作权限</span>
           </template>
         </el-table-column>
       </el-table>
@@ -210,13 +234,24 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { qualityLotApi, type QualityLot, type QualityLotItem } from '@/api/quality/lot'
 import { InspectionResult } from '@/enums/quality'
+import { hasPermi } from '@/directives'
 
 const router = useRouter()
+
+// 2026-09-21（dev-20260921-030）：操作栏改为「按权限 + 按状态」渲染，并加行级忙碌锁防连点。
+// 原实现 5 个按钮无条件可点（判定后仍能改录入、待检批也能复检）。
+const canInspect = computed(() => hasPermi('quality:lot:inspect'))
+const canJudge = computed(() => hasPermi('quality:lot:judge'))
+const busyLotId = ref<number | null>(null)
+/** 待检/检验中 = 可录入、可判定 */
+const isEditable = (row: QualityLot) => ['PENDING', 'INSPECTING'].includes(String(row.status))
+/** 已判定 = 可复检、可手工同步入库 */
+const isJudged = (row: QualityLot) => row.status === 'JUDGED'
 
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
 const title = props.lotType === 'IQC' ? '来料检验' : '成品检验'
@@ -336,7 +371,14 @@ const saveItems = async () => {
   }
   saving.value = true
   try {
-    await qualityLotApi.saveItems(current.value.lotId, itemRows.value)
+    // 2026-09-21：只提交后端 DTO 字段 —— category 是前端用于分组展示的字段（本地 ITEM_GROUPS），
+    // 后端 QualityLotItemDTO/表里都没有它，原样提交会触发 JSON parse error: Unrecognized field "category"。
+    const payload = itemRows.value.map((item) => {
+      const dto = { ...(item as QualityLotItem & { category?: string }) }
+      delete dto.category
+      return dto
+    })
+    await qualityLotApi.saveItems(current.value.lotId, payload)
     ElMessage.success('录入已保存')
     itemsVisible.value = false
   } catch (e: any) {
@@ -390,6 +432,7 @@ const submitJudge = async () => {
 
 // ============ 复检 / 同步入库 ============
 const handleReinspect = async (row: QualityLot) => {
+  if (busyLotId.value === row.lotId) return
   try {
     await ElMessageBox.confirm(
       `将对 ${row.lotNo} 建一个复检新版本（原判定保留但不再计账，库存只调差额），是否继续？`,
@@ -399,21 +442,28 @@ const handleReinspect = async (row: QualityLot) => {
   } catch {
     return
   }
+  busyLotId.value = row.lotId
   try {
     const res: any = await qualityLotApi.reinspect(row.lotId)
     ElMessage.success(`已生成复检批 ${res?.data?.lotNo || ''}`)
     load()
   } catch (e: any) {
     ElMessage.error(e?.message || '复检失败')
+  } finally {
+    busyLotId.value = null
   }
 }
 const handleSyncFinish = async (row: QualityLot) => {
-  if (!row.orderId) return
+  if (!row.orderId || busyLotId.value === row.lotId) return
+  busyLotId.value = row.lotId
   try {
     const res: any = await qualityLotApi.syncFinish(row.orderId, `手工同步（批 ${row.lotNo}）`)
     ElMessage.success(`已按差额同步入库：${res?.data ?? 0}`)
+    load()
   } catch (e: any) {
     ElMessage.error(e?.message || '同步失败')
+  } finally {
+    busyLotId.value = null
   }
 }
 
@@ -456,5 +506,9 @@ onMounted(() => load(1))
   color: #909399;
   font-size: 12px;
   padding-left: 100px;
+}
+.no-action {
+  color: #c0c4cc;
+  font-size: 12px;
 }
 </style>

@@ -35,6 +35,15 @@ public interface QualityLotService {
     void saveItems(Long lotId, List<QualityLotItemDTO> items);
 
     /**
+     * 行锁读取检验批（SELECT ... FOR UPDATE，必须在事务内）——写操作前先取锁串行化并发
+     * （2026-09-21 dev-20260921-030）
+     */
+    QualityLot lockLot(Long lotId);
+
+    /** 是否为该来源的最新版本（无后继复检版本）——评定/录入/复检只允许作用于最新版 */
+    boolean isLatestVersion(Long lotId);
+
+    /**
      * 判定落数：写 已检/合格/不良/判定/检验员，并推进状态
      * 校验：已检 ≤ 批量；合格 + 不良 = 已检
      */

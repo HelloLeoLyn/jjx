@@ -9,6 +9,7 @@ import com.jjx.quality.dto.QualityLotCreateDTO;
 import com.jjx.quality.dto.QualityLotItemDTO;
 import com.jjx.quality.dto.QualityLotJudgeDTO;
 import com.jjx.quality.mapper.QualityLotMapper;
+import com.jjx.quality.enums.QualityLotStatusEnum;
 import com.jjx.quality.service.QualityFinishService;
 import com.jjx.quality.service.QualityLotService;
 import com.jjx.quality.service.QualityNcrService;
@@ -75,7 +76,15 @@ public class QualityFinishServiceImpl implements QualityFinishService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QualityLot reinspectLot(Long lotId) {
-        QualityLot old = qualityLotService.getLot(lotId);
+        // 2026-09-21（dev-20260921-030）：复检守卫 —— 已判定且无后继版本，行锁防并发双击重复建版
+        QualityLot old = qualityLotService.lockLot(lotId);
+        if (!QualityLotStatusEnum.JUDGED.getCode().equals(old.getStatus())) {
+            throw new BusinessException("只有已判定的检验批可以复检（当前："
+                    + QualityLotStatusEnum.labelOf(old.getStatus()) + "）");
+        }
+        if (!qualityLotService.isLatestVersion(lotId)) {
+            throw new BusinessException("该批已有复检新版本，请对最新版本操作");
+        }
         QualityLotCreateDTO dto = new QualityLotCreateDTO();
         dto.setLotType(old.getLotType());
         dto.setSourceType(old.getSourceType());

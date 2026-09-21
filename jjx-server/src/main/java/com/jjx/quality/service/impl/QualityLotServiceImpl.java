@@ -120,6 +120,22 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     }
 
     @Override
+    public QualityLot lockLot(Long lotId) {
+        QualityLot lot = lotMapper.selectForUpdate(lotId);
+        if (lot == null) {
+            throw new BusinessException("检验批不存在: " + lotId);
+        }
+        return lot;
+    }
+
+    @Override
+    public boolean isLatestVersion(Long lotId) {
+        Long children = lotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, lotId));
+        return children == null || children == 0;
+    }
+
+    @Override
     public List<QualityLot> listBySource(String sourceType, Long sourceId) {
         if (StringUtils.isBlank(sourceType) || sourceId == null) {
             return new ArrayList<>();
@@ -170,7 +186,18 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void saveItems(Long lotId, List<QualityLotItemDTO> items) {
-        getLot(lotId);
+        // 2026-09-21（dev-20260921-030）：录入前先取行锁 + 状态/版本守卫
+        // —— 原实现只校验批存在，判定后仍能全量覆盖检验项（会篡改已判定记录的依据）。
+        QualityLot lot = lockLot(lotId);
+        String status = lot.getStatus();
+        if (!QualityLotStatusEnum.PENDING.getCode().equals(status)
+                && !QualityLotStatusEnum.INSPECTING.getCode().equals(status)) {
+            throw new BusinessException("该检验批已判定（" + QualityLotStatusEnum.labelOf(status)
+                    + "），检验项已冻结；如需重录请先「复检」生成新版本");
+        }
+        if (!isLatestVersion(lotId)) {
+            throw new BusinessException("该批已存在复检新版本，请对最新版本操作");
+        }
         itemMapper.delete(new LambdaQueryWrapper<QualityLotItem>().eq(QualityLotItem::getLotId, lotId));
         if (items == null || items.isEmpty()) {
             return;
@@ -202,7 +229,15 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     @Transactional(rollbackFor = Exception.class)
     public QualityLot applyJudgement(Long lotId, BigDecimal inspectedQuantity, BigDecimal passQuantity,
                                      BigDecimal failQuantity, String result, String inspector) {
-        QualityLot lot = getLot(lotId);
+        // 2026-09-21（dev-20260921-030）：行锁串行化同批判定；拒绝 已关闭 / 历史版本
+        QualityLot lot = lockLot(lotId);
+        String status = lot.getStatus();
+        if (QualityLotStatusEnum.CLOSED.getCode().equals(status)) {
+            throw new BusinessException("该检验批已关闭，不能再判定");
+        }
+        if (!isLatestVersion(lotId)) {
+            throw new BusinessException("该批已存在复检新版本，请对最新版本判定");
+        }
         BigDecimal inspected = nz(inspectedQuantity);
         BigDecimal pass = nz(passQuantity);
         BigDecimal fail = nz(failQuantity);
