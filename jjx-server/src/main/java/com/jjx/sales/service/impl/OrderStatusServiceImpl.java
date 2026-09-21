@@ -64,8 +64,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final ReviewFlowService reviewFlowService;
     private final SalesDeliveryMapper salesDeliveryMapper;
-    
-    @Event("order.submitted")
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitReview(Long orderId) {
@@ -109,9 +107,9 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                 currentStatus.getValue(), targetStatus.getValue(), null, null);
 
         log.info("订单{}提交审核，操作人：{}", orderId, SecurityUtils.getUsername());
+        publishOrderEvent("order.submitted", orderId);
     }
     @Override
-    @Event(value = "order.review_started", bizId = "#orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void startReview(Long orderId) {
         // 1. 查询订单
@@ -138,10 +136,10 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
         log.info("订单{}开始审核，审核人：{}", orderId, SecurityUtils.getUsername());
+        publishOrderEvent("order.review_started", orderId);
     }
 
     @Override
-    @Event(value = "order.approved", bizId = "#reviewDTO.orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void approveOrder(ReviewDTO reviewDTO) {
         // 1. 查询订单
@@ -198,10 +196,10 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         log.info("订单{}审核通过，审核人：{}", reviewDTO.getOrderId(), SecurityUtils.getUsername());
+        publishOrderEvent("order.approved", reviewDTO.getOrderId());
     }
 
     @Override
-    @Event(value = "order.rejected", bizId = "#reviewDTO.orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void rejectOrder(ReviewDTO reviewDTO) {
         // 1. 查询订单
@@ -238,11 +236,11 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
 
         log.info("订单{}审核驳回，审核人：{}，原因：{}",
                  reviewDTO.getOrderId(), SecurityUtils.getUsername(), reviewDTO.getRemark());
+        publishOrderEvent("order.rejected", reviewDTO.getOrderId());
     }
 
 
     @Override
-    @Event(value = "order.resubmitted", bizId = "#orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void resubmit(Long orderId) {
         // 1. 查询订单
@@ -280,10 +278,10 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                 currentStatus.getValue(), targetStatus.getValue(), null, null);
 
         log.info("订单{}重新提交审核，操作人：{}", orderId, SecurityUtils.getUsername());
+        publishOrderEvent("order.resubmitted", orderId);
     }
 
     @Override
-    @Event(value = "order.cancelled", bizId = "#orderId", bizType = "'order'")
     @Transactional(rollbackFor = Exception.class)
     public void cancelOrder(Long orderId, String reason) {
         // 1. 查询订单
@@ -340,6 +338,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         log.info("订单{}已取消，操作人：{}，原因：{}", orderId, SecurityUtils.getUsername(), reason);
+        publishOrderEvent("order.cancelled", orderId);
     }
 
     /**
@@ -526,7 +525,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "order.delivering", bizId = "#orderId", bizType = "'order'", params = "salesOrderId=#orderId")
     public void shipOrder(Long orderId, SalesDelivery delivery) {
         // 1. 查询订单
         SalesOrder order = salesOrderMapper.selectById(orderId);
@@ -587,6 +585,26 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
         log.info("订单{}已发货，发货单号：{}，操作人：{}",
                 orderId, record.getDeliveryNo(), SecurityUtils.getUsername());
+        publishOrderEvent("order.delivering", orderId);
+    }
+
+    /**
+     * 订单类事件统一发布（2026-09-21 dev-20260921-013）：
+     * 改为手写 payload 并带信封字段 bizNo=订单号（此前 @Event 注解只能带内部编号 orderId，
+     * 标题里只能显示「订单【2】」；order.confirmed 甚至没有 bizId/发送人）。
+     */
+    private void publishOrderEvent(String eventCode, Long orderId) {
+        if (orderId == null) {
+            return;
+        }
+        SalesOrder order = salesOrderMapper.selectById(orderId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "order", orderId, order == null ? null : order.getOrderNo());
+        if (order != null) {
+            payload.put("customerName", order.getCustomerName());
+            payload.put("orderStatus", order.getOrderStatus());
+        }
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     @Override
@@ -612,11 +630,6 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
 
-        // 2026-09-21（dev-20260921-009）：订单完成发事件（订单流程里此前唯独「完成」没有任何通知）
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("order", orderId, order.getOrderNo());
-        payload.put("orderNo", order.getOrderNo());
-        payload.put("customerName", order.getCustomerName());
-        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "order.completed", payload);
 
         log.info("订单{}完成，操作人：{}", orderId, SecurityUtils.getUsername());
     }
@@ -624,6 +637,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void confirmOrder(Long orderId, String confirmedBy, String confirmMethod, String remark) {
+        publishOrderEvent("order.completed", orderId);
         // 主路径已由 createProductionPlan 兼任确认动作（2026-08-13：生成计划=确认，4→6 写确认记录）；
         // 此方法保留供 API/后续使用，前端无入口。
         SalesOrder order = salesOrderMapper.selectById(orderId);
@@ -650,19 +664,9 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             log.error("订单{}确认时齐套检查异常（不影响确认主流程）: {}", orderId, e.getMessage());
         }
 
-        // 触发联动事件
-        try {
-            eventPublisher.fire("order.confirmed", Map.of(
-                    "orderNo", order.getOrderNo(),
-                    "orderId", String.valueOf(orderId),
-                    "confirmedBy", confirmedBy,
-                    "confirmMethod", confirmMethod != null ? confirmMethod : ""
-            ));
-        } catch (Exception e) {
-            log.warn("事件联动失败（不影响主流程）: {}", e.getMessage());
-        }
 
         log.info("订单{}客户确认成功，确认人：{}，方式：{}", orderId, confirmedBy, confirmMethod);
+        publishOrderEvent("order.confirmed", orderId);
     }
 
 }

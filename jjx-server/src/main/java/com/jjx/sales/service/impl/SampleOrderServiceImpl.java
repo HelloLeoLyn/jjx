@@ -209,7 +209,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'",
-            params = {"orderNo=#result.orderNo"})
+            params = {"bizNo=#result.orderNo", "orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark,
                                           String deliveryDate, String contactPerson, String contactPhone, String techRequirement) {
@@ -322,7 +322,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      */
     @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'",
-            params = {"orderNo=#result.orderNo"})
+            params = {"bizNo=#result.orderNo", "orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder copySampleOrder(Long orderId) {
         SalesOrder source = orderMapper.selectById(orderId);
@@ -627,7 +627,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     @Override
     @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'",
-            params = {"orderNo=#result.orderNo"})
+            params = {"bizNo=#result.orderNo", "orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder createSample(com.jjx.sales.domain.dto.SampleOrderCreateDTO dto) {
         if (dto == null || dto.getCustomerId() == null) {
@@ -775,7 +775,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     @Override
     @Event(value = "sample.submitted", bizId = "#orderId", bizType = "'sample'",
-            params = {"orderNo=#result.orderNo"})
+            params = {"bizNo=#result.orderNo", "orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder submitRequest(Long orderId) {
         safeTransition(orderId,
@@ -830,7 +830,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
-    @Event(value = "sample.started", bizId = "#orderId", bizType = "'sample'", params = {"orderNo = #result.orderNo"})
+    @Event(value = "sample.started", bizId = "#orderId", bizType = "'sample'", params = {"bizNo = #result.orderNo", "orderNo = #result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder startEngineering(Long orderId, String engineeringNote) {
         // 只有 ENGINEERING 状态能设置工程备注
@@ -853,7 +853,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     @Override
     @Event(value = "sample.ready", bizId = "#orderId", bizType = "'sample'",
-            params = {"orderNo=#result.orderNo",
+            params = {"bizNo=#result.orderNo", "orderNo=#result.orderNo",
                       "productName=#result.sampleProductName",
                       "productCode=#result.sampleProductCode"})
     @Transactional(rollbackFor = Exception.class)
@@ -1004,7 +1004,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
-    @Event(value = "sample.confirmed", bizId = "#orderId", bizType = "'sample'")
+    @Event(value = "sample.confirmed", bizId = "#orderId", bizType = "'sample'",
+            params = {"bizNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder confirmSample(Long orderId, String clientName) {
         safeTransition(orderId,
@@ -1184,7 +1185,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 退回后重新打样（REJECTED → ENGINEERING，轮次已+1）
      */
     @Override
-    @Event(value = "sample.restarted", bizId = "#orderId", bizType = "'sample'")
+    @Event(value = "sample.restarted", bizId = "#orderId", bizType = "'sample'",
+            params = {"bizNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder restartEngineering(Long orderId) {
         SalesOrder current = orderMapper.selectById(orderId);
@@ -1214,7 +1216,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 工程接单确认
      */
     @Override
-    @Event(value = "sample.accepted", bizId = "#orderId", bizType = "'sample'", params = {"orderNo = #result.orderNo"})
+    @Event(value = "sample.accepted", bizId = "#orderId", bizType = "'sample'", params = {"bizNo = #result.orderNo", "orderNo = #result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder acceptEngineering(Long orderId) {
         SalesOrder current = orderMapper.selectById(orderId);
@@ -1254,7 +1256,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 工程拒单（回退到待审核，销售可改单重提）
      */
     @Override
-    @Event(value = "sample.rejected_by_engineering", bizId = "#orderId", bizType = "'sample'", params = {"orderNo = #result.orderNo"})
+    @Event(value = "sample.rejected_by_engineering", bizId = "#orderId", bizType = "'sample'", params = {"bizNo = #result.orderNo", "orderNo = #result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder rejectEngineering(Long orderId, String rejectReason) {
         SalesOrder current = orderMapper.selectById(orderId);
@@ -2774,7 +2776,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      */
     @Override
     @Event(value = "sample.transfer.remind", bizId = "#orderId", bizType = "'sample'",
-            params = {"orderNo = #result.orderNo"},
+            params = {"bizNo = #result.orderNo", "orderNo = #result.orderNo"},
             condition = "!#result.duplicated")
     @Transactional(rollbackFor = Exception.class)
     public java.util.Map<String, Object> remindTransfer(Long orderId) {
@@ -3354,7 +3356,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 非终态（未转量产/未关闭/未作废）样品单可作废
      */
     @Override
-    @Event(value = "sample.cancelled", bizId = "#orderId", bizType = "'sample'")
+    @Event(value = "sample.cancelled", bizId = "#orderId", bizType = "'sample'",
+            params = {"bizNo=#result.orderNo"})
     public SalesOrder cancelSample(Long orderId, String cancelReason) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {

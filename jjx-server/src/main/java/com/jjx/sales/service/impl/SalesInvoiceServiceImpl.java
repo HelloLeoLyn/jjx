@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class SalesInvoiceServiceImpl extends ServiceImpl<SalesInvoiceMapper, SalesInvoice> implements SalesInvoiceService {
     private final SalesInvoiceMapper invoiceMapper;
+    /** 2026-09-21（dev-20260921-013）：发票删除改手写 payload（带 invoiceNo）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     @Override public PageResult<SalesInvoice> page(int pageNum, int pageSize, String invoiceNo, String customerName,
                                                    java.time.LocalDate startDate, java.time.LocalDate endDate, Integer status) {
@@ -31,8 +33,22 @@ public class SalesInvoiceServiceImpl extends ServiceImpl<SalesInvoiceMapper, Sal
     }
     @Override public SalesInvoice getById(Long id) { return invoiceMapper.selectById(id); }
     @Override public Long create(SalesInvoice invoice) { invoiceMapper.insert(invoice); return invoice.getInvoiceId(); }
-    @Event(value = "sales.invoice.updated", bizId = "#invoice", bizType = "'sales'")
+    @Event(value = "sales.invoice.updated", bizId = "#invoice", bizType = "'sales'",
+            params = {"bizNo=#invoice.invoiceNo"})
     @Override public boolean update(SalesInvoice invoice) { return invoiceMapper.updateById(invoice) > 0; }
-    @Event(value = "sales.invoice.deleted", bizId = "#id", bizType = "'sales'")
-    @Override public boolean delete(Long id) { return invoiceMapper.deleteById(id) > 0; }
+        @Override
+    public boolean delete(Long id) {
+        SalesInvoice invoice = invoiceMapper.selectById(id);
+        boolean deleted = invoiceMapper.deleteById(id) > 0;
+        if (deleted) {
+            java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                    "invoice", id, invoice == null ? null : invoice.getInvoiceNo());
+            if (invoice != null) {
+                payload.put("customerName", invoice.getCustomerName());
+                payload.put("invoiceAmount", invoice.getInvoiceAmount());
+            }
+            com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.invoice.deleted", payload);
+        }
+        return deleted;
+    }
 }

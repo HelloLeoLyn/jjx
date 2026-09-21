@@ -36,6 +36,8 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
     private static final String[] DELIVERY_STATUS_DESC = {"未知", "待发货", "已发货", "运输中", "已签收", "已拒收"};
 
     private final SalesDeliveryMapper salesDeliveryMapper;
+    /** 2026-09-21（dev-20260921-013）：签收改手写 payload（带 deliveryNo）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     /** 打印留痕（口径 D3）：复用 production 包既有实体/Mapper，不另建表映射 */
     private final QualityTemplatePrintLogMapper printLogMapper;
@@ -97,8 +99,6 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     // 口径 D6：签收后发事件（收件角色与账期规则由 sys_event_config 配置，代码不写死）
-    @Event(value = "sales.delivery.received", bizId = "#deliveryId", bizType = "'sales_delivery'",
-           params = "deliveryId=#deliveryId")
     public void receive(Long deliveryId, SalesDelivery receiveInfo) {
         SalesDelivery current = salesDeliveryMapper.selectById(deliveryId);
         if (current == null) {
@@ -122,6 +122,15 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         if (salesDeliveryMapper.updateById(update) <= 0) {
             throw new BusinessException("签收失败，请刷新后重试");
         }
+        // 2026-09-21（dev-20260921-013）：签收发事件（手写 payload 带 deliveryNo）
+        SalesDelivery received = salesDeliveryMapper.selectById(deliveryId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "sales_delivery", deliveryId, received == null ? null : received.getDeliveryNo());
+        if (received != null) {
+            payload.put("customerName", received.getCustomerName());
+            payload.put("orderId", received.getOrderId());
+        }
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.delivery.received", payload);
     }
 
     @Override

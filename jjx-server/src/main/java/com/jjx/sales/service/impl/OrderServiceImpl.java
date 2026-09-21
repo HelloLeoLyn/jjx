@@ -65,6 +65,8 @@ import java.util.HashMap;
 public class OrderServiceImpl implements IOrderService {
 
     private final OrderMapper orderMapper;
+    /** 2026-09-21（dev-20260921-013）：订单提交生产改手写 payload（带 orderNo）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final RedisSequenceService redisSequenceService;
     private final SalesOrderConverter orderConverter;
     private final com.jjx.product.service.ProductCustomerValidator productCustomerValidator;
@@ -647,8 +649,7 @@ public class OrderServiceImpl implements IOrderService {
      * 创建产品实例
      */
     @Override
-    @Event(value = "order.production_started", bizId = "#orderId", bizType = "'order'")
-    @Transactional(rollbackFor = Exception.class)
+        @Transactional(rollbackFor = Exception.class)
     public int createInstances(Long orderId) {
         SalesOrder order = orderMapper.selectById(orderId);
         if (order == null) {
@@ -737,6 +738,15 @@ public class OrderServiceImpl implements IOrderService {
 
         // 更新订单状态为生产中(4)
         order.setOrderStatus(SalesOrderStatusEnum.IN_PRODUCTION.getValue());
+        // 2026-09-21（dev-20260921-013）：提交生产发事件（手写 payload 带 orderNo）
+        SalesOrder submitted = orderMapper.selectById(orderId);
+        java.util.Map<String, Object> eventPayload = com.jjx.event.EventPublishSupport.payload(
+                "order", orderId, submitted == null ? null : submitted.getOrderNo());
+        if (submitted != null) {
+            eventPayload.put("customerName", submitted.getCustomerName());
+        }
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "order.production_started", eventPayload);
+
         return orderMapper.updateById(order);
     }
 
