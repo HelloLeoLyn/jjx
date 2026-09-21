@@ -244,6 +244,7 @@ import type {
 } from '@/types/production/order'
 import { OrderType, OrderStatus } from '@/types/production/order'
 import { useProductionOrder } from './composables/useProductionOrder'
+import { hasPermi } from '@/directives'
 import { useProductionOrderStats } from './composables/useProductionOrderStats'
 import { useOrderOperations } from './composables/useOrderOperations'
 import {
@@ -802,6 +803,11 @@ function handlePickCreated() {
     type: 'success',
   })
     .then(() => {
+      // 2026-09-21：无「出库作业」查看权限时不要硬跳（路由未注册会落到空白页，用户会以为系统坏了）
+      if (!hasPermi('inventory:outbound:view')) {
+        ElMessage.warning('你没有「库存管理 → 出库作业」的查看权限，请联系管理员开通后再确认发料')
+        return
+      }
       router.push({ path: '/inventory/outbound', query: { outboundType: 'production' } })
     })
     .catch(() => {})

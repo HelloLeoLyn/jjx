@@ -136,7 +136,7 @@
               v-if="row.status === 1 || row.status === 2"
               link
               type="warning"
-              v-hasPermi="['inventory:outbound:approve']"
+              v-hasPermi="['inventory:outbound:edit']"
               @click="handleConfirm(row)"
               >{{ row.outboundType === 'production' ? '确认发料' : '确认出库' }}</el-button
             >

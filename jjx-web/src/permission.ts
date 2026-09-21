@@ -67,15 +67,11 @@ async function initPermissionSystem(): Promise<void> {
         }
       }
 
-      // 6. 添加 404 兜底（如果已有则覆盖）
-      if (!router.hasRoute('NotFound')) {
-        router.addRoute({
-          path: '/:pathMatch(.*)*',
-          name: 'NotFound',
-          component: () => import('@/views/error/404.vue'),
-          meta: { title: '404', hidden: true },
-        })
-      }
+      // 6. （2026-09-21 删除）此处原有一段「添加 404 兜底」动态 catch-all，
+      //    因 router.hasRoute('NotFound') 恒为 true（静态 /404 路由就叫 NotFound）而**从未生效**；
+      //    而真正加上 catch-all 会在动态路由注册前抢先匹配，导致守卫 next({...to}) 按 name 重解析、
+      //    深链接失效。未匹配路由的 404 兜底改由 src/permission.ts 守卫里的
+      //    `to.matched.length === 0 → next('/404')` 负责。
 
       // 7. 记录本次添加的路由 name，方便下次清理
       permissionStore.setTrackedRouteNames(routeNames)
@@ -186,6 +182,16 @@ router.beforeEach(async (to, from, next) => {
       next('/401')
       return
     }
+  }
+
+  // ── 路由已初始化但没有任何匹配 → 明确给 404 页（2026-09-21 新增）──
+  // 此前未匹配路径会渲染成空白页，用户误判为“页面不可达/系统坏了”；
+  // 常见诱因：菜单只授子级未授父级 → 后端菜单树丢弃孤儿节点 → 前端没注册该路由。
+  // 注：这里刻意不用 router 级 catch-all（它会在动态路由注册前抢先匹配，
+  // 导致 next({...to}) 按 name 重解析而丢失深链接）。
+  if (to.matched.length === 0) {
+    next('/404')
+    return
   }
 
   next()
