@@ -10,7 +10,7 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$(dirname "$REPO_ROOT")/jjx-backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 TASK_CODE="dev-20260912-013"
 CONFIRM=false
 
@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$TASK_CODE" =~ ^dev-[0-9]{8}-[0-9]{3}$ ]] || { echo "任务码格式错误：$TASK_CODE" >&2; exit 2; }
-case "$BACKUP_DIR/" in "$REPO_ROOT/"*) echo "JJX_BACKUP_DIR 必须位于 Git 仓库外" >&2; exit 2;; esac
+# 2026-09-21 用户改口径：备份统一落仓库内 jjx-docs/sql/backups/，原「必须在仓库外」守卫已移除
 
 export MYSQL_PWD="$DB_PASS"
 MYSQL=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 "$DB_NAME")

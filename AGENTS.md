@@ -33,11 +33,11 @@ Writing files is legitimate only as part of an executed task (backups / migratio
 Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
-- **DB risk-based backup**: destructive/批量 DML、表结构变更、风险修复必须先备份；低风险幂等配置/字典新增由用户按需决定是否备份。备份统一放 Git 外的 `JJX_BACKUP_DIR`（默认：同级 `jjx-backups/`）。
+- **DB risk-based backup**: destructive/批量 DML、表结构变更、风险修复必须先备份；低风险幂等配置/字典新增由用户按需决定是否备份。备份统一放 `JJX_BACKUP_DIR`（2026-09-21 起默认仓库内 `jjx-docs/sql/backups/`，原 `jjx-backups/` 停用）。
 - Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql` (next max NN+1).
 - Analysis / test-plan / design reports: `jjx-docs/history/<topic>-dev-YYYYMMDD-NNN.md`, register in `history/INDEX.md`, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).
-- Table-level guard backups before row cleanups: `$JJX_BACKUP_DIR/<table>_<topic>_YYYYMMDD-HHmm.sql` (outside Git).
+- Table-level guard backups before row cleanups: `$JJX_BACKUP_DIR/<table>_<topic>_YYYYMMDD-HHmm.sql` (default in-repo `jjx-docs/sql/backups/`).
 - Commit message: `type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`; never mix unrelated files.
 - NEVER `git reset --hard` / `git clean` / `git push -f`. Files under `jjx-docs/sql/` (except legacy `backups/`) and `jjx-docs/standards/` must not be deleted or moved. Legacy tracked backups may be removed only in an explicit cleanup task.
 - Scratch/temp files: `/tmp` or repo `.tmp/` (gitignored), clean same day.

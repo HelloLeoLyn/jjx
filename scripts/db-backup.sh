@@ -10,8 +10,8 @@
 #   bash scripts/db-backup.sh --exclude-table hr_employee  # 导出时排除指定表（可重复）
 #   bash scripts/db-backup.sh --help
 #
-# 危险等级：🟡 只读数据库 + 写仓库外文件（不写库、不改库内数据）；--dry-run 为 🟢 纯预览
-# 前置：mysqldump 可用；数据库可达；JJX_BACKUP_DIR 必须位于 Git 仓库外（默认仓库同级 jjx-backups/）
+# 危险等级：🟡 只读数据库 + 写备份文件（不写库、不改库内数据）；--dry-run 为 🟢 纯预览
+# 前置：mysqldump 可用；数据库可达；JJX_BACKUP_DIR 可写（2026-09-21 起默认仓库内 jjx-docs/sql/backups/）
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 #
 # 定位（与其它脚本的关系，别用错）：
@@ -33,7 +33,7 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$(dirname "$REPO_ROOT")/jjx-backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 AGENT="${AI_AGENT:-dahuang}"
 
 TAG=""
@@ -52,9 +52,9 @@ warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 
 usage() {
   cat <<'EOF'
-用途: 立刻做一份全库备份（只读库，不动任何库内数据），产物落在仓库外 JJX_BACKUP_DIR
-危险等级: 🟡 只读数据库 + 写仓库外文件；--dry-run 为 🟢 纯预览（不落盘）
-前置: mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库同级 jjx-backups/）位于 Git 仓库外且可写
+用途: 立刻做一份全库备份（只读库，不动任何库内数据），产物落在 JJX_BACKUP_DIR
+危险等级: 🟡 只读数据库 + 写备份文件；--dry-run 为 🟢 纯预览（不落盘）
+前置: mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
 用法:
   bash scripts/db-backup.sh [选项]
 
@@ -63,7 +63,7 @@ usage() {
   --task <code>      关联任务码 dev-YYYYMMDD-NNN（写进文件头，便于回溯）
   --reason <text>    自定义"原因"文案（默认按 tag 自动生成）
   --exclude-table <表名>  导出时排除该表（可重复；如 hr_employee），内部转 mysqldump --ignore-table
-  --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；仍必须在 Git 仓库外）
+  --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；默认 jjx-docs/sql/backups/）
   --keep-days <N>    过期清理阈值，默认 14 天
   --no-clean         本次不清理过期备份
   --dry-run          只打印将写入的路径与将清理的文件，不真正备份
@@ -94,9 +94,7 @@ while [ $# -gt 0 ]; do
 done
 
 # ── 前置检查 ───────────────────────────────────────────────────────────────
-case "$BACKUP_DIR/" in
-  "$REPO_ROOT/"*) die "备份目录必须位于 Git 仓库之外（当前：$BACKUP_DIR）——CONVENTIONS §2" ;;
-esac
+# 2026-09-21 用户改口径：备份统一落仓库内 jjx-docs/sql/backups/，原「必须在仓库外」守卫已移除
 
 if [ -n "$TAG" ]; then
   printf '%s' "$TAG" | grep -Eq '^[A-Za-z0-9._-]+$' \

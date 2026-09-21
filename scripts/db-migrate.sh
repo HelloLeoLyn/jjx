@@ -8,7 +8,7 @@
 #   bash scripts/db-migrate.sh --help
 #
 # 危险等级：🔴 改数据库（执行迁移：备份→执行→记版本；备份失败即中止）／🟡 只写版本记录（--record）／🟢 只读（--status）
-# 前置：迁移文件在 jjx-docs/sql/migrations/；JJX_BACKUP_DIR 在仓库外可写；动库必须带真实任务码
+# 前置：迁移文件在 jjx-docs/sql/migrations/；JJX_BACKUP_DIR 可写（2026-09-21 起默认仓库内 jjx-docs/sql/backups/）；动库必须带真实任务码
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 #
 # 版本记账用「已应用集合」sys_config.ops.schema.applied（逗号分隔的号），
@@ -22,7 +22,7 @@
 #
 # 环境覆盖（默认值即本机开发库，见 CONVENTIONS §2）：
 #   DB_HOST DB_PORT DB_USER DB_PASS DB_NAME
-#   JJX_BACKUP_DIR（默认仓库同级 jjx-backups；必须位于 Git 仓库外）
+#   JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/；2026-09-21 用户改口径，原“必须在仓库外”守卫已移除）
 #   JJX_MIGRATIONS_DIR（默认 jjx-docs/sql/migrations；仅用于自测）
 # ============================================================================
 set -uo pipefail
@@ -33,17 +33,10 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$(dirname "$REPO_ROOT")/jjx-backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 MIG_DIR="${JJX_MIGRATIONS_DIR:-$REPO_ROOT/jjx-docs/sql/migrations}"
 VERSION_KEY="ops.schema.version"
 APPLIED_KEY="ops.schema.applied"
-
-case "$BACKUP_DIR/" in
-  "$REPO_ROOT/"*)
-    printf 'JJX_BACKUP_DIR must be outside the Git repository: %s\n' "$BACKUP_DIR" >&2
-    exit 1
-    ;;
-esac
 
 export MYSQL_PWD="$DB_PASS"
 MYSQL=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4)

@@ -42,7 +42,7 @@
 
 - 用途：执行迁移的**唯一**入口（内部固定顺序：备份 → 执行 → 写 `sys_config.ops.schema.*`；备份失败或执行失败都不写版本）。
 - 危险等级：🔴 改数据库（执行迁移）／🟡 只写版本记录（`--record`）／🟢 只读（`--status`）。
-- 前置：迁移文件放在 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`）；`JJX_BACKUP_DIR` 在仓库外可写；要动库必须带真实任务码。
+- 前置：迁移文件放在 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`）；`JJX_BACKUP_DIR` 可写（2026-09-21 起默认仓库内 `jjx-docs/sql/backups/`）；要动库必须带真实任务码。
 - 命令：
   - 查版本：`bash scripts/db-migrate.sh --status`
   - 执行：`bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-YYYYMMDD-NNN`
@@ -87,8 +87,8 @@
 
 - 用途：不触发任何库内变更，只想**立刻拿一份全库快照**时用（补上此前只能手敲 `mysqldump` = 绕过规范入口的缺口）。
 - 与其它脚本的边界：迁移/清测试数据各自**内部自带**全库备份（本脚本不替代它们）；`db-export-init-subset.sh` 出的是初始化交付物、**不是备份**。
-- 危险等级：🟡 只读数据库 + 写仓库外文件（可回退）；`--dry-run` 为 🟢 纯预览（不落盘）。
-- 前置：`mysqldump` 可用；数据库可达；`JJX_BACKUP_DIR`（默认仓库同级 `jjx-backups/`）位于 Git 仓库外且可写。
+- 危险等级：🟡 只读数据库 + 写备份文件（可回退）；`--dry-run` 为 🟢 纯预览（不落盘）。
+- 前置：`mysqldump` 可用；数据库可达；`JJX_BACKUP_DIR`（2026-09-21 起默认仓库内 `jjx-docs/sql/backups/`）可写。
 - 命令：
   - 例行：`bash scripts/db-backup.sh`
   - 带来源/任务码：`bash scripts/db-backup.sh --tag before-xxx --task dev-YYYYMMDD-NNN`

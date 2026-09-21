@@ -9,8 +9,8 @@
 
 | 场景 | 固定位置 | 说明 |
 |---|---|---|
-| DB 全量备份 | Git 仓库外 `JJX_BACKUP_DIR` | 改库前**按风险**必做（§2）：破坏性/批量 DML/表结构变更强制；低风险配置/字典新增由用户决定；默认仓库同级 `jjx-backups/`，不提交 Git |
-| DB 表级/行级 guard 备份 | Git 仓库外 `JJX_BACKUP_DIR` | 清理/修复特定表前；不提交 Git |
+| DB 全量备份 | `JJX_BACKUP_DIR`（2026-09-21 起默认仓库内 `jjx-docs/sql/backups/`） | 改库前**按风险**必做（§2）：破坏性/批量 DML/表结构变更强制；低风险配置/字典新增由用户决定；原“Git 仓库外”口径已作废 |
+| DB 表级/行级 guard 备份 | `JJX_BACKUP_DIR`（默认同上） | 清理/修复特定表前 |
 | DB 迁移/上线脚本 | `jjx-docs/sql/migrations/` | 序号 `NN_<描述>.sql` 递增；幂等优先 |
 | 当时怎么做的（分析/方案/测试计划/报告/实施记录） | `jjx-docs/history/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 `history/INDEX.md`；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
 | **现行真相（各模块当前状态）** | `jjx-docs/modules/<模块>.md` | 一个模块只允许一篇，不带日期；命名 `<模块>.md`；会过期、需定期复核；历史指针留在文末 |
@@ -38,7 +38,7 @@
 **统一入口**：
 
 ```bash
-export JJX_BACKUP_DIR=/path/outside/jjx/repository
+# 默认即仓库内 jjx-docs/sql/backups/，通常无需设置；仅当要换目录时才 export
 bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 ```
 
@@ -48,9 +48,9 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 **验证**：执行后必须 `md5sum` + `grep -c "CREATE TABLE"` 抽查，并在汇报里给出 md5。
 **表级/行级 guard 备份**（清理 sys_task 等特定表/行前）：同样落到 `JJX_BACKUP_DIR`，命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`，md5 照验。
-**保留**：本机开发备份默认保留 14 天；每日只保留最后一份，发布里程碑备份转移到团队外部存储长期保留。Git 永久保留迁移 SQL、恢复说明和必要校验信息，不再提交数据库 dump。
-**清理**：`jjx-docs/sql/backups/` 仅视为历史存量。删除存量备份必须使用独立任务码和独立提交；不得与业务代码、迁移脚本混交。迁移脚本及规范文件仍永久保护。
-**禁止**：备份写入 Git 仓库、`memory/` 或临时目录。`JJX_BACKUP_DIR` 必须位于仓库之外。
+**保留**：本机开发备份默认保留 14 天；每日只保留最后一份，发布里程碑备份转移到团队外部存储长期保留。Git 永久保留迁移 SQL、恢复说明和必要校验信息；dump 落在 `jjx-docs/sql/backups/`，是否提交由用户决定（当前默认不提交）。
+**清理**：`jjx-docs/sql/backups/` 自 **2026-09-21 起为活动备份目录**（原 `../jjx-backups/` 停用，用户口径）。删除存量备份仍按「独立任务码 + 独立提交」处理，不得与业务代码、迁移脚本混交；迁移脚本及规范文件仍永久保护。
+**禁止**：备份写入 `memory/` 或临时目录（`/tmp`）。2026-09-21 起备份统一落 `jjx-docs/sql/backups/`（原「`JJX_BACKUP_DIR` 必须位于仓库之外」已作废）。
 
 **例外备案（2026-09-12 用户批准）**：经**用户明确指示**要把指定 dump 提交进 git 时可执行，但必须：① 提交信息与 `sys_task` 里标注「§2 例外」；② 知悉该文件将**永久留在 git 历史**（含真实业务数据，事后移除需改写历史 + force push，属 §5 禁区）。
 已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260912-1908_before-archive-ocr-task.sql`（任务码 dev-20260912-017）。
