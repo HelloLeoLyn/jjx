@@ -1,7 +1,15 @@
 -- =====================================================
--- 清理测试数据脚本（v14）
+-- 清理测试数据脚本（v15）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v15 变更（2026-09-21，任务 dev-20260921-024）：
+--   1. 【补漏】新增清理 inventory_iqc_batch（IQC 批次谱系）—— 该表由迁移 136 新建于 v14 定稿之后，
+--      此前既不在 TRUNCATE 清单也不在保留清单 → 清理时批次行残留成孤儿；又因入库明细 id 被复用，
+--      历史批次被错挂到新单（2026-09-21 不合格品处置页“批次谱系”因此出现 09-18 孤儿批次，
+--      数据已由迁移 155/156/157 清理并加 source_inbound_id）。
+--   2. 核验段新增 inventory_iqc_batch 应为 0。
+--   3. 配套：scripts/db-clean-test-data.sh 体检新增「库表 vs 清理清单」覆盖率校验（漏表即报警）；
+--      CONVENTIONS.md 新增「新建业务表必须同步本脚本或加白名单」。
 -- v14 变更（2026-09-17，逐表与用户确认后修订）：
 --   1. 新增清理（此前遗漏）：quality_lot / quality_lot_item / quality_ncr / quality_ncr_action
 --      （质量重构新模型业务表）、engineering_archive_import（档案导入记录）、sys_number_sequence（单号流水，清空重置）
@@ -213,6 +221,10 @@ TRUNCATE inventory_iqc_disposition_order;
 
 TRUNCATE inventory_iqc_quarantine;
 
+-- v15 补漏：IQC 批次谱系（必须在 quarantine/disposition/rework/scrap/return 之后清，
+-- 且早于入库明细/单据；自引用 FK 依赖脚本里的 FOREIGN_KEY_CHECKS=0）
+TRUNCATE inventory_iqc_batch;
+
 -- ==================== 7. 生产与质量模块 ====================
 TRUNCATE production_quality_inspection_item;
 
@@ -345,6 +357,7 @@ UNION ALL SELECT 'purchase_order', COUNT(*) FROM purchase_order
 UNION ALL SELECT 'purchase_payment', COUNT(*) FROM purchase_payment
 UNION ALL SELECT 'inventory_inbound_order', COUNT(*) FROM inventory_inbound_order
 UNION ALL SELECT 'inventory_iqc_quarantine', COUNT(*) FROM inventory_iqc_quarantine
+UNION ALL SELECT 'inventory_iqc_batch', COUNT(*) FROM inventory_iqc_batch
 UNION ALL SELECT 'inventory_iqc_disposition_order', COUNT(*) FROM inventory_iqc_disposition_order
 UNION ALL SELECT 'production_order', COUNT(*) FROM production_order
 UNION ALL SELECT 'production_quality_inspection', COUNT(*) FROM production_quality_inspection

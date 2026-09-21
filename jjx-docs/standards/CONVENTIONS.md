@@ -68,6 +68,9 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   - 破坏性语句（DROP/TRUNCATE/DELETE）必须显式注释原因，单独文件，禁止与建表混在一个"安全"文件里
   - 文件编码 UTF-8；执行后登记 sys_task 或在本文件/任务描述留执行记录（时间、执行人 agent）
 - 执行纪律：按风险决定是否备份 → 审阅 → 执行 → 验证 → 汇报
+- **新表必须登记清理归属（2026-09-21 立，dev-20260921-024）**：任何新建业务表（`CREATE TABLE`）必须同步在 `jjx-docs/sql/00_clean_test_data.sql` 二选一登记 —— ① 加进对应模块段的 `TRUNCATE`；② 明确列入第 12 节「保留」清单，并在 `scripts/db-clean-test-data.sh` 的 `RETAINED_TABLES` 白名单里同步。
+  门槛：`bash scripts/db-clean-test-data.sh`（只读体检）新增**覆盖率校验**，库表 − 清理清单 − 保留白名单 ≠ ∅ 直接中止清理。
+  背景：`inventory_iqc_batch`（迁移 136 新建）未登记 → 清理时批次行残留成孤儿，明细 id 复用后又错挂到新单（2026-09-21 不合格品处置页「批次谱系」出现历史脏批次）。
 - **唯一执行通道**：`bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN`
   高风险迁移内部固定顺序：前置检查 → 全库备份 → 执行 → 写 `sys_config.ops.schema.version` → 输出摘要。低风险配置/字典新增可由用户明确选择直接执行，但仍须幂等并保留执行记录。
   **不要直接 `mysql < file`**——应通过入口执行并保留版本记录。

@@ -7,7 +7,7 @@
 #
 # 固定顺序（不可跳过）：只读体检 → 全库备份 → 人工确认 → 才执行。
 # 人工确认 = 手工输入库名（jjx_erp_db）。非终端（agent/管道）一律拒绝执行——因为
-# 00_clean_test_data.sql 是 81 条 TRUNCATE，且它自己会清空 sys_oper_log，库里留不下痕迹。
+# 00_clean_test_data.sql 是整表 TRUNCATE，且它自己会清空 sys_oper_log，库里留不下痕迹。
 # 规范出处：jjx-docs/standards/CONVENTIONS.md §2（先备份再动库）/ §5。
 # 危险等级：🟢 无参数=只读体检（不写库）／🔴 --execute 真清理（固定顺序：体检 → 全库备份 → 人工确认 → 执行）
 # 前置：--execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手输库名 jjx_erp_db；JJX_BACKUP_DIR 可写
@@ -39,7 +39,7 @@ warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 
 usage() {
   cat <<'EOF'
-用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口，81 条 TRUNCATE + 1 条 DELETE）
+用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 1 条 DELETE，表清单以脚本实际解析为准）
 危险等级: 🟢 无参数=只读体检（不写库）／🔴 --execute 真清理（体检 → 全库备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；JJX_BACKUP_DIR（默认仓库外 jjx-backups/）可写
 用法:
@@ -171,6 +171,40 @@ if [ "${#CROSS[@]}" -gt 0 ]; then
   for t in "${CROSS[@]}"; do say "   - $t"; done
 else
   say "③ 与初始化清单交叉：0 张（本次清理不涉及交付物 19 表）"
+fi
+
+# ── 覆盖率校验：库里每张表都必须有归宿（TRUNCATE / DELETE / 保留白名单）────────
+# 起因：inventory_iqc_batch 由迁移 136 新建后未同步清理清单 → 清理时批次行残留成孤儿，
+# 明细 id 复用后又错挂到新单（2026-09-21，任务 dev-20260921-024）。
+# 白名单对应 00_clean_test_data.sql 第 12 节「保留」：新增/下线保留表时两边同步。
+RETAINED_TABLES=(
+  sys_user sys_role sys_menu sys_role_menu sys_user_role sys_dept
+  sys_config sys_dict sys_dict_item sys_event_config sys_event_config_bak_20260814
+  quality_template_registry quality_sampling_plan
+  engineering_standard_process engineering_process_icon_sample
+  sales_customer purchase_supplier inventory_material inventory_material_category
+  inventory_warehouse inventory_item
+  product product_category product_config_model product_config_option
+  sys_tag sys_tag_rel hr_employee hr_dept_mapping
+)
+DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
+  "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" 2>/dev/null | sort)"
+DB_COUNT="$(printf '%s\n' "$DB_TABLES" | grep -c . || true)"
+UNCOVERED=()
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  hit=0
+  for x in "${TRUNCATE_TABLES[@]}" "${DELETE_TABLES[@]:-}" "${RETAINED_TABLES[@]}"; do
+    if [ "$t" = "$x" ]; then hit=1; break; fi
+  done
+  [ "$hit" -eq 0 ] && UNCOVERED+=("$t")
+done <<< "$DB_TABLES"
+if [ "${#UNCOVERED[@]}" -gt 0 ]; then
+  warn "④ 覆盖率校验：${#UNCOVERED[@]} 张表既不在清理清单、也不在保留白名单（清理后会残留脏数据）"
+  for t in "${UNCOVERED[@]}"; do say "   - $t"; done
+  die "覆盖率校验未通过，已中止。处理：业务表→加到 00_clean_test_data.sql 对应模块段；基础档案/配置→补进 SQL 第 12 节保留清单与本脚本 RETAINED_TABLES"
+else
+  say "④ 覆盖率校验：库 ${DB_COUNT} 张表均有归宿（清理清单 ∪ 保留白名单）"
 fi
 
 # ── 3. 顺带跑快照最新性校验（只读；不过不拦，只提醒）────────────────────────
