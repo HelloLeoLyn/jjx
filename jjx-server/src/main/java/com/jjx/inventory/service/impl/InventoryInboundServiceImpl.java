@@ -2050,10 +2050,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
         inboundOrderMapper.insert(order);
 
-        // 3. 创建入库明细（DEV-579：物料=成品物料档案 F类型，产品ID→物料ID映射）
+        // 3. 创建入库明细
+        // 2026-09-21 订正注释（原写「物料=成品物料档案 F类型，产品ID→物料ID映射」与实现不符）：
+        // 成品入库身份走 inventory_item(item_type=PRODUCT)，material_id 故意留空 ——
+        // 全库没有 F 类成品物料档案（inventory_material.material_type='F' 为 0 行），
+        // 所以成品不参与「按 material_id」的库存/流水关联与安全库存预警（设计口径，非漏写）。
         InventoryInboundItem inboundItem = new InventoryInboundItem();
         inboundItem.setInboundId(order.getInboundId());
-        // 通过产品ID查成品物料档案（material_type=F），无档案则回退用产品ID（兼容旧数据）
         String materialCode = prodOrder.getProductCode();
         String materialName = prodOrder.getProductName();
         inboundItem.setInventoryItemId(inventoryItemService.ensure(
@@ -2070,6 +2073,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundItem.setBatchNo("BATCH-" + prodOrder.getOrderNo());
         inboundItem.setSortOrder(1);
         inboundItemMapper.insert(inboundItem);
+
+        // 2026-09-21 dev-20260921-031：补齐表头汇总。此前完工入库单 total_quantity 恒为 0
+        // （列表/详情「总数量」显示 0，实单 FINISH-WO-PL2609210001-01 明细 2 表头 0）；
+        // 手动建单路径在 :306-311 有写，完工入库两条路径都漏了。
+        order.setTotalQuantity(inboundQty);
+        if (inboundItem.getAmount() != null) {
+            order.setTotalAmount(inboundItem.getAmount());
+        }
 
         // 4. 提交审批，待人工确认后过账
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
@@ -2146,6 +2157,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             item.setBatchNo("BATCH-" + prodOrder.getOrderNo());
             item.setSortOrder(1);
             inboundItemMapper.insert(item);
+            // 2026-09-21 dev-20260921-031：表头汇总（此前只写明细、表头恒为 0）
+            order.setTotalQuantity(targetQuantity);
+            inboundOrderMapper.updateById(order);
             log.info("完工入库单已建（差额同步）: order={} 数量={} lotId={}",
                     prodOrder.getOrderNo(), targetQuantity.toPlainString(), lotId);
             return delta;
@@ -2154,6 +2168,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (item != null) {
             item.setQuantity(targetQuantity);
             inboundItemMapper.updateById(item);
+            // 2026-09-21 dev-20260921-031：明细改了、表头也要跟着（此前表头恒为 0）
+            order.setTotalQuantity(targetQuantity);
+            inboundOrderMapper.updateById(order);
         }
         if (!posted) {
             log.info("完工入库数量已更正（未过账）: order={} {} -> {} lotId={} reason={}",
