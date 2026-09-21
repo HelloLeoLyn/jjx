@@ -146,6 +146,16 @@
       </el-col>
     </el-row>
 
+    <!-- 价格来源提示（2026-09-21 dev-20260921-040）：转量产单价自动带出/需补价时给出明确提示 -->
+    <el-alert
+      v-if="priceAutoFillHint"
+      :title="priceAutoFillHint"
+      :type="priceAutoFillWarning ? 'warning' : 'success'"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 12px"
+    />
+
     <!-- 订单产品明细 -->
     <el-divider content-position="left"
       ><el-link @click="goToProductIndex()"
@@ -395,6 +405,7 @@ import { orderApi } from '@/api/sales/order'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { customerApi } from '@/api/sales/customer'
 import { serializeAddress } from '@/types/sales/address'
+import { quotationApi } from '@/api/sales/quotation'
 import { useOrderForm } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
@@ -585,6 +596,59 @@ function localToday(): string {
  * 样品转量产预填（2026-09-07）：样品单头 + 明细带入标准单表单，数量/单价可改；
  * 付款条件/收货地址默认取客户档案（样品单无则客户兜底）。
  */
+/**
+ * 转量产预填时的价格提示（2026-09-21 dev-20260921-040）
+ */
+const priceAutoFillHint = ref('')
+const priceAutoFillWarning = ref(false)
+
+/**
+ * 按「来源报价单」自动带出单价（仅补 0 价行，不覆盖用户已填值）。
+ * 背景：SP260921001 → SO260921001 转量产时样品单价为 0，直接预填生成 0 元订单（金额/税额/应收全 0）。
+ */
+async function autoFillPriceFromQuotation(sample: any) {
+  priceAutoFillHint.value = ''
+  priceAutoFillWarning.value = false
+  const hasZeroPrice = (form.items as any[]).some((it) => !Number(it.unitPrice))
+  if (!hasZeroPrice) return
+  const quotationId = sample?.quotationId
+  if (!quotationId) {
+    priceAutoFillHint.value =
+      '本样品单未关联报价单，请填写单价后再提交（金额为 0 的订单不允许发货）'
+    priceAutoFillWarning.value = true
+    return
+  }
+  try {
+    const qRes: any = await quotationApi.getItems(quotationId)
+    const qItems: any[] = qRes?.data || []
+    let filled = 0
+    ;(form.items as any[]).forEach((it) => {
+      if (Number(it.unitPrice)) return
+      const hit = qItems.find(
+        (q) =>
+          (q.productId != null && it.productId != null && q.productId === it.productId) ||
+          (!!q.productCode && !!it.productCode && q.productCode === it.productCode)
+      )
+      if (hit && Number(hit.unitPrice) > 0) {
+        it.unitPrice = Number(hit.unitPrice)
+        it.amount = Number((it.quantity ?? 0) * it.unitPrice)
+        filled++
+      }
+    })
+    calculateTotalAmount()
+    if (filled > 0) {
+      priceAutoFillHint.value = `单价已按来源报价单【${sample.quotationNo || quotationId}】自动带出 ${filled} 行，可直接修改`
+    } else {
+      priceAutoFillHint.value = `来源报价单【${sample.quotationNo || quotationId}】未带价，请填写单价后再提交（金额为 0 的订单不允许发货）`
+      priceAutoFillWarning.value = true
+    }
+  } catch {
+    priceAutoFillHint.value =
+      '未能读取来源报价单价，请确认单价后再提交（金额为 0 的订单不允许发货）'
+    priceAutoFillWarning.value = true
+  }
+}
+
 async function prefillFromSample(sampleId: number) {
   try {
     const sampleRes: any = await sampleOrderApi.getInfo(sampleId)
@@ -625,6 +689,10 @@ async function prefillFromSample(sampleId: number) {
     if (s.deliveryAddress) {
       form.shippingAddress = s.deliveryAddress
     }
+    // 价格来源（2026-09-21 dev-20260921-040）：样品单本身常无单价（打样不计价），直接预填会生成 0 元订单。
+    // 这里自动按「来源报价单」带出同产品单价（可改），不能再让财务/业务手工逐行回填；
+    // 报价单也无价时给出明确提示（金额为 0 的订单不允许发货）。
+    await autoFillPriceFromQuotation(s)
     // 客户兜底：付款条件（客户 payment_method 映射）+ 收货地址（样品单未带时）
     try {
       const cusRes: any = await customerApi.getCustomer(s.customerId)

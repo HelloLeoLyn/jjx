@@ -112,6 +112,11 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     Long createFromProduction(Long workOrderId, Long inspectionId, java.math.BigDecimal quantity);
 
     /**
+     * 客户拒收回库（按发货单明细自动回冲成品库存）
+     */
+    Long createSalesRejectInbound(Long deliveryId);
+
+    /**
      * 完工入库差额同步（dev-20260917-007）：把工单完工入库数量对齐到 targetQuantity（= 该工单成品检验批累计合格数），只做差额。
      * - 未过账：直接改入库单明细数量；
      * - 已过账：调整库存（+/-delta）并写 ADJUST 流水（带 lotId 可追）；

@@ -16,6 +16,7 @@ import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesOrderProduct;
 import com.jjx.sales.domain.entity.SalesDelivery;
+import com.jjx.sales.domain.entity.SalesDeliveryItem;
 import com.jjx.sales.domain.vo.ReviewHistoryVO;
 import com.jjx.sales.domain.vo.ReviewStatusVO;
 import com.jjx.sales.enums.OperationResultEnum;
@@ -24,6 +25,7 @@ import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.SalesOrderProductMapper;
 import com.jjx.sales.mapper.SalesDeliveryMapper;
+import com.jjx.sales.mapper.SalesDeliveryItemMapper;
 import com.jjx.sales.service.IOrderStatusService;
 import com.jjx.system.annotation.Event;
 import com.jjx.sales.enums.OperationResultEnum;
@@ -64,6 +66,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final ReviewFlowService reviewFlowService;
     private final SalesDeliveryMapper salesDeliveryMapper;
+    private final SalesDeliveryItemMapper salesDeliveryItemMapper;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitReview(Long orderId) {
@@ -536,21 +539,93 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (!currentStatus.canTransitionTo(SalesOrderStatusEnum.SHIPPED)) {
             throw new BusinessException("订单当前状态[" + currentStatus.getLabel() + "]不能发货，仅生产中订单可发货");
         }
-        // 3. 先创建发货凭证，失败则中止状态流转及后续出库事件
+        // 3. 订单明细 + 已发货量（按历史发货明细累计，拒收(5)的发货单不计）
         List<SalesOrderProduct> products = salesOrderProductMapper.selectList(
                 new LambdaQueryWrapper<SalesOrderProduct>().eq(SalesOrderProduct::getOrderId, orderId));
-        int totalQuantity = products.stream()
-                .map(SalesOrderProduct::getQuantity)
-                .filter(java.util.Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .sum();
-        BigDecimal totalAmount = products.stream()
+        if (products.isEmpty()) {
+            throw new BusinessException("订单无产品明细，无法发货");
+        }
+        Map<Long, Integer> shippedMap = buildShippedQuantityMap(orderId);
+        List<SalesDeliveryItem> requestItems = delivery == null ? null : delivery.getItems();
+        boolean partialRequest = requestItems != null && !requestItems.isEmpty();
+
+        // 本次发货行（订单明细行 ↔ 本次数量）
+        List<SalesDeliveryItem> shipLines = new java.util.ArrayList<>();
+        int totalQuantity = 0;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        boolean allShippedAfter = true;
+        for (SalesOrderProduct product : products) {
+            int ordered = product.getQuantity() == null ? 0 : product.getQuantity();
+            int shipped = shippedMap.getOrDefault(product.getId(), 0);
+            int remaining = Math.max(ordered - shipped, 0);
+            int quantity;
+            if (partialRequest) {
+                SalesDeliveryItem req = requestItems.stream()
+                        .filter(it -> (it.getOrderProductId() != null && it.getOrderProductId().equals(product.getId()))
+                                || (it.getOrderProductId() == null && it.getProductId() != null
+                                    && it.getProductId().equals(product.getProductId())))
+                        .findFirst().orElse(null);
+                if (req == null) {
+                    if (remaining > 0) {
+                        allShippedAfter = false;
+                    }
+                    continue;
+                }
+                quantity = req.getQuantity() == null ? 0 : req.getQuantity();
+                if (quantity < 0) {
+                    throw new BusinessException("产品[" + product.getProductCode() + "]本次发货数量不能为负");
+                }
+                if (quantity > remaining) {
+                    throw new BusinessException("产品[" + product.getProductCode() + "]本次发货数量 " + quantity
+                            + " 超过未发数量 " + remaining + "（订单 " + ordered + "，已发 " + shipped + "）");
+                }
+            } else {
+                quantity = remaining;
+            }
+            if (quantity <= 0) {
+                if (remaining > 0) {
+                    allShippedAfter = false;
+                }
+                continue;
+            }
+            if (quantity < remaining) {
+                allShippedAfter = false;
+            }
+            SalesDeliveryItem line = new SalesDeliveryItem();
+            line.setOrderProductId(product.getId());
+            line.setProductId(product.getProductId());
+            line.setProductCode(product.getProductCode());
+            line.setProductName(product.getProductName());
+            line.setSpecification(product.getSpecification());
+            line.setUnit(product.getUnit() == null ? "PCS" : product.getUnit());
+            line.setQuantity(quantity);
+            line.setUnitPrice(product.getUnitPrice());
+            line.setAmount(product.getUnitPrice() == null ? BigDecimal.ZERO
+                    : product.getUnitPrice().multiply(BigDecimal.valueOf(quantity)));
+            line.setRemark(product.getLineRemark());
+            shipLines.add(line);
+            totalQuantity += quantity;
+            totalAmount = totalAmount.add(line.getAmount());
+        }
+        if (shipLines.isEmpty()) {
+            throw new BusinessException("没有可发货的明细（该订单可能已全部发完）");
+        }
+
+        // 4. 金额为 0 的订单不允许发货（2026-09-21 dev-20260921-040）
+        // 起因：样品转量产时样品单价为 0，直接预填会生成 0 元订单，之后出库/回款/开票全链路金额都是 0。
+        // 前端已在转量产时自动带出报价单价（OrderForm.autoFillPriceFromQuotation），此处是服务端兜底。
+        BigDecimal orderAmount = products.stream()
                 .map(SalesOrderProduct::getAmount)
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (orderAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("订单金额为 0，无法发货：请先在订单中补全单价（来源报价单未带价）");
+        }
 
+        // 5. 创建发货凭证（只记本次发货量/金额），失败则中止状态流转及后续出库事件
         SalesDelivery record = delivery == null ? new SalesDelivery() : delivery;
         record.setDeliveryId(null);
+        record.setItems(null);
         record.setDeliveryNo(redisSequenceService.generateBusinessNumberByType(
                 "sales_delivery", "DL", "yyMMdd", 3));
         record.setOrderId(orderId);
@@ -575,17 +650,52 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (salesDeliveryMapper.insert(record) <= 0) {
             throw new BusinessException("发货单创建失败，请稍后重试");
         }
-
-        // 4. 更新状态
-        int result = salesOrderMapper.updateStatusWithCheck(
-                orderId, SalesOrderStatusEnum.SHIPPED.getValue(), currentStatus.getValue()
-        );
-        if (result == 0) {
-            throw new BusinessException("订单状态已被修改，请刷新后重试");
+        for (SalesDeliveryItem line : shipLines) {
+            line.setDeliveryId(record.getDeliveryId());
+            salesDeliveryItemMapper.insert(line);
         }
-        log.info("订单{}已发货，发货单号：{}，操作人：{}",
-                orderId, record.getDeliveryNo(), SecurityUtils.getUsername());
-        publishOrderEvent("order.delivering", orderId);
+
+        // 6. 状态：全部发完 → 8 已发货；部分发货 → 保持 7 生产中（发货单已记本次数量，列表按 shipped_quantity 展示）
+        if (allShippedAfter) {
+            int result = salesOrderMapper.updateStatusWithCheck(
+                    orderId, SalesOrderStatusEnum.SHIPPED.getValue(), currentStatus.getValue()
+            );
+            if (result == 0) {
+                throw new BusinessException("订单状态已被修改，请刷新后重试");
+            }
+        } else {
+            log.info("订单{}部分发货，保持生产中状态，发货单号：{}（本单 {} 件 / 订单 {} 件）",
+                    orderId, record.getDeliveryNo(), totalQuantity, order.getTotalQuantity());
+        }
+        log.info("订单{}已发货，发货单号：{}，本次数量：{}，是否全部发完：{}，操作人：{}",
+                orderId, record.getDeliveryNo(), totalQuantity, allShippedAfter, SecurityUtils.getUsername());
+        publishOrderEvent("order.delivering", orderId,
+                Map.of("deliveryId", record.getDeliveryId(), "deliveryNo", record.getDeliveryNo(),
+                        "deliverQuantity", totalQuantity));
+    }
+
+    /**
+     * 订单各明细的已发货量（2026-09-21 dev-20260921-039）：按发货明细累计，排除已拒收(5)的发货单。
+     */
+    private Map<Long, Integer> buildShippedQuantityMap(Long orderId) {
+        Map<Long, Integer> shipped = new java.util.HashMap<>();
+        List<SalesDelivery> deliveries = salesDeliveryMapper.selectList(
+                new LambdaQueryWrapper<SalesDelivery>()
+                        .eq(SalesDelivery::getOrderId, orderId)
+                        .ne(SalesDelivery::getDeliveryStatus, 5));
+        if (deliveries.isEmpty()) {
+            return shipped;
+        }
+        List<Long> deliveryIds = deliveries.stream().map(SalesDelivery::getDeliveryId).toList();
+        List<SalesDeliveryItem> items = salesDeliveryItemMapper.selectList(
+                new LambdaQueryWrapper<SalesDeliveryItem>().in(SalesDeliveryItem::getDeliveryId, deliveryIds));
+        for (SalesDeliveryItem item : items) {
+            if (item.getOrderProductId() == null || item.getQuantity() == null) {
+                continue;
+            }
+            shipped.merge(item.getOrderProductId(), item.getQuantity(), Integer::sum);
+        }
+        return shipped;
     }
 
     /**
@@ -594,6 +704,14 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
      * 标题里只能显示「订单【2】」；order.confirmed 甚至没有 bizId/发送人）。
      */
     private void publishOrderEvent(String eventCode, Long orderId) {
+        publishOrderEvent(eventCode, orderId, java.util.Map.of());
+    }
+
+    /**
+     * 带附加 payload 的版本（2026-09-21 dev-20260921-039）：
+     * order.delivering 需带 deliveryId/deliveryNo，库存桥接才能按「本次发货明细」出库（分批发货）。
+     */
+    private void publishOrderEvent(String eventCode, Long orderId, java.util.Map<String, Object> extra) {
         if (orderId == null) {
             return;
         }
@@ -603,6 +721,19 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (order != null) {
             payload.put("customerName", order.getCustomerName());
             payload.put("orderStatus", order.getOrderStatus());
+        }
+        // 库存桥接（InventoryEventBridge.onSalesDelivery）按 salesOrderId 取订单；
+        // 手写 payload 改造（dev-20260921-013）后曾漏掉该键 → 销售发货联动走兜底路径，建不出明细行。
+        payload.put("salesOrderId", orderId);
+        if (order != null && order.getOrderNo() != null) {
+            payload.put("orderNo", order.getOrderNo());
+        }
+        if (extra != null) {
+            extra.forEach((k, v) -> {
+                if (v != null) {
+                    payload.put(k, v);
+                }
+            });
         }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }

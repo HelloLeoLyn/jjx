@@ -9,11 +9,17 @@ import com.jjx.production.mapper.QualityTemplatePrintLogMapper;
 import com.jjx.production.mapper.QualityTemplateRegistryMapper;
 import com.jjx.sales.domain.dto.SalesDeliveryQueryDTO;
 import com.jjx.sales.domain.entity.SalesDelivery;
+import com.jjx.sales.domain.entity.SalesOrder;
+import com.jjx.sales.enums.SalesOrderStatusEnum;
+import com.jjx.sales.domain.entity.SalesDeliveryItem;
 import com.jjx.sales.domain.vo.SalesDeliveryVO;
+import com.jjx.sales.mapper.SalesDeliveryItemMapper;
 import com.jjx.sales.mapper.SalesDeliveryMapper;
 import com.jjx.sales.service.ISalesDeliveryService;
 import com.jjx.system.annotation.Event;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,11 +37,19 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j 
 public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
 
-    private static final String[] DELIVERY_STATUS_DESC = {"未知", "待发货", "已发货", "运输中", "已签收", "已拒收"};
+    /** 发货状态文案，下标即状态值（勿重排序！4/5 已被历史数据使用）。
+     *  2026-09-21 dev-20260921-039：下标 3「运输中」已退场（全链路无写入点），仅作占位保留。 */
+    private static final String[] DELIVERY_STATUS_DESC = {"未知", "待发货", "已发货", "运输中（已弃用）", "已签收", "已拒收"};
 
     private final SalesDeliveryMapper salesDeliveryMapper;
+    /** 2026-09-21 dev-20260921-039（分批发货）：发货明细 */
+    private final SalesDeliveryItemMapper salesDeliveryItemMapper;
+    /** 2026-09-21 dev-20260921-039（拒收回流）：回冲库存 + 重算订单已发数量。 */
+    private final com.jjx.sales.mapper.OrderMapper orderMapper;
+    private final com.jjx.inventory.service.InventoryInboundService inboundService;
     /** 2026-09-21（dev-20260921-013）：签收改手写 payload（带 deliveryNo）。 */
     private final com.jjx.event.EventPublisher eventPublisher;
 
@@ -83,7 +97,12 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
     @Override
     public SalesDeliveryVO getById(Long deliveryId) {
         SalesDelivery entity = salesDeliveryMapper.selectById(deliveryId);
-        return entity != null ? toVO(entity) : null;
+        if (entity == null) {
+            return null;
+        }
+        SalesDeliveryVO vo = toVO(entity);
+        fillItems(List.of(vo));
+        return vo;
     }
 
     @Override
@@ -91,9 +110,11 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         LambdaQueryWrapper<SalesDelivery> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SalesDelivery::getOrderId, orderId)
                .orderByDesc(SalesDelivery::getCreateTime);
-        return salesDeliveryMapper.selectList(wrapper).stream()
+        List<SalesDeliveryVO> vos = salesDeliveryMapper.selectList(wrapper).stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
+        fillItems(vos);
+        return vos;
     }
 
     @Override
@@ -131,6 +152,106 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
             payload.put("orderId", received.getOrderId());
         }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.delivery.received", payload);
+    }
+
+    /**
+     * 客户拒收登记（2026-09-21 dev-20260921-039，拒收回流）。
+     *
+     * <p>自动完成（尽量少人工填写）：
+     * ① 发货单置 已拒收(5) + 记录原因/时间/经办人；
+     * ② 按发货明细自动生成「拒收回库单」（REJECT-{发货单号}）并过账，库存回冲成品库存；
+     * ③ 重算订单已发数量，若因此不满发则把订单从「已发货」回退为「生产中」，允许重新发货；
+     * ④ 发 sales.delivery.rejected 事件（通知销售跟进 + 派待办任务）。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reject(Long deliveryId, String reason) {
+        SalesDelivery current = salesDeliveryMapper.selectById(deliveryId);
+        if (current == null) {
+            throw new BusinessException("发货单不存在");
+        }
+        if (Integer.valueOf(5).equals(current.getDeliveryStatus())) {
+            throw new BusinessException("发货单已是拒收状态，请勿重复操作");
+        }
+        if (!Integer.valueOf(2).equals(current.getDeliveryStatus())) {
+            int idx = current.getDeliveryStatus() == null ? 0 : current.getDeliveryStatus();
+            String label = idx >= 0 && idx < DELIVERY_STATUS_DESC.length ? DELIVERY_STATUS_DESC[idx] : "未知";
+            throw new BusinessException("发货单当前状态[" + label + "]不能登记拒收（仅已发货(2)可拒收；已签收请走销售退货流程）");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException("请填写拒收原因");
+        }
+
+        SalesDelivery update = new SalesDelivery();
+        update.setDeliveryId(deliveryId);
+        update.setDeliveryStatus(5);
+        update.setRejectReason(reason);
+        update.setRejectTime(new Date());
+        update.setRejectBy(SecurityUtils.getUserId());
+        String realName = SecurityUtils.getRealName();
+        update.setRejectName(realName == null || realName.isBlank() ? SecurityUtils.getUsername() : realName);
+        if (salesDeliveryMapper.updateById(update) <= 0) {
+            throw new BusinessException("拒收登记失败，请刷新后重试");
+        }
+
+        // ② 库存回冲（按发货明细自动生成拒收回库单并过账）
+        try {
+            Long inboundId = inboundService.createSalesRejectInbound(deliveryId);
+            if (inboundId == null) {
+                log.warn("发货单{}无明细，拒收库存未自动回冲（历史数据，需人工处理）", current.getDeliveryNo());
+            }
+        } catch (Exception e) {
+            log.error("拒收回库失败: deliveryId={}, err={}", deliveryId, e.getMessage());
+            throw new BusinessException("拒收回库失败：" + e.getMessage());
+        }
+
+        // ③ 重算订单已发数量；不满发则回退到「生产中」允许重新发货
+        try {
+            SalesOrder order = orderMapper.selectById(current.getOrderId());
+            if (order != null) {
+                int shipped = 0;
+                List<SalesDelivery> remained = salesDeliveryMapper.selectList(
+                        new LambdaQueryWrapper<SalesDelivery>()
+                                .eq(SalesDelivery::getOrderId, current.getOrderId())
+                                .ne(SalesDelivery::getDeliveryStatus, 5));
+                if (!remained.isEmpty()) {
+                    List<Long> ids = remained.stream().map(SalesDelivery::getDeliveryId).toList();
+                    for (SalesDeliveryItem item : salesDeliveryItemMapper.selectList(
+                            new LambdaQueryWrapper<SalesDeliveryItem>().in(SalesDeliveryItem::getDeliveryId, ids))) {
+                        if (item.getQuantity() != null) {
+                            shipped += item.getQuantity();
+                        }
+                    }
+                }
+                int ordered = order.getTotalQuantity() == null ? 0 : order.getTotalQuantity();
+                SalesOrder patch = new SalesOrder();
+                patch.setOrderId(order.getOrderId());
+                patch.setShippedQuantity(shipped);
+                boolean needRevert = Integer.valueOf(SalesOrderStatusEnum.SHIPPED.getValue()).equals(order.getOrderStatus())
+                        && shipped < ordered;
+                if (needRevert) {
+                    patch.setOrderStatus(SalesOrderStatusEnum.IN_PRODUCTION.getValue());
+                }
+                orderMapper.updateById(patch);
+                log.info("拒收后重算订单: orderId={}, shipped={}, ordered={}, 回退生产中={}",
+                        order.getOrderId(), shipped, ordered, needRevert);
+            }
+        } catch (Exception e) {
+            log.warn("拒收后重算订单已发数量失败（不影响拒收与回库）: {}", e.getMessage());
+        }
+
+        // ④ 事件：通知销售跟进（重发/退货）
+        try {
+            java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                    "sales", deliveryId, current.getDeliveryNo());
+            payload.put("deliveryNo", current.getDeliveryNo());
+            payload.put("orderId", current.getOrderId());
+            payload.put("customerName", current.getCustomerName());
+            payload.put("rejectReason", reason);
+            com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.delivery.rejected", payload);
+        } catch (Exception e) {
+            log.warn("拒收事件发布失败: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -189,6 +310,29 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
             QualityTemplatePrintLog last = logs.get(logs.size() - 1);
             vo.setLastPrintBy(last.getOperatorName());
             vo.setLastPrintTime(last.getPrintTime() == null ? null : Timestamp.valueOf(last.getPrintTime()));
+        }
+    }
+
+    /**
+     * 回填发货明细（2026-09-21 dev-20260921-039，分批发货）：
+     * 详情/打印/拒收回冲都要知道「本次发了哪些行、各多少」，否则只能从订单全量带出（比实际发货多）。
+     */
+    private void fillItems(List<SalesDeliveryVO> vos) {
+        if (vos == null || vos.isEmpty()) {
+            return;
+        }
+        List<Long> ids = vos.stream().map(SalesDeliveryVO::getDeliveryId)
+                .filter(id -> id != null).collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<Long, List<SalesDeliveryItem>> grouped = salesDeliveryItemMapper.selectList(
+                new LambdaQueryWrapper<SalesDeliveryItem>()
+                        .in(SalesDeliveryItem::getDeliveryId, ids)
+                        .orderByAsc(SalesDeliveryItem::getItemId))
+                .stream().collect(Collectors.groupingBy(SalesDeliveryItem::getDeliveryId));
+        for (SalesDeliveryVO vo : vos) {
+            vo.setItems(grouped.getOrDefault(vo.getDeliveryId(), List.of()));
         }
     }
 

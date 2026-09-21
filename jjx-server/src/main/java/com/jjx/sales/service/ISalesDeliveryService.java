@@ -39,4 +39,9 @@ public interface ISalesDeliveryService {
     /**
      * 导出送货单PDF（单张表单）
      */
+
+    /**
+     * 客户拒收登记（自动回冲库存 + 订单可重发 + 通知销售），2026-09-21 dev-20260921-039
+     */
+    void reject(Long deliveryId, String reason);
 }

@@ -26,6 +26,9 @@
         <el-table-column label="发货状态" width="100">
           <template #default="{ row }"><el-tag :type="DeliveryStatusEnum.getTagProps(row.deliveryStatus).type">{{ DeliveryStatusEnum.getLabel(row.deliveryStatus) }}</el-tag></template>
         </el-table-column>
+        <el-table-column label="本次数量" width="90">
+          <template #default="{ row }">{{ row.totalQuantity ?? '-' }}</template>
+        </el-table-column>
         <el-table-column prop="receiverName" label="签收人" width="110" />
         <el-table-column prop="receiveTime" label="签收时间" width="170" />
         <el-table-column label="打印" width="90">
@@ -49,20 +52,31 @@
         <el-descriptions-item label="收货地址">{{ current.deliveryAddress || '-' }}</el-descriptions-item>
         <el-descriptions-item label="联系人">{{ current.contactPerson || '-' }} {{ current.contactPhone || '' }}</el-descriptions-item>
         <el-descriptions-item label="承运商">{{ current.carrier || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="运费">{{ current.freightAmount ?? 0 }}</el-descriptions-item>
+        <el-descriptions-item label="保价费">{{ current.insuranceAmount ?? 0 }}</el-descriptions-item>
+        <el-descriptions-item label="其他费用">{{ current.otherCharges ?? 0 }}</el-descriptions-item>
         <el-descriptions-item label="物流单号">{{ current.trackingNo || '-' }}</el-descriptions-item>
         <el-descriptions-item label="签收人">{{ current.receiverName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="客户签收日期">{{ current.customerReceiveDate || '-' }}</el-descriptions-item>
         <el-descriptions-item label="签收时间（系统登记）">{{ current.receiveTime || '-' }}</el-descriptions-item>
         <el-descriptions-item label="签收备注" :span="2">{{ current.receiveRemark || '-' }}</el-descriptions-item>
+        <el-descriptions-item v-if="current.deliveryStatus === DeliveryStatusEnum.REJECTED.value" label="拒收原因" :span="2">{{ current.rejectReason || '-' }}</el-descriptions-item>
+        <el-descriptions-item v-if="current.deliveryStatus === DeliveryStatusEnum.REJECTED.value" label="拒收登记">{{ current.rejectTime ? current.rejectTime.slice(0, 16) : '-' }} / {{ current.rejectName || '-' }}</el-descriptions-item>
       </el-descriptions>
-      <el-table :data="items" border style="margin-top: 18px">
+      <el-divider content-position="left">
+        本次发货明细（{{ detailItems.length }} 项 · 共 {{ current?.totalQuantity ?? 0 }} 件）
+      </el-divider>
+      <el-table :data="detailItems" border>
         <el-table-column prop="productCode" label="产品编码" />
         <el-table-column prop="productName" label="产品名称" />
         <el-table-column prop="specification" label="规格" />
-        <el-table-column prop="quantity" label="数量" width="80" />
+        <el-table-column prop="quantity" label="本次数量" width="90" />
         <el-table-column prop="unitPrice" label="单价" width="100" />
         <el-table-column prop="amount" label="金额" width="110" />
       </el-table>
+      <p v-if="!current?.items?.length" class="muted" style="margin-top: 6px">
+        （历史发货单无明细，上表按订单明细整单带出，仅供参考）
+      </p>
 
       <!-- 回签件（口径 D2）：客户签字送货单的回签归档，作为对账/开票/收款依据 -->
       <el-divider content-position="left">回签件（结算依据）</el-divider>
@@ -85,6 +99,36 @@
       </el-table>
     </el-drawer>
 
+    <el-dialog v-model="rejectVisible" title="客户拒收登记" width="640px">
+      <el-alert
+        title="登记后系统会自动：① 生成「拒收回库单」把数量回冲成品库存 ② 把订单回到「生产中」以便重新发货 ③ 通知销售跟进"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px"
+      />
+      <el-descriptions v-if="rejectRow" :column="2" border size="small" style="margin-bottom: 12px">
+        <el-descriptions-item label="发货单号">{{ rejectRow.deliveryNo }}</el-descriptions-item>
+        <el-descriptions-item label="客户">{{ rejectRow.customerName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="发货日期">{{ rejectRow.deliveryDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="本次数量">{{ rejectRow.totalQuantity ?? '-' }}</el-descriptions-item>
+      </el-descriptions>
+      <el-table v-if="rejectRowItems.length" :data="rejectRowItems" border size="small" style="margin-bottom: 12px">
+        <el-table-column prop="productCode" label="产品编码" min-width="140" />
+        <el-table-column prop="productName" label="产品名称" min-width="140" />
+        <el-table-column prop="quantity" label="拒收数量" width="100" align="center" />
+      </el-table>
+      <el-form label-width="90px">
+        <el-form-item label="拒收原因" required>
+          <el-input v-model="rejectReason" type="textarea" :rows="3" placeholder="如：外观不良 / 规格不符 / 客户取消订单" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="rejectVisible = false">取消</el-button>
+        <el-button type="danger" :loading="rejectSubmitting" @click="submitReject">确认拒收</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="receiveVisible" title="发货单签收" width="480px">
       <el-form :model="receiveForm" label-width="110px">
         <el-form-item label="签收人"><el-input v-model="receiveForm.receiverName" /></el-form-item>
@@ -100,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { deliveryApi, type SalesDeliveryQueryDTO, type SalesDeliveryVO } from '@/api/sales/delivery'
@@ -111,12 +155,28 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 
 const deliveryActions: TableAction<SalesDeliveryVO>[] = [
   { key: 'detail', label: '详情' },
-  { key: 'receive', label: '签收', type: 'success', permission: 'sales:delivery:receive', visible: ({ row }) => row.deliveryStatus !== DeliveryStatusEnum.RECEIVED.value },
+  {
+    key: 'receive',
+    label: '签收',
+    type: 'success',
+    permission: 'sales:delivery:receive',
+    // 只有「已发货(2)」可签收（已签收/已拒收都不能再签，2026-09-21 dev-20260921-039）
+    visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.SHIPPED.value,
+  },
+  {
+    key: 'reject',
+    label: '拒收登记',
+    type: 'danger',
+    permission: 'sales:delivery:receive',
+    // 只有「已发货(2)」可拒收（已签收要走销售退货流程）
+    visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.SHIPPED.value,
+  },
   { key: 'print', label: '打印' },
 ]
 const handleDeliveryAction = (key: string, row: SalesDeliveryVO) => {
   if (key === 'detail') void showDetail(row)
   if (key === 'receive') openReceive(row)
+  if (key === 'reject') void openReject(row)
   if (key === 'print') printDelivery(row)
 }
 
@@ -147,6 +207,49 @@ async function showDetail(row: SalesDeliveryVO) {
   items.value = order.data?.items || []
   detailVisible.value = true
   await loadReturnFiles(row.deliveryId)
+}
+
+/** 本次发货明细（分批发货）：优先用发货单自己的明细；历史单无明细时退回订单明细 */
+const detailItems = computed<any[]>(() => current.value?.items?.length ? current.value.items : items.value)
+
+/** 拒收登记（2026-09-21 dev-20260921-039）：弹窗带出发货单与明细，只让填原因 */
+const rejectVisible = ref(false)
+const rejectSubmitting = ref(false)
+const rejectRow = ref<SalesDeliveryVO>()
+const rejectRowItems = ref<any[]>([])
+const rejectReason = ref('')
+async function openReject(row: SalesDeliveryVO) {
+  rejectRow.value = row
+  rejectReason.value = ''
+  rejectRowItems.value = row.items?.length ? row.items : []
+  if (!rejectRowItems.value.length) {
+    try {
+      const detail: any = await deliveryApi.getById(row.deliveryId)
+      rejectRowItems.value = detail?.data?.items || []
+    } catch {
+      rejectRowItems.value = []
+    }
+  }
+  rejectVisible.value = true
+}
+async function submitReject() {
+  const row = rejectRow.value
+  if (!row) return
+  if (!rejectReason.value.trim()) {
+    ElMessage.warning('请填写拒收原因')
+    return
+  }
+  rejectSubmitting.value = true
+  try {
+    await deliveryApi.reject(row.deliveryId, rejectReason.value.trim())
+    ElMessage.success('拒收已登记：库存已回冲，订单已可重新发货')
+    rejectVisible.value = false
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '拒收登记失败')
+  } finally {
+    rejectSubmitting.value = false
+  }
 }
 
 /** 回签件（口径 D2）：bizType=sales_delivery + bizId=deliveryId，标记「结算依据」 */

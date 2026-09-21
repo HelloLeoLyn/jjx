@@ -36,9 +36,10 @@ public interface SalesWorkbenchMapper {
     @Select("SELECT COUNT(*) FROM sales_order o WHERE o.deleted = 0 AND o.sales_manager_id = #{userId} AND o.order_type = 1 AND o.order_status = 6")
     Long countOrderReadyProduction(@Param("userId") Long userId);
 
-    /** 已发货未签收：发货单状态 已发货(2)/运输中(3) */
+    /** 已发货未签收：发货单状态 已发货(2)
+     * （2026-09-21 dev-20260921-039：原口径 (2,3)，运输中(3) 无写入点已退场） */
     @Select("SELECT COUNT(*) FROM sales_delivery d JOIN sales_order o ON d.order_id = o.order_id " +
-            "WHERE d.deleted = 0 AND o.deleted = 0 AND o.sales_manager_id = #{userId} AND d.delivery_status IN (2, 3)")
+            "WHERE d.deleted = 0 AND o.deleted = 0 AND o.sales_manager_id = #{userId} AND d.delivery_status IN (2)")
     Long countDeliveryUnreceived(@Param("userId") Long userId);
 
     /** 应收未清：已确认后(6-9)仍未结清（无到期日字段，逾期/临期精确计算后置） */

@@ -61,6 +61,17 @@ public class SalesDeliveryController {
         return Result.success();
     }
 
+    @Operation(summary = "客户拒收登记（自动回冲库存、订单可重发）")
+    @SaCheckPermission("sales:delivery:receive")
+    @Log(module = "销售发货", businessType = BusinessType.UPDATE,
+            bizType = "'sales_delivery'", bizId = "#deliveryId", bizStatus = "'REJECTED'", action = "拒收登记")
+    @PostMapping("/{deliveryId}/reject")
+    public Result<Void> reject(@PathVariable Long deliveryId,
+                               @RequestBody(required = false) java.util.Map<String, String> body) {
+        salesDeliveryService.reject(deliveryId, body == null ? null : body.get("reason"));
+        return Result.success();
+    }
+
     @Operation(summary = "记录送货单打印留痕")
     @SaCheckPermission("sales:delivery:view")
     @PostMapping("/{deliveryId}/print-log")

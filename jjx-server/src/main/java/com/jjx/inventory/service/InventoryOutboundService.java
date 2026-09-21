@@ -92,6 +92,11 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     Long createFromSales(Long salesOrderId);
 
     /**
+     * 销售出库（按发货单明细，分批发货）
+     */
+    Long createFromSalesByDelivery(Long deliveryId);
+
+    /**
      * 查询待审批的出库单
      */
     List<OutboundVO> getPendingApproval();

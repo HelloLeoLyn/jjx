@@ -48,6 +48,14 @@ public class InventoryEventBridge {
     public void onSalesDelivery(Map<String, Object> payload) {
         log.info("🚛 销售发货联动出库: {}", payload);
         try {
+            // 2026-09-21 dev-20260921-039（分批发货）：优先按发货单明细出库，数量与发货单一致
+            Object deliveryIdVal = payload.get("deliveryId");
+            if (deliveryIdVal != null) {
+                Long deliveryId = Long.valueOf(deliveryIdVal.toString());
+                Long outboundId = outboundService.createFromSalesByDelivery(deliveryId);
+                log.info("   ✅ 销售出库单已按发货单明细创建并扣库存: deliveryId={}, outboundId={}", deliveryId, outboundId);
+                return;
+            }
             // 先尝试使用更完善的 createFromSales 方式（含明细行 + 自动审批）
             Object salesOrderId = payload.get("salesOrderId");
             if (salesOrderId != null) {

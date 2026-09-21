@@ -73,6 +73,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
+    /** 2026-09-21 dev-20260921-039：分批发货——按发货单明细出库。 */
+    private final com.jjx.sales.mapper.SalesDeliveryMapper salesDeliveryMapper;
+    private final com.jjx.sales.mapper.SalesDeliveryItemMapper salesDeliveryItemMapper;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.InventoryItemService inventoryItemService;
 
@@ -1463,6 +1466,107 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         log.info("销售发货出库完成: salesOrderId={}, outboundId={}", salesOrderId, order.getOutboundId());
+        publishOutboundEvent("inventory.outbound.created_from_sales", order.getOutboundId());
+        return order.getOutboundId();
+    }
+
+    /**
+     * 销售出库（按发货单明细，2026-09-21 dev-20260921-039 分批发货）。
+     *
+     * <p>与 {@link #createFromSales(Long)} 的差别：只出「本次发货明细」的数量，不按“订单量-已发量”自动推算，
+     * 出库数量与发货单完全一致（库存不足直接报错，不静默少发）。历史发货单（无明细）自动退回全量逻辑。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFromSalesByDelivery(Long deliveryId) {
+        com.jjx.sales.domain.entity.SalesDelivery delivery = salesDeliveryMapper.selectById(deliveryId);
+        if (delivery == null) {
+            throw new BusinessException("发货单不存在: " + deliveryId);
+        }
+        List<com.jjx.sales.domain.entity.SalesDeliveryItem> deliveryItems = salesDeliveryItemMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesDeliveryItem>()
+                        .eq(com.jjx.sales.domain.entity.SalesDeliveryItem::getDeliveryId, deliveryId));
+        if (deliveryItems.isEmpty()) {
+            log.warn("发货单{}无明细（历史数据），回退按订单未发量出库", delivery.getDeliveryNo());
+            return createFromSales(delivery.getOrderId());
+        }
+        Long salesOrderId = delivery.getOrderId();
+        com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(salesOrderId);
+        if (salesOrder == null) {
+            throw new BusinessException("销售订单不存在: " + salesOrderId);
+        }
+
+        long shipSeq = outboundOrderMapper.selectCount(
+                new LambdaQueryWrapper<InventoryOutboundOrder>()
+                        .eq(InventoryOutboundOrder::getSourceType, "SALES")
+                        .eq(InventoryOutboundOrder::getSourceId, salesOrderId)) + 1;
+        InventoryOutboundOrder order = new InventoryOutboundOrder();
+        order.setOutboundNo("SHIP-" + salesOrder.getOrderNo() + "-" + shipSeq);
+        order.setOutboundType("SALES_SHIP");
+        order.setSourceType("SALES");
+        order.setSourceId(salesOrderId);
+        order.setSourceNo(salesOrder.getOrderNo());
+        order.setTraceId(salesOrder.getTraceId());
+        order.setOutboundDate(LocalDate.now());
+        order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
+        order.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
+        order.setRemark("发货单 " + delivery.getDeliveryNo());
+        outboundOrderMapper.insert(order);
+
+        int sort = 1;
+        for (com.jjx.sales.domain.entity.SalesDeliveryItem item : deliveryItems) {
+            BigDecimal requirement = BigDecimal.valueOf(item.getQuantity() == null ? 0 : item.getQuantity());
+            if (requirement.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
+                    com.jjx.inventory.enums.InventoryItemTypeEnum.PRODUCT, item.getProductId(),
+                    item.getProductCode(), item.getProductName(), null,
+                    item.getUnit() == null || item.getUnit().isBlank() ? "PCS" : item.getUnit());
+            BigDecimal available = BigDecimal.ZERO;
+            InventoryStock stock = stockMapper.selectByInventoryItemId(inventoryItem.getInventoryItemId());
+            if (stock != null && stock.getTotalQuantity() != null) {
+                available = stock.getTotalQuantity().subtract(
+                        stock.getTotalReserved() == null ? BigDecimal.ZERO : stock.getTotalReserved());
+            }
+            if (available.compareTo(requirement) < 0) {
+                throw new BusinessException("产品[" + item.getProductCode() + "]库存不足，无法发货（需 "
+                        + requirement.stripTrailingZeros().toPlainString() + "，可用 "
+                        + available.stripTrailingZeros().toPlainString() + "）");
+            }
+            InventoryOutboundItem outItem = new InventoryOutboundItem();
+            outItem.setOutboundId(order.getOutboundId());
+            outItem.setInventoryItemId(inventoryItem.getInventoryItemId());
+            outItem.setMaterialCode(inventoryItem.getItemCode());
+            outItem.setMaterialName(inventoryItem.getItemName());
+            outItem.setQuantity(requirement);
+            outItem.setUnitPrice(item.getUnitPrice());
+            outItem.setSortOrder(sort++);
+            try {
+                List<InventoryStockItem> fifoItems = stockItemMapper
+                        .selectFIFOAvailableByInventoryItemId(inventoryItem.getInventoryItemId());
+                if (!fifoItems.isEmpty() && fifoItems.get(0).getLocationId() != null) {
+                    outItem.setLocationId(fifoItems.get(0).getLocationId());
+                }
+            } catch (Exception e) {
+                log.warn("销售出库推荐库位失败(跳过): inventoryItemId={}, err={}",
+                        inventoryItem.getInventoryItemId(), e.getMessage());
+            }
+            outboundItemMapper.insert(outItem);
+        }
+
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        outboundOrderMapper.updateById(order);
+        approve(order.getOutboundId(), null, null, "销售发货出库（" + delivery.getDeliveryNo() + "）");
+        try {
+            confirm(order.getOutboundId(), null, "销售发货出库");
+            log.info("销售发货出库已自动确认并扣库存: outboundId={}, deliveryNo={}",
+                    order.getOutboundId(), delivery.getDeliveryNo());
+        } catch (Exception e) {
+            log.error("销售发货出库自动确认失败（需人工处理）: outboundId={}, err={}",
+                    order.getOutboundId(), e.getMessage());
+            throw new BusinessException("销售发货出库确认失败：" + e.getMessage());
+        }
         publishOutboundEvent("inventory.outbound.created_from_sales", order.getOutboundId());
         return order.getOutboundId();
     }

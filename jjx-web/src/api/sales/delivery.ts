@@ -19,6 +19,8 @@ export interface SalesDeliveryVO {
   totalQuantity: number
   totalWeight: number
   freightAmount: number
+  insuranceAmount?: number
+  otherCharges?: number
   totalAmount: number
   remark: string
   deliveryPersonName: string
@@ -34,6 +36,32 @@ export interface SalesDeliveryVO {
   lastPrintTime?: string
   /** 最近打印人 */
   lastPrintBy?: string
+  /** 本次发货明细（分批发货） */
+  items?: SalesDeliveryItem[]
+  /** 拒收原因 */
+  rejectReason?: string
+  /** 拒收登记时间 */
+  rejectTime?: string
+  /** 拒收登记人 */
+  rejectName?: string
+}
+
+/** 发货明细（分批发货，2026-09-21 dev-20260921-039） */
+export interface SalesDeliveryItem {
+  itemId?: number
+  deliveryId?: number
+  /** 销售订单明细ID（sales_order_product.id） */
+  orderProductId?: number
+  productId?: number
+  productCode?: string
+  productName?: string
+  specification?: string
+  unit?: string
+  /** 本次发货数量 */
+  quantity?: number
+  unitPrice?: number
+  amount?: number
+  remark?: string
 }
 
 export interface SalesDeliveryQueryDTO {
@@ -56,6 +84,14 @@ export interface SalesDeliveryReceiveDTO {
 }
 
 export interface SalesDeliveryCreateDTO {
+  /** 运费（快递/物流填，2026-09-21） */
+  freightAmount?: number
+  /** 保价费 */
+  insuranceAmount?: number
+  /** 其他费用 */
+  otherCharges?: number
+  /** 本次发货明细（不传=按未发数量全发，向后兼容） */
+  items?: SalesDeliveryItem[]
   deliveryMethod?: string
   contactPerson?: string
   contactPhone?: string
@@ -85,6 +121,11 @@ export const deliveryApi = {
   /** 签收发货单 */
   receive(deliveryId: number, data: SalesDeliveryReceiveDTO) {
     return request.put<R<void>>(`/sales/deliveries/${deliveryId}/receive`, data)
+  },
+
+  /** 客户拒收登记（自动回冲库存、订单可重发，2026-09-21 dev-20260921-039） */
+  reject(deliveryId: number, reason: string) {
+    return request.post<R<void>>(`/sales/deliveries/${deliveryId}/reject`, { reason })
   },
 
   /** 记录送货单打印留痕（口径 D3：biz_type=sales_delivery + biz_id=deliveryId） */

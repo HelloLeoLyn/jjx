@@ -83,6 +83,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryAlertService alertService;
     private final InventoryItemService inventoryItemService;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
+    /** 2026-09-21 dev-20260921-039：拒收回库按发货单明细回冲。 */
+    private final com.jjx.sales.mapper.SalesDeliveryMapper salesDeliveryMapper;
+    private final com.jjx.sales.mapper.SalesDeliveryItemMapper salesDeliveryItemMapper;
     private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
     private final com.jjx.production.service.QualityActionService qualityActionService;
     private final com.jjx.production.mapper.ProductionQualityInspectionMapper qualityInspectionMapper;
@@ -109,6 +112,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             payload.put("bizNo", order.getInboundNo());
             payload.put("sourceNo", order.getSourceNo());
             payload.put("supplierName", order.getSupplierName());
+            payload.put("sourceDesc", buildSourceDesc(order));
             payload.put("warehouseId", order.getWarehouseId());
         }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
@@ -1405,6 +1409,31 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return order != null && InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus());
     }
 
+    /**
+     * 入库来源一句话描述（事件模板用）：
+     * · 采购入库 → 「采购单 PRxxx，供应商 某某」（无供应商时只留采购单号）
+     * · 生产完工入库 → 「生产工单 WO-xxx」
+     * 2026-09-21 dev-20260921-040：避免模板写死“采购单+供应商”导致生产来源渲染空值。
+     */
+    private String buildSourceDesc(InventoryInboundOrder order) {
+        if (order == null) {
+            return null;
+        }
+        String sourceNo = order.getSourceNo();
+        boolean hasSourceNo = sourceNo != null && !sourceNo.isBlank();
+        if ("PRODUCTION".equals(order.getSourceType())) {
+            return "生产工单 " + (hasSourceNo ? sourceNo : "-");
+        }
+        if ("SALES_RETURN".equals(order.getSourceType())) {
+            return "客户拒收回库（发货单 " + (hasSourceNo ? sourceNo : "-") + "）";
+        }
+        StringBuilder desc = new StringBuilder("采购单 ").append(hasSourceNo ? sourceNo : "-");
+        if (order.getSupplierName() != null && !order.getSupplierName().isBlank()) {
+            desc.append("，供应商 ").append(order.getSupplierName());
+        }
+        return desc.toString();
+    }
+
     private Map<String, Object> iqcPayload(InventoryInboundOrder order, InventoryInboundItem item,
             Long receiverId, String receiverName) {
         Map<String, Object> payload = new HashMap<>();
@@ -1421,6 +1450,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             payload.put("sourceNo", order.getSourceNo());
             payload.put("supplierId", order.getSupplierId());
             payload.put("supplierName", order.getSupplierName());
+            // 2026-09-21 dev-20260921-040：入库来源一句话描述（采购单+供应商 / 生产工单）。
+            // 模板里原来写死「采购单 {sourceNo}，供应商 {supplierName}」——生产完工入库没有供应商，
+            // 会渲染成空值并刷 WARN；改用 {sourceDesc} 后两种来源都能带齐信息。
+            payload.put("sourceDesc", buildSourceDesc(order));
         }
         if (item != null) {
             payload.put("itemId", item.getItemId());
@@ -2087,6 +2120,103 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundOrderMapper.updateById(order);
 
         log.info("生产完工入库完成: workOrderId={}, inboundId={}", workOrderId, order.getInboundId());
+        return order.getInboundId();
+    }
+
+    /**
+     * 客户拒收回库（2026-09-21 dev-20260921-039，拒收回流）。
+     *
+     * <p>客户拒收后货在客户端，但账上库存已被销售发货出库扣走 —— 本方法按发货单明细生成「拒收回库单」
+     * （source_type=SALES_RETURN，单号 REJECT-{发货单号}）并自动审批 + 过账，把数量回冲到成品库存，
+     * 仓库无需手工建单入库。拆封/损坏的货请走退货/报废流程（本方法按“可再售”口径回库）。</p>
+     *
+     * @return 拒收回库单ID；发货单无明细（历史数据）时返回 null（不回冲，仅告警）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createSalesRejectInbound(Long deliveryId) {
+        com.jjx.sales.domain.entity.SalesDelivery delivery = salesDeliveryMapper.selectById(deliveryId);
+        if (delivery == null) {
+            throw new BusinessException("发货单不存在: " + deliveryId);
+        }
+        String inboundNo = "REJECT-" + delivery.getDeliveryNo();
+        List<InventoryInboundOrder> exists = inboundOrderMapper.selectList(
+                new LambdaQueryWrapper<InventoryInboundOrder>().eq(InventoryInboundOrder::getInboundNo, inboundNo));
+        if (!exists.isEmpty()) {
+            log.info("拒收回库单已存在，跳过重复创建: {}", inboundNo);
+            return exists.get(0).getInboundId();
+        }
+        List<com.jjx.sales.domain.entity.SalesDeliveryItem> deliveryItems = salesDeliveryItemMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesDeliveryItem>()
+                        .eq(com.jjx.sales.domain.entity.SalesDeliveryItem::getDeliveryId, deliveryId));
+        if (deliveryItems.isEmpty()) {
+            log.warn("发货单{}无明细，无法按明细回冲库存（历史数据，请人工处理）", delivery.getDeliveryNo());
+            return null;
+        }
+
+        InventoryInboundOrder order = new InventoryInboundOrder();
+        order.setInboundNo(inboundNo);
+        order.setInboundType("SALES_RETURN");
+        order.setSourceType("SALES_RETURN");
+        order.setSourceId(deliveryId);
+        order.setSourceNo(delivery.getDeliveryNo());
+        order.setInboundDate(LocalDate.now());
+        try {
+            InventoryWarehouse defaultWh = warehouseMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryWarehouse>()
+                            .eq(InventoryWarehouse::getStatus, 1)
+                            .orderByAsc(InventoryWarehouse::getWarehouseId)
+                            .last("LIMIT 1"));
+            if (defaultWh != null) {
+                order.setWarehouseId(defaultWh.getWarehouseId());
+            }
+        } catch (Exception e) {
+            log.warn("获取默认仓库失败: {}", e.getMessage());
+        }
+        order.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
+        String reason = delivery.getRejectReason();
+        order.setRemark("客户拒收回库（发货单 " + delivery.getDeliveryNo()
+                + (reason == null || reason.isBlank() ? "" : "，原因：" + reason) + "）");
+        inboundOrderMapper.insert(order);
+
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        int sort = 1;
+        for (com.jjx.sales.domain.entity.SalesDeliveryItem item : deliveryItems) {
+            BigDecimal quantity = BigDecimal.valueOf(item.getQuantity() == null ? 0 : item.getQuantity());
+            if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
+                    InventoryItemTypeEnum.PRODUCT, item.getProductId(), item.getProductCode(),
+                    item.getProductName(), null,
+                    item.getUnit() == null || item.getUnit().isBlank() ? "PCS" : item.getUnit());
+            InventoryInboundItem inboundItem = new InventoryInboundItem();
+            inboundItem.setInboundId(order.getInboundId());
+            inboundItem.setInventoryItemId(inventoryItem.getInventoryItemId());
+            inboundItem.setMaterialCode(item.getProductCode());
+            inboundItem.setMaterialName(item.getProductName());
+            inboundItem.setQuantity(quantity);
+            inboundItem.setUnitPrice(item.getUnitPrice());
+            inboundItem.setSortOrder(sort++);
+            inboundItemMapper.insert(inboundItem);
+            totalQty = totalQty.add(quantity);
+            if (item.getAmount() != null) {
+                totalAmount = totalAmount.add(item.getAmount());
+            }
+        }
+        if (sort == 1) {
+            log.warn("发货单{}明细数量全为 0，无回冲内容", delivery.getDeliveryNo());
+            return null;
+        }
+        order.setTotalQuantity(totalQty);
+        order.setTotalAmount(totalAmount);
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        inboundOrderMapper.updateById(order);
+        approve(order.getInboundId(), null, null, "客户拒收回库");
+        confirm(order.getInboundId(), null, "客户拒收回库");
+        log.info("客户拒收回库完成: deliveryNo={}, inboundNo={}, 数量={}",
+                delivery.getDeliveryNo(), inboundNo, totalQty);
         return order.getInboundId();
     }
 

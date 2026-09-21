@@ -39,6 +39,46 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
             "<if test='entity.remark != null'>,o.remark=#{entity.remark}</if> " +
             "<if test='entity.orderStatus != null'>,o.order_status=#{entity.orderStatus}</if> " +
             "<if test='entity.totalQuantity != null'>,o.total_quantity=#{entity.totalQuantity}</if> " +
+            // 2026-09-21（dev-20260921-037）：补全主表字段 —— 原白名单只覆盖 remark/order_status/total_quantity，
+            // 任何未列字段（produced_quantity / prod_status / shipped_quantity / 金额 / 预留 …）走 updateById 都会被静默丢弃。
+            // 下面按 information_schema 的 sales_order 全量列生成（跳过 order_id/时间/逻辑删除/创建人）。
+            "<if test='entity.traceId != null'>,o.trace_id=#{entity.traceId}</if> " +
+            "<if test='entity.orderNo != null'>,o.order_no=#{entity.orderNo}</if> " +
+            "<if test='entity.quotationId != null'>,o.quotation_id=#{entity.quotationId}</if> " +
+            "<if test='entity.customerId != null'>,o.customer_id=#{entity.customerId}</if> " +
+            "<if test='entity.customerName != null'>,o.customer_name=#{entity.customerName}</if> " +
+            "<if test='entity.customerShortName != null'>,o.customer_short_name=#{entity.customerShortName}</if> " +
+            "<if test='entity.contactPerson != null'>,o.contact_person=#{entity.contactPerson}</if> " +
+            "<if test='entity.contactPhone != null'>,o.contact_phone=#{entity.contactPhone}</if> " +
+            "<if test='entity.orderDate != null'>,o.order_date=#{entity.orderDate}</if> " +
+            "<if test='entity.deliveryDate != null'>,o.delivery_date=#{entity.deliveryDate}</if> " +
+            "<if test='entity.orderType != null'>,o.order_type=#{entity.orderType}</if> " +
+            "<if test='entity.prodStatus != null'>,o.prod_status=#{entity.prodStatus}</if> " +
+            "<if test='entity.isUrgent != null'>,o.is_urgent=#{entity.isUrgent}</if> " +
+            "<if test='entity.urgentReason != null'>,o.urgent_reason=#{entity.urgentReason}</if> " +
+            "<if test='entity.currency != null'>,o.currency=#{entity.currency}</if> " +
+            "<if test='entity.exchangeRate != null'>,o.exchange_rate=#{entity.exchangeRate}</if> " +
+            "<if test='entity.paymentTerms != null'>,o.payment_terms=#{entity.paymentTerms}</if> " +
+            "<if test='entity.deliveryTerms != null'>,o.delivery_terms=#{entity.deliveryTerms}</if> " +
+            "<if test='entity.deliveryAddress != null'>,o.delivery_address=#{entity.deliveryAddress}</if> " +
+            "<if test='entity.totalAmount != null'>,o.total_amount=#{entity.totalAmount}</if> " +
+            "<if test='entity.taxRate != null'>,o.tax_rate=#{entity.taxRate}</if> " +
+            "<if test='entity.taxAmount != null'>,o.tax_amount=#{entity.taxAmount}</if> " +
+            "<if test='entity.totalAmountWithTax != null'>,o.total_amount_with_tax=#{entity.totalAmountWithTax}</if> " +
+            "<if test='entity.discountRate != null'>,o.discount_rate=#{entity.discountRate}</if> " +
+            "<if test='entity.discountAmount != null'>,o.discount_amount=#{entity.discountAmount}</if> " +
+            "<if test='entity.finalAmount != null'>,o.final_amount=#{entity.finalAmount}</if> " +
+            "<if test='entity.paymentStatus != null'>,o.payment_status=#{entity.paymentStatus}</if> " +
+            "<if test='entity.paidAmount != null'>,o.paid_amount=#{entity.paidAmount}</if> " +
+            "<if test='entity.unpaidAmount != null'>,o.unpaid_amount=#{entity.unpaidAmount}</if> " +
+            "<if test='entity.shippedQuantity != null'>,o.shipped_quantity=#{entity.shippedQuantity}</if> " +
+            "<if test='entity.materialReserveFlag != null'>,o.material_reserve_flag=#{entity.materialReserveFlag}</if> " +
+            "<if test='entity.materialReserveTime != null'>,o.material_reserve_time=#{entity.materialReserveTime}</if> " +
+            "<if test='entity.materialReserveBy != null'>,o.material_reserve_by=#{entity.materialReserveBy}</if> " +
+            "<if test='entity.materialReserveExpire != null'>,o.material_reserve_expire=#{entity.materialReserveExpire}</if> " +
+            "<if test='entity.producedQuantity != null'>,o.produced_quantity=#{entity.producedQuantity}</if> " +
+            "<if test='entity.salesManagerId != null'>,o.sales_manager_id=#{entity.salesManagerId}</if> " +
+            "<if test='entity.salesManagerName != null'>,o.sales_manager_name=#{entity.salesManagerName}</if> " +
             "<if test='entity.convertedOrderId != null'>,s.converted_order_id=#{entity.convertedOrderId}</if> " +
             "<if test='entity.sampleStatus != null'>,s.sample_status=#{entity.sampleStatus}</if> " +
             "<if test='entity.sampleRound != null'>,s.sample_round=#{entity.sampleRound}</if> " +

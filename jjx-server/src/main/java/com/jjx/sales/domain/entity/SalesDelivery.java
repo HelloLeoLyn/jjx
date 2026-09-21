@@ -57,8 +57,16 @@ public class SalesDelivery extends BaseEntity {
     /** 承运商 */
     private String carrier;
 
-    /** 发货状态：1待发货 2已发货 3运输中 4已签收 5已拒收 */
+    /** 发货状态：1待发货 2已发货 3运输中（已弃用，2026-09-21 dev-20260921-039 无写入点）4已签收 5已拒收 */
     private Integer deliveryStatus;
+
+    /**
+     * 本次发货明细（2026-09-21 dev-20260921-039，分批发货）。
+     * 下单发货请求时由前端传入「本次发货数量」；查询发货单时由服务层回填用于详情/打印。
+     * 非表字段。
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private java.util.List<SalesDeliveryItem> items;
 
     /** 总数量 */
     private Integer totalQuantity;
@@ -106,6 +114,19 @@ public class SalesDelivery extends BaseEntity {
 
     /** 收货备注 */
     private String receiveRemark;
+
+    /** 拒收原因（2026-09-21 dev-20260921-039 拒收回流） */
+    private String rejectReason;
+
+    /** 拒收登记时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date rejectTime;
+
+    /** 拒收登记人ID */
+    private Long rejectBy;
+
+    /** 拒收登记人 */
+    private String rejectName;
 
     /** 签收操作人ID */
     private Long receiveBy;

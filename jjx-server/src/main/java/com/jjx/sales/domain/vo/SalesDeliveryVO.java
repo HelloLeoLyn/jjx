@@ -1,11 +1,13 @@
 package com.jjx.sales.domain.vo;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.jjx.sales.domain.entity.SalesDeliveryItem;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.List;
 
 /**
  * 销售发货单响应VO
@@ -13,6 +15,22 @@ import java.util.Date;
 @Data
 @Schema(description = "销售发货单响应VO")
 public class SalesDeliveryVO {
+
+    @Schema(description = "本次发货明细（分批发货）")
+    private List<SalesDeliveryItem> items;
+    @Schema(description = "拒收原因")
+    private String rejectReason;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @Schema(description = "拒收登记时间")
+    private Date rejectTime;
+
+    @Schema(description = "拒收登记人ID")
+    private Long rejectBy;
+
+    @Schema(description = "拒收登记人")
+    private String rejectName;
+
 
     @Schema(description = "发货单ID")
     private Long deliveryId;
@@ -51,7 +69,7 @@ public class SalesDeliveryVO {
     @Schema(description = "承运商")
     private String carrier;
 
-    @Schema(description = "发货状态：1待发货 2已发货 3运输中 4已签收 5已拒收")
+    @Schema(description = "发货状态：1待发货 2已发货 4已签收 5已拒收（3运输中已弃用）")
     private Integer deliveryStatus;
 
     @Schema(description = "发货状态描述")
@@ -65,6 +83,12 @@ public class SalesDeliveryVO {
 
     @Schema(description = "运费")
     private BigDecimal freightAmount;
+
+    @Schema(description = "保价费")
+    private BigDecimal insuranceAmount;
+
+    @Schema(description = "其他费用")
+    private BigDecimal otherCharges;
 
     @Schema(description = "总金额")
     private BigDecimal totalAmount;

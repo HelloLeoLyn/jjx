@@ -61,6 +61,11 @@
             <tr v-if="!items.length">
               <td colspan="9" class="center">无订单明细</td>
             </tr>
+            <tr v-if="info.freightAmount" class="qr026-total-row">
+              <td colspan="6"></td>
+              <th>运费：</th>
+              <td colspan="2" class="right">{{ money(info.freightAmount) }}</td>
+            </tr>
             <tr class="qr026-total-row">
               <td colspan="6"></td>
               <th>合计金额：</th>
@@ -194,13 +199,22 @@ onMounted(async () => {
   }
   const detail = await deliveryApi.getById(deliveryId)
   info.value = detail.data || undefined
+  // 分批发货（2026-09-21 dev-20260921-039）：送货单只打印「本次发货明细」，不再从订单带全量明细
+  const deliveryItems: any[] = detail.data?.items || []
+  if (deliveryItems.length) {
+    items.value = deliveryItems
+  }
   if (info.value?.orderId) {
     try {
       const order = await orderApi.getOrder(info.value.orderId)
-      items.value = order.data?.items || []
+      if (!deliveryItems.length) {
+        items.value = order.data?.items || []
+      }
       orderNo.value = order.data?.orderNo || ''
     } catch {
-      items.value = []
+      if (!deliveryItems.length) {
+        items.value = []
+      }
       ElMessage.warning('订单明细加载失败，可继续打印')
     }
   }

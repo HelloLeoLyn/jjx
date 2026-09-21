@@ -151,10 +151,19 @@
             <span>{{ parseDate(scope.row.deliveryDate) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="订单状态" prop="orderStatus" width="120">
+        <el-table-column label="订单状态" prop="orderStatus" width="150">
           <template #default="scope">
             <el-tag :type="SalesOrderStatusEnum.getTagProps(scope.row.orderStatus).type">
               {{ SalesOrderStatusEnum.getLabel(scope.row.orderStatus) }}
+            </el-tag>
+            <!-- 分批发货（2026-09-21 dev-20260921-039）：发出部分后订单仍在生产中，这里标明已发/未发 -->
+            <el-tag
+              v-if="isPartialShipped(scope.row)"
+              type="warning"
+              size="small"
+              style="margin-left: 4px"
+            >
+              已发 {{ scope.row.shippedQuantity }}/{{ scope.row.totalQuantity }}
             </el-tag>
           </template>
         </el-table-column>
@@ -236,13 +245,55 @@
       @success="handleValidationSuccess"
       @cancel="handleValidationCancel"
     />
-    <el-dialog v-model="shipDialogVisible" title="订单发货" width="620px">
+    <el-dialog v-model="shipDialogVisible" title="订单发货" width="880px">
+      <el-alert
+        v-if="shipOrderInfo.orderNo"
+        :title="`订单 ${shipOrderInfo.orderNo} · 客户 ${shipOrderInfo.customerName || '-'} · 订单数量 ${shipOrderInfo.totalQuantity ?? 0} · 金额 ${shipOrderInfo.totalAmount ?? 0}`"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px"
+      />
+      <el-table v-loading="shipLinesLoading" :data="shipLines" border size="small" style="margin-bottom: 12px">
+        <el-table-column label="产品编码" prop="productCode" min-width="140" />
+        <el-table-column label="产品名称" prop="productName" min-width="140" />
+        <el-table-column label="订单数量" prop="ordered" width="90" align="center" />
+        <el-table-column label="已发" prop="shipped" width="80" align="center" />
+        <el-table-column label="未发" prop="remaining" width="80" align="center" />
+        <el-table-column label="本次发货数量" width="170">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.quantity"
+              :min="0"
+              :max="row.remaining"
+              :precision="0"
+              :disabled="row.remaining <= 0"
+              style="width: 100%"
+            />
+          </template>
+        </el-table-column>
+      </el-table>
       <el-form :model="shipForm" label-width="90px">
         <el-row :gutter="16">
-          <el-col :span="12"
-            ><el-form-item label="交货方式"
-              ><el-input v-model="shipForm.deliveryMethod" /></el-form-item
-          ></el-col>
+          <el-col :span="12">
+            <el-form-item label="交货方式">
+              <el-select
+                v-model="shipForm.deliveryMethod"
+                placeholder="请选择交货方式"
+                filterable
+                allow-create
+                default-first-option
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="d in deliveryMethodDict"
+                  :key="d.itemKey"
+                  :label="d.label || d.itemValue"
+                  :value="d.itemValue"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
           <el-col :span="12"
             ><el-form-item label="发货日期"
               ><el-date-picker
@@ -258,19 +309,73 @@
             ><el-form-item label="收货电话"
               ><el-input v-model="shipForm.contactPhone" /></el-form-item
           ></el-col>
-          <el-col :span="24"
-            ><el-form-item label="收货地址"
-              ><el-input v-model="shipForm.deliveryAddress" /></el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="承运商"><el-input v-model="shipForm.carrier" /></el-form-item
-          ></el-col>
-          <el-col :span="12"
+          <el-col :span="24">
+            <el-form-item label="收货地址">
+              <el-select
+                v-model="shipForm.deliveryAddress"
+                placeholder="默认按订单/客户档案地址带出，可直接改"
+                filterable
+                allow-create
+                default-first-option
+                style="width: 100%"
+              >
+                <el-option v-for="addr in shipAddressOptions" :key="addr" :label="addr" :value="addr" />
+              </el-select>
+              <div class="ship-hint">{{ shipAddressHint }}</div>
+            </el-form-item>
+          </el-col>
+          <el-col v-if="shipNeedCarrier" :span="12">
+            <el-form-item label="承运商">
+              <el-select
+                v-model="shipForm.carrier"
+                placeholder="请选择或直接输入"
+                filterable
+                allow-create
+                clearable
+                default-first-option
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="c in shipCarrierOptions"
+                  :key="c.itemKey"
+                  :label="c.label || c.itemValue"
+                  :value="c.itemValue"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col v-if="shipNeedCarrier" :span="12"
             ><el-form-item label="物流单号"><el-input v-model="shipForm.trackingNo" /></el-form-item
           ></el-col>
+          <template v-if="shipNeedCarrier">
+            <el-col :span="8">
+              <el-form-item label="运费">
+                <el-input-number v-model="shipForm.freightAmount" :min="0" :precision="2" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="保价费">
+                <el-input-number v-model="shipForm.insuranceAmount" :min="0" :precision="2" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="其他费用">
+                <el-input-number v-model="shipForm.otherCharges" :min="0" :precision="2" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+          </template>
+          <el-col v-else :span="24">
+            <el-alert
+              :title="`${shipForm.deliveryMethod || '当前交货方式'}：无需填写承运商与物流单号（客户自提 / 我方送货，现场交接）`"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 12px"
+            />
+          </el-col>
           <el-col :span="24"
             ><el-form-item label="备注"
-              ><el-input v-model="shipForm.remark" type="textarea" :rows="3" /></el-form-item
+              ><el-input v-model="shipForm.remark" type="textarea" :rows="2" /></el-form-item
           ></el-col>
         </el-row>
       </el-form>
@@ -296,7 +401,7 @@ defineOptions({
   name: 'SalesOrder',
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 
@@ -306,6 +411,8 @@ import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
 import { deliveryApi } from '@/api/sales/delivery'
+import { customerApi } from '@/api/sales/customer'
+import { useDict } from '@/composables/useDict'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
@@ -316,9 +423,15 @@ import ShortageCheckDialog from './components/ShortageCheckDialog.vue'
 import type { SalesOrderQueryDTO } from '@/types/sales/order'
 import type { SalesDeliveryCreateDTO } from '@/api/sales/delivery'
 import { SalesOrderStatusEnum, PaymentStatusEnum, ProdStatusEnum } from '@/enums/sales/OrderEnum'
+import { DeliveryStatusEnum } from '@/enums/sales/DeliveryEnum'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 const statusIs = (row: any, status: number) => row.orderStatus === status
+
+/** 部分发货：已发数量 > 0 且未发完（订单仍停在生产中） */
+const isPartialShipped = (row: any) =>
+  Number(row.shippedQuantity || 0) > 0 &&
+  Number(row.shippedQuantity || 0) < Number(row.totalQuantity || 0)
 const orderRowActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
   {
@@ -493,6 +606,75 @@ const shipDialogVisible = ref(false)
 const shipSubmitting = ref(false)
 const shipOrderId = ref<number>()
 const shipForm = reactive<SalesDeliveryCreateDTO>({})
+
+/**
+ * 分批发货（2026-09-21 dev-20260921-039）：
+ * 明细默认带出「未发数量」（一发到底不用改），要分批就改本行「本次发货数量」。
+ */
+interface ShipLine {
+  orderProductId: number
+  productCode: string
+  productName: string
+  ordered: number
+  shipped: number
+  remaining: number
+  quantity: number
+}
+const shipLines = ref<ShipLine[]>([])
+const shipLinesLoading = ref(false)
+const shipOrderInfo = ref<{
+  orderNo?: string
+  customerName?: string
+  totalQuantity?: number
+  totalAmount?: number
+}>({})
+/** 收货地址候选：订单收货地址 + 客户档案地址（默认取第一个） */
+const shipAddressOptions = ref<string[]>([])
+const shipAddressHint = ref('')
+/** 交货方式 / 承运商 走字典（系统管理 → 字典管理 可维护） */
+const { options: deliveryMethodDict } = useDict('sales_delivery_method')
+const { options: carrierDict } = useDict('sales_carrier')
+
+/** 字典 ext_data 解析（可能是 JSON 字符串或对象） */
+const parseExt = (raw: any) => {
+  if (!raw) return {} as Record<string, any>
+  try {
+    return typeof raw === 'string' ? JSON.parse(raw) : raw
+  } catch {
+    return {} as Record<string, any>
+  }
+}
+/** 当前交货方式是否需要承运商（字典 ext_data.needCarrier，缺省需要） */
+const shipNeedCarrier = computed(() => {
+  const hit = (deliveryMethodDict.value || []).find((d: any) => d.itemValue === shipForm.deliveryMethod)
+  return hit ? parseExt(hit.extData).needCarrier !== false : true
+})
+/** 承运商候选：按交货方式过滤（字典 ext_data.methods，缺省通用） */
+const shipCarrierOptions = computed(() =>
+  (carrierDict.value || []).filter((c: any) => {
+    const methods = parseExt(c.extData).methods
+    if (!methods || !methods.length) return true
+    return methods.includes(shipForm.deliveryMethod)
+  })
+)
+// 交货方式变更 → 承运商/物流单号 自动收敛（自提/送货上门清空并隐藏；不适用于新方式的承运商清掉）
+watch(
+  () => shipForm.deliveryMethod,
+  () => {
+    if (!shipNeedCarrier.value) {
+      shipForm.carrier = ''
+      shipForm.trackingNo = ''
+      shipForm.freightAmount = 0
+      shipForm.insuranceAmount = 0
+      shipForm.otherCharges = 0
+      return
+    }
+    const allowed = shipCarrierOptions.value.map((c: any) => c.itemValue)
+    if (shipForm.carrier && !allowed.includes(shipForm.carrier)) {
+      shipForm.carrier = ''
+    }
+  }
+)
 
 // 表格数据
 const orderList = ref<any[]>([])
@@ -702,26 +884,126 @@ const handleResubmit = async (row: any) => {
 // 发货（2026-08-12 DEV-012：7→8，自动创建销售出库单并扣产品库存）
 const handleShip = async (row: any) => {
   shipOrderId.value = row.orderId
+  shipOrderInfo.value = {
+    orderNo: row.orderNo,
+    customerName: row.customerName,
+    totalQuantity: row.totalQuantity,
+    totalAmount: row.totalAmount,
+  }
+  void loadShipLines(row.orderId)
+
+  // 收货信息自动带出：订单 → 客户档案（不用手打）
+  const addresses: string[] = []
+  if (row.deliveryAddress) addresses.push(row.deliveryAddress)
+  let contactPerson = row.contactPerson || ''
+  let contactPhone = row.contactPhone || ''
+  try {
+    const res: any = await orderApi.getOrder(row.orderId)
+    const order: any = res?.data || {}
+    if (order.deliveryAddress && !addresses.includes(order.deliveryAddress)) {
+      addresses.push(order.deliveryAddress)
+    }
+    contactPerson = contactPerson || order.contactPerson || ''
+    contactPhone = contactPhone || order.contactPhone || ''
+  } catch {
+    /* 详情取不到就用列表行，不阻断发货 */
+  }
+  if (row.customerId) {
+    try {
+      const cusRes: any = await customerApi.getCustomer(row.customerId)
+      const customer: any = cusRes?.data || {}
+      if (customer.address && !addresses.includes(customer.address)) {
+        addresses.push(customer.address)
+      }
+      contactPerson = contactPerson || customer.contactPerson || ''
+      contactPhone = contactPhone || customer.contactPhone || ''
+    } catch {
+      /* 客户档案取不到不影响发货 */
+    }
+  }
+  shipAddressOptions.value = addresses
+  shipAddressHint.value = addresses.length
+    ? '已自动带出默认发货地址（订单/客户档案），可下拉切换或直接修改'
+    : '未找到订单/客户地址，请填写'
+
   Object.assign(shipForm, {
-    deliveryMethod: '',
-    contactPerson: row.contactPerson || '',
-    contactPhone: row.contactPhone || '',
-    deliveryAddress: row.deliveryAddress || '',
+    deliveryMethod: '快递',
+    contactPerson,
+    contactPhone,
+    deliveryAddress: addresses[0] || '',
     carrier: '',
     trackingNo: '',
+    freightAmount: 0,
+    insuranceAmount: 0,
+    otherCharges: 0,
     remark: '',
     deliveryDate: new Date().toISOString().slice(0, 10),
   })
   shipDialogVisible.value = true
 }
 
+/**
+ * 组装本次发货明细：订单数量 − Σ历史发货明细（排除已拒收）= 未发数量。
+ */
+const loadShipLines = async (orderId: number) => {
+  if (!orderId) return
+  shipLinesLoading.value = true
+  try {
+    const orderRes: any = await orderApi.getOrder(orderId)
+    const order: any = orderRes?.data || {}
+    const products: any[] = order.items || order.products || []
+    const deliveryRes: any = await deliveryApi.listByOrderId(orderId)
+    const deliveries: any[] = deliveryRes?.data || []
+    const shippedMap: Record<number, number> = {}
+    deliveries
+      .filter((d) => d.deliveryStatus !== DeliveryStatusEnum.REJECTED.value)
+      .forEach((d) => {
+        ;(d.items || []).forEach((it: any) => {
+          if (it.orderProductId != null && Number(it.quantity)) {
+            shippedMap[it.orderProductId] = (shippedMap[it.orderProductId] || 0) + Number(it.quantity)
+          }
+        })
+      })
+    shipLines.value = products.map((prod: any) => {
+      const ordered = Number(prod.quantity || 0)
+      const shipped = shippedMap[prod.id] || 0
+      const remaining = Math.max(ordered - shipped, 0)
+      return {
+        orderProductId: prod.id,
+        productCode: prod.productCode || '',
+        productName: prod.productName || '',
+        ordered,
+        shipped,
+        remaining,
+        quantity: remaining,
+      }
+    })
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载订单发货明细失败')
+    shipLines.value = []
+  } finally {
+    shipLinesLoading.value = false
+  }
+}
+
 const submitShip = async () => {
   if (!shipOrderId.value) return
+  const items = shipLines.value
+    .filter((l) => Number(l.quantity) > 0)
+    .map((l) => ({ orderProductId: l.orderProductId, quantity: Number(l.quantity) }))
+  if (shipLines.value.length > 0 && items.length === 0) {
+    ElMessage.warning('请填写本次发货数量（至少一行大于 0）')
+    return
+  }
   shipSubmitting.value = true
   try {
-    await orderStatusApi.shipOrder(shipOrderId.value, shipForm)
-    ElMessage.success('发货成功，订单已进入已发货状态')
+    await orderStatusApi.shipOrder(shipOrderId.value, { ...shipForm, items })
+    const partial = shipLines.value.some((l) => Number(l.quantity) < l.remaining)
+    ElMessage.success(
+      partial ? '发货成功（部分发货，订单仍在生产中，可继续发货）' : '发货成功，订单已进入已发货状态'
+    )
     shipDialogVisible.value = false
+    shipLines.value = []
     getList()
     await guideToPrint(shipOrderId.value)
   } catch (e: any) {
@@ -928,6 +1210,7 @@ function handleReviewPrint(row: any) {
     query: { orderId: row.orderId, templateId: 47 },
   })
 }
+
 </script>
 
 <style scoped lang="scss">
@@ -949,5 +1232,13 @@ function handleReviewPrint(row: any) {
 
 .mb8 {
   margin-bottom: 8px;
+}
+</style>
+
+<style scoped>
+.ship-hint {
+  color: #909399;
+  font-size: 12px;
+  line-height: 18px;
 }
 </style>
