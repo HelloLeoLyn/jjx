@@ -45,6 +45,8 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
     private final ReviewFlowService reviewFlowService;
     private final InventoryInboundService inboundService;
     private final InventoryMaterialMapper materialMapper;
+    /** 2026-09-21（dev-20260921-009）：退货审核/驳回/退款要发事件（此前退货闭环无任何通知）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     @Override
     public PageResult<SalesReturn> page(SalesReturnQueryDTO query) {
@@ -154,6 +156,12 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
         reviewFlowService.record("sales_return", returnId, "APPROVE", "审核通过",
                 SalesReturnStatusEnum.APPLYING.getValue(), SalesReturnStatusEnum.APPROVED.getValue(),
                 approveRemark, null);
+        // 2026-09-21（dev-20260921-009）：退货审核通过发事件（手写 payload 带得上单号/客户/金额）
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        payload.put("returnNo", salesReturn.getReturnNo());
+        payload.put("customerName", salesReturn.getCustomerName());
+        payload.put("totalAmount", salesReturn.getTotalAmount());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.return.approved", payload);
     }
 
     @Override
@@ -172,6 +180,12 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
         reviewFlowService.record("sales_return", returnId, "REJECT", "审核驳回",
                 SalesReturnStatusEnum.APPLYING.getValue(), SalesReturnStatusEnum.APPLYING.getValue(),
                 approveRemark, null);
+        // 2026-09-21（dev-20260921-009）：退货驳回发事件
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        payload.put("returnNo", salesReturn.getReturnNo());
+        payload.put("customerName", salesReturn.getCustomerName());
+        payload.put("approveRemark", approveRemark);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.return.rejected", payload);
     }
 
     @Override
@@ -266,6 +280,12 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
         if (salesReturn.getOrderId() != null) {
             writebackOrderPayment(salesReturn.getOrderId(), refundAmount == null ? BigDecimal.ZERO : refundAmount);
         }
+        // 2026-09-21（dev-20260921-009）：退货退款发事件（钱已动，必须留通知与留痕）
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        payload.put("returnNo", salesReturn.getReturnNo());
+        payload.put("customerName", salesReturn.getCustomerName());
+        payload.put("refundAmount", salesReturn.getRefundAmount());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.return.refunded", payload);
     }
 
     /** 退款回写订单付款状态（对照收款回写 052 口径：paid_amount 扣减退款） */

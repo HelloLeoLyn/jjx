@@ -28,6 +28,8 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
 
     private final SalesReceiptMapper receiptMapper;
     private final OrderMapper orderMapper;
+    /** 2026-09-21（dev-20260921-009）：收款单改/删要发事件（财务敏感、此前完全无痕）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     @Override public PageResult<SalesReceipt> page(int pageNum, int pageSize, String receiptNo, String customerName,
                                                    java.time.LocalDate startDate, java.time.LocalDate endDate, Integer status) {
@@ -80,6 +82,15 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
         if (oldReceipt.getOrderId() != null && !oldReceipt.getOrderId().equals(receipt.getOrderId())) {
             updateOrderPaymentStatus(oldReceipt.getOrderId());
         }
+        // 2026-09-21（dev-20260921-009）：收款单修改发事件。手写 payload（@Event 取不到 receiptNo），
+        // 模板里的 {receiptNo} 才能解析；收件人默认 SALES 业务操作+审核员，可在事件配置页调整。
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("receipt", receipt.getReceiptId());
+        payload.put("receiptNo", receipt.getReceiptNo() != null ? receipt.getReceiptNo() : oldReceipt.getReceiptNo());
+        payload.put("customerName", receipt.getCustomerName() != null ? receipt.getCustomerName() : oldReceipt.getCustomerName());
+        payload.put("orderId", receipt.getOrderId() != null ? receipt.getOrderId() : oldReceipt.getOrderId());
+        payload.put("receiptAmount", receipt.getActualAmount() != null ? receipt.getActualAmount() : oldReceipt.getActualAmount());
+        payload.put("oldReceiptAmount", oldReceipt.getActualAmount());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.receipt.updated", payload);
         return true;
     }
 
@@ -97,6 +108,13 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
         if (oldReceipt.getOrderId() != null) {
             updateOrderPaymentStatus(oldReceipt.getOrderId());
         }
+        // 2026-09-21（dev-20260921-009）：收款单删除发事件（删除前已取到单据，能把单号带进通知）。
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("receipt", oldReceipt.getReceiptId());
+        payload.put("receiptNo", oldReceipt.getReceiptNo());
+        payload.put("customerName", oldReceipt.getCustomerName());
+        payload.put("orderId", oldReceipt.getOrderId());
+        payload.put("receiptAmount", oldReceipt.getActualAmount());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.receipt.deleted", payload);
         return true;
     }
 

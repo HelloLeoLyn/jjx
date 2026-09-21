@@ -69,6 +69,8 @@ public class InquiryServiceImpl implements IInquiryService {
     private final OperLogChangeRecorder changeRecorder;
     private final LogSaveService logSaveService;
     private final SysAttachmentMapper attachmentMapper;
+    /** 2026-09-21（dev-20260921-009）：询价发送/客户接受/拒绝要发事件。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     /**
      * 分页查询询价单列表
@@ -427,7 +429,13 @@ public class InquiryServiceImpl implements IInquiryService {
         SalesInquiry update = new SalesInquiry();
         update.setInquiryId(inquiryId);
         update.setInquiryStatus(SalesInquiryStatus.SENT.getValue());
-        return inquiryMapper.updateById(update);
+        int rows = inquiryMapper.updateById(update);
+        // 2026-09-21（dev-20260921-009）：询价单发送/客户接受/拒绝此前全程无通知
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId);
+        payload.put("inquiryNo", inquiry.getInquiryNo());
+        payload.put("customerName", inquiry.getCustomerName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "inquiry.sent", payload);
+        return rows;
     }
 
     /**
@@ -446,7 +454,13 @@ public class InquiryServiceImpl implements IInquiryService {
         SalesInquiry update = new SalesInquiry();
         update.setInquiryId(inquiryId);
         update.setInquiryStatus(SalesInquiryStatus.ACCEPTED.getValue());
-        return inquiryMapper.updateById(update);
+        int rows = inquiryMapper.updateById(update);
+        // 2026-09-21（dev-20260921-009）：客户接受询价发事件（下一步通常要转报价）
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId);
+        payload.put("inquiryNo", inquiry.getInquiryNo());
+        payload.put("customerName", inquiry.getCustomerName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "inquiry.accepted", payload);
+        return rows;
     }
 
     /**
@@ -465,7 +479,13 @@ public class InquiryServiceImpl implements IInquiryService {
         SalesInquiry update = new SalesInquiry();
         update.setInquiryId(inquiryId);
         update.setInquiryStatus(SalesInquiryStatus.REJECTED.getValue());
-        return inquiryMapper.updateById(update);
+        int rows = inquiryMapper.updateById(update);
+        // 2026-09-21（dev-20260921-009）：客户拒绝询价发事件
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId);
+        payload.put("inquiryNo", inquiry.getInquiryNo());
+        payload.put("customerName", inquiry.getCustomerName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "inquiry.rejected", payload);
+        return rows;
     }
 
     /**

@@ -612,6 +612,12 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
 
+        // 2026-09-21（dev-20260921-009）：订单完成发事件（订单流程里此前唯独「完成」没有任何通知）
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("order", orderId);
+        payload.put("orderNo", order.getOrderNo());
+        payload.put("customerName", order.getCustomerName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "order.completed", payload);
+
         log.info("订单{}完成，操作人：{}", orderId, SecurityUtils.getUsername());
     }
 
