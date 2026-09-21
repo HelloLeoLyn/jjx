@@ -39,10 +39,27 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         implements IEngineeringRoutingService {
 
     private final EngineeringRoutingMapper routingMapper;
+    /** 2026-09-21（dev-20260921-013）：工程事件改手写 payload（带业务编码）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final EngineeringRoutingItemMapper routingDetailMapper;
     private final EngineeringRoutingConverter routingConverter;
     private final com.jjx.product.mapper.ProductMapper productMapper;
     private final OperLogChangeRecorder changeRecorder;
+
+    /**
+     * 工程事件统一发布（2026-09-21 dev-20260921-013 工程批）：手写 payload，bizNo 取工艺路线编号。
+     */
+    private void publishRoutingEvent(String eventCode, EngineeringRouting routing) {
+        if (routing == null) {
+            return;
+        }
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "routing", routing.getRoutingId(), routing.getRoutingCode());
+        payload.put("routingCode", routing.getRoutingCode());
+        payload.put("productCode", routing.getProductCode());
+        payload.put("routingVersion", routing.getRoutingVersion());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -351,7 +368,6 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     }
 
     @Override
-    @Event(value = "product.routing.version_changed", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void setCurrentVersion(Long routingId) {
         EngineeringRouting routing = getById(routingId);
@@ -367,10 +383,10 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         updateById(routing);
 
         log.info("设置当前版本成功: {} v{}", routing.getRoutingCode(), routing.getRoutingVersion());
+        publishRoutingEvent("product.routing.version_changed", routing);
     }
 
     @Override
-    @Event(value = "product.routing.submitted", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void submitApprove(Long routingId) {
         EngineeringRouting routing = getById(routingId);
@@ -387,10 +403,10 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         updateById(routing);
 
         log.info("提交审批成功: {}", routing.getRoutingCode());
+        publishRoutingEvent("product.routing.submitted", routing);
     }
 
     @Override
-    @Event(value = "product.routing.approved", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long routingId, String remark) {
         EngineeringRouting routing = getById(routingId);
@@ -406,10 +422,10 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         updateById(routing);
 
         log.info("审批通过: {}", routing.getRoutingCode());
+        publishRoutingEvent("product.routing.approved", routing);
     }
 
     @Override
-    @Event(value = "product.routing.rejected", bizId = "#routingId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void reject(Long routingId, String remark) {
         EngineeringRouting routing = getById(routingId);
@@ -425,6 +441,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         updateById(routing);
 
         log.info("审批驳回: {}", routing.getRoutingCode());
+        publishRoutingEvent("product.routing.rejected", routing);
     }
 
     @Override

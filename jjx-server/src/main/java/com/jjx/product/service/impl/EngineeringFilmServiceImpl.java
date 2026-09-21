@@ -32,8 +32,25 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         implements IEngineeringFilmService {
 
     private final EngineeringFilmMapper filmMapper;
+    /** 2026-09-21（dev-20260921-013）：工程事件改手写 payload（带业务编码）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final ProductMapper productMapper;
     private final ReviewFlowService reviewFlowService;
+
+    /**
+     * 工程事件统一发布（2026-09-21 dev-20260921-013 工程批）：
+     * 手写 payload，bizNo 取菲林编号；原注解 bizId=#filmId 只能显示内部编号。
+     */
+    private void publishFilmEvent(String eventCode, EngineeringFilm film) {
+        if (film == null) {
+            return;
+        }
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "film", film.getFilmId(), film.getFilmCode());
+        payload.put("filmCode", film.getFilmCode());
+        payload.put("productCode", film.getProductCode());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -102,7 +119,6 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
     }
 
     @Override
-    @Event(value = "product.film.deleted", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void deleteFilm(Long filmId) {
         EngineeringFilm film = getById(filmId);
@@ -117,10 +133,10 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
 
         removeById(filmId);
         log.info("删除菲林成功: {}", film.getFilmCode());
+        publishFilmEvent("product.film.deleted", film);
     }
 
     @Override
-    @Event(value = "product.film.submitted", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void submitApprove(Long filmId) {
         EngineeringFilm film = getById(filmId);
@@ -139,10 +155,10 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
                 ApproveStatusEnum.DRAFT.getValue(), ApproveStatusEnum.PENDING.getValue(), null, null);
 
         log.info("提交菲林审批成功: {}", film.getFilmCode());
+        publishFilmEvent("product.film.submitted", film);
     }
 
     @Override
-    @Event(value = "product.film.approved", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long filmId, String remark) {
         EngineeringFilm film = getById(filmId);
@@ -163,10 +179,10 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
                 ApproveStatusEnum.PENDING.getValue(), ApproveStatusEnum.APPROVED.getValue(), remark, null);
 
         log.info("菲林审批通过: {}", film.getFilmCode());
+        publishFilmEvent("product.film.approved", film);
     }
 
     @Override
-    @Event(value = "product.film.rejected", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void reject(Long filmId, String remark) {
         EngineeringFilm film = getById(filmId);
@@ -191,6 +207,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
                 ApproveStatusEnum.PENDING.getValue(), ApproveStatusEnum.REJECTED.getValue(), remark, null);
 
         log.info("菲林审批驳回: {}, 原因: {}", film.getFilmCode(), remark);
+        publishFilmEvent("product.film.rejected", film);
     }
 
     @Override
@@ -265,7 +282,6 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
     }
 
     @Override
-    @Event(value = "product.film.released", bizId = "#filmId", bizType = "'product'")
     @Transactional(rollbackFor = Exception.class)
     public void releaseToProduction(Long filmId) {
         EngineeringFilm film = getById(filmId);
@@ -283,6 +299,7 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
         updateById(film);
 
         log.info("菲林下发生产成功: {}", film.getFilmCode());
+        publishFilmEvent("product.film.released", film);
     }
 
     @Override

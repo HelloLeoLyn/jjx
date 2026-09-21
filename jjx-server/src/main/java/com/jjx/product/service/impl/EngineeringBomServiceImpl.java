@@ -47,6 +47,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final ReviewFlowService reviewFlowService;
+    /** 2026-09-21（dev-20260921-013）：BOM 事件改手写 payload（带 BOM 编码）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     public EngineeringBomServiceImpl(EngineeringBomMapper productBomMapper,
                                  EngineeringBomItemMapper productBomItemMapper,
@@ -63,6 +65,20 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         this.inventoryMaterialMapper = inventoryMaterialMapper;
         this.reviewFlowService = reviewFlowService;
         this.changeRecorder = changeRecorder;
+    }
+
+    /**
+     * BOM 事件统一发布（2026-09-21 dev-20260921-013 工程批）：
+     * 手写 payload，bizNo 取 BOM 编码（原注解 @Event("bom.submitted") 连 bizId 都没有）。
+     */
+    private void publishBomEvent(String eventCode, EngineeringBom bom) {
+        if (bom == null) {
+            return;
+        }
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "bom", bom.getBomId(), bom.getBomCode());
+        payload.put("bomCode", bom.getBomCode());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     @Override
@@ -547,8 +563,6 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         List<EngineeringBomVO> records = productBomMapper.selectBomList(query, offset);
         return PageResult.build(records, total);
     }
-
-    @Event("bom.submitted")
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean submitApprove(Long bomId) {
@@ -575,10 +589,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             reviewFlowService.record("engineering_bom", bomId, "SUBMIT", "提交审核",
                     current, dto.getTarget(), null, null);
         }
+        publishBomEvent("bom.submitted", bom);
         return updated;
     }
-
-    @Event("bom.approved")
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean approve(UpdateBomStatusDTO dto) {
@@ -590,6 +603,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             reviewFlowService.record("engineering_bom", dto.getBomId(), "APPROVE", "审核通过",
                     dto.getCurrent(), dto.getTarget(), dto.getRemark(), null);
         }
+        publishBomEvent("bom.approved", productBom);
         return updated;
     }
 
