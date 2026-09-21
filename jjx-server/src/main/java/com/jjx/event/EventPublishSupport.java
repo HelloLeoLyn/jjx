@@ -25,10 +25,25 @@ public final class EventPublishSupport {
      * 账号进 triggerUserName（任务 create_by 用），姓名进 triggerRealName（通知「发送人」用）。
      */
     public static Map<String, Object> payload(String bizType, Long bizId) {
+        return payload(bizType, bizId, null);
+    }
+
+    /**
+     * 组装基础 payload，并带上业务单号 bizNo（2026-09-21 dev-20260921-012）。
+     * bizNo 为空时退回 bizId 的字面值，保证模板里 {bizNo} 永远有值可渲染。
+     */
+    public static Map<String, Object> payload(String bizType, Long bizId, String bizNo) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("bizType", bizType);
         if (bizId != null) {
             payload.put("bizId", bizId);
+        }
+        String no = bizNo;
+        if (no == null || no.isBlank()) {
+            no = bizId == null ? null : String.valueOf(bizId);
+        }
+        if (no != null) {
+            payload.put("bizNo", no);
         }
         try {
             payload.put("triggerUserId", SecurityUtils.getUserId());

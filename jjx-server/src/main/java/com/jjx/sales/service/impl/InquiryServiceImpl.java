@@ -431,7 +431,7 @@ public class InquiryServiceImpl implements IInquiryService {
         update.setInquiryStatus(SalesInquiryStatus.SENT.getValue());
         int rows = inquiryMapper.updateById(update);
         // 2026-09-21（dev-20260921-009）：询价单发送/客户接受/拒绝此前全程无通知
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId, inquiry.getInquiryNo());
         payload.put("inquiryNo", inquiry.getInquiryNo());
         payload.put("customerName", inquiry.getCustomerName());
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "inquiry.sent", payload);
@@ -456,7 +456,7 @@ public class InquiryServiceImpl implements IInquiryService {
         update.setInquiryStatus(SalesInquiryStatus.ACCEPTED.getValue());
         int rows = inquiryMapper.updateById(update);
         // 2026-09-21（dev-20260921-009）：客户接受询价发事件（下一步通常要转报价）
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId, inquiry.getInquiryNo());
         payload.put("inquiryNo", inquiry.getInquiryNo());
         payload.put("customerName", inquiry.getCustomerName());
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "inquiry.accepted", payload);
@@ -481,7 +481,7 @@ public class InquiryServiceImpl implements IInquiryService {
         update.setInquiryStatus(SalesInquiryStatus.REJECTED.getValue());
         int rows = inquiryMapper.updateById(update);
         // 2026-09-21（dev-20260921-009）：客户拒绝询价发事件
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("inquiry", inquiryId, inquiry.getInquiryNo());
         payload.put("inquiryNo", inquiry.getInquiryNo());
         payload.put("customerName", inquiry.getCustomerName());
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "inquiry.rejected", payload);

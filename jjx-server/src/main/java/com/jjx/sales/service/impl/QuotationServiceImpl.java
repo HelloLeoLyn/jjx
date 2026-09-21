@@ -780,7 +780,7 @@ public class QuotationServiceImpl implements IQuotationService {
         int rows = quotationMapper.updateById(quotation);
         recordFlow(quotation, "MODIFY", "改单", from, QuotationStatus.MODIFYING.getValue(), null, attachmentIds);
         // 2026-09-21（dev-20260921-009）：报价改单发事件（报价全链里此前唯独「改单」无通知）
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("quotation", quotationId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("quotation", quotationId, quotation.getQuotationNo());
         payload.put("quotationNo", quotation.getQuotationNo());
         payload.put("customerName", quotation.getCustomerName());
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "quotation.modified", payload);

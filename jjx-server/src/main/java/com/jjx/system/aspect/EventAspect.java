@@ -104,6 +104,13 @@ public class EventAspect {
             payload.put("bizId", resolveSpel(bizIdExpr, spelCtx));
         }
 
+        // 2026-09-21（dev-20260921-012）：统一信封字段 bizNo（业务单号）。
+        // 默认取 bizId 的字面值兜底；业务方法可用 params = {"bizNo=#result.orderNo"} 覆盖
+        // （下面的 SpEL params 在后写入，天然覆盖同名字段），模板侧统一写 {bizNo}。
+        if (payload.get("bizNo") == null && payload.get("bizId") != null) {
+            payload.put("bizNo", String.valueOf(payload.get("bizId")));
+        }
+
         // bizType
         if (!eventAnnotation.bizType().isEmpty()) {
             payload.put("bizType", eventAnnotation.bizType());

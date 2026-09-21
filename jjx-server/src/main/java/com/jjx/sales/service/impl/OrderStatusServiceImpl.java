@@ -613,7 +613,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         }
 
         // 2026-09-21（dev-20260921-009）：订单完成发事件（订单流程里此前唯独「完成」没有任何通知）
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("order", orderId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("order", orderId, order.getOrderNo());
         payload.put("orderNo", order.getOrderNo());
         payload.put("customerName", order.getCustomerName());
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "order.completed", payload);

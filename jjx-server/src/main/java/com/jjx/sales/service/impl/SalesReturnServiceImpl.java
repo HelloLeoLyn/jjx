@@ -157,7 +157,7 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
                 SalesReturnStatusEnum.APPLYING.getValue(), SalesReturnStatusEnum.APPROVED.getValue(),
                 approveRemark, null);
         // 2026-09-21（dev-20260921-009）：退货审核通过发事件（手写 payload 带得上单号/客户/金额）
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId, salesReturn.getReturnNo());
         payload.put("returnNo", salesReturn.getReturnNo());
         payload.put("customerName", salesReturn.getCustomerName());
         payload.put("totalAmount", salesReturn.getTotalAmount());
@@ -181,7 +181,7 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
                 SalesReturnStatusEnum.APPLYING.getValue(), SalesReturnStatusEnum.APPLYING.getValue(),
                 approveRemark, null);
         // 2026-09-21（dev-20260921-009）：退货驳回发事件
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId, salesReturn.getReturnNo());
         payload.put("returnNo", salesReturn.getReturnNo());
         payload.put("customerName", salesReturn.getCustomerName());
         payload.put("approveRemark", approveRemark);
@@ -256,7 +256,7 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
         }
         // 2026-09-21（dev-20260921-010）：退货收货发事件（收货会联动生成退货入库单并加回库存，
         // 钱和货都动了，此前没有任何通知）
-        java.util.Map<String, Object> receivedPayload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        java.util.Map<String, Object> receivedPayload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId, salesReturn.getReturnNo());
         receivedPayload.put("returnNo", salesReturn.getReturnNo());
         receivedPayload.put("customerName", salesReturn.getCustomerName());
         receivedPayload.put("totalQuantity", salesReturn.getTotalQuantity());
@@ -288,7 +288,7 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
             writebackOrderPayment(salesReturn.getOrderId(), refundAmount == null ? BigDecimal.ZERO : refundAmount);
         }
         // 2026-09-21（dev-20260921-009）：退货退款发事件（钱已动，必须留通知与留痕）
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("sales_return", returnId, salesReturn.getReturnNo());
         payload.put("returnNo", salesReturn.getReturnNo());
         payload.put("customerName", salesReturn.getCustomerName());
         payload.put("refundAmount", salesReturn.getRefundAmount());

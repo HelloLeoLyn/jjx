@@ -84,7 +84,8 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
         }
         // 2026-09-21（dev-20260921-009）：收款单修改发事件。手写 payload（@Event 取不到 receiptNo），
         // 模板里的 {receiptNo} 才能解析；收件人默认 SALES 业务操作+审核员，可在事件配置页调整。
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("receipt", receipt.getReceiptId());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("receipt", receipt.getReceiptId(),
+                receipt.getReceiptNo() != null ? receipt.getReceiptNo() : oldReceipt.getReceiptNo());
         payload.put("receiptNo", receipt.getReceiptNo() != null ? receipt.getReceiptNo() : oldReceipt.getReceiptNo());
         payload.put("customerName", receipt.getCustomerName() != null ? receipt.getCustomerName() : oldReceipt.getCustomerName());
         payload.put("orderId", receipt.getOrderId() != null ? receipt.getOrderId() : oldReceipt.getOrderId());
@@ -109,7 +110,7 @@ public class SalesReceiptServiceImpl extends ServiceImpl<SalesReceiptMapper, Sal
             updateOrderPaymentStatus(oldReceipt.getOrderId());
         }
         // 2026-09-21（dev-20260921-009）：收款单删除发事件（删除前已取到单据，能把单号带进通知）。
-        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("receipt", oldReceipt.getReceiptId());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("receipt", oldReceipt.getReceiptId(), oldReceipt.getReceiptNo());
         payload.put("receiptNo", oldReceipt.getReceiptNo());
         payload.put("customerName", oldReceipt.getCustomerName());
         payload.put("orderId", oldReceipt.getOrderId());

@@ -4,6 +4,7 @@ import cn.hutool.json.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.jjx.event.EventPublisher;
+import com.jjx.event.EventTemplateRenderer;
 import com.jjx.kanban.enums.KanbanTaskStatusEnum;
 import com.jjx.notification.domain.dto.NotificationCreateDTO;
 import com.jjx.notification.domain.entity.Notification;
@@ -23,8 +24,6 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 本地事件联动器
@@ -115,8 +114,8 @@ public class LocalEventPublisher implements EventPublisher {
                     String rawCode = eventCode + "-" + System.currentTimeMillis();
                     // task_code 列宽 50，超长截断（事件前缀长如 inventory.outbound.created_from_production）
                     task.setTaskCode(rawCode.length() > 50 ? rawCode.substring(0, 50) : rawCode);
-                    task.setTitle(resolveTemplate(event.getTitle(), payload));
-                    task.setDescription(resolveTemplate(event.getContent(), payload));
+                    task.setTitle(resolveTemplate(event.getTitle(), payload, eventCode));
+                    task.setDescription(resolveTemplate(event.getContent(), payload, eventCode));
                     task.setTaskType(eventCode.contains("sample") ? "sample" : "general");
                     task.setStartTime(java.time.LocalDateTime.now());
                     task.setSourceEvent(eventCode);
@@ -232,8 +231,8 @@ public class LocalEventPublisher implements EventPublisher {
                                     Map<String, Object> payload, Long receiverId) {
         try {
             NotificationCreateDTO dto = new NotificationCreateDTO();
-            dto.setTitle(resolveTemplate(event.getTitle(), payload));
-            dto.setContent(resolveTemplate(event.getContent(), payload));
+            dto.setTitle(resolveTemplate(event.getTitle(), payload, eventCode));
+            dto.setContent(resolveTemplate(event.getContent(), payload, eventCode));
             dto.setNotificationType("system");
             dto.setBizType(eventCode);
             Object bizId = payload == null ? null : payload.get("bizId");
@@ -261,19 +260,21 @@ public class LocalEventPublisher implements EventPublisher {
         }
     }
 
-    private String resolveTemplate(String template, Map<String, Object> payload) {
-        if (template == null || payload == null) return template;
-        String result = template;
-        // 兼容两种写法：${xxx} 和 {xxx}
-        Pattern pattern = Pattern.compile("\\$?\\{([^}]+)\\}");
-        Matcher matcher = pattern.matcher(result);
-        while (matcher.find()) {
-            String expr = matcher.group(1);
-            Object val = payload.get(expr);
-            if (val != null) {
-                result = result.replace(matcher.group(0), String.valueOf(val));
-            }
+    /**
+     * 渲染通知/任务模板（2026-09-21 dev-20260921-012 起改由 {@link EventTemplateRenderer} 负责）。
+     *
+     * <p>变化：支持 {key|备选键} 兜底；取不到的键渲染成空串并在此打 WARN（带上事件码与键名），
+     * 不再把「{inboundNo}」这类占位符原样留在通知标题里（用户看到的应当是缺值，而不是花括号）。</p>
+     */
+    private String resolveTemplate(String template, Map<String, Object> payload, String eventCode) {
+        if (template == null || payload == null) {
+            return template;
         }
-        return result;
+        EventTemplateRenderer.Result result = EventTemplateRenderer.renderWithMissing(template, payload);
+        if (!result.missingKeys().isEmpty()) {
+            log.warn("⚠️ 事件[{}] 模板占位符无对应数据，已按空值渲染: keys={}, bizId={}",
+                    eventCode, result.missingKeys(), payload.get("bizId"));
+        }
+        return result.rendered();
     }
 }
