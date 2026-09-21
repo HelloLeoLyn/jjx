@@ -13,46 +13,68 @@
         <el-form-item><el-button type="primary" @click="load">刷新</el-button></el-form-item>
       </el-form>
     </el-card>
-    <el-card class="card"
-      ><template #header>批次谱系</template
-      ><el-table v-loading="batchLoading" :data="batchRows" border
-        ><el-table-column prop="batchNo" label="批次" width="190" /><el-table-column
-          prop="parentBatchNo"
-          label="父批次"
-          width="190"
-        /><el-table-column prop="batchType" label="类型" width="120" /><el-table-column
-          prop="quantity"
-          label="批次数量"
-          width="100"
-        /><el-table-column prop="acceptedQuantity" label="合格数量" width="100" /><el-table-column
-          prop="rejectedQuantity"
-          label="不良数量"
-          width="100"
-        /><el-table-column label="状态" width="110"
-          ><template #default="{ row }"
-            ><el-tag :type="IqcBatchStatusEnum.getTagProps(row.status).type">{{
+    <el-card class="card">
+      <template #header>批次谱系</template>
+      <el-table v-loading="batchLoading" :data="batchRows" border>
+        <el-table-column prop="batchNo" label="批次" width="190" />
+        <el-table-column prop="parentBatchNo" label="父批次" width="190" />
+        <el-table-column label="类型" width="120">
+          <template #default="{ row }">{{ batchTypeLabel(row.batchType) }}</template>
+        </el-table-column>
+        <el-table-column prop="quantity" label="批次数量" width="100" />
+        <el-table-column prop="acceptedQuantity" label="合格数量" width="100" />
+        <el-table-column prop="rejectedQuantity" label="不良数量" width="100" />
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }">
+            <el-tag :type="IqcBatchStatusEnum.getTagProps(row.status).type">{{
               IqcBatchStatusEnum.getLabel(row.status)
-            }}</el-tag></template
-          ></el-table-column
-        ></el-table
-    ></el-card>
-    <el-card class="card"
-      ><el-table v-loading="loading" :data="rows" border>
-        <el-table-column prop="materialCode" label="物料编码" width="160" />
-        <el-table-column prop="materialName" label="物料名称" min-width="180" />
+            }}</el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+    <el-card class="card">
+      <template #header>
+        <div class="card-title">
+          <span>隔离台账（待处置明细）</span>
+          <span class="card-tip"
+            >来料检验判定为不合格的物料会进这张台账；处置方式只有四种：释放入库 / 退货 /
+            返工 / 报废。「剩余数量」减到 0 才算结清，状态才会变成已释放/已退货/已返工/已报废。</span
+          >
+        </div>
+      </template>
+      <el-table v-loading="loading" :data="rows" border>
+        <el-table-column prop="materialCode" label="物料编码" width="150" />
+        <el-table-column prop="materialName" label="物料名称" min-width="170" />
         <el-table-column prop="batchNo" label="批次" width="160" />
-        <el-table-column prop="quantity" label="原始隔离" width="110" />
-        <el-table-column prop="remainingQuantity" label="剩余数量" width="110" />
-        <el-table-column label="状态" width="100"
-          ><template #default="{ row }"
-            ><el-tag :type="IqcQuarantineStatusEnum.getTagProps(row.status).type">{{
+        <el-table-column label="原始隔离" width="105" align="right">
+          <template #default="{ row }">{{ num(row.quantity) }}</template>
+        </el-table-column>
+        <el-table-column label="已处置" width="100" align="right">
+          <template #default="{ row }">{{ num(disposedQuantity(row)) }}</template>
+        </el-table-column>
+        <el-table-column label="剩余数量" width="105" align="right">
+          <template #default="{ row }">
+            <span :class="{ danger: Number(row.remainingQuantity) > 0 }">{{
+              num(row.remainingQuantity)
+            }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="130">
+          <template #default="{ row }">
+            <el-tag :type="IqcQuarantineStatusEnum.getTagProps(row.status).type">{{
               IqcQuarantineStatusEnum.getLabel(row.status)
-            }}</el-tag></template
-          ></el-table-column
-        >
-        <el-table-column prop="disposition" label="IQC处置建议" width="130" />
-        <el-table-column prop="createTime" label="建立时间" width="180" />
-        <el-table-column label="操作" width="100" fixed="right">
+            }}</el-tag>
+            <el-tag v-if="isPartial(row)" class="partial" size="small" type="warning" effect="plain"
+              >部分处置</el-tag
+            >
+          </template>
+        </el-table-column>
+        <el-table-column label="IQC处置建议" width="140">
+          <template #default="{ row }">{{ dispositionLabel(row.disposition) }}</template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="建立时间" width="170" />
+        <el-table-column label="操作" width="130" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="
@@ -65,11 +87,14 @@
               @click="openDisposition(row)"
               >处置</el-button
             >
+            <el-tooltip v-else-if="!canDispose" content="当前账号无「隔离处置」权限，请联系品质主管授权">
+              <span class="no-perm">无处置权限</span>
+            </el-tooltip>
             <span v-else>-</span>
           </template>
         </el-table-column>
-      </el-table></el-card
-    >
+      </el-table>
+    </el-card>
     <el-card class="card"
       ><template #header>供应商返工单</template
       ><el-table v-loading="reworkLoading" :data="reworkOrders" border
@@ -114,23 +139,23 @@
         ></el-table
       ></el-card
     >
-    <el-card class="card"
-      ><template #header>处置单历史</template
-      ><el-table v-loading="ordersLoading" :data="orders" border
-        ><el-table-column prop="dispositionNo" label="处置单号" width="210" /><el-table-column
-          prop="action"
-          label="类型"
-          width="110" /><el-table-column
-          prop="materialCode"
-          label="物料"
-          width="160" /><el-table-column prop="quantity" label="数量" width="100" /><el-table-column
-          prop="operatorName"
-          label="操作人"
-          width="110" /><el-table-column prop="createTime" label="时间" /></el-table
-    ></el-card>
+    <el-card class="card">
+      <template #header>处置单历史（本页已执行的每一次处置）</template>
+      <el-table v-loading="ordersLoading" :data="orders" border>
+        <el-table-column prop="dispositionNo" label="处置单号" width="210" />
+        <el-table-column label="类型" width="120">
+          <template #default="{ row }">{{ actionLabel(row.action) }}</template>
+        </el-table-column>
+        <el-table-column prop="materialCode" label="物料" width="160" />
+        <el-table-column prop="quantity" label="数量" width="100" />
+        <el-table-column prop="operatorName" label="操作人" width="110" />
+        <el-table-column prop="createTime" label="时间" />
+      </el-table>
+    </el-card>
     <IqcQuarantineDialog
       v-model:visible="dispositionVisible"
       :inbound-id="activeInboundId"
+      :inbound-no="activeInboundNo"
       :item-id="activeItemId"
       @success="load"
     />
@@ -142,13 +167,21 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import { iqcApi } from '@/api/inventory/iqc'
-import { IqcQuarantineStatus, IqcQuarantineStatusEnum } from '@/enums/inventory/IqcQuarantineEnum'
+import {
+  IqcQuarantineActionEnum,
+  IqcQuarantineStatus,
+  IqcQuarantineStatusEnum,
+} from '@/enums/inventory/IqcQuarantineEnum'
 import { IqcReworkStatus, IqcReworkStatusEnum } from '@/enums/inventory/IqcReworkEnum'
-import { IqcBatchStatusEnum } from '@/enums/inventory/IqcBatchEnum'
+import { IqcBatchStatusEnum, IqcBatchTypeEnum } from '@/enums/inventory/IqcBatchEnum'
+import { IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
 import { hasPermi } from '@/directives'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 const router = useRouter()
-const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
+// 与来料检验页（iqc/index.vue）及处置弹窗同一口径：业务操作（inventory:inbound:edit）
+// 本来就能从「来料检验 → 隔离/处置」完成处置，这里原先只认 quality:ncr:dispose，
+// 导致库存业务操作/审核员打开本页时操作列只有一个「-」，无权限也无提示。
+const canDispose = computed(() => hasPermi(['quality:ncr:dispose', 'inventory:inbound:edit']))
 const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
 const status = ref<string>()
 const rows = ref<any[]>([])
@@ -161,7 +194,21 @@ const reworkLoading = ref(false)
 const batchLoading = ref(false)
 const dispositionVisible = ref(false)
 const activeInboundId = ref<number>()
+const activeInboundNo = ref<string>()
 const activeItemId = ref<string>()
+const num = (value?: number | string | null) =>
+  value == null || value === ''
+    ? '-'
+    : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+/** 已处置数量 = 原始隔离 − 剩余数量；后端部分处置时状态仍停在「待处置」，靠这两个数相减才能看出进度 */
+const disposedQuantity = (row: any) =>
+  Number(row.quantity || 0) - Number(row.remainingQuantity || 0)
+const isPartial = (row: any) =>
+  Number(row.remainingQuantity || 0) > 0 && disposedQuantity(row) > 0
+const dispositionLabel = (value?: string) => (value ? IqcDispositionEnum.getLabel(value) : '-')
+const batchTypeLabel = (value?: string) => (value ? IqcBatchTypeEnum.getLabel(value) : '-')
+const actionLabel = (value?: string) => (value ? IqcQuarantineActionEnum.getLabel(value) : '-')
+
 async function load() {
   loading.value = true
   ordersLoading.value = true
@@ -188,10 +235,18 @@ async function load() {
     batchLoading.value = false
   }
 }
-function openDisposition(row: any) {
+async function openDisposition(row: any) {
   activeInboundId.value = Number(row.inboundId)
   activeItemId.value = String(row.inboundItemId)
+  activeInboundNo.value = ''
   dispositionVisible.value = true
+  try {
+    // 弹窗标题要带来源入库单号：此前没传 inbound-no，标题一直是「IQC 隔离处置 - 」
+    const { data } = await inboundApi.getById(String(row.inboundId))
+    activeInboundNo.value = data?.inboundNo || ''
+  } catch {
+    activeInboundNo.value = ''
+  }
 }
 async function completeRework(row: any) {
   await ElMessageBox.confirm('完成返工后将生成新的IQC复检记录，确认继续吗？', '确认完成返工', {
@@ -219,5 +274,27 @@ onMounted(load)
 }
 .card {
   margin-top: 16px;
+}
+.card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.card-tip {
+  color: #909399;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.partial {
+  margin-left: 6px;
+}
+.no-perm {
+  color: #c0c4cc;
+  font-size: 12px;
+  cursor: help;
+}
+.danger {
+  color: #f56c6c;
 }
 </style>

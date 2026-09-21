@@ -18,23 +18,38 @@
           }}</el-tag></template
         ></el-table-column
       >
-      <el-table-column label="处置" width="330">
+      <el-table-column label="处置" width="360">
         <template #default="{ row }">
           <template v-if="canDispose && row.status === IqcQuarantineStatus.PENDING">
-            <el-input-number
-              v-model="row.actionQuantity"
-              :min="0.0001"
-              :max="Number(row.remainingQuantity)"
-              :precision="4"
+            <el-select
+              v-model="row.action"
+              placeholder="请选择处置方式（必选）"
               size="small"
-            />
-            <el-select v-model="row.action" size="small" style="width: 120px; margin-left: 8px">
-              <el-option label="释放入库" :value="IqcQuarantineAction.RELEASE" />
-              <el-option label="退货" :value="IqcQuarantineAction.RETURN" />
-              <el-option label="返工" :value="IqcQuarantineAction.REWORK" />
-              <el-option label="报废" :value="IqcQuarantineAction.SCRAP" />
+              style="width: 100%"
+            >
+              <el-option
+                v-for="item in IqcQuarantineActionEnum.items"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
-            <el-button link type="primary" @click="submit(row)">执行</el-button>
+            <div class="action-effect">{{ actionEffect(row.action) }}</div>
+            <div class="action-qty">
+              <span>处置数量</span>
+              <el-input-number
+                v-model="row.actionQuantity"
+                :min="0.0001"
+                :max="Number(row.remainingQuantity)"
+                :precision="4"
+                size="small"
+                style="width: 110px"
+              />
+              <span class="action-remain">/ 剩余 {{ num(row.remainingQuantity) }}</span>
+            </div>
+            <el-button type="primary" link :disabled="!row.action" @click="submit(row)">
+              执行处置
+            </el-button>
           </template>
           <span v-else>-</span>
         </template>
@@ -43,7 +58,9 @@
     <el-divider content-position="left">处置单历史</el-divider>
     <el-table v-loading="ordersLoading" :data="orders" border size="small">
       <el-table-column prop="dispositionNo" label="处置单号" min-width="190" />
-      <el-table-column prop="action" label="类型" width="100" />
+      <el-table-column label="类型" width="110">
+        <template #default="{ row }">{{ actionLabel(row.action) }}</template>
+      </el-table-column>
       <el-table-column prop="materialCode" label="物料" width="150" />
       <el-table-column prop="quantity" label="数量" width="90" />
       <el-table-column prop="operatorName" label="操作人" width="100" />
@@ -61,6 +78,8 @@ import { useUserStore } from '@/store/modules/user'
 import { hasPermi } from '@/directives'
 import {
   IqcQuarantineAction,
+  IqcQuarantineActionEffect,
+  IqcQuarantineActionEnum,
   IqcQuarantineStatus,
   IqcQuarantineStatusEnum,
 } from '@/enums/inventory/IqcQuarantineEnum'
@@ -102,7 +121,9 @@ async function load() {
       .filter((row) => !props.itemId || String(row.inboundItemId) === props.itemId)
       .map((row) => ({
         ...row,
-        action: IqcQuarantineAction.RELEASE,
+        // 之前默认预选「释放入库」（把不良品计入可用库存）且数量默认全部，一确认就生效；
+        // 改为必须人工选动作，数量仍默认全部（退货/报废通常就是整批）。
+        action: '',
         actionQuantity: Number(row.remainingQuantity),
       }))
     orders.value = (dispositionOrders.data || []).filter(
@@ -114,18 +135,59 @@ async function load() {
   }
 }
 async function submit(row: any) {
+  if (!row.action) return ElMessage.warning('请先选择处置方式')
+  const quantity = Number(row.actionQuantity || 0)
+  const remaining = Number(row.remainingQuantity || 0)
+  if (!(quantity > 0)) return ElMessage.warning('处置数量必须大于 0')
+  if (quantity > remaining) {
+    return ElMessage.warning(`处置数量不能超过剩余数量 ${num(remaining)}`)
+  }
+  const label = IqcQuarantineActionEnum.getLabel(row.action)
+  const effect = IqcQuarantineActionEffect[row.action] || ''
+  const isRelease = row.action === IqcQuarantineAction.RELEASE
   await ElMessageBox.confirm(
-    `确认处置 ${row.actionQuantity} 个 ${row.materialCode}？`,
-    '隔离品处置'
+    `确认对 ${row.materialCode} 执行【${label}】${num(quantity)} 个？影响：${effect}`,
+    isRelease ? '释放入库确认（不良品将计入可用库存）' : '隔离品处置确认',
+    {
+      type: isRelease ? 'warning' : 'info',
+      confirmButtonText: '确认执行',
+      cancelButtonText: '取消',
+    }
   )
   await inboundApi.handleQuarantine(String(row.quarantineId), {
     action: row.action,
-    quantity: row.actionQuantity,
+    quantity,
     operatorId: String(user.userId || ''),
     operatorName: String(user.nickName || user.userName || ''),
   })
-  ElMessage.success('隔离品处置已记账')
+  ElMessage.success(`处置完成：【${label}】${num(quantity)} 个 ${row.materialCode}`)
   await load()
   emit('success')
 }
+const num = (value?: number | string | null) =>
+  value == null || value === ''
+    ? '-'
+    : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+const actionLabel = (value?: string) => (value ? IqcQuarantineActionEnum.getLabel(value) : '-')
+const actionEffect = (value?: string) => (value ? IqcQuarantineActionEffect[value] || '' : '')
 </script>
+
+<style scoped>
+.action-effect {
+  margin-top: 6px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.action-qty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #606266;
+}
+.action-remain {
+  color: #909399;
+}
+</style>

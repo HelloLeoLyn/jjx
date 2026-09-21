@@ -1,4 +1,4 @@
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 export const IqcQuarantineAction = {
   RELEASE: 'RELEASE',
@@ -6,15 +6,19 @@ export const IqcQuarantineAction = {
   REWORK: 'REWORK',
   SCRAP: 'SCRAP',
 } as const
-export const IqcQuarantineActionEnum = createEnum({
-  items: [
-    { value: IqcQuarantineAction.RELEASE, label: '释放入库', tagProps: { type: 'success' } },
-    { value: IqcQuarantineAction.RETURN, label: '退货', tagProps: { type: 'warning' } },
-    { value: IqcQuarantineAction.REWORK, label: '返工', tagProps: { type: 'primary' } },
-    { value: IqcQuarantineAction.SCRAP, label: '报废', tagProps: { type: 'danger' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const IqcQuarantineActionEnum = createNamedEnum(
+  {
+    RELEASE: {
+      value: IqcQuarantineAction.RELEASE,
+      label: '释放入库',
+      tagProps: { type: 'success' },
+    },
+    RETURN: { value: IqcQuarantineAction.RETURN, label: '退货', tagProps: { type: 'warning' } },
+    REWORK: { value: IqcQuarantineAction.REWORK, label: '返工', tagProps: { type: 'primary' } },
+    SCRAP: { value: IqcQuarantineAction.SCRAP, label: '报废', tagProps: { type: 'danger' } },
+  },
+  { type: 'info' }
+)
 export const IqcQuarantineStatus = {
   PENDING: 'PENDING',
   RELEASED: 'RELEASED',
@@ -33,3 +37,16 @@ export const IqcQuarantineStatusEnum = createEnum({
   ],
   defaultTag: { type: 'info' },
 })
+
+/**
+ * 处置方式对应的业务后果说明（界面提示用，与后端 handleQuarantine 的实际行为一致）。
+ * 集中放这里而不是各页面自己写文案，避免两页面对同一动作的说法不一致。
+ */
+export const IqcQuarantineActionEffect: Record<string, string> = {
+  [IqcQuarantineAction.RELEASE]:
+    '把这部分不良品直接计入可用库存（不影响原检验结论，也不要求客户确认）',
+  [IqcQuarantineAction.RETURN]: '生成退货单，货物按退货处理，不进可用库存',
+  [IqcQuarantineAction.REWORK]:
+    '生成供应商返工单与复检子批次，返工完成后需到「来料检验」做复检',
+  [IqcQuarantineAction.SCRAP]: '生成报废单，只记台账（不良品本来就没进可用库存）',
+}

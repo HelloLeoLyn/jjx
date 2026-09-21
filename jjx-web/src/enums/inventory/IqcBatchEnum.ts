@@ -1,4 +1,4 @@
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 export const IqcBatchStatus = {
   SOURCE: 'SOURCE',
@@ -24,3 +24,16 @@ export const IqcBatchStatusEnum = createEnum({
   ],
   defaultTag: { type: 'info' },
 })
+
+/**
+ * IQC 批次类型（inventory_iqc_batch.batch_type 实际取值，2026-09-21 补枚举，
+ * 此前页面直接显示英文码 ORIGINAL/REWORK/REINSPECTION）。
+ */
+export const IqcBatchTypeEnum = createNamedEnum(
+  {
+    ORIGINAL: { value: 'ORIGINAL', label: '原始批次', tagProps: { type: 'info' } },
+    REWORK: { value: 'REWORK', label: '返工子批次', tagProps: { type: 'warning' } },
+    REINSPECTION: { value: 'REINSPECTION', label: '复检子批次', tagProps: { type: 'primary' } },
+  },
+  { type: 'info' }
+)
