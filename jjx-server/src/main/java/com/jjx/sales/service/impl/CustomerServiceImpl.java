@@ -43,6 +43,8 @@ public class CustomerServiceImpl implements ICustomerService {
     private final CustomerMapper customerMapper;
     private final CustomerConverter customerConverter;
     private final RedisSequenceService redisSequenceService;
+    /** 2026-09-21（dev-20260921-013）：客户事件改手写 payload（带客户编码）。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     @Override
     public List<CustomerVO> list(CustomerQueryDTO customer) {
@@ -121,7 +123,6 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "sales.customer.created", bizId = "#dto", bizType = "'sales'")
     public int insertCustomer(CustomerAddDTO dto) {
         log.info("新增客户，DTO：{}", dto);
 
@@ -155,12 +156,15 @@ public class CustomerServiceImpl implements ICustomerService {
         // 设置创建时间
         customer.setCreateTime(LocalDateTime.now());
 
-        return customerMapper.insert(customer);
+        int rows = customerMapper.insert(customer);
+        if (rows > 0) {
+            publishCustomerEvent("sales.customer.created", customer);
+        }
+        return rows;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "sales.customer.updated", bizId = "#dto", bizType = "'sales'")
     public int updateCustomer(CustomerEditDTO dto) {
         log.info("修改客户，DTO：{}", dto);
 
@@ -192,12 +196,45 @@ public class CustomerServiceImpl implements ICustomerService {
         // 设置更新时间
         customer.setUpdateTime(LocalDateTime.now());
 
-        return customerMapper.updateById(customer);
+        int rows = customerMapper.updateById(customer);
+        if (rows > 0) {
+            publishCustomerEvent("sales.customer.updated", customerMapper.selectById(customer.getCustomerId()));
+        }
+        return rows;
+    }
+
+    /**
+     * 客户类事件统一发布（2026-09-21 dev-20260921-013）：
+     * 手写 payload，bizNo 取客户编码（缺编码回退客户名称），模板里可写 {bizNo}。
+     */
+    private void publishCustomerEvent(String eventCode, SalesCustomer customer) {
+        if (customer == null) {
+            return;
+        }
+        String bizNo = customer.getCustomerCode() != null && !customer.getCustomerCode().isBlank()
+                ? customer.getCustomerCode() : customer.getCustomerName();
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "customer", customer.getCustomerId(), bizNo);
+        payload.put("customerName", customer.getCustomerName());
+        payload.put("customerCode", customer.getCustomerCode());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
+
+    /** 批量客户动作：一次事件带汇总单号（「A001 等 3 个」/「3 个客户」），避免逐个刷通知。 */
+    private void publishCustomerBatchEvent(String eventCode, java.util.List<SalesCustomer> customers) {
+        java.util.List<SalesCustomer> list = customers == null ? java.util.List.of() : customers;
+        String first = list.stream().map(SalesCustomer::getCustomerCode)
+                .filter(c -> c != null && !c.isBlank()).findFirst().orElse(null);
+        String bizNo = list.size() <= 1 ? first
+                : (first == null ? list.size() + " 个客户" : first + " 等 " + list.size() + " 个");
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "customer", list.isEmpty() ? null : list.get(0).getCustomerId(), bizNo);
+        payload.put("customerCount", list.size());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "sales.customer.deleted", bizId = "#customerIds", bizType = "'sales'")
     public int deleteCustomerByIds(Long[] customerIds) {
         log.info("批量删除客户，客户ID数组：{}", Arrays.toString(customerIds));
 
@@ -218,7 +255,12 @@ public class CustomerServiceImpl implements ICustomerService {
             }
         }
 
-        return customerMapper.deleteBatchIds(Arrays.asList(customerIds));
+        java.util.List<SalesCustomer> deleting = customerMapper.selectBatchIds(Arrays.asList(customerIds));
+        int rows = customerMapper.deleteBatchIds(Arrays.asList(customerIds));
+        if (rows > 0) {
+            publishCustomerBatchEvent("sales.customer.deleted", deleting);
+        }
+        return rows;
     }
 
     @Override
@@ -240,7 +282,6 @@ public class CustomerServiceImpl implements ICustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "sales.customer.status_updated", bizId = "#customerId", bizType = "'sales'")
     public int changeCustomerStatus(Long customerId, Integer status) {
         log.info("变更客户状态，客户ID：{}，状态：{}", customerId, status);
 
@@ -274,12 +315,15 @@ public class CustomerServiceImpl implements ICustomerService {
         customer.setCustomerStatus(status);
         customer.setUpdateTime(LocalDateTime.now());
 
-        return customerMapper.updateById(customer);
+        int rows = customerMapper.updateById(customer);
+        if (rows > 0) {
+            publishCustomerEvent("sales.customer.status_updated", customer);
+        }
+        return rows;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "sales.customer.approved", bizId = "#customerIds", bizType = "'sales'")
     public int approveCustomers(Long[] customerIds) {
         log.info("批量审核客户，客户ID数组：{}", Arrays.toString(customerIds));
 
@@ -305,6 +349,11 @@ public class CustomerServiceImpl implements ICustomerService {
 
         if (successCount == 0 && !errorMessages.isEmpty()) {
             throw new BusinessException("客户审核失败：" + String.join("；", errorMessages));
+        }
+
+        if (successCount > 0) {
+            publishCustomerBatchEvent("sales.customer.approved",
+                    customerMapper.selectBatchIds(Arrays.asList(customerIds)));
         }
 
         return successCount;

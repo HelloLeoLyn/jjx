@@ -71,6 +71,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     private final OrderMapper orderMapper;
     private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
+    /** 2026-09-21（dev-20260921-013）：sample.transferred 改手写 payload 用。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final QuotationMapper quotationMapper;
     private final com.jjx.sales.mapper.SalesQuotationItemMapper quotationItemMapper;
     private final com.jjx.sales.mapper.SalesInquiryMapper inquiryMapper;
@@ -1681,8 +1683,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 状态全部初始化（产品=待审核，BOM/路线=草稿），事件通知+派任务由工程完善后提交审核
      */
     @Override
-    @Event(value = "sample.transferred", bizId = "#orderId", bizType = "'sample'")
-    @Transactional(rollbackFor = Exception.class)
+        @Transactional(rollbackFor = Exception.class)
     public java.util.Map<String, Object> transferMaterials(Long orderId) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
@@ -2033,6 +2034,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         result.put("detail", details);
         log.info("样品单[{}] 资料转移完成[{}] 产品={} BOM={} 路线={}",
                 sampleOrder.getOrderNo(), transferNo, productAction, bomAction, routingAction);
+        // 2026-09-21（dev-20260921-013）：资料转移完成发事件（手写 payload 带单号；
+        // 原注解 bizId=#orderId 只能显示内部编号，模板里的 {bizNo} 取不到值）
+        java.util.Map<String, Object> transferPayload = com.jjx.event.EventPublishSupport.payload(
+                "sample", orderId, sampleOrder.getOrderNo());
+        transferPayload.put("orderNo", sampleOrder.getOrderNo());
+        transferPayload.put("customerName", sampleOrder.getCustomerName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sample.transferred", transferPayload);
+
         return result;
     }
 

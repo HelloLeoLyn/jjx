@@ -39,7 +39,8 @@ class SalesFlowTest {
         MockitoAnnotations.openMocks(this);
         // 手动注入所有依赖
         customerService = new CustomerServiceImpl(
-            customerMapper, customerConverter, redisSequenceService
+            customerMapper, customerConverter, redisSequenceService,
+            org.mockito.Mockito.mock(com.jjx.event.EventPublisher.class)
         );
     }
 
