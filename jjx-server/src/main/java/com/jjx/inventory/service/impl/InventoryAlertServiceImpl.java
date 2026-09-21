@@ -327,6 +327,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             try {
                 SalesOrder order = orderMapper.selectById(orderId);
                 eventPublisher.fire("stock.shortage", java.util.Map.of(
+                        "bizNo", orderNo,
                         "orderNo", orderNo,
                         "orderId", String.valueOf(order.getOrderId()),
                         "shortageCount", String.valueOf(shortageCount),
@@ -490,6 +491,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         if (shortageCount > 0) {
             try {
                 eventPublisher.fire("stock.shortage", java.util.Map.of(
+                        "bizNo", "全部订单",
                         "shortageCount", String.valueOf(shortageCount),
                         "noBomCount", String.valueOf(noBomCount),
                         "bizType", "global"));
