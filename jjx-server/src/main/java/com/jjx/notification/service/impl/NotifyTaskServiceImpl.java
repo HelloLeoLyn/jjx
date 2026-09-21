@@ -133,8 +133,9 @@ public class NotifyTaskServiceImpl implements NotifyTaskService {
             task.setBizType(dto.getBizType());
             task.setAssignRole(roles.get(0).getRoleId());
             task.setPriority(priority);
+            // 2026-09-21：看板模块取值统一为 biz/prod/dev（对齐看板页签）
             task.setKanbanModule(dto.getKanbanModule() != null && !dto.getKanbanModule().isEmpty()
-                    ? dto.getKanbanModule() : "office");
+                    ? dto.getKanbanModule() : "biz");
             task.setStatus(0);
             task.setCreateBy(senderName);
             sysTaskMapper.insert(task);

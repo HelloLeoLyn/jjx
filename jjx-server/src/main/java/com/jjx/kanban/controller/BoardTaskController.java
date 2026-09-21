@@ -141,7 +141,7 @@ public class BoardTaskController {
             card.put("assigneeName", order.getCreateBy());
             card.put("deadline", order.getPlanEndDate() != null ? order.getPlanEndDate().toString() : null);
             card.put("taskType", "production");
-            card.put("kanbanModule", "production");
+            card.put("kanbanModule", "prod");
             card.put("currentProcess", getCurrentProcess(order.getOrderId()));
             return card;
         }).collect(Collectors.toList());
@@ -204,7 +204,7 @@ public class BoardTaskController {
             return Result.error("生产工单详情请走生产订单接口");
         }
         SysTask task = sysTaskMapper.selectById(taskId);
-        if (task == null || !module.equals(task.getKanbanModule())) {
+        if (task == null || !moduleMatches(module, task.getKanbanModule())) {
             return Result.error("任务不存在");
         }
         return Result.success(task);
@@ -283,6 +283,23 @@ public class BoardTaskController {
 
     private SysTask findTask(String module, Long taskId) {
         SysTask task = sysTaskMapper.selectById(taskId);
-        return task != null && module.equals(task.getKanbanModule()) ? task : null;
+        return task != null && moduleMatches(module, task.getKanbanModule()) ? task : null;
+    }
+
+    /**
+     * 看板模块归一：历史值 office/emergency 视同 biz，production 视同 prod（2026-09-21 统一取值）。
+     * 避免「列表能看到、点开/拖拽报任务不存在」的脆弱相等判断。
+     */
+    private static String normalizeModule(String module) {
+        if (module == null) return null;
+        return switch (module) {
+            case "office", "emergency" -> "biz";
+            case "production" -> "prod";
+            default -> module;
+        };
+    }
+
+    private static boolean moduleMatches(String module, String stored) {
+        return stored != null && normalizeModule(module).equals(normalizeModule(stored));
     }
 }

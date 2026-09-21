@@ -38,6 +38,7 @@ public class EventConfigController extends BaseController {
                         .like(StringUtils.hasText(config.getEventCode()), SysEventConfig::getEventCode, config.getEventCode())
                         .like(StringUtils.hasText(config.getEventName()), SysEventConfig::getEventName, config.getEventName())
                         .eq(StringUtils.hasText(config.getEventType()), SysEventConfig::getEventType, config.getEventType())
+                        .eq(StringUtils.hasText(config.getBizModule()), SysEventConfig::getBizModule, config.getBizModule())
                         .eq(config.getIsEnabled() != null, SysEventConfig::getIsEnabled, config.getIsEnabled())
                         .orderByAsc(SysEventConfig::getEventCode)
         );
@@ -55,6 +56,7 @@ public class EventConfigController extends BaseController {
                         .like(StringUtils.hasText(config.getEventCode()), SysEventConfig::getEventCode, config.getEventCode())
                         .like(StringUtils.hasText(config.getEventName()), SysEventConfig::getEventName, config.getEventName())
                         .eq(StringUtils.hasText(config.getEventType()), SysEventConfig::getEventType, config.getEventType())
+                        .eq(StringUtils.hasText(config.getBizModule()), SysEventConfig::getBizModule, config.getBizModule())
                         .eq(config.getIsEnabled() != null, SysEventConfig::getIsEnabled, config.getIsEnabled())
                         .orderByAsc(SysEventConfig::getEventCode)
         );

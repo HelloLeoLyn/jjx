@@ -44,14 +44,19 @@
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query" size="small">
         <el-form-item label="类型">
-          <el-select v-model="query.notificationType" placeholder="全部" clearable style="width:140px">
+          <el-select
+            v-model="query.notificationType"
+            placeholder="全部"
+            clearable
+            style="width: 140px"
+          >
             <el-option label="系统通知" value="SYSTEM" />
             <el-option label="邮件通知" value="EMAIL" />
             <el-option label="应用通知" value="APP" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="query.isRead" placeholder="全部" clearable style="width:120px">
+          <el-select v-model="query.isRead" placeholder="全部" clearable style="width: 120px">
             <el-option label="未读" :value="0" />
             <el-option label="已读" :value="1" />
           </el-select>
@@ -65,7 +70,7 @@
 
     <!-- 列表 -->
     <el-card shadow="never">
-      <el-table :data="list" v-loading="loading" @row-click="handleRowClick" style="width:100%">
+      <el-table :data="list" v-loading="loading" style="width: 100%">
         <el-table-column width="50">
           <template #default="{ row }">
             <el-badge :hidden="row.isRead === 1" is-dot />
@@ -114,7 +119,13 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getNotificationPage, getUnreadCount, markAsRead, markAllAsRead, deleteNotification } from '@/api/notification'
+import {
+  getNotificationPage,
+  getUnreadCount,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+} from '@/api/notification'
 import type { NotificationVO, NotificationQuery } from '@/api/notification'
 import { useUserStore } from '@/store/modules/user'
 import { useRouter } from 'vue-router'
@@ -158,8 +169,12 @@ async function loadData() {
     }
     const cntRes = await getUnreadCount(currentUserId.value || 1)
     unreadCount.value = cntRes?.data || 0
-    systemCount.value = list.value.filter((n: NotificationVO) => n.notificationType === 'SYSTEM').length
-    emailCount.value = list.value.filter((n: NotificationVO) => n.notificationType === 'EMAIL').length
+    systemCount.value = list.value.filter(
+      (n: NotificationVO) => n.notificationType === 'SYSTEM'
+    ).length
+    emailCount.value = list.value.filter(
+      (n: NotificationVO) => n.notificationType === 'EMAIL'
+    ).length
   } finally {
     loading.value = false
   }
@@ -208,17 +223,54 @@ onMounted(loadData)
 </script>
 
 <style scoped>
-.notification-page { padding: 20px; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.page-title { margin: 0; font-size: 24px; font-weight: 500; }
-.header-actions { display: flex; gap: 8px; }
-.stat-row { margin-bottom: 16px; }
-.stat-card { text-align: center; }
-.stat-value { font-size: 32px; font-weight: 700; color: #303133; }
-.stat-label { font-size: 13px; color: #909399; margin-top: 4px; }
-.stat-card.unread .stat-value { color: #409eff; }
-.stat-card.system .stat-value { color: #67c23a; }
-.stat-card.email .stat-value { color: #e6a23c; }
-.filter-card { margin-bottom: 16px; }
-.pagination { margin-top: 16px; justify-content: center; }
+.notification-page {
+  padding: 20px;
+}
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+}
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+.stat-row {
+  margin-bottom: 16px;
+}
+.stat-card {
+  text-align: center;
+}
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #303133;
+}
+.stat-label {
+  font-size: 13px;
+  color: #909399;
+  margin-top: 4px;
+}
+.stat-card.unread .stat-value {
+  color: #409eff;
+}
+.stat-card.system .stat-value {
+  color: #67c23a;
+}
+.stat-card.email .stat-value {
+  color: #e6a23c;
+}
+.filter-card {
+  margin-bottom: 16px;
+}
+.pagination {
+  margin-top: 16px;
+  justify-content: center;
+}
 </style>

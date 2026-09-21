@@ -35,6 +35,8 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.dto.SampleOrderQueryDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,6 +60,14 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SampleOrderServiceImpl implements ISampleOrderService {
+
+    /**
+     * 自身代理：类内部循环调用 createSample 等带 @Event/@Transactional 的方法时必须走代理，
+     * 否则自调用绕过 AOP，事件（通知/任务）不发布（2026-09-21 修复：报价转样品单拆分路径）
+     */
+    @Autowired
+    @Lazy
+    private ISampleOrderService self;
 
     private final OrderMapper orderMapper;
     private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
@@ -191,13 +201,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             item.setProductName(source.getProductName()); item.setQuantity(sampleQty != null ? sampleQty : source.getQuantity());
             item.setUnit(source.getUnit());
             dto.setItems(List.of(item));
-            result.add(createSample(dto));
+            // 走自身代理调用：保证 createSample 上的 @Event("sample.created") 生效（自调用会被 AOP 绕过）
+            result.add(self.createSample(dto));
         }
         return result;
     }
 
     @Override
-    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
+    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'",
+            params = {"orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder createFromQuotation(Long quotationId, Integer sampleQty, String remark,
                                           String deliveryDate, String contactPerson, String contactPhone, String techRequirement) {
@@ -309,7 +321,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 双向写操作日志（对齐 copyOrder）
      */
     @Override
-    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
+    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'",
+            params = {"orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder copySampleOrder(Long orderId) {
         SalesOrder source = orderMapper.selectById(orderId);
@@ -613,7 +626,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
-    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'")
+    @Event(value = "sample.created", bizId = "#result.orderId", bizType = "'sample'",
+            params = {"orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder createSample(com.jjx.sales.domain.dto.SampleOrderCreateDTO dto) {
         if (dto == null || dto.getCustomerId() == null) {
@@ -760,7 +774,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
-    @Event(value = "sample.submitted", bizId = "#orderId", bizType = "'sample'")
+    @Event(value = "sample.submitted", bizId = "#orderId", bizType = "'sample'",
+            params = {"orderNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder submitRequest(Long orderId) {
         safeTransition(orderId,
@@ -837,7 +852,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     @Override
-    @Event(value = "sample.ready", bizId = "#orderId", bizType = "'sample'")
+    @Event(value = "sample.ready", bizId = "#orderId", bizType = "'sample'",
+            params = {"orderNo=#result.orderNo",
+                      "productName=#result.sampleProductName",
+                      "productCode=#result.sampleProductCode"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder markSampleReady(Long orderId, Integer sampleQty) {
         // 前置校验（DEV-491）：① 必须已工程接单
@@ -960,7 +978,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         log.info("样品单[{}] 样品制作完成，待送样", orderId);
-        return orderMapper.selectById(orderId);
+        // 2026-09-21：返回值改用 loadSampleOrder —— 它会把扩展表的产品名称/编码回填进来。
+        // sampleProductName/sampleProductCode 是 @TableField(exist=false) 字段（见 SalesOrder），
+        // selectById 取不到，会一直是 null，事件模板里的 {productName}/{productCode} 就会原样显示。
+        return loadSampleOrder(orderId);
     }
 
     @Override
@@ -2765,7 +2786,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 防重复：同一单未完成的提醒任务只发一次（status=10 已完成允许再次提醒）
         Long existCount = sysTaskMapper.selectCount(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.system.domain.entity.SysTask>()
-                        .eq(com.jjx.system.domain.entity.SysTask::getKanbanModule, "office")
+                        // 2026-09-21：兼容历史 office 值（新值统一为 biz）
+                        .in(com.jjx.system.domain.entity.SysTask::getKanbanModule, "biz", "office")
                         .eq(com.jjx.system.domain.entity.SysTask::getSourceEvent, "sample.transfer.remind")
                         .eq(com.jjx.system.domain.entity.SysTask::getBizType, "sample")
                         .eq(com.jjx.system.domain.entity.SysTask::getBizId, orderId)
@@ -3373,7 +3395,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 task.setTitle("样品单【" + sampleOrder.getOrderNo() + "】已作废，请停止打样并确认");
                 task.setDescription("作废原因：" + (cancelReason != null ? cancelReason : "-")
                         + "\n接单人：" + sampleOrder.getEngineeringAcceptor());
-                task.setKanbanModule("office");
+                task.setKanbanModule("biz");
                 task.setAssignRole(9L);
                 task.setAssigneeName(sampleOrder.getEngineeringAcceptor());
                 task.setSourceEvent("sample.cancelled");

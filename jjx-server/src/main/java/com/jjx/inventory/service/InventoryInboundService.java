@@ -56,6 +56,12 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     /** 单项 IQC 审核通过，只锁定质量结论，不执行库存过账。 */
     boolean approveInspectionItem(Long itemId, InboundInspectionReviewDTO review);
 
+    /**
+     * 手工重算入库单审核状态，给「明细已全部审核、单据状态未推进」的历史单据收尾（幂等）。
+     * 2026-09-21 dev-20260921-003。
+     */
+    boolean syncReviewStatus(Long inboundId);
+
     /** 单项 IQC 驳回，保留原检验记录供检验员修改后重新提交。 */
     boolean rejectInspectionItem(Long itemId, InboundInspectionReviewDTO review);
 

@@ -164,9 +164,8 @@
           <el-col :span="12">
             <el-form-item label="看板模块" prop="kanbanModule">
               <el-select v-model="form.kanbanModule" placeholder="任务进入哪个看板" style="width:100%">
-                <el-option label="办公室任务" value="office" />
-                <el-option label="紧急任务" value="emergency" />
-                <el-option label="生产工单" value="production" />
+                <el-option label="业务" value="biz" />
+                <el-option label="生产" value="prod" />
                 <el-option label="开发任务" value="dev" />
               </el-select>
             </el-form-item>
@@ -291,6 +290,7 @@ const tableOptions: TableOptions[] = uiConfig.tableOptions.flatMap(column =>
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
+  bizModule: '',
   eventCode: '',
   eventName: '',
   eventType: '',
@@ -303,7 +303,7 @@ const form = reactive({
   eventName: '',
   bizModule: '',
   eventType: 'notification',
-  kanbanModule: 'office',
+  kanbanModule: 'biz',
   priority: 'normal',
   isEnabled: 1,
   targetRole: '',
@@ -362,6 +362,7 @@ function getList() {
 // 搜索/重置
 function handleQuery() { queryParams.pageNum = 1; getList() }
 function resetQuery() {
+  queryParams.bizModule = ''
   queryParams.eventCode = ''
   queryParams.eventName = ''
   queryParams.eventType = ''
@@ -387,7 +388,7 @@ function handleToolbarClick(key: string) {
 // 新增
 function handleAdd() {
   dialogTitle.value = '新增事件配置'
-  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'office', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', closeSourceEvents: '', excludeTrigger: 0 })
+  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'biz', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', closeSourceEvents: '', excludeTrigger: 0 })
   dialogVisible.value = true
 }
 

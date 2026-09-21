@@ -46,6 +46,7 @@ public final class LogActions {
     public static final String INBOUND_FROM_PURCHASE = "从采购订单创建入库单";
     public static final String INBOUND_FROM_PRODUCTION = "从生产工单创建入库单";
     public static final String INBOUND_UPDATE_STATUS = "更新入库单状态";
+    public static final String INBOUND_SYNC_REVIEW_STATUS = "重算入库单审核状态";
     public static final String INBOUND_EXPORT_PDF = "导出入库单PDF";
     public static final String MAT_CATEGORY_CREATE = "新增物料分类";
     public static final String MAT_CATEGORY_EDIT = "修改物料分类";

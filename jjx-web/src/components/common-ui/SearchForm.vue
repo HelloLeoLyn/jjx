@@ -95,21 +95,35 @@ const emit = defineEmits<Emits>()
 // 使用 reactive 来控制表单数据
 const formData = reactive({ ...props.modelValue })
 
+/**
+ * 回写父级查询对象。
+ * 2026-09-21 修复：父级普遍写成 const queryParams = reactive({...}) + v-model="queryParams"，
+ * 而 v-model 的赋值只会改到本组件 setup state，不会改到父级那个闭包对象，
+ * 导致父级 getList() 读到的还是旧值 —— 搜索条件静默失效（影响所有用 SearchForm 的列表页）。
+ * 所以这里直接就地写进父级传入的对象。
+ */
+const syncToParent = () => {
+  if (props.modelValue && typeof props.modelValue === 'object') {
+    Object.assign(props.modelValue, formData)
+  }
+  emit('update:modelValue', { ...formData })
+}
+
 const handleSearch = () => {
   emit('search')
 }
 
 const handleInput = () => {
-  emit('update:modelValue', { ...formData })
+  syncToParent()
 }
 const handleDateChange = (field: string, value: any) => {
   formData[field] = value
-  emit('update:modelValue', { ...formData })
+  syncToParent()
 }
 const handleSelectChange = (field: string, value: any) => {
-  // 当下拉框的值变化时，手动更新父组件的 modelValue
+  // 当下拉框的值变化时，回写到父级查询对象
   formData[field] = value
-  emit('update:modelValue', { ...formData })
+  syncToParent()
 }
 
 const handleReset = () => {
@@ -129,6 +143,9 @@ const handleReset = () => {
 
   // 更新父组件的 `modelValue`
   Object.assign(formData, resetData) // 同步数据到 formData
+  if (props.modelValue && typeof props.modelValue === 'object') {
+    Object.assign(props.modelValue, resetData) // 就地写回父级查询对象（见 syncToParent 注释）
+  }
   emit('update:modelValue', resetData)
   emit('reset')
 }

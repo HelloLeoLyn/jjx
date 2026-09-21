@@ -38,6 +38,7 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
             "SET o.update_time=NOW() " +
             "<if test='entity.remark != null'>,o.remark=#{entity.remark}</if> " +
             "<if test='entity.orderStatus != null'>,o.order_status=#{entity.orderStatus}</if> " +
+            "<if test='entity.totalQuantity != null'>,o.total_quantity=#{entity.totalQuantity}</if> " +
             "<if test='entity.convertedOrderId != null'>,s.converted_order_id=#{entity.convertedOrderId}</if> " +
             "<if test='entity.sampleStatus != null'>,s.sample_status=#{entity.sampleStatus}</if> " +
             "<if test='entity.sampleRound != null'>,s.sample_round=#{entity.sampleRound}</if> " +

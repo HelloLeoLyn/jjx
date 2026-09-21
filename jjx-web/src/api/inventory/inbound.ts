@@ -78,6 +78,10 @@ export const inboundApi = {
   reinspectItem(itemId: string) {
     return request.post<R<number>>(`/inventory/inbound/inspection-item/${itemId}/reinspect`)
   },
+  // 重算入库单审核状态：明细已全部审核但单据仍停在待审批时收尾（幂等）
+  syncReviewStatus(inboundId: string) {
+    return request.post<R<boolean>>(`/inventory/inbound/sync-review-status/${inboundId}`)
+  },
   listQuarantine(inboundId: string) {
     return request.get<R<any[]>>(`/inventory/inbound/${inboundId}/iqc-quarantine`)
   },

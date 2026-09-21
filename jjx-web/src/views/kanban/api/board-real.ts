@@ -211,7 +211,7 @@ function extractTaskId(cardId: string): string {
 
 /**
  * 移动卡片
- * office/emergency → 更新 sys_task.status；production → 生产接口
+ * biz/prod/dev → 更新 sys_task.status（prod 走生产角色过滤）
  */
 export async function moveCard(
   cardId: string,
@@ -221,10 +221,7 @@ export async function moveCard(
   if (
     templateType === 'dev' ||
     templateType === 'prod' ||
-    templateType === 'biz' ||
-    templateType === 'office' ||
-    templateType === 'emergency' ||
-    templateType === 'production'
+    templateType === 'biz'
   ) {
     const taskId = extractTaskId(cardId)
     const res = await http.patch(`/kanban/board/${templateType}/tasks/${taskId}/status`, {
@@ -239,7 +236,7 @@ export async function moveCard(
 
 /**
  * 卡片详情
- * office/emergency → 读 sys_task
+ * biz/prod/dev → 读 sys_task
  */
 export async function fetchCardDetail(
   cardId: string,
@@ -248,10 +245,7 @@ export async function fetchCardDetail(
   if (
     templateType === 'dev' ||
     templateType === 'prod' ||
-    templateType === 'biz' ||
-    templateType === 'office' ||
-    templateType === 'emergency' ||
-    templateType === 'production'
+    templateType === 'biz'
   ) {
     const taskId = extractTaskId(cardId)
     const res = await http.get(`/kanban/board/${templateType}/tasks/${taskId}`)
@@ -284,7 +278,7 @@ export async function fetchCardDetail(
 
 /**
  * 创建卡片
- * office/emergency → 插入 sys_task
+ * biz/prod/dev → 插入 sys_task
  */
 export async function createCard(
   card: Partial<BoardCard>,
@@ -294,10 +288,7 @@ export async function createCard(
   if (
     templateType === 'dev' ||
     templateType === 'prod' ||
-    templateType === 'biz' ||
-    templateType === 'office' ||
-    templateType === 'emergency' ||
-    templateType === 'production'
+    templateType === 'biz'
   ) {
     const res = await http.post(`/kanban/board/${templateType}/tasks`, {
       title: card.title,
@@ -307,7 +298,7 @@ export async function createCard(
       assigneeName: card.assignee,
       deadline: card.deadline || null,
       taskType: card.taskType || 'general',
-      bizType: templateType === 'emergency' ? 'production' : 'production',
+      bizType: 'production',
     })
     if (isOk(res?.code)) {
       const taskId = Number(res?.data)
@@ -332,7 +323,7 @@ export async function createCard(
 
 /**
  * 更新卡片
- * office/emergency → 更新 sys_task
+ * biz/prod/dev → 更新 sys_task
  */
 export async function updateCard(
   cardId: string,
@@ -342,10 +333,7 @@ export async function updateCard(
   if (
     templateType === 'dev' ||
     templateType === 'prod' ||
-    templateType === 'biz' ||
-    templateType === 'office' ||
-    templateType === 'emergency' ||
-    templateType === 'production'
+    templateType === 'biz'
   ) {
     const taskId = extractTaskId(cardId)
     const body: Record<string, unknown> = {}

@@ -142,7 +142,8 @@ public class LocalEventPublisher implements EventPublisher {
                         task.setBizType(bizType);
                     }
                     task.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
-                    task.setKanbanModule(event.getKanbanModule() != null ? event.getKanbanModule() : "office");
+                    // 2026-09-21：看板模块取值统一为 biz/prod/dev（对齐看板页签），不再用 office/emergency
+                    task.setKanbanModule(event.getKanbanModule() != null ? event.getKanbanModule() : "biz");
                     task.setStatus(0);
                     // 2026-09-18：触发人落到 create_by（看板卡详情「创建人」，此前为空）
                     String taskTriggerUserName = payloadString(payload, "triggerUserName");
@@ -174,7 +175,8 @@ public class LocalEventPublisher implements EventPublisher {
                     }
                     if (taskBizId != null) {
                         sysTaskMapper.update(null, new LambdaUpdateWrapper<SysTask>()
-                                .eq(SysTask::getKanbanModule, "office")
+                                // 兼容历史 office 值（2026-09-21 统一为 biz，旧卡仍应能被办结关闭）
+                                .in(SysTask::getKanbanModule, "biz", "office")
                                 .eq(SysTask::getSourceEvent, sourceEvent)
                                 .eq(SysTask::getBizId, taskBizId)
                                 .in(SysTask::getStatus,

@@ -69,6 +69,7 @@
               link
               type="success"
               :loading="submittingId === row.itemId"
+              :disabled="busy"
               @click="approve(row)"
               >通过</el-button
             >
@@ -76,6 +77,7 @@
               link
               type="danger"
               :loading="submittingId === row.itemId"
+              :disabled="busy"
               @click="reject(row)"
               >驳回</el-button
             >
@@ -85,6 +87,7 @@
             link
             type="warning"
             :loading="submittingId === row.itemId"
+            :disabled="busy"
             @click="reinspect(row)"
             >发起复检</el-button
           >
@@ -94,7 +97,16 @@
         </template>
       </el-table-column>
     </el-table>
-    <template #footer><el-button @click="emit('update:visible', false)">关闭</el-button></template>
+    <template #footer>
+      <el-button
+        v-if="needSyncReviewStatus"
+        type="primary"
+        :loading="busy"
+        @click="syncReviewStatus"
+        >重算单据状态</el-button
+      >
+      <el-button @click="emit('update:visible', false)">关闭</el-button>
+    </template>
   </el-dialog>
 </template>
 
@@ -105,7 +117,7 @@ import { inboundApi } from '@/api/inventory/inbound'
 import { qualityApi, type QualityVO } from '@/api/production/quality'
 import { useUserStore } from '@/store/modules/user'
 import { hasPermi } from '@/directives'
-import { InspectionResultEnum, IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
+import { InspectionResultEnum, IqcDispositionEnum, InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 import type { InboundItemVO } from '@/types/inventory/inbound'
 
@@ -123,6 +135,14 @@ const canInspect = computed(() =>
 )
 const loading = ref(false)
 const submittingId = ref('')
+/**
+ * 并发/连点闸门（2026-09-21 dev-20260921-003）：
+ * 原来 submittingId 是在确认框返回后才置位，确认框还没关就能再点一次「通过」，
+ * 同一单据的两次复核并发提交 → 单据状态推进判定互相看不到对方结果（PO202609210001 实测卡住）。
+ */
+const busy = ref(false)
+/** 当前入库单状态：用于判断「明细已全部审核但单据还没推进」需要重算 */
+const inboundOrderStatus = ref<number>()
 const rows = ref<
   Array<InboundItemVO & { itemId: string; quality?: QualityVO; history: QualityVO[] }>
 >([])
@@ -140,6 +160,8 @@ async function load() {
   loading.value = true
   try {
     const inbound = (await inboundApi.getById(String(props.inboundId))).data
+    // InboundVO.status 即 order_status 状态码（后端 vo.setStatus(order.getOrderStatus())）
+    inboundOrderStatus.value = inbound?.status
     rows.value = await Promise.all(
       (inbound?.items || []).map(async (item) => {
         const itemId = String(item.inboundItemId || item.itemId || '')
@@ -168,53 +190,92 @@ function reviewer(remark?: string) {
 }
 
 async function approve(row: (typeof rows.value)[number]) {
-  const { value } = await ElMessageBox.prompt(
-    `确认通过 ${row.materialCode} 的 IQC 审核？通过后报告将锁定。`,
-    '单项 IQC 审核',
-    {
-      inputPlaceholder: '审核意见（选填）',
-      confirmButtonText: '审核通过',
-      cancelButtonText: '取消',
-    }
-  )
-  submittingId.value = row.itemId
+  if (busy.value) return
+  busy.value = true
   try {
+    const { value } = await ElMessageBox.prompt(
+      `确认通过 ${row.materialCode} 的 IQC 审核？通过后报告将锁定。`,
+      '单项 IQC 审核',
+      {
+        inputPlaceholder: '审核意见（选填）',
+        confirmButtonText: '审核通过',
+        cancelButtonText: '取消',
+      }
+    )
+    submittingId.value = row.itemId
     await inboundApi.approveInspectionItem(row.itemId, reviewer(value?.trim() || undefined))
     ElMessage.success('审核通过')
     await load()
     emit('success')
   } finally {
     submittingId.value = ''
+    busy.value = false
   }
 }
 
 async function reject(row: (typeof rows.value)[number]) {
-  const { value } = await ElMessageBox.prompt(
-    '请填写驳回原因，检验员修改后可重新提交。',
-    '驳回单项 IQC',
-    { inputValidator: (value) => !!value?.trim() || '驳回原因不能为空' }
-  )
-  submittingId.value = row.itemId
+  if (busy.value) return
+  busy.value = true
   try {
+    const { value } = await ElMessageBox.prompt(
+      '请填写驳回原因，检验员修改后可重新提交。',
+      '驳回单项 IQC',
+      { inputValidator: (value) => !!value?.trim() || '驳回原因不能为空' }
+    )
+    submittingId.value = row.itemId
     await inboundApi.rejectInspectionItem(row.itemId, { ...reviewer(value), remark: value })
     ElMessage.success('已驳回')
     await load()
     emit('success')
   } finally {
     submittingId.value = ''
+    busy.value = false
   }
 }
 
 async function reinspect(row: (typeof rows.value)[number]) {
-  await ElMessageBox.confirm(`确认为 ${row.materialCode} 创建下一版复检记录？`, '发起复检')
-  submittingId.value = row.itemId
+  if (busy.value) return
+  busy.value = true
   try {
+    await ElMessageBox.confirm(`确认为 ${row.materialCode} 创建下一版复检记录？`, '发起复检')
+    submittingId.value = row.itemId
     await inboundApi.reinspectItem(row.itemId)
     ElMessage.success('已创建复检版本')
     await load()
     emit('success')
   } finally {
     submittingId.value = ''
+    busy.value = false
+  }
+}
+
+/**
+ * 明细已经全部审核通过、单据却还停在待审批（历史并发复核留下的状态）时，允许一键重算收尾。
+ */
+const needSyncReviewStatus = computed(
+  () =>
+    canJudge.value &&
+    rows.value.length > 0 &&
+    rows.value.every(
+      (row) => row.quality?.reviewStatus === QualityReviewStatus.APPROVED
+    ) &&
+    inboundOrderStatus.value === InboundOrderStatusEnum.PENDING.value
+)
+
+async function syncReviewStatus() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const { data } = await inboundApi.syncReviewStatus(String(props.inboundId))
+    if (data) {
+      ElMessage.success('单据状态已推进为「已批准」，可以去确认入库')
+    } else {
+      ElMessage.warning('仍有明细未审核通过，单据状态未推进')
+    }
+    await load()
+    emit('success')
+  } finally {
+    busy.value = false
   }
 }
 

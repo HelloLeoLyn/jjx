@@ -100,6 +100,15 @@ public class InventoryInboundController {
         return Result.success(inboundService.approveInspectionItem(itemId, review));
     }
 
+    @PostMapping("/sync-review-status/{inboundId}")
+    @Operation(summary = "重算入库单审核状态（明细已全部审核但单据状态未推进时收尾，幂等）")
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId",
+            action = LogActions.INBOUND_SYNC_REVIEW_STATUS)
+    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:lot:judge"}, mode = SaMode.OR)
+    public Result<Boolean> syncReviewStatus(@PathVariable Long inboundId) {
+        return Result.success(inboundService.syncReviewStatus(inboundId));
+    }
+
     @PostMapping("/inspection-item/{itemId}/reject")
     @Operation(summary = "单项 IQC 审核驳回")
     @SaCheckPermission(value = {"inventory:inbound:approve", "quality:lot:judge"}, mode = SaMode.OR)

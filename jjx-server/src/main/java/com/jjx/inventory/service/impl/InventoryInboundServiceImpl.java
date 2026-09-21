@@ -825,7 +825,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    @Event(value = "quality.iqc.submitted", bizId = "#inboundId", bizType = "'quality'")
     public boolean submitApprove(Long inboundId, InboundInspectionSubmitDTO inspection) {
         // DEV-651 方案A：行锁
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -865,7 +864,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             saveInspection(order, inspection);
         }
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
-        return inboundOrderMapper.updateById(order) > 0;
+        boolean updated = inboundOrderMapper.updateById(order) > 0;
+        // 2026-09-21（dev-20260921-003）：本事件改为手写 payload 发布，不再挂 @Event 注解。
+        // 注解只能带 bizId=#inboundId，payload 里没有 inboundNo/sourceNo/supplierName，
+        // 而 sys_event_config 的模板用的是 {inboundNo} 等占位符 → 通知与看板任务标题会原样显示
+        // 「入库单【{inboundNo}】待来料检验」（sys_notification 33/34、sys_task 1997/1998 实测）。
+        // iqcPayload 已含 inboundId/inboundNo/sourceNo/supplierName/触发人，模板可直接解析。
+        if (updated) {
+            publishIqcEventAfterCommit("quality.iqc.submitted", iqcPayload(order, null, null, null));
+        }
+        return updated;
     }
 
     private void saveInspection(InventoryInboundOrder order, InboundInspectionSubmitDTO inspection) {
@@ -1118,10 +1126,27 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Transactional(rollbackFor = Exception.class)
     public boolean approveInspectionItem(Long itemId,
             com.jjx.inventory.dto.save.InboundInspectionReviewDTO review) {
-        InventoryInboundItem item = inboundItemMapper.selectById(itemId);
+        // 2026-09-21（dev-20260921-003）并发复核防护：
+        // 原实现先做一致性读（明细/检验记录）、随后才由 updateInboundReviewStatus 锁单，
+        // 同一单据两笔复核并发时各自读自己事务开始时的快照，互相看不到对方刚提交的 APPROVED，
+        // 「全部明细已审核」判定两边都落空 → 单据状态卡在待审批（PO202609210001 实测）。
+        // 现在改为：先锁单、再当前读（FOR UPDATE）明细与检验记录。加锁顺序与 submitApprove 一致
+        // （单 → 明细），避免与提交检验互相死锁。
+        Long inboundId = inboundItemMapper.selectInboundIdByItemId(itemId);
+        if (inboundId == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
+        if (order == null) throw new BusinessException("入库单不存在");
+        InventoryInboundItem item = inboundItemMapper.selectByIdForUpdate(itemId);
         if (item == null || item.getInspectionId() == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
-        com.jjx.production.domain.entity.ProductionQualityInspection quality = qualityInspectionMapper.selectById(item.getInspectionId());
+        com.jjx.production.domain.entity.ProductionQualityInspection quality =
+                qualityInspectionMapper.selectByIdForUpdate(item.getInspectionId());
         if (quality == null) throw new BusinessException("IQC 检验记录不存在");
+        // 幂等：已审核的记录重复提交（重复点击/并发重放）不再重复判级、不重复发事件，
+        // 但仍重跑一次单据状态判定，让历史卡在待审批、明细却已全部审核的单据能收尾。
+        if (com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode().equals(quality.getReviewStatus())) {
+            updateInboundReviewStatus(inboundId);
+            return true;
+        }
         if (!com.jjx.production.enums.QualityReviewStatusEnum.PENDING.getCode().equals(quality.getReviewStatus())) {
             throw new BusinessException("仅待审核的 IQC 记录可以审核");
         }
@@ -1156,10 +1181,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
         }
         updateIqcBatchResult(item.getIqcBatchId(), quality);
-        InventoryInboundOrder order = inboundOrderMapper.selectById(item.getInboundId());
+        // order 就是方法开头锁住的那一行（同一事务内内容未变），直接复用，不再重复查
         publishIqcEventAfterCommit("quality.iqc.item.approved", iqcPayload(order, item,
-                order == null ? null : order.getInspectorId(), order == null ? null : order.getInspectorName()));
-        updateInboundReviewStatus(item.getInboundId());
+                order.getInspectorId(), order.getInspectorName()));
+        updateInboundReviewStatus(inboundId);
         return true;
     }
 
@@ -1257,16 +1282,21 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     /**
      * 全部行审核通过即建隔离台账，使不合格品处置与确认入库动作解耦。
+     * 2026-09-21（dev-20260921-003）：判定前先锁单、并用当前读（FOR UPDATE）重取明细与检验记录。
+     * 原实现读一致性快照 → 并发复核时两笔事务互相看不到对方刚提交的 APPROVED，判定永远不成立
+     * （PO202609210001 实测：两条明细都已审核，单据却停在待审批）。
      */
     private void updateInboundReviewStatus(Long inboundId) {
-        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
+        if (order == null) return;
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundIdForUpdate(inboundId);
         boolean allApproved = !items.isEmpty() && items.stream().allMatch(item -> {
             if (item.getInspectionId() == null) return false;
-            com.jjx.production.domain.entity.ProductionQualityInspection quality = qualityInspectionMapper.selectById(item.getInspectionId());
+            com.jjx.production.domain.entity.ProductionQualityInspection quality =
+                    qualityInspectionMapper.selectByIdForUpdate(item.getInspectionId());
             return quality != null && com.jjx.production.enums.QualityReviewStatusEnum.APPROVED.getCode().equals(quality.getReviewStatus());
         });
         if (allApproved) {
-            InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
             order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
             inboundOrderMapper.updateById(order);
             int quarantineCount = createIqcQuarantine(order, SecurityUtils.getUserId(), SecurityUtils.getUsername());
@@ -1277,6 +1307,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 publishIqcEventAfterCommit("quality.iqc.quarantine.created", approvedPayload);
             }
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean syncReviewStatus(Long inboundId) {
+        // 手工重算单据审核状态（2026-09-21 dev-20260921-003）：
+        // 给「明细已全部审核、单据状态却没推进」的历史单据收尾用。走同一条判定逻辑，
+        // 幂等（createIqcQuarantine 按 明细+检验记录 去重），可重复调用。
+        updateInboundReviewStatus(inboundId);
+        InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
+        return order != null && InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus());
     }
 
     private Map<String, Object> iqcPayload(InventoryInboundOrder order, InventoryInboundItem item,

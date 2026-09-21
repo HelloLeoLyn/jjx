@@ -11,12 +11,29 @@ const eventTypeOptions = [
   { value: 'both', label: '通知+任务' },
 ]
 
-// 看板模块选项
+// 看板模块选项（2026-09-21 统一取值，与看板页签一致：业务/生产/开发任务）
 const kanbanModuleOptions = [
-  { value: 'office', label: '办公室任务' },
-  { value: 'emergency', label: '紧急任务' },
-  { value: 'production', label: '生产工单' },
+  { value: 'biz', label: '业务' },
+  { value: 'prod', label: '生产' },
   { value: 'dev', label: '开发任务' },
+]
+
+// 历史值 → 展示用别名（仅列表渲染旧数据，下拉不再提供；取值统一见迁移 144）
+const kanbanModuleLegacyLabels: Record<string, string> = {
+  office: '业务（旧值 office）',
+  emergency: '业务（旧值 emergency）',
+  production: '生产（旧值 production）',
+}
+
+// 业务模块选项（与编辑弹窗保持一致）
+const bizModuleOptions = [
+  { value: 'sales', label: '销售' },
+  { value: 'purchase', label: '采购' },
+  { value: 'production', label: '生产' },
+  { value: 'product', label: '产品工程' },
+  { value: 'inventory', label: '库存' },
+  { value: 'quality', label: '品质' },
+  { value: 'biz', label: '业务需求' },
 ]
 
 // 任务优先级选项
@@ -35,6 +52,12 @@ const enabledOptions = [
 
 // 搜索配置
 export const searchOptions: SearchOptions[] = [
+  {
+    prop: 'bizModule',
+    label: '业务模块',
+    type: 'select',
+    options: bizModuleOptions,
+  },
   {
     prop: 'eventCode',
     label: '事件编码',
@@ -75,6 +98,13 @@ export const tableOptions: TableOptions[] = [
   { prop: 'eventCode', label: '事件编码', width: 180 },
   { prop: 'eventName', label: '事件名称', width: 150 },
   {
+    prop: 'bizModule',
+    label: '业务模块',
+    width: 100,
+    align: 'center',
+    formatter: (row: any) => bizModuleOptions.find(o => o.value === row.bizModule)?.label ?? row.bizModule ?? '-',
+  },
+  {
     prop: 'eventType',
     label: '类型',
     width: 100,
@@ -86,7 +116,7 @@ export const tableOptions: TableOptions[] = [
     label: '看板模块',
     width: 100,
     align: 'center',
-    formatter: (row: any) => kanbanModuleOptions.find(o => o.value === row.kanbanModule)?.label ?? row.kanbanModule ?? '-',
+    formatter: (row: any) => kanbanModuleOptions.find(o => o.value === row.kanbanModule)?.label ?? kanbanModuleLegacyLabels[row.kanbanModule] ?? row.kanbanModule ?? '-',
   },
   {
     prop: 'priority',
