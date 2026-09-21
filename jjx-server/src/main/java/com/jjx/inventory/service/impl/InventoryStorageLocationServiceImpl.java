@@ -30,6 +30,21 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
         implements InventoryStorageLocationService {
 
     private final InventoryStorageLocationMapper storageLocationMapper;
+    /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
+
+    /**
+     * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
+     * 手写 payload，bizNo 取对象编码（删除类由调用方传入删除前取到的编码）。
+     */
+    private void publishLocationEvent(String eventCode, Long id, String knownCode) {
+        InventoryStorageLocation m = (id == null || knownCode != null) ? null : storageLocationMapper.selectById(id);
+        String code = knownCode != null ? knownCode : (m == null ? null : m.getLocationCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "storage_location", id, code);
+            payload.put("locationName", m.getLocationName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public List<InventoryStorageLocation> getByWarehouseId(Long warehouseId) {
@@ -163,7 +178,6 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
     }
 
     @Override
-    @Event(value = "inventory.storage_location.status_updated", bizId = "#locationId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long locationId, String status) {
         if (locationId == null || status == null) {
@@ -190,11 +204,11 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
         }
 
         location.setStatus(status);
+        publishLocationEvent("inventory.storage_location.status_updated", locationId, null);
         return storageLocationMapper.updateById(location) > 0;
     }
 
     @Override
-    @Event(value = "inventory.storage_location.deleted", bizId = "#locationId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long locationId) {
         if (locationId == null) {
@@ -214,7 +228,11 @@ public class InventoryStorageLocationServiceImpl extends ServiceImpl<InventorySt
             return false;
         }
 
-        return storageLocationMapper.deleteById(locationId) > 0;
+        boolean updated = storageLocationMapper.deleteById(locationId) > 0;
+        if (updated) {
+            publishLocationEvent("inventory.storage_location.deleted", location.getLocationId(), location.getLocationCode());
+        }
+        return updated;
     }
 
     /**

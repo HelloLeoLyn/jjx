@@ -36,6 +36,8 @@ public class InventoryMaterialCategoryServiceImpl
         implements InventoryMaterialCategoryService {
 
     private final InventoryMaterialCategoryMapper materialCategoryMapper;
+    /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryMaterialMapper materialMapper;
 
     private static LambdaQueryWrapper<InventoryMaterialCategory> buildQueryWrapper(CategoryQueryDTO queryDTO) {
@@ -48,6 +50,19 @@ public class InventoryMaterialCategoryServiceImpl
                 .eq(StringUtils.isNotBlank(queryDTO.getStatus()), InventoryMaterialCategory::getStatus,
                         queryDTO.getStatus());
         return queryWrapper;
+    }
+
+    /**
+     * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
+     * 手写 payload，bizNo 取对象编码（删除类由调用方传入删除前取到的编码）。
+     */
+    private void publishCategoryEvent(String eventCode, Long id, String knownCode) {
+        InventoryMaterialCategory m = (id == null || knownCode != null) ? null : materialCategoryMapper.selectById(id);
+        String code = knownCode != null ? knownCode : (m == null ? null : m.getCategoryCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "material_category", id, code);
+            payload.put("categoryName", m.getCategoryName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
     @Override
@@ -107,7 +122,6 @@ public class InventoryMaterialCategoryServiceImpl
     }
 
     @Override
-    @Event(value = "inventory.material_category.status_updated", bizId = "#categoryId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long categoryId, String status) {
         InventoryMaterialCategory category = materialCategoryMapper.selectById(categoryId);
@@ -117,11 +131,11 @@ public class InventoryMaterialCategoryServiceImpl
         }
 
         category.setStatus(status);
+        publishCategoryEvent("inventory.material_category.status_updated", categoryId, null);
         return materialCategoryMapper.updateById(category) > 0;
     }
 
     @Override
-    @Event(value = "inventory.material_category.deleted", bizId = "#categoryId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long categoryId) {
         // 检查是否有子分类
@@ -139,7 +153,11 @@ public class InventoryMaterialCategoryServiceImpl
             throw new RuntimeException("分类下存在 " + materialCount + " 个物料，无法删除");
         }
 
-        return materialCategoryMapper.deleteById(categoryId) > 0;
+        boolean updated = materialCategoryMapper.deleteById(categoryId) > 0;
+        if (updated) {
+            publishCategoryEvent("inventory.material_category.deleted", category.getCategoryId(), category.getCategoryCode());
+        }
+        return updated;
     }
 
     @Override

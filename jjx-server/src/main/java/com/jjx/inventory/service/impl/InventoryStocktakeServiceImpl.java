@@ -40,6 +40,8 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         implements InventoryStocktakeService {
 
     private final InventoryStocktakeOrderMapper stocktakeOrderMapper;
+    /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryStocktakeItemMapper stocktakeItemMapper;
     private final InventoryMaterialMapper materialMapper;
     private final InventoryStockMapper stockMapper;
@@ -49,6 +51,21 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     private final InventoryOutboundOrderMapper outboundOrderMapper;
     private final InventoryOutboundItemMapper outboundItemMapper;
     private final InventoryWarehouseMapper stocktakeWarehouseMapper;
+
+    /**
+     * Stocktake类事件统一发布（2026-09-21 dev-20260921-013 库存批 2/3）：
+     * 手写 payload，bizNo 取盘点单号（原注解 bizId 只能带内部编号）。
+     */
+    private void publishStocktakeEvent(String eventCode, Long id) {
+        InventoryStocktakeOrder order = id == null ? null : stocktakeOrderMapper.selectById(id);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "inventory", id, order == null ? null : order.getStocktakeNo());
+        if (order != null) {
+            payload.put("stocktakeNo", order.getStocktakeNo());
+            payload.put("warehouseId", order.getWarehouseId());
+        }
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public IPage<StocktakeVO> page(StocktakeQueryDTO query) {
@@ -132,7 +149,6 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
-    @Event(value = "inventory.stocktake.created", bizId = "#params", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public Long create(Map<String, Object> params) {
         log.info("创建盘点单: {}", params);
@@ -190,6 +206,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
             createStocktakeItems(order);
         }
 
+        publishStocktakeEvent("inventory.stocktake.created", stocktakeId);
         return stocktakeId;
     }
 
@@ -286,7 +303,6 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
-    @Event(value = "inventory.stocktake.started", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean startStocktake(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -302,11 +318,14 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
 
         order.setOrderStatus(InventoryOrderStatusEnum.PROCESSING.getValue());
         order.setActualStartTime(LocalDateTime.now());
-        return stocktakeOrderMapper.updateById(order) > 0;
+        boolean updated = stocktakeOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishStocktakeEvent("inventory.stocktake.started", order.getStocktakeId());
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.stocktake.data_inputted", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean inputStocktakeData(Long stocktakeId, List<Map<String, Object>> items) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -366,6 +385,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         }
 
         log.info("盘点数据录入完成: stocktakeId={}, 录入{}条", stocktakeId, items.size());
+        publishStocktakeEvent("inventory.stocktake.data_inputted", order.getStocktakeId());
         return true;
     }
 
@@ -467,7 +487,6 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     }
 
     @Override
-    @Event(value = "inventory.stocktake.result_confirmed", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmResult(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -483,11 +502,14 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
 
         order.setOrderStatus(InventoryOrderStatusEnum.CONFIRMED.getValue());
         order.setActualEndTime(LocalDateTime.now());
-        return stocktakeOrderMapper.updateById(order) > 0;
+        boolean updated = stocktakeOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishStocktakeEvent("inventory.stocktake.result_confirmed", order.getStocktakeId());
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.stocktake.diff_processed", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean processDiff(Long stocktakeId, Long operatorId, String operatorName) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -659,11 +681,11 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         log.info("盘点盈亏处理完成: stocktakeId={}, 盘盈{}个, 盘亏{}个, operatorId={}, operatorName={}",
                 stocktakeId, surplusItems.size(), lossItems.size(), operatorId, operatorName);
 
+        publishStocktakeEvent("inventory.stocktake.diff_processed", order.getStocktakeId());
         return updated > 0;
     }
 
     @Override
-    @Event(value = "inventory.stocktake.closed", bizId = "#stocktakeId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean closeStocktake(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
@@ -678,11 +700,14 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         }
 
         order.setOrderStatus(InventoryOrderStatusEnum.CLOSED.getValue());
-        return stocktakeOrderMapper.updateById(order) > 0;
+        boolean updated = stocktakeOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishStocktakeEvent("inventory.stocktake.closed", order.getStocktakeId());
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.stocktake.submitted", bizId = "#stocktakeId", bizType = "'inventory'")
     public boolean submitApprove(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
         if (order == null) {
@@ -691,11 +716,14 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         }
 
         order.setApproveStatus(InventoryOrderStatusEnum.PENDING.getValue());
-        return stocktakeOrderMapper.updateById(order) > 0;
+        boolean updated = stocktakeOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishStocktakeEvent("inventory.stocktake.submitted", order.getStocktakeId());
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.stocktake.approved", bizId = "#stocktakeId", bizType = "'inventory'")
     public boolean approve(Long stocktakeId, Long approverId, String approverName, String remark) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
         if (order == null) {
@@ -712,7 +740,11 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         order.setApproverId(approverId);
         order.setApproverName(approverName);
         order.setApproveRemark(remark);
-        return stocktakeOrderMapper.updateById(order) > 0;
+        boolean updated = stocktakeOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishStocktakeEvent("inventory.stocktake.approved", order.getStocktakeId());
+        }
+        return updated;
     }
 
     @Override

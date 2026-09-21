@@ -54,6 +54,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     private static final String MATERIAL_BIZ_TYPE = "inventory_material";
 
     private final InventoryMaterialMapper materialMapper;
+    /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryStockMapper stockMapper;
     private final RedisSequenceService redisSequenceService;
     private final MaterialConverter materialConverter;
@@ -62,6 +64,19 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     private final ISysTagService tagService;
+
+    /**
+     * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
+     * 手写 payload，bizNo 取对象编码（删除类由调用方传入删除前取到的编码）。
+     */
+    private void publishMaterialEvent(String eventCode, Long id, String knownCode) {
+        InventoryMaterial m = (id == null || knownCode != null) ? null : materialMapper.selectById(id);
+        String code = knownCode != null ? knownCode : (m == null ? null : m.getMaterialCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "material", id, code);
+            payload.put("materialName", m.getMaterialName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public PageResult<MaterialVO> pageQuery(MaterialQueryDTO queryDTO) {
@@ -125,7 +140,6 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
-    @Event(value = "inventory.material.created", bizId = "#material", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean create(InventoryMaterial material, List<Long> tagIds, String operName) {
         validateMaterialType(material.getMaterialType());
@@ -139,11 +153,13 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (created) {
             setMaterialTags(material.getMaterialId(), tagIds, operName);
         }
+        if (created) {
+            publishMaterialEvent("inventory.material.created", material.getMaterialId(), material.getMaterialCode());
+        }
         return created;
     }
 
     @Override
-    @Event(value = "inventory.material.updated", bizId = "#material", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean update(InventoryMaterial material, List<Long> tagIds, String operName) {
         validateMaterialType(material.getMaterialType());
@@ -165,11 +181,13 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (updated) {
             setMaterialTags(material.getMaterialId(), tagIds, operName);
         }
+        if (updated) {
+            publishMaterialEvent("inventory.material.updated", existing.getMaterialId(), existing.getMaterialCode());
+        }
         return updated;
     }
 
     @Override
-    @Event(value = "inventory.material.deleted", bizId = "#id", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long id) {
         InventoryMaterial material = materialMapper.selectById(id);
@@ -213,6 +231,9 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         boolean deleted = materialMapper.deleteById(id) > 0;
         if (deleted) {
             tagService.setBizTags(MATERIAL_BIZ_TYPE, id, List.of(), "system");
+        }
+        if (deleted) {
+            publishMaterialEvent("inventory.material.deleted", material.getMaterialId(), material.getMaterialCode());
         }
         return deleted;
     }

@@ -48,12 +48,29 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         implements InventoryTransferService {
 
     private final InventoryTransferOrderMapper transferOrderMapper;
+    /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryTransferItemMapper transferItemMapper;
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
     private final InventoryWarehouseMapper transferWarehouseMapper;
     private final InventoryStorageLocationMapper transferLocationMapper;
+
+    /**
+     * Transfer类事件统一发布（2026-09-21 dev-20260921-013 库存批 2/3）：
+     * 手写 payload，bizNo 取调拨单号（原注解 bizId 只能带内部编号）。
+     */
+    private void publishTransferEvent(String eventCode, Long id) {
+        InventoryTransferOrder order = id == null ? null : transferOrderMapper.selectById(id);
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "inventory", id, order == null ? null : order.getTransferNo());
+        if (order != null) {
+            payload.put("transferNo", order.getTransferNo());
+            payload.put("warehouseId", order.getWarehouseId());
+        }
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public IPage<TransferVO> page(TransferQueryDTO query) {
@@ -122,7 +139,6 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     }
 
     @Override
-    @Event(value = "inventory.transfer.created", bizId = "#params", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public Long create(Map<String, Object> params) {
         log.info("创建调拨单: {}", params);
@@ -230,11 +246,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         }
 
         log.info("调拨单创建成功: transferId={}, transferNo={}", transferId, transferNo);
+        publishTransferEvent("inventory.transfer.created", transferId);
         return transferId;
     }
 
     @Override
-    @Event(value = "inventory.transfer.submitted", bizId = "#transferId", bizType = "'inventory'")
     public boolean submitApprove(Long transferId) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
         if (order == null) {
@@ -243,11 +259,14 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         }
 
         order.setApproveStatus(InventoryOrderStatusEnum.PENDING.getValue());
-        return transferOrderMapper.updateById(order) > 0;
+        boolean updated = transferOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishTransferEvent("inventory.transfer.submitted", order.getTransferId());
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.transfer.approved", bizId = "#transferId", bizType = "'inventory'")
     public boolean approve(Long transferId, Long approverId, String approverName, String remark) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
         if (order == null) {
@@ -265,11 +284,14 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         order.setApproverName(approverName);
         order.setApproveRemark(remark);
         order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
-        return transferOrderMapper.updateById(order) > 0;
+        boolean updated = transferOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishTransferEvent("inventory.transfer.approved", order.getTransferId());
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.transfer.rejected", bizId = "#transferId", bizType = "'inventory'")
     public boolean reject(Long transferId, Long approverId, String approverName, String remark) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
         if (order == null) {
@@ -287,11 +309,14 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         order.setApproverName(approverName);
         order.setApproveRemark(remark);
         order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
-        return transferOrderMapper.updateById(order) > 0;
+        boolean updated = transferOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishTransferEvent("inventory.transfer.rejected", order.getTransferId());
+        }
+        return updated;
     }
 
     @Override
-    @Event(value = "inventory.transfer.confirmed_out", bizId = "#transferId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmOut(Long transferId, Long operatorId, String operatorName) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
@@ -387,11 +412,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         transferOrderMapper.confirmOut(transferId, operatorName);
 
         log.info("调拨出库确认完成: transferId={}, operator={}", transferId, operatorName);
+        publishTransferEvent("inventory.transfer.confirmed_out", order.getTransferId());
         return true;
     }
 
     @Override
-    @Event(value = "inventory.transfer.confirmed_in", bizId = "#transferId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmIn(Long transferId, Long operatorId, String operatorName) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
@@ -483,11 +508,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
         transferOrderMapper.confirmIn(transferId, operatorName);
 
         log.info("调拨入库确认完成: transferId={}, operator={}", transferId, operatorName);
+        publishTransferEvent("inventory.transfer.confirmed_in", order.getTransferId());
         return true;
     }
 
     @Override
-    @Event(value = "inventory.transfer.cancelled", bizId = "#transferId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean cancel(Long transferId, String reason) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
@@ -559,7 +584,11 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
 
         order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
         order.setRemark(reason);
-        return transferOrderMapper.updateById(order) > 0;
+        boolean updated = transferOrderMapper.updateById(order) > 0;
+        if (updated) {
+            publishTransferEvent("inventory.transfer.cancelled", order.getTransferId());
+        }
+        return updated;
     }
 
     @Override

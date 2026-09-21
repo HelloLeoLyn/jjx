@@ -61,6 +61,20 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final EngineeringBomItemMapper bomItemMapper;
     private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
 
+    /**
+     * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
+     * 手写 payload，bizNo 取对象编码（删除类由调用方传入删除前取到的编码）。
+     */
+    private void publishAlertEvent(String eventCode, Long id, String knownCode) {
+        InventoryAlertLog m = (id == null || knownCode != null) ? null : alertLogMapper.selectById(id);
+        String code = knownCode != null ? knownCode : (m == null ? null : m.getMaterialCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "inventory_alert", id, code);
+            payload.put("materialName", m.getMaterialName());
+            payload.put("alertType", m.getAlertType());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
+
     @Override
     public IPage<AlertVO> page(AlertQueryDTO query) {
         LambdaQueryWrapper<InventoryAlertLog> wrapper = new LambdaQueryWrapper<>();
@@ -716,7 +730,6 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     }
 
     @Override
-    @Event(value = "inventory.alert.processed", bizId = "#alertId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean processAlert(Long alertId, String processedBy, String remark) {
         InventoryAlertLog alert = alertLogMapper.selectById(alertId);
@@ -729,7 +742,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         alert.setProcessedBy(processedBy);
         alert.setProcessedTime(LocalDateTime.now());
         alert.setProcessRemark(remark);
-        return alertLogMapper.updateById(alert) > 0;
+        boolean updated = alertLogMapper.updateById(alert) > 0;
+        if (updated) {
+            publishAlertEvent("inventory.alert.processed", alert.getAlertId(), alert.getMaterialCode());
+        }
+        return updated;
     }
 
     @Override

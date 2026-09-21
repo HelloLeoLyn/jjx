@@ -27,6 +27,21 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
         implements InventoryWarehouseService {
 
     private final InventoryWarehouseMapper warehouseMapper;
+    /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
+    private final com.jjx.event.EventPublisher eventPublisher;
+
+    /**
+     * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
+     * 手写 payload，bizNo 取对象编码（删除类由调用方传入删除前取到的编码）。
+     */
+    private void publishWarehouseEvent(String eventCode, Long id, String knownCode) {
+        InventoryWarehouse m = (id == null || knownCode != null) ? null : warehouseMapper.selectById(id);
+        String code = knownCode != null ? knownCode : (m == null ? null : m.getWarehouseCode());
+        java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload(
+                "warehouse", id, code);
+            payload.put("warehouseName", m.getWarehouseName());
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
 
     @Override
     public List<InventoryWarehouse> getAllEnabled() {
@@ -61,7 +76,6 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
     }
 
     @Override
-    @Event(value = "inventory.warehouse.status_updated", bizId = "#warehouseId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean updateStatus(Long warehouseId, String status) {
         InventoryWarehouse warehouse = warehouseMapper.selectById(warehouseId);
@@ -71,11 +85,11 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
         }
 
         warehouse.setStatus(status);
+        publishWarehouseEvent("inventory.warehouse.status_updated", warehouseId, null);
         return warehouseMapper.updateById(warehouse) > 0;
     }
 
     @Override
-    @Event(value = "inventory.warehouse.deleted", bizId = "#warehouseId", bizType = "'inventory'")
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteWithCheck(Long warehouseId) {
         InventoryWarehouse warehouse = warehouseMapper.selectById(warehouseId);
@@ -87,6 +101,10 @@ public class InventoryWarehouseServiceImpl extends ServiceImpl<InventoryWarehous
         // TODO: 检查是否有库位或库存
         // 这里需要调用库位Mapper和库存Mapper检查
 
-        return warehouseMapper.deleteById(warehouseId) > 0;
+        boolean updated = warehouseMapper.deleteById(warehouseId) > 0;
+        if (updated) {
+            publishWarehouseEvent("inventory.warehouse.deleted", warehouse.getWarehouseId(), warehouse.getWarehouseCode());
+        }
+        return updated;
     }
 }
