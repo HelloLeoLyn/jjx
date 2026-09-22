@@ -33,11 +33,11 @@ Writing files is legitimate only as part of an executed task (backups / migratio
 Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
-- **DB risk-based backup**: destructive/批量 DML、表结构变更、风险修复必须先备份；低风险幂等配置/字典新增由用户按需决定是否备份。备份统一放 `JJX_BACKUP_DIR`（2026-09-21 起默认仓库内 `jjx-docs/sql/backups/`，原 `jjx-backups/` 停用）。
-- Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql` (next max NN+1).
+- **DB risk-based backup**: destructive/批量 DML、表结构变更、风险修复必须先备份（脚本按风险分级：高风险全库快照 / 低风险表级）；低风险幂等配置/字典新增由用户按需决定是否备份。备份统一放 `JJX_BACKUP_DIR`（**2026-09-22 起默认仓库外 `~/jjx-backups/`**；仓库内只留索引 `jjx-docs/sql/backups/backup-index.tsv`，2026-09-21 的“仓内 backups/”口径已作废）。
+- Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql`（NN = `ops.schema.applied` 最大号与目录现存最大号的较大者 + 1；已应用的成批迁移在应用后移出仓库到 `~/jjx-backups/migrations-removed_YYYYMMDD-HHmm/`，故只看目录会撞号）。
 - Analysis / test-plan / design reports: `jjx-docs/history/<topic>-dev-YYYYMMDD-NNN.md`, register in `history/INDEX.md`, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).
-- Table-level guard backups before row cleanups: `$JJX_BACKUP_DIR/<table>_<topic>_YYYYMMDD-HHmm.sql` (default in-repo `jjx-docs/sql/backups/`).
+- Table-level guard backups before row cleanups: `$JJX_BACKUP_DIR/<table>_<topic>_YYYYMMDD-HHmm.sql`（默认仓库外 `~/jjx-backups/`；完成后在 `jjx-docs/sql/backups/backup-index.tsv` 追加一行：时间/类型/文件/md5/字节/表数/执行人/任务码）。
 - Commit message: `type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`; never mix unrelated files.
 - NEVER `git reset --hard` / `git clean` / `git push -f`. Files under `jjx-docs/sql/` (except legacy `backups/`) and `jjx-docs/standards/` must not be deleted or moved. Legacy tracked backups may be removed only in an explicit cleanup task.
 - Scratch/temp files: `/tmp` or repo `.tmp/` (gitignored), clean same day.
