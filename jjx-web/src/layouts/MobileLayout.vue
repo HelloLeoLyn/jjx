@@ -14,14 +14,8 @@
       </div>
       <span class="m-topbar-title">{{ pageTitle }}</span>
       <div class="m-topbar-right">
-        <el-dropdown trigger="click" @command="onCommand">
-          <span class="m-topbar-user">{{ nickName || userName || '我' }}</span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <!-- dev-20260922-010：右上角改显示登录账号（原先昵称优先），点击进个人页；退出登录移到个人页 -->
+        <span class="m-topbar-user" @click="goProfile">{{ userName || nickName || '我' }}</span>
       </div>
     </header>
 
@@ -107,10 +101,10 @@ function goBack() {
   }
 }
 
-function onCommand(cmd: string) {
-  if (cmd === 'logout') {
-    userStore.resetToken()
-    router.replace('/m/login')
+/** dev-20260922-010：顶部栏右上角（登录账号）→ 个人页；退出登录在个人页内 */
+function goProfile() {
+  if (route.path !== '/m/profile') {
+    router.push('/m/profile')
   }
 }
 </script>

@@ -5,9 +5,13 @@
       <div class="m-hello-avatar">{{ avatarText }}</div>
       <div class="m-hello-text">
         <div class="m-hello-name">{{ helloWord }}，{{ nickName || userName || '' }}</div>
-        <div class="m-hello-role">{{ roleText }}</div>
+        <!-- dev-20260922-010：日期从右上角挪到第二行（与角色同排），右上角让位给顶部栏的登录账号 -->
+        <div class="m-hello-role">
+          <span v-if="roleText">{{ roleText }}</span>
+          <span v-if="roleText && todayText" class="m-hello-dot">·</span>
+          <span>{{ todayText }}</span>
+        </div>
       </div>
-      <div class="m-hello-date">{{ todayText }}</div>
     </div>
 
     <!-- 我的任务概览 -->
@@ -308,10 +312,9 @@ onMounted(() => {
   opacity: 0.85;
   margin-top: 2px;
 }
-.m-hello-date {
-  font-size: 12px;
-  opacity: 0.9;
-  align-self: flex-start;
+.m-hello-dot {
+  margin: 0 4px;
+  opacity: 0.7;
 }
 .m-home-card {
   background: #fff;

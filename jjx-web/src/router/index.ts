@@ -156,6 +156,16 @@ export const constantRoutes: RouteRecordRaw[] = [
           hidden: true,
         },
       },
+      // 移动端个人页（dev-20260922-010）：入口在顶部栏右上角（显示登录账号），页面为信息展示 + 改密码 + 退出
+      {
+        path: '/m/profile',
+        name: 'MobileProfile',
+        component: () => import('@/views/mobile/profile.vue'),
+        meta: {
+          title: '个人中心',
+          hidden: true,
+        },
+      },
     ],
   },
   {
