@@ -95,15 +95,13 @@
           </el-col>
         </el-row>
       </template>
-
-      <!-- 底部按钮 -->
-      <div v-if="mode === 'submitReview'" style="margin-top: 20px; text-align: center">
-        <el-button type="primary" @click="handleConfirmSubmit">确认提交审核</el-button>
-      </div>
     </div>
 
     <template #footer>
       <div class="dialog-footer">
+        <el-button v-if="mode === 'submitReview'" type="primary" @click="handleConfirmSubmit"
+          >确认提交审核</el-button
+        >
         <el-button @click="handleClose">关 闭</el-button>
       </div>
     </template>

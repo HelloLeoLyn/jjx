@@ -190,12 +190,10 @@
 
       <!-- 金额汇总 -->
       <el-divider content-position="left">金额汇总</el-divider>
-      <el-row>
+      <el-row class="amount-summary">
         <el-col :span="8">
-          <el-form-item label="小计金额">
-            <el-input v-model="formData.subtotalAmount" readonly style="width: 100%">
-              <template #append>元</template>
-            </el-input>
+          <el-form-item label="小计金额(元)">
+            <el-input v-model="formData.subtotalAmount" readonly style="width: 100%" />
           </el-form-item>
         </el-col>
         <el-col :span="8">
@@ -208,22 +206,18 @@
               controls-position="right"
               @change="calculateTotalAmount"
               style="width: 100%"
-            >
-              <template #append>%</template>
-            </el-input-number>
+            />
           </el-form-item>
         </el-col>
         <el-col :span="8">
-          <el-form-item label="税额">
-            <el-input v-model="formData.taxAmount" readonly style="width: 100%">
-              <template #append>元</template>
-            </el-input>
+          <el-form-item label="税额(元)">
+            <el-input v-model="formData.taxAmount" readonly style="width: 100%" />
           </el-form-item>
         </el-col>
       </el-row>
-      <el-row>
+      <el-row class="amount-summary">
         <el-col :span="8">
-          <el-form-item label="折扣金额">
+          <el-form-item label="折扣金额(元)">
             <el-input-number
               v-model="formData.discountAmount"
               :min="0"
@@ -231,27 +225,24 @@
               controls-position="right"
               @change="calculateTotalAmount"
               style="width: 100%"
-            >
-              <template #append>元</template>
-            </el-input-number>
+            />
           </el-form-item>
         </el-col>
         <el-col :span="8">
-          <el-form-item label="总金额">
-            <el-input v-model="formData.totalAmount" readonly style="width: 100%">
-              <template #append>元</template>
-            </el-input>
+          <el-form-item label="总金额(元)">
+            <el-input v-model="formData.totalAmount" readonly style="width: 100%" />
           </el-form-item>
         </el-col>
         <el-col :span="8">
-          <el-form-item label="最终金额">
-            <el-input v-model="formData.finalAmount" readonly style="width: 100%">
-              <template #append>元</template>
-            </el-input>
+          <el-form-item label="最终金额(元)">
+            <el-input v-model="formData.finalAmount" readonly style="width: 100%" />
           </el-form-item>
         </el-col>
       </el-row>
-      <el-row v-if="formData.currency && formData.currency !== 'CNY' && formData.exchangeRate > 0">
+      <el-row
+        v-if="formData.currency && formData.currency !== 'CNY' && formData.exchangeRate > 0"
+        class="amount-summary"
+      >
         <el-col :span="24">
           <el-form-item label="外币折算">
             <span class="rate-hint" style="font-size: 13px">
@@ -683,6 +674,12 @@ defineExpose({
 </script>
 
 <style scoped>
+/* 金额汇总：统一对齐口径（2026-09-22 用户反馈「有些居中有些居左」）
+   el-input-number 默认 text-align:center，而同区块里 readonly 的 el-input 是左对齐 →
+   两种对齐混排；这里把金额汇总区的数字框统一成左对齐，与表单其它输入框一致。 */
+.amount-summary :deep(.el-input-number .el-input__inner) {
+  text-align: left;
+}
 .rate-hint {
   color: #909399;
   font-size: 12px;
