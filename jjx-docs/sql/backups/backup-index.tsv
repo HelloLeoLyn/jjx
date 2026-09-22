@@ -43,3 +43,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-22 19:19:56	guard	sys_config_record-version_20260922-1919.sql	84e844f3a86e99f392773372eb8f7f80	14512	-	dahuang	dev-20260922-025
 2026-09-22 19:20:09	guard	sys_menu_archive_ai_perms_20260922-1918.sql	138e342e79f61c9a8a817cfcaaec7ca5	70402B	2	dahuang	dev-20260922-024
 2026-09-22 19:20:09	guard	sys_task_register_20260922-1918_before-025.sql	9cdb31c29da74a44629d33537436a314	981927B	1	dahuang	dev-20260922-024
+2026-09-22 19:33:14	guard	sys_task_register_20260922-1933_before-026.sql	0eda6289eaa4e5f7117af855f5a20f64	983567	1	dahuang	dev-20260922-026
