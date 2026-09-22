@@ -56,6 +56,10 @@ export interface QualityLot {
   defectReason?: string
   parentLotId?: number
   version?: number
+  /** dev-20260922-012（G5）：复检来源批号（列表接口补充的非持久化字段） */
+  parentLotNo?: string
+  /** dev-20260922-012（G5）：本批已有后继复检版本（已被取代，不能再录入/判定） */
+  superseded?: boolean
   inspector?: string
   inspectTime?: string
   remark?: string

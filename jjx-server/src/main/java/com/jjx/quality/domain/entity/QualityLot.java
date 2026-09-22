@@ -82,6 +82,14 @@ public class QualityLot {
     /** 复检来源批 + 版本 */
     private Long parentLotId;
     private Integer version;
+    /**
+     * 列表展示用的非持久化字段（dev-20260922-012 G5）：
+     * parentLotNo = 复检来源批号；superseded = 本批已有后继复检版本（已失效，不可再录入/判定）。
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String parentLotNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean superseded;
 
     private String inspector;
     private Long reviewerId;

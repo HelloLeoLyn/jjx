@@ -41,7 +41,26 @@
 
       <el-table v-loading="loading" :data="rows" border size="small">
         <template #empty><el-empty description="暂无检验批" /></template>
-        <el-table-column prop="lotNo" label="检验批号" min-width="150" />
+        <!-- dev-20260922-012（G5）：批号 + 复检版本信息（v2 / 已失效 / 复检源于哪批），解决多版本看不清新旧 -->
+        <el-table-column label="检验批号" min-width="170">
+          <template #default="{ row }">
+            <span>{{ row.lotNo }}</span>
+            <el-tag
+              v-if="Number(row.version || 1) > 1"
+              size="small"
+              type="warning"
+              effect="plain"
+              class="lot-tag"
+              >v{{ row.version }}</el-tag
+            >
+            <el-tag v-if="row.superseded" size="small" type="info" effect="plain" class="lot-tag"
+              >已失效</el-tag
+            >
+            <div v-if="row.parentLotId" class="lot-sub">
+              复检源于 {{ row.parentLotNo || '批 #' + row.parentLotId }}
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="来源" min-width="150">
           <template #default="{ row }">{{ sourceLabel(row) }}</template>
         </el-table-column>
@@ -138,7 +157,10 @@
                 >同步入库</el-button
               >
             </el-tooltip>
-            <span v-if="!canJudge && !canInspect" class="no-action">无操作权限</span>
+            <!-- dev-20260922-012（G7）：把"无操作权限"说清是缺哪个权限，别让人干瞪眼 -->
+            <span v-if="!canJudge && !canInspect" class="no-action">
+              无操作权限：需要「检验录入」（录入）或「检验判定」（判定/复检/同步入库）
+            </span>
           </template>
         </el-table-column>
       </el-table>
@@ -501,9 +523,31 @@ const submitJudge = async () => {
       ...judgeForm,
       result: fail > 0 ? 'fail' : 'pass',
     })
-    ElMessage.success('判定完成' + (fail > 0 ? '，不良已进台账' : ''))
     judgeVisible.value = false
     load()
+    // dev-20260922-012（G3）：判定完把"接下来去哪"接上——合格已自动入库；有不良就引导去处置台账
+    const judgedRow = current.value
+    if (fail > 0) {
+      const goText = lotType === 'IQC' ? '去「不合格品处置」' : '去「不良台账」处置'
+      const target = lotType === 'IQC' ? '/inventory/iqc-quarantine' : '/quality/ncr'
+      try {
+        await ElMessageBox.confirm(
+          `判定完成：合格 ${num(pass)} 已自动入库，不良 ${num(fail)} 已生成${lotType === 'IQC' ? '隔离与不良台账' : '不良台账'}（待处置 ${num(fail)}）。\n是否现在去处置？`,
+          '下一步：处置不良',
+          { confirmButtonText: goText, cancelButtonText: '稍后再说', type: 'warning' }
+        )
+      } catch {
+        ElMessage.success('判定完成，不良已进台账（稍后去「质量管理 → 不良台账」处置）')
+        return
+      }
+      router.push(
+        lotType === 'IQC'
+          ? target
+          : { path: target, query: { materialCode: judgedRow?.materialCode || undefined } }
+      )
+    } else {
+      ElMessage.success(`判定完成：合格 ${num(pass)} 已自动入库`)
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '判定失败')
   } finally {
@@ -587,6 +631,16 @@ onMounted(() => load(1))
 .stored-missing {
   color: #e6a23c;
   font-weight: 600;
+}
+/* dev-20260922-012（G5）：批号列的复检版本标记与来源批 */
+.lot-tag {
+  margin-left: 4px;
+}
+.lot-sub {
+  color: #909399;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 2px;
 }
 .judge-tip {
   color: #909399;

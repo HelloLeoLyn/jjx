@@ -165,16 +165,21 @@
 
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
 
 const router = useRouter()
+const route = useRoute()
 const goIqcQuarantine = () => router.push('/inventory/iqc-quarantine')
 const loading = ref(false)
 const rows = ref<QualityNcr[]>([])
 const total = ref(0)
 const query = reactive({ pageNum: 1, pageSize: 10, lotType: '', status: '', materialCode: '' })
+// dev-20260922-012（G3）：支持从检验批工作台判定后带 materialCode 跳进来，直接筛到该物料
+if (route.query.materialCode) {
+  query.materialCode = String(route.query.materialCode)
+}
 const current = ref<QualityNcr | null>(null)
 
 const num = (value?: number | null) =>

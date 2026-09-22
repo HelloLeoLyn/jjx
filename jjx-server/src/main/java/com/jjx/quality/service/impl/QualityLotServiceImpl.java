@@ -176,7 +176,52 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (Boolean.TRUE.equals(q.getHasPendingDefect())) {
             wrapper.apply("fail_quantity > disposed_quantity");
         }
-        return lotMapper.selectPage(new Page<>(q.getPageNum(), q.getPageSize()), wrapper);
+        IPage<QualityLot> page = lotMapper.selectPage(new Page<>(q.getPageNum(), q.getPageSize()), wrapper);
+        fillReinspectInfo(page.getRecords());
+        return page;
+    }
+
+    /**
+     * 补列表展示用的复检关系字段（dev-20260922-012 G5）：父批号 + 是否已被后继版本取代。
+     * 两次批量查询，不做逐行 N+1。
+     */
+    private void fillReinspectInfo(List<QualityLot> lots) {
+        if (lots == null || lots.isEmpty()) {
+            return;
+        }
+        List<Long> ids = new ArrayList<>();
+        Set<Long> parentIds = new HashSet<>();
+        for (QualityLot lot : lots) {
+            if (lot.getLotId() != null) {
+                ids.add(lot.getLotId());
+            }
+            if (lot.getParentLotId() != null) {
+                parentIds.add(lot.getParentLotId());
+            }
+        }
+        if (!parentIds.isEmpty()) {
+            for (QualityLot parent : lotMapper.selectBatchIds(parentIds)) {
+                for (QualityLot lot : lots) {
+                    if (parent.getLotId() != null && parent.getLotId().equals(lot.getParentLotId())) {
+                        lot.setParentLotNo(parent.getLotNo());
+                    }
+                }
+            }
+        }
+        Set<Long> superseded = new HashSet<>();
+        if (!ids.isEmpty()) {
+            List<QualityLot> children = lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                    .select(QualityLot::getParentLotId)
+                    .in(QualityLot::getParentLotId, ids));
+            for (QualityLot child : children) {
+                if (child.getParentLotId() != null) {
+                    superseded.add(child.getParentLotId());
+                }
+            }
+        }
+        for (QualityLot lot : lots) {
+            lot.setSuperseded(superseded.contains(lot.getLotId()));
+        }
     }
 
     @Override
