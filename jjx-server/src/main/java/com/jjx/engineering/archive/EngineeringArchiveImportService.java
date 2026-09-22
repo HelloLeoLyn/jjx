@@ -25,6 +25,7 @@ import java.net.URI;
 import java.net.Proxy;
 import java.net.ProxySelector;
 import java.net.SocketAddress;
+import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -66,6 +67,14 @@ public class EngineeringArchiveImportService {
     private String uploadBasePath;
     @Value("${engineering.archive.ocr-url:http://127.0.0.1:8866}")
     private String ocrUrl;
+    @Value("${engineering.archive.ai-url:}")
+    private String aiUrl;
+    @Value("${engineering.archive.ai-api-key:}")
+    private String aiApiKey;
+    @Value("${engineering.archive.ai-model:}")
+    private String aiModel;
+    @Value("${engineering.archive.ai-proxy:}")
+    private String aiProxy;
 
     public Page<EngineeringArchiveImport> page(long pageNum, long pageSize) {
         Page<EngineeringArchiveImport> result = archiveMapper.selectPage(new Page<>(pageNum, pageSize),
@@ -170,6 +179,155 @@ public class EngineeringArchiveImportService {
         } catch (Exception e) {
             throw new BusinessException("历史档案上传失败：" + e.getMessage());
         }
+    }
+
+    /** AI 入口只替换识别引擎，结果仍写入原历史档案记录和原工作台结构。 */
+    public EngineeringArchiveImport uploadAndAiRecognize(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new BusinessException("请选择历史档案图片");
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new BusinessException("AI 录入目前仅支持 JPG/PNG 图片");
+        }
+        if (aiUrl == null || aiUrl.isBlank() || aiModel == null || aiModel.isBlank()) {
+            throw new BusinessException("AI 识别服务未配置，请配置 engineering.archive.ai-url 和 ai-model");
+        }
+        try {
+            byte[] bytes = file.getBytes();
+            String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            EngineeringArchiveImport existing = archiveMapper.selectOne(new LambdaQueryWrapper<EngineeringArchiveImport>()
+                    .eq(EngineeringArchiveImport::getFileHash, hash));
+            if (existing != null) {
+                if (!canOverwrite(existing) && existing.getRecognizeStatus() != null
+                        && ArchiveRecognitionStatus.GENERATED.getValue() == existing.getRecognizeStatus()) {
+                    throw new BusinessException("该档案已生成正式草稿，请在原工作台中处理后再重新识别");
+                }
+                runAiRecognition(existing, bytes, contentType, loginUser());
+                return existing;
+            }
+            String originalName = file.getOriginalFilename() == null ? "archive.jpg" : file.getOriginalFilename();
+            String extension = originalName.contains(".") ? originalName.substring(originalName.lastIndexOf('.')) : ".jpg";
+            String relative = "engineering-archive/ai/" + LocalDate.now() + "/" + UUID.randomUUID() + extension;
+            Path target = Path.of(uploadBasePath).resolve(relative).normalize();
+            Files.createDirectories(target.getParent());
+            Files.write(target, bytes);
+
+            String user = loginUser();
+            EngineeringArchiveImport archive = new EngineeringArchiveImport();
+            archive.setFileName(originalName);
+            archive.setFilePath(relative);
+            archive.setFileHash(hash);
+            archive.setRecognizeStatus(ArchiveRecognitionStatus.RECOGNIZING.getValue());
+            archive.setRecognizeMessage("AI 识别中");
+            archive.setCreateBy(user);
+            archive.setUpdateBy(user);
+            archiveMapper.insert(archive);
+
+            SysAttachment attachment = new SysAttachment();
+            attachment.setBizType("engineering_archive");
+            attachment.setBizId(archive.getArchiveId());
+            attachment.setCategory("历史档案 AI 原图");
+            attachment.setFileName(originalName);
+            attachment.setFilePath(relative);
+            attachment.setFileSize((long) bytes.length);
+            attachment.setFileType(contentType);
+            attachment.setRemark("历史档案 AI 录入原始文件");
+            attachment.setCreateBy(user);
+            attachment.setUpdateBy(user);
+            attachmentMapper.insert(attachment);
+
+            runAiRecognition(archive, bytes, contentType, user);
+            return archive;
+        } catch (Exception e) {
+            log.warn("历史档案 AI 识别失败: {}", e.getMessage());
+            throw new BusinessException("AI 识别失败：" + trimMessage(e.getMessage()));
+        }
+    }
+
+    public EngineeringArchiveImport aiRetry(Long id) {
+        EngineeringArchiveImport archive = required(id);
+        try {
+            Path image = Path.of(uploadBasePath).resolve(archive.getFilePath()).normalize();
+            byte[] bytes = Files.readAllBytes(image);
+            String contentType = Files.probeContentType(image);
+            runAiRecognition(archive, bytes, contentType == null ? "image/jpeg" : contentType, loginUser());
+        } catch (Exception e) {
+            archive.setRecognizeStatus(ArchiveRecognitionStatus.FAILED.getValue());
+            archive.setRecognizeTime(LocalDateTime.now());
+            archive.setRecognizeMessage("AI 识别失败：" + trimMessage(e.getMessage()));
+            archive.setUpdateBy(loginUser());
+            archiveMapper.updateById(archive);
+        }
+        return archive;
+    }
+
+    private void runAiRecognition(EngineeringArchiveImport archive, byte[] bytes, String contentType, String user) throws Exception {
+        archive.setRecognizeStatus(ArchiveRecognitionStatus.RECOGNIZING.getValue());
+        archive.setRecognizeMessage("AI 识别中");
+        archive.setUpdateBy(user);
+        archiveMapper.updateById(archive);
+        try {
+            JsonNode result = callAiVision(bytes, contentType);
+            archive.setExtractedJson(objectMapper.writeValueAsString(result));
+            archive.setProductName(result.path("productName").asText(null));
+            archive.setProductCode(result.path("productCode").asText(null));
+            archive.setRecognizeStatus(ArchiveRecognitionStatus.REVIEW.getValue());
+            archive.setRecognizeTime(LocalDateTime.now());
+            archive.setRecognizeMessage("AI 识别完成，请查看并修正识别草稿");
+            archive.setUpdateBy(user);
+            archiveMapper.updateById(archive);
+        } catch (Exception e) {
+            archive.setRecognizeStatus(ArchiveRecognitionStatus.FAILED.getValue());
+            archive.setRecognizeTime(LocalDateTime.now());
+            archive.setRecognizeMessage("AI 识别失败：" + trimMessage(e.getMessage()));
+            archive.setUpdateBy(user);
+            archiveMapper.updateById(archive);
+            throw e;
+        }
+    }
+
+    private JsonNode callAiVision(byte[] bytes, String contentType) throws Exception {
+        String endpoint = aiUrl.endsWith("/chat/completions") ? aiUrl : aiUrl.replaceAll("/$", "") + "/chat/completions";
+        String image = "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+        ObjectNode request = objectMapper.createObjectNode();
+        request.put("model", aiModel);
+        request.put("temperature", 0);
+        var messages = request.putArray("messages");
+        var message = messages.addObject();
+        message.put("role", "user");
+        var content = message.putArray("content");
+        content.addObject().put("type", "text").put("text",
+                "请识别这份历史档案，严格只返回 JSON 对象，不要 Markdown 或解释。输出必须兼容现有历史档案识别工作台：顶层必须包含 groups 和 workflows。groups 每项包含 groupType、label、confirmed、bounds；workflows 每项包含 workflowType、label、confirmed、bounds、steps。每个 step 包含 stepNo、bounds、rawText、contentType、processStructure、classificationConfirmed、processMappingConfirmed、components、workInstruction、operationRemark。contentType 只能是 EMPTY、TEXT_ONLY、ICON_ONLY、MIXED、UNKNOWN；processStructure 只能是 EMPTY、SINGLE、COMPOSITE、DEPENDENCY、UNDECIDED。components 每项包含 order、text、confirmed、workInstruction；无法判断的内容保留空字符串或空数组，confirmed 一律返回 false。同时可返回 productName、productCode，不要编造看不清的文字。");
+        content.addObject().put("type", "image_url").putObject("image_url").put("url", image);
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(endpoint))
+                .timeout(Duration.ofSeconds(90))
+                .header("Content-Type", "application/json");
+        if (aiApiKey != null && !aiApiKey.isBlank()) builder.header("Authorization", "Bearer " + aiApiKey);
+        HttpClient.Builder clientBuilder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10));
+        String proxyAddress = aiProxy;
+        if (proxyAddress == null || proxyAddress.isBlank()) proxyAddress = System.getenv("HTTPS_PROXY");
+        if (proxyAddress == null || proxyAddress.isBlank()) proxyAddress = System.getenv("https_proxy");
+        if (proxyAddress != null && !proxyAddress.isBlank()) clientBuilder.proxy(proxySelector(proxyAddress));
+        HttpResponse<String> response = clientBuilder.build()
+                .send(builder.POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))).build(),
+                        HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new BusinessException("AI 服务返回 HTTP " + response.statusCode());
+        }
+        JsonNode root = objectMapper.readTree(response.body());
+        String text = root.path("choices").path(0).path("message").path("content").asText("").trim();
+        text = text.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "").trim();
+        JsonNode result = objectMapper.readTree(text);
+        if (!result.isObject()) throw new BusinessException("AI 返回格式不是 JSON 对象");
+        return result;
+    }
+
+    private ProxySelector proxySelector(String proxyAddress) {
+        URI proxyUri = URI.create(proxyAddress.trim());
+        if (proxyUri.getHost() == null || proxyUri.getPort() <= 0) {
+            throw new BusinessException("AI 代理地址格式错误，应为 http://主机:端口");
+        }
+        return ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), proxyUri.getPort()));
     }
 
     public EngineeringArchiveImport retry(Long id) {
@@ -281,8 +439,9 @@ public class EngineeringArchiveImportService {
             normalizeRecognizedContent(result);
             normalizeWorkflowStepNumbers(result);
             archive.setExtractedJson(objectMapper.writeValueAsString(result));
-            archive.setProductName(text(result, "productName"));
-            archive.setProductCode(text(result, "productCode"));
+            JsonNode fields = result.has("fields") ? result.get("fields") : result;
+            archive.setProductName(text(fields, "productName"));
+            archive.setProductCode(text(fields, "productCode"));
             archive.setRecognizeStatus(ArchiveRecognitionStatus.REVIEW.getValue());
             archive.setUpdateBy(loginUser());
             archiveMapper.updateById(archive);

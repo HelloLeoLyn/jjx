@@ -4,14 +4,14 @@
       <template #header
         ><div class="header">
           <div>
-            <h3>历史档案识别工作台</h3>
+            <h3>{{ props.source === 'AI' ? '历史档案录入（AI）' : '历史档案录入' }}</h3>
             <div class="hint">逐阶段确认，只保存识别草稿，不生成正式业务数据。</div>
-            <el-tag :type="ocrAvailable ? 'success' : 'danger'"
+            <el-tag v-if="props.source === 'OCR'" :type="ocrAvailable ? 'success' : 'danger'"
               >OCR：{{ ocrAvailable ? '已连接' : '未启动' }}</el-tag
             >
           </div>
           <el-upload :show-file-list="false" accept="image/jpeg,image/png" :http-request="upload"
-            ><el-button type="primary" :loading="uploading">上传并识别</el-button></el-upload
+            ><el-button type="primary" :loading="uploading">{{ props.source === 'AI' ? '上传并 AI 识别' : '上传并识别' }}</el-button></el-upload
           >
         </div></template
       >
@@ -393,6 +393,7 @@ import {
 } from '@/enums/engineering/archive'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+const props = withDefaults(defineProps<{ source?: 'OCR' | 'AI' }>(), { source: 'OCR' })
 type Bounds = { x1: number; y1: number; x2: number; y2: number }
 type Group = {
   key?: string
@@ -637,7 +638,8 @@ async function load() {
 async function upload(o: UploadRequestOptions) {
   uploading.value = true
   try {
-    await archiveImportApi.upload(o.file as File)
+    if (props.source === 'AI') await archiveImportApi.aiUpload(o.file as File)
+    else await archiveImportApi.upload(o.file as File)
     ElMessage.success('识别完成，请进入工作台')
     await load()
   } finally {
@@ -654,7 +656,8 @@ async function retry(r: ArchiveImportRecord) {
   } catch {
     return
   }
-  await archiveImportApi.retry(r.archiveId)
+  if (props.source === 'AI') await archiveImportApi.aiRetry(r.archiveId)
+  else await archiveImportApi.retry(r.archiveId)
   ElMessage.success('已重新识别')
   await load()
 }
@@ -787,8 +790,10 @@ async function generateDrafts() {
 }
 onMounted(async () => {
   await load()
-  const h: any = payload(await archiveImportApi.ocrHealth())
-  ocrAvailable.value = h?.available === true
+  if (props.source === 'OCR') {
+    const h: any = payload(await archiveImportApi.ocrHealth())
+    ocrAvailable.value = h?.available === true
+  }
 })
 </script>
 

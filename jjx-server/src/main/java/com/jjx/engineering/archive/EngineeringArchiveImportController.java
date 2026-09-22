@@ -45,6 +45,14 @@ public class EngineeringArchiveImportController {
     @PostMapping("/upload")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> upload(@RequestParam MultipartFile file) { return Result.success(service.uploadAndRecognize(file)); }
+    @PostMapping("/ai-upload")
+    @SaCheckPermission("engineering:archive:import")
+    public Result<EngineeringArchiveImport> aiUpload(@RequestParam MultipartFile file) {
+        return Result.success(service.uploadAndAiRecognize(file));
+    }
+    @PostMapping("/{id}/ai-retry")
+    @SaCheckPermission("engineering:archive:import")
+    public Result<EngineeringArchiveImport> aiRetry(@PathVariable Long id) { return Result.success(service.aiRetry(id)); }
     @PostMapping("/{id}/retry")
     @SaCheckPermission("engineering:archive:import")
     public Result<EngineeringArchiveImport> retry(@PathVariable Long id) { return Result.success(service.retry(id)); }

@@ -52,6 +52,14 @@ spring:
     restart:
       enabled: false
 
+# 历史档案 AI 录入（OpenAI 兼容视觉接口）
+engineering:
+  archive:
+    ai-url: ${JJX_ARCHIVE_AI_URL}
+    ai-api-key: ${JJX_ARCHIVE_AI_API_KEY:}
+    ai-model: ${JJX_ARCHIVE_AI_MODEL}
+    ai-proxy: ${JJX_ARCHIVE_AI_PROXY:}
+
 # MyBatis Plus：生产不打 SQL、不刷新 mapper
 mybatis-plus:
   type-aliases-package: com.jjx.**.domain

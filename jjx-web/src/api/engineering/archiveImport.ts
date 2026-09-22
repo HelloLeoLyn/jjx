@@ -42,6 +42,14 @@ export const archiveImportApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  aiUpload: (file: File) => {
+    const data = new FormData()
+    data.append('file', file)
+    return request.post('/engineering/archive-imports/ai-upload', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  aiRetry: (id: number) => request.post(`/engineering/archive-imports/${id}/ai-retry`),
   retry: (id: number) => request.post(`/engineering/archive-imports/${id}/retry`),
   updateResult: (id: number, data: unknown) =>
     request.put(`/engineering/archive-imports/${id}/result`, data),
