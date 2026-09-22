@@ -8,3 +8,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-22 12:05:24	guard	sys_task_2108_status_20260922-1206.sql	de3719c3240f9c6bf43bd2edeb590e5e	8193	-	Hermes	dev-20260921-046
 2026-09-22 12:06:27	guard	sys_config_record-version_20260922-1206.sql	ff4e8fe583e1078c08a84610457ee132	14494	-	Hermes	dev-20260921-046
 2026-09-22 12:06:43	guard	sys_task_2108_status_20260922-1209.sql	17cf5bfb41c016b38de3b29b6abc610c	8823	-	Hermes	dev-20260921-046
+2026-09-22 12:11:27	full	jjx_erp_db_backup_20260922-1211_no-hr-employee.sql	07ada8a3c1e2b83a033504c23ceb8d5e	5502714	113	dahuang	dev-20260922-007
