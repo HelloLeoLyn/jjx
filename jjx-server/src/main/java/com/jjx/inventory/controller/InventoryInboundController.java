@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.common.core.result.Result;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
 import com.jjx.inventory.dto.query.IqcPendingQueryDTO;
+import com.jjx.inventory.dto.query.IqcQuarantineLedgerQueryDTO;
 import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.inventory.dto.vo.IqcPendingVO;
+import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
 import com.jjx.inventory.service.InventoryInboundService;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
@@ -151,6 +153,13 @@ public class InventoryInboundController {
     @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
     public Result<List<InventoryIqcQuarantine>> listAllQuarantine(@RequestParam(required = false) String status) {
         return Result.success(inboundService.listAllQuarantine(status));
+    }
+
+    @GetMapping("/iqc-quarantine/page")
+    @Operation(summary = "分页查询 IQC 隔离处置台账及当前页关联数据")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
+    public Result<IqcQuarantineLedgerPageVO> pageIqcQuarantineLedger(IqcQuarantineLedgerQueryDTO query) {
+        return Result.success(inboundService.pageIqcQuarantineLedger(query));
     }
 
     @GetMapping("/iqc-disposition-orders/list")

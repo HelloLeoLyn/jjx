@@ -277,7 +277,8 @@ import { getProductionOrderDetail } from '@/api/production/order'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import { productRouteApi } from '@/api/product/routing'
 import { outboundApi } from '@/api/inventory/outbound'
-import { qualityApi } from '@/api/production/quality'
+import { qualityLotApi, toQualityLotView } from '@/api/quality/lot'
+import { InspectionType } from '@/enums/quality'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import QRCode from 'qrcode'
 
@@ -545,8 +546,8 @@ async function loadData() {
 
     // 5. 质检记录
     try {
-      const qRes: any = await qualityApi.page({ pageNum: 1, pageSize: 20, orderId: Number(orderId) })
-      qualities.value = qRes?.data?.records || []
+      const qRes: any = await qualityLotApi.page({ pageNum: 1, pageSize: 20, lotType: InspectionType.FQC, orderId: Number(orderId) })
+      qualities.value = (qRes?.data?.records || []).map(toQualityLotView)
     } catch {
       qualities.value = []
     }

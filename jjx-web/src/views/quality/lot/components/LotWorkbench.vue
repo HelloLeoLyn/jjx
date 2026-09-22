@@ -267,7 +267,7 @@ const isEditable = (row: QualityLot) => ['PENDING', 'INSPECTING'].includes(Strin
 const isJudged = (row: QualityLot) => row.status === 'JUDGED'
 
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
-const title = props.lotType === 'IQC' ? '来料检验' : '成品检验'
+const title = props.lotType === 'IQC' ? '来料检验' : props.lotType === 'OQC' ? '出货检验' : '成品检验'
 const lotType = props.lotType
 
 const loading = ref(false)
@@ -307,6 +307,7 @@ const sourceLabel = (row: QualityLot) => {
     WORK_REPORT: '报工批',
     INBOUND_ITEM: '收货行',
     EXECUTION: '工序',
+    SALES_DELIVERY: '发货单',
   }
   const key = row.sourceType || ''
   return `${map[key] || key}${row.sourceId ? ' #' + row.sourceId : ''}`

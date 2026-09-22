@@ -14,7 +14,6 @@ import com.jjx.production.mapper.ProductionTaskMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.production.service.ProductionTaskService;
-import com.jjx.production.service.QualityInspectionService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.WorkReportReadService;
 import com.jjx.production.service.impl.WorkReportActionServiceImpl;
@@ -66,7 +65,7 @@ class WorkReportSnapshotProxyTest {
         roleResolver = mock(ProductionRoleResolver.class);
         jdbcTemplate = mock(JdbcTemplate.class);
         service = new WorkReportActionServiceImpl(workReportMapper, executionMapper, taskMapper,
-                taskService, projectionService, readService, mock(QualityInspectionService.class),
+                taskService, projectionService, readService, mock(com.jjx.quality.mapper.QualityLotMapper.class),
                 jdbcTemplate, mock(NotificationService.class),
                 mock(com.jjx.framework.common.RedisSequenceService.class),
                 roleResolver,

@@ -48,6 +48,10 @@ public interface QualityNcrService {
      */
     QualityNcrAction dispose(Long ncrId, QualityNcrDisposeDTO dto);
 
+    /** IQC 只允许从隔离处置入口同步 NCR，避免两个台账各自执行一次库存动作。 */
+    QualityNcrAction syncIqcDisposition(Long lotId, String quarantineAction, BigDecimal quantity,
+                                        String operatorName, String remark);
+
     /** 处置执行完成（返工完工再检合格/报废已扣库存/让步已转良品后由 008 调用） */
     QualityNcrAction completeAction(Long actionId, String resultRemark, Long reworkExecutionId);
 }

@@ -105,6 +105,9 @@ public class LogSaveService {
             } else if ("outbound".equals(bizType)) {
                 com.jjx.inventory.domain.InventoryOutboundOrder outbound = outboundOrderMapper.selectById(id);
                 if (outbound != null && outbound.getSourceId() != null) orderId = outbound.getSourceId();
+            } else if ("sales_order_review".equals(bizType)) {
+                // 合同评审打印以订单 ID 作为 bizId；直接继承销售订单 traceId。
+                orderId = id;
             }
             if (orderId == null) return null;
             com.jjx.sales.domain.entity.SalesOrder order = orderMapper.selectById(orderId);

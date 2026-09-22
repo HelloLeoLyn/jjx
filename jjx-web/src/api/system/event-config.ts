@@ -16,6 +16,19 @@ export const eventConfigApi = {
   getInfo(eventId: number) {
     return request.get<R<SysEventConfig>>(`/system/event-config/${eventId}`)
   },
+  metadata(eventCode: string) {
+    return request.get<
+      R<{
+        variables: Array<{ key: string; description: string; example: string }>
+        latest?: {
+          title?: string
+          content?: string
+          receiverName?: string
+          sendTime?: string
+        }
+      }>
+    >(`/system/event-config/${encodeURIComponent(eventCode)}/metadata`)
+  },
   // 新增
   add(data: Partial<SysEventConfig>) {
     return request.post<R>('/system/event-config', data)

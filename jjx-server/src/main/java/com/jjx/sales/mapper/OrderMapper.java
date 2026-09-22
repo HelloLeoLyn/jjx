@@ -133,10 +133,6 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
      * @param approveRemark 审核备注
      * @return 结果
      */
-    @Update("UPDATE sales_order SET approver_id = #{approverId}, approver_name = #{approverName}, approve_time = NOW(), approve_remark = #{approveRemark} WHERE order_id = #{orderId} AND deleted = 0")
-    int updateApproveInfo(@Param("orderId") Long orderId, @Param("approverId") Long approverId,
-                         @Param("approverName") String approverName, @Param("approveRemark") String approveRemark);
-
     /**
      * 更新付款信息
      *

@@ -13,12 +13,12 @@
     <A4Canvas v-if="info" :padding-mm="15">
       <div class="inquiry-company-header">
         <PrintCompanyHeader variant="center" />
-        <img
-          v-if="qrDataUrl"
-          :src="qrDataUrl"
+        <PrintQrCode
+          v-if="info.inquiryNo"
+          :text="info.inquiryNo"
+          :size="72"
           class="inquiry-qrcode"
-          alt="询价单二维码"
-          title="扫码识别询价单号"
+          label="扫码识别询价单号"
         />
       </div>
       <div class="doc-title">询价单</div>
@@ -78,14 +78,13 @@ import { inquiryApi, type InquiryBase } from '@/api/sales/inquiry'
 import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
-import QRCode from 'qrcode'
+import PrintQrCode from '@/components/print/PrintQrCode.vue'
 
 const route = useRoute()
 const router = useRouter()
 const inquiryId = Number(route.query.inquiryId)
 const info = ref<InquiryBase>()
 const loading = ref(false)
-const qrDataUrl = ref('')
 
 const contactText = computed(() => {
   const person = info.value?.contactPerson || ''
@@ -95,15 +94,6 @@ const contactText = computed(() => {
 
 const drawingText = computed(() => (info.value?.hasDrawing ? '有图纸' : '无图纸'))
 
-/** 生成询价单二维码；使用高分辨率源图保证纸张打印清晰度 */
-async function genQr() {
-  if (!info.value?.inquiryNo) return
-  try {
-    qrDataUrl.value = await QRCode.toDataURL(info.value.inquiryNo, { width: 256, margin: 1 })
-  } catch {
-    qrDataUrl.value = ''
-  }
-}
 
 async function handlePrint() {
   if (!info.value) return
@@ -125,7 +115,6 @@ async function loadData() {
   try {
     const response = await inquiryApi.getInfo(inquiryId)
     info.value = response.data || undefined
-    await genQr()
   } catch {
     ElMessage.error('询价单打印数据加载失败')
   } finally {

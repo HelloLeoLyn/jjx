@@ -530,25 +530,6 @@ public class OrderServiceImpl implements IOrderService {
     /**
      * 审核订单
      */
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public int approveOrder(Long orderId, Long approverId, String approverName, String approveRemark) {
-        SalesOrder order = orderMapper.selectById(orderId);
-        if (order == null) {
-            throw new BusinessException("订单不存在");
-        }
-
-        // 只有草稿状态的订单可以审核
-        if (order.getOrderStatus() != SalesOrderStatusEnum.DRAFT.getValue()) {
-            throw new BusinessException("只有草稿状态的订单可以审核");
-        }
-
-        // 更新审核信息
-        order.setOrderStatus(SalesOrderStatusEnum.PENDING_REVIEW.getValue()); // 待审核
-
-        return orderMapper.updateById(order);
-    }
-
     /**
      * 更新付款信息
      */

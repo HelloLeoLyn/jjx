@@ -14,6 +14,7 @@ public class Notification {
     private String title;
     private String content;
     private String notificationType;
+    private String eventCode;
     private String bizType;
     private String bizId;
     private Long senderId;

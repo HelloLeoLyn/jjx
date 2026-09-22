@@ -12,8 +12,15 @@ import com.jjx.quality.dto.QualityLotQueryDTO;
 import com.jjx.quality.dto.QualityNcrDisposeDTO;
 import com.jjx.quality.mapper.QualityNcrActionMapper;
 import com.jjx.quality.mapper.QualityNcrMapper;
+import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.quality.service.QualityLotService;
 import com.jjx.quality.service.QualityNcrService;
+import com.jjx.quality.service.QualityFinishService;
+import com.jjx.quality.service.QualityCapaService;
+import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.entity.ProductionTask;
+import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.production.mapper.ProductionTaskMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -37,12 +44,18 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
     private static final DateTimeFormatter NCR_NO_DATE = DateTimeFormatter.ofPattern("yyMMdd");
     /** 处置方式：只有这三种 */
-    private static final Set<String> ACTION_TYPES = Set.of("REWORK", "CONCESSION", "SCRAP");
+    private static final Set<String> ACTION_TYPES = Set.of("REWORK", "CONCESSION", "RETURN", "SCRAP");
 
     private final QualityNcrMapper ncrMapper;
     private final QualityNcrActionMapper actionMapper;
+    private final QualityLotMapper qualityLotMapper;
     private final QualityLotService qualityLotService;
-    /** 用 ObjectProvider 延迟取，避免 库存→质量→库存 的循环依赖（既有先例：QualityActionServiceImpl） */
+    /** 延迟获取，避免 QualityFinishService -> QualityNcrService -> QualityFinishService 构造器循环。 */
+    private final org.springframework.beans.factory.ObjectProvider<QualityFinishService> qualityFinishServiceProvider;
+    private final ProductionOperationExecutionMapper executionMapper;
+    private final ProductionTaskMapper taskMapper;
+    private final QualityCapaService capaService;
+    /** 用 ObjectProvider 延迟取，避免 库存→质量→库存 的循环依赖。 */
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.inventory.service.InventoryInboundService> inventoryInboundServiceProvider;
 
     @Override
@@ -166,6 +179,46 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     @Transactional(rollbackFor = Exception.class)
     public QualityNcrAction dispose(Long ncrId, QualityNcrDisposeDTO dto) {
         QualityNcr ncr = getNcr(ncrId);
+        QualityLot lot = qualityLotMapper.selectById(ncr.getLotId());
+        if (lot != null && "IQC".equals(lot.getLotType())) {
+            throw new BusinessException("IQC 不良请从来料隔离处置入口操作，系统将自动同步不良台账");
+        }
+        return disposeInternal(ncr, dto, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityNcrAction syncIqcDisposition(Long lotId, String quarantineAction, BigDecimal quantity,
+                                                String operatorName, String remark) {
+        QualityLot lot = qualityLotMapper.selectById(lotId);
+        if (lot == null || !"IQC".equals(lot.getLotType())) {
+            throw new BusinessException("IQC 检验批不存在");
+        }
+        QualityNcr ncr = ncrMapper.selectOne(new LambdaQueryWrapper<QualityNcr>()
+                .eq(QualityNcr::getLotId, lotId)
+                .in(QualityNcr::getStatus, "PENDING", "DISPOSING")
+                .orderByDesc(QualityNcr::getNcrId).last("LIMIT 1"));
+        if (ncr == null) {
+            throw new BusinessException("IQC 不良台账不存在，禁止单独执行库存处置");
+        }
+        String actionType = switch (quarantineAction) {
+            case "RELEASE" -> "CONCESSION";
+            case "RETURN" -> "RETURN";
+            case "REWORK" -> "REWORK";
+            case "SCRAP" -> "SCRAP";
+            default -> throw new BusinessException("不支持的 IQC 隔离处置方式");
+        };
+        QualityNcrDisposeDTO dto = new QualityNcrDisposeDTO();
+        dto.setActionType(actionType);
+        dto.setQuantity(quantity);
+        dto.setCustomerConfirmed("CONCESSION".equals(actionType));
+        dto.setOperatorName(operatorName);
+        dto.setResultRemark(remark);
+        return disposeInternal(ncr, dto, true);
+    }
+
+    private QualityNcrAction disposeInternal(QualityNcr ncr, QualityNcrDisposeDTO dto, boolean iqcInventoryManaged) {
+        Long ncrId = ncr.getNcrId();
         if (dto == null || StringUtils.isBlank(dto.getActionType())) {
             throw new BusinessException("请选择处置方式（返工/让步接收/报废）");
         }
@@ -204,12 +257,19 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
         BigDecimal disposed = nz(ncr.getDisposedQuantity()).add(quantity);
         ncr.setDisposedQuantity(disposed);
-        ncr.setStatus(disposed.compareTo(nz(ncr.getDefectQuantity())) >= 0 ? "CLOSED" : "DISPOSING");
+        boolean canClose = disposed.compareTo(nz(ncr.getDefectQuantity())) >= 0
+                && capaService.countOpen(ncrId, null) == 0;
+        ncr.setStatus("REWORK".equals(actionType) ? "DISPOSING" : canClose ? "CLOSED" : "DISPOSING");
         ncrMapper.updateById(ncr);
         // 同步检验批的已处置数量（防超处置）
         qualityLotService.addDisposedQuantity(ncr.getLotId(), quantity);
         // 处置与库存联动（dev-20260917-008）
-        applyStockEffect(ncr, action, actionType, quantity);
+        if (iqcInventoryManaged) {
+            action.setStatus("REWORK".equals(actionType) ? "PROCESSING" : "DONE");
+            actionMapper.updateById(action);
+        } else {
+            applyStockEffect(ncr, action, actionType, quantity);
+        }
         log.info("不良处置登记: ncrNo={} 方式={} 数量={} 已处置={}/{}", ncr.getNcrNo(), actionType,
                 quantity.toPlainString(), disposed.toPlainString(), nz(ncr.getDefectQuantity()).toPlainString());
         return action;
@@ -240,10 +300,44 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             action.setResultRemark("报废已登记：不良品未进入良品库存，无需库存扣减（口径A）");
             actionMapper.updateById(action);
         } else if ("REWORK".equals(actionType)) {
-            // 返工闭环未实现前保持 PROCESSING（不置 DONE），避免被当作"已处置"
+            createReworkExecution(ncr, action, quantity);
             action.setStatus("PROCESSING");
             actionMapper.updateById(action);
         }
+    }
+
+    private void createReworkExecution(QualityNcr ncr, QualityNcrAction action, BigDecimal quantity) {
+        if (ncr.getOrderId() == null) {
+            throw new BusinessException("返工处置必须关联生产工单");
+        }
+        Integer maxOrder = executionMapper.selectList(new LambdaQueryWrapper<ProductionOperationExecution>()
+                        .eq(ProductionOperationExecution::getOrderId, ncr.getOrderId())
+                        .orderByDesc(ProductionOperationExecution::getProcessOrder).last("LIMIT 1"))
+                .stream().map(ProductionOperationExecution::getProcessOrder).findFirst().orElse(0);
+        ProductionOperationExecution execution = new ProductionOperationExecution();
+        execution.setExecutionType("REWORK");
+        execution.setOrderId(ncr.getOrderId());
+        execution.setProcessName("不良返工-" + ncr.getNcrNo());
+        execution.setMajorCategory("ASSEMBLY");
+        execution.setProcessOrder(maxOrder + 1);
+        execution.setTaskSeq(1L);
+        execution.setInputQuantity(quantity);
+        execution.setOutputQuantity(BigDecimal.ZERO);
+        execution.setQualifiedQuantity(BigDecimal.ZERO);
+        execution.setDefectiveQuantity(BigDecimal.ZERO);
+        execution.setExecutionStatus(0);
+        executionMapper.insert(execution);
+
+        ProductionTask task = new ProductionTask();
+        task.setTaskNo("NCR-" + action.getActionId() + "-REWORK");
+        task.setExecutionId(execution.getExecutionId());
+        task.setTaskQuantity(quantity);
+        task.setStatus("PENDING");
+        task.setVersion(0);
+        task.setCreateBy(action.getOperatorName());
+        taskMapper.insert(task);
+        action.setReworkExecutionId(execution.getExecutionId());
+        action.setResultRemark("已创建返工工序和生产任务，完成报工后进入 FQC 复检");
     }
 
     @Override
@@ -256,9 +350,32 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if ("DONE".equals(action.getStatus())) {
             return action; // 幂等：已完成直接返回
         }
-        // 返工完成必须关联真实返工工序，禁止"点一下就完成返工"（dev-20260918-021）
-        if ("REWORK".equals(action.getActionType()) && reworkExecutionId == null) {
-            throw new BusinessException("返工完成必须关联返工工序（reworkExecutionId 不能为空）");
+        if ("REWORK".equals(action.getActionType())) {
+            QualityNcr ncr = getNcr(action.getNcrId());
+            Long executionId = action.getReworkExecutionId();
+            ProductionOperationExecution execution = executionId == null ? null : executionMapper.selectById(executionId);
+            if (execution == null || !Integer.valueOf(4).equals(execution.getExecutionStatus())) {
+                throw new BusinessException("返工工序尚未完成报工，不能进入复检结案");
+            }
+            if (action.getReinspectionLotId() == null) {
+                QualityFinishService qualityFinishService = qualityFinishServiceProvider.getIfAvailable();
+                if (qualityFinishService == null) {
+                    throw new BusinessException("成品复检服务不可用，暂不能生成返工复检批");
+                }
+                QualityLot reinspection = qualityFinishService.reinspectLot(ncr.getLotId());
+                action.setReinspectionLotId(reinspection.getLotId());
+                action.setResultRemark("返工报工已完成，已生成 FQC 复检批 " + reinspection.getLotNo());
+                actionMapper.updateById(action);
+                return action;
+            }
+            QualityLot reinspection = qualityLotMapper.selectById(action.getReinspectionLotId());
+            if (reinspection == null || !"pass".equalsIgnoreCase(reinspection.getResult())) {
+                throw new BusinessException("FQC 复检尚未合格，返工处置不能完成");
+            }
+            reworkExecutionId = executionId;
+            ncr.setStatus(nz(ncr.getDisposedQuantity()).compareTo(nz(ncr.getDefectQuantity())) >= 0
+                    ? "CLOSED" : "DISPOSING");
+            ncrMapper.updateById(ncr);
         }
         action.setStatus("DONE");
         action.setResultRemark(resultRemark == null ? action.getResultRemark() : resultRemark);

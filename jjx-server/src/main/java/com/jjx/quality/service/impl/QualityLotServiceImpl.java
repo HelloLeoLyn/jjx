@@ -15,6 +15,8 @@ import com.jjx.quality.enums.QualityLotStatusEnum;
 import com.jjx.quality.enums.QualityLotTypeEnum;
 import com.jjx.quality.mapper.QualityLotItemMapper;
 import com.jjx.quality.mapper.QualityLotMapper;
+import com.jjx.quality.mapper.QualityNcrMapper;
+import com.jjx.quality.mapper.QualityNcrActionMapper;
 import com.jjx.quality.service.QualityLotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +44,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
 
     private final QualityLotMapper lotMapper;
     private final QualityLotItemMapper itemMapper;
+    private final QualityNcrMapper ncrMapper;
+    private final QualityNcrActionMapper ncrActionMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -327,6 +331,22 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
             }
             qualified = qualified.add(nz(lot.getPassQuantity()));
             BigDecimal left = nz(lot.getFailQuantity()).subtract(nz(lot.getDisposedQuantity()));
+            // 返工登记时数量已被预占，但只有报工完成且复检合格才算真正处置完成。
+            // 将未完成返工动作加回完工门禁，防止 PROCESSING 状态绕过工单完工检查。
+            List<com.jjx.quality.domain.entity.QualityNcr> lotNcrs = ncrMapper.selectList(
+                    new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcr>()
+                            .eq(com.jjx.quality.domain.entity.QualityNcr::getLotId, lot.getLotId()));
+            if (!lotNcrs.isEmpty()) {
+                List<Long> ncrIds = lotNcrs.stream().map(com.jjx.quality.domain.entity.QualityNcr::getNcrId).toList();
+                BigDecimal processingRework = ncrActionMapper.selectList(
+                                new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
+                                        .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, ncrIds)
+                                        .eq(com.jjx.quality.domain.entity.QualityNcrAction::getActionType, "REWORK")
+                                        .ne(com.jjx.quality.domain.entity.QualityNcrAction::getStatus, "DONE"))
+                        .stream().map(com.jjx.quality.domain.entity.QualityNcrAction::getQuantity)
+                        .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+                left = left.add(processingRework);
+            }
             if (left.signum() > 0) {
                 undisposed = undisposed.add(left);
             }

@@ -8,6 +8,9 @@ import com.jjx.system.annotation.Log;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.entity.SysEventConfig;
 import com.jjx.system.mapper.SysEventConfigMapper;
+import com.jjx.notification.domain.entity.Notification;
+import com.jjx.notification.mapper.NotificationMapper;
+import com.jjx.event.EventVariableRegistry;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -17,6 +20,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 事件配置管理（通知/任务）
@@ -27,6 +31,7 @@ import java.util.List;
 public class EventConfigController extends BaseController {
 
     private final SysEventConfigMapper eventConfigMapper;
+    private final NotificationMapper notificationMapper;
 
     /**
      * 列表（全量）
@@ -70,6 +75,20 @@ public class EventConfigController extends BaseController {
     public Result<SysEventConfig> getInfo(@PathVariable Long eventId) {
         SysEventConfig config = eventConfigMapper.selectById(eventId);
         return Result.success(config);
+    }
+
+    /** 配置页所需的可用变量与最近一次实际通知。 */
+    @GetMapping("/{eventCode}/metadata")
+    public Result<Map<String, Object>> metadata(@PathVariable String eventCode) {
+        Notification latest = notificationMapper.selectOne(
+                new LambdaQueryWrapper<Notification>()
+                        .eq(Notification::getEventCode, eventCode)
+                        .orderByDesc(Notification::getNotificationId)
+                        .last("LIMIT 1"));
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("variables", EventVariableRegistry.variables(eventCode));
+        result.put("latest", latest);
+        return Result.success(result);
     }
 
     /**

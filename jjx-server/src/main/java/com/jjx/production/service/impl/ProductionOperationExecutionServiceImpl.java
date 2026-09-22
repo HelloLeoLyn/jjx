@@ -40,8 +40,6 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final ProductionOrderMapper productionOrderMapper;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
-    /** P3-C：FQC 自动创建 / 质检联动 */
-    private final com.jjx.production.service.QualityActionService qualityActionService;
     /** P1：工序产生时同步创建 First ProductionTask（统一任务责任树） */
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
     /** 扫码C：设备码软校验记录（DEVICE_CHECK） */
@@ -537,7 +535,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         // 旧 FQC 建单已下线（dev-20260918-017/018）：成品检验走 quality_lot（末道报工审批即建批）
 
         // 2026-09-09 口径Y（Leo 定）：工单成品数量（completed/finished/remaining）不再在工序完工时写入，
-        // 统一由 FQC 判定 PASS 写入（QualityActionServiceImpl.handleFqcPass，成品=质检通过数）。
+        // 统一由 FQC 检验批判定 PASS 写入（成品=质检通过数）。
         // 此前 updateOrderCompletedQuantity 把“Σ 各工序合格数”当完成量，多工序工单被重复累加（如 5×100=500），
         // 且 remaining=计划-Σ 出现负数——该写点已删除。
 
@@ -936,7 +934,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
      * 原逻辑把“Σ 各已完成工序合格数”写入 completedQuantity，多工序工单被重复累加（5×100=500），
      * remainingQuantity=计划-Σ 出现负数（100-500=-400），与工卡“计划/完成/剩余”展示严重背离。
      * 成品口径已收敛（口径Y，Leo 定）：工单 completed/finished/remaining 统一由
-     * FQC 判定 PASS 写入（QualityActionServiceImpl.handleFqcPass，成品=质检通过数 passQty）。
+     * FQC 检验批判定 PASS 写入（成品=质检通过数 passQty）。
      */
 
     /**

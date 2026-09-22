@@ -226,17 +226,6 @@ public final class LogActions {
     public static final String ORDER_DELETE = "删除销售订单";
     public static final String ORDER_CREATE_INSTANCES = "创建产品实例";
     public static final String ORDER_PAYMENT = "更新订单付款信息";
-    public static final String ORDER_REVIEW_SUBMIT = "提交订单审核";
-    public static final String ORDER_REVIEW_START = "开始审核订单";
-    public static final String ORDER_REVIEW_APPROVE = "订单审核通过";
-    public static final String ORDER_REVIEW_REJECT = "订单审核驳回";
-    public static final String ORDER_REVIEW_RETURN = "退回订单修改";
-    public static final String ORDER_REVIEW_TRANSFER = "转交订单审核";
-    public static final String ORDER_REVIEW_CUSTOMER_CONFIRM = "客户确认订单";
-    public static final String ORDER_REVIEW_CANCEL = "取消订单审核";
-    public static final String ORDER_REVIEW_BATCH_SUBMIT = "批量提交订单审核";
-    public static final String ORDER_REVIEW_BATCH_APPROVE = "批量审核通过订单";
-    public static final String ORDER_REVIEW_BATCH_REJECT = "批量审核驳回订单";
     public static final String ORDER_STATUS_SUBMIT = "提交审核";
     public static final String ORDER_STATUS_START = "开始审核";
     public static final String ORDER_STATUS_APPROVE = "审核通过";
@@ -265,6 +254,7 @@ public final class LogActions {
     public static final String SALES_INVOICE_EDIT = "修改发票";
     public static final String SALES_INVOICE_DELETE = "删除发票";
     public static final String SALES_RECEIPT_PRINT_LOG = "记录收款单打印";
+    public static final String SALES_DELIVERY_PRINT_LOG = "记录送货单打印";
     public static final String SALES_RECEIPT_CREATE = "新增收款单";
     public static final String SALES_RECEIPT_EDIT = "修改收款单";
     public static final String SALES_RECEIPT_DELETE = "删除收款单";

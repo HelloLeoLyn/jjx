@@ -29,6 +29,8 @@ public class QualityNcrAction {
     private String status;
     /** 返工生成的工序执行 */
     private Long reworkExecutionId;
+    /** 返工报工完成后生成的 FQC 复检批 */
+    private Long reinspectionLotId;
     private Integer customerConfirmed;
     private LocalDateTime customerConfirmTime;
     private String approvedBy;

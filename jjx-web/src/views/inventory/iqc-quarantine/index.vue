@@ -1,16 +1,39 @@
 <template>
   <div class="iqc-ledger">
+    <el-alert type="info" :closable="false" show-icon class="scope-guide">
+      <template #title>
+        <div class="scope-guide__content">
+          <span>本页只处理来料检验产生的隔离品：让步接收（特采）、退货、供应商返工或报废。</span>
+          <el-button link type="primary" @click="router.push('/quality/ncr')">查看成品不良台账</el-button>
+        </div>
+      </template>
+    </el-alert>
     <el-card>
-      <el-form inline>
+      <el-form inline @submit.prevent>
+        <el-form-item label="入库单号">
+          <el-input v-model="query.inboundNo" clearable placeholder="输入入库单号" />
+        </el-form-item>
+        <el-form-item label="物料">
+          <el-input v-model="query.materialKeyword" clearable placeholder="编码或名称" />
+        </el-form-item>
+        <el-form-item label="批次">
+          <el-input v-model="query.batchNo" clearable placeholder="输入批次号" />
+        </el-form-item>
+        <el-form-item label="供应商">
+          <el-input v-model="query.supplierName" clearable placeholder="输入供应商名称" />
+        </el-form-item>
         <el-form-item label="隔离状态"
-          ><el-select v-model="status" clearable style="width: 150px" @change="load"
+          ><el-select v-model="query.status" clearable style="width: 150px" @change="search"
             ><el-option
               v-for="item in IqcQuarantineStatusEnum.items"
               :key="item.value"
               :label="item.label"
               :value="item.value" /></el-select
         ></el-form-item>
-        <el-form-item><el-button type="primary" @click="load">刷新</el-button></el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="search">查询</el-button>
+          <el-button @click="resetQuery">重置</el-button>
+        </el-form-item>
       </el-form>
     </el-card>
     <el-card class="card">
@@ -38,15 +61,18 @@
         <div class="card-title">
           <span>隔离台账（待处置明细）</span>
           <span class="card-tip"
-            >来料检验判定为不合格的物料会进这张台账；处置方式只有四种：释放入库 / 退货 /
-            返工 / 报废。「剩余数量」减到 0 才算结清，状态才会变成已释放/已退货/已返工/已报废。</span
+            >来料检验判定为不合格的物料会进这张台账；处置方式只有四种：让步接收（特采） / 退货 /
+            返工 / 报废。「剩余数量」减到 0 才算结清，状态才会变成已让步接收/已退货/已返工/已报废。</span
           >
         </div>
       </template>
       <el-table v-loading="loading" :data="rows" border>
+        <el-table-column prop="inboundNo" label="入库单号" width="180" />
+        <el-table-column prop="supplierName" label="供应商" min-width="150" />
         <el-table-column prop="materialCode" label="物料编码" width="150" />
         <el-table-column prop="materialName" label="物料名称" min-width="170" />
         <el-table-column prop="batchNo" label="批次" width="160" />
+        <el-table-column prop="defectReason" label="缺陷原因" min-width="180" show-overflow-tooltip />
         <el-table-column label="原始隔离" width="105" align="right">
           <template #default="{ row }">{{ num(row.quantity) }}</template>
         </el-table-column>
@@ -94,6 +120,16 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        v-model:current-page="query.pageNum"
+        v-model:page-size="query.pageSize"
+        class="pagination"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        @size-change="search"
+        @current-change="load"
+      />
     </el-card>
     <el-card class="card"
       ><template #header>供应商返工单</template
@@ -183,7 +219,16 @@ const router = useRouter()
 // 只认 quality:ncr:dispose；无权限时显示「无处置权限」提示而不是留白。
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
-const status = ref<string>()
+const query = ref({
+  pageNum: 1,
+  pageSize: 20,
+  status: undefined as string | undefined,
+  materialKeyword: '',
+  batchNo: '',
+  inboundNo: '',
+  supplierName: '',
+})
+const total = ref(0)
 const rows = ref<any[]>([])
 const orders = ref<any[]>([])
 const reworkOrders = ref<any[]>([])
@@ -213,21 +258,14 @@ async function load() {
   loading.value = true
   ordersLoading.value = true
   try {
-    const [q, o] = await Promise.all([
-      inboundApi.listAllQuarantine(status.value),
-      inboundApi.listAllDispositionOrders(),
-    ])
-    rows.value = q.data || []
-    orders.value = o.data || []
     reworkLoading.value = true
     batchLoading.value = true
-    const inboundIds = [...new Set(rows.value.map((row) => row.inboundId).filter(Boolean))]
-    const [reworkResults, batchResults] = await Promise.all([
-      Promise.all(inboundIds.map((inboundId) => iqcApi.listReworkOrders(String(inboundId)))),
-      Promise.all(inboundIds.map((inboundId) => iqcApi.listBatches(String(inboundId)))),
-    ])
-    reworkOrders.value = reworkResults.flatMap((result) => result.data || [])
-    batchRows.value = batchResults.flatMap((result) => result.data || [])
+    const { data } = await inboundApi.pageIqcQuarantine(query.value)
+    rows.value = data?.page?.records || []
+    total.value = data?.page?.total || 0
+    orders.value = data?.dispositionOrders || []
+    reworkOrders.value = data?.reworkOrders || []
+    batchRows.value = data?.batches || []
   } finally {
     loading.value = false
     ordersLoading.value = false
@@ -235,18 +273,27 @@ async function load() {
     batchLoading.value = false
   }
 }
+function search() {
+  query.value.pageNum = 1
+  return load()
+}
+function resetQuery() {
+  query.value = {
+    pageNum: 1,
+    pageSize: query.value.pageSize,
+    status: undefined,
+    materialKeyword: '',
+    batchNo: '',
+    inboundNo: '',
+    supplierName: '',
+  }
+  return load()
+}
 async function openDisposition(row: any) {
   activeInboundId.value = Number(row.inboundId)
   activeItemId.value = String(row.inboundItemId)
-  activeInboundNo.value = ''
+  activeInboundNo.value = row.inboundNo || ''
   dispositionVisible.value = true
-  try {
-    // 弹窗标题要带来源入库单号：此前没传 inbound-no，标题一直是「IQC 隔离处置 - 」
-    const { data } = await inboundApi.getById(String(row.inboundId))
-    activeInboundNo.value = data?.inboundNo || ''
-  } catch {
-    activeInboundNo.value = ''
-  }
 }
 async function completeRework(row: any) {
   await ElMessageBox.confirm('完成返工后将生成新的IQC复检记录，确认继续吗？', '确认完成返工', {
@@ -272,6 +319,16 @@ onMounted(load)
 .iqc-ledger {
   padding: 20px;
 }
+.scope-guide {
+  margin-bottom: 16px;
+}
+.scope-guide__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
 .card {
   margin-top: 16px;
 }
@@ -296,5 +353,9 @@ onMounted(load)
 }
 .danger {
   color: #f56c6c;
+}
+.pagination {
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

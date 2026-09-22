@@ -169,10 +169,6 @@ TRUNCATE engineering_resource_product_rel;
 
 TRUNCATE engineering_screen_plate;
 
-TRUNCATE engineering_screen_frame;
-
-TRUNCATE engineering_die;
-
 TRUNCATE engineering_routing_item;
 
 TRUNCATE engineering_routing;

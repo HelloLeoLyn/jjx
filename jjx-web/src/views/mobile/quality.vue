@@ -101,11 +101,8 @@
 import { ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import {
-  qualityApi,
-  type QualityVO,
-} from '@/api/production/quality'
-import { InspectionResult } from '@/enums/quality'
+import { qualityLotApi, toQualityLotView, type QualityLotView } from '@/api/quality/lot'
+import { InspectionResult, InspectionType, QualityLotStatus } from '@/enums/quality'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,12 +114,12 @@ const tabs = [
   { value: 'done', label: '已判定' },
 ] as const
 const loading = ref(false)
-const pendingList = ref<QualityVO[]>([])
-const doneList = ref<QualityVO[]>([])
+const pendingList = ref<QualityLotView[]>([])
+const doneList = ref<QualityLotView[]>([])
 
 const judgeVisible = ref(false)
 const judging = ref(false)
-const judgeRow = ref<QualityVO | null>(null)
+const judgeRow = ref<QualityLotView | null>(null)
 const judgeForm = ref({
   result: InspectionResult.PASS as typeof InspectionResult.PASS | typeof InspectionResult.FAIL,
   totalQty: undefined as number | undefined,
@@ -150,13 +147,12 @@ function resultTag(r?: string): string {
 async function loadData() {
   loading.value = true
   try {
-    const [pendingRes, doneRes]: any = await Promise.all([
-      qualityApi.page({ pageNum: 1, pageSize: 50, result: InspectionResult.PENDING }),
-      qualityApi.page({ pageNum: 1, pageSize: 50 }),
-    ])
-    const all = doneRes?.data?.records || []
-    pendingList.value = pendingRes?.data?.records || []
-    doneList.value = all.filter((q: QualityVO) => q.result !== InspectionResult.PENDING).slice(0, 50)
+    const res: any = await qualityLotApi.page({ pageNum: 1, pageSize: 100, lotType: InspectionType.FQC })
+    const all = (res?.data?.records || []).map(toQualityLotView)
+    pendingList.value = all.filter((q: QualityLotView) =>
+      q.status === QualityLotStatus.PENDING || q.status === QualityLotStatus.INSPECTING)
+    doneList.value = all.filter((q: QualityLotView) =>
+      q.status === QualityLotStatus.JUDGED || q.status === QualityLotStatus.CLOSED).slice(0, 50)
   } catch (e: any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
@@ -164,7 +160,7 @@ async function loadData() {
   }
 }
 
-function openJudge(q: QualityVO) {
+function openJudge(q: QualityLotView) {
   judgeRow.value = q
   judgeForm.value = {
     result: InspectionResult.PASS,
@@ -190,13 +186,12 @@ async function submitJudge() {
   }
   judging.value = true
   try {
-    await qualityApi.judge(judgeRow.value.inspectionId, {
+    await qualityLotApi.judge(judgeRow.value.inspectionId, {
       result: f.result,
-      totalQty: f.totalQty,
-      passQty: f.passQty,
-      failQty: f.failQty,
-      defectDesc: f.defectDesc?.trim() || undefined,
-      remark: f.remark?.trim() || undefined,
+      inspectedQuantity: f.totalQty,
+      passQuantity: f.passQty,
+      failQuantity: f.failQty,
+      defectReason: f.defectDesc?.trim() || undefined,
     })
     ElMessage.success('判定已提交')
     judgeVisible.value = false

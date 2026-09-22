@@ -1,5 +1,13 @@
 <template>
   <div class="ncr-page">
+    <el-alert type="info" :closable="false" show-icon class="scope-guide">
+      <template #title>
+        <div class="scope-guide__content">
+          <span>本页主要处理成品检验批不良：返工、让步接收（特采）或报废。成品让步接收必须取得客户确认。</span>
+          <el-button link type="primary" @click="goIqcQuarantine">查看来料不合格品处置</el-button>
+        </div>
+      </template>
+    </el-alert>
     <el-card>
       <template #header>
         <div class="header">
@@ -106,7 +114,7 @@
           <el-input v-model="disposeForm.resultRemark" type="textarea" :rows="2" placeholder="可空" />
         </el-form-item>
         <div class="tip block">
-          返工：生成返工工序，完工再检合格后入库；让步接收：不良数量转良品库存并打特采标记；报废：只记台账（不良品未入良品库，无库存扣减）
+          返工：暂不影响库存，生成返工工序并在复检合格后入库；让步接收（特采）：影响库存，须客户确认后转良品库存；报废：不影响库存，只记台账（不良品未入良品库）
         </div>
       </el-form>
       <template #footer>
@@ -130,7 +138,14 @@
         <el-table-column label="状态" width="100">
           <template #default="{ row }">{{ actionStatusLabel(row.status) }}</template>
         </el-table-column>
-        <el-table-column prop="resultRemark" label="说明" min-width="200" />
+        <el-table-column label="返工/复检关联" min-width="150">
+          <template #default="{ row }">
+            <div v-if="row.reworkExecutionId">工序 #{{ row.reworkExecutionId }}</div>
+            <div v-if="row.reinspectionLotId">复检批 #{{ row.reinspectionLotId }}</div>
+            <span v-if="!row.reworkExecutionId && !row.reinspectionLotId">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="resultRemark" label="说明" min-width="220" />
         <el-table-column label="操作" width="110">
           <template #default="{ row }">
             <el-button
@@ -139,7 +154,7 @@
               type="primary"
               size="small"
               @click="completeAction(row)"
-              >完成返工</el-button
+              >推进返工闭环</el-button
             >
           </template>
         </el-table-column>
@@ -150,9 +165,12 @@
 
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
 
+const router = useRouter()
+const goIqcQuarantine = () => router.push('/inventory/iqc-quarantine')
 const loading = ref(false)
 const rows = ref<QualityNcr[]>([])
 const total = ref(0)
@@ -165,7 +183,7 @@ const pending = (row: QualityNcr) => Number(row.defectQuantity || 0) - Number(ro
 const statusLabel = (status: string) =>
   ({ PENDING: '待处置', DISPOSING: '处置中', CLOSED: '已结' })[status] || status
 const actionLabel = (type: string) =>
-  ({ REWORK: '返工', CONCESSION: '让步接收', SCRAP: '报废' })[type] || type
+  ({ REWORK: '返工', CONCESSION: '让步接收（特采）', SCRAP: '报废' })[type] || type
 const actionStatusLabel = (status: string) =>
   ({ PENDING: '待执行', PROCESSING: '执行中', DONE: '已完成' })[status] || status
 
@@ -228,8 +246,8 @@ const openActions = async (row: QualityNcr) => {
 }
 const completeAction = async (row: QualityNcrAction) => {
   try {
-    await qualityNcrApi.completeAction(row.actionId, { resultRemark: '返工完成（人工确认）' })
-    ElMessage.success('已标记完成')
+    const res: any = await qualityNcrApi.completeAction(row.actionId)
+    ElMessage.success(res?.data?.status === 'DONE' ? '返工复检已合格，处置完成' : '返工报工已完成，已生成 FQC 复检批')
     if (current.value) openActions(current.value)
     load()
   } catch (e: any) {
@@ -241,6 +259,16 @@ onMounted(() => load(1))
 </script>
 
 <style scoped>
+.scope-guide {
+  margin-bottom: 16px;
+}
+.scope-guide__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
 .header {
   display: flex;
   align-items: center;

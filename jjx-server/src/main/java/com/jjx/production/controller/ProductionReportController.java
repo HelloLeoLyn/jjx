@@ -4,10 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
-import com.jjx.production.domain.entity.ProductionQualityInspection;
+import com.jjx.quality.domain.entity.QualityLot;
+import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
-import com.jjx.production.mapper.ProductionQualityInspectionMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ public class ProductionReportController {
 
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOperationExecutionMapper executionMapper;
-    private final ProductionQualityInspectionMapper qualityMapper;
+    private final QualityLotMapper qualityMapper;
 
     @Operation(summary = "产量报表")
     @GetMapping("/output")
@@ -113,10 +113,10 @@ public class ProductionReportController {
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate) {
 
-        List<ProductionQualityInspection> inspections = qualityMapper.selectList(
-                new LambdaQueryWrapper<ProductionQualityInspection>()
-                        .ge(startDate != null, ProductionQualityInspection::getCreateTime, startDate + " 00:00:00")
-                        .le(endDate != null, ProductionQualityInspection::getCreateTime, endDate + " 23:59:59")
+        List<QualityLot> inspections = qualityMapper.selectList(
+                new LambdaQueryWrapper<QualityLot>()
+                        .ge(startDate != null, QualityLot::getCreateTime, startDate + " 00:00:00")
+                        .le(endDate != null, QualityLot::getCreateTime, endDate + " 23:59:59")
                         .last("LIMIT 500"));
 
         long total = inspections.size();

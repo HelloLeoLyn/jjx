@@ -5,12 +5,14 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.dto.query.InboundQueryDTO;
 import com.jjx.inventory.dto.query.IqcPendingQueryDTO;
+import com.jjx.inventory.dto.query.IqcQuarantineLedgerQueryDTO;
 import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.inventory.dto.save.InboundInspectionReviewDTO;
 import com.jjx.inventory.dto.save.IqcQuarantineActionDTO;
 import com.jjx.inventory.domain.InventoryIqcQuarantine;
 import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.inventory.dto.vo.IqcPendingVO;
+import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
 
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,7 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     boolean handleQuarantine(Long quarantineId, IqcQuarantineActionDTO action);
     List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listDispositionOrders(Long inboundId);
     List<com.jjx.inventory.domain.InventoryIqcQuarantine> listAllQuarantine(String status);
+    IqcQuarantineLedgerPageVO pageIqcQuarantineLedger(IqcQuarantineLedgerQueryDTO query);
     List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listAllDispositionOrders(String action);
     com.jjx.inventory.domain.InventoryIqcDispositionOrder getDispositionOrder(Long dispositionId);
     List<com.jjx.inventory.domain.InventoryIqcReturnOrder> listIqcReturnOrders(Long inboundId);

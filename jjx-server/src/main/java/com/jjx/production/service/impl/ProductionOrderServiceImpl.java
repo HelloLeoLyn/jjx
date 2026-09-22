@@ -59,8 +59,6 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final EngineeringRoutingItemMapper productRoutingItemMapper;
     private final EventPublisher eventPublisher;
-    private final com.jjx.production.service.QualityInspectionService qualityInspectionService;
-    private final com.jjx.production.mapper.ProductionQualityInspectionMapper qualityInspectionMapper;
     private final com.jjx.inventory.service.InventoryInboundService inventoryInboundService;
     private final com.jjx.inventory.service.InventoryOutboundService inventoryOutboundService;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;

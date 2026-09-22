@@ -47,7 +47,7 @@ public class SalesReceiptController {
     }
 
     @Operation(summary = "记录收款单打印")
-    @Log(module = "销售收款", businessType = BusinessType.OTHER, bizType = "'receipt_print'", bizId = "#id", action = LogActions.SALES_RECEIPT_PRINT_LOG)
+    @Log(module = "销售收款", businessType = BusinessType.OTHER, bizType = "'receipt'", bizId = "#id", action = LogActions.SALES_RECEIPT_PRINT_LOG)
     @SaCheckPermission("sales:receipt:view")
     @PostMapping("/{id}/print-log")
     public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }

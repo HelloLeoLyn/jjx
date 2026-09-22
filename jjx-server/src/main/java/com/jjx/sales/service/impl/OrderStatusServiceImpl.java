@@ -67,6 +67,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final ReviewFlowService reviewFlowService;
     private final SalesDeliveryMapper salesDeliveryMapper;
     private final SalesDeliveryItemMapper salesDeliveryItemMapper;
+    private final com.jjx.quality.service.QualityLotService qualityLotService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitReview(Long orderId) {
@@ -653,6 +654,19 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         for (SalesDeliveryItem line : shipLines) {
             line.setDeliveryId(record.getDeliveryId());
             salesDeliveryItemMapper.insert(line);
+            com.jjx.quality.dto.QualityLotCreateDTO oqc = new com.jjx.quality.dto.QualityLotCreateDTO();
+            oqc.setLotType("OQC");
+            oqc.setSourceType("SALES_DELIVERY");
+            oqc.setSourceId(record.getDeliveryId());
+            oqc.setSourceItemId(line.getItemId());
+            oqc.setOrderId(orderId);
+            oqc.setProductId(line.getProductId());
+            oqc.setProductCode(line.getProductCode());
+            oqc.setProductName(line.getProductName());
+            oqc.setBatchNo(record.getDeliveryNo());
+            oqc.setLotQuantity(BigDecimal.valueOf(line.getQuantity()));
+            oqc.setRemark("发货单 " + record.getDeliveryNo() + " 出货检验");
+            qualityLotService.createLot(oqc);
         }
 
         // 6. 状态：全部发完 → 8 已发货；部分发货 → 保持 7 生产中（发货单已记本次数量，列表按 shipped_quantity 展示）

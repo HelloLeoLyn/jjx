@@ -753,7 +753,8 @@ import {
   getProductionExecutionScope,
   type TaskTreeQuery,
 } from '@/api/production/task'
-import { qualityApi, type QualityVO } from '@/api/production/quality'
+import { qualityLotApi, toQualityLotView, type QualityLotView } from '@/api/quality/lot'
+import { InspectionType } from '@/enums/quality'
 import type { TaskTreeRow, TaskCompletionDetail } from '@/types/production/task'
 import type { OperationExecutionVO } from '@/types/production/operationExecution'
 import type { ProductionOrderVO } from '@/types/production/order'
@@ -966,7 +967,7 @@ const contextLoading = ref(false)
 const detailRootTask = ref<TaskTreeRow | null>(null)
 const detailChildren = ref<TaskTreeRow[]>([])
 const detailMyTasks = ref<TaskTreeRow[]>([])
-const qualityList = ref<QualityVO[]>([])
+const qualityList = ref<QualityLotView[]>([])
 
 const loadExecutionContext = async (row: OperationExecutionVO) => {
   if (!row.executionId) return
@@ -981,7 +982,7 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
     getExecutionRootTask(row.executionId),
     getMyTasks(row.executionId),
     getWorkReportsByExecution(row.executionId),
-    qualityApi.page({ pageNum: 1, pageSize: 100, executionId: row.executionId }),
+    qualityLotApi.page({ pageNum: 1, pageSize: 100, lotType: InspectionType.FQC, executionId: row.executionId }),
   ])
   // 真实工序状态（不要用任务状态推断；报工/开工都看它）
   if (execResult.status === 'fulfilled') {
@@ -1008,7 +1009,8 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
     reportList.value = (reportResult.value as any)?.data || []
   if (qualityResult.status === 'fulfilled') {
     const data: any = (qualityResult.value as any)?.data
-    qualityList.value = Array.isArray(data) ? data : data?.records || []
+    const records = Array.isArray(data) ? data : data?.records || []
+    qualityList.value = records.map(toQualityLotView)
   }
   contextLoading.value = false
 }

@@ -74,6 +74,8 @@ public class SalesDeliveryController {
 
     @Operation(summary = "记录送货单打印留痕")
     @SaCheckPermission("sales:delivery:view")
+    @Log(module = "销售发货", businessType = BusinessType.OTHER,
+            bizType = "'sales_delivery'", bizId = "#deliveryId", action = LogActions.SALES_DELIVERY_PRINT_LOG)
     @PostMapping("/{deliveryId}/print-log")
     public Result<Void> printLog(@PathVariable Long deliveryId) {
         salesDeliveryService.recordPrintLog(deliveryId);

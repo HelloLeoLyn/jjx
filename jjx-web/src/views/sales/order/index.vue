@@ -473,6 +473,31 @@ const orderRowActions: TableAction<any>[] = [
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value),
   },
   {
+    key: 'printReview',
+    label: '打印合同评审',
+    type: 'info',
+    permission: 'sales:order:view',
+    visible: ({ row }) =>
+      ![
+        SalesOrderStatusEnum.DRAFT.value,
+        SalesOrderStatusEnum.PENDING_REVIEW.value,
+        SalesOrderStatusEnum.CANCELLED.value,
+      ].includes(row.orderStatus),
+  },
+  {
+    key: 'printChangeReview',
+    label: '打印更改评审',
+    type: 'info',
+    permission: 'sales:order:view',
+    visible: ({ row }) =>
+      [
+        SalesOrderStatusEnum.CONFIRMED.value,
+        SalesOrderStatusEnum.PRODUCING.value,
+        SalesOrderStatusEnum.SHIPPED.value,
+        SalesOrderStatusEnum.COMPLETED.value,
+      ].includes(row.orderStatus),
+  },
+  {
     key: 'resubmit',
     label: '重新提交',
     permission: 'sales:order:submit',
@@ -558,6 +583,8 @@ const handleOrderRowAction = (key: string, row: any) => {
     reject: () => handleReject(row),
     plan: () => handleGeneratePlan(row),
     print: () => handleConfirmPrint(row),
+    printReview: () => handleReviewPrint(row, 47),
+    printChangeReview: () => handleReviewPrint(row, 53),
     resubmit: () => void handleResubmit(row),
     shortage: () => handleRecheckShortage(row),
     proof: () => openConfirmAttachment(row),
@@ -1204,10 +1231,10 @@ function showTrace(row: any) {
   traceDrawerVisible.value = true
 }
 
-function handleReviewPrint(row: any) {
+function handleReviewPrint(row: any, templateId: 47 | 53) {
   router.push({
     path: '/sales/order/review-print',
-    query: { orderId: row.orderId, templateId: 47 },
+    query: { orderId: row.orderId, templateId },
   })
 }
 

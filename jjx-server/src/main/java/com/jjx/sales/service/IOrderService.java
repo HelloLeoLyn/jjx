@@ -113,8 +113,6 @@ public interface IOrderService {
      * @param approveRemark 审核备注
      * @return 结果
      */
-    int approveOrder(Long orderId, Long approverId, String approverName, String approveRemark);
-
     /**
      * 更新付款信息
      *

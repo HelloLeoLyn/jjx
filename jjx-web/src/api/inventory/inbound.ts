@@ -97,6 +97,24 @@ export const inboundApi = {
   listAllQuarantine(status?: string) {
     return request.get<R<any[]>>('/inventory/inbound/iqc-quarantine/list', { params: { status } })
   },
+  pageIqcQuarantine(params: {
+    pageNum: number
+    pageSize: number
+    status?: string
+    materialKeyword?: string
+    batchNo?: string
+    inboundNo?: string
+    supplierName?: string
+  }) {
+    return request.get<
+      R<{
+        page: PageResult<any>
+        dispositionOrders: any[]
+        reworkOrders: any[]
+        batches: any[]
+      }>
+    >('/inventory/inbound/iqc-quarantine/page', { params })
+  },
   listAllDispositionOrders(action?: string) {
     return request.get<R<any[]>>('/inventory/inbound/iqc-disposition-orders/list', {
       params: { action },

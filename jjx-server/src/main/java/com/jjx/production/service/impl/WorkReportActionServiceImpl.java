@@ -11,18 +11,15 @@ import com.jjx.production.domain.dto.WorkReportSubmitDTO;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionTask;
 import com.jjx.production.domain.entity.ProductionWorkReport;
-import com.jjx.production.domain.vo.QualityInspectionVO;
 import com.jjx.production.domain.vo.WorkReportVO;
 import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.ProductionTaskStatus;
-import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionTaskMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionTaskService;
 import com.jjx.production.service.ProductionRoleResolver;
-import com.jjx.production.service.QualityInspectionService;
 import com.jjx.production.service.WorkReportActionService;
 import com.jjx.production.service.WorkReportProjectionService;
 import com.jjx.production.service.WorkReportReadService;
@@ -68,7 +65,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private final ProductionTaskService productionTaskService;
     private final WorkReportProjectionService projectionService;
     private final WorkReportReadService readService;
-    private final QualityInspectionService qualityInspectionService;
+    private final com.jjx.quality.mapper.QualityLotMapper qualityLotMapper;
     private final JdbcTemplate jdbcTemplate;
     private final NotificationService notificationService;
     private final RedisSequenceService redisSequenceService;
@@ -562,16 +559,18 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
      * 仅 PENDING 质检 → 联动逻辑删除（历史可追踪，不留指向已撤销/驳回事实的有效质检单）。
      */
     private void syncPendingQualityOrThrow(ProductionWorkReport r) {
-        List<QualityInspectionVO> related = qualityInspectionService.listByWorkReportId(r.getReportId());
+        List<com.jjx.quality.domain.entity.QualityLot> related = qualityLotMapper.selectList(
+                Wrappers.<com.jjx.quality.domain.entity.QualityLot>lambdaQuery()
+                        .eq(com.jjx.quality.domain.entity.QualityLot::getSourceType, "WORK_REPORT")
+                        .eq(com.jjx.quality.domain.entity.QualityLot::getSourceId, r.getReportId()));
         boolean hasFinalized = related.stream().anyMatch(q ->
-                QualityInspectionResultEnum.PASS.getCode().equals(q.getResult())
-                        || QualityInspectionResultEnum.FAIL.getCode().equals(q.getResult()));
+                "pass".equalsIgnoreCase(q.getResult()) || "fail".equalsIgnoreCase(q.getResult()));
         if (hasFinalized) {
             throw new BusinessException("该报工已关联质检判定结果（PASS/FAIL），不允许驳回/撤销；如需更正请走质检复检");
         }
-        for (QualityInspectionVO q : related) {
-            qualityInspectionService.delete(q.getInspectionId());
-            log.info("报工状态变更联动：逻辑删除 PENDING 质检 {}", q.getInspectionId());
+        for (com.jjx.quality.domain.entity.QualityLot q : related) {
+            qualityLotMapper.deleteById(q.getLotId());
+            log.info("报工状态变更联动：逻辑删除 PENDING 检验批 {}", q.getLotId());
         }
     }
 

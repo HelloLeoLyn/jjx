@@ -7,14 +7,14 @@ import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.OrderTraceVO;
 import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
-import com.jjx.production.domain.vo.QualityInspectionVO;
+import com.jjx.quality.domain.entity.QualityLot;
+import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.production.domain.vo.TraceEventVO;
 import com.jjx.production.enums.TraceEventType;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionOperationExecutionService;
 import com.jjx.production.service.ProductionOrderService;
-import com.jjx.production.service.QualityInspectionService;
 import com.jjx.production.service.TraceQueryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +44,7 @@ public class TraceQueryServiceImpl implements TraceQueryService {
     private final ProductionOrderMapper orderMapper;
     private final ProductionOperationExecutionService executionService;
     private final ProductionWorkReportMapper workReportMapper;
-    private final QualityInspectionService qualityInspectionService;
+    private final QualityLotMapper qualityLotMapper;
 
     @Override
     public OrderTraceVO getOrderTrace(Long orderId) {
@@ -216,20 +216,22 @@ public class TraceQueryServiceImpl implements TraceQueryService {
 
     private List<TraceEventVO> buildQualityEvents(Long orderId) {
         List<TraceEventVO> list = new ArrayList<>();
-        List<QualityInspectionVO> inspections = qualityInspectionService.listByOrderId(orderId);
-        for (QualityInspectionVO q : inspections) {
+        List<QualityLot> inspections = qualityLotMapper.selectList(Wrappers.<QualityLot>lambdaQuery()
+                .eq(QualityLot::getOrderId, orderId)
+                .orderByAsc(QualityLot::getCreateTime));
+        for (QualityLot q : inspections) {
             // QUALITY_CREATED：createTime（P4-B 明确：Quality 创建用 createTime）
             TraceEventVO created = base(orderId, TraceEventType.QUALITY_CREATED, "QUALITY");
             created.setEventTime(q.getCreateTime());
             created.setExecutionId(q.getExecutionId());
-            created.setWorkReportId(q.getWorkReportId());
-            created.setQualityInspectionId(q.getInspectionId());
+            created.setWorkReportId("WORK_REPORT".equals(q.getSourceType()) ? q.getSourceId() : null);
+            created.setQualityInspectionId(q.getLotId());
             created.setActorId(null);
             created.setActorName(q.getInspector());
-            created.setTitle("质检创建（" + q.getInspectionTypeName() + "）");
-            created.setDescription("检验单 " + q.getInspectionNo());
+            created.setTitle("质检创建（" + q.getLotType() + "）");
+            created.setDescription("检验批 " + q.getLotNo());
             created.setStatus("pending");
-            created.setSourceId(q.getInspectionId());
+            created.setSourceId(q.getLotId());
             list.add(created);
 
             // PASS / FAIL：inspectTime 即判定业务时间
@@ -237,27 +239,27 @@ public class TraceQueryServiceImpl implements TraceQueryService {
                 TraceEventVO ev = base(orderId, TraceEventType.QUALITY_PASSED, "QUALITY");
                 ev.setEventTime(q.getInspectTime());
                 ev.setExecutionId(q.getExecutionId());
-                ev.setWorkReportId(q.getWorkReportId());
-                ev.setQualityInspectionId(q.getInspectionId());
+                ev.setWorkReportId("WORK_REPORT".equals(q.getSourceType()) ? q.getSourceId() : null);
+                ev.setQualityInspectionId(q.getLotId());
                 ev.setActorId(null);
                 ev.setActorName(q.getInspector());
                 ev.setTitle("质检合格");
-                ev.setDescription("合格 " + nvl(q.getPassQty()) + " / 总数 " + nvl(q.getTotalQty()));
+                ev.setDescription("合格 " + nvl(q.getPassQuantity()) + " / 总数 " + nvl(q.getLotQuantity()));
                 ev.setStatus("pass");
-                ev.setSourceId(q.getInspectionId());
+                ev.setSourceId(q.getLotId());
                 list.add(ev);
             } else if (q.getResult() != null && q.getResult().equalsIgnoreCase("fail")) {
                 TraceEventVO ev = base(orderId, TraceEventType.QUALITY_FAILED, "QUALITY");
                 ev.setEventTime(q.getInspectTime());
                 ev.setExecutionId(q.getExecutionId());
-                ev.setWorkReportId(q.getWorkReportId());
-                ev.setQualityInspectionId(q.getInspectionId());
+                ev.setWorkReportId("WORK_REPORT".equals(q.getSourceType()) ? q.getSourceId() : null);
+                ev.setQualityInspectionId(q.getLotId());
                 ev.setActorId(null);
                 ev.setActorName(q.getInspector());
                 ev.setTitle("质检不合格");
-                ev.setDescription("不合格 " + nvl(q.getFailQty()) + " / 总数 " + nvl(q.getTotalQty()));
+                ev.setDescription("不合格 " + nvl(q.getFailQuantity()) + " / 总数 " + nvl(q.getLotQuantity()));
                 ev.setStatus("fail");
-                ev.setSourceId(q.getInspectionId());
+                ev.setSourceId(q.getLotId());
                 list.add(ev);
             }
         }

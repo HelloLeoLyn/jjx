@@ -5,14 +5,14 @@ import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.OrderTraceVO;
 import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
-import com.jjx.production.domain.vo.QualityInspectionVO;
+import com.jjx.quality.domain.entity.QualityLot;
+import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.production.domain.vo.TraceEventVO;
 import com.jjx.production.enums.TraceEventType;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionOperationExecutionService;
 import com.jjx.production.service.ProductionOrderService;
-import com.jjx.production.service.QualityInspectionService;
 import com.jjx.production.service.impl.TraceQueryServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +45,7 @@ class TraceQueryServiceTest {
     private ProductionOrderMapper orderMapper;
     private ProductionOperationExecutionService executionService;
     private ProductionWorkReportMapper workReportMapper;
-    private QualityInspectionService qualityInspectionService;
+    private QualityLotMapper qualityLotMapper;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -53,12 +53,12 @@ class TraceQueryServiceTest {
         orderMapper = mock(ProductionOrderMapper.class);
         executionService = mock(ProductionOperationExecutionService.class);
         workReportMapper = mock(ProductionWorkReportMapper.class);
-        qualityInspectionService = mock(QualityInspectionService.class);
+        qualityLotMapper = mock(QualityLotMapper.class);
 
         var ctor = TraceQueryServiceImpl.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
         service = (TraceQueryServiceImpl) ctor.newInstance(
-                orderService, orderMapper, executionService, workReportMapper, qualityInspectionService);
+                orderService, orderMapper, executionService, workReportMapper, qualityLotMapper);
     }
 
     private ProductionOrderVO order(Long id, String no) {
@@ -118,22 +118,21 @@ class TraceQueryServiceTest {
         return r;
     }
 
-    private QualityInspectionVO quality(Long inspectionId, String result, LocalDateTime createTime,
+    private QualityLot quality(Long inspectionId, String result, LocalDateTime createTime,
                                         LocalDateTime inspectTime, String inspector) {
-        QualityInspectionVO q = new QualityInspectionVO();
-        q.setInspectionId(inspectionId);
-        q.setInspectionNo("QCI202608190001");
-        q.setInspectionType("FQC");
-        q.setInspectionTypeName("完工检验");
+        QualityLot q = new QualityLot();
+        q.setLotId(inspectionId);
+        q.setLotNo("QCI202608190001");
+        q.setLotType("FQC");
         q.setOrderId(1L);
         q.setExecutionId(3L);
         q.setInspector(inspector);
         q.setResult(result);
         q.setCreateTime(createTime);
         q.setInspectTime(inspectTime);
-        q.setTotalQty(BigDecimal.valueOf(100));
-        q.setPassQty(BigDecimal.valueOf(100));
-        q.setFailQty(BigDecimal.ZERO);
+        q.setLotQuantity(BigDecimal.valueOf(100));
+        q.setPassQuantity(BigDecimal.valueOf(100));
+        q.setFailQuantity(BigDecimal.ZERO);
         return q;
     }
 
@@ -154,7 +153,7 @@ class TraceQueryServiceTest {
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
                 report(1L, LocalDateTime.of(2026, 8, 19, 11, 0), null, "PENDING", "张三")));
 
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(Arrays.asList(
+        when(qualityLotMapper.selectList(any())).thenReturn(Arrays.asList(
                 quality(1L, "pass", LocalDateTime.of(2026, 8, 19, 13, 0), LocalDateTime.of(2026, 8, 19, 13, 5), "质检员")));
 
         OrderTraceVO trace = service.getOrderTrace(1L);
@@ -187,7 +186,7 @@ class TraceQueryServiceTest {
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 0), null)));
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
                 report(1L, LocalDateTime.of(2026, 8, 19, 10, 0), null, "PENDING", "张三")));
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(Arrays.asList(
+        when(qualityLotMapper.selectList(any())).thenReturn(Arrays.asList(
                 quality(1L, "pending", LocalDateTime.of(2026, 8, 19, 10, 0), null, "质检员")));
 
         OrderTraceVO trace = service.getOrderTrace(1L);
@@ -210,7 +209,7 @@ class TraceQueryServiceTest {
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(Arrays.asList(
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 5), null)));
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
+        when(qualityLotMapper.selectList(any())).thenReturn(new ArrayList<>());
 
         OrderTraceVO trace = service.getOrderTrace(1L);
         // ORDER_CREATED + ORDER_STARTED + EXECUTION_STARTED
@@ -224,7 +223,7 @@ class TraceQueryServiceTest {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
+        when(qualityLotMapper.selectList(any())).thenReturn(new ArrayList<>());
 
         OrderTraceVO trace = service.getOrderTrace(1L);
         assertEquals(1, trace.getEvents().size()); // 仅 ORDER_CREATED
@@ -239,7 +238,7 @@ class TraceQueryServiceTest {
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(Arrays.asList(
                 exec(3L, 2, null, LocalDateTime.of(2026, 8, 19, 10, 0), LocalDateTime.of(2026, 8, 19, 11, 0))));
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
+        when(qualityLotMapper.selectList(any())).thenReturn(new ArrayList<>());
 
         OrderTraceVO trace = service.getOrderTrace(1L);
         TraceEventVO started = trace.getEvents().stream()
@@ -255,7 +254,7 @@ class TraceQueryServiceTest {
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(Arrays.asList(
                 report(1L, LocalDateTime.of(2026, 8, 19, 11, 0), LocalDateTime.of(2026, 8, 19, 11, 30), "CANCELLED", "张三")));
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
+        when(qualityLotMapper.selectList(any())).thenReturn(new ArrayList<>());
 
         OrderTraceVO trace = service.getOrderTrace(1L);
         List<TraceEventVO> events = trace.getEvents();
@@ -273,7 +272,7 @@ class TraceQueryServiceTest {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(Arrays.asList(
+        when(qualityLotMapper.selectList(any())).thenReturn(Arrays.asList(
                 quality(1L, "pass", LocalDateTime.of(2026, 8, 19, 13, 0), LocalDateTime.of(2026, 8, 19, 13, 5), "质检员"),
                 quality(2L, "fail", LocalDateTime.of(2026, 8, 19, 14, 0), LocalDateTime.of(2026, 8, 19, 14, 5), "质检员")));
 
@@ -300,7 +299,7 @@ class TraceQueryServiceTest {
                 exec(1L, 1, "印刷", LocalDateTime.of(2026, 8, 19, 10, 5), null),
                 exec(2L, 2, "冲型", LocalDateTime.of(2026, 8, 19, 11, 0), null)));
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
+        when(qualityLotMapper.selectList(any())).thenReturn(new ArrayList<>());
 
         // category=EXECUTION
         OrderTraceVO trace = service.getOrderTrace(1L, "EXECUTION", null);
@@ -320,7 +319,7 @@ class TraceQueryServiceTest {
         mockOrder(1L, "WO-001", orderEntity(1L, "WO-001"));
         when(executionService.getExecutionsByOrderId(1L)).thenReturn(new ArrayList<>());
         when(workReportMapper.selectList(any())).thenReturn(new ArrayList<>());
-        when(qualityInspectionService.listByOrderId(1L)).thenReturn(new ArrayList<>());
+        when(qualityLotMapper.selectList(any())).thenReturn(new ArrayList<>());
 
         service.getOrderTrace(1L);
 
@@ -330,11 +329,11 @@ class TraceQueryServiceTest {
         verify(workReportMapper, never()).delete(any());
         verify(orderService, never()).createOrder(any());
         verify(orderService, never()).updateOrder(any());
-        verify(qualityInspectionService, never()).delete(any());
+        verify(qualityLotMapper, never()).delete(any());
         // 确认只调用读方法
         verify(orderService).getOrderById(1L);
         verify(executionService).getExecutionsByOrderId(1L);
         verify(workReportMapper).selectList(any());
-        verify(qualityInspectionService).listByOrderId(1L);
+        verify(qualityLotMapper).selectList(any());
     }
 }

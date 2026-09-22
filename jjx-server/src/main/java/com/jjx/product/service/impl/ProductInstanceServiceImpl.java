@@ -174,9 +174,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
 
         instance.setInstanceStatus(3);
 //        instance.setProductionStartTime(new java.util.Date());
-//        return productInstanceMapper.update(instance) > 0;
-        publishInstanceEvent("product.instance.production_started", instance.getInstanceId(), instance.getInstanceCode());
-        return false;
+        boolean updated = productInstanceMapper.updateById(instance) > 0;
+        if (updated) {
+            publishInstanceEvent("product.instance.production_started", instance.getInstanceId(), instance.getInstanceCode());
+        }
+        return updated;
     }
 
     @Override
@@ -194,9 +196,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
 
         instance.setInstanceStatus(5);
 //        instance.setProductionEndTime(new java.util.Date());
-//        return productInstanceMapper.update(instance) > 0;
-        publishInstanceEvent("product.instance.production_completed", instance.getInstanceId(), instance.getInstanceCode());
-        return false;
+        boolean updated = productInstanceMapper.updateById(instance) > 0;
+        if (updated) {
+            publishInstanceEvent("product.instance.production_completed", instance.getInstanceId(), instance.getInstanceCode());
+        }
+        return updated;
     }
 
     @Override
@@ -214,9 +218,11 @@ public class ProductInstanceServiceImpl extends ServiceImpl<ProductInstanceMappe
 
         instance.setInstanceStatus(9);
 //        instance.setDeliveryTime(new java.util.Date());
-//        productCategoryMapper.update(category) > 0
-        publishInstanceEvent("product.instance.delivered", instance.getInstanceId(), instance.getInstanceCode());
-        return false;
+        boolean updated = productInstanceMapper.updateById(instance) > 0;
+        if (updated) {
+            publishInstanceEvent("product.instance.delivered", instance.getInstanceId(), instance.getInstanceCode());
+        }
+        return updated;
     }
 
     @Override

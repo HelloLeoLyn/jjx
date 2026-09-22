@@ -4,7 +4,8 @@
     :src="dataUrl"
     class="print-qrcode"
     :style="imageStyle"
-    alt="二维码"
+    :alt="label"
+    :title="label"
   />
 </template>
 
@@ -16,9 +17,15 @@ const props = withDefaults(
   defineProps<{
     text: string
     size?: number
+    margin?: number
+    errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
+    label?: string
   }>(),
   {
     size: 72,
+    margin: 2,
+    errorCorrectionLevel: 'M',
+    label: '扫码查看业务详情',
   }
 )
 
@@ -42,7 +49,11 @@ watch(
     }
 
     try {
-      const url = await QRCode.toDataURL(text, { width: 256, margin: 1 })
+      const url = await QRCode.toDataURL(text, {
+        width: 256,
+        margin: props.margin,
+        errorCorrectionLevel: props.errorCorrectionLevel,
+      })
       if (!cancelled) dataUrl.value = url
     } catch {
       if (!cancelled) dataUrl.value = ''

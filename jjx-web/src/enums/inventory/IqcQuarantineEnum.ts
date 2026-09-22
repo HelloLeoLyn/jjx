@@ -10,7 +10,7 @@ export const IqcQuarantineActionEnum = createNamedEnum(
   {
     RELEASE: {
       value: IqcQuarantineAction.RELEASE,
-      label: '释放入库',
+      label: '让步接收（特采）',
       tagProps: { type: 'success' },
     },
     RETURN: { value: IqcQuarantineAction.RETURN, label: '退货', tagProps: { type: 'warning' } },
@@ -30,7 +30,7 @@ export const IqcQuarantineStatus = {
 export const IqcQuarantineStatusEnum = createEnum({
   items: [
     { value: 'PENDING', label: '待处置', tagProps: { type: 'warning' } },
-    { value: IqcQuarantineStatus.RELEASED, label: '已释放', tagProps: { type: 'success' } },
+    { value: IqcQuarantineStatus.RELEASED, label: '已让步接收', tagProps: { type: 'success' } },
     { value: IqcQuarantineStatus.RETURNED, label: '已退货', tagProps: { type: 'info' } },
     { value: IqcQuarantineStatus.REWORKED, label: '已返工', tagProps: { type: 'primary' } },
     { value: IqcQuarantineStatus.SCRAPPED, label: '已报废', tagProps: { type: 'danger' } },
@@ -44,9 +44,9 @@ export const IqcQuarantineStatusEnum = createEnum({
  */
 export const IqcQuarantineActionEffect: Record<string, string> = {
   [IqcQuarantineAction.RELEASE]:
-    '把这部分不良品直接计入可用库存（不影响原检验结论，也不要求客户确认）',
-  [IqcQuarantineAction.RETURN]: '生成退货单，货物按退货处理，不进可用库存',
+    '影响库存：是。把这部分来料隔离品计入可用库存并保留原检验结论；来料场景不要求客户确认',
+  [IqcQuarantineAction.RETURN]: '影响库存：否。生成退货单，货物按退货处理，不进可用库存',
   [IqcQuarantineAction.REWORK]:
-    '生成供应商返工单与复检子批次，返工完成后需到「来料检验」做复检',
-  [IqcQuarantineAction.SCRAP]: '生成报废单，只记台账（不良品本来就没进可用库存）',
+    '影响库存：暂不入库。生成供应商返工单与复检子批次，返工完成后需到「来料检验」复检',
+  [IqcQuarantineAction.SCRAP]: '影响库存：否。生成报废单，只记台账（不良品未进可用库存）',
 }

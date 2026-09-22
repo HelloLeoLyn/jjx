@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { R } from '@/types'
+import { InspectionResult, InspectionResultEnum, InspectionTypeEnum } from '@/enums/quality'
 
 /** 质量管理（检验批/不良台账/抽样方案）—— dev-20260917-009/010/012 */
 
@@ -47,11 +48,77 @@ export interface QualityLot {
   rejectNumber?: number
   result?: string
   status?: string
+  reviewStatus?: string
+  reviewerId?: number
+  reviewerName?: string
+  reviewTime?: string
+  reviewRemark?: string
+  defectReason?: string
   parentLotId?: number
   version?: number
   inspector?: string
   inspectTime?: string
   remark?: string
+  createTime?: string
+}
+
+/**
+ * 旧生产质检页面迁移期使用的展示模型。
+ * 数据源统一为 quality_lot，但保留页面现有字段名，避免三个读口各写一套映射。
+ */
+export interface QualityLotView {
+  inspectionId: number
+  inspectionNo: string
+  inspectionType: string
+  inspectionTypeName: string
+  status?: string
+  reviewStatus?: string
+  reviewerId?: number
+  reviewerName?: string
+  reviewTime?: string
+  reviewRemark?: string
+  defectReason?: string
+  orderId?: number
+  orderNo?: string
+  executionId?: number
+  processName?: string
+  materialName?: string
+  productName?: string
+  inspector?: string
+  inspectTime?: string
+  result?: string
+  resultName: string
+  totalQty?: number
+  passQty?: number
+  failQty?: number
+  defectDesc?: string
+  remark?: string
+  createTime?: string
+}
+
+/** quality_lot → 存量生产页面展示字段。 */
+export function toQualityLotView(lot: QualityLot): QualityLotView {
+  const result = String(lot.result || InspectionResult.PENDING).toLowerCase()
+  return {
+    inspectionId: lot.lotId,
+    inspectionNo: lot.lotNo,
+    inspectionType: lot.lotType,
+    inspectionTypeName: InspectionTypeEnum.getLabel(lot.lotType),
+    status: lot.status,
+    orderId: lot.orderId,
+    executionId: lot.executionId,
+    materialName: lot.materialName,
+    productName: lot.productName,
+    inspector: lot.inspector,
+    inspectTime: lot.inspectTime,
+    result,
+    resultName: InspectionResultEnum.getLabel(result),
+    totalQty: lot.lotQuantity,
+    passQty: lot.passQuantity,
+    failQty: lot.failQuantity,
+    remark: lot.remark,
+    createTime: lot.createTime,
+  }
 }
 
 export interface QualityNcr {
@@ -86,6 +153,7 @@ export interface QualityNcrAction {
   approvedBy?: string
   resultRemark?: string
   reworkExecutionId?: number
+  reinspectionLotId?: number
 }
 
 export const qualityLotApi = {
@@ -149,5 +217,17 @@ export const qualitySamplingApi = {
     return request.get<R<Record<string, unknown>>>('/quality/sampling-plan/match', {
       params: { lotType, quantity },
     })
+  },
+}
+
+export const qualityCapaApi = {
+  page(params: Record<string, unknown>) {
+    return request.get<R<{ records: Record<string, unknown>[]; total: number }>>('/quality/capa/page', { params })
+  },
+  create(data: Record<string, unknown>) {
+    return request.post<R<Record<string, unknown>>>('/quality/capa', data)
+  },
+  advance(id: number, data: Record<string, unknown>) {
+    return request.put<R<Record<string, unknown>>>(`/quality/capa/${id}/advance`, data)
   },
 }

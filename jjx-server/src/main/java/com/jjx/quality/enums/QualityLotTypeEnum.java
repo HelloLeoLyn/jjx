@@ -12,7 +12,8 @@ public enum QualityLotTypeEnum {
 
     IQC("IQC", "来料检验"),
     IPQC("IPQC", "过程检验"),
-    FQC("FQC", "成品检验");
+    FQC("FQC", "成品检验"),
+    OQC("OQC", "出货检验");
 
     private final String code;
     private final String label;

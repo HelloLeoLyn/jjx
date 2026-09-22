@@ -47,7 +47,7 @@ public class SalesInvoiceController {
     }
 
     @Operation(summary = "记录发票打印")
-    @Log(module = "销售发票", businessType = BusinessType.OTHER, bizType = "'invoice_print'", bizId = "#id", action = LogActions.SALES_INVOICE_PRINT_LOG)
+    @Log(module = "销售发票", businessType = BusinessType.OTHER, bizType = "'invoice'", bizId = "#id", action = LogActions.SALES_INVOICE_PRINT_LOG)
     @SaCheckPermission("sales:invoice:view")
     @PostMapping("/{id}/print-log")
     public Result<Void> printLog(@PathVariable Long id) { return Result.success(); }

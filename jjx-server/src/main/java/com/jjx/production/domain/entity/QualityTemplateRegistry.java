@@ -28,6 +28,8 @@ public class QualityTemplateRegistry {
     private String printComponent;
     private String bizModule;
     private String printMode;
+    private Integer qrEnabled;
+    private String qrContentRule;
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;

@@ -32,6 +32,24 @@ export const InspectionResultEnum = createEnum<string>({
   defaultTag: { type: 'info' },
 })
 
+/** quality_lot.status：统一检验批流程状态。 */
+export const QualityLotStatus = {
+  PENDING: 'PENDING',
+  INSPECTING: 'INSPECTING',
+  JUDGED: 'JUDGED',
+  CLOSED: 'CLOSED',
+} as const
+
+export const QualityLotStatusEnum = createEnum<string>({
+  items: [
+    { value: QualityLotStatus.PENDING, label: '待检', tagProps: { type: 'info' } },
+    { value: QualityLotStatus.INSPECTING, label: '检验中', tagProps: { type: 'warning' } },
+    { value: QualityLotStatus.JUDGED, label: '已判定', tagProps: { type: 'success' } },
+    { value: QualityLotStatus.CLOSED, label: '已关闭', tagProps: { type: 'info' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
 export const QualityDisposition = {
   INTERNAL_SORT: 'INTERNAL_SORT',
   SCRAP: 'SCRAP',
@@ -67,6 +85,7 @@ export const QualityReviewStatusEnum = createEnum<string>({
 export const InspectionEnum = {
   type: InspectionTypeEnum,
   result: InspectionResultEnum,
+  lotStatus: QualityLotStatusEnum,
   disposition: QualityDispositionEnum,
   reviewStatus: QualityReviewStatusEnum,
 }

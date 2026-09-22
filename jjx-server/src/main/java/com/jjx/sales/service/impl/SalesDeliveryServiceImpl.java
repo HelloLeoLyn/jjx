@@ -56,6 +56,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
     /** 打印留痕（口径 D3）：复用 production 包既有实体/Mapper，不另建表映射 */
     private final QualityTemplatePrintLogMapper printLogMapper;
     private final QualityTemplateRegistryMapper templateRegistryMapper;
+    private final com.jjx.quality.mapper.QualityLotMapper qualityLotMapper;
 
     private static final String PRINT_BIZ_TYPE = "sales_delivery";
     /** quality_template_registry.status：1=生效 */
@@ -128,6 +129,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         if (Integer.valueOf(4).equals(current.getDeliveryStatus())) {
             throw new BusinessException("发货单已签收，请勿重复操作");
         }
+        assertOqcPassed(deliveryId);
         SalesDelivery update = new SalesDelivery();
         update.setDeliveryId(deliveryId);
         update.setReceiverName(receiveInfo == null ? null : receiveInfo.getReceiverName());
@@ -152,6 +154,25 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
             payload.put("orderId", received.getOrderId());
         }
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.delivery.received", payload);
+    }
+
+    /** 每个发货明细的最新版 OQC 都必须判定合格，才能登记客户签收。 */
+    private void assertOqcPassed(Long deliveryId) {
+        List<SalesDeliveryItem> items = salesDeliveryItemMapper.selectList(
+                new LambdaQueryWrapper<SalesDeliveryItem>().eq(SalesDeliveryItem::getDeliveryId, deliveryId));
+        List<com.jjx.quality.domain.entity.QualityLot> lots = qualityLotMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityLot>()
+                        .eq(com.jjx.quality.domain.entity.QualityLot::getLotType, "OQC")
+                        .eq(com.jjx.quality.domain.entity.QualityLot::getSourceType, "SALES_DELIVERY")
+                        .eq(com.jjx.quality.domain.entity.QualityLot::getSourceId, deliveryId)
+                        .orderByDesc(com.jjx.quality.domain.entity.QualityLot::getVersion));
+        for (SalesDeliveryItem item : items) {
+            com.jjx.quality.domain.entity.QualityLot latest = lots.stream()
+                    .filter(lot -> item.getItemId().equals(lot.getSourceItemId())).findFirst().orElse(null);
+            if (latest == null || !"pass".equalsIgnoreCase(latest.getResult())) {
+                throw new BusinessException("发货明细 " + item.getProductCode() + " 尚无合格 OQC 结果，不能签收");
+            }
+        }
     }
 
     /**

@@ -22,12 +22,12 @@
         <!-- 公司抬头 -->
         <div class="a4-company-header">
           <PrintCompanyHeader variant="center" />
-          <img
-            v-if="qrDataUrl"
-            :src="qrDataUrl"
+          <PrintQrCode
+            v-if="info.orderNo"
+            :text="info.orderNo"
+            :size="72"
             class="a4-order-qrcode"
-            alt="采购订单二维码"
-            title="扫码识别订单号"
+            label="扫码识别采购订单号"
           />
         </div>
 
@@ -144,12 +144,12 @@
       </template>
 
       <section v-else class="qr024-layout">
-        <img
-          v-if="qrDataUrl"
-          :src="qrDataUrl"
+        <PrintQrCode
+          v-if="info.orderNo"
+          :text="info.orderNo"
+          :size="72"
           class="qr024-order-qrcode"
-          alt="采购订单二维码"
-          title="扫码识别订单号"
+          label="扫码识别采购订单号"
         />
 
         <header class="qr024-company-header">
@@ -251,7 +251,7 @@ import { useUserStore } from '@/store/modules/user'
 import { dictApi } from '@/api/system/dict'
 import type { PurchaseSupplier } from '@/types/purchase'
 import type { SysDictItem } from '@/types/system/dict'
-import QRCode from 'qrcode'
+import PrintQrCode from '@/components/print/PrintQrCode.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -268,7 +268,6 @@ const info = ref<any>(null)
 const supplier = ref<PurchaseSupplier | null>(null)
 const paymentTermsOptions = ref<SysDictItem[]>([])
 const loading = ref(false)
-const qrDataUrl = ref('')
 
 const itemsList = computed<any[]>(() => info.value?.items || [])
 const makerName = computed(
@@ -348,15 +347,6 @@ async function loadPaymentTermsOptions() {
   }
 }
 
-/** 生成采购订单二维码；使用高分辨率源图保证纸张打印清晰度 */
-async function genQr() {
-  if (!info.value?.orderNo) return
-  try {
-    qrDataUrl.value = await QRCode.toDataURL(info.value.orderNo, { width: 256, margin: 1 })
-  } catch {
-    qrDataUrl.value = ''
-  }
-}
 
 function handlePrint() {
   // 打印留痕（1318）：24 = JJX-QR-024 采购订单
@@ -370,7 +360,6 @@ function handlePrint() {
 
 onMounted(async () => {
   await Promise.all([loadData(), loadPaymentTermsOptions()])
-  await genQr()
 })
 </script>
 

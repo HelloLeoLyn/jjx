@@ -1,6 +1,6 @@
-import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
 import { InspectionResult } from '@/enums/quality'
+import { qualityLotApi, toQualityLotView, type QualityLotItem } from '@/api/quality/lot'
 
 export interface QualityQuery {
   pageNum: number
@@ -100,37 +100,66 @@ export interface QualityCreatePayload {
 }
 
 export const qualityApi = {
-  page(params: QualityQuery) {
-    return request.get<R<PageResult<QualityVO>>>('/production/quality/page', { params })
+  async page(params: QualityQuery): Promise<R<PageResult<QualityVO>>> {
+    const response = await qualityLotApi.page({
+      pageNum: params.pageNum,
+      pageSize: params.pageSize,
+      lotNo: params.inspectionNo,
+      lotType: params.inspectionType,
+      sourceType: params.sourceType,
+      sourceId: params.workReportId ?? params.sourceId,
+      sourceItemId: params.sourceItemId,
+      orderId: params.orderId,
+      executionId: params.executionId,
+      result: params.result,
+      reviewStatus: params.reviewStatus,
+    })
+    const page = response.data
+    const records = (page?.records || []).map((lot) => toQualityVO(lot, []))
+    return {
+      ...response,
+      data: {
+        total: page?.total || 0,
+        records,
+        pageNum: params.pageNum,
+        pageSize: params.pageSize,
+        totalPages: Math.ceil((page?.total || 0) / params.pageSize),
+      },
+    }
   },
-  getById(id: number) {
-    return request.get<R<QualityVO>>(`/production/quality/${id}`)
+  async getById(id: number): Promise<R<QualityVO>> {
+    const [lotResponse, itemResponse] = await Promise.all([
+      qualityLotApi.detail(id),
+      qualityLotApi.items(id),
+    ])
+    const lot = lotResponse.data
+    if (!lot) throw new Error('检验批不存在')
+    return {
+      ...lotResponse,
+      data: toQualityVO(lot, itemResponse.data || []),
+    }
   },
-  create(data: any) {
-    return request.post<R<number>>('/production/quality', data)
-  },
-  /** P3-C：创建质检（createInspection，workReportId 非空时后端反查校验） */
-  createInspection(data: QualityCreatePayload) {
-    return request.post<R<number>>('/production/quality/inspection', data)
-  },
-  /** P3-C：判定 PASS/FAIL（正式质量动作） */
-  judge(id: number, data: QualityJudgePayload) {
-    return request.post<R<QualityVO>>(`/production/quality/${id}/judge`, data)
-  },
-  /** P3-C：复检（新建 PENDING 记录，不覆盖历史） */
-  reinspect(id: number) {
-    return request.post<R<number>>(`/production/quality/${id}/reinspect`)
-  },
-  update(data: any) {
-    return request.put<R<void>>('/production/quality', data)
-  },
-  remove(id: number) {
-    return request.delete<R<void>>(`/production/quality/${id}`)
-  },
-  getStatistics() {
-    return request.get<R<any>>('/production/quality/statistics')
-  },
-  exportExcel(id: number) {
-    return request.get(`/production/quality/export-excel/${id}`, { responseType: 'blob' })
-  },
+}
+
+function toQualityVO(lot: import('@/api/quality/lot').QualityLot, items: QualityLotItem[]): QualityVO {
+  const view = toQualityLotView(lot)
+  return {
+    ...view,
+    result: view.result || InspectionResult.PENDING,
+    sourceType: lot.sourceType,
+    sourceId: lot.sourceId,
+    sourceItemId: lot.sourceItemId,
+    batchNo: lot.batchNo,
+    previousInspectionId: lot.parentLotId,
+    inspectionVersion: lot.version,
+    materialCode: lot.materialCode,
+    reviewStatus: lot.reviewStatus,
+    reviewerId: lot.reviewerId,
+    reviewerName: lot.reviewerName,
+    reviewTime: lot.reviewTime,
+    reviewRemark: lot.reviewRemark,
+    defectDesc: lot.defectReason,
+    remainingFailQty: Math.max(0, Number(lot.failQuantity || 0) - Number(lot.disposedQuantity || 0)),
+    items: items.map((item) => ({ ...item })),
+  }
 }

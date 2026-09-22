@@ -126,6 +126,7 @@
                 v-model="form.eventCode"
                 placeholder="如: inquiry.converted"
                 :disabled="!!form.eventId"
+                @change="loadMetadata"
               />
             </el-form-item>
           </el-col>
@@ -226,6 +227,40 @@
           />
         </el-form-item>
 
+        <el-form-item label="可用变量">
+          <div class="variable-panel">
+            <div v-if="!variables.length" class="variable-empty">该事件暂未登记专用变量，可使用通用变量。</div>
+            <div v-for="item in variables" :key="item.key" class="variable-row">
+              <el-tag size="small">{{ `{${item.key}}` }}</el-tag>
+              <span>{{ item.description }}</span>
+              <el-button link type="primary" @click="insertVariable('title', item.key)">插入标题</el-button>
+              <el-button link type="primary" @click="insertVariable('content', item.key)">插入内容</el-button>
+            </div>
+            <el-alert
+              v-if="unknownVariables.length"
+              type="warning"
+              :closable="false"
+              :title="`未登记变量：${unknownVariables.join('、')}`"
+            />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="试渲染">
+          <div class="preview-panel">
+            <div><b>标题：</b>{{ previewTitle || '-' }}</div>
+            <div><b>内容：</b>{{ previewContent || '-' }}</div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="最近发送">
+          <div v-if="latestNotification" class="preview-panel">
+            <div><b>标题：</b>{{ latestNotification.title || '-' }}</div>
+            <div><b>内容：</b>{{ latestNotification.content || '-' }}</div>
+            <div><b>收件人：</b>{{ latestNotification.receiverName || '-' }}　{{ latestNotification.sendTime || '' }}</div>
+          </div>
+          <span v-else class="variable-empty">暂无实际发送记录</span>
+        </el-form-item>
+
         <el-form-item label="办结关闭事件" prop="closeSourceEvents">
           <el-input
             v-model="form.closeSourceEvents"
@@ -253,7 +288,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { Toolbar, DataTable, SearchForm } from '@/components/common-ui/index'
 import { eventConfigApi } from '@/api/system/event-config'
@@ -272,6 +307,8 @@ const eventList = ref<SysEventConfig[]>([])
 const ids = ref<number[]>([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增事件配置')
+const variables = ref<Array<{ key: string; description: string; example: string }>>([])
+const latestNotification = ref<{ title?: string; content?: string; receiverName?: string; sendTime?: string }>()
 
 const tableOptions: TableOptions[] = uiConfig.tableOptions.flatMap(column =>
   column.prop === 'title'
@@ -389,6 +426,8 @@ function handleToolbarClick(key: string) {
 function handleAdd() {
   dialogTitle.value = '新增事件配置'
   assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'biz', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', closeSourceEvents: '', excludeTrigger: 0 })
+  variables.value = []
+  latestNotification.value = undefined
   dialogVisible.value = true
 }
 
@@ -397,8 +436,51 @@ function handleUpdate(row: SysEventConfig) {
   dialogTitle.value = '修改事件配置'
   assignExisting(form, row as any)
   form.targetRoleList = parseTargetRole(row.targetRole as string)
+  loadMetadata()
   dialogVisible.value = true
 }
+
+async function loadMetadata() {
+  if (!form.eventCode) {
+    variables.value = []
+    latestNotification.value = undefined
+    return
+  }
+  const { data } = await eventConfigApi.metadata(form.eventCode)
+  variables.value = data?.variables || []
+  latestNotification.value = data?.latest
+}
+
+function insertVariable(field: 'title' | 'content', key: string) {
+  form[field] = `${form[field] || ''}{${key}}`
+}
+
+const placeholderKeys = computed(() => {
+  const keys = new Set<string>()
+  const text = `${form.title || ''}\n${form.content || ''}`
+  for (const match of text.matchAll(/\$?\{([^}]+)\}/g)) {
+    match[1].split('|').map((key) => key.trim()).filter(Boolean).forEach((key) => keys.add(key))
+  }
+  return [...keys]
+})
+const unknownVariables = computed(() => {
+  const allowed = new Set(variables.value.map((item) => item.key))
+  return placeholderKeys.value.filter((key) => !allowed.has(key))
+})
+const examplePayload = computed(() =>
+  Object.fromEntries(variables.value.map((item) => [item.key, item.example]))
+)
+function renderPreview(template: string) {
+  return (template || '').replace(/\$?\{([^}]+)\}/g, (_, expression: string) => {
+    for (const candidate of expression.split('|')) {
+      const value = examplePayload.value[candidate.trim()]
+      if (value != null) return value
+    }
+    return ''
+  })
+}
+const previewTitle = computed(() => renderPreview(form.title))
+const previewContent = computed(() => renderPreview(form.content))
 
 // 删除
 function handleDelete(row?: SysEventConfig) {
@@ -423,8 +505,19 @@ function handleDelete(row?: SysEventConfig) {
 
 // 提交
 function handleSubmit() {
-  formRef.value?.validate((valid) => {
+  formRef.value?.validate(async (valid) => {
     if (!valid) return
+    if (unknownVariables.value.length) {
+      try {
+        await ElMessageBox.confirm(
+          `模板包含未登记变量：${unknownVariables.value.join('、')}。保存后可能渲染为空，仍要保存吗？`,
+          '变量校验提醒',
+          { type: 'warning' }
+        )
+      } catch {
+        return
+      }
+    }
     submitLoading.value = true
     const { targetRoleList, ...rest } = form
     const payload = { ...rest, targetRole: JSON.stringify(form.targetRoleList) }
@@ -446,3 +539,30 @@ onMounted(() => {
   getList()
 })
 </script>
+
+<style scoped>
+.variable-panel,
+.preview-panel {
+  width: 100%;
+}
+.variable-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.variable-row > span {
+  flex: 1;
+  color: #606266;
+}
+.variable-empty {
+  color: #909399;
+}
+.preview-panel {
+  padding: 10px 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  background: #fafafa;
+  line-height: 1.7;
+}
+</style>

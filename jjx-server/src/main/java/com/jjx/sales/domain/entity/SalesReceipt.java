@@ -1,11 +1,14 @@
 package com.jjx.sales.domain.entity;
 import com.baomidou.mybatisplus.annotation.*;
+import com.jjx.common.core.domain.BaseEntity;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-@Data @TableName("sales_receipt")
-public class SalesReceipt {
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("sales_receipt")
+public class SalesReceipt extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long receiptId;
     private String receiptNo;
@@ -21,7 +24,4 @@ public class SalesReceipt {
     private String currency;
     @TableField("receipt_status")
     private Integer status;
-    private String remark;
-    private LocalDateTime createTime;
-    private LocalDateTime updateTime;
 }

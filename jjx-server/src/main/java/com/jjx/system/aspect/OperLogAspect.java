@@ -18,6 +18,7 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.expression.Expression;
+import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
@@ -61,7 +62,7 @@ public class OperLogAspect {
 
             // 准备SpEL上下文（方法参数）
             Object[] args = point.getArgs();
-            StandardEvaluationContext spelCtx = new StandardEvaluationContext();
+            StandardEvaluationContext spelCtx = createSpelContext();
             String[] paramNames = ((MethodSignature) point.getSignature()).getParameterNames();
             if (paramNames != null) {
                 for (int i = 0; i < paramNames.length && i < args.length; i++) {
@@ -306,6 +307,13 @@ public class OperLogAspect {
 
     static void bindResult(StandardEvaluationContext ctx, Object result) {
         ctx.setVariable("result", result);
+    }
+
+    /** 支持 #result.data.transferNo 这类 Map 点号属性访问。 */
+    static StandardEvaluationContext createSpelContext() {
+        StandardEvaluationContext ctx = new StandardEvaluationContext();
+        ctx.addPropertyAccessor(new MapAccessor());
+        return ctx;
     }
 
     void applyDetail(StandardEvaluationContext ctx, String expression, SysOperLog operLog) {

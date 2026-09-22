@@ -76,12 +76,19 @@ public class QualityLot {
     private String result;
     /** PENDING/INSPECTING/JUDGED/CLOSED */
     private String status;
+    /** IQC 独立复核状态：DRAFT/PENDING/APPROVED/REJECTED */
+    private String reviewStatus;
 
     /** 复检来源批 + 版本 */
     private Long parentLotId;
     private Integer version;
 
     private String inspector;
+    private Long reviewerId;
+    private String reviewerName;
+    private LocalDateTime reviewTime;
+    private String reviewRemark;
+    private String defectReason;
     private LocalDateTime inspectTime;
     private String remark;
 

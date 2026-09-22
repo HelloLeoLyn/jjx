@@ -44,7 +44,8 @@ public class QualityTemplateRegistryController {
     @Operation(summary = "记录打印留痕")
     @PostMapping("/{id}/print-log")
     @Log(module = "质量记录打印", businessType = BusinessType.OTHER,
-            bizType = "'quality_template'", bizId = "#id", action = LogActions.QUALITY_TEMPLATE_PRINT_LOG)
+            bizType = "#bizType != null && !#bizType.isBlank() ? #bizType : 'quality_template'",
+            bizId = "#bizId != null ? #bizId : #id", action = LogActions.QUALITY_TEMPLATE_PRINT_LOG)
     public Result<Void> printLog(@PathVariable Long id,
                                  @RequestParam(required = false) String bizType,
                                  @RequestParam(required = false) Long bizId) {
