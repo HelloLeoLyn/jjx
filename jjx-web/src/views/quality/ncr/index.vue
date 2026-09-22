@@ -4,14 +4,14 @@
       <template #title>
         <div class="scope-guide__content">
           <span>本页主要处理成品检验批不良：返工、让步接收（特采）或报废。成品让步接收必须取得客户确认。</span>
-          <el-button link type="primary" @click="goIqcQuarantine">查看来料不合格品处置</el-button>
+          <el-button link type="primary" @click="goIqcQuarantine">查看来料不合格处置</el-button>
         </div>
       </template>
     </el-alert>
     <el-card>
       <template #header>
         <div class="header">
-          <span>不良台账</span>
+          <span>产品不良台账</span>
           <div>
             <el-select v-model="query.lotType" clearable placeholder="来源类型" style="width: 140px" @change="load(1)">
               <el-option label="来料检验" value="IQC" />
@@ -201,7 +201,7 @@ const load = async (page?: number) => {
     rows.value = Array.isArray(data) ? data : data?.records || []
     total.value = Array.isArray(data) ? data.length : Number(data?.total || 0)
   } catch (e: any) {
-    ElMessage.error(e?.message || '加载不良台账失败')
+    ElMessage.error(e?.message || '加载产品不良台账失败')
     rows.value = []
   } finally {
     loading.value = false

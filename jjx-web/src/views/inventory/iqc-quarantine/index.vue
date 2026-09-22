@@ -4,7 +4,7 @@
       <template #title>
         <div class="scope-guide__content">
           <span>本页只处理来料检验产生的隔离品：让步接收（特采）、退货、供应商返工或报废。</span>
-          <el-button link type="primary" @click="router.push('/quality/ncr')">查看成品不良台账</el-button>
+          <el-button link type="primary" @click="router.push('/quality/ncr')">查看产品不良台账</el-button>
         </div>
       </template>
     </el-alert>
