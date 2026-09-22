@@ -346,20 +346,22 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // 采购单 confirm 仅负责合格/允收数量过账：加库存+流水+置完成；不合格品隔离台账已在全部行审核通过时创建
         if (purchaseConfirmable) validateAllIqcApproved(inboundId);
-        BigDecimal postedQtyThisTime = BigDecimal.ZERO;
+        // dev-20260922-020（口径 B：一切以「确认入库」为准）：这里算的是「本次应过账的净差额」，
+        // 可为负（复检判少 → 仓库确认时冲减）。正数由 addStock 加库存；负数由 reducePostedStock 冲减。
+        BigDecimal netDeltaThisTime = BigDecimal.ZERO;
         if ("PRODUCTION".equals(order.getSourceType())) {
-            postedQtyThisTime = inboundItemMapper.selectByInboundId(inboundId).stream()
+            netDeltaThisTime = inboundItemMapper.selectByInboundId(inboundId).stream()
                     .map(item -> {
                         BigDecimal targetQuantity = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
                         BigDecimal postedQuantity = Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO);
-                        BigDecimal quantityToPost = targetQuantity.subtract(postedQuantity);
-                        return quantityToPost.compareTo(BigDecimal.ZERO) > 0 ? quantityToPost : BigDecimal.ZERO;
+                        return targetQuantity.subtract(postedQuantity);
                     })
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
         addStock(order, operatorId, operatorName, "确认入库");
         if ("PRODUCTION".equals(order.getSourceType())) {
-            writebackProducedQuantity(order, postedQtyThisTime);
+            reducePostedStock(order, operatorId, operatorName, netDeltaThisTime);
+            writebackProducedQuantity(order, netDeltaThisTime);
             syncQualityLotStored(order.getSourceId());
         }
         // 幂等兜底：审核通过时已建，此处跳过重复，兼容历史数据及边界场景
@@ -1698,7 +1700,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 return;
             }
             int produced = salesOrder.getProducedQuantity() != null ? salesOrder.getProducedQuantity() : 0;
-            salesOrder.setProducedQuantity(produced + postedQty.intValue());
+            // dev-20260922-020（口径 B）：冲减时 postedQty 为负 → 这里会把订单已产数减回去，下限 0
+            salesOrder.setProducedQuantity(Math.max(0, produced + postedQty.intValue()));
             salesOrderMapper.updateById(salesOrder);
             log.info("完工入库回写订单 produced_quantity: orderId={}, 本次+{}，累计={}",
                     productionOrder.getSalesOrderId(), postedQty, salesOrder.getProducedQuantity());
@@ -2281,6 +2284,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundOrderMapper.updateById(order);
             log.info("完工入库单已建（差额同步）: order={} 数量={} lotId={}",
                     prodOrder.getOrderNo(), targetQuantity.toPlainString(), lotId);
+            // dev-20260922-020（口径 B）：新建即通知/待办仓库去「确认入库」
+            publishInboundEvent("inventory.inbound.created_from_production", order.getInboundId());
             return delta;
         }
 
@@ -2291,64 +2296,104 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             order.setTotalQuantity(targetQuantity);
             inboundOrderMapper.updateById(order);
         }
-        if (!posted) {
-            log.info("完工入库数量已更正（未过账）: order={} {} -> {} lotId={} reason={}",
-                    prodOrder.getOrderNo(), current.toPlainString(), targetQuantity.toPlainString(), lotId, reason);
-            return delta;
-        }
-
-        // 已过账 → 只做差额：调库存 + ADJUST 凭证（带 lotId）
-        String batchNo = (item == null || item.getBatchNo() == null)
-                ? "BATCH-" + prodOrder.getOrderNo() : item.getBatchNo();
-        InventoryStockItem stock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
-                .eq(InventoryStockItem::getMaterialCode, prodOrder.getProductCode())
-                .eq(InventoryStockItem::getBatchNo, batchNo)
-                .orderByAsc(InventoryStockItem::getItemId)
-                .last("LIMIT 1"));
-        if (stock == null) {
-            if (delta.signum() > 0) {
-                throw new BusinessException("成品库存批次不存在，无法差额入库：" + batchNo);
+        // dev-20260922-020（口径 B：一切以「确认入库」为准，用户 2026-09-22 明确要求）：
+        // 判定/复检只维护入库单的「应入数量」，**一律不动库存、不写库存流水**。
+        // · 未过账 → 数量已更正，本就在等仓库确认
+        // · 已过账且应入 ≠ 已入 → 把单据退回「待处理」，仓库点「确认入库」时按差额过账
+        //   （补入走 addStock；应入 < 已入 的冲减走 confirm → reducePostedStock）
+        if (item != null && delta.signum() != 0) {
+            if (posted) {
+                Integer originStatus = order.getOrderStatus();
+                order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+                order.setRemark(appendRemark(order.getRemark(),
+                        "成品检验更正：" + (delta.signum() > 0 ? "补入 " : "冲减 ") + delta.abs().toPlainString()
+                                + "（" + (reason == null ? "-" : reason) + "），待确认入库"));
+                inboundOrderMapper.updateById(order);
+                log.info("成品入库单已退回待确认（原状态={}）: order={} {} -> {} delta={} lotId={} reason={}",
+                        originStatus, prodOrder.getOrderNo(), current.toPlainString(),
+                        targetQuantity.toPlainString(), delta.toPlainString(), lotId, reason);
+            } else {
+                log.info("完工入库数量已更正（未过账）: order={} {} -> {} delta={} lotId={} reason={}",
+                        prodOrder.getOrderNo(), current.toPlainString(), targetQuantity.toPlainString(),
+                        delta.toPlainString(), lotId, reason);
             }
-            return BigDecimal.ZERO;
+            // 通知/待办仓库：有成品入库单待确认（数量已变更）
+            publishInboundEvent("inventory.inbound.created_from_production", order.getInboundId());
         }
-        BigDecimal before = stock.getQuantity() == null ? BigDecimal.ZERO : stock.getQuantity();
-        BigDecimal after = before.add(delta);
-        if (after.signum() < 0) {
-            throw new BusinessException("复检更正后库存将为负（当前 " + before.toPlainString() + "，差额 "
-                    + delta.toPlainString() + "），请人工核对后再处理");
-        }
-        stock.setQuantity(after);
-        stockItemMapper.updateById(stock);
-
-        InventoryTransaction tx = new InventoryTransaction();
-        tx.setInventoryItemId(stock.getInventoryItemId());
-        tx.setMaterialId(stock.getMaterialId());
-        tx.setMaterialCode(stock.getMaterialCode());
-        tx.setMaterialName(stock.getMaterialName());
-        tx.setWarehouseId(stock.getWarehouseId());
-        tx.setLocationId(stock.getLocationId());
-        tx.setTransactionType("ADJUST");
-        tx.setSourceType("PRODUCTION");
-        tx.setSourceId(orderId);
-        tx.setSourceNo(prodOrder.getOrderNo());
-        tx.setLotId(lotId);
-        tx.setBatchNo(batchNo);
-        tx.setQuantity(delta);
-        tx.setBeforeQuantity(before);
-        tx.setAfterQuantity(after);
-        tx.setUnitCost(stock.getUnitCost());
-        tx.setAmount(stock.getUnitCost() == null ? null : stock.getUnitCost().multiply(delta));
-        tx.setTransactionTime(java.time.LocalDateTime.now());
-        tx.setRemark(reason == null ? "成品检验差额调整（复检更正）" : reason);
-        try {
-            tx.setOperatorId(SecurityUtils.getUserId());
-            tx.setOperatorName(SecurityUtils.getDisplayName());
-        } catch (Exception ignored) {
-        }
-        transactionMapper.insert(tx);
-        log.info("成品库存已按差额调整: order={} delta={} lotId={} reason={}",
-                prodOrder.getOrderNo(), delta.toPlainString(), lotId, reason);
         return delta;
+    }
+
+    /** 备注追加（列宽 500，超长截断） */
+    private String appendRemark(String origin, String addition) {
+        String base = origin == null ? "" : origin.trim();
+        String next = base.isEmpty() ? addition : base + " ｜ " + addition;
+        return next.length() > 500 ? next.substring(0, 500) : next;
+    }
+
+    /**
+     * dev-20260922-020（口径 B）：仓库点「确认入库」时处理「应入 < 已入」的冲减（复检判少/更正）。
+     * 与 addStock 对称：减批次库存 + 写 ADJUST 负流水 + 回写明细 posted_quantity；库存不足直接报错（不做负库存）。
+     */
+    private void reducePostedStock(InventoryInboundOrder order, Long operatorId, String operatorName, BigDecimal netDelta) {
+        if (netDelta == null || netDelta.signum() >= 0) {
+            return;
+        }
+        for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
+            BigDecimal target = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
+            BigDecimal postedQty = Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO);
+            BigDecimal reduce = postedQty.subtract(target);
+            if (reduce.signum() <= 0) {
+                continue;
+            }
+            InventoryStockItem stock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                    .eq(InventoryStockItem::getInventoryItemId, item.getInventoryItemId())
+                    .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
+                    .eq(InventoryStockItem::getStatus, 1)
+                    .orderByAsc(InventoryStockItem::getItemId)
+                    .last("LIMIT 1"));
+            if (stock == null) {
+                throw new BusinessException("成品库存批次不存在，无法冲减：" + item.getBatchNo());
+            }
+            BigDecimal before = Objects.requireNonNullElse(stock.getQuantity(), BigDecimal.ZERO);
+            BigDecimal after = before.subtract(reduce);
+            if (after.signum() < 0) {
+                throw new BusinessException("冲减后库存将为负（批次 " + item.getBatchNo() + " 当前 "
+                        + before.toPlainString() + "，需冲减 " + reduce.toPlainString()
+                        + "），可能已发货，请人工核对后再处理");
+            }
+            stock.setQuantity(after);
+            stockItemMapper.updateById(stock);
+
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setInventoryItemId(stock.getInventoryItemId());
+            tx.setMaterialId(stock.getMaterialId());
+            tx.setMaterialCode(stock.getMaterialCode());
+            tx.setMaterialName(stock.getMaterialName());
+            tx.setWarehouseId(stock.getWarehouseId());
+            tx.setLocationId(stock.getLocationId());
+            tx.setTransactionType("ADJUST");
+            tx.setSourceType("PRODUCTION");
+            tx.setSourceId(order.getSourceId());
+            tx.setSourceNo(order.getSourceNo());
+            tx.setBatchNo(item.getBatchNo());
+            tx.setQuantity(reduce.negate());
+            tx.setBeforeQuantity(before);
+            tx.setAfterQuantity(after);
+            tx.setUnitCost(stock.getUnitCost());
+            tx.setAmount(stock.getUnitCost() == null ? null : stock.getUnitCost().multiply(reduce.negate()));
+            tx.setTransactionTime(java.time.LocalDateTime.now());
+            tx.setRemark("成品检验更正冲减（仓库确认入库）");
+            tx.setOperatorId(operatorId);
+            tx.setOperatorName(operatorName);
+            transactionMapper.insert(tx);
+
+            item.setPostedQuantity(target);
+            inboundItemMapper.updateById(item);
+            stockMapper.refreshSummaryByInventoryItemId(item.getInventoryItemId());
+            log.info("成品入库冲减: order={} batch={} 冲减={} 库存 {} -> {}",
+                    order.getInboundNo(), item.getBatchNo(), reduce.toPlainString(),
+                    before.toPlainString(), after.toPlainString());
+        }
     }
 
     private static boolean isPostedInboundStatus(Integer status) {
