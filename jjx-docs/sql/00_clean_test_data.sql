@@ -1,7 +1,22 @@
 -- =====================================================
--- 清理测试数据脚本（v15）
+-- 清理测试数据脚本（v17）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v17 变更（2026-09-22，任务 dev-20260922-002；用户 10:24 指令「把这三张表都删除了」）：
+--   1. 【移除】production_quality_inspection(_item)：已由迁移 182 归档后 DROP，旧表不存在，
+--      保留 TRUNCATE 会在执行时报 ERROR 1146 并中断后续清理 → 删除该两项清理与核验项。
+--   2. 【新增】quality_capa（迁移 180 新建的 CAPA 纠正预防措施台账，业务表，先于 quality_ncr 清）。
+--   3. 【归位调整】迁移 192 已 DROP 三张遗留/归档空表：archive_production_quality_inspection(_item)
+--      （迁移 182 建的归档快照）、engineering_bom_backup_20260809（迁移 130 本应删、被 dump 导入带回）。
+--      故 v16 第 3 条的“保留声明”作废，本脚本不再引用这三张表。
+-- v16 变更（2026-09-22，任务 dev-20260921-047/050/051）：
+--   1. 【归位】新入工装台账（老台账导入的真实数据）改为保留，不再当业务测试数据清空：
+--      engineering_die（刀模 12,134 条）、engineering_screen_frame（网框 7,291 条）、
+--      engineering_screen_plate（网版当前版面 4,503 条，**v15 曾在此清单里 → 09-21 夜清理实测把版面全清了**）
+--   2. 新增清理：sales_delivery_item（发货明细，分批发货子表；父表 sales_delivery 本就在清理清单）
+--   3. 补保留声明：engineering_bom_backup_20260809（历史备份快照表，v14 误判为“已不存在”，实测仍在且为空；**v17 已由迁移 192 DROP，本条作废**）
+--   4. 清理脚本 shell 侧 RETAINED_TABLES 同步
+--
 -- v15 变更（2026-09-21，任务 dev-20260921-024）：
 --   1. 【补漏】新增清理 inventory_iqc_batch（IQC 批次谱系）—— 该表由迁移 136 新建于 v14 定稿之后，
 --      此前既不在 TRUNCATE 清单也不在保留清单 → 清理时批次行残留成孤儿；又因入库明细 id 被复用，
@@ -18,7 +33,8 @@
 --      product_config_option；并新增保留声明：quality_sampling_plan（AQL 配置）、
 --      engineering_process_icon_sample（图标学习样本）、sys_tag / sys_tag_rel（标签）
 --   4. 删除过时条目：engineering_routing_backup_20260809、engineering_bom_backup_20260809（表均已不存在，
---      2026-09-17 首次执行时实测报 ERROR 1146，见 dev-20260917-021 备注）
+--      2026-09-17 首次执行时实测报 ERROR 1146，见 dev-20260917-021 备注；
+--      2026-09-22 实测 engineering_bom_backup_20260809 仍存在（0 行），见 v16 第 3 条）
 --   5. 核验段同步更新（新增表纳入"应为 0"、基础资料展示段补齐）
 -- v13 变更（2026-09-12）：
 --   1. 移除已下线的 production_tooling / jjx_screen_master 引用及核验项
@@ -111,6 +127,9 @@ TRUNCATE sales_order_review;
 
 TRUNCATE sales_delivery;
 
+-- 发货明细（分批发货子表，先清明细再清主表；v16 新增）
+TRUNCATE sales_delivery_item;
+
 TRUNCATE sales_invoice;
 
 TRUNCATE sales_receipt;
@@ -167,8 +186,6 @@ TRUNCATE engineering_resource_maintenance;
 
 TRUNCATE engineering_resource_product_rel;
 
-TRUNCATE engineering_screen_plate;
-
 TRUNCATE engineering_routing_item;
 
 TRUNCATE engineering_routing;
@@ -222,9 +239,8 @@ TRUNCATE inventory_iqc_quarantine;
 TRUNCATE inventory_iqc_batch;
 
 -- ==================== 7. 生产与质量模块 ====================
-TRUNCATE production_quality_inspection_item;
-
-TRUNCATE production_quality_inspection;
+-- 【移除 2026-09-22 v17】production_quality_inspection(_item) 已由迁移 182 归档后 DROP、其归档表又由迁移 192 DROP；
+--   三张表均已不存在，保留 TRUNCATE 会在执行时报 ERROR 1146 并中断后续清理，故删除该三项。
 
 -- 报工和任务流水均引用统一生产任务，必须先于 production_task 清理
 TRUNCATE production_work_report;
@@ -302,6 +318,9 @@ TRUNCATE review_flow;
 TRUNCATE quality_template_print_log;
 
 -- v14 新增：质量重构新模型业务表（此前遗漏，易与 sales_sample_order 同类残留）
+-- 【新增 2026-09-22】quality_capa（迁移 180 新建的 CAPA 纠正预防措施台账，业务表；先于 quality_ncr 清）
+TRUNCATE quality_capa;
+
 TRUNCATE quality_ncr_action;
 
 TRUNCATE quality_ncr;
@@ -340,6 +359,10 @@ TRUNCATE sales_sample_order;
 -- 标签：sys_tag / sys_tag_rel（v14 起保留）
 -- 人事基础档案：hr_employee（员工档案）/ hr_dept_mapping（导入部门映射）
 -- 历史配置备份：sys_event_config_bak_20260814
+-- 工装台账（v16 起保留，非测试数据）：
+--   engineering_die（刀模实体，老台账 12,134 条）/ engineering_screen_frame（网框 7,291 条）
+--   engineering_screen_plate（网版当前版面 4,503 条；v15 曾误列清理清单，清理会清掉网版内容）
+-- （v16 曾声明保留 engineering_bom_backup_20260809；v17 已由迁移 192 DROP，此声明作废）
 -- 以上保留
 
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
@@ -356,11 +379,11 @@ UNION ALL SELECT 'inventory_iqc_quarantine', COUNT(*) FROM inventory_iqc_quarant
 UNION ALL SELECT 'inventory_iqc_batch', COUNT(*) FROM inventory_iqc_batch
 UNION ALL SELECT 'inventory_iqc_disposition_order', COUNT(*) FROM inventory_iqc_disposition_order
 UNION ALL SELECT 'production_order', COUNT(*) FROM production_order
-UNION ALL SELECT 'production_quality_inspection', COUNT(*) FROM production_quality_inspection
 UNION ALL SELECT 'quality_lot', COUNT(*) FROM quality_lot
 UNION ALL SELECT 'quality_lot_item', COUNT(*) FROM quality_lot_item
 UNION ALL SELECT 'quality_ncr', COUNT(*) FROM quality_ncr
 UNION ALL SELECT 'quality_ncr_action', COUNT(*) FROM quality_ncr_action
+UNION ALL SELECT 'quality_capa', COUNT(*) FROM quality_capa
 UNION ALL SELECT 'engineering_archive_import', COUNT(*) FROM engineering_archive_import
 UNION ALL SELECT 'sys_number_sequence', COUNT(*) FROM sys_number_sequence
 UNION ALL SELECT 'review_flow', COUNT(*) FROM review_flow
