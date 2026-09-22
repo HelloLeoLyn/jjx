@@ -9,9 +9,9 @@
 
 | 场景 | 固定位置 | 说明 |
 |---|---|---|
-| DB 全量备份 | `JJX_BACKUP_DIR`（2026-09-21 起默认仓库内 `jjx-docs/sql/backups/`） | 改库前**按风险**必做（§2）：破坏性/批量 DML/表结构变更强制；低风险配置/字典新增由用户决定；原“Git 仓库外”口径已作废 |
-| DB 表级/行级 guard 备份 | `JJX_BACKUP_DIR`（默认同上） | 清理/修复特定表前 |
-| DB 迁移/上线脚本 | `jjx-docs/sql/migrations/` | 序号 `NN_<描述>.sql` 递增；幂等优先 |
+| DB 全量备份 | `JJX_BACKUP_DIR`（**2026-09-22 起默认仓库外 `~/jjx-backups/`**；仓库内只留索引 `jjx-docs/sql/backups/backup-index.tsv`） | 改库前**按风险**必做（§2）：破坏性/批量 DML/表结构变更强制；低风险配置/字典新增由用户决定；备份产物不入库 |
+| DB 表级/行级 guard 备份 | `JJX_BACKUP_DIR`（默认同上，仓库外） | 清理/修复特定表前；完成后在 `backup-index.tsv` 追加一行 |
+| DB 迁移/上线脚本 | `jjx-docs/sql/migrations/`（仓库内只留未应用/最新；已应用的成批移出仓库，见 §3） | 序号 `NN_<描述>.sql`；NN 取「applied 最大号与目录最大号的较大者 +1」；幂等优先 |
 | 当时怎么做的（分析/方案/测试计划/报告/实施记录） | `jjx-docs/history/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 `history/INDEX.md`；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
 | **现行真相（各模块当前状态）** | `jjx-docs/modules/<模块>.md` | 一个模块只允许一篇，不带日期；命名 `<模块>.md`；会过期、需定期复核；历史指针留在文末 |
 | 手册 / 运维 / 排障（怎么干一件事） | `jjx-docs/guides/` | `<主题>-YYYYMMDD.md`；脚本命令手册也放这里 |
@@ -65,19 +65,24 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 ## 3. 迁移/上线 SQL 规范
 
-- 位置：`jjx-docs/sql/migrations/`
-- 命名：`NN_<描述>.sql`，NN 取目录现存最大序号 +1（如 `67_xxx.sql`）；同批多阶段可 `NN_a_<desc>.sql / NN_b_<desc>.sql`（2026-09-07 决议 C1）
+- 位置：`jjx-docs/sql/migrations/`（仓库内**只保留未应用/最新**的迁移，见下条瘦身口径）
+- **仓库瘦身口径（2026-09-22 用户指令，dev-20260922-005 落地）**：已应用的迁移在应用后**成批移出仓库**到 `~/jjx-backups/migrations-removed_YYYYMMDD-HHmm/`（非硬删、可捞回）；移出属“`jjx-docs/sql/` 下移动”，会被 pre-commit 闸门拦，须按 §5 用 `--no-verify` 并在提交信息/任务里留痕。
+  已知代价：**新环境建库不再能靠迁移链**，改走 `jjx-docs/sql/init/`（初始化数据出包）或全库 dump 恢复。
+- 命名：`NN_<描述>.sql`；NN = **max(`sys_config.ops.schema.applied` 最大号, 目录现存最大号) + 1**（不能只看目录——已应用的文件在仓库外，只看目录会撞号；实例：194 已应用但文件不在仓库，故下一个号取 195）；同批多阶段可 `NN_a_<desc>.sql / NN_b_<desc>.sql`（2026-09-07 决议 C1）
+- 台账：`sys_config.ops.schema.applied`（`db-migrate.sh` 自动维护，最大号同步到 `ops.schema.version`）+ 移出目录 `~/jjx-backups/migrations-removed_*` 清单；待执行清单用 `bash scripts/db-migrate.sh --status`
 - 存量平铺 dated 文件（`jjx-docs/sql/2026*.sql`，含 20260906_unified_iqc_*）为历史遗留：不迁移、不重复；新迁移一律进 migrations/
 - 内容要求：
   - 幂等优先（`ADD COLUMN IF NOT EXISTS` 不可用时，先查 information_schema 或 `WHERE NOT EXISTS` 守卫）
   - 破坏性语句（DROP/TRUNCATE/DELETE）必须显式注释原因，单独文件，禁止与建表混在一个"安全"文件里
+  - **菜单插入必须显式给 `icon`**（合法 Element Plus 图标名，如 `Checked`）**或显式 NULL** —— 禁止依赖列默认值。
+    背景（2026-09-22，dev-20260922-006）：`sys_menu.icon` 旧默认值是 `#`，迁移 179 建 menu 390「出货检验」漏填 → 落 `#` → 前端 `SidebarItem.vue` 的 `<component :is="item.icon">` 拿 `#` 当标签名 createElement → `InvalidCharacterError: tag name provided ('#')` 整页报错。列默认值本次已改 NULL，前端也加了非法值兜底不渲染，但**新菜单仍要显式给 icon**。
   - 文件编码 UTF-8；执行后登记 sys_task 或在本文件/任务描述留执行记录（时间、执行人 agent）
 - 执行纪律：按风险决定是否备份 → 审阅 → 执行 → 验证 → 汇报
 - **新表必须登记清理归属（2026-09-21 立，dev-20260921-024）**：任何新建业务表（`CREATE TABLE`）必须同步在 `jjx-docs/sql/00_clean_test_data.sql` 二选一登记 —— ① 加进对应模块段的 `TRUNCATE`；② 明确列入第 12 节「保留」清单，并在 `scripts/db-clean-test-data.sh` 的 `RETAINED_TABLES` 白名单里同步。
   门槛：`bash scripts/db-clean-test-data.sh`（只读体检）新增**覆盖率校验**，库表 − 清理清单 − 保留白名单 ≠ ∅ 直接中止清理。
   背景：`inventory_iqc_batch`（迁移 136 新建）未登记 → 清理时批次行残留成孤儿，明细 id 复用后又错挂到新单（2026-09-21 不合格品处置页「批次谱系」出现历史脏批次）。
 - **唯一执行通道**：`bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN`
-  高风险迁移内部固定顺序：前置检查 → 全库备份 → 执行 → 写 `sys_config.ops.schema.version` → 输出摘要。低风险配置/字典新增可由用户明确选择直接执行，但仍须幂等并保留执行记录。
+  按风险分级备份（§2，2026-09-22 改）：高风险迁移 → 全库快照；低风险 → 只备本次涉及的表/全库结构快照；任何情况不许零备份。内部固定顺序：前置检查 → 分级备份 → 执行 → 写 `sys_config.ops.schema.applied` → 清理过期备份 → 输出摘要。
   **不要直接 `mysql < file`**——应通过入口执行并保留版本记录。
   - 查看已应用版本 / 待执行迁移清单：`bash scripts/db-migrate.sh --status`
   - 接管已有库、登记当前版本：`bash scripts/db-migrate.sh --record <NN> --yes`

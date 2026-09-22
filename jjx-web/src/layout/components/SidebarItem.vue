@@ -6,8 +6,8 @@
       <el-sub-menu :index="resolvePath">
         <template #title>
           <svg-icon v-if="isSvgIcon" :name="item.icon!" :size="18" class="menu-icon" />
-          <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
-            <component :is="item.icon" />
+          <el-icon v-else-if="validIcon" :size="18" class="menu-icon">
+            <component :is="validIcon" />
           </el-icon>
           <span>{{ item.title }}</span>
         </template>
@@ -22,8 +22,8 @@
     <template v-else>
       <el-menu-item :index="resolvePath" @click="handleClick">
         <svg-icon v-if="isSvgIcon" :name="item.icon!" :size="18" class="menu-icon" />
-        <el-icon v-else-if="item.icon" :size="18" class="menu-icon">
-          <component :is="item.icon" />
+        <el-icon v-else-if="validIcon" :size="18" class="menu-icon">
+          <component :is="validIcon" />
         </el-icon>
         <template #title>
           <span>{{ item.title }}</span>
@@ -70,6 +70,14 @@ const isSvgIcon = computed(() => {
 
 const hasChildren = computed(() => {
   return props.item.children && props.item.children.length > 0
+})
+
+// 2026-09-22：icon 非法值兜底。历史坑：sys_menu.icon 列默认值是 '#'，菜单插入时漏填 →
+//   <component :is="'#'"> 触发 InvalidCharacterError: tag name provided ('#') is not a valid name
+//   （menu_id=390「出货检验」就是被这个坑炸的）。仅放行「字母开头的图标名」，其余一律不渲染。
+const validIcon = computed(() => {
+  const ic = props.item.icon
+  return ic && /^[A-Za-z][A-Za-z0-9]*$/.test(ic) ? ic : ''
 })
 
 const resolvePath = computed(() => {
