@@ -327,6 +327,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                     + "，已入库 " + nz(lot.getStoredQuantity()).toPlainString() + "）");
         }
         lot.setStoredQuantity(next);
+        closeIfSettled(lot);
         lotMapper.updateById(lot);
         return lot;
     }
@@ -341,8 +342,17 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                     + nz(lot.getFailQuantity()).toPlainString() + "）");
         }
         lot.setDisposedQuantity(next);
+        closeIfSettled(lot);
         lotMapper.updateById(lot);
         return lot;
+    }
+
+    private void closeIfSettled(QualityLot lot) {
+        if (QualityLotStatusEnum.JUDGED.getCode().equals(lot.getStatus())
+                && nz(lot.getStoredQuantity()).compareTo(nz(lot.getPassQuantity())) >= 0
+                && nz(lot.getDisposedQuantity()).compareTo(nz(lot.getFailQuantity())) >= 0) {
+            lot.setStatus(QualityLotStatusEnum.CLOSED.getCode());
+        }
     }
 
     @Override

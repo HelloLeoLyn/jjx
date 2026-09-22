@@ -145,6 +145,16 @@ public class InventoryOutboundController {
         return Result.success(outboundService.createProductionPick(workOrderId, items));
     }
 
+    @PostMapping("/create-rework-supplement/{workOrderId}/{ncrId}")
+    @Operation(summary = "创建返工补料单（不占用 BOM 剩余定额）")
+    @SaCheckPermission("inventory:outbound:add")
+    public Result<Long> createReworkSupplement(@PathVariable Long workOrderId,
+                                               @PathVariable Long ncrId,
+                                               @RequestBody java.util.List<java.util.Map<String, Object>> items) {
+        return Result.success(outboundService.createReworkSupplement(workOrderId, ncrId,
+                com.jjx.system.utils.SecurityUtils.getDisplayName(), items));
+    }
+
     @GetMapping("/pick-remaining/{workOrderId}")
     @Operation(summary = "查询工单剩余可领料量（033：剩余=BOM需求量-Σ已领料）")
     @SaCheckPermission("inventory:outbound:view")

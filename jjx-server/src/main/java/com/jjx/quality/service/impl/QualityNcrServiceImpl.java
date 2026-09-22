@@ -54,6 +54,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     private final org.springframework.beans.factory.ObjectProvider<QualityFinishService> qualityFinishServiceProvider;
     private final ProductionOperationExecutionMapper executionMapper;
     private final ProductionTaskMapper taskMapper;
+    private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final QualityCapaService capaService;
     /** 用 ObjectProvider 延迟取，避免 库存→质量→库存 的循环依赖。 */
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.inventory.service.InventoryInboundService> inventoryInboundServiceProvider;
@@ -268,7 +270,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             action.setStatus("REWORK".equals(actionType) ? "PROCESSING" : "DONE");
             actionMapper.updateById(action);
         } else {
-            applyStockEffect(ncr, action, actionType, quantity);
+            applyStockEffect(ncr, action, actionType, quantity, dto);
         }
         log.info("不良处置登记: ncrNo={} 方式={} 数量={} 已处置={}/{}", ncr.getNcrNo(), actionType,
                 quantity.toPlainString(), disposed.toPlainString(), nz(ncr.getDefectQuantity()).toPlainString());
@@ -283,7 +285,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
      *
      * 原则：库存联动失败【必须整体回滚】，禁止"台账已关、库存未动"（此前 catch 吞异常 → 账实不符）。
      */
-    private void applyStockEffect(QualityNcr ncr, QualityNcrAction action, String actionType, BigDecimal quantity) {
+    private void applyStockEffect(QualityNcr ncr, QualityNcrAction action, String actionType, BigDecimal quantity,
+                                  QualityNcrDisposeDTO dto) {
         if ("CONCESSION".equals(actionType) && ncr.getOrderId() != null) {
             com.jjx.inventory.service.InventoryInboundService inboundService =
                     inventoryInboundServiceProvider.getIfAvailable();
@@ -300,15 +303,24 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             action.setResultRemark("报废已登记：不良品未进入良品库存，无需库存扣减（口径A）");
             actionMapper.updateById(action);
         } else if ("REWORK".equals(actionType)) {
-            createReworkExecution(ncr, action, quantity);
+            createReworkExecution(ncr, action, quantity, dto);
             action.setStatus("PROCESSING");
             actionMapper.updateById(action);
         }
     }
 
-    private void createReworkExecution(QualityNcr ncr, QualityNcrAction action, BigDecimal quantity) {
+    private void createReworkExecution(QualityNcr ncr, QualityNcrAction action, BigDecimal quantity,
+                                       QualityNcrDisposeDTO dto) {
         if (ncr.getOrderId() == null) {
             throw new BusinessException("返工处置必须关联生产工单");
+        }
+        if (dto.getStandardProcessId() == null) {
+            throw new BusinessException("返工处置必须选择标准工序");
+        }
+        com.jjx.product.domain.entity.ProductStandardProcess process =
+                standardProcessMapper.selectById(dto.getStandardProcessId());
+        if (process == null || !Integer.valueOf(1).equals(process.getIsEnabled())) {
+            throw new BusinessException("所选返工工序不存在或已停用");
         }
         Integer maxOrder = executionMapper.selectList(new LambdaQueryWrapper<ProductionOperationExecution>()
                         .eq(ProductionOperationExecution::getOrderId, ncr.getOrderId())
@@ -317,8 +329,21 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ProductionOperationExecution execution = new ProductionOperationExecution();
         execution.setExecutionType("REWORK");
         execution.setOrderId(ncr.getOrderId());
-        execution.setProcessName("不良返工-" + ncr.getNcrNo());
-        execution.setMajorCategory("ASSEMBLY");
+        execution.setProcessId(process.getProcessId());
+        execution.setProcessName(process.getProcessName());
+        execution.setMajorCategory(StringUtils.defaultIfBlank(process.getProcessCategory(), process.getProcessType()));
+        java.util.Map<String, Object> instructions = new java.util.LinkedHashMap<>();
+        instructions.put("ncrNo", ncr.getNcrNo());
+        instructions.put("qualityStandard", process.getQualityStandard());
+        instructions.put("description", process.getDescription());
+        instructions.put("skillRequirement", process.getSkillRequirement());
+        instructions.put("processParamTemplate", process.getProcessParamTemplate());
+        instructions.put("reworkRequirement", dto.getReworkRequirement());
+        try {
+            execution.setCustomProcessParams(objectMapper.writeValueAsString(instructions));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new BusinessException("返工作业说明序列化失败");
+        }
         execution.setProcessOrder(maxOrder + 1);
         execution.setTaskSeq(1L);
         execution.setInputQuantity(quantity);
@@ -337,7 +362,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         task.setCreateBy(action.getOperatorName());
         taskMapper.insert(task);
         action.setReworkExecutionId(execution.getExecutionId());
-        action.setResultRemark("已创建返工工序和生产任务，完成报工后进入 FQC 复检");
+        action.setResultRemark("已创建返工工序「" + process.getProcessName()
+                + "」和生产任务，完成报工后进入 FQC 复检");
     }
 
     @Override

@@ -116,6 +116,13 @@ export const outboundApi = {
     )
   },
 
+  createReworkSupplement(workOrderId: number, ncrId: number, items: PickItemPayload[]) {
+    return request.post<R<number>>(
+      `/inventory/outbound/create-rework-supplement/${workOrderId}/${ncrId}`,
+      items
+    )
+  },
+
   // 查询待审批的出库单
   getPendingApproval() {
     return request.get<R<OutboundVO[]>>('/inventory/outbound/pending-approval')

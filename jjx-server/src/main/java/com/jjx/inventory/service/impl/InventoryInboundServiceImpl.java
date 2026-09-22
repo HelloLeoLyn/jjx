@@ -78,6 +78,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
+    private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
     private final InventoryMaterialMapper inventoryMaterialMapper;
     private final InventoryWarehouseMapper warehouseMapper;
     private final ProductionOrderMapper productionOrderMapper;
@@ -362,7 +363,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if ("PRODUCTION".equals(order.getSourceType())) {
             reducePostedStock(order, operatorId, operatorName, netDeltaThisTime);
             writebackProducedQuantity(order, netDeltaThisTime);
-            syncQualityLotStored(order.getSourceId());
+            syncQualityLotStored(order);
         }
         // 幂等兜底：审核通过时已建，此处跳过重复，兼容历史数据及边界场景
         if (purchaseConfirmable) createIqcQuarantine(order, operatorId, operatorName);
@@ -525,21 +526,23 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
         iqcQuarantineMapper.updateById(quarantine);
 
-        InventoryTransaction tx = new InventoryTransaction();
-        InventoryInboundItem inboundItem = inboundItemMapper.selectById(quarantine.getInboundItemId());
-        InventoryInboundOrder inboundOrder = inboundOrderMapper.selectById(quarantine.getInboundId());
-        tx.setMaterialId(quarantine.getMaterialId()); tx.setMaterialCode(quarantine.getMaterialCode());
-        tx.setMaterialName(quarantine.getMaterialName()); tx.setTransactionType("IQC_" + actionCode);
-        tx.setWarehouseId(inboundOrder == null ? null : inboundOrder.getWarehouseId());
-        tx.setLocationId(inboundItem == null ? null : inboundItem.getLocationId());
-        tx.setSourceType("INBOUND_IQC"); tx.setSourceId(quarantine.getInboundId());
-        tx.setBatchNo(quarantine.getBatchNo()); tx.setIqcBatchId(quarantine.getIqcBatchId()); tx.setQuantity(quantity);
-        tx.setBeforeQuantity(quarantine.getRemainingQuantity().add(quantity));
-        tx.setAfterQuantity(quarantine.getRemainingQuantity());
-        tx.setTransactionTime(LocalDateTime.now());
-        tx.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
-        tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
-        tx.setRemark(action.getRemark()); transactionMapper.insert(tx);
+        if (!release) {
+            InventoryTransaction tx = new InventoryTransaction();
+            InventoryInboundItem inboundItem = inboundItemMapper.selectById(quarantine.getInboundItemId());
+            InventoryInboundOrder inboundOrder = inboundOrderMapper.selectById(quarantine.getInboundId());
+            tx.setMaterialId(quarantine.getMaterialId()); tx.setMaterialCode(quarantine.getMaterialCode());
+            tx.setMaterialName(quarantine.getMaterialName()); tx.setTransactionType("IQC_" + actionCode);
+            tx.setWarehouseId(inboundOrder == null ? null : inboundOrder.getWarehouseId());
+            tx.setLocationId(inboundItem == null ? null : inboundItem.getLocationId());
+            tx.setSourceType("INBOUND_IQC"); tx.setSourceId(quarantine.getInboundId());
+            tx.setBatchNo(quarantine.getBatchNo()); tx.setIqcBatchId(quarantine.getIqcBatchId()); tx.setQuantity(quantity);
+            tx.setBeforeQuantity(quarantine.getRemainingQuantity().add(quantity));
+            tx.setAfterQuantity(quarantine.getRemainingQuantity());
+            tx.setTransactionTime(LocalDateTime.now());
+            tx.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
+            tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
+            tx.setRemark(action.getRemark()); transactionMapper.insert(tx);
+        }
         updateBatchAfterDisposition(quarantine.getIqcBatchId(), actionCode, quantity);
         return true;
     }
@@ -903,9 +906,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 .eq(InventoryStockItem::getStatus, 1);
         InventoryStockItem stock = stockItemMapper.selectOne(wrapper);
         if (stock == null) throw new BusinessException("找不到原批次可用库存记录，无法释放隔离数量");
-        stock.setQuantity(stock.getQuantity().add(quantity));
-        stockItemMapper.updateById(stock);
-        stockMapper.refreshSummary(quarantine.getMaterialId());
+        InventoryTransaction tx = new InventoryTransaction();
+        tx.setTransactionType("IQC_RELEASE");
+        tx.setSourceType("INBOUND_IQC");
+        tx.setSourceId(quarantine.getInboundId());
+        tx.setLotId(quarantine.getLotId());
+        tx.setBatchNo(quarantine.getBatchNo());
+        tx.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
+        tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
+        tx.setRemark(action.getRemark() == null ? "IQC 隔离品释放" : action.getRemark());
+        stockMutationService.applyDelta(stock, quantity, tx);
     }
 
     @Override
@@ -1609,10 +1619,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
             if (existing != null) {
                 // 已有批次，增加数量
-                existing.setQuantity(existing.getQuantity().add(quantityToPost));
                 if (existing.getIqcBatchId() == null) existing.setIqcBatchId(item.getIqcBatchId());
-                existing.setLastInboundTime(LocalDateTime.now());
-                stockItemMapper.updateById(existing);
             } else {
                 // 新建批次记录
                 InventoryStockItem newItem = new InventoryStockItem();
@@ -1626,25 +1633,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 newItem.setIqcBatchId(item.getIqcBatchId());
                 newItem.setProductionDate(item.getProductionDate());
                 newItem.setExpiryDate(item.getExpiryDate());
-                newItem.setQuantity(quantityToPost);
+                newItem.setQuantity(BigDecimal.ZERO);
                 newItem.setReservedQuantity(BigDecimal.ZERO);
                 newItem.setUnitCost(item.getUnitPrice());
                 newItem.setStatus(1);
-                newItem.setLastInboundTime(LocalDateTime.now());
-                stockItemMapper.insert(newItem);
+                existing = newItem;
             }
-            item.setPostedQuantity(postedQuantity.add(quantityToPost));
-            inboundItemMapper.updateById(item);
 
             // 刷新库存汇总
-            stockMapper.refreshSummaryByInventoryItemId(item.getInventoryItemId());
 
             // 记录流水（DEV-651 补：before/after 为 NOT NULL，入库=加库存，before=当前汇总-本次数量）
-            java.math.BigDecimal currentTotal = java.math.BigDecimal.ZERO;
-            InventoryStock cur = stockMapper.selectByInventoryItemId(item.getInventoryItemId());
-            if (cur != null && cur.getTotalQuantity() != null) {
-                currentTotal = cur.getTotalQuantity();
-            }
             InventoryTransaction tx = new InventoryTransaction();
             tx.setInventoryItemId(item.getInventoryItemId());
             tx.setMaterialId(item.getMaterialId());
@@ -1658,16 +1656,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setSourceNo(order.getInboundNo());
             tx.setBatchNo(item.getBatchNo());
             tx.setIqcBatchId(item.getIqcBatchId());
-            tx.setQuantity(quantityToPost);
-            tx.setBeforeQuantity(currentTotal.subtract(quantityToPost));
-            tx.setAfterQuantity(currentTotal);
+            tx.setLotId(item.getLotId());
             tx.setUnitCost(item.getUnitPrice());
-            tx.setAmount(item.getUnitPrice() == null ? null : item.getUnitPrice().multiply(quantityToPost));
             tx.setTransactionTime(LocalDateTime.now());
             tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
             tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
             tx.setRemark(remark != null ? remark : "入库确认");
-            transactionMapper.insert(tx);
+            stockMutationService.applyDelta(existing, quantityToPost, tx);
+            item.setPostedQuantity(postedQuantity.add(quantityToPost));
+            inboundItemMapper.updateById(item);
         }
     }
 
@@ -1675,16 +1672,31 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
      * 完工入库过账后回写 quality_lot.stored_quantity / CLOSED（dev-20260918-022/023）。
      * 失败不影响入库主流程（但会记 warn）。
      */
-    private void syncQualityLotStored(Long orderId) {
+    private void syncQualityLotStored(InventoryInboundOrder order) {
         try {
             com.jjx.quality.service.QualityLotService lotService = qualityLotServiceProvider.getIfAvailable();
             if (lotService == null) {
                 return;
             }
-            int lots = lotService.markOrderFinishedStored(orderId);
-            log.info("完工入库回写检验批已入库数量: orderId={} 批数={}", orderId, lots);
+            int lots = 0;
+            for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
+                if (item.getLotId() == null) {
+                    continue;
+                }
+                com.jjx.quality.domain.entity.QualityLot lot = lotService.getLot(item.getLotId());
+                BigDecimal target = Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO);
+                BigDecimal delta = target.subtract(Objects.requireNonNullElse(lot.getStoredQuantity(), BigDecimal.ZERO));
+                if (delta.signum() != 0) {
+                    lotService.addStoredQuantity(item.getLotId(), delta);
+                }
+                lots++;
+            }
+            if (lots == 0) {
+                lots = lotService.markOrderFinishedStored(order.getSourceId());
+            }
+            log.info("完工入库回写检验批已入库数量: orderId={} 批数={}", order.getSourceId(), lots);
         } catch (Exception e) {
-            log.warn("回写 quality_lot.stored_quantity 失败（不影响入库）: orderId={} err={}", orderId, e.getMessage());
+            log.warn("回写 quality_lot.stored_quantity 失败（不影响入库）: orderId={} err={}", order.getSourceId(), e.getMessage());
         }
     }
 
@@ -2002,14 +2014,34 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFromProduction(Long workOrderId) {
+        com.jjx.quality.service.QualityLotService lotService = qualityLotServiceProvider.getIfAvailable();
+        if (lotService != null) {
+            List<com.jjx.quality.domain.entity.QualityLot> lots = lotService.listByOrder(workOrderId, null).stream()
+                    .filter(lot -> "FQC".equals(lot.getLotType()))
+                    .toList();
+            if (!lots.isEmpty()) {
+                java.util.Set<Long> superseded = lots.stream()
+                        .map(com.jjx.quality.domain.entity.QualityLot::getParentLotId)
+                        .filter(Objects::nonNull)
+                        .collect(java.util.stream.Collectors.toSet());
+                Long lastInboundId = null;
+                for (com.jjx.quality.domain.entity.QualityLot lot : lots) {
+                    if (!superseded.contains(lot.getLotId()) && lot.getInspectedQuantity() != null
+                            && lot.getInspectedQuantity().signum() > 0
+                            && Objects.requireNonNullElse(lot.getPassQuantity(), BigDecimal.ZERO).signum() > 0) {
+                        lastInboundId = createFromProduction(workOrderId, lot.getLotId(), lot.getPassQuantity());
+                    }
+                }
+                return lastInboundId;
+            }
+        }
         Long createdId = createFromProduction(workOrderId, null, null);
-        publishInboundEvent("inventory.inbound.created_from_production", createdId);
         return createdId;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Long createFromProduction(Long workOrderId, Long inspectionId, BigDecimal inspectedPassQty) {
+    public Long createFromProduction(Long workOrderId, Long lotId, BigDecimal inspectedPassQty) {
         log.info("从生产工单创建入库单: workOrderId={}", workOrderId);
 
         // 1. 查询生产工单
@@ -2020,7 +2052,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // DEV-936（2026-08-12）：工单未完工禁止生成完工入库单（与 DEV-053 完工质检门一致），
         // 否则 finishedQuantity=0 导致入库数量记 0、库存不入账
-        if (inspectionId == null && !com.jjx.production.enums.ProductionOrderStatusEnum.COMPLETED.getValue().equals(prodOrder.getOrderStatus())) {
+        if (lotId == null && !com.jjx.production.enums.ProductionOrderStatusEnum.COMPLETED.getValue().equals(prodOrder.getOrderStatus())) {
             String statusName = "状态码" + prodOrder.getOrderStatus();
             try {
                 var pe = com.jjx.production.enums.ProductionOrderStatusEnum.getByValue(prodOrder.getOrderStatus());
@@ -2030,7 +2062,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         // 2. 创建入库单
-        if (inspectionId == null) {
+        if (lotId == null) {
             Long partialCount = inboundOrderMapper.selectCount(
                     new LambdaQueryWrapper<InventoryInboundOrder>()
                             .eq(InventoryInboundOrder::getSourceType, "PRODUCTION")
@@ -2041,9 +2073,32 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 return null;
             }
         }
-        String inboundNo = inspectionId == null
-                ? "FINISH-" + prodOrder.getOrderNo()
-                : "FINISH-" + prodOrder.getOrderNo() + "-FQC-" + inspectionId;
+        if (lotId != null) {
+            InventoryInboundItem existingLotItem = inboundItemMapper.selectOne(
+                    new LambdaQueryWrapper<InventoryInboundItem>()
+                            .eq(InventoryInboundItem::getLotId, lotId)
+                            .orderByAsc(InventoryInboundItem::getItemId)
+                            .last("LIMIT 1"));
+            if (existingLotItem != null) {
+                return existingLotItem.getInboundId();
+            }
+        }
+        String inboundNo;
+        if (lotId == null) {
+            inboundNo = "FINISH-" + prodOrder.getOrderNo();
+        } else {
+            List<InventoryInboundOrder> finishOrders = inboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryInboundOrder>()
+                    .eq(InventoryInboundOrder::getSourceType, "PRODUCTION")
+                    .eq(InventoryInboundOrder::getSourceId, workOrderId)
+                    .likeRight(InventoryInboundOrder::getInboundNo, prodOrder.getOrderNo() + "-FI"));
+            int sequence = finishOrders.stream()
+                    .map(InventoryInboundOrder::getInboundNo)
+                    .filter(Objects::nonNull)
+                    .filter(no -> no.matches(java.util.regex.Pattern.quote(prodOrder.getOrderNo()) + "-FI\\d{2}"))
+                    .mapToInt(no -> Integer.parseInt(no.substring(no.length() - 2)))
+                    .max().orElse(0) + 1;
+            inboundNo = prodOrder.getOrderNo() + "-FI" + String.format("%02d", sequence);
+        }
         LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()
                 .eq(InventoryInboundOrder::getInboundNo, inboundNo);
         if (inboundOrderMapper.selectCount(existCheck) > 0) {
@@ -2089,13 +2144,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 materialName, null, "PCS").getInventoryItemId());
         inboundItem.setMaterialCode(materialCode);
         inboundItem.setMaterialName(materialName);
+        inboundItem.setLotId(lotId);
         // 068定稿：入库产品数量=最后一道工序/完工检验合格数（052口径 finishedQuantity，非工序汇总 completedQuantity）
         BigDecimal inboundQty = inspectedPassQty != null ? inspectedPassQty
                 : (prodOrder.getFinishedQuantity() != null && prodOrder.getFinishedQuantity().compareTo(BigDecimal.ZERO) > 0)
                 ? prodOrder.getFinishedQuantity()
                 : (prodOrder.getCompletedQuantity() != null ? prodOrder.getCompletedQuantity() : prodOrder.getPlannedQuantity());
         inboundItem.setQuantity(inboundQty);
-        inboundItem.setBatchNo("BATCH-" + prodOrder.getOrderNo());
+        inboundItem.setBatchNo(lotId == null ? "BATCH-" + prodOrder.getOrderNo()
+                : "BATCH-" + prodOrder.getOrderNo() + "-" + lotId);
         inboundItem.setSortOrder(1);
         inboundItemMapper.insert(inboundItem);
 
@@ -2112,6 +2169,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundOrderMapper.updateById(order);
 
         log.info("生产完工入库完成: workOrderId={}, inboundId={}", workOrderId, order.getInboundId());
+        publishInboundEvent("inventory.inbound.created_from_production", order.getInboundId());
         return order.getInboundId();
     }
 
@@ -2229,12 +2287,21 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 .orderByAsc(InventoryInboundOrder::getInboundId));
         InventoryInboundOrder order = exists.isEmpty() ? null : exists.get(0);
         InventoryInboundItem item = null;
-        BigDecimal current = BigDecimal.ZERO;
-        if (order != null) {
+        if (lotId != null) {
             item = inboundItemMapper.selectOne(new LambdaQueryWrapper<InventoryInboundItem>()
-                    .eq(InventoryInboundItem::getInboundId, order.getInboundId())
+                    .eq(InventoryInboundItem::getLotId, lotId)
                     .orderByAsc(InventoryInboundItem::getItemId)
                     .last("LIMIT 1"));
+            order = item == null ? null : inboundOrderMapper.selectById(item.getInboundId());
+        }
+        BigDecimal current = BigDecimal.ZERO;
+        if (order != null) {
+            if (item == null) {
+                item = inboundItemMapper.selectOne(new LambdaQueryWrapper<InventoryInboundItem>()
+                        .eq(InventoryInboundItem::getInboundId, order.getInboundId())
+                        .orderByAsc(InventoryInboundItem::getItemId)
+                        .last("LIMIT 1"));
+            }
             current = (item == null || item.getQuantity() == null) ? BigDecimal.ZERO : item.getQuantity();
         }
         BigDecimal delta = targetQuantity.subtract(current);
@@ -2361,9 +2428,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                         + before.toPlainString() + "，需冲减 " + reduce.toPlainString()
                         + "），可能已发货，请人工核对后再处理");
             }
-            stock.setQuantity(after);
-            stockItemMapper.updateById(stock);
-
             InventoryTransaction tx = new InventoryTransaction();
             tx.setInventoryItemId(stock.getInventoryItemId());
             tx.setMaterialId(stock.getMaterialId());
@@ -2376,20 +2440,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setSourceId(order.getSourceId());
             tx.setSourceNo(order.getSourceNo());
             tx.setBatchNo(item.getBatchNo());
-            tx.setQuantity(reduce.negate());
-            tx.setBeforeQuantity(before);
-            tx.setAfterQuantity(after);
+            tx.setLotId(item.getLotId());
             tx.setUnitCost(stock.getUnitCost());
             tx.setAmount(stock.getUnitCost() == null ? null : stock.getUnitCost().multiply(reduce.negate()));
             tx.setTransactionTime(java.time.LocalDateTime.now());
             tx.setRemark("成品检验更正冲减（仓库确认入库）");
             tx.setOperatorId(operatorId);
             tx.setOperatorName(operatorName);
-            transactionMapper.insert(tx);
+            stockMutationService.applyDelta(stock, reduce.negate(), tx);
 
             item.setPostedQuantity(target);
             inboundItemMapper.updateById(item);
-            stockMapper.refreshSummaryByInventoryItemId(item.getInventoryItemId());
             log.info("成品入库冲减: order={} batch={} 冲减={} 库存 {} -> {}",
                     order.getInboundNo(), item.getBatchNo(), reduce.toPlainString(),
                     before.toPlainString(), after.toPlainString());
@@ -2435,9 +2496,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             throw new BusinessException("库存调整后为负（当前 " + before.toPlainString() + "，调整 "
                     + deltaQuantity.toPlainString() + "），请人工核对");
         }
-        stock.setQuantity(after);
-        stockItemMapper.updateById(stock);
-
         InventoryTransaction tx = new InventoryTransaction();
         tx.setInventoryItemId(stock.getInventoryItemId());
         tx.setMaterialId(stock.getMaterialId());
@@ -2452,9 +2510,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         tx.setLotId(lotId);
         tx.setNcrId(ncrId);
         tx.setBatchNo(batchNo);
-        tx.setQuantity(deltaQuantity);
-        tx.setBeforeQuantity(before);
-        tx.setAfterQuantity(after);
         tx.setUnitCost(stock.getUnitCost());
         tx.setAmount(stock.getUnitCost() == null ? null : stock.getUnitCost().multiply(deltaQuantity));
         tx.setTransactionTime(java.time.LocalDateTime.now());
@@ -2464,7 +2519,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setOperatorName(SecurityUtils.getDisplayName());
         } catch (Exception ignored) {
         }
-        transactionMapper.insert(tx);
+        stockMutationService.applyDelta(stock, deltaQuantity, tx);
         log.info("成品库存调整完成(不良处置): order={} delta={} lotId={} ncrId={} remark={}",
                 prodOrder.getOrderNo(), deltaQuantity.toPlainString(), lotId, ncrId, remark);
         return deltaQuantity;

@@ -106,6 +106,21 @@
         <el-form-item label="处置数量" required>
           <el-input-number v-model="disposeForm.quantity" :min="1" :max="current ? pending(current) : 0" />
         </el-form-item>
+        <template v-if="disposeForm.actionType === 'REWORK'">
+          <el-form-item label="返工工序" required>
+            <el-select v-model="disposeForm.standardProcessId" filterable style="width: 100%" placeholder="选择标准工序">
+              <el-option
+                v-for="process in standardProcesses"
+                :key="process.processId"
+                :label="`${process.processCode || ''} ${process.processName}`.trim()"
+                :value="process.processId"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="返工要求">
+            <el-input v-model="disposeForm.reworkRequirement" type="textarea" :rows="3" placeholder="填写本次返工的特殊要求" />
+          </el-form-item>
+        </template>
         <el-form-item v-if="disposeForm.actionType === 'CONCESSION'" label="客户已确认">
           <el-switch v-model="disposeForm.customerConfirmed" />
           <span class="tip">让步接收必须先取得客户确认</span>
@@ -156,9 +171,35 @@
               @click="completeAction(row)"
               >推进返工闭环</el-button
             >
+            <el-button
+              v-if="row.actionType === 'REWORK' && row.status !== 'DONE' && current?.orderId"
+              link
+              type="warning"
+              size="small"
+              @click="openSupplement(row)"
+              >补料</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
+    </el-dialog>
+
+    <el-dialog v-model="supplementVisible" title="返工补料" width="760px" append-to-body>
+      <el-alert title="补料不占 BOM 剩余定额；提交即记录当前用户为审批人，并生成待仓库发料单。" type="warning" :closable="false" />
+      <el-table :data="supplementItems" border size="small" style="margin-top: 12px">
+        <el-table-column prop="materialCode" label="物料编码" width="140" />
+        <el-table-column prop="materialName" label="物料名称" min-width="180" />
+        <el-table-column prop="available" label="可用库存" width="100" align="right" />
+        <el-table-column label="补料数量" width="150">
+          <template #default="{ row }">
+            <el-input-number v-model="row.quantity" :min="0" :max="Number(row.available || 0)" :precision="4" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="supplementVisible = false">取消</el-button>
+        <el-button type="primary" :loading="supplementing" @click="submitSupplement">确认并生成补料单</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -168,6 +209,10 @@ import { reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
+import { standardProcessApi } from '@/api/product/standardProcess'
+import type { StandardProcessItem } from '@/types/product/standardProcess'
+import { outboundApi } from '@/api/inventory/outbound'
+import type { PickPreviewRow } from '@/types/inventory/outbound'
 
 const router = useRouter()
 const route = useRoute()
@@ -210,12 +255,22 @@ const load = async (page?: number) => {
 
 const disposeVisible = ref(false)
 const disposing = ref(false)
-const disposeForm = reactive({ actionType: 'REWORK', quantity: 1, customerConfirmed: false, resultRemark: '' })
+const standardProcesses = ref<StandardProcessItem[]>([])
+const disposeForm = reactive({
+  actionType: 'REWORK',
+  quantity: 1,
+  customerConfirmed: false,
+  standardProcessId: undefined as number | undefined,
+  reworkRequirement: '',
+  resultRemark: '',
+})
 const openDispose = (row: QualityNcr) => {
   current.value = row
   disposeForm.actionType = 'REWORK'
   disposeForm.quantity = pending(row)
   disposeForm.customerConfirmed = false
+  disposeForm.standardProcessId = undefined
+  disposeForm.reworkRequirement = ''
   disposeForm.resultRemark = ''
   disposeVisible.value = true
 }
@@ -223,6 +278,9 @@ const submitDispose = async () => {
   if (!current.value) return
   if (disposeForm.actionType === 'CONCESSION' && !disposeForm.customerConfirmed) {
     return ElMessage.warning('让步接收必须先勾选"客户已确认"')
+  }
+  if (disposeForm.actionType === 'REWORK' && !disposeForm.standardProcessId) {
+    return ElMessage.warning('请选择返工工序')
   }
   disposing.value = true
   try {
@@ -239,6 +297,10 @@ const submitDispose = async () => {
 
 const actionsVisible = ref(false)
 const actions = ref<QualityNcrAction[]>([])
+const supplementVisible = ref(false)
+const supplementing = ref(false)
+const supplementAction = ref<QualityNcrAction | null>(null)
+const supplementItems = ref<Array<PickPreviewRow & { quantity: number }>>([])
 const openActions = async (row: QualityNcr) => {
   current.value = row
   try {
@@ -248,6 +310,41 @@ const openActions = async (row: QualityNcr) => {
     actions.value = []
   }
   actionsVisible.value = true
+}
+
+const openSupplement = async (action: QualityNcrAction) => {
+  if (!current.value?.orderId) return
+  supplementAction.value = action
+  try {
+    const res: any = await outboundApi.pickPreview(current.value.orderId)
+    supplementItems.value = (res?.data || []).map((item: PickPreviewRow) => ({ ...item, quantity: 0 }))
+    supplementVisible.value = true
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载补料物料失败')
+  }
+}
+
+const submitSupplement = async () => {
+  if (!current.value?.orderId || !supplementAction.value) return
+  const items = supplementItems.value
+    .filter((item) => Number(item.quantity) > 0)
+    .map((item) => ({
+      materialId: item.materialId,
+      materialCode: item.materialCode,
+      materialName: item.materialName,
+      quantity: item.quantity,
+    }))
+  if (!items.length) return ElMessage.warning('请填写至少一项补料数量')
+  supplementing.value = true
+  try {
+    await outboundApi.createReworkSupplement(current.value.orderId, current.value.ncrId, items)
+    ElMessage.success('返工补料单已生成，等待仓库发料')
+    supplementVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.message || '生成返工补料单失败')
+  } finally {
+    supplementing.value = false
+  }
 }
 const completeAction = async (row: QualityNcrAction) => {
   try {
@@ -260,7 +357,15 @@ const completeAction = async (row: QualityNcrAction) => {
   }
 }
 
-onMounted(() => load(1))
+onMounted(async () => {
+  load(1)
+  try {
+    const res: any = await standardProcessApi.getEnabledProcesses()
+    standardProcesses.value = res?.data || []
+  } catch {
+    standardProcesses.value = []
+  }
+})
 </script>
 
 <style scoped>

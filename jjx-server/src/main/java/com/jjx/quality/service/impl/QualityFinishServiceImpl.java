@@ -47,6 +47,10 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         BigDecimal inspected = nz(dto.getInspectedQuantity());
         BigDecimal pass = nz(dto.getPassQuantity());
         BigDecimal fail = nz(dto.getFailQuantity());
+        if (lot.getParentLotId() != null && inspected.compareTo(nz(lot.getLotQuantity())) != 0) {
+            throw new BusinessException("复检必须覆盖整个检验批，检验数量应为 "
+                    + nz(lot.getLotQuantity()).stripTrailingZeros().toPlainString());
+        }
         String result = dto.getResult();
         if (result == null || result.isBlank()) {
             result = fail.signum() > 0 ? "fail" : "pass";
@@ -69,6 +73,9 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         }
         if ("FQC".equals(lot.getLotType()) && lot.getOrderId() != null) {
             syncFinishInbound(lot.getOrderId(), "成品检验批判定：" + lot.getLotNo());
+            if (nz(lot.getPassQuantity()).signum() > 0) {
+                inventoryInboundService.createFromProduction(lot.getOrderId(), lot.getLotId(), lot.getPassQuantity());
+            }
         }
         return lot;
     }
@@ -118,6 +125,10 @@ public class QualityFinishServiceImpl implements QualityFinishService {
             items.add(copy);
         }
         dto.setItems(items);
+        if ("FQC".equals(old.getLotType()) && old.getOrderId() != null) {
+            inventoryInboundService.syncFinishInbound(old.getOrderId(), old.getLotId(), BigDecimal.ZERO,
+                    "复检冲销原检验批：" + old.getLotNo());
+        }
         QualityLot created = qualityLotService.createLot(dto);
         log.info("复检已建新版本: 原批={} 新批={} version={}", old.getLotNo(), created.getLotNo(), created.getVersion());
         return created;
@@ -159,7 +170,7 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         } catch (Exception e) {
             log.warn("回写工单完工数量失败: orderId={} err={}", orderId, e.getMessage());
         }
-        return inventoryInboundService.syncFinishInbound(orderId, null, target, reason);
+        return target;
     }
 
     private BigDecimal nz(BigDecimal value) {

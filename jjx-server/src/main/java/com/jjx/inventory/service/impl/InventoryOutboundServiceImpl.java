@@ -1349,6 +1349,75 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createReworkSupplement(Long workOrderId, Long ncrId, String approvedBy,
+                                       java.util.List<java.util.Map<String, Object>> items) {
+        if (ncrId == null || org.apache.commons.lang3.StringUtils.isBlank(approvedBy)) {
+            throw new BusinessException("返工补料必须关联不良单并填写审批人");
+        }
+        com.jjx.production.domain.entity.ProductionOrder prodOrder = productionOrderMapper.selectById(workOrderId);
+        if (prodOrder == null) {
+            throw new BusinessException("生产工单不存在: " + workOrderId);
+        }
+        validateProductionWorkOrder(prodOrder);
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("补料明细不能为空");
+        }
+        long seq = outboundOrderMapper.selectCount(new LambdaQueryWrapper<InventoryOutboundOrder>()
+                .eq(InventoryOutboundOrder::getSourceType, "quality_ncr")
+                .eq(InventoryOutboundOrder::getSourceId, ncrId)) + 1;
+        InventoryOutboundOrder order = new InventoryOutboundOrder();
+        order.setOutboundNo("SUPP-" + prodOrder.getOrderNo() + "-" + ncrId + "-" + seq);
+        order.setOutboundType(OutboundTypeEnum.PRODUCTION.getCode());
+        order.setSourceType("quality_ncr");
+        order.setSourceId(ncrId);
+        order.setSourceNo(prodOrder.getOrderNo());
+        order.setTraceId(prodOrder.getTraceId());
+        order.setOutboundDate(LocalDate.now());
+        order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
+        order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
+        order.setApproveStatus(InventoryOrderStatusEnum.APPROVED.getValue());
+        order.setApproverName(approvedBy.trim());
+        order.setApproveTime(LocalDateTime.now());
+        order.setApproveRemark("返工补料，已明确越过 BOM 定额校验；NCR=" + ncrId);
+        outboundOrderMapper.insert(order);
+
+        BigDecimal total = BigDecimal.ZERO;
+        int sort = 1;
+        for (java.util.Map<String, Object> item : items) {
+            Object materialValue = item.get("materialId");
+            BigDecimal quantity = new BigDecimal(String.valueOf(item.get("quantity")));
+            if (!(materialValue instanceof Number) || quantity.signum() <= 0) {
+                throw new BusinessException("补料物料和数量必须有效");
+            }
+            Long materialId = ((Number) materialValue).longValue();
+            com.jjx.inventory.domain.InventoryMaterial material = materialMapper.selectById(materialId);
+            if (material == null) {
+                throw new BusinessException("补料物料不存在: " + materialId);
+            }
+            InventoryOutboundItem outItem = new InventoryOutboundItem();
+            outItem.setOutboundId(order.getOutboundId());
+            outItem.setMaterialId(materialId);
+            outItem.setMaterialCode(material.getMaterialCode());
+            outItem.setMaterialName(material.getMaterialName());
+            outItem.setQuantity(quantity);
+            outItem.setSortOrder(sort++);
+            List<InventoryStockItem> fifo = stockItemMapper.selectFIFOAvailable(materialId);
+            if (!fifo.isEmpty()) {
+                outItem.setLocationId(fifo.get(0).getLocationId());
+            }
+            outboundItemMapper.insert(outItem);
+            total = total.add(quantity);
+        }
+        order.setTotalQuantity(total);
+        outboundOrderMapper.updateById(order);
+        reservePickItems(order.getOutboundId());
+        log.info("返工补料单已生成: workOrderId={}, ncrId={}, outboundId={}, approvedBy={}",
+                workOrderId, ncrId, order.getOutboundId(), approvedBy);
+        return order.getOutboundId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createFromSales(Long salesOrderId) {
         log.info("从销售订单创建出库单: salesOrderId={}", salesOrderId);
 

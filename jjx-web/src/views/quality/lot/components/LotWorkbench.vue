@@ -143,23 +143,9 @@
               >复检</el-button
             >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
-            <el-tooltip
-              content="补同步：把工单完工入库数量对齐到「本工单成品检验合格累计」，只补差额。判定时会自动同步一次，所以这里通常只显示 0；只有历史单据或合格量还没进库时才需要点（看「已入库」列是否小于「合格」列）"
-              placement="top"
-            >
-              <el-button
-                v-if="canJudge && lotType === 'FQC' && row.orderId && isJudged(row)"
-                link
-                size="small"
-                :type="needSync(row) ? 'warning' : 'primary'"
-                :loading="busyLotId === row.lotId"
-                @click="handleSyncFinish(row)"
-                >同步入库</el-button
-              >
-            </el-tooltip>
             <!-- dev-20260922-012（G7）：把"无操作权限"说清是缺哪个权限，别让人干瞪眼 -->
             <span v-if="!canJudge && !canInspect" class="no-action">
-              无操作权限：需要「检验录入」（录入）或「检验判定」（判定/复检/同步入库）
+              无操作权限：需要「检验录入」（录入）或「检验判定」（判定/复检）
             </span>
           </template>
         </el-table-column>
@@ -294,21 +280,13 @@ const canJudge = computed(() => hasPermi('quality:lot:judge'))
 const busyLotId = ref<number | null>(null)
 /** 待检/检验中 = 可录入、可判定 */
 const isEditable = (row: QualityLot) => ['PENDING', 'INSPECTING'].includes(String(row.status))
-/** 已判定 = 可复检、可手工同步入库 */
+/** 已判定 = 可复检 */
 const isJudged = (row: QualityLot) => row.status === 'JUDGED'
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
 const title = props.lotType === 'IQC' ? '来料检验' : props.lotType === 'OQC' ? '出货检验' : '成品检验'
 const lotType = props.lotType
-/**
- * dev-20260922-011（G4）：本批「合格」还没全部进成品库 → 值得点一次「同步入库」。
- * 判定时系统已自动同步过一次，所以正常情况这里是 false（已入库 = 合格）。
- */
 const needSync = (row: QualityLot) =>
-  lotType === 'FQC' &&
-  !!row.orderId &&
-  isJudged(row) &&
-  Number(row.storedQuantity || 0) < Number(row.passQuantity || 0)
-
+  lotType === 'FQC' && Number(row.storedQuantity || 0) < Number(row.passQuantity || 0)
 const loading = ref(false)
 const rows = ref<QualityLot[]>([])
 const total = ref(0)
@@ -331,7 +309,7 @@ const helpLines = computed<string[]>(() =>
         '检验员：点「录入」逐项填实测值 → 保存（保存只是存清单，可反复改，不推进状态）。',
         '品质主管：点「判定」填 检验/合格/不良 数量 —— 这才是提交：合格会自动回写工单完工并同步成品入库，不良会生成不良台账（去「质量管理 → 产品不良台账」处置）。',
         '要改已判定的结果：点「复检」新建一版（原批号不变、旧版自动失效）。',
-        '看不到按钮 = 缺权限（录入=检验录入；判定/复检/同步入库=检验判定）。「同步入库」是补同步（判定时已自动做过一次）：只看「已入库」列是否小于「合格」列，不小就不用点。',
+        '看不到按钮 = 缺权限（录入=检验录入；判定/复检=检验判定）。判定后系统按检验批自动生成待仓库确认的成品入库单。',
       ]
 )
 
@@ -556,7 +534,7 @@ const submitJudge = async () => {
   }
 }
 
-// ============ 复检 / 同步入库 ============
+// ============ 复检 ============
 const handleReinspect = async (row: QualityLot) => {
   if (busyLotId.value === row.lotId) return
   try {
@@ -579,20 +557,6 @@ const handleReinspect = async (row: QualityLot) => {
     busyLotId.value = null
   }
 }
-const handleSyncFinish = async (row: QualityLot) => {
-  if (!row.orderId || busyLotId.value === row.lotId) return
-  busyLotId.value = row.lotId
-  try {
-    const res: any = await qualityLotApi.syncFinish(row.orderId, `手工同步（批 ${row.lotNo}）`)
-    ElMessage.success(`已按差额同步入库：${res?.data ?? 0}`)
-    load()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '同步失败')
-  } finally {
-    busyLotId.value = null
-  }
-}
-
 /** 打印检验报告（QR-037 进料 / QR-039 成品，报告数据来自检验批） */
 const printReport = (row: QualityLot) => {
   router.push({ path: '/quality/print/lot-report', query: { lotId: row.lotId } })

@@ -16,6 +16,9 @@ import java.util.List;
 @Mapper
 public interface InventoryStockItemMapper extends BaseMapper<InventoryStockItem> {
 
+    @Select("SELECT * FROM inventory_stock_item WHERE item_id = #{itemId} FOR UPDATE")
+    InventoryStockItem selectByIdForUpdate(@Param("itemId") Long itemId);
+
     /**
      * 根据物料ID查询所有生效的明细
      */
