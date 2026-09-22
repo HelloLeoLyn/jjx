@@ -94,10 +94,12 @@ classify_risk() {  # $1=迁移文件 → RISK / RISK_SRC / RISK_TABLES
 table_exists() { [ -n "$(q "SELECT 1 FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='$1' LIMIT 1")" ]; }
 
 index_append() {  # $1=kind $2=file $3=md5 $4=bytes $5=tables
-  mkdir -p "$(dirname "$INDEX_FILE")" 2>/dev/null || return 0
+  # 2026-09-22：索引写失败不再静默丢弃（`|| true` 改为告警；索引是辅助记录，不值得中止迁移）
+  mkdir -p "$(dirname "$INDEX_FILE")" 2>/dev/null || { warn "备份索引目录不可写：$(dirname "$INDEX_FILE")"; return 0; }
   [ -f "$INDEX_FILE" ] || printf 'time\tkind\tfile\tmd5\tbytes\ttables\tagent\ttask\n' >> "$INDEX_FILE"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$(basename "$2")" "$3" "$4" "$5" "${AI_AGENT:-agent}" "${TASK:-无}" >> "$INDEX_FILE" 2>/dev/null || true
+    "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$(basename "$2")" "$3" "$4" "$5" "${AI_AGENT:-agent}" "${TASK:-无}" >> "$INDEX_FILE" \
+    || warn "备份索引写入失败：$INDEX_FILE（请手工补一行：$1 $(basename "$2")）"
 }
 
 prune_backups() {  # 全库快照每日只留最新一份；三类快照超 KEEP_DAYS 天删除（只动本脚本产物）
@@ -157,19 +159,35 @@ applied_set() {
 }
 is_applied() { case ",$(applied_set)," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 record_applied() {  # $1=NN
-  local set new maxv
+  # 2026-09-22 修 fail-open：原先 `... 2>/dev/null` 既不查退出码也不回读，写失败仍报成功
+  #（实测 sys_config.config_value varchar(500) 写满 498 字符 → ERROR 1406 被吞掉，账本静默丢账）。
+  # 现在：写库失败 → stderr 打印原因 + 返回非 0；再用回读校验「号已落库」且「历史号没被覆盖丢失」。
+  local set new maxv got err lost
   set="$(applied_set)"
   new=$( { [ -n "$set" ] && printf '%s\n' "$set" | tr ',' '\n'; printf '%s\n' "$1"; } \
          | grep -E '^[0-9]+$' | sort -n | uniq | paste -sd, )
   maxv=$(printf '%s' "$new" | tr ',' '\n' | sort -n | tail -1)
-  "${MYSQL[@]}" "$DB_NAME" -e "
+  if ! err="$("${MYSQL[@]}" "$DB_NAME" -e "
     INSERT INTO sys_config (config_key, config_value, config_name, config_group, remark, sort_order, is_active)
     VALUES ('$APPLIED_KEY', '$new', '已应用迁移集合', 'ops', '由 scripts/db-migrate.sh 维护（逗号分隔）', 0, 1)
     ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), update_time=NOW();
     INSERT INTO sys_config (config_key, config_value, config_name, config_group, remark, sort_order, is_active)
     VALUES ('$VERSION_KEY', '$maxv', '已应用迁移版本(最大)', 'ops', '由 scripts/db-migrate.sh 维护', 0, 1)
-    ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), update_time=NOW();" 2>/dev/null
-  printf '%s' "$new"
+    ON DUPLICATE KEY UPDATE config_value=VALUES(config_value), update_time=NOW();" 2>&1 >/dev/null)"; then
+    printf '%s\n' "写库失败：${err:-未知错误}" >&2
+    return 1
+  fi
+  got="$(q "SELECT config_value FROM sys_config WHERE config_key='$APPLIED_KEY';" | head -1)"
+  if ! printf '%s' ",$got," | grep -q ",$1,"; then
+    printf '%s\n' "回读校验失败：号 $1 未落库（当前值: ${got:-空}）" >&2
+    return 1
+  fi
+  lost="$(printf '%s' "$set" | tr ',' '\n' | awk -v got=",$got," 'NF && index(got, "," $0 ",") == 0 { printf "%s ", $0 }')"
+  if [ -n "$lost" ]; then
+    printf '%s\n' "回读校验失败：历史号被覆盖丢失（$lost）" >&2
+    return 1
+  fi
+  printf '%s' "$(printf '%s' "$got" | tr ',' '\n' | grep -E '^[0-9]+$' | sort -n | uniq | paste -sd,)"
 }
 
 if [ "${1:-}" = "--status" ] || [ $# -eq 0 ]; then
@@ -253,8 +271,8 @@ if [ -n "$RECORD" ]; then
   index_append "guard" "$GUARD" "$G_MD5" "$(stat -c%s "$GUARD")" "-"
   say "  已应用集合: $(applied_set)（追加 $RECORD）"
   [ "$CONFIRMED" -eq 1 ] || { say "  （未加 --yes：未写入）"; exit 0; }
-  newset=$(record_applied "$RECORD") || die "写入失败（未改动任何业务数据）"
-  [ -n "$newset" ] || die "写入失败（未改动任何业务数据）"
+  newset=$(record_applied "$RECORD") || die "登记失败（原因见上方；库中集合未改动）"
+  [ -n "$newset" ] || die "登记失败（回读为空；库中集合未改动）"
   ok "sys_config.$APPLIED_KEY = $newset"
   exit 0
 fi
@@ -387,9 +405,13 @@ say ""
 say "── 3/4 记录已应用版本 ──"
 REMARK="迁移 ${BASE} 于 $(date '+%Y-%m-%d %H:%M') 由 ${AI_AGENT:-agent} 执行；备份 $(basename "$BK_FILE") md5=$BK_MD5${TASK:+；任务 $TASK}"
 if [ -n "$(q "SELECT 1 FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='sys_config'")" ]; then
-  newset=$(record_applied "$NN")
-  [ -n "$newset" ] && ok "sys_config.$APPLIED_KEY = $newset" \
-                   || warn "版本记录写入失败（迁移已执行，请手工登记）"
+  if ! newset=$(record_applied "$NN"); then
+    say ""
+    die "版本记账失败（原因见上方）——**迁移已执行但账本没记上**，下次会被误判为未应用。
+    - 撤回到迁移前: mysql -h$DB_HOST -P$DB_PORT -u$DB_USER $DB_NAME < $BK_FILE
+    - 或修好原因后补登记（不要重复执行迁移）: bash scripts/db-migrate.sh --record $NN --yes --task ${TASK:-dev-YYYYMMDD-NNN}"
+  fi
+  ok "sys_config.$APPLIED_KEY = $newset"
 else
   warn "本库没有 sys_config 表，跳过版本记录"
   newset=""
