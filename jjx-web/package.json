@@ -18,7 +18,9 @@
     "check:docs": "node ../scripts/check-docs.mjs",
     "check:collation": "bash ../scripts/check-collation.sh",
     "check:collation:strict": "bash ../scripts/check-collation.sh --strict",
-    "validate": "npm run check:status-enums && npm run check:docs && npm run check:collation:strict && vue-tsc --noEmit"
+    "check:stock": "bash ../scripts/check-stock-summary.sh",
+    "check:stock:strict": "bash ../scripts/check-stock-summary.sh --strict",
+    "validate": "npm run check:status-enums && npm run check:docs && npm run check:collation:strict && npm run check:stock:strict && vue-tsc --noEmit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
