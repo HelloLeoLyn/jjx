@@ -29,28 +29,33 @@
 
 ---
 
-## 2. 数据库备份规范（按风险决定）
+## 2. 数据库备份规范（按风险分级；2026-09-22 改口径）
 
-**触发时机**：破坏性操作、批量 UPDATE/DELETE、表结构变更、修复疑似脏数据、跨环境导数据前必须备份。低风险、幂等的系统配置/字典新增由用户人工判断是否备份。
+**触发时机**：破坏性操作、批量 UPDATE/DELETE、表结构变更、修复疑似脏数据、跨环境导数据前必须备份。
 
-**低风险清单（写死；不在此清单内的一律按高风险）**：仅 `sys_config`、`sys_dict_type`、`sys_dict_data` 三类表的**新增或幂等覆盖**（同值 UPDATE / `WHERE NOT EXISTS` 守卫，不删行、不改结构）可由用户人工判断是否备份。**菜单/权限**（`sys_menu`、`sys_role_menu`）的新增与变更**不算**低风险——它改变"谁看得见什么"，按高风险强制备份。
+**风险分级（脚本自动执行，不靠自觉）**：
+- **高风险 → 全库快照**：出现 `DROP / TRUNCATE / DELETE FROM / MODIFY / CHANGE / RENAME`、碰到 `sys_menu`/`sys_role_menu`、或**数据订正类 `UPDATE`**（非 `sys_config`/`sys_dict*`）→ 一律全库快照。
+- **低风险 → 表级备份**：仅“建表 / 加列 / 加索引 / 新增配置”类迁移 → 只 `mysqldump` 本次涉及的库表；若涉及表都还不存在，退化为「全库结构快照（--no-data）」。
+- **兜底**：任何情况都不允许“零备份”通过；无法识别影响面时按高风险处理。
+- **覆盖**：迁移文件头可写 `-- risk: high|low` 显式声明（写 `low` 属降级，执行时打警告）。实现见 `scripts/db-migrate.sh` 的 `classify_risk()`。
 
 **统一入口**：
 
 ```bash
-# 默认即仓库内 jjx-docs/sql/backups/，通常无需设置；仅当要换目录时才 export
 bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
+# 备份 + 执行 + 记账 + 清理过期，一条命令；--keep-days N 改保留天数，--no-prune 跳过清理
 ```
 
-**命名**：`jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql`
+**存放位置**：备份默认落**仓库外** `~/jjx-backups/`（`JJX_BACKUP_DIR` 可覆盖）。仓库内**只保留索引** `jjx-docs/sql/backups/backup-index.tsv`（时间/类型/文件/md5/字节/表数/执行人/任务码），既查得到又不占仓库体积。
+
+**命名**：全库 `jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql` / 表级 `jjx_table_backup_…` / 结构 `jjx_schema_snapshot_…`；表级/行级 guard 备份：`<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`。
 - `<tag>` 用简短英文原因：`before-iqc-migration`、`before-biz-no-rule`、`daily`、`before-cleanup`。无 tag 表示例行。
-- 文件头第 1~3 行注释写明：备份人（agent 名）、原因、关联任务码（若有）。
+- 文件头第 1~4 行注释写明：备份人（agent 名）、原因、风险与依据、涉及表、任务码（若有）。
 
 **验证**：执行后必须 `md5sum` + `grep -c "CREATE TABLE"` 抽查，并在汇报里给出 md5。
-**表级/行级 guard 备份**（清理 sys_task 等特定表/行前）：同样落到 `JJX_BACKUP_DIR`，命名 `<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`，md5 照验。
-**保留**：本机开发备份默认保留 14 天；每日只保留最后一份，发布里程碑备份转移到团队外部存储长期保留。Git 永久保留迁移 SQL、恢复说明和必要校验信息；dump 落在 `jjx-docs/sql/backups/`，是否提交由用户决定（当前默认不提交）。
-**清理**：`jjx-docs/sql/backups/` 自 **2026-09-21 起为活动备份目录**（原 `../jjx-backups/` 停用，用户口径）。删除存量备份仍按「独立任务码 + 独立提交」处理，不得与业务代码、迁移脚本混交；迁移脚本及规范文件仍永久保护。
-**禁止**：备份写入 `memory/` 或临时目录（`/tmp`）。2026-09-21 起备份统一落 `jjx-docs/sql/backups/`（原「`JJX_BACKUP_DIR` 必须位于仓库之外」已作废）。
+**保留与清理（脚本自动）**：全库快照**每日只留最新一份**；三类快照超过 `KEEP_DAYS`（默认 14 天）自动删除；只动本脚本产物（`jjx_erp_db_backup_*` / `jjx_table_backup_*` / `jjx_schema_snapshot_*`），其它文件只提示不删。发布里程碑备份另行转移到团队外部存储长期保留。
+**Git**：备份产物**不入库**（`.gitignore` 已忽略 `jjx-docs/sql/backups/*.sql` 与 `*.txt`），仓库内只留索引 tsv。2026-09-22 前入库的存量 dump 已移出仓库到 `~/jjx-backups/legacy-inrepo_20260922-*`。**注意：仓库为公开，历史里的真实数据不可撤（改写历史属 §5 禁区）**。
+**禁止**：备份写入 `memory/` 或临时目录（`/tmp`）。
 
 **例外备案（2026-09-12 用户批准）**：经**用户明确指示**要把指定 dump 提交进 git 时可执行，但必须：① 提交信息与 `sys_task` 里标注「§2 例外」；② 知悉该文件将**永久留在 git 历史**（含真实业务数据，事后移除需改写历史 + force push，属 §5 禁区）。
 已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260912-1908_before-archive-ocr-task.sql`（任务码 dev-20260912-017）。

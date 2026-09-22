@@ -26,7 +26,7 @@ DB_PORT="${DB_PORT:-${JJX_DB_PORT:-3306}}"
 DB_USER="${DB_USER:-${JJX_DB_USER:-root}}"
 DB_PASS="${DB_PASS:-${JJX_DB_PASSWORD:-123456}}"
 DB_NAME="${DB_NAME:-${JJX_DB_NAME:-jjx_erp_db}}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$HOME/jjx-backups}"
 SQL_FILE="$REPO_ROOT/jjx-docs/sql/00_clean_test_data.sql"
 MANIFEST="$REPO_ROOT/jjx-docs/sql/init/init-subset-tables.txt"
 EXECUTE=0
@@ -41,7 +41,7 @@ usage() {
   cat <<'EOF'
 用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 1 条 DELETE，表清单以脚本实际解析为准）
 危险等级: 🟢 无参数=只读体检（不写库）／🔴 --execute 真清理（体检 → 全库备份 → 人工确认 → 执行）
-前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
+前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；JJX_BACKUP_DIR（默认仓库外 ~/jjx-backups/）可写
 用法:
   bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行 + 顺带跑快照校验
   bash scripts/db-clean-test-data.sh --execute   真执行（须在终端手输库名确认）
@@ -62,7 +62,7 @@ while [ $# -gt 0 ]; do
 done
 
 # ── 0. 前置守卫 ────────────────────────────────────────────────────────────
-# 2026-09-21 用户改口径：备份统一落仓库内 jjx-docs/sql/backups/，原「必须在仓库外」守卫已移除
+# 2026-09-22 用户改口径：备份落仓库外 ~/jjx-backups/（仓库内只留索引 backup-index.tsv），原「必须在仓库外/内」的守卫不再需要
 [ -f "$SQL_FILE" ] || die "清理脚本不存在: $SQL_FILE"
 [ "$DB_NAME" = "jjx_erp_db" ] || die "目标库必须是 jjx_erp_db（当前: $DB_NAME）——防误连"
 if [ "$EXECUTE" -eq 1 ] && [ ! -t 0 ]; then
@@ -184,6 +184,7 @@ RETAINED_TABLES=(
   inventory_warehouse inventory_item
   product product_category product_config_model product_config_option
   sys_tag sys_tag_rel hr_employee hr_dept_mapping
+  engineering_die engineering_screen_frame engineering_screen_plate
 )
 DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
   "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" 2>/dev/null | sort)"

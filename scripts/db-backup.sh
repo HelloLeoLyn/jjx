@@ -11,7 +11,7 @@
 #   bash scripts/db-backup.sh --help
 #
 # 危险等级：🟡 只读数据库 + 写备份文件（不写库、不改库内数据）；--dry-run 为 🟢 纯预览
-# 前置：mysqldump 可用；数据库可达；JJX_BACKUP_DIR 可写（2026-09-21 起默认仓库内 jjx-docs/sql/backups/）
+# 前置：mysqldump 可用；数据库可达；JJX_BACKUP_DIR 可写（默认仓库外 ~/jjx-backups/，2026-09-22 改口径）
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 #
 # 定位（与其它脚本的关系，别用错）：
@@ -22,7 +22,8 @@
 #
 # 命名/留痕（CONVENTIONS §2）：jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql
 #   文件头 1~3 行写明 备份人 / 原因 / 任务码；执行后校验 md5 + 表数 + 字节数；
-#   保留策略默认 14 天（每日只留最后一份靠人工/后续自动化，不自动按天去重）。
+#   保留策略：超过 --keep-days（默认 14 天）删除；并自动做“每日只留最新一份”去重。
+#   备份落仓库外 ~/jjx-backups/；仓库内只追加索引 jjx-docs/sql/backups/backup-index.tsv。
 # 环境覆盖：DB_HOST DB_PORT DB_USER DB_PASS DB_NAME / JJX_BACKUP_DIR / AI_AGENT
 # ============================================================================
 set -uo pipefail
@@ -33,8 +34,9 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$HOME/jjx-backups}"
 AGENT="${AI_AGENT:-dahuang}"
+INDEX_FILE="${JJX_BACKUP_INDEX:-$REPO_ROOT/jjx-docs/sql/backups/backup-index.tsv}"
 
 TAG=""
 TASK=""
@@ -54,7 +56,7 @@ usage() {
   cat <<'EOF'
 用途: 立刻做一份全库备份（只读库，不动任何库内数据），产物落在 JJX_BACKUP_DIR
 危险等级: 🟡 只读数据库 + 写备份文件；--dry-run 为 🟢 纯预览（不落盘）
-前置: mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
+前置: mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库外 ~/jjx-backups/）可写
 用法:
   bash scripts/db-backup.sh [选项]
 
@@ -63,7 +65,7 @@ usage() {
   --task <code>      关联任务码 dev-YYYYMMDD-NNN（写进文件头，便于回溯）
   --reason <text>    自定义"原因"文案（默认按 tag 自动生成）
   --exclude-table <表名>  导出时排除该表（可重复；如 hr_employee），内部转 mysqldump --ignore-table
-  --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；默认 jjx-docs/sql/backups/）
+  --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；默认 ~/jjx-backups/）
   --keep-days <N>    过期清理阈值，默认 14 天
   --no-clean         本次不清理过期备份
   --dry-run          只打印将写入的路径与将清理的文件，不真正备份
@@ -194,6 +196,11 @@ else
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "$AGENT" "$(basename "$TARGET")" "$BK_MD5" "$BK_SIZE" "$BK_TABLES" "${TASK:-无}" \
     >> "$BACKUP_DIR/db-backup-log.txt" 2>/dev/null || warn "写留痕日志失败：$BACKUP_DIR/db-backup-log.txt"
+  mkdir -p "$(dirname "$INDEX_FILE")" 2>/dev/null || true
+  [ -f "$INDEX_FILE" ] || printf 'time\tkind\tfile\tmd5\tbytes\ttables\tagent\ttask\n' >> "$INDEX_FILE" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" "full" "$(basename "$TARGET")" "$BK_MD5" "$BK_SIZE" "$BK_TABLES" "$AGENT" "${TASK:-无}" \
+    >> "$INDEX_FILE" 2>/dev/null || warn "写仓库索引失败：$INDEX_FILE"
 fi
 
 # ── 过期清理（只动本脚本产物；其它类型只提示）──────────────────────────────
@@ -212,6 +219,29 @@ if [ "$DO_CLEAN" -eq 1 ]; then
     fi
   done < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'jjx_erp_db_backup_*.sql' -mtime +"$KEEP_DAYS" 2>/dev/null | sort)
   [ "$deleted" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && say "    无过期全库备份"
+
+  # 每日只留最新一份（按文件名日期去重，保留 mtime 最新的一份；不碰本次产物）
+  say ""
+  say "── 每日去重（全库快照只留当天最新一份）──"
+  cur="$(basename "$TARGET")"; seen=" "; dedup=0
+  case "$cur" in
+    jjx_erp_db_backup_*)
+      d0="$(printf '%s' "$cur" | sed -E 's/^jjx_erp_db_backup_([0-9]{8})-.*/\1/')"
+      seen=" $d0 "   # 本次产物当天的席位先占住
+      ;;
+  esac
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    b="$(basename "$f")"; [ "$b" = "$cur" ] && continue
+    d="$(printf '%s' "$b" | sed -E 's/^jjx_erp_db_backup_([0-9]{8})-.*/\1/')"
+    case "$seen" in
+      *" $d "*)
+        if [ "$DRY_RUN" -eq 1 ]; then say "    [dry-run] 将删除同日旧快照 $b"
+        else rm -f "$f" && { say "    已删同日旧快照 $b"; dedup=$((dedup + 1)); }; fi ;;
+      *) seen="$seen$d " ;;
+    esac
+  done < <(ls -1 "$BACKUP_DIR"/jjx_erp_db_backup_*.sql 2>/dev/null | sort -r)
+  [ "$dedup" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && say "    无同日重复快照"
 
   others="$(find "$BACKUP_DIR" -maxdepth 1 -type f ! -name 'jjx_erp_db_backup_*.sql' -mtime +"$KEEP_DAYS" 2>/dev/null | wc -l)"
   [ "${others:-0}" -gt 0 ] && warn "目录里还有 ${others} 个非本脚本产物（guard 表级备份/tar.gz 等）已超 ${KEEP_DAYS} 天，本脚本不删，需自行处理"

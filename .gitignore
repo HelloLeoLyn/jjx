@@ -117,3 +117,7 @@ jjx-docs/assets/*.xlsx
 
 # Windows 下载残留（NTFS 备用数据流 Zone.Identifier），不入库（dev-20260912-016）
 *Zone.Identifier
+
+# 备份产物不入库（仓库内只留索引 backup-index.tsv）；规范见 jjx-docs/standards/CONVENTIONS.md §2
+jjx-docs/sql/backups/*.sql
+jjx-docs/sql/backups/*.txt

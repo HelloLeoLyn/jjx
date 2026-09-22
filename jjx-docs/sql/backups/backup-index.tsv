@@ -1,0 +1,5 @@
+time	kind	file	md5	bytes	tables	agent	task
+2026-09-22 11:42:09	guard	sys_task_2108_status_20260922-1145.sql	71cf66666895199108e8d4cc962e884c	6758	-	Hermes	dev-20260921-046
+2026-09-22 11:42:30	full	jjx_erp_db_backup_20260922-1142_verify-c-20260922.sql	1eee13bde3f7106e516bc9dcd02e1dd2	5454892	114	dahuang	无
+2026-09-22 11:45:49	schema	jjx_schema_snapshot_20260922-1145_before-195.sql	fbbee6a59d758877775ccb37153955df	280930	114	Hermes	dev-20260921-046
+2026-09-22 11:46:18	guard	sys_task_2108_status_20260922-1148.sql	c6cc71290b6aa2cb9e312ec7da93688b	7491	-	Hermes	dev-20260921-046
