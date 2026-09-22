@@ -1,4 +1,5 @@
 -- ============================================================================
+-- ⚠ 撞号改号（2026-09-22，Hermes）：原为 157_，与同号文件 157_inventory_templates_use_bizno_transfer_stocktake_master.sql 撞号；按「后建者改号」改为 190_，内容一字未动。
 -- 157_iqc_batch_child_material_backfill.sql
 -- 任务码：dev-20260921-020（配套数据回填）
 --

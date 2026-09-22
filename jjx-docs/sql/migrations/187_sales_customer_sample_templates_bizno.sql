@@ -1,4 +1,5 @@
 -- ============================================================================
+-- ⚠ 撞号改号（2026-09-22，Hermes）：原为 154_，与同号文件 154_sample_task_close_semantics.sql 撞号；按「后建者改号」改为 187_，内容一字未动。
 -- 154_sales_customer_sample_templates_bizno.sql
 -- 任务码：dev-20260921-013（收尾：客户 5 条 + sample.transferred）
 --
