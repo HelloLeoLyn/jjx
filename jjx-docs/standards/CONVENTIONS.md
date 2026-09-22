@@ -62,6 +62,9 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260922-1211_no-hr-employee.sql`（任务码 dev-20260922-007，2026-09-22 用户「备份一份没有人事档案的全库数据提交并推送」）：
   用 `scripts/db-backup.sh --exclude-table hr_employee` 导出（113 表；hr_employee 的 CREATE/INSERT 已排除）；
   因 §2 现已默认忽略 `backups/*.sql`，入库需 `git add -f`；该文件作为“迁移链已移出仓库”后的**基线恢复 dump**。
+已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260922-1940_no-hr-employee.sql`（任务码 dev-20260922-027，2026-09-22 19:39 用户「数据库备份也是最新的吗 执行一下备份脚本提交」）：
+  同口径刷新（`scripts/db-backup.sh --exclude-table hr_employee`，113 表 / 5667142B / md5 f3202cc2edc94daed0671e5b50655fff）；覆盖 12:11 那版之后的迁移 198~201（产品类型归一 / 质量菜单改名 / AI 菜单 / sys_config 列加长）与今日数据改动。
+  旧版 1211 仍在仓库（**未删**；如需删除属备份存量清理，须用户确认后独立任务+独立提交）。
 已备案：`jjx-docs/sql/init/jjx_erp_db_backup_*_init-data-subset.sql`（**初始化数据交付物**，不是例行备份：按清单 `jjx-docs/sql/init/init-subset-tables.txt` 滚动重出，Git 只留最新一份；自任务码 dev-20260914-001 起）。
 
 ---
