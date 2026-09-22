@@ -16,7 +16,9 @@
     "check:status-enums": "node scripts/check-status-magic-values.mjs",
     "test:status-enums": "node scripts/check-status-magic-values.mjs --self-test",
     "check:docs": "node ../scripts/check-docs.mjs",
-    "validate": "npm run check:status-enums && npm run check:docs && vue-tsc --noEmit"
+    "check:collation": "bash ../scripts/check-collation.sh",
+    "check:collation:strict": "bash ../scripts/check-collation.sh --strict",
+    "validate": "npm run check:status-enums && npm run check:docs && npm run check:collation:strict && vue-tsc --noEmit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
