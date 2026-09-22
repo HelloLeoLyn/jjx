@@ -28,7 +28,7 @@
           productData.category?.categoryName || productData.product?.categoryName
         }}</el-descriptions-item>
         <el-descriptions-item label="产品类型">{{
-          productData.product?.productType === 'standard' ? '标准产品' : '定制产品'
+          ProductTypeEnum.getLabel(Number(productData.product?.productType))
         }}</el-descriptions-item>
         <el-descriptions-item label="单位">{{
           productData.product?.unit || '-'
@@ -331,7 +331,7 @@
 import { ref, computed, watch } from 'vue'
 import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
-import { ProductEnum, StepTypeEnum } from '@/enums'
+import { ProductEnum, ProductTypeEnum, StepTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'

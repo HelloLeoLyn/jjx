@@ -254,7 +254,12 @@
     <BomDetail :bom-id="currentBomId" v-model="bomDetailDialogVisible" />
     <!-- 配置验证对话框组件 -->
     <ProductConfigValidateDialog v-model="validateOpen" :product-id="selectedProductId" />
-    <ApproveDialog v-model="approveOpen" :product-id="selectedProductId" @success="getList" />
+    <ApproveDialog
+      v-model="approveOpen"
+      :product-id="selectedProductId"
+      @success="getList"
+      :title="title"
+    />
     <!-- 配置BOM对话框 -->
     <BomConfigDialog v-model="bomConfigVisible" :product="bomConfigProduct" @success="getList" />
     <!-- 配置工艺路线对话框 -->

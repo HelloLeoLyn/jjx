@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="产品详情"
+    :title="props.title"
     width="1200px"
     append-to-body
     :close-on-click-modal="false"
@@ -12,8 +12,13 @@
         <el-tag :type="getProductStatusTagType(productStatus)" size="large">
           {{ getProductStatusLabel(productStatus) }}
         </el-tag>
-        <el-tag v-if="productType === 'custom'" type="success" size="large">定制产品</el-tag>
-        <el-tag v-else type="primary" size="large">标准产品</el-tag>
+        <el-tag
+          v-if="productType"
+          :type="ProductTypeEnum.getTagProps(Number(productType)).type"
+          size="large"
+        >
+          {{ ProductTypeEnum.getLabel(Number(productType)) }}
+        </el-tag>
       </div>
     </div>
 
@@ -28,16 +33,18 @@
     </div>
 
     <!-- 底部固定操作栏 -->
-    <div class="dialog-footer-actions">
-      <div class="footer-right">
-        <el-button @click="visible = false">关闭</el-button>
-        <el-button type="primary" v-hasPermi="['product:status:submit']" @click="handleSubmit" v-if="canSubmit">
-          <el-icon><Promotion /></el-icon>提交审核
-        </el-button>
-      </div>
-    </div>
 
-    <template #footer></template>
+    <template #footer>
+      <el-button @click="visible = false">关闭</el-button>
+      <el-button
+        type="primary"
+        v-hasPermi="['product:status:submit']"
+        @click="handleSubmit"
+        v-if="canSubmit"
+      >
+        <el-icon><Promotion /></el-icon>提交审核
+      </el-button>
+    </template>
   </el-dialog>
 </template>
 
@@ -47,7 +54,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Promotion } from '@element-plus/icons-vue'
 import { productApi } from '@/api/product'
-import { ProductEnum } from '@/enums'
+import { ProductEnum, ProductTypeEnum } from '@/enums'
 import ProductDetail from './ProductDetail.vue'
 import type { ProductFullVO } from '@/types/product'
 
@@ -55,11 +62,13 @@ import type { ProductFullVO } from '@/types/product'
 interface Props {
   modelValue: boolean
   productId?: number
+  title?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: false,
   productId: undefined,
+  title: '产品详情',
 })
 
 // Emits定义

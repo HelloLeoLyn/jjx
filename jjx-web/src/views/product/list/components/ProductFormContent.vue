@@ -389,6 +389,12 @@ const loadProductDetail = async () => {
   const data = res.data
   Object.assign(formData, data)
 
+  // 2026-09-22：product_type 后端是 varchar，接口回的是字符串（"1"/"2"），
+  // 而 ProductTypeEnum 的 option value 是数字 → el-select 因类型不等匹配不上，显示裸值/空白。这里统一转数字。
+  if (data.productType !== undefined && data.productType !== null && data.productType !== '') {
+    formData.productType = Number(data.productType)
+  }
+
   // 2026-08-10：编辑回显客户（CustomerSelector 用 codeCustomerId 显示，自动加载客户名）
   if (data.customerId) {
     formData.codeCustomerId = data.customerId
