@@ -13,7 +13,8 @@
               @change="load(1)"
             >
               <el-option label="待检" value="PENDING" />
-              <el-option label="检验中" value="INSPECTING" />
+              <!-- dev-20260922-011（G6）：INSPECTING 现在由「保存录入」推进，语义是"已录入、待判定" -->
+              <el-option label="待判定（已录入）" value="INSPECTING" />
               <el-option label="已判定" value="JUDGED" />
               <el-option label="已关闭" value="CLOSED" />
             </el-select>
@@ -68,6 +69,12 @@
         <el-table-column label="不良" width="80" align="right">
           <template #default="{ row }">{{ num(row.failQuantity) }}</template>
         </el-table-column>
+        <!-- dev-20260922-011（G4）：可见"合格量进库了没"，解决"到底要不要点同步入库" -->
+        <el-table-column label="已入库" width="90" align="right">
+          <template #default="{ row }">
+            <span :class="{ 'stored-missing': needSync(row) }">{{ num(row.storedQuantity) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="待处置" width="90" align="right">
           <template #default="{ row }">
             <el-tag v-if="pendingDefect(row) > 0" type="danger" size="small">{{
@@ -118,13 +125,14 @@
             >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
             <el-tooltip
-              content="把工单完工入库数量对齐到「本工单成品检验合格累计」，只补差额（合格累计 − 已入数量）；提示 0 = 没有新增合格量，属正常，可重复点"
+              content="补同步：把工单完工入库数量对齐到「本工单成品检验合格累计」，只补差额。判定时会自动同步一次，所以这里通常只显示 0；只有历史单据或合格量还没进库时才需要点（看「已入库」列是否小于「合格」列）"
               placement="top"
             >
               <el-button
                 v-if="canJudge && lotType === 'FQC' && row.orderId && isJudged(row)"
                 link
                 size="small"
+                :type="needSync(row) ? 'warning' : 'primary'"
                 :loading="busyLotId === row.lotId"
                 @click="handleSyncFinish(row)"
                 >同步入库</el-button
@@ -265,10 +273,18 @@ const busyLotId = ref<number | null>(null)
 const isEditable = (row: QualityLot) => ['PENDING', 'INSPECTING'].includes(String(row.status))
 /** 已判定 = 可复检、可手工同步入库 */
 const isJudged = (row: QualityLot) => row.status === 'JUDGED'
-
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
 const title = props.lotType === 'IQC' ? '来料检验' : props.lotType === 'OQC' ? '出货检验' : '成品检验'
 const lotType = props.lotType
+/**
+ * dev-20260922-011（G4）：本批「合格」还没全部进成品库 → 值得点一次「同步入库」。
+ * 判定时系统已自动同步过一次，所以正常情况这里是 false（已入库 = 合格）。
+ */
+const needSync = (row: QualityLot) =>
+  lotType === 'FQC' &&
+  !!row.orderId &&
+  isJudged(row) &&
+  Number(row.storedQuantity || 0) < Number(row.passQuantity || 0)
 
 const loading = ref(false)
 const rows = ref<QualityLot[]>([])
@@ -277,22 +293,22 @@ const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '
 const current = ref<QualityLot | null>(null)
 
 /**
- * 功能说明（2026-09-21 dev-20260921-032）：这页每个动作的含义。
- * FQC 多一条「同步入库」；IQC 的入库与隔离走「库存管理 → 来料检验 / 不合格品处置」。
+ * 功能说明（2026-09-21 dev-20260921-032 立；2026-09-22 dev-20260922-011 改为「谁做什么」口径）：
+ * 上一版是"系统机制说明"，业务看不明"我现在点哪个"；现在按角色 + 顺序写，机制细节收进括号。
  */
 const helpLines = computed<string[]>(() =>
   lotType === 'IQC'
     ? [
-        '① 录入：填检验项目与实测值，保存后进入待判定。',
-        '② 判定：填检验数量 / 合格 / 不良。判不合格会同步生成不良台账（去「质量管理 → 不良台账」处置）。',
-        '③ 复检：已判定的批可复检，会新建一个版本（旧版自动失效），原批号不变。',
-        '④ 来料的收货入库与隔离处置在「库存管理 → 来料检验 / 不合格品处置」，不在这页。',
+        '检验员：点「录入」填检验项目与实测值 → 保存（保存只是存清单，可反复改）。',
+        '品质主管：点「判定」填 检验/合格/不良 数量 —— 这才是提交；不良会生成不良台账。',
+        '要改已判定的结果：点「复检」新建一版（原批号不变、旧版自动失效）。',
+        '看不到按钮 = 缺权限（录入=检验录入；判定/复检=检验判定）。来料的收货入库与隔离处置在「库存管理 → 来料检验 / 不合格品处置」，不在这页。',
       ]
     : [
-        '① 录入：检验项目按 JJX-QR-039 固定分组，逐项填实测值，保存后进入待判定。',
-        '② 判定：填检验数量 / 合格 / 不良。合格累计会回写工单完工数量；不良会同步生成不良台账。',
-        '③ 复检：已判定的批可复检，会新建一个版本（旧版自动失效），原批号不变。',
-        '④ 同步入库：把工单的完工入库数量对齐到「本工单成品检验合格累计」，只补差额（合格累计 − 已入数量）；提示「0」表示没有新增合格量，属正常，可重复点。',
+        '检验员：点「录入」逐项填实测值 → 保存（保存只是存清单，可反复改，不推进状态）。',
+        '品质主管：点「判定」填 检验/合格/不良 数量 —— 这才是提交：合格会自动回写工单完工并同步成品入库，不良会生成不良台账（去「质量管理 → 不良台账」处置）。',
+        '要改已判定的结果：点「复检」新建一版（原批号不变、旧版自动失效）。',
+        '看不到按钮 = 缺权限（录入=检验录入；判定/复检/同步入库=检验判定）。「同步入库」是补同步（判定时已自动做过一次）：只看「已入库」列是否小于「合格」列，不小就不用点。',
       ]
 )
 
@@ -313,7 +329,8 @@ const sourceLabel = (row: QualityLot) => {
   return `${map[key] || key}${row.sourceId ? ' #' + row.sourceId : ''}`
 }
 const statusLabel = (status?: string) =>
-  ({ PENDING: '待检', INSPECTING: '检验中', JUDGED: '已判定', CLOSED: '已关闭' })[status || ''] ||
+  // dev-20260922-011（G6）：INSPECTING 由「保存录入」推进 → 语义是"已录入、待判定"
+  ({ PENDING: '待检', INSPECTING: '待判定', JUDGED: '已判定', CLOSED: '已关闭' })[status || ''] ||
   status ||
   '-'
 const statusTag = (status?: string) =>
@@ -413,8 +430,35 @@ const saveItems = async () => {
       return dto
     })
     await qualityLotApi.saveItems(current.value.lotId, payload)
-    ElMessage.success('录入已保存')
     itemsVisible.value = false
+    // dev-20260922-011（G1/G2）：保存只存清单、不推进状态，真正"提交"是「判定」。
+    // 这里直接把下一步接上，并用录入数据预填判定数量（不良 = 不合格项的 CR+MA+MI 合计）。
+    const savedRow = current.value
+    const failItems = itemRows.value.filter((i) => i.result === InspectionResult.FAIL)
+    const defectQty = failItems.reduce(
+      (sum, i) =>
+        sum + Number(i.crQuantity || 0) + Number(i.maQuantity || 0) + Number(i.miQuantity || 0),
+      0
+    )
+    const tip =
+      failItems.length > 0
+        ? `已保存 ${itemRows.value.length} 项，其中 ${failItems.length} 项不合格（缺陷数合计 ${defectQty}）。`
+        : `已保存 ${itemRows.value.length} 项，全部合格。`
+    try {
+      await ElMessageBox.confirm(
+        `${tip}\n是否现在提交判定？（判定后合格量自动入库、不良生成不良台账）`,
+        '下一步：提交判定',
+        {
+          confirmButtonText: '现在判定',
+          cancelButtonText: '稍后再说',
+          type: failItems.length > 0 ? 'warning' : 'success',
+        }
+      )
+    } catch {
+      ElMessage.success('录入已保存（只存清单）；稍后点该行「判定」才算提交')
+      return
+    }
+    openJudge(savedRow, { failQuantity: defectQty })
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败')
   } finally {
@@ -431,11 +475,14 @@ const judgeForm = reactive({
   failQuantity: 0,
   defectReason: '',
 })
-const openJudge = (row: QualityLot) => {
+/** dev-20260922-011（G2）：支持从「录入」带过来的数量预填（检验=批量、不良=录入里不合格项的 CR+MA+MI 合计、合格=差额） */
+const openJudge = (row: QualityLot, prefill?: { failQuantity?: number }) => {
   current.value = row
-  judgeForm.inspectedQuantity = Number(row.lotQuantity || 0)
-  judgeForm.passQuantity = Number(row.lotQuantity || 0)
-  judgeForm.failQuantity = 0
+  const inspected = Number(row.lotQuantity || 0)
+  const fail = Math.max(0, Number(prefill?.failQuantity || 0))
+  judgeForm.inspectedQuantity = inspected
+  judgeForm.failQuantity = fail
+  judgeForm.passQuantity = Math.max(0, inspected - fail)
   judgeForm.defectReason = ''
   judgeVisible.value = true
 }
@@ -535,6 +582,11 @@ onMounted(() => load(1))
 .entry-tip {
   color: #909399;
   font-size: 12px;
+}
+/* dev-20260922-011（G4）：合格量还没全进库 → 已入库数字提醒一下 */
+.stored-missing {
+  color: #e6a23c;
+  font-weight: 600;
 }
 .judge-tip {
   color: #909399;

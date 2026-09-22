@@ -227,6 +227,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
             item.setSortOrder(dto.getSortOrder() == null ? order++ : dto.getSortOrder());
             itemMapper.insert(item);
         }
+        // dev-20260922-011（G6）：录入过检验项就把状态从「待检」推进到「检验中」，
+        // 让列表能区分"还没录"与"已录待判定"（此前 saveItems 完全不改状态，页面上看不出录没录）。
+        // 语义不变式：PENDING=未录入、INSPECTING=已录入待判定、JUDGED=已判定、CLOSED=已关闭。
+        if (QualityLotStatusEnum.PENDING.getCode().equals(status)) {
+            lot.setStatus(QualityLotStatusEnum.INSPECTING.getCode());
+            lotMapper.updateById(lot);
+        }
     }
 
     @Override
