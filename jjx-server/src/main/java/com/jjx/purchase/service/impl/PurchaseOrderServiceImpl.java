@@ -62,6 +62,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final com.jjx.inventory.mapper.InventoryMaterialMapper materialMapper;
     private final com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
     private final com.jjx.inventory.service.InventoryInboundService inboundService;
+    private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
+    private final com.jjx.inventory.service.InventoryItemService inventoryItemService;
     private final com.jjx.inventory.service.InventoryAlertService alertService;
     private final com.jjx.system.service.LogSaveService logSaveService;
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
@@ -588,57 +590,37 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                         .last("LIMIT 1"));
         if (existing == null) {
             existing = new com.jjx.inventory.domain.InventoryStockItem();
+            existing.setInventoryItemId(inventoryItemService.ensure(
+                    com.jjx.inventory.enums.InventoryItemTypeEnum.MATERIAL,
+                    item.getMaterialId(), item.getMaterialCode(), item.getMaterialName(), null, null)
+                    .getInventoryItemId());
             existing.setMaterialId(item.getMaterialId());
             existing.setMaterialCode(item.getMaterialCode());
             existing.setMaterialName(item.getMaterialName());
             existing.setWarehouseId(warehouseId);
             existing.setLocationId(locationId);
             existing.setBatchNo(batchNo);
-            existing.setQuantity(receivedQuantity);
+            existing.setQuantity(BigDecimal.ZERO);
             existing.setReservedQuantity(java.math.BigDecimal.ZERO);
             existing.setUnitCost(item.getUnitPrice());
             existing.setStatus(1);
-            existing.setLastInboundTime(java.time.LocalDateTime.now());
-            stockItemMapper.insert(existing);
-        } else {
-            existing.setQuantity(existing.getQuantity().add(receivedQuantity));
-            existing.setLastInboundTime(java.time.LocalDateTime.now());
-            stockItemMapper.updateById(existing);
         }
-
-        // 刷新库存汇总
-        stockMapper.refreshSummary(item.getMaterialId());
-
-        // 写库存流水
-        try {
-            com.jjx.inventory.domain.InventoryStock cur = stockMapper.selectByMaterialId(item.getMaterialId());
-            java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
-            if (cur != null && cur.getTotalQuantity() != null) {
-                beforeQty = cur.getTotalQuantity().subtract(receivedQuantity);
-            }
-            com.jjx.inventory.domain.InventoryTransaction tx = new com.jjx.inventory.domain.InventoryTransaction();
-            tx.setMaterialId(item.getMaterialId());
-            tx.setMaterialCode(item.getMaterialCode());
-            tx.setMaterialName(item.getMaterialName());
-            tx.setWarehouseId(warehouseId);
-            tx.setLocationId(locationId);
-            tx.setTransactionType("INBOUND");
-            tx.setSourceType("PURCHASE");
-            tx.setSourceId(order.getOrderId());
-            tx.setSourceNo(order.getOrderNo());
-            tx.setBatchNo(batchNo);
-            tx.setQuantity(receivedQuantity);
-            tx.setBeforeQuantity(beforeQty);
-            tx.setAfterQuantity(beforeQty.add(receivedQuantity));
-            tx.setUnitCost(item.getUnitPrice());
-            tx.setTransactionTime(java.time.LocalDateTime.now());
-            tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
-            tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
-            tx.setRemark("采购到货入库: " + order.getOrderNo());
-            transactionMapper.insert(tx);
-        } catch (Exception e) {
-            log.warn("写采购到货流水失败: {}", e.getMessage());
+        if (existing.getInventoryItemId() == null) {
+            existing.setInventoryItemId(inventoryItemService.ensure(
+                    com.jjx.inventory.enums.InventoryItemTypeEnum.MATERIAL,
+                    item.getMaterialId(), item.getMaterialCode(), item.getMaterialName(), null, null)
+                    .getInventoryItemId());
         }
+        com.jjx.inventory.domain.InventoryTransaction tx = new com.jjx.inventory.domain.InventoryTransaction();
+        tx.setTransactionType("INBOUND");
+        tx.setSourceType("PURCHASE");
+        tx.setSourceId(order.getOrderId());
+        tx.setSourceNo(order.getOrderNo());
+        tx.setUnitCost(item.getUnitPrice());
+        tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
+        tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
+        tx.setRemark("采购到货入库: " + order.getOrderNo());
+        stockMutationService.applyDelta(existing, receivedQuantity, tx);
 
         log.info("采购到货[{}] 物料[{}] +{} 库存(仓库{})", order.getOrderNo(), item.getMaterialCode(), receivedQuantity, warehouseId);
     }
@@ -1361,6 +1343,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void returnGoods(Long orderId, String reason, Long materialId, Integer quantity) {
         PurchaseOrder order = orderMapper.selectById(orderId);
         if (order == null) {
@@ -1385,37 +1368,19 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 java.math.BigDecimal deductQty = remaining.min(
                         si.getQuantity().subtract(si.getReservedQuantity() == null ? java.math.BigDecimal.ZERO : si.getReservedQuantity()));
                 if (deductQty.compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
-                stockItemMapper.deductStock(si.getItemId(), deductQty);
-                remaining = remaining.subtract(deductQty);
-            }
-            if (remaining.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                throw new BusinessException("物料库存不足，缺少: " + remaining);
-            }
-            stockMapper.refreshSummary(materialId);
-
-            // 写库存流水
-            try {
-                com.jjx.inventory.domain.InventoryStock currentStock = stockMapper.selectByMaterialId(materialId);
-                java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
-                if (currentStock != null && currentStock.getTotalQuantity() != null) {
-                    beforeQty = currentStock.getTotalQuantity().add(java.math.BigDecimal.valueOf(quantity));
-                }
                 com.jjx.inventory.domain.InventoryTransaction tx = new com.jjx.inventory.domain.InventoryTransaction();
-                tx.setMaterialId(materialId);
                 tx.setTransactionType("RETURN");
                 tx.setSourceType("purchase_return");
                 tx.setSourceId(orderId);
                 tx.setSourceNo(order.getOrderNo());
-                tx.setQuantity(java.math.BigDecimal.valueOf(quantity).negate());
-                tx.setBeforeQuantity(beforeQty);
-                tx.setAfterQuantity(beforeQty.subtract(java.math.BigDecimal.valueOf(quantity)));
-                tx.setTransactionTime(java.time.LocalDateTime.now());
                 tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
                 tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
                 tx.setRemark("采购退货扣减: " + reason);
-                transactionMapper.insert(tx);
-            } catch (Exception e) {
-                log.warn("写退货库存流水失败: {}", e.getMessage());
+                stockMutationService.applyDelta(si, deductQty.negate(), tx);
+                remaining = remaining.subtract(deductQty);
+            }
+            if (remaining.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                throw new BusinessException("物料库存不足，缺少: " + remaining);
             }
             log.info("采购退货扣库存完成: materialId={}, qty={}", materialId, quantity);
         }

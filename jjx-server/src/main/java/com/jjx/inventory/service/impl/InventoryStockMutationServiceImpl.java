@@ -36,10 +36,13 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
         }
 
         if (stock.getItemId() != null) {
+            Long requestedInventoryItemId = stock.getInventoryItemId();
             InventoryStockItem locked = stockItemMapper.selectByIdForUpdate(stock.getItemId());
-            if (locked == null || !stock.getInventoryItemId().equals(locked.getInventoryItemId())) {
+            if (locked == null || (locked.getInventoryItemId() != null
+                    && !requestedInventoryItemId.equals(locked.getInventoryItemId()))) {
                 throw new BusinessException("库存批次不存在或身份已变化");
             }
+            if (locked.getInventoryItemId() == null) locked.setInventoryItemId(requestedInventoryItemId);
             stock = locked;
         }
         BigDecimal before = stock.getItemId() == null ? BigDecimal.ZERO : value(stock.getQuantity());

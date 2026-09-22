@@ -9,6 +9,7 @@ import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryStockItem;
 import com.jjx.inventory.domain.InventoryStorageLocation;
+import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.query.StockCheckDTO;
 import com.jjx.inventory.dto.query.StockBatchCheckItemDTO;
@@ -52,6 +53,7 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
     private final InventoryStorageLocationMapper storageLocationMapper;
     private final InventoryItemMapper inventoryItemMapper;
     private final StockConverter stockConverter;
+    private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
 
     @Override
     public IPage<StockVO> page(StockQueryDTO query) {
@@ -614,56 +616,58 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                             .eq(InventoryStockItem::getBatchNo, batchNo)
                             .last("LIMIT 1"));
             if (existing != null) {
-                existing.setQuantity(existing.getQuantity().add(dto.getQuantity()));
-                existing.setLastInboundTime(LocalDateTime.now());
                 if (dto.getUnitCost() != null && existing.getUnitCost() == null) {
                     existing.setUnitCost(dto.getUnitCost());
                 }
-                stockItemMapper.updateById(existing);
-                log.info("库存导入累加数量: material={}, batch={}, qty+={}", material.getMaterialName(), batchNo, dto.getQuantity());
-                refreshSummary(material.getMaterialId());
-                result.addSuccess();
-                continue;
             }
 
             // 查找或创建明细记录
-            InventoryStockItem newItem = new InventoryStockItem();
-            newItem.setMaterialId(material.getMaterialId());
-            newItem.setMaterialCode(material.getMaterialCode());
-            newItem.setMaterialName(material.getMaterialName());
-            newItem.setWarehouseId(warehouseId);
-            newItem.setLocationId(locationId);
-            newItem.setBatchNo(batchNo);
-            newItem.setQuantity(dto.getQuantity());
-            newItem.setReservedQuantity(BigDecimal.ZERO);
-            newItem.setUnitCost(dto.getUnitCost());
-            newItem.setStatus(1); // 生效
-
-            // 解析日期
-            if (dto.getProductionDate() != null && !dto.getProductionDate().isEmpty()) {
-                try {
-                    newItem.setProductionDate(LocalDate.parse(dto.getProductionDate()));
-                } catch (Exception e) {
-                    log.warn("解析生产日期失败: {}", dto.getProductionDate());
-                }
-            }else{
-                newItem.setProductionDate(LocalDate.now());
+            InventoryStockItem newItem = existing != null ? existing : new InventoryStockItem();
+            com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemMapper.selectBySource(
+                    "MATERIAL", material.getMaterialId());
+            if (inventoryItem == null) {
+                result.addFail(rowIndex, dto.getMaterialName(), "物料缺少统一库存身份，请先修复库存物品档案");
+                continue;
             }
-            if (dto.getExpiryDate() != null && !dto.getExpiryDate().isEmpty()) {
-                try {
-                    newItem.setExpiryDate(LocalDate.parse(dto.getExpiryDate()));
-                } catch (Exception e) {
-                    log.warn("解析到期日期失败: {}", dto.getExpiryDate());
+            newItem.setInventoryItemId(inventoryItem.getInventoryItemId());
+            if (existing == null) {
+                newItem.setMaterialId(material.getMaterialId());
+                newItem.setMaterialCode(material.getMaterialCode());
+                newItem.setMaterialName(material.getMaterialName());
+                newItem.setWarehouseId(warehouseId);
+                newItem.setLocationId(locationId);
+                newItem.setBatchNo(batchNo);
+                newItem.setQuantity(BigDecimal.ZERO);
+                newItem.setReservedQuantity(BigDecimal.ZERO);
+                newItem.setUnitCost(dto.getUnitCost());
+                newItem.setStatus(1);
+                if (dto.getProductionDate() != null && !dto.getProductionDate().isEmpty()) {
+                    try {
+                        newItem.setProductionDate(LocalDate.parse(dto.getProductionDate()));
+                    } catch (Exception e) {
+                        log.warn("解析生产日期失败: {}", dto.getProductionDate());
+                    }
+                } else {
+                    newItem.setProductionDate(LocalDate.now());
                 }
-            }else{
-                newItem.setExpiryDate(LocalDate.now().plusYears(1));
+                if (dto.getExpiryDate() != null && !dto.getExpiryDate().isEmpty()) {
+                    try {
+                        newItem.setExpiryDate(LocalDate.parse(dto.getExpiryDate()));
+                    } catch (Exception e) {
+                        log.warn("解析到期日期失败: {}", dto.getExpiryDate());
+                    }
+                } else {
+                    newItem.setExpiryDate(LocalDate.now().plusYears(1));
+                }
             }
 
-            newItem.setLastInboundTime(LocalDateTime.now());
-            stockItemMapper.insert(newItem);
-
-            // 3.6 刷新汇总表
-            refreshSummary(material.getMaterialId());
+            InventoryTransaction tx = new InventoryTransaction();
+            tx.setTransactionType("STOCK_IMPORT");
+            tx.setSourceType("STOCK_IMPORT");
+            tx.setSourceNo("IMPORT-" + LocalDate.now());
+            tx.setUnitCost(dto.getUnitCost());
+            tx.setRemark("库存导入");
+            stockMutationService.applyDelta(newItem, dto.getQuantity(), tx);
 
             result.addSuccess();
         }

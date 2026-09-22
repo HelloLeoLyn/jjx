@@ -77,12 +77,6 @@ public interface InventoryStockItemMapper extends BaseMapper<InventoryStockItem>
     Long selectEarliestLocationId(@Param("materialId") Long materialId);
 
     /**
-     * 扣减指定批次的库存
-     */
-    @Update("UPDATE inventory_stock_item SET quantity = quantity - #{quantity}, last_outbound_time = NOW() WHERE item_id = #{itemId} AND quantity >= #{quantity}")
-    int deductStock(@Param("itemId") Long itemId, @Param("quantity") BigDecimal quantity);
-
-    /**
      * 增加指定批次的预留数量
      */
     @Update("UPDATE inventory_stock_item SET reserved_quantity = reserved_quantity + #{quantity} WHERE item_id = #{itemId}")

@@ -5,6 +5,7 @@ import com.jjx.inventory.domain.*;
 import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.inventory.mapper.*;
 import com.jjx.inventory.service.impl.InventoryOutboundServiceImpl;
+import com.jjx.inventory.service.InventoryStockMutationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -25,22 +26,23 @@ class InventoryOutboundInvariantTest {
     @Mock InventoryStockItemMapper stockItemMapper;
     @Mock InventoryStockMapper stockMapper;
     @Mock InventoryTransactionMapper transactionMapper;
+    @Mock InventoryStockMutationService stockMutationService;
     @InjectMocks InventoryOutboundServiceImpl service;
 
     @Test void completedOutboundCannotBeConfirmedAgain() {
         when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(InventoryOrderStatusEnum.COMPLETED));
         assertFalse(service.confirm(1L, 9L, "tester"));
         verify(outboundItemMapper, never()).selectByOutboundId(any());
-        verify(stockItemMapper, never()).deductStock(any(), any());
-        verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
         verify(outboundOrderMapper, never()).updateById(any(InventoryOutboundOrder.class));
     }
 
     @Test void draftOutboundCannotSkipWorkflowAndConfirm() {
         when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(outbound(InventoryOrderStatusEnum.DRAFT));
         assertFalse(service.confirm(1L, 9L, "tester"));
-        verify(stockItemMapper, never()).deductStock(any(), any());
-        verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
     }
 
     @Test void insufficientStockDoesNotWriteTransactionOrTerminalStatus() {
@@ -58,7 +60,7 @@ class InventoryOutboundInvariantTest {
         // DEV-20260909-001 后 confirm 按库存物品身份（inventoryItemId）走 FIFO 扣减（非旧 selectFIFOAvailable(materialId)）
         when(stockItemMapper.selectFIFOAvailableByInventoryItemId(31L)).thenReturn(List.of(batch));
         assertThrows(BusinessException.class, () -> service.confirm(1L, 9L, "tester"));
-        verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
+        verify(stockMutationService).applyDelta(eq(batch), eq(new BigDecimal("-3")), any(InventoryTransaction.class));
         verify(stockMapper, never()).refreshSummary(any());
         verify(outboundOrderMapper, never()).updateById(any(InventoryOutboundOrder.class));
     }

@@ -78,6 +78,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.sales.mapper.SalesDeliveryItemMapper salesDeliveryItemMapper;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.InventoryItemService inventoryItemService;
+    private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
 
     /**
      * 出库类事件统一发布（2026-09-21 dev-20260921-013 库存批）：
@@ -422,7 +423,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
                     if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
-                    stockItemMapper.deductStock(si.getItemId(), deductQty);
+                    applyOutboundDelta(si, deductQty, order, item, operatorId, operatorName);
                     remaining = remaining.subtract(deductQty);
                 }
             }
@@ -432,49 +433,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
                     if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
-                    stockItemMapper.deductStock(si.getItemId(), deductQty);
+                    applyOutboundDelta(si, deductQty, order, item, operatorId, operatorName);
                     remaining = remaining.subtract(deductQty);
                 }
             }
             if (remaining.compareTo(BigDecimal.ZERO) > 0) {
                 throw new BusinessException("物料[" + item.getMaterialCode() + "]库存不足，缺少: " + remaining);
             }
-            stockMapper.refreshSummaryByInventoryItemId(item.getInventoryItemId());
-            // DEV-20260810-096：销售出库=产品出库（产品维度独立记账）
-            // 产品库存与物料库存各自独立记账；仅销售出库同步扣产品库存（物料是成品F且有专用产品时）
-            // 获取扣减前的库存汇总
-            java.math.BigDecimal beforeQty = java.math.BigDecimal.ZERO;
-            InventoryStock currentStock = stockMapper.selectByInventoryItemId(item.getInventoryItemId());
-            if (currentStock != null && currentStock.getTotalQuantity() != null) {
-                beforeQty = currentStock.getTotalQuantity().add(item.getQuantity());
-            }
-            InventoryTransaction tx = new InventoryTransaction();
-            tx.setInventoryItemId(item.getInventoryItemId());
-            tx.setMaterialId(item.getMaterialId());
-            tx.setMaterialCode(item.getMaterialCode());
-            tx.setMaterialName(item.getMaterialName());
-            tx.setWarehouseId(order.getWarehouseId());
-            tx.setLocationId(item.getLocationId());
-            tx.setTransactionType("OUTBOUND");
-            tx.setSourceType(order.getSourceType());
-            tx.setSourceId(outboundId);
-            tx.setSourceNo(order.getOutboundNo());
-            tx.setBatchNo(item.getBatchNo());
-            InventoryStockItem lineageStock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
-                    .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
-                    .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
-                    .last("LIMIT 1"));
-            tx.setIqcBatchId(lineageStock == null ? null : lineageStock.getIqcBatchId());
-            tx.setQuantity(item.getQuantity().negate());
-            tx.setBeforeQuantity(beforeQty);
-            tx.setAfterQuantity(beforeQty.subtract(item.getQuantity()));
-            tx.setUnitCost(item.getUnitPrice());
-            tx.setAmount(item.getAmount());
-            tx.setTransactionTime(LocalDateTime.now());
-            tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
-            tx.setRemark("出库确认完成");
-            transactionMapper.insert(tx);
         }
         // 安全库存检查（移到循环外只调一次，原实现在循环内全量重复执行）
         try {
@@ -613,6 +578,21 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
         publishOutboundEvent("inventory.outbound.confirmed", order.getOutboundId());
         return updated;
+    }
+
+    private void applyOutboundDelta(InventoryStockItem stock, BigDecimal quantity,
+                                    InventoryOutboundOrder order, InventoryOutboundItem item,
+                                    Long operatorId, String operatorName) {
+        InventoryTransaction tx = new InventoryTransaction();
+        tx.setTransactionType("OUTBOUND");
+        tx.setSourceType(order.getSourceType());
+        tx.setSourceId(order.getOutboundId());
+        tx.setSourceNo(order.getOutboundNo());
+        tx.setUnitCost(item.getUnitPrice());
+        tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
+        tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
+        tx.setRemark("出库确认完成");
+        stockMutationService.applyDelta(stock, quantity.negate(), tx);
     }
 
     @Override

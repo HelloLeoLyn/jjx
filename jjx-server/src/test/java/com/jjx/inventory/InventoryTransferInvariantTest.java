@@ -4,6 +4,7 @@ import com.jjx.inventory.domain.*;
 import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.inventory.mapper.*;
 import com.jjx.inventory.service.impl.InventoryTransferServiceImpl;
+import com.jjx.inventory.service.InventoryStockMutationService;
 import com.jjx.system.utils.SecurityUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Disabled;
@@ -26,6 +27,7 @@ class InventoryTransferInvariantTest {
     @Mock InventoryStockItemMapper stockItemMapper;
     @Mock InventoryStockMapper stockMapper;
     @Mock InventoryTransactionMapper transactionMapper;
+    @Mock InventoryStockMutationService stockMutationService;
     @InjectMocks InventoryTransferServiceImpl service;
 
     @Test void alreadyTransferredOutOrderCannotBeTransferredOutAgain() {
@@ -34,22 +36,19 @@ class InventoryTransferInvariantTest {
         when(transferOrderMapper.selectById(1L)).thenReturn(order);
         assertFalse(service.confirmOut(1L, 9L, "tester"));
         verify(transferItemMapper, never()).selectByTransferId(any());
-        verify(stockItemMapper, never()).deductStock(any(), any());
-        verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
     }
 
     @Test void transferCannotBeReceivedBeforeTransferOut() {
         when(transferOrderMapper.selectById(1L)).thenReturn(transfer(InventoryOrderStatusEnum.APPROVED));
         assertFalse(service.confirmIn(1L, 9L, "tester"));
-        verify(stockItemMapper, never()).insert(any(InventoryStockItem.class));
-        verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
     }
 
     @Test void closedTransferCannotBeCancelled() {
         when(transferOrderMapper.selectById(1L)).thenReturn(transfer(InventoryOrderStatusEnum.CLOSED));
         assertFalse(service.cancel(1L, "late cancel"));
-        verify(stockItemMapper, never()).insert(any(InventoryStockItem.class));
-        verify(transactionMapper, never()).insert(any(InventoryTransaction.class));
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
         verify(transferOrderMapper, never()).updateById(any(InventoryTransferOrder.class));
     }
 
@@ -68,11 +67,11 @@ class InventoryTransferInvariantTest {
         }
 
         var stockCaptor = org.mockito.ArgumentCaptor.forClass(InventoryStockItem.class);
+        var deltaCaptor = org.mockito.ArgumentCaptor.forClass(BigDecimal.class);
         var txCaptor = org.mockito.ArgumentCaptor.forClass(InventoryTransaction.class);
-        verify(stockItemMapper).insert(stockCaptor.capture());
-        verify(transactionMapper).insert(txCaptor.capture());
-        assertEquals(new BigDecimal("4"), stockCaptor.getValue().getQuantity());
-        assertEquals(stockCaptor.getValue().getQuantity(), txCaptor.getValue().getQuantity());
+        verify(stockMutationService).applyDelta(stockCaptor.capture(), deltaCaptor.capture(), txCaptor.capture());
+        assertEquals(new BigDecimal("4"), deltaCaptor.getValue());
+        assertEquals("TRANSFER_CANCEL", txCaptor.getValue().getTransactionType());
     }
 
     @Disabled("WI1-F01: confirmed rule requires COMPLETED transfers to reject cancellation")

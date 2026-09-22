@@ -54,6 +54,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
+    private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
     private final InventoryWarehouseMapper transferWarehouseMapper;
     private final InventoryStorageLocationMapper transferLocationMapper;
 
@@ -363,7 +364,8 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                 if (available.compareTo(BigDecimal.ZERO) <= 0) continue;
 
                 BigDecimal deductQty = remaining.min(available);
-                stockItemMapper.deductStock(si.getItemId(), deductQty);
+                applyTransferDelta(si, deductQty.negate(), order, item, "TRANSFER_OUT",
+                        operatorId, operatorName, "调拨出库确认");
                 remaining = remaining.subtract(deductQty);
             }
 
@@ -371,37 +373,8 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                 throw new BusinessException("物料[" + item.getMaterialCode() + "]在调出仓库库存不足，缺少: " + remaining);
             }
 
-            // 刷新库存汇总
-            stockMapper.refreshSummary(item.getMaterialId());
-
             // 更新明细的出库数量
             transferItemMapper.updateOutQuantity(item.getItemId(), item.getQuantity(), order.getFromLocationId());
-
-            // 记录库存流水（调拨出库）
-            InventoryTransaction tx = new InventoryTransaction();
-            tx.setMaterialId(item.getMaterialId());
-            tx.setMaterialCode(item.getMaterialCode());
-            tx.setMaterialName(item.getMaterialName());
-            tx.setWarehouseId(order.getFromWarehouseId());
-            tx.setLocationId(order.getFromLocationId());
-            tx.setTransactionType("TRANSFER_OUT");
-            tx.setSourceType("INVENTORY_TRANSFER");
-            tx.setSourceId(transferId);
-            tx.setSourceNo(order.getTransferNo());
-            tx.setBatchNo(item.getBatchNo());
-            InventoryStockItem lineageStock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
-                    .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
-                    .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
-                    .last("LIMIT 1"));
-            tx.setIqcBatchId(lineageStock == null ? null : lineageStock.getIqcBatchId());
-            tx.setQuantity(item.getQuantity().negate());
-            tx.setUnitCost(item.getUnitCost());
-            tx.setAmount(item.getAmount() != null ? item.getAmount().negate() : null);
-            tx.setTransactionTime(LocalDateTime.now());
-            tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
-            tx.setRemark("调拨出库确认");
-            transactionMapper.insert(tx);
         }
 
         // 更新调拨单状态
@@ -462,41 +435,21 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                     .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
                     .eq(InventoryStockItem::getBatchNo, newStock.getBatchNo())
                     .last("LIMIT 1"));
+            newStock.setInventoryItemId(item.getInventoryItemId() != null ? item.getInventoryItemId()
+                    : sourceStock == null ? null : sourceStock.getInventoryItemId());
             newStock.setIqcBatchId(sourceStock == null ? null : sourceStock.getIqcBatchId());
-            newStock.setQuantity(item.getQuantity());
+            InventoryStockItem targetStock = findTargetStock(newStock);
+            if (targetStock != null) newStock = targetStock;
+            newStock.setQuantity(BigDecimal.ZERO);
             newStock.setReservedQuantity(BigDecimal.ZERO);
             newStock.setUnitCost(item.getUnitCost());
             newStock.setStatus(1);
-            newStock.setLastInboundTime(LocalDateTime.now());
-            stockItemMapper.insert(newStock);
-
-            // 刷新库存汇总
-            stockMapper.refreshSummary(item.getMaterialId());
+            applyTransferDelta(newStock, item.getQuantity(), order, item, "TRANSFER_IN",
+                    operatorId, operatorName, "调拨入库确认");
 
             // 更新明细的入库数量
             transferItemMapper.updateInQuantity(item.getItemId(), item.getQuantity(), order.getToLocationId());
 
-            // 记录库存流水（调拨入库）
-            InventoryTransaction tx = new InventoryTransaction();
-            tx.setMaterialId(item.getMaterialId());
-            tx.setMaterialCode(item.getMaterialCode());
-            tx.setMaterialName(item.getMaterialName());
-            tx.setWarehouseId(order.getToWarehouseId());
-            tx.setLocationId(item.getToLocationId() != null ? item.getToLocationId() : order.getToLocationId());
-            tx.setTransactionType("TRANSFER_IN");
-            tx.setSourceType("INVENTORY_TRANSFER");
-            tx.setSourceId(transferId);
-            tx.setSourceNo(order.getTransferNo());
-            tx.setBatchNo(item.getBatchNo());
-            tx.setIqcBatchId(newStock.getIqcBatchId());
-            tx.setQuantity(item.getQuantity());
-            tx.setUnitCost(item.getUnitCost());
-            tx.setAmount(item.getAmount());
-            tx.setTransactionTime(LocalDateTime.now());
-            tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-            tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
-            tx.setRemark("调拨入库确认");
-            transactionMapper.insert(tx);
         }
 
         // 更新调拨单状态为 completed
@@ -548,38 +501,17 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                             .eq(InventoryStockItem::getMaterialId, item.getMaterialId())
                             .eq(InventoryStockItem::getBatchNo, newStock.getBatchNo())
                             .last("LIMIT 1"));
+                    newStock.setInventoryItemId(item.getInventoryItemId() != null ? item.getInventoryItemId()
+                            : sourceStock == null ? null : sourceStock.getInventoryItemId());
                     newStock.setIqcBatchId(sourceStock == null ? null : sourceStock.getIqcBatchId());
-                    newStock.setQuantity(item.getQuantity());
+                    InventoryStockItem targetStock = findTargetStock(newStock);
+                    if (targetStock != null) newStock = targetStock;
+                    newStock.setQuantity(BigDecimal.ZERO);
                     newStock.setReservedQuantity(BigDecimal.ZERO);
                     newStock.setUnitCost(item.getUnitCost());
                     newStock.setStatus(1);
-                    newStock.setLastInboundTime(LocalDateTime.now());
-                    stockItemMapper.insert(newStock);
-
-                    // 刷新库存汇总
-                    stockMapper.refreshSummary(item.getMaterialId());
-
-                    // 记录库存流水（调拨取消回补）
-                    InventoryTransaction tx = new InventoryTransaction();
-                    tx.setMaterialId(item.getMaterialId());
-                    tx.setMaterialCode(item.getMaterialCode());
-                    tx.setMaterialName(item.getMaterialName());
-                    tx.setWarehouseId(order.getFromWarehouseId());
-                    tx.setLocationId(item.getFromLocationId() != null ? item.getFromLocationId() : order.getFromLocationId());
-                    tx.setTransactionType("TRANSFER_OUT");
-                    tx.setSourceType("INVENTORY_TRANSFER");
-                    tx.setSourceId(transferId);
-                    tx.setSourceNo(order.getTransferNo());
-                    tx.setBatchNo(item.getBatchNo());
-                    tx.setIqcBatchId(newStock.getIqcBatchId());
-                    tx.setQuantity(item.getQuantity());
-                    tx.setUnitCost(item.getUnitCost());
-                    tx.setAmount(item.getAmount() != null ? item.getAmount() : null);
-                    tx.setTransactionTime(LocalDateTime.now());
-                    tx.setOperatorId(SecurityUtils.getUserId());
-                    tx.setOperatorName(SecurityUtils.getDisplayName());
-                    tx.setRemark("调拨取消回补源仓");
-                    transactionMapper.insert(tx);
+                    applyTransferDelta(newStock, item.getQuantity(), order, item, "TRANSFER_CANCEL",
+                            SecurityUtils.getUserId(), SecurityUtils.getDisplayName(), "调拨取消回补源仓");
                 }
             }
         }
@@ -601,6 +533,33 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
                         .orderByAsc(InventoryTransferOrder::getCreateTime)
         );
         return convertToVOList(orders);
+    }
+
+    private void applyTransferDelta(InventoryStockItem stock, BigDecimal delta,
+                                    InventoryTransferOrder order, InventoryTransferItem item,
+                                    String transactionType, Long operatorId, String operatorName, String remark) {
+        InventoryTransaction tx = new InventoryTransaction();
+        tx.setTransactionType(transactionType);
+        tx.setSourceType("INVENTORY_TRANSFER");
+        tx.setSourceId(order.getTransferId());
+        tx.setSourceNo(order.getTransferNo());
+        tx.setUnitCost(item.getUnitCost());
+        tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
+        tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
+        tx.setRemark(remark);
+        stockMutationService.applyDelta(stock, delta, tx);
+    }
+
+    private InventoryStockItem findTargetStock(InventoryStockItem candidate) {
+        if (candidate.getInventoryItemId() == null) return null;
+        return stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                .eq(InventoryStockItem::getInventoryItemId, candidate.getInventoryItemId())
+                .eq(InventoryStockItem::getWarehouseId, candidate.getWarehouseId())
+                .eq(candidate.getLocationId() != null, InventoryStockItem::getLocationId, candidate.getLocationId())
+                .eq(InventoryStockItem::getBatchNo, candidate.getBatchNo())
+                .eq(InventoryStockItem::getStatus, 1)
+                .orderByAsc(InventoryStockItem::getItemId)
+                .last("LIMIT 1"));
     }
 
     @Override

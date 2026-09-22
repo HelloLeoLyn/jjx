@@ -57,6 +57,21 @@ class InventoryStockMutationServiceTest {
     }
 
     @Test
+    void backfillsLegacyBatchInventoryIdentityInsideBoundary() {
+        InventoryStockItem requested = stock("1");
+        InventoryStockItem locked = stock("1");
+        locked.setInventoryItemId(null);
+        when(itemMapper.selectByIdForUpdate(1L)).thenReturn(locked);
+        InventoryTransaction transaction = new InventoryTransaction();
+        transaction.setTransactionType("ADJUST");
+
+        service.applyDelta(requested, BigDecimal.ONE, transaction);
+
+        assertEquals(100L, locked.getInventoryItemId());
+        verify(stockMapper).refreshSummaryByInventoryItemId(100L);
+    }
+
+    @Test
     void mutationBoundaryRollsBackForAnyException() throws Exception {
         Transactional transactional = InventoryStockMutationServiceImpl.class
                 .getMethod("applyDelta", InventoryStockItem.class, BigDecimal.class, InventoryTransaction.class)
