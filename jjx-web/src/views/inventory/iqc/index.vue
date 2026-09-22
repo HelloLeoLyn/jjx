@@ -569,8 +569,10 @@ async function loadInboundDetail(row: IqcPendingVO) {
     const { data } = await inboundApi.getById(String(requestedId))
     const loadedRows = await Promise.all(
       (data?.items || []).map(async (item: any): Promise<WorkRow> => {
-        const quality = item.inspectionId
-          ? (await qualityApi.getById(Number(item.inspectionId))).data
+        // dev-20260922-009：新模型检验批在 lotId（inspectionId 已置空），优先取 lotId，回退旧字段
+        const lotRef = item.lotId ?? item.inspectionId
+        const quality = lotRef
+          ? (await qualityApi.getById(Number(lotRef))).data
           : undefined
         const previousQuality = quality?.previousInspectionId
           ? (await qualityApi.getById(Number(quality.previousInspectionId))).data

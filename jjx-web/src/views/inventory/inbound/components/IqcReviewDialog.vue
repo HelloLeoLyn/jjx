@@ -91,7 +91,7 @@
             @click="reinspect(row)"
             >发起复检</el-button
           >
-          <el-button v-if="row.inspectionId" link type="primary" @click="preview(row)"
+          <el-button v-if="row.lotId ?? row.inspectionId" link type="primary" @click="preview(row)"
             >查看报告</el-button
           >
         </template>
@@ -166,8 +166,9 @@ async function load() {
       (inbound?.items || []).map(async (item) => {
         const itemId = String(item.inboundItemId || item.itemId || '')
         const [qualityResult, history] = await Promise.all([
-          item.inspectionId
-            ? qualityApi.getById(Number(item.inspectionId)).then((res) => res.data)
+          // dev-20260922-009：检验批在 lotId（inspectionId 已置空），优先取 lotId
+          (item.lotId ?? item.inspectionId)
+            ? qualityApi.getById(Number(item.lotId ?? item.inspectionId)).then((res) => res.data)
             : undefined,
           qualityApi
             .page({ pageNum: 1, pageSize: 50, sourceType: 'INBOUND', sourceItemId: Number(itemId) })
@@ -280,8 +281,10 @@ async function syncReviewStatus() {
 }
 
 function preview(row: (typeof rows.value)[number]) {
+  // dev-20260922-009：检验批 id 优先取 lotId（inspectionId 切新模型后已置空）
+  const lotRef = row.lotId ?? row.inspectionId
   window.open(
-    `/production/quality-print/iqc-report?inboundId=${props.inboundId}&inspectionId=${row.inspectionId}`,
+    `/production/quality-print/iqc-report?inboundId=${props.inboundId}&inspectionId=${lotRef}`,
     '_blank'
   )
 }

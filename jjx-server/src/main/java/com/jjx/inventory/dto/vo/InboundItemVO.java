@@ -20,6 +20,8 @@ public class InboundItemVO {
     private BigDecimal quantity;
     private BigDecimal sampledQuantity;
     private Long inspectionId;
+    /** 检验批 ID（新质检模型 quality_lot；dev-20260922-009 补：inspectionId 已置空，前端需靠它取检验批） */
+    private Long lotId;
     private String inspectionResult;
     private String disposition;
     private BigDecimal unitPrice;

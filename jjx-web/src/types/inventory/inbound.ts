@@ -88,6 +88,8 @@ export interface InboundItemVO {
   quantity: number
   sampledQuantity?: number
   inspectionId?: string
+  /** 检验批 ID（新模型 quality_lot；inspectionId 已置空，取检验批请优先用它；dev-20260922-009） */
+  lotId?: number
   inspectionResult?: string
   disposition?: string
   qualifiedQuantity?: number

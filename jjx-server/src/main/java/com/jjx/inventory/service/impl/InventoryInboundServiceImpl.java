@@ -964,6 +964,18 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
+        // dev-20260922-009：待复核期间禁止重复提交。
+        // 起因：提交动作本身把单据置回 PENDING（下方 order.setOrderStatus(PENDING)），所以"已提交待复核"
+        // 与"待检验"同为 PENDING，状态守卫拦不住重复提交；重复提交会复用同一张检验批覆盖已录的合格/不良/
+        // 检测项，并重发 quality.iqc.submitted（事件侧按 eventCode+毫秒 建待办，不去重）→ 多一条待办+通知。
+        // 判定：采购来源 + 全部明细都已生成检验批且都处于待审核（PENDING）→ 已在待复核，直接拒绝。
+        // 不拦的场景：明细还存在 REJECTED（被驳回待重录）/DRAFT（复检草稿）时 allowed=false，可正常重提。
+        if (isPurchaseInbound(order)
+                && InventoryOrderStatusEnum.PENDING.getValue().equals(status)
+                && allItemsAwaitingReview(inboundId)) {
+            throw new BusinessException("该入库单已提交来料检验、正在等待品质主管审核，请勿重复提交；如需修改请让品质主管先驳回对应明细");
+        }
+
         if (isPurchaseInbound(order)) {
             saveInspection(order, inspection);
         }
@@ -978,6 +990,28 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             publishIqcEventAfterCommit("quality.iqc.submitted", iqcPayload(order, null, null, null));
         }
         return updated;
+    }
+
+    /**
+     * 全部明细都已生成检验批、且都停在待审核（PENDING）——即"已提交、在等品质主管复核"。
+     * dev-20260922-009：给「待复核期间禁止重复提交」用。明细还没检验批、或存在 REJECTED（已驳回待重录）
+     * /DRAFT（复检草稿）时返回 false —— 这些情况允许正常重新提交。
+     */
+    private boolean allItemsAwaitingReview(Long inboundId) {
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(inboundId);
+        if (items == null || items.isEmpty()) {
+            return false;
+        }
+        for (InventoryInboundItem item : items) {
+            if (item.getLotId() == null) {
+                return false;
+            }
+            com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(item.getLotId());
+            if (lot == null || !"PENDING".equals(lot.getReviewStatus())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void saveInspection(InventoryInboundOrder order, InboundInspectionSubmitDTO inspection) {
@@ -2551,6 +2585,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setQuantity(item.getQuantity());
         vo.setSampledQuantity(item.getSampledQuantity());
         vo.setInspectionId(item.getInspectionId());
+        // dev-20260922-009：新模型下检验批存 lot_id（inspection_id 已置空），必须同时吐给前端
+        vo.setLotId(item.getLotId());
         vo.setInspectionResult(item.getInspectionResult());
         vo.setDisposition(item.getDisposition());
         vo.setUnitPrice(item.getUnitPrice());

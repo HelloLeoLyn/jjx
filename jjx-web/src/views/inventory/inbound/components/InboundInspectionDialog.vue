@@ -269,8 +269,10 @@ watch(
         (data?.items || [])
           .filter((item) => !props.itemId || Number(item.inboundItemId || item.itemId) === props.itemId)
           .map(async (item) => {
-          const quality = item.inspectionId
-            ? (await qualityApi.getById(Number(item.inspectionId))).data
+          // dev-20260922-009：检验批在 lotId（inspectionId 已置空），优先取 lotId
+          const lotRef = item.lotId ?? item.inspectionId
+          const quality = lotRef
+            ? (await qualityApi.getById(Number(lotRef))).data
             : undefined
           const previousQuality = quality?.previousInspectionId
             ? (await qualityApi.getById(Number(quality.previousInspectionId))).data

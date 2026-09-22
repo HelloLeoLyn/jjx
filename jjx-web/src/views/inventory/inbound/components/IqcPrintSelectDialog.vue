@@ -43,7 +43,7 @@
       </el-table-column>
       <el-table-column label="操作" width="100" align="center" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" :disabled="!row.inspectionId" @click="openPrint(row)">
+          <el-button link type="primary" :disabled="!(row.lotId ?? row.inspectionId)" @click="openPrint(row)">
             {{ row.reviewStatus === QualityReviewStatus.APPROVED ? '打印正式版' : '预览' }}
           </el-button>
         </template>
@@ -81,8 +81,9 @@ watch(
       items.value = await Promise.all(
         inboundItems.map(async (item) => ({
           ...item,
-          reviewStatus: item.inspectionId
-            ? (await qualityApi.getById(Number(item.inspectionId))).data?.reviewStatus
+          // dev-20260922-009：检验批在 lotId（inspectionId 已置空），优先取 lotId
+          reviewStatus: (item.lotId ?? item.inspectionId)
+            ? (await qualityApi.getById(Number(item.lotId ?? item.inspectionId))).data?.reviewStatus
             : undefined,
         }))
       )
@@ -100,11 +101,13 @@ function dispositionLabel(value?: string) {
 }
 
 function openPrint(row: InboundItemVO) {
-  if (!row.inspectionId || !props.inboundId) return
+  // dev-20260922-009：检验批 id 优先取 lotId（inspectionId 切新模型后已置空）
+  const lotRef = row.lotId ?? row.inspectionId
+  if (!lotRef || !props.inboundId) return
   window.open(
     router.resolve({
       path: '/production/quality-print/iqc-report',
-      query: { inboundId: props.inboundId, inspectionId: row.inspectionId },
+      query: { inboundId: props.inboundId, inspectionId: lotRef },
     }).href,
     '_blank'
   )
