@@ -180,7 +180,8 @@
 
     <!-- 录入（检验项） -->
     <el-dialog v-model="itemsVisible" title="检验录入" width="1100px" append-to-body>
-      <el-table :data="itemRows" border size="small">
+      <!-- dev-20260922-013：表体限高 + 表头固定，项目多时（FQC 按 JJX-QR-039 分组）不再把弹窗撑出屏幕 -->
+      <el-table :data="itemRows" border size="small" max-height="56vh">
         <el-table-column v-if="lotType === 'FQC'" label="类别" width="75">
           <template #default="{ row }">{{ row.category || '其他' }}</template>
         </el-table-column>
