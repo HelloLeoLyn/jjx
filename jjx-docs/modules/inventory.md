@@ -1,7 +1,7 @@
 ﻿# 库存管理 · 现行真相
 
 > 状态：✅已实施（dev-20260909-006 ~ 010） | 本文是"现在是什么样"，历史看文末指针
-> 最后复核：2026-09-10
+> 最后复核：**2026-09-23**（补 2026-09-22~23 定案口径）
 
 ## 一句话
 
@@ -42,6 +42,38 @@
 - 迁移 `73_unified_inventory_item_foundation.sql`（建身份 + 回填）→ `74_unified_inventory_item_engine_cutover.sql`（引擎切到 inventory_item_id）→ `75_remove_legacy_product_stock.sql`（破坏性：删镜像物料 + DROP product_stock）
 - 迁移 `77` / `78` 完成库存菜单扁平化（临时分组已清理，IQC 与隔离台账迁出到质量域）
 - 当前数据量：MATERIAL 1535 / PRODUCT 1；身份列无空值
+
+## 口径（2026-09-22 ~ 23 定案）
+
+### 1. 库存三本账铁律（唯一真源：`standards/CONVENTIONS.md §13`）
+
+- **单据不可改**（入库单/出库单/调拨/盘点一旦过账不可逆改，只能红冲/反向单）；
+- **流水只增不改**（`inventory_transaction` 一进一留痕，带 `before_quantity/after_quantity`）；
+- **余额是派生值**（`inventory_stock` / `inventory_stock_item` 由流水派生，实时聚合）；
+- **变动唯一入口** `InventoryStockMutationService.applyDelta`（改批次明细 + 重算汇总 + 写流水一次做完，禁止旁路直接 UPDATE 余额）；
+- **批次可追溯**（业务批次与流水都带批次号，可正查到单、反查到批）；
+- ⛔ **不给批次表加「累计入库/累计出库」列**（避免第二真源，收发一律由流水实时聚合）。
+
+### 2. 入库过账只发生在「确认入库」
+
+- 采购/生产来源生成入库单只是**单据**，库存不动；仓库在「库存管理 → 入库作业」点**确认入库**才过账（写流水 + 加余额）；
+- 成品侧同规则（口径 B，见 `quality.md`）：判定/复检只维护「应入数量」，减量走**冲减** `reducePostedStock`；
+- 红冲单（`-R`、负数量）同样要仓库确认后才产生 `ADJUST` 负额流水。
+
+### 3. 入库单 ↔ 检验批 关联与门禁
+
+- 生产来源入库明细必须挂 `lot_id`；同一 lot 被多张未取消单据重复计账会被拦；已过账量必须 = 入库侧流水（`INBOUND` + `ADJUST`）；
+- 门禁：`scripts/check-inbound-lot-integrity.sh --strict`（八查，含数量守恒）→ `npm run check:lot:strict`；
+- 对账：`scripts/check-stock-summary.sh --strict`（汇总 = 批次明细合计 = 流水派生）→ `npm run check:stock:strict`。
+
+### 4. 仓库与默认仓
+
+- 入库选仓优先级：物料 `default_warehouse_id`（需启用仓）→ 按物料类型聚合兑底（R/A/I → 原料仓、F → 成品仓）；都不能定才兜底并 WARN；
+- ⚠️ `inventory_warehouse.status` 代码用 `'1'=启用`（列注释仍写「0正常 1停用」，待清理）。
+
+### 5. 单号
+
+- 业务单号一律走 `sys_number_sequence`，**默认 3 位流水 + 溢出告警**（规则总表见 `design/doc-no-rules-dev-20260922-023.md`）；巡检 `scripts/check-doc-no.sh` 已进 `npm run validate`。
 
 ## 历史（"当年为什么这样"才看）
 

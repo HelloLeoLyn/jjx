@@ -1,7 +1,7 @@
 ﻿# 生产管理 · 现行真相
 
 > 状态：✅已实施（P0→P4 / V1 已收口，近期 1666 / dev-20260909-004 / 011） | 本文是"现在是什么样"
-> 最后复核：2026-09-10
+> 最后复核：**2026-09-23**（补 2026-09-22~23 定案口径）
 > 说明：本模块历史上按阶段推进，`analysis/` 里约 34 篇流水是那段历史的留痕。**找"当年为什么这么做"才看它们；"现在是什么样"看本文。**
 
 ## 一句话
@@ -42,6 +42,30 @@
 - 后端：`com.jjx.production.{controller(15), service.impl}`；重点 `ProductionOrderServiceImpl`（含完工门禁）、`ProductionOperationExecutionServiceImpl`、`ProductionTaskService`、`ProductionOrderStartTransactionService`（开工独立事务，避免自锁）
 - 定时：`ProductionOrderTimeoutTask`（超期工单）
 - 前端：`views/production/**`（order / dispatch / execution / equipment / trace / report / quality）
+
+## 口径（2026-09-22 ~ 23 定案）
+
+### 1. 工单完工数 = 有效检验批合格累计
+
+- 有效批 = **无后继版本的检验批**；工单 `completed_quantity` 取其合格量累计，**不再用「判定即累计」**；
+- 复检换代 / 红冲后**自动重算**（`syncFinishInbound(orderId, "复检换代重算：…")`，dev-20260923-022），不只靠判定那一次回写；
+- 历史事故：工单显示 200 而有效合格只剩 100（换代/红冲不重算）——现已闭环；门禁：`check-inbound-lot-integrity.sh` ⑦。
+
+### 2. 补报 / 补产（净损失可补）
+
+- 任务或工序**已完成**时仍允许补报：放行上限 = `min(工序投料量, 工单计划量) × (1 + 损耗率)`；
+- 损耗率 = `sys_config` 的 `production.report.overrun-rate`（**缺省 5%**）；
+- 报废/不良造成净损失后，工单面板显示「**待补产 + 缺口 N 件 + 一句原因**」，补报弹窗按缺口预填（dev-20260923-028）。
+
+### 3. 完工收口门禁
+
+- 必须过 FQC：无待检记录、无未处置不良余量、累计合格成品数 ≥ 计划数量；口径 = FQC PASS 的 `passQty`（沿用）；
+- 与「入库」档的衔接（数量对账栏）见 dev-20260923-024（待做）。
+
+### 4. 单号
+
+- 业务单号一律走 `sys_number_sequence`，**默认 3 位流水 + 溢出告警**；工单/主单前缀调整见 `design/doc-no-rules-dev-20260922-023.md`（第 5 批 A 方案，迁移 207 已落盘但**未执行**）；
+- 巡检：`scripts/check-doc-no.sh`（已接进 `npm run validate`）。
 
 ## 历史（"当年为什么这样"才看）
 
