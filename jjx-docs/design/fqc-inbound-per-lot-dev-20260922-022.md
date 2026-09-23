@@ -145,3 +145,28 @@ FQC 闭环方案 v3（dev-20260909-005）取向是"零新表、最小改动"：�
 2. 021 稿"019/020 进行中"——**020 已交付**（提交 d9802cc2，口径 B 含冲减）；019 的对账门禁已落地（`scripts/check-stock-summary.sh` 进 validate），唯一入口仍待做。
 3. 增补两条风险：唯一键 NULL 语义、VSCode Java 插件污染 `target/classes` 造成假编译通过。
 4. 增补"应入量唯一口径"（§3.1）与"入库单明细 lot_id 覆盖率巡检"建议（§6）。
+
+## 11. 收尾实施记录（2026-09-23，Hermes）
+
+**背景**：本方案定稿前，另一会话已按 021 稿先行实现了一版（提交 **3e53498b**，自称任务码 dev-20260922-028 —— 该码当时在 `sys_task` 中不存在，已由 Hermes 补登记为 **task 2170 / dev-20260922-028**，不追改历史提交）。
+
+**它已实现（可复用）**：判定按检验批出单 `createFromProduction(orderId, lotId, passQuantity)`；入库明细写 `lot_id`；单号从属式 `<工单号>-FI<2位>`；复检必须覆盖整批；库存数量唯一写入口 `InventoryStockMutationService`（019）；返工闭环 UI；成品检验页删「同步入库」按钮。
+
+**它遗留的问题（本次收尾）**：
+1. 旧路径未拆 → 双轨：`judgeLot` 仍调 `syncFinishInbound`（工单级应入），完工/重试路径仍建工单级单 `FINISH-<工单号>`，且其防重只查旧前缀 `FINISH-<工单号>-FQC-`，与新单名 `<工单号>-FI01` 不匹配 ⇒ 防重失效 ⇒ **双倍入库风险**。
+2. 复检换代（v1 失效）时原批那张单没有动作（既不作废也不红冲）。
+3. 批次号写成 `BATCH-<工单号>-<lotId 数字>`（不符合「按批号 + 短」口径）。
+4. 批量确认入库未做。
+
+**用户 2026-09-22 拍板口径（本方案据此收尾）**：复检选 **A 红冲+重出**；单号用**从属式**；批次号**一并缩短**；批量确认**一起做**；前置顺序认可；存量**不迁移**、红冲单**单独标识**。
+
+**本次实施（提交 d394b293 后端 3 文件 + 17327026 前端 1 文件）**：
+- ① `createFromProduction` 的 `lotId == null` 分支防重改为「该工单已存在任何未取消的生产入库单即不新建」→ 彻底堵住工单级单与批单并存。
+- ② `lotId != null` 分支的幂等改为「同批改判 → 更新该批单应入量；已过账则退回待确认」→ 与 020「加/减都要仓库确认」一致。
+- ③ 明细批次号改为 **`BATCH-<检验批号>`**（取不到批号回退 lotId）；老批次 `BATCH-<工单号>` 保留共存。
+- ④ 新增 `handleSupersededLotInbound`（复检换代：原批单未过账→**作废**；已过账→生成**红冲单**（负数量、待仓库确认，确认时走 020 的冲减分支）），并把 `reinspectLot` 里原来的「工单级 target=0 冲销」替换掉（那句会把整张工单级单冲掉）。
+- ⑤ 前端：入库作业页新增「批量确认入库」（多选 → 逐单独立提交 → 汇总成功/失败）+ 红冲单在单号列加红色「红冲」标识。
+
+**验证**：清掉 IDE 污染 class 后 javac 全量编译 `BUILD SUCCESS`；`InventoryOutboundInvariantTest(3) / InventoryStockMutationServiceTest(4) / InventoryTransactionContractTest(6) / PurchaseIqcValidationTest(2)` 全绿；`npm run validate` exit 0（含 collation、库存对账两道 DB 门禁）。
+
+**尚未完成（待用户执行）**：迁移 `202_unify_business_number_rules.sql` 未执行（`ops.schema.applied` 只到 201）；后端未重启。实测三步：① 判定一个批 → 只应产生 **1 张**批次入库单 ② 仓库确认 → 库存**只加一次**（`check:stock:strict` 保持 0）③ 复检换代 → 原批单应**作废**或出现**红冲单**待确认，净额正确。
