@@ -54,6 +54,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 **验证**：执行后必须 `md5sum` + `grep -c "CREATE TABLE"` 抽查，并在汇报里给出 md5。
 **保留与清理（脚本自动）**：全库快照**每日只留最新一份**；三类快照超过 `KEEP_DAYS`（默认 14 天）自动删除；只动本脚本产物（`jjx_erp_db_backup_*` / `jjx_table_backup_*` / `jjx_schema_snapshot_*`），其它文件只提示不删。发布里程碑备份另行转移到团队外部存储长期保留。
+**2026-09-23 用户确认**：该保留策略**同样适用于仓库内** `jjx-docs/sql/backups/`——仓内旧 dump 允许由脚本清理（每日只留最新一份全库快照），但删除必须登记 `backup-index.tsv`（留痕）；表级 guard 备份（`sys_task_register_*` 等）**同样入库**（用户选定方案①）。
 **Git**：备份产物**默认入库并推送**（`.gitignore` 对 `jjx-docs/sql/backups/*.sql` 的忽略已于 2026-09-23 移除）；导出时**必须默认排除 `hr_employee`**，其它表可以入库。移除仓库口径的存量备忘：2026-09-22 曾有把历史 dump 移出仓库到 `~/jjx-backups/legacy-inrepo_20260922-*` 的动作，不回滚。**注意：仓库为公开，入库即永久留在 git 历史（改写历史属 §5 禁区）**，所以「排除人事档案」是硬要求。
 **禁止**：备份写入 `memory/` 或临时目录（`/tmp`）。
 
@@ -64,7 +65,8 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   因 §2 现已默认忽略 `backups/*.sql`，入库需 `git add -f`；该文件作为“迁移链已移出仓库”后的**基线恢复 dump**。
 已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260922-1940_no-hr-employee.sql`（任务码 dev-20260922-027，2026-09-22 19:39 用户「数据库备份也是最新的吗 执行一下备份脚本提交」）：
   同口径刷新（`scripts/db-backup.sh --exclude-table hr_employee`，113 表 / 5667142B / md5 f3202cc2edc94daed0671e5b50655fff）；覆盖 12:11 那版之后的迁移 198~201（产品类型归一 / 质量菜单改名 / AI 菜单 / sys_config 列加长）与今日数据改动。
-  旧版 1211 仍在仓库（**未删**；如需删除属备份存量清理，须用户确认后独立任务+独立提交）。
+  旧版 1211 未删（如需删除属备份存量清理，须用户确认后独立任务+独立提交）。
+**2026-09-23 22:12 用户拍板「清」**：1211（5,502,714B）与 1940（5,667,142B）两份已随**存量清理**删除（任务码 dev-20260923-055，独立提交），仓内只留最新的 `jjx_erp_db_backup_20260923-2132.sql`（113 表 / 5,827,559B / md5 1a6df7baad3d864212aac093d1fa63b3）；同日另定：表级 guard 备份同样入库。
 已备案：`jjx-docs/sql/init/jjx_erp_db_backup_*_init-data-subset.sql`（**初始化数据交付物**，不是例行备份：按清单 `jjx-docs/sql/init/init-subset-tables.txt` 滚动重出，Git 只留最新一份；自任务码 dev-20260914-001 起）。
 
 ---
