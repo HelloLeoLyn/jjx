@@ -83,4 +83,17 @@ public interface QualityLotService {
      * @return 处理的批数
      */
     int markOrderFinishedStored(Long orderId);
+
+    /**
+     * 守卫同源（dev-20260923-039 第二片）：校验该批当前是否允许某动作。
+     * 判据与接口下发的 {@code allowedActions} **同一处**（AllowedActionResolver），
+     * 不允许则抛出与前端提示同源的文案（含原因），避免各入口再写 status if。
+     */
+    void assertAction(QualityLot lot, com.jjx.common.enums.AllowedActionEnum action);
+
+    /**
+     * 该批是否还有未处置不良（dev-20260923-039：有则不给批级动作，引导去不良台账）。
+     * 口径：quality_ncr 中 status ∈ (PENDING, DISPOSING) 且 defect_quantity > disposed_quantity。
+     */
+    boolean hasOpenDefect(Long lotId);
 }

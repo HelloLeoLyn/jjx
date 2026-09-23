@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.enums.AllowedActionEnum;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.domain.entity.QualityLotItem;
+import com.jjx.quality.domain.entity.QualityNcr;
 import com.jjx.quality.dto.FqcCompletionSummary;
 import com.jjx.quality.dto.QualityLotCreateDTO;
 import com.jjx.quality.dto.QualityLotItemDTO;
@@ -19,6 +21,7 @@ import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.quality.mapper.QualityNcrMapper;
 import com.jjx.quality.mapper.QualityNcrActionMapper;
 import com.jjx.quality.service.QualityLotService;
+import com.jjx.quality.service.support.AllowedActionResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -119,6 +122,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (lot == null) {
             throw new BusinessException("检验批不存在: " + lotId);
         }
+        // dev-20260923-039：详情也下发 allowedActions（列表/详情同一口径）
+        fillReinspectInfo(new ArrayList<>(List.of(lot)));
         return lot;
     }
 
@@ -143,19 +148,23 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (StringUtils.isBlank(sourceType) || sourceId == null) {
             return new ArrayList<>();
         }
-        return lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+        List<QualityLot> lots = lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
                 .eq(QualityLot::getSourceType, sourceType)
                 .eq(QualityLot::getSourceId, sourceId)
                 .orderByAsc(QualityLot::getVersion)
                 .orderByAsc(QualityLot::getLotId));
+        fillReinspectInfo(lots);
+        return lots;
     }
 
     @Override
     public List<QualityLot> listByOrder(Long orderId, Long executionId) {
-        return lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+        List<QualityLot> lots = lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
                 .eq(orderId != null, QualityLot::getOrderId, orderId)
                 .eq(executionId != null, QualityLot::getExecutionId, executionId)
                 .orderByAsc(QualityLot::getLotId));
+        fillReinspectInfo(lots);
+        return lots;
     }
 
     @Override
@@ -218,8 +227,28 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 }
             }
         }
+        // dev-20260923-039（第二片）：「有未处置不良」也算进动作判据（有则不给批级动作，引导去不良台账）
+        Set<Long> withOpenDefect = new HashSet<>();
+        if (!ids.isEmpty()) {
+            List<QualityNcr> openNcrs = ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
+                    .select(QualityNcr::getLotId)
+                    .in(QualityNcr::getLotId, ids)
+                    .in(QualityNcr::getStatus, "PENDING", "DISPOSING")
+                    .apply("defect_quantity > disposed_quantity"));
+            if (openNcrs != null) {
+                for (QualityNcr ncr : openNcrs) {
+                    if (ncr.getLotId() != null) {
+                        withOpenDefect.add(ncr.getLotId());
+                    }
+                }
+            }
+        }
         for (QualityLot lot : lots) {
-            lot.setSuperseded(superseded.contains(lot.getLotId()));
+            boolean isSuperseded = superseded.contains(lot.getLotId());
+            lot.setSuperseded(isSuperseded);
+            // dev-20260923-039（第二片）：allowedActions 由唯一出处算好下发，前端只按它渲染
+            lot.setAllowedActions(AllowedActionEnum.codesOf(AllowedActionResolver.forLot(
+                    lot.getStatus(), isSuperseded, withOpenDefect.contains(lot.getLotId()))));
         }
     }
 
@@ -246,6 +275,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (!isLatestVersion(lotId)) {
             throw new BusinessException("该批已存在复检新版本，请对最新版本操作");
         }
+        // dev-20260923-039：守卫同源 —— 录入也走唯一出处（批级动作在有未处置不良时不可用）
+        assertAction(lot, AllowedActionEnum.LOT_INSPECT);
         itemMapper.delete(new LambdaQueryWrapper<QualityLotItem>().eq(QualityLotItem::getLotId, lotId));
         if (items == null || items.isEmpty()) {
             return;
@@ -293,6 +324,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (!isLatestVersion(lotId)) {
             throw new BusinessException("该批已存在复检新版本，请对最新版本判定");
         }
+        // dev-20260923-039：守卫同源（判定）
+        assertAction(lot, AllowedActionEnum.LOT_JUDGE);
         BigDecimal inspected = nz(inspectedQuantity);
         BigDecimal pass = nz(passQuantity);
         BigDecimal fail = nz(failQuantity);
@@ -382,6 +415,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (!isLatestVersion(lotId)) {
             throw new BusinessException("该批已有复检新版本，请对最新版本操作");
         }
+        // dev-20260923-039：守卫同源（重开）
+        assertAction(lot, AllowedActionEnum.LOT_REOPEN);
         String r = reason == null ? "" : reason.trim();
         if (r.isEmpty()) {
             throw new BusinessException("重开必须填写原因（用于留痕）");
@@ -660,6 +695,35 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
             return new BigDecimal(String.valueOf(v));
         } catch (Exception e) {
             return BigDecimal.ZERO;
+        }
+    }
+
+    // ==================== dev-20260923-039：状态×动作唯一出处的守卫同源 ====================
+
+    @Override
+    public boolean hasOpenDefect(Long lotId) {
+        if (lotId == null) {
+            return false;
+        }
+        Long cnt = ncrMapper.selectCount(new LambdaQueryWrapper<QualityNcr>()
+                .eq(QualityNcr::getLotId, lotId)
+                .in(QualityNcr::getStatus, "PENDING", "DISPOSING")
+                .apply("defect_quantity > disposed_quantity"));
+        return cnt != null && cnt > 0;
+    }
+
+    @Override
+    public void assertAction(QualityLot lot, AllowedActionEnum action) {
+        if (lot == null || action == null) {
+            return;
+        }
+        boolean superseded = lot.getLotId() != null && !isLatestVersion(lot.getLotId());
+        boolean openDefect = hasOpenDefect(lot.getLotId());
+        List<AllowedActionEnum> allowed = AllowedActionResolver.forLot(
+                lot.getStatus(), superseded, openDefect);
+        if (!allowed.contains(action)) {
+            throw new BusinessException(AllowedActionResolver.lotBlockReason(
+                    lot.getStatus(), superseded, openDefect));
         }
     }
 }

@@ -25,13 +25,17 @@ public final class AllowedActionResolver {
     /**
      * 检验批可用动作。
      *
-     * @param status            批状态：PENDING / INSPECTING / JUDGED / CLOSED
-     * @param superseded        是否已被后继复检版本取代（派生：存在子批）
-     * @param paidOnDisposition 是否还有未处置不良（有则引导去不良台账，不给批级动作）
+     * @param status        批状态：PENDING / INSPECTING / JUDGED / CLOSED
+     * @param superseded    是否已被后继复检版本取代（派生：存在子批）
+     * @param hasOpenDefect 是否还有未处置不良（有则引导去不良台账，不给批级动作）
      */
-    public static List<AllowedActionEnum> forLot(String status, boolean superseded, boolean paidOnDisposition) {
+    public static List<AllowedActionEnum> forLot(String status, boolean superseded, boolean hasOpenDefect) {
         if (superseded) {
             // 失效批一律只读（034 的教训：界面不能给注定失败的动作）
+            return List.of();
+        }
+        if (hasOpenDefect) {
+            // 有未处置不良 → 不给批级动作，引导去不良台账处置（方案 §3.2 总表；039 第二片接线）
             return List.of();
         }
         List<AllowedActionEnum> actions = new ArrayList<>();
@@ -52,8 +56,16 @@ public final class AllowedActionResolver {
 
     /** 检验批被拒绝时的统一文案（守卫与前端提示同源） */
     public static String lotBlockReason(String status, boolean superseded) {
+        return lotBlockReason(status, superseded, false);
+    }
+
+    /** 同上，含「有未处置不良」分支（dev-20260923-039 第二片：批级动作让位给不良台账） */
+    public static String lotBlockReason(String status, boolean superseded, boolean hasOpenDefect) {
         if (superseded) {
             return "该批已被后续复检版本取代（已失效），只能查看/打印——请对最新版本操作";
+        }
+        if (hasOpenDefect) {
+            return "该批还有未处置的不良，请先到「产品不良台账」处置完再操作本批";
         }
         String s = status == null ? "" : status.trim().toUpperCase();
         return switch (s) {

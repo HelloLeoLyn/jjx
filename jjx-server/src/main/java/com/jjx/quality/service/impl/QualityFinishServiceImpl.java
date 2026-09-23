@@ -133,6 +133,8 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         if (!qualityLotService.isLatestVersion(lotId)) {
             throw new BusinessException("该批已有复检新版本，请对最新版本操作");
         }
+        // dev-20260923-039：守卫同源（复检）—— 与列表下发的 allowedActions 同一判据
+        qualityLotService.assertAction(old, com.jjx.common.enums.AllowedActionEnum.LOT_REINSPECT);
         QualityLotCreateDTO dto = new QualityLotCreateDTO();
         dto.setLotType(old.getLotType());
         dto.setSourceType(old.getSourceType());

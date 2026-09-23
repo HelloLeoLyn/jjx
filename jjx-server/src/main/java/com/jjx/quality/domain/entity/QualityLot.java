@@ -91,6 +91,14 @@ public class QualityLot {
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean superseded;
 
+    /**
+     * 允许动作（唯一出处下发，不落库）—— dev-20260923-039：
+     * 由 {@code AllowedActionResolver.forLot(状态, 是否失效, 是否有未处置不良)} 算出，
+     * 接口下发后前端只按它渲染按钮，页面不再写状态条件。
+     */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private java.util.List<String> allowedActions;
+
     private String inspector;
     private Long reviewerId;
     private String reviewerName;

@@ -81,6 +81,11 @@ export interface QualityLot {
   parentLotNo?: string
   /** dev-20260922-012（G5）：本批已有后继复检版本（已被取代，不能再录入/判定） */
   superseded?: boolean
+  /**
+   * 允许动作（后端唯一出处下发）—— dev-20260923-039：
+   * 取值 LOT_INSPECT / LOT_JUDGE / LOT_REINSPECT / LOT_REOPEN；前端只按它渲染按钮，不写状态条件。
+   */
+  allowedActions?: string[]
   inspector?: string
   inspectTime?: string
   remark?: string

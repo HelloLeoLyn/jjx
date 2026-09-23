@@ -121,7 +121,7 @@
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="canInspect && isEditable(row)"
+              v-if="canInspect && can(row, 'LOT_INSPECT')"
               link
               type="primary"
               size="small"
@@ -130,7 +130,7 @@
               >录入</el-button
             >
             <el-button
-              v-if="canJudge && isEditable(row)"
+              v-if="canJudge && can(row, 'LOT_JUDGE')"
               link
               type="success"
               size="small"
@@ -139,7 +139,7 @@
               >判定</el-button
             >
             <el-button
-              v-if="canJudge && isJudged(row)"
+              v-if="canJudge && can(row, 'LOT_REINSPECT')"
               link
               type="warning"
               size="small"
@@ -150,7 +150,7 @@
             <!-- dev-20260922-030（用户拍板 A）：批在"入库+处置"双完成后自动 CLOSED，之后不能复检；
                  这里给一个显式「重开」（必须填原因，留痕），重开后回到已判定即可复检 -->
             <el-button
-              v-if="canJudge && isClosed(row)"
+              v-if="canJudge && can(row, 'LOT_REOPEN')"
               link
               type="danger"
               size="small"
@@ -316,13 +316,10 @@ const canJudge = computed(() => hasPermi('quality:lot:judge'))
 const busyLotId = ref<number | null>(null)
 // dev-20260923-034：已被后继复检版本取代的批（列表里带「已失效」标签）一律只读 ——
 // 原来按钮只看状态，失效批仍显示「复检」，点下去必被后端拒（该批已有复检新版本），界面给了注定失败的动作。
-/** 待检/检验中 = 可录入、可判定（失效批除外） */
-const isEditable = (row: QualityLot) =>
-  !row.superseded && ['PENDING', 'INSPECTING'].includes(String(row.status))
-/** 已判定 = 可复检（失效批除外） */
-const isJudged = (row: QualityLot) => !row.superseded && row.status === 'JUDGED'
-/** dev-20260922-030：已关闭 = 合格全入库 + 不良全处置（可显式重开后再复检；失效批除外） */
-const isClosed = (row: QualityLot) => !row.superseded && row.status === 'CLOSED'
+// dev-20260923-039（第二片）：改为**只按后端下发的 allowedActions 渲染**（唯一出处 = AllowedActionResolver），
+// 前端不再写任何状态条件（isEditable / isJudged / isClosed 已删除）；权限点仍由 hasPermi 卡一道。
+const can = (row: QualityLot, code: string) =>
+  Array.isArray(row?.allowedActions) && row.allowedActions.includes(code)
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
 const title = props.lotType === 'IQC' ? '来料检验' : props.lotType === 'OQC' ? '出货检验' : '成品检验'
 const lotType = props.lotType
