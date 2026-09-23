@@ -128,6 +128,12 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     java.math.BigDecimal syncFinishInbound(Long orderId, Long lotId, java.math.BigDecimal targetQuantity, String reason);
 
     /**
+     * dev-20260923（022 收尾）：复检换代后处理原检验批那张入库单 ——
+     * 未过账直接作废；已过账生成红冲单（负数量）等仓库确认入库。
+     */
+    void handleSupersededLotInbound(Long lotId, String reason);
+
+    /**
      * 成品库存定向调整（dev-20260917-008 不良处置联动）：
      * 让步接收（特采）→ +quantity 入良品库存并写 ADJUST 凭证（带 lotId/ncrId + 特采标记）；
      * 报废在"只入合格数"的口径下不产生扣减（不良品从未入良品库），故只记台账。

@@ -2065,13 +2065,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         // 2. 创建入库单
         if (lotId == null) {
-            Long partialCount = inboundOrderMapper.selectCount(
+            // dev-20260923（022 收尾 · 防重复入库）：旧防重只查 "FINISH-<工单号>-FQC-" 前缀，而按检验批出单
+            // 后的新单名是 "<工单号>-FI<NN>" → 匹配不到，导致完工/重试路径照样再建一张工单级单，
+            // 与批单叠加后仓库都确认即双倍入库。现改为：该工单只要已有任何未取消的生产入库单就不新建。
+            Long existingAny = inboundOrderMapper.selectCount(
                     new LambdaQueryWrapper<InventoryInboundOrder>()
                             .eq(InventoryInboundOrder::getSourceType, "PRODUCTION")
                             .eq(InventoryInboundOrder::getSourceId, workOrderId)
-                            .likeRight(InventoryInboundOrder::getInboundNo, "FINISH-" + prodOrder.getOrderNo() + "-FQC-"));
-            if (partialCount != null && partialCount > 0) {
-                log.info("工单{}已按FQC分批入库，完工时不再重复入库", workOrderId);
+                            .ne(InventoryInboundOrder::getOrderStatus, InventoryOrderStatusEnum.CANCELLED.getValue()));
+            if (existingAny != null && existingAny > 0) {
+                log.info("工单{}已存在生产入库单（按批或历史），完工/重试路径不再重复建单", workOrderId);
                 return null;
             }
         }
@@ -2082,6 +2085,24 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                             .orderByAsc(InventoryInboundItem::getItemId)
                             .last("LIMIT 1"));
             if (existingLotItem != null) {
+                // dev-20260923（022 收尾）：同一批「再次判定/改判」→ 更新该批单的应入量；
+                // 已过账则退回「待确认」，由仓库点确认入库按差额过账（加/减都走确认，见 dev-20260922-020）。
+                InventoryInboundOrder existOrder = inboundOrderMapper.selectById(existingLotItem.getInboundId());
+                BigDecimal oldQty = existingLotItem.getQuantity() == null ? BigDecimal.ZERO : existingLotItem.getQuantity();
+                BigDecimal newQty = inspectedPassQty == null ? oldQty : inspectedPassQty;
+                if (existOrder != null && newQty.compareTo(oldQty) != 0) {
+                    existingLotItem.setQuantity(newQty);
+                    inboundItemMapper.updateById(existingLotItem);
+                    existOrder.setTotalQuantity(newQty);
+                    if (isPostedInboundStatus(existOrder.getOrderStatus())) {
+                        existOrder.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+                    }
+                    existOrder.setRemark(appendRemark(existOrder.getRemark(),
+                            "成品检验改判：" + oldQty.toPlainString() + " → " + newQty.toPlainString() + "，待确认入库"));
+                    inboundOrderMapper.updateById(existOrder);
+                    log.info("成品检验批改判已更新批单: lotId={} order={} {} -> {}",
+                            lotId, existOrder.getInboundNo(), oldQty.toPlainString(), newQty.toPlainString());
+                }
                 return existingLotItem.getInboundId();
             }
         }
@@ -2153,8 +2174,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 ? prodOrder.getFinishedQuantity()
                 : (prodOrder.getCompletedQuantity() != null ? prodOrder.getCompletedQuantity() : prodOrder.getPlannedQuantity());
         inboundItem.setQuantity(inboundQty);
+        // dev-20260923（022 收尾）：批次号按用户口径改为 BATCH-<检验批号>（批号全局唯一、短且可读）；
+        // 取不到批号时回退 lotId，保证仍有唯一值。老批次 BATCH-<工单号> 保留共存。
+        String lotNoForBatch = null;
+        if (lotId != null) {
+            com.jjx.quality.domain.entity.QualityLot lotForBatch = qualityLotMapper.selectById(lotId);
+            lotNoForBatch = lotForBatch == null ? null : lotForBatch.getLotNo();
+        }
         inboundItem.setBatchNo(lotId == null ? "BATCH-" + prodOrder.getOrderNo()
-                : "BATCH-" + prodOrder.getOrderNo() + "-" + lotId);
+                : "BATCH-" + (lotNoForBatch != null ? lotNoForBatch : lotId));
         inboundItem.setSortOrder(1);
         inboundItemMapper.insert(inboundItem);
 
@@ -2397,6 +2425,81 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         String base = origin == null ? "" : origin.trim();
         String next = base.isEmpty() ? addition : base + " ｜ " + addition;
         return next.length() > 500 ? next.substring(0, 500) : next;
+    }
+
+    /**
+     * dev-20260923（022 收尾 · 复检换代）：处理「原检验批」那张入库单。
+     * · 未过账 → 直接作废（备注原因），不再占着待确认位；
+     * · 已过账 → 生成一张**红冲单**（负数量、待仓库确认入库；确认时走 dev-20260922-020 的冲减分支）。
+     * 取代原先「按工单 target=0 冲销」的写法——那会把整张工单级单冲掉，与按批单叠加导致重复入库。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void handleSupersededLotInbound(Long lotId, String reason) {
+        if (lotId == null) {
+            return;
+        }
+        InventoryInboundItem lotItem = inboundItemMapper.selectOne(new LambdaQueryWrapper<InventoryInboundItem>()
+                .eq(InventoryInboundItem::getLotId, lotId)
+                .orderByAsc(InventoryInboundItem::getItemId)
+                .last("LIMIT 1"));
+        if (lotItem == null) {
+            return;
+        }
+        InventoryInboundOrder order = inboundOrderMapper.selectById(lotItem.getInboundId());
+        if (order == null) {
+            return;
+        }
+        String tag = reason == null ? "复检换代" : reason;
+        if (!isPostedInboundStatus(order.getOrderStatus())) {
+            order.setOrderStatus(InventoryOrderStatusEnum.CANCELLED.getValue());
+            order.setRemark(appendRemark(order.getRemark(), "作废（" + tag + "）"));
+            inboundOrderMapper.updateById(order);
+            log.info("原批入库单已作废: order={} lotId={} reason={}", order.getInboundNo(), lotId, tag);
+            return;
+        }
+        BigDecimal posted = Objects.requireNonNullElse(lotItem.getPostedQuantity(), BigDecimal.ZERO);
+        if (posted.signum() <= 0) {
+            return;
+        }
+        String reverseNo = order.getInboundNo() + "-R";
+        Long dup = inboundOrderMapper.selectCount(new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getInboundNo, reverseNo));
+        if (dup != null && dup > 0) {
+            log.info("红冲单已存在，跳过: {}", reverseNo);
+            return;
+        }
+        InventoryInboundOrder reverse = new InventoryInboundOrder();
+        reverse.setInboundNo(reverseNo);
+        reverse.setInboundType(order.getInboundType());
+        reverse.setSourceType(order.getSourceType());
+        reverse.setSourceId(order.getSourceId());
+        reverse.setSourceNo(order.getSourceNo());
+        reverse.setTraceId(order.getTraceId());
+        reverse.setWarehouseId(order.getWarehouseId());
+        reverse.setLocationId(order.getLocationId());
+        reverse.setInboundDate(java.time.LocalDate.now());
+        reverse.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        reverse.setTotalQuantity(posted.negate());
+        reverse.setRemark("红冲 " + order.getInboundNo() + "（" + tag + "），待确认入库");
+        inboundOrderMapper.insert(reverse);
+
+        InventoryInboundItem reverseItem = new InventoryInboundItem();
+        reverseItem.setInboundId(reverse.getInboundId());
+        reverseItem.setInventoryItemId(lotItem.getInventoryItemId());
+        reverseItem.setMaterialId(lotItem.getMaterialId());
+        reverseItem.setMaterialCode(lotItem.getMaterialCode());
+        reverseItem.setMaterialName(lotItem.getMaterialName());
+        reverseItem.setQuantity(posted.negate());
+        reverseItem.setBatchNo(lotItem.getBatchNo());
+        reverseItem.setLotId(lotId);
+        reverseItem.setSortOrder(1);
+        reverseItem.setRemark("红冲 " + order.getInboundNo());
+        inboundItemMapper.insert(reverseItem);
+
+        publishInboundEvent("inventory.inbound.created_from_production", reverse.getInboundId());
+        log.info("已生成红冲单: {} 冲减 {}（原单 {}，lotId={}）", reverseNo, posted.toPlainString(),
+                order.getInboundNo(), lotId);
     }
 
     /**

@@ -126,8 +126,9 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         }
         dto.setItems(items);
         if ("FQC".equals(old.getLotType()) && old.getOrderId() != null) {
-            inventoryInboundService.syncFinishInbound(old.getOrderId(), old.getLotId(), BigDecimal.ZERO,
-                    "复检冲销原检验批：" + old.getLotNo());
+            // dev-20260923（022 收尾）：复检换代 → 原批那张入库单按口径处理（未过账作废 / 已过账红冲单待确认）。
+            // 不再用「工单级 target=0 冲销」——那会把整张工单级单冲掉，与按批单叠加导致重复入库。
+            inventoryInboundService.handleSupersededLotInbound(old.getLotId(), "复检换代：" + old.getLotNo());
         }
         QualityLot created = qualityLotService.createLot(dto);
         log.info("复检已建新版本: 原批={} 新批={} version={}", old.getLotNo(), created.getLotNo(), created.getVersion());
