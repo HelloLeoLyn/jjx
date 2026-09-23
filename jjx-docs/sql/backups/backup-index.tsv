@@ -95,3 +95,7 @@ sys_menu_hide_product_instance_20260923-1906.sql	2026-09-23 19:06:55	dev-2026092
 sys_notification_eventcode_backfill_20260923-1929.sql	2026-09-23 19:29:34	dev-20260921-014	回填 sys_notification.event_code 前 guard（表级）	b0b803beeeab36a2f9d22d8bd9f5f82f
 2026-09-23 19:29:35	full	jjx_erp_db_backup_20260923-1929_before-210.sql	c0d4d27f8330df192ae1869e6ec41313	5802022	113	agent	dev-20260921-014
 sys_task_register_20260923-1932_before-014-d.sql	2026-09-23 19:32:13	dev-20260921-014	登记 D 任务（变量注册表自动化）前 guard	8f334f9dad80f2bb3431e6977be31812
+2026-09-23 17:20:00	guard	guard_2pcs_correction_20260923-1720.sql	01f1890fb234b54f99f81f7f9ede338c	70529	10	Hermes	dev-20260923-021
+2026-09-23 18:37:00	guard	guard_rework_demo_20260923-1837.sql	819395e5397a42e874b97b1a57cc35d8	92395	13	Hermes	dev-20260923-031
+2026-09-23 19:29:00	guard	quality_ncr_superseded_void_20260923-1929.sql	7d334016268f542690f813a2a5e2c692	8430	2	Hermes	dev-20260923-036
+2026-09-23 19:43:00	guard	quality_ncr_action_reinspection_link_20260923-1943.sql	a9456c639b7c885313a01073aaba3b8f	3873	1	Hermes	dev-20260923-033
