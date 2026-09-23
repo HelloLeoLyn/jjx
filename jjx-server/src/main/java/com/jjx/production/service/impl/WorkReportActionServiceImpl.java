@@ -314,7 +314,15 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
      * 避免"报工已通过但没有 FQC"的静默断链。
      */
     private void createFqcLotIfFinal(ProductionWorkReport r) {
-        if (r.getExecutionId() == null || !finalProcessResolver.isFinalExecution(r.getExecutionId())) {
+        if (r.getExecutionId() == null) {
+            return;
+        }
+        // dev-20260923-033：返工工序（execution_type=REWORK）同样要复检 —— 返工完工必须重新检验才能回收良品。
+        // 返工工序是追加的普通工序（is_final_process=0），原实现会被下面那句直接 return，
+        // 结果：返工报了工却没有复检批、没有回收入口，处置永远停在执行中（A1 实测）。
+        String reworkNcrNo = reworkNcrNoOf(r.getExecutionId());
+        boolean rework = reworkNcrNo != null;
+        if (!rework && !finalProcessResolver.isFinalExecution(r.getExecutionId())) {
             return;
         }
         BigDecimal lotQuantity = safe(r.getQualifiedQuantity()).add(safe(r.getDefectiveQuantity()));
@@ -332,8 +340,10 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         dto.setOrderId(r.getOrderId());
         dto.setExecutionId(r.getExecutionId());
         dto.setLotQuantity(lotQuantity);
-        dto.setRemark("末道工序报工审批通过自动建成品检验批："
-                + (r.getReportNo() == null ? "" : r.getReportNo()));
+        dto.setRemark(rework
+                ? "返工复检（源自 " + reworkNcrNo + "）：" + (r.getReportNo() == null ? "" : r.getReportNo())
+                : "末道工序报工审批通过自动建成品检验批："
+                        + (r.getReportNo() == null ? "" : r.getReportNo()));
         try {
             jdbcTemplate.queryForObject(
                     "SELECT product_id, product_code, product_name FROM production_order WHERE order_id = ?",
@@ -347,8 +357,22 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         }
         // fail-closed：建批失败直接抛，随 approve() 事务回滚（不再 catch 吞掉）
         com.jjx.quality.domain.entity.QualityLot lot = qualityLotService.createLot(dto);
-        log.info("末道工序报工审批通过，已建成品检验批: lotNo={} 报工={} 批量={}",
+        log.info("{}报工审批通过，已建成品检验批: lotNo={} 报工={} 批量={}",
+                rework ? "返工工序" : "末道工序",
                 lot.getLotNo(), r.getReportNo(), lotQuantity.toPlainString());
+    }
+
+    /** 该工序是否为返工工序；是则返回来源不良单号（否则 null）—— dev-20260923-033 */
+    private String reworkNcrNoOf(Long executionId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT n.ncr_no FROM quality_ncr_action a JOIN quality_ncr n ON n.ncr_id = a.ncr_id "
+                            + "WHERE a.rework_execution_id = ? AND a.action_type = 'REWORK' "
+                            + "ORDER BY a.action_id DESC LIMIT 1",
+                    String.class, executionId);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static BigDecimal safe(BigDecimal value) {

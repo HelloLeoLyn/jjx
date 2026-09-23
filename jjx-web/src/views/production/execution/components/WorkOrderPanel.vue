@@ -91,7 +91,14 @@ import { fmtQty } from '../utils'
 type WorkOrderTab = 'current' | 'history'
 type WorkOrderScope = 'mine' | 'all'
 
-defineProps<{ canViewAll: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    canViewAll: boolean
+    /** dev-20260923-033：从不良台账「去派工」跳进来时带的目标工单（自动选中，只生效一次） */
+    initialOrderId?: number | null
+  }>(),
+  { initialOrderId: null }
+)
 const emit = defineEmits<{
   select: [order: ProductionOrderVO | null, scope: WorkOrderScope, tab: WorkOrderTab]
   completed: [orderId: number]
@@ -193,7 +200,22 @@ const loadOrders = async () => {
     loading.value = false
   }
   await loadCompletionStatus()
-  await selectFirstOrder()
+  if (!applyInitialOrder()) {
+    await selectFirstOrder()
+  }
+}
+
+/** dev-20260923-033：带目标工单跳进来时自动选中它（避免用户自己翻页找） */
+const initialOrderApplied = ref(false)
+const applyInitialOrder = () => {
+  if (initialOrderApplied.value || !props.initialOrderId) return false
+  const target = orders.value.find(
+    (row) => Number(row.orderId) === Number(props.initialOrderId)
+  )
+  if (!target) return false
+  initialOrderApplied.value = true
+  selectOrder(target)
+  return true
 }
 
 /** 工单级收口状态（批量，决定「完成」按钮显隐） */

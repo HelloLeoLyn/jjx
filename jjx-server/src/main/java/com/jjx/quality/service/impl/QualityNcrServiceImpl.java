@@ -488,11 +488,50 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         task.setTaskQuantity(quantity);
         task.setStatus("PENDING");
         task.setVersion(0);
+        // dev-20260923-033：返工工序必须有责任人 —— 默认派给该工单的「一级负责人」（取该工单根任务责任人）。
+        // 取不到就 fail-closed：宁可不建工序，也不要生成一条没人能看到、没人能报工的返工任务
+        // （实测：原实现 assignee 为空 → 「我的任务」里看不到 → 返工永远停在"执行中"）。
+        Long firstLevelAssignee = resolveOrderFirstLevelAssignee(ncr.getOrderId());
+        if (firstLevelAssignee == null) {
+            throw new BusinessException("返工工序需要有责任人：该工单还没有一级负责人，"
+                    + "请先在「工序执行」页把工序派给负责人后再登记返工");
+        }
+        task.setAssigneeId(firstLevelAssignee);
         task.setCreateBy(action.getOperatorName());
         taskMapper.insert(task);
         action.setReworkExecutionId(execution.getExecutionId());
         action.setResultRemark("已创建返工工序「" + process.getProcessName()
                 + "」和生产任务，完成报工后进入 FQC 复检");
+    }
+
+    /**
+     * 该工单的「一级负责人」= 该工单任一工序根任务（parent_task_id 为空）的责任人，取最新一条。
+     * dev-20260923-033：返工工序默认派给他，再由他派给工人（与正常工序的派工链一致）。
+     */
+    private Long resolveOrderFirstLevelAssignee(Long orderId) {
+        if (orderId == null) {
+            return null;
+        }
+        List<ProductionOperationExecution> executions = executionMapper.selectList(
+                new LambdaQueryWrapper<ProductionOperationExecution>()
+                        .eq(ProductionOperationExecution::getOrderId, orderId));
+        if (executions.isEmpty()) {
+            return null;
+        }
+        List<Long> executionIds = executions.stream()
+                .map(ProductionOperationExecution::getExecutionId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (executionIds.isEmpty()) {
+            return null;
+        }
+        List<ProductionTask> roots = taskMapper.selectList(new LambdaQueryWrapper<ProductionTask>()
+                .in(ProductionTask::getExecutionId, executionIds)
+                .isNull(ProductionTask::getParentTaskId)
+                .isNotNull(ProductionTask::getAssigneeId)
+                .orderByDesc(ProductionTask::getTaskId)
+                .last("LIMIT 1"));
+        return roots.isEmpty() ? null : roots.get(0).getAssigneeId();
     }
 
     @Override

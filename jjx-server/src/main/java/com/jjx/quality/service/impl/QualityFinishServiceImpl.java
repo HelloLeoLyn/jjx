@@ -76,8 +76,49 @@ public class QualityFinishServiceImpl implements QualityFinishService {
             if (nz(lot.getPassQuantity()).signum() > 0) {
                 inventoryInboundService.createFromProduction(lot.getOrderId(), lot.getLotId(), lot.getPassQuantity());
             }
+            // dev-20260923-033：返工复检批判定 → 返工处置收口（否则返工永远停在"执行中"，回收没有终点）
+            closeReworkActionIfRecovered(lot);
         }
         return lot;
+    }
+
+    /**
+     * dev-20260923-033：返工是唯一回收通道 —— 返工复检批判定后把对应处置动作置 DONE 并把台账收口。
+     *
+     * <p>口径：判定即代表返工已完工并复检合格（回收量 = 本批合格量，实物走既有「确认入库」入良品）；
+     * 幂等：只处理 PROCESSING 的 REWORK 动作，重复判定不会重复收口。</p>
+     */
+    private void closeReworkActionIfRecovered(com.jjx.quality.domain.entity.QualityLot lot) {
+        if (lot.getExecutionId() == null) {
+            return;
+        }
+        try {
+            Long actionId = jdbcTemplate.queryForObject(
+                    "SELECT action_id FROM quality_ncr_action WHERE rework_execution_id = ? "
+                            + "AND action_type = 'REWORK' AND status = 'PROCESSING' ORDER BY action_id DESC LIMIT 1",
+                    Long.class, lot.getExecutionId());
+            if (actionId == null) {
+                return;
+            }
+            String pass = nz(lot.getPassQuantity()).stripTrailingZeros().toPlainString();
+            String total = nz(lot.getLotQuantity()).stripTrailingZeros().toPlainString();
+            String note = "返工复检合格 " + pass + "/" + total + " 件，已回收（判定批 " + lot.getLotNo() + "）";
+            jdbcTemplate.update(
+                    "UPDATE quality_ncr_action SET status = 'DONE', "
+                            + "result_remark = CONCAT(IFNULL(result_remark,''), ?) WHERE action_id = ?",
+                    " ｜ " + note, actionId);
+            jdbcTemplate.update(
+                    "UPDATE quality_ncr n JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id "
+                            + "SET n.status = 'CLOSED', n.remark = CONCAT(IFNULL(n.remark,''), ?) "
+                            + "WHERE a.action_id = ? AND IFNULL(n.disposed_quantity,0) >= IFNULL(n.defect_quantity,0) "
+                            + "AND n.status <> 'CLOSED'",
+                    " ｜ " + note, actionId);
+            log.info("返工回收收口: lotNo={} actionId={} {}", lot.getLotNo(), actionId, note);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            // 不是返工复检批（或已收口）→ 正常情况，忽略
+        } catch (Exception e) {
+            log.warn("返工回收收口失败（不影响判定结果）: lotNo={} err={}", lot.getLotNo(), e.getMessage());
+        }
     }
 
     @Override

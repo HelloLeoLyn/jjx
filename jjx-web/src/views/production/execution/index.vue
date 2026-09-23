@@ -23,6 +23,7 @@
     <WorkOrderPanel
       v-if="scopeReady"
       :can-view-all="canViewAll"
+      :initial-order-id="initialOrderId"
       @select="handleOrderSelect"
       @completed="handleOrderCompleted"
     />
@@ -814,7 +815,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import { getEquipmentList, type ProductionEquipment } from '@/api/production/equipment'
@@ -855,6 +856,7 @@ import { fmtQty } from './utils'
 defineOptions({ name: 'ProductionExecutionList' })
 
 const router = useRouter()
+const route = useRoute()
 
 function statusLabel(s?: number): string {
   return s === undefined ? '未知' : ExecutionStatusEnum.getLabel(s)
@@ -897,6 +899,9 @@ const loadReworkTrace = async (orderId?: number) => {
 const canViewAll = ref(false)
 const scopeReady = ref(false)
 const selectedOrder = ref<ProductionOrderVO | null>(null)
+/** dev-20260923-033：从不良台账「去派工」跳进来时带的目标（工单 + 返工工序） */
+const initialOrderId = ref<number | null>(null)
+const pendingExecutionId = ref<number | null>(null)
 const selectedScope = ref<'mine' | 'all'>('mine')
 const selectedTab = ref<'current' | 'history'>('current')
 const total = ref(0)
@@ -935,7 +940,7 @@ const finishEquipmentChoice = (confirmed: boolean) => {
 const allQueryParams = reactive<TaskTreeQuery>({ pageNum: 1, pageSize: 10 })
 const taskFilterForm = reactive({ keyword: '', status: '' })
 
-const handleOrderSelect = (
+const handleOrderSelect = async (
   order: ProductionOrderVO | null,
   scope: 'mine' | 'all',
   tab: 'current' | 'history'
@@ -948,6 +953,17 @@ const handleOrderSelect = (
   taskList.value = []
   total.value = 0
   if (order) getList()
+  // dev-20260923-033：从不良台账「去派工」跳进来时，顺手把返工工序的抽屉打开（用户直接看到该派工的那条任务）
+  if (order && pendingExecutionId.value) {
+    const target = pendingExecutionId.value
+    pendingExecutionId.value = null
+    try {
+      const res: any = await operationExecutionApi.getInfo(target)
+      if (res?.data) await handleView(res.data)
+    } catch {
+      // 工序可能已被取消/改派：忽略，用户仍落在该工单上
+    }
+  }
 }
 
 /** 工单级收口成功：刷新下区任务树 */
@@ -1698,6 +1714,12 @@ const handleReject = async () => {
 }
 
 onMounted(async () => {
+  // dev-20260923-033：支持从不良台账「去派工」带参跳转（?orderId=&executionId=），
+  // 必须在 scopeReady 之前设好，工作单面板挂载时才会自动选中目标工单
+  const qOrder = Number(route.query.orderId)
+  const qExecution = Number(route.query.executionId)
+  if (Number.isFinite(qOrder) && qOrder > 0) initialOrderId.value = qOrder
+  if (Number.isFinite(qExecution) && qExecution > 0) pendingExecutionId.value = qExecution
   try {
     const scope: any = await getProductionExecutionScope()
     canViewAll.value = Boolean(scope?.data?.global)
