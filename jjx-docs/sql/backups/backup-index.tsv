@@ -79,3 +79,7 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-23 16:33:08	guard	sys_task_register_20260923-1633_before-018-019-handoff.sql	12a9f19128693d707570391fd2880902	1035812	1	dahuang	dev-20260923-018/019
 2026-09-23 16:46:47	guard	sys_task_register_20260923-1646_before-020-scrap-restored.sql	a0eb8b15eec3856297dea5cfa8a63024	1041050	1	dahuang	dev-20260923-020
 2026-09-23 17:00:42	guard	sys_task_register_20260923-1700_before-021to027-roadmap.sql	900d684b853bc475fb229c6c71763e68	1044825	1	dahuang	dev-20260923-021..027
+2026-09-23 17:36:53	full	jjx_erp_db_backup_20260923-1736_before-206.sql	ab57bd613c2f6dfee587a67febbf1299	5739912	114	agent	dev-20260923-022
+2026-09-23 18:03:56	guard	sys_task_register_20260923-1803_before-029to030-batch5-and-docno-gate.sql	128cf1a617d36e9ddc0fe9d23953beb5	1065736	1	Hermes	dev-20260923-029/dev-20260923-030
+2026-09-23 18:18:49	guard	sys_task_2247_decision_20260923-1818_before-A-and-T2digits.sql	9451ddb18554e9f7b1ae5bf84a8c82a7	6737	1	Hermes	dev-20260923-029
+2026-09-23 18:21:32	guard	sys_task_2247_docpointer_20260923-1821.sql	4eb33dc72ad3931641cff978719c1701	7418	1	Hermes	dev-20260923-029
