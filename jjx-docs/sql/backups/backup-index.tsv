@@ -90,3 +90,8 @@ sys_task_review_20260923-1830_before-status-fix.sql	2026-09-23 18:30:07	dev-2026
 2026-09-23 18:37:07	guard	sys_task_register_20260923-1837_before-032-fi-seq-fixed-width.sql	a1b14ef5ab509af0592d1501ccdc54d7	1080331	1	Hermes	dev-20260923-032
 sales_order_review_drop_20260923-1854.sql	2026-09-23 18:54:18	dev-20260921-011	删除死表 sales_order_review 前 guard（表级，含 CREATE TABLE 可重建）	b7e4d984750f4b82d4a4821c804ab9ca
 2026-09-23 18:54:27	full	jjx_erp_db_backup_20260923-1854_before-208.sql	c2c17421600c26fa75c1a0052134010c	5774187	114	agent	dev-20260921-011
+sys_menu_hide_product_instance_20260923-1906.sql	2026-09-23 19:06:55	dev-20260921-021	产品实例菜单下架前 guard（sys_menu 表级）	f926df8274961da6f2299519cd1933bb
+2026-09-23 19:06:56	full	jjx_erp_db_backup_20260923-1906_before-209.sql	5481c4a9393fb663254b132dfff3893a	5776498	113	agent	dev-20260921-021
+sys_notification_eventcode_backfill_20260923-1929.sql	2026-09-23 19:29:34	dev-20260921-014	回填 sys_notification.event_code 前 guard（表级）	b0b803beeeab36a2f9d22d8bd9f5f82f
+2026-09-23 19:29:35	full	jjx_erp_db_backup_20260923-1929_before-210.sql	c0d4d27f8330df192ae1869e6ec41313	5802022	113	agent	dev-20260921-014
+sys_task_register_20260923-1932_before-014-d.sql	2026-09-23 19:32:13	dev-20260921-014	登记 D 任务（变量注册表自动化）前 guard	8f334f9dad80f2bb3431e6977be31812
