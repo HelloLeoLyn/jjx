@@ -28,11 +28,10 @@
       @batch-command="handleBatchCommand"
     />
 
-    <!-- 搜索筛选 -->
+    <!-- 搜索筛选（dev-20260917-018：三个表格视图 + 甘特视图共用） -->
     <OrderSearchFilter
-      v-if="activeView !== 'gantt'"
       :search-form="searchForm"
-      :view-type="activeView"
+      :view-type="activeView === 'gantt' ? 'all' : activeView"
       :loading="loading"
       @search="handleSearch"
       @reset="handleReset"
@@ -68,6 +67,7 @@
       v-if="activeView === 'gantt'"
       ref="ganttRef"
       :order-type="searchForm.orderType"
+      :search-form="searchForm"
       @view="handleViewOrder"
     />
 
@@ -263,6 +263,9 @@ const activeView = ref<'plan' | 'work_order' | 'all' | 'gantt'>(
   route.path.includes('schedule') ? 'gantt' : 'all'
 )
 
+// 甘特图组件引用（筛选区统一后，搜索/重置需通知甘特重取数，dev-20260917-018）
+const ganttRef = ref<{ refresh: () => void } | null>(null)
+
 // 搜索表单
 const searchForm = reactive<ProductionOrderQuery>({
   orderNo: '',
@@ -327,18 +330,24 @@ watch(activeView, (newView) => {
       newView === 'all' ? 'all' : newView === 'plan' ? OrderType.PLAN : OrderType.WORK_ORDER
     searchForm.pageNum = 1
     loadData(newView === 'all' ? 'all' : newView)
+  } else {
+    // 甘特视图没有「类型」筛选控件：进入时不沿用表格视图的类型条件，避免隐形过滤
+    // （筛选区已于 dev-20260917-018 统一到甘特视图，若沿用则用户无法在甘特里解除）
+    searchForm.orderType = 'all'
   }
 })
 
 // 搜索相关方法
 const handleSearch = () => {
-  if (activeView.value === 'gantt') return
   searchForm.pageNum = 1
+  if (activeView.value === 'gantt') {
+    ganttRef.value?.refresh()
+    return
+  }
   loadData(activeView.value === 'all' ? 'all' : activeView.value)
 }
 
 const handleReset = () => {
-  if (activeView.value === 'gantt') return
   Object.assign(searchForm, {
     orderNo: '',
     productName: '',
@@ -364,6 +373,10 @@ const handleReset = () => {
     sortField: '',
     sortOrder: undefined,
   })
+  if (activeView.value === 'gantt') {
+    ganttRef.value?.refresh()
+    return
+  }
   loadData(activeView.value === 'all' ? 'all' : activeView.value)
 }
 

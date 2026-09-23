@@ -165,6 +165,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getProductionOrderList, updateGanttData } from '@/api/production/order'
+import type { ProductionOrderQuery } from '@/types/production/order'
 import { OrderType } from '@/types/production/order'
 
 interface GanttOrder {
@@ -204,6 +205,8 @@ const props = withDefaults(defineProps<{
   startDate?: string
   endDate?: string
   orderType?: string
+  /** 与表格视图共用的筛选条件（dev-20260917-018：筛选区统一到甘特视图） */
+  searchForm?: ProductionOrderQuery
 }>(), {})
 
 // ===== 状态 =====
@@ -328,6 +331,22 @@ async function loadData() {
     }
     if (props.orderType) {
       params.orderType = props.orderType
+    }
+    // 与表格视图共用同一份筛选条件（订单编号/名称/编码/销售订单/状态/审批/执行/计划日期）
+    const s = props.searchForm
+    if (s) {
+      if (s.orderNo) params.orderNo = s.orderNo
+      if (s.productName) params.productName = s.productName
+      if (s.productCode) params.productCode = s.productCode
+      if (s.salesOrderNo) params.salesOrderNo = s.salesOrderNo
+      if (s.instanceCode) params.instanceCode = s.instanceCode
+      if (s.orderStatus !== '' && s.orderStatus !== undefined && s.orderStatus !== null)
+        params.orderStatus = s.orderStatus
+      if (s.approvalStatus) params.approvalStatus = s.approvalStatus
+      if (s.executionStatus) params.executionStatus = s.executionStatus
+      if (s.planType) params.planType = s.planType
+      if (s.planDateStart) params.planDateStart = s.planDateStart
+      if (s.planDateEnd) params.planDateEnd = s.planDateEnd
     }
 
     const res = await getProductionOrderList(params as any)
@@ -547,6 +566,9 @@ onBeforeUnmount(() => {
 })
 
 watch(() => [props.startDate, props.endDate, props.orderType], () => loadData())
+
+// 供父组件在「搜索 / 重置」时刷新（筛选区统一到甘特视图，dev-20260917-018）
+defineExpose({ refresh: loadData })
 
 onMounted(() => loadData())
 </script>
