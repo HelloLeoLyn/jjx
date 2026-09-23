@@ -230,11 +230,31 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     @Transactional(rollbackFor = Exception.class)
     public QualityNcrAction dispose(Long ncrId, QualityNcrDisposeDTO dto) {
         QualityNcr ncr = getNcr(ncrId);
+        // dev-20260923-038（022⑥ 收口）：处置只对「未作废、且来源批仍是链上最新有效版本」的台账生效，
+        // 防绕过前端直接调接口处置失效批/作废单（否则会给"已经不存在的货"做让步接收/返工等动作）。
+        // 实测：作废单原来仍可处置，前端也只按数量判断 → 界面给了注定不该发生的动作。
+        if ("VOID".equals(ncr.getStatus())) {
+            throw new BusinessException("该不良单已作废（随批失效/撤销），禁止再处置：" + ncr.getNcrNo());
+        }
+        if (isSourceLotSuperseded(ncr.getLotId())) {
+            throw new BusinessException("该不良单的来源检验批已被后续复检版本取代，禁止处置（请对最新有效版本操作）："
+                    + ncr.getNcrNo());
+        }
         QualityLot lot = qualityLotMapper.selectById(ncr.getLotId());
         if (lot != null && "IQC".equals(lot.getLotType())) {
             throw new BusinessException("IQC 不良请从来料隔离处置入口操作，系统将自动同步不良台账");
         }
         return disposeInternal(ncr, dto, false);
+    }
+
+    /** 来源检验批是否已被后继复检版本取代（链上失效）—— dev-20260923-038 */
+    private boolean isSourceLotSuperseded(Long lotId) {
+        if (lotId == null) {
+            return false;
+        }
+        Long children = qualityLotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, lotId));
+        return children != null && children > 0;
     }
 
     @Override

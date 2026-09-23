@@ -77,7 +77,16 @@
         <el-table-column prop="defectReason" label="不良原因" min-width="140" show-overflow-tooltip />
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" :disabled="pending(row) <= 0" @click="openDispose(row)">处置</el-button>
+            <!-- dev-20260923-038：已作废单不给处置入口（原来只按数量判断，作废单还能点） -->
+            <el-button
+              v-if="row.status !== 'VOID'"
+              link
+              type="primary"
+              size="small"
+              :disabled="pending(row) <= 0"
+              @click="openDispose(row)"
+              >处置</el-button
+            >
             <el-button link size="small" @click="openActions(row)">处置记录</el-button>
           </template>
         </el-table-column>
@@ -283,7 +292,14 @@ const canRevoke = computed(() => hasPermi('quality:ncr:revoke'))
 
 const num = (value?: number | null) =>
   value == null ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
-const pending = (row: QualityNcr) => Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0)
+/**
+ * 待处置数量 —— dev-20260923-038：已作废/已结的单不再计待处置
+ * （原来只算「不良 − 已处置」，作废单会算出 2 件待处置，与「已作废」状态自相矛盾）
+ */
+const pending = (row: QualityNcr) =>
+  ['VOID', 'CLOSED'].includes(String(row.status))
+    ? 0
+    : Math.max(0, Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0))
 const statusLabel = (status: string) =>
   ({ PENDING: '待处置', DISPOSING: '处置中', CLOSED: '已结', VOID: '已作废（随批/撤销）' })[status] || status
 const actionLabel = (type: string) =>
