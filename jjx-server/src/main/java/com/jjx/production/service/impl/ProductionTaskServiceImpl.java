@@ -1529,11 +1529,22 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
         BigDecimal factor = BigDecimal.ONE.add(rate);
         BigDecimal allowance = null;
-        if (exec.getInputQuantity() != null && exec.getInputQuantity().signum() > 0) {
+        // 工序口径计划量：优先「该工序任务量合计」，其次「投料量 inputQuantity」（与报工侧校验一致）
+        BigDecimal execPlan = null;
+        try {
+            execPlan = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(task_quantity), 0) FROM production_task WHERE execution_id = ?",
+                    BigDecimal.class, exec.getExecutionId());
+        } catch (Exception ignored) {
+        }
+        if (execPlan == null || execPlan.signum() <= 0) {
+            execPlan = exec.getInputQuantity();
+        }
+        if (execPlan != null && execPlan.signum() > 0) {
             BigDecimal reported = jdbcTemplate.queryForObject(
                     "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE execution_id = ?",
                     BigDecimal.class, exec.getExecutionId());
-            allowance = exec.getInputQuantity().multiply(factor).subtract(floorCompletionZero(reported));
+            allowance = execPlan.multiply(factor).subtract(floorCompletionZero(reported));
         }
         if (exec.getOrderId() != null) {
             try {

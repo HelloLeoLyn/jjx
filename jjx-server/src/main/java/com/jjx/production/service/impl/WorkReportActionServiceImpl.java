@@ -593,8 +593,20 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     private void validateSupplementReport(ProductionOperationExecution exec, BigDecimal reportQuantity) {
         BigDecimal rate = overrunRate();
         BigDecimal factor = BigDecimal.ONE.add(rate);
-        // 工序口径的计划量：本表无 planned_quantity 列，用「投料量 inputQuantity」作为该工序的计划基准
-        BigDecimal planQty = exec.getInputQuantity();
+        // 工序口径的计划量：优先取「该工序全部任务的任务量合计」（报工是按任务报，工序计划应是任务合计），
+        // 没有任务时才退回「投料量 inputQuantity」（本表无 planned_quantity 列）。
+        // 2026-09-23 修正：原用 inputQuantity 会把「一工序多任务」的场景算小（如投料 100、两任务各 100 = 200），
+        // 导致可补额度恒为 0、补报入口不出现。
+        BigDecimal planQty = null;
+        try {
+            planQty = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(task_quantity), 0) FROM production_task WHERE execution_id = ?",
+                    BigDecimal.class, exec.getExecutionId());
+        } catch (Exception ignored) {
+        }
+        if (planQty == null || planQty.signum() <= 0) {
+            planQty = exec.getInputQuantity();
+        }
         if (planQty != null && planQty.signum() > 0) {
             BigDecimal reported = jdbcTemplate.queryForObject(
                     "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE execution_id = ?",
