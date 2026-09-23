@@ -104,9 +104,9 @@ public class QualityFinishServiceImpl implements QualityFinishService {
             String total = nz(lot.getLotQuantity()).stripTrailingZeros().toPlainString();
             String note = "返工复检合格 " + pass + "/" + total + " 件，已回收（判定批 " + lot.getLotNo() + "）";
             jdbcTemplate.update(
-                    "UPDATE quality_ncr_action SET status = 'DONE', "
+                    "UPDATE quality_ncr_action SET status = 'DONE', reinspection_lot_id = ?, "
                             + "result_remark = CONCAT(IFNULL(result_remark,''), ?) WHERE action_id = ?",
-                    " ｜ " + note, actionId);
+                    lot.getLotId(), " ｜ " + note, actionId);
             jdbcTemplate.update(
                     "UPDATE quality_ncr n JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id "
                             + "SET n.status = 'CLOSED', n.remark = CONCAT(IFNULL(n.remark,''), ?) "
