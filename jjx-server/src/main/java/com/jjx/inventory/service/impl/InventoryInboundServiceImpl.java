@@ -2573,6 +2573,28 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 || status == InventoryOrderStatusEnum.PROCESSED.getValue();
     }
 
+    /**
+     * dev-20260923（022 收尾）：解析成品库存批次号。
+     * 口径随 022 变化：022 之前成品批次 = `BATCH-<工单号>`；022 之后 = `BATCH-<检验批号>`。
+     * 以**该检验批入库明细上的批次号**为准（最权威），拿不到再按批号拼、最后回退老命名。
+     */
+    private String resolveProductBatchNo(ProductionOrder prodOrder, Long lotId) {
+        if (lotId != null) {
+            InventoryInboundItem lotItem = inboundItemMapper.selectOne(new LambdaQueryWrapper<InventoryInboundItem>()
+                    .eq(InventoryInboundItem::getLotId, lotId)
+                    .orderByAsc(InventoryInboundItem::getItemId)
+                    .last("LIMIT 1"));
+            if (lotItem != null && lotItem.getBatchNo() != null && !lotItem.getBatchNo().isBlank()) {
+                return lotItem.getBatchNo();
+            }
+            com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(lotId);
+            if (lot != null && lot.getLotNo() != null && !lot.getLotNo().isBlank()) {
+                return "BATCH-" + lot.getLotNo();
+            }
+        }
+        return "BATCH-" + prodOrder.getOrderNo();
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BigDecimal adjustFinishStock(Long orderId, Long lotId, Long ncrId, BigDecimal deltaQuantity, String remark) {
@@ -2583,12 +2605,26 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (prodOrder == null) {
             throw new BusinessException("生产工单不存在: " + orderId);
         }
-        String batchNo = "BATCH-" + prodOrder.getOrderNo();
+        String batchNo = resolveProductBatchNo(prodOrder, lotId);
         InventoryStockItem stock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
                 .eq(InventoryStockItem::getMaterialCode, prodOrder.getProductCode())
                 .eq(InventoryStockItem::getBatchNo, batchNo)
                 .orderByAsc(InventoryStockItem::getItemId)
                 .last("LIMIT 1"));
+        if (stock == null) {
+            // dev-20260923（022 收尾）：兼容历史批次命名 —— 022 之前成品批次是 BATCH-<工单号>，之后是 BATCH-<检验批号>
+            String legacyBatchNo = "BATCH-" + prodOrder.getOrderNo();
+            if (!legacyBatchNo.equals(batchNo)) {
+                stock = stockItemMapper.selectOne(new LambdaQueryWrapper<InventoryStockItem>()
+                        .eq(InventoryStockItem::getMaterialCode, prodOrder.getProductCode())
+                        .eq(InventoryStockItem::getBatchNo, legacyBatchNo)
+                        .orderByAsc(InventoryStockItem::getItemId)
+                        .last("LIMIT 1"));
+                if (stock != null) {
+                    batchNo = legacyBatchNo;
+                }
+            }
+        }
         if (stock == null) {
             if (deltaQuantity.signum() > 0) {
                 throw new BusinessException("成品库存批次不存在，无法调整（批次 " + batchNo + "）。请先完成成品入库。");
