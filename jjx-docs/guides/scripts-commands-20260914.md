@@ -45,7 +45,7 @@
 
 - 用途：执行迁移的**唯一**入口（内部固定顺序：备份 → 执行 → 写 `sys_config.ops.schema.*`；备份失败或执行失败都不写版本）。
 - 危险等级：🔴 改数据库（执行迁移）／🟡 只写版本记录（`--record`）／🟢 只读（`--status`）。
-- 前置：迁移文件放在 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`）；`JJX_BACKUP_DIR` 可写（2026-09-22 起默认仓库外 `~/jjx-backups/`，仓库内只留索引 `jjx-docs/sql/backups/backup-index.tsv`）；要动库必须带真实任务码。备份按风险分级：高风险→全库快照，低风险→只备本次涉及的表（文件头 `-- risk: high|low` 可覆盖），任何情况都不许零备份；全库快照每日只留最新一份、超 `KEEP_DAYS`(默认14天)自动清理。
+- 前置：迁移文件放在 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`）；`JJX_BACKUP_DIR` 可写（2026-09-23 起默认**仓库内** `jjx-docs/sql/backups/`，全库快照默认排除 `hr_employee`）；要动库必须带真实任务码。备份按风险分级：高风险→全库快照，低风险→只备本次涉及的表（文件头 `-- risk: high|low` 可覆盖），任何情况都不许零备份；全库快照每日只留最新一份、超 `KEEP_DAYS`(默认14天)自动清理。
 - 命令：
   - 查版本：`bash scripts/db-migrate.sh --status`
   - 执行：`bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-YYYYMMDD-NNN`
@@ -91,7 +91,8 @@
 - 用途：不触发任何库内变更，只想**立刻拿一份全库快照**时用（补上此前只能手敲 `mysqldump` = 绕过规范入口的缺口）。
 - 与其它脚本的边界：迁移/清测试数据各自**内部自带**全库备份（本脚本不替代它们）；`db-export-init-subset.sh` 出的是初始化交付物、**不是备份**。
 - 危险等级：🟡 只读数据库 + 写备份文件（可回退）；`--dry-run` 为 🟢 纯预览（不落盘）。
-- 前置：`mysqldump` 可用；数据库可达；`JJX_BACKUP_DIR`（2026-09-22 起默认仓库外 `~/jjx-backups/`）可写。
+- 前置：`mysqldump` 可用；数据库可达；`JJX_BACKUP_DIR`（2026-09-23 起默认**仓库内** `jjx-docs/sql/backups/`）可写。
+- 默认排除：导出**默认带 `--ignore-table=jjx_erp_db.hr_employee`**（人事档案表含身份证密文/住址/电话；2026-09-23 用户口径：只排除它，其余都能入库）；要包含用 `JJX_BACKUP_EXCLUDE_DEFAULT=` 显式覆盖。
 - 命令：
   - 例行：`bash scripts/db-backup.sh`
   - 带来源/任务码：`bash scripts/db-backup.sh --tag before-xxx --task dev-YYYYMMDD-NNN`
@@ -102,7 +103,7 @@
 - 产物：`jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql`，同名冲突自动加 `-2/-3`，**不覆盖**；文件头 1~3 行=备份人/原因/任务码，并追加一行到 `<备份目录>/db-backup-log.txt` 留痕。
 - 清理口径：只删 `<备份目录>` 下超过 `--keep-days`（默认 14 天）的 `jjx_erp_db_backup_*.sql`（= 全库备份）；guard 表级备份、`.tar.gz` 等**只提示不删**。
 - 退出码：0=备份成功；1=前置不满足 / 备份失败 / 产物异常（<1KB 或 0 张表）。
-- 注意：备份写入 Git 仓库外是硬要求（CONVENTIONS §2），`--out-dir` 传仓库内路径会直接被拒。
+- 注意：备份默认落**仓库内** `jjx-docs/sql/backups/` 并默认排除 `hr_employee`，**随任务提交推送**（CONVENTIONS §2，2026-09-23 恢复口径）；巨型历史 dump 仍按 §2 保留策略（每日只留最新 + 14 天）清理。
 
 ## 7. scripts/install-hooks.sh —— 安装 git 闸门
 

@@ -69,7 +69,7 @@ curl -sk --noproxy '*' -X POST https://192.168.1.176/sessions/auth \
 
 ## 5. 数据库 / 迁移
 
-- 动库前先备份（规范 §2：高风险→全库快照 / 低风险→表级备份，由 `scripts/db-migrate.sh` 自动执行），备份落仓库外 `~/jjx-backups/`，仓库内只留索引 `jjx-docs/sql/backups/backup-index.tsv`
+- 动库前先备份（规范 §2：高风险→全库快照 / 低风险→表级备份，由 `scripts/db-migrate.sh` 自动执行），备份落**仓库内** `jjx-docs/sql/backups/`（默认排除人事档案表 `hr_employee`），随任务提交推送（2026-09-23 用户口径）
 - 迁移是否跑过：对比 `jjx-docs/sql/migrations/` 里的最大序号 与库中实际状态（当前只能人工看，属已知短板）
 - 迁移一律进 `jjx-docs/sql/migrations/NN_*.sql`，幂等优先，破坏性语句单独文件
 

@@ -118,6 +118,5 @@ jjx-docs/assets/*.xlsx
 # Windows 下载残留（NTFS 备用数据流 Zone.Identifier），不入库（dev-20260912-016）
 *Zone.Identifier
 
-# 备份产物不入库（仓库内只留索引 backup-index.tsv）；规范见 jjx-docs/standards/CONVENTIONS.md §2
-jjx-docs/sql/backups/*.sql
-jjx-docs/sql/backups/*.txt
+# 备份产物默认入库（2026-09-23 用户口径：只排除 hr_employee，其余都能推送）；规范见 jjx-docs/standards/CONVENTIONS.md §2
+# 注：写入 jjx-docs/sql/backups/ 的 dump 随任务提交推送；仍建议巨型历史 dump 及时清理（§2 保留策略）

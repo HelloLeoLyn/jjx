@@ -11,7 +11,7 @@
 #   bash scripts/db-backup.sh --help
 #
 # 危险等级：🟡 只读数据库 + 写备份文件（不写库、不改库内数据）；--dry-run 为 🟢 纯预览
-# 前置：mysqldump 可用；数据库可达；JJX_BACKUP_DIR 可写（默认仓库外 ~/jjx-backups/，2026-09-22 改口径）
+# 前置：mysqldump 可用；数据库可达；JJX_BACKUP_DIR 可写（默认仓库内 jjx-docs/sql/backups/，2026-09-23 恢复入库口径）
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 #
 # 定位（与其它脚本的关系，别用错）：
@@ -23,7 +23,8 @@
 # 命名/留痕（CONVENTIONS §2）：jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql
 #   文件头 1~3 行写明 备份人 / 原因 / 任务码；执行后校验 md5 + 表数 + 字节数；
 #   保留策略：超过 --keep-days（默认 14 天）删除；并自动做“每日只留最新一份”去重。
-#   备份落仓库外 ~/jjx-backups/；仓库内只追加索引 jjx-docs/sql/backups/backup-index.tsv。
+#   备份默认落仓库内 jjx-docs/sql/backups/（**默认排除人事档案表 hr_employee**），随任务提交推送；
+#   索引同目录 backup-index.tsv（时间/类型/文件/md5/字节/表数/执行人/任务码）。
 # 环境覆盖：DB_HOST DB_PORT DB_USER DB_PASS DB_NAME / JJX_BACKUP_DIR / AI_AGENT
 # ============================================================================
 set -uo pipefail
@@ -34,14 +35,16 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$HOME/jjx-backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 AGENT="${AI_AGENT:-dahuang}"
 INDEX_FILE="${JJX_BACKUP_INDEX:-$REPO_ROOT/jjx-docs/sql/backups/backup-index.tsv}"
 
 TAG=""
 TASK=""
 REASON=""
-EXCLUDES=()
+# 默认排除表（2026-09-23 用户口径：只排除人事档案表，其余都能入库）——hr_employee 含身份证密文/住址/电话；
+# 需临时包含时：JJX_BACKUP_EXCLUDE_DEFAULT= bash scripts/db-backup.sh ...
+EXCLUDES=(${JJX_BACKUP_EXCLUDE_DEFAULT-hr_employee})
 KEEP_DAYS=14
 DO_CLEAN=1
 DRY_RUN=0
@@ -56,7 +59,8 @@ usage() {
   cat <<'EOF'
 用途: 立刻做一份全库备份（只读库，不动任何库内数据），产物落在 JJX_BACKUP_DIR
 危险等级: 🟡 只读数据库 + 写备份文件；--dry-run 为 🟢 纯预览（不落盘）
-前置: mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库外 ~/jjx-backups/）可写
+前置: mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
+产物入库: 备份文件默认落在仓库内 jjx-docs/sql/backups/，**默认排除 hr_employee**，随任务提交推送
 用法:
   bash scripts/db-backup.sh [选项]
 
@@ -64,8 +68,8 @@ usage() {
   --tag <tag>        原因标签（简短英文，[A-Za-z0-9._-]，如 before-xxx、daily）；缺省=例行备份
   --task <code>      关联任务码 dev-YYYYMMDD-NNN（写进文件头，便于回溯）
   --reason <text>    自定义"原因"文案（默认按 tag 自动生成）
-  --exclude-table <表名>  导出时排除该表（可重复；如 hr_employee），内部转 mysqldump --ignore-table
-  --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；默认 ~/jjx-backups/）
+  --exclude-table <表名>  导出时排除该表（可重复），内部转 mysqldump --ignore-table；默认已排除 hr_employee
+  --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；默认仓库内 jjx-docs/sql/backups/）
   --keep-days <N>    过期清理阈值，默认 14 天
   --no-clean         本次不清理过期备份
   --dry-run          只打印将写入的路径与将清理的文件，不真正备份
@@ -97,6 +101,7 @@ done
 
 # ── 前置检查 ───────────────────────────────────────────────────────────────
 # 2026-09-21 用户改口径：备份统一落仓库内 jjx-docs/sql/backups/，原「必须在仓库外」守卫已移除
+# 2026-09-23 用户再次明确：默认仓库内 + 默认排除 hr_employee，备份随任务提交推送（本行以下无目录守卫）
 
 if [ -n "$TAG" ]; then
   printf '%s' "$TAG" | grep -Eq '^[A-Za-z0-9._-]+$' \

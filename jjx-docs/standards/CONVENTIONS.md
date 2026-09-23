@@ -29,7 +29,7 @@
 
 ---
 
-## 2. 数据库备份规范（按风险分级；2026-09-22 改口径）
+## 2. 数据库备份规范（按风险分级；2026-09-23 恢复入库口径）
 
 **触发时机**：破坏性操作、批量 UPDATE/DELETE、表结构变更、修复疑似脏数据、跨环境导数据前必须备份。
 
@@ -46,7 +46,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 # 备份 + 执行 + 记账 + 清理过期，一条命令；--keep-days N 改保留天数，--no-prune 跳过清理
 ```
 
-**存放位置**：备份默认落**仓库外** `~/jjx-backups/`（`JJX_BACKUP_DIR` 可覆盖）。仓库内**只保留索引** `jjx-docs/sql/backups/backup-index.tsv`（时间/类型/文件/md5/字节/表数/执行人/任务码），既查得到又不占仓库体积。
+**存放位置（2026-09-23 用户口径，恢复）**：备份默认落**仓库内** `jjx-docs/sql/backups/`（`JJX_BACKUP_DIR` 可覆盖），并**默认排除人事档案表 `hr_employee`**（含身份证密文/住址/电话）——即「**只排除人事档案表，其余都能入库/推送**」。索引同目录 `backup-index.tsv`（时间/类型/文件/md5/字节/表数/执行人/任务码）。备份产物**随任务提交推送**（除用户当次另有指示）。
 
 **命名**：全库 `jjx_erp_db_backup_YYYYMMDD-HHmm[_tag].sql` / 表级 `jjx_table_backup_…` / 结构 `jjx_schema_snapshot_…`；表级/行级 guard 备份：`<表域>_<topic>_YYYYMMDD-HHmm[_tag].sql`。
 - `<tag>` 用简短英文原因：`before-iqc-migration`、`before-biz-no-rule`、`daily`、`before-cleanup`。无 tag 表示例行。
@@ -54,10 +54,10 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 **验证**：执行后必须 `md5sum` + `grep -c "CREATE TABLE"` 抽查，并在汇报里给出 md5。
 **保留与清理（脚本自动）**：全库快照**每日只留最新一份**；三类快照超过 `KEEP_DAYS`（默认 14 天）自动删除；只动本脚本产物（`jjx_erp_db_backup_*` / `jjx_table_backup_*` / `jjx_schema_snapshot_*`），其它文件只提示不删。发布里程碑备份另行转移到团队外部存储长期保留。
-**Git**：备份产物**不入库**（`.gitignore` 已忽略 `jjx-docs/sql/backups/*.sql` 与 `*.txt`），仓库内只留索引 tsv。2026-09-22 前入库的存量 dump 已移出仓库到 `~/jjx-backups/legacy-inrepo_20260922-*`。**注意：仓库为公开，历史里的真实数据不可撤（改写历史属 §5 禁区）**。
+**Git**：备份产物**默认入库并推送**（`.gitignore` 对 `jjx-docs/sql/backups/*.sql` 的忽略已于 2026-09-23 移除）；导出时**必须默认排除 `hr_employee`**，其它表可以入库。移除仓库口径的存量备忘：2026-09-22 曾有把历史 dump 移出仓库到 `~/jjx-backups/legacy-inrepo_20260922-*` 的动作，不回滚。**注意：仓库为公开，入库即永久留在 git 历史（改写历史属 §5 禁区）**，所以「排除人事档案」是硬要求。
 **禁止**：备份写入 `memory/` 或临时目录（`/tmp`）。
 
-**例外备案（2026-09-12 用户批准）**：经**用户明确指示**要把指定 dump 提交进 git 时可执行，但必须：① 提交信息与 `sys_task` 里标注「§2 例外」；② 知悉该文件将**永久留在 git 历史**（含真实业务数据，事后移除需改写历史 + force push，属 §5 禁区）。
+**例外备案（2026-09-12 用户批准；2026-09-23 起已无必要——入库是默认口径）**：下列备案保留作历史参考。
 已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260912-1908_before-archive-ocr-task.sql`（任务码 dev-20260912-017）。
 已备案：`jjx-docs/sql/backups/jjx_erp_db_backup_20260922-1211_no-hr-employee.sql`（任务码 dev-20260922-007，2026-09-22 用户「备份一份没有人事档案的全库数据提交并推送」）：
   用 `scripts/db-backup.sh --exclude-table hr_employee` 导出（113 表；hr_employee 的 CREATE/INSERT 已排除）；

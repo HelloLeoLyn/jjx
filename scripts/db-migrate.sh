@@ -10,7 +10,8 @@
 # 备份分级（CONVENTIONS §2，2026-09-22 改口径）：高风险迁移 → 全库快照；低风险 → 只备本次涉及的表；
 #   涉及表都还不存在时退化为「全库结构快照」；任何情况都不许零备份。
 #   迁移文件头可写 `-- risk: high|low` 显式覆盖自动判定（降级会打警告）。
-#   备份默认落仓库外 ~/jjx-backups/；仓库内只追加索引 jjx-docs/sql/backups/backup-index.tsv。
+#   备份默认落仓库内 jjx-docs/sql/backups/（**默认排除人事档案表 hr_employee**），随任务提交推送；
+#   索引同目录 backup-index.tsv（2026-09-23 用户恢复入库口径）。
 # 危险等级：🔴 改数据库（执行迁移：备份→执行→记版本；备份失败即中止）／🟡 只写版本记录（--record）／🟢 只读（--status）
 # 前置：迁移文件在 jjx-docs/sql/migrations/；JJX_BACKUP_DIR 可写；动库必须带真实任务码
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
@@ -26,7 +27,7 @@
 #
 # 环境覆盖（默认值即本机开发库，见 CONVENTIONS §2）：
 #   DB_HOST DB_PORT DB_USER DB_PASS DB_NAME
-#   JJX_BACKUP_DIR（默认仓库外 ~/jjx-backups/；2026-09-22 用户改口径，仓库内只留索引）
+#   JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/；2026-09-23 用户改口径：备份排除 hr_employee 并随任务提交）
 #   JJX_BACKUP_KEEP_DAYS（默认 14 天）
 #   JJX_MIGRATIONS_DIR（默认 jjx-docs/sql/migrations；仅用于自测）
 # ============================================================================
@@ -38,7 +39,7 @@ DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
-BACKUP_DIR="${JJX_BACKUP_DIR:-$HOME/jjx-backups}"
+BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 MIG_DIR="${JJX_MIGRATIONS_DIR:-$REPO_ROOT/jjx-docs/sql/migrations}"
 INDEX_FILE="${JJX_BACKUP_INDEX:-$REPO_ROOT/jjx-docs/sql/backups/backup-index.tsv}"
 KEEP_DAYS="${JJX_BACKUP_KEEP_DAYS:-14}"
@@ -351,7 +352,8 @@ backup_dump() {  # $1=输出文件 $2=描述 $3..=mysqldump 参数（末尾是�
 
 if [ "$RISK" = high ]; then
   BK_KIND="full"; BK_FILE="$BACKUP_DIR/jjx_erp_db_backup_${TS}_${TAG}.sql"
-  backup_dump "$BK_FILE" "全库" "$DB_NAME" || die "全库备份失败——已中止，未执行任何迁移"
+  # 2026-09-23 用户口径：全库快照默认排除人事档案表（hr_employee：身份证密文/住址/电话），其余都入库
+  backup_dump "$BK_FILE" "全库" "--ignore-table=${DB_NAME}.hr_employee" "$DB_NAME" || die "全库备份失败——已中止，未执行任何迁移"
   BK_TABLES=$(grep -c '^CREATE TABLE' "$BK_FILE" 2>/dev/null || echo 0)
   BK_SIZE=$(stat -c%s "$BK_FILE" 2>/dev/null || echo 0)
   if [ "$BK_SIZE" -lt 1024 ] || [ "$BK_TABLES" -lt 1 ]; then
@@ -429,6 +431,6 @@ say "  索引 : ${INDEX_FILE#$REPO_ROOT/}"
 say "  已应用: $APPLIED_KEY = ${newset:-$NN}"
 say ""
 say "  收尾提醒："
-say "   - 备份默认落仓库外 ~/jjx-backups/（2026-09-22 用户改口径）；仓库内只留索引 backup-index.tsv"
+say "   - 备份默认落仓库内 ${BACKUP_DIR#$REPO_ROOT/}（2026-09-23 用户改口径，全库快照排除 hr_employee）"
 say "   - 在 sys_task 登记执行记录（时间/执行人/备份 md5）"
 say "   - 业务侧验证后再通知用户验收"
