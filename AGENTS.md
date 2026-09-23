@@ -61,3 +61,7 @@ Quick rules:
 
 - `sys_task.remark` is `varchar(500)`: check `CHAR_LENGTH` before writing and query it again afterward. Never suppress database errors with `2>/dev/null` or an empty catch.
 - `git checkout -- <file>` restores from the index, not necessarily `HEAD`. To restore explicitly from `HEAD`, use `git checkout HEAD -- <file>` or `git restore --source=HEAD --staged --worktree <file>`, after confirming the file has no one else's work.
+
+## Proposals do not override user rules
+
+- An agent proposal, even when approved for implementation, does not silently replace an earlier explicit user rule. Before changing `jjx-docs/standards/CONVENTIONS.md` or another policy source, inspect the rule's history and state any conflict with the existing user rule explicitly for approval.
