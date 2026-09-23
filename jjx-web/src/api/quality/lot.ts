@@ -172,10 +172,14 @@ export interface QualityNcr {
   orderNo?: string
   /** 展示用：来源批已被后继复检版本取代 —— dev-20260923-036 */
   lotSuperseded?: boolean
+  /** 允许动作（后端唯一出处下发）—— dev-20260923-039：前端只按它渲染按钮 */
+  allowedActions?: string[]
 }
 
 export interface QualityNcrAction {
   actionId: number
+  /** 允许动作（后端唯一出处下发）—— dev-20260923-039 */
+  allowedActions?: string[]
   ncrId: number
   actionType: string
   quantity: number

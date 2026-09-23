@@ -77,13 +77,12 @@
         <el-table-column prop="defectReason" label="不良原因" min-width="140" show-overflow-tooltip />
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
-            <!-- dev-20260923-038：已作废单不给处置入口（原来只按数量判断，作废单还能点） -->
+            <!-- dev-20260923-039：按钮只按后端下发的 allowedActions 渲染（前端不再写状态条件） -->
             <el-button
-              v-if="row.status !== 'VOID'"
+              v-if="can(row, 'NCR_DISPOSE')"
               link
               type="primary"
               size="small"
-              :disabled="pending(row) <= 0"
               @click="openDispose(row)"
               >处置</el-button
             >
@@ -194,7 +193,7 @@
         <el-table-column label="操作" width="110">
           <template #default="{ row }">
             <el-button
-              v-if="row.actionType === 'REWORK' && row.status !== 'DONE'"
+              v-if="can(row, 'NCR_REWORK_COMPLETE')"
               link
               type="primary"
               size="small"
@@ -202,7 +201,7 @@
               >推进返工闭环</el-button
             >
             <el-button
-              v-if="row.actionType === 'REWORK' && row.status !== 'DONE' && current?.orderId"
+              v-if="can(row, 'NCR_REWORK_SUPPLEMENT') && current?.orderId"
               link
               type="warning"
               size="small"
@@ -211,7 +210,7 @@
             >
             <!-- dev-20260923-022 二期：已生效报废可受控撤销（需权限点 + 填原因，留痕） -->
             <el-button
-              v-if="row.actionType === 'SCRAP' && row.status === 'DONE' && canRevoke"
+              v-if="can(row, 'NCR_REVOKE') && canRevoke"
               link
               type="danger"
               size="small"
@@ -300,6 +299,13 @@ const pending = (row: QualityNcr) =>
   ['VOID', 'CLOSED'].includes(String(row.status))
     ? 0
     : Math.max(0, Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0))
+/**
+ * dev-20260923-039：**按钮只按后端下发的 allowedActions 渲染**，前端不再写状态条件。
+ * 唯一出处是后端 AllowedActionResolver（见 design 045 §2.3）；这样"界面给了注定失败的动作"不会再发生。
+ * 注：NCR_VOID_SUPERSEDED（随批作废）等 040 落地后再在本页渲染。
+ */
+const can = (row: { allowedActions?: string[] }, code: string) =>
+  Array.isArray(row?.allowedActions) && row.allowedActions.includes(code)
 const statusLabel = (status: string) =>
   ({ PENDING: '待处置', DISPOSING: '处置中', CLOSED: '已结', VOID: '已作废（随批/撤销）' })[status] || status
 const actionLabel = (type: string) =>

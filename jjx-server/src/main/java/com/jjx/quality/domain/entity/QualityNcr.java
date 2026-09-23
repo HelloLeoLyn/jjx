@@ -30,6 +30,10 @@ public class QualityNcr {
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean lotSuperseded;
 
+    /** 允许动作（唯一出处下发，不落库）—— dev-20260923-039：前端只按它渲染按钮 */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private java.util.List<String> allowedActions;
+
     @TableId(type = IdType.AUTO)
     private Long ncrId;
 

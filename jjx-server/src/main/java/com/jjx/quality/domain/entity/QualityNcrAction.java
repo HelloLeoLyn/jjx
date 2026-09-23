@@ -18,6 +18,10 @@ import java.time.LocalDateTime;
 @TableName("quality_ncr_action")
 public class QualityNcrAction {
 
+    /** 允许动作（唯一出处下发，不落库）—— dev-20260923-039：处置记录行的按钮按它渲染 */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private java.util.List<String> allowedActions;
+
     @TableId(type = IdType.AUTO)
     private Long actionId;
 
