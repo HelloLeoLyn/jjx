@@ -247,6 +247,13 @@
 
         <el-form-item label="试渲染">
           <div class="preview-panel">
+            <div class="preview-source">
+              数据来源：
+              <el-tag size="small" :type="payloadSource === 'lastEvent' ? 'success' : 'info'">
+                {{ payloadSource === 'lastEvent' ? '最近一次真实事件' : '样例值' }}
+              </el-tag>
+              <span v-if="payloadSource === 'lastEvent' && lastPayloadTime">{{ lastPayloadTime }}</span>
+            </div>
             <div><b>标题：</b>{{ previewTitle || '-' }}</div>
             <div><b>内容：</b>{{ previewContent || '-' }}</div>
           </div>
@@ -309,6 +316,10 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('新增事件配置')
 const variables = ref<Array<{ key: string; description: string; example: string }>>([])
 const latestNotification = ref<{ title?: string; content?: string; receiverName?: string; sendTime?: string }>()
+// 2026-09-23（dev-20260921-014）：最近一次真实 payload（试渲染用；缺失时回落样例值）
+const lastPayload = ref<Record<string, unknown> | null>(null)
+const lastPayloadTime = ref<string | null>(null)
+const payloadSource = ref<'lastEvent' | 'sample'>('sample')
 
 const tableOptions: TableOptions[] = uiConfig.tableOptions.flatMap(column =>
   column.prop === 'title'
@@ -428,6 +439,9 @@ function handleAdd() {
   assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'biz', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', closeSourceEvents: '', excludeTrigger: 0 })
   variables.value = []
   latestNotification.value = undefined
+  lastPayload.value = null
+  lastPayloadTime.value = null
+  payloadSource.value = 'sample'
   dialogVisible.value = true
 }
 
@@ -444,11 +458,17 @@ async function loadMetadata() {
   if (!form.eventCode) {
     variables.value = []
     latestNotification.value = undefined
+    lastPayload.value = null
+    lastPayloadTime.value = null
+    payloadSource.value = 'sample'
     return
   }
   const { data } = await eventConfigApi.metadata(form.eventCode)
   variables.value = data?.variables || []
   latestNotification.value = data?.latest
+  lastPayload.value = data?.lastPayload || null
+  lastPayloadTime.value = data?.lastPayloadTime || null
+  payloadSource.value = data?.payloadSource || 'sample'
 }
 
 function insertVariable(field: 'title' | 'content', key: string) {
@@ -468,13 +488,15 @@ const unknownVariables = computed(() => {
   return placeholderKeys.value.filter((key) => !allowed.has(key))
 })
 const examplePayload = computed(() =>
-  Object.fromEntries(variables.value.map((item) => [item.key, item.example]))
+  payloadSource.value === 'lastEvent' && lastPayload.value
+    ? lastPayload.value
+    : Object.fromEntries(variables.value.map((item) => [item.key, item.example]))
 )
 function renderPreview(template: string) {
   return (template || '').replace(/\$?\{([^}]+)\}/g, (_, expression: string) => {
     for (const candidate of expression.split('|')) {
       const value = examplePayload.value[candidate.trim()]
-      if (value != null) return value
+      if (value != null) return String(value)
     }
     return ''
   })
@@ -525,6 +547,11 @@ function handleSubmit() {
     api.then((res: any) => {
       if (res.code === 200) {
         ElMessage.success(form.eventId ? '修改成功' : '新增成功')
+        // 后端模板键名校验告警（不阻断保存）：2026-09-23 dev-20260921-014
+        const warnings: string[] = res.data?.warnings || []
+        if (warnings.length) {
+          ElMessage.warning(`服务端提示：模板含未登记变量 ${warnings.join('、')}（已保存，可能渲染为空）`)
+        }
         dialogVisible.value = false
         getList()
       }
@@ -564,5 +591,13 @@ onMounted(() => {
   border-radius: 4px;
   background: #fafafa;
   line-height: 1.7;
+}
+.preview-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #909399;
+  font-size: 12px;
+  margin-bottom: 6px;
 }
 </style>

@@ -26,16 +26,21 @@ export const eventConfigApi = {
           receiverName?: string
           sendTime?: string
         }
+        /** 最近一次真实 payload（2026-09-23 dev-20260921-014）——试渲染用 */
+        lastPayload?: Record<string, unknown> | null
+        lastPayloadTime?: string | null
+        /** lastEvent = 用真实 payload；sample = 回落样例值 */
+        payloadSource?: 'lastEvent' | 'sample'
       }>
     >(`/system/event-config/${encodeURIComponent(eventCode)}/metadata`)
   },
-  // 新增
+  // 新增（data.warnings：后端模板键名校验告警，不阻断保存）
   add(data: Partial<SysEventConfig>) {
-    return request.post<R>('/system/event-config', data)
+    return request.post<R<{ warnings?: string[] }>>('/system/event-config', data)
   },
   // 编辑
   update(data: Partial<SysEventConfig>) {
-    return request.put<R>('/system/event-config', data)
+    return request.put<R<{ warnings?: string[] }>>('/system/event-config', data)
   },
   // 删除
   remove(eventIds: number[]) {

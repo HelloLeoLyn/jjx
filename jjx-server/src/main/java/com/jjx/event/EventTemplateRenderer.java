@@ -33,6 +33,25 @@ public final class EventTemplateRenderer {
         return renderWithMissing(template, payload).rendered();
     }
 
+    /**
+     * 提取模板里的占位符表达式（原样返回，如 "bizNo" 或 "bizNo|bizId"），供配置页/后端做键名校验。
+     * 2026-09-23（dev-20260921-014）：保存校验未知键用。
+     */
+    public static List<String> placeholderExpressions(String template) {
+        if (template == null || template.isEmpty()) {
+            return List.of();
+        }
+        List<String> expressions = new ArrayList<>();
+        Matcher matcher = PLACEHOLDER.matcher(template);
+        while (matcher.find()) {
+            String expr = matcher.group(1).trim();
+            if (!expr.isEmpty()) {
+                expressions.add(expr);
+            }
+        }
+        return expressions;
+    }
+
     public static Result renderWithMissing(String template, Map<String, Object> payload) {
         if (template == null) {
             return new Result(null, List.of());

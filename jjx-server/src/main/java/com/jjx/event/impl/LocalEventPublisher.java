@@ -11,10 +11,14 @@ import com.jjx.notification.domain.entity.Notification;
 import com.jjx.notification.mapper.NotificationMapper;
 import com.jjx.notification.service.NotificationService;
 import com.jjx.system.domain.entity.SysEventConfig;
+import com.jjx.system.domain.entity.SysEventLastPayload;
 import com.jjx.system.domain.entity.SysTask;
+import com.jjx.system.domain.entity.SysUser;
 import com.jjx.system.domain.entity.SysUserRole;
 import com.jjx.system.mapper.SysEventConfigMapper;
+import com.jjx.system.mapper.SysEventLastPayloadMapper;
 import com.jjx.system.mapper.SysTaskMapper;
+import com.jjx.system.mapper.SysUserMapper;
 import com.jjx.system.mapper.SysUserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +45,9 @@ public class LocalEventPublisher implements EventPublisher {
     private final NotificationMapper notificationMapper;
     private final SysTaskMapper sysTaskMapper;
     private final SysUserRoleMapper userRoleMapper;
+    /** 2026-09-23（dev-20260921-014）：通知落「事件码」与收件人姓名用。 */
+    private final SysEventLastPayloadMapper eventLastPayloadMapper;
+    private final SysUserMapper sysUserMapper;
 
     @Override
     public void fire(String eventCode, Map<String, Object> payload) {
@@ -49,6 +56,9 @@ public class LocalEventPublisher implements EventPublisher {
         } catch (Exception e) {
             log.warn("发布 Spring 本地事件失败，不影响后续通知逻辑: eventCode={}", eventCode, e);
         }
+
+        // 2026-09-23（dev-20260921-014）：留一份最近 payload，供事件配置页「试渲染」用真实数据预览
+        saveLastPayload(eventCode, payload);
 
         SysEventConfig event = eventConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysEventConfig>()
@@ -227,6 +237,38 @@ public class LocalEventPublisher implements EventPublisher {
         return value.isBlank() || "null".equalsIgnoreCase(value) ? null : value;
     }
 
+    /** 记录事件最近一次 payload（一事件一行，覆盖写）；失败不影响事件主流程。 */
+    private void saveLastPayload(String eventCode, Map<String, Object> payload) {
+        if (eventCode == null || payload == null || payload.isEmpty()) {
+            return;
+        }
+        try {
+            Object bizId = payload.get("bizId");
+            eventLastPayloadMapper.upsert(eventCode,
+                    cn.hutool.json.JSONUtil.toJsonStr(payload),
+                    bizId == null ? null : String.valueOf(bizId));
+        } catch (Exception e) {
+            log.warn("记录事件最近 payload 失败（不影响主流程）: eventCode={}, {}", eventCode, e.getMessage());
+        }
+    }
+
+    /** 取用户显示名（昵称优先，其次账号名）；取不到返回 null。 */
+    private String resolveUserName(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            SysUser user = sysUserMapper.selectById(userId);
+            if (user == null) {
+                return null;
+            }
+            return user.getNickName() != null && !user.getNickName().isBlank()
+                    ? user.getNickName() : user.getUserName();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private void createNotification(SysEventConfig event, String eventCode,
                                     Map<String, Object> payload, Long receiverId) {
         try {
@@ -234,10 +276,18 @@ public class LocalEventPublisher implements EventPublisher {
             dto.setTitle(resolveTemplate(event.getTitle(), payload, eventCode));
             dto.setContent(resolveTemplate(event.getContent(), payload, eventCode));
             dto.setNotificationType("system");
+            // 2026-09-23（dev-20260921-014）：事件码落 event_code（配置页「最近一次实际渲染」按它反查）；
+            // bizType 仍放事件码，是历史口径（办结关闭通知也按 biz_type 匹配），不动。
+            dto.setEventCode(eventCode);
             dto.setBizType(eventCode);
             Object bizId = payload == null ? null : payload.get("bizId");
             dto.setBizId(bizId == null ? null : String.valueOf(bizId));
             dto.setReceiverId(receiverId);
+            // 2026-09-23：补齐收件人姓名（此前只写 receiver_id，sys_notification.receiver_name 全空）
+            String receiverName = resolveUserName(receiverId);
+            if (receiverName != null) {
+                dto.setReceiverName(receiverName);
+            }
             dto.setPriority(event.getPriority() != null ? event.getPriority() : "normal");
             // 2026-09-18：触发人落库到「发送人」（此前 sender_id/sender_name 一直为 NULL，
             // 通知列表看不出是谁触发的；事件 payload 里本来就有 triggerUserId/triggerUserName）
