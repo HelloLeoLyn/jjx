@@ -591,54 +591,35 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
      * 损耗率取 sys_config.production.report.overrun-rate，缺省 0.05（5%）。
      */
     private void validateSupplementReport(ProductionOperationExecution exec, BigDecimal reportQuantity) {
-        BigDecimal rate = overrunRate();
-        BigDecimal factor = BigDecimal.ONE.add(rate);
-        // 工序口径的计划量：优先取「该工序全部任务的任务量合计」（报工是按任务报，工序计划应是任务合计），
-        // 没有任务时才退回「投料量 inputQuantity」（本表无 planned_quantity 列）。
-        // 2026-09-23 修正：原用 inputQuantity 会把「一工序多任务」的场景算小（如投料 100、两任务各 100 = 200），
-        // 导致可补额度恒为 0、补报入口不出现。
-        BigDecimal planQty = null;
-        try {
-            planQty = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(SUM(task_quantity), 0) FROM production_task WHERE execution_id = ?",
-                    BigDecimal.class, exec.getExecutionId());
-        } catch (Exception ignored) {
-        }
-        if (planQty == null || planQty.signum() <= 0) {
-            planQty = exec.getInputQuantity();
-        }
-        if (planQty != null && planQty.signum() > 0) {
-            BigDecimal reported = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE execution_id = ?",
-                    BigDecimal.class, exec.getExecutionId());
-            BigDecimal cap = planQty.multiply(factor);
-            if (nvl(reported).add(reportQuantity).compareTo(cap) > 0) {
-                throw new BusinessException("补报超出工序损耗上限（计划 " + planQty.stripTrailingZeros().toPlainString()
-                        + " × (1+" + rate.stripTrailingZeros().toPlainString() + ") = " + cap.stripTrailingZeros().toPlainString()
-                        + "，已报 " + nvl(reported).stripTrailingZeros().toPlainString()
-                        + "，本次 " + reportQuantity.stripTrailingZeros().toPlainString() + "）");
-            }
-        }
+        // 补报额度基准 = 工单计划量 ×(1+损耗率) − 工单「已合格产出」(finished_quantity)。
+        // 2026-09-23 修正：原先用「报工累计」作基准，会被同一工序多次派工/重复报工顶穿
+        // （实测：工单计划 200，4 次报工累计 400 → 额度恒为 0，补报入口不出现）。
+        // 补报的业务目的是把「合格产出」补到计划量，故必须以产出为基准。
         if (exec.getOrderId() == null) {
             return;
         }
-        BigDecimal orderPlan = null;
+        BigDecimal planned = null;
+        BigDecimal finished = BigDecimal.ZERO;
         try {
-            orderPlan = jdbcTemplate.queryForObject(
-                    "SELECT planned_quantity FROM production_order WHERE order_id = ?", BigDecimal.class, exec.getOrderId());
+            planned = jdbcTemplate.queryForObject(
+                    "SELECT planned_quantity FROM production_order WHERE order_id = ?",
+                    BigDecimal.class, exec.getOrderId());
+            BigDecimal f = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(finished_quantity, 0) FROM production_order WHERE order_id = ?",
+                    BigDecimal.class, exec.getOrderId());
+            finished = nvl(f);
         } catch (Exception ignored) {
         }
-        if (orderPlan != null && orderPlan.signum() > 0) {
-            BigDecimal reportedAll = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE order_id = ?",
-                    BigDecimal.class, exec.getOrderId());
-            BigDecimal cap = orderPlan.multiply(factor);
-            if (nvl(reportedAll).add(reportQuantity).compareTo(cap) > 0) {
-                throw new BusinessException("补报超出工单损耗上限（工单计划 " + orderPlan.stripTrailingZeros().toPlainString()
-                        + " × (1+" + rate.stripTrailingZeros().toPlainString() + ") = " + cap.stripTrailingZeros().toPlainString()
-                        + "，已报 " + nvl(reportedAll).stripTrailingZeros().toPlainString()
-                        + "，本次 " + reportQuantity.stripTrailingZeros().toPlainString() + "）");
-            }
+        if (planned == null || planned.signum() <= 0) {
+            return;
+        }
+        BigDecimal rate = overrunRate();
+        BigDecimal cap = planned.multiply(BigDecimal.ONE.add(rate));
+        if (finished.add(reportQuantity).compareTo(cap) > 0) {
+            throw new BusinessException("补报超出工单损耗上限（工单计划 " + planned.stripTrailingZeros().toPlainString()
+                    + " × (1+" + rate.stripTrailingZeros().toPlainString() + ") = " + cap.stripTrailingZeros().toPlainString()
+                    + "，已合格产出 " + finished.stripTrailingZeros().toPlainString()
+                    + "，本次 " + reportQuantity.stripTrailingZeros().toPlainString() + "）");
         }
     }
 

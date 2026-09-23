@@ -1529,34 +1529,18 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
         BigDecimal factor = BigDecimal.ONE.add(rate);
         BigDecimal allowance = null;
-        // 工序口径计划量：优先「该工序任务量合计」，其次「投料量 inputQuantity」（与报工侧校验一致）
-        BigDecimal execPlan = null;
-        try {
-            execPlan = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(SUM(task_quantity), 0) FROM production_task WHERE execution_id = ?",
-                    BigDecimal.class, exec.getExecutionId());
-        } catch (Exception ignored) {
-        }
-        if (execPlan == null || execPlan.signum() <= 0) {
-            execPlan = exec.getInputQuantity();
-        }
-        if (execPlan != null && execPlan.signum() > 0) {
-            BigDecimal reported = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE execution_id = ?",
-                    BigDecimal.class, exec.getExecutionId());
-            allowance = execPlan.multiply(factor).subtract(floorCompletionZero(reported));
-        }
+        // 2026-09-23 修正：额度基准 = 工单计划量 ×(1+损耗率) − 工单「已合格产出」(finished_quantity)。
+        // 原用「工序投料量/任务合计 − 报工累计」会被多次派工重复报工顶穿（实测计划 200、报工累计 400 → 额度恒 0）。
         if (exec.getOrderId() != null) {
             try {
                 BigDecimal orderPlan = jdbcTemplate.queryForObject(
                         "SELECT planned_quantity FROM production_order WHERE order_id = ?",
                         BigDecimal.class, exec.getOrderId());
+                BigDecimal finished = jdbcTemplate.queryForObject(
+                        "SELECT COALESCE(finished_quantity, 0) FROM production_order WHERE order_id = ?",
+                        BigDecimal.class, exec.getOrderId());
                 if (orderPlan != null && orderPlan.signum() > 0) {
-                    BigDecimal reportedAll = jdbcTemplate.queryForObject(
-                            "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE order_id = ?",
-                            BigDecimal.class, exec.getOrderId());
-                    BigDecimal rest = orderPlan.multiply(factor).subtract(floorCompletionZero(reportedAll));
-                    allowance = allowance == null ? rest : allowance.min(rest);
+                    allowance = orderPlan.multiply(factor).subtract(floorCompletionZero(finished));
                 }
             } catch (Exception ignored) {
             }
