@@ -43,6 +43,9 @@ public class TaskTreeRowVO {
     @Schema(description = "工序执行状态（ExecutionStatusEnum 值：0待执行/1准备中/2执行中/3已暂停/4已完成…；2026-09-21 dev-20260921-025 补，列表侧判断能否开始工序）")
     private Integer executionStatus;
 
+    @Schema(description = "工序类型（NORMAL 正常 / REWORK 返工；dev-20260923-035 补，派工与任务列表据此给返工打标签并置顶）")
+    private String executionType;
+
     @Schema(description = "工单编号（展示上下文）")
     private String orderNo;
 

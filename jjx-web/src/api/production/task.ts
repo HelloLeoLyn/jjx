@@ -20,6 +20,8 @@ export interface TaskTreeQuery {
   pageSize?: number
   keyword?: string
   status?: string
+  /** 工单过滤（dev-20260923-035：派工管理「上工单、下派工」） */
+  orderId?: number
 }
 
 export interface MyProductionExecutionQuery {

@@ -21,4 +21,7 @@ public class TaskTreeQueryDTO {
 
     @Schema(description = "状态过滤：PENDING/ACTIVE/COMPLETED/CANCELLED（可空=全部）")
     private String status;
+
+    @Schema(description = "工单过滤（dev-20260923-035：派工管理「上工单、下派工」用；可空=全部）")
+    private Long orderId;
 }

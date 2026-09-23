@@ -55,6 +55,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final QualityCapaService capaService;
+    private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     /** 用 ObjectProvider 延迟取，避免 库存→质量→库存 的循环依赖。 */
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.inventory.service.InventoryInboundService> inventoryInboundServiceProvider;
     private final RedisSequenceService redisSequenceService;
@@ -483,7 +484,17 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         executionMapper.insert(execution);
 
         ProductionTask task = new ProductionTask();
-        task.setTaskNo("NCR-" + action.getActionId() + "-REWORK");
+        // dev-20260923-035：返工任务号与工单同构 —— WO-<工单号>-P<2位工序序>-T001。
+        // 原来叫 NCR-4-REWORK，在派工管理/任务列表里看不出属于哪张工单（其实 execution 已挂在原工单下）。
+        String orderNo = null;
+        try {
+            com.jjx.production.domain.entity.ProductionOrder reworkOrder =
+                    productionOrderMapper.selectById(ncr.getOrderId());
+            orderNo = reworkOrder == null ? null : reworkOrder.getOrderNo();
+        } catch (Exception e) {
+            log.warn("读取工单号失败（返工任务号回落为 REWORK 前缀）: orderId={} err={}", ncr.getOrderId(), e.getMessage());
+        }
+        task.setTaskNo(reworkTaskNo(orderNo, execution.getProcessOrder(), 1L));
         task.setExecutionId(execution.getExecutionId());
         task.setTaskQuantity(quantity);
         task.setStatus("PENDING");
@@ -502,6 +513,16 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         action.setReworkExecutionId(execution.getExecutionId());
         action.setResultRemark("已创建返工工序「" + process.getProcessName()
                 + "」和生产任务，完成报工后进入 FQC 复检");
+    }
+
+    /**
+     * 返工任务号（与正常任务同构）：WO-&lt;工单号&gt;-P&lt;2位工序序&gt;-T&lt;3位任务序&gt; —— dev-20260923-035。
+     * 工单号取不到时回落 REWORK 前缀，保证号仍可读、可追溯（NCR 号在工序作业说明里，不丢）。
+     */
+    static String reworkTaskNo(String orderNo, Integer processOrder, long taskSeq) {
+        String order = (orderNo == null || orderNo.isBlank()) ? "REWORK" : orderNo.trim();
+        int po = processOrder == null ? 0 : processOrder;
+        return String.format("%s-P%02d-T%03d", order, po, taskSeq);
     }
 
     /**

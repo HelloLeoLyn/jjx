@@ -23,6 +23,12 @@ export function useDispatchList() {
     keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '',
     status: typeof route.query.status === 'string' ? route.query.status : '',
   })
+  /** dev-20260923-035：「上工单、下派工」——选中工单后只列该工单的任务（返工置顶） */
+  const selectedOrderId = ref<number | null>(
+    typeof route.query.orderId === 'string' && Number(route.query.orderId) > 0
+      ? Number(route.query.orderId)
+      : null
+  )
 
   const getList = async () => {
     loading.value = true
@@ -31,6 +37,7 @@ export function useDispatchList() {
         ...queryParams,
         keyword: filterForm.keyword.trim() || undefined,
         status: filterForm.status || undefined,
+        orderId: selectedOrderId.value || undefined,
       })
       const page: PageResult<TaskTreeRow> | null = res?.data
       firstLevelRows.value = (page?.records || []).map((r) => initRow(r))
@@ -54,6 +61,12 @@ export function useDispatchList() {
   )
 
   const handleQuery = () => {
+    queryParams.pageNum = 1
+    getList()
+  }
+  /** 顶部工单面板选中/清除工单 → 收窄下面的派工列表 */
+  const handleOrderSelected = (order: { orderId?: number | string } | null) => {
+    selectedOrderId.value = order?.orderId ? Number(order.orderId) : null
     queryParams.pageNum = 1
     getList()
   }
@@ -111,6 +124,8 @@ export function useDispatchList() {
     total,
     queryParams,
     filterForm,
+    selectedOrderId,
+    handleOrderSelected,
     getList,
     statUnassigned,
     statActive,

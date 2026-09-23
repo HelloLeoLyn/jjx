@@ -3,8 +3,25 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <h1 class="page-title">派工管理</h1>
-      <span class="page-subtitle">查看任务分配情况并逐级安排执行人员</span>
+      <span class="page-subtitle"
+        >先选工单（看计划/良品/缺口/阶段），再在下方给该工单的任务派工；返工任务已置顶并标红</span
+      >
     </div>
+
+    <!-- dev-20260923-035：上工单、下派工（与工序执行页同构，避免跨工单误派） -->
+    <WorkOrderPanel
+      :can-view-all="true"
+      :initial-order-id="selectedOrderId"
+      @select="handleOrderSelected"
+    />
+    <el-alert
+      v-if="selectedOrderId"
+      class="order-filter-tip"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="`已收窄到工单 #${selectedOrderId} 的任务（清空上表选择可看全部工单）`"
+    />
 
     <!-- 顶部统计（当前页 First Task 数据） -->
     <el-card class="stats-card" shadow="never">
@@ -75,6 +92,10 @@
         </el-table-column>
         <el-table-column label="工序" min-width="180">
           <template #default="{ row }">
+            <!-- dev-20260923-035：返工工序在派工队列里要能一眼认出（并已在后端置顶） -->
+            <el-tag v-if="row.executionType === 'REWORK'" type="danger" size="small" effect="plain"
+              >返工</el-tag
+            >
             <span class="task-sub">{{ row.processName || '-' }}</span>
           </template>
         </el-table-column>
@@ -464,6 +485,8 @@ import { useDispatchList } from './composables/useDispatchList'
 import { useAssign } from './composables/useAssign'
 import { useReturn } from './composables/useReturn'
 import RecallDialog from './components/RecallDialog.vue'
+// dev-20260923-035：复用工单面板（计划/良品/缺口/阶段）做「上工单、下派工」
+import WorkOrderPanel from '../execution/components/WorkOrderPanel.vue'
 import { useFlow } from './composables/useFlow'
 import { useCompletionDetail } from './composables/useCompletionDetail'
 
@@ -476,6 +499,8 @@ const {
   total,
   queryParams,
   filterForm,
+  selectedOrderId,
+  handleOrderSelected,
   getList,
   statUnassigned,
   statActive,

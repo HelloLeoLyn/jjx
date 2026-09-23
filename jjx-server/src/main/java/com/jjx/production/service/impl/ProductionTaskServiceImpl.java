@@ -149,6 +149,15 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     + "AND (o.order_no LIKE CONCAT('%',{0},'%') "
                     + "OR e.process_name LIKE CONCAT('%',{0},'%')))", keyword);
         }
+        // dev-20260923-035：派工管理「上工单、下派工」——按工单收窄；返工任务（REWORK）置顶
+        if (queryDTO != null && queryDTO.getOrderId() != null) {
+            wrapper.apply("EXISTS (SELECT 1 FROM production_operation_execution oe "
+                    + "WHERE oe.execution_id = production_task.execution_id AND oe.order_id = {0})",
+                    queryDTO.getOrderId());
+        }
+        wrapper.last("ORDER BY (SELECT CASE WHEN oe2.execution_type = 'REWORK' THEN 1 ELSE 0 END "
+                + "FROM production_operation_execution oe2 WHERE oe2.execution_id = production_task.execution_id) DESC, "
+                + "production_task.task_id ASC");
 
         Page<ProductionTask> page = productionTaskMapper.selectPage(
                 new Page<>(pageNum, pageSize), wrapper);
@@ -1186,7 +1195,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             try {
                 jdbcTemplate.query("SELECT e.execution_id, e.order_id, e.process_id,"
                                 + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name, e.process_order,"
-                                + " e.execution_status"
+                                + " e.execution_status, e.execution_type"
                                 + " FROM production_operation_execution e"
                                 + " LEFT JOIN engineering_standard_process p ON p.process_id = e.process_id"
                                 + " WHERE e.execution_id IN (" + execIdStr + ")",
@@ -1197,7 +1206,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                                     rs.getObject("process_id"),
                                     rs.getString("process_name"),
                                     rs.getObject("process_order"),
-                                    rs.getObject("execution_status")});
+                                    rs.getObject("execution_status"),
+                                    rs.getString("execution_type")});
                         });
             } catch (Exception e) {
                 log.warn("查询 execution 上下文失败: {}", e.getMessage());
@@ -1377,6 +1387,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 vo.setProcessOrder(exec[3] == null ? null : ((Number) exec[3]).intValue());
                 // 2026-09-21 dev-20260921-025：列表侧也要能判断「能否开始工序」
                 vo.setExecutionStatus(exec[4] == null ? null : ((Number) exec[4]).intValue());
+                // dev-20260923-035：返工工序（REWORK）在派工/任务列表里要能识别
+                vo.setExecutionType(exec.length > 5 ? (String) exec[5] : null);
             }
             vo.setAssigneeId(t.getAssigneeId());
             vo.setAssigneeName(t.getAssigneeId() == null ? null : userNameMap.get(t.getAssigneeId()));
