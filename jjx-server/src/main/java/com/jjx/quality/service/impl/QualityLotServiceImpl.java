@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.domain.entity.QualityLotItem;
 import com.jjx.quality.dto.FqcCompletionSummary;
@@ -25,8 +26,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -40,12 +39,11 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, QualityLot> implements QualityLotService {
 
-    private static final DateTimeFormatter LOT_NO_DATE = DateTimeFormatter.ofPattern("yyMMdd");
-
     private final QualityLotMapper lotMapper;
     private final QualityLotItemMapper itemMapper;
     private final QualityNcrMapper ncrMapper;
     private final QualityNcrActionMapper ncrActionMapper;
+    private final RedisSequenceService redisSequenceService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -466,24 +464,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         return changed;
     }
 
-    /** 生成批号 QLyyMMdd0001（批量小，用 count+1 加占用校验，避免额外依赖） */
+    /** 统一走持久化号段，避免 count+1 的并发冲突。 */
     private String generateLotNo() {
-        String prefix = "QL" + LocalDate.now().format(LOT_NO_DATE);
-        long base = nzLong(lotMapper.countByLotNoPrefix(prefix));
-        for (long seq = base + 1; seq < base + 10000; seq++) {
-            String candidate = prefix + String.format("%04d", seq);
-            if (nzLong(lotMapper.countByLotNo(candidate)) == 0) {
-                return candidate;
-            }
-        }
-        throw new BusinessException("检验批号生成失败，请检查批号规则");
+        return redisSequenceService.generateBusinessNumberByType("quality_lot", "QL", "yyMMdd", 3);
     }
 
     private BigDecimal nz(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
 
-    private long nzLong(Long value) {
-        return value == null ? 0L : value;
-    }
 }

@@ -24,6 +24,7 @@ import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerRowVO;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.enums.QualityDispositionEnum;
 import com.jjx.production.domain.entity.ProductionOrder;
@@ -97,6 +98,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final com.jjx.inventory.mapper.InventoryIqcReworkOrderMapper iqcReworkOrderMapper;
     private final com.jjx.inventory.mapper.InventoryIqcBatchMapper iqcBatchMapper;
     private final com.jjx.inventory.mapper.InventoryIqcScrapOrderMapper iqcScrapOrderMapper;
+    private final RedisSequenceService redisSequenceService;
     /** 完工入库过账后回写 quality_lot.stored_quantity（dev-20260918-022/023）；
      *  用 ObjectProvider 懒取，避免 inventory → quality 的强依赖/循环。 */
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.quality.service.QualityLotService> qualityLotServiceProvider;
@@ -501,8 +503,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         if (release) addReleasedQuarantineStock(quarantine, quantity, action);
         var dispositionOrder = new com.jjx.inventory.domain.InventoryIqcDispositionOrder();
-        dispositionOrder.setDispositionNo("IQD" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
-                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        dispositionOrder.setDispositionNo(redisSequenceService.generateBusinessNumberByType(
+                "iqc_disposition", "IQD", "yyMMdd", 3));
         dispositionOrder.setQuarantineId(quarantine.getQuarantineId());
         dispositionOrder.setInboundId(quarantine.getInboundId());
         dispositionOrder.setInboundItemId(quarantine.getInboundItemId());
@@ -580,8 +582,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         var item = inboundItemMapper.selectById(quarantine.getInboundItemId());
         var inbound = inboundOrderMapper.selectById(quarantine.getInboundId());
         var order = new com.jjx.inventory.domain.InventoryIqcReturnOrder();
-        order.setReturnNo("IQR" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
-                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        order.setReturnNo(redisSequenceService.generateBusinessNumberByType(
+                "iqc_return", "IQR", "yyMMdd", 3));
         order.setDispositionId(disposition.getDispositionId()); order.setQuarantineId(quarantine.getQuarantineId());
         order.setInboundId(quarantine.getInboundId()); order.setInboundItemId(quarantine.getInboundItemId());
         order.setInspectionId(quarantine.getInspectionId()); order.setLotId(quarantine.getLotId()); order.setMaterialId(quarantine.getMaterialId());
@@ -599,8 +601,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                                       com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
         var inbound = inboundOrderMapper.selectById(quarantine.getInboundId());
         var order = new com.jjx.inventory.domain.InventoryIqcReworkOrder();
-        order.setReworkNo("IQW" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
-                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        order.setReworkNo(redisSequenceService.generateBusinessNumberByType(
+                "iqc_rework", "IQW", "yyMMdd", 3));
         order.setDispositionId(disposition.getDispositionId()); order.setQuarantineId(quarantine.getQuarantineId());
         order.setInboundId(quarantine.getInboundId()); order.setInboundItemId(quarantine.getInboundItemId());
         order.setInspectionId(quarantine.getInspectionId()); order.setLotId(quarantine.getLotId()); order.setMaterialId(quarantine.getMaterialId());
@@ -617,8 +619,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                                      com.jjx.inventory.domain.InventoryIqcDispositionOrder disposition,
                                      com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
         var order = new com.jjx.inventory.domain.InventoryIqcScrapOrder();
-        order.setScrapNo("IQS" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"))
-                + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000)));
+        order.setScrapNo(redisSequenceService.generateBusinessNumberByType(
+                "iqc_scrap", "IQS", "yyMMdd", 3));
         order.setDispositionId(disposition.getDispositionId()); order.setQuarantineId(quarantine.getQuarantineId());
         order.setInboundId(quarantine.getInboundId()); order.setInboundItemId(quarantine.getInboundItemId());
         order.setInspectionId(quarantine.getInspectionId()); order.setLotId(quarantine.getLotId()); order.setMaterialId(quarantine.getMaterialId());

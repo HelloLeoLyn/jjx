@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.domain.entity.QualityNcr;
 import com.jjx.quality.domain.entity.QualityNcrAction;
@@ -28,9 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Set;
 
@@ -42,7 +41,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, QualityNcr> implements QualityNcrService {
 
-    private static final DateTimeFormatter NCR_NO_DATE = DateTimeFormatter.ofPattern("yyMMdd");
     /** 处置方式：只有这三种 */
     private static final Set<String> ACTION_TYPES = Set.of("REWORK", "CONCESSION", "RETURN", "SCRAP");
 
@@ -59,6 +57,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     private final QualityCapaService capaService;
     /** 用 ObjectProvider 延迟取，避免 库存→质量→库存 的循环依赖。 */
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.inventory.service.InventoryInboundService> inventoryInboundServiceProvider;
+    private final RedisSequenceService redisSequenceService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -413,18 +412,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     }
 
     private String generateNcrNo() {
-        String prefix = "NCR" + LocalDate.now().format(NCR_NO_DATE);
-        long base = ncrMapper.selectCount(new LambdaQueryWrapper<QualityNcr>()
-                .likeRight(QualityNcr::getNcrNo, prefix));
-        for (long seq = base + 1; seq < base + 10000; seq++) {
-            String candidate = prefix + String.format("%04d", seq);
-            Long exists = ncrMapper.selectCount(new LambdaQueryWrapper<QualityNcr>()
-                    .eq(QualityNcr::getNcrNo, candidate));
-            if (exists == null || exists == 0) {
-                return candidate;
-            }
-        }
-        throw new BusinessException("不良单号生成失败");
+        return redisSequenceService.generateBusinessNumberByType("quality_ncr", "NCR", "yyMMdd", 3);
     }
 
     private BigDecimal nz(BigDecimal value) {

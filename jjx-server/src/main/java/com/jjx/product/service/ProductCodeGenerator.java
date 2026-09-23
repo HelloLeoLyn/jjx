@@ -24,7 +24,7 @@ public class ProductCodeGenerator {
      * @return 产品编码
      */
     public String generateProductCode() {
-        return sequenceService.generateBusinessNumberByType("product", PREFIX, "yyyyMMdd", 4);
+        return sequenceService.generateBusinessNumberByType("product", PREFIX, "yyMMdd", 3);
     }
 
     /**
@@ -40,7 +40,7 @@ public class ProductCodeGenerator {
         // 使用分类编码的前缀
         String categoryPrefix = categoryCode.length() > 4 ? categoryCode.substring(0, 4) : categoryCode;
         return sequenceService.generateBusinessNumberByTypeWithPrefix(
-                "product", categoryPrefix + "-", "yyyyMMdd", 4);
+                "product", categoryPrefix + "-", "yyMMdd", 3);
     }
 
     /**

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,7 @@ public class RedisSequenceService {
     private final SysConfigService sysConfigService;
     private final ObjectMapper objectMapper;
     private final SysNumberSequenceMapper numberSequenceMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** 日期格式化器 */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyMMdd");
@@ -268,8 +270,15 @@ public class RedisSequenceService {
                 : date.format(DateTimeFormatter.ofPattern(normalizeDatePattern(normalized.dateFormat())));
         String periodKey = periodKey(normalized.resetCycle(), date);
         long sequence = nextPersistentSequence(bizType, periodKey, normalized.startValue());
-        if (sequence > maxSequence(normalized.digits())) {
-            throw new BusinessException(bizType + "序列号已达到最大值，日期: " + datePart);
+        long configuredMax = maxSequence(normalized.digits());
+        if (sequence > configuredMax) {
+            int actualDigits = Long.toString(sequence).length();
+            if (sequence == configuredMax + 1) {
+                log.warn("业务编号流水自动进位: bizType={}, period={}, configuredDigits={}, actualDigits={}, sequence={}",
+                        bizType, periodKey, normalized.digits(), actualDigits, sequence);
+                eventPublisher.publishEvent(new BusinessNumberOverflowEvent(
+                        bizType, periodKey, normalized.digits(), actualDigits, sequence));
+            }
         }
         return normalized.prefix() + datePart + String.format("%0" + normalized.digits() + "d", sequence);
     }

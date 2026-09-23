@@ -839,7 +839,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 采购旧实现以数据库最大号递增；首次切换 Redis 时跳过当天已存在的号码。
         for (int i = 0; i < 9999; i++) {
             String orderNo = redisSequenceService.generateBusinessNumberByType(
-                    "purchase_order", "PO", "yyyyMMdd", 4);
+                    "purchase_order", "PO", "yyMMdd", 3);
             if (orderMapper.checkOrderNoUnique(orderNo) == 0) {
                 return orderNo;
             }

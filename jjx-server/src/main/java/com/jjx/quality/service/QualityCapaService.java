@@ -3,6 +3,7 @@ package com.jjx.quality.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.quality.domain.entity.QualityCapa;
 import com.jjx.quality.domain.entity.QualityNcr;
 import com.jjx.quality.mapper.QualityCapaMapper;
@@ -10,7 +11,6 @@ import com.jjx.quality.mapper.QualityNcrMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Service
@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 public class QualityCapaService {
     private final QualityCapaMapper capaMapper;
     private final QualityNcrMapper ncrMapper;
+    private final RedisSequenceService redisSequenceService;
 
     public Page<QualityCapa> page(long pageNum, long pageSize, String status, Long ncrId) {
         return capaMapper.selectPage(new Page<>(pageNum, pageSize), new LambdaQueryWrapper<QualityCapa>()
@@ -30,7 +31,7 @@ public class QualityCapaService {
     public QualityCapa create(QualityCapa capa) {
         QualityNcr ncr = capa.getNcrId() == null ? null : ncrMapper.selectById(capa.getNcrId());
         if (ncr == null) throw new BusinessException("关联的不良单不存在");
-        capa.setCapaNo("CAPA" + LocalDate.now().toString().replace("-", "") + "-" + System.currentTimeMillis() % 1000000);
+        capa.setCapaNo(redisSequenceService.generateBusinessNumberByType("quality_capa", "CAPA", "yyMMdd", 3));
         capa.setStatus("PENDING_ANALYSIS");
         capa.setDelFlag(0);
         capaMapper.insert(capa);

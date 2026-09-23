@@ -1697,7 +1697,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         String transferNo = redisSequenceService.generateBusinessNumberByType(
-                "material_transfer", "TF", "yyMMdd", 4);
+                "material_transfer", "TF", "yyMMdd", 3);
         String transferredVersion = null; // 本次转移生成的版本号（回填打样单）
         java.util.List<String> details = new java.util.ArrayList<>();
         String productAction = "NONE", bomAction = "NONE", routingAction = "NONE";
@@ -2364,7 +2364,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         String transferNo = redisSequenceService.generateBusinessNumberByType(
-                "material_transfer", "TF", "yyMMdd", 4);
+                "material_transfer", "TF", "yyMMdd", 3);
         String transferredVersion = null;
         java.util.List<String> details = new java.util.ArrayList<>();
         String productAction = "NONE", bomAction = "NONE", routingAction = "NONE";

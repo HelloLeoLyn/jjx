@@ -227,7 +227,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         for (int attempt = 1; attempt <= REPORT_NO_MAX_ATTEMPTS; attempt++) {
             report.setReportId(null);
             report.setReportNo(redisSequenceService.generateBusinessNumberByType(
-                    "work_report", "WR-", "yyyyMMdd-", 4));
+                    "work_report", "WR", "yyMMdd", 4));
             try {
                 workReportMapper.insert(report);
                 return;
