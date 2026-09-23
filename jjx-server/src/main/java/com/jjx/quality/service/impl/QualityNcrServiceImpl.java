@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.enums.AllowedActionEnum;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.domain.entity.QualityNcr;
@@ -16,6 +17,7 @@ import com.jjx.quality.mapper.QualityNcrMapper;
 import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.quality.service.QualityLotService;
 import com.jjx.quality.service.QualityNcrService;
+import com.jjx.quality.service.support.AllowedActionResolver;
 import com.jjx.quality.service.QualityFinishService;
 import com.jjx.quality.service.QualityCapaService;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
@@ -409,22 +411,75 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                 + "该批已有复检新版本，不良单随之作废(VOID)，禁止再处置（dev-20260923-022）";
         int voided = 0;
         for (QualityNcr ncr : openNcrs) {
-            List<QualityNcrAction> openActions = actionMapper.selectList(new LambdaQueryWrapper<QualityNcrAction>()
-                    .eq(QualityNcrAction::getNcrId, ncr.getNcrId())
-                    .in(QualityNcrAction::getStatus, "PENDING", "PROCESSING")
-                    .eq(QualityNcrAction::getDelFlag, 0));
-            for (QualityNcrAction action : openActions) {
-                action.setStatus("VOID");
-                action.setResultRemark(appendRemark(action.getResultRemark(), tail));
-                actionMapper.updateById(action);
-            }
-            ncr.setStatus("VOID");
-            ncr.setRemark(appendRemark(ncr.getRemark(), tail));
-            ncrMapper.updateById(ncr);
+            voidNcrWithOpenActions(ncr, tail);
             voided++;
         }
         log.info("复检换代：随批作废不良单 {} 张（lotId={} 原因={}）", voided, lotId, reason);
         return voided;
+    }
+
+    /**
+     * 随批作废（单张，**正式动作**）—— dev-20260923-040。
+     *
+     * <p>背景：原来只能靠复检换代自动触发（或有人用手写 SQL 改库），口径容易分叉。
+     * 本方法把「随批作废」升格为可审计的正式入口：
+     * ① 守卫同源：用 {@code AllowedActionResolver} 判定（仅「来源批已失效 + 单还开着」才给 NCR_VOID_SUPERSEDED），
+     *    不允许时直接抛出与前端同源的文案；
+     * ② 必填原因（留痕）；③ 幂等：已 VOID 直接返回 0，不产生第二次副作用。
+     *
+     * @return 本次作废的不良单数量（0 或 1）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int voidSupersededNcr(Long ncrId, String reason, String operatorName) {
+        if (ncrId == null) {
+            throw new BusinessException("不良单ID不能为空");
+        }
+        String r = reason == null ? "" : reason.trim();
+        if (r.isEmpty()) {
+            throw new BusinessException("随批作废必须填写原因（留痕要求）");
+        }
+        QualityNcr ncr = ncrMapper.selectById(ncrId);
+        if (ncr == null) {
+            throw new BusinessException("不良单不存在: " + ncrId);
+        }
+        if ("VOID".equals(ncr.getStatus())) {
+            // 幂等：已作废不再动（重复点击/重试都安全）
+            log.info("随批作废幂等命中（已 VOID）: ncrNo={} by={}", ncr.getNcrNo(), operatorName);
+            return 0;
+        }
+        boolean sourceLotSuperseded = isSourceLotSuperseded(ncr.getLotId());
+        List<AllowedActionEnum> allowed = AllowedActionResolver.forNcr(
+                ncr.getStatus(), sourceLotSuperseded, pendingQuantityOf(ncr));
+        if (!allowed.contains(AllowedActionEnum.NCR_VOID_SUPERSEDED)) {
+            throw new BusinessException("该不良单当前不允许「随批作废」：" + ncr.getNcrNo()
+                    + (sourceLotSuperseded ? "（当前状态 " + ncr.getStatus() + "）" : "（来源检验批未被后继复检版本取代）"));
+        }
+        String tail = "【随批失效】" + (operatorName == null || operatorName.isBlank() ? "" : operatorName + "：") + r
+                + "；该批已有复检新版本，不良单随之作废(VOID)，禁止再处置（dev-20260923-040）";
+        voidNcrWithOpenActions(ncr, tail);
+        log.info("随批作废不良单 1 张（ncrNo={} lotId={} 原因={} 操作人={}）",
+                ncr.getNcrNo(), ncr.getLotId(), r, operatorName);
+        return 1;
+    }
+
+    /**
+     * 作废单张不良单及其未完成处置单并追加留痕 —— 批量（复检换代）与单张（040 正式动作）两个入口共用，
+     * 保证两条路径口径完全一致（禁止手写 SQL 改台账的根因）。
+     */
+    private void voidNcrWithOpenActions(QualityNcr ncr, String tail) {
+        List<QualityNcrAction> openActions = actionMapper.selectList(new LambdaQueryWrapper<QualityNcrAction>()
+                .eq(QualityNcrAction::getNcrId, ncr.getNcrId())
+                .in(QualityNcrAction::getStatus, "PENDING", "PROCESSING")
+                .eq(QualityNcrAction::getDelFlag, 0));
+        for (QualityNcrAction action : openActions) {
+            action.setStatus("VOID");
+            action.setResultRemark(appendRemark(action.getResultRemark(), tail));
+            actionMapper.updateById(action);
+        }
+        ncr.setStatus("VOID");
+        ncr.setRemark(appendRemark(ncr.getRemark(), tail));
+        ncrMapper.updateById(ncr);
     }
 
     /** 备注追加（留痕用；截断保护，remark 列 500） */

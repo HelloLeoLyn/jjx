@@ -50,6 +50,13 @@ public interface QualityNcrService {
     int voidOpenDispositionsBySupersededLot(Long lotId, String reason);
 
     /**
+     * 随批作废（单张，**正式动作** —— dev-20260923-040）：仅当**来源检验批已被后继复检版本取代**且该单仍开着时可用；
+     * 需权限点 quality:ncr:void-superseded + 必填原因 + 留痕；已 VOID 时幂等返回 0。
+     * 口径与批量入口 {@link #voidOpenDispositionsBySupersededLot(Long, String)} 共用同一内核。
+     */
+    int voidSupersededNcr(Long ncrId, String reason, String operatorName);
+
+    /**
      * 登记处置（返工/让步接收/报废）
      * 校验：数量 ≤ 待处置；让步接收必须已获客户确认；
      * 联动：NCR 已处置数量 + 检验批处置数量；处置完则台账结案（CLOSED）

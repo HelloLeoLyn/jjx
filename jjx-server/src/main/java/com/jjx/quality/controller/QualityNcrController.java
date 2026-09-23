@@ -78,4 +78,12 @@ public class QualityNcrController {
         return Result.success(ncrService.revokeAction(actionId, reason,
                 com.jjx.system.utils.SecurityUtils.getDisplayName()));
     }
+
+    @Operation(summary = "随批作废不良单（dev-20260923-040：来源批已被后继复检版本取代时的**正式入口**；需权限+必填原因+留痕，幂等）")
+    @SaCheckPermission("quality:ncr:void-superseded")
+    @PostMapping("/{ncrId}/void-superseded")
+    public Result<Integer> voidSuperseded(@PathVariable Long ncrId, @RequestParam String reason) {
+        return Result.success(ncrService.voidSupersededNcr(ncrId, reason,
+                com.jjx.system.utils.SecurityUtils.getDisplayName()));
+    }
 }

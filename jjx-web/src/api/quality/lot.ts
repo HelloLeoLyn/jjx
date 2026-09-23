@@ -262,6 +262,15 @@ export const qualityNcrApi = {
       params: { reason },
     })
   },
+  /**
+   * 随批作废（dev-20260923-040）：**正式动作** —— 仅「来源检验批已被后继复检版本取代」的悬空单可用；
+   * 权限点 quality:ncr:void-superseded，必填原因，幂等（已作废返回 0）。
+   */
+  voidSuperseded(ncrId: number, reason: string) {
+    return request.post<R<number>>(`/quality/ncr/${ncrId}/void-superseded`, null, {
+      params: { reason },
+    })
+  },
 }
 
 export const qualitySamplingApi = {

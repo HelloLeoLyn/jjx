@@ -87,6 +87,15 @@
               >处置</el-button
             >
             <el-button link size="small" @click="openActions(row)">处置记录</el-button>
+            <!-- dev-20260923-040：随批作废（正式入口）—— 仅「来源批已被后继复检版本取代」的悬空单会下发该动作 -->
+            <el-button
+              v-if="can(row, 'NCR_VOID_SUPERSEDED')"
+              link
+              type="danger"
+              size="small"
+              @click="handleVoidSuperseded(row)"
+              >随批作废</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
@@ -302,7 +311,7 @@ const pending = (row: QualityNcr) =>
 /**
  * dev-20260923-039：**按钮只按后端下发的 allowedActions 渲染**，前端不再写状态条件。
  * 唯一出处是后端 AllowedActionResolver（见 design 045 §2.3）；这样"界面给了注定失败的动作"不会再发生。
- * 注：NCR_VOID_SUPERSEDED（随批作废）等 040 落地后再在本页渲染。
+ * dev-20260923-040：NCR_VOID_SUPERSEDED（随批作废）已在本页渲染（正式入口：权限 quality:ncr:void-superseded + 必填原因 + 留痕，幂等）。
  */
 const can = (row: { allowedActions?: string[] }, code: string) =>
   Array.isArray(row?.allowedActions) && row.allowedActions.includes(code)
@@ -409,6 +418,37 @@ const revokeVisible = ref(false)
 const revoking = ref(false)
 const revokeReason = ref('')
 const revokeTarget = ref<QualityNcrAction | null>(null)
+
+/**
+ * dev-20260923-040：随批作废（正式入口）—— 仅「来源检验批已被后继复检版本取代」的悬空单可用；
+ * 必填原因（留痕）+ 后端幂等；作废后该单不可再处置。
+ */
+async function handleVoidSuperseded(row: QualityNcr) {
+  let reason = ''
+  try {
+    const res: any = await ElMessageBox.prompt(
+      `不良单 ${row.ncrNo} 的来源检验批已被后续复检版本取代。作废后该单不可再处置，请填写原因：`,
+      '随批作废',
+      {
+        confirmButtonText: '确认作废',
+        cancelButtonText: '取消',
+        inputPlaceholder: '如：复检换代 QL260923012',
+        inputValidator: (v: string) => (v && v.trim() ? true : '必须填写原因（留痕要求）'),
+      }
+    )
+    reason = String(res?.value || '').trim()
+  } catch {
+    return
+  }
+  if (!reason) return
+  try {
+    await qualityNcrApi.voidSuperseded(row.ncrId, reason)
+    ElMessage.success('已随批作废（已留痕）')
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '随批作废失败')
+  }
+}
 
 const openRevoke = (action: QualityNcrAction) => {
   revokeTarget.value = action
