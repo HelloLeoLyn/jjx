@@ -20,9 +20,24 @@ const includesPattern =
   /\[[\d\s,-]+\]\.includes\([^)]*\b[\w$.?\[\]]*(?:Status|status)\b[^)]*\)/;
 const localMapPattern =
   /\b(?:const|let|var)\s+(?:[A-Z0-9_]*STATUS[A-Z0-9_]*(?:_MAP|_NAMES|_LABELS)?|\w*[Ss]tatus(?:Map|Names|Labels))\b.*(?:Record\s*<\s*number|=\s*\{)/;
+const stringComparisonPattern =
+  /(?:\b[\w$.?\[\]]*(?:Status|status)\b\s*(?:===|!==|==|!=)\s*["'][A-Z][A-Z0-9_]*["'])|(?:["'][A-Z][A-Z0-9_]*["']\s*(?:===|!==|==|!=)\s*[\w$.?\[\]]*(?:Status|status)\b)/;
+const stringIncludesPattern =
+  /\[(?:\s*["'][A-Z][A-Z0-9_]*["']\s*,?)+\]\.includes\([^)]*\b[\w$.?\[\]]*(?:Status|status)\b[^)]*\)/;
+const statusStringRuleDomains = new Set(["quality", "production"]);
 
-export function detectStatusMagicValue(sourceLine) {
+function isStatusStringRuleFile(file) {
+  return file
+    .split("/")
+    .some((segment) => statusStringRuleDomains.has(segment.toLowerCase()));
+}
+
+export function detectStatusMagicValue(sourceLine, file = "") {
   if (sourceLine.includes("status-magic-ignore")) return null;
+  if (isStatusStringRuleFile(file)) {
+    if (stringComparisonPattern.test(sourceLine)) return "status-string-comparison";
+    if (stringIncludesPattern.test(sourceLine)) return "status-string-includes";
+  }
   if (comparisonPattern.test(sourceLine)) return "status-comparison";
   if (includesPattern.test(sourceLine)) return "status-includes";
   if (localMapPattern.test(sourceLine)) return "local-status-map";
@@ -46,7 +61,7 @@ async function scan() {
       .readFileSync(path.join(webRoot, file), "utf8")
       .split(/\r?\n/);
     lines.forEach((source, index) => {
-      const rule = detectStatusMagicValue(source);
+      const rule = detectStatusMagicValue(source, file);
       if (rule) findings.push({ file, line: index + 1, rule, source });
     });
   }
@@ -90,6 +105,41 @@ function selfTest() {
     null,
   );
   assert.equal(detectStatusMagicValue("const pageSize = 10"), null);
+  assert.equal(
+    detectStatusMagicValue(
+      "row.status === 'VOID'",
+      "src/views/quality/ncr/index.vue",
+    ),
+    "status-string-comparison",
+  );
+  assert.equal(
+    detectStatusMagicValue(
+      "'REWORK' !== execution.executionStatus",
+      "src/views/production/execution/index.vue",
+    ),
+    "status-string-comparison",
+  );
+  assert.equal(
+    detectStatusMagicValue(
+      "['VOID', 'CLOSED'].includes(row.status)",
+      "src/api/quality/ncr.ts",
+    ),
+    "status-string-includes",
+  );
+  assert.equal(
+    detectStatusMagicValue(
+      "row.status === 'VOID'",
+      "src/views/inventory/stock/index.vue",
+    ),
+    null,
+  );
+  assert.equal(
+    detectStatusMagicValue(
+      "row.status === NcrStatusEnum.VOID.value",
+      "src/views/quality/ncr/index.vue",
+    ),
+    null,
+  );
   console.log("状态魔法值检查器自测通过");
 }
 

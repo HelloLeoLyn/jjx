@@ -339,21 +339,21 @@
             <el-table-column label="状态" width="80">
               <template #default="{ row }">
                 <el-tag
-                  v-if="row.reportStatus === 'CANCELLED'"
+                  v-if="row.reportStatus === WorkReportStatus.CANCELLED"
                   size="small"
                   type="danger"
                   effect="plain"
                   >已撤销</el-tag
                 >
                 <el-tag
-                  v-else-if="row.reportStatus === 'REJECTED'"
+                  v-else-if="row.reportStatus === WorkReportStatus.REJECTED"
                   size="small"
                   type="warning"
                   effect="plain"
                   >已驳回</el-tag
                 >
                 <el-tag
-                  v-else-if="row.reportStatus === 'APPROVED'"
+                  v-else-if="row.reportStatus === WorkReportStatus.APPROVED"
                   size="small"
                   type="success"
                   effect="plain"
@@ -441,7 +441,8 @@
         }}</el-descriptions-item>
         <template
           v-if="
-            reportDetail.reportStatus === 'APPROVED' || reportDetail.reportStatus === 'REJECTED'
+            reportDetail.reportStatus === WorkReportStatus.APPROVED ||
+            reportDetail.reportStatus === WorkReportStatus.REJECTED
           "
         >
           <el-descriptions-item label="审批人">{{
@@ -454,7 +455,7 @@
             reportDetail.reviewRemark || '-'
           }}</el-descriptions-item>
         </template>
-        <template v-if="reportDetail.reportStatus === 'CANCELLED'">
+        <template v-if="reportDetail.reportStatus === WorkReportStatus.CANCELLED">
           <el-descriptions-item label="撤销人">{{
             reportDetail.cancelledByName
           }}</el-descriptions-item>
@@ -686,7 +687,7 @@
         <el-table-column label="操作" width="90">
           <template #default="{ row }">
             <el-button
-              v-if="row.reportStatus === 'PENDING'"
+              v-if="row.reportStatus === WorkReportStatus.PENDING"
               link
               size="small"
               type="danger"
@@ -848,7 +849,12 @@ import type {
 } from '@/types/production/operationExecution'
 import { reworkTraceApi } from '@/api/production/rework'
 import type { ProductionOrderVO } from '@/types/production/order'
-import { AVAILABLE_EQUIPMENT_STATUSES, ExecutionStatusEnum } from '@/enums/production'
+import {
+  AVAILABLE_EQUIPMENT_STATUSES,
+  ExecutionStatusEnum,
+  ProductionTaskStatus,
+  WorkReportStatus,
+} from '@/enums/production'
 import TaskTreePanel from './components/TaskTreePanel.vue'
 import WorkOrderPanel from './components/WorkOrderPanel.vue'
 import { fmtQty } from './utils'
@@ -1079,16 +1085,17 @@ const openTaskCompletionDetails = async (row: AllTaskRow) => {
 }
 const canReportInAllView = (row: AllTaskRow) =>
   !!row.executionId &&
-  (row.status === 'ACTIVE'
+  (row.status === ProductionTaskStatus.ACTIVE
     ? myTaskExecutionIds.value.has(row.executionId)
     // dev-20260923（补报）：已完成任务只要还有损耗额度内可补的量，也允许报工（按钮显示「补报」）
-    : row.status === 'COMPLETED' && Number(row.supplementAllowance || 0) > 0)
+    : row.status === ProductionTaskStatus.COMPLETED && Number(row.supplementAllowance || 0) > 0)
 const taskAsExecution = (row: AllTaskRow): OperationExecutionVO => ({
   executionId: row.executionId,
   orderNo: row.orderNo,
   processName: row.processName,
   processOrder: row.processOrder,
-  executionStatus: row.status === 'ACTIVE' ? ExecutionStatusEnum.EXECUTING.value : undefined,
+  executionStatus:
+    row.status === ProductionTaskStatus.ACTIVE ? ExecutionStatusEnum.EXECUTING.value : undefined,
   inputQuantity: row.taskQuantity,
 })
 const handleTaskReport = (row: AllTaskRow) => openReportDialog(taskAsExecution(row), row.taskId)
@@ -1273,7 +1280,7 @@ const loadReports = async () => {
 
 const canCancelReport = (row: WorkReportVO) => {
   // P3：仅 PENDING 可撤销；APPROVED 为有效完成事实禁止普通撤销（更正走 P4 冲销）
-  return row.reportStatus === 'PENDING'
+  return row.reportStatus === WorkReportStatus.PENDING
 }
 
 // 报工详情

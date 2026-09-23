@@ -279,6 +279,7 @@ import {
   NcrActionStatusEnum,
   NcrActionType,
   NcrActionTypeEnum,
+  QualityNcrStatus,
   QualityNcrStatusEnum,
 } from '@/enums/quality'
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
@@ -312,7 +313,8 @@ const num = (value?: number | null) =>
  * （原来只算「不良 − 已处置」，作废单会算出 2 件待处置，与「已作废」状态自相矛盾）
  */
 const pending = (row: QualityNcr) =>
-  ['VOID', 'CLOSED'].includes(String(row.status))
+  String(row.status) === QualityNcrStatus.VOID ||
+  String(row.status) === QualityNcrStatus.CLOSED
     ? 0
     : Math.max(0, Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0))
 /**

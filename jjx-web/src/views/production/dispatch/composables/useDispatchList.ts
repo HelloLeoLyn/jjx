@@ -6,6 +6,7 @@ import type { TaskTreeRow } from '@/types/production/task'
 import type { PageResult } from '@/types'
 import type { TreeRow } from '../types'
 import { useTaskTree } from './useTaskTree'
+import { ProductionTaskStatus } from '@/enums/production'
 
 /**
  * 第一层分页 + 筛选 + 统计 + 树懒加载 + 行刷新
@@ -53,9 +54,11 @@ export function useDispatchList() {
 
   // 统计（当前页 First Task；P6：未分配按状态 PENDING 统计，不再依赖 assignee_id）
   const statUnassigned = computed(
-    () => firstLevelRows.value.filter((r) => r.status === 'PENDING').length
+    () => firstLevelRows.value.filter((r) => r.status === ProductionTaskStatus.PENDING).length
   )
-  const statActive = computed(() => firstLevelRows.value.filter((r) => r.status === 'ACTIVE').length)
+  const statActive = computed(
+    () => firstLevelRows.value.filter((r) => r.status === ProductionTaskStatus.ACTIVE).length
+  )
   const statPendingQty = computed(
     () => firstLevelRows.value.filter((r) => Number(r.pendingQuantity || 0) > 0).length
   )

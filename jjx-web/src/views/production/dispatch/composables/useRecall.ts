@@ -5,6 +5,7 @@ import type { Ref } from 'vue'
 import type { TaskTreeRow } from '@/types/production/task'
 import type { TreeRow } from '../types'
 import { fmtQty } from '../utils/taskFormatters'
+import { ProductionTaskStatus } from '@/enums/production'
 
 interface RecallOptions {
   target: Ref<TreeRow | null>
@@ -16,8 +17,8 @@ interface RecallOptions {
 function canRecall(row: TaskTreeRow): boolean {
   return (
     Number(row.remainingQuantity || 0) > 0 &&
-    row.status !== 'COMPLETED' &&
-    row.status !== 'CANCELLED'
+    row.status !== ProductionTaskStatus.COMPLETED &&
+    row.status !== ProductionTaskStatus.CANCELLED
   )
 }
 

@@ -139,7 +139,7 @@
             icon="EditPen"
             v-hasPermi="['production:work-report:add']"
             @click="emit('report', row)"
-            >{{ row.status === 'COMPLETED' && Number(row.supplementAllowance || 0) > 0 ? '补报' : '报工' }}</el-button
+            >{{ row.status === ProductionTaskStatus.COMPLETED && Number(row.supplementAllowance || 0) > 0 ? '补报' : '报工' }}</el-button
           >
           <el-button type="primary" link icon="View" @click="emit('detail', row)">详情</el-button>
         </template>
@@ -165,7 +165,7 @@
 import type { TaskTreeRow } from '@/types/production/task'
 import type { ReworkTraceVO } from '@/types/production/operationExecution'
 import { fmtQty } from '../utils'
-import { ExecutionStatusEnum } from '@/enums/production'
+import { ExecutionStatusEnum, ProductionTaskStatus } from '@/enums/production'
 import {
   statusLabel as taskStatusLabel,
   statusTag as taskStatusTag,
