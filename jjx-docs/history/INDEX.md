@@ -10,6 +10,8 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-09-23 (dev-014) | event-config-page-phase2-status-dev-20260921-014.md | 事件配置页阶段2现状核查（看板 2033）：①~④ 均已实现于 8d0556f7，但 ③「最近发送」恒空（sys_notification.event_code 全 NULL）、注册表仅覆盖 8/160（dev-20260921-014） |
+| 2026-09-23 (dev-021) | product-instance-module-gaps-dev-20260921-021.md | 产品实例模块残留缺陷核查（原任务 2060）：新建实例恒 6004、前端 3 端点不存在、3 查询恒 null、状态更新不落库（dev-20260921-021） |
 | 2026-09-21 (dev-049) | delivery-print-triplicate-dev-20260921-049.md | 送货单打印 spec：删系统版 + 新增三联纸(241×140 针式)版式 + 纸版对齐模板（dev-20260921-049） |
 | 2026-09-21 (dev-044) | restart-regression-checklist-dev-20260921-044.md | 重启后回归清单（037/038/039/040 + 1232/1312/1944/1914）：一次重启收掉整批运行态验证 |
 | 2026-09-18 (dev-016) | quality-legacy-fqc-endpoint-inventory-dev-20260918-016.md | 旧质检 /production/quality 端点·页面·菜单 使用方盘点（dev-20260918-016） |
