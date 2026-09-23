@@ -6,6 +6,7 @@ export * from './WorkOrderEnum'
 export * from './QualityTemplateEnum'
 export * from './WorkReportEnum'
 export * from './EquipmentStatusEnum'
+export * from './ExecutionTypeEnum'
 
 // 重新导出统一对象
 export { WorkOrderEnum, ProductionOrderStatusEnum, ExecutionStatusEnum, RecordTypeEnum }

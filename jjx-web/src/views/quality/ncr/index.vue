@@ -69,8 +69,8 @@
         </el-table-column>
         <el-table-column label="状态" width="95">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 'CLOSED' ? 'success' : row.status === 'DISPOSING' ? 'warning' : row.status === 'VOID' ? 'info' : 'danger'">
-              {{ statusLabel(row.status) }}
+            <el-tag size="small" :type="QualityNcrStatusEnum.getTagProps(row.status).type">
+              {{ QualityNcrStatusEnum.getLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -128,7 +128,7 @@
         <el-form-item label="处置数量" required>
           <el-input-number v-model="disposeForm.quantity" :min="1" :max="current ? pending(current) : 0" />
         </el-form-item>
-        <template v-if="disposeForm.actionType === 'REWORK'">
+        <template v-if="disposeForm.actionType === NcrActionType.REWORK">
           <el-form-item label="返工工序" required>
             <el-select v-model="disposeForm.standardProcessId" filterable style="width: 100%" placeholder="选择标准工序">
               <el-option
@@ -143,7 +143,7 @@
             <el-input v-model="disposeForm.reworkRequirement" type="textarea" :rows="3" placeholder="填写本次返工的特殊要求" />
           </el-form-item>
         </template>
-        <el-form-item v-if="disposeForm.actionType === 'CONCESSION'" label="客户已确认">
+        <el-form-item v-if="disposeForm.actionType === NcrActionType.CONCESSION" label="客户已确认">
           <el-switch v-model="disposeForm.customerConfirmed" />
           <span class="tip">让步接收必须先取得客户确认</span>
         </el-form-item>
@@ -274,6 +274,13 @@
 import { reactive, ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  NcrActionStatus,
+  NcrActionStatusEnum,
+  NcrActionType,
+  NcrActionTypeEnum,
+  QualityNcrStatusEnum,
+} from '@/enums/quality'
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
@@ -315,12 +322,10 @@ const pending = (row: QualityNcr) =>
  */
 const can = (row: { allowedActions?: string[] }, code: string) =>
   Array.isArray(row?.allowedActions) && row.allowedActions.includes(code)
-const statusLabel = (status: string) =>
-  ({ PENDING: '待处置', DISPOSING: '处置中', CLOSED: '已结', VOID: '已作废（随批/撤销）' })[status] || status
-const actionLabel = (type: string) =>
-  ({ REWORK: '返工', CONCESSION: '让步接收（特采）', SCRAP: '报废' })[type] || type
-const actionStatusLabel = (status: string) =>
-  ({ PENDING: '待执行', PROCESSING: '执行中', DONE: '已完成', VOID: '已作废' })[status] || status
+// dev-20260923-041：展示文案统一走枚举（不再本地写状态字符串映射）
+const statusLabel = (status: string) => QualityNcrStatusEnum.getLabel(status)
+const actionLabel = (type: string) => NcrActionTypeEnum.getLabel(type)
+const actionStatusLabel = (status: string) => NcrActionStatusEnum.getLabel(status)
 
 const load = async (page?: number) => {
   if (page) query.pageNum = page
@@ -361,10 +366,10 @@ const openDispose = (row: QualityNcr) => {
 }
 const submitDispose = async () => {
   if (!current.value) return
-  if (disposeForm.actionType === 'CONCESSION' && !disposeForm.customerConfirmed) {
+  if (disposeForm.actionType === NcrActionType.CONCESSION && !disposeForm.customerConfirmed) {
     return ElMessage.warning('让步接收必须先勾选"客户已确认"')
   }
-  if (disposeForm.actionType === 'REWORK' && !disposeForm.standardProcessId) {
+  if (disposeForm.actionType === NcrActionType.REWORK && !disposeForm.standardProcessId) {
     return ElMessage.warning('请选择返工工序')
   }
   disposing.value = true
@@ -519,7 +524,7 @@ const submitSupplement = async () => {
 const completeAction = async (row: QualityNcrAction) => {
   try {
     const res: any = await qualityNcrApi.completeAction(row.actionId)
-    ElMessage.success(res?.data?.status === 'DONE' ? '返工复检已合格，处置完成' : '返工报工已完成，已生成 FQC 复检批')
+    ElMessage.success(res?.data?.status === NcrActionStatus.DONE ? '返工复检已合格，处置完成' : '返工报工已完成，已生成 FQC 复检批')
     if (current.value) openActions(current.value)
     load()
   } catch (e: any) {
