@@ -107,9 +107,6 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         if ("CANCELLED".equals(task.getStatus())) {
             throw new BusinessException("任务已取消，不能报工");
         }
-        if ("COMPLETED".equals(task.getStatus())) {
-            throw new BusinessException("任务已完成，不能报工");
-        }
         boolean proxySubmit = operatorId == null || !operatorId.equals(task.getAssigneeId());
         if (proxySubmit && !SecurityUtils.hasPermission("production:work-report:proxy")) {
             throw new BusinessException("只有任务当前执行人可以报工");
@@ -127,7 +124,14 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             throw new BusinessException("工序执行记录不存在: " + dto.getExecutionId());
         }
         if (!ExecutionStatusEnum.EXECUTING.getValue().equals(exec.getExecutionStatus())) {
-            throw new BusinessException("工序未处于执行中状态，不能报工");
+            // dev-20260922-032（用户拍板 A · 补报/补产）：任务已完成 或 工序已完成 时不再一律拒绝 ——
+            // 检验判不良/报废造成的净损失需要补做，此时按「计划量 ×(1+损耗率)」的额度上限放行补报；
+            // 其它非执行中状态（未开始/已跳过/已取消等）仍照原样拒绝。
+            boolean supplement = "COMPLETED".equals(task.getStatus())
+                    || ExecutionStatusEnum.COMPLETED.getValue().equals(exec.getExecutionStatus());
+            if (!supplement) {
+                throw new BusinessException("工序未处于执行中状态，不能报工");
+            }
         }
 
         // 数量/工时/时间/设备校验
@@ -157,7 +161,12 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
 
         // 数量 gate：唯一额度边界 = Task.remainingQuantity（已排除 assigned/pending/completed）
         BigDecimal remaining = productionTaskService.remainingQuantity(task.getTaskId());
-        if (reportQuantity.compareTo(remaining) > 0) {
+        boolean supplementReport = "COMPLETED".equals(task.getStatus())
+                || ExecutionStatusEnum.COMPLETED.getValue().equals(exec.getExecutionStatus());
+        if (supplementReport) {
+            // 补报：任务额度已用满（remaining=0），额度改由「工序/工单 计划量 ×(1+损耗率)」把关
+            validateSupplementReport(exec, reportQuantity);
+        } else if (reportQuantity.compareTo(remaining) > 0) {
             throw new BusinessException("报工数量超过任务当前剩余，剩余可报: "
                     + remaining.stripTrailingZeros().toPlainString());
         }
@@ -572,6 +581,66 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             qualityLotMapper.deleteById(q.getLotId());
             log.info("报工状态变更联动：逻辑删除 PENDING 检验批 {}", q.getLotId());
         }
+    }
+
+    /**
+     * dev-20260922-032（用户拍板 A）：补报/补产额度校验。
+     * 任务额度已用满时（任务已完成 / 工序已完成），改按「计划量 ×(1+损耗率)」把关：
+     *   工序维度：该工序累计报工（合格+不良）+ 本次 ≤ 工序计划量 ×(1+损耗率)
+     *   工单维度：该工单累计报工 + 本次 ≤ 工单计划量 ×(1+损耗率)
+     * 损耗率取 sys_config.production.report.overrun-rate，缺省 0.05（5%）。
+     */
+    private void validateSupplementReport(ProductionOperationExecution exec, BigDecimal reportQuantity) {
+        BigDecimal rate = overrunRate();
+        BigDecimal factor = BigDecimal.ONE.add(rate);
+        // 工序口径的计划量：本表无 planned_quantity 列，用「投料量 inputQuantity」作为该工序的计划基准
+        BigDecimal planQty = exec.getInputQuantity();
+        if (planQty != null && planQty.signum() > 0) {
+            BigDecimal reported = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE execution_id = ?",
+                    BigDecimal.class, exec.getExecutionId());
+            BigDecimal cap = planQty.multiply(factor);
+            if (nvl(reported).add(reportQuantity).compareTo(cap) > 0) {
+                throw new BusinessException("补报超出工序损耗上限（计划 " + planQty.stripTrailingZeros().toPlainString()
+                        + " × (1+" + rate.stripTrailingZeros().toPlainString() + ") = " + cap.stripTrailingZeros().toPlainString()
+                        + "，已报 " + nvl(reported).stripTrailingZeros().toPlainString()
+                        + "，本次 " + reportQuantity.stripTrailingZeros().toPlainString() + "）");
+            }
+        }
+        if (exec.getOrderId() == null) {
+            return;
+        }
+        BigDecimal orderPlan = null;
+        try {
+            orderPlan = jdbcTemplate.queryForObject(
+                    "SELECT planned_quantity FROM production_order WHERE order_id = ?", BigDecimal.class, exec.getOrderId());
+        } catch (Exception ignored) {
+        }
+        if (orderPlan != null && orderPlan.signum() > 0) {
+            BigDecimal reportedAll = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE order_id = ?",
+                    BigDecimal.class, exec.getOrderId());
+            BigDecimal cap = orderPlan.multiply(factor);
+            if (nvl(reportedAll).add(reportQuantity).compareTo(cap) > 0) {
+                throw new BusinessException("补报超出工单损耗上限（工单计划 " + orderPlan.stripTrailingZeros().toPlainString()
+                        + " × (1+" + rate.stripTrailingZeros().toPlainString() + ") = " + cap.stripTrailingZeros().toPlainString()
+                        + "，已报 " + nvl(reportedAll).stripTrailingZeros().toPlainString()
+                        + "，本次 " + reportQuantity.stripTrailingZeros().toPlainString() + "）");
+            }
+        }
+    }
+
+    /** 补报损耗率（sys_config.production.report.overrun-rate，缺省 5%） */
+    private BigDecimal overrunRate() {
+        try {
+            String v = jdbcTemplate.queryForObject(
+                    "SELECT config_value FROM sys_config WHERE config_key = 'production.report.overrun-rate'", String.class);
+            if (v != null && !v.isBlank()) {
+                return new BigDecimal(v.trim());
+            }
+        } catch (Exception ignored) {
+        }
+        return new BigDecimal("0.05");
     }
 
     private BigDecimal nvl(BigDecimal v) {
