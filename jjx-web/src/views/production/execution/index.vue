@@ -997,7 +997,11 @@ const openTaskCompletionDetails = async (row: AllTaskRow) => {
   }
 }
 const canReportInAllView = (row: AllTaskRow) =>
-  row.status === 'ACTIVE' && !!row.executionId && myTaskExecutionIds.value.has(row.executionId)
+  !!row.executionId &&
+  (row.status === 'ACTIVE'
+    ? myTaskExecutionIds.value.has(row.executionId)
+    // dev-20260923（补报）：已完成任务只要还有损耗额度内可补的量，也允许报工（按钮显示「补报」）
+    : row.status === 'COMPLETED' && Number(row.supplementAllowance || 0) > 0)
 const taskAsExecution = (row: AllTaskRow): OperationExecutionVO => ({
   executionId: row.executionId,
   orderNo: row.orderNo,
