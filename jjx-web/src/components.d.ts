@@ -11,6 +11,7 @@ declare module 'vue' {
     AttachmentPanel: typeof import('./components/AttachmentPanel/index.vue')['default']
     AttachmentUploadDialog: typeof import('./components/AttachmentUploadDialog/index.vue')['default']
     AttachmentUploader: typeof import('./components/AttachmentUploader/index.vue')['default']
+    BatchTransactionDrawer: typeof import('./components/inventory/BatchTransactionDrawer.vue')['default']
     BizDetailPanel: typeof import('./components/BizFlowDetail/BizDetailPanel.vue')['default']
     BizFlowDetail: typeof import('./components/BizFlowDetail/index.vue')['default']
     BomItemEditor: typeof import('./components/BomItemEditor.vue')['default']

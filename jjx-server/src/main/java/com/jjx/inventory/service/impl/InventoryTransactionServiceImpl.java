@@ -87,6 +87,29 @@ public class InventoryTransactionServiceImpl extends ServiceImpl<InventoryTransa
         return convertToVOList(transactions);
     }
 
+    /**
+     * 按批次查流水（dev-20260923-017）：批次明细「变动流水」抽屉，按时间正序。
+     */
+    @Override
+    public List<TransactionVO> getByBatch(Long inventoryItemId, String batchNo) {
+        if (inventoryItemId == null || batchNo == null || batchNo.isBlank()) {
+            return new java.util.ArrayList<>();
+        }
+        return convertToVOList(transactionMapper.selectByBatch(inventoryItemId, batchNo));
+    }
+
+    /**
+     * 批次收发存聚合（dev-20260923-017）：以流水为唯一真源 → 入库合计 / 出库合计 / 结存。
+     * 返回的结存应与 inventory_stock_item.quantity 一致（不一致即为“两本账”，可巡检）。
+     */
+    @Override
+    public List<Map<String, Object>> batchFlowSummary(Long inventoryItemId) {
+        if (inventoryItemId == null) {
+            return new java.util.ArrayList<>();
+        }
+        return transactionMapper.selectBatchFlowSummary(inventoryItemId);
+    }
+
     @Override
     public List<TransactionVO> getByMaterial(Long materialId, int limit) {
         LambdaQueryWrapper<InventoryTransaction> wrapper = new LambdaQueryWrapper<>();

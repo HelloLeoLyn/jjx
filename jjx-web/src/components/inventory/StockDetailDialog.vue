@@ -1,6 +1,6 @@
 <template>
   <el-dialog
-    title="批次明细"
+    title="批次明细（收发存）"
     v-model="dialogVisible"
     width="90%"
     append-to-body
@@ -15,11 +15,20 @@
         <el-descriptions-item label="物料名称">{{ materialName }}</el-descriptions-item>
         <el-descriptions-item label="规格型号">{{ specification }}</el-descriptions-item>
         <el-descriptions-item label="单位">{{ unit }}</el-descriptions-item>
-        <el-descriptions-item label="总库存数量">{{ totalQuantity }}</el-descriptions-item>
-        <el-descriptions-item label="总预留数量">{{ totalReserved }}</el-descriptions-item>
-        <el-descriptions-item label="可用数量">{{ availableQuantity }}</el-descriptions-item>
+        <el-descriptions-item label="累计入库">{{ fmt(summaryReceived) }}</el-descriptions-item>
+        <el-descriptions-item label="累计出库">{{ fmt(summaryIssued) }}</el-descriptions-item>
+        <el-descriptions-item label="结存数量">
+          <b>{{ fmt(totalQuantity) }}</b>
+        </el-descriptions-item>
+        <el-descriptions-item label="可用数量">{{ fmt(availableQuantity) }}</el-descriptions-item>
+        <el-descriptions-item label="总预留数量">{{ fmt(totalReserved) }}</el-descriptions-item>
         <el-descriptions-item label="最早有效期">{{ earliestExpiry || '-' }}</el-descriptions-item>
       </el-descriptions>
+      <!-- 口径说明：解决“只看到结存、看不出入过多少/怎么变的” -->
+      <div class="ledger-tip">
+        口径：<b>结存 = 累计入库 − 累计出库 ± 盘点调整</b>；入库原始量以「入库单明细」为准，
+        每笔变动记录在「库存流水」里（只增不改）。点任一行「变动流水」可看该批次的每次进出与变动前后余额。
+      </div>
     </el-card>
 
     <!-- 搜索栏 -->
@@ -75,32 +84,51 @@
           </el-select>
         </el-form-item>
         <el-form-item>
+          <el-checkbox v-model="hideZero">仅看有结存</el-checkbox>
+        </el-form-item>
+        <el-form-item>
           <el-button type="primary" @click="handleQuery">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
+          <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- 批次明细表格 -->
+    <!-- 批次明细表格（收发存三栏） -->
     <el-card class="table-card" shadow="never">
-      <el-table v-loading="loading" :data="itemList" border style="width: 100%" max-height="400">
-        <el-table-column label="批次号" prop="batchNo" width="130" />
-        <el-table-column label="仓库" prop="warehouseName" width="120" />
-        <el-table-column label="库位" prop="locationName" width="120" />
-        <el-table-column label="数量" prop="quantity" width="100" align="right" />
-        <el-table-column label="预留数量" prop="reservedQuantity" width="100" align="right" />
-        <el-table-column label="可用数量" prop="availableQuantity" width="100" align="right" />
-        <el-table-column label="单位成本" prop="unitCost" width="100" align="right">
+      <el-table v-loading="loading" :data="displayList" border style="width: 100%" max-height="420">
+        <el-table-column label="批次号" prop="batchNo" width="150" show-overflow-tooltip />
+        <el-table-column label="仓库" prop="warehouseName" width="100" />
+        <el-table-column label="库位" width="100">
+          <template #default="{ row }">{{ row.locationName || '-' }}</template>
+        </el-table-column>
+        <!-- 收发存三栏：入库/已出库为流水派生，结存=quantity -->
+        <el-table-column label="入库数量" width="100" align="right">
+          <template #default="{ row }">
+            <span v-if="row.receivedQuantity === undefined" class="no-perm">-</span>
+            <span v-else class="qty-in">{{ fmt(row.receivedQuantity) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="已出库" width="100" align="right">
+          <template #default="{ row }">
+            <span v-if="row.issuedQuantity === undefined" class="no-perm">-</span>
+            <span v-else class="qty-out">{{ fmt(row.issuedQuantity) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="结存数量" prop="quantity" width="100" align="right" />
+        <el-table-column label="预留数量" prop="reservedQuantity" width="90" align="right" />
+        <el-table-column label="可用数量" prop="availableQuantity" width="90" align="right" />
+        <el-table-column label="单位成本" prop="unitCost" width="90" align="right">
           <template #default="{ row }">
             {{ row.unitCost ? formatCurrency(row.unitCost) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="生产日期" prop="productionDate" width="110" align="center">
+        <el-table-column label="生产日期" prop="productionDate" width="100" align="center">
           <template #default="{ row }">
             {{ row.productionDate || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="有效期至" prop="expiryDate" width="110" align="center">
+        <el-table-column label="有效期至" prop="expiryDate" width="100" align="center">
           <template #default="{ row }">
             <span v-if="row.expiryDate" :class="{ expiring: isExpiring(row.expiryDate) }">
               {{ row.expiryDate }}
@@ -108,21 +136,27 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-              {{ row.statusName }}
+            <!-- 0 结存不再显示“生效”，改为“已用尽”，避免误读 -->
+            <el-tag v-if="isExhausted(row)" type="info" size="small">已用尽</el-tag>
+            <el-tag v-else :type="StockItemStatusEnum.getTagProps(row.status).type" size="small">
+              {{ row.statusName || StockItemStatusEnum.getLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="最后入库" prop="lastInboundTime" width="160" align="center">
+        <el-table-column label="最后入库" prop="lastInboundTime" width="150" align="center" />
+        <el-table-column label="最后出库" prop="lastOutboundTime" width="150" align="center" />
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template #default="{ row }">
-            {{ row.lastInboundTime || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="最后出库" prop="lastOutboundTime" width="160" align="center">
-          <template #default="{ row }">
-            {{ row.lastOutboundTime || '-' }}
+            <el-button
+              v-if="canViewFlow"
+              link
+              type="primary"
+              size="small"
+              @click="openFlow(row)"
+            >变动流水</el-button>
+            <span v-else class="no-perm">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -135,17 +169,43 @@
         @pagination="getList"
       />
     </el-card>
+
+    <!-- 批次变动流水抽屉 -->
+    <BatchTransactionDrawer
+      v-model:visible="flowVisible"
+      :inventory-item-id="flowInventoryItemId"
+      :batch-no="flowBatchNo"
+    />
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 import { stockItemApi } from '@/api/inventory/stockItem'
 import { stockApi } from '@/api/inventory/stock'
 import { formatCurrency } from '@/utils/format'
-import type { StockItemQueryParams, StockItemVO, StockVO } from '@/types/inventory/stock'
+import { useUserStore } from '@/store/modules/user'
+import { StockItemStatusEnum } from '@/enums/inventory/StockItemEnum'
+import type {
+  StockItemQueryParams,
+  StockItemVO,
+  StockVO,
+  BatchFlowSummaryVO,
+} from '@/types/inventory/stock'
+import BatchTransactionDrawer from './BatchTransactionDrawer.vue'
 
+/**
+ * 批次明细（收发存口径，dev-20260923-017 一期）
+ *
+ * 展示口径（业内「收发存台账」）：
+ *  - 入库数量 / 已出库 = 由库存流水（inventory_transaction）按批次聚合得到（唯一真源）；
+ *  - 结存数量 = 批次表 inventory_stock_item.quantity（= 入库 − 出库 ± 调整），两者必须一致；
+ *  - 「变动流水」抽屉展示每笔变动与变动前后余额（需 inventory:transaction:view）；
+ *  - 0 结存显示「已用尽」，并提供「仅看有结存」过滤。
+ * 设计依据：jjx-docs/design/stock-ledger-receiving-issuing-balance-dev-20260923-016.md
+ */
 const props = defineProps<{
   visible: boolean
   stockId?: string
@@ -156,6 +216,9 @@ const emit = defineEmits<{
   (e: 'update:visible', val: boolean): void
 }>()
 
+const userStore = useUserStore()
+const canViewFlow = computed(() => userStore.hasPermission('inventory:transaction:view'))
+
 const dialogVisible = ref(props.visible)
 watch(
   () => props.visible,
@@ -164,7 +227,7 @@ watch(
     if (val && props.inventoryItemId) {
       queryParams.inventoryItemId = props.inventoryItemId
       getMaterialSummary()
-      getList()
+      refreshAll()
     }
   }
 )
@@ -197,10 +260,48 @@ const queryParams = reactive<StockItemQueryParams>({
 const loading = ref(false)
 const itemList = ref<StockItemVO[]>([])
 const total = ref(0)
+const hideZero = ref(false)
+/** 批次 → 收发存汇总（流水派生） */
+const flowSummary = ref<Record<string, BatchFlowSummaryVO>>({})
+
+// 变动流水抽屉
+const flowVisible = ref(false)
+const flowInventoryItemId = ref<string>()
+const flowBatchNo = ref<string>()
 
 // 仓库选项（示例，实际应从API获取）
 const warehouseOptions = ref<{ value: string; label: string }[]>([])
 const locationOptions = ref<{ value: string; label: string }[]>([])
+
+function fmt(v?: number | string | null): string {
+  const n = Number(v ?? 0)
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : '0'
+}
+
+function isExhausted(row: StockItemVO): boolean {
+  return Number(row.quantity || 0) <= 0
+}
+
+/** 累计入库/出库（该库存物品下所有批次，流水派生；与结存三栏同源） */
+const summaryReceived = computed(() =>
+  Object.values(flowSummary.value).reduce((s, v) => s + Number(v.receivedQuantity || 0), 0)
+)
+const summaryIssued = computed(() =>
+  Object.values(flowSummary.value).reduce((s, v) => s + Number(v.issuedQuantity || 0), 0)
+)
+
+/** 表格展示数据：把流水派生的收/发并到批次行上 + 可选隐藏 0 结存 */
+const displayList = computed(() => {
+  const rows = itemList.value.map((row) => {
+    const s = flowSummary.value[row.batchNo]
+    return {
+      ...row,
+      receivedQuantity: s ? Number(s.receivedQuantity || 0) : undefined,
+      issuedQuantity: s ? Number(s.issuedQuantity || 0) : undefined,
+    }
+  })
+  return hideZero.value ? rows.filter((r) => Number(r.quantity || 0) !== 0) : rows
+})
 
 // 获取物料汇总信息
 const getMaterialSummary = async () => {
@@ -223,6 +324,22 @@ const getMaterialSummary = async () => {
   }
 }
 
+// 批次收发存汇总（入库/出库/结存，来源=库存流水）
+const getBatchSummary = async () => {
+  if (!props.inventoryItemId) return
+  try {
+    const res = await stockItemApi.batchSummary(props.inventoryItemId)
+    const map: Record<string, BatchFlowSummaryVO> = {}
+    ;(res.data || []).forEach((it) => {
+      map[it.batchNo] = it
+    })
+    flowSummary.value = map
+  } catch (error) {
+    console.error('获取批次收发存汇总失败:', error)
+    flowSummary.value = {}
+  }
+}
+
 // 获取批次明细列表
 const getList = async () => {
   loading.value = true
@@ -238,6 +355,11 @@ const getList = async () => {
   }
 }
 
+/** 列表 + 收发存汇总一起刷新 */
+const refreshAll = async () => {
+  await Promise.all([getList(), getBatchSummary()])
+}
+
 // 搜索
 const handleQuery = () => {
   queryParams.current = 1
@@ -251,12 +373,21 @@ const handleReset = () => {
   queryParams.warehouseId = undefined
   queryParams.locationId = undefined
   queryParams.status = undefined
+  hideZero.value = false
   getList()
+}
+
+// 打开变动流水
+const openFlow = (row: StockItemVO) => {
+  flowInventoryItemId.value = String(row.inventoryItemId || props.inventoryItemId || '')
+  flowBatchNo.value = row.batchNo
+  flowVisible.value = true
 }
 
 // 关闭
 const handleClose = () => {
   dialogVisible.value = false
+  flowVisible.value = false
 }
 
 // 判断是否临期（30天内）
@@ -279,5 +410,27 @@ const isExpiring = (dateStr: string): boolean => {
 .expiring {
   color: #e6a23c;
   font-weight: bold;
+}
+
+.ledger-tip {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #fdf6ec;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #8a6d3b;
+}
+
+.qty-in {
+  color: #67c23a;
+}
+
+.qty-out {
+  color: #e6a23c;
+}
+
+.no-perm {
+  color: #c0c4cc;
 }
 </style>

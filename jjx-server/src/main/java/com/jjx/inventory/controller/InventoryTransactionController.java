@@ -54,6 +54,14 @@ public class InventoryTransactionController {
         return Result.success(transactionService.getByDocNo(docNo));
     }
 
+    @GetMapping("/by-batch")
+    @Operation(summary = "根据批次查询流水（dev-20260923-017：批次明细「变动流水」抽屉）")
+    @SaCheckPermission("inventory:transaction:view")
+    public Result<List<TransactionVO>> getByBatch(@RequestParam Long inventoryItemId,
+                                                  @RequestParam String batchNo) {
+        return Result.success(transactionService.getByBatch(inventoryItemId, batchNo));
+    }
+
     @GetMapping("/material/{materialId}")
     @Operation(summary = "查询物料流水记录")
     @SaCheckPermission("inventory:transaction:view")

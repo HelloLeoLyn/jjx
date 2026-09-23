@@ -89,6 +89,20 @@ export interface StockItemVO {
   lastOutboundTime?: string
   createTime: string
   updateTime: string
+  /**
+   * 以下两列是展示派生值（dev-20260923-017）：由库存流水按批次聚合得到，
+   * 不属于 inventory_stock_item 表字段（避免第二真源）。quantity 本身即“结存”。
+   */
+  receivedQuantity?: number
+  issuedQuantity?: number
+}
+
+/** 批次收发存汇总（流水派生：入库合计/出库合计/结存） */
+export interface BatchFlowSummaryVO {
+  batchNo: string
+  receivedQuantity: number
+  issuedQuantity: number
+  balanceQuantity: number
 }
 
 // 库存汇总VO

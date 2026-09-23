@@ -35,3 +35,13 @@ export function getTransactionsByDocNo(docNo: string) {
     params: { docNo },
   })
 }
+
+/**
+ * dev-20260923-017：按批次查库存流水（批次明细「变动流水」抽屉）
+ * 返回按时间正序，带 变动前/变动后，可直接展示余额演变
+ */
+export function getTransactionsByBatch(inventoryItemId: string | number, batchNo: string) {
+  return request.get<R<TransactionVO[]>>('/inventory/transaction/by-batch', {
+    params: { inventoryItemId, batchNo },
+  })
+}

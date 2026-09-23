@@ -45,6 +45,16 @@ public interface InventoryTransactionService extends IService<InventoryTransacti
     List<TransactionVO> getByTimeRange(String startTime, String endTime);
 
     /**
+     * 按批次查流水（dev-20260923-017：批次明细「变动流水」抽屉）
+     */
+    List<TransactionVO> getByBatch(Long inventoryItemId, String batchNo);
+
+    /**
+     * 批次收发存聚合（dev-20260923-017）：以流水为唯一真源，算 入库合计 / 出库合计 / 结存
+     */
+    List<Map<String, Object>> batchFlowSummary(Long inventoryItemId);
+
+    /**
      * 统计指定物料的出入库数量
      */
     Map<String, Object> statByMaterial(Long materialId, String startTime);
