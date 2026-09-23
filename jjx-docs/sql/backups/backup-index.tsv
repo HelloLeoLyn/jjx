@@ -110,3 +110,5 @@ sys_task_register_20260923-2019_before-capa-gate.sql	2026-09-23 20:19:37	dev-202
 2026-09-23 21:32:15	full	jjx_erp_db_backup_20260923-2132.sql	1a6df7baad3d864212aac093d1fa63b3	5827559	113	dahuang	dev-20260923-048
 2026-09-23 22:09:36	guard	sys_task_register_20260923-2207_before-issue-registration.sql	1d2818f699939ce5d5a6ac5ecb069fdc	1143965	1	dahuang	dev-20260923-049
 2026-09-23 22:12:53	guard	sys_task_register_20260923-2212_before-055-cleanup.sql	b2dcfae2fc8b75cdb163a711ab696a1c	1150125	1	dahuang	dev-20260923-055
+2026-09-23 22:15:53	guard	sys_task_register_20260923-2215_before-056-backup.sql	98a911d3153b3a45a5ca5873111675a9	1152527	1	dahuang	dev-20260923-056
+2026-09-23 22:15:58	full	jjx_erp_db_backup_20260923-2215.sql	f9aa0042ae24ea3bf4b8b271a422ab44	5838370	113	dahuang	dev-20260923-056
