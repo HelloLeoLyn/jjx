@@ -944,6 +944,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
         // ⑤（预留·默认关闭，dev-20260918-024）成品入库过账后才允许完工。
         //    需要时把 REQUIRE_INBOUND_BEFORE_COMPLETE 置 true 即启用（需仓库确认流程就绪）。
+        // 2026-09-23（022 口径巡检）：状态白名单 (5,6,7,10,11) 已天然排除「已取消(9)」与「红冲单未确认(1)」；
+        // 红冲单被仓库确认后变 10，其明细 posted_quantity 为负数 → 会把入库量冲减回去（符合口径，勿再额外过滤）。
         if (REQUIRE_INBOUND_BEFORE_COMPLETE) {
             java.math.BigDecimal posted = java.math.BigDecimal.ZERO;
             try {
