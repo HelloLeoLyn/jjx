@@ -568,7 +568,13 @@
                 v-for="t in reportTasks"
                 :key="t.taskId"
                 :value="t.taskId"
-                :label="`${t.taskNo || '-'} · 责任 ${fmtQty(t.taskQuantity)} · 剩余 ${fmtQty(t.remainingQuantity)}`"
+                :label="`${t.taskNo || '-'} · 责任 ${fmtQty(t.taskQuantity)} · 剩余 ${fmtQty(
+                  t.remainingQuantity
+                )}${
+                  Number(t.supplementAllowance || 0) > 0
+                    ? ` · 可补 ${fmtQty(t.supplementAllowance)}`
+                    : ''
+                }`"
               />
             </el-select>
             <div class="text-muted tip">
@@ -1425,7 +1431,9 @@ const openReportDialog = async (row: OperationExecutionVO, preferredTaskId?: num
   if (!row.executionId) return
   reportTaskLoading.value = true
   try {
-    const res: any = await getMyTasks(row.executionId)
+    // dev-20260923-028：必须带 includeCompleted——「补报」的对象正是已完成任务，
+    // 不带该参数时后端会把 COMPLETED 过滤掉，弹窗里选不到任务（表现为"当前工序没有可报工任务"）。
+    const res: any = await getMyTasks(row.executionId, true)
     reportTasks.value = res?.data || []
     if (preferredTaskId && reportTasks.value.some((t) => t.taskId === preferredTaskId))
       reportTaskId.value = preferredTaskId
