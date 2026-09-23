@@ -85,3 +85,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-23 18:21:32	guard	sys_task_2247_docpointer_20260923-1821.sql	4eb33dc72ad3931641cff978719c1701	7418	1	Hermes	dev-20260923-029
 sys_task_review_20260923-1825_before-close.sql	2026-09-23 18:25:13	dev-20260923-029	核销待审核任务前 guard（sys_task 表级）	1690ba286523b4e76e255fb18ae53f5a
 2026-09-23 18:26:51	guard	sys_task_2247_decision2_20260923-1826.sql	2a0d292e6a88b429cf2e8626fd52ab4a	7548	1	Hermes	dev-20260923-029
+2026-09-23 18:29:32	guard	sys_task_2247_status_rollback_20260923-1829.sql	61db036059c0d08d6c57afafb8f42965	7322	1	Hermes	dev-20260923-029
