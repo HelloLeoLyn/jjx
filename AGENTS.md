@@ -56,3 +56,8 @@ Quick rules:
   `pre-commit` blocks: deletions/moves under `jjx-docs/sql/` except `backups/`, deletions/moves under `jjx-docs/standards/`, and any expansion of `status-magic-baseline.json`. Backup cleanup is warned but allowed.
   `commit-msg` requires the task code `dev-YYYYMMDD-NNN` and verifies it really exists in `sys_task` (read-only check; fail-open when the DB is unreachable). Disable per clone: `git config jjx.requireTaskCode false` / `jjx.verifyTaskCode false`.
   Single-commit bypass: `git commit --no-verify` — only when you have confirmed the consequences.
+
+## Tool failure and recovery rules
+
+- `sys_task.remark` is `varchar(500)`: check `CHAR_LENGTH` before writing and query it again afterward. Never suppress database errors with `2>/dev/null` or an empty catch.
+- `git checkout -- <file>` restores from the index, not necessarily `HEAD`. To restore explicitly from `HEAD`, use `git checkout HEAD -- <file>` or `git restore --source=HEAD --staged --worktree <file>`, after confirming the file has no one else's work.

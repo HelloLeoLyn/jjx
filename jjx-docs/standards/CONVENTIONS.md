@@ -122,6 +122,8 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   - type: `feat` `fix` `refactor` `docs` `style` `chore` `perf` `test`
   - 例：`fix(order-no): 销售订单单号统一 yyMMdd+3位（dev-20260907-012）`
 - 一个提交只做一件事；**不混入无关文件**（提交前 `git status` 核对，只 add 自己的文件）
+- `sys_task.remark` 为 `varchar(500)`：写前用 `CHAR_LENGTH` 预检，写后回查状态、长度与正文；禁止用 `2>/dev/null`、空 `catch` 等方式吞掉数据库错误。
+- `git checkout -- <file>` 从暂存区恢复，文件已暂存时不等于回到 `HEAD`；确需回到当前提交须用 `git checkout HEAD -- <file>` 或 `git restore --source=HEAD --staged --worktree <file>`，并先确认不会覆盖他人改动。
 - 严禁：`git reset --hard` / `git clean` / `git checkout .` / `git push -f`（force push 会从远端抹掉别人的提交）等会吞掉他人改动或历史的操作；确需回退先 `git stash` 并告知他人，恢复远端用正常 push 补回
 - **永久保护**：禁止删除/移动 `jjx-docs/sql/`（历史 `backups/` 除外）和 `jjx-docs/standards/`。`jjx-docs/sql/backups/` 存量文件可在用户确认后，以独立清理任务和独立提交删除；看到他人删除状态仍先问，不自动恢复或提交。
 - 推送：push 前先 fetch 确认无冲突；GitHub 走 `ssh://git@github.com/HelloLeoLyn/jjx.git dev`（本机 https 被全局改写，勿用默认 push）
