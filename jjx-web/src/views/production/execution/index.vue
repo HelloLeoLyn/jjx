@@ -37,6 +37,7 @@
       :load-children="loadTaskChildren"
       :can-report="canReportInAllView"
       :can-start="canStartTaskRow"
+      :rework-map="reworkMap"
       :paginated="selectedScope === 'all'"
       :page-num="allQueryParams.pageNum"
       :page-size="allQueryParams.pageSize"
@@ -218,6 +219,15 @@
               >{{ detailForm.processName }}（序
               {{ detailForm.processOrder }}）</el-descriptions-item
             >
+            <!-- dev-20260923-031：返工工序要有身份——来源不良单 + 一句人话（原来和正常工序长得一样） -->
+            <el-descriptions-item v-if="detailRework" label="返工" :span="2">
+              <el-tag type="danger" size="small">返工</el-tag>
+              <span class="rework-tip">
+                来自 {{ detailRework.ncrNo || '-' }}（不良
+                {{ fmtQty(detailRework.reworkQuantity) }} 件）·
+                {{ detailRework.statusText || '' }}
+              </span>
+            </el-descriptions-item>
             <el-descriptions-item label="状态">{{
               statusLabel(detailForm.executionStatus)
             }}</el-descriptions-item>
@@ -833,7 +843,9 @@ import type { TaskTreeRow, TaskCompletionDetail } from '@/types/production/task'
 import type {
   OperationExecutionVO,
   OrderCompletionStatusVO,
+  ReworkTraceVO,
 } from '@/types/production/operationExecution'
+import { reworkTraceApi } from '@/api/production/rework'
 import type { ProductionOrderVO } from '@/types/production/order'
 import { AVAILABLE_EQUIPMENT_STATUSES, ExecutionStatusEnum } from '@/enums/production'
 import TaskTreePanel from './components/TaskTreePanel.vue'
@@ -860,6 +872,28 @@ type AllTaskRow = TaskTreeRow
 
 const taskList = ref<AllTaskRow[]>([])
 const myTaskExecutionIds = ref<Set<number>>(new Set())
+/** 返工链投影（按 executionId 索引）—— dev-20260923-031：给工序/任务行贴「返工」身份 */
+const reworkMap = ref<Record<number, ReworkTraceVO>>({})
+/** 当前抽屉所选工序的返工链（有值即说明这是返工工序） */
+const detailRework = ref<ReworkTraceVO | null>(null)
+const loadReworkTrace = async (orderId?: number) => {
+  if (!orderId) {
+    reworkMap.value = {}
+    return
+  }
+  try {
+    const res: any = await reworkTraceApi.trace({ orderId })
+    const rows: ReworkTraceVO[] = res?.data || []
+    const map: Record<number, ReworkTraceVO> = {}
+    rows.forEach((row) => {
+      if (row.executionId) map[row.executionId] = row
+    })
+    reworkMap.value = map
+  } catch {
+    // 取不到返工链不影响工序列表（只少一个标签）
+    reworkMap.value = {}
+  }
+}
 const canViewAll = ref(false)
 const scopeReady = ref(false)
 const selectedOrder = ref<ProductionOrderVO | null>(null)
@@ -924,6 +958,8 @@ const handleOrderCompleted = () => {
 const getList = async () => {
   if (!selectedOrder.value) return
   loading.value = true
+  // 整单拿一次返工链，按 executionId 贴「返工」身份（dev-20260923-031）
+  void loadReworkTrace(Number(selectedOrder.value.orderId))
   try {
     if (selectedScope.value === 'mine') {
       const res: any = await getMyTasks(undefined, true)
@@ -1097,6 +1133,8 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
   if (!row.executionId) return
   contextLoading.value = true
   Object.assign(detailForm, row)
+  // 抽屉里显示返工身份（dev-20260923-031）：先查整单缓存，没有再按工序查一次
+  detailRework.value = reworkMap.value[Number(row.executionId)] || null
   detailRootTask.value = null
   detailChildren.value = []
   detailMyTasks.value = []
@@ -1776,6 +1814,12 @@ onMounted(async () => {
 /* dev-20260923-028：补报时的工单缺口提示 */
 .supplement-alert {
   margin-top: 12px;
+}
+/* dev-20260923-031：返工身份的说明文字 */
+.rework-tip {
+  margin-left: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .text-muted {
   color: var(--el-text-color-secondary);

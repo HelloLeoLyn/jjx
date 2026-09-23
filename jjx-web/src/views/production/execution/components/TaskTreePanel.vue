@@ -45,7 +45,17 @@
       </el-table-column>
       <el-table-column label="工序" min-width="180">
         <template #default="{ row }">
-          <span class="task-sub">{{ row.processName || '-' }}</span>
+          <div class="task-process">
+            <!-- dev-20260923-031：返工工序要有身份（原来和正常工序长得一样，看不出是返修） -->
+            <el-tooltip
+              v-if="reworkOf(row)"
+              :content="reworkOf(row)?.statusText || ''"
+              placement="top"
+            >
+              <el-tag type="danger" size="small" effect="plain">返工</el-tag>
+            </el-tooltip>
+            <span class="task-sub">{{ row.processName || '-' }}</span>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="执行人" prop="assigneeName" width="120" align="right">
@@ -153,6 +163,7 @@
 
 <script setup lang="ts">
 import type { TaskTreeRow } from '@/types/production/task'
+import type { ReworkTraceVO } from '@/types/production/operationExecution'
 import { fmtQty } from '../utils'
 import { ExecutionStatusEnum } from '@/enums/production'
 import {
@@ -184,9 +195,15 @@ const props = withDefaults(
     pageNum?: number
     pageSize?: number
     total?: number
+    /** 返工链投影（按 executionId 索引）—— dev-20260923-031，有值即给该工序贴「返工」标签 */
+    reworkMap?: Record<number, ReworkTraceVO>
   }>(),
   { paginated: false, pageNum: 1, pageSize: 10, total: 0 }
 )
+
+/** 该工序是否为返工工序（是则返回返工链，用于标签与 tooltip） */
+const reworkOf = (row: TaskTreeRow) =>
+  props.reworkMap && row.executionId ? props.reworkMap[row.executionId] : null
 
 const emit = defineEmits<{
   query: []
@@ -215,6 +232,11 @@ const handleReset = () => {
 </script>
 
 <style scoped>
+.task-process {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .filter-card {
   margin-bottom: 16px;
 }

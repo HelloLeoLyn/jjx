@@ -194,3 +194,29 @@ export interface OrderCompletionStatusVO {
   /** 缺口 = max(0, 计划 − 合格累计)；阶段=待补产时即「还需补产多少件」—— dev-20260923-028 */
   shortfallQuantity?: number
 }
+
+/**
+ * 返工链投影（只读）—— dev-20260923-031。
+ * 把「不良单 → 返工工序 → 报工 → 复检 → 回收」投影成一条，供工序执行页与不良台账页展示进度。
+ */
+export interface ReworkTraceVO {
+  ncrId?: number
+  ncrNo?: string
+  defectQuantity?: number
+  disposedQuantity?: number
+  actionId?: number
+  /** PROCESSING 返工在制 / DONE 返工闭环完成 */
+  actionStatus?: string
+  /** 本次返工件数 */
+  reworkQuantity?: number
+  executionId?: number
+  processName?: string
+  executionStatus?: number
+  reworkRequirement?: string
+  reportedQuantity?: number
+  reinspectionLotId?: number
+  reinspectionLotNo?: string
+  recoveredQuantity?: number
+  /** 一句人话：现在到哪一步、下一步做什么 */
+  statusText?: string
+}

@@ -153,11 +153,23 @@
         <el-table-column label="状态" width="100">
           <template #default="{ row }">{{ actionStatusLabel(row.status) }}</template>
         </el-table-column>
-        <el-table-column label="返工/复检关联" min-width="150">
+        <!-- dev-20260923-031：返工要有进度（原来只给裸 ID「工序 #12」，看不出修到哪一步） -->
+        <el-table-column label="返工 / 复检进度" min-width="260">
           <template #default="{ row }">
-            <div v-if="row.reworkExecutionId">工序 #{{ row.reworkExecutionId }}</div>
-            <div v-if="row.reinspectionLotId">复检批 #{{ row.reinspectionLotId }}</div>
-            <span v-if="!row.reworkExecutionId && !row.reinspectionLotId">-</span>
+            <div v-if="reworkOf(row)" class="rework-cell">
+              <el-tag type="danger" size="small" effect="plain">返工</el-tag>
+              <span class="rework-tip">
+                {{ reworkOf(row)?.processName || '返工工序' }} ·
+                {{ reworkOf(row)?.statusText || '' }}
+              </span>
+              <div v-if="reworkOf(row)?.reinspectionLotNo" class="rework-tip">
+                复检批 {{ reworkOf(row)?.reinspectionLotNo }}
+              </div>
+            </div>
+            <div v-else-if="row.reinspectionLotId" class="rework-tip">
+              复检批 #{{ row.reinspectionLotId }}
+            </div>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="resultRemark" label="说明" min-width="220" />
@@ -241,6 +253,8 @@ const load = async (page?: number) => {
   if (page) query.pageNum = page
   loading.value = true
   try {
+import { reworkTraceApi } from '@/api/production/rework'
+import type { ReworkTraceVO } from '@/types/production/operationExecution'
     const res: any = await qualityNcrApi.page({ ...query })
     const data = res?.data
     rows.value = Array.isArray(data) ? data : data?.records || []
@@ -328,6 +342,10 @@ const submitSupplement = async () => {
   if (!current.value?.orderId || !supplementAction.value) return
   const items = supplementItems.value
     .filter((item) => Number(item.quantity) > 0)
+/** 返工链进度（按 actionId 索引）—— dev-20260923-031 */
+const reworkTraceMap = ref<Record<number, ReworkTraceVO>>({})
+const reworkOf = (row: QualityNcrAction) =>
+  row?.actionId ? reworkTraceMap.value[row.actionId] || null : null
     .map((item) => ({
       materialId: item.materialId,
       materialCode: item.materialCode,
@@ -337,6 +355,18 @@ const submitSupplement = async () => {
   if (!items.length) return ElMessage.warning('请填写至少一项补料数量')
   supplementing.value = true
   try {
+    // dev-20260923-031：一并取返工链进度（工序名 / 状态 / 回收数），把裸 ID 换成看得懂的一行
+    reworkTraceMap.value = {}
+    try {
+      const trace: any = await reworkTraceApi.trace({ ncrId: row.ncrId })
+      const map: Record<number, ReworkTraceVO> = {}
+      ;(trace?.data || []).forEach((item: ReworkTraceVO) => {
+        if (item.actionId) map[item.actionId] = item
+      })
+      reworkTraceMap.value = map
+    } catch {
+      reworkTraceMap.value = {}
+    }
     await outboundApi.createReworkSupplement(current.value.orderId, current.value.ncrId, items)
     ElMessage.success('返工补料单已生成，等待仓库发料')
     supplementVisible.value = false
@@ -405,3 +435,14 @@ onMounted(async () => {
   line-height: 1.5;
 }
 </style>
+/* dev-20260923-031：返工进度单元格 */
+.rework-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rework-tip {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
