@@ -2498,6 +2498,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundItemMapper.insert(reverseItem);
 
         publishInboundEvent("inventory.inbound.created_from_production", reverse.getInboundId());
+        // 2026-09-23（用户建议①）：原单补反向标记（写在备注里），从原单也能查到冲销链
+        order.setRemark(appendRemark(order.getRemark(), "已被 " + reverseNo + " 冲销（" + tag + "）"));
+        inboundOrderMapper.updateById(order);
         log.info("已生成红冲单: {} 冲减 {}（原单 {}，lotId={}）", reverseNo, posted.toPlainString(),
                 order.getInboundNo(), lotId);
     }
