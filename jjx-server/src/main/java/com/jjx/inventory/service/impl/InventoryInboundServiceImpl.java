@@ -1683,15 +1683,32 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 return;
             }
             int lots = 0;
+            // dev-20260923（022 收尾缺陷修复）：按「该检验批在**未取消**单据里的已过账净额」回写 stored_quantity。
+            // 原实现把「当前单据这一行的 posted_quantity」当目标值：红冲单（负数量）确认时 delta 被算成
+            // −98−98=−196 → stored 变成 −98（异常值，业务上已入库数不可能为负）。改为按批聚合：
+            //   target = SUM(该 lot 在未取消单据里的 posted_quantity) → 正常单 98 + 红冲单 −98 = 0 ✓
+            java.util.Set<Long> affectedLots = new java.util.HashSet<>();
             for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
-                if (item.getLotId() == null) {
-                    continue;
+                if (item.getLotId() != null) {
+                    affectedLots.add(item.getLotId());
                 }
-                com.jjx.quality.domain.entity.QualityLot lot = lotService.getLot(item.getLotId());
-                BigDecimal target = Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO);
-                BigDecimal delta = target.subtract(Objects.requireNonNullElse(lot.getStoredQuantity(), BigDecimal.ZERO));
+            }
+            for (Long lotId : affectedLots) {
+                BigDecimal net = BigDecimal.ZERO;
+                List<InventoryInboundItem> lotItems = inboundItemMapper.selectList(
+                        new LambdaQueryWrapper<InventoryInboundItem>().eq(InventoryInboundItem::getLotId, lotId));
+                for (InventoryInboundItem li : lotItems) {
+                    InventoryInboundOrder liOrder = inboundOrderMapper.selectById(li.getInboundId());
+                    if (liOrder == null
+                            || InventoryOrderStatusEnum.CANCELLED.getValue().equals(liOrder.getOrderStatus())) {
+                        continue;
+                    }
+                    net = net.add(Objects.requireNonNullElse(li.getPostedQuantity(), BigDecimal.ZERO));
+                }
+                com.jjx.quality.domain.entity.QualityLot lot = lotService.getLot(lotId);
+                BigDecimal delta = net.subtract(Objects.requireNonNullElse(lot.getStoredQuantity(), BigDecimal.ZERO));
                 if (delta.signum() != 0) {
-                    lotService.addStoredQuantity(item.getLotId(), delta);
+                    lotService.addStoredQuantity(lotId, delta);
                 }
                 lots++;
             }

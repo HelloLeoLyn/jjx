@@ -320,6 +320,12 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     public QualityLot addStoredQuantity(Long lotId, BigDecimal delta) {
         QualityLot lot = getLot(lotId);
         BigDecimal next = nz(lot.getStoredQuantity()).add(nz(delta));
+        // dev-20260923（022 收尾）：已入库数不允许为负 —— 红冲把净额冲回 0 即止（此前会写出 −98 这类异常值）
+        if (next.signum() < 0) {
+            log.warn("检验批已入库数将被写成负数，已按 0 收敛: lotNo={} 原值={} delta={}",
+                    lot.getLotNo(), nz(lot.getStoredQuantity()).toPlainString(), nz(delta).toPlainString());
+            next = BigDecimal.ZERO;
+        }
         if (next.compareTo(lot.getLotQuantity()) > 0) {
             throw new BusinessException("入库/放行累计不能超过该批批量（" + lot.getLotQuantity().toPlainString()
                     + "，已入库 " + nz(lot.getStoredQuantity()).toPlainString() + "）");
