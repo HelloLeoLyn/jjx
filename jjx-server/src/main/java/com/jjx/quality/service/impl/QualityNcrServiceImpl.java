@@ -227,6 +227,14 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if (!ACTION_TYPES.contains(actionType)) {
             throw new BusinessException("处置方式不合法：" + dto.getActionType() + "（仅支持 返工/让步接收/报废）");
         }
+        // dev-20260923-022（看板 2205 / dev-20260922-029）：失效批禁止再处置 ——
+        // 被复检换代取代的批（或已随批作废的 NCR）如果还能处置，点一次让步接收就会把"已经不存在的货"加进良品库存。
+        if ("VOID".equals(ncr.getStatus())) {
+            throw new BusinessException("该不良单已随批作废（VOID），不能处置");
+        }
+        if (!qualityLotService.isLatestVersion(ncr.getLotId())) {
+            throw new BusinessException("该批已失效（已有复检新版本），不能继续处置；请对该批的最新版本处理");
+        }
         BigDecimal quantity = nz(dto.getQuantity());
         if (quantity.signum() <= 0) {
             throw new BusinessException("处置数量必须大于 0");
@@ -274,6 +282,128 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         log.info("不良处置登记: ncrNo={} 方式={} 数量={} 已处置={}/{}", ncr.getNcrNo(), actionType,
                 quantity.toPlainString(), disposed.toPlainString(), nz(ncr.getDefectQuantity()).toPlainString());
         return action;
+    }
+
+    // ==================== dev-20260923-022：随批作废（VOID） ====================
+
+    /**
+     * 复检换代：把被取代批上仍处 PENDING/DISPOSING 的不良单（及其未完成的处置单）随批作废（VOID）。
+     *
+     * <p>业内口径（ISO 9001 §8.7 / SAP QM 使用决策）：批一旦被后继复检版本取代，其未完成的处置
+     * 不得再生效；没有这一步就会出现「对已经不存在的批做让步接收 → 良品库存凭空增加」。
+     *
+     * @param lotId  被取代的检验批
+     * @param reason 触发原因（如「复检换代：QL260923007」）
+     * @return 作废的不良单数量
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int voidOpenDispositionsBySupersededLot(Long lotId, String reason) {
+        if (lotId == null) {
+            return 0;
+        }
+        List<QualityNcr> openNcrs = ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
+                .eq(QualityNcr::getLotId, lotId)
+                .in(QualityNcr::getStatus, "PENDING", "DISPOSING")
+                .eq(QualityNcr::getDelFlag, 0));
+        if (openNcrs == null || openNcrs.isEmpty()) {
+            return 0;
+        }
+        String tail = "【随批失效】" + (StringUtils.isBlank(reason) ? "" : reason + "：")
+                + "该批已有复检新版本，不良单随之作废(VOID)，禁止再处置（dev-20260923-022）";
+        int voided = 0;
+        for (QualityNcr ncr : openNcrs) {
+            List<QualityNcrAction> openActions = actionMapper.selectList(new LambdaQueryWrapper<QualityNcrAction>()
+                    .eq(QualityNcrAction::getNcrId, ncr.getNcrId())
+                    .in(QualityNcrAction::getStatus, "PENDING", "PROCESSING")
+                    .eq(QualityNcrAction::getDelFlag, 0));
+            for (QualityNcrAction action : openActions) {
+                action.setStatus("VOID");
+                action.setResultRemark(appendRemark(action.getResultRemark(), tail));
+                actionMapper.updateById(action);
+            }
+            ncr.setStatus("VOID");
+            ncr.setRemark(appendRemark(ncr.getRemark(), tail));
+            ncrMapper.updateById(ncr);
+            voided++;
+        }
+        log.info("复检换代：随批作废不良单 {} 张（lotId={} 原因={}）", voided, lotId, reason);
+        return voided;
+    }
+
+    /** 备注追加（留痕用；截断保护，remark 列 500） */
+    // ==================== dev-20260923-022 二期：撤销流 ====================
+
+    /**
+     * 撤销已生效(DONE)的处置。
+     *
+     * <p>业内依据：处置结论=一次性使用决策，可 reset 但必须**带权限 + 原因 + 审计**（SAP QM）。
+     * 本期只放 SCRAP（无库存影响）；CONCESSION（已转良品库存）/REWORK（已建执行与复检批）需先做反向处理。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityNcrAction revokeAction(Long actionId, String reason, String operatorName) {
+        if (actionId == null) {
+            throw new BusinessException("处置单ID不能为空");
+        }
+        if (StringUtils.isBlank(reason)) {
+            throw new BusinessException("撤销必须填写原因（留痕要求）");
+        }
+        QualityNcrAction action = actionMapper.selectById(actionId);
+        if (action == null) {
+            throw new BusinessException("处置单不存在: " + actionId);
+        }
+        if ("VOID".equals(action.getStatus())) {
+            throw new BusinessException("该处置单已作废（VOID），无需重复撤销");
+        }
+        if (!"DONE".equals(action.getStatus())) {
+            throw new BusinessException("仅支持撤销「已生效(DONE)」的处置（当前：" + action.getStatus() + "）");
+        }
+        String type = action.getActionType() == null ? "" : action.getActionType().toUpperCase();
+        if (!"SCRAP".equals(type)) {
+            throw new BusinessException("暂不支持撤销「" + type + "」处置：让步接收已转良品库存、"
+                    + "返工已建执行/复检批，需先做反向库存或返工冲销（下一步支持）");
+        }
+        QualityNcr ncr = ncrMapper.selectById(action.getNcrId());
+        if (ncr == null) {
+            throw new BusinessException("不良台账不存在: " + action.getNcrId());
+        }
+        BigDecimal qty = nz(action.getQuantity());
+        // 1) 处置单作废 + 留痕（谁/何时/为何）
+        action.setStatus("VOID");
+        action.setResultRemark(appendRemark(action.getResultRemark(),
+                "【撤销】原因：" + reason.trim() + "；操作人：" + (StringUtils.isBlank(operatorName) ? "-" : operatorName)
+                        + "；时间：" + LocalDateTime.now().withNano(0) + "（dev-20260923-022）"));
+        actionMapper.updateById(action);
+        // 2) 台账：已处置量回落 + 状态回退
+        BigDecimal disposed = nz(ncr.getDisposedQuantity()).subtract(qty);
+        if (disposed.signum() < 0) {
+            disposed = BigDecimal.ZERO;
+        }
+        ncr.setDisposedQuantity(disposed);
+        if (!"VOID".equals(ncr.getStatus())) {
+            ncr.setStatus(disposed.signum() <= 0 ? "PENDING" : "DISPOSING");
+        }
+        ncr.setRemark(appendRemark(ncr.getRemark(), "【撤销处置】" + type + " "
+                + qty.stripTrailingZeros().toPlainString() + " 件（原因：" + reason.trim() + "）"));
+        ncrMapper.updateById(ncr);
+        // 3) 检验批已处置量回落 → 判定上界随之上抬（可重新判定；若批已 CLOSED 需先「重开」）
+        try {
+            qualityLotService.addDisposedQuantity(ncr.getLotId(), qty.negate());
+        } catch (Exception e) {
+            log.warn("撤销处置后回写检验批已处置量失败（不阻断撤销）: lotId={} err={}", ncr.getLotId(), e.getMessage());
+        }
+        log.info("处置已撤销: actionId={} ncrNo={} 类型={} 数量={} 原因={} 操作人={}", actionId, ncr.getNcrNo(),
+                type, qty.toPlainString(), reason.trim(), operatorName);
+        return action;
+    }
+
+    private String appendRemark(String origin, String add) {
+        String base = origin == null ? "" : origin.trim();
+        if (base.length() > 300) {
+            base = base.substring(0, 300);
+        }
+        return base.isEmpty() ? add : base + " ｜ " + add;
     }
 
     /**

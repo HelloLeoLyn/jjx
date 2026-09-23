@@ -1,5 +1,6 @@
 package com.jjx.quality.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.common.core.result.Result;
 import com.jjx.quality.domain.entity.QualityNcr;
 import com.jjx.quality.domain.entity.QualityNcrAction;
@@ -68,5 +69,13 @@ public class QualityNcrController {
                                             @RequestParam(required = false) String resultRemark,
                                             @RequestParam(required = false) Long reworkExecutionId) {
         return Result.success(ncrService.completeAction(actionId, resultRemark, reworkExecutionId));
+    }
+
+    @Operation(summary = "撤销已生效处置（dev-20260923-022：受控动作，必填原因，留痕；本期支持报废）")
+    @SaCheckPermission("quality:ncr:revoke")
+    @PostMapping("/action/{actionId}/revoke")
+    public Result<QualityNcrAction> revoke(@PathVariable Long actionId, @RequestParam String reason) {
+        return Result.success(ncrService.revokeAction(actionId, reason,
+                com.jjx.system.utils.SecurityUtils.getDisplayName()));
     }
 }

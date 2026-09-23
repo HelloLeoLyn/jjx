@@ -130,8 +130,23 @@ public class QualityFinishServiceImpl implements QualityFinishService {
             // 不再用「工单级 target=0 冲销」——那会把整张工单级单冲掉，与按批单叠加导致重复入库。
             inventoryInboundService.handleSupersededLotInbound(old.getLotId(), "复检换代：" + old.getLotNo());
         }
+        // dev-20260923-022（看板 2205）：被取代批上未完成的不良单随批作废（VOID），禁止再处置
+        try {
+            qualityNcrService.voidOpenDispositionsBySupersededLot(old.getLotId(), "复检换代：" + old.getLotNo());
+        } catch (Exception e) {
+            log.warn("随批作废不良单失败（不阻断复检）: lotNo={} err={}", old.getLotNo(), e.getMessage());
+        }
         QualityLot created = qualityLotService.createLot(dto);
         log.info("复检已建新版本: 原批={} 新批={} version={}", old.getLotNo(), created.getLotNo(), created.getVersion());
+        // dev-20260923-022（看板 2230 / dev-20260922-018）：换代改变了「有效批集合」→ 重算工单有效合格累计，
+        // 否则工单完工数会停留在旧值（现象：工单显示 200，有效合格只剩 100）。
+        if (old.getOrderId() != null) {
+            try {
+                syncFinishInbound(old.getOrderId(), "复检换代重算：" + created.getLotNo());
+            } catch (Exception e) {
+                log.warn("复检换代后重算工单完工失败（不阻断复检）: orderId={} err={}", old.getOrderId(), e.getMessage());
+            }
+        }
         return created;
     }
 

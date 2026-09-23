@@ -64,7 +64,7 @@
         </el-table-column>
         <el-table-column label="状态" width="95">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 'CLOSED' ? 'success' : row.status === 'DISPOSING' ? 'warning' : 'danger'">
+            <el-tag size="small" :type="row.status === 'CLOSED' ? 'success' : row.status === 'DISPOSING' ? 'warning' : row.status === 'VOID' ? 'info' : 'danger'">
               {{ statusLabel(row.status) }}
             </el-tag>
           </template>
@@ -191,9 +191,37 @@
               @click="openSupplement(row)"
               >补料</el-button
             >
+            <!-- dev-20260923-022 二期：已生效报废可受控撤销（需权限点 + 填原因，留痕） -->
+            <el-button
+              v-if="row.actionType === 'SCRAP' && row.status === 'DONE' && canRevoke"
+              link
+              type="danger"
+              size="small"
+              @click="openRevoke(row)"
+              >撤销</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
+    </el-dialog>
+
+    <el-dialog v-model="revokeVisible" title="撤销处置" width="560px" append-to-body>
+      <el-alert
+        title="撤销是受控动作：必填原因并留痕（谁/何时/为何）；撤销后该批判定上界会随之恢复，可重新判定（若批已结，需先「重开」）。"
+        type="warning"
+        :closable="false"
+      />
+      <el-form label-width="90px" style="margin-top: 12px">
+        <el-form-item label="处置方式">{{ actionLabel(revokeTarget?.actionType || '') }}</el-form-item>
+        <el-form-item label="数量">{{ num(revokeTarget?.quantity) }}</el-form-item>
+        <el-form-item label="撤销原因" required>
+          <el-input v-model="revokeReason" type="textarea" :rows="2" placeholder="例如：误判，复检合格需回填" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="revokeVisible = false">取消</el-button>
+        <el-button type="danger" :loading="revoking" @click="submitRevoke">确认撤销</el-button>
+      </template>
     </el-dialog>
 
     <el-dialog v-model="supplementVisible" title="返工补料" width="760px" append-to-body>
@@ -217,14 +245,17 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 import { outboundApi } from '@/api/inventory/outbound'
 import type { PickPreviewRow } from '@/types/inventory/outbound'
+import { hasPermi } from '@/directives'
+import { reworkTraceApi } from '@/api/production/rework'
+import type { ReworkTraceVO } from '@/types/production/operationExecution'
 
 const router = useRouter()
 const route = useRoute()
@@ -238,23 +269,23 @@ if (route.query.materialCode) {
   query.materialCode = String(route.query.materialCode)
 }
 const current = ref<QualityNcr | null>(null)
+/** dev-20260923-022 二期：撤销是受控动作（需 quality:ncr:revoke，后端同样校验） */
+const canRevoke = computed(() => hasPermi('quality:ncr:revoke'))
 
 const num = (value?: number | null) =>
   value == null ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 const pending = (row: QualityNcr) => Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0)
 const statusLabel = (status: string) =>
-  ({ PENDING: '待处置', DISPOSING: '处置中', CLOSED: '已结' })[status] || status
+  ({ PENDING: '待处置', DISPOSING: '处置中', CLOSED: '已结', VOID: '已作废（随批/撤销）' })[status] || status
 const actionLabel = (type: string) =>
   ({ REWORK: '返工', CONCESSION: '让步接收（特采）', SCRAP: '报废' })[type] || type
 const actionStatusLabel = (status: string) =>
-  ({ PENDING: '待执行', PROCESSING: '执行中', DONE: '已完成' })[status] || status
+  ({ PENDING: '待执行', PROCESSING: '执行中', DONE: '已完成', VOID: '已作废' })[status] || status
 
 const load = async (page?: number) => {
   if (page) query.pageNum = page
   loading.value = true
   try {
-import { reworkTraceApi } from '@/api/production/rework'
-import type { ReworkTraceVO } from '@/types/production/operationExecution'
     const res: any = await qualityNcrApi.page({ ...query })
     const data = res?.data
     rows.value = Array.isArray(data) ? data : data?.records || []
@@ -311,6 +342,10 @@ const submitDispose = async () => {
 
 const actionsVisible = ref(false)
 const actions = ref<QualityNcrAction[]>([])
+/** 返工链进度（按 actionId 索引）—— dev-20260923-031 */
+const reworkTraceMap = ref<Record<number, ReworkTraceVO>>({})
+const reworkOf = (row: QualityNcrAction) =>
+  row?.actionId ? reworkTraceMap.value[row.actionId] || null : null
 const supplementVisible = ref(false)
 const supplementing = ref(false)
 const supplementAction = ref<QualityNcrAction | null>(null)
@@ -320,14 +355,64 @@ const openActions = async (row: QualityNcr) => {
   try {
     const res: any = await qualityNcrApi.actions(row.ncrId)
     actions.value = res?.data || []
+    // dev-20260923-031：一并取返工链进度（工序名 / 状态 / 回收数），把裸 ID 换成看得懂的一行
+    reworkTraceMap.value = {}
+    try {
+      const trace: any = await reworkTraceApi.trace({ ncrId: row.ncrId })
+      const map: Record<number, ReworkTraceVO> = {}
+      ;(trace?.data || []).forEach((item: ReworkTraceVO) => {
+        if (item.actionId) map[item.actionId] = item
+      })
+      reworkTraceMap.value = map
+    } catch {
+      reworkTraceMap.value = {}
+    }
   } catch {
     actions.value = []
   }
   actionsVisible.value = true
 }
 
-const openSupplement = async (action: QualityNcrAction) => {
-  if (!current.value?.orderId) return
+/** ===== dev-20260923-022 二期：撤销已生效处置（本期支持报废 SCRAP） ===== */
+const revokeVisible = ref(false)
+const revoking = ref(false)
+const revokeReason = ref('')
+const revokeTarget = ref<QualityNcrAction | null>(null)
+
+const openRevoke = (action: QualityNcrAction) => {
+  revokeTarget.value = action
+  revokeReason.value = ''
+  revokeVisible.value = true
+}
+
+const submitRevoke = async () => {
+  const target = revokeTarget.value
+  if (!target) return
+  const reason = revokeReason.value.trim()
+  if (!reason) return ElMessage.warning('请填写撤销原因（留痕要求）')
+  try {
+    await ElMessageBox.confirm(
+      `确认撤销「${actionLabel(target.actionType)} ${num(target.quantity)} 件」？撤销后该批判定上界会恢复，可重新判定。`,
+      '撤销确认',
+      { type: 'warning', confirmButtonText: '确认撤销', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  revoking.value = true
+  try {
+    await qualityNcrApi.revokeAction(target.actionId, reason)
+    ElMessage.success('处置已撤销（已留痕）')
+    revokeVisible.value = false
+    if (current.value) await openActions(current.value)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '撤销失败')
+  } finally {
+    revoking.value = false
+  }
+}
+
+const openSupplement = async (action: QualityNcrAction) => {  if (!current.value?.orderId) return
   supplementAction.value = action
   try {
     const res: any = await outboundApi.pickPreview(current.value.orderId)
@@ -342,10 +427,6 @@ const submitSupplement = async () => {
   if (!current.value?.orderId || !supplementAction.value) return
   const items = supplementItems.value
     .filter((item) => Number(item.quantity) > 0)
-/** 返工链进度（按 actionId 索引）—— dev-20260923-031 */
-const reworkTraceMap = ref<Record<number, ReworkTraceVO>>({})
-const reworkOf = (row: QualityNcrAction) =>
-  row?.actionId ? reworkTraceMap.value[row.actionId] || null : null
     .map((item) => ({
       materialId: item.materialId,
       materialCode: item.materialCode,
@@ -355,18 +436,6 @@ const reworkOf = (row: QualityNcrAction) =>
   if (!items.length) return ElMessage.warning('请填写至少一项补料数量')
   supplementing.value = true
   try {
-    // dev-20260923-031：一并取返工链进度（工序名 / 状态 / 回收数），把裸 ID 换成看得懂的一行
-    reworkTraceMap.value = {}
-    try {
-      const trace: any = await reworkTraceApi.trace({ ncrId: row.ncrId })
-      const map: Record<number, ReworkTraceVO> = {}
-      ;(trace?.data || []).forEach((item: ReworkTraceVO) => {
-        if (item.actionId) map[item.actionId] = item
-      })
-      reworkTraceMap.value = map
-    } catch {
-      reworkTraceMap.value = {}
-    }
     await outboundApi.createReworkSupplement(current.value.orderId, current.value.ncrId, items)
     ElMessage.success('返工补料单已生成，等待仓库发料')
     supplementVisible.value = false
@@ -399,6 +468,17 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* dev-20260923-031：返工进度单元格 */
+.rework-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rework-tip {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 .scope-guide {
   margin-bottom: 16px;
 }
@@ -435,14 +515,3 @@ onMounted(async () => {
   line-height: 1.5;
 }
 </style>
-/* dev-20260923-031：返工进度单元格 */
-.rework-cell {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.rework-tip {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
