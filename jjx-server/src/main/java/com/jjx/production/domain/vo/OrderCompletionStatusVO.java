@@ -64,4 +64,10 @@ public class OrderCompletionStatusVO {
 
     /** 计划数量 */
     private BigDecimal plannedQuantity = BigDecimal.ZERO;
+
+    /** 已登记报废合计（有效批关联不良单 SCRAP DONE）—— dev-20260923-028 */
+    private BigDecimal scrappedQuantity = BigDecimal.ZERO;
+
+    /** 缺口 = max(0, 计划数量 − 合格累计)；&gt;0 且阶段=待补产时即为「还需补产多少件」—— dev-20260923-028 */
+    private BigDecimal shortfallQuantity = BigDecimal.ZERO;
 }

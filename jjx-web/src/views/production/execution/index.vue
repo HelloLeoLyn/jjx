@@ -535,7 +535,26 @@
           <el-descriptions-item label="累计不良">{{
             fmtQty(reportExec.defectiveQuantity)
           }}</el-descriptions-item>
+          <!-- dev-20260923-028：把工单口径摆出来，责任人才能看懂「为什么还要报」 -->
+          <el-descriptions-item label="工单计划">{{
+            reportCompletion ? fmtQty(reportCompletion.plannedQuantity) : '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="工单还缺">{{
+            reportCompletion ? fmtQty(reportCompletion.shortfallQuantity) : '-'
+          }}</el-descriptions-item>
         </el-descriptions>
+        <el-alert
+          v-if="Number(reportCompletion?.shortfallQuantity || 0) > 0"
+          class="supplement-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="`工单还缺 ${fmtQty(reportCompletion?.shortfallQuantity)} 件${
+            Number(reportCompletion?.scrappedQuantity || 0) > 0
+              ? `（检验报废 ${fmtQty(reportCompletion?.scrappedQuantity)} 件已处置）`
+              : ''
+          }——本次「补报」填这个数即可补齐计划`"
+        />
         <el-form label-width="96px" style="margin-top: 12px">
           <el-form-item label="我的任务" required>
             <el-select
@@ -543,6 +562,7 @@
               placeholder="选择本次报工对应的任务"
               style="width: 100%"
               :loading="reportTaskLoading"
+              @change="applySupplementContext"
             >
               <el-option
                 v-for="t in reportTasks"
@@ -804,7 +824,10 @@ import {
 import { qualityLotApi, toQualityLotView, type QualityLotView } from '@/api/quality/lot'
 import { InspectionType } from '@/enums/quality'
 import type { TaskTreeRow, TaskCompletionDetail } from '@/types/production/task'
-import type { OperationExecutionVO } from '@/types/production/operationExecution'
+import type {
+  OperationExecutionVO,
+  OrderCompletionStatusVO,
+} from '@/types/production/operationExecution'
 import type { ProductionOrderVO } from '@/types/production/order'
 import { AVAILABLE_EQUIPMENT_STATUSES, ExecutionStatusEnum } from '@/enums/production'
 import TaskTreePanel from './components/TaskTreePanel.vue'
@@ -1311,6 +1334,8 @@ const reportTasks = ref<TaskTreeRow[]>([])
 const reportTaskLoading = ref(false)
 const reportTaskId = ref<number | null>(null)
 const reportTimeRange = ref<[string, string] | null>(null)
+/** 工单完工口径（计划/良品/缺口/报废）—— 仅「补报」场景拉取，dev-20260923-028 */
+const reportCompletion = ref<OrderCompletionStatusVO | null>(null)
 const reportForm = reactive({
   qualifiedQuantity: 0,
   defectiveQuantity: 0,
@@ -1319,6 +1344,34 @@ const reportForm = reactive({
   machineHours: 0,
   remark: '',
 })
+
+const reportTaskRow = computed(
+  () => reportTasks.value.find((t) => t.taskId === reportTaskId.value) || null
+)
+
+/**
+ * dev-20260923-028：已完成任务走「补报」时，把工单口径摆出来并按**缺口**预填。
+ * 原来的界面只有「剩余 0（可补 12）」——12 是损耗封顶不是缺口，责任人看不出为什么要补、该补几件。
+ */
+const applySupplementContext = async () => {
+  reportCompletion.value = null
+  const task = reportTaskRow.value
+  const orderId = Number(reportExec.value?.orderId || detailForm.orderId || 0)
+  if (!task || !orderId) return
+  const isSupplement =
+    Number(task.remainingQuantity || 0) <= 0 && Number(task.supplementAllowance || 0) > 0
+  if (!isSupplement) return
+  try {
+    const res: any = await operationExecutionApi.getOrderCompletionStatus([orderId])
+    const st: OrderCompletionStatusVO | null = (res?.data || [])[0] || null
+    reportCompletion.value = st
+    const cap = Number(task.remainingQuantity || 0) + Number(task.supplementAllowance || 0)
+    const fill = Math.min(Number(st?.shortfallQuantity || 0), cap)
+    if (fill > 0) reportForm.qualifiedQuantity = fill
+  } catch {
+    // 取不到工单口径就不预填，不影响报工本身
+  }
+}
 
 const formatLocalDateTime = (date: Date): string => {
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -1355,6 +1408,7 @@ const openReportDialog = async (row: OperationExecutionVO, preferredTaskId?: num
   reportExec.value = row
   reportTasks.value = []
   reportTaskId.value = null
+  reportCompletion.value = null
   Object.assign(reportForm, {
     qualifiedQuantity: 0,
     defectiveQuantity: 0,
@@ -1378,6 +1432,8 @@ const openReportDialog = async (row: OperationExecutionVO, preferredTaskId?: num
     if (!reportTasks.value.length) {
       ElMessage.warning('当前工序没有可报工的任务，请确认任务已分配给您且正在进行中')
     }
+    // 完成任务走补报时，自动摆出工单口径并按缺口预填（dev-20260923-028）
+    await applySupplementContext()
   } catch (e: any) {
     ElMessage.error(e?.message || '我的任务加载失败')
   } finally {
@@ -1708,6 +1764,10 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
+}
+/* dev-20260923-028：补报时的工单缺口提示 */
+.supplement-alert {
+  margin-top: 12px;
 }
 .text-muted {
   color: var(--el-text-color-secondary);

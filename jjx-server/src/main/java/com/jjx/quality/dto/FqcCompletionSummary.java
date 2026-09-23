@@ -27,4 +27,10 @@ public class FqcCompletionSummary {
 
     /** 有效批未处置不良合计 = Σ max(0, fail_quantity - disposed_quantity) */
     private BigDecimal undisposedFailQuantity = BigDecimal.ZERO;
+
+    /** 有效批已处置不良合计 = Σ disposed_quantity（dev-20260923-028：工单缺口一句话要用） */
+    private BigDecimal disposedFailTotal = BigDecimal.ZERO;
+
+    /** 有效批关联不良单里「已登记报废」合计 = Σ SCRAP DONE 数量（dev-20260923-028） */
+    private BigDecimal scrappedTotal = BigDecimal.ZERO;
 }

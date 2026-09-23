@@ -515,3 +515,20 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     }
 
 }
+        BigDecimal disposedTotal = BigDecimal.ZERO;
+        java.util.Set<Long> allNcrIds = new java.util.HashSet<>();
+            disposedTotal = disposedTotal.add(nz(lot.getDisposedQuantity()));
+                allNcrIds.addAll(ncrIds);
+        // dev-20260923-028：已登记报废合计（一句话原因用）——按本单全部不良单一次性汇总，避免逐批查询
+        BigDecimal scrapped = BigDecimal.ZERO;
+        if (!allNcrIds.isEmpty()) {
+            scrapped = ncrActionMapper.selectList(
+                            new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
+                                    .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, allNcrIds)
+                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getActionType, "SCRAP")
+                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getStatus, "DONE"))
+                    .stream().map(com.jjx.quality.domain.entity.QualityNcrAction::getQuantity)
+                    .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+        summary.setDisposedFailTotal(disposedTotal);
+        summary.setScrappedTotal(scrapped);

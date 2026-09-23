@@ -171,7 +171,7 @@ export interface OrderCompletionStatusVO {
   authorized: boolean
   /** 是否可点击收口（有权 + 存在待完工工序） */
   canComplete: boolean
-  /** 完工阶段（派生，dev-20260918-015）：NOT_STARTED/IN_PRODUCTION/PENDING_FQC/PENDING_DISPOSITION/READY_TO_COMPLETE/PENDING_INBOUND/COMPLETED/PAUSED/CANCELLED/UNKNOWN */
+  /** 完工阶段（派生，dev-20260918-015；PENDING_SUPPLEMENT 见 dev-20260923-028）：NOT_STARTED/IN_PRODUCTION/PENDING_FQC/PENDING_DISPOSITION/PENDING_SUPPLEMENT/READY_TO_COMPLETE/PENDING_INBOUND/COMPLETED/PAUSED/CANCELLED/UNKNOWN */
   stage?: string
   /** 阶段中文名 */
   stageLabel?: string
@@ -189,4 +189,8 @@ export interface OrderCompletionStatusVO {
   qualifiedQuantity?: number
   /** 计划数量 */
   plannedQuantity?: number
+  /** 已登记报废合计（有效批 SCRAP DONE）—— dev-20260923-028 */
+  scrappedQuantity?: number
+  /** 缺口 = max(0, 计划 − 合格累计)；阶段=待补产时即「还需补产多少件」—— dev-20260923-028 */
+  shortfallQuantity?: number
 }

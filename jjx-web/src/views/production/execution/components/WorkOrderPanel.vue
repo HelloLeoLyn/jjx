@@ -129,6 +129,8 @@ const STAGE_TAG: Record<string, 'primary' | 'success' | 'warning' | 'danger' | '
   IN_PRODUCTION: 'primary',
   PENDING_FQC: 'warning',
   PENDING_DISPOSITION: 'danger',
+  // dev-20260923-028：报废已处置、良品未达计划 → 待补产
+  PENDING_SUPPLEMENT: 'warning',
   READY_TO_COMPLETE: 'success',
   PENDING_INBOUND: 'warning',
   COMPLETED: 'success',
@@ -147,7 +149,7 @@ const stageOf = (row: ProductionOrderVO) => {
 }
 const stageTag = (stage?: string): 'primary' | 'success' | 'warning' | 'danger' | 'info' =>
   STAGE_TAG[stage || ''] || 'info'
-/** 进度：工序 x/y · 完工检验 待检 · 合格 a/b */
+/** 进度：工序 x/y · 完工检验 待检 · 合格 a/b（有缺口时补一句「还缺 N 件（报废 M 件）」—— dev-20260923-028） */
 const progressText = (row: ProductionOrderVO) => {
   const st = completionMap.value[String(row.orderId)]
   if (!st) return '—'
@@ -155,6 +157,11 @@ const progressText = (row: ProductionOrderVO) => {
   if (st.executionTotal != null) parts.push(`工序 ${st.executionDone ?? 0}/${st.executionTotal}`)
   if (st.fqcPendingCount && st.fqcPendingCount > 0) parts.push(`完工检验 待检 ${st.fqcPendingCount}`)
   parts.push(`合格 ${fmtQty(st.qualifiedQuantity)}/${fmtQty(st.plannedQuantity)}`)
+  const gap = Number(st.shortfallQuantity || 0)
+  if (gap > 0) {
+    const scrap = Number(st.scrappedQuantity || 0)
+    parts.push(`还缺 ${fmtQty(gap)} 件${scrap > 0 ? `（报废 ${fmtQty(scrap)} 件）` : ''}`)
+  }
   return parts.join(' · ')
 }
 
