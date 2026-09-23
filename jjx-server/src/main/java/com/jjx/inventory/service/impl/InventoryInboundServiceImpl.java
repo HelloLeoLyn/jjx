@@ -59,9 +59,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import com.jjx.system.annotation.Event;
 
@@ -1956,9 +1958,20 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     /**
-     * 按待入库数量决定采购入库单默认仓：R 原料与 F 成品分别汇总，数量相同按 R 优先。
-     * 仓库表没有原料专用 warehouse_type，因此 R 按启用仓名称“原料”匹配；F 优先按 finished 类型，
-     * 再按名称“成品”匹配。查询异常、物料类型无法判定或目标仓不存在时均回退历史默认仓 1L。
+     * 采购入库默认仓解析（2026-09-23 dev-20260923-007 重写，A+C）
+     *
+     * <p>口径（优先级由高到低）：
+     * <ol>
+     *   <li>物料主数据 {@code inventory_material.default_warehouse_id}（需为启用仓）；同一单内多物料默认仓不一致时，
+     *       按“入库数量最大”的物料决定（其余物料会进同一张单，需人工拆分/改单）；</li>
+     *   <li>默认仓缺失时回退“按物料类型聚合”：R 原料 / I 油墨 / A 辅料 → 原料仓（名称含“原料”，仓库类型 normal），
+     *       F 成品 → 成品仓（warehouse_type=finished），两侧按数量多者胜、相同偏原料；</li>
+     *   <li>都定不了才用兑底仓，并打 WARN（静默入错仓比报错危险得多）。</li>
+     * </ol>
+     *
+     * <p>2026-09-23 修复背景（看板任务 2192）：原实现调 {@code selectAllEnabled()}，而它按 status='0' 过滤，
+     * 与前端开关/存量数据（1=正常）不一致 → 永远返回空列表 → 静默落新建汇“兑底仓”1L（成品仓）；成品入库恰好对所以未暴露，
+     * 原料入库（PO260923001 RM001585/RM001599）全部错落成品仓。
      */
     private Long resolvePurchaseWarehouseId(List<PurchaseOrderItem> items, List<BigDecimal> quantities) {
         final Long fallbackWarehouseId = 1L;
@@ -1969,30 +1982,61 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     .distinct()
                     .collect(Collectors.toList());
             if (materialIds.isEmpty()) {
+                log.warn("采购入库默认仓解析：无物料明细，回退仓库{}", fallbackWarehouseId);
                 return fallbackWarehouseId;
             }
 
-            Map<Long, String> materialTypes = inventoryMaterialMapper.selectBatchIds(materialIds).stream()
-                    .collect(Collectors.toMap(InventoryMaterial::getMaterialId, InventoryMaterial::getMaterialType));
+            Map<Long, InventoryMaterial> materialMap = inventoryMaterialMapper.selectBatchIds(materialIds).stream()
+                    .collect(Collectors.toMap(InventoryMaterial::getMaterialId, m -> m, (a, b) -> a));
+            List<InventoryWarehouse> enabledWarehouses = warehouseMapper.selectAllEnabled();
+            Set<Long> enabledIds = enabledWarehouses.stream()
+                    .map(InventoryWarehouse::getWarehouseId)
+                    .collect(Collectors.toSet());
+
+            // 1) 物料默认仓优先（C：接上已有字段）
+            Map<Long, BigDecimal> qtyByDefaultWarehouse = new LinkedHashMap<>();
             BigDecimal rawQuantity = BigDecimal.ZERO;
             BigDecimal finishedQuantity = BigDecimal.ZERO;
             for (int i = 0; i < items.size(); i++) {
                 BigDecimal quantity = i < quantities.size() ? quantities.get(i) : null;
                 if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) continue;
-                String materialType = materialTypes.get(items.get(i).getMaterialId());
+                InventoryMaterial material = materialMap.get(items.get(i).getMaterialId());
+                if (material == null) continue;
+                Long defaultWarehouseId = material.getDefaultWarehouseId();
+                if (defaultWarehouseId != null) {
+                    if (enabledIds.contains(defaultWarehouseId)) {
+                        qtyByDefaultWarehouse.merge(defaultWarehouseId, quantity, BigDecimal::add);
+                    } else {
+                        log.warn("物料{} 默认仓库{}不在启用仓列表，已忽略该默认仓",
+                                material.getMaterialCode(), defaultWarehouseId);
+                    }
+                }
+                String materialType = material.getMaterialType();
                 if (MaterialEnums.Type.RAW.getValue().equals(materialType)
-                        || MaterialEnums.Type.INK.getValue().equals(materialType)) {
+                        || MaterialEnums.Type.INK.getValue().equals(materialType)
+                        || MaterialEnums.Type.AUXILIARY.getValue().equals(materialType)) {
                     rawQuantity = rawQuantity.add(quantity);
                 } else if (MaterialEnums.Type.FINISHED.getValue().equals(materialType)) {
                     finishedQuantity = finishedQuantity.add(quantity);
                 }
             }
-            if (rawQuantity.signum() == 0 && finishedQuantity.signum() == 0) {
-                return fallbackWarehouseId;
+            if (!qtyByDefaultWarehouse.isEmpty()) {
+                Long matchedId = qtyByDefaultWarehouse.entrySet().stream()
+                        .max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey)
+                        .orElse(null);
+                if (matchedId != null) {
+                    return matchedId;
+                }
             }
 
+            // 2) 类型聚合回退
+            if (rawQuantity.signum() == 0 && finishedQuantity.signum() == 0) {
+                log.warn("采购入库默认仓解析：物料既无默认仓也无匹配类型，回退仓库{}（materialIds={}）",
+                        fallbackWarehouseId, materialIds);
+                return fallbackWarehouseId;
+            }
             boolean useRawWarehouse = rawQuantity.compareTo(finishedQuantity) >= 0;
-            List<InventoryWarehouse> enabledWarehouses = warehouseMapper.selectAllEnabled();
             InventoryWarehouse matched = enabledWarehouses.stream()
                     .filter(warehouse -> useRawWarehouse
                             ? warehouse.getWarehouseName() != null && warehouse.getWarehouseName().contains("原料")
@@ -2006,7 +2050,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                         .findFirst()
                         .orElse(null);
             }
-            return matched != null ? matched.getWarehouseId() : fallbackWarehouseId;
+            if (matched == null) {
+                log.warn("采购入库默认仓解析：未匹配到可用仓库（raw={} / finished={} / 启用仓={}），回退仓库{}",
+                        rawQuantity, finishedQuantity, enabledWarehouses.size(), fallbackWarehouseId);
+                return fallbackWarehouseId;
+            }
+            return matched.getWarehouseId();
         } catch (Exception e) {
             log.warn("采购入库默认仓映射失败，回退仓库{}: {}", fallbackWarehouseId, e.getMessage());
             return fallbackWarehouseId;
@@ -2038,6 +2087,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
         }
         Long createdId = createFromProduction(workOrderId, null, null);
+        // dev-20260923（022 收尾核查）：以上为空说明该工单还没有「已判定的有效检验批」（如完工早于检验），
+        // 此时才退回「工单级兜底单」FINISH-<工单号> / 批次 BATCH-<工单号>（历史兼容路径，仅在建单时兜底，
+        // 与判定路径的按批单不会并存——完工路径已有防重：该工单存在任何未取消生产入库单就不再建单）。
+        log.info("工单{}无有效检验批，走工单级兜底入库单: inboundId={}", workOrderId, createdId);
         return createdId;
     }
 
