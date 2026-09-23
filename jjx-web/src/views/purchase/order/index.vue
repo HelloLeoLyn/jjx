@@ -265,12 +265,13 @@
       @success="handleSuccess"
     />
 
-    <!-- 收货对话框 -->
+    <!-- 收货对话框（共享组件：order/components → purchase/components，dev-20260923-004） -->
     <OrderReceiveDialog
       v-model:visible="receiveDialogVisible"
       :orderId="currentOrderId"
       :orderNo="currentOrderNo"
       @success="handleSuccess"
+      @goto-iqc="handleGotoIqc"
     />
 
     <!-- 付款对话框 -->
@@ -334,7 +335,7 @@ import { usePurchaseOrderStats } from './composables/usePurchaseOrderStats'
 import { usePurchaseOrderOperations } from './composables/usePurchaseOrderOperations'
 import OrderFormDialog from './components/OrderFormDialog.vue'
 import OrderApproveDialog from './components/OrderApproveDialog.vue'
-import OrderReceiveDialog from './components/OrderReceiveDialog.vue'
+import OrderReceiveDialog from '@/views/purchase/components/PurchaseReceiveDialog.vue'
 import OrderPaymentDialog from './components/OrderPaymentDialog.vue'
 import OrderDetailDialog from './components/OrderDetailDialog.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -620,6 +621,12 @@ const handleReceive = (row?: PurchaseOrderVO) => {
   currentOrderId.value = Number(order.orderId as any)
   currentOrderNo.value = order.orderNo
   receiveDialogVisible.value = true
+}
+
+// 收货后跳转来料检验：检验在质量域录入/判定（IQC 检验批按入库单建），不在收货弹窗里录
+const handleGotoIqc = (inboundNo: string) => {
+  receiveDialogVisible.value = false
+  router.push({ path: '/inventory/iqc', query: { inboundNo } })
 }
 
 // 付款

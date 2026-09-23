@@ -6,6 +6,7 @@ import com.jjx.common.core.result.Result;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.purchase.domain.dto.ReceiptBatchCheckItemDTO;
+import com.jjx.purchase.domain.dto.PurchaseOrderReceiveDTO;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.common.enums.ApproveStatusEnum;
@@ -13,17 +14,22 @@ import com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderVO;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
+import com.jjx.purchase.mapper.PurchaseReceiptInboundMapper;
+import com.jjx.purchase.service.IPurchaseDocumentService;
 import com.jjx.purchase.service.IPurchaseOrderService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +46,10 @@ public class PurchaseReceiptController extends BaseController {
 
     private final IPurchaseOrderService purchaseOrderService;
     private final PurchaseOrderItemMapper orderItemMapper;
+    /** 收货票据（独立权限域 purchase:receipt:doc:*，dev-20260923-004）。 */
+    private final IPurchaseDocumentService purchaseDocumentService;
+    /** 只读：本批收货生成的入库单（收货页展示 + 引导 IQC）。 */
+    private final PurchaseReceiptInboundMapper receiptInboundMapper;
 
     /**
      * 查询采购收货列表（已批准/待收货的订单）
@@ -253,13 +263,29 @@ public class PurchaseReceiptController extends BaseController {
     @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'", bizId = "#batchData[0]['orderId']", action = LogActions.PUR_RECEIPT_BATCH_RECEIVE)
     @SaCheckPermission("purchase:receipt:add")
     public Result<Void> batchReceive(@RequestBody List<Map<String, Object>> batchData) {
-        for (Map<String, Object> data : batchData) {
-            Long orderId = Long.valueOf(data.get("orderId").toString());
-            Long itemId = Long.valueOf(data.get("itemId").toString());
-            BigDecimal quantity = new BigDecimal(data.get("receivedQuantity").toString());
-            purchaseOrderService.receiveOrderItem(orderId, itemId, quantity);
+        // 2026-09-23（dev-20260923-004）修复：原实现逐条调 receiveOrderItem，而它每次都调 createInboundRecordFromPurchase
+        // → 一次批量收 N 行会生成 N 张入库单。改为按订单分组、每单只提交一次（入库单粒度=一次收货批次）。
+        for (Map.Entry<Long, List<PurchaseOrderReceiveDTO.ReceiveItemDTO>> entry : groupReceiptRowsByOrder(batchData).entrySet()) {
+            PurchaseOrderReceiveDTO dto = new PurchaseOrderReceiveDTO();
+            dto.setOrderId(entry.getKey());
+            dto.setItems(entry.getValue());
+            purchaseOrderService.batchReceiveOrderItems(dto);
         }
         return Result.success();
+    }
+
+    /** 把 [{orderId,itemId,receivedQuantity}] 按 orderId 分组（dev-20260923-004） */
+    private Map<Long, List<PurchaseOrderReceiveDTO.ReceiveItemDTO>> groupReceiptRowsByOrder(
+            List<Map<String, Object>> rows) {
+        Map<Long, List<PurchaseOrderReceiveDTO.ReceiveItemDTO>> grouped = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Long orderId = Long.valueOf(row.get("orderId").toString());
+            PurchaseOrderReceiveDTO.ReceiveItemDTO item = new PurchaseOrderReceiveDTO.ReceiveItemDTO();
+            item.setItemId(Long.valueOf(row.get("itemId").toString()));
+            item.setReceivedQuantity(new BigDecimal(row.get("receivedQuantity").toString()));
+            grouped.computeIfAbsent(orderId, k -> new ArrayList<>()).add(item);
+        }
+        return grouped;
     }
 
     /**
@@ -269,11 +295,12 @@ public class PurchaseReceiptController extends BaseController {
     @Log(module = "采购收货管理", businessType = BusinessType.IMPORT, bizType = "'purchase_receipt'", bizId = "#importData[0]['orderId']", action = LogActions.PUR_RECEIPT_IMPORT)
     @SaCheckPermission("purchase:receipt:import")
     public Result<Void> importReceipt(@RequestBody List<Map<String, Object>> importData) {
-        for (Map<String, Object> data : importData) {
-            Long orderId = Long.valueOf(data.get("orderId").toString());
-            Long itemId = Long.valueOf(data.get("itemId").toString());
-            BigDecimal quantity = new BigDecimal(data.get("receivedQuantity").toString());
-            purchaseOrderService.receiveOrderItem(orderId, itemId, quantity);
+        // 2026-09-23（dev-20260923-004）：同样改为按订单分组一次提交，避免导入一次生成 N 张入库单
+        for (Map.Entry<Long, List<PurchaseOrderReceiveDTO.ReceiveItemDTO>> entry : groupReceiptRowsByOrder(importData).entrySet()) {
+            PurchaseOrderReceiveDTO dto = new PurchaseOrderReceiveDTO();
+            dto.setOrderId(entry.getKey());
+            dto.setItems(entry.getValue());
+            purchaseOrderService.batchReceiveOrderItems(dto);
         }
         return Result.success();
     }
@@ -357,5 +384,89 @@ public class PurchaseReceiptController extends BaseController {
     @SaCheckPermission("purchase:receipt:import")
     public Result<String> importTemplate() {
         return Result.success("导入模板生成功能待实现");
+    }
+
+    // ==================== 2026-09-23（dev-20260923-004）方案 A2：收货域入口 ====================
+
+    /**
+     * 批量收货（收货域主入口，A2）
+     *
+     * <p>与订单域 {@code POST /purchase/order/{orderId}/receive} 同一 service（batchReceiveOrderItems），
+     * 但权限/日志归收货域（{@code purchase:receipt:add}），采购订单页与收货页统一走这里。
+     * 一次请求可同时收多个明细，合计不超订单剩余；入库单按"一次收货"粒度生成一张（DEV-624）。
+     */
+    @PostMapping("/confirm-batch")
+    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#orderId", action = LogActions.PUR_RECEIPT_CONFIRM_BATCH)
+    @SaCheckPermission("purchase:receipt:add")
+    public Result<Void> confirmBatch(@RequestParam Long orderId, @Valid @RequestBody PurchaseOrderReceiveDTO dto) {
+        dto.setOrderId(orderId);
+        purchaseOrderService.batchReceiveOrderItems(dto);
+        return Result.success();
+    }
+
+    /**
+     * 本订单收货生成的入库单（只读）
+     *
+     * <p>用于收货成功后提示"已生成入库单 PO…-N（待来料检验）"，并作为 质量管理→来料检验 的跳转参数。
+     */
+    @GetMapping("/inbound-orders/{orderId}")
+    @SaCheckPermission("purchase:receipt:view")
+    public Result<List<Map<String, Object>>> inboundOrders(@PathVariable Long orderId) {
+        return Result.success(receiptInboundMapper.selectByPurchaseOrder(orderId));
+    }
+
+    // ==================== 2026-09-23（dev-20260923-004）收货票据（独立权限 purchase:receipt:doc:*） ====================
+
+    /**
+     * 上传收货票据（只落磁盘临时目录，不入库；确认时由 batch-confirm 落库）
+     */
+    @PostMapping("/doc/upload-temp/{orderId}")
+    @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#orderId", action = LogActions.PUR_RECEIPT_DOC_UPLOAD_TEMP)
+    @SaCheckPermission("purchase:receipt:doc:add")
+    public Result<Map<String, Object>> uploadReceiptDoc(@PathVariable Long orderId,
+                                                       @RequestParam("file") MultipartFile file) {
+        return Result.success(purchaseDocumentService.uploadTempFile(orderId, file));
+    }
+
+    /**
+     * 查询订单的收货票据临时文件（扫描磁盘目录）
+     */
+    @GetMapping("/doc/disk-files/{orderId}")
+    @SaCheckPermission("purchase:receipt:doc:view")
+    public Result<List<Map<String, Object>>> receiptDocDiskFiles(@PathVariable Long orderId) {
+        return Result.success(purchaseDocumentService.selectDiskFilesByOrderId(orderId));
+    }
+
+    /**
+     * 删除收货票据临时文件
+     */
+    @DeleteMapping("/doc/temp-file")
+    @Log(module = "采购收货管理", businessType = BusinessType.DELETE, bizType = "'purchase_receipt'", bizId = "#fileUrl", action = LogActions.PUR_RECEIPT_DOC_DELETE_TEMP)
+    @SaCheckPermission("purchase:receipt:doc:delete")
+    public Result<Void> deleteReceiptDocTemp(@RequestParam String fileUrl) {
+        purchaseDocumentService.deleteTempFile(fileUrl);
+        return Result.success();
+    }
+
+    /**
+     * 收货票据落库（{"orderId":1,"files":[{fileName,fileUrl,fileSize}]}）
+     *
+     * <p>supplierId 由服务端从订单解析（不再信任前端传值），documentType 固定 receipt —— 与采购发票票据区分。
+     */
+    @PostMapping("/doc/batch-confirm")
+    @Log(module = "采购收货管理", businessType = BusinessType.INSERT, bizType = "'purchase_receipt'", bizId = "#params['orderId']", action = LogActions.PUR_RECEIPT_DOC_BATCH_CONFIRM)
+    @SaCheckPermission("purchase:receipt:doc:add")
+    public Result<Integer> confirmReceiptDocs(@RequestBody Map<String, Object> params) {
+        if (params == null || params.get("orderId") == null) {
+            throw new BusinessException("orderId 不能为空");
+        }
+        Long orderId = Long.valueOf(params.get("orderId").toString());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> files = (List<Map<String, Object>>) params.get("files");
+        PurchaseOrder order = purchaseOrderService.getById(orderId);
+        if (order == null) {
+            throw new BusinessException("采购订单不存在: " + orderId);
+        }
+        return Result.success(purchaseDocumentService.batchConfirmDocuments(orderId, order.getSupplierId(), files, "receipt"));
     }
 }

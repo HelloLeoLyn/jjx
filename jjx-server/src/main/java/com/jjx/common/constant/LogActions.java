@@ -204,6 +204,12 @@ public final class LogActions {
     public static final String PUR_RECEIPT_BATCH_RECEIVE = "批量收货";
     public static final String PUR_RECEIPT_BATCH_INSPECT = "批量收货质检";
     public static final String PUR_RECEIPT_IMPORT = "导入采购收货";
+    /** 2026-09-23（dev-20260923-004）：收货域批量收货（A2，取代订单域端点作为收货主入口）。 */
+    public static final String PUR_RECEIPT_CONFIRM_BATCH = "批量确认收货";
+    /** 2026-09-23（dev-20260923-004）：收货票据（独立权限 purchase:receipt:doc:*）。 */
+    public static final String PUR_RECEIPT_DOC_UPLOAD_TEMP = "上传收货票据临时文件";
+    public static final String PUR_RECEIPT_DOC_BATCH_CONFIRM = "批量确认收货票据";
+    public static final String PUR_RECEIPT_DOC_DELETE_TEMP = "删除收货票据临时文件";
     public static final String SUPPLIER_CREATE = "新增供应商";
     public static final String SUPPLIER_EDIT = "修改供应商";
     public static final String SUPPLIER_DELETE = "删除供应商";

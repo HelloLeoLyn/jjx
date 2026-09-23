@@ -204,3 +204,75 @@ export function importTemplate() {
     responseType: 'blob',
   })
 }
+
+// ==================== 2026-09-23（dev-20260923-004）方案 A2：收货域批量收货 + 收货票据 ====================
+// 背景：原来收货只能逐条（confirm/{itemId}），多明细一次收只能借用订单域端点 POST /purchase/order/{id}/receive
+//（后端权限是 purchase:order:edit，与前端收货按钮的 purchase:receipt:add 错位）。本组接口把"收货"收口到收货域。
+
+/**
+ * 批量收货（收货域主入口）
+ * 一次可收多个明细，明细入库单按"一次收货"粒度生成一张；后端权限 purchase:receipt:add
+ */
+export function confirmBatchReceive(
+  orderId: number,
+  items: { itemId: number; receivedQuantity: number }[],
+) {
+  return request({
+    url: '/purchase/receipt/confirm-batch',
+    method: 'post',
+    params: { orderId },
+    data: { items },
+  })
+}
+
+/** 本订单收货生成的入库单（只读，倒序；用于提示入库单号与跳转来料检验） */
+export function getReceiptInboundOrders(orderId: number) {
+  return request({
+    url: `/purchase/receipt/inbound-orders/${orderId}`,
+    method: 'get',
+  })
+}
+
+/** 上传收货票据（临时落盘，确认收货时入库） */
+export function uploadReceiptDocTemp(orderId: number, file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request({
+    url: `/purchase/receipt/doc/upload-temp/${orderId}`,
+    method: 'post',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+/** 收货票据临时文件列表（扫磁盘目录） */
+export function getReceiptDocDiskFiles(orderId: number) {
+  return request({
+    url: `/purchase/receipt/doc/disk-files/${orderId}`,
+    method: 'get',
+  })
+}
+
+/** 删除收货票据临时文件 */
+export function deleteReceiptDocTemp(fileUrl: string) {
+  return request({
+    url: '/purchase/receipt/doc/temp-file',
+    method: 'delete',
+    params: { fileUrl },
+  })
+}
+
+/**
+ * 收货票据落库
+ * supplierId 由服务端从订单解析，documentType 固定 receipt（与采购发票票据区分）
+ */
+export function confirmReceiptDocs(
+  orderId: number,
+  files: { fileName: string; fileUrl: string; fileSize: number }[],
+) {
+  return request({
+    url: '/purchase/receipt/doc/batch-confirm',
+    method: 'post',
+    data: { orderId, files },
+  })
+}
