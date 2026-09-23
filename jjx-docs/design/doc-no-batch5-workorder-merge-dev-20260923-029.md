@@ -62,6 +62,7 @@
 3. `ProductionTaskServiceImpl.java:1037-1038` —— `%03d` → `%02d`，并加 §5 的超限处理。
 4. `ProductionTask.java:36` —— 注释 `{工单号}-P{工序序号}-T{任务序号}` 更新为 2 位口径。
 5. `InventoryInboundServiceImpl.java:1971-1975` / `:1759` / `:1915` —— 采购入库单号改号段 `IN+yyMMdd+3`；多次收货的 `-2` 语义改为「多张独立入库单」（每张占新流水）。
+   - ⚠️ **2026-09-23 复核补充（大黄，见 history/doc-no-batch5-prereview-dev-20260923-029.md）**：`InventoryInboundServiceImpl:1884-1886` 的「本采购单已生成的入库单」是**按单号前缀** `likeRight(inbound_no, 采购单号)` 查的，拆号后**必然查空** → `alreadyInByMaterial=0` → 每次收货按「已收数量」整额再入一遍（**静默重复入库**）。拆号必须同批把它改为 `eq(source_type,'PURCHASE').eq(source_id, 采购订单ID)`（照 production 侧 `:2141-2145` 先例：不再依赖单号），并加回归用例「同一 PO 连续两次收货只入差额」。
 6. `InventoryInboundServiceImpl.java:266` —— 兜底默认值去掉时间戳（改成显式报错或走号段），兜底不得再产生时间戳号。
 7. `InventoryOutboundServiceImpl.java:897` / `:1283` —— 领料号 `PICK-<工单号>[-n]`：前缀与结构不变，工单号变短后自动变短；`:1283` 的 COUNT + 1 建议一并改成「最大后缀 + 1」（与工单号 V1 修复口径一致，避免红冲/删除后撞号）。
 8. `InventoryInboundServiceImpl.java:2193` —— 完工入库 `-FI%02d` 结构不变；但 `:2190` 的正则 `-FI\d{2}` + `substring(len-2)` 是**硬编码定长截取**，见 §8 风险 1。
@@ -133,7 +134,7 @@
 
 ## 8. 风险与缓解
 
-1. **定长截取代码（已知实测一处，P2）**：`InventoryInboundServiceImpl.java:2190` 用 `Pattern.quote(orderNo) + "-FI\\d{2}"` 过滤 + `substring(len-2)` 解析序号。
+1. ~~**定长截取代码（已知实测一处，P2）**~~ **【2026-09-23 20:0x 已修复：dev-20260923-032 / 看板 2250，commit `de0cbe9e`——序号改 `-FI(\d+)$` 全量解析 + 撞号向后找空号 + 门禁⑨；回归时确认 `check:lot:strict` ⑨=0 即可】**：`InventoryInboundServiceImpl.java:2190` 用 `Pattern.quote(orderNo) + "-FI\\d{2}"` 过滤 + `substring(len-2)` 解析序号。
    推论：某工单的完工入库单到第 100 张时会写成 `-FI100`（3 位，`%02d` 不报错、静默变长）——**第 100 张本身能出单**；从第 101 张起，该正则不再匹配 `-FI100` → 「最大后缀」退化为 99 → 下次仍算 `100` → 唯一性检查命中已存在 → **静默 return null（不出入库单，只打 warn）**。
    缓解：**已单独登记 dev-20260923-032（task 2250）**——含完整证据链、A/B/C 方案（推荐 A：按 `-FI(\d+)$` 全数字解析 + 判重改为不依赖单号）与验收用例；若第 5 批先实施，两者必须一起回归。
    同类坑本仓已有先例：`InventoryInboundServiceImpl.java:2138-2140` 注释记录过「旧防重只查 `FINISH-<工单号>-FQC-` 前缀，改按检验批出单后新单名是 `<工单号>-FI<NN>` → 匹配不到，导致重复建单」，最终修法是**不再依赖单号**做防重。本处建议照同一思路（按字段/不限位数解析）。
