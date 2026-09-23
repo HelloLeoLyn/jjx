@@ -56,6 +56,15 @@
         <el-form-item>
           <el-button type="primary" @click="handleQuery">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
+          <!-- dev-20260922-022（收尾 · 用户拍板 4）：一验批一单后单据变多，支持批量确认入库 -->
+          <el-button
+            type="success"
+            :disabled="!confirmableSelected.length"
+            :loading="batchConfirming"
+            v-hasPermi="['inventory:inbound:confirm']"
+            @click="handleBatchConfirm"
+            >批量确认入库（已选 {{ confirmableSelected.length }} 张）</el-button
+          >
         </el-form-item>
       </el-form>
     </el-card>
@@ -97,6 +106,8 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="入库单号" prop="inboundNo" min-width="150">
           <template #default="{ row }">
+            <!-- 红冲单（复检换代产生，单号后缀 -R）单独标识 -->
+            <el-tag v-if="isReverse(row)" type="danger" size="small" effect="plain">红冲</el-tag>
             <el-link @click="handleView(row)" type="primary">
               {{ row.inboundNo }}
             </el-link>
@@ -203,7 +214,7 @@ defineOptions({
   name: 'InboundList',
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Download, Refresh } from '@element-plus/icons-vue'
@@ -216,6 +227,7 @@ import InboundDetail from './components/InboundDetail.vue'
 import IqcPostingDialog from './components/IqcPostingDialog.vue'
 import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
 import type { InboundQueryParams, InboundVO } from '@/types/inventory/inbound'
+import { useUserStore } from '@/store/modules/user'
 
 const router = useRouter()
 const route = useRoute()
@@ -281,6 +293,59 @@ const handleSelectionChange = (selection: InboundVO[]) => {
   ids.value = selection.map((item) => item.inboundId)
   single.value = selection.length !== 1
   multiple.value = !selection.length
+  selectedRows.value = selection
+}
+
+// ==================== 批量确认入库（dev-20260922-022 收尾） ====================
+const userStore = useUserStore()
+const selectedRows = ref<InboundVO[]>([])
+const batchConfirming = ref(false)
+
+/** 红冲单：复检换代生成的负数量单，单号后缀 -R */
+const isReverse = (row: InboundVO) => String(row.inboundNo || '').endsWith('-R')
+
+/** 可确认入库：采购单=已批准；其它来源=草稿/待审批/已批准（与表格按钮口径一致） */
+const confirmable = (row: InboundVO) =>
+  isPurchase(row)
+    ? row.status === InboundOrderStatusEnum.APPROVED.value
+    : [
+        InboundOrderStatusEnum.DRAFT.value,
+        InboundOrderStatusEnum.PENDING.value,
+        InboundOrderStatusEnum.APPROVED.value,
+      ].includes(row.status as never)
+
+const confirmableSelected = computed(() => selectedRows.value.filter(confirmable))
+
+async function handleBatchConfirm() {
+  const targets = confirmableSelected.value
+  if (!targets.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确认对已选的 ${targets.length} 张入库单执行「确认入库」？\n过账后库存与批次按单生效，红冲单（若有）会按负数量冲减。`,
+      '批量确认入库',
+      { confirmButtonText: '确认入库', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  batchConfirming.value = true
+  const failed: string[] = []
+  let ok = 0
+  const operatorId = String(userStore.userId || 1)
+  const operatorName = userStore.nickName || '当前用户'
+  for (const row of targets) {
+    try {
+      // 逐单独立提交：失败不影响其它单，最后统一汇报
+      await inboundApi.confirm(String(row.inboundId), operatorId, operatorName)
+      ok += 1
+    } catch (e: any) {
+      failed.push(`${row.inboundNo}：${e?.message || '失败'}`)
+    }
+  }
+  batchConfirming.value = false
+  if (ok > 0) ElMessage.success(`批量确认入库完成：成功 ${ok} 张`)
+  if (failed.length) ElMessage.error(`失败 ${failed.length} 张 —— ${failed.join('；')}`)
+  getList()
 }
 
 // 删除入库单
