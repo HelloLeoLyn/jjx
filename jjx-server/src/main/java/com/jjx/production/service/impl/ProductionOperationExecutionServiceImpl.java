@@ -11,10 +11,12 @@ import com.jjx.production.domain.dto.ProductionOperationExecutionCreateDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionQueryDTO;
 import com.jjx.production.domain.dto.ProductionOperationExecutionUpdateDTO;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.entity.ProductionEquipment;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.vo.ProductionOperationExecutionVO;
 import com.jjx.production.domain.vo.ProductionOrderVO;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.production.mapper.ProductionEquipmentMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.service.ProductionOperationExecutionService;
 import lombok.RequiredArgsConstructor;
@@ -38,11 +40,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final ProductionOrderMapper productionOrderMapper;
+    private final ProductionEquipmentMapper productionEquipmentMapper;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final com.jjx.production.service.WorkReportProjectionService workReportProjectionService;
     /** P1：工序产生时同步创建 First ProductionTask（统一任务责任树） */
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
-    /** 扫码C：设备码软校验记录（DEVICE_CHECK） */
+    /** 开工设备首次绑定/换机履历。 */
     private final com.jjx.production.service.ProductionOperationRecordService productionOperationRecordService;
     /** 完工口径/阶段（新质检模型）—— dev-20260918-015 */
     private final com.jjx.quality.service.QualityLotService qualityLotService;
@@ -343,7 +346,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean startExecution(Long executionId) {
-        return startExecution(executionId, null);
+        return startExecution(executionId, null, null, false);
     }
 
     /**
@@ -355,15 +358,19 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean startExecution(Long executionId, String scannedDeviceCode) {
+        return startExecution(executionId, null, scannedDeviceCode, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean startExecution(Long executionId, Long equipmentId, String scannedDeviceCode,
+                                  boolean confirmEquipmentChange) {
         log.info("开始工序执行: {}, scannedDeviceCode={}", executionId, scannedDeviceCode);
 
         ProductionOperationExecution execution = getById(executionId);
         if (execution == null) {
             throw new BusinessException("工序执行记录不存在: " + executionId);
         }
-
-        // 扫码C：设备码软校验（不一致不拦截，记录实际设备后放行）
-        verifyDeviceSoft(execution, scannedDeviceCode);
 
         // 检查记录状态是否可以开始或继续
         if (!canStartExecution(execution)) {
@@ -380,6 +387,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             throw new BusinessException("请先启动生产工单，再开始工序（当前工单状态："
                     + (current == null ? String.valueOf(order.getOrderStatus()) : current.getLabel()) + "）");
         }
+
+        bindStartEquipment(execution, equipmentId, scannedDeviceCode, confirmEquipmentChange);
 
         // 恢复时保留首次实际开始时间。当前字段模型没有暂停时长分段，
         // 完工后仍沿用 actualStartTime 到 actualEndTime 的现有工时口径。
@@ -1025,37 +1034,70 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                 || ExecutionStatusEnum.PAUSED.getValue().equals(status);
     }
 
-    /**
-     * 扫码C：设备码软校验。
-     * 规则：execution 指定了设备（equipmentCode 非空）且传入了扫码设备码时比对；
-     * 不一致 → 不拦截，写入 DEVICE_CHECK 记录（含期望/实际设备码）后放行；
-     * 一致或未传码 → 直接放行。
-     */
-    private void verifyDeviceSoft(ProductionOperationExecution execution, String scannedDeviceCode) {
-        String expected = execution.getEquipmentCode();
-        if (expected == null || expected.isBlank()) {
-            return; // 未指定设备，无需校验
+    private void bindStartEquipment(ProductionOperationExecution execution, Long equipmentId,
+                                    String scannedDeviceCode, boolean confirmChange) {
+        ProductionEquipment selected = resolveEquipment(equipmentId, scannedDeviceCode);
+        if (selected == null && execution.getEquipmentId() != null) {
+            selected = resolveEquipment(execution.getEquipmentId(), null); // 恢复沿用原设备并复核状态。
         }
-        if (scannedDeviceCode == null || scannedDeviceCode.isBlank()) {
-            return; // 未扫码（PC/旧调用），放行
+        if (selected == null) return; // 未绑定设备的手工工序允许直接开工。
+
+        com.jjx.production.enums.EquipmentStatusEnum status =
+                com.jjx.production.enums.EquipmentStatusEnum.getByValue(selected.getStatus());
+        if (status == null || !status.isAvailable()) {
+            throw new BusinessException("设备不可用于开工：" + selected.getEquipmentName()
+                    + "（" + (status == null ? "未知状态" : status.getLabel()) + "）");
         }
-        if (expected.equals(scannedDeviceCode.trim())) {
-            log.info("设备码校验通过: executionId={}, equipmentCode={}", execution.getExecutionId(), expected);
-            return;
+
+        Long oldId = execution.getEquipmentId();
+        boolean changing = oldId != null && !oldId.equals(selected.getEquipmentId());
+        if (changing && !confirmChange) {
+            throw new BusinessException("工序已绑定设备 " + execution.getEquipmentName()
+                    + "，更换为 " + selected.getEquipmentName() + " 需要确认");
         }
-        // 软校验：记录实际设备后放行
-        log.warn("设备码不一致（软校验放行）: executionId={}, 期望={}, 实际={}",
-                execution.getExecutionId(), expected, scannedDeviceCode);
-        try {
-            com.jjx.production.domain.dto.ProductionOperationRecordCreateDTO record = new com.jjx.production.domain.dto.ProductionOperationRecordCreateDTO();
+        if (equipmentId != null && scannedDeviceCode != null && !scannedDeviceCode.isBlank()
+                && !selected.getEquipmentNo().equals(scannedDeviceCode.trim())) {
+            throw new BusinessException("所选设备与扫码设备不一致");
+        }
+
+        String oldDisplay = execution.getEquipmentName() == null ? "未绑定"
+                : execution.getEquipmentName() + "（" + execution.getEquipmentCode() + "）";
+        execution.setEquipmentId(selected.getEquipmentId());
+        execution.setEquipmentCode(selected.getEquipmentNo());
+        execution.setEquipmentName(selected.getEquipmentName());
+
+        if (oldId == null || changing) {
+            com.jjx.production.domain.dto.ProductionOperationRecordCreateDTO record =
+                    new com.jjx.production.domain.dto.ProductionOperationRecordCreateDTO();
             record.setExecutionId(execution.getExecutionId());
-            record.setRecordType("DEVICE_CHECK");
+            record.setRecordType(com.jjx.production.enums.RecordTypeEnum.EQUIPMENT.getCode());
             record.setRecordTime(LocalDateTime.now());
-            record.setRemark("设备码不一致，软校验放行。期望设备: " + expected + "，实际扫码: " + scannedDeviceCode.trim());
+            try {
+                record.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
+                record.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
+            } catch (Exception ignored) {
+                record.setOperatorName("system");
+            }
+            record.setRemark((changing ? "开工换机：" + oldDisplay + " → " : "首次开工绑定设备：")
+                    + selected.getEquipmentName() + "（" + selected.getEquipmentNo() + "）");
             productionOperationRecordService.createRecord(record);
-        } catch (Exception e) {
-            log.error("设备码校验记录写入失败（不影响开始）: executionId={}", execution.getExecutionId(), e);
         }
+    }
+
+    private ProductionEquipment resolveEquipment(Long equipmentId, String scannedDeviceCode) {
+        if (equipmentId == null && (scannedDeviceCode == null || scannedDeviceCode.isBlank())) return null;
+        ProductionEquipment equipment;
+        if (equipmentId != null) {
+            equipment = productionEquipmentMapper.selectById(equipmentId);
+        } else {
+            equipment = productionEquipmentMapper.selectOne(Wrappers.<ProductionEquipment>lambdaQuery()
+                    .eq(ProductionEquipment::getEquipmentNo, scannedDeviceCode.trim())
+                    .last("LIMIT 1"));
+        }
+        if (equipment == null) {
+            throw new BusinessException("设备不存在或已删除");
+        }
+        return equipment;
     }
 
     /**

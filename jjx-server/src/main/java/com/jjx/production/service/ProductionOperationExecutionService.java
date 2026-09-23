@@ -54,10 +54,14 @@ public interface ProductionOperationExecutionService {
      */
     boolean startExecution(Long executionId);
 
-    /**
-     * 开始工序执行（扫码C：支持可选设备码软校验）
-     */
+    /** 开始工序执行（兼容旧扫码调用）。 */
     boolean startExecution(Long executionId, String scannedDeviceCode);
+
+    /**
+     * 开始工序并可绑定设备。首次绑定直接落快照；更换既有设备需显式确认。
+     */
+    boolean startExecution(Long executionId, Long equipmentId, String scannedDeviceCode,
+                           boolean confirmEquipmentChange);
 
     /**
      * 暂停工序执行

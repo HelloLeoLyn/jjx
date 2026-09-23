@@ -165,7 +165,7 @@ function canReport(ex: MyProductionExecution): boolean {
 async function handleStart(ex: MyProductionExecution) {
   if (!ex.executionId) return
   const isResume = canResume(ex)
-  // 扫码C：可选扫设备码（不一致后端软校验放行并记录），跳过=不校验
+  // 可选扫描设备码：首次扫码绑定设备；与已绑定设备不同时二次确认换机。
   let deviceCode: string | undefined
   try {
     const { value } = await ElMessageBox.prompt(
@@ -173,7 +173,7 @@ async function handleStart(ex: MyProductionExecution) {
       `${isResume ? '继续' : '开始'}工序（可选扫设备码）`,
       {
         confirmButtonText: isResume ? '继续' : '开始',
-        cancelButtonText: '跳过',
+        cancelButtonText: '取消',
         inputPlaceholder: '扫码枪扫设备码，或直接点开始',
         inputValidator: (v: string) => (v && v.trim() ? true : true), // 可空，跳过校验
         closeOnClickModal: false,
@@ -185,7 +185,20 @@ async function handleStart(ex: MyProductionExecution) {
   }
   startingId.value = ex.executionId
   try {
-    await operationExecutionApi.start(ex.executionId, deviceCode)
+    let confirmEquipmentChange = false
+    if (deviceCode && ex.equipmentCode && deviceCode !== ex.equipmentCode) {
+      try {
+        await ElMessageBox.confirm(
+          `当前绑定设备为 ${ex.equipmentName || ex.equipmentCode}，确认更换为扫码设备 ${deviceCode}？`,
+          '确认更换设备',
+          { type: 'warning' },
+        )
+        confirmEquipmentChange = true
+      } catch {
+        return
+      }
+    }
+    await operationExecutionApi.start(ex.executionId, { deviceCode, confirmEquipmentChange })
     ElMessage.success(isResume ? '工序已继续' : '工序已开始')
     await loadData()
   } catch (e: any) {

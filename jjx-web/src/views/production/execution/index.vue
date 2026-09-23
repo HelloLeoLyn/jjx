@@ -57,6 +57,47 @@
     </el-card>
 
     <el-dialog
+      v-model="equipmentDialogVisible"
+      title="选择开工设备"
+      width="480px"
+      :close-on-click-modal="false"
+      :show-close="false"
+      append-to-body
+    >
+      <el-alert
+        v-if="!equipmentLoading && !equipmentOptions.length"
+        title="当前没有可用设备，可按无设备工序继续开工"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px"
+      />
+      <el-form label-width="80px">
+        <el-form-item label="设备">
+          <el-select
+            v-model="selectedStartEquipmentId"
+            v-loading="equipmentLoading"
+            clearable
+            filterable
+            placeholder="手工工序可不选择"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="equipment in equipmentOptions"
+              :key="equipment.equipmentId"
+              :value="equipment.equipmentId"
+              :label="`${equipment.equipmentNo} · ${equipment.equipmentName}`"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="finishEquipmentChoice(false)">取消</el-button>
+        <el-button type="primary" :disabled="equipmentLoading" @click="finishEquipmentChoice(true)">确认开工</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
       v-model="taskCompletionVisible"
       :title="`${taskCompletionTarget?.taskNo || '任务'} · 完成明细`"
       width="760px"
@@ -734,6 +775,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { operationExecutionApi } from '@/api/production/operationExecution'
+import { getEquipmentList, type ProductionEquipment } from '@/api/production/equipment'
 import {
   cancelWorkReport,
   submitWorkReport,
@@ -758,7 +800,7 @@ import { InspectionType } from '@/enums/quality'
 import type { TaskTreeRow, TaskCompletionDetail } from '@/types/production/task'
 import type { OperationExecutionVO } from '@/types/production/operationExecution'
 import type { ProductionOrderVO } from '@/types/production/order'
-import { ExecutionStatusEnum } from '@/enums/production'
+import { AVAILABLE_EQUIPMENT_STATUSES, ExecutionStatusEnum } from '@/enums/production'
 import TaskTreePanel from './components/TaskTreePanel.vue'
 import WorkOrderPanel from './components/WorkOrderPanel.vue'
 import { fmtQty } from './utils'
@@ -789,6 +831,38 @@ const selectedOrder = ref<ProductionOrderVO | null>(null)
 const selectedScope = ref<'mine' | 'all'>('mine')
 const selectedTab = ref<'current' | 'history'>('current')
 const total = ref(0)
+const equipmentDialogVisible = ref(false)
+const equipmentLoading = ref(false)
+const equipmentOptions = ref<ProductionEquipment[]>([])
+const selectedStartEquipmentId = ref<number | undefined>()
+let equipmentChoiceResolver: ((value: number | undefined | null) => void) | null = null
+
+const chooseStartEquipment = async (currentEquipmentId?: number) => {
+  equipmentLoading.value = true
+  selectedStartEquipmentId.value = currentEquipmentId
+  equipmentDialogVisible.value = true
+  try {
+    const result: any = await getEquipmentList()
+    const list: ProductionEquipment[] = result?.data || []
+    equipmentOptions.value = list.filter((item) =>
+      AVAILABLE_EQUIPMENT_STATUSES.includes(item.status as 0 | 1)
+    )
+  } catch (e: any) {
+    equipmentOptions.value = []
+    ElMessage.warning(e?.message || '设备列表加载失败，可按无设备工序继续开工')
+  } finally {
+    equipmentLoading.value = false
+  }
+  return new Promise<number | undefined | null>((resolve) => {
+    equipmentChoiceResolver = resolve
+  })
+}
+
+const finishEquipmentChoice = (confirmed: boolean) => {
+  equipmentDialogVisible.value = false
+  equipmentChoiceResolver?.(confirmed ? selectedStartEquipmentId.value : null)
+  equipmentChoiceResolver = null
+}
 const allQueryParams = reactive<TaskTreeQuery>({ pageNum: 1, pageSize: 10 })
 const taskFilterForm = reactive({ keyword: '', status: '' })
 
@@ -934,17 +1008,20 @@ const handleTaskStart = async (row: AllTaskRow) => {
   const executionId = Number(row.executionId)
   if (!executionId) return
   const label = row.processName || `工序执行 ${executionId}`
+  let currentEquipmentId: number | undefined
   try {
-    await ElMessageBox.confirm(`确认开始「${label}」这道工序？开始后才能报工。`, '开始工序', {
-      type: 'warning',
-      confirmButtonText: '确认开始',
-      cancelButtonText: '取消',
-    })
+    const info: any = await operationExecutionApi.getInfo(executionId)
+    currentEquipmentId = info?.data?.equipmentId
   } catch {
-    return
+    // 开工接口仍会完成最终校验；详情加载失败不阻断无设备工序。
   }
+  const equipmentId = await chooseStartEquipment(currentEquipmentId)
+  if (equipmentId === null) return
   try {
-    await operationExecutionApi.start(executionId)
+    await operationExecutionApi.start(executionId, {
+      equipmentId,
+      confirmEquipmentChange: !!currentEquipmentId && equipmentId !== currentEquipmentId,
+    })
     ElMessage.success(`已开始：${label}，现在可以报工了`)
     await getList()
   } catch (e: any) {
@@ -1028,9 +1105,15 @@ const canStartExecution = computed(() => {
 const handleStartExecution = async () => {
   const executionId = Number(detailForm.executionId)
   if (!executionId) return
+  const currentEquipmentId = detailExecution.value?.equipmentId ?? detailForm.equipmentId
+  const equipmentId = await chooseStartEquipment(currentEquipmentId)
+  if (equipmentId === null) return
   startingExecution.value = true
   try {
-    await operationExecutionApi.start(executionId)
+    await operationExecutionApi.start(executionId, {
+      equipmentId,
+      confirmEquipmentChange: !!currentEquipmentId && equipmentId !== currentEquipmentId,
+    })
     ElMessage.success('工序已开始，现在可以报工了')
     const info: any = await operationExecutionApi.getInfo(executionId)
     const real: any = info?.data

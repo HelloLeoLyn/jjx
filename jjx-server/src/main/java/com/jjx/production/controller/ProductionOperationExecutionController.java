@@ -106,13 +106,16 @@ public class ProductionOperationExecutionController {
         return Result.success(executionPage);
     }
 
-    @Operation(summary = "开始工序执行（可选设备码，扫码C软校验）")
+    @Operation(summary = "开始工序执行（可选设备ID/设备码；首次绑定，换机须确认）")
     @PutMapping("/{executionId}/start")
 @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).EXECUTING.getLabel()", action = LogActions.OP_EXEC_START)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> startExecution(@PathVariable Long executionId,
-                                          @RequestParam(required = false) String deviceCode) {
-        boolean success = productionOperationExecutionService.startExecution(executionId, deviceCode);
+                                          @RequestParam(required = false) Long equipmentId,
+                                          @RequestParam(required = false) String deviceCode,
+                                          @RequestParam(defaultValue = "false") boolean confirmEquipmentChange) {
+        boolean success = productionOperationExecutionService.startExecution(
+                executionId, equipmentId, deviceCode, confirmEquipmentChange);
         return Result.success(success);
     }
 

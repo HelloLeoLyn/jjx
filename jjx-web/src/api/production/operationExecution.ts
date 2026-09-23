@@ -71,12 +71,14 @@ export const operationExecutionApi = {
     return request.delete<R<void>>(`/production/operation-execution/${executionIds.join(',')}`)
   },
 
-  /**
-   * 开始工序执行（deviceCode 可选：扫码C 设备码软校验，不传则跳过校验）
-   */
-  start(executionId: number, deviceCode?: string) {
+  /** 开始工序执行：PC 可传 equipmentId，手机可传 deviceCode；换机需显式确认。 */
+  start(executionId: number, options?: {
+    equipmentId?: number
+    deviceCode?: string
+    confirmEquipmentChange?: boolean
+  }) {
     return request.put<R<boolean>>(`/production/operation-execution/${executionId}/start`, null, {
-      params: deviceCode ? { deviceCode } : undefined,
+      params: options,
     })
   },
 

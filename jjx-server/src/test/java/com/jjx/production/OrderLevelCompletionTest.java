@@ -157,7 +157,8 @@ class OrderLevelCompletionTest {
         ProductionTaskService taskService = mock(ProductionTaskService.class);
         QualityLotService qualityLotService = mock(QualityLotService.class);
         ProductionOperationExecutionServiceImpl service = new ProductionOperationExecutionServiceImpl(
-                mapper.proxy(), orderMapper, mock(JdbcTemplate.class), mock(WorkReportProjectionService.class),
+                mapper.proxy(), orderMapper, mock(com.jjx.production.mapper.ProductionEquipmentMapper.class),
+                mock(JdbcTemplate.class), mock(WorkReportProjectionService.class),
                 taskService, mock(ProductionOperationRecordService.class), qualityLotService);
         try {
             Field baseMapper = com.baomidou.mybatisplus.extension.repository.CrudRepository.class
