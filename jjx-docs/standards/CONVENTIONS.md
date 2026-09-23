@@ -242,3 +242,29 @@ bash scripts/agent-preflight.sh
 - 存量归一：`jjx-docs/sql/migrations/148_display_name_normalize.sql`（59 列，幂等）；同类列清单一并记录在该文件头部注释里
 - 判定口径：同一人两条单据显示不同（`zhangmuhua` vs `张慕华`）＝该字段被两条写入路径分别写了账号名与姓名，先查写入方（对应 `set*Name(...)` 的取值来源），不要改前端显示
 
+---
+
+## 13. 库存口径铁律（2026-09-23 立；起因：看板任务 2192 原料入成品仓、2199 台账看不懂）
+
+**一句话：以「流水」为唯一真源；余额是派生值；原始量不可改，纠错只能冲销。**
+
+库存分三层，各有各的可改性：
+
+| 层 | 载体 | 可改性 |
+|---|---|---|
+| ① 单据层 | `inventory_inbound_order/item`、`inventory_outbound_order/item`（原始凭证） | **不可改**，错了只能开红字/冲销单（`-R` 单） |
+| ② 流水层 | `inventory_transaction`（每笔带 `before_quantity → after_quantity`、来源单据、操作人） | **只增不改**（append-only），是唯一审计依据 |
+| ③ 余额层 | `inventory_stock_item`（批次结存）、`inventory_stock`（物料汇总） | **派生值**，必须能由 ①② 重算一致 |
+
+**五条铁律**：
+1. **原始凭证不可改**：入库/出库单只能红冲，禁止直接改数量/删除；
+2. **流水只增不改**：纠错用**反向凭证**，禁止 UPDATE/DELETE 流水行；
+3. **余额是派生值**：`结存 = 累计入库 − 累计出库 ± 盘点调整`，必须可由流水重算；页面/报表**必须给「收/发/结存」三栏**，只给结存视为缺陷；
+4. **变动唯一入口**：任何库存数量变动**只允许**走 `InventoryStockMutationService.applyDelta(stock, delta, transaction)`（强制带流水类型、不允许为负），**禁止**直接 `UPDATE inventory_stock_item.quantity` / `inventory_stock.total_quantity`；新增变动类型必须同时在 `TransactionTypeEnum` 与 `inventory_transaction.transaction_type` 登记；
+5. **批次可追溯**：批次 → 入库单（→ 供应商/来料检验）→ 出库单（→ 工单/销售单）→ 成品批次，链路字段（`batch_no`/`source_*`/`lot_id`）不得省略。
+
+**强制手段（门禁）**：
+- `npm run validate` → `check:stock:strict`（= `scripts/check-stock-summary.sh --strict`）：校验 ①汇总=批次合计 ②/③孤儿行 **④批次结存=流水派生结存 ⑤有流水无批次行**；任一不为 0 即 CI/提交前失败；
+- 新增/修改库存写入路径时，必须跑一次该脚本并让五项全 0。
+
+**选型说明（为什么批次表不存"累计入库/累计出库"两列）**：那会引入**第二真源**（列 vs 流水可能不一致）。本系统选择"余额表只存结存、收/发由流水聚合"（与 SAP 的 MCHB + 物料凭证同思路）；确有性能需要时再做物化，且物化值必须可重算。

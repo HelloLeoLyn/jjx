@@ -28,6 +28,16 @@ Writing files is legitimate only as part of an executed task (backups / migratio
 - Run `npm run check:status-enums` and the relevant type/build validation after frontend status changes.
 - Do not expand `scripts/status-magic-baseline.json` to admit new violations. Existing entries are migration debt and may only be removed.
 
+## Inventory ledger rules (库存口径铁律 — full spec: `jjx-docs/standards/CONVENTIONS.md` §13)
+
+- **流水是唯一真源**：`inventory_transaction` 只增不改（append-only）；纠错用反向/红冲单，禁止 UPDATE/DELETE 流水行。
+- **余额是派生值**：`结存 = 累计入库 − 累计出库 ± 盘点调整`；`inventory_stock_item.quantity`/`inventory_stock.total_quantity` 一律由流水重算得出，必须可重算一致。
+- **变动唯一入口**：只允许 `InventoryStockMutationService.applyDelta(stock, delta, transaction)`（强制带流水类型、不得为负）；禁止直接 UPDATE 批次/汇总数量；新增变动类型必须同步 `TransactionTypeEnum` 与 `transaction_type` 枚举。
+- **单据不可改**：入库/出库单只能红冲，原始量永久保留（页面/报表必须同时给「收/发/结存」三栏，只给结存视为缺陷）。
+- **批次可追溯**：批次 → 入库单（→供应商/来料检验）→ 出库单（→工单/销售单）→ 成品批次，`batch_no`/`source_*`/`lot_id` 不得省略。
+- **Gate**：`npm run validate` → `check:stock:strict`（`scripts/check-stock-summary.sh --strict`）必须五项全 0（含 ④批次结存=流水派生结存、⑤有流水无批次行）；改了库存写入路径必须重跑。
+- 批次表**不存**「累计入库/累计出库」列（避免第二真源），收/发由流水聚合。
+
 ## Backup & document conventions (multi-agent: OpenClaw / Hermes / Codex share this repo)
 
 Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.

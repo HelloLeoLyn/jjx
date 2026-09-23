@@ -110,7 +110,22 @@
 - 输出怎么读：确认 `core.hooksPath = scripts/hooks` + 已启用钩子清单。
 - 退出码：0=成功。
 
-## 8. 自动跑（不用手敲）
+## 8. scripts/check-stock-summary.sh —— 库存三本账对账（2026-09-23 扩查，任务 dev-20260923-017）
+
+- 干什么：只读对账，抓「库存三本账」不一致 —— ①汇总表 `inventory_stock` ≠ 批次明细合计；②有明细无汇总；③有汇总无明细；
+  **④批次结存 `inventory_stock_item.quantity` ≠ 流水派生结存（`inventory_transaction` 按批次求和）；⑤有流水、无批次行（孤儿流水）**。
+- 危险等级：🟢 只读（只跑 SELECT，不改库、不写文件）。
+- 前置：mysql 可连（连不上只提示不阻塞）；库不可达时退出码 0。
+- 命令：
+  ```bash
+  bash scripts/check-stock-summary.sh            # 咨询模式：只报告，永远 exit 0
+  bash scripts/check-stock-summary.sh --strict   # 有不一致则 exit 1（已接进 npm run validate）
+  ```
+- 输出怎么读：看 5 个计数是否全为 0；第 ④ 类不一致 = 有代码绕过唯一入口 `InventoryStockMutationService.applyDelta`（或只改余额没写流水）；
+  第 ⑤ 类 = 批次行被删/未建但流水已写。修复口径：按批次明细重算汇总，并补齐/冲销流水（参见 `CONVENTIONS` 库存口径铁律）。
+- 退出码：0=一致或咨询模式；1=`--strict` 且有不一致。
+
+## 9. 自动跑（不用手敲）
 
 | 钩子 | 什么时候跑 | 拦什么 |
 |---|---|---|
@@ -119,10 +134,12 @@
 
 单次跳过：`git commit --no-verify`（确认后果再用）。
 
-## 9. npm 门禁（在 `jjx-web/` 下跑）
+## 10. npm 门禁（在 `jjx-web/` 下跑）
 
 | 命令 | 查什么 |
 |---|---|
 | `npm run check:status-enums` | 状态魔法值（必须用具名枚举，基线只许缩小） |
 | `npm run check:docs` | 文档规则（`history/`：登记 INDEX、BOM、命名；`modules/`：不带日期 + BOM） |
-| `npm run validate` | 上面两条 + `vue-tsc --noEmit`（提交前自查跑这个） |
+| `npm run check:collation:strict` | 全库字符串列 collation 统一（防跨表 JOIN 报 1267） |
+| `npm run check:stock:strict` | 库存三本账对账（= `scripts/check-stock-summary.sh --strict`，含流水派生结存校验） |
+| `npm run validate` | 上面四条 + `vue-tsc --noEmit`（提交前自查跑这个） |
