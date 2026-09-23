@@ -147,28 +147,6 @@
                   </template>
                 </el-table-column>
 
-                <el-table-column label="工序类别" width="160">
-                  <template #default="scope">
-                    <el-select
-                      v-model="scope.row.processCategory"
-                      placeholder="请选择工序类别"
-                      size="small"
-                      clearable
-                      style="width: 140px"
-                      @change="
-                        (val: string) => handleProcessCategoryChange(groupIndex(scope.row), val)
-                      "
-                    >
-                      <el-option
-                        v-for="item in ProcessCategoryEnum.items"
-                        :key="item.value"
-                        :label="item.label"
-                        :value="item.value"
-                      />
-                    </el-select>
-                  </template>
-                </el-table-column>
-
                 <el-table-column label="工艺参数" min-width="200">
                   <template #default="scope">
                     <el-input

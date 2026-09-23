@@ -5,17 +5,7 @@
       <el-col :span="1.5">
         <el-button type="primary" plain icon="Plus" @click="emit('add')">新增</el-button>
       </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="success"
-          plain
-          icon="Edit"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canEdit"
-          @click="emit('update')"
-          >修改</el-button
-        >
-      </el-col>
+
       <el-col :span="1.5">
         <el-button
           type="danger"
@@ -37,99 +27,13 @@
           >导出</el-button
         >
       </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="info"
-          plain
-          icon="Send"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canSend"
-          @click="emit('send')"
-          >发送报价</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="success"
-          plain
-          icon="Switch"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canConvert"
-          @click="emit('convert')"
-          >转为订单</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="warning"
-          plain
-          icon="Collection"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canConvertToSample"
-          @click="emit('convertToSample')"
-          >转为样品单</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="success"
-          plain
-          icon="CircleCheck"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canCustomerConfirm"
-          @click="emit('customerConfirm', true)"
-          >客户确认</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="danger"
-          plain
-          icon="CircleClose"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canCustomerConfirm"
-          @click="emit('customerConfirm', false)"
-          >客户拒绝</el-button
-        >
-      </el-col>
+
       <el-col :span="1.5">
         <el-button type="warning" plain icon="CopyDocument" :disabled="single" @click="emit('copy')"
           >复制报价</el-button
         >
       </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="primary"
-          plain
-          icon="Upload"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canSubmitReview"
-          @click="emit('submitReview')"
-          >提交审核</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="success"
-          plain
-          icon="CircleCheck"
-          v-hasPermi="['sales:quotation:approve']"
-          :disabled="single || !actions.canApprove"
-          @click="emit('review', true)"
-          >审核通过</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="danger"
-          plain
-          icon="CircleClose"
-          v-hasPermi="['sales:quotation:approve']"
-          :disabled="single || !actions.canApprove"
-          @click="emit('review', false)"
-          >审核驳回</el-button
-        >
-      </el-col>
+
       <el-col :span="1.5">
         <el-button
           type="primary"
@@ -150,27 +54,7 @@
           >导出Excel</el-button
         >
       </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="warning"
-          plain
-          icon="RefreshLeft"
-          v-hasPermi="['sales:quotation:edit']"
-          :disabled="single || !actions.canReQuote"
-          @click="emit('reQuote')"
-          >重新报价</el-button
-        >
-      </el-col>
-      <el-col :span="1.5">
-        <el-button
-          type="warning"
-          plain
-          icon="EditPen"
-          :disabled="single || !actions.canModify"
-          @click="emit('modify')"
-          >改单</el-button
-        >
-      </el-col>
+
       <el-col :span="1.5">
         <el-button
           type="info"
