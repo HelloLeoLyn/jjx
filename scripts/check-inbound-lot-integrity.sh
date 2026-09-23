@@ -5,7 +5,7 @@
 #         check-stock-summary.sh 只覆盖「汇总表 vs 批次明细 vs 流水」，
 #         缺入库单与检验批维度的校验）
 #
-# 与 check-stock-summary.sh 同口径（只读 / fail-open / --strict），补三查：
+# 与 check-stock-summary.sh 同口径（只读 / fail-open / --strict）。原有三查 + 2026-09-23（dev-20260923-023）补「数量守恒」五查：
 #   ① 入库明细 lot_id 覆盖率：生产来源、未取消单据的明细里 lot_id 为空的数量（期望 0）
 #   ② 同一 lot 被多张单重复计账：按 lot_id 汇总「未取消单据明细数量」应 ≤ 该批 pass_quantity
 #      （红冲单数量为负、作废单 order_status=9 排除，故正常换代后净额为 0）
@@ -13,6 +13,15 @@
 #      应等于该批「入库侧流水」合计（INBOUND + ADJUST；红冲走 ADJUST 负额）
 #      —— 出库方向（OUTBOUND/TRANSFER_OUT）不计，故成品出库不会误报；
 #         若该批另有盘点/其它 ADJUST，需人工核对（脚本会列出明细行）。
+#
+# 2026-09-23（dev-20260923-023 数量守恒五查；业内口径见 CONVENTIONS §13）：
+#   ④ 判定数量守恒：已判定批 pass + fail = inspected ≤ lot_quantity
+#   ⑤ 不良台账守恒：批 fail = Σ NCR defect_quantity；未作废处置量 ≤ NCR 不良量
+#   ⑥ 有效批合格量 ≤ 可判上限（批量 − 该批自身已报废未回收 − 让步未确认）—— 与判定护栏（dev-20260923-021）同口径
+#      注：按「有效批自身」而非整条批链聚合 —— 本系统是"整批重判(差额)"模型，每个新版本都会重新声明整批不良，
+#          链级聚合会重复计入（实测：同一物理 2 件在两次复检里各记一次报废）。链级/件级守恒需更细追溯字段，另有待议。
+#   ⑦ 工单完工数 = 有效批合格累计（防"复检换代不重算"复发，dev-20260923-018）
+#   ⑧ 入库/放行累计 stored_quantity ≤ pass_quantity
 #
 # 用法：
 #   bash scripts/check-inbound-lot-integrity.sh            # 咨询模式：只报告，永远 exit 0
@@ -98,7 +107,50 @@ SELECT COUNT(*) FROM (
 ) d
 WHERE d.posted_sum <> d.flow_in;" 2>/dev/null || echo "ERR")
 
-if [ "$missing_lot" = "ERR" ] || [ "$double_lot" = "ERR" ] || [ "$posted_drift" = "ERR" ]; then
+judge_conservation=$(M "
+SELECT COUNT(*) FROM quality_lot
+ WHERE del_flag = 0 AND inspected_quantity IS NOT NULL AND inspected_quantity > 0
+   AND (pass_quantity + fail_quantity <> inspected_quantity OR inspected_quantity > lot_quantity);" 2>/dev/null || echo "ERR")
+
+ncr_conservation=$(M "
+SELECT
+  (SELECT COUNT(*) FROM (
+      SELECT l.lot_id FROM quality_lot l
+       LEFT JOIN (SELECT lot_id, SUM(defect_quantity) q FROM quality_ncr WHERE del_flag = 0 GROUP BY lot_id) n ON n.lot_id = l.lot_id
+       WHERE l.del_flag = 0 AND l.inspected_quantity > 0 AND IFNULL(l.fail_quantity, 0) > 0
+         AND IFNULL(l.fail_quantity, 0) <> IFNULL(n.q, 0)) a)
++ (SELECT COUNT(*) FROM (
+      SELECT n.ncr_id FROM quality_ncr n
+       LEFT JOIN (SELECT ncr_id, SUM(quantity) q FROM quality_ncr_action WHERE del_flag = 0 AND status <> 'VOID' GROUP BY ncr_id) x ON x.ncr_id = n.ncr_id
+       WHERE n.del_flag = 0 AND IFNULL(x.q, 0) > IFNULL(n.defect_quantity, 0)) b);" 2>/dev/null || echo "ERR")
+
+upper_bound_drift=$(M "
+SELECT COUNT(*) FROM quality_lot l
+ LEFT JOIN (SELECT n.lot_id,
+        IFNULL(SUM(CASE WHEN a.action_type = 'SCRAP' AND a.status = 'DONE' THEN a.quantity ELSE 0 END), 0) scrap,
+        IFNULL(SUM(CASE WHEN a.action_type = 'CONCESSION' AND a.status = 'DONE' AND IFNULL(a.customer_confirmed, 0) <> 1 THEN a.quantity ELSE 0 END), 0) conc
+      FROM quality_ncr n LEFT JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id AND a.del_flag = 0
+     WHERE n.del_flag = 0 GROUP BY n.lot_id) s ON s.lot_id = l.lot_id
+ WHERE l.del_flag = 0 AND l.inspected_quantity > 0
+   AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)
+   AND IFNULL(l.pass_quantity, 0) > GREATEST(0, IFNULL(l.lot_quantity, 0) - IFNULL(s.scrap, 0) - IFNULL(s.conc, 0));" 2>/dev/null || echo "ERR")
+
+finish_recalc=$(M "
+SELECT COUNT(*) FROM production_order o
+ WHERE o.order_type = 'WORK_ORDER'
+   AND EXISTS (SELECT 1 FROM quality_lot l WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0)
+   AND IFNULL(o.completed_quantity, 0) <> (
+        SELECT IFNULL(SUM(l.pass_quantity), 0) FROM quality_lot l
+         WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0
+           AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0));" 2>/dev/null || echo "ERR")
+
+stored_over_pass=$(M "
+SELECT COUNT(*) FROM quality_lot
+ WHERE del_flag = 0 AND IFNULL(stored_quantity, 0) > IFNULL(pass_quantity, 0);" 2>/dev/null || echo "ERR")
+
+if [ "$missing_lot" = "ERR" ] || [ "$double_lot" = "ERR" ] || [ "$posted_drift" = "ERR" ] \
+   || [ "$judge_conservation" = "ERR" ] || [ "$ncr_conservation" = "ERR" ] || [ "$upper_bound_drift" = "ERR" ] \
+   || [ "$finish_recalc" = "ERR" ] || [ "$stored_over_pass" = "ERR" ]; then
   echo "巡检 SQL 执行失败（表结构变动？）—— 不阻塞"
   exit 0
 fi
@@ -146,16 +198,75 @@ echo "-- ③ 已过账明细 ≠ 入库侧流水（按 inventory_item_id + batch
     ) d
    WHERE d.posted_sum <> d.flow_in;"
 
-total=$((missing_lot + double_lot + posted_drift))
+echo
+echo "-- ④ 判定数量守恒（合格+不良≠检验数量，或 检验数量>批量）：$judge_conservation（期望 0）"
+[ "$judge_conservation" -gt 0 ] && M "
+  SELECT lot_id, lot_no, status, lot_quantity, inspected_quantity, pass_quantity, fail_quantity
+    FROM quality_lot
+   WHERE del_flag = 0 AND inspected_quantity IS NOT NULL AND inspected_quantity > 0
+     AND (pass_quantity + fail_quantity <> inspected_quantity OR inspected_quantity > lot_quantity);"
+
+echo
+echo "-- ⑤ 不良台账守恒（批不良≠台账不良，或 未作废处置>不良）：$ncr_conservation（期望 0）"
+[ "$ncr_conservation" -gt 0 ] && M "
+  SELECT l.lot_no, l.fail_quantity AS 批不良, IFNULL(n.q, 0) AS 台账不良, '批/台账不一致' AS 类型
+    FROM quality_lot l
+    LEFT JOIN (SELECT lot_id, SUM(defect_quantity) q FROM quality_ncr WHERE del_flag = 0 GROUP BY lot_id) n ON n.lot_id = l.lot_id
+   WHERE l.del_flag = 0 AND l.inspected_quantity > 0 AND IFNULL(l.fail_quantity, 0) > 0
+     AND IFNULL(l.fail_quantity, 0) <> IFNULL(n.q, 0)
+  UNION ALL
+  SELECT n.ncr_no, n.defect_quantity, IFNULL(x.q, 0), '处置>不良' FROM quality_ncr n
+    LEFT JOIN (SELECT ncr_id, SUM(quantity) q FROM quality_ncr_action WHERE del_flag = 0 AND status <> 'VOID' GROUP BY ncr_id) x ON x.ncr_id = n.ncr_id
+   WHERE n.del_flag = 0 AND IFNULL(x.q, 0) > IFNULL(n.defect_quantity, 0);"
+
+echo
+echo "-- ⑥ 有效批合格量 > 可判上限（批量−已报废−让步未确认）：$upper_bound_drift（期望 0）"
+[ "$upper_bound_drift" -gt 0 ] && M "
+  SELECT l.lot_no, l.status, l.lot_quantity AS 批量, l.pass_quantity AS 合格, IFNULL(s.scrap, 0) AS 已报废,
+         IFNULL(s.conc, 0) AS 让步未确认,
+         GREATEST(0, IFNULL(l.lot_quantity, 0) - IFNULL(s.scrap, 0) - IFNULL(s.conc, 0)) AS 可判上限
+    FROM quality_lot l
+    LEFT JOIN (SELECT n.lot_id,
+          IFNULL(SUM(CASE WHEN a.action_type = 'SCRAP' AND a.status = 'DONE' THEN a.quantity ELSE 0 END), 0) scrap,
+          IFNULL(SUM(CASE WHEN a.action_type = 'CONCESSION' AND a.status = 'DONE' AND IFNULL(a.customer_confirmed, 0) <> 1 THEN a.quantity ELSE 0 END), 0) conc
+        FROM quality_ncr n LEFT JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id AND a.del_flag = 0
+       WHERE n.del_flag = 0 GROUP BY n.lot_id) s ON s.lot_id = l.lot_id
+   WHERE l.del_flag = 0 AND l.inspected_quantity > 0
+     AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)
+     AND IFNULL(l.pass_quantity, 0) > GREATEST(0, IFNULL(l.lot_quantity, 0) - IFNULL(s.scrap, 0) - IFNULL(s.conc, 0));"
+
+echo
+echo "-- ⑦ 工单完工 ≠ 有效批合格累计（换代不重算会命中）：$finish_recalc（期望 0）"
+[ "$finish_recalc" -gt 0 ] && M "
+  SELECT o.order_no, o.planned_quantity AS 计划, o.completed_quantity AS 工单完工,
+         (SELECT IFNULL(SUM(l.pass_quantity), 0) FROM quality_lot l
+           WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0
+             AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)) AS 有效批合格累计
+    FROM production_order o
+   WHERE o.order_type = 'WORK_ORDER'
+     AND EXISTS (SELECT 1 FROM quality_lot l WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0)
+     AND IFNULL(o.completed_quantity, 0) <> (
+          SELECT IFNULL(SUM(l.pass_quantity), 0) FROM quality_lot l
+           WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0
+             AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0));"
+
+echo
+echo "-- ⑧ 入库/放行累计 > 合格量：$stored_over_pass（期望 0）"
+[ "$stored_over_pass" -gt 0 ] && M "
+  SELECT lot_no, status, lot_quantity, pass_quantity, stored_quantity
+    FROM quality_lot WHERE del_flag = 0 AND IFNULL(stored_quantity, 0) > IFNULL(pass_quantity, 0);"
+
+total=$((missing_lot + double_lot + posted_drift + judge_conservation + ncr_conservation + upper_bound_drift + finish_recalc + stored_over_pass))
 echo
 if [ "$total" -eq 0 ]; then
-  echo "   ✅ 入库明细/检验批/流水一致（lot_id 齐全、无重复计账、已过账量 = 入库侧流水）"
+  echo "   ✅ 入库单/检验批维度一致（lot_id 齐全 · 无重复计账 · 已过账=流水）+ 数量守恒（判定/不良/上界/工单口径/放行）全 0"
 else
   echo "   ❌ 发现 $total 处不一致"
   echo "      排查方向：① lot_id 缺失 = 入库明细未挂检验批（022 口径要求明细挂 lot_id）"
   echo "                ② 重复计账 = 同一批被多张未取消单据收两次（红冲单未开或未过账）"
   echo "                ③ 已过账量 ≠ 入库侧流水 = 过账时漏写/多写流水，或该批另有盘点调整（人工核对）"
-  echo "      口径参考：jjx-docs/standards/CONVENTIONS.md §13（流水是唯一真源）"
+  echo "                ④~⑧ 数量守恒 = 判定/不良台账/可判上限/工单完工口径/放行进库量 五处必须守恒"
+  echo "      口径参考：jjx-docs/standards/CONVENTIONS.md §13；设计稿 jjx-docs/design/fqc-judgement-upper-bound-dev-20260923-021.md"
 fi
 
 if [ "$STRICT" = true ] && [ "$total" -gt 0 ]; then
