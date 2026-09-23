@@ -25,6 +25,7 @@
 | 清理测试数据 | `bash scripts/db-clean-test-data.sh --execute` | 🔴 |
 | 库存三本账对账 | `bash scripts/check-stock-summary.sh` | 🟢 |
 | 入库单/检验批+数量守恒巡检 | `bash scripts/check-inbound-lot-integrity.sh` | 🟢 |
+| 业务单号规则巡检 | `bash scripts/check-doc-no.sh` | 🟢 |
 | 改完代码/文档自查 | `cd jjx-web && npm run validate` | 🟢 |
 
 ---
@@ -143,7 +144,23 @@
   ⑥ 的口径说明：按「有效批自身」聚合，不按整条批链 —— 本系统是"整批重判(差额)"模型，每个新版本都会重新声明整批不良，链级聚合会重复计入（实测同一物理 2 件在两次复检里各记一次）。
 - 退出码：0=一致或咨询模式；1=`--strict` 且有不一致。
 
-## 10. 自动跑（不用手敲）
+## 10. scripts/check-doc-no.sh —— 业务单号规则巡检（2026-09-23 接进门禁，任务 dev-20260923-030）
+
+- 干什么（只读巡检，三项）：
+  ① **规则键缺失**：`sys_config` 里 20 个业务域的 `biz_no_rule.<bizType>` 必须各恰好 1 条启用（缺失即列出）；
+  ② **容量预警**：`sys_number_sequence` 的当前值 ≥ 该域配置位数的 80%（如 3 位 → ≥ 800）时列出，提示进位/扩容；
+  ③ **时间戳式编号回归**：`jjx-server` 的 quality/inventory 域里出现 `yyyyMMddHHmmssSSS` 或 `CAPA.*currentTimeMillis` 即失败（单号必须走 `sys_number_sequence`）。
+- 危险等级：🟢 只读（只跑 SELECT + grep）。
+- 前置：mysql 可连、`rg`（ripgrep）存在（缺失会静默跳过第 ③ 项）；连不上库时按脚本退出码判定。
+- 命令：
+  ```bash
+  bash scripts/check-doc-no.sh            # 直接当门禁：有不一致即 exit 1（无 --strict 参数）
+  ```
+- 输出怎么读：三项全部通过会打印 `Document number rule check passed.`；① 会逐行 `MISSING biz_no_rule.xxx`；② 会打印 `sequence_key/period_key/current_value/configured_digits` 表；③ 会打印命中的文件行。
+- 退出码：0=通过；1=任一项不通过。
+- ⚠️ 与单号方案（`design/doc-no-rules-dev-20260922-023.md`）联动：新增/改名业务域后，脚本里的 `required` 列表与 `sys_config` 必须同步，否则误报。
+
+## 11. 自动跑（不用手敲）
 
 | 钩子 | 什么时候跑 | 拦什么 |
 |---|---|---|
@@ -152,7 +169,7 @@
 
 单次跳过：`git commit --no-verify`（确认后果再用）。
 
-## 11. npm 门禁（在 `jjx-web/` 下跑）
+## 12. npm 门禁（在 `jjx-web/` 下跑）
 
 | 命令 | 查什么 |
 |---|---|
@@ -161,4 +178,5 @@
 | `npm run check:collation:strict` | 全库字符串列 collation 统一（防跨表 JOIN 报 1267） |
 | `npm run check:stock:strict` | 库存三本账对账（= `scripts/check-stock-summary.sh --strict`，含流水派生结存校验） |
 | `npm run check:lot:strict` | 入库单/检验批 + 数量守恒巡检（= `scripts/check-inbound-lot-integrity.sh --strict`，八查） |
-| `npm run validate` | 上面五条 + `vue-tsc --noEmit`（提交前自查跑这个） |
+| `npm run check:doc-no` | 业务单号规则巡检（= `scripts/check-doc-no.sh`：规则键缺失 / 当天用量达 80% 容量 / 时间戳式编号回归） |
+| `npm run validate` | 上面六条 + `vue-tsc --noEmit`（提交前自查跑这个） |
