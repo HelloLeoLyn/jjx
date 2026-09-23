@@ -53,9 +53,14 @@
               class="lot-tag"
               >v{{ row.version }}</el-tag
             >
-            <el-tag v-if="row.superseded" size="small" type="info" effect="plain" class="lot-tag"
-              >已失效</el-tag
+            <!-- dev-20260923-034：失效批一律只读，标签上说明为什么（不再给注定失败的按钮） -->
+            <el-tooltip
+              v-if="row.superseded"
+              content="该批已被后续复检版本取代，不能再录入/判定/复检——请对最新版本操作；本批仅可打印查看"
+              placement="top"
             >
+              <el-tag size="small" type="info" effect="plain" class="lot-tag">已失效</el-tag>
+            </el-tooltip>
             <div v-if="row.parentLotId" class="lot-sub">
               复检源于 {{ row.parentLotNo || '批 #' + row.parentLotId }}
             </div>
@@ -309,12 +314,15 @@ const router = useRouter()
 const canInspect = computed(() => hasPermi('quality:lot:inspect'))
 const canJudge = computed(() => hasPermi('quality:lot:judge'))
 const busyLotId = ref<number | null>(null)
-/** 待检/检验中 = 可录入、可判定 */
-const isEditable = (row: QualityLot) => ['PENDING', 'INSPECTING'].includes(String(row.status))
-/** 已判定 = 可复检 */
-const isJudged = (row: QualityLot) => row.status === 'JUDGED'
-/** dev-20260922-030：已关闭 = 合格全入库 + 不良全处置（可显式重开后再复检） */
-const isClosed = (row: QualityLot) => row.status === 'CLOSED'
+// dev-20260923-034：已被后继复检版本取代的批（列表里带「已失效」标签）一律只读 ——
+// 原来按钮只看状态，失效批仍显示「复检」，点下去必被后端拒（该批已有复检新版本），界面给了注定失败的动作。
+/** 待检/检验中 = 可录入、可判定（失效批除外） */
+const isEditable = (row: QualityLot) =>
+  !row.superseded && ['PENDING', 'INSPECTING'].includes(String(row.status))
+/** 已判定 = 可复检（失效批除外） */
+const isJudged = (row: QualityLot) => !row.superseded && row.status === 'JUDGED'
+/** dev-20260922-030：已关闭 = 合格全入库 + 不良全处置（可显式重开后再复检；失效批除外） */
+const isClosed = (row: QualityLot) => !row.superseded && row.status === 'CLOSED'
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
 const title = props.lotType === 'IQC' ? '来料检验' : props.lotType === 'OQC' ? '出货检验' : '成品检验'
 const lotType = props.lotType
