@@ -2,7 +2,7 @@
 
 > 任务：dev-20260923-029（task 2247）· 起草 Hermes 2026-09-23（**已拍板：A + 任务 T 位 2 位 + 主单 PL→PM 同批 + T 超 99 复用进位告警**）
 > 上游：dev-20260922-023（task 2163，status=2 待验收）《单号规则总表》§6 第 5 批 / §8.1 风险 / §4 总则
-> 状态：**设计稿 + 迁移稿已交付（committed）；本批代码未开工**（迁移未执行、未重启）→ task 2247 status=0
+> 状态：**✅ 已实施（2026-09-23 20:1x~20:3x 大黄，用户「按顺序执行」）**：代码 + 前端 + 迁移 207 全部落地并验证（详见文末「实施记录」）；待重启后端回归运行态。
 > 无遗留待拍板项：采购入库兜底时间戳（`:266`）并入本批（§3 第 6 条）
 
 ## 0. 结论先行
@@ -143,3 +143,32 @@
 4. **前缀变更撞号**：改 `biz_no_rule.production_order` 前缀前核 `sys_number_sequence` 当日用量与唯一索引（照 `scripts/check-doc-no.sh` 的容量检查）。
 5. **人工可读性下降**：A 之后号里不再含计划号，看号无法判断属于哪张计划单（靠 `parent_order_id`/界面）——**这是 A 的固有代价**，已拍板接受。
 6. **两条路必须同时切**：只改一条会同时存在 `WPO…` 与 `WO…` 两种新号，反而制造第三种格式（比现状更糟）→ 第 1、2 条改动必须同批上线。
+
+---
+
+## 9. 实施记录（2026-09-23 20:1x~20:3x，大黄，用户「按顺序执行」）
+
+**§3 十二条逐条落地 + 复核新增 2 条**（第 13 条来自本会话复核稿，第 14 条为执行中新发现）：
+
+| 条 | 落地 |
+|---|---|
+| 1 | `OrderServiceImpl:698-699` 无需改（号段 + 配置前缀）✓ |
+| 2 | `ProductionOrderServiceImpl.generateWorkOrderNo()` → 停用 `WO-<计划号>-NN` 派生（原「最大后缀+1」查库整段删除），改调 `redisSequenceService.generateBusinessNumberByType("production_order","WO","yyMMdd",3)`；新增注入 `RedisSequenceService` |
+| 3 | `ProductionTaskServiceImpl.nextTaskNo()` → T 位 `%03d`→`%02d`；`taskSeq > 99` 时构造并发布 `BusinessNumberOverflowEvent("production_task_seq", "工序执行#<id>-P<po>", 2, 实际位数, seq)`（注入 `ApplicationEventPublisher`，try/catch 不阻断建号） |
+| 4 | `ProductionTask.taskNo` 注释更新为 2 位口径 + 超限说明 |
+| 5 | `InventoryInboundServiceImpl` 采购入库拆号：`buildPurchaseInboundNo()`（按采购单号）**删除**，新增 `nextInboundNo()`（号段 `inbound`，IN+yyMMdd+3）；`createFromPurchase` 幂等由「单号相同」改**语义判重**（该 PO 已有未取消入库单 → 跳过整单生成）；`createInboundRecordFromPurchase` 每次收货一张独立单（去掉 `-2/-3` 后缀） |
+| 6 | `:266` 兜底去掉 `"IN-" + System.currentTimeMillis()` → 改走 `nextInboundNo()`（退货入库/事件桥等不传单号的调用方一并受益） |
+| 7 | `InventoryOutboundServiceImpl:1283` 领料号序号由 `COUNT+1` 改**最大后缀+1**（`PICK-<工单号>(\d+)$` 全量解析）；`:897` 前缀结构不变 |
+| 8 | 完工入库 `-FI` 结构不变（定长隐患已由 dev-20260923-032 修掉，见 §8 风险 1 标注） |
+| 9 | `check-doc-no.sh`：本批确认 20 个规则键齐全、容量 <80%、无时间戳拼号 → 应通过；脚本本身无「前缀登记表」基线项，故第 9 条只落文档 |
+| 10 | `doc-no-rules-dev-20260922-023.md` §3 表（工单/任务行）+ §5 从属单据示例 + §8/§9 第 5 批标记**已更新为已实施** |
+| 11 | 迁移 207（PL→PM / WPO→WO / inbound remark）**已执行**，ops.schema.applied 记到 207 |
+| 12 | 前端识别正则：`composables/useScanner.ts`（`WORK_ORDER_NO_REGEX` 增 `WO\d{9}`）+ `mobile/notices.vue` + `mobile/home.vue`（两处内联副本）+ `mobile/scan.vue` 占位文案 → 全部容纳新旧形态 |
+| **13（复核新增）** | 采购「已生成入库单明细量」查询由 `likeRight(inbound_no, 采购单号)` 改按 `source_type='PURCHASE' + source_id`（否则拆号后恒空 → 重复整额入库） |
+| **14（执行中新发现）** | `QualityNcrServiceImpl.reworkTaskNo()`（dev-20260923-035 返工任务号，稿子写时还没落地）也是 `-T%03d` → 同批改 `%02d`；单测 `QualityNcrReworkTaskNoTest` 断言同步（3 例） |
+
+**验证**：`mvn -o compile`（JDK21，删 class 强制重编 + `strings` 核验新标记）；`mvn -o test -Dtest=QualityNcrReworkTaskNoTest`（3/3）+ `InventoryInboundConcurrencyGuardTest,OrderCompletionStageResolverTest,TraceQueryServiceTest`（26/26）；`vue-tsc --noEmit` 0 错；`npm run validate` 全绿（六条门禁 + vue-tsc）。
+
+**未做/待回归（重启后）**：① 新建工单号应为 `WO260923001`、任务号 `…-P02-T01`；② 旧 `WO-PL260923001-01` 系列仍可查询/打印/追溯；③ 同一采购单连收两次只入差额（第 13 条回归用例）；④ T 超 99 的进位告警落入 dev 待办；⑤ 领料 `PICK-<工单号>-N` 递增不撞号。
+
+**存量**：`production_order` 2 行（1 行派生 `WO-PL260923001-01` + 1 行计划）、`production_task` 9 行、`PICK-WO*` 2 行、`FINISH-WO*`/`BATCH-WO*` 各 0 行 —— 全部不追改（总则 §6）。

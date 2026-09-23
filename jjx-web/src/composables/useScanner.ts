@@ -22,12 +22,12 @@ export interface UseScannerOptions {
   enabled?: boolean | (() => boolean)
   /** 扫码间隔阈值 ms：间隔超过则视为手工输入清缓冲，默认 100 */
   interval?: number
-  /** 工单号匹配正则，默认匹配 WPO 生产订单 / WO- 生产工单 */
+  /** 工单号匹配正则，默认同时容纳新形态 WO260812001 / 历史 WO-…-NN 与 WPO… */
   match?: RegExp
 }
 
-/** 工单号格式：WPO2608120001（生产订单）/ WO-WPO2608120001-01（生产工单） */
-export const WORK_ORDER_NO_REGEX = /^(WPO\d{8,}|WO-[\w-]+-\d{1,2})$/
+/** 工单号格式：WO260812001（生产工单，2026-09-23 第 5 批 A 后新形态）/ WO-WPO2608120001-01（历史派生工单）/ WPO2608120001（历史生产订单） */
+export const WORK_ORDER_NO_REGEX = /^(WO\d{9}|WPO\d{8,}|WO-[\w-]+-\d{1,2})$/
 
 /** 校验字符串是否为工单号（供页面/路由复用） */
 export function isWorkOrderNo(code: string): boolean {

@@ -23,7 +23,7 @@
       <input
         v-model="orderNo"
         class="m-scan-input"
-        placeholder="如 WO-PL2609040002-01"
+        placeholder="如 WO260923001"
         enterkeyhint="go"
         @keyup.enter="handleGo"
       />

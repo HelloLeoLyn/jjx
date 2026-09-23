@@ -33,7 +33,7 @@ public class ProductionTask {
     @TableId(type = IdType.AUTO)
     private Long taskId;
 
-    @Schema(description = "业务任务号：{工单号}-P{工序序号}-T{任务序号}")
+    @Schema(description = "业务任务号：{工单号}-P{工序序号}-T{任务序号}（工序 2 位、任务 2 位；超过 99 自动进位并告警，dev-20260923-029）")
     private String taskNo;
 
     @Schema(description = "工序执行ID（工序上下文）")

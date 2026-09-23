@@ -263,7 +263,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     public Long create(Map<String, Object> params) {
         log.info("创建入库单: {}", params);
         InventoryInboundOrder order = new InventoryInboundOrder();
-        order.setInboundNo((String) params.getOrDefault("inboundNo", "IN-" + System.currentTimeMillis()));
+        // dev-20260923-029（单号第 5 批）：兜底不再用时间戳拼号，改走号段 IN+yyMMdd+3
+        Object inboundNoParam = params.get("inboundNo");
+        order.setInboundNo(inboundNoParam == null || String.valueOf(inboundNoParam).isBlank()
+                ? nextInboundNo()
+                : String.valueOf(inboundNoParam));
         order.setInboundType((String) params.getOrDefault("inboundType", "purchase"));
         order.setSourceType((String) params.get("sourceType"));
         if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
@@ -1760,15 +1764,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             throw new BusinessException("采购订单不存在: " + purchaseOrderId);
         }
 
-        // 2. 检查是否已生成入库单
-        // 保留采购单/收货次数与批次号的可读追踪关系；这里只去重 PO 前缀，不改为无业务含义的随机序列。
-        String inboundNo = buildPurchaseInboundNo(po.getOrderNo());
-        LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()
-                .eq(InventoryInboundOrder::getInboundNo, inboundNo);
-        if (inboundOrderMapper.selectCount(existCheck) > 0) {
-            log.warn("采购订单{}的入库单已存在", purchaseOrderId);
+        // 2. 幂等去重（dev-20260923-029 第 5 批）：原来是「单号 == 采购单号」判重；拆号后单号不再含采购单号，
+        // 改为语义判重：该采购单已有**未取消**的入库单就不再整单生成（不再依赖单号形态）。
+        Long existingAny = inboundOrderMapper.selectCount(new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getSourceType, "PURCHASE")
+                .eq(InventoryInboundOrder::getSourceId, purchaseOrderId)
+                .ne(InventoryInboundOrder::getOrderStatus, InventoryOrderStatusEnum.CANCELLED.getValue()));
+        if (existingAny != null && existingAny > 0) {
+            log.warn("采购订单{}已有入库单，跳过整单生成", purchaseOrderId);
             return null;
         }
+        String inboundNo = nextInboundNo();
 
         // 3. 查询采购订单明细
         List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectItemsByOrderId(purchaseOrderId);
@@ -1881,9 +1887,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 2026-08-18：每次收货生成独立入库单（批次），不再删除重建——
         // 采购单详情「入库凭证」按时间线区分每次收货（第1次收500、第2次收500各自一张单）
         // 入库单号同时是批次号前缀，且需关联采购单及收货次数；不改随机序列，仅避免 PO-PO- 双前缀。
-        String baseInboundNo = buildPurchaseInboundNo(po.getOrderNo());
+        // dev-20260923-029（单号第 5 批）：号改号段 IN+yyMMdd+3（不再复用采购单号）；
+        // 「已生成入库单明细量」改按 source_type/source_id 查 —— 原来按单号前缀 likeRight(采购单号)，
+        // 拆号后必然查空 → alreadyIn=0 → 每次收货会把整额再入一遍（静默重复入库！）。
         List<InventoryInboundOrder> existingList = inboundOrderMapper.selectList(
-                new LambdaQueryWrapper<InventoryInboundOrder>().likeRight(InventoryInboundOrder::getInboundNo, baseInboundNo));
+                new LambdaQueryWrapper<InventoryInboundOrder>()
+                        .eq(InventoryInboundOrder::getSourceType, "PURCHASE")
+                        .eq(InventoryInboundOrder::getSourceId, purchaseOrderId));
         // 已生成入库单明细量（含待确认——待确认单也占用了收货量，防下一张重复入；驳回/删除后自动重新计入）
         Map<Long, BigDecimal> alreadyInByMaterial = new HashMap<>();
         for (InventoryInboundOrder done : existingList) {
@@ -1912,13 +1922,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             toInQtys.add(toIn);
         }
         if (toInItems.isEmpty()) {
-            log.info("采购订单{} 无待入库数量，跳过: {}", purchaseOrderId, baseInboundNo);
+            log.info("采购订单{} 无待入库数量，跳过", purchaseOrderId);
             return null;
         }
 
-        // 每次收货新建一张入库单（序号递增 PO-xxx、PO-xxx-2、PO-xxx-3…）；状态=待审批，仓库确认后才加库存（2026-08-11 业务定稿：收货≠入库）
+        // dev-20260923-029（第 5 批）：每次收货一张**独立入库单**（各占新流水号，不再用 -2/-3 后缀）；
+        // 状态=待审批，仓库确认后才加库存（2026-08-11 业务定稿：收货≠入库）
         final InventoryInboundOrder order;
-        String inboundNo = existingList.isEmpty() ? baseInboundNo : baseInboundNo + "-" + (existingList.size() + 1);
+        String inboundNo = nextInboundNo();
         order = new InventoryInboundOrder();
         order.setInboundNo(inboundNo);
         order.setInboundType("PURCHASE");
@@ -1974,10 +1985,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return order.getInboundId();
     }
 
-    private String buildPurchaseInboundNo(String purchaseOrderNo) {
-        return purchaseOrderNo != null && purchaseOrderNo.startsWith("PO")
-                ? purchaseOrderNo
-                : "PO-" + purchaseOrderNo;
+    /**
+     * 采购/退货等入库单号（dev-20260923-029 单号第 5 批）：一律走号段 `biz_no_rule.inbound`
+     * （实测前缀 IN + yyMMdd + 3 位日流水，形如 {@code IN260923001}），不再复用采购单号、也不再用时间戳拼号。
+     */
+    private String nextInboundNo() {
+        return redisSequenceService.generateBusinessNumberByType("inbound", "IN", "yyMMdd", 3);
     }
 
     /**

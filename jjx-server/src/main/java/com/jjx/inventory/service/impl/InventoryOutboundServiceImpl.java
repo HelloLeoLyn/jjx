@@ -1275,12 +1275,24 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (validItems.isEmpty()) {
             throw new BusinessException("没有可领的物料明细");
         }
-        // 出库单号 PICK-{工单号}-{序号}
-        long seq = outboundOrderMapper.selectCount(
+        // 出库单号 PICK-{工单号}-{序号}；dev-20260923-029（第 5 批）：序号由 COUNT+1 改为「最大后缀+1」
+        // （COUNT+1 在红冲/删除后会与存量号撞车 → 唯一索引报错；与工单号 V1 修复同口径）
+        final String pickPrefix = "PICK-" + prodOrder.getOrderNo() + "-";
+        final java.util.regex.Pattern pickPattern =
+                java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(pickPrefix) + "(\\d+)$");
+        List<InventoryOutboundOrder> pickOrders = outboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryOutboundOrder>()
                         .eq(InventoryOutboundOrder::getSourceType, "work_order")
-                        .eq(InventoryOutboundOrder::getSourceId, workOrderId)) + 1;
-        String outboundNo = "PICK-" + prodOrder.getOrderNo() + "-" + seq;
+                        .eq(InventoryOutboundOrder::getSourceId, workOrderId)
+                        .likeRight(InventoryOutboundOrder::getOutboundNo, pickPrefix));
+        long seq = pickOrders.stream()
+                .map(InventoryOutboundOrder::getOutboundNo)
+                .filter(Objects::nonNull)
+                .map(pickPattern::matcher)
+                .filter(java.util.regex.Matcher::find)
+                .mapToLong(matcher -> Long.parseLong(matcher.group(1)))
+                .max().orElse(0L) + 1;
+        String outboundNo = pickPrefix + seq;
         InventoryOutboundOrder order = new InventoryOutboundOrder();
         order.setOutboundNo(outboundNo);
         order.setOutboundType(OutboundTypeEnum.PRODUCTION.getCode());

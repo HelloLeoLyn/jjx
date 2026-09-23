@@ -585,13 +585,14 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     }
 
     /**
-     * 返工任务号（与正常任务同构）：WO-&lt;工单号&gt;-P&lt;2位工序序&gt;-T&lt;3位任务序&gt; —— dev-20260923-035。
+     * 返工任务号（与正常任务同构）：WO-&lt;工单号&gt;-P&lt;2位工序序&gt;-T&lt;2位任务序&gt; —— dev-20260923-035；
+     * T 位 3→2 由 dev-20260923-029（单号第 5 批）统一。
      * 工单号取不到时回落 REWORK 前缀，保证号仍可读、可追溯（NCR 号在工序作业说明里，不丢）。
      */
     static String reworkTaskNo(String orderNo, Integer processOrder, long taskSeq) {
         String order = (orderNo == null || orderNo.isBlank()) ? "REWORK" : orderNo.trim();
         int po = processOrder == null ? 0 : processOrder;
-        return String.format("%s-P%02d-T%03d", order, po, taskSeq);
+        return String.format("%s-P%02d-T%02d", order, po, taskSeq);
     }
 
     /**

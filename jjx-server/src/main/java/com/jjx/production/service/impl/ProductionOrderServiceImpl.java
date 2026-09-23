@@ -69,6 +69,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     /** 完工口径（新质检模型）：有效 FQC 检验批汇总 —— dev-20260918-014 */
     private final com.jjx.quality.service.QualityLotService qualityLotService;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    /** 2026-09-23 dev-20260923-029（单号第 5 批 A 方案）：工单号两套合一，统一走号段。 */
+    private final com.jjx.framework.common.RedisSequenceService redisSequenceService;
 
     /**
      * 完工是否要求成品入库已过账（dev-20260918-024 预留，默认关闭）。
@@ -1364,37 +1366,16 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
      * 生成工单编号: WO-{计划编号}-{序号}
      */
     /**
-     * 生成工单编号: WO-{计划编号}-{序号}
-     * <p>
-     * V1 修复：序号 = 该计划历史所有子工单最大后缀 + 1（不依赖本次转单 seq，
-     * 已取消/完成/关闭的历史编号一律不复用；不用 COUNT+1）。
-     * 示例：已有 -01/-02 → -03；已有 -01/-02/-05 → -06；无历史 → -01。
+     * 生成工单编号（dev-20260923-029 单号第 5 批 A 方案：两套工单号合一）。
+     *
+     * <p>不再走 {@code WO-<计划号>-NN} 派生路径（原「订单流转」路线），统一调用号段服务
+     * {@code biz_no_rule.production_order}（前缀 WO + yyMMdd + 3 位日流水，形如 {@code WO260923001}），
+     * 与「转量产」路径同一格式、同一计数器，不会撞号。</p>
+     *
+     * <p>历史：旧派生实现 = 查该计划全部子单取最大后缀 + 1（V1 修复）；已停用，存量老号不追改。</p>
      */
     private String generateWorkOrderNo(ProductionOrder plan) {
-        String planNo = plan.getOrderNo();
-        String prefix = "WO-" + planNo + "-";
-        // 查该计划全部子工单编号，取最大后缀
-        List<ProductionOrder> children = productionOrderMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ProductionOrder>()
-                        .select("order_no")
-                        .eq("parent_order_id", plan.getOrderId()));
-        int maxSuffix = 0;
-        if (children != null) {
-            for (ProductionOrder child : children) {
-                String no = child.getOrderNo();
-                if (no != null && no.startsWith(prefix)) {
-                    try {
-                        int suffix = Integer.parseInt(no.substring(prefix.length()));
-                        if (suffix > maxSuffix) {
-                            maxSuffix = suffix;
-                        }
-                    } catch (NumberFormatException ignored) {
-                        // 非数字后缀忽略
-                    }
-                }
-            }
-        }
-        return prefix + String.format("%02d", maxSuffix + 1);
+        return redisSequenceService.generateBusinessNumberByType("production_order", "WO", "yyMMdd", 3);
     }
 
     /**

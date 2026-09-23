@@ -234,7 +234,7 @@ async function openNotice(n: any) {
   }
   // 深链：优先从标题/内容提取工单号 → 任务页；否则按类型映射
   const text = `${n.title || ''} ${n.content || ''}`
-  const m = text.match(/WO-[\w-]+-\d{1,2}|WPO\d{8,}/)
+  const m = text.match(/WO\d{9}|WO-[\w-]+-\d{1,2}|WPO\d{8,}/)
   if (m && isWorkOrderNo(m[0])) {
     router.push({ path: '/m/order', query: { orderNo: m[0] } })
     return

@@ -32,6 +32,7 @@ import com.jjx.production.service.ProductionRoleResolver;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -96,6 +97,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ProductionRoleResolver productionRoleResolver;
+    /** 2026-09-23 dev-20260923-029（单号第 5 批）：任务号 T 位改 2 位，超 99 走编号进位告警通道。 */
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     // ==================== P1 Foundation ====================
 
@@ -1043,8 +1046,22 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
         long taskSeq = ((Number) taskSeqValue).longValue() + 1;
         int processOrder = ((Number) processOrderValue).intValue();
+        // 2026-09-23 dev-20260923-029（单号第 5 批，用户拍板㈠）：T 位由 3 位改 2 位（任务号 26→19）；
+        // 超 99 时 %02d 会静默变长成 3 位 → 复用号段服务同一条「进位告警」通道（站内通知 + dev 待办），
+        // 不阻断业务（告警失败也不影响建号），以“工序”为周期判定超限。
+        if (taskSeq > 99) {
+            try {
+                applicationEventPublisher.publishEvent(
+                        new com.jjx.framework.common.BusinessNumberOverflowEvent(
+                                "production_task_seq",
+                                "工序执行#" + executionId + "-P" + processOrder,
+                                2, Long.toString(taskSeq).length(), taskSeq));
+            } catch (Exception e) {
+                log.warn("任务号进位告警发布失败（不影响建号）: executionId={}, seq={}", executionId, taskSeq, e);
+            }
+        }
         return orderNoValue + "-P" + String.format("%02d", processOrder)
-                + "-T" + String.format("%03d", taskSeq);
+                + "-T" + String.format("%02d", taskSeq);
     }
 
     private Long findFirstTask(Long executionId) {
