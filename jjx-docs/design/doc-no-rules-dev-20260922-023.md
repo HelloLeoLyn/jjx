@@ -26,8 +26,8 @@
 | 生产 | production_work_report.report_no | 号段 work_report | **WR- + yyyyMMdd- + 4** | WR-202609220001 |
 | 生产 | production_task.task_no | 派生 | <工单号>-P01-T001 | WO-PL2609220001-01-P01-T001 |
 | 库存 | inventory_outbound_order.outbound_no（领料） | 派生 | PICK-<工单号>-N | PICK-WO-PL2609220001-01-1 |
-| 库存 | inventory_inbound_order.inbound_no（完工） | 派生 | FINISH-<工单号> | FINISH-WO-PL2609220001-01 |
-| 库存 | 成品批次 inventory_stock_item.batch_no | 派生 | BATCH-<工单号> | BATCH-WO-PL2609220001-01 |
+| 库存 | inventory_inbound_order.inbound_no（完工） | 派生 | FINISH-<工单号> → **实况：<工单号>-FI<NN>（一验批一单）** | FINISH-WO-PL2609220001-01 → **实况 WO-PL260923001-01-FI01** |
+| 库存 | 成品批次 inventory_stock_item.batch_no | 派生 | BATCH-<工单号> → **实况：BATCH-<检验批号>** | BATCH-WO-PL2609220001-01 → **实况 BATCH-QL260923003** |
 | 采购 | inventory_inbound_order.inbound_no（采购） | **复用采购单号** | =PO…（多次收货加 -2） | PO202609220001 / -2 |
 | 质检 | quality_lot.lot_no | **手写**（count+1 占用校验） | QL+yyMMdd+4 | QL2609220007 |
 | 质检 | quality_ncr.ncr_no | **手写** | NCR+yyMMdd+4 | NCR2609220001 |
@@ -72,7 +72,8 @@
 
 **三轨**
 1. **独立单据**（有独立生命周期、需跨单据引用）→ 一律走号段服务，格式 `<前缀><yyMMdd><流水>`（前缀 2~4 个大写字母、无分隔符）。
-2. **从属单据**（依附父单）→ `<父单号>-<2 位类型码><2 位序号>`：`<工单号>-PK01`（领料）、`<工单号>-FI01`（完工入库，红冲 `-FI01R`）、任务保持 `<工单号>-P01-T001`；不占号段、天然不撞。
+2. **从属单据**（依附父单）→ `<父单号>-<2 位类型码><2 位序号>`：`<工单号>-PK01`（领料）、`<工单号>-FI01`（完工入库）、任务保持 `<工单号>-P01-T001`；不占号段、天然不撞。
+   - ⚠️ **2026-09-23 实况订正（看板 2250 复核）**：① 红冲单实际是**独立后缀 `-R`**（如 `...-FI03-R`），不是本文原写的 `-FI01R`；② FI 序号**超过 99 自动进位到 3 位**（`-FI100`），因此**解析必须按全量数字**（切忌 `\d{2}` 定长过滤 + `substring(len-2)`，会静默不出单——该定长隐患已由 dev-20260923-032 修掉，并由门禁 `check:lot:strict` ⑨ 兜底）；③ 同一族风险：`<工单号>-P%02d-T%03d`（ProductionTaskServiceImpl:1046 / QualityNcrServiceImpl:594）序号超 99/999 后位数变长，待复查消费方是否定长解析。
 3. **批次号例外**：`BATCH-<工单号>[-<批号>]` 保留可读格式（贴标/追溯要用），不受"短号"约束。
 
 **禁止**：时间戳/随机数拼号；复用他实体单号；同一实体两种格式；单号内嵌业务语义（工单号/批号走字段）。

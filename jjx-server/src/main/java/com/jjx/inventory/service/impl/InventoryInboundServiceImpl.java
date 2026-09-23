@@ -574,6 +574,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         iqcBatchMapper.updateById(batch);
     }
 
+    /** 单号是否已被占用（dev-20260923-032 抽成方法，供号段防重循环用）。 */
+    private boolean existsInboundNo(String inboundNo) {
+        return inboundOrderMapper.selectCount(new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getInboundNo, inboundNo)) > 0;
+    }
+
     private static BigDecimal nvl(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
@@ -2184,19 +2190,41 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     .eq(InventoryInboundOrder::getSourceType, "PRODUCTION")
                     .eq(InventoryInboundOrder::getSourceId, workOrderId)
                     .likeRight(InventoryInboundOrder::getInboundNo, prodOrder.getOrderNo() + "-FI"));
+            // dev-20260923-032（看板 2250）：序号改为按「-FI 之后的全部数字」解析。
+            // 原实现 = 正则 -FI\d{2} 只认 2 位 + substring(len-2) 取后两位 + %02d 生成：
+            // 第 100 张写出 -FI100 后，正则匹配不到它 → max 回退到 99 → 目标恒为 100 → 与已有单撞号
+            // → 静默 return null，该工单**每一张新批单都建不出来**（无异常、无上层感知）。
+            final String fiPrefix = prodOrder.getOrderNo() + "-FI";
+            final java.util.regex.Pattern fiPattern =
+                    java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(fiPrefix) + "(\\d+)$");
             int sequence = finishOrders.stream()
                     .map(InventoryInboundOrder::getInboundNo)
                     .filter(Objects::nonNull)
-                    .filter(no -> no.matches(java.util.regex.Pattern.quote(prodOrder.getOrderNo()) + "-FI\\d{2}"))
-                    .mapToInt(no -> Integer.parseInt(no.substring(no.length() - 2)))
+                    .map(fiPattern::matcher)
+                    .filter(java.util.regex.Matcher::find)
+                    .mapToInt(matcher -> Integer.parseInt(matcher.group(1)))
                     .max().orElse(0) + 1;
-            inboundNo = prodOrder.getOrderNo() + "-FI" + String.format("%02d", sequence);
+            if (sequence > 99) {
+                log.warn("工单{}完工入库单 FI 序号已到 {}（超过 99，自动进位到 3 位）", workOrderId, sequence);
+            }
+            inboundNo = fiPrefix + String.format("%02d", sequence);
+            // 兵底防重：不再因撞号静默丢单——向后找第一个空号（上限 100 次，通常一次即中）
+            int guard = 0;
+            while (existsInboundNo(inboundNo)) {
+                if (++guard > 100) {
+                    log.error("工单{}完工入库单号生成失败：连续 100 个号已被占用，最后尝试 {}", workOrderId, inboundNo);
+                    return null;
+                }
+                sequence++;
+                inboundNo = fiPrefix + String.format("%02d", sequence);
+            }
         }
-        LambdaQueryWrapper<InventoryInboundOrder> existCheck = new LambdaQueryWrapper<InventoryInboundOrder>()
-                .eq(InventoryInboundOrder::getInboundNo, inboundNo);
-        if (inboundOrderMapper.selectCount(existCheck) > 0) {
-            log.warn("生产工单{}的完工入库单已存在", workOrderId);
-            return null;
+        if (lotId == null) {
+            // 工单级兜底单仍按单号防重（历史兼容路径的正规去重：撞上说明该工单已有兜底单）
+            if (existsInboundNo(inboundNo)) {
+                log.warn("生产工单{}的完工入库单已存在", workOrderId);
+                return null;
+            }
         }
 
         InventoryInboundOrder order = new InventoryInboundOrder();

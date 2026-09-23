@@ -128,11 +128,11 @@
   第 ⑤ 类 = 批次行被删/未建但流水已写。修复口径：按批次明细重算汇总，并补齐/冲销流水（参见 `CONVENTIONS` 库存口径铁律）。
 - 退出码：0=一致或咨询模式；1=`--strict` 且有不一致。
 
-## 9. scripts/check-inbound-lot-integrity.sh —— 入库单/检验批 + 数量守恒巡检（八查）
+## 9. scripts/check-inbound-lot-integrity.sh —— 入库单/检验批 + 数量守恒巡检（九查）
 
 - 干什么（只读巡检，两类共八查）：
   **A. 单据/批次谱系三查**（任务 dev-20260923-010）：① 生产来源入库明细 `lot_id` 覆盖率；② 同一 lot 被多张未取消单据重复计账（明细合计 ≤ 批合格量）；③ 已过账明细 = 入库侧流水（按 `inventory_item_id + batch_no`）。
-  **B. 数量守恒五查**（任务 dev-20260923-023，2026-09-23 新增）：④ 判定数量守恒（`pass+fail=inspected ≤ lot_quantity`）；⑤ 不良台账守恒（批 `fail` = Σ NCR 不良；未作废处置量 ≤ NCR 不良量）；⑥ 有效批合格量 ≤ 可判上限（批量 − 该批自身已报废未回收 − 让步未确认，与判定护栏 dev-20260923-021 同口径）；⑦ 工单完工 = 有效批合格累计（防"复检换代不重算"复发）；⑧ `stored_quantity ≤ pass_quantity`。
+  **B. 数量守恒六查**（④~⑧ 为任务 dev-20260923-023；⑨ 为 dev-20260923-032，2026-09-23 新增）：④ 判定数量守恒（`pass+fail=inspected ≤ lot_quantity`）；⑤ 不良台账守恒（批 `fail` = Σ NCR 不良；未作废处置量 ≤ NCR 不良量）；⑥ 有效批合格量 ≤ 可判上限（批量 − 该批自身已报废未回收 − 让步未确认，与判定护栏 dev-20260923-021 同口径）；⑦ 工单完工 = 有效批合格累计（防"复检换代不重算"复发）；⑧ `stored_quantity ≤ pass_quantity`；**⑨ 有效 FQC 批（`pass>0` 且无后继版本）必须能查到挂在其 `lot_id` 上、未取消(`order_status<>9`)的生产入库明细**（兜住"该出的单没出"——含完工入库单 FI 序号定长导致静默不出单，看板 2250）。
 - 危险等级：🟢 只读（只跑 SELECT）。
 - 前置：mysql 可连（连不上只提示不阻塞）；可选 `JJX_LOTID_CHECK_SINCE=YYYY-MM-DD` 只巡检该时间后的入库单（存量基线用）。
 - 命令：
@@ -140,7 +140,7 @@
   bash scripts/check-inbound-lot-integrity.sh            # 咨询模式：只报告，永远 exit 0
   bash scripts/check-inbound-lot-integrity.sh --strict   # 有不一致则 exit 1（已接进 npm run validate）
   ```
-- 输出怎么读：八个计数必须全 0；任一 > 0 会列出明细行。
+- 输出怎么读：九个计数必须全 0；任一 > 0 会列出明细行。
   ⑥ 的口径说明：按「有效批自身」聚合，不按整条批链 —— 本系统是"整批重判(差额)"模型，每个新版本都会重新声明整批不良，链级聚合会重复计入（实测同一物理 2 件在两次复检里各记一次）。
 - 退出码：0=一致或咨询模式；1=`--strict` 且有不一致。
 
@@ -177,6 +177,6 @@
 | `npm run check:docs` | 文档规则（`history/`：登记 INDEX、BOM、命名；`modules/`：不带日期 + BOM） |
 | `npm run check:collation:strict` | 全库字符串列 collation 统一（防跨表 JOIN 报 1267） |
 | `npm run check:stock:strict` | 库存三本账对账（= `scripts/check-stock-summary.sh --strict`，含流水派生结存校验） |
-| `npm run check:lot:strict` | 入库单/检验批 + 数量守恒巡检（= `scripts/check-inbound-lot-integrity.sh --strict`，八查） |
+| `npm run check:lot:strict` | 入库单/检验批 + 数量守恒巡检（= `scripts/check-inbound-lot-integrity.sh --strict`，九查） |
 | `npm run check:doc-no` | 业务单号规则巡检（= `scripts/check-doc-no.sh`：规则键缺失 / 当天用量达 80% 容量 / 时间戳式编号回归） |
 | `npm run validate` | 上面六条 + `vue-tsc --noEmit`（提交前自查跑这个） |
