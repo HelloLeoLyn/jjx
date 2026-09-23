@@ -5,12 +5,19 @@
         <el-tab-pane label="当前工单" name="current" />
         <el-tab-pane label="历史工单" name="history" />
       </el-tabs>
-      <el-segmented
-        v-if="canViewAll"
-        v-model="scope"
-        :options="scopeOptions"
-        @change="handleScopeChange"
-      />
+      <div class="panel-actions">
+        <el-segmented
+          v-if="canViewAll"
+          v-model="scope"
+          :options="scopeOptions"
+          @change="handleScopeChange"
+        />
+        <el-button
+          v-if="allowClearSelection"
+          :disabled="selectedOrderId == null"
+          @click="selectOrder(null)"
+        >查看全部</el-button>
+      </div>
     </div>
 
     <el-table
@@ -96,8 +103,16 @@ const props = withDefaults(
     canViewAll: boolean
     /** dev-20260923-033：从不良台账「去派工」跳进来时带的目标工单（自动选中，只生效一次） */
     initialOrderId?: number | null
+    autoSelectFirst?: boolean
+    allowClearSelection?: boolean
+    defaultScope?: WorkOrderScope
   }>(),
-  { initialOrderId: null }
+  {
+    initialOrderId: null,
+    autoSelectFirst: true,
+    allowClearSelection: false,
+    defaultScope: 'mine',
+  }
 )
 const emit = defineEmits<{
   select: [order: ProductionOrderVO | null, scope: WorkOrderScope, tab: WorkOrderTab]
@@ -108,9 +123,10 @@ const tableRef = ref()
 const loading = ref(false)
 const orders = ref<ProductionOrderVO[]>([])
 const total = ref(0)
+const selectedOrderId = ref<number | null>(null)
 const activeTab = ref<WorkOrderTab>('current')
 // 默认范围一律「我的」（一级负责人名下含已完工工序由 includeCompleted 补全）；管理可切「全部」
-const scope = ref<WorkOrderScope>('mine')
+const scope = ref<WorkOrderScope>(props.defaultScope)
 const pageNum = ref(1)
 const pageSize = 10
 const scopeOptions = [
@@ -173,6 +189,7 @@ const progressText = (row: ProductionOrderVO) => {
 }
 
 const selectOrder = (order: ProductionOrderVO | null) => {
+  selectedOrderId.value = order?.orderId ? Number(order.orderId) : null
   tableRef.value?.setCurrentRow(order)
   emit('select', order, scope.value, activeTab.value)
 }
@@ -201,7 +218,11 @@ const loadOrders = async () => {
   }
   await loadCompletionStatus()
   if (!applyInitialOrder()) {
-    await selectFirstOrder()
+    if (props.autoSelectFirst) {
+      await selectFirstOrder()
+    } else {
+      selectOrder(null)
+    }
   }
 }
 
@@ -291,6 +312,11 @@ onMounted(loadOrders)
 }
 .panel-toolbar :deep(.el-tabs__header) {
   margin-bottom: 12px;
+}
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .pagination-wrap {
   display: flex;

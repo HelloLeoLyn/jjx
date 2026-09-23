@@ -12,6 +12,9 @@
     <WorkOrderPanel
       :can-view-all="true"
       :initial-order-id="selectedOrderId"
+      :auto-select-first="false"
+      :allow-clear-selection="true"
+      default-scope="all"
       @select="handleOrderSelected"
     />
     <el-alert
