@@ -285,15 +285,21 @@
                 fmtQty(row.pendingQuantity)
               }}</template></el-table-column
             >
-            <el-table-column label="可报数量" width="90" align="right"
-              ><template #default="{ row }">{{
-                fmtQty(row.remainingQuantity)
-              }}</template></el-table-column
+            <!-- dev-20260923（补报）：已完成任务剩余为 0，但损耗额度内仍可能可补报，一并显示 -->
+            <el-table-column label="可报数量" width="120" align="right"
+              ><template #default="{ row }"
+                >{{ fmtQty(row.remainingQuantity)
+                }}<span
+                  v-if="Number(row.supplementAllowance || 0) > 0"
+                  class="supplement-allowance-tip"
+                  >（可补 {{ fmtQty(row.supplementAllowance) }}）</span
+                ></template
+              ></el-table-column
             >
-            <el-table-column label="操作" width="80">
+            <el-table-column label="操作" width="90">
               <template #default="{ row }"
                 ><el-button type="primary" link @click="openReportDialog(detailForm, row.taskId)"
-                  >报工</el-button
+                  >{{ Number(row.remainingQuantity || 0) > 0 ? '报工' : '补报' }}</el-button
                 ></template
               >
             </el-table-column>
@@ -895,7 +901,11 @@ const getList = async () => {
       const tasks: AllTaskRow[] = res?.data || []
       myTaskExecutionIds.value = new Set(
         tasks
-          .filter((task) => Number(task.remainingQuantity || 0) > 0)
+          // dev-20260923（补报）：已完成任务只要还有损耗额度内可补的量，也算"可报工"
+          .filter(
+            (task) =>
+              Number(task.remainingQuantity || 0) > 0 || Number(task.supplementAllowance || 0) > 0
+          )
           .map((task) => task.executionId)
       )
       const keyword = taskFilterForm.keyword.trim().toLowerCase()
@@ -936,7 +946,11 @@ const getList = async () => {
       const myTasksResult: any = await getMyTasks()
       myTaskExecutionIds.value = new Set(
         (myTasksResult?.data || [])
-          .filter((task: TaskTreeRow) => Number(task.remainingQuantity || 0) > 0)
+          // dev-20260923（补报）：同上，含可补报额度的已完成任务
+          .filter(
+            (task: TaskTreeRow) =>
+              Number(task.remainingQuantity || 0) > 0 || Number(task.supplementAllowance || 0) > 0
+          )
           .map((task: TaskTreeRow) => task.executionId)
       )
     } catch {
@@ -1324,7 +1338,9 @@ const canSubmitReport = computed(() => {
   if (q + d <= 0) return false
   if (d > 0 && !reportForm.defectReason.trim()) return false
   const task = reportTasks.value.find((t) => t.taskId === reportTaskId.value)
-  if (task && q + d > Number(task.remainingQuantity || 0)) return false
+  // dev-20260923（补报）：已完成任务的可报数量 = 剩余 0 + 可补报额度（后端会按 计划量×(1+损耗率) 再校验一次）
+  if (task && q + d > Number(task.remainingQuantity || 0) + Number(task.supplementAllowance || 0))
+    return false
   const start = reportTimeRange.value?.[0]
   const end = reportTimeRange.value?.[1]
   if (!!start !== !!end) return false

@@ -1404,6 +1404,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     : t.getTaskQuantity().subtract(childAssigned).subtract(ownPending).subtract(ownCompleted));
             vo.setRemainingQuantity(remaining);
             vo.setStatus(t.getStatus());
+            // dev-20260923（补报入口 · 对应后端 dev-20260922-032）：已完成的任务/工序若仍落在
+            // 「计划量 ×(1+损耗率)」额度内，回填可补报额度，前端据此显示"补报"入口
+            if ("COMPLETED".equals(t.getStatus())) {
+                vo.setSupplementAllowance(supplementAllowance(t));
+            }
             vo.setStatusLabel(statusLabel(t.getStatus()));
             vo.setHasChildren(childParentIds.contains(t.getTaskId()));
             vo.setChildren(new ArrayList<>());
@@ -1496,6 +1501,56 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             return false;
         }
         return actual.subtract(expected).abs().compareTo(COMPLETION_TOLERANCE) <= 0;
+    }
+
+    /**
+     * dev-20260923（补报入口）：已完成任务的可补报额度（0=不可补报）。
+     * 口径与 WorkReportActionServiceImpl.validateSupplementReport 一致：取
+     * 「工序投料量 ×(1+损耗率) − 该工序累计报工」与「工单计划量 ×(1+损耗率) − 该工单累计报工」的较小剩余。
+     * 损耗率取 sys_config.production.report.overrun-rate（缺省 5%）。
+     */
+    private BigDecimal supplementAllowance(ProductionTask task) {
+        if (task == null || task.getExecutionId() == null) {
+            return BigDecimal.ZERO;
+        }
+        com.jjx.production.domain.entity.ProductionOperationExecution exec =
+                productionOperationExecutionMapper.selectById(task.getExecutionId());
+        if (exec == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal rate = new BigDecimal("0.05");
+        try {
+            String v = jdbcTemplate.queryForObject(
+                    "SELECT config_value FROM sys_config WHERE config_key = 'production.report.overrun-rate'", String.class);
+            if (v != null && !v.isBlank()) {
+                rate = new BigDecimal(v.trim());
+            }
+        } catch (Exception ignored) {
+        }
+        BigDecimal factor = BigDecimal.ONE.add(rate);
+        BigDecimal allowance = null;
+        if (exec.getInputQuantity() != null && exec.getInputQuantity().signum() > 0) {
+            BigDecimal reported = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE execution_id = ?",
+                    BigDecimal.class, exec.getExecutionId());
+            allowance = exec.getInputQuantity().multiply(factor).subtract(floorCompletionZero(reported));
+        }
+        if (exec.getOrderId() != null) {
+            try {
+                BigDecimal orderPlan = jdbcTemplate.queryForObject(
+                        "SELECT planned_quantity FROM production_order WHERE order_id = ?",
+                        BigDecimal.class, exec.getOrderId());
+                if (orderPlan != null && orderPlan.signum() > 0) {
+                    BigDecimal reportedAll = jdbcTemplate.queryForObject(
+                            "SELECT COALESCE(SUM(qualified_quantity + defective_quantity), 0) FROM production_work_report WHERE order_id = ?",
+                            BigDecimal.class, exec.getOrderId());
+                    BigDecimal rest = orderPlan.multiply(factor).subtract(floorCompletionZero(reportedAll));
+                    allowance = allowance == null ? rest : allowance.min(rest);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return allowance == null ? BigDecimal.ZERO : floorCompletionZero(allowance);
     }
 
     static BigDecimal floorCompletionZero(BigDecimal value) {

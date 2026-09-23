@@ -79,6 +79,9 @@ public class TaskTreeRowVO {
     @Schema(description = "当前剩余（gate 口径）= taskQuantity - childAssigned - ownPending - ownCompleted（下限 0）")
     private BigDecimal remainingQuantity;
 
+    @Schema(description = "可补报额度（仅已完成任务回填；口径=计划量×(1+损耗率) 的剩余，0 表示不可补报）")
+    private BigDecimal supplementAllowance;
+
     @Schema(description = "状态（P5 生命周期，与 assignee_id 解耦）：PENDING未进入责任执行 / ACTIVE进行中 / COMPLETED人工确认完成 / CANCELLED责任取消或归零")
     private String status;
 

@@ -90,6 +90,8 @@ export interface TaskTreeRow {
   assignedQuantity?: number
   /** gate 口径：taskQuantity - childAssigned - ownPending - ownCompleted（下限 0；唯一可分配/可报工额度） */
   remainingQuantity: number
+  /** dev-20260923（补报入口）：已完成任务的可补报额度（口径=计划量×(1+损耗率) 的剩余，0=不可补报） */
+  supplementAllowance?: number
   status?: ProductionTaskStatus
   statusLabel?: string
   /** 是否有直接子任务（懒加载：决定展开箭头；活动树排除 CANCELLED） */
