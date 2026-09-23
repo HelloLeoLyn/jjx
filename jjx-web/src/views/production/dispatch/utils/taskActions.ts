@@ -1,4 +1,3 @@
-import { useUserStore } from '@/store/modules/user'
 import type { TaskAllowedAction, TaskTreeRow } from '@/types/production/task'
 /**
  * 任务动作可用性判断（业务统一出口）
@@ -10,16 +9,5 @@ export function allowedActions(
   action: TaskAllowedAction
 ): boolean {
   // 直接读后端投影的 allowedActions 并且要求row.assigneeId是登录用户id
-  if (action === 'RETURN') {
-    const userStore = useUserStore()
-    return (
-      !!row &&
-      Array.isArray(row.allowedActions) &&
-      row.allowedActions.includes(action) &&
-      row.assigneeId === userStore.userId &&
-      row.remainingQuantity > 0
-    )
-  } else {
-    return !!row && Array.isArray(row.allowedActions) && row.allowedActions.includes(action)
-  }
+  return !!row && Array.isArray(row.allowedActions) && row.allowedActions.includes(action)
 }

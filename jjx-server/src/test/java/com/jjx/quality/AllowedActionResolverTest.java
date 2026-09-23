@@ -102,6 +102,20 @@ class AllowedActionResolverTest {
         assertTrue(AllowedActionResolver.forNcrAction("REWORK", "DONE").isEmpty());
     }
 
+    @Test
+    void productionTaskActionsComeFromResolver() {
+        assertEquals(List.of(AllowedActionEnum.TASK_FLOW, AllowedActionEnum.TASK_ASSIGN,
+                        AllowedActionEnum.TASK_RETURN, AllowedActionEnum.TASK_RECALL),
+                AllowedActionResolver.forProductionTask("ACTIVE", true, true, true,
+                        BigDecimal.ONE, BigDecimal.ONE));
+        assertEquals(List.of(AllowedActionEnum.TASK_FLOW),
+                AllowedActionResolver.forProductionTask("COMPLETED", true, true, true,
+                        BigDecimal.ONE, BigDecimal.ONE));
+        assertEquals(List.of(AllowedActionEnum.TASK_FLOW),
+                AllowedActionResolver.forProductionTask("ACTIVE", false, true, true,
+                        BigDecimal.ONE, BigDecimal.ONE));
+    }
+
     // ==================== 动作字典 ====================
 
     @Test

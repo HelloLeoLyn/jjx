@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.enums.AllowedActionEnum;
+import com.jjx.quality.service.support.AllowedActionResolver;
 import com.jjx.production.domain.dto.TaskAssignDTO;
 import com.jjx.production.domain.dto.TaskAssignItemDTO;
 import com.jjx.production.domain.dto.TaskCompleteDTO;
@@ -1475,34 +1477,21 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                                                BigDecimal childAssigned, BigDecimal remaining,
                                                long incompleteChildren, Long loginUserId, boolean loginIsProdMgr,
                                                boolean rowAssignAllowed) {
-        List<String> actions = new ArrayList<>();
-        actions.add("FLOW");
-        if (t == null || STATUS_CANCELLED.equals(t.getStatus()) || STATUS_COMPLETED.equals(t.getStatus())) {
-            return actions;
+        if (t == null) {
+            return List.of();
         }
-        boolean active = STATUS_ACTIVE.equals(t.getStatus()) || STATUS_PENDING.equals(t.getStatus());
         boolean isOperator;
         if (t.getAssigneeId() == null) {
             isOperator = loginIsProdMgr;
         } else {
             isOperator = loginUserId != null && (loginUserId.equals(t.getAssigneeId()) || loginIsProdMgr);
         }
-        if (!active || !isOperator) {
-            return actions;
-        }
-        if (rowAssignAllowed && remaining.signum() > 0) {
-            actions.add("ASSIGN");
-        }
-        if (t.getParentTaskId() != null && remaining.signum() > 0) {
-            actions.add("RETURN");
-        }
-        if (childAssigned.signum() > 0) {
-            actions.add("RECALL");
-        }
         // 2026-09-09 完成链简化（Leo 定）：任务级完成动作从派工/任务列表移除——
         // 中间节点报工后自动完成，根任务由工序执行「完工」按钮收口，COMPLETE 不再投影。
         // （complete API 仍保留作后端兑底，但不再作为任何界面业务入口）
-        return actions;
+        return AllowedActionEnum.codesOf(AllowedActionResolver.forProductionTask(
+                t.getStatus(), isOperator, rowAssignAllowed, t.getParentTaskId() != null,
+                remaining, childAssigned));
     }
 
     private static String statusLabel(String status) {

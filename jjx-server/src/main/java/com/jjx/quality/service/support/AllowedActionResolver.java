@@ -141,6 +141,29 @@ public final class AllowedActionResolver {
         return actions;
     }
 
+    /** 生产任务树动作投影：身份、状态、数量与树结构规则的唯一出处。 */
+    public static List<AllowedActionEnum> forProductionTask(String status, boolean operator,
+                                                             boolean assignAllowed, boolean hasParent,
+                                                             BigDecimal remaining, BigDecimal childAssigned) {
+        List<AllowedActionEnum> actions = new ArrayList<>();
+        actions.add(AllowedActionEnum.TASK_FLOW);
+        String normalized = status == null ? "" : status.trim().toUpperCase();
+        boolean active = "PENDING".equals(normalized) || "ACTIVE".equals(normalized);
+        if (!active || !operator) {
+            return actions;
+        }
+        if (assignAllowed && nz(remaining).signum() > 0) {
+            actions.add(AllowedActionEnum.TASK_ASSIGN);
+        }
+        if (hasParent && nz(remaining).signum() > 0) {
+            actions.add(AllowedActionEnum.TASK_RETURN);
+        }
+        if (nz(childAssigned).signum() > 0) {
+            actions.add(AllowedActionEnum.TASK_RECALL);
+        }
+        return actions;
+    }
+
     private static BigDecimal nz(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }

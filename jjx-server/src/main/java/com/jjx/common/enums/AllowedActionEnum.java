@@ -35,6 +35,10 @@ public enum AllowedActionEnum {
     NCR_REWORK_RETURN("NCR_REWORK_RETURN", "返工退料", Domain.INVENTORY, "inventory:outbound:rework-return"),
 
     // ==================== 生产（工单 / 工序，后续切片接入） ====================
+    TASK_FLOW("FLOW", "流转记录", Domain.PRODUCTION, "production:task:list"),
+    TASK_ASSIGN("ASSIGN", "分配", Domain.PRODUCTION, "production:task:assign"),
+    TASK_RETURN("RETURN", "退回", Domain.PRODUCTION, "production:task:return"),
+    TASK_RECALL("RECALL", "收回", Domain.PRODUCTION, "production:task:recall"),
     ORDER_SUPPLEMENT("ORDER_SUPPLEMENT", "补产（补报）", Domain.PRODUCTION, "production:work-report:add"),
     ORDER_COMPLETE("ORDER_COMPLETE", "完成工单", Domain.PRODUCTION, "production:operation-execution:edit"),
     ORDER_INBOUND_RETRY("ORDER_INBOUND_RETRY", "重试完工入库", Domain.PRODUCTION, "production:operation-execution:edit"),
