@@ -166,6 +166,12 @@ export interface QualityNcr {
   status: string
   disposedQuantity?: number
   inspector?: string
+  /** 展示用：检验批号 —— dev-20260923-036（台账列表不再显示「批 #11」） */
+  lotNo?: string
+  /** 展示用：工单号 —— dev-20260923-036 */
+  orderNo?: string
+  /** 展示用：来源批已被后继复检版本取代 —— dev-20260923-036 */
+  lotSuperseded?: boolean
 }
 
 export interface QualityNcrAction {

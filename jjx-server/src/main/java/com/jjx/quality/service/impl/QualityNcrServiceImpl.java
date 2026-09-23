@@ -144,7 +144,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     @Override
     public IPage<QualityNcr> pageNcrs(QualityLotQueryDTO query) {
         QualityLotQueryDTO q = query == null ? new QualityLotQueryDTO() : query;
-        return ncrMapper.selectPage(new Page<>(q.getPageNum(), q.getPageSize()),
+        IPage<QualityNcr> page = ncrMapper.selectPage(new Page<>(q.getPageNum(), q.getPageSize()),
                 new LambdaQueryWrapper<QualityNcr>()
                         .eq(StringUtils.isNotBlank(q.getLotType()), QualityNcr::getLotType, q.getLotType())
                         .eq(StringUtils.isNotBlank(q.getStatus()), QualityNcr::getStatus, q.getStatus())
@@ -153,6 +153,55 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                         .eq(StringUtils.isNotBlank(q.getMaterialCode()), QualityNcr::getMaterialCode, q.getMaterialCode())
                         .eq(StringUtils.isNotBlank(q.getBatchNo()), QualityNcr::getBatchNo, q.getBatchNo())
                         .orderByDesc(QualityNcr::getNcrId));
+        // dev-20260923-036：台账列表补展示字段（检验批号 / 工单号 / 来源批是否已失效），
+        // 原来页面只能显示「工单 #2 / 批 #11」这种裸 ID，看不出对的是哪张单、哪张批。
+        fillDisplayFields(page.getRecords());
+        return page;
+    }
+
+    /** 台账列表展示字段回填（不落库）：批号、工单号、来源批已失效标记 */
+    private void fillDisplayFields(List<QualityNcr> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        java.util.Set<Long> lotIds = rows.stream().map(QualityNcr::getLotId)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        java.util.Map<Long, QualityLot> lotMap = new java.util.HashMap<>();
+        java.util.Set<Long> superseded = new java.util.HashSet<>();
+        if (!lotIds.isEmpty()) {
+            for (QualityLot lot : qualityLotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                    .in(QualityLot::getLotId, lotIds))) {
+                lotMap.put(lot.getLotId(), lot);
+            }
+            for (QualityLot child : qualityLotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                    .in(QualityLot::getParentLotId, lotIds))) {
+                if (child.getParentLotId() != null) {
+                    superseded.add(child.getParentLotId());
+                }
+            }
+        }
+        java.util.Map<Long, String> orderNoMap = new java.util.HashMap<>();
+        for (QualityNcr row : rows) {
+            if (row.getOrderId() != null && !orderNoMap.containsKey(row.getOrderId())) {
+                try {
+                    com.jjx.production.domain.entity.ProductionOrder order =
+                            productionOrderMapper.selectById(row.getOrderId());
+                    orderNoMap.put(row.getOrderId(), order == null ? null : order.getOrderNo());
+                } catch (Exception e) {
+                    orderNoMap.put(row.getOrderId(), null);
+                }
+            }
+        }
+        for (QualityNcr row : rows) {
+            QualityLot lot = row.getLotId() == null ? null : lotMap.get(row.getLotId());
+            if (lot != null) {
+                row.setLotNo(lot.getLotNo());
+                row.setLotSuperseded(superseded.contains(lot.getLotId()));
+            }
+            if (row.getOrderId() != null) {
+                row.setOrderNo(orderNoMap.get(row.getOrderId()));
+            }
+        }
     }
 
     @Override

@@ -18,6 +18,18 @@ import java.time.LocalDateTime;
 @TableName("quality_ncr")
 public class QualityNcr {
 
+    /** 展示用：检验批号（不落库）—— dev-20260923-036（台账不再显示「批 #11」这种裸 ID） */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String lotNo;
+
+    /** 展示用：工单号（不落库）—— dev-20260923-036 */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String orderNo;
+
+    /** 展示用：来源批是否已被后继复检版本取代（不落库）—— dev-20260923-036 */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean lotSuperseded;
+
     @TableId(type = IdType.AUTO)
     private Long ncrId;
 

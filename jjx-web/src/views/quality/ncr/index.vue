@@ -37,7 +37,12 @@
         </el-table-column>
         <el-table-column label="工单/来源" min-width="150">
           <template #default="{ row }">
-            {{ row.orderId ? '工单 #' + row.orderId : '批 #' + row.lotId }}
+            <!-- dev-20260923-036：显示单号而不是裸 ID（原来「工单 #2 / 批 #11」看不出对的是谁） -->
+            <div>{{ row.orderNo || (row.orderId ? '工单 #' + row.orderId : '-') }}</div>
+            <div v-if="row.lotNo" class="sub">
+              检验批 {{ row.lotNo }}
+              <el-tag v-if="row.lotSuperseded" size="small" type="info" effect="plain">已失效</el-tag>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="物料/产品" min-width="150">
@@ -165,15 +170,10 @@
               <div v-if="reworkOf(row)?.reinspectionLotNo" class="rework-tip">
                 复检批 {{ reworkOf(row)?.reinspectionLotNo }}
               </div>
-              <!-- dev-20260923-033：返工任务没派工就没人能报工 → 给一个直接过去的入口 -->
-              <el-button
-                v-if="reworkOf(row)?.executionId"
-                link
-                type="primary"
-                size="small"
-                @click="gotoReworkTask(row)"
-                >去派工</el-button
-              >
+              <!-- dev-20260923-036：台账不承担派工动作（用户反馈：派工不该在这里）→ 只提示去哪派 -->
+              <div v-if="reworkOf(row)?.executionId" class="rework-tip">
+                待派工：到「生产管理 → 派工管理」选该工单把这道返工任务派给工人
+              </div>
             </div>
             <div v-else-if="row.reinspectionLotId" class="rework-tip">
               复检批 #{{ row.reinspectionLotId }}
@@ -355,18 +355,6 @@ const actions = ref<QualityNcrAction[]>([])
 const reworkTraceMap = ref<Record<number, ReworkTraceVO>>({})
 const reworkOf = (row: QualityNcrAction) =>
   row?.actionId ? reworkTraceMap.value[row.actionId] || null : null
-/** dev-20260923-033：跳到「工序执行」并带上该返工工序（那边会自动选中工单并打开这道工序的抽屉） */
-const gotoReworkTask = (row: QualityNcrAction) => {
-  const trace = reworkOf(row)
-  if (!trace?.executionId) return
-  router.push({
-    path: '/production/execution',
-    query: {
-      orderId: current.value?.orderId ? String(current.value.orderId) : undefined,
-      executionId: String(trace.executionId),
-    },
-  })
-}
 const supplementVisible = ref(false)
 const supplementing = ref(false)
 const supplementAction = ref<QualityNcrAction | null>(null)
