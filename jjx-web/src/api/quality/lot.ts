@@ -21,6 +21,27 @@ export interface QualityLotItem {
   sortOrder?: number
 }
 
+/**
+ * 判定护栏（dev-20260923-021 一期）：可判合格上界与预填建议
+ * guardAvailable=false 表示护栏降级（查询异常），前端应退回原行为、不阻塞
+ */
+export interface JudgementGuardVO {
+  lotId: number
+  lotNo?: string
+  lotQuantity: number
+  /** 链上已报废且未回收量（SCRAP 且 DONE） */
+  scrappedQuantity: number
+  /** 链上让步接收但客户未确认量（CONCESSION 且 DONE 且未确认） */
+  concessionPendingQuantity: number
+  /** 可判合格上限 */
+  upperBound: number
+  suggestedPass: number
+  suggestedFail: number
+  needWarning: boolean
+  message?: string
+  guardAvailable: boolean
+}
+
 export interface QualityLot {
   lotId: number
   lotNo: string
@@ -179,6 +200,13 @@ export const qualityLotApi = {
   reinspect(lotId: number) {
     return request.post<R<QualityLot>>(`/quality/lot/${lotId}/reinspect`)
   },
+  /**
+   * 判定护栏（dev-20260923-021 一期）：可判合格上界 + 预填建议
+   * 上界 = 批批量 − 链上已报废未回收 − 让步未客户确认；已报废的量不得重判为良品
+   */
+  judgementGuard(lotId: number) {
+    return request.get<R<JudgementGuardVO>>(`/quality/lot/${lotId}/judgement-guard`)
+  },
   /** dev-20260922-030：重开已关闭的检验批（必须给原因，留痕） */
   reopen(lotId: number, reason: string) {
     return request.post<R<QualityLot>>(`/quality/lot/${lotId}/reopen`, null, {
@@ -210,6 +238,14 @@ export const qualityNcrApi = {
   },
   completeAction(actionId: number, params?: Record<string, unknown>) {
     return request.post<R<QualityNcrAction>>(`/quality/ncr/action/${actionId}/complete`, null, { params })
+  },
+  /**
+   * 撤销已生效的处置（dev-20260923-022 二期）：受控动作 —— 必填原因，留痕；本期支持报废(SCRAP)
+   */
+  revokeAction(actionId: number, reason: string) {
+    return request.post<R<QualityNcrAction>>(`/quality/ncr/action/${actionId}/revoke`, null, {
+      params: { reason },
+    })
   },
 }
 

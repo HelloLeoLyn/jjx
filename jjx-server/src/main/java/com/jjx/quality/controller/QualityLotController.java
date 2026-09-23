@@ -102,6 +102,13 @@ public class QualityLotController {
         return Result.success(qualityFinishService.reinspectLot(lotId));
     }
 
+    @Operation(summary = "判定护栏（dev-20260923-021）：可判合格上界 + 预填建议（已报废/让步未确认量不得重判为良品）")
+    @SaCheckPermission("quality:lot:view")
+    @GetMapping("/{lotId}/judgement-guard")
+    public Result<com.jjx.quality.dto.vo.JudgementGuardVO> judgementGuard(@PathVariable Long lotId) {
+        return Result.success(qualityLotService.evaluateJudgementGuard(lotId));
+    }
+
     @Operation(summary = "重开已关闭的检验批（CLOSED→已判定，必须填原因留痕；入库后发现问题再复检用）")
     @SaCheckPermission("quality:lot:judge")
     @PostMapping("/{lotId}/reopen")

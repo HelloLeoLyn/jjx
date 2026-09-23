@@ -240,6 +240,24 @@
       <el-form label-width="100px">
         <el-form-item label="检验批">{{ current?.lotNo }}</el-form-item>
         <el-form-item label="批量">{{ num(current?.lotQuantity) }}</el-form-item>
+        <!-- dev-20260923-021：链上有已报废/让步未确认时，界面先把口径说清（上界=批量−不可回收量） -->
+        <el-alert
+          v-if="guardInfo && guardInfo.needWarning"
+          class="judge-guard-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="`本批可判合格上限 ${num(guardInfo.upperBound)}`"
+        >
+          <span>
+            链上有 {{ num(guardInfo.scrappedQuantity) }} 件已报废不可回收
+            <template v-if="Number(guardInfo.concessionPendingQuantity || 0) > 0">
+              、{{ num(guardInfo.concessionPendingQuantity) }} 件让步待客户确认
+            </template>
+            。已按上限预填；如需放行，请先登记<b>返工处置</b>并走返工复检，或按<b>让步接收</b>处理（需客户确认）；
+            若原报废判定有误，可先「**撤销**」该报废处置再重判。
+          </span>
+        </el-alert>
         <el-form-item label="检验数量" required>
           <el-input-number
             v-model="judgeForm.inspectedQuantity"
@@ -247,7 +265,7 @@
             :max="Number(current?.lotQuantity || 0)"
           />
         </el-form-item>
-        <el-form-item label="合格数量" required>
+        <el-form-item :label="passLabel" required>
           <el-input-number v-model="judgeForm.passQuantity" :min="0" />
         </el-form-item>
         <el-form-item label="不良数量" required>
@@ -263,6 +281,9 @@
         </el-form-item>
         <div class="judge-tip">
           合格 + 不良 必须等于检验数量；不良会自动进不良台账（成品按差额入库，复检只调差额）
+          <template v-if="guardInfo && guardInfo.needWarning">
+            <br />可判合格上限 <b>{{ num(guardInfo.upperBound) }}</b>（已扣减链上已报废/让步未确认量，不可回填良品）
+          </template>
         </div>
       </el-form>
       <template #footer>
@@ -277,7 +298,7 @@
 import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { qualityLotApi, type QualityLot, type QualityLotItem } from '@/api/quality/lot'
+import { qualityLotApi, type QualityLot, type QualityLotItem, type JudgementGuardVO } from '@/api/quality/lot'
 import { InspectionResult } from '@/enums/quality'
 import { hasPermi } from '@/directives'
 
@@ -488,8 +509,35 @@ const judgeForm = reactive({
   failQuantity: 0,
   defectReason: '',
 })
+/**
+ * dev-20260923-021 一期：判定护栏（可判合格上界）
+ * 打开判定弹窗时取上界：链上有已报废/让步未确认时，默认把「合格」预填为上界、「不良」预填为差额，
+ * 避免把已报废量重判回良品（业内数量守恒）；接口异常/无权限时静默降级，保持原行为。
+ */
+const guardInfo = ref<JudgementGuardVO | null>(null)
+const guardLoading = ref(false)
+const passLabel = computed(() =>
+  guardInfo.value && guardInfo.value.needWarning
+    ? `合格数量（上限 ${num(guardInfo.value.upperBound)}）`
+    : '合格数量'
+)
+
+const loadGuard = async (lotId: number) => {
+  guardInfo.value = null
+  guardLoading.value = true
+  try {
+    const res: any = await qualityLotApi.judgementGuard(lotId)
+    const g = res?.data as JudgementGuardVO | undefined
+    if (g && g.guardAvailable) guardInfo.value = g
+  } catch {
+    guardInfo.value = null // 降级：不阻塞判定
+  } finally {
+    guardLoading.value = false
+  }
+}
+
 /** dev-20260922-011（G2）：支持从「录入」带过来的数量预填（检验=批量、不良=录入里不合格项的 CR+MA+MI 合计、合格=差额） */
-const openJudge = (row: QualityLot, prefill?: { failQuantity?: number }) => {
+const openJudge = async (row: QualityLot, prefill?: { failQuantity?: number }) => {
   current.value = row
   const inspected = Number(row.lotQuantity || 0)
   const fail = Math.max(0, Number(prefill?.failQuantity || 0))
@@ -498,6 +546,13 @@ const openJudge = (row: QualityLot, prefill?: { failQuantity?: number }) => {
   judgeForm.passQuantity = Math.max(0, inspected - fail)
   judgeForm.defectReason = ''
   judgeVisible.value = true
+  // 护栏：链上有不可回收量时按上限预填（优先级高于录入预填）
+  await loadGuard(Number(row.lotId))
+  if (guardInfo.value && guardInfo.value.needWarning) {
+    judgeForm.inspectedQuantity = inspected
+    judgeForm.passQuantity = Number(guardInfo.value.suggestedPass || 0)
+    judgeForm.failQuantity = Number(guardInfo.value.suggestedFail || 0)
+  }
 }
 const submitJudge = async () => {
   if (!current.value) return
@@ -508,6 +563,14 @@ const submitJudge = async () => {
   if (pass + fail !== inspected) return ElMessage.warning('合格数量 + 不良数量必须等于检验数量')
   if (fail > 0 && !judgeForm.defectReason.trim())
     return ElMessage.warning('有不良时必须填写不良原因')
+  // dev-20260923-021：提交前先拦一道（后端同样校验，双保险）
+  if (guardInfo.value && guardInfo.value.needWarning && pass > Number(guardInfo.value.upperBound || 0)) {
+    return ElMessage.warning(
+      `本批可判合格上限 ${num(guardInfo.value.upperBound)}（已扣减已报废 ${num(
+        guardInfo.value.scrappedQuantity
+      )} 件）；请先登记返工处置并走返工复检，或按让步接收处理`
+    )
+  }
   judging.value = true
   try {
     await qualityLotApi.judge(current.value.lotId, {
@@ -666,5 +729,9 @@ onMounted(() => load(1))
   font-size: 12px;
   line-height: 1.8;
   color: #606266;
+}
+
+.judge-guard-alert {
+  margin: 0 0 12px;
 }
 </style>

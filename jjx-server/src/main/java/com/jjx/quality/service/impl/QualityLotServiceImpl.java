@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -304,6 +305,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (pass.add(fail).compareTo(inspected) != 0) {
             throw new BusinessException("合格数量 + 不良数量必须等于检验数量");
         }
+        // 2026-09-23（dev-20260923-021 一期）：可判合格上界护栏 ——
+        // 链上已报废（SCRAP DONE，未回收）/ 让步未客户确认的量，不得通过换版本重判回良品（业内数量守恒）。
+        com.jjx.quality.dto.vo.JudgementGuardVO guard = buildJudgementGuard(lot);
+        if (Boolean.TRUE.equals(guard.getGuardAvailable())
+                && pass.compareTo(guard.getUpperBound()) > 0) {
+            throw new BusinessException(judgementGuardMessage(guard, pass));
+        }
         lot.setInspectedQuantity(inspected);
         lot.setPassQuantity(pass);
         lot.setFailQuantity(fail);
@@ -418,6 +426,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
         BigDecimal qualified = BigDecimal.ZERO;
         BigDecimal undisposed = BigDecimal.ZERO;
+        BigDecimal disposedTotal = BigDecimal.ZERO;
+        java.util.Set<Long> allNcrIds = new java.util.HashSet<>();
         int pending = 0;
         int effective = 0;
         for (QualityLot lot : lots) {
@@ -431,6 +441,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 continue;
             }
             qualified = qualified.add(nz(lot.getPassQuantity()));
+            disposedTotal = disposedTotal.add(nz(lot.getDisposedQuantity()));
             BigDecimal left = nz(lot.getFailQuantity()).subtract(nz(lot.getDisposedQuantity()));
             // 返工登记时数量已被预占，但只有报工完成且复检合格才算真正处置完成。
             // 将未完成返工动作加回完工门禁，防止 PROCESSING 状态绕过工单完工检查。
@@ -439,6 +450,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                             .eq(com.jjx.quality.domain.entity.QualityNcr::getLotId, lot.getLotId()));
             if (!lotNcrs.isEmpty()) {
                 List<Long> ncrIds = lotNcrs.stream().map(com.jjx.quality.domain.entity.QualityNcr::getNcrId).toList();
+                allNcrIds.addAll(ncrIds);
                 BigDecimal processingRework = ncrActionMapper.selectList(
                                 new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
                                         .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, ncrIds)
@@ -452,10 +464,23 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 undisposed = undisposed.add(left);
             }
         }
+        // dev-20260923-028：已登记报废合计（一句话原因用）——按本单全部不良单一次性汇总，避免逐批查询
+        BigDecimal scrapped = BigDecimal.ZERO;
+        if (!allNcrIds.isEmpty()) {
+            scrapped = ncrActionMapper.selectList(
+                            new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
+                                    .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, allNcrIds)
+                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getActionType, "SCRAP")
+                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getStatus, "DONE"))
+                    .stream().map(com.jjx.quality.domain.entity.QualityNcrAction::getQuantity)
+                    .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
         summary.setEffectiveLotCount(effective);
         summary.setPendingCount(pending);
         summary.setQualifiedTotal(qualified);
         summary.setUndisposedFailQuantity(undisposed);
+        summary.setDisposedFailTotal(disposedTotal);
+        summary.setScrappedTotal(scrapped);
         return summary;
     }
 
@@ -514,21 +539,127 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         return value == null ? BigDecimal.ZERO : value;
     }
 
-}
-        BigDecimal disposedTotal = BigDecimal.ZERO;
-        java.util.Set<Long> allNcrIds = new java.util.HashSet<>();
-            disposedTotal = disposedTotal.add(nz(lot.getDisposedQuantity()));
-                allNcrIds.addAll(ncrIds);
-        // dev-20260923-028：已登记报废合计（一句话原因用）——按本单全部不良单一次性汇总，避免逐批查询
-        BigDecimal scrapped = BigDecimal.ZERO;
-        if (!allNcrIds.isEmpty()) {
-            scrapped = ncrActionMapper.selectList(
-                            new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
-                                    .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, allNcrIds)
-                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getActionType, "SCRAP")
-                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getStatus, "DONE"))
-                    .stream().map(com.jjx.quality.domain.entity.QualityNcrAction::getQuantity)
-                    .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+    // ==================== 判定护栏（dev-20260923-021 一期） ====================
+
+    /**
+     * 判定护栏（对外只读）：可判合格上界 = 批批量 − 链上已报废未回收 − 让步未客户确认。
+     * 设计依据 jjx-docs/design/fqc-judgement-upper-bound-dev-20260923-021.md。
+     */
+    @Override
+    public com.jjx.quality.dto.vo.JudgementGuardVO evaluateJudgementGuard(Long lotId) {
+        return buildJudgementGuard(getLot(lotId));
+    }
+
+    /**
+     * 计算护栏：实时汇总链上处置单（quality_ncr_action，DONE）；
+     * SCRAP → 不可回收（扣减）；CONCESSION 未确认 → 扣减；REWORK → 可回收（不扣减，回收走返工后的复检批）。
+     * 任何异常都降级为「不校验」（guardAvailable=false + WARN），宁可不挡也不做错杀。
+     */
+    private com.jjx.quality.dto.vo.JudgementGuardVO buildJudgementGuard(QualityLot lot) {
+        com.jjx.quality.dto.vo.JudgementGuardVO vo = new com.jjx.quality.dto.vo.JudgementGuardVO();
+        vo.setLotId(lot.getLotId());
+        vo.setLotNo(lot.getLotNo());
+        vo.setLotQuantity(nz(lot.getLotQuantity()));
+        vo.setScrappedQuantity(BigDecimal.ZERO);
+        vo.setConcessionPendingQuantity(BigDecimal.ZERO);
+        vo.setGuardAvailable(true);
+        try {
+            List<Long> chainIds = chainLotIds(lot);
+            BigDecimal scrap = BigDecimal.ZERO;
+            BigDecimal concessionPending = BigDecimal.ZERO;
+            if (!chainIds.isEmpty()) {
+                for (Map<String, Object> row : ncrActionMapper.sumDoneActionsByLotIds(chainIds)) {
+                    String type = row.get("actionType") == null ? "" : String.valueOf(row.get("actionType"));
+                    BigDecimal qty = toDecimal(row.get("qty"));
+                    BigDecimal confirmed = toDecimal(row.get("confirmedQty"));
+                    if ("SCRAP".equalsIgnoreCase(type)) {
+                        scrap = scrap.add(qty);
+                    } else if ("CONCESSION".equalsIgnoreCase(type)) {
+                        BigDecimal unconfirmed = qty.subtract(confirmed);
+                        if (unconfirmed.signum() > 0) {
+                            concessionPending = concessionPending.add(unconfirmed);
+                        }
+                    }
+                }
+            }
+            vo.setScrappedQuantity(scrap);
+            vo.setConcessionPendingQuantity(concessionPending);
+            BigDecimal upper = com.jjx.quality.service.support.JudgementBoundCalculator
+                    .upperBound(vo.getLotQuantity(), scrap, concessionPending);
+            vo.setUpperBound(upper);
+            vo.setSuggestedPass(upper);
+            vo.setSuggestedFail(com.jjx.quality.service.support.JudgementBoundCalculator
+                    .suggestedFail(vo.getLotQuantity(), upper));
+            vo.setNeedWarning(com.jjx.quality.service.support.JudgementBoundCalculator
+                    .needWarning(vo.getLotQuantity(), upper));
+            if (Boolean.TRUE.equals(vo.getNeedWarning())) {
+                vo.setMessage(judgementGuardMessage(vo, null));
+            }
+        } catch (Exception e) {
+            log.warn("判定护栏计算失败，已降级为不校验: lotId={} err={}", lot.getLotId(), e.getMessage());
+            vo.setGuardAvailable(false);
+            vo.setUpperBound(vo.getLotQuantity());
+            vo.setSuggestedPass(vo.getLotQuantity());
+            vo.setSuggestedFail(BigDecimal.ZERO);
+            vo.setNeedWarning(false);
+            vo.setMessage(null);
         }
-        summary.setDisposedFailTotal(disposedTotal);
-        summary.setScrappedTotal(scrapped);
+        return vo;
+    }
+
+    /** 批链（含自身）：沿 parent_lot_id 回溯，限 50 跳防脏数据成环 */
+    private List<Long> chainLotIds(QualityLot lot) {
+        List<Long> ids = new ArrayList<>();
+        Set<Long> seen = new HashSet<>();
+        QualityLot cur = lot;
+        int hop = 0;
+        while (cur != null && cur.getLotId() != null && seen.add(cur.getLotId()) && hop++ < 50) {
+            ids.add(cur.getLotId());
+            Long parentId = cur.getParentLotId();
+            cur = parentId == null ? null : lotMapper.selectById(parentId);
+        }
+        return ids;
+    }
+
+    /**
+     * 护栏提示文案（可操作）：说清上限、不可回收量、以及两条合法出路（返工 / 让步）。
+     *
+     * @param submitted 本次提交的合格量（null = 仅用于展示）
+     */
+    private String judgementGuardMessage(com.jjx.quality.dto.vo.JudgementGuardVO vo, BigDecimal submitted) {
+        StringBuilder sb = new StringBuilder();
+        if (submitted != null) {
+            sb.append("合格数量 ").append(submitted.stripTrailingZeros().toPlainString())
+              .append(" 超过本批可判合格上限 ").append(vo.getUpperBound().stripTrailingZeros().toPlainString()).append("；");
+        }
+        sb.append("本批可判合格上限 ").append(vo.getUpperBound().stripTrailingZeros().toPlainString())
+          .append("（批批量 ").append(vo.getLotQuantity().stripTrailingZeros().toPlainString());
+        if (nz(vo.getScrappedQuantity()).signum() > 0) {
+            sb.append(" − 已报废 ").append(vo.getScrappedQuantity().stripTrailingZeros().toPlainString());
+        }
+        if (nz(vo.getConcessionPendingQuantity()).signum() > 0) {
+            sb.append(" − 让步未确认 ").append(vo.getConcessionPendingQuantity().stripTrailingZeros().toPlainString());
+        }
+        sb.append("）。已报废/让步未确认的数量不可回填良品；如需放行，请先登记")
+          .append("返工处置（REWORK）并走返工复检，或按让步接收处理（需客户确认）；")
+          .append("若原报废判定有误，可先「撤销」该报废处置（需质量主管权限）再重新判定。");
+        return sb.toString();
+    }
+
+    private BigDecimal toDecimal(Object v) {
+        if (v == null) {
+            return BigDecimal.ZERO;
+        }
+        if (v instanceof BigDecimal) {
+            return (BigDecimal) v;
+        }
+        if (v instanceof Number) {
+            return BigDecimal.valueOf(((Number) v).doubleValue());
+        }
+        try {
+            return new BigDecimal(String.valueOf(v));
+        } catch (Exception e) {
+            return BigDecimal.ZERO;
+        }
+    }
+}
