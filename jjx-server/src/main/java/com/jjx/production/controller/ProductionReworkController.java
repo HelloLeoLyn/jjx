@@ -1,6 +1,7 @@
 package com.jjx.production.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.vo.ReworkTraceVO;
 import com.jjx.production.service.ProductionReworkTraceService;
@@ -26,7 +27,8 @@ public class ProductionReworkController {
     private final ProductionReworkTraceService reworkTraceService;
 
     @Operation(summary = "返工链投影（按工单/返工工序/不良单查，只读）")
-    @SaCheckPermission("production:operation-execution:view")
+    // 不良台账页（质量账号）也要读这条链 → 生产或质量任一查看权限即可（实测：质量账号 无 production 权限时返回 500 无此权限）
+    @SaCheckPermission(value = {"production:operation-execution:view", "quality:ncr:view"}, mode = SaMode.OR)
     @GetMapping("/trace")
     public Result<List<ReworkTraceVO>> trace(@RequestParam(required = false) Long orderId,
                                             @RequestParam(required = false) Long executionId,
