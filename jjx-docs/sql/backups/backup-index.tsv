@@ -1,2 +1,4 @@
 time	kind	file	md5	bytes	tables	agent	task
 2026-09-23 23:57:00	guard	sys_task_dispatch_filter_20260923-2358.sql	118e84bb1829c427630ef52e29b41382	1160541	1	Codex	dev-20260923-057
+2026-09-24 00:07:52	guard	sys_task_register_20260924-001_before_inventory_ledger.sql	b8c4860fc71e7b783a57b79601f2498e	1162030	1	Codex	dev-20260924-001
+2026-09-24 00:20:16	table	jjx_table_backup_20260924-0020_before-212.sql	8b0e77fb27c7d8a68d33f290e55f8cd4	63716	1	agent	dev-20260924-001

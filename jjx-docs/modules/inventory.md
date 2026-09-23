@@ -13,7 +13,8 @@
 |---|---|---|---|
 | 物料档案 | 19 | material | inventory:material:view |
 | 仓库与库位 | 23 | warehouse | inventory:warehouse:view |
-| 库存台账 | 26 | stock | inventory:stock:view |
+| 即时库存 | 26 | stock | inventory:stock:view |
+| 收发明细 | 126 | transaction | inventory:transaction:view |
 | 入库作业 | 28 | inbound | inventory:inbound:view |
 | 出库作业 | 33 | outbound | inventory:outbound:view |
 | 盘点作业 | 34 | stocktake | inventory:stocktake:view |
@@ -53,6 +54,7 @@
 - **变动唯一入口** `InventoryStockMutationService.applyDelta`（改批次明细 + 重算汇总 + 写流水一次做完，禁止旁路直接 UPDATE 余额）；
 - **批次可追溯**（业务批次与流水都带批次号，可正查到单、反查到批）；
 - ⛔ **不给批次表加「累计入库/累计出库」列**（避免第二真源，收发一律由流水实时聚合）。
+- **页面分工**：即时库存回答“现在有多少”（余额/批次库存）；收发明细回答“为什么形成这个余额”（逐笔收入、发出、变动前后余额），即时库存可按物料直接联查收发明细。
 
 ### 2. 入库过账只发生在「确认入库」
 

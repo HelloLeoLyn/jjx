@@ -1,6 +1,6 @@
 <template>
   <el-dialog
-    title="批次明细（收发存）"
+    title="批次库存（收发存）"
     v-model="dialogVisible"
     width="90%"
     append-to-body
@@ -94,7 +94,7 @@
       </el-form>
     </el-card>
 
-    <!-- 批次明细表格（收发存三栏） -->
+    <!-- 批次库存表格（收发存三栏） -->
     <el-card class="table-card" shadow="never">
       <el-table v-loading="loading" :data="displayList" border style="width: 100%" max-height="420">
         <el-table-column label="批次号" prop="batchNo" width="150" show-overflow-tooltip />
@@ -197,7 +197,7 @@ import type {
 import BatchTransactionDrawer from './BatchTransactionDrawer.vue'
 
 /**
- * 批次明细（收发存口径，dev-20260923-017 一期）
+ * 批次库存（收发存口径，dev-20260923-017 一期）
  *
  * 展示口径（业内「收发存台账」）：
  *  - 入库数量 / 已出库 = 由库存流水（inventory_transaction）按批次聚合得到（唯一真源）；

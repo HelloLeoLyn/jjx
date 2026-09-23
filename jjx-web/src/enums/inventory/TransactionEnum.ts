@@ -20,10 +20,11 @@ export const TransactionTypeEnum = createEnum({
  */
 export const SourceTypeEnum = createEnum({
   items: [
-    { value: 'purchase_order', label: '采购订单', tagProps: { type: 'primary' } },
-    { value: 'work_order', label: '生产工单', tagProps: { type: 'warning' } },
-    { value: 'sales_order', label: '销售订单', tagProps: { type: 'success' } },
+    { value: 'purchase', label: '采购入库', tagProps: { type: 'primary' } },
+    { value: 'production', label: '生产工单', tagProps: { type: 'warning' } },
+    { value: 'sales', label: '销售订单', tagProps: { type: 'success' } },
     { value: 'stocktake', label: '盘点单', tagProps: { type: 'info' } },
+    { value: 'transfer', label: '调拨单', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },
 })

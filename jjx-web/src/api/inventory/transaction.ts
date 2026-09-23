@@ -1,8 +1,9 @@
 import request from '@/utils/request'
-import type { R } from '@/types'
+import type { PageResult, R } from '@/types'
 
 export interface TransactionVO {
   transactionId: number
+  inventoryItemId: number
   materialId: number
   materialCode: string
   materialName: string
@@ -27,6 +28,29 @@ export interface TransactionVO {
   operatorName?: string
   createTime?: string
   remark?: string
+}
+
+export interface TransactionQueryParams {
+  current: number
+  pageSize: number
+  inventoryItemId?: string | number
+  materialCode?: string
+  materialName?: string
+  warehouseId?: number
+  transactionType?: string
+  sourceType?: string
+  sourceNo?: string
+  batchNo?: string
+  transactionTimeStart?: string
+  transactionTimeEnd?: string
+}
+
+/** 收发明细分页（流水唯一真源）。 */
+export function getTransactionPage(params: TransactionQueryParams) {
+  const { pageSize, ...rest } = params
+  return request.get<R<PageResult<TransactionVO>>>('/inventory/transaction/list', {
+    params: { ...rest, size: pageSize },
+  })
 }
 
 // DEV-661：按单据号查库存流水（出入库详情展示）

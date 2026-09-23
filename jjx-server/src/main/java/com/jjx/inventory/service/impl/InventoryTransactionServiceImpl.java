@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.inventory.domain.InventoryTransaction;
 import com.jjx.inventory.dto.query.TransactionQueryDTO;
 import com.jjx.inventory.dto.vo.TransactionVO;
+import com.jjx.inventory.enums.TransactionTypeEnum;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.service.InventoryTransactionService;
 import lombok.RequiredArgsConstructor;
@@ -35,10 +36,10 @@ public class InventoryTransactionServiceImpl extends ServiceImpl<InventoryTransa
 
     @Override
     public IPage<TransactionVO> page(TransactionQueryDTO query) {
-        // 这里需要实现分页查询，返回TransactionVO
-        // 暂时返回空分页，实际需要实现查询逻辑
         Page<TransactionVO> page = new Page<>(query.getCurrent(), query.getSize());
-        return page;
+        Page<TransactionVO> result = transactionMapper.selectTransactionPage(page, query);
+        result.getRecords().forEach(this::enrichDisplayNames);
+        return result;
     }
 
     @Override
@@ -264,36 +265,37 @@ public class InventoryTransactionServiceImpl extends ServiceImpl<InventoryTransa
         TransactionVO vo = new TransactionVO();
         BeanUtils.copyProperties(transaction, vo);
 
-        // 设置类型名称
-        vo.setTransactionTypeName(getTransactionTypeName(transaction.getTransactionType()));
-        vo.setSourceTypeName(getSourceTypeName(transaction.getSourceType()));
+        enrichDisplayNames(vo);
 
         return vo;
+    }
+
+    private void enrichDisplayNames(TransactionVO vo) {
+        vo.setTransactionTypeName(getTransactionTypeName(vo.getTransactionType()));
+        vo.setSourceTypeName(getSourceTypeName(vo.getSourceType()));
     }
 
     private String getTransactionTypeName(String transactionType) {
         if (transactionType == null) {
             return "";
         }
-        switch (transactionType) {
-            case "inbound": return "入库";
-            case "outbound": return "出库";
-            case "transfer_in": return "调拨入库";
-            case "transfer_out": return "调拨出库";
-            case "adjust": return "盘盈盘亏";
-            default: return transactionType;
-        }
+        TransactionTypeEnum type = TransactionTypeEnum.getByCode(transactionType.toLowerCase());
+        return type == null ? transactionType : type.getLabel();
     }
 
     private String getSourceTypeName(String sourceType) {
         if (sourceType == null) {
             return "";
         }
-        switch (sourceType) {
-            case "purchase_order": return "采购订单";
-            case "work_order": return "工单";
+        switch (sourceType.toLowerCase()) {
+            case "purchase":
+            case "purchase_order": return "采购入库";
+            case "production":
+            case "work_order": return "生产工单";
+            case "sales":
             case "sales_order": return "销售订单";
             case "stocktake": return "盘点单";
+            case "transfer": return "调拨单";
             default: return sourceType;
         }
     }

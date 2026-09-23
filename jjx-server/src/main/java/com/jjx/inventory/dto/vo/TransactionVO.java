@@ -18,6 +18,11 @@ public class TransactionVO {
     private Long transactionId;
 
     /**
+     * 统一库存物品ID
+     */
+    private Long inventoryItemId;
+
+    /**
      * 物料ID
      */
     private Long materialId;

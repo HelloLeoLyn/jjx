@@ -229,9 +229,15 @@
             <el-tag v-else type="success" size="small">正常</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="150" fixed="right">
+        <el-table-column label="操作" min-width="220" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleViewDetail(row)">批次明细</el-button>
+            <el-button link type="primary" @click="handleViewDetail(row)">批次库存</el-button>
+            <el-button
+              v-hasPermi="['inventory:transaction:view']"
+              link
+              type="primary"
+              @click="handleViewTransactions(row)"
+            >收发明细</el-button>
             <el-button link type="primary" @click="handleAdjust(row)">调整</el-button>
           </template>
         </el-table-column>
@@ -254,7 +260,7 @@
       @success="handleImportSuccess"
     />
 
-    <!-- 批次明细对话框 -->
+    <!-- 批次库存对话框 -->
     <StockDetailDialog
       v-model:visible="detailDialogVisible"
       :stock-id="currentStockId"
@@ -331,7 +337,7 @@ const importDialogVisible = ref(false)
 // DEV-697 模式③：批量校验导入
 const batchImportVisible = ref(false)
 
-// 批次明细对话框
+// 批次库存对话框
 const detailDialogVisible = ref(false)
 const currentStockId = ref<string>('')
 const currentInventoryItemId = ref<string>('')
@@ -429,11 +435,23 @@ const handleImportSuccess = () => {
   getAlertInfo()
 }
 
-// 查看批次明细
+// 查看批次库存
 const handleViewDetail = (row: StockVO) => {
   currentStockId.value = row.stockId
   currentInventoryItemId.value = row.inventoryItemId
   detailDialogVisible.value = true
+}
+
+// 从即时库存联查该物料全部批次的收发明细
+const handleViewTransactions = (row: StockVO) => {
+  void router.push({
+    path: '/inventory/transaction',
+    query: {
+      inventoryItemId: row.inventoryItemId,
+      materialCode: row.materialCode,
+      materialName: row.materialName,
+    },
+  })
 }
 
 // 库存调整

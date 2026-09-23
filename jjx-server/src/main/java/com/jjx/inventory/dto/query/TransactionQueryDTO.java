@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 public class TransactionQueryDTO extends Page<Object> {
 
     private Long transactionId;
+    private Long inventoryItemId;
     private Long materialId;
     private String materialCode;
     private String materialName;
