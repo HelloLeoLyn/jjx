@@ -99,6 +99,93 @@ export const InboundSourceTypeEnum = createEnum({
 })
 
 /**
+ * 入库类型取值归一（dev-20260923-012）
+ * 库里的 inbound_type 是大写历史值（PURCHASE / PRODUCTION_FINISH），
+ * 枚举定义是小写（purchase / production），这里做唯一映射，页面不再各写一份。
+ */
+const INBOUND_TYPE_ALIASES: Record<string, string> = {
+  PRODUCTION_FINISH: 'production',
+  PURCHASE_ORDER: 'purchase',
+}
+
+/** 入库单文案上下文：来源与后端下发的名称（仅兜底用） */
+export interface InboundLabelContext {
+  sourceType?: string | null
+  inboundType?: string | null
+  /** 后端 statusName / inboundTypeName；枚举判定不出时才使用 */
+  fallbackName?: string | null
+}
+
+/** 生产来源入库单：source_type=PRODUCTION 或 inbound_type=production/production_finish（dev-20260923-012） */
+export function isProductionInbound(
+  sourceType?: string | null,
+  inboundType?: string | null
+): boolean {
+  const source = (sourceType || '').trim().toUpperCase()
+  const type = (inboundType || '').trim().toUpperCase()
+  return (
+    source === 'PRODUCTION' ||
+    source === 'PRODUCTION_FINISH' ||
+    type === 'PRODUCTION' ||
+    type === 'PRODUCTION_FINISH'
+  )
+}
+
+/**
+ * 红冲单：复检换代生成的冲销单 —— 单号后缀 -R 或数量为负（dev-20260923-012）
+ */
+export function isReverseInbound(
+  inboundNo?: string | null,
+  totalQuantity?: number | string | null
+): boolean {
+  if (String(inboundNo || '').trim().endsWith('-R')) {
+    return true
+  }
+  const quantity = Number(totalQuantity)
+  return Number.isFinite(quantity) && quantity < 0
+}
+
+/**
+ * 入库单状态文案（dev-20260923-012）
+ * 生产来源的 PENDING 语义是「等仓库确认入库」，不是通用审批的「待审批」；
+ * 采购侧维持「待审批」。
+ */
+export function inboundStatusLabel(
+  status?: number | null,
+  ctx: InboundLabelContext = {}
+): string {
+  if (status === undefined || status === null) {
+    return ctx.fallbackName || '-'
+  }
+  if (
+    isProductionInbound(ctx.sourceType, ctx.inboundType) &&
+    status === InboundOrderStatusEnum.PENDING.value
+  ) {
+    return '待确认入库'
+  }
+  if (InboundOrderStatusEnum.canDo(status)) {
+    return InboundOrderStatusEnum.getLabel(status)
+  }
+  return ctx.fallbackName || String(status)
+}
+
+/**
+ * 入库类型文案（dev-20260923-012）
+ * 红冲单在类型列标注「生产入库（红冲）」，不再只靠单号后缀与红色标签识别。
+ */
+export function inboundTypeLabel(
+  inboundType?: string | null,
+  ctx: InboundLabelContext & { reverse?: boolean } = {}
+): string {
+  const raw = (inboundType || '').trim()
+  const normalized = INBOUND_TYPE_ALIASES[raw.toUpperCase()] || raw.toLowerCase()
+  const base = InboundTypeEnum.canDo(normalized)
+    ? InboundTypeEnum.getLabel(normalized)
+    : ctx.fallbackName || raw || '-'
+  return ctx.reverse && base !== '-' ? `${base}（红冲）` : base
+}
+
+/**
  * 入库相关枚举统一导出
  */
 export const InboundEnum = {

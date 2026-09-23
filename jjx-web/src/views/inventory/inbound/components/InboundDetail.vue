@@ -4,13 +4,13 @@
       <!-- 基本信息 -->
       <el-descriptions :column="3" border>
         <el-descriptions-item label="入库单号">{{ inbound.inboundNo }}</el-descriptions-item>
-        <el-descriptions-item label="入库类型">{{ inbound.inboundTypeName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="入库类型">{{ inboundTypeText }}</el-descriptions-item>
         <el-descriptions-item label="仓库">{{ inbound.warehouseName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="供应商">{{ inbound.supplierName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="总数量">{{ formatNumber(inbound.totalQuantity) }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="getStatusTag(inbound.status)" size="small">
-            {{ inbound.statusName || inboundStatusText(inbound.status) }}
+            {{ inboundStatusText }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="创建人">{{ inbound.createBy || '-' }}</el-descriptions-item>
@@ -75,7 +75,13 @@ import { inboundApi } from '@/api/inventory/inbound'
 import { getDiskReceiptFiles } from '@/api/purchase/order'
 import { formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
-import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
+import {
+  InboundOrderStatusEnum,
+  InspectionResultEnum,
+  inboundStatusLabel,
+  inboundTypeLabel,
+  isReverseInbound,
+} from '@/enums/inventory/InboundEnum'
 
 const props = defineProps<{
   inboundId: number | string
@@ -95,20 +101,34 @@ const inspectionResultLabel = (result: string) => {
   return InspectionResultEnum.canDo(normalized) ? InspectionResultEnum.getLabel(normalized) : result
 }
 
-// 状态文本（后端 statusName 缺失时兜底）
-const inboundStatusTextMap: Record<number, string> = {
-  0: '草稿', 1: '待审批', 2: '已批准', 3: '已驳回', 4: '处理中', 5: '已确认',
-  6: '已出库', 7: '已入库', 8: '已关闭', 9: '已取消', 10: '已完成', 11: '已处理', 12: '调拨中',
-}
-const inboundStatusText = (status?: number) =>
-  status === undefined || status === null ? '-' : inboundStatusTextMap[status] || String(status)
-
+/** 红冲单：复检换代生成的负数量单（单号后缀 -R 或数量为负）（dev-20260923-012） */
+const isReverse = computed(() =>
+  isReverseInbound(inbound.value?.inboundNo, inbound.value?.totalQuantity)
+)
+/** 类型文案：红冲单标注「生产入库（红冲）」（dev-20260923-012） */
+const inboundTypeText = computed(() =>
+  inboundTypeLabel(inbound.value?.inboundType, {
+    fallbackName: inbound.value?.inboundTypeName,
+    reverse: isReverse.value,
+  })
+)
+/** 状态文案：生产来源的 PENDING 显示「待确认入库」，采购侧维持「待审批」（dev-20260923-012） */
+const inboundStatusText = computed(() =>
+  inboundStatusLabel(inbound.value?.status, {
+    sourceType: inbound.value?.sourceType,
+    inboundType: inbound.value?.inboundType,
+    fallbackName: inbound.value?.statusName,
+  })
+)
 const getStatusTag = (status?: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
-  const map: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    0: 'info', 1: 'warning', 2: 'success', 3: 'danger', 4: 'warning', 5: 'success',
-    6: 'success', 7: 'success', 8: 'info', 9: 'danger', 10: 'success', 11: 'success', 12: 'warning',
-  }
-  return status === undefined || status === null ? undefined : map[status]
+  return status === undefined || status === null
+    ? undefined
+    : (InboundOrderStatusEnum.getTagProps(status).type as
+        | 'success'
+        | 'warning'
+        | 'info'
+        | 'danger'
+        | undefined)
 }
 
 const loadDetail = async () => {

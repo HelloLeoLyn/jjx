@@ -115,7 +115,7 @@
         </el-table-column>
         <el-table-column label="入库类型" width="100" align="center">
           <template #default="{ row }">
-            {{ row.inboundTypeName || inboundTypeText(row.inboundType) }}
+            {{ inboundTypeText(row) }}
           </template>
         </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
@@ -128,7 +128,7 @@
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusTag(row.status)" size="small">{{
-              row.statusName || inboundStatusText(row.status)
+              inboundStatusText(row)
             }}</el-tag>
           </template>
         </el-table-column>
@@ -225,7 +225,12 @@ import { formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import InboundDetail from './components/InboundDetail.vue'
 import IqcPostingDialog from './components/IqcPostingDialog.vue'
-import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
+import {
+  InboundOrderStatusEnum,
+  inboundStatusLabel,
+  inboundTypeLabel,
+  isReverseInbound,
+} from '@/enums/inventory/InboundEnum'
 import type { InboundQueryParams, InboundVO } from '@/types/inventory/inbound'
 import { useUserStore } from '@/store/modules/user'
 
@@ -301,8 +306,8 @@ const userStore = useUserStore()
 const selectedRows = ref<InboundVO[]>([])
 const batchConfirming = ref(false)
 
-/** 红冲单：复检换代生成的负数量单，单号后缀 -R */
-const isReverse = (row: InboundVO) => String(row.inboundNo || '').endsWith('-R')
+/** 红冲单：复检换代生成的负数量单（单号后缀 -R 或数量为负） */
+const isReverse = (row: InboundVO) => isReverseInbound(row.inboundNo, row.totalQuantity)
 
 /** 可确认入库：采购单=已批准；其它来源=草稿/待审批/已批准（与表格按钮口径一致） */
 const confirmable = (row: InboundVO) =>
@@ -398,23 +403,19 @@ const previewBizNo = ref('')
 const inboundStatusTextMap = Object.fromEntries(
   InboundOrderStatusEnum.items.map((item) => [item.value, item.label])
 )
-const inboundStatusText = (status?: number) =>
-  status === undefined || status === null ? '-' : inboundStatusTextMap[status] || String(status)
-const inboundTypeText = (type?: string) => {
-  const map: Record<string, string> = {
-    purchase: '采购入库',
-    production: '生产入库',
-    return: '退货入库',
-    transfer: '调拨入库',
-    other: '其他入库',
-    PURCHASE: '采购入库',
-    PRODUCTION_FINISH: '生产入库',
-    RETURN: '退货入库',
-    TRANSFER: '调拨入库',
-    OTHER: '其他入库',
-  }
-  return (type && map[type]) || type || '-'
-}
+/** 状态文案：生产来源的 PENDING 显示「待确认入库」，采购侧维持「待审批」（dev-20260923-012） */
+const inboundStatusText = (row: InboundVO) =>
+  inboundStatusLabel(row.status, {
+    sourceType: row.sourceType,
+    inboundType: row.inboundType,
+    fallbackName: row.statusName,
+  })
+/** 类型文案：红冲单标注「生产入库（红冲）」（dev-20260923-012） */
+const inboundTypeText = (row: InboundVO) =>
+  inboundTypeLabel(row.inboundType, {
+    fallbackName: row.inboundTypeName,
+    reverse: isReverse(row),
+  })
 function openPreview(opKey: string, row: InboundVO) {
   if (!row?.inboundId) return
   const op = getOperation(opKey)
