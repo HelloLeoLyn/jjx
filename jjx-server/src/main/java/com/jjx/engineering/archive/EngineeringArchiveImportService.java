@@ -312,7 +312,7 @@ public class EngineeringArchiveImportService {
                 .send(builder.POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))).build(),
                         HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new BusinessException("AI 服务返回 HTTP " + response.statusCode());
+            throw new BusinessException(aiErrorMessage(response));
         }
         JsonNode root = objectMapper.readTree(response.body());
         String text = root.path("choices").path(0).path("message").path("content").asText("").trim();
@@ -320,6 +320,44 @@ public class EngineeringArchiveImportService {
         JsonNode result = objectMapper.readTree(text);
         if (!result.isObject()) throw new BusinessException("AI 返回格式不是 JSON 对象");
         return result;
+    }
+
+    private String aiErrorMessage(HttpResponse<String> response) {
+        int status = response.statusCode();
+        String detail = "";
+        String code = "";
+        String type = "";
+        try {
+            JsonNode error = objectMapper.readTree(response.body()).path("error");
+            detail = error.path("message").asText("").trim();
+            code = error.path("code").asText("").trim();
+            type = error.path("type").asText("").trim();
+        } catch (Exception ignored) {
+            detail = response.body() == null ? "" : response.body().trim();
+        }
+        if (detail.length() > 300) detail = detail.substring(0, 300);
+
+        if (status == 429) {
+            String retryAfter = response.headers().firstValue("retry-after").orElse("");
+            String resetRequests = response.headers().firstValue("x-ratelimit-reset-requests").orElse("");
+            String resetTokens = response.headers().firstValue("x-ratelimit-reset-tokens").orElse("");
+            String suffix = detail.isBlank() ? "" : "：" + detail;
+            if ("insufficient_quota".equalsIgnoreCase(code)
+                    || "insufficient_quota".equalsIgnoreCase(type)
+                    || detail.toLowerCase().contains("quota")
+                    || detail.toLowerCase().contains("billing")) {
+                return "AI 额度不足" + suffix;
+            }
+            if (!retryAfter.isBlank() || !resetRequests.isBlank() || !resetTokens.isBlank()
+                    || detail.toLowerCase().contains("rate limit")
+                    || detail.toLowerCase().contains("too many requests")) {
+                String reset = !retryAfter.isBlank() ? "，建议 " + retryAfter + " 秒后重试"
+                        : (!resetRequests.isBlank() ? "，请求限制预计 " + resetRequests + " 后重置" : "");
+                return "AI 请求过快或达到速率限制" + suffix + reset;
+            }
+            return "AI 账户或项目限制" + suffix;
+        }
+        return "AI 服务返回 HTTP " + status + (detail.isBlank() ? "" : "：" + detail);
     }
 
     private ProxySelector proxySelector(String proxyAddress) {

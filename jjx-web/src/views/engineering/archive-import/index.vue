@@ -11,7 +11,7 @@
             >
           </div>
           <el-upload :show-file-list="false" accept="image/jpeg,image/png" :http-request="upload"
-            ><el-button type="primary" :loading="uploading">{{ props.source === 'AI' ? '上传并 AI 识别' : '上传并识别' }}</el-button></el-upload
+            ><el-button type="primary" :loading="uploading" :disabled="recognitionProcessing">{{ props.source === 'AI' ? '上传并 AI 识别' : '上传并识别' }}</el-button></el-upload
           >
         </div></template
       >
@@ -46,6 +46,33 @@
         @change="load"
       />
     </el-card>
+
+    <el-dialog
+      v-model="recognitionProcessing"
+      width="440px"
+      align-center
+      :show-close="false"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
+      <div class="recognition-progress">
+        <el-icon class="recognition-spinner" :size="34"><Loading /></el-icon>
+        <h3>{{ props.source === 'AI' ? 'AI 正在识别历史档案' : '正在识别历史档案' }}</h3>
+        <p>{{ recognitionStages[recognitionStage] }}</p>
+        <el-progress :percentage="recognitionStagePercent" :show-text="false" :indeterminate="true" />
+        <div class="recognition-steps">
+          <span
+            v-for="(name, index) in recognitionStages"
+            :key="name"
+            :class="{ active: index === recognitionStage, done: index < recognitionStage }"
+          >
+            <el-icon v-if="index < recognitionStage"><CircleCheck /></el-icon>
+            <i v-else>{{ index + 1 }}</i>{{ name }}
+          </span>
+        </div>
+        <small>识别需要一定时间，请勿重复上传或关闭页面。</small>
+      </div>
+    </el-dialog>
 
     <el-dialog v-model="visible" fullscreen destroy-on-close @closed="closeWorkbench">
       <template #header
@@ -383,6 +410,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
+import { CircleCheck, Loading } from '@element-plus/icons-vue'
 import { archiveImportApi, type ArchiveImportRecord } from '@/api/engineering/archiveImport'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
@@ -435,8 +463,15 @@ type Workflow = Group & {
 }
 type Draft = { groups: Group[]; workflows: Workflow[]; [key: string]: unknown }
 const stageNames = ['分组确认', '工序分格与标准工序确认', '草稿检查']
+const recognitionStages = computed(() =>
+  props.source === 'AI'
+    ? ['正在上传图片', 'AI 正在分析图片内容', '正在整理识别结果']
+    : ['正在上传图片', 'OCR 正在识别图片内容', '正在整理识别结果'],
+)
 const loading = ref(false),
   uploading = ref(false),
+  recognitionProcessing = ref(false),
+  recognitionStage = ref(0),
   saving = ref(false),
   generating = ref(false),
   visible = ref(false),
@@ -448,6 +483,7 @@ const rows = ref<ArchiveImportRecord[]>([]),
   pageNum = ref(1),
   pageSize = ref(20),
   current = ref<ArchiveImportRecord>()
+const recognitionStagePercent = computed(() => Math.min(95, (recognitionStage.value + 1) * 33))
 const draft = ref<Draft>({ groups: [], workflows: [] }),
   selectedStep = ref<Step>(),
   originalUrl = ref(''),
@@ -637,12 +673,20 @@ async function load() {
 }
 async function upload(o: UploadRequestOptions) {
   uploading.value = true
+  recognitionProcessing.value = true
+  recognitionStage.value = 0
   try {
+    recognitionStage.value = 1
     if (props.source === 'AI') await archiveImportApi.aiUpload(o.file as File)
     else await archiveImportApi.upload(o.file as File)
+    recognitionStage.value = 2
     ElMessage.success('识别完成，请进入工作台')
     await load()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '识别失败，请稍后重试')
+    throw error
   } finally {
+    recognitionProcessing.value = false
     uploading.value = false
   }
 }
@@ -656,10 +700,19 @@ async function retry(r: ArchiveImportRecord) {
   } catch {
     return
   }
-  if (props.source === 'AI') await archiveImportApi.aiRetry(r.archiveId)
-  else await archiveImportApi.retry(r.archiveId)
-  ElMessage.success('已重新识别')
-  await load()
+  recognitionProcessing.value = true
+  recognitionStage.value = 1
+  try {
+    if (props.source === 'AI') await archiveImportApi.aiRetry(r.archiveId)
+    else await archiveImportApi.retry(r.archiveId)
+    recognitionStage.value = 2
+    ElMessage.success('已重新识别')
+    await load()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '重新识别失败，请稍后重试')
+  } finally {
+    recognitionProcessing.value = false
+  }
 }
 function handleArchiveAction(key: string, row: ArchiveImportRecord) {
   if (key === 'workbench') void openWorkbench(row)
@@ -813,6 +866,60 @@ h3 {
 .progress {
   color: var(--el-text-color-secondary);
   margin-right: 14px;
+}
+.recognition-progress {
+  padding: 8px 12px 18px;
+  text-align: center;
+}
+.recognition-spinner {
+  color: var(--el-color-primary);
+  animation: recognition-spin 1.2s linear infinite;
+}
+.recognition-progress h3 {
+  margin: 12px 0 6px;
+}
+.recognition-progress p {
+  margin: 0 0 16px;
+  color: var(--el-text-color-secondary);
+}
+.recognition-progress small {
+  display: block;
+  margin-top: 18px;
+  color: var(--el-text-color-placeholder);
+}
+.recognition-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+}
+.recognition-steps span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.recognition-steps i {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--el-border-color);
+  border-radius: 50%;
+  font-style: normal;
+}
+.recognition-steps .active {
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+.recognition-steps .done {
+  color: var(--el-color-success);
+}
+@keyframes recognition-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .el-pagination {
   margin-top: 14px;
