@@ -102,3 +102,5 @@ sys_task_register_20260923-1932_before-014-d.sql	2026-09-23 19:32:13	dev-2026092
 sys_task_register_20260923-2004_before-rule-auto-commit.sql	2026-09-23 20:04:14	dev-20260923-044	登记「任务完成即自动提交」规范任务前 guard	94bb51702849ffce7fabec3ec2c9e595
 sys_config_biz_no_rule_20260923-2015_before-207.sql	2026-09-23 20:15:23	dev-20260923-029	单号第5批改前缀前 guard（sys_config 表级 where=biz_no_rule.%）	cd8ce031fee5ad640800e9eedd633676
 2026-09-23 20:15:23	table	jjx_table_backup_20260923-2015_before-207.sql	90c7b5c480ba72dc20248db993c7dadb	17298	1	agent	dev-20260923-029
+2026-09-23 20:18:09	full	jjx_erp_db_backup_20260923-2018_before-211.sql	b1cd88fc3a00e1eb7e3c5b2fbb32ee2f	5841313	114	hermes-agent	dev-20260923-039
+sys_task_register_20260923-2019_before-capa-gate.sql	2026-09-23 20:19:37	dev-20260921-043	登记 CAPA 结案门禁任务前 guard	9554e602bb2be22fa5ad87f85ef8b82c

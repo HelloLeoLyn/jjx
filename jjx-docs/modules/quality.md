@@ -15,6 +15,7 @@
 | 成品检验 | 377 | `/quality/lot/fqc` | `views/quality/lot/fqc-lot.vue` | `quality:lot:view` |
 | 不良台账 | 378 | `/quality/ncr` | `views/quality/ncr/index.vue` | `quality:ncr:view` |
 | 抽样方案 | 379 | `/quality/sampling-plan` | `views/quality/sampling-plan/index.vue` | `quality:plan:config` |
+| CAPA 台账 | 391 | `/quality/capa` | `views/quality/capa/index.vue` | `quality:capa:view` |
 
 迁移 129 已删除旧的“生产质检”(264)、“质检报告”(265) 和试运行的“来料检验（检验批）”(376) 及其按钮菜单。不要再把这些入口写入导航、文档或验收清单。
 
@@ -34,6 +35,7 @@
 - 正式来料检验仍由 `/inventory/iqc` 承载收货行检验与审核，并与 `quality_lot` 关联；来料不合格品进入 `inventory_iqc_quarantine`，在独立处置页闭环。
 - FQC 页面使用 `/quality/lot/fqc`，按检验批展示待检、已检、合格、不良、已入库和已处置数量；复检以同批新版本表达。
 - 不良台账 `/quality/ncr` 统一承载返工、让步接收、报废等处置；处置权限为 `quality:ncr:dispose`。
+- **CAPA 台账** `/quality/capa`（表 `quality_capa`，号段 `CAPA+yyMMdd+3`，菜单 391）：四态 `待分析 → 措施执行中 → 待验证 → 已关闭`；已结案的不良单挂 CAPA 会自动回退 `DISPOSING`；**结案门禁：处置量覆盖不良量且无未关闭 CAPA 才能把不良单置 CLOSED** —— 三条结案路径（处置完成 / 复检更正同步台账 / 返工完成）共用同一判据（dev-20260923-046 收口；此前只有处置完成路径查 CAPA，另两条会绕过）。
 - 来料检验员只负责查看和录入；检验判定、隔离处置由品质主管权限承担。权限职责以迁移 132 为准。
 - IQC 提交必须逐条判定；前后端均应使用现有质量/库存枚举，不在页面内新建状态映射。
 

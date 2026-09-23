@@ -125,7 +125,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         open.setMiQuantity(nz(miQuantity));
         open.setDefectReason(defectReason);
         BigDecimal disposed = nz(open.getDisposedQuantity());
-        open.setStatus(disposed.compareTo(defect) >= 0 ? "CLOSED"
+        // dev-20260923-046：结案判据统一 —— 处置量够 **且无未关闭 CAPA**（原实现此处不查 CAPA，有洞）
+        boolean canClose = canCloseNcr(disposed, defect, capaService.countOpen(open.getNcrId(), null));
+        open.setStatus(canClose ? "CLOSED"
                 : (disposed.signum() > 0 ? "DISPOSING" : "PENDING"));
         ncrMapper.updateById(open);
         log.info("不良台账同步（更正）: ncrNo={} 不良={}", open.getNcrNo(), defect.toPlainString());
@@ -201,7 +203,24 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             if (row.getOrderId() != null) {
                 row.setOrderNo(orderNoMap.get(row.getOrderId()));
             }
+            // dev-20260923-039：允许动作由唯一出处算出并下发（前端只按它渲染，不再写状态条件）
+            row.setAllowedActions(com.jjx.common.enums.AllowedActionEnum.codesOf(
+                    com.jjx.quality.service.support.AllowedActionResolver.forNcr(
+                            row.getStatus(), Boolean.TRUE.equals(row.getLotSuperseded()), pendingQuantityOf(row))));
         }
+    }
+
+    /** 待处置数量：已作废/已结一律 0（与前端口径一致，见 dev-20260923-038） */
+    private BigDecimal pendingQuantityOf(QualityNcr row) {
+        if (row == null) {
+            return BigDecimal.ZERO;
+        }
+        String status = row.getStatus() == null ? "" : row.getStatus().trim().toUpperCase();
+        if ("VOID".equals(status) || "CLOSED".equals(status)) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal left = nz(row.getDefectQuantity()).subtract(nz(row.getDisposedQuantity()));
+        return left.signum() > 0 ? left : BigDecimal.ZERO;
     }
 
     @Override
@@ -221,24 +240,31 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
     @Override
     public List<QualityNcrAction> listActions(Long ncrId) {
-        return actionMapper.selectList(new LambdaQueryWrapper<QualityNcrAction>()
+        List<QualityNcrAction> actions = actionMapper.selectList(new LambdaQueryWrapper<QualityNcrAction>()
                 .eq(QualityNcrAction::getNcrId, ncrId)
                 .orderByAsc(QualityNcrAction::getActionId));
+        // dev-20260923-039：处置记录行的允许动作同样由唯一出处下发（撤销/补料等按钮只按它渲染）
+        for (QualityNcrAction action : actions) {
+            action.setAllowedActions(com.jjx.common.enums.AllowedActionEnum.codesOf(
+                    com.jjx.quality.service.support.AllowedActionResolver
+                            .forNcrAction(action.getActionType(), action.getStatus())));
+        }
+        return actions;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QualityNcrAction dispose(Long ncrId, QualityNcrDisposeDTO dto) {
         QualityNcr ncr = getNcr(ncrId);
-        // dev-20260923-038（022⑥ 收口）：处置只对「未作废、且来源批仍是链上最新有效版本」的台账生效，
-        // 防绕过前端直接调接口处置失效批/作废单（否则会给"已经不存在的货"做让步接收/返工等动作）。
-        // 实测：作废单原来仍可处置，前端也只按数量判断 → 界面给了注定不该发生的动作。
-        if ("VOID".equals(ncr.getStatus())) {
-            throw new BusinessException("该不良单已作废（随批失效/撤销），禁止再处置：" + ncr.getNcrNo());
-        }
-        if (isSourceLotSuperseded(ncr.getLotId())) {
-            throw new BusinessException("该不良单的来源检验批已被后续复检版本取代，禁止处置（请对最新有效版本操作）："
-                    + ncr.getNcrNo());
+        // dev-20260923-039：守卫改走**唯一出处**（AllowedActionResolver）——决策与拒绝文案都与下发前端的那份同源，
+        // 不再在守卫里各写 if（038 的两道判断被收敛到这里；口径见 045 §2.3）。
+        boolean lotSuperseded = isSourceLotSuperseded(ncr.getLotId());
+        java.math.BigDecimal pending = pendingQuantityOf(ncr);
+        if (!com.jjx.quality.service.support.AllowedActionResolver
+                .forNcr(ncr.getStatus(), lotSuperseded, pending)
+                .contains(com.jjx.common.enums.AllowedActionEnum.NCR_DISPOSE)) {
+            throw new BusinessException(com.jjx.quality.service.support.AllowedActionResolver
+                    .ncrDisposeBlockReason(ncr.getStatus(), lotSuperseded, pending, ncr.getNcrNo()));
         }
         QualityLot lot = qualityLotMapper.selectById(ncr.getLotId());
         if (lot != null && "IQC".equals(lot.getLotType())) {
@@ -336,8 +362,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
         BigDecimal disposed = nz(ncr.getDisposedQuantity()).add(quantity);
         ncr.setDisposedQuantity(disposed);
-        boolean canClose = disposed.compareTo(nz(ncr.getDefectQuantity())) >= 0
-                && capaService.countOpen(ncrId, null) == 0;
+        // dev-20260923-046：三条结案路径共用同一判据（处置量够 + 无未关闭 CAPA）
+        boolean canClose = canCloseNcr(disposed, ncr.getDefectQuantity(), capaService.countOpen(ncrId, null));
         ncr.setStatus("REWORK".equals(actionType) ? "DISPOSING" : canClose ? "CLOSED" : "DISPOSING");
         ncrMapper.updateById(ncr);
         // 同步检验批的已处置数量（防超处置）
@@ -658,8 +684,10 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                 throw new BusinessException("FQC 复检尚未合格，返工处置不能完成");
             }
             reworkExecutionId = executionId;
-            ncr.setStatus(nz(ncr.getDisposedQuantity()).compareTo(nz(ncr.getDefectQuantity())) >= 0
-                    ? "CLOSED" : "DISPOSING");
+            // dev-20260923-046：返工完成也是结案路径之一，同样必须看未关闭 CAPA（原实现直接关）
+            boolean canClose = canCloseNcr(ncr.getDisposedQuantity(), ncr.getDefectQuantity(),
+                    capaService.countOpen(ncr.getNcrId(), null));
+            ncr.setStatus(canClose ? "CLOSED" : "DISPOSING");
             ncrMapper.updateById(ncr);
         }
         action.setStatus("DONE");
@@ -675,7 +703,19 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         return redisSequenceService.generateBusinessNumberByType("quality_ncr", "NCR", "yyMMdd", 3);
     }
 
-    private BigDecimal nz(BigDecimal value) {
+    /**
+     * 不良单能否结案（dev-20260923-046）—— **三条结案路径共用**：
+     * 处置完成（completeAction）/ 复检更正同步台账（syncFromLot）/ 返工完成。
+     *
+     * <p>判据：处置量已覆盖不良量 **且没有未关闭的 CAPA**。
+     * 盲存原因：口径要求「有未关闭 CAPA 的不良单不得结案」，但此前只有处置完成路径查了 CAPA，
+     * 另两条路径直接 `disposed≥defect → CLOSED`，造成门禁有洞。</p>
+     */
+    static boolean canCloseNcr(BigDecimal disposed, BigDecimal defect, long openCapaCount) {
+        return nz(disposed).compareTo(nz(defect)) >= 0 && openCapaCount == 0;
+    }
+
+    private static BigDecimal nz(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
 }
