@@ -123,7 +123,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- ==================== 1. 销售模块（v4 起 sales_customer 也清） ====================
 TRUNCATE sales_order_product;
 
-TRUNCATE sales_order_review;
+-- sales_order_review 已于迁移 208 删除（OrderReview 旧平行审核链死表，任务 dev-20260921-011）
 
 TRUNCATE sales_delivery;
 

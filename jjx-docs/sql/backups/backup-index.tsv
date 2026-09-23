@@ -88,3 +88,5 @@ sys_task_review_20260923-1825_before-close.sql	2026-09-23 18:25:13	dev-20260923-
 2026-09-23 18:29:32	guard	sys_task_2247_status_rollback_20260923-1829.sql	61db036059c0d08d6c57afafb8f42965	7322	1	Hermes	dev-20260923-029
 sys_task_review_20260923-1830_before-status-fix.sql	2026-09-23 18:30:07	dev-20260923-029	按用户指示改状态（3条转待开始+2条立项+2条核销）前 guard	aaf9a665316d6fc3be57ff3b8d50c3b4
 2026-09-23 18:37:07	guard	sys_task_register_20260923-1837_before-032-fi-seq-fixed-width.sql	a1b14ef5ab509af0592d1501ccdc54d7	1080331	1	Hermes	dev-20260923-032
+sales_order_review_drop_20260923-1854.sql	2026-09-23 18:54:18	dev-20260921-011	删除死表 sales_order_review 前 guard（表级，含 CREATE TABLE 可重建）	b7e4d984750f4b82d4a4821c804ab9ca
+2026-09-23 18:54:27	full	jjx_erp_db_backup_20260923-1854_before-208.sql	c2c17421600c26fa75c1a0052134010c	5774187	114	agent	dev-20260921-011
