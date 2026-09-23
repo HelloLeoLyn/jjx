@@ -179,6 +179,12 @@ export const qualityLotApi = {
   reinspect(lotId: number) {
     return request.post<R<QualityLot>>(`/quality/lot/${lotId}/reinspect`)
   },
+  /** dev-20260922-030：重开已关闭的检验批（必须给原因，留痕） */
+  reopen(lotId: number, reason: string) {
+    return request.post<R<QualityLot>>(`/quality/lot/${lotId}/reopen`, null, {
+      params: { reason },
+    })
+  },
   syncFinish(orderId: number, reason?: string) {
     return request.post<R<number>>(`/quality/lot/order/${orderId}/sync-finish`, null, {
       params: { reason },

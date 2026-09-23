@@ -21,6 +21,13 @@ public interface QualityLotService {
 
     QualityLot getLot(Long lotId);
 
+    /**
+     * dev-20260922-030（用户拍板 A）：重开已关闭的检验批。
+     * 批在「合格全部入库 + 不良全部处置」后会自动 CLOSED，之后无法再复检；
+     * 业务上入库后仍可能发现问题，故提供显式重开（必须填原因，留痕），状态 CLOSED → JUDGED，之后可正常复检。
+     */
+    QualityLot reopenLot(Long lotId, String reason);
+
     /** 同一来源的所有批（分批/复检历史，按版本与创建时间排序） */
     List<QualityLot> listBySource(String sourceType, Long sourceId);
 

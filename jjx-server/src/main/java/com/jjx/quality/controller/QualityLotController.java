@@ -102,6 +102,14 @@ public class QualityLotController {
         return Result.success(qualityFinishService.reinspectLot(lotId));
     }
 
+    @Operation(summary = "重开已关闭的检验批（CLOSED→已判定，必须填原因留痕；入库后发现问题再复检用）")
+    @SaCheckPermission("quality:lot:judge")
+    @PostMapping("/{lotId}/reopen")
+    public Result<QualityLot> reopen(@PathVariable Long lotId,
+                                     @RequestParam(required = false) String reason) {
+        return Result.success(qualityLotService.reopenLot(lotId, reason));
+    }
+
     @Operation(summary = "按检验批重算工单成品入库（差额同步，幂等）")
     @SaCheckPermission(value = {"quality:lot:judge", "inventory:inbound:edit"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
     @PostMapping("/order/{orderId}/sync-finish")

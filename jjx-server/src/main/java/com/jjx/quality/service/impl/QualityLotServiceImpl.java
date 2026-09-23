@@ -353,6 +353,41 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
     }
 
+    /**
+     * dev-20260922-030（用户拍板 A）：重开已关闭的检验批（CLOSED → JUDGED），之后可正常复检。
+     * 必须填原因（留痕到 remark）；只允许最新版本、且必须是 CLOSED。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityLot reopenLot(Long lotId, String reason) {
+        QualityLot lot = lockLot(lotId);
+        if (!QualityLotStatusEnum.CLOSED.getCode().equals(lot.getStatus())) {
+            throw new BusinessException("只有已关闭的检验批可以重开（当前：" 
+                    + QualityLotStatusEnum.labelOf(lot.getStatus()) + "）");
+        }
+        if (!isLatestVersion(lotId)) {
+            throw new BusinessException("该批已有复检新版本，请对最新版本操作");
+        }
+        String r = reason == null ? "" : reason.trim();
+        if (r.isEmpty()) {
+            throw new BusinessException("重开必须填写原因（用于留痕）");
+        }
+        String by;
+        try {
+            by = com.jjx.system.utils.SecurityUtils.getDisplayName();
+        } catch (Exception e) {
+            by = "system";
+        }
+        lot.setStatus(QualityLotStatusEnum.JUDGED.getCode());
+        String note = "【重开】" + by + "：" + r;
+        String base = lot.getRemark() == null ? "" : lot.getRemark().trim();
+        String next = base.isEmpty() ? note : base + " ｜ " + note;
+        lot.setRemark(next.length() > 500 ? next.substring(0, 500) : next);
+        lotMapper.updateById(lot);
+        log.info("检验批已重开: lotNo={} 操作人={} 原因={}", lot.getLotNo(), by, r);
+        return lot;
+    }
+
     @Override
     public FqcCompletionSummary summarizeEffectiveFqc(Long orderId) {
         FqcCompletionSummary summary = new FqcCompletionSummary();

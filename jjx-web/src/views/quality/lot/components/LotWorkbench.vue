@@ -142,6 +142,16 @@
               @click="handleReinspect(row)"
               >复检</el-button
             >
+            <!-- dev-20260922-030（用户拍板 A）：批在"入库+处置"双完成后自动 CLOSED，之后不能复检；
+                 这里给一个显式「重开」（必须填原因，留痕），重开后回到已判定即可复检 -->
+            <el-button
+              v-if="canJudge && isClosed(row)"
+              link
+              type="danger"
+              size="small"
+              @click="handleReopen(row)"
+              >重开</el-button
+            >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
             <!-- dev-20260922-012（G7）：把"无操作权限"说清是缺哪个权限，别让人干瞪眼 -->
             <span v-if="!canJudge && !canInspect" class="no-action">
@@ -282,6 +292,8 @@ const busyLotId = ref<number | null>(null)
 const isEditable = (row: QualityLot) => ['PENDING', 'INSPECTING'].includes(String(row.status))
 /** 已判定 = 可复检 */
 const isJudged = (row: QualityLot) => row.status === 'JUDGED'
+/** dev-20260922-030：已关闭 = 合格全入库 + 不良全处置（可显式重开后再复检） */
+const isClosed = (row: QualityLot) => row.status === 'CLOSED'
 const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC' })
 const title = props.lotType === 'IQC' ? '来料检验' : props.lotType === 'OQC' ? '出货检验' : '成品检验'
 const lotType = props.lotType
@@ -531,6 +543,34 @@ const submitJudge = async () => {
     ElMessage.error(e?.message || '判定失败')
   } finally {
     judging.value = false
+  }
+}
+
+// ============ 重开（dev-20260922-030） ============
+/** 已关闭的批不能复检；这里显式重开（必须填原因留痕），重开后回到"已判定"即可复检 */
+const handleReopen = async (row: QualityLot) => {
+  let reason = ''
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `重开 ${row.lotNo}？（该批已入库+处置完成，重开后回到"已判定"，可再复检）\n请填写重开原因，用于留痕。`,
+      '重开检验批',
+      {
+        inputPlaceholder: '如：客户反馈外观问题，需复检',
+        confirmButtonText: '重开',
+        cancelButtonText: '取消',
+        inputValidator: (val: string) => (val && val.trim() ? true : '必须填写重开原因'),
+      }
+    )
+    reason = String(value || '').trim()
+  } catch {
+    return
+  }
+  try {
+    await qualityLotApi.reopen(Number(row.lotId), reason)
+    ElMessage.success('已重开，可对该批执行「复检」')
+    load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '重开失败')
   }
 }
 
