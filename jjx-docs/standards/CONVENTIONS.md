@@ -111,6 +111,10 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 ## 5. git 提交规范
 
+- **任务完成即提交（2026-09-23 用户定，OpenClaw / Hermes / Codex 全适用）**：一个任务的代码/脚本/文档**做完并通过自查**（`npm run validate` / `mvn -o compile` 等）后，**由执行者直接 commit + push**，不必再等用户说“提交”。要求：
+  - 提交信息必须**挂钩该任务码**（`commit-msg` 闸门强制校验），提交内容必须是**该任务的产物**（提交前 `git status` 核对，只 add 自己的文件；不混无关文件，也不提交他人在制品）；
+  - 提交完成后**立刻**把对应 `sys_task.status` 置 `2`（待审核），并在 `remark`/`description` 写：改动清单 + **commit hash** + 验证结果 + 遗留项；
+  - 例外：用户明确说“先别提交 / 只分析不改”时以用户指令为准；纯讨论与未落盘的方案不产生提交。
 - 分支：日常开发 `dev`；AI 个人分支按需（`ai/dahuang`）
 - message 格式：`type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`
   - type: `feat` `fix` `refactor` `docs` `style` `chore` `perf` `test`
