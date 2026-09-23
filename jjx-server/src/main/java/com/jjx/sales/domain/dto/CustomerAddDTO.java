@@ -91,6 +91,17 @@ public class CustomerAddDTO implements Serializable {
     @Schema(description = "付款方式 (1: 预付, 2: 货到付款, 3: 月结30天, 4: 月结60天)", example = "1")
     private Integer paymentMethod;
 
+    @Schema(description = "账期类型：PREPAID/COD/NET_DAYS/MONTH_END", example = "NET_DAYS")
+    private String paymentTermType;
+
+    @Min(value = 0, message = "账期天数不能小于0")
+    @Max(value = 365, message = "账期天数不能超过365")
+    @Schema(description = "账期天数", example = "30")
+    private Integer creditDays;
+
+    @Schema(description = "账期起算基准：CUSTOMER_RECEIPT_DATE", example = "CUSTOMER_RECEIPT_DATE")
+    private String creditStartBasis;
+
     @Schema(description = "是否VIP客户", example = "false")
     private Boolean vip;
 

@@ -23,7 +23,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="期间">
+        <el-form-item label="签收期间">
           <el-date-picker
             v-model="dateRange"
             type="daterange"
@@ -33,9 +33,27 @@
             style="width: 240px"
           />
         </el-form-item>
+        <el-form-item label="到期状态">
+          <el-select v-model="query.dueStatus" clearable placeholder="全部" style="width: 130px">
+            <el-option
+              v-for="item in ReconciliationDueStatusEnum.items"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item>
-          <el-button type="primary" icon="Search" :loading="loading" @click="search">查询对账</el-button>
-          <el-button icon="Printer" v-hasPermi="['sales:reconcile:print']" :disabled="!rows.length" @click="goPrint">打印对账单</el-button>
+          <el-button type="primary" icon="Search" :loading="loading" @click="search"
+            >查询对账</el-button
+          >
+          <el-button
+            icon="Printer"
+            v-hasPermi="['sales:reconcile:print']"
+            :disabled="!rows.length"
+            @click="goPrint"
+            >打印对账单</el-button
+          >
         </el-form-item>
       </el-form>
 
@@ -43,7 +61,7 @@
       <template v-if="loaded">
         <el-alert
           v-if="!rows.length"
-          title="该客户在所选期间内无已发货送货单"
+          title="该客户在所选签收期间内无已签收送货单"
           type="info"
           :closable="false"
           style="margin-bottom: 12px"
@@ -77,17 +95,42 @@
       </template>
 
       <!-- 明细表（送货行平铺） -->
-      <el-table v-if="rows.length" :data="rows" border stripe size="small" style="margin-top: 12px" max-height="560">
+      <el-table
+        v-if="rows.length"
+        :data="rows"
+        border
+        stripe
+        size="small"
+        style="margin-top: 12px"
+        max-height="560"
+      >
         <el-table-column type="index" label="#" width="46" align="center" />
-        <el-table-column prop="deliveryDate" label="送货日期" width="100" />
+        <el-table-column prop="customerReceiveDate" label="签收日期" width="100" />
+        <el-table-column prop="dueDate" label="到期日期" width="100">
+          <template #default="{ row }">{{ row.dueDate || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="到期状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag v-bind="ReconciliationDueStatusEnum.getTagProps(row.dueStatus)">
+              {{ ReconciliationDueStatusEnum.getLabel(row.dueStatus) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="逾期天数" width="90" align="right">
+          <template #default="{ row }">{{ row.overdueDays || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="deliveryNo" label="送货单号" width="130" />
         <el-table-column label="料号" min-width="120">
-          <template #default="{ row }">{{ row.customerMaterialNo || row.productCode || '-' }}</template>
+          <template #default="{ row }">{{
+            row.customerMaterialNo || row.productCode || '-'
+          }}</template>
         </el-table-column>
         <el-table-column label="品名规格" min-width="180">
           <template #default="{ row }">
             {{ row.productName }}
-            <div v-if="row.specification" style="color: #909399; font-size: 12px">{{ row.specification }}</div>
+            <div v-if="row.specification" style="color: #909399; font-size: 12px">
+              {{ row.specification }}
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="unit" label="单位" width="60" align="center" />
@@ -109,6 +152,7 @@ import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getReconciliation } from '@/api/sales/reconcile'
 import { customerApi } from '@/api/sales/customer'
+import { ReconciliationDueStatusEnum } from '@/enums/sales/ReconciliationEnum'
 
 defineOptions({ name: 'SalesReconcile' })
 
@@ -116,7 +160,7 @@ const loading = ref(false)
 const customerLoading = ref(false)
 const customerOptions = ref<any[]>([])
 const dateRange = ref<string[]>([])
-const query = reactive<{ customerId?: number; customerName?: string }>({})
+const query = reactive<{ customerId?: number; dueStatus?: string }>({})
 const data = ref<any>({ rows: [], deliveryCount: 0, paymentTotal: 0, paymentCount: 0 })
 const loaded = ref(false)
 
@@ -127,6 +171,10 @@ const rows = computed(() => {
     for (const it of d.items || []) {
       flat.push({
         deliveryDate: d.deliveryDate,
+        customerReceiveDate: d.customerReceiveDate,
+        dueDate: d.dueDate,
+        dueStatus: d.dueStatus,
+        overdueDays: d.overdueDays,
         deliveryNo: d.deliveryNo,
         orderNo: d.orderNo,
         ...it,
@@ -137,10 +185,14 @@ const rows = computed(() => {
 })
 
 const deliveryTotal = computed(() => rows.value.reduce((s, r) => s + (Number(r.amount) || 0), 0))
-const unpaidDiff = computed(() => Number(deliveryTotal.value) - Number(data.value.paymentTotal || 0))
+const unpaidDiff = computed(
+  () => Number(deliveryTotal.value) - Number(data.value.paymentTotal || 0)
+)
 
 const money = (v?: number | string) =>
-  v == null ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  v == null
+    ? '-'
+    : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 function searchCustomers(keyword: string) {
   customerLoading.value = true
@@ -165,6 +217,7 @@ async function search() {
       customerId: query.customerId,
       startDate: dateRange.value?.[0],
       endDate: dateRange.value?.[1],
+      dueStatus: query.dueStatus,
     })
     data.value = res?.data || { rows: [] }
     loaded.value = true
@@ -183,6 +236,7 @@ function goPrint() {
   const params = new URLSearchParams({ customerId: String(query.customerId) })
   if (dateRange.value?.[0]) params.set('startDate', dateRange.value[0])
   if (dateRange.value?.[1]) params.set('endDate', dateRange.value[1])
+  if (query.dueStatus) params.set('dueStatus', query.dueStatus)
   window.open(`/sales/reconcile/print?${params.toString()}`, '_blank')
 }
 </script>

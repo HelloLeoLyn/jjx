@@ -140,6 +140,41 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
+          <el-form-item label="账期类型" prop="paymentTermType">
+            <el-select v-model="localFormData.paymentTermType" placeholder="请选择账期类型">
+              <el-option
+                v-for="item in PaymentTermTypeEnum.items"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="账期天数" prop="creditDays">
+            <el-input-number
+              v-model="localFormData.creditDays"
+              :min="0"
+              :max="365"
+              :disabled="!usesCreditDays"
+              style="width: 100%"
+            />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="起算基准" prop="creditStartBasis">
+            <el-select v-model="localFormData.creditStartBasis" disabled>
+              <el-option
+                v-for="item in CreditStartBasisEnum.items"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
           <el-form-item label="客户评分" prop="customerScore">
             <el-rate v-model="localFormData.customerScore" :max="5" show-score />
           </el-form-item>
@@ -168,7 +203,11 @@
       <el-row :gutter="8">
         <el-col :span="12">
           <el-form-item label="国家/地区" prop="country">
-            <el-input v-model="localFormData.country" placeholder="请输入国家/地区" maxlength="50" />
+            <el-input
+              v-model="localFormData.country"
+              placeholder="请输入国家/地区"
+              maxlength="50"
+            />
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -188,7 +227,11 @@
         </el-col>
         <el-col :span="24">
           <el-form-item label="详细地址" prop="address">
-            <el-input v-model="localFormData.address" placeholder="请输入街道门牌号/详细地址（含区/县）" maxlength="200" />
+            <el-input
+              v-model="localFormData.address"
+              placeholder="请输入街道门牌号/详细地址（含区/县）"
+              maxlength="200"
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -210,6 +253,7 @@ import type { CustomerFormData } from '@/types/sales/customer'
 import { Search } from '@element-plus/icons-vue'
 import { customerApi } from '@/api/sales/customer'
 import { useCustomerOptions } from '../composables/useCustomerOptions'
+import { CreditStartBasisEnum, PaymentTermTypeEnum } from '@/enums/sales/CustomerEnum'
 
 const {
   customerTypeOptions,
@@ -264,6 +308,9 @@ const localFormData = reactive<CustomerFormData>({
   usedCreditLimit: 0,
   customerScore: 3,
   paymentMethod: undefined,
+  paymentTermType: PaymentTermTypeEnum.PREPAID.value,
+  creditDays: 0,
+  creditStartBasis: CreditStartBasisEnum.CUSTOMER_RECEIPT_DATE.value,
   vip: false,
   remark: '',
 })
@@ -275,6 +322,22 @@ watch(
     Object.assign(localFormData, newValue)
   },
   { immediate: true, deep: true }
+)
+
+const usesCreditDays = computed(
+  () =>
+    localFormData.paymentTermType === PaymentTermTypeEnum.NET_DAYS.value ||
+    localFormData.paymentTermType === PaymentTermTypeEnum.MONTH_END.value
+)
+
+watch(
+  () => localFormData.paymentTermType,
+  (value) => {
+    if (value === PaymentTermTypeEnum.PREPAID.value || value === PaymentTermTypeEnum.COD.value) {
+      localFormData.creditDays = 0
+    }
+    localFormData.creditStartBasis = CreditStartBasisEnum.CUSTOMER_RECEIPT_DATE.value
+  }
 )
 
 // 生成客户编码
@@ -364,6 +427,10 @@ const rules = reactive<FormRules>({
   address: [{ max: 200, message: '详细地址长度不能超过200个字符', trigger: 'blur' }],
   industryCategory: [{ max: 100, message: '行业分类长度不能超过100个字符', trigger: 'blur' }],
   creditLimit: [{ type: 'number', min: 0, message: '信用额度不能为负数', trigger: 'blur' }],
+  paymentTermType: [{ required: true, message: '请选择账期类型', trigger: 'change' }],
+  creditDays: [
+    { type: 'number', min: 0, max: 365, message: '账期天数须在0-365之间', trigger: 'blur' },
+  ],
   customerScore: [
     {
       type: 'number',

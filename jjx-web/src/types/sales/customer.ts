@@ -34,6 +34,9 @@ export interface CustomerFormData {
   usedCreditLimit: number
   customerScore: number
   paymentMethod?: number
+  paymentTermType?: string
+  creditDays?: number
+  creditStartBasis?: string
   vip: boolean
   remark: string
 }
@@ -62,6 +65,9 @@ export interface CustomerItem {
   usedCreditLimit: number
   customerScore: number
   paymentMethod?: number
+  paymentTermType?: string
+  creditDays?: number
+  creditStartBasis?: string
   vip: boolean
   remark?: string
   createTime: string
@@ -113,6 +119,9 @@ export interface CustomerVO {
   usedCreditLimit: number
   customerScore: number
   paymentMethod?: number
+  paymentTermType?: string
+  creditDays?: number
+  creditStartBasis?: string
   vip: boolean
   remark: string
   createTime: string

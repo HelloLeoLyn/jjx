@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { CustomerPaymentMethodEnum } from '@/enums/sales/CustomerEnum'
 
 // 客户类型选项
 export const customerTypeOptions = ref([
@@ -31,12 +32,7 @@ export const customerSourceOptions = ref([
 ])
 
 // 付款方式选项
-export const paymentMethodOptions = ref([
-  { value: 1, label: '预付' },
-  { value: 2, label: '货到付款' },
-  { value: 3, label: '月结30天' },
-  { value: 4, label: '月结60天' },
-])
+export const paymentMethodOptions = ref(CustomerPaymentMethodEnum.items)
 
 // 获取客户来源标签
 export function getSourceLabel(source?: number): string {

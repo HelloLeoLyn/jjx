@@ -245,13 +245,15 @@ import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { parseTime, download } from '@/utils/format'
 import CustomerFormDialog from './components/CustomerFormDialog.vue'
 import CustomerDetailDialog from './components/CustomerDetailDialog.vue'
-import { CustomerTypeEnum, CustomerLevelEnum, CustomerStatusEnum } from '@/enums/sales/CustomerEnum'
+import {
+  CreditStartBasisEnum,
+  CustomerTypeEnum,
+  CustomerLevelEnum,
+  CustomerStatusEnum,
+  PaymentTermTypeEnum,
+} from '@/enums/sales/CustomerEnum'
 import { useCustomerOptions } from './composables/useCustomerOptions'
-import type {
-  CustomerQueryParams,
-  CustomerFormData,
-  CustomerItem,
-} from '@/types/sales/customer'
+import type { CustomerQueryParams, CustomerFormData, CustomerItem } from '@/types/sales/customer'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 const customerActions: TableAction<CustomerItem>[] = [
@@ -303,6 +305,9 @@ const form = reactive<CustomerFormData>({
   usedCreditLimit: 0,
   customerScore: 3,
   paymentMethod: undefined,
+  paymentTermType: PaymentTermTypeEnum.PREPAID.value,
+  creditDays: 0,
+  creditStartBasis: CreditStartBasisEnum.CUSTOMER_RECEIPT_DATE.value,
   vip: false,
   remark: '',
 })
@@ -322,10 +327,7 @@ const detailCustomerId = ref<number>()
 const customerList = ref<CustomerItem[]>([])
 
 // 字典选项
-const {
-  customerTypeOptions,
-  customerStatusOptions,
-} = useCustomerOptions()
+const { customerTypeOptions, customerStatusOptions } = useCustomerOptions()
 
 // 获取客户列表
 const getList = async () => {
@@ -523,6 +525,9 @@ const resetForm = () => {
     usedCreditLimit: 0,
     customerScore: 3,
     paymentMethod: undefined,
+    paymentTermType: PaymentTermTypeEnum.PREPAID.value,
+    creditDays: 0,
+    creditStartBasis: CreditStartBasisEnum.CUSTOMER_RECEIPT_DATE.value,
     vip: false,
     remark: '',
   })

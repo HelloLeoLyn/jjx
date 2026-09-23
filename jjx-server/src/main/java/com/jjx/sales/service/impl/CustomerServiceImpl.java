@@ -12,6 +12,8 @@ import com.jjx.sales.domain.dto.CustomerImportDTO;
 import com.jjx.sales.domain.dto.CustomerQueryDTO;
 import com.jjx.sales.domain.entity.SalesCustomer;
 import com.jjx.sales.domain.vo.CustomerVO;
+import com.jjx.sales.enums.CreditStartBasisEnum;
+import com.jjx.sales.enums.PaymentTermTypeEnum;
 import com.jjx.sales.mapper.CustomerMapper;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.sales.service.ICustomerService;
@@ -128,6 +130,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
         // DTO转实体
         SalesCustomer customer = customerConverter.toEntity(dto);
+        normalizePaymentTerm(customer);
 
         // 生成客户编码（在保存时生成，避免并发冲突）
         String customerCode = generateCustomerCode();
@@ -181,6 +184,7 @@ public class CustomerServiceImpl implements ICustomerService {
         // DTO转实体
         SalesCustomer customer = customerConverter.toEntity(dto);
         customer.setCustomerId(dto.getCustomerId());
+        normalizePaymentTerm(customer);
 
         // 保留原有客户编码
         customer.setCustomerCode(existingCustomer.getCustomerCode());
@@ -201,6 +205,28 @@ public class CustomerServiceImpl implements ICustomerService {
             publishCustomerEvent("sales.customer.updated", customerMapper.selectById(customer.getCustomerId()));
         }
         return rows;
+    }
+
+    private void normalizePaymentTerm(SalesCustomer customer) {
+        PaymentTermTypeEnum type = PaymentTermTypeEnum.parse(customer.getPaymentTermType());
+        if (type == null) {
+            type = switch (customer.getPaymentMethod() == null ? 1 : customer.getPaymentMethod()) {
+                case 2 -> PaymentTermTypeEnum.COD;
+                case 3, 4 -> PaymentTermTypeEnum.MONTH_END;
+                default -> PaymentTermTypeEnum.PREPAID;
+            };
+            if (customer.getCreditDays() == null) {
+                customer.setCreditDays(Objects.equals(customer.getPaymentMethod(), 3) ? 30
+                        : Objects.equals(customer.getPaymentMethod(), 4) ? 60 : 0);
+            }
+        }
+        customer.setPaymentTermType(type.name());
+        customer.setCreditStartBasis(CreditStartBasisEnum.CUSTOMER_RECEIPT_DATE.name());
+        int days = customer.getCreditDays() == null ? 0 : customer.getCreditDays();
+        if ((type == PaymentTermTypeEnum.PREPAID || type == PaymentTermTypeEnum.COD) && days != 0) {
+            throw new BusinessException("预付或货到付款的账期天数必须为0");
+        }
+        customer.setCreditDays(days);
     }
 
     /**
@@ -723,6 +749,9 @@ public class CustomerServiceImpl implements ICustomerService {
         customer.setBankName(dto.getBankName());
         customer.setBankAccount(dto.getBankAccount());
         customer.setPaymentMethod(dto.getPaymentMethod());
+        customer.setPaymentTermType(null);
+        customer.setCreditDays(null);
+        normalizePaymentTerm(customer);
         customer.setCreditLimit(dto.getCreditLimit());
         customer.setRemark(dto.getRemark());
     }

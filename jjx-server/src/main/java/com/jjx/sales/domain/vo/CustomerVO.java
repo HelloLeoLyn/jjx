@@ -79,6 +79,15 @@ public class CustomerVO implements Serializable {
     @Schema(description = "付款方式 (1: 预付, 2: 货到付款, 3: 月结30天, 4: 月结60天)", example = "1")
     private Integer paymentMethod;
 
+    @Schema(description = "账期类型：PREPAID/COD/NET_DAYS/MONTH_END")
+    private String paymentTermType;
+
+    @Schema(description = "账期天数")
+    private Integer creditDays;
+
+    @Schema(description = "账期起算基准：CUSTOMER_RECEIPT_DATE")
+    private String creditStartBasis;
+
     @Schema(description = "备注", example = "VIP客户")
     private String remark;
 

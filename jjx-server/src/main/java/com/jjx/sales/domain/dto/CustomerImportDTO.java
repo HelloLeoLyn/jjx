@@ -112,9 +112,9 @@ public class CustomerImportDTO {
     private String bankAccount;
 
     /**
-     * 付款方式（1=现结 2=月结 3=预付款）
+     * 付款方式（1=预付 2=货到付款 3=月结30天 4=月结60天）
      */
-    @ExcelColumn(value = "付款方式", order = 18, comment = "1=现结, 2=月结, 3=预付款")
+    @ExcelColumn(value = "付款方式", order = 18, comment = "1=预付, 2=货到付款, 3=月结30天, 4=月结60天")
     private Integer paymentMethod;
 
     /**

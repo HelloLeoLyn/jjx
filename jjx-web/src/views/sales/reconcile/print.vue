@@ -5,7 +5,9 @@
         <el-button @click="router.back()">返回</el-button>
         <span class="toolbar-tip">对账单打印预览</span>
       </div>
-      <el-button type="primary" icon="Printer" :disabled="!data.rows" @click="handlePrint">打印</el-button>
+      <el-button type="primary" icon="Printer" :disabled="!data.rows" @click="handlePrint"
+        >打印</el-button
+      >
     </div>
 
     <A4Canvas v-if="data.rows" :padding-mm="14">
@@ -19,7 +21,11 @@
           <span class="label">客户名称：</span>{{ customer?.customerName || '' }}
         </div>
         <div class="info-row">
-          <span class="label">对账说明：</span>请核对下列送货明细，如有异议请于 7 日内书面反馈；确认无误请签字回传。
+          <span class="label">账期规则：</span>{{ termDescription }}（起算日：客户签收日）
+        </div>
+        <div class="info-row">
+          <span class="label">对账说明：</span>请核对下列送货明细，如有异议请于 7
+          日内书面反馈；确认无误请签字回传。
         </div>
       </div>
 
@@ -28,7 +34,9 @@
         <thead>
           <tr>
             <th style="width: 30px">序号</th>
-            <th style="width: 86px">送货日期</th>
+            <th style="width: 76px">签收日期</th>
+            <th style="width: 76px">到期日期</th>
+            <th style="width: 64px">状态</th>
             <th style="width: 96px">送货单号</th>
             <th>品名料号</th>
             <th style="width: 64px">单位</th>
@@ -41,11 +49,15 @@
         <tbody>
           <tr v-for="(r, i) in rows" :key="i">
             <td class="center">{{ i + 1 }}</td>
-            <td class="center">{{ r.deliveryDate }}</td>
+            <td class="center">{{ r.customerReceiveDate }}</td>
+            <td class="center">{{ r.dueDate || '-' }}</td>
+            <td class="center">{{ ReconciliationDueStatusEnum.getLabel(r.dueStatus) }}</td>
             <td>{{ r.deliveryNo }}</td>
             <td>
               {{ r.customerMaterialNo || r.productCode }}
-              <div class="cell-sub">{{ r.productName }}<span v-if="r.specification"> {{ r.specification }}</span></div>
+              <div class="cell-sub">
+                {{ r.productName }}<span v-if="r.specification"> {{ r.specification }}</span>
+              </div>
             </td>
             <td class="center">{{ r.unit }}</td>
             <td class="right">{{ fmtNum(r.quantity) }}</td>
@@ -56,7 +68,7 @@
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="7" class="right strong">合 计</td>
+            <td colspan="9" class="right strong">合 计</td>
             <td class="right strong">{{ money(deliveryTotal) }}</td>
             <td></td>
           </tr>
@@ -68,8 +80,12 @@
         <div class="pay-title">付款资料</div>
         <div class="pay-row">
           <span>期间回款笔数：{{ data.paymentCount }}</span>
-          <span style="margin-left: 32px">期间回款合计：<b>{{ money(data.paymentTotal) }}</b></span>
-          <span style="margin-left: 32px">未收差额：<b>{{ money(unpaidDiff) }}</b></span>
+          <span style="margin-left: 32px"
+            >期间回款合计：<b>{{ money(data.paymentTotal) }}</b></span
+          >
+          <span style="margin-left: 32px"
+            >未收差额：<b>{{ money(unpaidDiff) }}</b></span
+          >
         </div>
       </div>
 
@@ -96,6 +112,8 @@ import { getReconciliation } from '@/api/sales/reconcile'
 import { customerApi } from '@/api/sales/customer'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
+import { PaymentTermTypeEnum } from '@/enums/sales/CustomerEnum'
+import { ReconciliationDueStatusEnum } from '@/enums/sales/ReconciliationEnum'
 
 const route = useRoute()
 const router = useRouter()
@@ -107,16 +125,33 @@ const rows = computed(() => {
   const flat: any[] = []
   for (const d of data.value?.rows || []) {
     for (const it of d.items || []) {
-      flat.push({ deliveryDate: d.deliveryDate, deliveryNo: d.deliveryNo, orderNo: d.orderNo, ...it })
+      flat.push({
+        deliveryDate: d.deliveryDate,
+        customerReceiveDate: d.customerReceiveDate,
+        dueDate: d.dueDate,
+        dueStatus: d.dueStatus,
+        deliveryNo: d.deliveryNo,
+        orderNo: d.orderNo,
+        ...it,
+      })
     }
   }
   return flat
 })
 const deliveryTotal = computed(() => rows.value.reduce((s, r) => s + (Number(r.amount) || 0), 0))
-const unpaidDiff = computed(() => Number(deliveryTotal.value) - Number(data.value?.paymentTotal || 0))
+const unpaidDiff = computed(
+  () => Number(deliveryTotal.value) - Number(data.value?.paymentTotal || 0)
+)
+const termDescription = computed(() => {
+  const label = PaymentTermTypeEnum.getLabel(data.value?.paymentTermType)
+  const days = Number(data.value?.creditDays || 0)
+  return days > 0 ? `${label}（${days}天）` : label
+})
 
 const money = (v?: number | string) =>
-  v == null ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  v == null
+    ? '-'
+    : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtNum = (v?: number | string) => (v == null ? '-' : Number(v).toLocaleString('zh-CN'))
 
 function handlePrint() {
@@ -135,6 +170,7 @@ onMounted(async () => {
         customerId,
         startDate: (route.query.startDate as string) || undefined,
         endDate: (route.query.endDate as string) || undefined,
+        dueStatus: (route.query.dueStatus as string) || undefined,
       }),
       customerApi.getCustomer(customerId),
     ])

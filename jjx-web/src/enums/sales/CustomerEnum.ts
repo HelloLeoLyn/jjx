@@ -1,4 +1,35 @@
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
+
+export const CustomerPaymentMethodEnum = createNamedEnum(
+  {
+    PREPAID: { value: 1, label: '预付', tagProps: { type: 'info' } },
+    CASH_ON_DELIVERY: { value: 2, label: '货到付款', tagProps: { type: 'warning' } },
+    MONTHLY_30: { value: 3, label: '月结30天', tagProps: { type: 'success' } },
+    MONTHLY_60: { value: 4, label: '月结60天', tagProps: { type: 'success' } },
+  },
+  { type: 'info' }
+)
+
+export const PaymentTermTypeEnum = createNamedEnum(
+  {
+    PREPAID: { value: 'PREPAID', label: '预付', tagProps: { type: 'info' } },
+    COD: { value: 'COD', label: '货到付款', tagProps: { type: 'warning' } },
+    NET_DAYS: { value: 'NET_DAYS', label: '签收后N天', tagProps: { type: 'primary' } },
+    MONTH_END: { value: 'MONTH_END', label: '签收月月底后N天', tagProps: { type: 'success' } },
+  },
+  { type: 'info' }
+)
+
+export const CreditStartBasisEnum = createNamedEnum(
+  {
+    CUSTOMER_RECEIPT_DATE: {
+      value: 'CUSTOMER_RECEIPT_DATE',
+      label: '客户签收日',
+      tagProps: { type: 'info' },
+    },
+  },
+  { type: 'info' }
+)
 /**客户状态 (1: 潜在客户, 2: 正式客户, 3: 暂停合作, 4: 终止合作) */
 export const CustomerStatusEnum = createEnum({
   items: [

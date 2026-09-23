@@ -139,6 +139,15 @@ public class SalesCustomer extends BaseEntity {
      */
     private String paymentTerms;
 
+    /** 账期类型：PREPAID/COD/NET_DAYS/MONTH_END */
+    private String paymentTermType;
+
+    /** 账期天数 */
+    private Integer creditDays;
+
+    /** 账期起算基准：CUSTOMER_RECEIPT_DATE */
+    private String creditStartBasis;
+
     /**
      * 信用额度
      */
