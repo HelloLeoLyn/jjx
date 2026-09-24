@@ -139,6 +139,19 @@ public class QualityFinishServiceImpl implements QualityFinishService {
                             + "WHERE a.action_id = ? AND IFNULL(n.disposed_quantity,0) >= IFNULL(n.defect_quantity,0) "
                             + "AND n.status <> 'CLOSED'",
                     " ｜ " + note, actionId);
+            // dev-20260922-018：件级「已回收」接线 —— 返工复检合格量对应的件置 RECOVERED
+            // （口径：件级「已回收」数 = 本批复检合格量；未回收的件留在「返工中」，可继续返工/改报废）
+            int passQty = nz(lot.getPassQuantity()).setScale(0, java.math.RoundingMode.DOWN).intValue();
+            if (passQty > 0) {
+                int recovered = jdbcTemplate.update(
+                        "UPDATE quality_ncr_piece SET status = 'RECOVERED', update_time = NOW() "
+                                + "WHERE action_id = ? AND status = 'REWORKING' AND del_flag = 0 "
+                                + "ORDER BY seq_no LIMIT " + passQty,
+                        actionId);
+                if (recovered > 0) {
+                    log.info("返工件级已回收: actionId={} 件数={}（复检合格量={}）", actionId, recovered, passQty);
+                }
+            }
             log.info("返工回收收口: lotNo={} actionId={} {}", lot.getLotNo(), actionId, note);
         } catch (org.springframework.dao.EmptyResultDataAccessException e) {
             // 不是返工复检批（或已收口）→ 正常情况，忽略
