@@ -18,6 +18,25 @@
       />
       <!-- A4 打印页样式预览 -->
       <div class="a4-preview">
+        <div v-if="isSupplement" class="supplement-fields">
+          <el-form label-width="110px" size="small">
+            <el-form-item label="补料来源">
+              <el-select v-model="reasonType" style="width: 260px">
+                <el-option label="生产超耗/现场缺料" value="PRODUCTION_OVERUSE" />
+                <el-option label="报废后补产" value="SCRAP_REPLENISHMENT" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="reasonType === 'SCRAP_REPLENISHMENT'" label="质量不良单ID" required>
+              <el-input-number v-model="ncrId" :min="1" :precision="0" />
+            </el-form-item>
+            <el-form-item label="补产数量" required>
+              <el-input-number v-model="supplementQuantity" :min="0.01" :precision="2" />
+            </el-form-item>
+            <el-form-item label="补料原因" required>
+              <el-input v-model="supplementReason" maxlength="255" show-word-limit />
+            </el-form-item>
+          </el-form>
+        </div>
         <div class="doc-title">领 料 单（预览）</div>
         <div class="doc-info">
           <div class="info-item"><span class="info-label">工单号</span>{{ orderNo }}</div>
@@ -55,7 +74,7 @@
                   v-if="!r.substitute"
                   v-model="r.qtyPick"
                   :min="0"
-                  :max="Number(r.qtyPickMax)"
+                  :max="isSupplement ? undefined : Number(r.qtyPickMax)"
                   size="small"
                   controls-position="right"
                   style="width: 96px"
@@ -86,7 +105,7 @@
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">取消</el-button>
       <el-button type="primary" :loading="submitting" :disabled="!!errorMsg" @click="handleConfirm">
-        {{ isAppend ? '确认追加领料单' : '确认生成领料单' }}
+        {{ isSupplement ? '提交补料申请' : isAppend ? '确认追加领料单' : '确认生成领料单' }}
       </el-button>
     </template>
   </el-dialog>
@@ -105,7 +124,7 @@ const props = withDefaults(
     productName?: string
     plannedQuantity?: number
     // 2026-09-08 部分领料修正：first=首张领料单(createFromProduction)；append=追加补领(createProductionPick，按剩余需求)
-    mode?: 'first' | 'append'
+    mode?: 'first' | 'append' | 'supplement'
   }>(),
   { mode: 'first' },
 )
@@ -116,8 +135,13 @@ const emit = defineEmits<{
 }>()
 
 const isAppend = computed(() => props.mode === 'append')
+const isSupplement = computed(() => props.mode === 'supplement')
+const reasonType = ref<'PRODUCTION_OVERUSE' | 'SCRAP_REPLENISHMENT'>('PRODUCTION_OVERUSE')
+const supplementReason = ref('')
+const ncrId = ref<number>()
+const supplementQuantity = ref<number>()
 const dialogTitle = computed(() =>
-  isAppend.value ? '追加领料单 - 按剩余需求补领（预览确认）' : '生成领料单 - 预览确认',
+  isSupplement.value ? '申请补料 - 超耗/报废补产' : isAppend.value ? '追加领料单 - 按剩余需求补领（预览确认）' : '生成领料单 - 预览确认',
 )
 
 const loading = ref(false)
@@ -150,7 +174,7 @@ async function loadPreview() {
     const res: any = await materialPickApi.pickPreview(props.workOrderId)
     rows.value = (res?.data || []).map((r: any) => ({
       ...r,
-      qtyPick: Number(r.qtyPick),
+      qtyPick: isSupplement.value ? 0 : Number(r.qtyPick),
     }))
   } catch (e: any) {
     errorMsg.value = e?.message || '领料预览加载失败'
@@ -172,7 +196,39 @@ async function handleConfirm() {
   submitting.value = true
   try {
     const { materialPickApi } = await import('@/api/inventory/materialPick')
-    if (isAppend) {
+    if (isSupplement.value) {
+      if (!supplementReason.value.trim()) {
+        ElMessage.warning('请填写补料原因')
+        return
+      }
+      if (reasonType.value === 'SCRAP_REPLENISHMENT' && !ncrId.value) {
+        ElMessage.warning('报废补产补料必须关联质量不良单')
+        return
+      }
+      if (!supplementQuantity.value || supplementQuantity.value <= 0) {
+        ElMessage.warning('请填写本次补产成品数量')
+        return
+      }
+      const items = mainRows.value
+        .filter((r) => Number(r.qtyPick) > 0)
+        .map((r) => ({ materialId: Number(r.materialId), quantity: Number(r.qtyPick), materialCode: r.materialCode, materialName: r.materialName }))
+      if (!items.length) {
+        ElMessage.warning('请至少填写一种补料物料和数量')
+        return
+      }
+      const res: any = await materialPickApi.createProductionSupplement(props.workOrderId, {
+        reasonType: reasonType.value,
+        reason: supplementReason.value.trim(),
+        ncrId: ncrId.value,
+        productionQuantity: supplementQuantity.value,
+        items,
+      })
+      ElMessage.success(`补料申请已提交，出库单 ${res?.data}，请仓库审核发料`)
+      emit('update:modelValue', false)
+      emit('success', res?.data)
+      return
+    }
+    if (isAppend.value) {
       // 追加：按剩余需求提交（0 < 实领 ≤ 剩余可领量），后端 createProductionPick 会二次校验
       const items = mainRows.value
         .filter((r) => Number(r.qtyPick) > 0)

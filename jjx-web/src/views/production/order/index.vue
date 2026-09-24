@@ -783,6 +783,9 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
     case 'pick-material':
       handlePickMaterial(order)
       break
+    case 'supplement-material':
+      handleSupplementMaterial(order)
+      break
     default:
       ElMessage.warning('暂不支持该操作')
   }
@@ -792,7 +795,13 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
 const pickPreviewVisible = ref(false)
 const pickPreviewOrder = ref<any>(null)
 // 2026-09-08 部分领料修正：工单已有领料单 → 追加补领模式；没有 → 首张领料单模式
-const pickMode = ref<'first' | 'append'>('first')
+const pickMode = ref<'first' | 'append' | 'supplement'>('first')
+
+function handleSupplementMaterial(order: any) {
+  pickMode.value = 'supplement'
+  pickPreviewOrder.value = order
+  pickPreviewVisible.value = true
+}
 
 async function handlePickMaterial(order: any) {
   pickMode.value = 'first'

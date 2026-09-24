@@ -34,6 +34,21 @@ public class TaskTreeRowVO {
     @Schema(description = "业务任务号")
     private String taskNo;
 
+    @Schema(description = "任务类型：STANDARD/SUPPLEMENT")
+    private String taskType;
+
+    @Schema(description = "跨工序补产关联组号")
+    private String supplementGroupNo;
+
+    @Schema(description = "补产原因")
+    private String supplementReason;
+
+    @Schema(description = "补料出库单ID")
+    private Long sourceOutboundId;
+
+    @Schema(description = "关联质量不良单ID")
+    private Long sourceNcrId;
+
     @Schema(description = "父任务ID；null=第一层")
     private Long parentTaskId;
 

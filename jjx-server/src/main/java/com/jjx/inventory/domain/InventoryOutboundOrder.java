@@ -81,4 +81,15 @@ public class InventoryOutboundOrder extends BaseEntity {
     /** 审批意见 */
     private String approveRemark;
 
+    /** 补料来源：PRODUCTION_OVERUSE / SCRAP_REPLENISHMENT */
+    private String supplementReasonType;
+
+    /** 补料原因说明 */
+    private String supplementReason;
+
+    /** 报废补产关联质量不良单 */
+    private Long supplementNcrId;
+
+    private BigDecimal supplementProductionQuantity;
+
 }

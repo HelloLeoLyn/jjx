@@ -54,6 +54,21 @@ public class ProductionTask {
     @Schema(description = "乐观锁版本（P2 并发地基；配合 MyBatis-Plus OptimisticLocker 使用）")
     private Integer version;
 
+    /** STANDARD / SUPPLEMENT */
+    private String taskType;
+
+    /** 同次补产跨工序关联组号 */
+    private String supplementGroupNo;
+
+    /** 补产原因 */
+    private String supplementReason;
+
+    /** 关联质量不良单 */
+    private Long sourceNcrId;
+
+    /** 已发料补料单ID */
+    private Long sourceOutboundId;
+
     @Schema(description = "创建人")
     private String createBy;
 

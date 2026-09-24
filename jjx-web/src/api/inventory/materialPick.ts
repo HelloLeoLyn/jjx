@@ -29,6 +29,20 @@ export const materialPickApi = {
     })
   },
 
+  createProductionSupplement(workOrderId: number, payload: {
+    reasonType: 'PRODUCTION_OVERUSE' | 'SCRAP_REPLENISHMENT'
+    reason: string
+    ncrId?: number
+    productionQuantity: number
+    items: any[]
+  }): AxiosPromise<number> {
+    return request({
+      url: `/inventory/outbound/create-production-supplement/${workOrderId}`,
+      method: 'post',
+      data: payload,
+    })
+  },
+
   // 查询工单剩余可领料量（需求-已领）
   getPickRemaining(workOrderId: number): AxiosPromise<any[]> {
     return request({

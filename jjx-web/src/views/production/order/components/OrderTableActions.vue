@@ -125,6 +125,13 @@
               <el-icon><CloseBold /></el-icon>
               审核驳回
             </el-dropdown-item>
+            <el-dropdown-item
+              command="supplement-material"
+              v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['production:order:edit'])"
+            >
+              <el-icon><Box /></el-icon>
+              申请补料（超耗/报废补产）
+            </el-dropdown-item>
             <el-dropdown-item command="copy" v-if="hasPermi(['production:order:add'])">
               <el-icon><CopyDocument /></el-icon>
               复制订单

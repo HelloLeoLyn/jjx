@@ -7,10 +7,12 @@ import com.jjx.inventory.dto.query.OutboundQueryDTO;
 import com.jjx.inventory.dto.vo.OutboundVO;
 import com.jjx.inventory.dto.vo.PickOrderPrintVO;
 import com.jjx.inventory.service.InventoryOutboundService;
+import com.jjx.inventory.dto.request.ProductionSupplementPickDTO;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -143,6 +145,15 @@ public class InventoryOutboundController {
     public Result<Long> createProductionPick(@PathVariable Long workOrderId,
                                              @RequestBody java.util.List<java.util.Map<String, Object>> items) {
         return Result.success(outboundService.createProductionPick(workOrderId, items));
+    }
+
+    @PostMapping("/create-production-supplement/{workOrderId}")
+    @Operation(summary = "创建通用工单补料单")
+    @SaCheckPermission("inventory:outbound:add")
+    public Result<Long> createProductionSupplement(@PathVariable Long workOrderId,
+                                                   @Valid @RequestBody ProductionSupplementPickDTO dto) {
+        return Result.success(outboundService.createProductionSupplement(workOrderId, dto.getReasonType(),
+                dto.getReason(), dto.getNcrId(), dto.getProductionQuantity(), dto.getItems()));
     }
 
     @PostMapping("/create-rework-supplement/{workOrderId}/{ncrId}")

@@ -1244,6 +1244,34 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items) {
+        return createProductionPickInternal(workOrderId, items, null, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createProductionSupplement(Long workOrderId, String reasonType, String reason, Long ncrId,
+                                           BigDecimal productionQuantity,
+                                           java.util.List<java.util.Map<String, Object>> items) {
+        if (!"PRODUCTION_OVERUSE".equals(reasonType) && !"SCRAP_REPLENISHMENT".equals(reasonType)) {
+            throw new BusinessException("Invalid production supplement reason type");
+        }
+        if (reason == null || reason.isBlank()) throw new BusinessException("Supplement reason is required");
+        if (productionQuantity == null || productionQuantity.signum() <= 0) {
+            throw new BusinessException("Supplement production quantity must be greater than zero");
+        }
+        if ("SCRAP_REPLENISHMENT".equals(reasonType) && ncrId == null) {
+            throw new BusinessException("Scrap replenishment requires a quality NCR reference");
+        }
+        Long outboundId = createProductionPickInternal(workOrderId, items, reasonType, reason.trim(), ncrId);
+        InventoryOutboundOrder supplement = outboundOrderMapper.selectById(outboundId);
+        supplement.setSupplementProductionQuantity(productionQuantity);
+        outboundOrderMapper.updateById(supplement);
+        return outboundId;
+    }
+
+    private Long createProductionPickInternal(Long workOrderId,
+                                              java.util.List<java.util.Map<String, Object>> items,
+                                              String reasonType, String reason, Long ncrId) {
         log.info("追加领料: workOrderId={}, items={}", workOrderId, items);
         com.jjx.production.domain.entity.ProductionOrder prodOrder = productionOrderMapper.selectById(workOrderId);
         if (prodOrder == null) {
@@ -1254,9 +1282,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new BusinessException("本次领料明细不能为空");
         }
         // 剩余量校验：Σ本次领料 ≤ 剩余需求量（033定稿：可改小不可改大）
+        boolean supplement = reasonType != null;
         java.util.Map<Long, BigDecimal> remainingMap = new java.util.HashMap<>();
-        for (java.util.Map<String, Object> rem : getPickRemaining(workOrderId)) {
-            remainingMap.put(((Number) rem.get("materialId")).longValue(), (BigDecimal) rem.get("remaining"));
+        if (!supplement) {
+            for (java.util.Map<String, Object> rem : getPickRemaining(workOrderId)) {
+                remainingMap.put(((Number) rem.get("materialId")).longValue(), (BigDecimal) rem.get("remaining"));
+            }
         }
         java.util.List<java.util.Map<String, Object>> validItems = new java.util.ArrayList<>();
         for (java.util.Map<String, Object> item : items) {
@@ -1264,6 +1295,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             BigDecimal qty = new BigDecimal(String.valueOf(item.get("quantity")));
             if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
             BigDecimal remaining = remainingMap.getOrDefault(materialId, BigDecimal.ZERO);
+            if (supplement) {
+                validItems.add(item);
+                continue;
+            }
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new BusinessException("物料[" + item.get("materialCode") + "]剩余可领量为0，不能追加领料");
             }
@@ -1304,6 +1339,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 2026-08-18：查不到启用仓库时明确报错（原静默跳过导致 warehouse_id NULL → SQL 裸错）
         order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        if (supplement) {
+            order.setSupplementReasonType(reasonType);
+            order.setSupplementReason(reason);
+            order.setSupplementNcrId(ncrId);
+        }
         outboundOrderMapper.insert(order);
 
         int sort = 1;

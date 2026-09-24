@@ -81,6 +81,10 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items);
 
+    Long createProductionSupplement(Long workOrderId, String reasonType, String reason, Long ncrId,
+                                    java.math.BigDecimal productionQuantity,
+                                    java.util.List<java.util.Map<String, Object>> items);
+
     /** 返工补料：独立于 BOM 定额，必须关联 NCR 并记录审批人。 */
     Long createReworkSupplement(Long workOrderId, Long ncrId, String approvedBy,
                                 java.util.List<java.util.Map<String, Object>> items);
