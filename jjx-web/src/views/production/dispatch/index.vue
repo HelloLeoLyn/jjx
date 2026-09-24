@@ -99,6 +99,14 @@
             <el-tag v-if="row.executionType === 'REWORK'" type="danger" size="small" effect="plain"
               >返工</el-tag
             >
+            <!-- dev-20260924-002：补产任务在派工队列里要能一眼认出（挂老工单、绑补料单、可独立派工） -->
+            <el-tooltip
+              v-if="row.taskType === ProductionTaskType.SUPPLEMENT"
+              :content="supplementTip(row)"
+              placement="top"
+            >
+              <el-tag type="warning" size="small" effect="plain">补产</el-tag>
+            </el-tooltip>
             <span class="task-sub">{{ row.processName || '-' }}</span>
           </template>
         </el-table-column>
@@ -483,6 +491,8 @@ import {
   statusTag,
 } from './utils/taskFormatters'
 import { allowedActions } from './utils/taskActions'
+// dev-20260924-002：补产任务（挂老工单的独立任务，绑补料单）
+import { ProductionTaskType } from '@/enums/production'
 import type { TreeRow } from './types'
 import { useDispatchList } from './composables/useDispatchList'
 import { useAssign } from './composables/useAssign'
@@ -494,6 +504,12 @@ import { useFlow } from './composables/useFlow'
 import { useCompletionDetail } from './composables/useCompletionDetail'
 
 defineOptions({ name: 'ProductionDispatchList' })
+
+/** dev-20260924-002：补产任务提示（原因 + 关联补料单），派工页据此给补产行贴标签 */
+const supplementTip = (row: TreeRow) =>
+  [row.supplementReason, row.supplementGroupNo ? `补料单 ${row.supplementGroupNo}` : '']
+    .filter(Boolean)
+    .join(' · ') || '报废补产'
 
 // ============ 列表 + 树（第一层分页 / 懒加载 / 行刷新 / 完成） ============
 const {

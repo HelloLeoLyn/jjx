@@ -127,7 +127,7 @@
             </el-dropdown-item>
             <el-dropdown-item
               command="supplement-material"
-              v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['production:order:edit'])"
+              v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['inventory:outbound:supplement'])"
             >
               <el-icon><Box /></el-icon>
               申请补料（超耗/报废补产）

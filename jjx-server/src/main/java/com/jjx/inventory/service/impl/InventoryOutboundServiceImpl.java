@@ -68,6 +68,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryWarehouseMapper outboundWarehouseMapper;
     private final InventoryMaterialMapper materialMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
+    /** dev-20260924-002：报废补产在同一事务里生成补产任务（挂工单末道工序） */
+    private final com.jjx.production.service.ProductionTaskService productionTaskService;
     private final com.jjx.product.mapper.EngineeringBomMapper productBomMapper;
     private final com.jjx.product.mapper.EngineeringBomItemMapper productBomItemMapper;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
@@ -1266,6 +1268,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         InventoryOutboundOrder supplement = outboundOrderMapper.selectById(outboundId);
         supplement.setSupplementProductionQuantity(productionQuantity);
         outboundOrderMapper.updateById(supplement);
+        // dev-20260924-002（剩余半张）：报废补产在同一事务里生成补产任务（挂工单末道工序，独立派工/报工）。
+        // 超耗（PRODUCTION_OVERUSE）只补料、不补产 —— 货已经做出来了，没有要补做的数量。
+        if ("SCRAP_REPLENISHMENT".equals(reasonType)) {
+            productionTaskService.createSupplementTask(workOrderId, productionQuantity, ncrId, outboundId,
+                    supplement.getOutboundNo(), reason.trim());
+        }
         return outboundId;
     }
 

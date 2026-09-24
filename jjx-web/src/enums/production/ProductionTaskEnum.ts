@@ -16,3 +16,20 @@ export const ProductionTaskStatusEnum = createEnum<string>({
   ],
   defaultTag: { type: 'info' },
 })
+
+/**
+ * dev-20260924-002：生产任务业务类型（production_task.task_type）。
+ * STANDARD=普通任务；SUPPLEMENT=报废补产任务（挂老工单、绑补料单、可独立派工）。
+ */
+export const ProductionTaskType = {
+  STANDARD: 'STANDARD',
+  SUPPLEMENT: 'SUPPLEMENT',
+} as const
+
+export const ProductionTaskTypeEnum = createEnum<string>({
+  items: [
+    { value: ProductionTaskType.STANDARD, label: '普通', tagProps: { type: 'info' } },
+    { value: ProductionTaskType.SUPPLEMENT, label: '补产', tagProps: { type: 'warning' } },
+  ],
+  defaultTag: { type: 'info' },
+})

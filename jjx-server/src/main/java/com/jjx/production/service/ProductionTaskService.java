@@ -33,6 +33,27 @@ public interface ProductionTaskService {
     Long createFirstTask(Long executionId, BigDecimal inputQuantity);
 
     /**
+     * 报废补产（dev-20260924-002 剩余半张）：为工单「标准末道工序」生成独立补产任务（task_type=SUPPLEMENT）。
+     *
+     * <p>口径（jjx-docs/design/quality-disposition-rework-master-dev-20260923-045.md + 本卡方案）：
+     * 补产挂老工单、不另开单；补产任务带补料单与不良单来源，可独立派工、独立报工；
+     * 数量只作为派工依据，良品累计仍由报工 → 判定 → 入库决定（不写回工单完工数）。</p>
+     *
+     * <p>幂等：同一张补料单（source_outbound_id）只建一条任务；并发由唯一键
+     * uk_task_supplement_outbound_exec(source_outbound_id, execution_id) 兜底。</p>
+     *
+     * @param workOrderId     生产工单ID
+     * @param quantity        本次补产成品数量（来自补料申请）
+     * @param ncrId           关联的报废不良单ID（可空）
+     * @param sourceOutboundId 补料出库单ID（必填，作为来源留痕与幂等键）
+     * @param outboundNo      补料出库单号（作为补产组号 supplement_group_no）
+     * @param reason          补产原因
+     * @return 补产任务ID
+     */
+    Long createSupplementTask(Long workOrderId, BigDecimal quantity, Long ncrId, Long sourceOutboundId,
+                              String outboundNo, String reason);
+
+    /**
      * 第一层分页查询（parent_task_id IS NULL）
      * 生产全局角色 → 全部；普通用户 → assignee_id = 当前用户
      */

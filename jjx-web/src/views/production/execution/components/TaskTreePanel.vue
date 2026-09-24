@@ -54,6 +54,14 @@
             >
               <el-tag type="danger" size="small" effect="plain">返工</el-tag>
             </el-tooltip>
+            <!-- dev-20260924-002：补产任务身份（挂老工单末道工序、绑补料单） -->
+            <el-tooltip
+              v-if="row.taskType === ProductionTaskType.SUPPLEMENT"
+              :content="supplementTip(row)"
+              placement="top"
+            >
+              <el-tag type="warning" size="small" effect="plain">补产</el-tag>
+            </el-tooltip>
             <span class="task-sub">{{ row.processName || '-' }}</span>
           </div>
         </template>
@@ -165,7 +173,7 @@
 import type { TaskTreeRow } from '@/types/production/task'
 import type { ReworkTraceVO } from '@/types/production/operationExecution'
 import { fmtQty } from '../utils'
-import { ExecutionStatusEnum, ProductionTaskStatus } from '@/enums/production'
+import { ExecutionStatusEnum, ProductionTaskStatus, ProductionTaskType } from '@/enums/production'
 import {
   statusLabel as taskStatusLabel,
   statusTag as taskStatusTag,
@@ -204,6 +212,12 @@ const props = withDefaults(
 /** 该工序是否为返工工序（是则返回返工链，用于标签与 tooltip） */
 const reworkOf = (row: TaskTreeRow) =>
   props.reworkMap && row.executionId ? props.reworkMap[row.executionId] : null
+
+/** dev-20260924-002：补产任务提示（原因 + 关联补料单） */
+const supplementTip = (row: TaskTreeRow) =>
+  [row.supplementReason, row.supplementGroupNo ? `补料单 ${row.supplementGroupNo}` : '']
+    .filter(Boolean)
+    .join(' · ') || '报废补产'
 
 const emit = defineEmits<{
   query: []

@@ -131,6 +131,88 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
     }
 
+    // ==================== 补产（dev-20260924-002 剩余半张） ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createSupplementTask(Long workOrderId, BigDecimal quantity, Long ncrId, Long sourceOutboundId,
+                                     String outboundNo, String reason) {
+        if (workOrderId == null) {
+            throw new BusinessException("补产任务必须关联生产工单");
+        }
+        if (sourceOutboundId == null) {
+            throw new BusinessException("补产任务必须关联补料单");
+        }
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException("补产数量必须大于 0");
+        }
+        // 幂等：同一张补料单只建一条补产任务（重复提交/并发都返回既有任务）
+        ProductionTask existing = findSupplementTask(sourceOutboundId);
+        if (existing != null) {
+            return existing.getTaskId();
+        }
+        com.jjx.production.domain.entity.ProductionOperationExecution target = lastStandardExecution(workOrderId);
+        if (target == null) {
+            throw new BusinessException("工单还没有工序，无法生成补产任务（请先在派工管理生成工序）");
+        }
+        ProductionTask task = new ProductionTask();
+        task.setTaskNo(nextTaskNo(target.getExecutionId(), false, 'S'));
+        task.setExecutionId(target.getExecutionId());
+        task.setParentTaskId(null);
+        task.setAssigneeId(null);
+        task.setTaskQuantity(quantity);
+        task.setStatus(STATUS_PENDING);
+        task.setVersion(0);
+        task.setTaskType(com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode());
+        task.setSupplementGroupNo(outboundNo);
+        task.setSupplementReason(reason);
+        task.setSourceNcrId(ncrId);
+        task.setSourceOutboundId(sourceOutboundId);
+        try {
+            productionTaskMapper.insert(task);
+            log.info("补产任务已生成: taskNo={} 工单={} 数量={} 补料单={}",
+                    task.getTaskNo(), workOrderId, quantity.toPlainString(), outboundNo);
+            return task.getTaskId();
+        } catch (DuplicateKeyException e) {
+            log.warn("补产任务已存在（并发或重复提交），补料单={}", outboundNo);
+            ProductionTask dup = findSupplementTask(sourceOutboundId);
+            if (dup == null) {
+                throw e;
+            }
+            return dup.getTaskId();
+        }
+    }
+
+    /** 按补料单找补产任务（幂等键：source_outbound_id）。 */
+    private ProductionTask findSupplementTask(Long sourceOutboundId) {
+        return productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
+                .eq(ProductionTask::getSourceOutboundId, sourceOutboundId)
+                .orderByAsc(ProductionTask::getTaskId)
+                .last("LIMIT 1"));
+    }
+
+    /** 工单「标准末道工序」：排除返工/补产这类附加工序（execution_type != REWORK）。 */
+    private com.jjx.production.domain.entity.ProductionOperationExecution lastStandardExecution(Long workOrderId) {
+        return productionOperationExecutionMapper.selectOne(
+                Wrappers.<com.jjx.production.domain.entity.ProductionOperationExecution>lambdaQuery()
+                        .eq(com.jjx.production.domain.entity.ProductionOperationExecution::getOrderId, workOrderId)
+                        .and(w -> w.isNull(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionType)
+                                .or().ne(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionType,
+                                        com.jjx.production.enums.ExecutionTypeEnum.REWORK.getCode()))
+                        .orderByDesc(com.jjx.production.domain.entity.ProductionOperationExecution::getProcessOrder)
+                        .last("LIMIT 1"));
+    }
+
+    /**
+     * 补产任务号：&lt;工单号&gt;-P&lt;2位工序序&gt;-S&lt;2位流水&gt;。
+     * 号位 S（补产）与普通任务 T 区分，一眼能认出这是补产（dev-20260924-002）。
+     */
+    static String supplementTaskNo(String orderNo, Integer processOrder, long taskSeq) {
+        String order = (orderNo == null || orderNo.isBlank()) ? "SUPP" : orderNo.trim();
+        int process = processOrder == null ? 0 : processOrder;
+        return order + "-P" + String.format("%02d", process) + "-S" + String.format("%02d", taskSeq);
+    }
+
     @Override
     public Page<TaskTreeRowVO> pageAccessibleTasks(TaskTreeQueryDTO queryDTO) {
         int pageNum = queryDTO == null || queryDTO.getPageNum() == null ? 1 : queryDTO.getPageNum();
@@ -1029,6 +1111,14 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
      * First Task 的存在性检查也在同一把 execution 行锁内完成，避免重复创建时空耗流水。
      */
     private String nextTaskNo(Long executionId, boolean firstTask) {
+        return nextTaskNo(executionId, firstTask, 'T');
+    }
+
+    /**
+     * 任务号生成：号位 position 由调用方指定（T=普通任务 / S=补产任务，dev-20260924-002）。
+     * 两种号位共用同一工序流水（task_seq 递增），故不会互相撞号。
+     */
+    private String nextTaskNo(Long executionId, boolean firstTask, char position) {
         Map<String, Object> context = productionOperationExecutionMapper
                 .selectTaskNoContextForUpdate(executionId);
         if (context == null || context.isEmpty()) {
@@ -1062,8 +1152,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 log.warn("任务号进位告警发布失败（不影响建号）: executionId={}, seq={}", executionId, taskSeq, e);
             }
         }
-        return orderNoValue + "-P" + String.format("%02d", processOrder)
-                + "-T" + String.format("%02d", taskSeq);
+        // 号位：T=普通任务 / S=补产任务（dev-20260924-002），两者共用同一工序流水
+        return position == 'S'
+                ? supplementTaskNo(orderNoValue.toString(), processOrder, taskSeq)
+                : orderNoValue + "-P" + String.format("%02d", processOrder)
+                        + "-T" + String.format("%02d", taskSeq);
     }
 
     private Long findFirstTask(Long executionId) {
@@ -1435,6 +1528,12 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     : t.getTaskQuantity().subtract(childAssigned).subtract(ownPending).subtract(ownCompleted));
             vo.setRemainingQuantity(remaining);
             vo.setStatus(t.getStatus());
+            // dev-20260924-002：补产任务身份下发（派工页/任务树据此贴「补产」标签，并可追溯补料单与不良单）
+            vo.setTaskType(t.getTaskType());
+            vo.setSupplementGroupNo(t.getSupplementGroupNo());
+            vo.setSupplementReason(t.getSupplementReason());
+            vo.setSourceNcrId(t.getSourceNcrId());
+            vo.setSourceOutboundId(t.getSourceOutboundId());
             // dev-20260923（补报入口 · 对应后端 dev-20260922-032）：已完成的任务/工序若仍落在
             // 「计划量 ×(1+损耗率)」额度内，回填可补报额度，前端据此显示"补报"入口
             if ("COMPLETED".equals(t.getStatus())) {

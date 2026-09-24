@@ -71,6 +71,16 @@ export interface TaskTreeRow {
   taskNo?: string
   /** 工序类型（NORMAL / REWORK）—— dev-20260923-035：派工与任务列表据此给返工打标签 */
   executionType?: string
+  /** 任务业务类型（STANDARD / SUPPLEMENT）—— dev-20260924-002：派工与任务列表据此给补产打标签 */
+  taskType?: string
+  /** 补产组号（= 补料出库单号）—— dev-20260924-002 */
+  supplementGroupNo?: string
+  /** 补产原因 —— dev-20260924-002 */
+  supplementReason?: string
+  /** 补产关联的报废不良单ID —— dev-20260924-002 */
+  sourceNcrId?: number | null
+  /** 补产关联的补料出库单ID —— dev-20260924-002 */
+  sourceOutboundId?: number | null
   parentTaskId: number | null // null = 第一层真实任务（非 System Root）
   executionId: number
   /** 工序执行状态（ExecutionStatusEnum 值；2026-09-21 dev-20260921-025 后端任务行补投影，列表侧判断能否开始工序） */

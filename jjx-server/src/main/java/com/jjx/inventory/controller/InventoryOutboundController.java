@@ -148,8 +148,8 @@ public class InventoryOutboundController {
     }
 
     @PostMapping("/create-production-supplement/{workOrderId}")
-    @Operation(summary = "创建通用工单补料单")
-    @SaCheckPermission("inventory:outbound:add")
+    @Operation(summary = "创建通用工单补料单（超耗 / 报废补产）")
+    @SaCheckPermission("inventory:outbound:supplement")
     public Result<Long> createProductionSupplement(@PathVariable Long workOrderId,
                                                    @Valid @RequestBody ProductionSupplementPickDTO dto) {
         return Result.success(outboundService.createProductionSupplement(workOrderId, dto.getReasonType(),
