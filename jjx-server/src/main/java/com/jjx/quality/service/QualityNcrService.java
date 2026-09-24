@@ -68,10 +68,12 @@ public interface QualityNcrService {
       */
      QualityNcrAction rejectScrap(Long actionId, String reason, String operatorName);
     /**
-     * 隔离台账（dev-20260924-007 一期）：列「在隔离的货」—— 未处置不良（不良 − 已处置 &gt; 0）的清单，
+     * 隔离台账（dev-20260924-007 一期 / dev-20260924-031）：列「在隔离的货」—— 未处置不良（不良 − 已处置 &gt; 0）的清单，
      * 含件级汇总（件总数 / 待处置件数）。一期只做标识，**不动库存**。
+     *
+     * @param includeIqc true=含来料（IQC）；false=只看成品侧（页面默认，来料不良在「来料不合格处置」处理）
      */
-    List<com.jjx.quality.dto.vo.QuarantineRowVO> listQuarantine();
+    List<com.jjx.quality.dto.vo.QuarantineRowVO> listQuarantine(boolean includeIqc);
     /**
      * 登记处置（返工/让步接收/报废）
      * 校验：数量 ≤ 待处置；让步接收必须已获客户确认；

@@ -262,11 +262,11 @@ export const qualityNcrApi = {
     return request.get<R<QualityNcr[]>>('/quality/ncr/by-order', { params: { orderId, executionId } })
   },
   /**
-   * 隔离台账（dev-20260924-007 一期）：在隔离的货 = 未处置不良（不良 − 已处置），含件级汇总。
-   * 口径：一期只做标识，不动库存（库存只装良品）。
+   * 隔离台账（dev-20260924-007 一期 / dev-20260924-031）：在隔离的货 = 未处置不良（不良 − 已处置），含件级汇总。
+   * 口径：一期只做标识，不动库存（库存只装良品）。默认只看成品侧，includeIqc=true 含来料。
    */
-  quarantine() {
-    return request.get<R<Record<string, any>[]>>('/quality/ncr/quarantine')
+  quarantine(includeIqc = false) {
+    return request.get<R<Record<string, any>[]>>('/quality/ncr/quarantine', { params: { includeIqc } })
   },
   dispose(ncrId: number, data: Record<string, unknown>) {
     return request.post<R<QualityNcrAction>>(`/quality/ncr/${ncrId}/dispose`, data)

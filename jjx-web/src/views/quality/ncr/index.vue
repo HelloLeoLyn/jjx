@@ -3,7 +3,7 @@
     <el-alert type="info" :closable="false" show-icon class="scope-guide">
       <template #title>
         <div class="scope-guide__content">
-          <span>本页主要处理成品检验批不良：返工、让步接收（特采）或报废。成品让步接收必须取得客户确认。</span>
+          <span>本页处理「成品（FQC）」不良：返工、让步接收（特采）或报废；默认只看成品，可用上方「来源类型」切到「来料检验」。成品让步接收必须取得客户确认。</span>
           <el-button link type="primary" @click="goIqcQuarantine">查看来料不合格处置</el-button>
         </div>
       </template>
@@ -13,7 +13,7 @@
         <div class="header">
           <span>产品不良台账</span>
           <div>
-            <el-select v-model="query.lotType" clearable placeholder="来源类型" style="width: 140px" @change="load(1)">
+            <el-select v-model="query.lotType" clearable placeholder="来源类型（默认成品）" style="width: 160px" @change="load(1)">
               <el-option label="来料检验" value="IQC" />
               <el-option label="成品检验" value="FQC" />
             </el-select>
@@ -40,7 +40,9 @@
         <el-table-column label="工单/来源" min-width="150">
           <template #default="{ row }">
             <!-- dev-20260923-036：显示单号而不是裸 ID（原来「工单 #2 / 批 #11」看不出对的是谁） -->
-            <div>{{ row.orderNo || (row.orderId ? '工单 #' + row.orderId : '-') }}</div>
+            <!-- dev-20260924-031：来料不良无工单，不再显示裸「工单 -」 -->
+            <div v-if="row.lotType === 'IQC'">来料（无工单）</div>
+            <div v-else>{{ row.orderNo || (row.orderId ? '工单 #' + row.orderId : '-') }}</div>
             <div v-if="row.lotNo" class="sub">
               检验批 {{ row.lotNo }}
               <el-tag v-if="row.lotSuperseded" size="small" type="info" effect="plain">已失效</el-tag>
@@ -252,11 +254,17 @@
         title="口径：隔离 = 未处置不良（不良 − 已处置）；件级 = 不良件状态「待处置」。一期只做标识，库存不动（库存只装良品）。"
         style="margin-bottom: 10px"
       />
+      <!-- dev-20260924-031：默认只看成品侧；来料不良在「来料不合格处置」处理 -->
+      <div class="quarantine-tools">
+        <el-switch v-model="quarantineIncludeIqc" active-text="含来料（IQC）" @change="loadQuarantine" />
+      </div>
       <el-table v-loading="quarantineLoading" :data="quarantineRows" border size="small" max-height="56vh">
         <el-table-column prop="ncrNo" label="不良单号" min-width="140" />
         <el-table-column label="工单/批" min-width="180">
           <template #default="{ row }">
-            <div>{{ row.orderNo || (row.orderId ? '工单 #' + row.orderId : '-') }}</div>
+            <!-- dev-20260924-031：来料不良无工单，不再显示裸「工单 -」 -->
+            <div v-if="row.lotType === 'IQC'">来料（无工单）</div>
+            <div v-else>{{ row.orderNo || (row.orderId ? '工单 #' + row.orderId : '-') }}</div>
             <div class="sub">{{ row.lotNo ? '批 ' + row.lotNo : '' }}</div>
           </template>
         </el-table-column>
@@ -523,7 +531,7 @@ const goIqcQuarantine = () => router.push('/inventory/iqc-quarantine')
 const loading = ref(false)
 const rows = ref<QualityNcr[]>([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, lotType: '', status: '', materialCode: '' })
+const query = reactive({ pageNum: 1, pageSize: 10, lotType: 'FQC', status: '', materialCode: '' })
 // dev-20260922-012（G3）：支持从检验批工作台判定后带 materialCode 跳进来，直接筛到该物料
 if (route.query.materialCode) {
   query.materialCode = String(route.query.materialCode)
@@ -628,11 +636,16 @@ const supplementItems = ref<Array<PickPreviewRow & { quantity: number }>>([])
 const quarantineVisible = ref(false)
 const quarantineLoading = ref(false)
 const quarantineRows = ref<any[]>([])
+/** dev-20260924-031：隔离台账默认只看成品侧；打开含来料需显式切换 */
+const quarantineIncludeIqc = ref(false)
 const openQuarantine = async () => {
   quarantineVisible.value = true
+  await loadQuarantine()
+}
+const loadQuarantine = async () => {
   quarantineLoading.value = true
   try {
-    const res: any = await qualityNcrApi.quarantine()
+    const res: any = await qualityNcrApi.quarantine(quarantineIncludeIqc.value)
     quarantineRows.value = res?.data || []
   } catch {
     quarantineRows.value = []
@@ -962,9 +975,13 @@ onMounted(async () => {
   justify-content: flex-end;
 }
 .sub {
-  margin-left: 6px;
   color: #909399;
   font-size: 12px;
+  margin-left: 6px;
+}
+.quarantine-tools {
+  margin-bottom: 8px;
+  text-align: right;
 }
 .tip {
   color: #909399;

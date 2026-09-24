@@ -731,9 +731,11 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     }
 
     @Override
-    public List<com.jjx.quality.dto.vo.QuarantineRowVO> listQuarantine() {
+    public List<com.jjx.quality.dto.vo.QuarantineRowVO> listQuarantine(boolean includeIqc) {
         List<com.jjx.quality.dto.vo.QuarantineRowVO> rows = new java.util.ArrayList<>();
         try {
+            // dev-20260924-031：默认只看成品侧（来料不良在「来料不合格处置」处理）；includeIqc=true 才含来料
+            String lotTypeClause = includeIqc ? "" : " AND n.lot_type <> 'IQC'";
             jdbcTemplate.query(
                     "SELECT n.ncr_id, n.ncr_no, n.lot_type, n.lot_id, l.lot_no, n.order_id, o.order_no,"
                             + " n.material_code, n.material_name, n.product_code, n.product_name, n.batch_no,"
@@ -747,6 +749,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                             + "              FROM quality_ncr_piece WHERE del_flag = 0 GROUP BY ncr_id) p ON p.ncr_id = n.ncr_id"
                             + " WHERE n.del_flag = 0 AND n.status IN ('PENDING','DISPOSING')"
                             + "   AND (IFNULL(n.defect_quantity, 0) - IFNULL(n.disposed_quantity, 0)) > 0"
+                            + lotTypeClause
                             + " ORDER BY n.ncr_id DESC LIMIT 500",
                     (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                         com.jjx.quality.dto.vo.QuarantineRowVO vo = new com.jjx.quality.dto.vo.QuarantineRowVO();
