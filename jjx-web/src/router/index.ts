@@ -41,6 +41,20 @@ function endProgress() {
 }
 export const constantRoutes: RouteRecordRaw[] = [
   {
+    // dev-20260924-024 刀2：来料检验单详情（独立子页，不出现在菜单/权限矩阵里）
+    path: '/inventory/iqc-detail/:inboundId',
+    component: () => import('@/layout/index.vue'),
+    meta: { hidden: true },
+    children: [
+      {
+        path: '',
+        name: 'IqcInspectionDetail',
+        component: () => import('@/views/inventory/iqc/detail.vue'),
+        meta: { title: '来料检验单', hidden: true },
+      },
+    ],
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
