@@ -185,7 +185,7 @@ RETAINED_TABLES=(
   sys_user sys_role sys_menu sys_role_menu sys_user_role sys_dept
   sys_config sys_dict sys_dict_item sys_event_config sys_event_config_bak_20260814
   sys_event_last_payload
-  quality_template_registry quality_sampling_plan
+  quality_template_registry
   engineering_standard_process engineering_process_icon_sample
   sales_customer purchase_supplier inventory_material inventory_material_category
   inventory_warehouse inventory_item

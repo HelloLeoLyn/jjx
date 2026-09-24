@@ -1,8 +1,11 @@
 -- =====================================================
--- 清理测试数据脚本（v18）
+-- 清理测试数据脚本（v19）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
--- v18 变更（2026-09-24，任务 dev-20260924-018；用户 14:49 问「是不是要更新升级了」→ 14:51「照上面改」）：
+-- v19 变更（2026-09-24，任务 dev-20260924-021）：
+--   quality_sampling_plan 表已下线（迁移 219：8 条方案改由 sys_config(quality_config.quality.sampling_plan) JSON 承载，依据 CONVENTIONS §14）。
+--   因此：① 核验段删去该表的 COUNT（表不存在，不删会报 1146）；② 第 12 节保留声明同步删除。
+---- v18 变更（2026-09-24，任务 dev-20260924-018；用户 14:49 问「是不是要更新升级了」→ 14:51「照上面改」）：
 --   起因：库 117 张基础表中 4 张无归宿 → scripts/db-clean-test-data.sh「④ 覆盖率校验」直接 die，清理已跑不起来。
 --   1. 【新增清理】3 张今天的业务表（此前遗漏，不在 TRUNCATE 也不在保留白名单）：
 --      quality_scrap_order（迁移 217，dev-20260924-006 成品报废单，引用 ncr_action.action_id / ncr_id / lot_id / order_id）、
@@ -373,7 +376,8 @@ TRUNCATE sales_sample_order;
 -- 配置：sys_config / sys_dict / sys_dict_item / sys_event_config
 -- 事件基建：sys_event_last_payload（事件最近一次 payload 缓存，事件配置页试渲染用；v18 起保留，与 sys_event_config 同类）
 -- 质量模板：quality_template_registry
--- 质量配置：quality_sampling_plan（AQL 抽样方案，v14 起保留）
+-- 质量配置：抽样方案（AQL）已于 2026-09-24 从 quality_sampling_plan 表迁入
+--             sys_config（group=quality_config, key=quality.sampling_plan，JSON 数组；迁移 219，dev-20260924-021）
 -- 生产基础资料：engineering_standard_process
 -- 图标学习样本：engineering_process_icon_sample（v14 起保留）
 -- 业务基础资料：sales_customer / purchase_supplier / inventory_material /
@@ -425,7 +429,7 @@ SELECT
     (SELECT COUNT(*) FROM inventory_warehouse) AS warehouses,
     (SELECT COUNT(*) FROM engineering_standard_process) AS standard_processes,
     (SELECT COUNT(*) FROM quality_template_registry) AS quality_templates,
-    (SELECT COUNT(*) FROM quality_sampling_plan) AS sampling_plans,
+    (SELECT COUNT(*) FROM sys_config WHERE config_key = 'quality.sampling_plan') AS sampling_plan_configs,
     (SELECT COUNT(*) FROM engineering_process_icon_sample) AS icon_samples,
     (SELECT COUNT(*) FROM product) AS products,
     (SELECT COUNT(*) FROM product_category) AS product_categories,

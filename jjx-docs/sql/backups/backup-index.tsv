@@ -28,3 +28,5 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 14:52:15	guard	sys_task_register_dev-20260924-018_20260924-1451-guard.sql	e5175c3f3d2d4deab34afe9ad9357a2f	1211912	1	大黄(OpenClaw)	dev-20260924-018
 2026-09-24 15:00:18	guard	sys_task_register_dev-20260924-019_20260924-1459-guard.sql	3b18e08d5307edd16c2b8130b23ec4d7	1213795	1	大黄(OpenClaw)	dev-20260924-019
 2026-09-24 15:25:57	guard	sys_task_register_dev-20260924-020-021_20260924-1525-guard.sql	293b11e16873757c4ab97f387570022f	1186265	1	大黄(OpenClaw)	dev-20260924-020
+2026-09-24 15:27:51	table	jjx_table_backup_20260924-1527_before-219.sql	ff0446cf1cb829e46da12604ee5c4fcf	21634	2	agent	dev-20260924-021
+2026-09-24 15:28:53	delete	jjx_erp_db_backup_20260924-1200_before-217.sql	cd95bc152db6d13b5a3fe504b49a6025	5951936	116	db-migrate.sh 每日只留最新一份全库快照（策略：CONVENTIONS §2）	dev-20260924-021

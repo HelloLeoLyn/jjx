@@ -31,6 +31,7 @@ public class QualityLotReportAssembler {
     private final QualityLotMapper lotMapper;
     private final QualityLotItemMapper itemMapper;
     private final QualityNcrMapper ncrMapper;
+    private final com.jjx.quality.service.QualitySamplingPlanService samplingPlanService;
     private final JdbcTemplate jdbcTemplate;
 
     public QualityLotReportVO build(Long lotId) {
@@ -68,26 +69,26 @@ public class QualityLotReportAssembler {
         BigDecimal aql = null;
         String level = null;
         String planName = null;
+        // dev-20260924-021：抽样方案已改为「系统配置(JSON)」承载，不再查表
+        com.jjx.quality.domain.entity.QualitySamplingPlan plan = null;
         if (lot.getSamplingPlanId() != null) {
             try {
-                aql = jdbcTemplate.queryForObject(
-                        "SELECT aql_value FROM quality_sampling_plan WHERE plan_id = ?", BigDecimal.class,
-                        lot.getSamplingPlanId());
-                level = jdbcTemplate.queryForObject(
-                        "SELECT inspection_level FROM quality_sampling_plan WHERE plan_id = ?", String.class,
-                        lot.getSamplingPlanId());
-                planName = jdbcTemplate.queryForObject(
-                        "SELECT plan_name FROM quality_sampling_plan WHERE plan_id = ?", String.class,
-                        lot.getSamplingPlanId());
+                plan = samplingPlanService.findById(lot.getSamplingPlanId());
             } catch (Exception ignored) {
             }
         }
+        if (plan != null) {
+            aql = plan.getAqlValue();
+            level = plan.getInspectionLevel();
+            planName = plan.getPlanName();
+        }
         if (aql == null && iqc) {
             try {
-                aql = jdbcTemplate.queryForObject(
-                        "SELECT aql_value FROM quality_sampling_plan WHERE is_enabled = 1 AND lot_type IN ('IQC','ALL') "
-                                + "AND lot_min <= ? AND lot_max >= ? ORDER BY lot_min LIMIT 1",
-                        BigDecimal.class, lot.getLotQuantity(), lot.getLotQuantity());
+                com.jjx.quality.domain.entity.QualitySamplingPlan matched =
+                        samplingPlanService.match("IQC", lot.getLotQuantity());
+                if (matched != null) {
+                    aql = matched.getAqlValue();
+                }
             } catch (Exception ignored) {
             }
         }

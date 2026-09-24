@@ -8,7 +8,7 @@ import com.jjx.quality.dto.QualityLotCreateDTO;
  * <p>口径（2026-09-24 口径收敛）：检验批模型、检验项目、缺陷记录、件级追溯**以既有模型为唯一出处**
  * （见 design/defect-piece-trace-reason-code-dev-20260924-004.md）；OQC 只负责：</p>
  * <ol>
- *   <li>建批时按批量匹配**抽样方案**（quality_sampling_plan.lot_type='OQC'，AQL 配置现成）</li>
+ *   <li>建批时按批量匹配**抽样方案**（sys_config.quality.sampling_plan 内的 OQC 方案，dev-20260924-021 起不再查表）</li>
  *   <li>预填**检验项目**（复制该产品最近一次 FQC 批的项目，避免质检员从头手录）</li>
  * </ol>
  *

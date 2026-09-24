@@ -26,7 +26,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class QualityOqcServiceImpl implements QualityOqcService {
 
-    private final com.jjx.quality.mapper.QualitySamplingPlanMapper samplingPlanMapper;
+    private final com.jjx.quality.service.QualitySamplingPlanService samplingPlanService;
     private final QualityLotItemMapper lotItemMapper;
     private final JdbcTemplate jdbcTemplate;
 
@@ -39,7 +39,7 @@ public class QualityOqcServiceImpl implements QualityOqcService {
         prefillItems(dto);
     }
 
-    /** 按批量匹配启用的 OQC 抽样方案（AQL 配置已在 quality_sampling_plan 维护） */
+    /** 按批量匹配启用的 OQC 抽样方案（AQL 配置在 系统参数 → quality_config → quality.sampling_plan） */
     private void applySamplingPlan(QualityLotCreateDTO dto) {
         if (dto.getSamplingPlanId() != null) {
             return;
@@ -49,14 +49,7 @@ public class QualityOqcServiceImpl implements QualityOqcService {
             return;
         }
         try {
-            QualitySamplingPlan plan = samplingPlanMapper.selectOne(Wrappers.<QualitySamplingPlan>lambdaQuery()
-                    .eq(QualitySamplingPlan::getLotType, "OQC")
-                    .eq(QualitySamplingPlan::getIsEnabled, 1)
-                    .eq(QualitySamplingPlan::getDelFlag, 0)
-                    .le(QualitySamplingPlan::getLotMin, qty)
-                    .and(w -> w.isNull(QualitySamplingPlan::getLotMax).or().ge(QualitySamplingPlan::getLotMax, qty))
-                    .orderByAsc(QualitySamplingPlan::getLotMin)
-                    .last("LIMIT 1"));
+            QualitySamplingPlan plan = samplingPlanService.match("OQC", qty);
             if (plan == null) {
                 log.info("OQC 建批未匹配到抽样方案（批量 {}），按全检处理待人工录入: batch={}",
                         qty.toPlainString(), dto.getBatchNo());

@@ -7,10 +7,14 @@ import java.util.List;
 
 /**
  * 抽样方案服务 —— dev-20260917-002
+ * dev-20260924-021：存储改为系统配置（sys_config.quality.sampling_plan 的 JSON），本接口不变。
  */
 public interface QualitySamplingPlanService {
 
     List<QualitySamplingPlan> listAll();
+
+    /** 按 id 取单条（配置数组内查找）；不存在返回 null */
+    QualitySamplingPlan findById(Long planId);
 
     QualitySamplingPlan savePlan(QualitySamplingPlan plan);
 
