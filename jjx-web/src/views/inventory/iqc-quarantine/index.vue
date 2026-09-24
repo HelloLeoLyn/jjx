@@ -9,9 +9,13 @@
             「剩余数量」减到 0 才算结清，状态才会变成已让步接收 / 已退货 / 已返工 / 已报废。
           </div>
         </template>
-        <span class="scope-tip__text">❓ 本页处理来料不合格处置（让步接收 / 退货 / 返工 / 报废）</span>
+        <span class="scope-tip__text"
+          >❓ 本页处理来料不合格处置（让步接收 / 退货 / 返工 / 报废）</span
+        >
       </el-tooltip>
-      <el-button link type="primary" @click="router.push('/quality/ncr')">查看产品不良台账</el-button>
+      <el-button link type="primary" @click="router.push('/quality/ncr')"
+        >查看产品不良台账</el-button
+      >
     </div>
     <div class="filter-bar">
       <el-form inline @submit.prevent>
@@ -80,12 +84,17 @@
                 }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="130">
+            <el-table-column label="处理状态" width="130">
               <template #default="{ row }">
                 <el-tag :type="IqcQuarantineStatusEnum.getTagProps(row.status).type">{{
                   IqcQuarantineStatusEnum.getLabel(row.status)
                 }}</el-tag>
-                <el-tag v-if="isPartial(row)" class="partial" size="small" type="warning" effect="plain"
+                <el-tag
+                  v-if="isPartial(row)"
+                  class="partial"
+                  size="small"
+                  type="warning"
+                  effect="plain"
                   >部分处置</el-tag
                 >
               </template>
@@ -214,7 +223,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import { iqcApi } from '@/api/inventory/iqc'
 import {
@@ -227,6 +236,7 @@ import { IqcBatchStatusEnum, IqcBatchTypeEnum } from '@/enums/inventory/IqcBatch
 import { hasPermi } from '@/directives'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 const router = useRouter()
+const route = useRoute()
 // 2026-09-21 用户定口径 B（隔离处置只给品质主管一侧，见迁移 167）：
 // 收回 INVENTORY 业务操作(23)/审核员(24) 的处置入口后，本页与来料检验页的处置按钮
 // 只认 quality:ncr:dispose；无权限时显示「无处置权限」提示而不是留白。
@@ -265,8 +275,7 @@ const num = (value?: number | string | null) =>
 /** 已处置数量 = 原始隔离 − 剩余数量；后端部分处置时状态仍停在「待处置」，靠这两个数相减才能看出进度 */
 const disposedQuantity = (row: any) =>
   Number(row.quantity || 0) - Number(row.remainingQuantity || 0)
-const isPartial = (row: any) =>
-  Number(row.remainingQuantity || 0) > 0 && disposedQuantity(row) > 0
+const isPartial = (row: any) => Number(row.remainingQuantity || 0) > 0 && disposedQuantity(row) > 0
 const batchTypeLabel = (value?: string) => (value ? IqcBatchTypeEnum.getLabel(value) : '-')
 /** dev-20260924-024：行内「谱系」——按该行批次过滤溯源链（自身 + 以其为父批次的子批次） */
 function openLineage(row: any) {
@@ -339,7 +348,13 @@ async function goReinspect(row: any) {
     },
   })
 }
-onMounted(load)
+onMounted(() => {
+  query.value.inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''
+  query.value.materialKeyword =
+    typeof route.query.materialKeyword === 'string' ? route.query.materialKeyword : ''
+  query.value.batchNo = typeof route.query.batchNo === 'string' ? route.query.batchNo : ''
+  load()
+})
 </script>
 <style scoped>
 /* dev-20260924-024：说明收成一行 + 筛选工具条（不再各占一张卡片） */

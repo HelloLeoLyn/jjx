@@ -81,7 +81,7 @@
         @edit="openMaterialChecks"
         @review="openReview"
         @print="printRow"
-        @quarantine="openQuarantine"
+        @go-disposition="goDisposition"
       />
       <template v-if="hasEditableRows"
         ><el-form label-width="90px" class="remark-form"
@@ -115,13 +115,6 @@
       :inbound-no="activeInboundNo"
       @success="handleFlowSuccess"
     />
-    <IqcQuarantineDialog
-      v-model:visible="quarantineVisible"
-      :inbound-id="activeInboundId"
-      :inbound-no="activeInboundNo"
-      :item-id="activeItemId"
-      @success="handleFlowSuccess"
-    />
   </div>
 </template>
 
@@ -134,7 +127,6 @@ import { qualityApi } from '@/api/production/quality'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
-import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
 import IqcMaterialTable from './components/IqcMaterialTable.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
@@ -162,6 +154,7 @@ type WorkRow = {
   inspectionId?: number
   materialCode: string
   materialName: string
+  batchNo?: string
   quantity: number
   qualifiedQuantity: number
   rejectedQuantity: number
@@ -220,12 +213,10 @@ const selectedInboundId = ref<string | number>(''),
 const inspectionRemark = ref(''),
   submitting = ref(false),
   checksVisible = ref(false),
-  reviewVisible = ref(false),
-  quarantineVisible = ref(false)
+  reviewVisible = ref(false)
 const activeWorkRow = ref<WorkRow>(),
   activeInboundId = ref<number>(),
-  activeInboundNo = ref(''),
-  activeItemId = ref<string>()
+  activeInboundNo = ref('')
 /** dev-20260924-017：校验未通过的行（行级红标，提交时一次提示 + 定位第一处） */
 const problemRowIds = ref<Set<number>>(new Set())
 function rowClassName({ row }: { row: WorkRow }) {
@@ -400,9 +391,7 @@ async function loadInboundDetail(row: IqcPendingVO) {
       (data?.items || []).map(async (item: any): Promise<WorkRow> => {
         // dev-20260922-009：新模型检验批在 lotId（inspectionId 已置空），优先取 lotId，回退旧字段
         const lotRef = item.lotId ?? item.inspectionId
-        const quality = lotRef
-          ? (await qualityApi.getById(Number(lotRef))).data
-          : undefined
+        const quality = lotRef ? (await qualityApi.getById(Number(lotRef))).data : undefined
         const previousQuality = quality?.previousInspectionId
           ? (await qualityApi.getById(Number(quality.previousInspectionId))).data
           : undefined
@@ -419,6 +408,7 @@ async function loadInboundDetail(row: IqcPendingVO) {
           inspectionId: quality?.inspectionId,
           materialCode: item.materialCode,
           materialName: item.materialName,
+          batchNo: item.batchNo,
           quantity: Number(item.quantity || 0),
           qualifiedQuantity: fresh
             ? 0
@@ -599,10 +589,15 @@ function openReview() {
   activateSelected()
   reviewVisible.value = true
 }
-function openQuarantine(row: WorkRow) {
-  activateSelected()
-  activeItemId.value = row.itemId
-  quarantineVisible.value = true
+function goDisposition(row: WorkRow) {
+  router.push({
+    path: '/inventory/iqc-quarantine',
+    query: {
+      inboundNo: selectedInbound.value?.inboundNo,
+      materialKeyword: row.materialCode,
+      batchNo: row.batchNo || undefined,
+    },
+  })
 }
 function printRow(row: WorkRow) {
   router.push({
