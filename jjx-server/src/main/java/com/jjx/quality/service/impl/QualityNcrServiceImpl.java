@@ -700,6 +700,58 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         return action;
     }
 
+    @Override
+    public List<com.jjx.quality.dto.vo.QuarantineRowVO> listQuarantine() {
+        List<com.jjx.quality.dto.vo.QuarantineRowVO> rows = new java.util.ArrayList<>();
+        try {
+            jdbcTemplate.query(
+                    "SELECT n.ncr_id, n.ncr_no, n.lot_type, n.lot_id, l.lot_no, n.order_id, o.order_no,"
+                            + " n.material_code, n.material_name, n.product_code, n.product_name, n.batch_no,"
+                            + " n.defect_quantity, n.disposed_quantity, n.main_check_item, n.main_defect_level, n.status,"
+                            + " IFNULL(p.total_cnt, 0) AS piece_total, IFNULL(p.pending_cnt, 0) AS piece_pending"
+                            + " FROM quality_ncr n"
+                            + " LEFT JOIN quality_lot l ON l.lot_id = n.lot_id"
+                            + " LEFT JOIN production_order o ON o.order_id = n.order_id"
+                            + " LEFT JOIN (SELECT ncr_id, COUNT(*) AS total_cnt,"
+                            + "                   SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending_cnt"
+                            + "              FROM quality_ncr_piece WHERE del_flag = 0 GROUP BY ncr_id) p ON p.ncr_id = n.ncr_id"
+                            + " WHERE n.del_flag = 0 AND n.status IN ('PENDING','DISPOSING')"
+                            + "   AND (IFNULL(n.defect_quantity, 0) - IFNULL(n.disposed_quantity, 0)) > 0"
+                            + " ORDER BY n.ncr_id DESC LIMIT 500",
+                    (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+                        com.jjx.quality.dto.vo.QuarantineRowVO vo = new com.jjx.quality.dto.vo.QuarantineRowVO();
+                        vo.setNcrId(rs.getLong("ncr_id"));
+                        vo.setNcrNo(rs.getString("ncr_no"));
+                        vo.setLotType(rs.getString("lot_type"));
+                        long lotId = rs.getLong("lot_id");
+                        vo.setLotId(rs.wasNull() ? null : lotId);
+                        vo.setLotNo(rs.getString("lot_no"));
+                        long orderId = rs.getLong("order_id");
+                        vo.setOrderId(rs.wasNull() ? null : orderId);
+                        vo.setOrderNo(rs.getString("order_no"));
+                        vo.setMaterialCode(rs.getString("material_code"));
+                        vo.setMaterialName(rs.getString("material_name"));
+                        vo.setProductCode(rs.getString("product_code"));
+                        vo.setProductName(rs.getString("product_name"));
+                        vo.setBatchNo(rs.getString("batch_no"));
+                        java.math.BigDecimal defect = rs.getBigDecimal("defect_quantity");
+                        java.math.BigDecimal disposed = rs.getBigDecimal("disposed_quantity");
+                        vo.setDefectQuantity(defect);
+                        vo.setDisposedQuantity(disposed);
+                        vo.setQuarantineQuantity(nz(defect).subtract(nz(disposed)).max(java.math.BigDecimal.ZERO));
+                        vo.setMainCheckItem(rs.getString("main_check_item"));
+                        vo.setMainDefectLevel(rs.getString("main_defect_level"));
+                        vo.setStatus(rs.getString("status"));
+                        vo.setPieceTotal(rs.getInt("piece_total"));
+                        vo.setPiecePending(rs.getInt("piece_pending"));
+                        rows.add(vo);
+                    });
+        } catch (Exception e) {
+            log.warn("隔离台账查询失败（返回空列表）: {}", e.getMessage());
+        }
+        return rows;
+    }
+
     private String appendRemark(String origin, String add) {
         String base = origin == null ? "" : origin.trim();
         if (base.length() > 300) {

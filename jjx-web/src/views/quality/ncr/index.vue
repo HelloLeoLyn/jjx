@@ -24,6 +24,8 @@
             </el-select>
             <el-input v-model="query.materialCode" clearable placeholder="物料编码" style="width: 160px" @keyup.enter="load(1)" />
             <el-button type="primary" @click="load(1)">查询</el-button>
+            <!-- dev-20260924-007：隔离台账（在隔离的货 = 未处置不良；只做标识，不动库存） -->
+            <el-button type="warning" plain @click="openQuarantine">隔离台账</el-button>
             <el-button @click="load()">刷新</el-button>
           </div>
         </div>
@@ -61,10 +63,14 @@
         <el-table-column label="已处置" width="90" align="right">
           <template #default="{ row }">{{ num(row.disposedQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="待处置" width="90" align="right">
+        <el-table-column label="待处置" width="120" align="right">
           <template #default="{ row }">
             <el-tag v-if="pending(row) > 0" type="danger" size="small">{{ num(pending(row)) }}</el-tag>
-            <span v-else>-</span>
+            <!-- dev-20260924-007：待处置 = 隔离中（未处置的不良件视为在隔离；一期只做标识，不动库存） -->
+            <el-tag v-if="pending(row) > 0" type="warning" size="small" effect="plain" style="margin-left: 4px">
+              隔离中
+            </el-tag>
+            <span v-if="pending(row) <= 0">-</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="95">
@@ -169,6 +175,65 @@
         <el-button @click="disposeVisible = false">取消</el-button>
         <el-button type="primary" :loading="disposing" @click="submitDispose">提交处置</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 隔离台账（dev-20260924-007 一期） -->
+    <el-dialog v-model="quarantineVisible" title="隔离台账（在隔离的货）" width="960px" append-to-body>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="口径：隔离 = 未处置不良（不良 − 已处置）；件级 = 不良件状态「待处置」。一期只做标识，库存不动（库存只装良品）。"
+        style="margin-bottom: 10px"
+      />
+      <el-table v-loading="quarantineLoading" :data="quarantineRows" border size="small" max-height="56vh">
+        <el-table-column prop="ncrNo" label="不良单号" min-width="140" />
+        <el-table-column label="工单/批" min-width="180">
+          <template #default="{ row }">
+            <div>{{ row.orderNo || (row.orderId ? '工单 #' + row.orderId : '-') }}</div>
+            <div class="sub">{{ row.lotNo ? '批 ' + row.lotNo : '' }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="物料/产品" min-width="160">
+          <template #default="{ row }">
+            {{ row.materialCode || row.productCode || '-' }}
+            <span class="sub">{{ row.materialName || row.productName || '' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="batchNo" label="批次" width="110" />
+        <el-table-column label="不良" width="80" align="right">
+          <template #default="{ row }">{{ num(row.defectQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="已处置" width="85" align="right">
+          <template #default="{ row }">{{ num(row.disposedQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="隔离中" width="85" align="right">
+          <template #default="{ row }">
+            <el-tag type="warning" size="small" effect="plain">{{ num(row.quarantineQuantity) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="件（待处置/总）" width="130" align="center">
+          <template #default="{ row }">
+            <span v-if="row.pieceTotal">{{ row.piecePending }}/{{ row.pieceTotal }}</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="主缺陷" min-width="130">
+          <template #default="{ row }">
+            <span v-if="row.mainCheckItem">{{ row.mainCheckItem }}</span>
+            <el-tag v-if="row.mainDefectLevel" :type="levelTag(row.mainDefectLevel)" size="small" effect="plain" style="margin-left: 4px">
+              {{ row.mainDefectLevel }}
+            </el-tag>
+            <span v-if="!row.mainCheckItem && !row.mainDefectLevel">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="110" align="center">
+          <template #default="{ row }">
+            <el-button link size="small" @click="goDispose(row)">去处置</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!quarantineLoading && !quarantineRows.length" class="sub">当前没有在隔离的货</div>
     </el-dialog>
 
     <!-- 不良件级明细（dev-20260924-004） -->
@@ -473,6 +538,29 @@ const supplementing = ref(false)
 const supplementAction = ref<QualityNcrAction | null>(null)
 const supplementItems = ref<Array<PickPreviewRow & { quantity: number }>>([])
 // ============ 不良件级明细（dev-20260924-004） ============
+// ============ 隔离台账（dev-20260924-007 一期） ============
+const quarantineVisible = ref(false)
+const quarantineLoading = ref(false)
+const quarantineRows = ref<any[]>([])
+const openQuarantine = async () => {
+  quarantineVisible.value = true
+  quarantineLoading.value = true
+  try {
+    const res: any = await qualityNcrApi.quarantine()
+    quarantineRows.value = res?.data || []
+  } catch {
+    quarantineRows.value = []
+  } finally {
+    quarantineLoading.value = false
+  }
+}
+/** 隔离台账 → 直接对这条不良单处置（复用台账页处置弹窗） */
+const goDispose = (row: any) => {
+  quarantineVisible.value = false
+  const target = rows.value.find((r) => Number(r.ncrId) === Number(row.ncrId))
+  if (target) openDispose(target)
+}
+
 const piecesVisible = ref(false)
 const pieces = ref<any[]>([])
 const piecesNcr = ref<QualityNcr | null>(null)

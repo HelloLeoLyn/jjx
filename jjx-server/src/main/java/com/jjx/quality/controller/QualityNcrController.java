@@ -40,6 +40,12 @@ public class QualityNcrController {
         return Result.success(ncrService.getNcr(ncrId));
     }
 
+    @Operation(summary = "隔离台账（dev-20260924-007 一期：在隔离的货 = 未处置不良；只做标识不动库存）")
+    @GetMapping("/quarantine")
+    public Result<List<com.jjx.quality.dto.vo.QuarantineRowVO>> quarantine() {
+        return Result.success(ncrService.listQuarantine());
+    }
+
     @Operation(summary = "按工单/工序反查不良（工单详情用）")
     @GetMapping("/by-order")
     public Result<List<QualityNcr>> byOrder(@RequestParam Long orderId,

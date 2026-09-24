@@ -255,6 +255,13 @@ export const qualityNcrApi = {
   pieces(ncrId: number) {
     return request.get<R<Record<string, any>[]>>(`/quality/ncr/${ncrId}/pieces`)
   },
+  /**
+   * 隔离台账（dev-20260924-007 一期）：在隔离的货 = 未处置不良（不良 − 已处置），含件级汇总。
+   * 口径：一期只做标识，不动库存（库存只装良品）。
+   */
+  quarantine() {
+    return request.get<R<Record<string, any>[]>>('/quality/ncr/quarantine')
+  },
   dispose(ncrId: number, data: Record<string, unknown>) {
     return request.post<R<QualityNcrAction>>(`/quality/ncr/${ncrId}/dispose`, data)
   },
