@@ -68,6 +68,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     /** dev-20260924-005：报废审批阈值读取（sys_config: quality.ncr.scrap.approval-threshold） */
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
+    /** dev-20260924-006：报废生效即出「成品报废单」（凭据；库存不动） */
+    private final com.jjx.quality.service.QualityScrapOrderService qualityScrapOrderService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QualityNcr createFromLot(QualityLot lot, BigDecimal defectQuantity, BigDecimal crQuantity,
@@ -406,6 +409,10 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         }
         // dev-20260924-004：件级处置 —— 按序号把「待处置」件挂到本次处置单（件数 = 处置数量，一件一个决定）
         qualityNcrPieceService.attachPieces(ncr.getNcrId(), action.getActionId(), actionType, quantity);
+        if ("SCRAP".equals(actionType)) {
+            // dev-20260924-006：报废生效 → 出成品报废单（谁报废/多少/哪几件/谁批；库存不受影响）
+            qualityScrapOrderService.createForAction(action, ncr);
+        }
         log.info("不良处置登记: ncrNo={} 方式={} 数量={} 已处置={}/{}", ncr.getNcrNo(), actionType,
                 quantity.toPlainString(), disposed.toPlainString(), nz(ncr.getDefectQuantity()).toPlainString());
         return action;
@@ -577,6 +584,10 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         }
         // dev-20260924-004：撤销后件回到「待处置」（与处置单撤销同事务，保证件与单一致）
         qualityNcrPieceService.releasePieces(actionId);
+        if ("SCRAP".equals(type)) {
+            // dev-20260924-006：报废撤销 → 报废单一并作废（凭据不留悬空）
+            qualityScrapOrderService.voidByAction(actionId);
+        }
         log.info("处置已撤销: actionId={} ncrNo={} 类型={} 数量={} 原因={} 操作人={}", actionId, ncr.getNcrNo(),
                 type, qty.toPlainString(), reason.trim(), operatorName);
         return action;
@@ -667,6 +678,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncrMapper.updateById(ncr);
         qualityLotService.addDisposedQuantity(ncr.getLotId(), qty);
         qualityNcrPieceService.attachPieces(ncr.getNcrId(), actionId, "SCRAP", qty);
+        // dev-20260924-006：审批通过即出成品报废单（凭据；库存不动）
+        qualityScrapOrderService.createForAction(action, ncr);
         log.info("报废审批通过: actionId={} ncrNo={} 数量={} 审批人={} 已处置={}/{}", actionId, ncr.getNcrNo(),
                 qty.toPlainString(), approver, disposed.toPlainString(),
                 nz(ncr.getDefectQuantity()).toPlainString());
