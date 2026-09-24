@@ -161,6 +161,15 @@
 - 退出码：0=通过；1=任一项不通过。
 - ⚠️ 与单号方案（`design/doc-no-rules-dev-20260922-023.md`）联动：新增/改名业务域后，脚本里的 `required` 列表与 `sys_config` 必须同步，否则误报。
 
+## 10b. scripts/task-register.sh —— 开发任务登记唯一入口（2026-09-24 立，任务 dev-20260924-032 同批）
+
+- **用途**：登记 `dev-YYYYMMDD-NNN` 任务到 `sys_task`。**禁止再手写取号 SQL**（并行会话各自 `MAX+1` 必然撞号，且手写 SQL 出过两类事故：`LPAD(@base+n,3,'0')` 被当小数产出畸形码 `dev-YYYYMMDD-14.`；`INSERT…SELECT…FROM sys_task` 少聚合 → 插多行 → 整条回滚）。
+- **危险等级**：🔴 改数据库（INSERT `sys_task`）+ 🟡 写备份文件/索引
+- **用法**：`bash scripts/task-register.sh --title "标题" [--priority P2] [--desc-file <file>] [--by dahuang] [--dry-run]`
+- **内部保证**：① 改库前 sys_task 表级 guard 备份（落 `jjx-docs/sql/backups/`）② 取号+插入用**单条聚合 SQL**（`CAST(... AS UNSIGNED)` 再 `LPAD`）③ 撞唯一约束**自动重试**（≤3 次）④ 登记后**回查** `task_code` 格式（`^dev-YYYYMMDD-NNN$`）与当日最大号，不符即报错 ⑤ 拿到真码后才写 `backup-index.tsv`
+- **退出码**：0=成功（stdout 打印 `task_code`）；1=参数/前置/登记失败
+- **注意**：撞号报错**不一定是别人抢先**——先看 SQL 是否插了多行；并发下以脚本回查结果为准（唯一约束是最后一道保险）
+
 ## 11. 自动跑（不用手敲）
 
 | 钩子 | 什么时候跑 | 拦什么 |
