@@ -7,3 +7,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 10:27:08	table	jjx_table_backup_20260924-1027_before-214.sql	b5d9c25c4022295d7c542a0ed7153ec8	72545	2	hermes-agent	dev-20260924-002
 2026-09-24 10:27:14	table	jjx_table_backup_20260924-1027_before-214.sql	2314e721ae22407e44e1f3fd98e48f3d	72772	2	hermes-agent	dev-20260924-002
 2026-09-24 10:28:00	guard	sys_task_register_dev-20260924-002-003_20260924-guard.sql	f57ea0b544b30d11a239c45750a1152f	1167940	1	Hermes	dev-20260924-002
+2026-09-24 11:02:00	guard	sys_task_register_dev-20260924-004_20260924-guard.sql	5de919dd5ebc2410bbe08944d57f0f84	1174280	1	Hermes	dev-20260924-004
