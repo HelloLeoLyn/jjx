@@ -181,6 +181,21 @@
 
     <!-- 录入（检验项） -->
     <el-dialog v-model="itemsVisible" title="检验录入" width="1100px" append-to-body>
+      <!-- dev-20260924-017：流程显式化（录入 → 判定 → 不良处置 → 入库/结案） -->
+      <InspectionStageBar
+        :stages="['检验录入', '检验判定', '不良处置', '入库/结案']"
+        :current="0"
+        :hint="`${lotType === 'FQC' ? '按 JJX-QR-039 分组' : '检验项'} · 保存后到「判定」填数量（判定才是提交）`"
+      />
+      <!-- 本批结论（只读，与来料检验「本行结论」同一呈现口径） -->
+      <div class="lot-verdict">
+        <span class="lv-item">批量 <b>{{ num(current?.lotQuantity) }}</b></span>
+        <span class="lv-item">已检 <b>{{ num(current?.inspectedQuantity) }}</b></span>
+        <span class="lv-item">合格 <b>{{ num(current?.passQuantity) }}</b></span>
+        <span class="lv-item">不良 <b>{{ num(current?.failQuantity) }}</b></span>
+        <span class="lv-item">已入库 <b>{{ num(current?.storedQuantity) }}</b></span>
+        <span class="lv-hint">逐项给结论即可；数量在「判定」环节确认</span>
+      </div>
       <!-- dev-20260922-013：表体限高 + 表头固定，项目多时（FQC 按 JJX-QR-039 分组）不再把弹窗撑出屏幕 -->
       <el-table :data="itemRows" border size="small" max-height="56vh">
         <el-table-column v-if="lotType === 'FQC'" label="类别" width="75">
@@ -235,13 +250,20 @@
         <span v-else class="entry-tip">FQC 项目已按 JJX-QR-039 固定分组，逐项填写后保存</span>
       </div>
       <template #footer>
-        <el-button @click="itemsVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveItems">保存录入</el-button>
+        <div class="dialog-footer">
+          <span class="footer-tip">Tab 移动 · 保存后到「判定」填数量（判定才是提交）</span>
+          <el-button @click="itemsVisible = false">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="saveItems">保存录入</el-button>
+        </div>
       </template>
     </el-dialog>
 
     <!-- 判定 -->
     <el-dialog v-model="judgeVisible" title="检验判定" width="480px" append-to-body>
+      <InspectionStageBar
+        :stages="['检验录入', '检验判定', '不良处置', '入库/结案']"
+        :current="1"
+      />
       <el-form label-width="100px">
         <el-form-item label="检验批">{{ current?.lotNo }}</el-form-item>
         <el-form-item label="批量">{{ num(current?.lotQuantity) }}</el-form-item>
@@ -335,6 +357,7 @@ import { useRouter } from 'vue-router'
 import { qualityLotApi, type QualityLot, type QualityLotItem, type JudgementGuardVO } from '@/api/quality/lot'
 import { InspectionResult } from '@/enums/quality'
 import { hasPermi } from '@/directives'
+import InspectionStageBar from '@/components/InspectionStageBar.vue'
 
 const router = useRouter()
 
@@ -750,6 +773,36 @@ onMounted(() => load(1))
 </script>
 
 <style scoped>
+/* dev-20260924-017：本批结论条（只读） + 弹窗页脚 */
+.lot-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  background: var(--el-fill-color-lighter);
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+.lv-hint {
+  margin-left: auto;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-tip {
+  flex: 1;
+  text-align: left;
+  color: #909399;
+  font-size: 12px;
+}
 .header {
   display: flex;
   align-items: center;

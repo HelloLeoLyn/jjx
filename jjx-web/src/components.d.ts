@@ -95,6 +95,7 @@ declare module 'vue' {
     ExcelImportDialog: typeof import('./components/ExcelImportDialog/index.vue')['default']
     IconSelector: typeof import('./components/IconSelector.vue')['default']
     IconStepBadge: typeof import('./components/IconStepBadge/index.vue')['default']
+    InspectionStageBar: typeof import('./components/InspectionStageBar.vue')['default']
     InternationalAddressEditor: typeof import('./components/InternationalAddressEditor.vue')['default']
     JJXIcon: typeof import('./components/JJXIcon/index.vue')['default']
     LocationImportDialog: typeof import('./components/inventory/LocationImportDialog.vue')['default']

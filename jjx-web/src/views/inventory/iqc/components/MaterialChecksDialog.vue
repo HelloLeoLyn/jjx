@@ -5,6 +5,7 @@
     min-width="900px"
     max-width="1200px"
     destroy-on-close
+    append-to-body
     :close-on-click-modal="false"
   >
     <el-table

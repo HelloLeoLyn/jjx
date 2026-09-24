@@ -17,93 +17,12 @@
           formatNumber(inbound.totalQuantity)
         }}</el-descriptions-item>
       </el-descriptions>
-      <el-table
-        :data="form.items"
-        :row-key="getRowKey"
-        :expand-row-keys="expandedRowKeys"
-        border
-        class="inspection-table"
-        @expand-change="handleExpandChange"
-      >
-        <el-table-column type="expand" width="48">
+      <el-table :data="form.items" border class="inspection-table">
+        <el-table-column label="检测项目" width="150">
           <template #default="{ row }">
-            <div class="check-panel">
-              <div class="check-panel-title">
-                {{ row.materialCode }} 检验项目（将回填到 QR-037）
-              </div>
-              <el-table
-                :data="row.inspectionItems"
-                border
-                size="small"
-                :class="{ 'locked-checks': row.locked }"
-              >
-                <el-table-column label="检验项目" prop="checkItem" width="100" />
-                <el-table-column label="检验标准" min-width="210">
-                  <template #default="{ row: check }"
-                    ><el-input v-model="check.standard"
-                  /></template>
-                </el-table-column>
-                <el-table-column label="方法" width="130">
-                  <template #default="{ row: check }"
-                    ><el-input v-model="check.inspectionMethod"
-                  /></template>
-                </el-table-column>
-                <el-table-column label="设备" width="120">
-                  <template #default="{ row: check }"
-                    ><el-input v-model="check.equipment"
-                  /></template>
-                </el-table-column>
-                <el-table-column label="实测/检查记录" min-width="180">
-                  <template #default="{ row: check }"
-                    ><el-input v-model="check.actualValue"
-                  /></template>
-                </el-table-column>
-                <el-table-column label="CR" width="90">
-                  <template #default="{ row: check }"
-                    ><el-input-number
-                      v-model="check.crQuantity"
-                      :min="0"
-                      controls-position="right"
-                      @change="syncDefects(row)"
-                  /></template>
-                </el-table-column>
-                <el-table-column label="MA" width="90">
-                  <template #default="{ row: check }"
-                    ><el-input-number
-                      v-model="check.maQuantity"
-                      :min="0"
-                      controls-position="right"
-                      @change="syncDefects(row)"
-                  /></template>
-                </el-table-column>
-                <el-table-column label="MI" width="90">
-                  <template #default="{ row: check }"
-                    ><el-input-number
-                      v-model="check.miQuantity"
-                      :min="0"
-                      controls-position="right"
-                      @change="syncDefects(row)"
-                  /></template>
-                </el-table-column>
-                <el-table-column label="项目结论" width="120">
-                  <template #default="{ row: check }">
-                    <el-select v-model="check.result">
-                      <el-option
-                        v-for="option in QualityInspectionResultEnum.items.filter(
-                          (item) => item.value !== QualityInspectionResult.PENDING
-                        )"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                      />
-                    </el-select>
-                  </template>
-                </el-table-column>
-                <el-table-column label="备注" min-width="140">
-                  <template #default="{ row: check }"><el-input v-model="check.remark" /></template>
-                </el-table-column>
-              </el-table>
-            </div>
+            <el-button link type="primary" :disabled="row.locked" @click="openChecks(row)">
+              录入{{ checkProgress(row) }}/{{ (row.inspectionItems || []).length }}
+            </el-button>
           </template>
         </el-table-column>
         <el-table-column label="物料编码" prop="materialCode" width="130" />
@@ -116,71 +35,25 @@
           </template>
         </el-table-column>
         <el-table-column label="收货数量" prop="quantity" width="100" />
-        <el-table-column label="合格数量" width="140">
-          <template #default="{ row }"
-            ><el-input-number
-              v-model="row.qualifiedQuantity"
-              :min="0"
-              :max="row.quantity"
-              :disabled="row.locked"
-              controls-position="right"
-              @change="syncFullInspection(row)"
-          /></template>
-        </el-table-column>
-        <el-table-column label="不良数量" width="140">
-          <template #default="{ row }"
-            ><el-input-number
-              v-model="row.rejectedQuantity"
-              :min="0"
-              :max="row.quantity"
-              :disabled="row.locked"
-              controls-position="right"
-              @change="syncFullInspection(row)"
-          /></template>
-        </el-table-column>
+        <el-table-column label="合格数量" prop="qualifiedQuantity" width="100" />
+        <el-table-column label="不良数量" prop="rejectedQuantity" width="100" />
         <el-table-column label="允收入库" prop="acceptedQuantity" width="140" />
-        <el-table-column label="检验判定" width="150">
+        <el-table-column label="检验判定" width="110">
           <template #default="{ row }">
-            <el-select
-              v-model="row.inspectionResult"
-              :disabled="row.locked"
-              @change="handleResultChange(row)"
-            >
-              <el-option
-                v-for="option in InspectionResultEnum.items.filter(
-                  (item) => item.value !== InspectionResultEnum.OTHER.value
-                )"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </el-select>
+            <el-tag :type="InspectionResultEnum.getTagProps(row.inspectionResult).type">
+              {{ InspectionResultEnum.getLabel(row.inspectionResult) }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="不合格处置" width="180">
+        <el-table-column label="不合格处置" width="140">
           <template #default="{ row }">
-            <el-select
-              v-if="row.inspectionResult === InspectionResultEnum.FAIL.value"
-              v-model="row.disposition"
-              placeholder="请选择"
-              :disabled="row.locked"
-              @change="syncDisposition(row)"
-            >
-              <el-option
-                v-for="option in IqcDispositionEnum.items"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </el-select>
+            <span v-if="row.inspectionResult === InspectionResultEnum.FAIL.value">{{
+              IqcDispositionEnum.getLabel(row.disposition)
+            }}</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="总体缺陷说明" min-width="160">
-          <template #default="{ row }"
-            ><el-input v-model="row.rejectReason" maxlength="255" :disabled="row.locked"
-          /></template>
-        </el-table-column>
+        <el-table-column label="总体缺陷说明" prop="rejectReason" min-width="160" show-overflow-tooltip />
       </el-table>
       <el-form label-width="90px">
         <el-form-item label="检验备注"
@@ -193,16 +66,27 @@
         /></el-form-item>
       </el-form>
     </div>
+    <MaterialChecksDialog
+      v-model:visible="checksVisible"
+      :row="activeRow"
+      :next-label="nextLabel"
+      :readonly="!!activeRow?.locked"
+      @saved="onChecksSaved"
+      @next="openNextChecks"
+    />
     <template #footer>
-      <el-button @click="opened = false">取消</el-button>
-      <el-button type="primary" :loading="submitting" @click="submit">提交检验</el-button>
+      <div class="dialog-footer">
+        <span class="footer-tip">点「录入」填检验项目 · Tab 移动 · Enter 保存本行 · 键盘录入更快</span>
+        <el-button @click="opened = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submit">提交检验</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
 import { qualityApi } from '@/api/production/quality'
 import { InspectionResultEnum, IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
@@ -214,6 +98,8 @@ import {
 } from '@/enums/quality/InspectionEnum'
 import { formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
+import MaterialChecksDialog from '@/views/inventory/iqc/components/MaterialChecksDialog.vue'
+import { iqcRowProblems } from '@/views/inventory/iqc/iqcRowRules'
 
 const props = defineProps<{ visible: boolean; inboundId?: number; itemId?: number }>()
 const emit = defineEmits<{ (e: 'update:visible', value: boolean): void; (e: 'success'): void }>()
@@ -222,7 +108,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const inbound = ref<InboundVO | null>(null)
 const form = reactive({ inspectionRemark: '', items: [] as any[] })
-const expandedRowKeys = ref<string[]>([])
+const checksVisible = ref(false)
+const activeRow = ref<any>(null)
 
 const defaultInspectionItems = () => [
   createCheck('规格', '与采购订单及实物一致', '核对', '目视'),
@@ -264,7 +151,6 @@ watch(
       const { data } = await inboundApi.getById(String(props.inboundId))
       inbound.value = data
       form.inspectionRemark = ''
-      expandedRowKeys.value = []
       form.items = await Promise.all(
         (data?.items || [])
           .filter((item) => !props.itemId || Number(item.inboundItemId || item.itemId) === props.itemId)
@@ -315,49 +201,37 @@ watch(
   }
 )
 
-function defectTotal(row: any) {
-  return row.inspectionItems.reduce(
-    (sum: number, check: any) =>
-      sum +
-      Number(check.crQuantity || 0) +
-      Number(check.maQuantity || 0) +
-      Number(check.miQuantity || 0),
-    0
-  )
+/** 行内检验项完成度（已给结论的项数） */
+function checkProgress(row: any) {
+  const items: any[] = row?.inspectionItems || []
+  return items.filter((check: any) =>
+    [QualityInspectionResult.PASS, QualityInspectionResult.FAIL].includes(check.result)
+  ).length
 }
-function syncDefects(row: any) {
-  const total = defectTotal(row)
-  const inspectionQuantity = Number(row.isReinspection ? row.reinspectionQuantity : row.quantity || 0)
-  row.rejectedQuantity = Math.min(inspectionQuantity, total)
-  row.qualifiedQuantity = Math.max(0, inspectionQuantity - row.rejectedQuantity)
-  row.acceptedQuantity = row.qualifiedQuantity
-  const critical = row.inspectionItems.reduce(
-    (sum: number, check: any) => sum + Number(check.crQuantity || 0),
-    0
-  )
-  if (critical > 0 && row.inspectionResult !== InspectionResultEnum.FAIL.value) {
-    row.inspectionResult = InspectionResultEnum.FAIL.value
-    row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
-  }
+function editableRows(): any[] {
+  return form.items.filter((item: any) => !item.locked)
 }
-function syncFullInspection(row: any) {
-  row.qualifiedQuantity = Number(row.qualifiedQuantity || 0)
-  row.rejectedQuantity = Number(row.rejectedQuantity || 0)
-  row.acceptedQuantity = row.qualifiedQuantity
+function nextEditableRow(): any | undefined {
+  const rows = editableRows()
+  const index = rows.indexOf(activeRow.value)
+  return index < 0 ? rows[0] : rows[index + 1]
 }
-function handleResultChange(row: any) {
-  if (row.inspectionResult === InspectionResultEnum.PASS.value) {
-    row.disposition = undefined
-    row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
-  } else if (row.inspectionResult === InspectionResultEnum.FAIL.value) {
-    row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
-  }
+const nextLabel = computed(() => {
+  const next = nextEditableRow()
+  return next ? `${next.materialCode} ${next.materialName}` : ''
+})
+function openChecks(row: any) {
+  activeRow.value = row
+  checksVisible.value = true
 }
-function handleExpandChange(_: any, expandedRows: any[]) {
-  expandedRowKeys.value = expandedRows.map(getRowKey)
+/** 保存本行：统一弹窗已按检验项汇总回写数量/判定，这里无需额外处理 */
+function onChecksSaved() {
+  /* no-op */
 }
-function getRowKey(row: any) {
-  return String(row.itemId)
+function openNextChecks() {
+  const next = nextEditableRow()
+  if (next) activeRow.value = next
+  else ElMessage.info('已是最后一行可录入的材料')
 }
 function normalizeInspectionItem(check: any) {
   return {
@@ -373,36 +247,27 @@ function normalizeInspectionItem(check: any) {
     remark: check.remark,
   }
 }
-function syncDisposition(row: any) {
-  row.acceptedQuantity = Number(row.qualifiedQuantity || 0)
-}
-
 async function submit() {
+  const problems: string[] = []
+  const badRows = new Set<string>()
   for (const item of form.items) {
     item.acceptedQuantity = Number(item.qualifiedQuantity || 0)
-    const inspectionQuantity = Number(item.isReinspection ? item.reinspectionQuantity : item.quantity)
-    if (Number(item.qualifiedQuantity) + Number(item.rejectedQuantity) !== inspectionQuantity) {
-      ElMessage.warning(`${item.materialCode}：合格数量与不良数量之和必须等于收货数量`)
-      return
+    const issues = iqcRowProblems(item)
+    if (issues.length) {
+      problems.push(`${item.materialCode}：${issues.join('；')}`)
+      badRows.add(String(item.itemId))
     }
-    if (item.inspectionResult === InspectionResultEnum.FAIL.value && !item.disposition) {
-      ElMessage.warning(`${item.materialCode}：不合格时必须选择处置方式`)
-      return
-    }
-    if (Number(item.acceptedQuantity) > Number(item.quantity)) {
-      ElMessage.warning(`${item.materialCode}：允收入库数量不能超过收货数量`)
-      return
-    }
-    // dev-20260916-009：不良品不得计入允收入库数量（否则隔离数量=收货-接收=0，不良品当良品入库）
-    if (
-      item.inspectionResult === InspectionResultEnum.FAIL.value &&
-      Number(item.acceptedQuantity) > Number(item.qualifiedQuantity || 0)
-    ) {
-      ElMessage.warning(
-        `${item.materialCode}：允收入库数量不能超过良品数量（${Number(item.qualifiedQuantity || 0)}），不良品请走隔离处置`
-      )
-      return
-    }
+  }
+  if (problems.length) {
+    const esc = (text: string) => text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    await ElMessageBox.alert(
+      `<div style="max-height:320px;overflow:auto">${problems
+        .map((p) => `<div>· ${esc(p)}</div>`)
+        .join('')}</div>`,
+      `还有 ${badRows.size} 行需要处理`,
+      { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' }
+    ).catch(() => undefined)
+    return
   }
   submitting.value = true
   try {
@@ -454,6 +319,17 @@ async function submit() {
 .check-panel-title {
   margin-bottom: 10px;
   font-weight: 600;
+}
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-tip {
+  flex: 1;
+  text-align: left;
+  color: #909399;
+  font-size: 12px;
 }
 .locked-checks {
   pointer-events: none;

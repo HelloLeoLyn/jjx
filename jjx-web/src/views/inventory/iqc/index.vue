@@ -95,6 +95,11 @@
 
     <el-card v-if="selectedInbound" v-loading="detailLoading" class="detail-card">
       <template #header><span>材料检验处理</span></template>
+      <InspectionStageBar
+        :stages="['录入检验', '提交检验', '主管复核', '确认入库']"
+        :current="stageIndex"
+        :hint="stageHint"
+      />
       <el-descriptions :column="4" border>
         <el-descriptions-item label="入库单号">{{ selectedInbound.inboundNo }}</el-descriptions-item
         ><el-descriptions-item label="供应商">{{
@@ -188,7 +193,6 @@
             ><span v-else>-</span></template
           ></el-table-column
         >
-        <el-table-column label="接收数量" prop="acceptedQuantity" width="100" />
         <el-table-column label="检测项目" width="125"
           ><template #default="{ row }"
             ><el-button link type="primary" @click="openMaterialChecks(row)"
@@ -284,6 +288,7 @@ import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
+import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
   batchPassIqcRow,
   copyIqcChecks,
@@ -402,6 +407,22 @@ const failCount = computed(
 const isAllDecided = computed(
   () => workRows.value.length > 0 && decidedCount.value === workRows.value.length
 )
+// dev-20260924-017 P2：流程显式化 —— 录入 → 提交 → 复核 → 入库
+const stageIndex = computed(() => {
+  if (isApproved.value || isCompleted.value) return 3
+  if (hasPendingRows.value) return 2
+  return hasEditableRows.value ? 0 : 1
+})
+const stageHint = computed(() => {
+  const editable = workRows.value.filter(rowCanEdit).length
+  const pending = workRows.value.filter(
+    (row) => row.reviewStatus === QualityReviewStatus.PENDING
+  ).length
+  const parts: string[] = []
+  if (editable) parts.push(`${editable} 行待录入`)
+  if (pending) parts.push(`${pending} 行待复核`)
+  return parts.length ? `本单：${parts.join(' / ')}` : ''
+})
 
 function selectedFlowOption() {
   return flowOptions.find((option) => option.key === listQuery.flowStatus) || flowOptions[0]

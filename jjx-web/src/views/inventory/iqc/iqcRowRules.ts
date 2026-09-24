@@ -65,6 +65,15 @@ export function iqcRowProblems(row: any): string[] {
     if (!row.disposition) problems.push('整批判定不合格时必须选择处置方式')
     if (!String(row.rejectReason || '').trim()) problems.push('不合格必须填写不合格原因')
   }
+  // dev-20260916-009：不良品不得计入允收入库（否则隔离数量=0，不良品当良品入库）
+  const accepted = Number(row.acceptedQuantity || 0)
+  if (accepted > Number(row.quantity || 0)) problems.push('接收数量不能超过收货数量')
+  if (
+    row.inspectionResult === InspectionResultEnum.FAIL.value &&
+    accepted > Number(row.qualifiedQuantity || 0)
+  ) {
+    problems.push('接收数量不能超过良品数量（不良品请走隔离处置）')
+  }
   // dev-20260916-008：实测记录允许留空，仅要求逐项给出合格/不合格结论
   const undecided = (row.inspectionItems || []).find(
     (check: any) =>
