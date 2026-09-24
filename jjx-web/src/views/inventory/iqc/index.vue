@@ -157,84 +157,20 @@
           保存、可"保存并下一行"；实测记录可留空</span
         >
       </div>
-      <el-table
-        :data="workRows"
-        border
-        class="material-table"
-        :row-class-name="rowClassName"
+      <IqcMaterialTable
+        :rows="workRows"
+        :can-edit="rowCanEdit"
+        :row-class="rowClassName"
+        :progress="checkProgress"
+        :can-judge="canJudge"
+        :can-dispose="canDispose"
+        :is-completed="isCompleted"
         @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="46" fixed="left" :selectable="rowCanEdit" />
-        <el-table-column prop="materialCode" label="材料编码" min-width="125" /><el-table-column
-          prop="materialName"
-          label="材料名称"
-          min-width="150"
-        /><el-table-column prop="quantity" label="收货数量" width="90" />
-        <el-table-column label="合格" width="90"
-          ><template #default="{ row }">{{ row.qualifiedQuantity }}</template></el-table-column
-        >
-        <el-table-column label="不良" width="90"
-          ><template #default="{ row }">{{ row.rejectedQuantity }}</template></el-table-column
-        >
-        <el-table-column label="判定" width="100"
-          ><template #default="{ row }"
-            ><el-tag
-              v-if="row.inspectionResult"
-              :type="InboundInspectionResultEnum.getTagProps(row.inspectionResult).type"
-              >{{ InboundInspectionResultEnum.getLabel(row.inspectionResult) }}</el-tag
-            ><span v-else>未检</span></template
-          ></el-table-column
-        >
-        <el-table-column label="不合格原因" min-width="220" show-overflow-tooltip
-          ><template #default="{ row }"
-            ><span v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value">{{
-              deriveIqcReasonText(row) || '-'
-            }}</span
-            ><span v-else>-</span></template
-          ></el-table-column
-        >
-        <el-table-column label="检测项目" width="125"
-          ><template #default="{ row }"
-            ><el-button link type="primary" @click="openMaterialChecks(row)"
-              >检测项目{{ checkProgress(row) }}/{{ row.inspectionItems.length }}</el-button
-            >
-          </template></el-table-column
-        >
-        <el-table-column label="行状态" width="105"
-          ><template #default="{ row }"
-            ><el-tag
-              v-if="row.reviewStatus"
-              :type="QualityReviewStatusEnum.getTagProps(row.reviewStatus).type"
-              >{{ QualityReviewStatusEnum.getLabel(row.reviewStatus) }}</el-tag
-            ><el-tag v-else type="info">未检</el-tag></template
-          ></el-table-column
-        >
-        <el-table-column label="操作" width="205" fixed="right"
-          ><template #default="{ row }"
-            ><el-button v-if="rowCanEdit(row)" link type="primary" @click="openMaterialChecks(row)"
-              >检验录入</el-button
-            ><el-button
-              v-if="canJudge && row.reviewStatus === QualityReviewStatus.PENDING"
-              link
-              type="success"
-              @click="openReview"
-              >审核/驳回</el-button
-            ><el-button v-if="row.inspectionId" link type="primary" @click="printRow(row)"
-              >打印</el-button
-            ><el-button
-              v-if="
-                canDispose &&
-                row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-                (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
-              "
-              link
-              type="warning"
-              @click="openQuarantine(row)"
-              >隔离/处置</el-button
-            ></template
-          ></el-table-column
-        >
-      </el-table>
+        @edit="openMaterialChecks"
+        @review="openReview"
+        @print="printRow"
+        @quarantine="openQuarantine"
+      />
       <template v-if="hasEditableRows"
         ><el-form label-width="90px" class="remark-form"
           ><el-form-item label="整单备注"
@@ -288,6 +224,7 @@ import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
+import IqcMaterialTable from './components/IqcMaterialTable.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
   batchPassIqcRow,
