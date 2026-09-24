@@ -915,11 +915,17 @@ const equipmentDialogVisible = ref(false)
 const equipmentLoading = ref(false)
 const equipmentOptions = ref<ProductionEquipment[]>([])
 const selectedStartEquipmentId = ref<number | undefined>()
-let equipmentChoiceResolver: ((value: number | undefined | null) => void) | null = null
+/**
+ * 开工设备选择结果：显式区分「取消」与「无设备」。
+ * 注意（dev-20260924-008 修复）：不能用 null 兼作取消哨兵 —— 执行记录的 equipmentId 本身
+ * 可能就是 null（未绑设备），两者混用会让「确认开工」被当成「取消」而静默返回。
+ */
+type EquipmentChoice = { kind: 'cancel' } | { kind: 'confirm'; equipmentId: number | null }
+let equipmentChoiceResolver: ((value: EquipmentChoice) => void) | null = null
 
-const chooseStartEquipment = async (currentEquipmentId?: number) => {
+const chooseStartEquipment = async (currentEquipmentId?: number | null) => {
   equipmentLoading.value = true
-  selectedStartEquipmentId.value = currentEquipmentId
+  selectedStartEquipmentId.value = currentEquipmentId ?? undefined
   equipmentDialogVisible.value = true
   try {
     const result: any = await getEquipmentList()
@@ -933,14 +939,18 @@ const chooseStartEquipment = async (currentEquipmentId?: number) => {
   } finally {
     equipmentLoading.value = false
   }
-  return new Promise<number | undefined | null>((resolve) => {
+  return new Promise<EquipmentChoice>((resolve) => {
     equipmentChoiceResolver = resolve
   })
 }
 
 const finishEquipmentChoice = (confirmed: boolean) => {
   equipmentDialogVisible.value = false
-  equipmentChoiceResolver?.(confirmed ? selectedStartEquipmentId.value : null)
+  equipmentChoiceResolver?.(
+    confirmed
+      ? { kind: 'confirm', equipmentId: selectedStartEquipmentId.value ?? null }
+      : { kind: 'cancel' }
+  )
   equipmentChoiceResolver = null
 }
 const allQueryParams = reactive<TaskTreeQuery>({ pageNum: 1, pageSize: 10 })
@@ -1114,18 +1124,19 @@ const handleTaskStart = async (row: AllTaskRow) => {
   const executionId = Number(row.executionId)
   if (!executionId) return
   const label = row.processName || `工序执行 ${executionId}`
-  let currentEquipmentId: number | undefined
+  let currentEquipmentId: number | null | undefined
   try {
     const info: any = await operationExecutionApi.getInfo(executionId)
     currentEquipmentId = info?.data?.equipmentId
   } catch {
     // 开工接口仍会完成最终校验；详情加载失败不阻断无设备工序。
   }
-  const equipmentId = await chooseStartEquipment(currentEquipmentId)
-  if (equipmentId === null) return
+  const choice = await chooseStartEquipment(currentEquipmentId)
+  if (choice.kind === 'cancel') return
+  const equipmentId = choice.equipmentId
   try {
     await operationExecutionApi.start(executionId, {
-      equipmentId,
+      equipmentId: equipmentId ?? undefined,
       confirmEquipmentChange: !!currentEquipmentId && equipmentId !== currentEquipmentId,
     })
     ElMessage.success(`已开始：${label}，现在可以报工了`)
@@ -1214,12 +1225,13 @@ const handleStartExecution = async () => {
   const executionId = Number(detailForm.executionId)
   if (!executionId) return
   const currentEquipmentId = detailExecution.value?.equipmentId ?? detailForm.equipmentId
-  const equipmentId = await chooseStartEquipment(currentEquipmentId)
-  if (equipmentId === null) return
+  const choice = await chooseStartEquipment(currentEquipmentId)
+  if (choice.kind === 'cancel') return
+  const equipmentId = choice.equipmentId
   startingExecution.value = true
   try {
     await operationExecutionApi.start(executionId, {
-      equipmentId,
+      equipmentId: equipmentId ?? undefined,
       confirmEquipmentChange: !!currentEquipmentId && equipmentId !== currentEquipmentId,
     })
     ElMessage.success('工序已开始，现在可以报工了')
