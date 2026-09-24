@@ -152,7 +152,11 @@ fi
 
 # 与初始化清单交叉（交付物范围被清理 = 高风险，必须显式提醒）
 CROSS=()
+MANIFEST_COUNT=0
+MANIFEST_FOUND=0
 if [ -f "$MANIFEST" ]; then
+  MANIFEST_FOUND=1
+  MANIFEST_COUNT="$(grep -cvE '^[[:space:]]*(#.*)?$' "$MANIFEST" || true)"
   while IFS= read -r l; do
     [[ "$l" =~ ^[[:space:]]*$ ]] && continue
     [[ "$l" =~ ^[[:space:]]*# ]] && continue
@@ -167,8 +171,10 @@ fi
 if [ "${#CROSS[@]}" -gt 0 ]; then
   warn "③ 与初始化清单交叉：${#CROSS[@]} 张（清理会影响到交付物范围）"
   for t in "${CROSS[@]}"; do say "   - $t"; done
+elif [ "$MANIFEST_FOUND" -eq 1 ]; then
+  say "③ 与初始化清单交叉：0 张（本次清理不涉及交付物 ${MANIFEST_COUNT} 表）"
 else
-  say "③ 与初始化清单交叉：0 张（本次清理不涉及交付物 19 表）"
+  warn "③ 与初始化清单交叉：未找到初始化清单（$MANIFEST），跳过交叉检查——它会漏报「清理命中交付物」"
 fi
 
 # ── 覆盖率校验：库里每张表都必须有归宿（TRUNCATE / DELETE / 保留白名单）────────

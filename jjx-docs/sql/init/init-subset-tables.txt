@@ -14,8 +14,12 @@
 #              → 19 表。engineering_screen_frame / engineering_screen_plate / engineering_die
 #              当前 0 行，不进数据清单。
 #   2026-09-24 恢复（任务 dev-20260924-019）：本文件于 commit f96927a4「rm sql」（2026-09-23 22:31）
-#              随整个 jjx-docs/sql/ 被误删；现从 git 历史（f96927a4^）恢复原文，
-#              表清单与 09-14 首版完全一致（未增删）。补表复核另议（见 sys_task dev-20260924-019 遗留）。
+#              随整个 jjx-docs/sql/ 被误删；现从 git 历史（f96927a4^）恢复原文。
+#   2026-09-24 新增 2 表（任务 dev-20260924-019；用户 15:08 拍板「engineering_die engineering_screen_frame 加进去」）：
+#              engineering_die（刀模台账 12,134 行）、engineering_screen_frame（网框台账 7,291 行）
+#              —— 09-21 老台账导入后已有真实数据（09-14 首版因「当时 0 行」被排除）→ 19 表变 21 表。
+#              同批其余本次未加入（将来要进再单独拍板）：engineering_screen_plate（现 0 行）、quality_sampling_plan（8，配置）、
+#              engineering_process_icon_sample（150，学习样本）。
 sys_menu
 sys_role
 sys_role_menu
@@ -28,6 +32,8 @@ sys_dept
 sys_event_config
 sys_tag
 engineering_standard_process
+engineering_die
+engineering_screen_frame
 purchase_supplier
 sys_tag_rel
 inventory_material
